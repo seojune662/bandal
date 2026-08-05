@@ -8,8 +8,9 @@
  *   highlight.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { HIGHLIGHT_COLORS } from './useAnnotations'
+import { createMemoDraft, normalizeMemo, type MemoDraft } from './lib/memoDraft'
 import { Icon } from '../../app/icons'
 import { TabKindIcon } from '../workspace/workspaceIcons'
 import type {
@@ -29,9 +30,29 @@ export interface ContentPoint {
   top: number
 }
 
-/** Closes on Escape and on pointer-down outside the popover. */
-function useDismiss(onDismiss: () => void): React.RefObject<HTMLDivElement> {
+/**
+ * Closes on Escape and on pointer-down outside the popover.
+ *
+ * The pointer-down listener runs in the **capture** phase, which fires before
+ * the browser moves focus — so anything the popover needs to persist must be
+ * committed by `onDismiss` itself, never by a `blur` handler on a child that is
+ * about to be unmounted (see ./lib/memoDraft.ts).
+ *
+ * `onEscape` defaults to `onDismiss`; pass it separately when Escape should
+ * mean "cancel" rather than "close and keep".
+ */
+function useDismiss(
+  onDismiss: () => void,
+  onEscape?: () => void
+): React.RefObject<HTMLDivElement> {
   const ref = useRef<HTMLDivElement>(null)
+  // Latest-callback refs so the listeners attach once instead of re-binding on
+  // every keystroke.
+  const dismissRef = useRef(onDismiss)
+  dismissRef.current = onDismiss
+  const escapeRef = useRef(onEscape ?? onDismiss)
+  escapeRef.current = onEscape ?? onDismiss
+
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent): void => {
       const target = event.target
@@ -40,11 +61,11 @@ function useDismiss(onDismiss: () => void): React.RefObject<HTMLDivElement> {
         target instanceof Node &&
         !ref.current.contains(target)
       ) {
-        onDismiss()
+        dismissRef.current()
       }
     }
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onDismiss()
+      if (event.key === 'Escape') escapeRef.current()
     }
     document.addEventListener('pointerdown', handlePointerDown, true)
     document.addEventListener('keydown', handleKeyDown)
@@ -52,7 +73,7 @@ function useDismiss(onDismiss: () => void): React.RefObject<HTMLDivElement> {
       document.removeEventListener('pointerdown', handlePointerDown, true)
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [onDismiss])
+  }, [])
   return ref
 }
 
@@ -122,16 +143,81 @@ export function HighlightPopover({
   onDismiss,
   onAskAi
 }: HighlightPopoverProps): JSX.Element {
-  const [draft, setDraft] = useState(annotation.comment ?? '')
-  const ref = useDismiss(onDismiss)
-  const savedComment = annotation.comment ?? ''
-  const isDirty = draft !== savedComment
-
-  const commit = (): void => {
-    if (!isDirty) return
-    const trimmed = draft.trim()
-    onSaveComment(trimmed.length === 0 ? null : trimmed)
+  // The draft lives outside React state so that every exit path can persist the
+  // latest value — including the capture-phase outside click, which unmounts
+  // the textarea without ever firing `blur`.
+  const saveRef = useRef(onSaveComment)
+  saveRef.current = onSaveComment
+  const memoRef = useRef<MemoDraft>()
+  if (memoRef.current === undefined) {
+    memoRef.current = createMemoDraft(annotation.comment, (comment) =>
+      saveRef.current(comment)
+    )
   }
+  const memo = memoRef.current
+
+  const [draft, setDraft] = useState(() => memo.value())
+  // Escape with unsaved edits arms a confirm step instead of discarding
+  // silently (STYLEGUIDE §8: destructive actions are two-step).
+  const [isDiscardArmed, setIsDiscardArmed] = useState(false)
+  const discardArmedRef = useRef(false)
+  const isDirty = memo.isDirty()
+
+  const armDiscard = useCallback((next: boolean): void => {
+    discardArmedRef.current = next
+    setIsDiscardArmed(next)
+  }, [])
+
+  // Adopt the persisted value when it changes underneath us (our own save
+  // round-tripping, or the highlight edited from another surface). Never
+  // clobbers live typing — see MemoDraft.syncSaved.
+  const savedComment = annotation.comment
+  useEffect(() => {
+    memo.syncSaved(savedComment)
+    setDraft(memo.value())
+  }, [memo, savedComment])
+
+  const commitAndDismiss = useCallback((): void => {
+    memo.commit()
+    onDismiss()
+  }, [memo, onDismiss])
+
+  const discardAndDismiss = useCallback((): void => {
+    memo.abandon()
+    onDismiss()
+  }, [memo, onDismiss])
+
+  const handleEscape = useCallback((): void => {
+    if (!memo.isDirty()) {
+      onDismiss()
+      return
+    }
+    if (!discardArmedRef.current) {
+      armDiscard(true)
+      return
+    }
+    discardAndDismiss()
+  }, [armDiscard, discardAndDismiss, memo, onDismiss])
+
+  const ref = useDismiss(commitAndDismiss, handleEscape)
+
+  // Belt and braces: the dismiss paths above already commit, but if this
+  // popover is unmounted some other way the memo still lands. commit() is
+  // idempotent and a no-op after abandon(), so the extra call is free.
+  useEffect(() => {
+    return () => {
+      memo.commit()
+    }
+  }, [memo])
+
+  const updateDraft = useCallback(
+    (next: string): void => {
+      memo.setValue(next)
+      setDraft(next)
+      if (discardArmedRef.current) armDiscard(false)
+    },
+    [armDiscard, memo]
+  )
 
   return (
     <div
@@ -161,7 +247,12 @@ export function HighlightPopover({
           className="pdf-popover__icon-button pdf-popover__delete"
           aria-label="하이라이트 삭제"
           title="삭제"
-          onClick={onDelete}
+          onClick={() => {
+            // The highlight is going away — do not resurrect its memo from the
+            // unmount cleanup.
+            memo.abandon()
+            onDelete()
+          }}
         >
           <Icon name="trash" />
         </button>
@@ -184,12 +275,12 @@ export function HighlightPopover({
         placeholder="메모 남기기…"
         rows={3}
         value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
+        onChange={(event) => updateDraft(event.target.value)}
+        onBlur={() => memo.commit()}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-            commit()
-            onDismiss()
+            event.preventDefault()
+            commitAndDismiss()
           }
         }}
       />
@@ -197,14 +288,35 @@ export function HighlightPopover({
         type="button"
         className="pdf-popover__ask-ai"
         onClick={() => {
-          commit()
-          const trimmed = draft.trim()
-          onAskAi(trimmed.length === 0 ? null : trimmed)
+          memo.commit()
+          onAskAi(normalizeMemo(memo.value()))
         }}
       >
         <TabKindIcon kind="chat" />
         AI에게 물어보기
       </button>
+
+      {isDiscardArmed && (
+        <div className="pdf-popover__discard" role="alert">
+          <span>메모를 저장하지 않고 닫을까요?</span>
+          <div className="pdf-popover__discard-actions">
+            <button
+              type="button"
+              className="pdf-popover__discard-drop"
+              onClick={discardAndDismiss}
+            >
+              저장 안 함
+            </button>
+            <button
+              type="button"
+              className="pdf-popover__discard-keep"
+              onClick={commitAndDismiss}
+            >
+              저장하고 닫기
+            </button>
+          </div>
+        </div>
+      )}
 
       <footer className="pdf-popover__foot">
         <span className="pdf-popover__hint">⌘↩ 저장 후 닫기</span>
@@ -212,10 +324,7 @@ export function HighlightPopover({
           type="button"
           className="pdf-popover__save"
           disabled={!isDirty}
-          onClick={() => {
-            commit()
-            onDismiss()
-          }}
+          onClick={commitAndDismiss}
         >
           저장
         </button>

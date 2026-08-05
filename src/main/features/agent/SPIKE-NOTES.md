@@ -82,9 +82,8 @@ and used by the official Agent SDK) turns on the stdio control protocol:
   comes back `is_error:true` with our message, the model continues gracefully,
   and the denial is listed in `result.permission_denials`.
 - **Conclusion**: `interactivePermissions: true` is REAL. No fallback needed.
-  We still run `--permission-mode acceptEdits` + allowlist so routine study
-  tools don't prompt; anything outside the allowlist raises a real
-  `permission-request` the renderer can answer.
+  Anything the allowlist does not match raises a real `permission-request` the
+  renderer can answer. (Spike 5 revised the mode we ship — see below.)
 
 ## Spike 3 — interrupt + resume
 
@@ -109,6 +108,56 @@ before any user message → `control_response.response.response.models[]` with
 `{value, resolvedModel, displayName, description, supportsEffort?, ...}`
 (e.g. value `"default" | "opus[1m]" | "sonnet" | "haiku"`). Older CLIs answer
 `subtype:"error"` → keep the static fallback list.
+
+## Spike 5 — path-scoped allowlist rules confine Edit/Write to the course folder
+
+Run against **claude 2.1.222** with cwd = a throwaway "course" dir and a sibling
+"outside" dir. Every `can_use_tool` request was answered `deny`, so "no
+permission request + file exists" means the write was silently pre-approved.
+
+| # | `--permission-mode` | Edit/Write rule | target | permission card? | written? |
+|---|---|---|---|---|---|
+| A | `acceptEdits` | `Write` (blanket) | **outside** cwd | **no** | **yes** ← the vulnerability |
+| D | `default` | `Write` (blanket) | outside cwd | **no** | **yes** |
+| C | `default` | `Write(<abs course path>/**)` | *inside* cwd | yes | no ← rule never matched |
+| B | `acceptEdits` | `Write(<abs course path>/**)` | outside cwd | yes | no |
+| E | `default` | `Write(./**)` | inside cwd | **no** | yes |
+| E | `default` | `Write(./**)` | outside cwd | **yes** | no |
+| G | `default` | `Write(./**)` | `<cwd>/week3/deep.txt` | no | yes |
+| F | `acceptEdits` | `Write(./**)` | inside / outside cwd | no / **yes** | yes / no |
+| I | `default` | `Write(./**)` via one comma-joined value | inside / outside cwd | no / **yes** | yes / no |
+
+Findings:
+
+1. **A blanket `Edit`/`Write` allowlist rule matches every path on disk**, in
+   both permission modes, and pre-approves writes anywhere — `~/.zshrc`
+   included. The permission card never fires. This was the shipped config.
+2. **`Edit(./**)` / `Write(./**)` works**: the glob resolves against the CLI's
+   cwd (the course folder), covers nested subdirectories, and pushes every
+   out-of-course path to a `can_use_tool` request. Denials come back to the
+   model as a normal tool error and it continues gracefully ("that path is
+   outside the working directory").
+3. **Absolute paths inside a rule do NOT work.** `Write(/private/tmp/.../course/**)`
+   matched nothing — even an *in-cwd* write raised a permission card. A single
+   leading `/` is read as project-relative, so the cwd-relative form is the
+   only one to use. (`//abs` may work; not tested, not needed.)
+4. `acceptEdits` does **not** blanket-approve out-of-cwd writes on its own
+   (case B) — but it *does* auto-approve in-cwd edits by itself, which means a
+   broken rule fails **open**. With `--permission-mode default` the same rule
+   fails **closed** (unmatched → permission card). We ship `default`.
+5. `--allowedTools "a,b,c"` as a single comma-joined value behaves identically
+   to splatting the rules as separate argv items (case I, both directions), and
+   removes the risk flagged in backlog §5.19 of extras silently becoming
+   positional arguments in `-p` mode. We ship the comma-joined form.
+
+Shipped config after this spike:
+`--permission-mode default --permission-prompt-tool stdio --allowedTools
+Read,Glob,Grep,Edit(./**),Write(./**),WebSearch,WebFetch,TodoWrite
+--disallowedTools Bash`.
+
+Still open (out of scope here, tracked in backlog §5.6/§5.8): `Read`/`WebFetch`
+remain blanket-allowed, and "항상 허용" still grants by bare tool name, so a
+student can widen `Write` back to unscoped for a course.
 
 ## Misc
 

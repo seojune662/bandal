@@ -28,12 +28,28 @@ import { createStreamMapper } from './streamMapper'
 
 const SIGKILL_DELAY_MS = 3000
 
+/**
+ * Permission rules handed to `--allowedTools` — these are *rules*, not bare
+ * tool names.
+ *
+ * `Edit`/`Write` are **scoped to the CLI's working directory** (the course
+ * folder) with the cwd-relative glob `./**`. In-course edits proceed silently;
+ * anything outside falls through to a `can_use_tool` control_request, i.e. the
+ * permission card the renderer already implements.
+ *
+ * This matters because `Read`, `WebFetch` and `WebSearch` are blanket-allowed
+ * and the tutor reads third-party lecture PDFs, so a blanket `Edit`/`Write`
+ * rule completed a prompt-injection → arbitrary-write chain. Verified against
+ * claude 2.1.222 — see ../SPIKE-NOTES.md §Spike 5, including that an absolute
+ * path in a rule does NOT work (a single leading `/` is read as
+ * project-relative) and that this glob covers nested subdirectories.
+ */
 export const CLAUDE_ALLOWED_TOOLS = [
   'Read',
   'Glob',
   'Grep',
-  'Edit',
-  'Write',
+  'Edit(./**)',
+  'Write(./**)',
   'WebSearch',
   'WebFetch',
   'TodoWrite'
@@ -90,12 +106,18 @@ export function buildClaudeArgs(opts: {
     'stream-json',
     '--include-partial-messages',
     '--verbose',
+    // `default`, not `acceptEdits`: the allowlist above is what grants routine
+    // in-course edits, so if a rule ever stops matching we fail *closed* (the
+    // student sees a permission card) instead of silently auto-approving.
     '--permission-mode',
-    'acceptEdits',
+    'default',
     '--permission-prompt-tool',
     'stdio',
+    // One comma-joined value rather than 8 argv items: if a future CLI stops
+    // accepting the splatted form, the extras would silently become positional
+    // arguments in `-p` mode and the allowlist would collapse.
     '--allowedTools',
-    ...CLAUDE_ALLOWED_TOOLS,
+    CLAUDE_ALLOWED_TOOLS.join(','),
     '--disallowedTools',
     'Bash',
     '--disable-slash-commands',

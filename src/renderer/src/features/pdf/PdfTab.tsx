@@ -486,6 +486,9 @@ function PdfViewer({
             )}
             {editPopover !== null && editedAnnotation !== null && (
               <HighlightPopover
+                // Remount per highlight so an unsaved memo draft can never
+                // follow the popover onto a different annotation.
+                key={editedAnnotation.id}
                 annotation={editedAnnotation}
                 position={editPopover.position}
                 isStale={staleIds.has(editedAnnotation.id)}

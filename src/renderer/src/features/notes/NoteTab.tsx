@@ -8,8 +8,6 @@ import {
   serializerCtx
 } from '@milkdown/core'
 import { Plugin } from '@milkdown/prose/state'
-import { commonmark } from '@milkdown/preset-commonmark'
-import { gfm } from '@milkdown/preset-gfm'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react'
 import type { IDockviewPanelProps } from 'dockview'
 import {
@@ -22,6 +20,8 @@ import {
 import type { NoteContent, NoteRef } from '../../../../shared/types/note'
 import { invoke } from '../../lib/ipc'
 import { isTabDescriptor } from '../workspace/tabIdentity'
+import { nativeHistoryGuard } from './nativeHistoryGuard'
+import { NOTE_EDITOR_PLUGINS } from './noteEditorPlugins'
 import { taskListItemView } from './taskListView'
 import './note-tab.css'
 
@@ -84,6 +84,8 @@ function MilkdownNoteEditor({
         ])
         context.update(prosePluginsCtx, (plugins) => [
           ...plugins,
+          // Keeps the native Edit-menu ⌘Z from editing around ProseMirror.
+          nativeHistoryGuard(),
           new Plugin({
             view: () => ({
               update: (view, previousState) => {
@@ -96,7 +98,10 @@ function MilkdownNoteEditor({
         ])
       })
 
-      return editor.use(commonmark).use(gfm)
+      return NOTE_EDITOR_PLUGINS.reduce(
+        (instance, plugin) => instance.use(plugin),
+        editor
+      )
     },
     [initialMarkdown]
   )
