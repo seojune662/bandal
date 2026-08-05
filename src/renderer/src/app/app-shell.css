@@ -406,49 +406,9 @@
 
 .app-workspace {
   grid-area: center;
-  display: grid;
-  place-items: center;
+  display: flex;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: var(--bg-app);
-}
-
-.workspace-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  max-width: var(--dialog-width);
-  padding: var(--space-7);
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.workspace-placeholder__moon {
-  width: var(--empty-mark-size);
-  height: var(--empty-mark-size);
-  margin-bottom: var(--space-5);
-  background: linear-gradient(
-    to right,
-    var(--accent) 50%,
-    var(--bg-raised) 50%
-  );
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-md);
-}
-
-.workspace-placeholder h1 {
-  margin-top: var(--space-2);
-  overflow-wrap: anywhere;
-  font-size: var(--text-xl);
-  font-weight: 620;
-  letter-spacing: var(--tracking-tight);
-  color: var(--text-primary);
-}
-
-.workspace-placeholder > p:last-child {
-  margin-top: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--text-muted);
 }

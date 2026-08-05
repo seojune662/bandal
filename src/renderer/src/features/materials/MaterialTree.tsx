@@ -5,6 +5,7 @@ import type {
   MaterialSearchHit
 } from '../../../../shared/types/materials'
 import { Icon, type IconName } from '../../app/icons'
+import { openMaterialInWorkspace } from '../workspace/openMaterial'
 
 function iconForKind(kind: MaterialKind | 'dir', expanded = false): IconName {
   switch (kind) {
@@ -21,8 +22,8 @@ function iconForKind(kind: MaterialKind | 'dir', expanded = false): IconName {
   }
 }
 
-function openMaterial(relPath: string): void {
-  console.info('[Bandal] 자료 열기(M2 연결 예정):', relPath)
+function openMaterial(kind: MaterialKind, relPath: string): void {
+  openMaterialInWorkspace(kind, relPath)
 }
 
 interface TreeNodeProps {
@@ -58,7 +59,9 @@ function TreeNode({
           if (isDirectory) onToggleFolder(node.relPath)
         }}
         onDoubleClick={() => {
-          if (!isDirectory) openMaterial(node.relPath)
+          if (!isDirectory && node.kind !== 'dir') {
+            openMaterial(node.kind, node.relPath)
+          }
         }}
       >
         <span
@@ -133,7 +136,7 @@ export function MaterialSearchResults({
             className="material-result"
             data-kind={result.kind}
             title={result.relPath}
-            onDoubleClick={() => openMaterial(result.relPath)}
+            onDoubleClick={() => openMaterial(result.kind, result.relPath)}
           >
             <Icon
               name={iconForKind(result.kind)}

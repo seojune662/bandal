@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { MaterialsSidebar } from '../features/materials/MaterialsSidebar'
+import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
 import { useCoursesStore } from '../stores/coursesStore'
 import { useUiStore } from '../stores/uiStore'
 import { Icon } from './icons'
@@ -68,22 +69,7 @@ export function AppShell(): JSX.Element {
       {leftRailOpen && <CourseSidebar />}
 
       <main className="app-workspace" aria-label="작업 공간">
-        <div className="workspace-placeholder">
-          <div className="workspace-placeholder__moon" aria-hidden="true" />
-          {selectedCourse === null ? (
-            <>
-              <p className="eyebrow">STUDY WORKSPACE</p>
-              <h1>오늘의 공부를 시작해볼까요?</h1>
-              <p>왼쪽에서 과목을 선택하면 작업 공간이 열립니다.</p>
-            </>
-          ) : (
-            <>
-              <p className="eyebrow">CURRENT COURSE</p>
-              <h1>{selectedCourse.name}</h1>
-              <p>노트와 학습 도구가 이 작업 공간에 열립니다.</p>
-            </>
-          )}
-        </div>
+        <WorkspaceHost />
       </main>
 
       {rightRailOpen && <MaterialsSidebar course={selectedCourse} />}
