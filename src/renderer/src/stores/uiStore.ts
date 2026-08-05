@@ -1,7 +1,6 @@
 /**
- * UI store (M0: theme state only). Loads the persisted theme preference
- * from main, applies `data-theme` on <html>, and stays in sync with the
- * `settings:changed` push event.
+ * Renderer-wide visual state. Loads the persisted theme preference from main,
+ * applies it on <html>, and owns the two shell rail visibility flags.
  */
 
 import { create } from 'zustand'
@@ -13,11 +12,17 @@ type ResolvedTheme = 'dark' | 'light'
 interface UiState {
   themePreference: ThemePreference
   resolvedTheme: ResolvedTheme
+  leftRailOpen: boolean
+  rightRailOpen: boolean
   /** Load persisted settings and subscribe to changes. Call once at boot. */
   initTheme: () => Promise<void>
   /** Persist a new preference (round-trips through main). */
   setThemePreference: (pref: ThemePreference) => Promise<void>
+  toggleLeftRail: () => void
+  toggleRightRail: () => void
 }
+
+let themeInitialization: Promise<void> | null = null
 
 function resolve(pref: ThemePreference): ResolvedTheme {
   if (pref === 'system') {
@@ -35,28 +40,41 @@ function applyToDocument(theme: ResolvedTheme): void {
 export const useUiStore = create<UiState>()((set, get) => ({
   themePreference: 'dark',
   resolvedTheme: 'dark',
+  leftRailOpen: true,
+  rightRailOpen: true,
 
   initTheme: async () => {
-    const settings = await invoke('settings:get', {})
-    const resolved = resolve(settings.theme)
-    applyToDocument(resolved)
-    set({ themePreference: settings.theme, resolvedTheme: resolved })
+    if (themeInitialization === null) {
+      themeInitialization = (async () => {
+        const settings = await invoke('settings:get', {})
+        const resolved = resolve(settings.theme)
+        applyToDocument(resolved)
+        set({ themePreference: settings.theme, resolvedTheme: resolved })
 
-    onPush('settings:changed', ({ settings: next }) => {
-      const nextResolved = resolve(next.theme)
-      applyToDocument(nextResolved)
-      set({ themePreference: next.theme, resolvedTheme: nextResolved })
-    })
-
-    window
-      .matchMedia('(prefers-color-scheme: light)')
-      .addEventListener('change', () => {
-        if (get().themePreference === 'system') {
-          const nextResolved = resolve('system')
+        onPush('settings:changed', ({ settings: next }) => {
+          const nextResolved = resolve(next.theme)
           applyToDocument(nextResolved)
-          set({ resolvedTheme: nextResolved })
-        }
-      })
+          set({ themePreference: next.theme, resolvedTheme: nextResolved })
+        })
+
+        window
+          .matchMedia('(prefers-color-scheme: light)')
+          .addEventListener('change', () => {
+            if (get().themePreference === 'system') {
+              const nextResolved = resolve('system')
+              applyToDocument(nextResolved)
+              set({ resolvedTheme: nextResolved })
+            }
+          })
+      })()
+    }
+
+    try {
+      await themeInitialization
+    } catch (error) {
+      themeInitialization = null
+      throw error
+    }
   },
 
   setThemePreference: async (pref) => {
@@ -65,5 +83,13 @@ export const useUiStore = create<UiState>()((set, get) => ({
     applyToDocument(resolved)
     set({ themePreference: pref, resolvedTheme: resolved })
     await invoke('settings:set', { theme: pref })
+  },
+
+  toggleLeftRail: () => {
+    set((state) => ({ leftRailOpen: !state.leftRailOpen }))
+  },
+
+  toggleRightRail: () => {
+    set((state) => ({ rightRailOpen: !state.rightRailOpen }))
   }
 }))

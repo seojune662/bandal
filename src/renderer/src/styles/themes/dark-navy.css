@@ -20,10 +20,21 @@
   /* Accent: warm moon-gold */
   --accent: oklch(85% 0.095 82);         /* ~#f5c97b */
   --accent-muted: oklch(85% 0.095 82 / 0.16);
+  --danger: oklch(72% 0.14 25);
+  --danger-muted: oklch(72% 0.14 25 / 0.14);
+  --backdrop: oklch(5% 0.025 262 / 0.68);
 
   /* Borders */
   --border-subtle: oklch(90% 0.02 255 / 0.08);
   --border-strong: oklch(90% 0.02 255 / 0.18);
+
+  /* Course identities */
+  --course-gold: oklch(85% 0.095 82);
+  --course-green: oklch(74% 0.105 153);
+  --course-blue: oklch(72% 0.105 245);
+  --course-pink: oklch(75% 0.105 350);
+  --course-violet: oklch(72% 0.1 300);
+  --course-orange: oklch(76% 0.12 55);
 
   /* Highlight colors (PDF annotations) */
   --highlight-yellow: oklch(83% 0.13 95);

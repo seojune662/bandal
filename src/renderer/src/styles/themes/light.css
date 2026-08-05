@@ -22,10 +22,21 @@
   /* Accent: deepened amber-gold for contrast on paper */
   --accent: oklch(62% 0.12 75);
   --accent-muted: oklch(62% 0.12 75 / 0.14);
+  --danger: oklch(54% 0.17 25);
+  --danger-muted: oklch(54% 0.17 25 / 0.11);
+  --backdrop: oklch(22% 0.025 70 / 0.38);
 
   /* Borders: warm hairlines */
   --border-subtle: oklch(30% 0.03 75 / 0.1);
   --border-strong: oklch(30% 0.03 75 / 0.22);
+
+  /* Course identities */
+  --course-gold: oklch(62% 0.12 75);
+  --course-green: oklch(54% 0.11 153);
+  --course-blue: oklch(55% 0.12 245);
+  --course-pink: oklch(58% 0.13 350);
+  --course-violet: oklch(55% 0.13 300);
+  --course-orange: oklch(60% 0.15 50);
 
   /* Highlight colors (PDF annotations) */
   --highlight-yellow: oklch(88% 0.14 95);

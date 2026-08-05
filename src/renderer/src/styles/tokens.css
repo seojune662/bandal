@@ -7,7 +7,10 @@
  *   --bg-app --bg-surface --bg-raised --bg-overlay
  *   --text-primary --text-secondary --text-muted
  *   --accent --accent-muted
+ *   --danger --danger-muted --backdrop
  *   --border-subtle --border-strong
+ *   --course-gold --course-green --course-blue
+ *   --course-pink --course-violet --course-orange
  *   --highlight-yellow --highlight-green --highlight-pink --highlight-blue
  *   --status-todo --status-progress --status-done
  *   --shadow-sm --shadow-md --shadow-lg   (shadows carry theme-tinted color)
@@ -18,6 +21,7 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
+  --radius-pill: 999px;
 
   /* Spacing scale (4px base) */
   --space-1: 0.25rem;
@@ -42,6 +46,26 @@
   --text-base: 0.9375rem;
   --text-lg: 1.125rem;
   --text-xl: 1.5rem;
+
+  --tracking-tight: -0.015em;
+  --tracking-wide: 0.08em;
+
+  /* Shell and controls */
+  --chrome-height: 2.75rem;
+  --rail-left-width: 15rem;
+  --rail-right-width: 18rem;
+  --control-height: 2rem;
+  --button-height: 2.25rem;
+  --icon-button-size: 2rem;
+  --icon-size: 1rem;
+  --icon-size-sm: 0.875rem;
+  --course-dot-size: 0.5rem;
+  --color-swatch-size: 1.75rem;
+  --brand-mark-size: 1.125rem;
+  --empty-mark-size: 3.5rem;
+  --dialog-width: 24rem;
+  --context-menu-width: 11rem;
+  --traffic-light-inset: 4.5rem;
 
   /* Motion */
   --dur-fast: 120ms;
