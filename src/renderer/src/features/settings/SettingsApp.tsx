@@ -12,10 +12,17 @@ import type {
 } from '../../../../shared/types/settings'
 import { invoke, onPush } from '../../lib/ipc'
 import { reopenedOnboarding } from '../onboarding/onboardingModel'
+import { UniversitySettingsPanel } from './UniversitySettingsPanel'
 import './settings-app.css'
 import './settings-panels.css'
 
-type CategoryId = 'general' | 'appearance' | 'ai' | 'courses' | 'about'
+type CategoryId =
+  | 'general'
+  | 'appearance'
+  | 'ai'
+  | 'university'
+  | 'courses'
+  | 'about'
 interface Category {
   id: CategoryId
   group: 'Settings' | 'Workspace' | 'Info'
@@ -45,6 +52,14 @@ const CATEGORIES: Category[] = [
     label: 'AI',
     description: '학습을 도와줄 AI 도구의 연결 상태를 확인합니다.',
     keywords: '에이전트 claude code codex 로그인 구독'
+  },
+  {
+    id: 'university',
+    group: 'Workspace',
+    label: 'University',
+    description: '학교 학사 사이트 바로가기를 관리합니다.',
+    keywords:
+      '학교 대학 학사 포털 lms 강의실 도서관 수강신청 바로가기 etl 캠퍼스 university'
   },
   {
     id: 'courses',
@@ -772,6 +787,7 @@ export function SettingsApp(): JSX.Element {
         onRetry={loadAvailability}
       />
     ),
+    university: <UniversitySettingsPanel />,
     courses: (
       <CoursesPanel
         courses={courses}

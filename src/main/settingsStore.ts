@@ -8,6 +8,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { isThemeId } from '../shared/theme'
+import { sanitizeUniversitySettings } from '../shared/universities/sanitize'
 import { DEFAULT_ONBOARDING, DEFAULT_SETTINGS } from '../shared/types/settings'
 import type {
   OnboardingState,
@@ -86,7 +87,8 @@ function sanitize(raw: unknown): Settings {
       typeof record.locale === 'string' && record.locale.length > 0
         ? record.locale
         : defaults.locale,
-    onboarding: sanitizeOnboarding(record.onboarding)
+    onboarding: sanitizeOnboarding(record.onboarding),
+    university: sanitizeUniversitySettings(record.university)
   }
 }
 

@@ -15,10 +15,13 @@ import { getSettings, setSettings } from '../settingsStore'
 import { getDatabase } from '../db/database'
 import { createLayoutRepo } from '../db/layoutRepo'
 import {
+  createCourseLinksRepo,
   createCoursesRepo,
   folderDisplayName,
   normalizeFolderPath
 } from '../features/courses'
+import { normalizeHttpUrl } from '../../shared/universities/courseLink'
+import { ValidationError } from '../db/errors'
 import { createMaterialsRepo, createMaterialsWatcher } from '../features/materials'
 import { createNotesRepo } from '../features/notes'
 import { createAnnotationsRepo } from '../features/annotations'
@@ -76,6 +79,7 @@ export function registerHandlers(): void {
   const notesRepo = createNotesRepo({
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
   })
+  const courseLinksRepo = createCourseLinksRepo(db)
   const annotationsRepo = createAnnotationsRepo(db)
   const boardRepo = createBoardRepo(db)
   const layoutRepo = createLayoutRepo(db)
@@ -131,6 +135,24 @@ export function registerHandlers(): void {
     const result = coursesRepo.softDelete(req)
     releaseCourseRuntime(req.courseId)
     return result
+  })
+
+  // -- course links (M8) ----------------------------------------------------
+  handle('courseLinks:list', (req) => courseLinksRepo.list(req))
+  handle('courseLinks:create', (req) => courseLinksRepo.create(req))
+  handle('courseLinks:update', (req) => courseLinksRepo.update(req))
+  handle('courseLinks:delete', (req) => courseLinksRepo.delete(req))
+
+  // -- shell ----------------------------------------------------------------
+  // Re-validated here rather than trusted from the renderer: this is the one
+  // channel that hands a URL to the OS, so anything but http(s) is refused.
+  handle('shell:openExternal', async (req) => {
+    const url = normalizeHttpUrl(req.url)
+    if (url === null) {
+      throw new ValidationError('url must be an http(s) URL')
+    }
+    await shell.openExternal(url)
+    return OK
   })
 
   // -- materials ------------------------------------------------------------

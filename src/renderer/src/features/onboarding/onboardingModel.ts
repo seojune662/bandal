@@ -7,8 +7,9 @@
  *
  * Steps (0-based):
  *   0 — 반달 소개
- *   1 — 첫 과목 만들기
- *   2 — AI 준비 상태 (라이브 프로브)
+ *   1 — 학교 고르기          [M8, flow v2]
+ *   2 — 첫 과목 만들기
+ *   3 — AI 준비 상태 (라이브 프로브)
  */
 
 import {
@@ -16,8 +17,8 @@ import {
   type OnboardingState
 } from '../../../../shared/types/settings'
 
-export const ONBOARDING_STEP_COUNT = 3
-export type OnboardingStep = 0 | 1 | 2
+export const ONBOARDING_STEP_COUNT = 4
+export type OnboardingStep = 0 | 1 | 2 | 3
 
 /**
  * Should the wizard show for this persisted state?

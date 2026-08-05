@@ -55,6 +55,34 @@ export const migrations: Migration[] = [
            ON courses (folder_path) WHERE deleted_at IS NULL;`
       )
     }
+  },
+  {
+    // [M8] Per-course shortcuts (docs/university-sites.md §6.4): the LMS
+    // 강의실 page for this course, plus any other URL the student pins.
+    // `raw_url` keeps exactly what was pasted so normalising to the course
+    // root is always reversible; `lms_course_id` is set only when the URL
+    // matched the school's CourseLinkSpec, which lets us rebuild the link if
+    // the school moves hosts. Additive — nothing existing is touched.
+    version: 4,
+    name: 'course-links',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS course_links (
+           id            TEXT PRIMARY KEY,
+           course_id     TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+           label         TEXT NOT NULL,
+           url           TEXT NOT NULL,
+           raw_url       TEXT NOT NULL,
+           kind          TEXT NOT NULL,
+           lms_course_id TEXT,
+           sort_order    INTEGER NOT NULL DEFAULT 0,
+           created_at    TEXT NOT NULL,
+           updated_at    TEXT NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_course_links_course
+           ON course_links (course_id, sort_order);`
+      )
+    }
   }
 ]
 

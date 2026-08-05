@@ -5,6 +5,8 @@ import { showToast } from '../../app/toast'
 import { openSettingsWindow } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
+import { CourseLinks } from '../university/CourseLinks'
+import { UniversityShortcuts } from '../university/UniversityShortcuts'
 import { TabKindIcon } from '../workspace/workspaceIcons'
 import { CourseFormDialog, DeleteCourseDialog } from './CourseDialogs'
 import { folderProblemMessage } from './folderMessages'
@@ -155,6 +157,10 @@ export function CourseSidebar(): JSX.Element {
 
   return (
     <aside className="app-rail app-rail--left" aria-label="과목 목록">
+      {/* [M8] 학교 학사 사이트 바로가기 — above 과목 because it is the same
+          "where do I go" question, answered once per school. */}
+      <UniversityShortcuts />
+
       <div className="rail-heading">
         <div>
           <p className="eyebrow">LIBRARY</p>
@@ -273,6 +279,9 @@ export function CourseSidebar(): JSX.Element {
                       </span>
                     )}
                   </button>
+                  {/* [M8] Per-course shortcuts pin under the open course only —
+                      showing them for every row would bury the course list. */}
+                  {selected && <CourseLinks courseId={course.id} />}
                 </li>
               )
             })}

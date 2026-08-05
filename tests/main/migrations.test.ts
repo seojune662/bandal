@@ -23,8 +23,38 @@ describe('migrations', () => {
     expect(rows).toEqual([
       { version: 1, name: 'initial-schema' },
       { version: 2, name: 'agent-session-resume-record' },
-      { version: 3, name: 'course-folder-source' }
+      { version: 3, name: 'course-folder-source' },
+      { version: 4, name: 'course-links' }
     ])
+  })
+
+  test('creates course_links with a cascading course FK (migration 004)', () => {
+    // Arrange
+    const now = new Date().toISOString()
+    ctx.db
+      .prepare(
+        `INSERT INTO courses (id, name, slug, color, folder_path, archived,
+                              sort_order, created_at, updated_at)
+         VALUES ('c1', '자료구조', 'ds', '#000', '/tmp/ds', 0, 0, ?, ?)`
+      )
+      .run(now, now)
+    ctx.db
+      .prepare(
+        `INSERT INTO course_links (id, course_id, label, url, raw_url, kind,
+                                   sort_order, created_at, updated_at)
+         VALUES ('l1', 'c1', '강의실', 'https://myetl.snu.ac.kr/courses/1',
+                 'https://myetl.snu.ac.kr/courses/1', 'lms-course', 0, ?, ?)`
+      )
+      .run(now, now)
+
+    // Act — deleting the course must take its links with it.
+    ctx.db.prepare('DELETE FROM courses WHERE id = ?').run('c1')
+
+    // Assert
+    const remaining = ctx.db
+      .prepare('SELECT COUNT(*) AS n FROM course_links')
+      .get() as { n: number }
+    expect(remaining.n).toBe(0)
   })
 
   test('adds courses.source defaulting to "managed" (migration 003)', () => {
@@ -76,6 +106,6 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(3)
+    expect(count.n).toBe(4)
   })
 })

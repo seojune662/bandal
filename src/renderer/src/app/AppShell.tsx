@@ -10,6 +10,7 @@ import { useAgentPreflight } from '../features/onboarding/useAgentPreflight'
 import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
 import { useCoursesStore } from '../stores/coursesStore'
 import { useUiStore } from '../stores/uiStore'
+import { useUniversityStore } from '../stores/universityStore'
 import { Icon } from './icons'
 import { QuickFileSearch } from './QuickFileSearch'
 import { useGlobalShortcuts } from './shortcuts'
@@ -45,6 +46,8 @@ export function AppShell(): JSX.Element {
     // [M6-A] First-run onboarding + live agent preflight (boot probe).
     void useOnboardingStore.getState().init()
     void useAgentPreflight.getState().probe()
+    // [M8] 학교 바로가기 — the rail section renders nothing until this lands.
+    void useUniversityStore.getState().init()
   }, [initTheme, loadCourses])
 
   // [M5] A file dropped outside a drop target must never navigate the window.

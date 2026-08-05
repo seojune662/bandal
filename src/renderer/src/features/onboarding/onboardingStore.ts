@@ -18,6 +18,7 @@ import {
   closeOnboarding,
   completeStep,
   initialStep,
+  ONBOARDING_STEP_COUNT,
   shouldShowOnboarding,
   type OnboardingStep
 } from './onboardingModel'
@@ -82,7 +83,7 @@ export const useOnboardingStore = create<OnboardingStore>()((set, get) => ({
 
   completeAndAdvance: (step) => {
     const done = completeStep(get().persisted, step)
-    if (step >= 2) {
+    if (step >= ONBOARDING_STEP_COUNT - 1) {
       const closed = closeOnboarding(done, new Date())
       set({ persisted: closed, visible: false })
       persist(closed)

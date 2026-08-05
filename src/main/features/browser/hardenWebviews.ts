@@ -6,7 +6,7 @@
  * ./webviewPolicy.ts; this module only attaches them to electron objects.
  */
 
-import { session } from 'electron'
+import { app, session } from 'electron'
 import type { BrowserWindow, Event as ElectronEvent, WebContents } from 'electron'
 import type {
   BrowserOpenUrl,
@@ -21,6 +21,7 @@ import {
   popupForwardUrl,
   sanitizeGuestWebPreferences
 } from './webviewPolicy'
+import { browsingUserAgent } from './userAgent'
 
 let browsingSessionHardened = false
 
@@ -29,12 +30,17 @@ let browsingSessionHardened = false
  *  - permissions deny-by-default (fullscreen only)
  *  - no file:// requests at all (navigation guards cover the main frame;
  *    this catches subresources/subframes as defense in depth)
+ *  - [§6.1] a plain Chrome user agent, so UA-sniffing 학사 포털 stop failing
+ *    closed on the `Electron/` and app-name tokens (see ./userAgent.ts)
  */
 function hardenBrowsingSession(): void {
   if (browsingSessionHardened) return
   browsingSessionHardened = true
 
   const browsingSession = session.fromPartition(BROWSING_PARTITION)
+  browsingSession.setUserAgent(
+    browsingUserAgent(browsingSession.getUserAgent(), app.getName())
+  )
   browsingSession.setPermissionRequestHandler(
     (_webContents, permission, callback) => {
       callback(isPermissionAllowed(permission))

@@ -1,9 +1,10 @@
 /**
- * [M6-A] First-run onboarding — a 3-step overlay wizard.
+ * [M6-A] First-run onboarding — a 4-step overlay wizard.
  *
  * ① 반달 소개 (token-based graphic, no bitmap assets)
- * ② 첫 과목 만들기 (inline create, coursesStore를 그대로 재사용)
- * ③ AI 준비 상태 (useAgentPreflight의 라이브 프로브 + 재확인)
+ * ② 학교 고르기 [M8] (프리셋 검색 + 직접 추가, universityStore가 저장)
+ * ③ 첫 과목 만들기 (inline create, coursesStore를 그대로 재사용)
+ * ④ AI 준비 상태 (useAgentPreflight의 라이브 프로브 + 재확인)
  *
  * Dismissible at any moment (X / Esc / 나중에) — dismissal persists
  * `closedAt` and the wizard never auto-reopens. Reopen deliberately via
@@ -19,6 +20,8 @@ import {
   courseColorLabel,
   type CourseColor
 } from '../courses/courseColors'
+import { useUniversityStore } from '../../stores/universityStore'
+import { UniversityPicker } from '../university/UniversityPicker'
 import { ONBOARDING_STEP_COUNT, type OnboardingStep } from './onboardingModel'
 import { useOnboardingStore } from './onboardingStore'
 import { useAgentPreflight } from './useAgentPreflight'
@@ -27,6 +30,7 @@ import './onboarding.css'
 
 const STEP_TITLES: readonly string[] = [
   '반달과 만나기',
+  '학교 고르기',
   '첫 과목 만들기',
   'AI 튜터 준비'
 ]
@@ -61,7 +65,56 @@ function IntroStep(): JSX.Element {
   )
 }
 
-// -- step ② 첫 과목 -----------------------------------------------------------
+// -- step ② 학교 고르기 --------------------------------------------------------
+
+function SchoolStep(): JSX.Element {
+  const university = useUniversityStore((state) => state.university)
+  const settings = useUniversityStore((state) => state.settings)
+  const error = useUniversityStore((state) => state.error)
+  const selectPreset = useUniversityStore((state) => state.selectPreset)
+  const addCustom = useUniversityStore((state) => state.addCustom)
+  const init = useUniversityStore((state) => state.init)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    void init()
+  }, [init])
+
+  const run = (work: () => Promise<void>): void => {
+    setBusy(true)
+    void work().finally(() => setBusy(false))
+  }
+
+  return (
+    <div className="onboarding-step">
+      <p className="onboarding-eyebrow">CAMPUS</p>
+      <h2 className="onboarding-title">어느 학교에 다니고 있나요?</h2>
+      <p className="onboarding-desc">
+        학교를 고르면 학사 포털·강의실·도서관 바로가기가 왼쪽에 떠요. 로그인은
+        앱 안 브라우저에서 그대로 유지되고, 비밀번호는 저장하지 않아요.
+      </p>
+      <UniversityPicker
+        selectedId={settings.universityId}
+        customName={settings.customUniversity?.nameKo}
+        busy={busy}
+        onSelectPreset={(id) => run(() => selectPreset(id))}
+        onAddCustom={(input) => run(() => addCustom(input))}
+      />
+      {error !== null && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+      {university !== null && error === null && (
+        <p className="onboarding-ai-later">
+          나중에 설정에서 언제든 학교를 바꿀 수 있어요.
+        </p>
+      )}
+    </div>
+  )
+}
+
+// -- step ③ 첫 과목 -----------------------------------------------------------
 
 function CourseStep(): JSX.Element {
   const courses = useCoursesStore((state) => state.courses)
@@ -174,7 +227,7 @@ function CourseStep(): JSX.Element {
   )
 }
 
-// -- step ③ AI 준비 -----------------------------------------------------------
+// -- step ④ AI 준비 -----------------------------------------------------------
 
 function AiStatusRow({
   label,
@@ -339,7 +392,15 @@ export function OnboardingOverlay(): JSX.Element {
         </header>
 
         <div className="onboarding-body" key={step}>
-          {step === 0 ? <IntroStep /> : step === 1 ? <CourseStep /> : <AiStep />}
+          {step === 0 ? (
+            <IntroStep />
+          ) : step === 1 ? (
+            <SchoolStep />
+          ) : step === 2 ? (
+            <CourseStep />
+          ) : (
+            <AiStep />
+          )}
         </div>
 
         <footer className="onboarding-footer">

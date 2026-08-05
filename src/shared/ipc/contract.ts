@@ -40,6 +40,11 @@ import type {
   ListTasksInput,
   UpdateTaskInput
 } from '../types/board'
+import type {
+  CourseLink,
+  CreateCourseLinkInput,
+  UpdateCourseLinkInput
+} from '../types/courseLink'
 import type { ChatOpenResult, ChatSendInput } from '../types/chat'
 import type {
   AgentAvailability,
@@ -94,6 +99,41 @@ export interface IpcContract {
   /** Soft-deletes the course; the folder on disk is left untouched. */
   'courses:delete': {
     req: { courseId: string }
+    res: { ok: true }
+  }
+
+  // -- course links (M8: per-course LMS shortcuts) --------------------------
+  /** Shortcuts pinned under one course, in sidebar order. */
+  'courseLinks:list': {
+    req: { courseId: string }
+    res: CourseLink[]
+  }
+  /**
+   * Stores a pasted URL as a shortcut. The renderer classifies it against the
+   * school's CourseLinkSpec first; main re-validates that `url` is http(s).
+   */
+  'courseLinks:create': {
+    req: CreateCourseLinkInput
+    res: CourseLink
+  }
+  'courseLinks:update': {
+    req: UpdateCourseLinkInput
+    res: CourseLink
+  }
+  'courseLinks:delete': {
+    req: { id: string }
+    res: { ok: true }
+  }
+
+  // -- shell ----------------------------------------------------------------
+  /**
+   * [M8] Opens an http(s) URL in the system browser. Used for the services
+   * that structurally cannot work inside the embedded browser — Google /
+   * Microsoft federated login, UA-sniffing 학사 포털, native security plugins
+   * (docs/university-sites.md §5.2). Any other scheme is rejected.
+   */
+  'shell:openExternal': {
+    req: { url: string }
     res: { ok: true }
   }
 

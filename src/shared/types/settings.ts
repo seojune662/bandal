@@ -5,6 +5,8 @@
 import type { AgentProvider } from './agent-events'
 import { DEFAULT_THEME_ID } from '../theme'
 import type { ThemeId } from '../theme'
+import { DEFAULT_UNIVERSITY_SETTINGS } from './university'
+import type { UniversitySettings } from './university'
 
 /**
  * A theme id from the registry (src/shared/theme.ts) or `system`, which
@@ -30,7 +32,11 @@ export interface OnboardingState {
   lastCompletedStep: number
 }
 
-export const ONBOARDING_FLOW_VERSION = 1
+/**
+ * v2 [M8] inserted 학교 고르기 as step ②. Bumping this re-opens the wizard
+ * once for existing users so they get asked which school they attend.
+ */
+export const ONBOARDING_FLOW_VERSION = 2
 
 export const DEFAULT_ONBOARDING: OnboardingState = {
   flowVersion: ONBOARDING_FLOW_VERSION,
@@ -48,6 +54,8 @@ export interface Settings {
   locale: string
   /** [M6-A] First-run onboarding progress. */
   onboarding: OnboardingState
+  /** [M8] Chosen school + the user layer over its preset shortcuts. */
+  university: UniversitySettings
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -55,7 +63,8 @@ export const DEFAULT_SETTINGS: Settings = {
   agentProvider: 'claude-code',
   dataRoot: '',
   locale: 'ko-KR',
-  onboarding: DEFAULT_ONBOARDING
+  onboarding: DEFAULT_ONBOARDING,
+  university: DEFAULT_UNIVERSITY_SETTINGS
 }
 
 export type SettingsPatch = Partial<Settings>

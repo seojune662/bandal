@@ -5,6 +5,7 @@ export type IconName =
   | 'appearance'
   | 'ai'
   | 'courses'
+  | 'university'
   | 'about'
   | 'arrow-left'
   | 'check'
@@ -18,6 +19,12 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }): JS
       <>
         <path d="m15 18-6-6 6-6" />
         <path d="M9 12h11" />
+      </>
+    ),
+    university: (
+      <>
+        <path d="M2.5 9 12 4.5 21.5 9 12 13.5z" />
+        <path d="M6.5 11v4.5c0 1.4 2.5 2.5 5.5 2.5s5.5-1.1 5.5-2.5V11" />
       </>
     ),
     search: (
