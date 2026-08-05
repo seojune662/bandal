@@ -23,6 +23,7 @@ import { BrowserPanel } from '../browser/BrowserPanel'
 import NoteTab from '../notes/NoteTab'
 import BoardPanel from '../board/BoardPanel'
 import ChatTab from '../chat/ChatTab'
+import PdfTab from '../pdf/PdfTab'
 
 export interface TabRegistryEntry {
   component: FunctionComponent<IDockviewPanelProps>
@@ -35,7 +36,7 @@ export interface TabRegistryEntry {
 
 export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
   pdf: {
-    component: PlaceholderPanel, // M3-D: replace with the real PdfViewer
+    component: PdfTab,
     icon: 'filePdf',
     defaultTitle: tabTitle
   },

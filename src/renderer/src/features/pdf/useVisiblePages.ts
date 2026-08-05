@@ -1,0 +1,122 @@
+/**
+ * Page virtualization for the PDF scroller. One IntersectionObserver
+ * (rootMargin = one viewport in each direction) watches every page wrapper;
+ * only pages near the viewport render a real pdf.js canvas — the rest stay
+ * cheap aspect-ratio placeholders, keeping 100+ page documents smooth.
+ */
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { RefObject } from 'react'
+
+const NEAR_VIEWPORT_MARGIN = '100% 0px 100% 0px'
+
+export interface VisiblePagesApi {
+  /** Pages (1-based) that should render for real. */
+  visiblePages: Set<number>
+  /** Ref callback factory — attach to each page wrapper element. */
+  registerPage(page: number): (element: HTMLElement | null) => void
+  /** Live element for a page, e.g. for scroll-to-page. */
+  elementFor(page: number): HTMLElement | null
+  /** Page whose box covers the vertical middle of the scroller viewport. */
+  pageAtViewportCenter(): number
+}
+
+function setsEqual(a: Set<number>, b: Set<number>): boolean {
+  if (a.size !== b.size) return false
+  for (const value of a) {
+    if (!b.has(value)) return false
+  }
+  return true
+}
+
+export function useVisiblePages(
+  scrollerRef: RefObject<HTMLElement>
+): VisiblePagesApi {
+  const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([1]))
+  const observerRef = useRef<IntersectionObserver | null>(null)
+  const elementsRef = useRef(new Map<number, HTMLElement>())
+  const pageOfElementRef = useRef(new WeakMap<Element, number>())
+  const intersectingRef = useRef(new Set<number>([1]))
+
+  useEffect(() => {
+    const scroller = scrollerRef.current
+    if (scroller === null) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const intersecting = intersectingRef.current
+        for (const entry of entries) {
+          const page = pageOfElementRef.current.get(entry.target)
+          if (page === undefined) continue
+          if (entry.isIntersecting) {
+            intersecting.add(page)
+          } else {
+            intersecting.delete(page)
+          }
+        }
+        setVisiblePages((current) =>
+          setsEqual(current, intersecting) ? current : new Set(intersecting)
+        )
+      },
+      { root: scroller, rootMargin: NEAR_VIEWPORT_MARGIN }
+    )
+    observerRef.current = observer
+    for (const element of elementsRef.current.values()) {
+      observer.observe(element)
+    }
+    return () => {
+      observer.disconnect()
+      observerRef.current = null
+    }
+  }, [scrollerRef])
+
+  // Ref callbacks are cached per page so PdfPageView memo props stay stable
+  // and React does not detach/re-attach refs on every parent render.
+  const refCallbacksRef = useRef(
+    new Map<number, (element: HTMLElement | null) => void>()
+  )
+  const registerPage = useCallback((page: number) => {
+    const cached = refCallbacksRef.current.get(page)
+    if (cached !== undefined) return cached
+    const callback = (element: HTMLElement | null): void => {
+      const previous = elementsRef.current.get(page)
+      if (previous !== undefined && previous !== element) {
+        observerRef.current?.unobserve(previous)
+        elementsRef.current.delete(page)
+      }
+      if (element !== null) {
+        elementsRef.current.set(page, element)
+        pageOfElementRef.current.set(element, page)
+        observerRef.current?.observe(element)
+      }
+    }
+    refCallbacksRef.current.set(page, callback)
+    return callback
+  }, [])
+
+  const elementFor = useCallback(
+    (page: number): HTMLElement | null => elementsRef.current.get(page) ?? null,
+    []
+  )
+
+  const pageAtViewportCenter = useCallback((): number => {
+    const scroller = scrollerRef.current
+    if (scroller === null) return 1
+    const scrollerBox = scroller.getBoundingClientRect()
+    const center = scrollerBox.top + scroller.clientHeight / 2
+    let best = 1
+    let bestDistance = Number.POSITIVE_INFINITY
+    for (const [page, element] of elementsRef.current) {
+      const box = element.getBoundingClientRect()
+      const middle = box.top + box.height / 2
+      const distance = Math.abs(middle - center)
+      if (distance < bestDistance) {
+        bestDistance = distance
+        best = page
+      }
+    }
+    return best
+  }, [scrollerRef])
+
+  return { visiblePages, registerPage, elementFor, pageAtViewportCenter }
+}
