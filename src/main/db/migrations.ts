@@ -26,6 +26,19 @@ export const migrations: Migration[] = [
     up: (db) => {
       db.exec(schemaSql)
     }
+  },
+  {
+    // [M4-H] Session resume record: the CLI transcript path can diverge from
+    // cli_session_id across CLI versions, and respawning needs the original
+    // launch configuration — persist both alongside the session row.
+    version: 2,
+    name: 'agent-session-resume-record',
+    up: (db) => {
+      db.exec(
+        `ALTER TABLE agent_sessions ADD COLUMN transcript_path TEXT;
+         ALTER TABLE agent_sessions ADD COLUMN launch_config_json TEXT;`
+      )
+    }
   }
 ]
 

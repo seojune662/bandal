@@ -8,7 +8,7 @@
  * later milestones. Keep the section comments so merges stay additive.
  */
 
-import { ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
 import { getSettings, setSettings } from '../settingsStore'
 import { getDatabase } from '../db/database'
@@ -18,6 +18,14 @@ import { createMaterialsRepo } from '../features/materials'
 import { createNotesRepo } from '../features/notes'
 import { createAnnotationsRepo } from '../features/annotations'
 import { createBoardRepo } from '../features/board'
+import {
+  createBinaryLocator,
+  createChatRepo,
+  createClaudeCodeAdapter,
+  createEventBatcher,
+  createSessionManager,
+  killAllClaudeProcessesSync
+} from '../features/agent'
 
 /**
  * Contract-typed wrapper around ipcMain.handle. Logs failures with channel
@@ -88,19 +96,57 @@ export function registerHandlers(): void {
   handle('board:updateTask', (req) => boardRepo.update(req))
   handle('board:deleteTask', (req) => boardRepo.softDelete(req))
 
-  // -- chat (STUBS — owned by the chat/agent milestone) ---------------------
-  handle('chat:open', () => ({
-    history: [],
-    sessionInfo: null,
-    availability: { installed: false, loggedIn: false }
-  }))
-  handle('chat:send', () => ({ turnSeq: 0 }))
-  handle('chat:cancel', () => OK)
-  handle('chat:respondPermission', () => OK)
-  handle('chat:close', () => OK)
+  // -- chat (M4-H: Claude Code CLI runtime) ---------------------------------
+  const chatRepo = createChatRepo(db)
+  chatRepo.markDanglingInterrupted()
+  const binaryLocator = createBinaryLocator()
+  const claudeAdapter = createClaudeCodeAdapter({ locator: binaryLocator })
+  const eventBatcher = createEventBatcher({
+    send: (batch) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('chat:event-batch', batch)
+      }
+    }
+  })
+  const sessionManager = createSessionManager({
+    adapter: claudeAdapter,
+    repo: chatRepo,
+    getCourse: (courseId) => ({
+      folder: coursesRepo.getFolder(courseId),
+      name: coursesRepo.getById(courseId).name
+    }),
+    emit: (courseId, event) => eventBatcher.push(courseId, event)
+  })
+  app.on('before-quit', () => {
+    sessionManager.disposeAll()
+    eventBatcher.dispose()
+  })
+  process.on('exit', () => {
+    killAllClaudeProcessesSync()
+  })
 
-  // -- agent (STUB — owned by the chat/agent milestone) ---------------------
-  handle('agent:availability', () => ({ installed: false, loggedIn: false }))
+  handle('chat:open', (req) => sessionManager.open(req.courseId))
+  handle('chat:send', (req) => sessionManager.send(req.courseId, req.content))
+  handle('chat:cancel', (req) => {
+    sessionManager.cancel(req.courseId)
+    return OK
+  })
+  handle('chat:respondPermission', (req) => {
+    sessionManager.respondPermission(req.courseId, req.requestId, req.response)
+    return OK
+  })
+  handle('chat:close', (req) => {
+    sessionManager.close(req.courseId)
+    eventBatcher.flush(req.courseId)
+    return OK
+  })
+
+  // -- agent (M4-H) ---------------------------------------------------------
+  handle('agent:availability', async (req) =>
+    req.provider === 'claude-code'
+      ? binaryLocator.availability()
+      : { installed: false, loggedIn: false }
+  )
 
   // -- browser (STUBS — owned by the browser milestone) ---------------------
   handle('browser:createView', () => OK)
