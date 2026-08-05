@@ -425,3 +425,41 @@ alter default privileges in schema public grant all on functions to anon, authen
 - **타이핑 인디케이터** — §4.6. 인프라(private channel)는 깔려 있습니다.
 - **모더레이션 큐** — §2.8. `reports` 는 접수만 하고 조회 경로가 없습니다.
 - **파일/이미지 첨부** — §3.4 ①. Storage 를 쓰지 않으므로 남용 표면이 0입니다.
+
+---
+
+## 9. 실제 적용 기록 (2026-08-06)
+
+`supabase db push`로 **원격 프로젝트 `ukacrkcwiqafwpppshxb`(bandal, ap-northeast-2 서울, PG 17.6)** 에 적용 완료.
+
+| 항목 | 결과 |
+|---|---|
+| 마이그레이션 | **10/10 적용** (0001~0009 + 0010 pg_cron 재시도) |
+| 테이블 | 10개 — blocks, friendships, group_invites, group_members, invite_codes, messages, profiles, rate_events, reports, study_groups |
+| RLS 활성화 | **10/10 테이블** |
+| RLS 정책 | 15개 (public) + **2개 (realtime.messages — 실시간 수신/발신 인가)** |
+| 함수 | 53개 (RPC + SECURITY DEFINER 헬퍼) |
+| 트리거 | 9개 · 인덱스 13개 |
+| 익명 접근 차단 | ✅ 6개 테이블 전수 확인 — 전부 HTTP 401 `42501` (anon 롤에 grant 없음) |
+| pg_cron | ❌ **미설치** — 아래 참조 |
+
+### 남은 작업 1건 — pg_cron 활성화
+
+`create extension pg_cron` 이 SQL 경로로는 걸리지 않았다(0009·0010 모두 가드에 걸려 NOTICE 후 통과).
+**대시보드 → Database → Extensions → `pg_cron` 검색 → 활성화** 한 뒤 아래 한 줄을 SQL 에디터에서 실행하면 된다:
+
+```sql
+select cron.schedule('bandal-retention', '15 3 * * 0',
+                     $j$ select public.run_retention(); $j$);
+```
+
+안 켜도 지금은 문제없다(데이터가 없다). 다만 §6.2대로 **무료 티어의 병목은 DB 500MB**이고
+하루 13,000건 페이스면 약 60일에 포화하므로, 실사용 전에는 켜야 한다.
+외부 스케줄러(GitHub Actions 주 1회 `select public.run_retention();`)로 대체해도 된다.
+
+### 아직 검증하지 못한 것
+
+`tests/rls_verification.sql` 38행 게이트는 **실제 로그인 계정 2개의 uuid가 필요**하다.
+아직 가입한 사용자가 없어 실행하지 못했다. OAuth 로그인이 동작한 뒤 계정 2개를 만들고
+파일 상단 두 줄을 치환해 실행할 것. 특히 **§6.3 실시간 스모크**(다른 계정 메시지가 3초 내 도착)는
+스텁 검증으로 대체 불가능한 유일한 경로다.
