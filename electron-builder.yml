@@ -44,6 +44,15 @@ mac:
   identity: null
   extendInfo:
     CFBundleDisplayName: 반달
+  # OAuth callback. Writes CFBundleURLTypes into Info.plist so Launch Services
+  # hands `bandal://auth/callback` back to the packaged app. In `electron-vite
+  # dev` there is no Info.plist — the runtime call to
+  # `app.setAsDefaultProtocolClient` covers that case instead
+  # (see src/main/index.ts).
+  protocols:
+    - name: Bandal
+      schemes:
+        - bandal
 
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}

@@ -22,6 +22,10 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
+import type {
+  AuthSignInResult,
+  AuthState
+} from '../../../../shared/types/auth'
 import type { GroupSummary } from '../../../../shared/types/group'
 import { Icon } from '../../app/icons'
 import { showToast, showToastWithAction } from '../../app/toast'
@@ -66,13 +70,61 @@ function GroupRow({ group, onOpen }: GroupRowProps): JSX.Element {
   )
 }
 
-function SignedOutCard({ onSignIn }: { onSignIn: () => void }): JSX.Element {
+/** Typed refusals from `auth:signIn` — never thrown, so never a try/catch. */
+function signInRefusalMessage(
+  reason: Extract<AuthSignInResult, { ok: false }>['reason']
+): string {
+  switch (reason) {
+    case 'not-configured':
+    case 'oauth-not-wired':
+      return '아직 함께하기를 쓸 수 없어요.'
+    case 'already-signed-in':
+      return '이미 로그인돼 있어요.'
+    case 'network':
+      return '연결이 안 됐어요. 잠시 후 다시 시도해요.'
+    default:
+      return '로그인 창을 열지 못했어요. 다시 시도해요.'
+  }
+}
+
+interface SignInCardProps {
+  phase: AuthState['phase']
+  errorCode: AuthState['errorCode']
+  onSignIn: () => void
+}
+
+/** What the login card says while the system browser has the ball. */
+function signInHint(
+  phase: AuthState['phase'],
+  errorCode: AuthState['errorCode']
+): string {
+  if (phase === 'signing-in') return '브라우저에서 로그인을 마치면 돌아와요'
+  if (phase === 'error') {
+    return errorCode === 'network'
+      ? '연결이 안 됐어요. 잠시 후 다시 시도해요.'
+      : '로그인을 마치지 못했어요. 다시 시도해요.'
+  }
+  if (errorCode === 'oauth-cancelled') return '로그인을 취소했어요'
+  return '친구들과 같이 하려면 로그인해요'
+}
+
+function SignInCard({
+  phase,
+  errorCode,
+  onSignIn
+}: SignInCardProps): JSX.Element {
+  // 'signing-in' keeps the button live on purpose: if the browser never opened
+  // (or the tab was closed), pressing 로그인 again is the only way out, and a
+  // disabled button would leave the section permanently stuck.
+  const waiting = phase === 'signing-in'
   return (
     <div className="group-signin">
-      <p className="group-signin__text">친구들과 같이 하려면 로그인해요</p>
+      <p className="group-signin__text" role={waiting ? 'status' : undefined}>
+        {signInHint(phase, errorCode)}
+      </p>
       <button type="button" className="button button--primary" onClick={onSignIn}>
         <GroupIcon name="logIn" />
-        로그인
+        {waiting ? '다시 열기' : phase === 'error' ? '다시 시도' : '로그인'}
       </button>
     </div>
   )
@@ -178,16 +230,15 @@ export function TogetherSection(): JSX.Element | null {
       </div>
 
       {!signedIn ? (
-        <SignedOutCard
+        <SignInCard
+          phase={auth.phase}
+          errorCode={auth.errorCode}
           onSignIn={() => {
             void signIn('google').then((result) => {
-              if (!result.ok) {
-                showToast(
-                  result.reason === 'not-configured'
-                    ? '아직 함께하기를 쓸 수 없어요.'
-                    : '로그인 준비가 아직이에요.'
-                )
-              }
+              // `ok: true` only means the browser opened — the session lands
+              // later, over `auth:changed`, when the deep link comes back.
+              if (result.ok) return
+              showToast(signInRefusalMessage(result.reason))
             })
           }}
         />

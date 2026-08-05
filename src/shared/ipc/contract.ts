@@ -308,8 +308,10 @@ export interface IpcContract {
     res: AuthState
   }
   /**
-   * Opens the system browser and returns immediately (§1.1). While OAuth is
-   * stubbed this resolves to a typed refusal instead of throwing.
+   * Opens the system browser and returns immediately (§1.1). `{ ok: true }`
+   * means the browser opened, NOT that the user is signed in — the session
+   * arrives later over `auth:changed`, once `bandal://auth/callback` comes
+   * back. Refusals are typed values, never thrown errors.
    */
   'auth:signIn': {
     req: { provider: AuthProvider }

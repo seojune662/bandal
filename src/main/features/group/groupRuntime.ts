@@ -12,7 +12,7 @@
  * the 함께하기 section entirely.
  */
 
-import { app, safeStorage } from 'electron'
+import { app, safeStorage, shell } from 'electron'
 import type { Database } from 'better-sqlite3'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AuthState } from '../../../shared/types/auth'
@@ -73,7 +73,10 @@ export function createGroupRuntime(deps: GroupRuntimeDeps): GroupRuntime {
         realtime.resetAll()
       },
       destroySession: () =>
-        destroySessionFile(sessionFilePath(app.getPath('userData')))
+        destroySessionFile(sessionFilePath(app.getPath('userData'))),
+      // The system browser, never an app window: Google blocks embedded
+      // user-agents, and an in-app window would expose the auth code.
+      openExternal: (url) => shell.openExternal(url)
     })
 
     const realtime = createGroupRealtimeManager({

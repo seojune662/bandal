@@ -47,16 +47,27 @@ export interface AuthState {
 }
 
 /**
- * `auth:signIn` returns immediately after opening the system browser. While
- * OAuth is stubbed it resolves to `{ ok: false, reason: 'not-configured' }`
- * — a *typed* refusal, never a thrown error, so the renderer can render the
- * "아직 준비 중" card without try/catch noise.
+ * `auth:signIn` returns as soon as the system browser has been opened —
+ * `{ ok: true }` means "the browser is up", NOT "signed in". The session only
+ * lands when `bandal://auth/callback` comes back and main exchanges the code.
+ *
+ * Refusals are *typed values*, never thrown errors, so the renderer can render
+ * a card without try/catch noise.
+ *
+ * `oauth-not-wired` is retained for compatibility and is no longer produced.
  */
 export type AuthSignInResult =
   | { ok: true }
   | {
       ok: false
-      reason: 'not-configured' | 'already-signed-in' | 'oauth-not-wired'
+      reason:
+        | 'not-configured'
+        | 'already-signed-in'
+        | 'oauth-not-wired'
+        /** Supabase/the provider refused to hand out an authorize URL. */
+        | 'provider'
+        /** Could not reach the auth endpoint, or the OS refused the browser. */
+        | 'network'
     }
 
 export const SIGNED_OUT_AUTH_STATE: AuthState = {

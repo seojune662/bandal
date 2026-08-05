@@ -35,6 +35,19 @@ import {
   killAllClaudeProcessesSync
 } from '../features/agent'
 import { createGroupRuntime } from '../features/group'
+import { isAuthCallbackUrl } from '../features/group/authCallbackUrl'
+
+/**
+ * What `registerHandlers` hands back to `main/index.ts`.
+ *
+ * Deep links cannot go through `ipcMain` — they arrive from the OS, not the
+ * renderer — so this is the one seam that lets `index.ts` reach the group
+ * runtime without owning it.
+ */
+export interface IpcRouter {
+  /** Routes a `bandal://` URL. Fire-and-forget; never throws. */
+  handleDeepLink(url: string): void
+}
 
 /**
  * Contract-typed wrapper around ipcMain.handle. Logs failures with channel
@@ -66,7 +79,7 @@ function broadcast<K extends PushChannel>(
   }
 }
 
-export function registerHandlers(): void {
+export function registerHandlers(): IpcRouter {
   const db = getDatabase()
   const coursesRepo = createCoursesRepo({
     db,
@@ -371,4 +384,17 @@ export function registerHandlers(): void {
     })
     return OK
   })
+
+  return {
+    handleDeepLink(url) {
+      // Checked HERE so an unrelated `bandal://` route never constructs the
+      // Supabase client — the laziness rule (§1.4-2) survives deep links.
+      if (!isAuthCallbackUrl(url)) return
+      void groups()
+        .handleDeepLink(url)
+        .catch((error: unknown) => {
+          console.error('[ipc] deep link handling failed', error)
+        })
+    }
+  }
 }

@@ -71,7 +71,46 @@ bandal://auth/callback
 
 ---
 
-## 6. 아직 결정이 필요한 것
+## 6. ⚠️ `bandal://` 스킴 등록 — 개발 모드의 함정
+
+앱 쪽 배선은 끝났다(`app.setAsDefaultProtocolClient`, `open-url`, `second-instance`,
+`electron-builder.yml`의 `mac.protocols`). 다만 **macOS Launch Services는 "번들"에 스킴을
+연결**하므로, 개발 모드와 패키징 빌드가 다르게 동작한다.
+
+| 실행 방식 | 스킴 주인 | 동작 |
+|---|---|---|
+| `pnpm dev` (electron-vite) | `node_modules/electron/dist/Electron.app` | 런타임 등록이라 **불안정하다.** 다른 Electron 프로젝트를 개발 중이면 그쪽이 스킴을 가져갈 수 있다 |
+| `pnpm dist` 후 `Bandal.app` | `Bandal.app` (Info.plist의 `CFBundleURLTypes`) | 안정적. 실제 사용자가 겪는 경로 |
+
+지금 스킴을 누가 갖고 있는지 확인:
+
+```bash
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+  -dump | grep -B 8 'bandal:' | grep -m 3 'path:'
+```
+
+앱을 띄운 채로 콜백 왕복만 흉내 내보려면:
+
+```bash
+open 'bandal://auth/callback?code=test-code-123'
+```
+
+`code`가 가짜이므로 교환은 실패하지만, **함께하기 카드가 "로그인을 마치지 못했어요"로
+바뀌면 딥링크 경로 자체는 살아 있다는 뜻이다.** 아무 반응이 없으면 스킴이 이 앱에
+안 붙은 것이고, 그때는 `pnpm dist`로 만든 `.app`을 `/Applications`에 두고 한 번 실행해
+등록시킨 뒤 다시 시도한다.
+
+취소 경로도 같은 방식으로 확인할 수 있다:
+
+```bash
+open 'bandal://auth/callback?error=access_denied'
+```
+
+이건 오류가 아니라 **로그인 카드로 조용히 되돌아가야** 정상이다.
+
+---
+
+## 7. 아직 결정이 필요한 것
 
 | 항목 | 선택지 |
 |---|---|

@@ -1,20 +1,24 @@
 /**
  * Auth state machine (docs/phase2-community.md §1.2–1.4).
  *
- * ⚠ OAuth IS DELIBERATELY NOT WIRED YET. Everything around it is real:
- * the state shape, the safeStorage-backed session store, session restore, the
- * `auth:changed` broadcast, the lazy Supabase client, and the profile RPC
- * calls. `signIn()` returns a TYPED refusal (`not-configured` /
- * `oauth-not-wired`) instead of opening a browser. Wiring it later is confined
- * to the block marked "OAUTH WIRING POINT" below plus a `bandal://` deep-link
- * handler in `src/main/index.ts`; no caller of this module changes.
+ * OAuth runs in the SYSTEM BROWSER, never in an app window. `signIn()` asks
+ * Supabase for the provider URL with `skipBrowserRedirect`, opens it with
+ * `shell.openExternal`, and returns immediately — the app then sits in
+ * `signing-in` until the provider bounces the user back to
+ * `bandal://auth/callback`, which `handleDeepLink()` finishes. An in-app
+ * BrowserWindow would put us inside Google's "embedded user-agent" ban and
+ * give the renderer a view of the auth code.
  *
- * THE NON-NEGOTIABLE RULE (§1.4): with auth stubbed or signed out, every
+ * THE NON-NEGOTIABLE RULE (§1.4): with auth unconfigured or signed out, every
  * Phase-1 feature works exactly as it does today. Which is why:
  *   - nothing here runs unless an `auth:*` / `groups:*` invoke arrives
  *   - a missing key set is `phase: 'unconfigured'`, not an error
  *   - every session-restore failure (network, expiry, corrupt file) degrades
  *     to `signed-out` and the app boots normally
+ *
+ * ⚠ NEVER log the callback URL or a token. The URL carries a single-use
+ * authorization code; `authCallbackUrl.ts` owns every look at it and
+ * `describeAuthCallback()` is the only log-safe rendering.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -28,6 +32,16 @@ import {
   SIGNED_OUT_AUTH_STATE,
   UNCONFIGURED_AUTH_STATE
 } from '../../../shared/types/auth'
+import {
+  isPlaceholderNickname,
+  isValidNickname,
+  NICKNAME_RULE_TEXT
+} from '../../../shared/group/nickname'
+import {
+  AUTH_CALLBACK_URL,
+  describeAuthCallback,
+  parseAuthCallbackUrl
+} from './authCallbackUrl'
 
 export interface AuthServiceDeps {
   /** null when the build has no Supabase keys → 'unconfigured' forever. */
@@ -36,6 +50,11 @@ export interface AuthServiceDeps {
   onChanged: (state: AuthState) => void
   /** Removes the encrypted session file on sign-out. */
   destroySession: () => void
+  /**
+   * `shell.openExternal`, injected rather than imported so this module stays
+   * testable without an Electron runtime.
+   */
+  openExternal: (url: string) => Promise<void>
 }
 
 export interface AuthService {
@@ -43,6 +62,11 @@ export interface AuthService {
   /** Restores a persisted session. Never throws; never blocks boot. */
   restore(): Promise<AuthState>
   signIn(provider: AuthProvider): Promise<AuthSignInResult>
+  /**
+   * Completes (or abandons) a sign-in from a `bandal://` deep link.
+   * Never throws — every failure lands in the auth state instead.
+   */
+  handleDeepLink(url: string): Promise<void>
   signOut(): Promise<void>
   setNickname(nickname: string): Promise<MyProfile>
   setAvatar(patch: { color?: string; emoji?: string }): Promise<MyProfile>
@@ -53,12 +77,8 @@ export interface AuthService {
   dispose(): void
 }
 
-/** §2.1 — 2..16 of 한글/영문/숫자/underscore, checked before the round trip. */
-const NICKNAME_SHAPE = /^[가-힣a-zA-Z0-9_]{2,16}$/
-
-export function isValidNickname(value: string): boolean {
-  return NICKNAME_SHAPE.test(value)
-}
+/** §2.1 — re-exported so the group barrel's surface is unchanged. */
+export { isValidNickname }
 
 function profileFromRow(row: unknown, fallbackId: string): MyProfile {
   const record =
@@ -69,7 +89,7 @@ function profileFromRow(row: unknown, fallbackId: string): MyProfile {
     // A freshly-created profile carries the temporary `user_<8hex>` handle;
     // treating it as "unset" is what triggers the nickname step in the UI.
     nickname:
-      typeof nickname === 'string' && !/^user_[0-9a-f]{8}$/.test(nickname)
+      typeof nickname === 'string' && !isPlaceholderNickname(nickname)
         ? nickname
         : null,
     avatarColor:
@@ -87,11 +107,44 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   let token: string | null = null
   let uid: string | null = null
   let unsubscribe: (() => void) | null = null
+  /** The code currently being exchanged — the re-entrancy guard (§handleDeepLink). */
+  let exchangingCode: string | null = null
+  /** Codes already spent. A replayed callback must not burn a rate-limit slot. */
+  const spentCodes = new Set<string>()
 
   function publish(next: AuthState): AuthState {
     state = next
     deps.onChanged(state)
     return state
+  }
+
+  function failed(errorCode: AuthState['errorCode']): AuthState {
+    return publish({
+      phase: 'error',
+      profile: null,
+      online: state.online,
+      errorCode
+    })
+  }
+
+  /**
+   * Idempotent. Both entry points (restore, deep link) need it: without a
+   * listener the refreshed access token never reaches `realtime.setAuth()` and
+   * every channel goes quiet an hour later.
+   */
+  function ensureAuthSubscription(client: SupabaseClient): void {
+    if (unsubscribe !== null) return
+    const { data: sub } = client.auth.onAuthStateChange((_event, session) => {
+      if (session === null) {
+        clearSession()
+        publish({ ...SIGNED_OUT_AUTH_STATE })
+        return
+      }
+      void adoptSession(session.access_token, session.user.id)
+    })
+    unsubscribe = () => {
+      sub.subscription.unsubscribe()
+    }
   }
 
   async function loadProfile(userId: string): Promise<MyProfile> {
@@ -152,7 +205,17 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       .eq('id', uid)
       .select('id, nickname, avatar_color, avatar_emoji')
       .single()
-    if (error !== null) throw error
+    // The DB is the authority on nicknames (unique index + CHECK). Translating
+    // its two rejections here is what lets the renderer print the reason
+    // verbatim instead of leaking `duplicate key value violates …` at a
+    // student mid-signup.
+    if (error !== null) {
+      if (error.code === '23505') {
+        throw new Error('이미 쓰고 있는 이름이에요. 다른 이름으로 해볼까요?')
+      }
+      if (error.code === '23514') throw new Error(NICKNAME_RULE_TEXT)
+      throw error
+    }
     const profile = profileFromRow(data, uid)
     publish({ ...state, profile })
     return profile
@@ -169,21 +232,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           clearSession()
           return publish({ ...SIGNED_OUT_AUTH_STATE })
         }
-        if (unsubscribe === null) {
-          const { data: sub } = deps.client.auth.onAuthStateChange(
-            (_event, session) => {
-              if (session === null) {
-                clearSession()
-                publish({ ...SIGNED_OUT_AUTH_STATE })
-                return
-              }
-              void adoptSession(session.access_token, session.user.id)
-            }
-          )
-          unsubscribe = () => {
-            sub.subscription.unsubscribe()
-          }
-        }
+        ensureAuthSubscription(deps.client)
         return await adoptSession(data.session.access_token, data.session.user.id)
       } catch (error) {
         // Corrupt session file, expired refresh token, no network — all
@@ -194,31 +243,135 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       }
     },
 
-    signIn(provider) {
-      if (deps.client === null) {
+    async signIn(provider) {
+      const client = deps.client
+      if (client === null) {
         publish({ ...UNCONFIGURED_AUTH_STATE })
-        return Promise.resolve({ ok: false, reason: 'not-configured' } as const)
+        return { ok: false, reason: 'not-configured' } as const
       }
       if (state.phase === 'signed-in') {
-        return Promise.resolve({ ok: false, reason: 'already-signed-in' } as const)
+        return { ok: false, reason: 'already-signed-in' } as const
       }
-      // ── OAUTH WIRING POINT ────────────────────────────────────────────────
-      // Replace this block with:
-      //   const { data } = await client.auth.signInWithOAuth({ provider,
-      //     options: { redirectTo: 'bandal://auth/callback',
-      //                skipBrowserRedirect: true } })
-      //   await shell.openExternal(data.url)
-      //   publish({ ...state, phase: 'signing-in' })
-      //   return { ok: true }
-      // …and route the deep link into `handleDeepLink()` below.
-      console.info(`[group] sign-in with ${provider} requested (OAuth not wired)`)
-      publish({
-        phase: 'signed-out',
-        profile: null,
-        online: state.online,
-        errorCode: 'not-configured'
-      })
-      return Promise.resolve({ ok: false, reason: 'oauth-not-wired' } as const)
+      try {
+        // `skipBrowserRedirect` is what makes this usable from Electron: it
+        // asks for the provider URL instead of navigating, so WE choose the
+        // browser. `redirectTo` must match a Supabase dashboard Redirect URL
+        // exactly or the callback silently never fires (docs/oauth-setup.md §3).
+        const { data, error } = await client.auth.signInWithOAuth({
+          provider,
+          options: {
+            redirectTo: AUTH_CALLBACK_URL,
+            skipBrowserRedirect: true
+          }
+        })
+        if (error !== null || typeof data.url !== 'string' || data.url === '') {
+          console.error('[group] signInWithOAuth returned no url', error)
+          failed('provider')
+          return { ok: false, reason: 'provider' } as const
+        }
+        await deps.openExternal(data.url)
+        // Nothing else happens until the deep link arrives. The renderer shows
+        // "브라우저에서 계속해요" against this phase.
+        publish({
+          phase: 'signing-in',
+          profile: null,
+          online: state.online,
+          errorCode: null
+        })
+        return { ok: true } as const
+      } catch (error) {
+        // No network to reach the auth endpoint, or the OS refused to open a
+        // browser. Either way the user is still signed out, not broken.
+        console.error('[group] sign-in failed', error)
+        failed('network')
+        return { ok: false, reason: 'network' } as const
+      }
+    },
+
+    /**
+     * The other half of `signIn()`. Robust against the four things that
+     * actually happen in the field:
+     *
+     *  1. The user closes the consent screen → `error=access_denied` → back to
+     *     `signed-out`. A cancellation is a decision, not a failure, so it must
+     *     not render as an error.
+     *  2. A malformed callback (no code / two different codes / junk) → an
+     *     explicit `error` state. Staying in `signing-in` forever would be the
+     *     worse failure: the login button is gone and nothing says why.
+     *  3. A SECOND callback after a session already exists (macOS re-delivers
+     *     `open-url` on relaunch; users click the link twice) → ignored. The
+     *     code is already spent; exchanging it again fails and would tear down
+     *     a perfectly good session.
+     *  4. Two callbacks racing → the in-flight code is the guard.
+     */
+    async handleDeepLink(url) {
+      const parsed = parseAuthCallbackUrl(url)
+      if (parsed.kind === 'ignored') {
+        if (parsed.why !== 'not-auth-callback') return
+        console.info(`[group] ignoring deep link ${describeAuthCallback(url)}`)
+        return
+      }
+      if (deps.client === null) {
+        // No keys in this build — there is nothing to exchange the code with.
+        publish({ ...UNCONFIGURED_AUTH_STATE })
+        return
+      }
+
+      // ⚠ Before branching on the payload: a session that already exists wins
+      // over ANY late callback. macOS re-delivers `open-url` on relaunch and
+      // people click the browser's "return to app" twice — treating a stale
+      // cancellation as a sign-out would evict a perfectly good session.
+      if (uid !== null || state.phase === 'signed-in') {
+        console.info('[group] auth callback ignored — a session already exists')
+        return
+      }
+
+      if (parsed.kind === 'cancelled') {
+        console.info('[group] sign-in cancelled by the user')
+        clearSession()
+        publish({
+          ...SIGNED_OUT_AUTH_STATE,
+          online: state.online,
+          errorCode: 'oauth-cancelled'
+        })
+        return
+      }
+
+      if (parsed.kind === 'failed') {
+        console.error(
+          `[group] auth callback rejected: ${parsed.reason}${
+            parsed.detail === null ? '' : ` (${parsed.detail})`
+          }`
+        )
+        failed('provider')
+        return
+      }
+
+      // ── kind === 'code' ────────────────────────────────────────────────────
+      if (exchangingCode !== null || spentCodes.has(parsed.code)) {
+        console.info('[group] auth callback ignored — code already in use')
+        return
+      }
+
+      exchangingCode = parsed.code
+      try {
+        const { data, error } = await deps.client.auth.exchangeCodeForSession(
+          parsed.code
+        )
+        spentCodes.add(parsed.code)
+        if (error !== null || data.session === null) {
+          console.error('[group] code exchange failed', error)
+          failed('provider')
+          return
+        }
+        ensureAuthSubscription(deps.client)
+        await adoptSession(data.session.access_token, data.session.user.id)
+      } catch (error) {
+        console.error('[group] code exchange threw', error)
+        failed('network')
+      } finally {
+        exchangingCode = null
+      }
     },
 
     async signOut() {
@@ -231,6 +384,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         }
       }
       clearSession()
+      spentCodes.clear()
       deps.destroySession()
       publish(
         deps.client === null
@@ -242,9 +396,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     setNickname(nickname) {
       const trimmed = nickname.trim()
       if (!isValidNickname(trimmed)) {
-        return Promise.reject(
-          new Error('닉네임은 한글·영문·숫자·밑줄 2~16자여야 해요.')
-        )
+        return Promise.reject(new Error(NICKNAME_RULE_TEXT))
       }
       return updateProfile({ nickname: trimmed })
     },

@@ -49,3 +49,12 @@ export {
   type RateRule
 } from './rateGuard'
 export { createAuthService, isValidNickname, type AuthService } from './authService'
+export {
+  AUTH_CALLBACK_URL,
+  describeAuthCallback,
+  findDeepLinkArg,
+  isAuthCallbackUrl,
+  isBandalDeepLink,
+  parseAuthCallbackUrl,
+  type AuthCallback
+} from './authCallbackUrl'

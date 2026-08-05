@@ -3,11 +3,13 @@ import { BoardOverlay } from '../features/board/BoardPanel'
 import { BrowserWebviewLayer } from '../features/browser/BrowserWebviewLayer'
 import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { MaterialsSidebar } from '../features/materials/MaterialsSidebar'
+import { NicknameGate } from '../features/group/NicknameGate'
 import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
 import { useOnboardingStore } from '../features/onboarding/onboardingStore'
 import { PreflightBanners } from '../features/onboarding/PreflightBanners'
 import { useAgentPreflight } from '../features/onboarding/useAgentPreflight'
 import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
+import { selectNeedsNickname, useAuthStore } from '../stores/authStore'
 import { useCoursesStore } from '../stores/coursesStore'
 import { useUiStore } from '../stores/uiStore'
 import { useUniversityStore } from '../stores/universityStore'
@@ -31,6 +33,10 @@ export function AppShell(): JSX.Element {
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
   const closeBoardOverlay = useUiStore((state) => state.closeBoardOverlay)
   const isOnboardingVisible = useOnboardingStore((state) => state.visible)
+  // [P2-D] Signed in, but the account still carries the trigger's placeholder
+  // handle. Never mounted before sign-in, so an unconfigured or signed-out
+  // build never sees it (§1.4).
+  const needsNickname = useAuthStore(selectNeedsNickname)
 
   const selectedCourse =
     courses.find((course) => course.id === selectedCourseId) ?? null
@@ -112,7 +118,13 @@ export function AppShell(): JSX.Element {
       <BrowserWebviewLayer />
       {isBoardOverlayOpen && <BoardOverlay onClose={closeBoardOverlay} />}
       <QuickFileSearch />
-      {isOnboardingVisible && <OnboardingOverlay />}
+      {/* One modal at a time: first-run onboarding outranks the nickname step,
+          which waits for the wizard to close. */}
+      {isOnboardingVisible ? (
+        <OnboardingOverlay />
+      ) : (
+        needsNickname && <NicknameGate />
+      )}
       <ToastHost />
     </div>
   )

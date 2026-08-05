@@ -1,0 +1,83 @@
+/* [P2-D] Nickname gate — an onboarding step in everything but sequence, so it
+ * borrows onboarding.css for the overlay/card/eyebrow/title ladder and only
+ * adds what a single-field form needs. Tokens only; no raw colors. */
+
+/* Compound selectors on purpose: these override single-class rules in
+ * onboarding.css / courses.css, and CSS-module-less bundling gives no
+ * guarantee about which file lands first. */
+
+.onboarding-card.nickname-card {
+  /* Narrower than the 4-step wizard: one field does not want 30rem of line. */
+  width: min(26rem, 100%);
+}
+
+.onboarding-step.nickname-form {
+  /* .onboarding-step packs to flex-start; the field has to span the card. */
+  align-items: stretch;
+  align-self: stretch;
+}
+
+.nickname-form .field-label {
+  margin-top: var(--space-2);
+  margin-bottom: 0;
+}
+
+.nickname-field {
+  position: relative;
+  display: flex;
+}
+
+.nickname-field .nickname-field__input {
+  /* Room for the counter so a 16자 nickname never slides under it. */
+  padding-inline-end: var(--space-7);
+}
+
+.nickname-field__count {
+  position: absolute;
+  inset-inline-end: var(--space-3);
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.nickname-rule {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.nickname-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+/* Quiet by design: 로그아웃 is the escape hatch, not the suggestion. */
+.nickname-actions__alt {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.nickname-actions__alt:hover:not(:disabled),
+.nickname-actions__alt:focus-visible {
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+}
+
+.nickname-actions__alt:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.nickname-actions__alt:disabled {
+  opacity: 0.5;
+}

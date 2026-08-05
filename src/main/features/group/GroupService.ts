@@ -82,6 +82,8 @@ export interface GroupService {
   getAuthState(): AuthState
   restoreSession(): Promise<AuthState>
   signIn(provider: AuthProvider): Promise<AuthSignInResult>
+  /** Finishes an OAuth round trip arriving on `bandal://auth/callback`. */
+  handleDeepLink(url: string): Promise<void>
   signOut(): Promise<void>
   setNickname(nickname: string): Promise<MyProfile>
   setAvatar(patch: { color?: string; emoji?: string }): Promise<MyProfile>
@@ -250,6 +252,17 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
     },
 
     signIn: (provider) => deps.auth.signIn(provider),
+
+    async handleDeepLink(url) {
+      await deps.auth.handleDeepLink(url)
+      // Same post-sign-in work as `restoreSession` — a session that arrives via
+      // the deep link has to light up the rail exactly like a restored one.
+      if (deps.auth.getState().phase === 'signed-in') {
+        deps.repo.releaseStranded()
+        void refreshGroups()
+        deps.outbox.wake()
+      }
+    },
 
     async signOut() {
       deps.realtime.disposeAll()
