@@ -1,2 +1,2 @@
-// courses feature (main process) — implemented in a later milestone.
-export {}
+// courses feature (main process).
+export * from './coursesRepo'

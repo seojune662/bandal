@@ -11,7 +11,9 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "start": "electron-vite preview",
-    "package": "electron-vite build && electron-builder"
+    "package": "electron-vite build && electron-builder",
+    "test": "vitest run",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
     "@milkdown/core": "^7.15.0",
@@ -37,10 +39,12 @@
     "@types/react": "^18.3.20",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.5.0",
+    "better-sqlite3-node": "npm:better-sqlite3@^12.2.0",
     "electron": "^35.2.0",
     "electron-builder": "^25.1.8",
     "electron-vite": "^3.1.0",
     "typescript": "^5.8.3",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "vitest": "^4.1.10"
   }
 }

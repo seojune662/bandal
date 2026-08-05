@@ -1,2 +1,2 @@
-// materials feature (main process) — implemented in a later milestone.
-export {}
+// materials feature (main process).
+export * from './materialsRepo'

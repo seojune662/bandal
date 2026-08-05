@@ -1,2 +1,2 @@
-// annotations feature (main process) — implemented in a later milestone.
-export {}
+// annotations feature (main process).
+export * from './annotationsRepo'

@@ -1,11 +1,16 @@
 /**
- * Schema migrations (STUB — M0).
+ * Schema migrations.
  *
- * Strategy for M1: `PRAGMA user_version` tracks the schema version; each
- * migration bumps it inside a transaction. Migration 1 executes schema.sql.
+ * A `migrations` table records every applied migration (numbered, with a
+ * human-readable name and timestamp). `runMigrations` applies pending
+ * migrations in version order, each inside a transaction.
+ *
+ * Migration 001 executes schema.sql (the frozen C5 v1 schema). Later
+ * milestones append new entries — never edit an applied migration.
  */
 
 import type { Database } from 'better-sqlite3'
+import schemaSql from './schema.sql?raw'
 
 export interface Migration {
   version: number
@@ -15,11 +20,45 @@ export interface Migration {
 }
 
 export const migrations: Migration[] = [
-  // M1: { version: 1, name: 'initial-schema', up: (db) => db.exec(readSchemaSql()) }
+  {
+    version: 1,
+    name: 'initial-schema',
+    up: (db) => {
+      db.exec(schemaSql)
+    }
+  }
 ]
 
-/** Applies pending migrations in order. No-op stub in M0. */
-export function runMigrations(_db: Database): void {
-  // M1: read user_version, apply migrations with version > current inside
-  // a transaction, then set user_version.
+/** Creates the bookkeeping table if needed and returns applied versions. */
+function appliedVersions(db: Database): Set<number> {
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS migrations (
+       version    INTEGER PRIMARY KEY,
+       name       TEXT NOT NULL,
+       applied_at TEXT NOT NULL
+     )`
+  )
+  const rows = db.prepare('SELECT version FROM migrations').all() as {
+    version: number
+  }[]
+  return new Set(rows.map((row) => row.version))
+}
+
+/** Applies pending migrations in version order, each in a transaction. */
+export function runMigrations(db: Database): void {
+  const applied = appliedVersions(db)
+  const pending = [...migrations]
+    .sort((a, b) => a.version - b.version)
+    .filter((migration) => !applied.has(migration.version))
+
+  for (const migration of pending) {
+    const apply = db.transaction(() => {
+      migration.up(db)
+      db.prepare(
+        'INSERT INTO migrations (version, name, applied_at) VALUES (?, ?, ?)'
+      ).run(migration.version, migration.name, new Date().toISOString())
+    })
+    apply()
+    console.log(`[db] applied migration ${migration.version} (${migration.name})`)
+  }
 }

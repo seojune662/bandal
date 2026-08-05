@@ -1,2 +1,2 @@
-// board feature (main process) — implemented in a later milestone.
-export {}
+// board feature (main process).
+export * from './boardRepo'

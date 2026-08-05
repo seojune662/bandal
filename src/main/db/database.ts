@@ -1,32 +1,62 @@
 /**
- * SQLite database access (STUB — M0).
+ * SQLite database access for the Electron main process.
  *
- * M1 will open a better-sqlite3 database at
- * `join(app.getPath('userData'), 'bandal.db')` and run migrations.
- *
- * NOTE for implementers: better-sqlite3 is a native module compiled against
- * the Node ABI at install time. Before requiring it inside Electron's main
- * process, rebuild it for Electron (e.g. `pnpm exec electron-rebuild -f -w
- * better-sqlite3` or via electron-builder's install-app-deps). It is
- * intentionally NOT imported in M0 so the dev app boots without a rebuild.
+ * better-sqlite3 is a native module. The copy in node_modules is rebuilt
+ * against the ELECTRON ABI by `electron-builder install-app-deps` (wired as
+ * the `postinstall` script), so it must only be require()d from inside
+ * Electron — hence the lazy require below. Node-side tests use a separate
+ * Node-ABI copy (see tests/main/helpers/testDb.ts).
  */
 
+import { app } from 'electron'
+import { join } from 'node:path'
 import type { Database } from 'better-sqlite3'
+import { runMigrations } from './migrations'
+
+const DB_FILE = 'bandal.db'
 
 let db: Database | null = null
 
-/** Returns the open database. Throws until M1 implements initialization. */
+/** Returns the open database. Throws if initDatabase has not run. */
 export function getDatabase(): Database {
   if (db === null) {
-    throw new Error('[db] Database not initialized (M0 stub — implemented in M1)')
+    throw new Error('[db] Database not initialized — call initDatabase() first')
   }
   return db
 }
 
-/** Opens the database and runs migrations. No-op stub in M0. */
+/**
+ * Opens (or creates) a database at `filePath`, enables WAL + foreign keys
+ * and applies pending migrations. Exported for reuse; prefer initDatabase
+ * in app code.
+ */
+export function openDatabase(filePath: string): Database {
+  // Lazy require: keeps module load side-effect free and defers the native
+  // binding load until Electron is actually running.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const BetterSqlite3 =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('better-sqlite3') as typeof import('better-sqlite3')
+  const opened = new BetterSqlite3(filePath)
+  opened.pragma('journal_mode = WAL')
+  opened.pragma('foreign_keys = ON')
+  runMigrations(opened)
+  return opened
+}
+
+/** Opens userData/bandal.db and runs migrations. Idempotent. */
 export function initDatabase(): void {
-  // M1: lazily require('better-sqlite3'), open userData/bandal.db,
-  // then runMigrations(db) from ./migrations.
+  if (db !== null) {
+    return
+  }
+  const filePath = join(app.getPath('userData'), DB_FILE)
+  try {
+    db = openDatabase(filePath)
+    console.log(`[db] opened ${filePath}`)
+  } catch (error) {
+    console.error(`[db] failed to open ${filePath}:`, error)
+    throw error
+  }
 }
 
 /** Closes the database if open. */

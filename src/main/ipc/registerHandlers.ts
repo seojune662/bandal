@@ -1,142 +1,94 @@
 /**
- * Registers a handler for EVERY channel in IpcContract (M0: typed stubs
- * returning empty data so renderer calls never throw).
+ * Registers a handler for EVERY channel in IpcContract.
  *
- * M1+ workstreams replace individual stubs with real implementations in
- * src/main/features/* — the `handle` helper keeps them contract-typed.
+ * M1-A: courses / materials / notes / annotations / board / layout are real
+ * implementations backed by src/main/features/* repos and the SQLite DB.
+ * chat / agent / browser remain typed stubs — their registration LINES live
+ * here (so all channels are always handled) but their logic is owned by
+ * later milestones. Keep the section comments so merges stay additive.
  */
 
-import { ipcMain } from 'electron'
+import { ipcMain, shell } from 'electron'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
 import { getSettings, setSettings } from '../settingsStore'
+import { getDatabase } from '../db/database'
+import { createLayoutRepo } from '../db/layoutRepo'
+import { createCoursesRepo } from '../features/courses'
+import { createMaterialsRepo } from '../features/materials'
+import { createNotesRepo } from '../features/notes'
+import { createAnnotationsRepo } from '../features/annotations'
+import { createBoardRepo } from '../features/board'
 
-/** Contract-typed wrapper around ipcMain.handle. */
+/**
+ * Contract-typed wrapper around ipcMain.handle. Logs failures with channel
+ * context, then rethrows so the renderer receives a rejected promise.
+ */
 function handle<K extends IpcChannel>(
   channel: K,
   fn: (req: IpcRequest<K>) => Promise<IpcResponse<K>> | IpcResponse<K>
 ): void {
-  ipcMain.handle(channel, (_event, req: IpcRequest<K>) => fn(req))
+  ipcMain.handle(channel, async (_event, req: IpcRequest<K>) => {
+    try {
+      return await fn(req)
+    } catch (error) {
+      console.error(`[ipc] ${channel} failed:`, error)
+      throw error
+    }
+  })
 }
 
 const OK = { ok: true } as const
 
-function nowIso(): string {
-  return new Date().toISOString()
-}
-
 export function registerHandlers(): void {
+  const db = getDatabase()
+  const coursesRepo = createCoursesRepo({
+    db,
+    getDataRoot: () => getSettings().dataRoot
+  })
+  const materialsRepo = createMaterialsRepo({
+    db,
+    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
+    revealItem: (absPath) => shell.showItemInFolder(absPath)
+  })
+  const notesRepo = createNotesRepo({
+    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
+  })
+  const annotationsRepo = createAnnotationsRepo(db)
+  const boardRepo = createBoardRepo(db)
+  const layoutRepo = createLayoutRepo(db)
+
   // -- courses --------------------------------------------------------------
-  handle('courses:list', () => [])
-  handle('courses:create', (req) => ({
-    id: 'stub-course',
-    name: req.name,
-    slug: 'stub-course',
-    color: req.color,
-    folderPath: '',
-    archived: false,
-    sortOrder: 0,
-    createdAt: nowIso(),
-    updatedAt: nowIso()
-  }))
-  handle('courses:rename', (req) => ({
-    id: req.courseId,
-    name: req.name,
-    slug: 'stub-course',
-    color: '#000000',
-    folderPath: '',
-    archived: false,
-    sortOrder: 0,
-    createdAt: nowIso(),
-    updatedAt: nowIso()
-  }))
-  handle('courses:archive', (req) => ({
-    id: req.courseId,
-    name: '',
-    slug: 'stub-course',
-    color: '#000000',
-    folderPath: '',
-    archived: req.archived,
-    sortOrder: 0,
-    createdAt: nowIso(),
-    updatedAt: nowIso()
-  }))
-  handle('courses:delete', () => OK)
+  handle('courses:list', (req) => coursesRepo.list(req))
+  handle('courses:create', (req) => coursesRepo.create(req))
+  handle('courses:rename', (req) => coursesRepo.rename(req))
+  handle('courses:archive', (req) => coursesRepo.archive(req))
+  handle('courses:delete', (req) => coursesRepo.softDelete(req))
 
   // -- materials ------------------------------------------------------------
-  handle('materials:tree', () => [])
-  handle('materials:search', () => [])
-  handle('materials:import', () => ({ imported: [], failed: [] }))
-  handle('materials:reveal', () => OK)
-  handle('materials:readFile', () => ({ encoding: 'utf8', data: '' }))
+  handle('materials:tree', (req) => materialsRepo.tree(req.courseId))
+  handle('materials:search', (req) => materialsRepo.search(req.courseId, req.query))
+  handle('materials:import', (req) => materialsRepo.import(req.courseId, req.paths))
+  handle('materials:reveal', (req) => materialsRepo.reveal(req.courseId, req.relPath))
+  handle('materials:readFile', (req) => materialsRepo.readFile(req.courseId, req.relPath))
 
   // -- notes ----------------------------------------------------------------
-  handle('notes:read', (req) => ({
-    courseId: req.courseId,
-    relPath: req.relPath,
-    markdown: '',
-    mtime: 0
-  }))
-  handle('notes:write', () => ({ mtime: 0 }))
-  handle('notes:create', (req) => ({
-    courseId: req.courseId,
-    relPath: `${req.dirRelPath === '' ? '' : `${req.dirRelPath}/`}${req.title}.md`
-  }))
+  handle('notes:read', (req) => notesRepo.read(req))
+  handle('notes:write', (req) => notesRepo.write(req))
+  handle('notes:create', (req) => notesRepo.create(req))
 
   // -- annotations ----------------------------------------------------------
-  handle('annotations:listForFile', () => [])
-  handle('annotations:create', (req) => ({
-    id: 'stub-annotation',
-    courseId: req.courseId,
-    relPath: req.relPath,
-    page: req.page,
-    color: req.color,
-    rects: req.rects,
-    anchor: req.anchor,
-    comment: req.comment ?? null,
-    createdAt: nowIso(),
-    updatedAt: nowIso()
-  }))
-  handle('annotations:update', (req) => ({
-    id: req.id,
-    courseId: '',
-    relPath: '',
-    page: 1,
-    color: req.color ?? 'yellow',
-    rects: [],
-    anchor: { quote: '', prefix: '', suffix: '' },
-    comment: req.comment ?? null,
-    createdAt: nowIso(),
-    updatedAt: nowIso()
-  }))
-  handle('annotations:delete', () => OK)
+  handle('annotations:listForFile', (req) => annotationsRepo.listForFile(req))
+  handle('annotations:create', (req) => annotationsRepo.create(req))
+  handle('annotations:update', (req) => annotationsRepo.update(req))
+  handle('annotations:delete', (req) => annotationsRepo.softDelete(req))
 
   // -- board ----------------------------------------------------------------
-  handle('board:listTasks', () => [])
-  handle('board:createTask', (req) => ({
-    id: 'stub-task',
-    courseId: req.courseId,
-    title: req.title,
-    notes: req.notes ?? '',
-    status: req.status ?? 'todo',
-    dueAt: req.dueAt ?? null,
-    sortOrder: 0,
-    createdAt: nowIso(),
-    updatedAt: nowIso()
-  }))
-  handle('board:updateTask', (req) => ({
-    id: req.id,
-    courseId: null,
-    title: req.title ?? '',
-    notes: req.notes ?? '',
-    status: req.status ?? 'todo',
-    dueAt: req.dueAt ?? null,
-    sortOrder: req.sortOrder ?? 0,
-    createdAt: nowIso(),
-    updatedAt: nowIso()
-  }))
-  handle('board:deleteTask', () => OK)
+  handle('board:listTasks', (req) => boardRepo.list(req))
+  handle('board:createTask', (req) => boardRepo.create(req))
+  handle('board:updateTask', (req) => boardRepo.update(req))
+  handle('board:deleteTask', (req) => boardRepo.softDelete(req))
 
-  // -- chat -----------------------------------------------------------------
+  // -- chat (STUBS — owned by the chat/agent milestone) ---------------------
   handle('chat:open', () => ({
     history: [],
     sessionInfo: null,
@@ -147,10 +99,10 @@ export function registerHandlers(): void {
   handle('chat:respondPermission', () => OK)
   handle('chat:close', () => OK)
 
-  // -- agent ----------------------------------------------------------------
+  // -- agent (STUB — owned by the chat/agent milestone) ---------------------
   handle('agent:availability', () => ({ installed: false, loggedIn: false }))
 
-  // -- browser --------------------------------------------------------------
+  // -- browser (STUBS — owned by the browser milestone) ---------------------
   handle('browser:createView', () => OK)
   handle('browser:destroyView', () => OK)
   handle('browser:setBounds', () => OK)
@@ -160,11 +112,11 @@ export function registerHandlers(): void {
   handle('browser:forward', () => OK)
   handle('browser:reload', () => OK)
 
-  // -- settings (real implementation) ---------------------------------------
+  // -- settings (real implementation, settingsStore-owned) ------------------
   handle('settings:get', () => getSettings())
   handle('settings:set', (req) => setSettings(req))
 
   // -- layout ---------------------------------------------------------------
-  handle('layout:get', () => ({ layout: null }))
-  handle('layout:save', () => OK)
+  handle('layout:get', (req) => layoutRepo.get(req.courseId))
+  handle('layout:save', (req) => layoutRepo.save(req.courseId, req.layout))
 }
