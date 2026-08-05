@@ -27,8 +27,10 @@ codex exec --json --skip-git-repo-check \
   "$(cat <<'BRIEF'
 <태스크 브리프>
 BRIEF
-)"
+)" < /dev/null
 ```
+
+**⚠️ `< /dev/null` 필수**: 비-TTY stdin(파이프)에서 codex exec가 "Reading additional input from stdin..."으로 EOF를 무한 대기하며 행이 걸린다. 백그라운드 실행 시 반드시 stdin을 닫을 것.
 
 - `--json`: JSONL 이벤트 스트림 (item.completed의 agent_message가 최종 보고)
 - `-o <file>`: 최종 메시지를 파일로 — 완료 후 이 파일만 읽으면 됨 (JSONL 전체를 파싱하지 말 것)
