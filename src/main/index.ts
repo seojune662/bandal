@@ -4,6 +4,7 @@ import { registerHandlers } from './ipc/registerHandlers'
 import { installApplicationMenu } from './menu'
 import { createMainWindow } from './windows/mainWindow'
 import { openSettingsWindow } from './windows/settingsWindow'
+import { reportFatalStartupError } from './startupError'
 
 // [M6-B testability] E2E runs (Playwright _electron) point the app at a
 // throwaway profile so tests never touch the real userData. Must run before
@@ -27,7 +28,15 @@ if (!app.requestSingleInstanceLock()) {
     // [M6-A] Custom menu: keeps ⌘W free for "close tab" in the renderer.
     installApplicationMenu()
 
-    initDatabase()
+    // DB 초기화 실패는 치명적이다 — 여기서 던지면 아래 createMainWindow()가
+    // 실행되지 않아 "창 없는 앱"이 된다. 반드시 사용자에게 보이게 만든다.
+    try {
+      initDatabase()
+    } catch (error: unknown) {
+      reportFatalStartupError('데이터베이스 초기화', error)
+      return
+    }
+
     registerHandlers()
 
     // Temporary M0 channel to open the settings window from the renderer.
@@ -44,6 +53,10 @@ if (!app.requestSingleInstanceLock()) {
         createMainWindow()
       }
     })
+  }).catch((error: unknown) => {
+    // whenReady 체인의 나머지(메뉴 설치, 핸들러 등록, 창 생성)에서 던진 경우.
+    // catch가 없으면 unhandled rejection으로 조용히 사라진다.
+    reportFatalStartupError('앱 초기화', error)
   })
 
   app.on('window-all-closed', () => {
