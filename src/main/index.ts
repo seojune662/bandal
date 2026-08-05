@@ -1,8 +1,17 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { initDatabase, closeDatabase } from './db/database'
 import { registerHandlers } from './ipc/registerHandlers'
+import { installApplicationMenu } from './menu'
 import { createMainWindow } from './windows/mainWindow'
 import { openSettingsWindow } from './windows/settingsWindow'
+
+// [M6-B testability] E2E runs (Playwright _electron) point the app at a
+// throwaway profile so tests never touch the real userData. Must run before
+// requestSingleInstanceLock — the lock is scoped to the userData path.
+const testUserDataDir = process.env['BANDAL_USER_DATA_DIR']
+if (testUserDataDir !== undefined && testUserDataDir !== '') {
+  app.setPath('userData', testUserDataDir)
+}
 
 // Single-instance guard.
 if (!app.requestSingleInstanceLock()) {
@@ -14,6 +23,9 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     app.setAppUserModelId('com.bandal.app')
+
+    // [M6-A] Custom menu: keeps ⌘W free for "close tab" in the renderer.
+    installApplicationMenu()
 
     initDatabase()
     registerHandlers()

@@ -32,7 +32,8 @@ const PUSH_CHANNELS: readonly PushChannel[] = [
   'chat:event-batch',
   'materials:changed',
   'browser:open-url',
-  'settings:changed'
+  'settings:changed',
+  'shortcut:passthrough'
 ]
 
 const bridge: BandalBridge = {

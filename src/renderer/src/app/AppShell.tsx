@@ -3,11 +3,17 @@ import { BoardOverlay } from '../features/board/BoardPanel'
 import { BrowserWebviewLayer } from '../features/browser/BrowserWebviewLayer'
 import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { MaterialsSidebar } from '../features/materials/MaterialsSidebar'
+import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
+import { useOnboardingStore } from '../features/onboarding/onboardingStore'
+import { PreflightBanners } from '../features/onboarding/PreflightBanners'
+import { useAgentPreflight } from '../features/onboarding/useAgentPreflight'
 import { TabKindIcon } from '../features/workspace/workspaceIcons'
 import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
 import { useCoursesStore } from '../stores/coursesStore'
 import { useUiStore } from '../stores/uiStore'
 import { Icon } from './icons'
+import { QuickFileSearch } from './QuickFileSearch'
+import { useGlobalShortcuts } from './shortcuts'
 import { ToastHost } from './toast'
 import './app-shell.css'
 
@@ -23,15 +29,22 @@ export function AppShell(): JSX.Element {
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
   const toggleBoardOverlay = useUiStore((state) => state.toggleBoardOverlay)
   const closeBoardOverlay = useUiStore((state) => state.closeBoardOverlay)
+  const isOnboardingVisible = useOnboardingStore((state) => state.visible)
 
   const selectedCourse =
     courses.find((course) => course.id === selectedCourseId) ?? null
+
+  // [M6-A] ⌘T/⌘W/⌘P/⌘,/⌘1..9 — see app/shortcuts.ts for the guard rules.
+  useGlobalShortcuts()
 
   useEffect(() => {
     void initTheme().catch((error: unknown) => {
       console.error('[Bandal] 테마 설정을 불러오지 못했습니다.', error)
     })
     void loadCourses()
+    // [M6-A] First-run onboarding + live agent preflight (boot probe).
+    void useOnboardingStore.getState().init()
+    void useAgentPreflight.getState().probe()
   }, [initTheme, loadCourses])
 
   // [M5] A file dropped outside a drop target must never navigate the window.
@@ -98,6 +111,7 @@ export function AppShell(): JSX.Element {
       {leftRailOpen && <CourseSidebar />}
 
       <main className="app-workspace" aria-label="작업 공간">
+        <PreflightBanners suppressed={isOnboardingVisible} />
         <WorkspaceHost />
       </main>
 
@@ -105,6 +119,8 @@ export function AppShell(): JSX.Element {
 
       <BrowserWebviewLayer />
       {isBoardOverlayOpen && <BoardOverlay onClose={closeBoardOverlay} />}
+      <QuickFileSearch />
+      {isOnboardingVisible && <OnboardingOverlay />}
       <ToastHost />
     </div>
   )

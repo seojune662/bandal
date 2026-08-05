@@ -45,6 +45,10 @@ interface WorkspaceState {
   openTab: (descriptor: TabDescriptor) => void
   closeTab: (panelId: string) => void
   closeOthers: (panelId: string) => void
+  /** [M6-A] ⌘W: close the focused tab; no tab → no-op (never the window). */
+  closeActiveTab: () => void
+  /** [M6-A] ⌘1..9: activate the nth open tab (0-based); out of range → no-op. */
+  activateTabAt: (index: number) => void
   /** Wired to dockview's onDidLayoutChange by WorkspaceHost. */
   notifyLayoutChanged: () => void
   /** Send any pending save immediately (course switch / beforeunload). */
@@ -229,6 +233,16 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       for (const panel of [...api.panels]) {
         if (panel.id !== panelId) panel.api.close()
       }
+    },
+
+    closeActiveTab: () => {
+      if (api === null) return
+      api.activePanel?.api.close()
+    },
+
+    activateTabAt: (index) => {
+      if (api === null || index < 0) return
+      api.panels[index]?.api.setActive()
     },
 
     notifyLayoutChanged: () => {

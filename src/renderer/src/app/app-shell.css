@@ -407,10 +407,18 @@
 .app-workspace {
   grid-area: center;
   display: flex;
+  /* [M6-A] Column: an optional preflight banner strip sits above the tabs. */
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: var(--bg-app);
+}
+
+.app-workspace > .workspace-host {
+  flex: 1;
+  height: auto;
+  min-height: 0;
 }
 
 /* Titlebar button with a text label (board toggle). */

@@ -8,6 +8,7 @@ import type {
   ThemePreference
 } from '../../../../shared/types/settings'
 import { invoke, onPush } from '../../lib/ipc'
+import { reopenedOnboarding } from '../onboarding/onboardingModel'
 import './settings-app.css'
 import './settings-panels.css'
 
@@ -178,6 +179,18 @@ function ThemePreview({ theme }: { theme: ThemePreference }): JSX.Element {
 }
 
 function GeneralPanel({ settings }: { settings: Settings | null }): JSX.Element {
+  const [onboardingReset, setOnboardingReset] = useState<
+    'idle' | 'done' | 'failed'
+  >('idle')
+
+  const handleReopenOnboarding = (): void => {
+    // Resetting the persisted state broadcasts settings:changed; the main
+    // window reacts by re-opening the wizard (features/onboarding).
+    void invoke('settings:set', { onboarding: reopenedOnboarding() })
+      .then(() => setOnboardingReset('done'))
+      .catch(() => setOnboardingReset('failed'))
+  }
+
   return (
     <div className="settings-stack">
       <SettingsCard
@@ -215,6 +228,33 @@ function GeneralPanel({ settings }: { settings: Settings | null }): JSX.Element 
             disabled
             badge="준비 중"
           />
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title="시작 안내"
+        description="반달을 처음 열었을 때의 3단계 안내를 다시 볼 수 있습니다."
+      >
+        <div className="setting-row">
+          <div className="setting-row__copy">
+            <div className="setting-row__label-line">
+              <span className="setting-row__label">온보딩 다시 보기</span>
+            </div>
+            <span className="setting-row__description">
+              {onboardingReset === 'done'
+                ? '준비됐어요 — 메인 창에서 온보딩이 다시 열립니다.'
+                : onboardingReset === 'failed'
+                  ? '온보딩을 다시 열지 못했습니다. 잠시 후 다시 시도해 주세요.'
+                  : '과목 만들기와 AI 연결 단계를 처음부터 안내합니다.'}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={handleReopenOnboarding}
+          >
+            온보딩 다시 보기
+          </button>
         </div>
       </SettingsCard>
     </div>

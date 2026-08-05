@@ -177,7 +177,7 @@ export function CourseSidebar(): JSX.Element {
           </div>
         ) : visibleCourses.length === 0 ? (
           <div className="rail-zero-result">
-            <p>일치하는 과목이 없습니다</p>
+            <p>일치하는 과목이 없어요</p>
             <button type="button" onClick={() => setQuery('')}>
               검색 지우기
             </button>

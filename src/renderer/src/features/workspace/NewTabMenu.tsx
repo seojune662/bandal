@@ -224,7 +224,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
       </div>
       <ul className="new-tab-menu__list" role="listbox" aria-label="새 탭 항목">
         {items.length === 0 ? (
-          <li className="new-tab-menu__empty">일치하는 항목이 없습니다</li>
+          <li className="new-tab-menu__empty">일치하는 항목이 없어요</li>
         ) : (
           items.map((item, index) => (
             <li key={item.id} role="presentation">

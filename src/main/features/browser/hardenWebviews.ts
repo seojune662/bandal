@@ -8,12 +8,16 @@
 
 import { session } from 'electron'
 import type { BrowserWindow, Event as ElectronEvent, WebContents } from 'electron'
-import type { BrowserOpenUrl } from '../../../shared/ipc/events'
+import type {
+  BrowserOpenUrl,
+  ShortcutPassthrough
+} from '../../../shared/ipc/events'
 import {
   BROWSING_PARTITION,
   isAllowedAttach,
   isNavigationAllowed,
   isPermissionAllowed,
+  passthroughShortcut,
   popupForwardUrl,
   sanitizeGuestWebPreferences
 } from './webviewPolicy'
@@ -64,6 +68,17 @@ function attachGuestPolicies(host: WebContents, guest: WebContents): void {
       host.send('browser:open-url', payload)
     }
     return { action: 'deny' }
+  })
+
+  // [M6-A] ⌘T/⌘W keep working while the guest has keyboard focus: intercept
+  // them before the guest page sees the chord and replay them in the host.
+  guest.on('before-input-event', (event, input) => {
+    const action = passthroughShortcut(input)
+    if (action !== null && !host.isDestroyed()) {
+      event.preventDefault()
+      const payload: ShortcutPassthrough = { action }
+      host.send('shortcut:passthrough', payload)
+    }
   })
 }
 

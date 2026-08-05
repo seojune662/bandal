@@ -91,7 +91,9 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
         <p className="eyebrow">STUDY WORKSPACE</p>
         <h1>오늘의 공부를 시작해볼까요?</h1>
         <p className="workspace-watermark__hint">
-          왼쪽에서 과목을 선택하면 작업 공간이 열립니다.
+          왼쪽에서 과목을 고르면 그 과목의 작업 공간이 열려요.
+          <br />
+          아직 과목이 없다면 + 버튼으로 첫 과목을 만들어보세요.
         </p>
       </div>
     )

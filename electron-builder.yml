@@ -1,22 +1,53 @@
+# Packaging config for Bandal (electron-builder).
+#
+# productName stays ASCII ("Bandal") on purpose: non-ASCII bundle/executable
+# names break codesign/notarytool tooling and some shell scripts on macOS.
+# The user-visible name 반달 is set via CFBundleDisplayName instead.
 appId: com.bandal.app
 productName: Bandal
+copyright: Copyright © 2026 Bandal contributors
+
 directories:
-  buildResources: build
+  buildResources: resources
   output: release
+
+# electron-vite output. Production node_modules dependencies are always
+# bundled by electron-builder in addition to these patterns (needed because
+# externalizeDepsPlugin leaves main/preload deps as runtime require()s).
 files:
   - out/**
   - package.json
+
+# better-sqlite3 ships a native .node binding that cannot load from inside
+# the asar archive.
 asarUnpack:
   - '**/*.node'
+
+# Rebuild native deps (better-sqlite3) against the Electron ABI at pack time.
 npmRebuild: true
+
 mac:
   target:
     - target: dmg
       arch:
         - arm64
-        - x64
+    - target: zip
+      arch:
+        - arm64
+  icon: resources/icon.icns
   category: public.app-category.education
   darkModeSupport: true
+  hardenedRuntime: true
+  # No signing certificate configured yet — ship unsigned local builds.
+  # Set to your "Developer ID Application: …" identity (and add notarize
+  # config) before distributing.
+  identity: null
+  extendInfo:
+    CFBundleDisplayName: 반달
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
 electronLanguages:
   - ko
   - en

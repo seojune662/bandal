@@ -7,8 +7,12 @@ import { app, BrowserWindow } from 'electron'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { DEFAULT_SETTINGS } from '../shared/types/settings'
-import type { Settings, SettingsPatch } from '../shared/types/settings'
+import { DEFAULT_ONBOARDING, DEFAULT_SETTINGS } from '../shared/types/settings'
+import type {
+  OnboardingState,
+  Settings,
+  SettingsPatch
+} from '../shared/types/settings'
 
 const SETTINGS_FILE = 'settings.json'
 
@@ -19,14 +23,43 @@ function settingsPath(): string {
 }
 
 function defaultsWithPaths(): Settings {
+  // [M6-B testability] BANDAL_DATA_ROOT overrides the default course-data
+  // location (~/Documents/Bandal) so E2E runs write into a temp directory.
+  const envDataRoot = process.env['BANDAL_DATA_ROOT']
   return {
     ...DEFAULT_SETTINGS,
-    dataRoot: join(homedir(), 'Documents', 'Bandal')
+    dataRoot:
+      envDataRoot !== undefined && envDataRoot !== ''
+        ? envDataRoot
+        : join(homedir(), 'Documents', 'Bandal')
   }
 }
 
 function isTheme(value: unknown): value is Settings['theme'] {
   return value === 'dark' || value === 'light' || value === 'system'
+}
+
+/** [M6-A] Validates the persisted onboarding record, key by key. */
+function sanitizeOnboarding(raw: unknown): OnboardingState {
+  if (typeof raw !== 'object' || raw === null) {
+    return { ...DEFAULT_ONBOARDING }
+  }
+  const record = raw as Record<string, unknown>
+  return {
+    flowVersion:
+      typeof record.flowVersion === 'number' &&
+      Number.isInteger(record.flowVersion) &&
+      record.flowVersion >= 0
+        ? record.flowVersion
+        : DEFAULT_ONBOARDING.flowVersion,
+    closedAt: typeof record.closedAt === 'string' ? record.closedAt : null,
+    lastCompletedStep:
+      typeof record.lastCompletedStep === 'number' &&
+      Number.isInteger(record.lastCompletedStep) &&
+      record.lastCompletedStep >= 0
+        ? record.lastCompletedStep
+        : DEFAULT_ONBOARDING.lastCompletedStep
+  }
 }
 
 /** Validates unknown JSON into Settings, falling back to defaults per key. */
@@ -49,7 +82,8 @@ function sanitize(raw: unknown): Settings {
     locale:
       typeof record.locale === 'string' && record.locale.length > 0
         ? record.locale
-        : defaults.locale
+        : defaults.locale,
+    onboarding: sanitizeOnboarding(record.onboarding)
   }
 }
 

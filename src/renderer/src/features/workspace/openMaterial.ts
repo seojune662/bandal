@@ -18,7 +18,19 @@ export function openMaterialInWorkspace(
 ): void {
   const courseId = useMaterialsStore.getState().activeCourseId
   if (courseId === null) return
+  openMaterialInCourse(courseId, kind, relPath)
+}
 
+/**
+ * [M6-A] Course-explicit variant for callers that know their course (⌘P
+ * quick search) — the materials store's activeCourseId only tracks the
+ * sidebar, which may be closed.
+ */
+export function openMaterialInCourse(
+  courseId: string,
+  kind: MaterialKind,
+  relPath: string
+): void {
   if (kind === 'pdf' || kind === 'note') {
     useWorkspaceStore.getState().openTab(
       descriptorFor(kind, { courseId, relPath })

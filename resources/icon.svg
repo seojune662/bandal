@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#18223c"/>
+      <stop offset="0.55" stop-color="#0e1628"/>
+      <stop offset="1" stop-color="#0b1220"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.56" cy="0.49" r="0.52">
+      <stop offset="0" stop-color="#f5c97b" stop-opacity="0.32"/>
+      <stop offset="0.55" stop-color="#f5c97b" stop-opacity="0.1"/>
+      <stop offset="1" stop-color="#f5c97b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="moonLit" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#fadfa8"/>
+      <stop offset="0.5" stop-color="#f5c97b"/>
+      <stop offset="1" stop-color="#e0a95c"/>
+    </linearGradient>
+    <linearGradient id="innerLight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="0.18" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.82" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.22"/>
+    </linearGradient>
+    <clipPath id="shape">
+      <rect x="100" y="100" width="824" height="824" rx="185"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#shape)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#bg)"/>
+    <circle cx="320" cy="268" r="5" fill="#dbe4f5" opacity="0.5"/>
+    <circle cx="726" cy="240" r="4" fill="#dbe4f5" opacity="0.42"/>
+    <circle cx="236" cy="470" r="3.4" fill="#dbe4f5" opacity="0.34"/>
+    <circle cx="788" cy="420" r="3" fill="#dbe4f5" opacity="0.3"/>
+    <circle cx="268" cy="690" r="3.6" fill="#dbe4f5" opacity="0.3"/>
+    <circle cx="762" cy="700" r="4.4" fill="#dbe4f5" opacity="0.38"/>
+    <circle cx="430" cy="218" r="3" fill="#dbe4f5" opacity="0.32"/>
+    <circle cx="636" cy="780" r="3" fill="#dbe4f5" opacity="0.26"/>
+
+    <!-- Moon glow -->
+    <rect x="100" y="100" width="824" height="824" fill="url(#glow)"/>
+
+    <!-- Shadowed (left) half: barely lighter than the sky -->
+    <circle cx="512" cy="502" r="236" fill="#1a2540"/>
+    <circle cx="512" cy="502" r="236" fill="none" stroke="#f5c97b" stroke-opacity="0.14" stroke-width="3"/>
+
+    <!-- Lit (right) half — 반달, first-quarter moon -->
+    <path d="M 512 266
+             A 236 236 0 0 1 512 738
+             Z" fill="url(#moonLit)"/>
+    <circle cx="596" cy="420" r="34" fill="#c99a4e" opacity="0.3"/>
+    <circle cx="589.88" cy="413.88" r="26.52" fill="#e5b76a" opacity="0.35"/>
+    <circle cx="648" cy="546" r="24" fill="#c99a4e" opacity="0.3"/>
+    <circle cx="643.68" cy="541.68" r="18.72" fill="#e5b76a" opacity="0.35"/>
+    <circle cx="566" cy="620" r="18" fill="#c99a4e" opacity="0.3"/>
+    <circle cx="562.76" cy="616.76" r="14.040000000000001" fill="#e5b76a" opacity="0.35"/>
+    <circle cx="680" cy="380" r="14" fill="#c99a4e" opacity="0.3"/>
+    <circle cx="677.48" cy="377.48" r="10.92" fill="#e5b76a" opacity="0.35"/>
+
+    <!-- Soft terminator edge -->
+    <line x1="512" y1="266" x2="512" y2="738" stroke="#0b1220" stroke-opacity="0.18" stroke-width="4"/>
+
+    <!-- Inner shadow / top light on the tile -->
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#innerLight)"/>
+  </g>
+
+  <!-- Hairline edge so the tile reads on pure-black backgrounds -->
+  <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="3"/>
+</svg>

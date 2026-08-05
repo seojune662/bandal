@@ -169,7 +169,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         ) : searching ? (
           searchResults.length === 0 ? (
             <div className="rail-zero-result">
-              <p>검색 결과가 없습니다</p>
+              <p>일치하는 자료가 없어요</p>
               <button type="button" onClick={() => setQuery('')}>
                 전체 자료 보기
               </button>
@@ -180,8 +180,10 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         ) : tree.length === 0 ? (
           <div className="empty-state empty-state--materials">
             <Icon name="folder" className="empty-state__folder" />
-            <p className="empty-state__text">자료를 끌어다 놓으세요</p>
-            <p className="empty-state__hint">PDF, 노트, 이미지를 한곳에서 찾을 수 있어요.</p>
+            <p className="empty-state__text">아직 자료가 없어요</p>
+            <p className="empty-state__hint">
+              Finder에서 파일을 끌어다 놓으면 PDF, 노트, 이미지가 한곳에 정리돼요.
+            </p>
           </div>
         ) : (
           <MaterialTree

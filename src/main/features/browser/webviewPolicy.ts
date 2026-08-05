@@ -65,6 +65,28 @@ export function popupForwardUrl(url: string): string | null {
 }
 
 /**
+ * [M6-A] Workspace shortcuts that must keep working while a guest page has
+ * keyboard focus. Only ⌘T (new tab) and ⌘W (close tab) pass through — every
+ * other app shortcut is intentionally dead inside a guest (the page owns its
+ * own keymap). Matches a bare meta/ctrl chord: alt or shift disqualifies.
+ */
+export function passthroughShortcut(input: {
+  type: string
+  key: string
+  meta: boolean
+  control: boolean
+  alt: boolean
+  shift: boolean
+}): 'new-tab' | 'close-tab' | null {
+  if (input.type !== 'keyDown') return null
+  if (!(input.meta || input.control) || input.alt || input.shift) return null
+  const key = input.key.toLowerCase()
+  if (key === 't') return 'new-tab'
+  if (key === 'w') return 'close-tab'
+  return null
+}
+
+/**
  * Force the hardened guest webPreferences in-place. Mutation is deliberate:
  * Electron's `will-attach-webview` contract only honors changes made to the
  * `webPreferences` object it hands us.

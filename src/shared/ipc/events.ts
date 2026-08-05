@@ -33,11 +33,21 @@ export interface SettingsChanged {
   settings: Settings
 }
 
+/**
+ * [M6-A] A browser guest swallowed a workspace shortcut (⌘T / ⌘W). Main
+ * intercepts it via `before-input-event` and forwards it here so the
+ * shortcuts hook can run the same action as a host-window keydown.
+ */
+export interface ShortcutPassthrough {
+  action: 'new-tab' | 'close-tab'
+}
+
 export interface PushEvents {
   'chat:event-batch': ChatEventBatch
   'materials:changed': MaterialsChanged
   'browser:open-url': BrowserOpenUrl
   'settings:changed': SettingsChanged
+  'shortcut:passthrough': ShortcutPassthrough
 }
 
 export type PushChannel = keyof PushEvents
