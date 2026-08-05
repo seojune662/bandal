@@ -10,6 +10,7 @@ import type { Course } from '../../../../shared/types/course'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
 import { invoke } from '../../lib/ipc'
+import { useGroupsStore } from '../../stores/groupsStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useNewTabMenu } from './newTabMenuController'
@@ -49,6 +50,9 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
   const close = useNewTabMenu((state) => state.close)
   const openTab = useWorkspaceStore((state) => state.openTab)
   const tree = useMaterialsStore((state) => state.tree)
+  // [P2-D] Empty array when signed out or unconfigured, so the group entries
+  // simply do not exist rather than appearing disabled.
+  const groups = useGroupsStore((state) => state.groups)
   const [query, setQuery] = useState('')
   const [highlighted, setHighlighted] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -146,6 +150,23 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         }
       })
     }
+    // [P2-D] Groups linked to this course. Only groups the user is already in
+    // appear here; discovery (만들기 / 코드로 참여) lives in the 함께하기 rail,
+    // and the list is empty — so this whole block is absent — when signed out
+    // or in an unconfigured build.
+    for (const group of groups.filter(
+      (entry) => entry.courseId === course.id && matches(entry.name)
+    )) {
+      result.push({
+        id: `group-chat:${group.id}`,
+        label: group.name,
+        hint: '그룹 채팅',
+        icon: <TabKindIcon kind="group-chat" />,
+        run: () => {
+          openTab(descriptorFor('group-chat', { groupId: group.id }))
+        }
+      })
+    }
 
     const pdfs: MaterialNode[] = []
     collectPdfs(tree, pdfs)
@@ -163,7 +184,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
       })
     }
     return result
-  }, [query, tree, course.id, course.name, openTab])
+  }, [query, tree, groups, course.id, course.name, openTab])
 
   const clampedHighlight = Math.min(highlighted, Math.max(items.length - 1, 0))
 

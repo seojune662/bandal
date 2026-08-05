@@ -500,6 +500,43 @@
   border-color: var(--accent);
 }
 
+/* [P2-D] Toast with an action slot (§5.1 그룹 만들기 되돌리기). A plain toast
+ * is itself a button; once it carries an action it becomes a row of them, so
+ * the layout — not just the styling — has to change. */
+div.toast {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.toast__message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toast__action {
+  flex: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+.toast__action:hover,
+.toast__action:focus-visible {
+  text-decoration: underline;
+}
+
+.toast__dismiss {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+}
+
 /* Finder drag & drop target highlight. */
 
 .app-rail--right[data-drop-active],

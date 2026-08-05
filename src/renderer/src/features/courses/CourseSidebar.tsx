@@ -5,6 +5,7 @@ import { showToast } from '../../app/toast'
 import { openSettingsWindow } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
+import { TogetherSection } from '../group/TogetherSection'
 import { CourseLinks } from '../university/CourseLinks'
 import { UniversityShortcuts } from '../university/UniversityShortcuts'
 import { TabKindIcon } from '../workspace/workspaceIcons'
@@ -288,6 +289,10 @@ export function CourseSidebar(): JSX.Element {
           </ul>
         )}
       </div>
+
+      {/* [P2-D] 함께하기 sits below 과목 and renders NOTHING when the build has
+          no Supabase keys (auth phase 'unconfigured') — absent, not disabled. */}
+      <TogetherSection />
 
       <footer className="rail-footer">
         <nav className="rail-nav" aria-label="앱 메뉴">

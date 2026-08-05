@@ -5,6 +5,9 @@
 
 import type { AgentEvent } from '../types/agent-events'
 import type { Settings } from '../types/settings'
+import type { AuthState } from '../types/auth'
+import type { GroupsInvalidationReason } from '../types/group'
+import type { GroupEvent } from '../types/group-events'
 
 /** Ordered batch of streaming agent events for a course chat. */
 export interface ChatEventBatch {
@@ -42,12 +45,39 @@ export interface ShortcutPassthrough {
   action: 'new-tab' | 'close-tab'
 }
 
+/**
+ * [P2-C / C8] Ordered batch of group-chat events for ONE group.
+ *
+ * Structurally identical to ChatEventBatch on purpose: the renderer reuses
+ * the same seq-gap → rehydrate strategy (§4.3).
+ */
+export interface GroupEventBatch {
+  groupId: string
+  /** Monotonic per-group sequence number for ordering / gap detection. */
+  seq: number
+  events: GroupEvent[]
+}
+
+/**
+ * [P2-C] Something changed that invalidates a cached list in the renderer
+ * (membership, pending invites, unread badges, profiles). Carries no payload
+ * by design — the renderer refetches the affected slice, which keeps the
+ * local cache the single projection of truth.
+ */
+export interface GroupsInvalidated {
+  reason: GroupsInvalidationReason
+}
+
 export interface PushEvents {
   'chat:event-batch': ChatEventBatch
   'materials:changed': MaterialsChanged
   'browser:open-url': BrowserOpenUrl
   'settings:changed': SettingsChanged
   'shortcut:passthrough': ShortcutPassthrough
+  // -- groups (P2-C) --------------------------------------------------------
+  'auth:changed': AuthState
+  'group:event-batch': GroupEventBatch
+  'groups:invalidated': GroupsInvalidated
 }
 
 export type PushChannel = keyof PushEvents

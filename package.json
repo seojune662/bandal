@@ -27,6 +27,7 @@
     "@milkdown/prose": "^7.15.0",
     "@milkdown/react": "^7.15.0",
     "@milkdown/transformer": "^7.15.0",
+    "@supabase/supabase-js": "^2.112.1",
     "better-sqlite3": "^11.10.0",
     "chokidar": "^4.0.3",
     "dockview": "^4.4.0",

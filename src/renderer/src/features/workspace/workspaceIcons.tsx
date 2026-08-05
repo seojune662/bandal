@@ -1,14 +1,14 @@
 /**
  * Tab-kind icons. `pdf`/`note` reuse the shared app icon set; the kinds the
- * shell does not know about yet (browser/chat/board) are drawn here so the
- * workspace stays self-contained.
+ * shell does not know about yet (browser/chat/board/group-chat) are drawn here
+ * so the workspace stays self-contained.
  */
 
 import type { SVGProps } from 'react'
 import type { TabKind } from '../../../../shared/tabs'
 import { Icon } from '../../app/icons'
 
-type LocalKind = 'browser' | 'chat' | 'board'
+type LocalKind = 'browser' | 'chat' | 'board' | 'group-chat'
 
 const localPaths: Record<LocalKind, JSX.Element> = {
   browser: (
@@ -27,6 +27,15 @@ const localPaths: Record<LocalKind, JSX.Element> = {
     <>
       <rect x="3.5" y="4" width="17" height="16" rx="2" />
       <path d="M9.2 4v16M14.8 4v16M5.8 7.5h1M11.5 7.5h1M17.2 7.5h1" />
+    </>
+  ),
+  // [P2] Two overlapping bubbles — deliberately distinct from `chat` (one
+  // bubble), because the AI tutor tab and a group tab can be open side by side
+  // and the tab strip is the only thing telling them apart.
+  'group-chat': (
+    <>
+      <path d="M3.5 5.5h12v8H8l-4.5 3.5V13.5z" />
+      <path d="M8 17h8l4.5 3.5V17h0V9h-4.5" />
     </>
   )
 }
@@ -69,6 +78,7 @@ export function TabKindIcon({ kind, ...props }: TabKindIconProps): JSX.Element {
     case 'browser':
     case 'chat':
     case 'board':
+    case 'group-chat':
       return <LocalIcon kind={kind} {...props} />
   }
 }

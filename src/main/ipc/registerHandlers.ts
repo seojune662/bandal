@@ -34,6 +34,7 @@ import {
   createSessionManager,
   killAllClaudeProcessesSync
 } from '../features/agent'
+import { createGroupRuntime } from '../features/group'
 
 /**
  * Contract-typed wrapper around ipcMain.handle. Logs failures with channel
@@ -243,4 +244,131 @@ export function registerHandlers(): void {
   // -- layout ---------------------------------------------------------------
   handle('layout:get', (req) => layoutRepo.get(req.courseId))
   handle('layout:save', (req) => layoutRepo.save(req.courseId, req.layout))
+
+  // -- groups (P2-C) --------------------------------------------------------
+  // Everything above this line is Phase 1 and is UNCHANGED by Phase 2 — that
+  // is a hard rule, not a convention (docs/phase2-community.md §1.4-1).
+  //
+  // `groupRuntime` is a factory, not an instance: the Supabase client, the
+  // encrypted session file and the realtime channels are built on the first
+  // invoke below and never on the boot path. An app that is logged out,
+  // offline or built without keys behaves exactly as it did in Phase 1.
+  const groupRuntime = createGroupRuntime({
+    db,
+    broadcastAuth: (state) => broadcast('auth:changed', state),
+    broadcastBatch: (batch) => broadcast('group:event-batch', batch),
+    broadcastInvalidated: (reason) => broadcast('groups:invalidated', { reason })
+  })
+  const groups = (): ReturnType<typeof groupRuntime.service> =>
+    groupRuntime.service()
+
+  app.on('before-quit', () => {
+    groupRuntime.dispose()
+  })
+  app.on('browser-window-blur', () => {
+    if (groupRuntime.isStarted()) groups().setWindowFocused(false)
+  })
+  app.on('browser-window-focus', () => {
+    if (groupRuntime.isStarted()) groups().setWindowFocused(true)
+  })
+
+  // auth
+  handle('auth:getState', () => groups().getAuthState())
+  handle('auth:signIn', (req) => groups().signIn(req.provider))
+  handle('auth:signOut', async () => {
+    await groups().signOut()
+    return OK
+  })
+  handle('auth:setNickname', (req) => groups().setNickname(req.nickname))
+  handle('auth:setAvatar', (req) => {
+    const patch: { color?: string; emoji?: string } = {}
+    if (req.color !== undefined) patch.color = req.color
+    if (req.emoji !== undefined) patch.emoji = req.emoji
+    return groups().setAvatar(patch)
+  })
+
+  // groups
+  handle('groups:list', () => groups().listGroups())
+  handle('groups:create', (req) => {
+    const input: { name: string; color: string; courseId?: string } = {
+      name: req.name,
+      color: req.color
+    }
+    if (req.courseId !== undefined) input.courseId = req.courseId
+    return groups().createGroup(input)
+  })
+  // ⚠ join returns `{ ok: false }` for rejections instead of throwing — the
+  // rate-limit rows have to COMMIT, and a raise would roll them back
+  // (supabase/README.md §8-②).
+  handle('groups:joinWithCode', (req) => groups().joinWithCode(req.code))
+  handle('groups:currentCode', (req) => groups().currentCode(req.groupId))
+  handle('groups:regenerateCode', (req) =>
+    groups().regenerateCode(req.groupId, req.maxUses ?? 0)
+  )
+  handle('groups:linkCourse', (req) =>
+    groups().linkCourse(req.groupId, req.courseId)
+  )
+  handle('groups:leave', async (req) => {
+    await groups().leaveGroup(req.groupId)
+    return OK
+  })
+  handle('groups:members', (req) => groups().members(req.groupId))
+  handle('groups:kick', async (req) => {
+    await groups().kick(req.groupId, req.userId)
+    return OK
+  })
+
+  // invites / friends
+  handle('groups:inviteByNickname', (req) =>
+    groups().inviteByNickname(req.groupId, req.nickname)
+  )
+  handle('groups:findProfile', (req) => groups().findProfile(req.nickname))
+  handle('invites:listPending', () => groups().listPendingInvites())
+  handle('invites:respond', async (req) => ({
+    status: await groups().respondInvite(req.inviteId, req.accept)
+  }))
+  handle('friends:list', () => groups().listFriends())
+  handle('friends:request', (req) => groups().requestFriend(req.nickname))
+  handle('friends:respond', async (req) => ({
+    status: await groups().respondFriend(req.requesterId, req.accept)
+  }))
+
+  // group chat
+  handle('groupChat:open', (req) => groups().openChat(req.groupId))
+  handle('groupChat:send', (req) =>
+    groups().send(req.groupId, req.body, req.replyTo)
+  )
+  handle('groupChat:loadOlder', (req) =>
+    groups().loadOlder(req.groupId, req.beforeSeq, req.limit)
+  )
+  handle('groupChat:markRead', async (req) => {
+    await groups().markRead(req.groupId, req.seq)
+    return OK
+  })
+  handle('groupChat:retry', (req) => {
+    groups().retry(req.localId)
+    return OK
+  })
+  handle('groupChat:deleteMessage', async (req) => {
+    await groups().deleteMessage(req.messageId)
+    return OK
+  })
+  handle('groupChat:close', (req) => {
+    groups().closeChat(req.groupId)
+    return OK
+  })
+
+  // safety
+  handle('safety:block', async (req) => {
+    await groups().block(req.userId, req.blocked)
+    return OK
+  })
+  handle('safety:report', async (req) => {
+    await groups().report({
+      targetType: req.targetType,
+      targetId: req.targetId,
+      reason: req.reason
+    })
+    return OK
+  })
 }

@@ -24,7 +24,8 @@ describe('migrations', () => {
       { version: 1, name: 'initial-schema' },
       { version: 2, name: 'agent-session-resume-record' },
       { version: 3, name: 'course-folder-source' },
-      { version: 4, name: 'course-links' }
+      { version: 4, name: 'course-links' },
+      { version: 5, name: 'phase2-group-links-and-cache' }
     ])
   })
 
@@ -106,6 +107,6 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(4)
+    expect(count.n).toBe(5)
   })
 })

@@ -33,7 +33,11 @@ const PUSH_CHANNELS: readonly PushChannel[] = [
   'materials:changed',
   'browser:open-url',
   'settings:changed',
-  'shortcut:passthrough'
+  'shortcut:passthrough',
+  // -- groups (P2-C) --------------------------------------------------------
+  'auth:changed',
+  'group:event-batch',
+  'groups:invalidated'
 ]
 
 const bridge: BandalBridge = {

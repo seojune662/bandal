@@ -18,7 +18,8 @@ export const TAB_KINDS: readonly TabKind[] = [
   'note',
   'browser',
   'chat',
-  'board'
+  'board',
+  'group-chat'
 ]
 
 export function isTabKind(value: unknown): value is TabKind {
@@ -55,6 +56,8 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
       return isNonEmptyString(payload['courseId'])
     case 'board':
       return true
+    case 'group-chat':
+      return isNonEmptyString(payload['groupId'])
   }
 }
 
@@ -65,6 +68,7 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
  *  - chat: singleton per course
  *  - board: global singleton
  *  - browser: keyed by its stable tabId (every new browser tab is unique)
+ *  - group-chat: singleton per remote group (falls out of the id shape)
  */
 export function tabPanelId(descriptor: TabDescriptor): string {
   switch (descriptor.kind) {
@@ -77,6 +81,8 @@ export function tabPanelId(descriptor: TabDescriptor): string {
       return `chat:${descriptor.payload.courseId}`
     case 'board':
       return 'board'
+    case 'group-chat':
+      return `group-chat:${descriptor.payload.groupId}`
   }
 }
 
@@ -105,6 +111,10 @@ export function tabTitle(descriptor: TabDescriptor): string {
       return 'AI 튜터'
     case 'board':
       return '학업 보드'
+    case 'group-chat':
+      // Pure by contract, so the group's cached name is NOT read here.
+      // GroupChatTab renames the panel once the local cache resolves.
+      return '그룹 채팅'
   }
 }
 
@@ -120,6 +130,8 @@ export function tabPayloadSummary(descriptor: TabDescriptor): string {
       return `과목 ${descriptor.payload.courseId}`
     case 'board':
       return '모든 과목의 할 일'
+    case 'group-chat':
+      return `그룹 ${descriptor.payload.groupId}`
   }
 }
 

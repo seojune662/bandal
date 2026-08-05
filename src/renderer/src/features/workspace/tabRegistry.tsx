@@ -24,6 +24,7 @@ import NoteTab from '../notes/NoteTab'
 import BoardPanel from '../board/BoardPanel'
 import ChatTab from '../chat/ChatTab'
 import PdfTab from '../pdf/PdfTab'
+import GroupChatTab from '../group/GroupChatTab'
 
 export interface TabRegistryEntry {
   component: FunctionComponent<IDockviewPanelProps>
@@ -61,6 +62,14 @@ export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
     icon: null,
     defaultTitle: tabTitle,
     singleton: 'global'
+  },
+  // [P2-D] Singleton per REMOTE group — `tabPanelId` already returns
+  // `group-chat:${groupId}`, so dedupe falls out of the id and needs no
+  // entry in the `singleton` field (which only knows about courses).
+  'group-chat': {
+    component: GroupChatTab,
+    icon: null,
+    defaultTitle: tabTitle
   }
 }
 

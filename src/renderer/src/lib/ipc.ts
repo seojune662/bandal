@@ -9,18 +9,47 @@ import type { PushChannel, PushPayload } from '../../../shared/ipc/events'
 
 export type Unsubscribe = () => void
 
+/**
+ * [P2-D] The seam a fake transport plugs into.
+ *
+ * P2-D is built against a scripted mock so the group UI is fully exercisable
+ * without a Supabase session or a signed-in account. Injecting at THIS level
+ * — rather than mocking each hook — means the components, the reducer and the
+ * seq/batch plumbing under test are byte-for-byte the ones that ship
+ * (docs/phase2-community.md §7 P2-D).
+ */
+export interface IpcAdapter {
+  invoke<K extends IpcChannel>(
+    channel: K,
+    req: IpcRequest<K>
+  ): Promise<IpcResponse<K>>
+  on<K extends PushChannel>(
+    channel: K,
+    cb: (payload: PushPayload<K>) => void
+  ): Unsubscribe
+}
+
+let adapter: IpcAdapter | null = null
+
+/** Installs (or with `null`, removes) a transport override. Dev/test only. */
+export function setIpcAdapter(next: IpcAdapter | null): void {
+  adapter = next
+}
+
 export function invoke<K extends IpcChannel>(
   channel: K,
   req: IpcRequest<K>
 ): Promise<IpcResponse<K>> {
-  return window.bandal.invoke(channel, req)
+  return adapter === null
+    ? window.bandal.invoke(channel, req)
+    : adapter.invoke(channel, req)
 }
 
 export function onPush<K extends PushChannel>(
   channel: K,
   cb: (payload: PushPayload<K>) => void
 ): Unsubscribe {
-  return window.bandal.on(channel, cb)
+  return adapter === null ? window.bandal.on(channel, cb) : adapter.on(channel, cb)
 }
 
 /**

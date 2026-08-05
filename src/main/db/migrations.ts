@@ -83,6 +83,90 @@ export const migrations: Migration[] = [
            ON course_links (course_id, sort_order);`
       )
     }
+  },
+  {
+    // [P2-C] Phase-2 group binding + render cache
+    // (docs/phase2-community.md §3.1–3.2).
+    //
+    // The truth model INVERTS here. For Phase 1 (courses/materials/notes/…)
+    // SQLite *is* the truth. For Phase 2 the remote Postgres is the truth and
+    // these tables are a render cache plus an outbox — the same relationship
+    // `materials_index` has with the disk.
+    //
+    // `courses` itself is untouched: the binding lives in a mapping table, so
+    // the Phase-1 offline guarantee holds STRUCTURALLY rather than by
+    // argument, 1:N (전체방 + 우리조) is expressible, and rolling the whole
+    // feature back is one DROP TABLE.
+    version: 5,
+    name: 'phase2-group-links-and-cache',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS course_group_links (
+           id                 TEXT PRIMARY KEY,
+           course_id          TEXT REFERENCES courses(id),
+           remote_group_id    TEXT NOT NULL UNIQUE,
+           name_cache         TEXT NOT NULL,
+           color_cache        TEXT NOT NULL,
+           member_count_cache INTEGER NOT NULL DEFAULT 0,
+           unread_cache       INTEGER NOT NULL DEFAULT 0,
+           last_msg_at_cache  TEXT,
+           joined_at          TEXT NOT NULL,
+           created_at         TEXT NOT NULL,
+           updated_at         TEXT NOT NULL,
+           deleted_at         TEXT
+         );
+         CREATE INDEX IF NOT EXISTS idx_course_group_links_course
+           ON course_group_links (course_id) WHERE deleted_at IS NULL;
+
+         CREATE TABLE IF NOT EXISTS group_messages_cache (
+           id           TEXT PRIMARY KEY,
+           group_id     TEXT NOT NULL,
+           seq          INTEGER NOT NULL,
+           author_id    TEXT NOT NULL,
+           kind         TEXT NOT NULL,
+           body         TEXT NOT NULL,
+           reply_to     TEXT,
+           author_json  TEXT NOT NULL DEFAULT '{}',
+           created_at   TEXT NOT NULL,
+           edited_at    TEXT,
+           deleted_at   TEXT,
+           UNIQUE (group_id, seq)
+         );
+         CREATE INDEX IF NOT EXISTS idx_gmc_group_seq
+           ON group_messages_cache (group_id, seq DESC);
+
+         CREATE TABLE IF NOT EXISTS group_outbox (
+           id         TEXT PRIMARY KEY,
+           group_id   TEXT NOT NULL,
+           body       TEXT NOT NULL,
+           reply_to   TEXT,
+           state      TEXT NOT NULL DEFAULT 'pending',
+           attempts   INTEGER NOT NULL DEFAULT 0,
+           last_error TEXT,
+           next_try_at TEXT,
+           created_at TEXT NOT NULL,
+           updated_at TEXT NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_group_outbox_state
+           ON group_outbox (state, created_at);
+
+         CREATE TABLE IF NOT EXISTS group_profiles_cache (
+           user_id      TEXT PRIMARY KEY,
+           nickname     TEXT NOT NULL,
+           avatar_color TEXT NOT NULL,
+           avatar_emoji TEXT NOT NULL,
+           fetched_at   TEXT NOT NULL
+         );
+
+         CREATE TABLE IF NOT EXISTS group_members_cache (
+           group_id  TEXT NOT NULL,
+           user_id   TEXT NOT NULL,
+           role      TEXT NOT NULL,
+           joined_at TEXT NOT NULL,
+           PRIMARY KEY (group_id, user_id)
+         );`
+      )
+    }
   }
 ]
 

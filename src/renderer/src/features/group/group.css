@@ -1,0 +1,949 @@
+/* 함께하기 (Phase 2 group chat).
+ *
+ * Semantic tokens only — both themes and 고대비 come for free, and the
+ * contrast audit (scripts/check-contrast.mjs) only ever has to reason about
+ * themes/*.css. Motion stays on transform/opacity; height/width/padding are
+ * never transitioned. */
+
+/* ==========================================================================
+   Left rail — 함께하기 section
+   ========================================================================== */
+
+.rail-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.group-signin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-3);
+  margin: 0 var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.group-signin__text {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 var(--space-2);
+  list-style: none;
+}
+
+.group-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  width: 100%;
+  padding: var(--space-2) var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.group-row:hover,
+.group-row:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+}
+
+.group-row__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Unread badge. Accent (not danger): unread is information, not a problem. */
+.group-row__badge {
+  min-width: 1.25rem;
+  padding: 0 var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--on-accent);
+  text-align: center;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+}
+
+.group-empty-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.group-create {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0 var(--space-3);
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: none;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.group-create:hover:not(:disabled),
+.group-create:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.group-create:disabled {
+  opacity: 0.5;
+}
+
+.group-invites {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  list-style: none;
+}
+
+.group-invites__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--accent-muted);
+  border-radius: var(--radius-sm);
+}
+
+.group-invites__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.group-invites__actions button {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+/* ==========================================================================
+   Avatar
+   ========================================================================== */
+
+.group-avatar {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.875rem;
+  line-height: 1;
+  background: var(--bg-raised);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px currentcolor;
+}
+
+.group-avatar[data-size='sm'] {
+  width: 1.375rem;
+  height: 1.375rem;
+  font-size: 0.6875rem;
+}
+
+.group-avatar[data-course-color='gold'] {
+  color: var(--course-gold);
+}
+
+.group-avatar[data-course-color='green'] {
+  color: var(--course-green);
+}
+
+.group-avatar[data-course-color='blue'] {
+  color: var(--course-blue);
+}
+
+.group-avatar[data-course-color='pink'] {
+  color: var(--course-pink);
+}
+
+.group-avatar[data-course-color='violet'] {
+  color: var(--course-violet);
+}
+
+.group-avatar[data-course-color='orange'] {
+  color: var(--course-orange);
+}
+
+/* Presence ring. Doubled shadow so it reads on every surface. */
+.group-avatar[data-online] {
+  box-shadow:
+    inset 0 0 0 1.5px currentcolor,
+    0 0 0 2px var(--bg-app),
+    0 0 0 3.5px var(--accent);
+}
+
+/* ==========================================================================
+   Tab shell
+   ========================================================================== */
+
+.group-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-app);
+}
+
+.group-loading {
+  display: grid;
+  flex: 1;
+  place-items: center;
+}
+
+.group-loading__moon {
+  width: var(--empty-mark-size);
+  height: var(--empty-mark-size);
+  background: linear-gradient(105deg, var(--accent) 50%, var(--accent-muted) 50%);
+  border-radius: 50%;
+  animation: group-breathe 1.6s var(--ease-out) infinite alternate;
+}
+
+@keyframes group-breathe {
+  from {
+    opacity: 0.35;
+    transform: scale(0.92);
+  }
+
+  to {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group-loading__moon {
+    animation: none;
+  }
+}
+
+.group-head {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.group-head__title {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  min-width: 0;
+}
+
+.group-head__title h2 {
+  overflow: hidden;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-head__presence {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.group-head__action {
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+  align-items: center;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.group-head__action:hover,
+.group-head__action:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* -- banners --------------------------------------------------------------- */
+
+.group-banner {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.group-banner__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--text-muted);
+  border-radius: 50%;
+}
+
+/* Degraded/offline is accent-muted, never danger: the app still works, it is
+ * just slower. Reserving red for actionable problems keeps red meaningful. */
+.group-banner[data-tone='warn'] .group-banner__dot {
+  background: var(--accent);
+}
+
+.group-linkbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--accent-muted);
+}
+
+.group-linkbar select {
+  height: var(--control-height);
+  padding: 0 var(--space-2);
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.group-linkbar button {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  text-decoration: underline;
+}
+
+/* -- body layout ----------------------------------------------------------- */
+
+.group-body {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) 12.5rem;
+  min-height: 0;
+}
+
+@media (width <= 60rem) {
+  .group-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .group-members {
+    display: none;
+  }
+}
+
+.group-scroll {
+  min-height: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.group-scroll__more {
+  padding-bottom: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ==========================================================================
+   Messages
+   ========================================================================== */
+
+.group-msg-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.group-msg {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: start;
+}
+
+/* Grouped burst: the avatar column stays reserved so text never re-indents. */
+.group-msg[data-continuation] {
+  margin-top: calc(var(--space-2) * -1);
+}
+
+.group-msg[data-continuation] .group-msg__body {
+  grid-column: 2;
+}
+
+.group-msg__body {
+  min-width: 0;
+}
+
+.group-msg__meta {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  margin-bottom: var(--space-1);
+}
+
+.group-msg__author {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.group-msg__meta time {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.group-msg__text {
+  font-size: var(--text-base);
+  line-height: 1.55;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.group-msg__text--deleted {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.group-msg__edited {
+  margin-left: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.group-msg--system {
+  display: block;
+  padding: var(--space-1) 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.group-msg--blocked {
+  display: block;
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+}
+
+.group-msg__actions {
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.group-msg:hover .group-msg__actions,
+.group-msg:focus-within .group-msg__actions {
+  opacity: 1;
+}
+
+.group-msg__action {
+  display: grid;
+  place-items: center;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+.group-msg__action:hover,
+.group-msg__action:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+}
+
+/* -- optimistic bubbles ---------------------------------------------------- */
+
+.group-msg--pending {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: end;
+}
+
+.group-msg--pending .group-msg__text {
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+}
+
+.group-msg--pending[data-failed] .group-msg__text {
+  border-color: var(--danger);
+}
+
+.group-msg__sending {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: right;
+}
+
+/* Failure is the one place danger is right: the user must act to recover. */
+.group-msg__failure {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--danger);
+}
+
+.group-msg__retry {
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  text-decoration: underline;
+}
+
+/* ==========================================================================
+   Composer
+   ========================================================================== */
+
+.group-composer {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.group-composer__input {
+  flex: 1;
+  max-height: 10rem;
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  resize: none;
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.group-composer__input:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-muted);
+}
+
+.group-composer__send {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--button-height);
+  height: var(--button-height);
+  color: var(--on-accent);
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--radius-md);
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.group-composer__send:disabled {
+  color: var(--text-muted);
+  background: var(--bg-raised);
+}
+
+.group-composer__send:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+/* ==========================================================================
+   Member rail
+   ========================================================================== */
+
+.group-members {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-3);
+  overflow-y: auto;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.group-members__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.group-members__head h3 {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-wide);
+}
+
+.group-members__count {
+  color: var(--text-secondary);
+}
+
+.group-members__invite {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  background: none;
+  border: 0;
+}
+
+.group-members__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  list-style: none;
+}
+
+.group-members__row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.group-members__row:hover {
+  background: var(--bg-raised);
+}
+
+.group-members__name {
+  flex: 1;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-members__role {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.group-members__actions {
+  display: flex;
+  gap: var(--space-1);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.group-members__row:hover .group-members__actions,
+.group-members__row:focus-within .group-members__actions {
+  opacity: 1;
+}
+
+.group-members__actions button {
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+}
+
+.group-members__actions button:hover,
+.group-members__actions button:focus-visible {
+  color: var(--danger);
+}
+
+/* ==========================================================================
+   Empty states
+   ========================================================================== */
+
+.group-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-6);
+  text-align: center;
+}
+
+.group-empty__moon {
+  width: var(--empty-mark-size);
+  height: var(--empty-mark-size);
+  background: linear-gradient(105deg, var(--accent) 50%, var(--accent-muted) 50%);
+  border-radius: 50%;
+  opacity: 0.7;
+}
+
+.group-empty__title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.group-empty__desc {
+  max-width: 22rem;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* ==========================================================================
+   Join-code overlay (6 boxes)
+   ========================================================================== */
+
+.group-join-backdrop,
+.group-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: start center;
+  padding-top: 12vh;
+  background: var(--backdrop);
+  animation: group-fade var(--dur-fast) var(--ease-out);
+}
+
+@keyframes group-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.group-join {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: center;
+  width: min(24rem, calc(100vw - var(--space-6)));
+  padding: var(--space-6);
+  text-align: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.group-join__close {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+}
+
+.group-join__title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.group-join__desc {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.group-join__field {
+  position: relative;
+  margin: var(--space-3) 0 var(--space-1);
+}
+
+.group-join__boxes {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.group-join__box {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 3rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  color: var(--text-primary);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.group-join__box[data-filled] {
+  border-color: var(--border-strong);
+}
+
+.group-join__box[data-active] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-muted);
+}
+
+/* One real input over the boxes: IME, paste, selection and screen readers all
+ * keep working. Opacity 0 rather than display:none so it stays focusable and
+ * clicking the boxes focuses it; it is bounded by .group-join__field so it
+ * never covers the close button. */
+.group-join__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  font-size: var(--text-xl);
+  color: transparent;
+  cursor: default;
+  background: transparent;
+  border: 0;
+  caret-color: transparent;
+  opacity: 0;
+}
+
+.group-join__input:focus-visible {
+  outline: none;
+}
+
+.group-join__status {
+  min-height: 1.25rem;
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+
+/* ==========================================================================
+   Invite palette
+   ========================================================================== */
+
+.group-palette {
+  display: flex;
+  flex-direction: column;
+  width: min(28rem, calc(100vw - var(--space-6)));
+  overflow: hidden;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.group-palette__search {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.group-palette__search input {
+  flex: 1;
+  font: inherit;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  background: none;
+  border: 0;
+  outline: none;
+}
+
+.group-palette__list {
+  max-height: 18rem;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.group-palette__section {
+  padding: var(--space-2) var(--space-4) var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-wide);
+}
+
+.group-palette__row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  width: 100%;
+  padding: var(--space-2) var(--space-4);
+  text-align: left;
+  background: none;
+  border: 0;
+}
+
+.group-palette__row:hover,
+.group-palette__row:focus-visible {
+  background: var(--bg-raised);
+}
+
+.group-palette__name {
+  flex: 1;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.group-palette__hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.group-palette__empty,
+.group-palette__error {
+  padding: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.group-palette__error {
+  color: var(--danger);
+}

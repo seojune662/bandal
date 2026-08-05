@@ -42,6 +42,26 @@ describe('tabPanelId', () => {
     const b = descriptorFor('browser', { tabId: 't2', initialUrl: 'https://a.com' })
     expect(tabPanelId(a)).not.toBe(tabPanelId(b))
   })
+
+  test('[P2] group-chat is a singleton per REMOTE group id', () => {
+    // The id shape alone gives per-group dedupe — no `singleton` entry needed,
+    // which is fortunate since that field only understands courses.
+    expect(tabPanelId(descriptorFor('group-chat', { groupId: 'g1' }))).toBe(
+      'group-chat:g1'
+    )
+    expect(
+      tabPanelId(descriptorFor('group-chat', { groupId: 'g1' }))
+    ).toBe(tabPanelId(descriptorFor('group-chat', { groupId: 'g1' })))
+    expect(
+      tabPanelId(descriptorFor('group-chat', { groupId: 'g1' }))
+    ).not.toBe(tabPanelId(descriptorFor('group-chat', { groupId: 'g2' })))
+  })
+
+  test('[P2] a group id never collides with a course-scoped chat id', () => {
+    expect(tabPanelId(descriptorFor('group-chat', { groupId: 'c1' }))).not.toBe(
+      tabPanelId(descriptorFor('chat', { courseId: 'c1' }))
+    )
+  })
 })
 
 describe('isTabDescriptor', () => {
@@ -57,6 +77,9 @@ describe('isTabDescriptor', () => {
     ).toBe(true)
     expect(isTabDescriptor(descriptorFor('chat', { courseId: 'c' }))).toBe(true)
     expect(isTabDescriptor(descriptorFor('board', {}))).toBe(true)
+    expect(
+      isTabDescriptor(descriptorFor('group-chat', { groupId: 'g1' }))
+    ).toBe(true)
   })
 
   test('rejects unknown kinds and malformed payloads', () => {
@@ -66,6 +89,18 @@ describe('isTabDescriptor', () => {
     expect(isTabDescriptor({ kind: 'chat', payload: { courseId: '' } })).toBe(false)
     expect(isTabDescriptor(null)).toBe(false)
     expect(isTabDescriptor('pdf')).toBe(false)
+  })
+
+  test('[P2] rejects a group-chat tab with no groupId', () => {
+    // A persisted layout is untrusted input; a malformed group tab must be
+    // dropped on hydration rather than mounting a panel with no group.
+    expect(isTabDescriptor({ kind: 'group-chat', payload: {} })).toBe(false)
+    expect(
+      isTabDescriptor({ kind: 'group-chat', payload: { groupId: '' } })
+    ).toBe(false)
+    expect(
+      isTabDescriptor({ kind: 'group-chat', payload: { courseId: 'c1' } })
+    ).toBe(false)
   })
 })
 
@@ -84,6 +119,14 @@ describe('tabTitle', () => {
       tabTitle(descriptorFor('browser', { tabId: 't', initialUrl: 'not a url' }))
     ).toBe('브라우저')
     expect(tabTitle(descriptorFor('board', {}))).toBe('학업 보드')
+  })
+
+  test('[P2] group-chat falls back to a generic title', () => {
+    // This module is pure, so it cannot read the group name out of the local
+    // cache; GroupChatTab renames the panel once `groupChat:open` resolves.
+    expect(tabTitle(descriptorFor('group-chat', { groupId: 'g1' }))).toBe(
+      '그룹 채팅'
+    )
   })
 })
 

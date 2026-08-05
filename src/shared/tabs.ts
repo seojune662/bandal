@@ -8,7 +8,13 @@
  * existing kind.
  */
 
-export type TabKind = 'pdf' | 'note' | 'browser' | 'chat' | 'board'
+export type TabKind =
+  | 'pdf'
+  | 'note'
+  | 'browser'
+  | 'chat'
+  | 'board'
+  | 'group-chat'
 
 export interface PdfTabPayload {
   courseId: string
@@ -35,12 +41,23 @@ export interface ChatTabPayload {
 /** The board is a per-window singleton; it carries no payload. */
 export type BoardTabPayload = Record<string, never>
 
+/**
+ * [P2] Remote study-group chat. `groupId` is the REMOTE `study_groups.id`,
+ * never a local courseId — a group can be linked to zero or many courses, and
+ * the remote side knows nothing about your folders (docs/phase2-community
+ * §2.2 / §3.1).
+ */
+export interface GroupChatTabPayload {
+  groupId: string
+}
+
 export interface TabPayloadMap {
   pdf: PdfTabPayload
   note: NoteTabPayload
   browser: BrowserTabPayload
   chat: ChatTabPayload
   board: BoardTabPayload
+  'group-chat': GroupChatTabPayload
 }
 
 /** Discriminated tab descriptor: { kind, payload } pairs, serializable. */
