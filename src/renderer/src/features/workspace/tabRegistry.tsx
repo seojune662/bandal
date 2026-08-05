@@ -18,8 +18,10 @@ import type { IDockviewPanelProps } from 'dockview'
 import type { TabDescriptor, TabKind } from '../../../../shared/tabs'
 import type { IconName } from '../../app/icons'
 import { tabTitle } from './tabIdentity'
-import { BrowserPanel, PlaceholderPanel } from './panels/PlaceholderPanel'
+import { PlaceholderPanel } from './panels/PlaceholderPanel'
+import { BrowserPanel } from '../browser/BrowserPanel'
 import NoteTab from '../notes/NoteTab'
+import BoardPanel from '../board/BoardPanel'
 
 export interface TabRegistryEntry {
   component: FunctionComponent<IDockviewPanelProps>
@@ -42,7 +44,7 @@ export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
     defaultTitle: tabTitle
   },
   browser: {
-    component: BrowserPanel, // M3-F: attach the webview guest to the anchor
+    component: BrowserPanel, // M3-F: real chrome + anchor (guest in BrowserWebviewLayer)
     icon: null,
     defaultTitle: tabTitle
   },
@@ -53,7 +55,7 @@ export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
     singleton: 'course'
   },
   board: {
-    component: PlaceholderPanel, // M5: replace with the board
+    component: BoardPanel,
     icon: null,
     defaultTitle: tabTitle,
     singleton: 'global'

@@ -27,6 +27,7 @@ const PUSH_CHANNELS: readonly PushChannel[] = [
   'chat:event-batch',
   'materials:changed',
   'browser:state',
+  'browser:open-url',
   'settings:changed'
 ]
 

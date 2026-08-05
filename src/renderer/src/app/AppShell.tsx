@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { BrowserWebviewLayer } from '../features/browser/BrowserWebviewLayer'
 import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { MaterialsSidebar } from '../features/materials/MaterialsSidebar'
 import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
@@ -73,6 +74,8 @@ export function AppShell(): JSX.Element {
       </main>
 
       {rightRailOpen && <MaterialsSidebar course={selectedCourse} />}
+
+      <BrowserWebviewLayer />
     </div>
   )
 }

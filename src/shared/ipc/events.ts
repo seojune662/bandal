@@ -30,6 +30,15 @@ export interface BrowserState {
   canGoForward: boolean
 }
 
+/**
+ * [M3-F] A browser guest asked for a new window (window.open / target=_blank).
+ * Main denies the native window and forwards the URL here; the renderer opens
+ * it as a new Bandal browser tab.
+ */
+export interface BrowserOpenUrl {
+  url: string
+}
+
 /** Fired after settings change from any window. */
 export interface SettingsChanged {
   settings: Settings
@@ -39,6 +48,7 @@ export interface PushEvents {
   'chat:event-batch': ChatEventBatch
   'materials:changed': MaterialsChanged
   'browser:state': BrowserState
+  'browser:open-url': BrowserOpenUrl
   'settings:changed': SettingsChanged
 }
 

@@ -1,0 +1,230 @@
+/* [M3-F] Embedded browser: guest layer + panel chrome.
+ * Tokens only — both themes come for free from themes/dark-navy.css and
+ * themes/light.css. z-order context: dockview dnd overlay 20, menus 30,
+ * dialogs 100 → the guest layer sits at 10 (above panel content, below
+ * every app overlay).
+ */
+
+/* -- webview layer (outside the dockview DOM) ------------------------------ */
+
+.browser-webview-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.browser-guest {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  pointer-events: auto;
+  background: var(--bg-app);
+}
+
+/* Drag/menu/overlay active → guests must not eat the pointer stream. */
+.browser-webview-layer[data-passthrough] .browser-guest {
+  pointer-events: none;
+}
+
+.browser-guest webview {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-app);
+}
+
+/* -- panel + chrome -------------------------------------------------------- */
+
+.browser-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  background: var(--bg-app);
+}
+
+.browser-toolbar {
+  position: relative;
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+  align-items: center;
+  height: var(--chrome-height);
+  padding-inline: var(--space-2);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.browser-nav-button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  font-size: var(--icon-size);
+  color: var(--text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.browser-nav-button:hover:enabled {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+}
+
+.browser-nav-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.browser-nav-button:active:enabled {
+  transform: translateY(1px);
+}
+
+.browser-nav-button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* URL bar: quiet pill that sharpens to the accent when focused. */
+
+.browser-urlbar {
+  display: flex;
+  flex: 1;
+  gap: var(--space-2);
+  align-items: center;
+  height: var(--control-height);
+  min-width: 0;
+  margin-inline: var(--space-1);
+  padding-inline: var(--space-3);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.browser-urlbar:hover {
+  border-color: var(--border-strong);
+}
+
+.browser-urlbar:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-muted);
+}
+
+.browser-urlbar__site {
+  display: flex;
+  flex: none;
+  align-items: center;
+  font-size: var(--icon-size-sm);
+  color: var(--text-muted);
+}
+
+.browser-urlbar__favicon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  border-radius: 2px;
+}
+
+.browser-urlbar input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  letter-spacing: 0;
+  background: none;
+  border: none;
+  outline: none;
+}
+
+.browser-urlbar input::placeholder {
+  color: var(--text-muted);
+}
+
+.browser-urlbar input::selection {
+  background: var(--accent-muted);
+}
+
+/* Indeterminate loading bar riding the toolbar's bottom edge. */
+
+.browser-progress {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+.browser-progress[data-active] {
+  opacity: 1;
+}
+
+.browser-progress__bar {
+  width: 40%;
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  transform: translateX(-110%);
+}
+
+.browser-progress[data-active] .browser-progress__bar {
+  animation: browser-progress-slide 1.2s var(--ease-out) infinite;
+}
+
+@keyframes browser-progress-slide {
+  from {
+    transform: translateX(-110%);
+  }
+
+  to {
+    transform: translateX(360%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .browser-progress[data-active] .browser-progress__bar {
+    animation: none;
+    transform: translateX(0);
+  }
+}
+
+/* Anchor: the webview guest is laid exactly over this box. The fallback
+ * shows through before first paint / when the guest is gone. */
+
+.browser-anchor {
+  position: relative;
+  display: grid;
+  flex: 1;
+  place-items: center;
+  min-height: 0;
+}
+
+.browser-anchor__fallback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.browser-anchor__fallback svg {
+  font-size: var(--text-xl);
+  opacity: 0.6;
+}

@@ -1,6 +1,7 @@
 import { BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 import { WINDOW_BACKGROUND } from '../../shared/theme'
+import { hardenWindowWebviews } from '../features/browser'
 import { getSettings } from '../settingsStore'
 
 let mainWindow: BrowserWindow | null = null
@@ -33,9 +34,15 @@ export function createMainWindow(): BrowserWindow {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      // M3-F embedded browser tabs. Guests are locked down fail-closed by
+      // hardenWindowWebviews (partition allowlist, forced sandbox, no preload).
+      webviewTag: true
     }
   })
+
+  // Must be attached before the renderer loads so no webview can slip past.
+  hardenWindowWebviews(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
