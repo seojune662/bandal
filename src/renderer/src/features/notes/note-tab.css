@@ -1,0 +1,392 @@
+.note-tab {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+
+.note-tab--message,
+.note-tab__loading {
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.note-tab__error-detail {
+  max-width: calc(var(--rail-left-width) * 2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  user-select: text;
+}
+
+.note-toolbar {
+  display: flex;
+  flex: 0 0 var(--chrome-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: 0 var(--space-4);
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border-bottom: thin solid var(--border-subtle);
+}
+
+.note-toolbar__path {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-save-status {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.note-save-status__dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  background: var(--text-muted);
+  border-radius: var(--radius-pill);
+}
+
+.note-save-status[data-status='saved'] .note-save-status__dot {
+  background: var(--status-done);
+}
+
+.note-save-status[data-status='saving'] .note-save-status__dot,
+.note-save-status[data-status='dirty'] .note-save-status__dot {
+  background: var(--accent);
+}
+
+.note-save-status[data-status='conflict'] .note-save-status__dot,
+.note-save-status[data-status='error'] .note-save-status__dot {
+  background: var(--danger);
+}
+
+.note-save-status[data-status='saving'] .note-save-status__dot {
+  animation: note-save-pulse calc(var(--dur-base) * 4) var(--ease-out) infinite alternate;
+}
+
+@keyframes note-save-pulse {
+  from {
+    opacity: 0.45;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.note-conflict {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  color: var(--danger);
+  background: var(--danger-muted);
+  border-bottom: thin solid var(--danger);
+}
+
+.note-conflict > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.note-conflict strong {
+  font-size: var(--text-sm);
+}
+
+.note-conflict span {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-conflict__actions {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+}
+
+.note-action {
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border: thin solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.note-action:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.note-action--primary {
+  color: var(--accent);
+  background: var(--accent-muted);
+  border-color: var(--accent);
+}
+
+.note-editor-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.note-editor-shell,
+.note-editor-shell > [data-milkdown-root],
+.note-editor-shell .milkdown {
+  min-height: 100%;
+}
+
+.note-editor-shell {
+  position: relative;
+  width: min(100%, calc(var(--rail-left-width) * 3));
+  margin: 0 auto;
+  background: var(--bg-surface);
+}
+
+.note-editor-loading {
+  position: absolute;
+  inset: var(--space-4) var(--space-5) auto auto;
+  z-index: 1;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  pointer-events: none;
+}
+
+.note-tab .milkdown .editor {
+  min-height: 100%;
+  padding: var(--space-7) var(--space-6) var(--space-8);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.75;
+  letter-spacing: var(--tracking-tight);
+  caret-color: var(--accent);
+  outline: none;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+.note-tab .milkdown .editor > *:first-child {
+  margin-top: 0;
+}
+
+.note-tab .milkdown .editor > *:last-child {
+  margin-bottom: 0;
+}
+
+.note-tab .milkdown h1,
+.note-tab .milkdown h2,
+.note-tab .milkdown h3,
+.note-tab .milkdown h4,
+.note-tab .milkdown h5,
+.note-tab .milkdown h6 {
+  color: var(--text-primary);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: var(--tracking-tight);
+}
+
+.note-tab .milkdown h1 {
+  margin: var(--space-7) 0 var(--space-5);
+  font-size: calc(var(--text-xl) * 1.5);
+}
+
+.note-tab .milkdown h2 {
+  margin: var(--space-6) 0 var(--space-4);
+  padding-bottom: var(--space-2);
+  font-size: var(--text-xl);
+  border-bottom: thin solid var(--border-subtle);
+}
+
+.note-tab .milkdown h3 {
+  margin: var(--space-5) 0 var(--space-3);
+  font-size: var(--text-lg);
+}
+
+.note-tab .milkdown h4,
+.note-tab .milkdown h5,
+.note-tab .milkdown h6 {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--text-base);
+}
+
+.note-tab .milkdown p {
+  margin: 0 0 var(--space-4);
+}
+
+.note-tab .milkdown strong {
+  font-weight: 700;
+}
+
+.note-tab .milkdown a {
+  color: var(--accent);
+  text-decoration-line: underline;
+  text-decoration-color: var(--accent-muted);
+  text-underline-offset: var(--space-1);
+}
+
+.note-tab .milkdown blockquote {
+  margin: var(--space-5) 0;
+  padding: var(--space-3) var(--space-5);
+  color: var(--text-secondary);
+  background: var(--accent-muted);
+  border-left: var(--space-1) solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.note-tab .milkdown blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.note-tab .milkdown ul,
+.note-tab .milkdown ol {
+  margin: 0 0 var(--space-4);
+  padding-inline-start: var(--space-6);
+}
+
+.note-tab .milkdown li {
+  margin: var(--space-1) 0;
+  padding-inline-start: var(--space-1);
+}
+
+.note-tab .milkdown li::marker {
+  color: var(--text-muted);
+}
+
+.note-tab .milkdown li > ul,
+.note-tab .milkdown li > ol,
+.note-tab .milkdown .note-list-item-content > ul,
+.note-tab .milkdown .note-list-item-content > ol {
+  margin-top: var(--space-1);
+  margin-bottom: 0;
+}
+
+.note-tab .milkdown .note-list-item-content {
+  min-width: 0;
+}
+
+.note-tab .milkdown .note-list-item-content > p {
+  margin-bottom: 0;
+}
+
+.note-tab .milkdown .note-list-item--task {
+  position: relative;
+  padding-inline-start: var(--space-5);
+  list-style: none;
+}
+
+.note-task-checkbox {
+  position: absolute;
+  top: var(--space-1);
+  left: 0;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.note-tab .milkdown .note-list-item--task[data-checked='true'] {
+  color: var(--text-muted);
+}
+
+.note-tab .milkdown code {
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  background: var(--accent-muted);
+  border-radius: var(--radius-sm);
+}
+
+.note-tab .milkdown pre {
+  position: relative;
+  margin: var(--space-5) 0;
+  padding: var(--space-5);
+  overflow: auto;
+  color: var(--text-primary);
+  background: var(--bg-app);
+  border: thin solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  tab-size: 2;
+}
+
+.note-tab .milkdown pre[data-language]::before {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-3);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  content: attr(data-language);
+}
+
+.note-tab .milkdown pre code {
+  display: block;
+  padding: 0;
+  font-size: var(--text-sm);
+  line-height: 1.65;
+  background: inherit;
+  border-radius: 0;
+}
+
+.note-tab .milkdown table {
+  width: 100%;
+  margin: var(--space-5) 0;
+  overflow: hidden;
+  border: thin solid var(--border-strong);
+  border-collapse: collapse;
+  border-radius: var(--radius-sm);
+}
+
+.note-tab .milkdown th,
+.note-tab .milkdown td {
+  min-width: calc(var(--space-8) * 2);
+  padding: var(--space-2) var(--space-3);
+  text-align: start;
+  vertical-align: top;
+  border: thin solid var(--border-strong);
+}
+
+.note-tab .milkdown th {
+  font-weight: 650;
+  color: var(--text-primary);
+  background: var(--accent-muted);
+}
+
+.note-tab .milkdown td {
+  background: var(--bg-surface);
+}
+
+.note-tab .milkdown .selectedCell {
+  background: var(--accent-muted);
+}
+
+.note-tab .milkdown hr {
+  margin: var(--space-6) 0;
+  border: 0;
+  border-top: thin solid var(--border-strong);
+}

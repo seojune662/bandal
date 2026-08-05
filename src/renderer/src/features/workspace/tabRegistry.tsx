@@ -19,6 +19,7 @@ import type { TabDescriptor, TabKind } from '../../../../shared/tabs'
 import type { IconName } from '../../app/icons'
 import { tabTitle } from './tabIdentity'
 import { BrowserPanel, PlaceholderPanel } from './panels/PlaceholderPanel'
+import NoteTab from '../notes/NoteTab'
 
 export interface TabRegistryEntry {
   component: FunctionComponent<IDockviewPanelProps>
@@ -36,7 +37,7 @@ export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
     defaultTitle: tabTitle
   },
   note: {
-    component: PlaceholderPanel, // M3-E: replace with the Milkdown editor
+    component: NoteTab,
     icon: 'fileText',
     defaultTitle: tabTitle
   },
