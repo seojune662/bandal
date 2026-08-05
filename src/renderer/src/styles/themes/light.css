@@ -1,15 +1,26 @@
-/* Light — warm paper-white theme, designed on its own terms (not an
- * inversion of dark-navy): ivory paper surfaces, ink-brown text, and a
- * deepened amber-gold accent that keeps the 반달 identity readable on
- * bright ground.
- * Must stay in sync with WINDOW_BACKGROUND.light in src/shared/theme.ts.
+/* 반달 라이트 (id: light) — warm paper, designed on its own terms (not an
+ * inversion of 반달 다크): ivory paper surfaces, ink-brown text, and a
+ * bronzed amber accent dark enough to be read as text and as a button label.
+ * Registered in src/shared/theme.ts; `windowBackground` must equal `--bg-app`.
+ *
+ * Measured contrast:
+ *   text-primary/bg-app 14.70 · text-secondary/bg-app 6.84
+ *   text-muted/bg-app 5.06 (was 3.62) · accent-as-text/bg-app 5.14 (was 3.40)
+ *   on-accent/accent 5.61 · on-danger/danger 5.52
  */
+
+:root {
+  --preview-light-bg: oklch(97% 0.012 85);
+  --preview-light-surface: oklch(98.5% 0.007 90);
+  --preview-light-text: oklch(25% 0.02 70);
+  --preview-light-accent: oklch(52% 0.105 75);
+}
 
 :root[data-theme='light'] {
   color-scheme: light;
 
   /* Surfaces: warm paper, ascending toward pure page-white */
-  --bg-app: oklch(97% 0.012 85);         /* ~#faf6ef */
+  --bg-app: oklch(97% 0.012 85);         /* #f9f5ec */
   --bg-surface: oklch(98.5% 0.007 90);   /* near-white card */
   --bg-raised: oklch(100% 0 0);
   --bg-overlay: oklch(100% 0 0 / 0.94);
@@ -17,37 +28,40 @@
   /* Text: warm ink */
   --text-primary: oklch(25% 0.02 70);
   --text-secondary: oklch(45% 0.025 75);
-  --text-muted: oklch(60% 0.02 80);
+  --text-muted: oklch(52% 0.022 78);     /* was 60% — AA fix, §10.4.1 */
 
-  /* Accent: deepened amber-gold for contrast on paper */
-  --accent: oklch(62% 0.12 75);
-  --accent-muted: oklch(62% 0.12 75 / 0.14);
+  /* Accent: bronzed amber-gold. Dark enough that --bg-app stays a legal
+   * label color on it (5.15), so existing primary buttons pass unchanged. */
+  --accent: oklch(52% 0.105 75);         /* was 62% — AA fix, §10.4.2 */
+  --accent-muted: oklch(52% 0.105 75 / 0.14);
+  --on-accent: oklch(100% 0 0);
   --danger: oklch(54% 0.17 25);
   --danger-muted: oklch(54% 0.17 25 / 0.11);
+  --on-danger: oklch(100% 0 0);
   --backdrop: oklch(22% 0.025 70 / 0.38);
 
   /* Borders: warm hairlines */
-  --border-subtle: oklch(30% 0.03 75 / 0.1);
-  --border-strong: oklch(30% 0.03 75 / 0.22);
+  --border-subtle: oklch(30% 0.03 75 / 0.12);
+  --border-strong: oklch(30% 0.03 75 / 0.28);
 
   /* Course identities */
-  --course-gold: oklch(62% 0.12 75);
-  --course-green: oklch(54% 0.11 153);
-  --course-blue: oklch(55% 0.12 245);
-  --course-pink: oklch(58% 0.13 350);
-  --course-violet: oklch(55% 0.13 300);
-  --course-orange: oklch(60% 0.15 50);
+  --course-gold: oklch(52% 0.105 75);
+  --course-green: oklch(50% 0.11 153);
+  --course-blue: oklch(52% 0.14 255);
+  --course-pink: oklch(54% 0.16 350);
+  --course-violet: oklch(50% 0.16 300);
+  --course-orange: oklch(56% 0.15 45);
 
-  /* Highlight colors (PDF annotations) */
+  /* Highlight colors (PDF annotations — always struck on a white page) */
   --highlight-yellow: oklch(88% 0.14 95);
   --highlight-green: oklch(85% 0.13 150);
-  --highlight-pink: oklch(85% 0.1 350);
-  --highlight-blue: oklch(84% 0.09 240);
+  --highlight-pink: oklch(85% 0.085 350);
+  --highlight-blue: oklch(84% 0.08 240);
 
   /* Board status */
-  --status-todo: oklch(55% 0.02 80);
-  --status-progress: oklch(58% 0.12 240);
-  --status-done: oklch(58% 0.14 150);
+  --status-todo: oklch(52% 0.02 80);
+  --status-progress: oklch(52% 0.14 250);
+  --status-done: oklch(52% 0.13 152);
 
   /* Shadows: soft warm gray */
   --shadow-sm: 0 1px 2px oklch(30% 0.02 80 / 0.1);

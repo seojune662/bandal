@@ -1,0 +1,76 @@
+/* 고대비 (id: high-contrast) — accessibility theme, AAA where feasible.
+ *
+ * Point of view: the two failures this theme exists to fix are (1) body text
+ * that is merely AA and (2) hairline borders you cannot see. So every text
+ * pair clears 7:1 (AAA), the elevation ladder is drawn with *neutral gray
+ * steps plus visible borders* instead of tinted surfaces, and the accent is a
+ * deep signal blue rather than gold — gold cannot reach AAA on white while
+ * staying gold. It is still 반달's accent role, only louder.
+ *
+ * Measured contrast:
+ *   text-primary/bg-app 21.00 (AAA) · text-secondary/bg-app 10.01 (AAA)
+ *   text-muted/bg-app 7.44 (AAA) · text-muted/bg-raised 5.52 (worst pair, AA)
+ *   accent-as-text/bg-app 8.64 (AAA) · on-accent/accent 8.64
+ *   on-danger/danger 9.24 · border-strong/bg-surface 8.59 (1.4.11 needs 3.0)
+ */
+
+:root {
+  --preview-high-contrast-bg: oklch(100% 0 0);
+  --preview-high-contrast-surface: oklch(95% 0 0);
+  --preview-high-contrast-text: oklch(0% 0 0);
+  --preview-high-contrast-accent: oklch(42% 0.15 258);
+}
+
+:root[data-theme='high-contrast'] {
+  color-scheme: light;
+
+  /* Surfaces: neutral steps. Elevation is carried by the border, not a tint */
+  --bg-app: oklch(100% 0 0);
+  --bg-surface: oklch(95% 0 0);
+  --bg-raised: oklch(90% 0 0);
+  --bg-overlay: oklch(100% 0 0 / 0.98);
+
+  /* Text: black and two AAA grays */
+  --text-primary: oklch(0% 0 0);
+  --text-secondary: oklch(38% 0 0);
+  --text-muted: oklch(45% 0 0);
+
+  /* Accent: deep signal blue — reaches AAA on white, gold cannot */
+  --accent: oklch(42% 0.15 258);
+  --accent-muted: oklch(42% 0.15 258 / 0.16);
+  --on-accent: oklch(100% 0 0);
+  --danger: oklch(42% 0.17 28);
+  --danger-muted: oklch(42% 0.17 28 / 0.14);
+  --on-danger: oklch(100% 0 0);
+  --backdrop: oklch(0% 0 0 / 0.55);
+
+  /* Borders: opaque and visible — this is the whole point of the theme */
+  --border-subtle: oklch(0% 0 0 / 0.38);
+  --border-strong: oklch(0% 0 0 / 0.72);
+
+  /* Course identities: dark saturated inks, each ≥ 4.5 on white */
+  --course-gold: oklch(45% 0.09 72);
+  --course-green: oklch(42% 0.11 152);
+  --course-blue: oklch(42% 0.15 258);
+  --course-pink: oklch(45% 0.17 350);
+  --course-violet: oklch(42% 0.17 300);
+  --course-orange: oklch(48% 0.13 45);
+
+  /* Highlight colors: deeper than the other light themes on purpose — mid
+   * tones keep black PDF text legible (≥ 4.5) AND make the swatch chips
+   * themselves clear 3:1 against the white popover (WCAG 1.4.11). */
+  --highlight-yellow: oklch(66% 0.13 92);
+  --highlight-green: oklch(64% 0.15 150);
+  --highlight-pink: oklch(62% 0.17 350);
+  --highlight-blue: oklch(62% 0.15 245);
+
+  /* Board status */
+  --status-todo: oklch(45% 0 0);
+  --status-progress: oklch(42% 0.15 258);
+  --status-done: oklch(42% 0.11 152);
+
+  /* Shadows: hard and short — a shadow must never be the only depth cue */
+  --shadow-sm: 0 1px 0 oklch(0% 0 0 / 0.35);
+  --shadow-md: 0 2px 0 oklch(0% 0 0 / 0.4);
+  --shadow-lg: 0 4px 0 oklch(0% 0 0 / 0.45);
+}

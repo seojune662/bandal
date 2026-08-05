@@ -4,10 +4,11 @@
  */
 
 import { create } from 'zustand'
+import { SYSTEM_THEME } from '../../../shared/theme'
+import type { ResolvedTheme } from '../../../shared/theme'
+import { DEFAULT_SETTINGS } from '../../../shared/types/settings'
 import type { ThemePreference } from '../../../shared/types/settings'
 import { invoke, onPush } from '../lib/ipc'
-
-type ResolvedTheme = 'dark' | 'light'
 
 interface UiState {
   themePreference: ThemePreference
@@ -28,11 +29,13 @@ interface UiState {
 
 let themeInitialization: Promise<void> | null = null
 
+/** `system` follows the OS between the two 반달 defaults; any other
+ * preference is already a registered theme id. */
 function resolve(pref: ThemePreference): ResolvedTheme {
   if (pref === 'system') {
     return window.matchMedia('(prefers-color-scheme: light)').matches
-      ? 'light'
-      : 'dark'
+      ? SYSTEM_THEME.light
+      : SYSTEM_THEME.dark
   }
   return pref
 }
@@ -42,8 +45,8 @@ function applyToDocument(theme: ResolvedTheme): void {
 }
 
 export const useUiStore = create<UiState>()((set, get) => ({
-  themePreference: 'dark',
-  resolvedTheme: 'dark',
+  themePreference: DEFAULT_SETTINGS.theme,
+  resolvedTheme: resolve(DEFAULT_SETTINGS.theme),
   leftRailOpen: true,
   rightRailOpen: true,
   isBoardOverlayOpen: false,

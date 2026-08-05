@@ -1,6 +1,6 @@
 import { BrowserWindow, nativeTheme } from 'electron'
 import { join } from 'node:path'
-import { WINDOW_BACKGROUND } from '../../shared/theme'
+import { resolveWindowBackground } from '../../shared/theme'
 import { getSettings } from '../settingsStore'
 
 let settingsWindow: BrowserWindow | null = null
@@ -13,8 +13,6 @@ export function openSettingsWindow(): BrowserWindow {
   }
 
   const { theme } = getSettings()
-  const useLightBackground =
-    theme === 'light' || (theme === 'system' && !nativeTheme.shouldUseDarkColors)
   settingsWindow = new BrowserWindow({
     width: 900,
     height: 640,
@@ -26,9 +24,10 @@ export function openSettingsWindow(): BrowserWindow {
     center: true,
     show: false,
     titleBarStyle: 'hiddenInset',
-    backgroundColor: useLightBackground
-      ? WINDOW_BACKGROUND.light
-      : WINDOW_BACKGROUND.dark,
+    backgroundColor: resolveWindowBackground(
+      theme,
+      nativeTheme.shouldUseDarkColors
+    ),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

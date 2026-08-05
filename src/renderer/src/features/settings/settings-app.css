@@ -28,14 +28,8 @@
 }
 
 .settings-titlebar__moon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
+  flex: 0 0 auto;
   color: var(--accent);
-  font-size: var(--text-lg);
-  line-height: 1;
 }
 
 .settings-titlebar__divider {
@@ -241,8 +235,8 @@
 }
 
 .settings-sidebar__footer-moon {
+  flex: 0 0 auto;
   color: var(--accent);
-  font-size: var(--text-base);
 }
 
 .settings-content {

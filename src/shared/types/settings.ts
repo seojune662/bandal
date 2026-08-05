@@ -3,8 +3,15 @@
  */
 
 import type { AgentProvider } from './agent-events'
+import { DEFAULT_THEME_ID } from '../theme'
+import type { ThemeId } from '../theme'
 
-export type ThemePreference = 'dark' | 'light' | 'system'
+/**
+ * A theme id from the registry (src/shared/theme.ts) or `system`, which
+ * follows the OS between the two 반달 defaults. Adding a theme widens this
+ * union automatically — there is no theme name spelled out here.
+ */
+export type ThemePreference = ThemeId | 'system'
 
 /**
  * [M6-A] Versioned first-run onboarding state.
@@ -44,7 +51,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  theme: 'dark',
+  theme: DEFAULT_THEME_ID,
   agentProvider: 'claude-code',
   dataRoot: '',
   locale: 'ko-KR',

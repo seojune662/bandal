@@ -1,0 +1,74 @@
+/* 세피아 (id: sepia) — long-reading theme for PDF sessions.
+ *
+ * Point of view: a 300-page textbook read for three hours. The shell is warm
+ * book paper (not white) so the bright PDF page stops being the only bright
+ * rectangle on screen, and text is brown-black ink rather than pure black.
+ * The accent is deliberately NOT gold: on sepia paper a gold accent dissolves
+ * into the background, so "지금 여기" is fountain-pen ink blue — the one cool
+ * color on a warm page, and unmistakably not the red of 삭제/오류.
+ *
+ * Measured contrast:
+ *   text-primary/bg-app 11.76 · text-secondary/bg-app 6.27
+ *   text-muted/bg-app 5.05 (worst body-text pair, AA)
+ *   accent-as-text/bg-app 6.24 · on-accent/accent 7.79 · on-danger/danger 7.14
+ */
+
+:root {
+  --preview-sepia-bg: oklch(92.5% 0.028 82);
+  --preview-sepia-surface: oklch(95.5% 0.022 84);
+  --preview-sepia-text: oklch(28% 0.03 58);
+  --preview-sepia-accent: oklch(44% 0.12 252);
+}
+
+:root[data-theme='sepia'] {
+  color-scheme: light;
+
+  /* Surfaces: aged paper, ascending toward a fresher sheet */
+  --bg-app: oklch(92.5% 0.028 82);       /* #f0e5d2 */
+  --bg-surface: oklch(95.5% 0.022 84);
+  --bg-raised: oklch(97.8% 0.014 86);
+  --bg-overlay: oklch(97% 0.016 86 / 0.95);
+
+  /* Text: brown-black ink, never pure black */
+  --text-primary: oklch(28% 0.03 58);
+  --text-secondary: oklch(44% 0.032 60);
+  --text-muted: oklch(49% 0.03 62);
+
+  /* Accent: fountain-pen ink — the only cool color on the page */
+  --accent: oklch(44% 0.12 252);
+  --accent-muted: oklch(44% 0.12 252 / 0.13);
+  --on-accent: oklch(100% 0 0);
+  --danger: oklch(48% 0.17 28);
+  --danger-muted: oklch(48% 0.17 28 / 0.12);
+  --on-danger: oklch(100% 0 0);
+  --backdrop: oklch(28% 0.03 58 / 0.4);
+
+  /* Borders: warm graphite hairlines */
+  --border-subtle: oklch(30% 0.035 60 / 0.14);
+  --border-strong: oklch(30% 0.035 60 / 0.3);
+
+  /* Course identities: muted book-plate inks */
+  --course-gold: oklch(48% 0.1 72);
+  --course-green: oklch(46% 0.1 152);
+  --course-blue: oklch(46% 0.12 252);
+  --course-pink: oklch(50% 0.15 350);
+  --course-violet: oklch(46% 0.15 300);
+  --course-orange: oklch(52% 0.14 45);
+
+  /* Highlight colors (PDF annotations — struck on the white page, so they
+   * stay a touch deeper here to survive next to warm paper chrome) */
+  --highlight-yellow: oklch(86% 0.15 92);
+  --highlight-green: oklch(84% 0.13 148);
+  --highlight-pink: oklch(83% 0.095 350);
+  --highlight-blue: oklch(83% 0.085 240);
+
+  /* Board status */
+  --status-todo: oklch(49% 0.025 62);
+  --status-progress: oklch(48% 0.13 250);
+  --status-done: oklch(48% 0.12 152);
+
+  /* Shadows: warm and shallow — paper does not float far */
+  --shadow-sm: 0 1px 2px oklch(30% 0.04 60 / 0.12);
+  --shadow-md: 0 4px 12px oklch(30% 0.04 60 / 0.14);
+  --shadow-lg: 0 12px 32px oklch(30% 0.04 60 / 0.18);
+}

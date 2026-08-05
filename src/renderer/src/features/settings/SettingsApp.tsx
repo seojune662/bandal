@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
 import { Icon } from './SettingsIcon'
+import { BandalMark } from '../../components/BandalMark'
+import { SYSTEM_THEME, THEMES } from '../../../../shared/theme'
+import type { ResolvedTheme, ThemeId } from '../../../../shared/theme'
 import type { AgentAvailability } from '../../../../shared/types/agent-events'
 import type { Course } from '../../../../shared/types/course'
 import type {
@@ -34,7 +37,7 @@ const CATEGORIES: Category[] = [
     group: 'Settings',
     label: 'Appearance',
     description: '반달이 보이는 방식을 선택합니다.',
-    keywords: '화면 모양 테마 다크 라이트 시스템'
+    keywords: '화면 모양 테마 다크 라이트 시스템 자정 세피아 고대비 흑연 야간 oled 접근성 눈부심'
   },
   {
     id: 'ai',
@@ -59,23 +62,34 @@ const CATEGORIES: Category[] = [
   }
 ]
 
-const THEME_OPTIONS: Array<{
+interface ThemeOption {
   value: ThemePreference
   label: string
   description: string
-}> = [
-  { value: 'dark', label: '다크', description: '밤하늘처럼 차분하게' },
-  { value: 'light', label: '라이트', description: '종이처럼 편안하게' },
-  { value: 'system', label: '시스템', description: '기기 설정에 맞추기' }
+}
+
+/** Built from the registry (src/shared/theme.ts) — adding a theme adds a card
+ * here with no edit. `시스템` is appended last and is not a theme id. */
+const THEME_OPTIONS: readonly ThemeOption[] = [
+  ...THEMES.map((theme) => ({
+    value: theme.id,
+    label: theme.name,
+    description: theme.description
+  })),
+  {
+    value: 'system',
+    label: '시스템',
+    description: '기기 설정에 따라 반달 다크와 라이트를 오갑니다.'
+  }
 ]
 
 const APP_VERSION = '0.1.0'
 
-function resolveTheme(theme: ThemePreference): 'dark' | 'light' {
+function resolveTheme(theme: ThemePreference): ResolvedTheme {
   if (theme === 'system') {
     return window.matchMedia('(prefers-color-scheme: light)').matches
-      ? 'light'
-      : 'dark'
+      ? SYSTEM_THEME.light
+      : SYSTEM_THEME.dark
   }
   return theme
 }
@@ -154,26 +168,56 @@ function ToggleRow({
   )
 }
 
+/**
+ * Each theme file exports its palette as `--preview-<id>-{bg,surface,text,
+ * accent}` on `:root`, so a card can paint another theme's colors while a
+ * different theme is active. This maps those into the generic names the
+ * preview CSS uses — no per-theme CSS rule anywhere.
+ */
+function previewPalette(id: ThemeId): CSSProperties {
+  return {
+    '--preview-bg': `var(--preview-${id}-bg)`,
+    '--preview-surface': `var(--preview-${id}-surface)`,
+    '--preview-text': `var(--preview-${id}-text)`,
+    '--preview-accent': `var(--preview-${id}-accent)`
+  } as CSSProperties
+}
+
+function PreviewBody(): JSX.Element {
+  return (
+    <>
+      <span className="theme-preview__sidebar" />
+      <span className="theme-preview__accent" />
+      <span className="theme-preview__line theme-preview__line--long" />
+      <span className="theme-preview__line theme-preview__line--short" />
+    </>
+  )
+}
+
 function ThemePreview({ theme }: { theme: ThemePreference }): JSX.Element {
   if (theme === 'system') {
+    // Split card: the pair `system` actually switches between.
     return (
       <div className="theme-preview theme-preview--system" aria-hidden="true">
-        <span className="theme-preview__system-half theme-preview__system-half--dark" />
-        <span className="theme-preview__system-half theme-preview__system-half--light" />
-        <span className="theme-preview__sidebar" />
-        <span className="theme-preview__topline" />
-        <span className="theme-preview__card" />
+        <span
+          className="theme-preview__half"
+          style={previewPalette(SYSTEM_THEME.dark)}
+        >
+          <PreviewBody />
+        </span>
+        <span
+          className="theme-preview__half"
+          style={previewPalette(SYSTEM_THEME.light)}
+        >
+          <PreviewBody />
+        </span>
       </div>
     )
   }
 
   return (
-    <div className={`theme-preview theme-preview--${theme}`} aria-hidden="true">
-      <span className="theme-preview__sidebar" />
-      <span className="theme-preview__topline" />
-      <span className="theme-preview__card" />
-      <span className="theme-preview__line theme-preview__line--long" />
-      <span className="theme-preview__line theme-preview__line--short" />
+    <div className="theme-preview" style={previewPalette(theme)} aria-hidden="true">
+      <PreviewBody />
     </div>
   )
 }
@@ -272,22 +316,75 @@ function AppearancePanel({
   error: string | null
   onSelect: (theme: ThemePreference) => void
 }): JSX.Element {
+  // WAI-ARIA radiogroup: one tab stop for the whole grid, arrows move and
+  // select. Without this, N themes means N tab stops.
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const selectedIndex = Math.max(
+    0,
+    THEME_OPTIONS.findIndex((option) => option.value === theme)
+  )
+
+  const moveTo = (index: number): void => {
+    const count = THEME_OPTIONS.length
+    const next = ((index % count) + count) % count
+    optionRefs.current[next]?.focus()
+    onSelect(THEME_OPTIONS[next]!.value)
+  }
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    const current = THEME_OPTIONS.findIndex((option) => option.value === theme)
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        event.preventDefault()
+        moveTo(current + 1)
+        break
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        event.preventDefault()
+        moveTo(current - 1)
+        break
+      case 'Home':
+        event.preventDefault()
+        moveTo(0)
+        break
+      case 'End':
+        event.preventDefault()
+        moveTo(THEME_OPTIONS.length - 1)
+        break
+      default:
+        break
+    }
+  }
+
   return (
     <div className="settings-stack">
       <SettingsCard
         title="테마"
-        description="선택한 테마는 모든 반달 창에 바로 적용됩니다."
+        description="선택한 테마는 모든 반달 창에 바로 적용됩니다. 각 카드는 그 테마의 실제 색을 미리 보여줍니다."
       >
-        <div className="theme-grid" role="radiogroup" aria-label="테마 선택">
-          {THEME_OPTIONS.map((option) => {
+        {/* Not `disabled` while saving: disabling the focused radio drops
+            focus out of the group and kills arrow navigation. The write is
+            serialized in handleThemeSelect instead. */}
+        <div
+          className="theme-grid"
+          role="radiogroup"
+          aria-label="테마 선택"
+          aria-busy={saving}
+          onKeyDown={handleKeyDown}
+        >
+          {THEME_OPTIONS.map((option, index) => {
             const selected = theme === option.value
             return (
               <button
                 key={option.value}
                 type="button"
                 role="radio"
+                ref={(node) => {
+                  optionRefs.current[index] = node
+                }}
                 aria-checked={selected}
-                disabled={saving}
+                tabIndex={index === selectedIndex ? 0 : -1}
                 className={`theme-choice${selected ? ' theme-choice--selected' : ''}`}
                 onClick={() => onSelect(option.value)}
               >
@@ -417,8 +514,10 @@ function AiPanel({
 
       <SettingsCard className="integration-card integration-card--upcoming">
         <div className="integration-card__heading">
+          {/* Not the 반달 mark — a provider tile. The half-moon now belongs
+              to the product alone (BandalMark). */}
           <div className="provider-mark" aria-hidden="true">
-            ◐
+            <Icon name="sparkles" size={18} />
           </div>
           <div className="integration-card__title">
             <h2>Codex</h2>
@@ -515,8 +614,8 @@ function AboutPanel(): JSX.Element {
   return (
     <div className="settings-stack">
       <SettingsCard className="about-card">
-        <div className="about-card__mark" aria-hidden="true">
-          <span>◐</span>
+        <div className="about-card__mark">
+          <BandalMark size={62} title="반달" />
         </div>
         <div className="about-card__copy">
           <h2>반달</h2>
@@ -692,7 +791,7 @@ export function SettingsApp(): JSX.Element {
     <div className="settings-app">
       <header className="settings-titlebar titlebar-drag">
         <div className="settings-titlebar__brand">
-          <span className="settings-titlebar__moon" aria-hidden="true">◐</span>
+          <BandalMark size={17} className="settings-titlebar__moon" />
           <span>반달</span>
         </div>
         <span className="settings-titlebar__divider" aria-hidden="true" />
@@ -751,7 +850,7 @@ export function SettingsApp(): JSX.Element {
           </nav>
 
           <div className="settings-sidebar__footer">
-            <span className="settings-sidebar__footer-moon" aria-hidden="true">◐</span>
+            <BandalMark size={14} className="settings-sidebar__footer-moon" />
             <span>Study at your rhythm.</span>
           </div>
         </aside>

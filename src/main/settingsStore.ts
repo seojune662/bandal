@@ -7,6 +7,7 @@ import { app, BrowserWindow } from 'electron'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { isThemeId } from '../shared/theme'
 import { DEFAULT_ONBOARDING, DEFAULT_SETTINGS } from '../shared/types/settings'
 import type {
   OnboardingState,
@@ -35,8 +36,10 @@ function defaultsWithPaths(): Settings {
   }
 }
 
+/** Any registered theme id, or `system`. Unknown ids fall back to the default
+ * (a settings.json written by a newer build must not brick an older one). */
 function isTheme(value: unknown): value is Settings['theme'] {
-  return value === 'dark' || value === 'light' || value === 'system'
+  return value === 'system' || isThemeId(value)
 }
 
 /** [M6-A] Validates the persisted onboarding record, key by key. */

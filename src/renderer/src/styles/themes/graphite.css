@@ -1,0 +1,73 @@
+/* 흑연 (id: graphite) — achromatic focus theme.
+ *
+ * Point of view: the app chrome has no color at all. Every surface, border and
+ * shadow is pure neutral gray, so the only chromatic pixels on screen belong
+ * to the *content* — course dots, PDF highlights, board status. In 반달 다크
+ * the gold shell competes with a yellow highlight; here nothing does. The
+ * accent is cold cyan for the same reason: it is the single non-gray signal in
+ * the UI, so "지금 여기" cannot be missed.
+ *
+ * Measured contrast:
+ *   text-primary/bg-app 12.61 · text-secondary/bg-app 7.81
+ *   text-muted/bg-app 6.80 · text-muted/bg-raised 4.66 (worst body pair, AA)
+ *   on-accent/accent 8.17 · on-danger/danger 5.94
+ */
+
+:root {
+  --preview-graphite-bg: oklch(28% 0 0);
+  --preview-graphite-surface: oklch(33% 0 0);
+  --preview-graphite-text: oklch(95% 0 0);
+  --preview-graphite-accent: oklch(80% 0.115 196);
+}
+
+:root[data-theme='graphite'] {
+  color-scheme: dark;
+
+  /* Surfaces: pure neutral, no hue anywhere */
+  --bg-app: oklch(28% 0 0);              /* #292929 */
+  --bg-surface: oklch(33% 0 0);
+  --bg-raised: oklch(38% 0 0);
+  --bg-overlay: oklch(35% 0 0 / 0.94);
+
+  /* Text: neutral grays */
+  --text-primary: oklch(95% 0 0);
+  --text-secondary: oklch(80% 0 0);
+  --text-muted: oklch(76% 0 0);
+
+  /* Accent: cold cyan — the only non-gray in the shell */
+  --accent: oklch(80% 0.115 196);
+  --accent-muted: oklch(80% 0.115 196 / 0.18);
+  --on-accent: oklch(28% 0 0);
+  --danger: oklch(74% 0.15 25);
+  --danger-muted: oklch(74% 0.15 25 / 0.16);
+  --on-danger: oklch(28% 0 0);
+  --backdrop: oklch(10% 0 0 / 0.7);
+
+  /* Borders: neutral, slightly stronger than navy (no tint to lean on) */
+  --border-subtle: oklch(100% 0 0 / 0.1);
+  --border-strong: oklch(100% 0 0 / 0.24);
+
+  /* Course identities: full-strength — content colors stay loud */
+  --course-gold: oklch(85% 0.11 82);
+  --course-green: oklch(80% 0.14 153);
+  --course-blue: oklch(78% 0.12 245);
+  --course-pink: oklch(79% 0.13 350);
+  --course-violet: oklch(76% 0.13 300);
+  --course-orange: oklch(80% 0.12 55);
+
+  /* Highlight colors (PDF annotations — always struck on a white page) */
+  --highlight-yellow: oklch(83% 0.14 95);
+  --highlight-green: oklch(80% 0.15 150);
+  --highlight-pink: oklch(78% 0.12 350);
+  --highlight-blue: oklch(78% 0.11 240);
+
+  /* Board status */
+  --status-todo: oklch(68% 0 0);
+  --status-progress: oklch(78% 0.11 240);
+  --status-done: oklch(78% 0.14 150);
+
+  /* Shadows: neutral black */
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.4);
+  --shadow-md: 0 4px 12px oklch(0% 0 0 / 0.38);
+  --shadow-lg: 0 12px 32px oklch(0% 0 0 / 0.45);
+}

@@ -1,19 +1,38 @@
+/* Every theme, in one import. Must stay first — CSS @import has to precede
+ * rules. Entry points only need `styles/tokens.css`; adding a theme never
+ * touches main.tsx / settings-main.tsx. See themes/index.css. */
+@import './themes/index.css';
+
 /* [C4] Semantic design tokens.
- * Color values live in themes/dark-navy.css and themes/light.css —
- * this file defines the theme-independent scale tokens and documents the
- * full set of semantic color tokens every surface must use.
+ * Color values live in themes/<id>.css — one self-contained file per theme,
+ * registered in src/shared/theme.ts. This file defines the theme-independent
+ * scale tokens and documents the full set of semantic color tokens every
+ * surface must use.
  *
- * Color tokens (defined per theme):
+ * Color tokens (every theme MUST define all of these):
  *   --bg-app --bg-surface --bg-raised --bg-overlay
  *   --text-primary --text-secondary --text-muted
- *   --accent --accent-muted
- *   --danger --danger-muted --backdrop
+ *   --accent --accent-muted --on-accent
+ *   --danger --danger-muted --on-danger --backdrop
  *   --border-subtle --border-strong
  *   --course-gold --course-green --course-blue
  *   --course-pink --course-violet --course-orange
  *   --highlight-yellow --highlight-green --highlight-pink --highlight-blue
  *   --status-todo --status-progress --status-done
  *   --shadow-sm --shadow-md --shadow-lg   (shadows carry theme-tinted color)
+ *
+ * --on-accent / --on-danger are the label colors for a filled accent/danger
+ * surface (primary button, danger confirm). Use them instead of reaching for
+ * --bg-app: they are the pair the contrast audit measures. Every theme also
+ * guarantees --bg-app on --accent ≥ 4.5:1 so pre-existing call sites pass.
+ *
+ * Contrast contract for a new theme (measured, not eyeballed —
+ * docs/STYLEGUIDE.md §1.2):
+ *   - all three --text-* on all three surfaces ≥ 4.5:1
+ *   - --on-accent/--on-danger on their fills ≥ 4.5:1
+ *   - --course-* and --status-* on --bg-app ≥ 3:1
+ *   - black text on every --highlight-* over a WHITE page ≥ 4.5:1
+ *     (the PDF canvas is paper-white in every theme)
  */
 
 :root {

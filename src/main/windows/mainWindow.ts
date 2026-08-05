@@ -1,19 +1,16 @@
-import { BrowserWindow, shell } from 'electron'
+import { BrowserWindow, nativeTheme, shell } from 'electron'
 import { join } from 'node:path'
-import { WINDOW_BACKGROUND } from '../../shared/theme'
+import { resolveWindowBackground } from '../../shared/theme'
 import { hardenWindowWebviews } from '../features/browser'
 import { getSettings } from '../settingsStore'
 
 let mainWindow: BrowserWindow | null = null
 
+/** Painted before any CSS loads, so it must track the theme's --bg-app
+ * exactly (src/shared/theme.ts) or launch flashes the wrong color. */
 function resolveBackground(): string {
   const { theme } = getSettings()
-  if (theme === 'light') {
-    return WINDOW_BACKGROUND.light
-  }
-  // 'dark' and 'system' both start dark; renderer refines 'system' via
-  // prefers-color-scheme once loaded.
-  return WINDOW_BACKGROUND.dark
+  return resolveWindowBackground(theme, nativeTheme.shouldUseDarkColors)
 }
 
 export function createMainWindow(): BrowserWindow {

@@ -1,0 +1,73 @@
+/* 자정 (id: midnight) — true-black OLED night theme.
+ *
+ * Point of view: at 2 a.m. in a dark room the enemy is *emitted light*, not
+ * low contrast. `--bg-app` is literal #000 so OLED pixels switch off (battery,
+ * zero glare), text tops out at 88% instead of pure white to kill halation,
+ * and the gold is dimmed one step so it still means "지금 여기" without
+ * burning. Borders are raised because hairlines vanish on true black.
+ *
+ * Measured contrast:
+ *   text-primary/bg-app 14.64 · text-secondary/bg-app 8.47
+ *   text-muted/bg-app 5.77 · text-muted/bg-raised 4.87 (worst body pair, AA)
+ *   on-accent/accent 11.16 · on-danger/danger 6.81
+ */
+
+:root {
+  --preview-midnight-bg: oklch(0% 0 0);
+  --preview-midnight-surface: oklch(15% 0.006 260);
+  --preview-midnight-text: oklch(88% 0.006 250);
+  --preview-midnight-accent: oklch(80% 0.09 80);
+}
+
+:root[data-theme='midnight'] {
+  color-scheme: dark;
+
+  /* Surfaces: black, then the faintest possible steps out of it */
+  --bg-app: oklch(0% 0 0);               /* #000000 — pixels off */
+  --bg-surface: oklch(15% 0.006 260);
+  --bg-raised: oklch(21% 0.008 260);
+  --bg-overlay: oklch(18% 0.008 260 / 0.96);
+
+  /* Text: capped below white — pure white halos on black */
+  --text-primary: oklch(88% 0.006 250);
+  --text-secondary: oklch(72% 0.01 252);
+  --text-muted: oklch(62% 0.014 254);
+
+  /* Accent: moon-gold, dimmed for night */
+  --accent: oklch(80% 0.09 80);
+  --accent-muted: oklch(80% 0.09 80 / 0.18);
+  --on-accent: oklch(0% 0 0);
+  --danger: oklch(68% 0.15 25);
+  --danger-muted: oklch(68% 0.15 25 / 0.16);
+  --on-danger: oklch(0% 0 0);
+  --backdrop: oklch(0% 0 0 / 0.8);
+
+  /* Borders: brighter than the navy theme — hairlines disappear on #000 */
+  --border-subtle: oklch(88% 0.006 250 / 0.14);
+  --border-strong: oklch(88% 0.006 250 / 0.3);
+
+  /* Course identities: one step down in lightness to match the dimmed shell */
+  --course-gold: oklch(80% 0.09 80);
+  --course-green: oklch(70% 0.1 153);
+  --course-blue: oklch(68% 0.1 245);
+  --course-pink: oklch(71% 0.1 350);
+  --course-violet: oklch(68% 0.095 300);
+  --course-orange: oklch(72% 0.11 55);
+
+  /* Highlight colors (PDF annotations — always struck on a white page, so
+   * these stay bright regardless of how dim the shell is) */
+  --highlight-yellow: oklch(83% 0.13 95);
+  --highlight-green: oklch(80% 0.14 150);
+  --highlight-pink: oklch(78% 0.115 350);
+  --highlight-blue: oklch(78% 0.1 240);
+
+  /* Board status */
+  --status-todo: oklch(58% 0.012 255);
+  --status-progress: oklch(74% 0.1 240);
+  --status-done: oklch(72% 0.12 150);
+
+  /* Shadows: on black, elevation reads from the border, not the shadow */
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.7);
+  --shadow-md: 0 4px 12px oklch(0% 0 0 / 0.7);
+  --shadow-lg: 0 12px 32px oklch(0% 0 0 / 0.8);
+}

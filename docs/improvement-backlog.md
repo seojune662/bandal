@@ -21,15 +21,15 @@
 
 | # | 제목 | 심각도 | 크기 | 근거 | 상세 |
 |---|---|---|---|---|---|
-| 1 | 하이라이트 메모가 팝오버 닫힐 때 조용히 사라진다 | P0 | S | `features/pdf/popovers.tsx:36-49`, `130-134` | §3.1 |
-| 2 | DB 열기에 실패하면 창이 아예 뜨지 않는다 (아무 안내도 없음) | P0 | S | `main/index.ts:25-45`, `main/db/database.ts:59-64` | §1.1 |
-| 3 | 필기 편집기에 undo/redo가 없다 | P0 | S | `package.json:22-28`(plugin-history 부재), `features/notes/NoteTab.tsx:99` | §4.1 |
+| ~~1~~ | ~~하이라이트 메모가 팝오버 닫힐 때 조용히 사라진다~~ **✅ 해결** (`ef2e410`) | P0 | S | 초안 수명을 `pdf/lib/memoDraft.ts`로 분리, 모든 종료 경로가 멱등 commit() 경유. 언마운트 안전망 포함, 회귀 테스트 17개 | §3.1 |
+| ~~2~~ | ~~DB 열기에 실패하면 창이 아예 뜨지 않는다~~ **✅ 해결** (`0b48292`) | P0 | S | `main/startupError.ts` 추가 — 네이티브 다이얼로그로 원인·데이터 경로·해결법 안내, whenReady 체인에 catch | §1.1 |
+| ~~3~~ | ~~필기 편집기에 undo/redo가 없다~~ **✅ 해결** (`ef2e410`) | P0 | S | `@milkdown/plugin-history` 도입 + 네이티브 ⌘Z(execCommand)를 beforeinput에서 가로채 ProseMirror로 라우팅 | §4.1 |
 | 4 | 자료를 키보드로 열 수 없다 (파일은 더블클릭 전용) | P0 | S | `features/materials/MaterialTree.tsx:64-71`, `:145` | §2.11 |
-| 5 | AI 튜터가 과목 폴더 밖 파일을 사전 승인 없이 쓸 수 있다 | P0 | M | `agent/claude/ClaudeCodeAdapter.ts:31-40`, `93-98` | §5.1 |
+| ~~5~~ | ~~AI 튜터가 과목 폴더 밖 파일을 사전 승인 없이 쓸 수 있다~~ **✅ 해결** (`ef2e410`) | P0 | M | 실 CLI로 취약점 재현(`~/.zshrc` 쓰기 성공, 권한 요청 0회) 후 수정. Edit/Write를 cwd 상대 글롭으로 스코프 + `default` 모드(fail-closed). **함정: 절대경로 규칙은 아무것도 매칭 안 함** — `SPIKE-NOTES.md` §Spike 5 | §5.1 |
 | 6 | 자료 폴더를 깊이·개수 제한 없이 **동기**로 훑는다 → 메인 프로세스 프리즈 | P0 | M | `materials/materialsRepo.ts:64-98`, `ipc/registerHandlers.ts:137` | §2.2 |
 | 7 | 「보관」한 과목을 되돌릴 UI가 없다 (사실상 삭제) | P0 | M | `stores/coursesStore.ts:222`, `settings/SettingsApp.tsx:488-497` | §2.1 |
 | 8 | 한글 파일명 NFD/NFC 미정규화 → 자료 검색이 0건으로 나온다 | P1 | S | `materials/materialsRepo.ts:186-188` | §2.3 |
-| 9 | `--text-muted`(두 테마)·라이트 `--accent`가 WCAG AA 미달 | P1 | S | 토큰 실측 3.35~4.09 / 3.40 | §10.4 |
+| ~~9~~ | ~~`--text-muted`(두 테마)·라이트 `--accent`가 WCAG AA 미달~~ **✅ 해결** | P1 | S | 3.35~4.09 → 4.63~5.65, 3.40 → 5.14. `node scripts/check-contrast.mjs`로 회귀 방지 (테마 6종 전항목 통과) | §10.4 |
 | 10 | AI 사용 한도·오류가 화면에 전혀 표시되지 않는다 | P1 | S | `agent/claude/streamMapper.ts:348-382`, `chat/chatModel.ts:361-391` | §5.2 |
 
 바로 다음 줄 (전부 `M`, 값이 크지만 하루 이상):

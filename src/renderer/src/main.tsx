@@ -1,9 +1,9 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { AppShell } from './app/AppShell'
+// tokens.css pulls in every theme (styles/themes/index.css) — entry points
+// never list themes individually.
 import './styles/tokens.css'
-import './styles/themes/dark-navy.css'
-import './styles/themes/light.css'
 import './styles/base.css'
 
 const rootElement = document.getElementById('root')
