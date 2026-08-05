@@ -1,0 +1,22 @@
+appId: com.bandal.app
+productName: Bandal
+directories:
+  buildResources: build
+  output: release
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - '**/*.node'
+npmRebuild: true
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  category: public.app-category.education
+  darkModeSupport: true
+electronLanguages:
+  - ko
+  - en

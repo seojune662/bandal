@@ -1,0 +1,29 @@
+/**
+ * Typed IPC client for renderer code. Always import from here rather than
+ * touching `window.bandal` directly — this is the single seam for mocking
+ * in tests.
+ */
+
+import type { IpcChannel, IpcRequest, IpcResponse } from '../../../shared/ipc/contract'
+import type { PushChannel, PushPayload } from '../../../shared/ipc/events'
+
+export type Unsubscribe = () => void
+
+export function invoke<K extends IpcChannel>(
+  channel: K,
+  req: IpcRequest<K>
+): Promise<IpcResponse<K>> {
+  return window.bandal.invoke(channel, req)
+}
+
+export function onPush<K extends PushChannel>(
+  channel: K,
+  cb: (payload: PushPayload<K>) => void
+): Unsubscribe {
+  return window.bandal.on(channel, cb)
+}
+
+/** Temporary M0 helper — opens the settings window. */
+export function openSettingsWindow(): Promise<void> {
+  return window.bandal.openSettings()
+}

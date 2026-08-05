@@ -1,0 +1,50 @@
+/* [C4] Semantic design tokens.
+ * Color values live in themes/dark-navy.css and themes/light.css —
+ * this file defines the theme-independent scale tokens and documents the
+ * full set of semantic color tokens every surface must use.
+ *
+ * Color tokens (defined per theme):
+ *   --bg-app --bg-surface --bg-raised --bg-overlay
+ *   --text-primary --text-secondary --text-muted
+ *   --accent --accent-muted
+ *   --border-subtle --border-strong
+ *   --highlight-yellow --highlight-green --highlight-pink --highlight-blue
+ *   --status-todo --status-progress --status-done
+ *   --shadow-sm --shadow-md --shadow-lg   (shadows carry theme-tinted color)
+ */
+
+:root {
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* Spacing scale (4px base) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* Typography */
+  --font-sans:
+    'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+    'Apple SD Gothic Neo', 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'Liberation Mono', monospace;
+
+  --text-xs: 0.6875rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+
+  /* Motion */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}

@@ -1,0 +1,43 @@
+/* Dark navy — the default Bandal theme.
+ * Deep night-sky navy layers with a warm moon-gold accent (반달 identity).
+ * Must stay in sync with WINDOW_BACKGROUND.dark in src/shared/theme.ts.
+ */
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Surfaces: night sky, ascending */
+  --bg-app: oklch(17.5% 0.032 262);      /* ~#0b1220 */
+  --bg-surface: oklch(21.5% 0.036 260);  /* ~#111a2e */
+  --bg-raised: oklch(26% 0.042 259);     /* ~#1a2540 */
+  --bg-overlay: oklch(30% 0.045 259 / 0.92);
+
+  /* Text: moonlit blue-grays */
+  --text-primary: oklch(92% 0.012 250);
+  --text-secondary: oklch(74% 0.02 252);
+  --text-muted: oklch(56% 0.026 254);
+
+  /* Accent: warm moon-gold */
+  --accent: oklch(85% 0.095 82);         /* ~#f5c97b */
+  --accent-muted: oklch(85% 0.095 82 / 0.16);
+
+  /* Borders */
+  --border-subtle: oklch(90% 0.02 255 / 0.08);
+  --border-strong: oklch(90% 0.02 255 / 0.18);
+
+  /* Highlight colors (PDF annotations) */
+  --highlight-yellow: oklch(83% 0.13 95);
+  --highlight-green: oklch(80% 0.14 150);
+  --highlight-pink: oklch(78% 0.12 350);
+  --highlight-blue: oklch(78% 0.11 240);
+
+  /* Board status */
+  --status-todo: oklch(62% 0.03 255);
+  --status-progress: oklch(78% 0.11 240);
+  --status-done: oklch(76% 0.13 150);
+
+  /* Shadows: deep, blue-black */
+  --shadow-sm: 0 1px 2px oklch(5% 0.02 262 / 0.5);
+  --shadow-md: 0 4px 12px oklch(5% 0.02 262 / 0.45);
+  --shadow-lg: 0 12px 32px oklch(5% 0.02 262 / 0.55);
+}

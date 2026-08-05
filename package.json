@@ -1,0 +1,46 @@
+{
+  "name": "bandal",
+  "version": "0.1.0",
+  "description": "Bandal (반달) — a study IDE for university students",
+  "main": "./out/main/index.js",
+  "author": "Bandal",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "start": "electron-vite preview",
+    "package": "electron-vite build && electron-builder"
+  },
+  "dependencies": {
+    "@milkdown/core": "^7.15.0",
+    "@milkdown/ctx": "^7.15.0",
+    "@milkdown/preset-commonmark": "^7.15.0",
+    "@milkdown/preset-gfm": "^7.15.0",
+    "@milkdown/prose": "^7.15.0",
+    "@milkdown/react": "^7.15.0",
+    "@milkdown/transformer": "^7.15.0",
+    "better-sqlite3": "^11.10.0",
+    "chokidar": "^4.0.3",
+    "dockview": "^4.4.0",
+    "immer": "^10.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-pdf": "^9.2.1",
+    "uuid": "^11.1.0",
+    "zustand": "^5.0.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.0",
+    "@types/react": "^18.3.20",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.5.0",
+    "electron": "^35.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.1.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}

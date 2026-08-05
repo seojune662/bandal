@@ -1,0 +1,218 @@
+/**
+ * [C3] Agent event contract.
+ *
+ * Streaming events emitted by an AI-agent CLI session (Claude Code, Codex)
+ * and forwarded to the renderer via the `chat:event-batch` push event.
+ * This union is FROZEN for M1+ workstreams — extend, don't mutate.
+ */
+
+export type AgentProvider = 'claude-code' | 'codex'
+
+export type AgentErrorCode =
+  | 'not-installed'
+  | 'version-too-old'
+  | 'not-logged-in'
+  | 'spawn-failed'
+  | 'process-crashed'
+  | 'malformed-output'
+  | 'usage-limit'
+  | 'interrupted'
+  | 'unknown'
+
+export interface Usage {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens?: number
+  cacheCreationTokens?: number
+}
+
+/** Compact summary of a tool result, safe to render in the chat timeline. */
+export interface ToolResultSummary {
+  /** Short human-readable one-liner (e.g. "Read 120 lines"). */
+  summary: string
+  /** Truncated raw output for expansion in the UI, if available. */
+  preview?: string
+  /** True when the full result was truncated into `preview`. */
+  truncated?: boolean
+}
+
+/** A suggested response option for a permission request. */
+export interface PermissionSuggestion {
+  id: string
+  label: string
+  behavior: 'allow' | 'deny'
+  /** When true, applies to future identical requests in this session. */
+  remember?: boolean
+}
+
+export interface PermissionResponse {
+  behavior: 'allow' | 'deny'
+  /** Id of the chosen suggestion, when one was picked. */
+  suggestionId?: string
+  /** Persist as a permission grant for this course. */
+  remember?: boolean
+}
+
+// ---------------------------------------------------------------------------
+// AgentEvent union
+// ---------------------------------------------------------------------------
+
+export interface AgentSessionStartedEvent {
+  type: 'session-started'
+  sessionId: string
+  model: string
+  provider: AgentProvider
+}
+
+export interface AgentTextDeltaEvent {
+  type: 'text-delta'
+  blockId: string
+  text: string
+}
+
+export interface AgentTextFinalEvent {
+  type: 'text-final'
+  blockId: string
+  text: string
+}
+
+export interface AgentThinkingDeltaEvent {
+  type: 'thinking-delta'
+  blockId: string
+  text: string
+}
+
+export interface AgentToolStartEvent {
+  type: 'tool-start'
+  toolCallId: string
+  toolName: string
+  /** Human-readable label (e.g. "Reading lecture-3.pdf"). */
+  label: string
+  input?: unknown
+}
+
+export interface AgentToolInputDeltaEvent {
+  type: 'tool-input-delta'
+  toolCallId: string
+  partialInput: string
+}
+
+export interface AgentToolEndEvent {
+  type: 'tool-end'
+  toolCallId: string
+  ok: boolean
+  result?: ToolResultSummary
+}
+
+export interface AgentPermissionRequestEvent {
+  type: 'permission-request'
+  requestId: string
+  toolName: string
+  input: unknown
+  suggestions?: PermissionSuggestion[]
+}
+
+export type TurnStopReason =
+  | 'success'
+  | 'max-turns'
+  | 'budget'
+  | 'interrupted'
+  | 'error'
+
+export interface AgentTurnCompleteEvent {
+  type: 'turn-complete'
+  stopReason: TurnStopReason
+  usage?: Usage
+  costUsd?: number
+  durationMs?: number
+}
+
+export interface AgentUsageEvent {
+  type: 'usage'
+  usage: Usage
+}
+
+export interface AgentLimitEvent {
+  type: 'limit'
+  limitKind: 'rate' | 'usage'
+  /** ISO datetime at which the limit resets, when known. */
+  resetsAt?: string
+  message: string
+}
+
+export interface AgentErrorEvent {
+  type: 'error'
+  code: AgentErrorCode
+  message: string
+  /** Fatal errors end the session; non-fatal ones end at most the turn. */
+  fatal: boolean
+}
+
+export type AgentEvent =
+  | AgentSessionStartedEvent
+  | AgentTextDeltaEvent
+  | AgentTextFinalEvent
+  | AgentThinkingDeltaEvent
+  | AgentToolStartEvent
+  | AgentToolInputDeltaEvent
+  | AgentToolEndEvent
+  | AgentPermissionRequestEvent
+  | AgentTurnCompleteEvent
+  | AgentUsageEvent
+  | AgentLimitEvent
+  | AgentErrorEvent
+
+// ---------------------------------------------------------------------------
+// Adapter interfaces (types only — implemented in main/features/agent later)
+// ---------------------------------------------------------------------------
+
+export interface AgentAvailability {
+  installed: boolean
+  version?: string
+  loggedIn: boolean
+  subscriptionType?: string
+}
+
+export interface AgentCapabilities {
+  /** Can surface interactive permission prompts (vs. pre-approved only). */
+  interactivePermissions: boolean
+  /** Can accept additional user input while a turn is streaming. */
+  streamingInput: boolean
+  /** Emits partial text deltas (vs. only final blocks). */
+  partialText: boolean
+  /** Supports cancelling an in-flight turn. */
+  cancel: boolean
+}
+
+export interface AgentStartSessionOptions {
+  courseId: string
+  /** Working directory for the CLI process (the course folder). */
+  cwd: string
+  model?: string
+  /** Resume a previous CLI session when supported. */
+  resumeCliSessionId?: string
+  systemPromptAppend?: string
+}
+
+export type Unsubscribe = () => void
+
+export interface AgentSession {
+  /** Resolves once the CLI reports its session id. */
+  readonly sessionId: Promise<string>
+  sendMessage(content: string): void
+  /** Event stream: consume as an async iterable or subscribe with on(). */
+  events: AsyncIterable<AgentEvent>
+  on(cb: (event: AgentEvent) => void): Unsubscribe
+  respondPermission(requestId: string, res: PermissionResponse): void
+  /** Cancel the in-flight turn; the session stays usable. */
+  cancel(): void
+  /** Tear down the process and release resources. */
+  dispose(): void
+}
+
+export interface AgentAdapter {
+  readonly provider: AgentProvider
+  readonly capabilities: AgentCapabilities
+  checkAvailability(): Promise<AgentAvailability>
+  startSession(opts: AgentStartSessionOptions): Promise<AgentSession>
+}

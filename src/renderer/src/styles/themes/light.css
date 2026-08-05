@@ -1,0 +1,45 @@
+/* Light — warm paper-white theme, designed on its own terms (not an
+ * inversion of dark-navy): ivory paper surfaces, ink-brown text, and a
+ * deepened amber-gold accent that keeps the 반달 identity readable on
+ * bright ground.
+ * Must stay in sync with WINDOW_BACKGROUND.light in src/shared/theme.ts.
+ */
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  /* Surfaces: warm paper, ascending toward pure page-white */
+  --bg-app: oklch(97% 0.012 85);         /* ~#faf6ef */
+  --bg-surface: oklch(98.5% 0.007 90);   /* near-white card */
+  --bg-raised: oklch(100% 0 0);
+  --bg-overlay: oklch(100% 0 0 / 0.94);
+
+  /* Text: warm ink */
+  --text-primary: oklch(25% 0.02 70);
+  --text-secondary: oklch(45% 0.025 75);
+  --text-muted: oklch(60% 0.02 80);
+
+  /* Accent: deepened amber-gold for contrast on paper */
+  --accent: oklch(62% 0.12 75);
+  --accent-muted: oklch(62% 0.12 75 / 0.14);
+
+  /* Borders: warm hairlines */
+  --border-subtle: oklch(30% 0.03 75 / 0.1);
+  --border-strong: oklch(30% 0.03 75 / 0.22);
+
+  /* Highlight colors (PDF annotations) */
+  --highlight-yellow: oklch(88% 0.14 95);
+  --highlight-green: oklch(85% 0.13 150);
+  --highlight-pink: oklch(85% 0.1 350);
+  --highlight-blue: oklch(84% 0.09 240);
+
+  /* Board status */
+  --status-todo: oklch(55% 0.02 80);
+  --status-progress: oklch(58% 0.12 240);
+  --status-done: oklch(58% 0.14 150);
+
+  /* Shadows: soft warm gray */
+  --shadow-sm: 0 1px 2px oklch(30% 0.02 80 / 0.1);
+  --shadow-md: 0 4px 12px oklch(30% 0.02 80 / 0.12);
+  --shadow-lg: 0 12px 32px oklch(30% 0.02 80 / 0.16);
+}
