@@ -22,6 +22,7 @@ import { PlaceholderPanel } from './panels/PlaceholderPanel'
 import { BrowserPanel } from '../browser/BrowserPanel'
 import NoteTab from '../notes/NoteTab'
 import BoardPanel from '../board/BoardPanel'
+import ChatTab from '../chat/ChatTab'
 
 export interface TabRegistryEntry {
   component: FunctionComponent<IDockviewPanelProps>
@@ -49,7 +50,7 @@ export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
     defaultTitle: tabTitle
   },
   chat: {
-    component: PlaceholderPanel, // M4: replace with the chat surface
+    component: ChatTab,
     icon: null,
     defaultTitle: tabTitle,
     singleton: 'course'
