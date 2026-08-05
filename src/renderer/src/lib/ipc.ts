@@ -23,6 +23,14 @@ export function onPush<K extends PushChannel>(
   return window.bandal.on(channel, cb)
 }
 
+/**
+ * [M5] Absolute filesystem path of a dropped File (Finder drag & drop).
+ * Empty string when the File has no backing path.
+ */
+export function pathForFile(file: File): string {
+  return window.bandal.pathForFile(file)
+}
+
 /** Temporary M0 helper — opens the settings window. */
 export function openSettingsWindow(): Promise<void> {
   return window.bandal.openSettings()

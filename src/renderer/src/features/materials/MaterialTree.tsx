@@ -26,6 +26,12 @@ function openMaterial(kind: MaterialKind, relPath: string): void {
   openMaterialInWorkspace(kind, relPath)
 }
 
+/** pdf/md open as tabs; everything else opens in Finder (tooltip says so). */
+function rowTitle(kind: MaterialKind | 'dir', relPath: string): string {
+  if (kind === 'dir' || kind === 'pdf' || kind === 'note') return relPath
+  return `${relPath} — Finder에서 열기`
+}
+
 interface TreeNodeProps {
   node: MaterialNode
   depth: number
@@ -54,7 +60,7 @@ function TreeNode({
         className="material-row"
         data-kind={node.kind}
         style={rowStyle}
-        title={node.relPath}
+        title={rowTitle(node.kind, node.relPath)}
         onClick={() => {
           if (isDirectory) onToggleFolder(node.relPath)
         }}
@@ -135,7 +141,7 @@ export function MaterialSearchResults({
             type="button"
             className="material-result"
             data-kind={result.kind}
-            title={result.relPath}
+            title={rowTitle(result.kind, result.relPath)}
             onDoubleClick={() => openMaterial(result.kind, result.relPath)}
           >
             <Icon

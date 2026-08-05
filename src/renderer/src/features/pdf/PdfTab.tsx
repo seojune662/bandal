@@ -31,6 +31,7 @@ import { PdfToolbar } from './PdfToolbar'
 import { PdfPageView } from './PdfPageView'
 import { AnnotationRail } from './AnnotationRail'
 import { HighlightPopover, SelectionPopover, type ContentPoint } from './popovers'
+import { askAiAboutAnnotation } from './askAi'
 import { readPageSelection } from './lib/domSelection'
 import { normalizeSelectionRects } from './lib/annotationGeometry'
 import { pdfScrollMemory } from './lib/scrollMemory'
@@ -344,6 +345,14 @@ function PdfViewer({
     [editPopover, annotations]
   )
 
+  // -- [M5] annotation → AI tutor -------------------------------------------
+  const askAi = useCallback(
+    (annotation: Annotation): void => {
+      askAiAboutAnnotation(courseId, annotation)
+    },
+    [courseId]
+  )
+
   // -- rail jump ------------------------------------------------------------
   const jumpToAnnotation = useCallback(
     (annotation: Annotation): void => {
@@ -491,6 +500,10 @@ function PdfViewer({
                   setEditPopover(null)
                 }}
                 onDismiss={() => setEditPopover(null)}
+                onAskAi={(draftComment) => {
+                  askAi({ ...editedAnnotation, comment: draftComment })
+                  setEditPopover(null)
+                }}
               />
             )}
           </div>
@@ -503,6 +516,7 @@ function PdfViewer({
             activeId={editPopover?.annotationId ?? null}
             error={annotationsApi.error}
             onJump={jumpToAnnotation}
+            onAskAi={askAi}
             onClose={() => setIsRailOpen(false)}
           />
         )}

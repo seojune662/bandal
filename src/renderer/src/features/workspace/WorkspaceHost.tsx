@@ -18,6 +18,7 @@ import 'dockview/dist/styles/dockview.css'
 import { Icon } from '../../app/icons'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
+import { useFileDropTarget } from '../materials/useFileDropTarget'
 import { NewTabMenu } from './NewTabMenu'
 import { openNewTabMenu, useNewTabMenu } from './newTabMenuController'
 import { isTabDescriptor } from './tabIdentity'
@@ -81,6 +82,7 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
   const course =
     courses.find((entry) => entry.id === selectedCourseId) ?? null
+  const { isDropActive, dropProps } = useFileDropTarget(course?.id ?? null)
 
   if (course === null) {
     return (
@@ -95,12 +97,18 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
     )
   }
   return (
-    <div className="workspace-watermark">
+    <div
+      className="workspace-watermark"
+      data-drop-active={isDropActive || undefined}
+      {...dropProps}
+    >
       <div className="workspace-watermark__moon" aria-hidden="true" />
       <p className="eyebrow">CURRENT COURSE</p>
       <h1>{course.name}</h1>
       <p className="workspace-watermark__hint">
         필기, PDF, 브라우저, AI 튜터를 탭으로 열 수 있어요.
+        <br />
+        Finder에서 파일을 끌어다 놓으면 자료로 가져와요.
       </p>
       <button
         type="button"

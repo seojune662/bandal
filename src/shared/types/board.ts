@@ -34,6 +34,8 @@ export interface UpdateTaskInput {
   status?: TaskStatus
   dueAt?: string | null
   sortOrder?: number
+  /** Move the task to another course (null = global). Omit to keep. */
+  courseId?: string | null
 }
 
 export interface ListTasksInput {

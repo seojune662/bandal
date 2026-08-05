@@ -3,18 +3,19 @@
  *
  * M1-A: courses / materials / notes / annotations / board / layout are real
  * implementations backed by src/main/features/* repos and the SQLite DB.
- * chat / agent / browser remain typed stubs — their registration LINES live
- * here (so all channels are always handled) but their logic is owned by
- * later milestones. Keep the section comments so merges stay additive.
+ * M4-H added the chat/agent runtime, M5 the materials watcher; the browser
+ * runs as a renderer <webview> and needs no invoke channels here. Keep the
+ * section comments so merges stay additive.
  */
 
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
+import type { PushChannel, PushPayload } from '../../shared/ipc/events'
 import { getSettings, setSettings } from '../settingsStore'
 import { getDatabase } from '../db/database'
 import { createLayoutRepo } from '../db/layoutRepo'
 import { createCoursesRepo } from '../features/courses'
-import { createMaterialsRepo } from '../features/materials'
+import { createMaterialsRepo, createMaterialsWatcher } from '../features/materials'
 import { createNotesRepo } from '../features/notes'
 import { createAnnotationsRepo } from '../features/annotations'
 import { createBoardRepo } from '../features/board'
@@ -47,6 +48,16 @@ function handle<K extends IpcChannel>(
 
 const OK = { ok: true } as const
 
+/** Sends a push event to every open window. */
+function broadcast<K extends PushChannel>(
+  channel: K,
+  payload: PushPayload<K>
+): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(channel, payload)
+  }
+}
+
 export function registerHandlers(): void {
   const db = getDatabase()
   const coursesRepo = createCoursesRepo({
@@ -65,12 +76,32 @@ export function registerHandlers(): void {
   const boardRepo = createBoardRepo(db)
   const layoutRepo = createLayoutRepo(db)
 
+  const materialsWatcher = createMaterialsWatcher({
+    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
+    onChange: (courseId) => broadcast('materials:changed', { courseId })
+  })
+
+  /** Course went away (delete/archive) → release its live resources. */
+  function releaseCourseRuntime(courseId: string): void {
+    materialsWatcher.unwatch(courseId)
+    sessionManager.close(courseId)
+    eventBatcher.flush(courseId)
+  }
+
   // -- courses --------------------------------------------------------------
   handle('courses:list', (req) => coursesRepo.list(req))
   handle('courses:create', (req) => coursesRepo.create(req))
   handle('courses:rename', (req) => coursesRepo.rename(req))
-  handle('courses:archive', (req) => coursesRepo.archive(req))
-  handle('courses:delete', (req) => coursesRepo.softDelete(req))
+  handle('courses:archive', (req) => {
+    const course = coursesRepo.archive(req)
+    if (req.archived) releaseCourseRuntime(req.courseId)
+    return course
+  })
+  handle('courses:delete', (req) => {
+    const result = coursesRepo.softDelete(req)
+    releaseCourseRuntime(req.courseId)
+    return result
+  })
 
   // -- materials ------------------------------------------------------------
   handle('materials:tree', (req) => materialsRepo.tree(req.courseId))
@@ -78,6 +109,14 @@ export function registerHandlers(): void {
   handle('materials:import', (req) => materialsRepo.import(req.courseId, req.paths))
   handle('materials:reveal', (req) => materialsRepo.reveal(req.courseId, req.relPath))
   handle('materials:readFile', (req) => materialsRepo.readFile(req.courseId, req.relPath))
+  handle('materials:watch', (req) => {
+    materialsWatcher.watch(req.courseId)
+    return OK
+  })
+  handle('materials:unwatch', (req) => {
+    materialsWatcher.unwatch(req.courseId)
+    return OK
+  })
 
   // -- notes ----------------------------------------------------------------
   handle('notes:read', (req) => notesRepo.read(req))
@@ -102,11 +141,7 @@ export function registerHandlers(): void {
   const binaryLocator = createBinaryLocator()
   const claudeAdapter = createClaudeCodeAdapter({ locator: binaryLocator })
   const eventBatcher = createEventBatcher({
-    send: (batch) => {
-      for (const win of BrowserWindow.getAllWindows()) {
-        win.webContents.send('chat:event-batch', batch)
-      }
-    }
+    send: (batch) => broadcast('chat:event-batch', batch)
   })
   const sessionManager = createSessionManager({
     adapter: claudeAdapter,
@@ -118,6 +153,7 @@ export function registerHandlers(): void {
     emit: (courseId, event) => eventBatcher.push(courseId, event)
   })
   app.on('before-quit', () => {
+    materialsWatcher.dispose()
     sessionManager.disposeAll()
     eventBatcher.dispose()
   })
@@ -147,16 +183,6 @@ export function registerHandlers(): void {
       ? binaryLocator.availability()
       : { installed: false, loggedIn: false }
   )
-
-  // -- browser (STUBS — owned by the browser milestone) ---------------------
-  handle('browser:createView', () => OK)
-  handle('browser:destroyView', () => OK)
-  handle('browser:setBounds', () => OK)
-  handle('browser:setVisible', () => OK)
-  handle('browser:navigate', () => OK)
-  handle('browser:back', () => OK)
-  handle('browser:forward', () => OK)
-  handle('browser:reload', () => OK)
 
   // -- settings (real implementation, settingsStore-owned) ------------------
   handle('settings:get', () => getSettings())

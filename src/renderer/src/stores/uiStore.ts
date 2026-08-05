@@ -14,12 +14,16 @@ interface UiState {
   resolvedTheme: ResolvedTheme
   leftRailOpen: boolean
   rightRailOpen: boolean
+  /** [M5] Study-board overlay above the workspace (board tab stays too). */
+  isBoardOverlayOpen: boolean
   /** Load persisted settings and subscribe to changes. Call once at boot. */
   initTheme: () => Promise<void>
   /** Persist a new preference (round-trips through main). */
   setThemePreference: (pref: ThemePreference) => Promise<void>
   toggleLeftRail: () => void
   toggleRightRail: () => void
+  toggleBoardOverlay: () => void
+  closeBoardOverlay: () => void
 }
 
 let themeInitialization: Promise<void> | null = null
@@ -42,6 +46,7 @@ export const useUiStore = create<UiState>()((set, get) => ({
   resolvedTheme: 'dark',
   leftRailOpen: true,
   rightRailOpen: true,
+  isBoardOverlayOpen: false,
 
   initTheme: async () => {
     if (themeInitialization === null) {
@@ -91,5 +96,13 @@ export const useUiStore = create<UiState>()((set, get) => ({
 
   toggleRightRail: () => {
     set((state) => ({ rightRailOpen: !state.rightRailOpen }))
+  },
+
+  toggleBoardOverlay: () => {
+    set((state) => ({ isBoardOverlayOpen: !state.isBoardOverlayOpen }))
+  },
+
+  closeBoardOverlay: () => {
+    set({ isBoardOverlayOpen: false })
   }
 }))

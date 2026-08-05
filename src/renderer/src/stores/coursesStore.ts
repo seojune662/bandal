@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import type { Course, CreateCourseInput } from '../../../shared/types/course'
 import { invoke } from '../lib/ipc'
+import { useWorkspaceStore } from './workspaceStore'
 
 interface CoursesState {
   courses: Course[]
@@ -124,6 +125,9 @@ export const useCoursesStore = create<CoursesState>()(
       })
       try {
         await invoke('courses:archive', { courseId, archived: true })
+        // The course row is gone from active listings; a queued layout save
+        // for it would be stale. Its agent session was disposed in main.
+        useWorkspaceStore.getState().discardPendingSave(courseId)
         set((state) => {
           state.courses = state.courses.filter((course) => course.id !== courseId)
           if (selectedCourseId === courseId) {
@@ -148,6 +152,9 @@ export const useCoursesStore = create<CoursesState>()(
       })
       try {
         await invoke('courses:delete', { courseId })
+        // Saving a layout for a deleted course would throw in main; the
+        // workspace swaps to the next course via the selection change below.
+        useWorkspaceStore.getState().discardPendingSave(courseId)
         set((state) => {
           state.courses = state.courses.filter((course) => course.id !== courseId)
           if (selectedCourseId === courseId) {

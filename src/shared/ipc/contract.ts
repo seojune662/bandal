@@ -44,14 +44,6 @@ import type {
 } from '../types/agent-events'
 import type { Settings, SettingsPatch } from '../types/settings'
 
-/** Rectangle used to position embedded browser views inside the window. */
-export interface ViewBounds {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
 export interface IpcContract {
   // -- courses --------------------------------------------------------------
   'courses:list': {
@@ -100,6 +92,18 @@ export interface IpcContract {
   'materials:readFile': {
     req: { courseId: string; relPath: string }
     res: MaterialFileContent
+  }
+  /**
+   * [M5] Starts watching the course folder on disk. Changes are debounced and
+   * pushed as `materials:changed { courseId }`. Idempotent per course.
+   */
+  'materials:watch': {
+    req: { courseId: string }
+    res: { ok: true }
+  }
+  'materials:unwatch': {
+    req: { courseId: string }
+    res: { ok: true }
   }
 
   // -- notes ----------------------------------------------------------------
@@ -181,40 +185,6 @@ export interface IpcContract {
   'agent:availability': {
     req: { provider: AgentProvider }
     res: AgentAvailability
-  }
-
-  // -- browser (embedded WebContentsView tabs) ------------------------------
-  'browser:createView': {
-    req: { tabId: string; initialUrl: string; bounds: ViewBounds }
-    res: { ok: true }
-  }
-  'browser:destroyView': {
-    req: { tabId: string }
-    res: { ok: true }
-  }
-  'browser:setBounds': {
-    req: { tabId: string; bounds: ViewBounds }
-    res: { ok: true }
-  }
-  'browser:setVisible': {
-    req: { tabId: string; visible: boolean }
-    res: { ok: true }
-  }
-  'browser:navigate': {
-    req: { tabId: string; url: string }
-    res: { ok: true }
-  }
-  'browser:back': {
-    req: { tabId: string }
-    res: { ok: true }
-  }
-  'browser:forward': {
-    req: { tabId: string }
-    res: { ok: true }
-  }
-  'browser:reload': {
-    req: { tabId: string }
-    res: { ok: true }
   }
 
   // -- settings -------------------------------------------------------------

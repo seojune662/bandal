@@ -7,6 +7,7 @@
 
 import { useMemo } from 'react'
 import { Icon } from '../../app/icons'
+import { TabKindIcon } from '../workspace/workspaceIcons'
 import type { Annotation } from '../../../../shared/types/annotation'
 
 export interface AnnotationRailProps {
@@ -15,6 +16,8 @@ export interface AnnotationRailProps {
   activeId: string | null
   error: string | null
   onJump: (annotation: Annotation) => void
+  /** [M5] "AI에게 물어보기" — prefill the course chat with this highlight. */
+  onAskAi: (annotation: Annotation) => void
   onClose: () => void
 }
 
@@ -47,15 +50,17 @@ function RailItem({
   annotation,
   isStale,
   isActive,
-  onJump
+  onJump,
+  onAskAi
 }: {
   annotation: Annotation
   isStale: boolean
   isActive: boolean
   onJump: (annotation: Annotation) => void
+  onAskAi: (annotation: Annotation) => void
 }): JSX.Element {
   return (
-    <li>
+    <li className="pdf-rail__row">
       <button
         type="button"
         className="pdf-rail__item"
@@ -82,6 +87,15 @@ function RailItem({
           )}
         </span>
       </button>
+      <button
+        type="button"
+        className="pdf-rail__ask"
+        aria-label="AI에게 물어보기"
+        title="AI에게 물어보기"
+        onClick={() => onAskAi(annotation)}
+      >
+        <TabKindIcon kind="chat" />
+      </button>
     </li>
   )
 }
@@ -92,6 +106,7 @@ export function AnnotationRail({
   activeId,
   error,
   onJump,
+  onAskAi,
   onClose
 }: AnnotationRailProps): JSX.Element {
   const groups = useMemo(() => groupByPage(annotations), [annotations])
@@ -139,6 +154,7 @@ export function AnnotationRail({
                     isStale={staleIds.has(annotation.id)}
                     isActive={annotation.id === activeId}
                     onJump={onJump}
+                    onAskAi={onAskAi}
                   />
                 ))}
               </ul>

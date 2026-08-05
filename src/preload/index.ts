@@ -3,7 +3,7 @@
  * contextIsolation: on, nodeIntegration: off, sandbox: on.
  */
 
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../shared/ipc/contract'
 import type { PushChannel, PushPayload } from '../shared/ipc/events'
 
@@ -18,6 +18,11 @@ export interface BandalBridge {
     channel: K,
     cb: (payload: PushPayload<K>) => void
   ): Unsubscribe
+  /**
+   * [M5] Absolute filesystem path of a dropped File (drag & drop import).
+   * Returns '' for files that have no path (e.g. dragged browser images).
+   */
+  pathForFile(file: File): string
   /** Temporary M0 helper — opens the settings window. */
   openSettings(): Promise<void>
 }
@@ -26,7 +31,6 @@ export interface BandalBridge {
 const PUSH_CHANNELS: readonly PushChannel[] = [
   'chat:event-batch',
   'materials:changed',
-  'browser:state',
   'browser:open-url',
   'settings:changed'
 ]
@@ -50,6 +54,13 @@ const bridge: BandalBridge = {
     ipcRenderer.on(channel, listener)
     return () => {
       ipcRenderer.removeListener(channel, listener)
+    }
+  },
+  pathForFile(file) {
+    try {
+      return webUtils.getPathForFile(file)
+    } catch {
+      return ''
     }
   },
   async openSettings() {

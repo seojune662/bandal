@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { HIGHLIGHT_COLORS } from './useAnnotations'
 import { Icon } from '../../app/icons'
+import { TabKindIcon } from '../workspace/workspaceIcons'
 import type {
   Annotation,
   HighlightColor
@@ -104,6 +105,11 @@ interface HighlightPopoverProps {
   onSaveComment: (comment: string | null) => void
   onDelete: () => void
   onDismiss: () => void
+  /**
+   * [M5] Prefill the course chat with this highlight (editable, not sent).
+   * Receives the current comment draft so unsaved memo edits are included.
+   */
+  onAskAi: (draftComment: string | null) => void
 }
 
 export function HighlightPopover({
@@ -113,7 +119,8 @@ export function HighlightPopover({
   onChangeColor,
   onSaveComment,
   onDelete,
-  onDismiss
+  onDismiss,
+  onAskAi
 }: HighlightPopoverProps): JSX.Element {
   const [draft, setDraft] = useState(annotation.comment ?? '')
   const ref = useDismiss(onDismiss)
@@ -186,6 +193,19 @@ export function HighlightPopover({
           }
         }}
       />
+      <button
+        type="button"
+        className="pdf-popover__ask-ai"
+        onClick={() => {
+          commit()
+          const trimmed = draft.trim()
+          onAskAi(trimmed.length === 0 ? null : trimmed)
+        }}
+      >
+        <TabKindIcon kind="chat" />
+        AI에게 물어보기
+      </button>
+
       <footer className="pdf-popover__foot">
         <span className="pdf-popover__hint">⌘↩ 저장 후 닫기</span>
         <button

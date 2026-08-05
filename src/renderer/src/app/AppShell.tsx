@@ -1,11 +1,14 @@
 import { useEffect } from 'react'
+import { BoardOverlay } from '../features/board/BoardPanel'
 import { BrowserWebviewLayer } from '../features/browser/BrowserWebviewLayer'
 import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { MaterialsSidebar } from '../features/materials/MaterialsSidebar'
+import { TabKindIcon } from '../features/workspace/workspaceIcons'
 import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
 import { useCoursesStore } from '../stores/coursesStore'
 import { useUiStore } from '../stores/uiStore'
 import { Icon } from './icons'
+import { ToastHost } from './toast'
 import './app-shell.css'
 
 export function AppShell(): JSX.Element {
@@ -17,6 +20,9 @@ export function AppShell(): JSX.Element {
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
   const toggleLeftRail = useUiStore((state) => state.toggleLeftRail)
   const toggleRightRail = useUiStore((state) => state.toggleRightRail)
+  const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
+  const toggleBoardOverlay = useUiStore((state) => state.toggleBoardOverlay)
+  const closeBoardOverlay = useUiStore((state) => state.closeBoardOverlay)
 
   const selectedCourse =
     courses.find((course) => course.id === selectedCourseId) ?? null
@@ -27,6 +33,17 @@ export function AppShell(): JSX.Element {
     })
     void loadCourses()
   }, [initTheme, loadCourses])
+
+  // [M5] A file dropped outside a drop target must never navigate the window.
+  useEffect(() => {
+    const prevent = (event: DragEvent): void => event.preventDefault()
+    window.addEventListener('dragover', prevent)
+    window.addEventListener('drop', prevent)
+    return () => {
+      window.removeEventListener('dragover', prevent)
+      window.removeEventListener('drop', prevent)
+    }
+  }, [])
 
   return (
     <div
@@ -56,6 +73,17 @@ export function AppShell(): JSX.Element {
         <div className="app-titlebar__actions app-titlebar__actions--right">
           <button
             type="button"
+            className="titlebar-button titlebar-button--labeled"
+            aria-label={isBoardOverlayOpen ? '학업 보드 닫기' : '학업 보드 열기'}
+            aria-pressed={isBoardOverlayOpen}
+            title={isBoardOverlayOpen ? '학업 보드 닫기' : '학업 보드 열기'}
+            onClick={toggleBoardOverlay}
+          >
+            <TabKindIcon kind="board" />
+            보드
+          </button>
+          <button
+            type="button"
             className="titlebar-button"
             aria-label={rightRailOpen ? '자료 사이드바 접기' : '자료 사이드바 펼치기'}
             aria-pressed={rightRailOpen}
@@ -76,6 +104,8 @@ export function AppShell(): JSX.Element {
       {rightRailOpen && <MaterialsSidebar course={selectedCourse} />}
 
       <BrowserWebviewLayer />
+      {isBoardOverlayOpen && <BoardOverlay onClose={closeBoardOverlay} />}
+      <ToastHost />
     </div>
   )
 }

@@ -1,17 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createBoardRepo, type BoardRepo } from '../../src/main/features/board'
-import { createCoursesRepo } from '../../src/main/features/courses'
+import { createCoursesRepo, type CoursesRepo } from '../../src/main/features/courses'
 import { NotFoundError, ValidationError } from '../../src/main/db/errors'
 import { createTestDb, type TestDb } from './helpers/testDb'
 
 describe('boardRepo', () => {
   let ctx: TestDb
   let repo: BoardRepo
+  let courses: CoursesRepo
   let courseId: string
 
   beforeEach(() => {
     ctx = createTestDb()
-    const courses = createCoursesRepo({ db: ctx.db, getDataRoot: () => ctx.dir })
+    courses = createCoursesRepo({ db: ctx.db, getDataRoot: () => ctx.dir })
     courseId = courses.create({ name: 'Course', color: '#000' }).id
     repo = createBoardRepo(ctx.db)
   })
@@ -116,6 +117,57 @@ describe('boardRepo', () => {
       expect(updated.notes).toBe('edited')
       expect(updated.dueAt).toBe('2026-09-01T00:00:00.000Z')
       expect(updated.sortOrder).toBe(task.sortOrder)
+    })
+
+    test('moving to another course keeps the id and appends to that column', () => {
+      // Arrange
+      const otherCourseId = courses.create({ name: 'Other', color: '#111' }).id
+      repo.create({ courseId: otherCourseId, title: 'existing-in-other' })
+      const task = repo.create({ courseId, title: 'movable' })
+
+      // Act
+      const moved = repo.update({ id: task.id, courseId: otherCourseId })
+
+      // Assert
+      expect(moved.id).toBe(task.id)
+      expect(moved.courseId).toBe(otherCourseId)
+      expect(moved.sortOrder).toBe(1) // appended after existing-in-other
+      expect(repo.list({ courseId })).toHaveLength(0)
+      expect(repo.list({ courseId: otherCourseId })).toHaveLength(2)
+    })
+
+    test('moving to global sets courseId null', () => {
+      // Arrange
+      const task = repo.create({ courseId, title: 'to-global' })
+
+      // Act
+      const moved = repo.update({ id: task.id, courseId: null })
+
+      // Assert
+      expect(moved.courseId).toBeNull()
+      expect(repo.list({ courseId: null })[0]?.id).toBe(task.id)
+    })
+
+    test('an unchanged courseId does not disturb the sort order', () => {
+      // Arrange
+      repo.create({ courseId, title: 'first' })
+      const task = repo.create({ courseId, title: 'second' })
+
+      // Act
+      const updated = repo.update({ id: task.id, courseId, title: 'renamed' })
+
+      // Assert
+      expect(updated.sortOrder).toBe(task.sortOrder)
+    })
+
+    test('rejects a move to an unknown course', () => {
+      // Arrange
+      const task = repo.create({ courseId, title: 'task' })
+
+      // Act / Assert
+      expect(() => repo.update({ id: task.id, courseId: 'ghost' })).toThrow(
+        NotFoundError
+      )
     })
 
     test('rejects an invalid dueAt', () => {

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
+import { invoke, onPush } from '../../lib/ipc'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import { normalizeCourseColor } from '../courses/courseColors'
 import { MaterialSearchResults, MaterialTree } from './MaterialTree'
+import { useFileDropTarget } from './useFileDropTarget'
 import './materials.css'
 
 const SEARCH_DEBOUNCE_MS = 240
@@ -26,6 +28,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const toggleFolder = useMaterialsStore((state) => state.toggleFolder)
   const [query, setQuery] = useState('')
   const [isDebouncing, setIsDebouncing] = useState(false)
+  const { isDropActive, dropProps } = useFileDropTarget(course?.id ?? null)
 
   useEffect(() => {
     setQuery('')
@@ -36,6 +39,24 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     }
     void loadTree(course.id)
   }, [clear, clearSearch, course?.id, loadTree])
+
+  // [M5] Live tree: watch the course folder, refresh silently on pushes.
+  useEffect(() => {
+    if (course === null) return
+    const courseId = course.id
+    void invoke('materials:watch', { courseId }).catch((error: unknown) => {
+      console.error('[Bandal] 자료 폴더 감시를 시작하지 못했습니다.', error)
+    })
+    const unsubscribe = onPush('materials:changed', (payload) => {
+      if (payload.courseId === courseId) {
+        void loadTree(courseId, { silent: true })
+      }
+    })
+    return () => {
+      unsubscribe()
+      void invoke('materials:unwatch', { courseId }).catch(() => undefined)
+    }
+  }, [course?.id, loadTree])
 
   useEffect(() => {
     const normalizedQuery = query.trim()
@@ -57,7 +78,12 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const pendingSearch = isDebouncing || isSearching
 
   return (
-    <aside className="app-rail app-rail--right" aria-label="자료">
+    <aside
+      className="app-rail app-rail--right"
+      aria-label="자료"
+      data-drop-active={isDropActive || undefined}
+      {...dropProps}
+    >
       <div className="rail-heading materials-heading">
         <div className="materials-heading__text">
           <p className="eyebrow">MATERIALS</p>

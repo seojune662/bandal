@@ -409,4 +409,32 @@ describe('debounced structural saves', () => {
     await vi.advanceTimersByTimeAsync(3000)
     expect(savesFor('c1')).toHaveLength(1)
   })
+
+  test('discardPendingSave drops a queued save for a deleted course', async () => {
+    // Arrange
+    const dock = await readyWithLayout()
+    dock.json = singleLeafLayout([pdfA, pdfB])
+    useWorkspaceStore.getState().notifyLayoutChanged()
+
+    // Act: the course was deleted before the debounce elapsed.
+    useWorkspaceStore.getState().discardPendingSave('c1')
+    await vi.advanceTimersByTimeAsync(3000)
+
+    // Assert: no save was sent for the dead course.
+    expect(savesFor('c1')).toHaveLength(0)
+  })
+
+  test('discardPendingSave for another course leaves the save alone', async () => {
+    // Arrange
+    const dock = await readyWithLayout()
+    dock.json = singleLeafLayout([pdfA, pdfB])
+    useWorkspaceStore.getState().notifyLayoutChanged()
+
+    // Act
+    useWorkspaceStore.getState().discardPendingSave('c-other')
+    await vi.advanceTimersByTimeAsync(3000)
+
+    // Assert
+    expect(savesFor('c1')).toHaveLength(1)
+  })
 })

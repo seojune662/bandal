@@ -16,6 +16,8 @@ declare global {
         channel: K,
         cb: (payload: PushPayload<K>) => void
       ): () => void
+      /** [M5] Absolute path of a dropped File ('' when unavailable). */
+      pathForFile(file: File): string
       /** Temporary M0 helper — opens the settings window. */
       openSettings(): Promise<void>
     }

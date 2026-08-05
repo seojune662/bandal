@@ -19,17 +19,6 @@ export interface MaterialsChanged {
   courseId: string
 }
 
-/** Navigation/loading state of an embedded browser view. */
-export interface BrowserState {
-  tabId: string
-  url: string
-  title: string
-  favicon?: string
-  loading: boolean
-  canGoBack: boolean
-  canGoForward: boolean
-}
-
 /**
  * [M3-F] A browser guest asked for a new window (window.open / target=_blank).
  * Main denies the native window and forwards the URL here; the renderer opens
@@ -47,7 +36,6 @@ export interface SettingsChanged {
 export interface PushEvents {
   'chat:event-batch': ChatEventBatch
   'materials:changed': MaterialsChanged
-  'browser:state': BrowserState
   'browser:open-url': BrowserOpenUrl
   'settings:changed': SettingsChanged
 }

@@ -14,7 +14,8 @@ interface MaterialsState {
   isLoading: boolean
   isSearching: boolean
   error: string | null
-  loadTree: (courseId: string) => Promise<void>
+  /** `silent` refreshes in place (watcher pushes) without the skeleton. */
+  loadTree: (courseId: string, options?: { silent?: boolean }) => Promise<void>
   search: (courseId: string, query: string) => Promise<void>
   clearSearch: () => void
   clear: () => void
@@ -38,7 +39,7 @@ export const useMaterialsStore = create<MaterialsState>()(
     isSearching: false,
     error: null,
 
-    loadTree: async (courseId) => {
+    loadTree: async (courseId, options = {}) => {
       const sequence = ++treeSequence
       if (get().activeCourseId !== courseId) {
         set((state) => {
@@ -49,7 +50,7 @@ export const useMaterialsStore = create<MaterialsState>()(
         })
       }
       set((state) => {
-        state.isLoading = true
+        if (options.silent !== true) state.isLoading = true
         state.error = null
       })
 

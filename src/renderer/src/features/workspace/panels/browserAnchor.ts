@@ -39,7 +39,7 @@ export function getBrowserAnchorRect(tabId: string): AnchorRect | null {
   return anchorRects.get(tabId) ?? null
 }
 
-/** Subscribe to anchor rect changes (M3-F: drive `browser:setBounds`). */
+/** Subscribe to anchor rect changes (M3-F: drives the webview guest bounds). */
 export function onBrowserAnchorRect(listener: AnchorListener): () => void {
   listeners.add(listener)
   return () => {

@@ -182,12 +182,23 @@ export function createBoardRepo(db: Database): BoardRepo {
       const status = input.status === undefined ? (row.status as TaskStatus) : assertStatus(input.status)
       const dueAt = input.dueAt === undefined ? row.due_at : assertDueAt(input.dueAt)
 
+      let courseId: string | null
+      if (input.courseId === undefined) {
+        courseId = row.course_id
+      } else if (input.courseId === null) {
+        courseId = null
+      } else {
+        courseId = requireId(input.courseId, 'courseId')
+        assertCourseExists(courseId)
+      }
+
       let sortOrder: number
       if (input.sortOrder !== undefined) {
         sortOrder = requireInt(input.sortOrder, 'sortOrder', 0)
-      } else if (status !== row.status) {
-        // Moved to a different column without an explicit position → append.
-        sortOrder = nextSortOrder(row.course_id, status)
+      } else if (status !== row.status || courseId !== row.course_id) {
+        // Moved to a different (course, status) column without an explicit
+        // position → append to the end of the target column.
+        sortOrder = nextSortOrder(courseId, status)
       } else {
         sortOrder = row.sort_order
       }
@@ -195,9 +206,10 @@ export function createBoardRepo(db: Database): BoardRepo {
       const now = nowIso()
       db.prepare(
         `UPDATE board_tasks
-         SET title = ?, notes = ?, status = ?, due_at = ?, sort_order = ?, updated_at = ?
+         SET title = ?, notes = ?, status = ?, due_at = ?, sort_order = ?,
+             course_id = ?, updated_at = ?
          WHERE id = ?`
-      ).run(title, notes, status, dueAt, sortOrder, now, row.id)
+      ).run(title, notes, status, dueAt, sortOrder, courseId, now, row.id)
       return rowToTask({
         ...row,
         title,
@@ -205,6 +217,7 @@ export function createBoardRepo(db: Database): BoardRepo {
         status,
         due_at: dueAt,
         sort_order: sortOrder,
+        course_id: courseId,
         updated_at: now
       })
     },

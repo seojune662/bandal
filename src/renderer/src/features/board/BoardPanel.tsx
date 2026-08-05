@@ -13,6 +13,7 @@ import type { BoardTask, TaskStatus } from '../../../../shared/types/board'
 import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
 import { invoke } from '../../lib/ipc'
+import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { normalizeCourseColor } from '../courses/courseColors'
 import {
@@ -405,36 +406,18 @@ function BoardSurface(): JSX.Element {
     setIsMutating(true)
     setError(null)
     try {
-      if (draft.courseId === task.courseId) {
-        const updated = await invoke('board:updateTask', {
-          id: task.id,
-          title: draft.title,
-          notes: draft.notes,
-          dueAt: draft.dueAt
-        })
-        setTasks((current) =>
-          current.map((entry) => (entry.id === updated.id ? updated : entry))
-        )
-        return
-      }
-
-      const replacement = await invoke('board:createTask', {
-        courseId: draft.courseId,
+      const updated = await invoke('board:updateTask', {
+        id: task.id,
         title: draft.title,
         notes: draft.notes,
         dueAt: draft.dueAt,
-        status: task.status
+        // Only send courseId on an actual move — same-course saves keep the
+        // task's position untouched.
+        ...(draft.courseId === task.courseId ? {} : { courseId: draft.courseId })
       })
-      try {
-        await invoke('board:deleteTask', { id: task.id })
-      } catch (replaceError) {
-        await invoke('board:deleteTask', { id: replacement.id }).catch(() => undefined)
-        throw replaceError
-      }
-      setTasks((current) => [
-        ...current.filter((entry) => entry.id !== task.id),
-        replacement
-      ])
+      setTasks((current) =>
+        current.map((entry) => (entry.id === updated.id ? updated : entry))
+      )
     } catch (saveError) {
       setError(errorMessage(saveError))
       throw saveError
@@ -746,6 +729,23 @@ export function BoardPanel(props: IDockviewPanelProps): JSX.Element {
 
 /** Reuses the same board surface as a workspace-level overlay. */
 export function BoardOverlay({ onClose }: BoardOverlayProps): JSX.Element {
+  // [M5] While the overlay is up, webview guests must not eat the pointer
+  // stream (the overlay floats above the browser layer).
+  useEffect(() => acquirePointerPassthrough(), [])
+
+  // Escape closes the overlay — unless an inner popover (task editor /
+  // context menu) is open; its own Escape handler consumes that press.
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      const hasInnerPopover =
+        document.querySelector('.board-editor, .board-context-menu') !== null
+      if (!hasInnerPopover) onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
   return (
     <div className="board-overlay" role="presentation">
       <button

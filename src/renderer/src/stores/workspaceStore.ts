@@ -49,6 +49,11 @@ interface WorkspaceState {
   notifyLayoutChanged: () => void
   /** Send any pending save immediately (course switch / beforeunload). */
   flushPendingSave: () => void
+  /**
+   * [M5] Drop a pending save for a course that no longer exists
+   * (delete/archive) — saving it would fail against the dead course row.
+   */
+  discardPendingSave: (courseId: string) => void
 }
 
 interface PendingSave {
@@ -251,6 +256,13 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 
     flushPendingSave: () => {
       flush()
+    },
+
+    discardPendingSave: (courseId) => {
+      if (pendingSave !== null && pendingSave.courseId === courseId) {
+        clearSaveTimer()
+        pendingSave = null
+      }
     }
   }
 })

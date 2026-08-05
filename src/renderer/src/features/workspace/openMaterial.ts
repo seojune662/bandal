@@ -1,9 +1,12 @@
 /**
  * Glue for the materials sidebar: double-clicking a file opens it as a
- * workspace tab. Kept here (not in the materials feature) so the sidebar
- * only needs a one-line call.
+ * workspace tab (pdf/md) or reveals it in Finder (images and everything
+ * else — no dedicated tab kind). Kept here (not in the materials feature)
+ * so the sidebar only needs a one-line call.
  */
 
+import { showToast } from '../../app/toast'
+import { invoke } from '../../lib/ipc'
 import type { MaterialKind } from '../../../../shared/types/materials'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
@@ -16,16 +19,17 @@ export function openMaterialInWorkspace(
   const courseId = useMaterialsStore.getState().activeCourseId
   if (courseId === null) return
 
-  if (kind === 'pdf') {
+  if (kind === 'pdf' || kind === 'note') {
     useWorkspaceStore.getState().openTab(
-      descriptorFor('pdf', { courseId, relPath })
+      descriptorFor(kind, { courseId, relPath })
     )
-  } else if (kind === 'note') {
-    useWorkspaceStore.getState().openTab(
-      descriptorFor('note', { courseId, relPath })
-    )
-  } else {
-    // Images and other files have no tab kind yet (post-M2).
-    console.info('[Bandal] 이 파일 형식은 아직 탭으로 열 수 없습니다:', relPath)
+    return
   }
+  // Images and other files have no tab kind — hand off to Finder.
+  void invoke('materials:reveal', { courseId, relPath }).catch(
+    (error: unknown) => {
+      console.error('[Bandal] 파일을 Finder에서 열지 못했습니다.', error)
+      showToast('파일을 Finder에서 열지 못했습니다.', 'danger')
+    }
+  )
 }
