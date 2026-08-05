@@ -7,7 +7,6 @@ import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
 import { useOnboardingStore } from '../features/onboarding/onboardingStore'
 import { PreflightBanners } from '../features/onboarding/PreflightBanners'
 import { useAgentPreflight } from '../features/onboarding/useAgentPreflight'
-import { TabKindIcon } from '../features/workspace/workspaceIcons'
 import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
 import { useCoursesStore } from '../stores/coursesStore'
 import { useUiStore } from '../stores/uiStore'
@@ -26,8 +25,9 @@ export function AppShell(): JSX.Element {
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
   const toggleLeftRail = useUiStore((state) => state.toggleLeftRail)
   const toggleRightRail = useUiStore((state) => state.toggleRightRail)
+  // [M7] The 보드 entry point lives at the bottom of the left rail
+  // (CourseSidebar) — this shell only owns the overlay itself.
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
-  const toggleBoardOverlay = useUiStore((state) => state.toggleBoardOverlay)
   const closeBoardOverlay = useUiStore((state) => state.closeBoardOverlay)
   const isOnboardingVisible = useOnboardingStore((state) => state.visible)
 
@@ -84,17 +84,6 @@ export function AppShell(): JSX.Element {
         </div>
 
         <div className="app-titlebar__actions app-titlebar__actions--right">
-          <button
-            type="button"
-            className="titlebar-button titlebar-button--labeled"
-            aria-label={isBoardOverlayOpen ? '학업 보드 닫기' : '학업 보드 열기'}
-            aria-pressed={isBoardOverlayOpen}
-            title={isBoardOverlayOpen ? '학업 보드 닫기' : '학업 보드 열기'}
-            onClick={toggleBoardOverlay}
-          >
-            <TabKindIcon kind="board" />
-            보드
-          </button>
           <button
             type="button"
             className="titlebar-button"

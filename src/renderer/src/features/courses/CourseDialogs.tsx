@@ -6,13 +6,34 @@ import {
   type CourseColor
 } from './courseColors'
 
+/**
+ * - `create`: 새 과목 만들기 — Bandal creates a managed folder.
+ * - `link`:   폴더에서 추가 — an existing folder on disk becomes the course.
+ * - `rename`: 이름만 바꾼다 (색상·폴더는 그대로).
+ */
+type CourseFormMode = 'create' | 'link' | 'rename'
+
 interface CourseFormDialogProps {
   open: boolean
-  mode: 'create' | 'rename'
+  mode: CourseFormMode
   initialName?: string
   initialColor?: CourseColor
+  /** Absolute folder path shown in `link` mode. */
+  folderPath?: string | undefined
   onClose: () => void
   onSubmit: (name: string, color: CourseColor) => Promise<void>
+}
+
+const TITLES: Record<CourseFormMode, string> = {
+  create: '새 과목',
+  link: '폴더에서 추가',
+  rename: '과목 이름 변경'
+}
+
+const SUBMIT_LABELS: Record<CourseFormMode, string> = {
+  create: '과목 만들기',
+  link: '과목으로 추가',
+  rename: '변경하기'
 }
 
 function messageFrom(error: unknown): string {
@@ -42,6 +63,7 @@ export function CourseFormDialog({
   mode,
   initialName = '',
   initialColor = 'gold',
+  folderPath,
   onClose,
   onSubmit
 }: CourseFormDialogProps): JSX.Element | null {
@@ -54,7 +76,7 @@ export function CourseFormDialog({
   const titleId = useId()
   const errorId = useId()
   const inputId = useId()
-  const creating = mode === 'create'
+  const showsColor = mode !== 'rename'
 
   useEffect(() => {
     if (!open) return
@@ -115,7 +137,7 @@ export function CourseFormDialog({
         <header className="course-dialog__header">
           <div>
             <p className="eyebrow">COURSE</p>
-            <h2 id={titleId}>{creating ? '새 과목' : '과목 이름 변경'}</h2>
+            <h2 id={titleId}>{TITLES[mode]}</h2>
           </div>
           <button
             type="button"
@@ -129,6 +151,20 @@ export function CourseFormDialog({
         </header>
 
         <form onSubmit={(event) => void submit(event)}>
+          {mode === 'link' && folderPath !== undefined && (
+            <div className="folder-preview">
+              <span className="field-label">폴더</span>
+              <p className="folder-preview__path" title={folderPath}>
+                <Icon name="folder" />
+                <span>{folderPath}</span>
+              </p>
+              <p className="folder-preview__hint">
+                이 폴더의 파일이 자료 사이드바에 그대로 나타나요. 폴더는 옮기거나
+                복사하지 않아요.
+              </p>
+            </div>
+          )}
+
           <label className="field-label" htmlFor={inputId}>
             이름
           </label>
@@ -145,7 +181,7 @@ export function CourseFormDialog({
             onChange={(event) => setName(event.target.value)}
           />
 
-          {creating && (
+          {showsColor && (
             <fieldset className="color-fieldset">
               <legend className="field-label">색상</legend>
               <div className="color-palette">
@@ -188,7 +224,7 @@ export function CourseFormDialog({
               className="button button--primary"
               disabled={pending}
             >
-              {pending ? '저장 중…' : creating ? '과목 만들기' : '변경하기'}
+              {pending ? '저장 중…' : SUBMIT_LABELS[mode]}
             </button>
           </footer>
         </form>

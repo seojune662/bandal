@@ -11,6 +11,7 @@
 
 import { _electron, expect } from '@playwright/test'
 import type { ElectronApplication, Page } from '@playwright/test'
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -94,23 +95,71 @@ export async function launchBandal(): Promise<BandalApp> {
   return { app, page, dataRoot, userDataDir, close }
 }
 
-/** Creates a course through the real UI and waits for it in the sidebar. */
+/**
+ * Opens an entry of the left rail's "과목 추가" menu. The empty state carries
+ * the same two actions inline, so it is used while no course exists yet.
+ */
+async function chooseAddAction(
+  page: Page,
+  label: '폴더에서 추가' | '새 과목 만들기'
+): Promise<void> {
+  const sidebar = page.locator('aside.app-rail--left')
+  const emptyState = sidebar.locator('.empty-state--courses')
+  if (await emptyState.isVisible()) {
+    await emptyState.getByRole('button', { name: label }).click()
+    return
+  }
+  await sidebar.getByRole('button', { name: '과목 추가' }).click()
+  await page.getByRole('menu', { name: '과목 추가' }).getByRole('menuitem', { name: label }).click()
+}
+
+/** Creates a managed course (folder under the data root) through the real UI. */
 export async function createCourse(page: Page, name: string): Promise<void> {
   const sidebar = page.locator('aside.app-rail--left')
-  const emptyStateButton = sidebar
-    .locator('.empty-state--courses')
-    .getByRole('button', { name: '과목 만들기' })
-
-  if (await emptyStateButton.isVisible()) {
-    await emptyStateButton.click()
-  } else {
-    await sidebar.getByRole('button', { name: '새 과목 만들기' }).click()
-  }
+  await chooseAddAction(page, '새 과목 만들기')
 
   const dialog = page.getByRole('dialog', { name: '새 과목' })
   await expect(dialog).toBeVisible()
   await dialog.getByLabel('이름').fill(name)
   await dialog.getByRole('button', { name: '과목 만들기' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(
+    sidebar.locator('.course-row__name', { hasText: name })
+  ).toBeVisible()
+}
+
+/**
+ * Replaces the native folder picker in the MAIN process so specs can drive
+ * `courses:pickFolder` deterministically. `null` simulates a cancel.
+ */
+export async function stubFolderPicker(
+  app: ElectronApplication,
+  folderPath: string | null
+): Promise<void> {
+  await app.evaluate(({ dialog }, path) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(dialog as any).showOpenDialog = async () => ({
+      canceled: path === null,
+      filePaths: path === null ? [] : [path]
+    })
+  }, folderPath)
+}
+
+/** Registers an existing folder as a course through the real UI. */
+export async function addCourseFromFolder(
+  app: ElectronApplication,
+  page: Page,
+  folderPath: string,
+  name: string
+): Promise<void> {
+  const sidebar = page.locator('aside.app-rail--left')
+  await stubFolderPicker(app, folderPath)
+  await chooseAddAction(page, '폴더에서 추가')
+
+  const dialog = page.getByRole('dialog', { name: '폴더에서 추가' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('이름').fill(name)
+  await dialog.getByRole('button', { name: '과목으로 추가' }).click()
   await expect(dialog).toBeHidden()
   await expect(
     sidebar.locator('.course-row__name', { hasText: name })

@@ -50,9 +50,22 @@ function assertMarkdownPath(relPath: string): void {
 export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
   const { getCourseFolder } = deps
 
+  /**
+   * The course folder is an arbitrary path that may be gone (moved, deleted,
+   * unmounted). Refuse rather than silently re-creating it under a stale
+   * path — the UI offers 다시 연결 for that case.
+   */
+  function requireFolder(courseId: string): string {
+    const folder = getCourseFolder(courseId)
+    if (!existsSync(folder)) {
+      throw new NotFoundError('course folder', folder)
+    }
+    return folder
+  }
+
   function resolveNote(courseId: string, relPath: string): string {
     const id = requireId(courseId, 'courseId')
-    const folder = getCourseFolder(id)
+    const folder = requireFolder(id)
     const rel = requireNonEmptyString(relPath, 'relPath')
     assertMarkdownPath(rel)
     return resolveInside(folder, rel)
@@ -89,7 +102,7 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
 
     create(input) {
       const id = requireId(input.courseId, 'courseId')
-      const folder = getCourseFolder(id)
+      const folder = requireFolder(id)
       if (typeof input.dirRelPath !== 'string') {
         throw new ValidationError('dirRelPath must be a string')
       }

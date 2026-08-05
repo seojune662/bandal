@@ -9,8 +9,10 @@ export type IconName =
   | 'fileText'
   | 'folder'
   | 'folderOpen'
+  | 'folderPlus'
   | 'layoutLeft'
   | 'layoutRight'
+  | 'link'
   | 'pencil'
   | 'plus'
   | 'refresh'
@@ -80,6 +82,12 @@ const paths: Record<IconName, JSX.Element> = {
   ),
   folder: <path d="M3.5 6.5h6l2-2h3l2 2h4v12.5h-17z" />,
   folderOpen: <path d="M3.5 7h6l2-2h3l2 2h4l-2 11.5h-17z" />,
+  folderPlus: (
+    <>
+      <path d="M3.5 6.5h6l2-2h3l2 2h4v12.5h-17z" />
+      <path d="M12 9.5v6M9 12.5h6" />
+    </>
+  ),
   layoutLeft: (
     <>
       <rect x="3.5" y="4" width="17" height="16" rx="2" />
@@ -90,6 +98,12 @@ const paths: Record<IconName, JSX.Element> = {
     <>
       <rect x="3.5" y="4" width="17" height="16" rx="2" />
       <path d="M15 4v16" />
+    </>
+  ),
+  link: (
+    <>
+      <path d="M10.5 13.5a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 0 0-5.7-5.7l-1.3 1.3" />
+      <path d="M13.5 10.5a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 0 0 5.7 5.7l1.3-1.3" />
     </>
   ),
   pencil: (

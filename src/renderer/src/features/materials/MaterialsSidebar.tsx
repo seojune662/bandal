@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
 import { invoke, onPush } from '../../lib/ipc'
+import { showToast } from '../../app/toast'
+import { useCoursesStore } from '../../stores/coursesStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import { normalizeCourseColor } from '../courses/courseColors'
 import { MaterialSearchResults, MaterialTree } from './MaterialTree'
@@ -26,23 +28,43 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const clearSearch = useMaterialsStore((state) => state.clearSearch)
   const clear = useMaterialsStore((state) => state.clear)
   const toggleFolder = useMaterialsStore((state) => state.toggleFolder)
+  const pickFolder = useCoursesStore((state) => state.pickFolder)
+  const relinkCourse = useCoursesStore((state) => state.relinkCourse)
   const [query, setQuery] = useState('')
   const [isDebouncing, setIsDebouncing] = useState(false)
+  const [isRelinking, setIsRelinking] = useState(false)
   const { isDropActive, dropProps } = useFileDropTarget(course?.id ?? null)
 
+  /** 연결 끊김 복구: re-pick the folder this course points at. */
+  const relink = async (courseId: string): Promise<void> => {
+    setIsRelinking(true)
+    try {
+      const picked = await pickFolder()
+      if (picked === null) return
+      const result = await relinkCourse(courseId, picked.path)
+      if (result.status === 'ok') showToast('폴더를 다시 연결했어요.')
+    } catch {
+      // The course rail shows the store's persistent error message.
+    } finally {
+      setIsRelinking(false)
+    }
+  }
+
+  // Re-runs when the course is re-linked too — folderPath is part of the key.
   useEffect(() => {
     setQuery('')
     clearSearch()
-    if (course === null) {
+    if (course === null || course.missing) {
       clear()
       return
     }
     void loadTree(course.id)
-  }, [clear, clearSearch, course?.id, loadTree])
+  }, [clear, clearSearch, course?.id, course?.folderPath, course?.missing, loadTree])
 
   // [M5] Live tree: watch the course folder, refresh silently on pushes.
+  // A 연결 끊김 course has no folder to watch.
   useEffect(() => {
-    if (course === null) return
+    if (course === null || course.missing) return
     const courseId = course.id
     void invoke('materials:watch', { courseId }).catch((error: unknown) => {
       console.error('[Bandal] 자료 폴더 감시를 시작하지 못했습니다.', error)
@@ -56,7 +78,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       unsubscribe()
       void invoke('materials:unwatch', { courseId }).catch(() => undefined)
     }
-  }, [course?.id, loadTree])
+  }, [course?.id, course?.folderPath, course?.missing, loadTree])
 
   useEffect(() => {
     const normalizedQuery = query.trim()
@@ -159,6 +181,24 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
             <Icon name="folder" className="empty-state__folder" />
             <p className="empty-state__text">과목을 선택하세요</p>
             <p className="empty-state__hint">선택한 과목의 자료가 여기에 표시됩니다.</p>
+          </div>
+        ) : course.missing ? (
+          <div className="empty-state empty-state--materials">
+            <Icon name="folder" className="empty-state__folder" />
+            <p className="empty-state__text">폴더 연결이 끊겼어요</p>
+            <p className="empty-state__hint" title={course.folderPath}>
+              {course.folderPath} 을(를) 찾을 수 없어요. 폴더를 옮겼다면 다시
+              연결해주세요.
+            </p>
+            <button
+              type="button"
+              className="button button--primary"
+              disabled={isRelinking}
+              onClick={() => void relink(course.id)}
+            >
+              <Icon name="link" />
+              {isRelinking ? '연결 중…' : '다시 연결'}
+            </button>
           </div>
         ) : pendingSearch || (isLoading && !searching) ? (
           <div className="loading-list" aria-label="자료 불러오는 중">

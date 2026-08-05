@@ -8,13 +8,17 @@
  * section comments so merges stay additive.
  */
 
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
 import type { PushChannel, PushPayload } from '../../shared/ipc/events'
 import { getSettings, setSettings } from '../settingsStore'
 import { getDatabase } from '../db/database'
 import { createLayoutRepo } from '../db/layoutRepo'
-import { createCoursesRepo } from '../features/courses'
+import {
+  createCoursesRepo,
+  folderDisplayName,
+  normalizeFolderPath
+} from '../features/courses'
 import { createMaterialsRepo, createMaterialsWatcher } from '../features/materials'
 import { createNotesRepo } from '../features/notes'
 import { createAnnotationsRepo } from '../features/annotations'
@@ -91,6 +95,32 @@ export function registerHandlers(): void {
   // -- courses --------------------------------------------------------------
   handle('courses:list', (req) => coursesRepo.list(req))
   handle('courses:create', (req) => coursesRepo.create(req))
+  handle('courses:pickFolder', async () => {
+    const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const options: Electron.OpenDialogOptions = {
+      title: '과목 폴더 선택',
+      buttonLabel: '이 폴더 사용',
+      properties: ['openDirectory', 'createDirectory']
+    }
+    const result =
+      parent === undefined
+        ? await dialog.showOpenDialog(options)
+        : await dialog.showOpenDialog(parent, options)
+    const picked = result.filePaths[0]
+    if (result.canceled || picked === undefined) return null
+    const path = normalizeFolderPath(picked)
+    return { path, name: folderDisplayName(path) }
+  })
+  handle('courses:addFromFolder', (req) => coursesRepo.addFromFolder(req))
+  handle('courses:relink', (req) => {
+    const result = coursesRepo.relink(req)
+    if (result.status === 'ok') {
+      // The folder (and therefore the agent cwd) moved — drop everything that
+      // was bound to the old path so the next watch/chat attaches to the new one.
+      releaseCourseRuntime(req.courseId)
+    }
+    return result
+  })
   handle('courses:rename', (req) => coursesRepo.rename(req))
   handle('courses:archive', (req) => {
     const course = coursesRepo.archive(req)

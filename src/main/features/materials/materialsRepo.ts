@@ -205,6 +205,11 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
     import(courseId, paths) {
       const id = requireId(courseId, 'courseId')
       const folder = getCourseFolder(id)
+      // An arbitrary course folder can disappear (moved / unmounted); never
+      // re-create it silently under a stale path.
+      if (!existsSync(folder)) {
+        throw new NotFoundError('course folder', folder)
+      }
       if (!Array.isArray(paths) || paths.length === 0) {
         throw new ValidationError('paths must be a non-empty array')
       }

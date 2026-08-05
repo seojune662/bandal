@@ -1,6 +1,13 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import type { Course, CreateCourseInput } from '../../../shared/types/course'
+import type {
+  AddCourseFromFolderInput,
+  Course,
+  CourseFolderResult,
+  CreateCourseInput,
+  PickedFolder
+} from '../../../shared/types/course'
+import { folderProblemMessage } from '../features/courses/folderMessages'
 import { invoke } from '../lib/ipc'
 import { useWorkspaceStore } from './workspaceStore'
 
@@ -13,6 +20,12 @@ interface CoursesState {
   loadCourses: () => Promise<void>
   selectCourse: (courseId: string) => void
   createCourse: (input: CreateCourseInput) => Promise<Course>
+  /** Opens the native folder picker; resolves to null when cancelled. */
+  pickFolder: () => Promise<PickedFolder | null>
+  /** Registers an existing folder as a course (or focuses the duplicate). */
+  addCourseFromFolder: (input: AddCourseFromFolderInput) => Promise<CourseFolderResult>
+  /** Repoints a 연결 끊김 course at another folder. */
+  relinkCourse: (courseId: string, folderPath: string) => Promise<CourseFolderResult>
   renameCourse: (courseId: string, name: string) => Promise<Course>
   archiveCourse: (courseId: string) => Promise<void>
   deleteCourse: (courseId: string) => Promise<void>
@@ -89,6 +102,88 @@ export const useCoursesStore = create<CoursesState>()(
         return created
       } catch (error) {
         set((state) => {
+          state.error = errorMessage(error)
+        })
+        throw error
+      }
+    },
+
+    pickFolder: async () => {
+      set((state) => {
+        state.error = null
+      })
+      try {
+        return await invoke('courses:pickFolder', {})
+      } catch (error) {
+        set((state) => {
+          state.error = errorMessage(error)
+        })
+        throw error
+      }
+    },
+
+    addCourseFromFolder: async (input) => {
+      set((state) => {
+        state.error = null
+      })
+      try {
+        const result = await invoke('courses:addFromFolder', input)
+        if (result.status === 'failed') {
+          set((state) => {
+            state.error = folderProblemMessage(result.reason)
+          })
+          return result
+        }
+        const course = result.course
+        set((state) => {
+          const index = state.courses.findIndex((item) => item.id === course.id)
+          if (index === -1) {
+            state.courses.push(course)
+          } else {
+            state.courses[index] = course
+          }
+          state.courses.sort((a, b) => a.sortOrder - b.sortOrder)
+          state.selectedCourseId = course.id
+        })
+        return result
+      } catch (error) {
+        set((state) => {
+          state.error = errorMessage(error)
+        })
+        throw error
+      }
+    },
+
+    relinkCourse: async (courseId, folderPath) => {
+      set((state) => {
+        state.pendingCourseId = courseId
+        state.error = null
+      })
+      try {
+        const result = await invoke('courses:relink', { courseId, folderPath })
+        set((state) => {
+          state.pendingCourseId = null
+          if (result.status === 'failed') {
+            state.error = folderProblemMessage(result.reason)
+            return
+          }
+          const course = result.course
+          const index = state.courses.findIndex((item) => item.id === course.id)
+          if (index === -1) {
+            state.courses.push(course)
+            state.courses.sort((a, b) => a.sortOrder - b.sortOrder)
+          } else {
+            state.courses[index] = course
+          }
+          if (result.status === 'duplicate') {
+            state.error = '그 폴더는 이미 다른 과목이 쓰고 있어요.'
+          }
+          state.selectedCourseId = course.id
+        })
+        return result
+      } catch (error) {
+        set((state) => {
+          state.pendingCourseId = null
           state.error = errorMessage(error)
         })
         throw error

@@ -1,7 +1,12 @@
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { createCoursesRepo, slugify, type CoursesRepo } from '../../src/main/features/courses'
+import {
+  createCoursesRepo,
+  normalizeFolderPath,
+  slugify,
+  type CoursesRepo
+} from '../../src/main/features/courses'
 import { NotFoundError, ValidationError } from '../../src/main/db/errors'
 import { createTestDb, type TestDb } from './helpers/testDb'
 
@@ -29,6 +34,8 @@ describe('coursesRepo', () => {
       expect(course.slug).toBe('operating-systems')
       expect(course.folderPath).toBe(join(dataRoot, 'operating-systems'))
       expect(existsSync(course.folderPath)).toBe(true)
+      expect(course.source).toBe('managed')
+      expect(course.missing).toBe(false)
       expect(repo.getById(course.id).name).toBe('Operating Systems')
     })
 
@@ -64,6 +71,288 @@ describe('coursesRepo', () => {
     test('rejects an empty name', () => {
       // Act / Assert
       expect(() => repo.create({ name: '   ', color: '#000' })).toThrow(ValidationError)
+    })
+  })
+
+  describe('addFromFolder', () => {
+    /** Creates a real folder inside the test dir and returns its path. */
+    function makeFolder(name: string): string {
+      const path = join(ctx.dir, name)
+      mkdirSync(path, { recursive: true })
+      return path
+    }
+
+    test('registers an arbitrary folder outside the data root', () => {
+      // Arrange
+      const folder = makeFolder('강의자료')
+
+      // Act
+      const result = repo.addFromFolder({ folderPath: folder, color: '#111' })
+
+      // Assert
+      expect(result.status).toBe('ok')
+      if (result.status !== 'ok') return
+      expect(result.course.folderPath).toBe(normalizeFolderPath(folder))
+      expect(result.course.source).toBe('linked')
+      expect(result.course.missing).toBe(false)
+      // Nothing was created under the data root.
+      expect(existsSync(dataRoot)).toBe(false)
+    })
+
+    test('defaults the course name to the folder basename', () => {
+      // Arrange
+      const folder = makeFolder('선형대수학')
+
+      // Act
+      const result = repo.addFromFolder({ folderPath: folder, color: '#111' })
+
+      // Assert
+      expect(result.status).toBe('ok')
+      if (result.status !== 'ok') return
+      expect(result.course.name).toBe('선형대수학')
+    })
+
+    test('prefers an explicit name over the basename', () => {
+      // Arrange
+      const folder = makeFolder('cs101')
+
+      // Act
+      const result = repo.addFromFolder({
+        folderPath: folder,
+        name: '컴퓨터개론',
+        color: '#111'
+      })
+
+      // Assert
+      expect(result.status).toBe('ok')
+      if (result.status !== 'ok') return
+      expect(result.course.name).toBe('컴퓨터개론')
+    })
+
+    test('falls back to the basename when the given name is blank', () => {
+      // Arrange
+      const folder = makeFolder('discrete-math')
+
+      // Act
+      const result = repo.addFromFolder({
+        folderPath: folder,
+        name: '   ',
+        color: '#111'
+      })
+
+      // Assert
+      expect(result.status).toBe('ok')
+      if (result.status !== 'ok') return
+      expect(result.course.name).toBe('discrete-math')
+    })
+
+    test('returns the existing course when the folder is already registered', () => {
+      // Arrange
+      const folder = makeFolder('dup')
+      const first = repo.addFromFolder({ folderPath: folder, color: '#111' })
+
+      // Act
+      const second = repo.addFromFolder({ folderPath: folder, color: '#222' })
+
+      // Assert
+      expect(second.status).toBe('duplicate')
+      if (second.status === 'failed' || first.status !== 'ok') return
+      expect(second.course.id).toBe(first.course.id)
+      expect(repo.list()).toHaveLength(1)
+    })
+
+    test('treats a symlink to a registered folder as a duplicate', () => {
+      // Arrange
+      const real = makeFolder('real-folder')
+      const link = join(ctx.dir, 'linked-folder')
+      symlinkSync(real, link, 'dir')
+      const first = repo.addFromFolder({ folderPath: real, color: '#111' })
+
+      // Act
+      const second = repo.addFromFolder({ folderPath: link, color: '#111' })
+
+      // Assert
+      expect(second.status).toBe('duplicate')
+      if (second.status === 'failed' || first.status !== 'ok') return
+      expect(second.course.id).toBe(first.course.id)
+    })
+
+    test('revives an archived course when its folder is re-registered', () => {
+      // Arrange
+      const folder = makeFolder('archived')
+      const first = repo.addFromFolder({ folderPath: folder, color: '#111' })
+      if (first.status !== 'ok') throw new Error('setup failed')
+      repo.archive({ courseId: first.course.id, archived: true })
+
+      // Act
+      const again = repo.addFromFolder({ folderPath: folder, color: '#111' })
+
+      // Assert
+      expect(again.status).toBe('duplicate')
+      if (again.status === 'failed') return
+      expect(again.course.archived).toBe(false)
+      expect(repo.list().map((c) => c.id)).toEqual([first.course.id])
+    })
+
+    test('fails with "missing" when the folder does not exist', () => {
+      // Act
+      const result = repo.addFromFolder({
+        folderPath: join(ctx.dir, 'nope'),
+        color: '#111'
+      })
+
+      // Assert
+      expect(result).toEqual({ status: 'failed', reason: 'missing' })
+    })
+
+    test('fails with "not-a-directory" for a regular file', () => {
+      // Arrange
+      const file = join(ctx.dir, 'notes.md')
+      writeFileSync(file, '# hi')
+
+      // Act
+      const result = repo.addFromFolder({ folderPath: file, color: '#111' })
+
+      // Assert
+      expect(result).toEqual({ status: 'failed', reason: 'not-a-directory' })
+    })
+
+    test('rejects a relative folder path', () => {
+      // Act / Assert
+      expect(() =>
+        repo.addFromFolder({ folderPath: 'relative/dir', color: '#111' })
+      ).toThrow(ValidationError)
+    })
+
+    test('gives colliding basenames distinct slugs', () => {
+      // Arrange
+      mkdirSync(join(ctx.dir, 'a'), { recursive: true })
+      mkdirSync(join(ctx.dir, 'b'), { recursive: true })
+      const first = repo.addFromFolder({
+        folderPath: join(ctx.dir, 'a'),
+        name: 'Algorithms',
+        color: '#111'
+      })
+      const second = repo.addFromFolder({
+        folderPath: join(ctx.dir, 'b'),
+        name: 'Algorithms',
+        color: '#111'
+      })
+
+      // Assert
+      expect(first.status).toBe('ok')
+      expect(second.status).toBe('ok')
+      if (first.status !== 'ok' || second.status !== 'ok') return
+      expect(second.course.slug).toBe('algorithms-2')
+    })
+
+    test('does not need a configured data root', () => {
+      // Arrange
+      dataRoot = ''
+      const folder = join(ctx.dir, 'rootless')
+      mkdirSync(folder)
+
+      // Act
+      const result = repo.addFromFolder({ folderPath: folder, color: '#111' })
+
+      // Assert
+      expect(result.status).toBe('ok')
+    })
+  })
+
+  describe('missing folders', () => {
+    test('marks a course whose folder disappeared as missing', () => {
+      // Arrange
+      const folder = join(ctx.dir, 'vanishing')
+      mkdirSync(folder)
+      const created = repo.addFromFolder({ folderPath: folder, color: '#111' })
+      if (created.status !== 'ok') throw new Error('setup failed')
+
+      // Act
+      rmSync(folder, { recursive: true, force: true })
+
+      // Assert
+      expect(repo.getById(created.course.id).missing).toBe(true)
+      expect(repo.list()[0]?.missing).toBe(true)
+    })
+  })
+
+  describe('relink', () => {
+    test('repoints a course at another folder and flips it to linked', () => {
+      // Arrange
+      const course = repo.create({ name: 'Networks', color: '#111' })
+      const moved = join(ctx.dir, 'moved-networks')
+      mkdirSync(moved)
+
+      // Act
+      const result = repo.relink({ courseId: course.id, folderPath: moved })
+
+      // Assert
+      expect(result.status).toBe('ok')
+      if (result.status === 'failed') return
+      expect(result.course.folderPath).toBe(normalizeFolderPath(moved))
+      expect(result.course.source).toBe('linked')
+      expect(result.course.missing).toBe(false)
+      expect(repo.getFolder(course.id)).toBe(normalizeFolderPath(moved))
+      // Identity is preserved so notes / annotations stay attached.
+      expect(result.course.id).toBe(course.id)
+      expect(result.course.slug).toBe(course.slug)
+    })
+
+    test('refuses a folder another live course already owns', () => {
+      // Arrange
+      const takenFolder = join(ctx.dir, 'taken')
+      mkdirSync(takenFolder)
+      const owner = repo.addFromFolder({ folderPath: takenFolder, color: '#111' })
+      const other = repo.create({ name: 'Other', color: '#222' })
+      if (owner.status !== 'ok') throw new Error('setup failed')
+
+      // Act
+      const result = repo.relink({ courseId: other.id, folderPath: takenFolder })
+
+      // Assert
+      expect(result.status).toBe('duplicate')
+      if (result.status === 'failed') return
+      expect(result.course.id).toBe(owner.course.id)
+      expect(repo.getFolder(other.id)).toBe(other.folderPath)
+    })
+
+    test('is a no-op when re-linked to the folder it already uses', () => {
+      // Arrange
+      const folder = join(ctx.dir, 'same')
+      mkdirSync(folder)
+      const created = repo.addFromFolder({ folderPath: folder, color: '#111' })
+      if (created.status !== 'ok') throw new Error('setup failed')
+
+      // Act
+      const result = repo.relink({ courseId: created.course.id, folderPath: folder })
+
+      // Assert
+      expect(result.status).toBe('ok')
+      if (result.status === 'failed') return
+      expect(result.course.folderPath).toBe(created.course.folderPath)
+    })
+
+    test('fails with "missing" for a folder that does not exist', () => {
+      // Arrange
+      const course = repo.create({ name: 'Compilers', color: '#111' })
+
+      // Act
+      const result = repo.relink({
+        courseId: course.id,
+        folderPath: join(ctx.dir, 'ghost')
+      })
+
+      // Assert
+      expect(result).toEqual({ status: 'failed', reason: 'missing' })
+      expect(repo.getFolder(course.id)).toBe(course.folderPath)
+    })
+
+    test('throws NotFoundError for an unknown course', () => {
+      // Act / Assert
+      expect(() =>
+        repo.relink({ courseId: 'nope', folderPath: ctx.dir })
+      ).toThrow(NotFoundError)
     })
   })
 

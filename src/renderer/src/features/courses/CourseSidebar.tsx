@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Course } from '../../../../shared/types/course'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Course, PickedFolder } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
+import { showToast } from '../../app/toast'
 import { openSettingsWindow } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
+import { useUiStore } from '../../stores/uiStore'
+import { TabKindIcon } from '../workspace/workspaceIcons'
 import { CourseFormDialog, DeleteCourseDialog } from './CourseDialogs'
-import { normalizeCourseColor, type CourseColor } from './courseColors'
+import { folderProblemMessage } from './folderMessages'
+import { normalizeCourseColor } from './courseColors'
 import './courses.css'
 
 interface ContextMenuState {
@@ -14,26 +18,68 @@ interface ContextMenuState {
   placement: 'top' | 'bottom'
 }
 
+interface AddMenuState {
+  x: number
+  y: number
+}
+
+/** Closes a floating menu on outside pointerdown, Escape or window blur. */
+function useDismissableMenu(
+  active: boolean,
+  ref: React.RefObject<HTMLElement>,
+  dismiss: () => void
+): void {
+  useEffect(() => {
+    if (!active) return
+    const frame = window.requestAnimationFrame(() => {
+      ref.current?.querySelector<HTMLElement>('button')?.focus()
+    })
+    const closeOnPointerDown = (event: PointerEvent): void => {
+      if (!ref.current?.contains(event.target as Node)) dismiss()
+    }
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') dismiss()
+    }
+    window.addEventListener('pointerdown', closeOnPointerDown)
+    window.addEventListener('keydown', closeOnEscape)
+    window.addEventListener('blur', dismiss)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('pointerdown', closeOnPointerDown)
+      window.removeEventListener('keydown', closeOnEscape)
+      window.removeEventListener('blur', dismiss)
+    }
+  }, [active, dismiss, ref])
+}
+
 export function CourseSidebar(): JSX.Element {
   const courses = useCoursesStore((state) => state.courses)
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
   const isLoading = useCoursesStore((state) => state.isLoading)
   const pendingCourseId = useCoursesStore((state) => state.pendingCourseId)
   const error = useCoursesStore((state) => state.error)
-  const loadCourses = useCoursesStore((state) => state.loadCourses)
   const selectCourse = useCoursesStore((state) => state.selectCourse)
   const createCourse = useCoursesStore((state) => state.createCourse)
+  const pickFolder = useCoursesStore((state) => state.pickFolder)
+  const addCourseFromFolder = useCoursesStore((state) => state.addCourseFromFolder)
+  const relinkCourse = useCoursesStore((state) => state.relinkCourse)
   const renameCourse = useCoursesStore((state) => state.renameCourse)
   const archiveCourse = useCoursesStore((state) => state.archiveCourse)
   const deleteCourse = useCoursesStore((state) => state.deleteCourse)
   const clearError = useCoursesStore((state) => state.clearError)
 
+  const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
+  const toggleBoardOverlay = useUiStore((state) => state.toggleBoardOverlay)
+
   const [query, setQuery] = useState('')
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [linkTarget, setLinkTarget] = useState<PickedFolder | null>(null)
   const [renameTarget, setRenameTarget] = useState<Course | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Course | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
+  const [addMenu, setAddMenu] = useState<AddMenuState | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
+  const addMenuRef = useRef<HTMLDivElement>(null)
 
   const visibleCourses = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
@@ -43,35 +89,13 @@ export function CourseSidebar(): JSX.Element {
     )
   }, [courses, query])
 
-  useEffect(() => {
-    if (contextMenu === null) return
-    const frame = window.requestAnimationFrame(() => {
-      contextMenuRef.current?.querySelector<HTMLElement>('button')?.focus()
-    })
-    const closeOnPointerDown = (event: PointerEvent): void => {
-      if (!contextMenuRef.current?.contains(event.target as Node)) {
-        setContextMenu(null)
-      }
-    }
-    const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setContextMenu(null)
-    }
-    const closeOnBlur = (): void => setContextMenu(null)
-    window.addEventListener('pointerdown', closeOnPointerDown)
-    window.addEventListener('keydown', closeOnEscape)
-    window.addEventListener('blur', closeOnBlur)
-    return () => {
-      window.cancelAnimationFrame(frame)
-      window.removeEventListener('pointerdown', closeOnPointerDown)
-      window.removeEventListener('keydown', closeOnEscape)
-      window.removeEventListener('blur', closeOnBlur)
-    }
-  }, [contextMenu])
+  // Stable callbacks: the dismiss effect must not re-arm on every render.
+  const closeContextMenu = useCallback(() => setContextMenu(null), [])
+  const closeAddMenu = useCallback(() => setAddMenu(null), [])
+  useDismissableMenu(contextMenu !== null, contextMenuRef, closeContextMenu)
+  useDismissableMenu(addMenu !== null, addMenuRef, closeAddMenu)
 
-  const handleContextMenu = (
-    event: React.MouseEvent,
-    course: Course
-  ): void => {
+  const handleContextMenu = (event: React.MouseEvent, course: Course): void => {
     event.preventDefault()
     selectCourse(course.id)
     setContextMenu({
@@ -80,6 +104,34 @@ export function CourseSidebar(): JSX.Element {
       y: event.clientY,
       placement: event.clientY > window.innerHeight / 2 ? 'top' : 'bottom'
     })
+  }
+
+  const openAddMenu = (event: React.MouseEvent<HTMLButtonElement>): void => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    setAddMenu({ x: rect.right, y: rect.bottom })
+  }
+
+  /** Native folder picker → link dialog (name prefilled with the basename). */
+  const startFolderAdd = async (): Promise<void> => {
+    setAddMenu(null)
+    try {
+      const picked = await pickFolder()
+      if (picked !== null) setLinkTarget(picked)
+    } catch {
+      // The rail shows the store's persistent error message.
+    }
+  }
+
+  const startRelink = async (course: Course): Promise<void> => {
+    setContextMenu(null)
+    try {
+      const picked = await pickFolder()
+      if (picked === null) return
+      const result = await relinkCourse(course.id, picked.path)
+      if (result.status === 'ok') showToast('폴더를 다시 연결했어요.')
+    } catch {
+      // The rail shows the store's persistent error message.
+    }
   }
 
   const handleArchive = async (course: Course): Promise<void> => {
@@ -111,9 +163,11 @@ export function CourseSidebar(): JSX.Element {
         <button
           type="button"
           className="bare-icon-button"
-          aria-label="새 과목 만들기"
-          title="새 과목 만들기"
-          onClick={() => setCreateDialogOpen(true)}
+          aria-label="과목 추가"
+          title="과목 추가"
+          aria-haspopup="menu"
+          aria-expanded={addMenu !== null}
+          onClick={openAddMenu}
         >
           <Icon name="plus" />
         </button>
@@ -164,15 +218,22 @@ export function CourseSidebar(): JSX.Element {
             <span className="empty-state__moon" aria-hidden="true" />
             <p className="empty-state__text">첫 과목을 만들어보세요</p>
             <p className="empty-state__hint">
-              자료와 노트를 과목별로 한곳에 모아보세요.
+              공부하던 폴더를 그대로 과목으로 가져올 수 있어요.
             </p>
             <button
               type="button"
               className="button button--primary"
+              onClick={() => void startFolderAdd()}
+            >
+              <Icon name="folderPlus" />
+              폴더에서 추가
+            </button>
+            <button
+              type="button"
+              className="empty-state__alt"
               onClick={() => setCreateDialogOpen(true)}
             >
-              <Icon name="plus" />
-              과목 만들기
+              새 과목 만들기
             </button>
           </div>
         ) : visibleCourses.length === 0 ? (
@@ -193,6 +254,7 @@ export function CourseSidebar(): JSX.Element {
                     type="button"
                     className="course-row"
                     data-selected={selected}
+                    data-missing={course.missing || undefined}
                     aria-current={selected ? 'page' : undefined}
                     disabled={pending}
                     onClick={() => selectCourse(course.id)}
@@ -203,9 +265,13 @@ export function CourseSidebar(): JSX.Element {
                       data-course-color={normalizeCourseColor(course.color)}
                     />
                     <span className="course-row__name">{course.name}</span>
-                    <span className="course-row__hint" aria-hidden="true">
-                      ···
-                    </span>
+                    {course.missing ? (
+                      <span className="course-row__badge">연결 끊김</span>
+                    ) : (
+                      <span className="course-row__hint" aria-hidden="true">
+                        ···
+                      </span>
+                    )}
                   </button>
                 </li>
               )
@@ -215,19 +281,59 @@ export function CourseSidebar(): JSX.Element {
       </div>
 
       <footer className="rail-footer">
-        <button
-          type="button"
-          className="rail-footer__button"
-          onClick={() => {
-            void openSettingsWindow().catch((settingsError: unknown) => {
-              console.error('[Bandal] 설정 창을 열지 못했습니다.', settingsError)
-            })
-          }}
-        >
-          <Icon name="settings" />
-          <span>설정</span>
-        </button>
+        <nav className="rail-nav" aria-label="앱 메뉴">
+          <button
+            type="button"
+            className="rail-nav__item"
+            data-active={isBoardOverlayOpen || undefined}
+            aria-pressed={isBoardOverlayOpen}
+            title={isBoardOverlayOpen ? '학업 보드 닫기' : '학업 보드 열기'}
+            onClick={toggleBoardOverlay}
+          >
+            <TabKindIcon kind="board" />
+            <span>보드</span>
+          </button>
+          <button
+            type="button"
+            className="rail-nav__item"
+            onClick={() => {
+              void openSettingsWindow().catch((settingsError: unknown) => {
+                console.error('[Bandal] 설정 창을 열지 못했습니다.', settingsError)
+              })
+            }}
+          >
+            <Icon name="settings" />
+            <span>설정</span>
+          </button>
+        </nav>
       </footer>
+
+      {addMenu !== null && (
+        <div
+          ref={addMenuRef}
+          className="context-menu"
+          role="menu"
+          aria-label="과목 추가"
+          data-placement="bottom"
+          data-align="end"
+          style={{ left: addMenu.x, top: addMenu.y }}
+        >
+          <button type="button" role="menuitem" onClick={() => void startFolderAdd()}>
+            <Icon name="folderPlus" />
+            폴더에서 추가
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setAddMenu(null)
+              setCreateDialogOpen(true)
+            }}
+          >
+            <Icon name="plus" />새 과목 만들기
+          </button>
+        </div>
+      )}
 
       {contextMenu !== null && (
         <div
@@ -249,6 +355,16 @@ export function CourseSidebar(): JSX.Element {
             <Icon name="pencil" />
             이름 변경
           </button>
+          {contextMenu.course.missing && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => void startRelink(contextMenu.course)}
+            >
+              <Icon name="link" />
+              다시 연결
+            </button>
+          )}
           <button
             type="button"
             role="menuitem"
@@ -280,6 +396,28 @@ export function CourseSidebar(): JSX.Element {
         onClose={() => setCreateDialogOpen(false)}
         onSubmit={async (name, color) => {
           await createCourse({ name, color })
+        }}
+      />
+      <CourseFormDialog
+        open={linkTarget !== null}
+        mode="link"
+        initialName={linkTarget?.name ?? ''}
+        folderPath={linkTarget?.path}
+        onClose={() => setLinkTarget(null)}
+        onSubmit={async (name, color) => {
+          if (linkTarget === null) return
+          const result = await addCourseFromFolder({
+            folderPath: linkTarget.path,
+            name,
+            color
+          })
+          // Thrown messages stay inside the dialog so the user can re-pick.
+          if (result.status === 'failed') {
+            throw new Error(folderProblemMessage(result.reason))
+          }
+          if (result.status === 'duplicate') {
+            showToast('이미 등록된 폴더예요. 그 과목으로 이동했어요.')
+          }
         }}
       />
       <CourseFormDialog

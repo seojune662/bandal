@@ -98,6 +98,27 @@
   transform: translateX(0);
 }
 
+/* [M7] The course folder is gone from disk — 연결 끊김. */
+
+.course-row[data-missing] .course-row__name {
+  color: var(--text-muted);
+}
+
+.course-row[data-missing] .course-dot {
+  opacity: 0.4;
+}
+
+.course-row__badge {
+  flex: 0 0 auto;
+  padding: 0 var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--danger);
+  white-space: nowrap;
+  background: var(--danger-muted);
+  border-radius: var(--radius-pill);
+}
+
 .empty-state--courses .button {
   margin-top: var(--space-1);
 }
@@ -201,6 +222,14 @@
 .context-menu[data-placement='top'] {
   transform: translateY(-100%);
   transform-origin: bottom left;
+}
+
+/* Anchored to the right edge of its trigger (the rail "+" button). */
+.context-menu[data-align='end'] {
+  width: max-content;
+  min-width: var(--context-menu-width);
+  transform: translateX(-100%) translateY(var(--space-1));
+  transform-origin: top right;
 }
 
 .context-menu__label {
@@ -329,6 +358,44 @@
 .text-field:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-muted);
+}
+
+/* [M7] Folder preview inside the "폴더에서 추가" dialog. */
+
+.folder-preview {
+  margin-bottom: var(--space-4);
+}
+
+.folder-preview__path {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.folder-preview__path svg {
+  flex: 0 0 auto;
+  font-size: var(--icon-size-sm);
+  color: var(--text-muted);
+}
+
+.folder-preview__path span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-preview__hint {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
 .form-error {

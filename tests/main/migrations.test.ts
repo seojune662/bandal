@@ -22,8 +22,29 @@ describe('migrations', () => {
     // Assert
     expect(rows).toEqual([
       { version: 1, name: 'initial-schema' },
-      { version: 2, name: 'agent-session-resume-record' }
+      { version: 2, name: 'agent-session-resume-record' },
+      { version: 3, name: 'course-folder-source' }
     ])
+  })
+
+  test('adds courses.source defaulting to "managed" (migration 003)', () => {
+    // Arrange
+    const now = new Date().toISOString()
+    ctx.db
+      .prepare(
+        `INSERT INTO courses (id, name, slug, color, folder_path, archived,
+                              sort_order, created_at, updated_at)
+         VALUES ('c1', 'Legacy', 'legacy', '#000', '/tmp/legacy', 0, 0, ?, ?)`
+      )
+      .run(now, now)
+
+    // Act — a row written without `source` (as pre-M7 code did).
+    const row = ctx.db.prepare('SELECT source FROM courses WHERE id = ?').get('c1') as {
+      source: string
+    }
+
+    // Assert
+    expect(row.source).toBe('managed')
   })
 
   test('creates all schema v1 tables', () => {
@@ -55,6 +76,6 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(2)
+    expect(count.n).toBe(3)
   })
 })

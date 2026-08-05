@@ -9,8 +9,12 @@
  */
 
 import type {
+  AddCourseFromFolderInput,
   Course,
+  CourseFolderResult,
   CreateCourseInput,
+  PickedFolder,
+  RelinkCourseInput,
   RenameCourseInput
 } from '../types/course'
 import type {
@@ -50,10 +54,34 @@ export interface IpcContract {
     req: { includeArchived?: boolean }
     res: Course[]
   }
-  /** Creates the course row AND its folder under <dataRoot>/<slug>. */
+  /**
+   * Creates the course row AND a managed folder under <dataRoot>/<slug>.
+   * For an existing folder on disk use `courses:addFromFolder`.
+   */
   'courses:create': {
     req: CreateCourseInput
     res: Course
+  }
+  /**
+   * Opens the native folder picker (main process). Resolves to `null` when
+   * the user cancels.
+   */
+  'courses:pickFolder': {
+    req: Record<string, never>
+    res: PickedFolder | null
+  }
+  /**
+   * Registers an existing folder on disk as a course (source: 'linked').
+   * Nothing on disk is created or moved.
+   */
+  'courses:addFromFolder': {
+    req: AddCourseFromFolderInput
+    res: CourseFolderResult
+  }
+  /** Points an existing course at another folder (연결 끊김 복구). */
+  'courses:relink': {
+    req: RelinkCourseInput
+    res: CourseFolderResult
   }
   'courses:rename': {
     req: RenameCourseInput

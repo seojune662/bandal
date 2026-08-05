@@ -39,6 +39,22 @@ export const migrations: Migration[] = [
          ALTER TABLE agent_sessions ADD COLUMN launch_config_json TEXT;`
       )
     }
+  },
+  {
+    // [M7] Folder-based courses: a course folder may now be an arbitrary
+    // path the user pointed at. `source` distinguishes the folder Bandal
+    // created under the data root ('managed') from a linked one ('linked');
+    // every pre-existing row is managed by definition. The index backs the
+    // duplicate-registration lookup by folder_path.
+    version: 3,
+    name: 'course-folder-source',
+    up: (db) => {
+      db.exec(
+        `ALTER TABLE courses ADD COLUMN source TEXT NOT NULL DEFAULT 'managed';
+         CREATE INDEX IF NOT EXISTS idx_courses_folder_path
+           ON courses (folder_path) WHERE deleted_at IS NULL;`
+      )
+    }
   }
 ]
 

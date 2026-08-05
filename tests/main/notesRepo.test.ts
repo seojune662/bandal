@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createNotesRepo, type NotesRepo } from '../../src/main/features/notes'
@@ -144,5 +144,78 @@ describe('notesRepo', () => {
       // Assert
       expect(ref.relPath).toBe('evilname.md')
     })
+  })
+
+  /**
+   * [M7] A linked course folder can vanish (moved / unmounted). Writing must
+   * fail instead of re-creating the tree under a stale path.
+   */
+  describe('missing course folder', () => {
+    beforeEach(() => {
+      rmSync(courseFolder, { recursive: true, force: true })
+    })
+
+    test('read throws NotFoundError', () => {
+      // Act / Assert
+      expect(() => repo.read({ courseId: COURSE_ID, relPath: 'a.md' })).toThrow(
+        NotFoundError
+      )
+    })
+
+    test('write does not re-create the folder', () => {
+      // Act / Assert
+      expect(() =>
+        repo.write({ courseId: COURSE_ID, relPath: 'a.md', markdown: 'x' })
+      ).toThrow(NotFoundError)
+      expect(existsSync(courseFolder)).toBe(false)
+    })
+
+    test('create does not re-create the folder', () => {
+      // Act / Assert
+      expect(() =>
+        repo.create({ courseId: COURSE_ID, dirRelPath: '', title: 'New' })
+      ).toThrow(NotFoundError)
+      expect(existsSync(courseFolder)).toBe(false)
+    })
+  })
+})
+
+/** [M7] The traversal guard scopes to the course folder, wherever it is. */
+describe('notesRepo (linked course folder)', () => {
+  let ctx: TestDb
+  let repo: NotesRepo
+  let linkedFolder: string
+
+  beforeEach(() => {
+    ctx = createTestDb()
+    linkedFolder = join(ctx.dir, 'outside', 'lecture-notes')
+    mkdirSync(linkedFolder, { recursive: true })
+    writeFileSync(join(ctx.dir, 'outside', 'secret.md'), 'nope')
+    repo = createNotesRepo({ getCourseFolder: () => linkedFolder })
+  })
+
+  afterEach(() => {
+    ctx.cleanup()
+  })
+
+  test('writes and reads inside the linked folder', () => {
+    // Act
+    repo.write({ courseId: COURSE_ID, relPath: 'sub/note.md', markdown: '# hi' })
+
+    // Assert
+    expect(existsSync(join(linkedFolder, 'sub', 'note.md'))).toBe(true)
+    expect(repo.read({ courseId: COURSE_ID, relPath: 'sub/note.md' }).markdown).toBe(
+      '# hi'
+    )
+  })
+
+  test('cannot escape the linked folder', () => {
+    // Act / Assert
+    expect(() =>
+      repo.write({ courseId: COURSE_ID, relPath: '../secret.md', markdown: 'x' })
+    ).toThrow(PathTraversalError)
+    expect(() =>
+      repo.create({ courseId: COURSE_ID, dirRelPath: '..', title: 'evil' })
+    ).toThrow(PathTraversalError)
   })
 })

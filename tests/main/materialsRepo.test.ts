@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
@@ -6,7 +6,11 @@ import {
   kindForFile,
   type MaterialsRepo
 } from '../../src/main/features/materials'
-import { PathTraversalError, ValidationError } from '../../src/main/db/errors'
+import {
+  NotFoundError,
+  PathTraversalError,
+  ValidationError
+} from '../../src/main/db/errors'
 import { createTestDb, type TestDb } from './helpers/testDb'
 import { createCoursesRepo } from '../../src/main/features/courses'
 
@@ -162,6 +166,111 @@ describe('materialsRepo', () => {
       // Assert
       expect(revealed).toEqual([join(courseFolder, 'syllabus.pdf')])
     })
+  })
+})
+
+/**
+ * [M7] A linked course points at an arbitrary folder outside the data root.
+ * Everything must scope to that folder — including the traversal guard.
+ */
+describe('materialsRepo (linked course folder)', () => {
+  let ctx: TestDb
+  let repo: MaterialsRepo
+  let courseId: string
+  let linkedFolder: string
+
+  beforeEach(() => {
+    ctx = createTestDb()
+    const courses = createCoursesRepo({
+      db: ctx.db,
+      getDataRoot: () => join(ctx.dir, 'root')
+    })
+    // The linked folder lives in `outside/`, nowhere near the data root, and
+    // has a sibling file the course must never be able to reach.
+    linkedFolder = join(ctx.dir, 'outside', 'lecture-notes')
+    mkdirSync(linkedFolder, { recursive: true })
+    writeFileSync(join(ctx.dir, 'outside', 'secret.md'), 'nope')
+    writeFileSync(join(linkedFolder, 'week1.pdf'), 'pdf')
+    mkdirSync(join(linkedFolder, 'sub'), { recursive: true })
+    writeFileSync(join(linkedFolder, 'sub', 'week2.md'), '# w2')
+
+    const created = courses.addFromFolder({ folderPath: linkedFolder, color: '#000' })
+    if (created.status !== 'ok') throw new Error('setup failed')
+    courseId = created.course.id
+    repo = createMaterialsRepo({
+      db: ctx.db,
+      getCourseFolder: (id) => courses.getFolder(id),
+      revealItem: () => undefined
+    })
+  })
+
+  afterEach(() => {
+    ctx.cleanup()
+  })
+
+  test('walks the linked folder', () => {
+    // Act
+    const tree = repo.tree(courseId)
+
+    // Assert
+    expect(tree.map((n) => n.relPath)).toEqual(['sub', 'week1.pdf'])
+  })
+
+  test('searches inside the linked folder', () => {
+    // Act
+    const hits = repo.search(courseId, 'week')
+
+    // Assert
+    expect(hits.map((h) => h.relPath).sort()).toEqual(['sub/week2.md', 'week1.pdf'])
+    // The sibling outside the course folder is not indexed.
+    expect(repo.search(courseId, 'secret')).toEqual([])
+  })
+
+  test('reads a file from the linked folder', () => {
+    // Act / Assert
+    expect(repo.readFile(courseId, 'sub/week2.md')).toEqual({
+      encoding: 'utf8',
+      data: '# w2'
+    })
+  })
+
+  test('scopes the traversal guard to the linked folder, not the data root', () => {
+    // Act / Assert
+    expect(() => repo.readFile(courseId, '../secret.md')).toThrow(PathTraversalError)
+    expect(() => repo.reveal(courseId, '../secret.md')).toThrow(PathTraversalError)
+  })
+
+  test('imports into the linked folder', () => {
+    // Arrange
+    const source = join(ctx.dir, 'drop.pdf')
+    writeFileSync(source, 'bytes')
+
+    // Act
+    const result = repo.import(courseId, [source])
+
+    // Assert
+    expect(result.imported).toEqual(['drop.pdf'])
+    expect(existsSync(join(linkedFolder, 'drop.pdf'))).toBe(true)
+  })
+
+  test('returns an empty tree once the linked folder disappears', () => {
+    // Arrange
+    rmSync(linkedFolder, { recursive: true, force: true })
+
+    // Act / Assert
+    expect(repo.tree(courseId)).toEqual([])
+    expect(repo.search(courseId, 'week')).toEqual([])
+  })
+
+  test('refuses to import into a folder that disappeared', () => {
+    // Arrange
+    const source = join(ctx.dir, 'drop.pdf')
+    writeFileSync(source, 'bytes')
+    rmSync(linkedFolder, { recursive: true, force: true })
+
+    // Act / Assert — importing must not silently re-create the stale folder.
+    expect(() => repo.import(courseId, [source])).toThrow(NotFoundError)
+    expect(existsSync(linkedFolder)).toBe(false)
   })
 })
 
