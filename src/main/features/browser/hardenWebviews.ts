@@ -22,6 +22,7 @@ import {
   sanitizeGuestWebPreferences
 } from './webviewPolicy'
 import { browsingUserAgent } from './userAgent'
+import { createBrowserSessionStore } from './sessionStore'
 
 let browsingSessionHardened = false
 
@@ -38,6 +39,12 @@ function hardenBrowsingSession(): void {
   browsingSessionHardened = true
 
   const browsingSession = session.fromPartition(BROWSING_PARTITION)
+  const sessionStore = createBrowserSessionStore()
+  // restore() synchronously reads/decrypts the small snapshot and issues all
+  // cookies.set requests before its first await. Thus these requests reach the
+  // shared partition before the renderer can create its first webview.
+  void sessionStore.restore()
+  sessionStore.startAutoPersist()
   browsingSession.setUserAgent(
     browsingUserAgent(browsingSession.getUserAgent(), app.getName())
   )

@@ -36,6 +36,7 @@ import {
   getAgentModels,
   killAllClaudeProcessesSync
 } from '../features/agent'
+import { createBrowserSessionStore } from '../features/browser'
 import { createGroupRuntime } from '../features/group'
 import { isAuthCallbackUrl } from '../features/group/authCallbackUrl'
 import { createUpdaterRuntime } from '../features/updater'
@@ -301,6 +302,16 @@ export function registerHandlers(): IpcRouter {
       : { installed: false, loggedIn: false }
   )
   handle('agent:models', (req) => getAgentModels(req.provider))
+
+  // -- browser session ------------------------------------------------------
+  // Restore / auto-persist / before-quit are already wired inside
+  // hardenBrowsingSession; this factory returns that same singleton, so only
+  // the IPC surface is left to connect.
+  const browserSessions = createBrowserSessionStore()
+  handle('browser:sessionSites', async () => ({
+    sites: await browserSessions.listSites()
+  }))
+  handle('browser:clearSession', (req) => browserSessions.clear(req.origin))
 
   // -- settings (real implementation, settingsStore-owned) ------------------
   handle('settings:get', () => getSettings())
