@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for the hardened runtime (mac.hardenedRuntime: true).
+
+  Hardened runtime is mandatory for notarization, and it denies these
+  capabilities by default. Each one below is here because something in Bandal
+  breaks without it — and breaks ONLY in a signed build, never in `pnpm dev`.
+  Do not trim this list without testing a notarized .dmg end to end, including
+  opening a course and sending one chat message.
+
+  Deliberately absent: the com.apple.security.app-sandbox family. Bandal is not
+  sandboxed — it reads course folders the student picks anywhere on disk and
+  execs their own CLI — so sandbox entitlements would be decorative.
+-->
+<plist version="1.0">
+  <dict>
+    <!-- V8 compiles JavaScript at runtime. Without these two the renderer
+         process dies at launch. Required by every Electron app. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- better-sqlite3's native binding is a .node loaded from outside the
+         asar (see asarUnpack in electron-builder.yml). Library validation
+         rejects it because it is not signed by this Team ID. Symptom without
+         it: the app launches, then the DB init dialog reports a load failure. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- Bandal spawns the student's own Claude Code CLI and hands it a PATH
+         resolved from their login shell (binaryLocator.ts). The hardened
+         runtime scrubs DYLD_* and friends from the child environment unless
+         this is set. Symptom without it: the app works, chat alone fails. -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+  </dict>
+</plist>

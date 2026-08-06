@@ -8,6 +8,7 @@ import type { Settings } from '../types/settings'
 import type { AuthState } from '../types/auth'
 import type { GroupsInvalidationReason } from '../types/group'
 import type { GroupEvent } from '../types/group-events'
+import type { UpdateStatus } from '../types/update'
 
 /** Ordered batch of streaming agent events for a course chat. */
 export interface ChatEventBatch {
@@ -78,6 +79,13 @@ export interface PushEvents {
   'auth:changed': AuthState
   'group:event-batch': GroupEventBatch
   'groups:invalidated': GroupsInvalidated
+  // -- auto update ----------------------------------------------------------
+  /**
+   * Every auto-update state transition, including ones the renderer never
+   * asked for (the periodic background check). Broadcast to all windows so the
+   * workspace toast and the Settings panel cannot disagree.
+   */
+  'update:changed': UpdateStatus
 }
 
 export type PushChannel = keyof PushEvents

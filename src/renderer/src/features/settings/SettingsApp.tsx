@@ -11,6 +11,7 @@ import type {
   ThemePreference
 } from '../../../../shared/types/settings'
 import { invoke, onPush } from '../../lib/ipc'
+import { useUpdateStore } from '../../stores/updateStore'
 import { reopenedOnboarding } from '../onboarding/onboardingModel'
 import { UniversitySettingsPanel } from './UniversitySettingsPanel'
 import './settings-app.css'
@@ -72,8 +73,8 @@ const CATEGORIES: Category[] = [
     id: 'about',
     group: 'Info',
     label: 'About',
-    description: '반달의 버전과 제품 정보를 확인합니다.',
-    keywords: '정보 버전 앱 제품'
+    description: '반달의 버전을 확인하고 업데이트합니다.',
+    keywords: '정보 버전 앱 제품 업데이트 최신 새버전 update'
   }
 ]
 
@@ -625,6 +626,130 @@ function CoursesPanel({
   )
 }
 
+/**
+ * The durable home for update state.
+ *
+ * The workspace toast only fires on the two phases worth interrupting for
+ * (`available`, `ready`); everything else — "checking", download percentage,
+ * "already up to date", the last error — is shown here, where the student came
+ * looking for it.
+ */
+function UpdateCard(): JSX.Element | null {
+  const status = useUpdateStore((state) => state.status)
+  const init = useUpdateStore((state) => state.init)
+  const check = useUpdateStore((state) => state.check)
+  const download = useUpdateStore((state) => state.download)
+  const install = useUpdateStore((state) => state.install)
+
+  useEffect(() => {
+    init()
+  }, [init])
+
+  if (status === null) return null
+  // Unpackaged build: there is no update feed, so a "check" button could only
+  // ever fail. Hide the whole card rather than explain a dev-only condition.
+  if (status.phase === 'unsupported') return null
+
+  const busy = status.phase === 'checking' || status.phase === 'downloading'
+
+  const statusLabel =
+    status.phase === 'checking'
+      ? '확인 중'
+      : status.phase === 'downloading'
+        ? `내려받는 중 ${status.percent}%`
+        : status.phase === 'available'
+          ? '업데이트 있음'
+          : status.phase === 'ready'
+            ? '재시작 대기'
+            : status.phase === 'error'
+              ? '확인 실패'
+              : '최신 버전'
+
+  const pillTone =
+    status.phase === 'checking' || status.phase === 'downloading'
+      ? 'loading'
+      : status.phase === 'available' || status.phase === 'ready'
+        ? 'ready'
+        : 'muted'
+
+  return (
+    <SettingsCard className="integration-card">
+      <div className="integration-card__heading">
+        <div className="integration-card__title">
+          <h2>업데이트</h2>
+          <p>새 버전이 나오면 반달이 알려 드립니다.</p>
+        </div>
+        <span className={`status-pill status-pill--${pillTone}`}>
+          <span className="status-pill__dot" />
+          {statusLabel}
+        </span>
+      </div>
+
+      {status.phase === 'available' && (
+        <div className="inline-notice">
+          <div>
+            <strong>버전 {status.version} 을 사용할 수 있습니다.</strong>
+            <span>지금 내려받고 다음 재시작에 적용할 수 있습니다.</span>
+          </div>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => void download()}
+          >
+            내려받기
+          </button>
+        </div>
+      )}
+
+      {status.phase === 'ready' && (
+        <div className="inline-notice">
+          <div>
+            <strong>버전 {status.version} 준비 완료.</strong>
+            <span>재시작하면 적용됩니다.</span>
+          </div>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => void install()}
+          >
+            지금 재시작
+          </button>
+        </div>
+      )}
+
+      {status.phase === 'error' && (
+        <div className="inline-notice">
+          <div>
+            <strong>업데이트를 확인하지 못했습니다.</strong>
+            <span>{status.message}</span>
+          </div>
+        </div>
+      )}
+
+      {(status.phase === 'idle' || status.phase === 'checking') && (
+        <div className="inline-notice">
+          <div>
+            <strong>현재 버전 {status.currentVersion}</strong>
+            <span>
+              {status.phase === 'idle' && status.lastCheckedAt !== null
+                ? `마지막 확인 ${new Date(status.lastCheckedAt).toLocaleTimeString('ko-KR')}`
+                : '자동으로 6시간마다 확인합니다.'}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={busy}
+            onClick={() => void check()}
+          >
+            {busy ? '확인 중…' : '업데이트 확인'}
+          </button>
+        </div>
+      )}
+    </SettingsCard>
+  )
+}
+
 function AboutPanel(): JSX.Element {
   return (
     <div className="settings-stack">
@@ -638,6 +763,7 @@ function AboutPanel(): JSX.Element {
           <span className="version-label">버전 {APP_VERSION}</span>
         </div>
       </SettingsCard>
+      <UpdateCard />
       <p className="about-footer">달이 차오르듯, 배움도 조금씩.</p>
     </div>
   )

@@ -36,6 +36,7 @@ import {
 } from '../features/agent'
 import { createGroupRuntime } from '../features/group'
 import { isAuthCallbackUrl } from '../features/group/authCallbackUrl'
+import { createUpdaterRuntime } from '../features/updater'
 
 /**
  * What `registerHandlers` hands back to `main/index.ts`.
@@ -384,6 +385,21 @@ export function registerHandlers(): IpcRouter {
     })
     return OK
   })
+
+  // -- auto update ----------------------------------------------------------
+  // Constructed eagerly (unlike groupRuntime): it owns the periodic check, and
+  // in an unpackaged build the factory returns an inert stub anyway.
+  const updater = createUpdaterRuntime({
+    broadcast: (status) => broadcast('update:changed', status)
+  })
+  app.on('before-quit', () => {
+    updater.dispose()
+  })
+
+  handle('update:status', () => updater.status())
+  handle('update:check', () => updater.check())
+  handle('update:download', () => updater.download())
+  handle('update:install', () => ({ ok: updater.install() }))
 
   return {
     handleDeepLink(url) {

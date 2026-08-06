@@ -8,6 +8,7 @@ import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
 import { useOnboardingStore } from '../features/onboarding/onboardingStore'
 import { PreflightBanners } from '../features/onboarding/PreflightBanners'
 import { useAgentPreflight } from '../features/onboarding/useAgentPreflight'
+import { useUpdateNotifications } from '../features/updates/useUpdateNotifications'
 import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
 import { selectNeedsNickname, useAuthStore } from '../stores/authStore'
 import { useCoursesStore } from '../stores/coursesStore'
@@ -43,6 +44,9 @@ export function AppShell(): JSX.Element {
 
   // [M6-A] ⌘T/⌘W/⌘P/⌘,/⌘1..9 — see app/shortcuts.ts for the guard rules.
   useGlobalShortcuts()
+
+  // Auto-update toasts. Inert in `pnpm dev` (main reports phase 'unsupported').
+  useUpdateNotifications()
 
   useEffect(() => {
     void initTheme().catch((error: unknown) => {

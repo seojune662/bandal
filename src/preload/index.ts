@@ -37,7 +37,9 @@ const PUSH_CHANNELS: readonly PushChannel[] = [
   // -- groups (P2-C) --------------------------------------------------------
   'auth:changed',
   'group:event-batch',
-  'groups:invalidated'
+  'groups:invalidated',
+  // -- auto update ----------------------------------------------------------
+  'update:changed'
 ]
 
 const bridge: BandalBridge = {

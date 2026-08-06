@@ -11,12 +11,34 @@ directories:
   buildResources: resources
   output: release
 
-# electron-vite output. Production node_modules dependencies are always
-# bundled by electron-builder in addition to these patterns (needed because
-# externalizeDepsPlugin leaves main/preload deps as runtime require()s).
+# electron-vite output. electron-builder additionally bundles every package in
+# package.json `dependencies` (with transitives), because externalizeDepsPlugin
+# leaves main/preload imports as runtime require()s.
+#
+# ⚠ That is why `dependencies` holds ONLY the five packages main/preload
+# actually require at runtime (@supabase/supabase-js, better-sqlite3, chokidar,
+# cross-spawn, electron-updater). Everything the renderer uses — milkdown,
+# pdfjs-dist, react, dockview … — is bundled into out/renderer by vite and
+# lives in `devDependencies`, so it never reaches the installer. Adding a
+# renderer-only package to `dependencies` silently re-inflates every download.
+# Verify with:
+#   grep -oh 'require("[^".][^"]*")' out/main/index.js out/preload/index.js | sort -u
 files:
   - out/**
   - package.json
+  # better-sqlite3 ships its whole build tree. Only lib/ and the compiled
+  # build/Release/better_sqlite3.node (1.8 MB) are needed at runtime; the
+  # intermediate .o files, the bundled SQLite C amalgamation and the C++
+  # sources add ~20 MB to every download for nothing. `bindings` resolves the
+  # .node through build/Release, so that one path must survive.
+  - '!node_modules/better-sqlite3/deps/**'
+  - '!node_modules/better-sqlite3/src/**'
+  - '!node_modules/better-sqlite3/build/Release/obj.target/**'
+  - '!node_modules/better-sqlite3/build/Release/obj/**'
+  - '!node_modules/better-sqlite3/build/Release/test_extension.node'
+  - '!node_modules/better-sqlite3/build/*.mk'
+  - '!node_modules/better-sqlite3/build/**/*.a'
+  - '!node_modules/better-sqlite3/build/deps/**'
 
 # better-sqlite3 ships a native .node binding that cannot load from inside
 # the asar archive.
@@ -26,36 +48,82 @@ asarUnpack:
 # Rebuild native deps (better-sqlite3) against the Electron ABI at pack time.
 npmRebuild: true
 
+# OAuth callback registration. macOS reads this into CFBundleURLTypes, Windows
+# into the installer's registry keys, so `bandal://auth/callback` reaches the
+# packaged app on both. Top-level (not under `mac:`) so Windows gets it too.
+# In `electron-vite dev` there is no bundle/installer — the runtime call to
+# `app.setAsDefaultProtocolClient` covers that case (see src/main/index.ts).
+protocols:
+  - name: Bandal
+    schemes:
+      - bandal
+
+# Releases go to the same repo the source lives in. Baked into app-update.yml
+# inside the bundle at pack time, which is how electron-updater finds the feed.
+publish:
+  provider: github
+  owner: seojune662
+  repo: bandal
+
 mac:
   target:
     - target: dmg
       arch:
         - arm64
+        - x64
+    # Required by Squirrel.Mac. Without a zip target electron-builder cannot
+    # write latest-mac.yml and auto-update silently never finds a release.
     - target: zip
       arch:
         - arm64
+        - x64
   icon: resources/icon.icns
   category: public.app-category.education
   darkModeSupport: true
   hardenedRuntime: true
-  # No signing certificate configured yet — ship unsigned local builds.
-  # Set to your "Developer ID Application: …" identity (and add notarize
-  # config) before distributing.
-  identity: null
+  # Signed with the Developer ID Application identity found in the keychain.
+  # CI imports it from the MAC_CERT_P12 secret; locally, `pnpm dist` falls back
+  # to an unsigned build if no identity is present.
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+  # Gatekeeper assessment during packaging is redundant with notarization and
+  # fails on machines where the cert is not trusted for assessment yet.
+  gatekeeperAssess: false
+  # Notarized via the App Store Connect API key (APPLE_API_KEY /
+  # APPLE_API_KEY_ID / APPLE_API_ISSUER). Skipped automatically when those
+  # env vars are absent, so local builds stay fast.
+  notarize: true
   extendInfo:
     CFBundleDisplayName: 반달
-  # OAuth callback. Writes CFBundleURLTypes into Info.plist so Launch Services
-  # hands `bandal://auth/callback` back to the packaged app. In `electron-vite
-  # dev` there is no Info.plist — the runtime call to
-  # `app.setAsDefaultProtocolClient` covers that case instead
-  # (see src/main/index.ts).
-  protocols:
-    - name: Bandal
-      schemes:
-        - bandal
+  # Applies to the zip target. Version-free so the website can link
+  # `releases/latest/download/<name>` and never go stale on a new release.
+  artifactName: ${productName}-${arch}-mac.${ext}
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: resources/icon.ico
+  # Unsigned for now — SmartScreen will show "unknown publisher" on first run.
+  # To sign later, add either `azureSignOptions:` (Azure Trusted Signing) or
+  # `certificateFile:`/`certificatePassword:` here; nothing else changes.
+
+nsis:
+  # A one-click installer gives the student no say in where the app lands and
+  # no visible progress. Bandal is not a background utility.
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  # Per-user install: no UAC prompt, and — the reason that matters here — the
+  # auto-updater can replace files without asking for admin rights every time.
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 반달
+  artifactName: ${productName}-Setup.${ext}
 
 dmg:
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: ${productName}-${arch}.${ext}
 
 electronLanguages:
   - ko

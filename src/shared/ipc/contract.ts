@@ -52,6 +52,7 @@ import type {
   PermissionResponse
 } from '../types/agent-events'
 import type { Settings, SettingsPatch } from '../types/settings'
+import type { UpdateStatus } from '../types/update'
 import type {
   AuthProvider,
   AuthSignInResult,
@@ -462,6 +463,34 @@ export interface IpcContract {
   'safety:report': {
     req: { targetType: ReportTargetType; targetId: string; reason: string }
     res: { ok: true }
+  }
+
+  // -- auto update ----------------------------------------------------------
+  /** Current state, for a freshly mounted UI. Never triggers a network call. */
+  'update:status': {
+    req: Record<string, never>
+    res: UpdateStatus
+  }
+  /**
+   * Explicit "check for updates" from Settings → About. Resolves once the
+   * check settles; progress also arrives on the `update:changed` push channel.
+   */
+  'update:check': {
+    req: Record<string, never>
+    res: UpdateStatus
+  }
+  /** Starts the download. No-op unless the phase is `available` or `error`. */
+  'update:download': {
+    req: Record<string, never>
+    res: UpdateStatus
+  }
+  /**
+   * Quits and installs a staged update. Returns only if the install could not
+   * start — on success the process is already gone.
+   */
+  'update:install': {
+    req: Record<string, never>
+    res: { ok: boolean }
   }
 }
 
