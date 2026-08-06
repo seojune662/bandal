@@ -640,3 +640,121 @@ export interface IpcContract {
 export type IpcChannel = keyof IpcContract
 export type IpcRequest<K extends IpcChannel> = IpcContract[K]['req']
 export type IpcResponse<K extends IpcChannel> = IpcContract[K]['res']
+
+/**
+ * Every channel in `IpcContract`, as a VALUE.
+ *
+ * A type alone cannot be enumerated at runtime, so nothing stopped a channel
+ * from being declared in the contract, called type-safely from the renderer,
+ * and having no main-process handler — `tsc` and `vitest` both stayed green
+ * and the app failed at runtime with "No handler registered for ...". That is
+ * exactly how `favorites:*` shipped half-wired.
+ *
+ * The two `satisfies`/`Exclude` checks below make the list and the contract
+ * prove each other: adding a channel to `IpcContract` without adding it here
+ * fails to compile, and `registerHandlers` asserts at boot that every entry
+ * here actually got a handler.
+ */
+export const IPC_CHANNELS = [
+  'courses:list',
+  'courses:create',
+  'courses:pickFolder',
+  'courses:addFromFolder',
+  'courses:relink',
+  'courses:rename',
+  'courses:archive',
+  'courses:delete',
+  'courseLinks:list',
+  'courseLinks:create',
+  'courseLinks:update',
+  'courseLinks:delete',
+  'shell:openExternal',
+  'materials:tree',
+  'materials:search',
+  'materials:import',
+  'materials:reveal',
+  'materials:readFile',
+  'materials:watch',
+  'materials:rename',
+  'materials:delete',
+  'materials:duplicate',
+  'materials:writeFile',
+  'materials:createFolder',
+  'materials:unwatch',
+  'notes:read',
+  'notes:write',
+  'notes:create',
+  'annotations:listForFile',
+  'annotations:create',
+  'annotations:update',
+  'annotations:delete',
+  'board:listTasks',
+  'board:createTask',
+  'board:updateTask',
+  'board:deleteTask',
+  'chat:open',
+  'chat:send',
+  'chat:cancel',
+  'chat:respondPermission',
+  'chat:close',
+  'chat:setModel',
+  'agent:availability',
+  'agent:models',
+  'drawings:listForFile',
+  'drawings:create',
+  'drawings:update',
+  'drawings:delete',
+  'pdf:exportAnnotated',
+  'favorites:list',
+  'favorites:add',
+  'favorites:rename',
+  'favorites:remove',
+  'favorites:reorder',
+  'agent:installCommand',
+  'agent:install',
+  'browser:sessionSites',
+  'browser:clearSession',
+  'settings:get',
+  'settings:set',
+  'layout:get',
+  'layout:save',
+  'auth:getState',
+  'auth:signIn',
+  'auth:signOut',
+  'auth:setNickname',
+  'auth:setAvatar',
+  'groups:list',
+  'groups:create',
+  'groups:joinWithCode',
+  'groups:currentCode',
+  'groups:regenerateCode',
+  'groups:linkCourse',
+  'groups:leave',
+  'groups:members',
+  'groups:kick',
+  'groups:inviteByNickname',
+  'groups:findProfile',
+  'invites:listPending',
+  'invites:respond',
+  'friends:list',
+  'friends:request',
+  'friends:respond',
+  'groupChat:open',
+  'groupChat:send',
+  'groupChat:loadOlder',
+  'groupChat:markRead',
+  'groupChat:retry',
+  'groupChat:deleteMessage',
+  'groupChat:close',
+  'safety:block',
+  'safety:report',
+  'update:status',
+  'update:check',
+  'update:download',
+  'update:install'
+] as const satisfies readonly IpcChannel[]
+
+// Fails to compile if a contract channel is missing from IPC_CHANNELS.
+type MissingFromList = Exclude<IpcChannel, (typeof IPC_CHANNELS)[number]>
+const _allChannelsListed: MissingFromList extends never ? true : never = true
+void _allChannelsListed

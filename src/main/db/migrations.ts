@@ -9,6 +9,7 @@
  * milestones append new entries — never edit an applied migration.
  */
 
+import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import schemaSql from './schema.sql?raw'
 
@@ -218,6 +219,89 @@ export const migrations: Migration[] = [
          CREATE INDEX IF NOT EXISTS idx_favorites_course
            ON favorites (course_id, sort_order) WHERE deleted_at IS NULL;`
       )
+    }
+  },
+  {
+    // [M11] Fold course_links into favorites.
+    //
+    // 링크 and 즐겨찾기 were two lists doing the same job under one course.
+    // Favorites already stores a whole TabDescriptor, so an LMS URL is just a
+    // browser descriptor — one concept instead of two.
+    //
+    // course_links is NOT dropped: this copies out of it and leaves it intact
+    // so the change stays reversible, and the repo/IPC keep working until the
+    // migration has been verified in the wild. Re-running is safe — a URL
+    // already present as a favorite for that course is skipped.
+    version: 8,
+    name: 'course-links-into-favorites',
+    up: (db) => {
+      const links = db
+        .prepare(
+          `SELECT course_id, label, url, sort_order
+             FROM course_links
+            ORDER BY course_id, sort_order`
+        )
+        .all() as {
+        course_id: string
+        label: string
+        url: string
+        sort_order: number
+      }[]
+      if (links.length === 0) return
+
+      const existing = db
+        .prepare(
+          `SELECT course_id, descriptor_json FROM favorites WHERE deleted_at IS NULL`
+        )
+        .all() as { course_id: string | null; descriptor_json: string }[]
+      const taken = new Set(
+        existing.map((row) => {
+          let url = ''
+          try {
+            const parsed = JSON.parse(row.descriptor_json) as {
+              payload?: { initialUrl?: unknown }
+            }
+            url =
+              typeof parsed.payload?.initialUrl === 'string'
+                ? parsed.payload.initialUrl
+                : ''
+          } catch {
+            url = ''
+          }
+          return `${row.course_id ?? ''}\u0000${url}`
+        })
+      )
+
+      const nextOrder = db.prepare(
+        `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next
+           FROM favorites
+          WHERE course_id IS ? AND deleted_at IS NULL`
+      )
+      const insert = db.prepare(
+        `INSERT INTO favorites
+           (id, course_id, label, descriptor_json, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      const now = new Date().toISOString()
+
+      for (const link of links) {
+        if (taken.has(`${link.course_id}\u0000${link.url}`)) continue
+        const descriptor = JSON.stringify({
+          kind: 'browser',
+          payload: { tabId: randomUUID(), initialUrl: link.url }
+        })
+        const { next } = nextOrder.get(link.course_id) as { next: number }
+        insert.run(
+          randomUUID(),
+          link.course_id,
+          link.label,
+          descriptor,
+          next,
+          now,
+          now
+        )
+        taken.add(`${link.course_id}\u0000${link.url}`)
+      }
     }
   }
 ]

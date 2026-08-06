@@ -42,13 +42,26 @@ export interface ChatTabPayload {
 export type BoardTabPayload = Record<string, never>
 
 /**
- * [P2] Remote study-group chat. `groupId` is the REMOTE `study_groups.id`,
- * never a local courseId — a group can be linked to zero or many courses, and
- * the remote side knows nothing about your folders (docs/phase2-community
- * §2.2 / §3.1).
+ * [P2 · M11] Remote study-group chat — ONE tab per course.
+ *
+ * Identity moved from groupId to courseId: keying by group meant N groups
+ * opened N tabs, and because dockview layouts are persisted per course the
+ * same group could also occupy a tab in every course's layout. The panel now
+ * carries its own group switcher instead, matching how the AI tutor tab is a
+ * `chat:${courseId}` singleton.
+ *
+ * `courseId: null` is the "과목 미지정" bucket — a group joined by invite code
+ * before it was linked to any course. Joining deliberately does not ask which
+ * course (docs/phase2-community §661).
+ *
+ * NOTE: a group belongs to at most ONE course. `course_group_links` has a
+ * UNIQUE `remote_group_id`, so the old "zero or many courses" comment here
+ * contradicted the schema.
  */
 export interface GroupChatTabPayload {
-  groupId: string
+  courseId: string | null
+  /** Initially selected group; the panel switches among the course's groups. */
+  groupId?: string
 }
 
 export interface TabPayloadMap {
@@ -119,7 +132,11 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
       return isNonEmptyString(payload['courseId'])
     case 'board':
       return true
-    case 'group-chat':
-      return isNonEmptyString(payload['groupId'])
+    case 'group-chat': {
+      const courseId = payload['courseId']
+      if (courseId !== null && !isNonEmptyString(courseId)) return false
+      const groupId = payload['groupId']
+      return groupId === undefined || isNonEmptyString(groupId)
+    }
   }
 }

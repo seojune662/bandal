@@ -23,7 +23,7 @@ export { TAB_KINDS, isTabKind, isTabDescriptor } from '../../../../shared/tabs'
  *  - chat: singleton per course
  *  - board: global singleton
  *  - browser: keyed by its stable tabId (every new browser tab is unique)
- *  - group-chat: singleton per remote group (falls out of the id shape)
+ *  - group-chat: singleton per course (null course = the 미지정 bucket)
  */
 export function tabPanelId(descriptor: TabDescriptor): string {
   switch (descriptor.kind) {
@@ -37,7 +37,9 @@ export function tabPanelId(descriptor: TabDescriptor): string {
     case 'board':
       return 'board'
     case 'group-chat':
-      return `group-chat:${descriptor.payload.groupId}`
+      // Keyed by COURSE, not group — one 함께하기 tab per course, with an
+      // in-panel switcher. See GroupChatTabPayload.
+      return `group-chat:${descriptor.payload.courseId ?? 'unassigned'}`
   }
 }
 

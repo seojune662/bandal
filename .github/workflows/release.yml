@@ -145,7 +145,32 @@ jobs:
       # tree and fails the entry-file sanity check. The `pnpm dist` script pairs
       # the two for exactly this reason; the matrix command below cannot use
       # that script because it needs the --publish flag.
-      - run: pnpm build
+      - name: Build (electron-vite compiles main/preload/renderer)
+        run: pnpm build
+        env:
+          # MUST be here, not on the electron-builder step below. electron-vite
+          # inlines import.meta.env at COMPILE time; electron-builder only
+          # packages. They were attached to the packaging step from f990637
+          # until v0.2.0, so every shipped build had an empty Supabase config,
+          # readSupabaseConfig() returned null, auth phase stayed
+          # 'unconfigured' and 함께하기 DISAPPEARED from the app entirely —
+          # silently, with a green build.
+          MAIN_VITE_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
+          MAIN_VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.MAIN_VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+      # The failure above was invisible: nothing errored, a feature just went
+      # missing. Assert the inlining actually happened so it can never ship
+      # quietly again. Never prints the values.
+      - name: Assert the Supabase config was inlined
+        run: |
+          node -e "
+            const s = require('fs').readFileSync('out/main/index.js','utf8');
+            if (!/supabase\.co/.test(s)) {
+              console.error('::error::Supabase config was NOT inlined - 함께하기 would be absent from this build. Check the env block on the pnpm build step.');
+              process.exit(1);
+            }
+            console.log('Supabase config inlined.');
+          "
 
       # --- macOS signing -------------------------------------------------
       # Imports the Developer ID cert into a throwaway keychain. Without this
@@ -229,11 +254,9 @@ jobs:
           # source and releases live together.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          # Baked into the main bundle at build time by electron-vite. Without
-          # them the shipped app has no "함께하기" feature at all — it does not
-          # degrade, it disappears (see .env.example).
-          MAIN_VITE_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
-          MAIN_VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.MAIN_VITE_SUPABASE_PUBLISHABLE_KEY }}
+          # NOTE: the Supabase vars are deliberately NOT here. electron-builder
+          # does not compile, so setting them at this step does nothing — that
+          # was the v0.1.0–v0.2.0 bug. They live on the `pnpm build` step above.
 
           # Notarization (macOS only; ignored elsewhere). APPLE_API_KEY itself
           # is exported to GITHUB_ENV by the staging step above, because a

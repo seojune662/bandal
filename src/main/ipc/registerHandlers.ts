@@ -9,6 +9,7 @@
  */
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { IPC_CHANNELS } from '../../shared/ipc/contract'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
 import type { PushChannel, PushPayload } from '../../shared/ipc/events'
 import { getSettings, setSettings } from '../settingsStore'
@@ -62,10 +63,31 @@ export interface IpcRouter {
  * Contract-typed wrapper around ipcMain.handle. Logs failures with channel
  * context, then rethrows so the renderer receives a rejected promise.
  */
+const registered = new Set<IpcChannel>()
+
+/**
+ * Boot-time guard: every contract channel must have a handler.
+ *
+ * `handle()` type-checks each registration individually, but nothing tied the
+ * SET of registrations to the contract — a declared-but-unhandled channel
+ * compiled fine and only failed in the user's hands with "No handler
+ * registered for ...". This runs before the window is created, so the gap
+ * becomes a loud startup failure instead of one broken button.
+ */
+function assertEveryChannelHandled(): void {
+  const missing = IPC_CHANNELS.filter((channel) => !registered.has(channel))
+  if (missing.length > 0) {
+    throw new Error(
+      `[ipc] ${missing.length} channel(s) declared in IpcContract have no handler: ${missing.join(', ')}`
+    )
+  }
+}
+
 function handle<K extends IpcChannel>(
   channel: K,
   fn: (req: IpcRequest<K>) => Promise<IpcResponse<K>> | IpcResponse<K>
 ): void {
+  registered.add(channel)
   ipcMain.handle(channel, async (_event, req: IpcRequest<K>) => {
     try {
       return await fn(req)
@@ -512,6 +534,8 @@ export function registerHandlers(): IpcRouter {
   handle('update:check', () => updater.check())
   handle('update:download', () => updater.download())
   handle('update:install', () => ({ ok: updater.install() }))
+
+  assertEveryChannelHandled()
 
   return {
     handleDeepLink(url) {
