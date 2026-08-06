@@ -1,0 +1,11 @@
+{"type":"thread.started","thread_id":"019f2b90-0c34-77a1-ad02-b38355965b93"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"reasoning","text":"I should answer briefly."}}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"I should answer briefly."}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"printf 'hi\\n'","status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"printf 'hi\\n'","aggregated_output":"hi","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"file_change","changes":[{"path":"notes.md","kind":"modify"}],"status":"completed"}}
+{"type":"item.updated","item":{"id":"item_3","type":"agent_message","text":"안녕"}}
+{"type":"item.updated","item":{"id":"item_3","type":"agent_message","text":"안녕하세요!"}}
+{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"안녕하세요!"}}
+{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":4,"cached_input_tokens":2}}

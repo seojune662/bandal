@@ -33,6 +33,10 @@ import {
   createClaudeCodeAdapter,
   createEventBatcher,
   createSessionManager,
+  createCodexAdapter,
+  createCodexBinaryLocator,
+  createAgentInstaller,
+  killAllCodexProcessesSync,
   getAgentModels,
   killAllClaudeProcessesSync
 } from '../features/agent'
@@ -257,6 +261,9 @@ export function registerHandlers(): IpcRouter {
   const eventBatcher = createEventBatcher({
     send: (batch) => broadcast('chat:event-batch', batch)
   })
+  const codexLocator = createCodexBinaryLocator()
+  const codexAdapter = createCodexAdapter({ locator: codexLocator })
+
   const sessionManager = createSessionManager({
     adapter: claudeAdapter,
     repo: chatRepo,
@@ -269,40 +276,67 @@ export function registerHandlers(): IpcRouter {
   app.on('before-quit', () => {
     materialsWatcher.dispose()
     sessionManager.disposeAll()
+    codexSessionManager.disposeAll()
     eventBatcher.dispose()
   })
   process.on('exit', () => {
     killAllClaudeProcessesSync()
+    killAllCodexProcessesSync()
   })
 
-  handle('chat:open', (req) => sessionManager.open(req.courseId))
+  // [M10] Two providers now. The session manager is per-adapter, so the
+  // active one is resolved per call from settings rather than captured once —
+  // switching providers in settings must take effect on the next message, not
+  // on the next app launch.
+  const codexSessionManager = createSessionManager({
+    adapter: codexAdapter,
+    repo: chatRepo,
+    getCourse: (courseId) => ({
+      folder: coursesRepo.getFolder(courseId),
+      name: coursesRepo.getById(courseId).name
+    }),
+    emit: (courseId, event) => eventBatcher.push(courseId, event)
+  })
+  const activeSessions = (): typeof sessionManager =>
+    getSettings().agentProvider === 'codex' ? codexSessionManager : sessionManager
+
+  handle('chat:open', (req) => activeSessions().open(req.courseId))
   handle('chat:send', (req) =>
-    sessionManager.send(req.courseId, req.content, req.attachments)
+    activeSessions().send(req.courseId, req.content, req.attachments)
   )
   handle('chat:cancel', (req) => {
-    sessionManager.cancel(req.courseId)
+    activeSessions().cancel(req.courseId)
     return OK
   })
   handle('chat:respondPermission', (req) => {
-    sessionManager.respondPermission(req.courseId, req.requestId, req.response)
+    activeSessions().respondPermission(req.courseId, req.requestId, req.response)
     return OK
   })
   handle('chat:close', (req) => {
-    sessionManager.close(req.courseId)
+    activeSessions().close(req.courseId)
     eventBatcher.flush(req.courseId)
     return OK
   })
   handle('chat:setModel', (req) => {
-    sessionManager.setModel(req.courseId, req.model)
+    activeSessions().setModel(req.courseId, req.model)
     return OK
   })
 
   // -- agent (M4-H) ---------------------------------------------------------
   handle('agent:availability', async (req) =>
-    req.provider === 'claude-code'
-      ? binaryLocator.availability()
-      : { installed: false, loggedIn: false }
+    req.provider === 'codex'
+      ? codexLocator.availability()
+      : binaryLocator.availability()
   )
+
+  // Installers mutate the machine outside the app sandbox, so `agent:install`
+  // is only ever reached from an explicit click after the UI has shown the
+  // exact command from `agent:installCommand`.
+  const agentInstaller = createAgentInstaller({
+    broadcast: (progress) => broadcast('agent:install-progress', progress)
+  })
+  handle('agent:installCommand', (req) => agentInstaller.commandFor(req.provider))
+  handle('agent:install', (req) => agentInstaller.install(req.provider))
   handle('agent:models', (req) => getAgentModels(req.provider))
 
   // -- favorites (left-rail pins for any TabDescriptor) ---------------------

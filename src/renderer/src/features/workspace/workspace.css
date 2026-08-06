@@ -3,7 +3,7 @@
  * Motion sticks to transform/opacity. */
 
 .workspace-host {
-  --new-tab-menu-width: 18.75rem;
+  --new-tab-menu-width: calc(var(--rail-right-width) + var(--space-3));
 
   position: relative;
   display: flex;
@@ -197,6 +197,33 @@
   transform: scale(0.85);
 }
 
+/* Portaled to document.body so dockview's horizontally clipped tab strip
+ * cannot crop the menu. Position flips around the pointer near viewport
+ * edges; width remains the shared context-menu token. */
+.context-menu.workspace-tab-context-menu {
+  width: var(--context-menu-width);
+  max-width: calc(100vw - var(--space-4));
+  max-height: calc(100vh - var(--space-4));
+  overflow-y: auto;
+}
+
+.context-menu.workspace-tab-context-menu[data-align='end'] {
+  width: var(--context-menu-width);
+  min-width: var(--context-menu-width);
+  transform: translateX(-100%);
+  transform-origin: top right;
+}
+
+.context-menu.workspace-tab-context-menu[data-placement='top'][data-align='start'] {
+  transform: translateY(-100%);
+  transform-origin: bottom left;
+}
+
+.context-menu.workspace-tab-context-menu[data-placement='top'][data-align='end'] {
+  transform: translate(-100%, -100%);
+  transform-origin: bottom right;
+}
+
 /* -- group header actions ------------------------------------------------ */
 
 .workspace-tab-actions {
@@ -384,7 +411,7 @@
 .new-tab-menu {
   position: fixed;
   z-index: 30;
-  width: var(--new-tab-menu-width, 18.75rem);
+  width: var(--new-tab-menu-width);
   padding: var(--space-2);
   color: var(--text-secondary);
   background: var(--bg-overlay);
@@ -505,6 +532,94 @@
   font-size: var(--text-xs);
   color: var(--text-muted);
   text-align: center;
+}
+
+.new-tab-menu__link-item {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.new-tab-menu__link-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-2);
+}
+
+.new-tab-menu__form-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.new-tab-menu__link-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.new-tab-menu__link-form input {
+  width: 100%;
+  height: var(--control-height);
+  padding-inline: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.new-tab-menu__link-form input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 calc(var(--space-1) / 2) var(--accent-muted);
+}
+
+.new-tab-menu__link-form input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.new-tab-menu__form-error {
+  font-size: var(--text-xs);
+  color: var(--danger);
+}
+
+.new-tab-menu__form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.new-tab-menu__form-actions button {
+  min-height: var(--control-height);
+  padding-inline: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.new-tab-menu__form-actions button:hover,
+.new-tab-menu__form-actions button:focus-visible {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.new-tab-menu__form-actions button[data-primary='true'] {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.new-tab-menu__form-actions button:disabled {
+  color: var(--text-muted);
+  background: var(--bg-raised);
+  border-color: var(--border-subtle);
+  cursor: default;
 }
 
 @keyframes new-tab-menu-in {

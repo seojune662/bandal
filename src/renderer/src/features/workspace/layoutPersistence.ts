@@ -20,7 +20,8 @@
 
 import type { SerializedDockview } from 'dockview'
 import type { TabDescriptor } from '../../../../shared/tabs'
-import { isTabDescriptor, tabPanelId } from './tabIdentity'
+import { isTabDescriptor } from './tabIdentity'
+import { panelIdMatchesDescriptor } from './tabDuplication'
 
 export const LAYOUT_SAVE_DEBOUNCE_MS = 1000
 
@@ -137,8 +138,9 @@ export function validateLayout(raw: unknown): ValidatedLayout | null {
     const descriptor = isRecord(params) ? params['descriptor'] : undefined
     const isValid =
       isTabDescriptor(descriptor) &&
-      // Identity must round-trip: the panel id IS the dedupe key.
-      tabPanelId(descriptor) === panelId &&
+      // Canonical ids round-trip to the dedupe key. Explicit duplicate-view
+      // ids retain that canonical prefix and are validated by the same helper.
+      panelIdMatchesDescriptor(panelId, descriptor) &&
       state['contentComponent'] === descriptor.kind
     if (!isValid) {
       droppedPanelIds.push(panelId)

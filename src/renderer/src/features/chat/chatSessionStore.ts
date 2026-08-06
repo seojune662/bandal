@@ -28,6 +28,7 @@ export type ChatPhase = 'loading' | 'ready' | 'error'
 export interface ChatSessionSnapshot {
   state: ChatViewState
   phase: ChatPhase
+  provider: AgentProvider
   availability: AgentAvailability | null
   openError: string | null
   models: AgentModelOption[]
@@ -52,6 +53,7 @@ interface CourseRuntime {
 const EMPTY_SNAPSHOT: ChatSessionSnapshot = {
   state: initialChatViewState,
   phase: 'loading',
+  provider: 'claude-code',
   availability: null,
   openError: null,
   models: []
@@ -169,6 +171,7 @@ async function openCourse(
     }
     updateSnapshot(courseId, (current) => ({
       ...current,
+      provider: result.sessionInfo?.provider ?? current.provider,
       availability: result.availability,
       openError: null,
       state: hydrateFromHistory(
@@ -179,7 +182,7 @@ async function openCourse(
     }))
     loadModels(
       courseId,
-      result.sessionInfo?.provider ?? ('claude-code' as const)
+      result.sessionInfo?.provider ?? snapshotFor(courseId).provider
     )
   } catch (error) {
     if (version !== runtime.openVersion) {
@@ -335,6 +338,45 @@ export function setChatModel(courseId: string, model: string): void {
     })
     .catch(() => {
       // Keep the previously confirmed selection when changing the model fails.
+    })
+}
+
+/** Saves the preferred provider, closes the old runtime, then re-opens chat. */
+export function setChatProvider(
+  courseId: string,
+  provider: AgentProvider
+): void {
+  const runtime = runtimeFor(courseId)
+  runtime.modelsProvider = null
+  updateSnapshot(courseId, (current) => ({
+    ...current,
+    provider,
+    phase: 'loading',
+    availability: null,
+    openError: null,
+    models: []
+  }))
+  void invoke('settings:set', { agentProvider: provider })
+    .then(async () => {
+      try {
+        await invoke('chat:close', { courseId })
+      } catch {
+        // The provider setting is authoritative. An older main process may not
+        // have a live course session to close, so continue with a fresh open.
+      }
+      if (snapshotFor(courseId).provider === provider) {
+        await openCourse(courseId, { discardQueue: true })
+      }
+    })
+    .catch((error: unknown) => {
+      if (snapshotFor(courseId).provider !== provider) {
+        return
+      }
+      updateSnapshot(courseId, (current) => ({
+        ...current,
+        phase: 'error',
+        openError: errorMessage(error)
+      }))
     })
 }
 

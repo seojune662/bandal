@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import type {
   AgentAvailability,
+  AgentProvider,
   PermissionResponse
 } from '../../../../shared/types/agent-events'
 import type {
@@ -16,6 +17,7 @@ import {
   respondToChatPermission,
   selectChatSession,
   sendChatMessage,
+  setChatProvider,
   setChatModel,
   useChatSessionStore
 } from './chatSessionStore'
@@ -25,6 +27,7 @@ export type { ChatPhase } from './chatSessionStore'
 export interface ChatSessionApi {
   state: ChatViewState
   phase: 'loading' | 'ready' | 'error'
+  provider: AgentProvider
   availability: AgentAvailability | null
   openError: string | null
   models: AgentModelOption[]
@@ -37,6 +40,7 @@ export interface ChatSessionApi {
   refresh: () => void
   dismissNotice: () => void
   setModel: (model: string) => void
+  setProvider: (provider: AgentProvider) => void
 }
 
 export function useChatSession(courseId: string): ChatSessionApi {
@@ -71,6 +75,10 @@ export function useChatSession(courseId: string): ChatSessionApi {
     (model: string) => setChatModel(courseId, model),
     [courseId]
   )
+  const setProvider = useCallback(
+    (provider: AgentProvider) => setChatProvider(courseId, provider),
+    [courseId]
+  )
 
   return {
     ...snapshot,
@@ -79,6 +87,7 @@ export function useChatSession(courseId: string): ChatSessionApi {
     respondPermission,
     refresh,
     dismissNotice,
-    setModel
+    setModel,
+    setProvider
   }
 }

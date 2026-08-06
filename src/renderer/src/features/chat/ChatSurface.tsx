@@ -11,11 +11,18 @@ import { useChatPromptStore } from './chatPromptBus'
 import { Composer, type ComposerHandle } from './Composer'
 import { MessageList } from './MessageList'
 import { useChatSession } from './useChatSession'
+import {
+  GateCard,
+  InstallCard,
+  LoginCard,
+  ProviderSelector,
+  providerLabel
+} from './AgentSetupCards'
 import './chat.css'
 import './chat-blocks.css'
+import './agent-setup.css'
 import { BandalMark } from '../../components/BandalMark'
 
-const INSTALL_COMMAND = 'curl -fsSL https://claude.ai/install.sh | bash'
 const MIN_CLI = { major: 2, minor: 1 }
 const SCROLL_PIN_THRESHOLD_PX = 48
 
@@ -44,81 +51,6 @@ function isCliVersionSupported(version: string | undefined): boolean {
     return major > MIN_CLI.major
   }
   return minor >= MIN_CLI.minor
-}
-
-function GateCard({
-  eyebrow,
-  title,
-  children,
-  onRefresh
-}: {
-  eyebrow: string
-  title: string
-  children: ReactNode
-  onRefresh: () => void
-}): JSX.Element {
-  return (
-    <div className="chat-gate">
-      <div className="chat-gate__card">
-        <BandalMark size={36} className="chat-gate__moon" />
-        <p className="chat-gate__eyebrow">{eyebrow}</p>
-        <h2 className="chat-gate__title">{title}</h2>
-        {children}
-        <button type="button" className="chat-gate__refresh" onClick={onRefresh}>
-          <Icon name="refresh" />
-          재확인
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function InstallCard({ onRefresh }: { onRefresh: () => void }): JSX.Element {
-  const [isCopied, setIsCopied] = useState(false)
-  const copy = useCallback(() => {
-    void navigator.clipboard.writeText(INSTALL_COMMAND).then(() => {
-      setIsCopied(true)
-      window.setTimeout(() => setIsCopied(false), 1600)
-    })
-  }, [])
-  return (
-    <GateCard
-      eyebrow="SETUP"
-      title="Claude Code 설치가 필요해요"
-      onRefresh={onRefresh}
-    >
-      <p className="chat-gate__desc">
-        AI 튜터는 내 컴퓨터의 Claude Code CLI로 동작해요. 터미널에서 아래
-        명령어로 설치한 뒤 재확인을 눌러주세요.
-      </p>
-      <div className="chat-gate__command">
-        <code>{INSTALL_COMMAND}</code>
-        <button
-          type="button"
-          className="chat-gate__copy"
-          onClick={copy}
-          aria-label="설치 명령어 복사"
-        >
-          {isCopied ? '복사됨' : '복사'}
-        </button>
-      </div>
-    </GateCard>
-  )
-}
-
-function LoginCard({ onRefresh }: { onRefresh: () => void }): JSX.Element {
-  return (
-    <GateCard
-      eyebrow="SETUP"
-      title="Claude 로그인이 필요해요"
-      onRefresh={onRefresh}
-    >
-      <p className="chat-gate__desc">
-        터미널에서 <code className="chat-gate__inline-code">claude</code>를
-        실행해 로그인한 뒤 재확인을 눌러주세요.
-      </p>
-    </GateCard>
-  )
 }
 
 function EmptyState({
@@ -159,7 +91,7 @@ export function ChatSurface({
   const scrollRef = useRef<HTMLDivElement>(null)
   const isPinnedRef = useRef(true)
 
-  const { state, phase, availability, models } = session
+  const { state, phase, provider, availability, models } = session
   const pendingPrompt = useChatPromptStore((store) => store.pending)
   const consumePrompt = useChatPromptStore((store) => store.consume)
 
@@ -236,16 +168,29 @@ export function ChatSurface({
   }
 
   if (availability !== null && !availability.installed) {
-    return root(<InstallCard onRefresh={session.refresh} />)
+    return root(
+      <InstallCard
+        provider={provider}
+        onProviderChange={session.setProvider}
+        onRefresh={session.refresh}
+      />
+    )
   }
 
   if (availability !== null && !availability.loggedIn) {
-    return root(<LoginCard onRefresh={session.refresh} />)
+    return root(
+      <LoginCard
+        provider={provider}
+        onProviderChange={session.setProvider}
+        onRefresh={session.refresh}
+      />
+    )
   }
 
   const isVersionTooOld =
-    state.notice?.code === 'version-too-old' ||
-    !isCliVersionSupported(availability?.version)
+    provider === 'claude-code' &&
+    (state.notice?.code === 'version-too-old' ||
+      !isCliVersionSupported(availability?.version))
   const isEmpty = state.messages.length === 0
   const defaultModel = models.find((model) => model.isDefault) ?? models[0]
   const selectedModel = state.model ?? defaultModel?.id ?? ''
@@ -254,6 +199,12 @@ export function ChatSurface({
   return root(
     <>
       <header className="chat-header">
+        <ProviderSelector
+          compact
+          provider={provider}
+          onChange={session.setProvider}
+          disabled={state.streaming}
+        />
         <label className="chat-model">
           <span className="chat-model__label">모델</span>
           <select
@@ -276,7 +227,7 @@ export function ChatSurface({
       </header>
       {isVersionTooOld && (
         <div className="chat-banner" role="status">
-          Claude Code 버전이 오래됐어요 ({availability?.version ?? '알 수 없음'})
+          {providerLabel(provider)} 버전이 오래됐어요 ({availability?.version ?? '알 수 없음'})
           {' — '}
           {MIN_CLI.major}.{MIN_CLI.minor} 이상으로 업데이트해 주세요.
         </div>

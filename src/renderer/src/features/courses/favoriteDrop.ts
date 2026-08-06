@@ -57,7 +57,13 @@ export function serializeFavoriteMaterialDrag(
 export function parseFavoriteDragPayload(raw: string): TabDescriptor | null {
   try {
     const value: unknown = JSON.parse(raw)
-    if (!isRecord(value) || value['version'] !== 1) return null
+    if (!isRecord(value)) return null
+    // `version` is optional. The tab strip writes the same MIME as
+    // `{ descriptor, label }` with no version field, and requiring one here
+    // made every tab→sidebar drag fail silently — the drop looked accepted
+    // and simply did nothing. Only reject a version we actively don't know.
+    const version = value['version']
+    if (version !== undefined && version !== 1) return null
     if (isTabDescriptor(value['descriptor'])) return value['descriptor']
 
     const material = value['material']

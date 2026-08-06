@@ -9,6 +9,7 @@ import {
   tabsFromLayout,
   validateLayout
 } from '../../../src/renderer/src/features/workspace/layoutPersistence'
+import { createDuplicatePanelId } from '../../../src/renderer/src/features/workspace/tabDuplication'
 
 // -- serialized-layout builders (mirrors dockview's SerializedDockview) ------
 
@@ -116,6 +117,23 @@ describe('validateLayout', () => {
     expect(result).not.toBeNull()
     expect(Object.keys(result!.tabs)).toEqual([idA])
     expect(result!.droppedPanelIds).toEqual([idB])
+  })
+
+  test('keeps an explicit duplicate view of the same descriptor', () => {
+    const duplicateId = createDuplicatePanelId(pdfA)
+    const doc = layoutDoc(leaf('g1', [idA, duplicateId], duplicateId), {
+      [idA]: panelState(pdfA),
+      [duplicateId]: { ...panelState(pdfA), id: duplicateId }
+    })
+
+    const result = validateLayout(doc)
+
+    expect(result).not.toBeNull()
+    expect(result!.tabs).toEqual({
+      [idA]: pdfA,
+      [duplicateId]: pdfA
+    })
+    expect(result!.droppedPanelIds).toEqual([])
   })
 
   test('fixes a dangling activeView after dropping a panel', () => {

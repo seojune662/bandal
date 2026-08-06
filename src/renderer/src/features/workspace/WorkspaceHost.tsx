@@ -21,8 +21,10 @@ import { useUiStore } from '../../stores/uiStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useFileDropTarget } from '../materials/useFileDropTarget'
 import { NewTabMenu } from './NewTabMenu'
+import { TabContextMenu } from './TabContextMenu'
 import { openNewTabMenu, useNewTabMenu } from './newTabMenuController'
-import { isTabDescriptor } from './tabIdentity'
+import { isTabDescriptor, tabTitle } from './tabIdentity'
+import { writeWorkspaceTabDragData } from './tabDrag'
 import { dockviewComponents } from './tabRegistry'
 import { TabKindIcon } from './workspaceIcons'
 import './workspace.css'
@@ -38,6 +40,17 @@ const bandalTheme: DockviewTheme = {
 
 function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
   const [title, setTitle] = useState(props.api.title ?? '')
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    placement: 'top' | 'bottom'
+    align: 'start' | 'end'
+    rightPanelIds: string[]
+  } | null>(null)
+  const tabRef = useRef<HTMLDivElement>(null)
+  const courses = useCoursesStore((state) => state.courses)
+  const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
+  const course = courses.find((entry) => entry.id === selectedCourseId) ?? null
   useEffect(() => {
     const disposable = props.api.onDidTitleChange((event) => {
       setTitle(event.title)
@@ -48,34 +61,86 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
   const rawDescriptor = (props.params as Record<string, unknown>)['descriptor']
   const descriptor = isTabDescriptor(rawDescriptor) ? rawDescriptor : null
 
+  useEffect(() => {
+    const dockviewTab = tabRef.current?.closest('.dv-tab')
+    if (!(dockviewTab instanceof HTMLElement) || descriptor === null) return
+    const handleDragStart = (event: DragEvent): void => {
+      if (event.dataTransfer === null) return
+      writeWorkspaceTabDragData(
+        event.dataTransfer,
+        descriptor,
+        tabTitle(descriptor)
+      )
+    }
+    dockviewTab.addEventListener('dragstart', handleDragStart)
+    return () => dockviewTab.removeEventListener('dragstart', handleDragStart)
+  }, [descriptor])
+
   return (
-    <div
-      className="workspace-tab"
-      title={title}
-      onMouseDown={(event) => {
-        if (event.button === 1) {
+    <>
+      <div
+        ref={tabRef}
+        className="workspace-tab"
+        title={title}
+        onContextMenu={(event) => {
+          if (descriptor === null || course === null) return
           event.preventDefault()
-          props.api.close()
-        }
-      }}
-    >
-      {descriptor !== null && (
-        <TabKindIcon kind={descriptor.kind} className="workspace-tab__kind" />
-      )}
-      <span className="workspace-tab__title">{title}</span>
-      <button
-        type="button"
-        className="workspace-tab__close"
-        aria-label={`${title} 탭 닫기`}
-        onMouseDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
           event.stopPropagation()
-          props.api.close()
+          props.api.setActive()
+          const panels = props.api.group.panels
+          const index = panels.findIndex((panel) => panel.id === props.api.id)
+          setContextMenu({
+            x: event.clientX,
+            y: event.clientY,
+            placement: event.clientY > window.innerHeight / 2 ? 'top' : 'bottom',
+            align: event.clientX > window.innerWidth / 2 ? 'end' : 'start',
+            rightPanelIds:
+              index < 0
+                ? []
+                : panels.slice(index + 1).map((panel) => panel.id)
+          })
+        }}
+        onMouseDown={(event) => {
+          if (event.button === 1) {
+            event.preventDefault()
+            props.api.close()
+          }
         }}
       >
-        <Icon name="x" />
-      </button>
-    </div>
+        {descriptor !== null && (
+          <TabKindIcon kind={descriptor.kind} className="workspace-tab__kind" />
+        )}
+        <span className="workspace-tab__title">{title}</span>
+        <button
+          type="button"
+          className="workspace-tab__close"
+          aria-label={`${title} 탭 닫기`}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            props.api.close()
+          }}
+        >
+          <Icon name="x" />
+        </button>
+      </div>
+      {contextMenu !== null && descriptor !== null && course !== null && (
+        <TabContextMenu
+          descriptor={descriptor}
+          label={title}
+          course={course}
+          panelId={props.api.id}
+          rightPanelIds={contextMenu.rightPanelIds}
+          containerApi={props.containerApi}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          placement={contextMenu.placement}
+          align={contextMenu.align}
+          returnFocus={tabRef.current}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+    </>
   )
 }
 
