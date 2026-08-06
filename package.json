@@ -1,6 +1,6 @@
 {
   "name": "bandal",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Bandal (반달) — a study IDE for university students",
   "main": "./out/main/index.js",
   "author": "Bandal",
