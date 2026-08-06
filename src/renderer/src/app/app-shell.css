@@ -1,10 +1,8 @@
 .app-shell {
   display: grid;
-  grid-template-rows: var(--chrome-height) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   grid-template-columns: var(--rail-left-width) minmax(0, 1fr) var(--rail-right-width);
-  grid-template-areas:
-    'titlebar titlebar titlebar'
-    'left center right';
+  grid-template-areas: 'left center right';
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -14,73 +12,20 @@
 
 .app-shell[data-left-rail='closed'] {
   grid-template-columns: minmax(0, 1fr) var(--rail-right-width);
-  grid-template-areas:
-    'titlebar titlebar'
-    'center right';
+  grid-template-areas: 'center right';
 }
 
 .app-shell[data-right-rail='closed'] {
   grid-template-columns: var(--rail-left-width) minmax(0, 1fr);
-  grid-template-areas:
-    'titlebar titlebar'
-    'left center';
+  grid-template-areas: 'left center';
 }
 
 .app-shell[data-left-rail='closed'][data-right-rail='closed'] {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    'titlebar'
-    'center';
+  grid-template-areas: 'center';
 }
 
-/* Window chrome */
-
-.app-titlebar {
-  grid-area: titlebar;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  min-width: 0;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.app-titlebar__actions {
-  display: flex;
-  align-items: center;
-  padding-inline: var(--space-3);
-}
-
-.app-titlebar__actions--left {
-  padding-left: var(--traffic-light-inset);
-}
-
-.app-titlebar__actions--right {
-  justify-content: flex-end;
-}
-
-.app-titlebar__brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  font-weight: 650;
-  letter-spacing: var(--tracking-tight);
-  color: var(--text-secondary);
-}
-
-.brand-half-moon {
-  width: var(--brand-mark-size);
-  height: var(--brand-mark-size);
-  background: linear-gradient(
-    to right,
-    var(--accent) 50%,
-    var(--bg-raised) 50%
-  );
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-sm);
-}
+/* Shared icon buttons */
 
 .titlebar-button,
 .bare-icon-button {
@@ -118,6 +63,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  padding-top: var(--space-2);
   background: var(--bg-surface);
 }
 
@@ -129,6 +75,28 @@
 .app-rail--right {
   grid-area: right;
   border-left: 1px solid var(--border-subtle);
+}
+
+/* When the left rail owns the window's top-left corner, reserve a draggable
+ * macOS traffic-light zone there. Children remain fully interactive.
+ *
+ * The reserve is --chrome-height, NOT --traffic-light-inset: that token is a
+ * horizontal offset (lights span ~20-70px across), and spending it vertically
+ * would burn 4.5rem to clear a ~1.5rem-tall control — re-wasting exactly the
+ * space removing the titlebar just bought back. --chrome-height also lines the
+ * rail's first row up with the bottom of the tab strip next to it. */
+:root[data-platform='darwin']
+  .app-shell[data-left-rail='open']
+  .app-rail--left {
+  padding-top: var(--chrome-height);
+  -webkit-app-region: drag;
+}
+
+:root[data-platform='darwin']
+  .app-shell[data-left-rail='open']
+  .app-rail--left
+  > * {
+  -webkit-app-region: no-drag;
 }
 
 .rail-heading {

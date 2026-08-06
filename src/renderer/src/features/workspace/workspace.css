@@ -23,7 +23,7 @@
 /* -- dockview theme (variables consumed by dockview's own chrome) -------- */
 
 .bandal-dockview {
-  --workspace-tab-height: 2.25rem;
+  --workspace-tab-height: var(--chrome-height);
 
   --dv-group-view-background-color: var(--bg-app);
   --dv-tabs-and-actions-container-background-color: var(--bg-surface);
@@ -61,6 +61,63 @@
 
 .bandal-dockview .dv-tabs-and-actions-container {
   border-bottom: 1px solid var(--border-subtle);
+  -webkit-app-region: drag;
+}
+
+/* Keep dockview's native tab DnD and every header control interactive. The
+ * remaining void area in the header stays draggable window chrome. */
+.bandal-dockview .dv-tab,
+.bandal-dockview .dv-tabs-overflow-dropdown-root,
+.bandal-dockview button,
+.bandal-dockview a {
+  -webkit-app-region: no-drag;
+}
+
+/* -- window chrome prefix ----------------------------------------------- */
+
+.workspace-chrome {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 100%;
+  padding-inline-start: var(--space-2);
+}
+
+.workspace-chrome__traffic {
+  width: 0;
+  height: 100%;
+  flex: 0 0 auto;
+}
+
+:root[data-platform='darwin'] .workspace-chrome__traffic {
+  width: var(--traffic-light-inset);
+}
+
+/* With the left rail open, macOS traffic lights sit over that rail instead
+ * of the center workspace, so the tab strip must not reserve a second gap. */
+:root[data-platform='darwin']
+  .app-shell[data-left-rail='open']
+  .workspace-chrome__traffic {
+  width: 0;
+}
+
+.workspace-chrome__brand {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.workspace-chrome__mark {
+  width: var(--brand-mark-size);
+  height: var(--brand-mark-size);
+  background: linear-gradient(
+    to right,
+    var(--accent) 50%,
+    var(--bg-raised) 50%
+  );
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
 }
 
 /* -- custom tabs --------------------------------------------------------- */
@@ -158,6 +215,7 @@
 .workspace-header-actions {
   display: flex;
   align-items: center;
+  gap: var(--space-1);
   height: 100%;
   padding-inline: var(--space-2);
 }

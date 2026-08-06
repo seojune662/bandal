@@ -18,6 +18,8 @@ declare global {
       ): () => void
       /** [M5] Absolute path of a dropped File ('' when unavailable). */
       pathForFile(file: File): string
+      /** [M9] 'darwin' | 'win32' | 'linux' — drives the traffic-light inset. */
+      readonly platform: string
       /** Temporary M0 helper — opens the settings window. */
       openSettings(): Promise<void>
     }

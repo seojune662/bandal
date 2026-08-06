@@ -23,6 +23,12 @@ export interface BandalBridge {
    * Returns '' for files that have no path (e.g. dragged browser images).
    */
   pathForFile(file: File): string
+  /**
+   * [M9] Host platform ('darwin' | 'win32' | 'linux'). The renderer needs it
+   * to reserve the macOS traffic-light inset in the tab strip — reserving it
+   * anywhere else leaves a dead gap in the window chrome.
+   */
+  readonly platform: string
   /** Temporary M0 helper — opens the settings window. */
   openSettings(): Promise<void>
 }
@@ -70,6 +76,7 @@ const bridge: BandalBridge = {
       return ''
     }
   },
+  platform: process.platform,
   async openSettings() {
     await ipcRenderer.invoke('window:openSettings')
   }

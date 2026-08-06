@@ -14,7 +14,6 @@ import { selectNeedsNickname, useAuthStore } from '../stores/authStore'
 import { useCoursesStore } from '../stores/coursesStore'
 import { useUiStore } from '../stores/uiStore'
 import { useUniversityStore } from '../stores/universityStore'
-import { Icon } from './icons'
 import { QuickFileSearch } from './QuickFileSearch'
 import { useGlobalShortcuts } from './shortcuts'
 import { ToastHost } from './toast'
@@ -27,8 +26,6 @@ export function AppShell(): JSX.Element {
   const initTheme = useUiStore((state) => state.initTheme)
   const leftRailOpen = useUiStore((state) => state.leftRailOpen)
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
-  const toggleLeftRail = useUiStore((state) => state.toggleLeftRail)
-  const toggleRightRail = useUiStore((state) => state.toggleRightRail)
   // [M7] The 보드 entry point lives at the bottom of the left rail
   // (CourseSidebar) — this shell only owns the overlay itself.
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
@@ -77,39 +74,10 @@ export function AppShell(): JSX.Element {
       data-left-rail={leftRailOpen ? 'open' : 'closed'}
       data-right-rail={rightRailOpen ? 'open' : 'closed'}
     >
-      <header className="app-titlebar titlebar-drag">
-        <div className="app-titlebar__actions app-titlebar__actions--left">
-          <button
-            type="button"
-            className="titlebar-button"
-            aria-label={leftRailOpen ? '과목 사이드바 접기' : '과목 사이드바 펼치기'}
-            aria-pressed={leftRailOpen}
-            title={leftRailOpen ? '과목 사이드바 접기' : '과목 사이드바 펼치기'}
-            onClick={toggleLeftRail}
-          >
-            <Icon name="layoutLeft" />
-          </button>
-        </div>
-
-        <div className="app-titlebar__brand" aria-label="반달">
-          <span className="brand-half-moon" aria-hidden="true" />
-          <span>반달</span>
-        </div>
-
-        <div className="app-titlebar__actions app-titlebar__actions--right">
-          <button
-            type="button"
-            className="titlebar-button"
-            aria-label={rightRailOpen ? '자료 사이드바 접기' : '자료 사이드바 펼치기'}
-            aria-pressed={rightRailOpen}
-            title={rightRailOpen ? '자료 사이드바 접기' : '자료 사이드바 펼치기'}
-            onClick={toggleRightRail}
-          >
-            <Icon name="layoutRight" />
-          </button>
-        </div>
-      </header>
-
+      {/* [M9] No dedicated titlebar row. The dockview tab strip IS the window
+          chrome now (WorkspaceHost's ChromeLeft/HeaderActions own the traffic
+          light inset, the 반달 mark and both rail toggles), which buys back a
+          full --chrome-height of vertical space. */}
       {leftRailOpen && <CourseSidebar />}
 
       <main className="app-workspace" aria-label="작업 공간">

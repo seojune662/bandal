@@ -21,7 +21,7 @@ background Bash로 실행해 여러 개 동시 운용한다:
 
 ```bash
 codex exec --json --skip-git-repo-check \
-  -C /Users/iseojun/Desktop/bandal \
+  -C /Users/iseojun/dev/bandal \
   -s workspace-write \
   -o /tmp/codex-out-<태스크명>.md \
   "$(cat <<'BRIEF'

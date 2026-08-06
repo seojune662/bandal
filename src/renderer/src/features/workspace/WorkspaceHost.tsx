@@ -17,6 +17,7 @@ import {
 import 'dockview/dist/styles/dockview.css'
 import { Icon } from '../../app/icons'
 import { useCoursesStore } from '../../stores/coursesStore'
+import { useUiStore } from '../../stores/uiStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useFileDropTarget } from '../materials/useFileDropTarget'
 import { NewTabMenu } from './NewTabMenu'
@@ -126,7 +127,34 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
   )
 }
 
+function ChromeLeft(_props: IDockviewHeaderActionsProps): JSX.Element {
+  const leftRailOpen = useUiStore((state) => state.leftRailOpen)
+  const toggleLeftRail = useUiStore((state) => state.toggleLeftRail)
+
+  return (
+    <div className="workspace-chrome">
+      <span className="workspace-chrome__traffic" aria-hidden="true" />
+      <span className="workspace-chrome__brand" role="img" aria-label="반달">
+        <span className="workspace-chrome__mark" aria-hidden="true" />
+      </span>
+      <button
+        type="button"
+        className="titlebar-button"
+        aria-label={leftRailOpen ? '과목 사이드바 접기' : '과목 사이드바 펼치기'}
+        aria-pressed={leftRailOpen}
+        title={leftRailOpen ? '과목 사이드바 접기' : '과목 사이드바 펼치기'}
+        onClick={toggleLeftRail}
+      >
+        <Icon name="layoutLeft" />
+      </button>
+    </div>
+  )
+}
+
 function HeaderActions(_props: IDockviewHeaderActionsProps): JSX.Element {
+  const rightRailOpen = useUiStore((state) => state.rightRailOpen)
+  const toggleRightRail = useUiStore((state) => state.toggleRightRail)
+
   return (
     <div className="workspace-header-actions">
       <button
@@ -140,6 +168,16 @@ function HeaderActions(_props: IDockviewHeaderActionsProps): JSX.Element {
         }}
       >
         <Icon name="plus" />
+      </button>
+      <button
+        type="button"
+        className="titlebar-button"
+        aria-label={rightRailOpen ? '자료 사이드바 접기' : '자료 사이드바 펼치기'}
+        aria-pressed={rightRailOpen}
+        title={rightRailOpen ? '자료 사이드바 접기' : '자료 사이드바 펼치기'}
+        onClick={toggleRightRail}
+      >
+        <Icon name="layoutRight" />
       </button>
     </div>
   )
@@ -190,6 +228,7 @@ export function WorkspaceHost(): JSX.Element {
         components={dockviewComponents}
         defaultTabComponent={WorkspaceTab}
         watermarkComponent={Watermark}
+        prefixHeaderActionsComponent={ChromeLeft}
         rightHeaderActionsComponent={HeaderActions}
         onReady={onReady}
       />

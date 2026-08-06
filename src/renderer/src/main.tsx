@@ -13,6 +13,11 @@ import './styles/base.css'
 // own still go to the real bridge, so Phase 1 is unaffected either way.
 installMockGroupsIfRequested()
 
+// [M9] The tab strip doubles as the window chrome, so it must reserve room for
+// the macOS traffic lights — and ONLY on macOS, where they exist. CSS keys off
+// this attribute (:root[data-platform='darwin']) rather than guessing.
+document.documentElement.dataset['platform'] = window.bandal?.platform ?? 'unknown'
+
 const rootElement = document.getElementById('root')
 if (rootElement === null) {
   throw new Error('Root element #root not found')
