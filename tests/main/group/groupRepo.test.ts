@@ -114,6 +114,18 @@ describe('course_group_links', () => {
     expect(repo.listGroups()).toHaveLength(1)
   })
 
+  test('list exposes null courseId so unassigned groups can be filtered', () => {
+    const courseId = seedCourse()
+    repo.upsertGroup({ id: 'remote-1', name: '미지정', color: 'violet' })
+    repo.upsertGroup({ id: 'remote-2', name: '지정됨', color: 'blue', courseId })
+
+    const unassigned = repo
+      .listGroups()
+      .filter((group) => group.courseId === null)
+
+    expect(unassigned.map((group) => group.id)).toEqual(['remote-1'])
+  })
+
   test('upsert is keyed by the remote group id, not a local id', () => {
     repo.upsertGroup({ id: 'remote-1', name: 'A', color: 'gold' })
     const second = repo.upsertGroup({ id: 'remote-1', name: 'B', color: 'blue' })
@@ -185,6 +197,83 @@ describe('course_group_links', () => {
     expect(repo.tailMessages('remote-1', 50)).toHaveLength(0)
     expect(repo.listMembers('remote-1')).toHaveLength(0)
     expect(repo.pendingFor('remote-1')).toHaveLength(0)
+  })
+
+  test('rejoining a soft-deleted group revives it and preserves an omitted courseId', () => {
+    const courseId = seedCourse()
+    repo.upsertGroup({
+      id: 'remote-1',
+      name: '이전 이름',
+      color: 'gold',
+      courseId,
+      memberCount: 2,
+      unread: 1,
+      lastMsgAt: '2026-08-01T00:00:00.000Z',
+      joinedAt: '2026-08-01T00:00:00.000Z'
+    })
+    repo.removeGroup('remote-1')
+
+    const rejoinedAt = '2026-08-07T00:00:00.000Z'
+    expect(() =>
+      repo.upsertGroup({
+        id: 'remote-1',
+        name: '새 이름',
+        color: 'blue',
+        memberCount: 5,
+        unread: 3,
+        lastMsgAt: '2026-08-07T01:00:00.000Z',
+        joinedAt: rejoinedAt
+      })
+    ).not.toThrow()
+
+    const stored = testDb.db
+      .prepare(
+        `SELECT course_id, name_cache, color_cache, member_count_cache,
+                unread_cache, last_msg_at_cache, joined_at, deleted_at
+           FROM course_group_links
+          WHERE remote_group_id = ?`
+      )
+      .get('remote-1') as {
+      course_id: string | null
+      name_cache: string
+      color_cache: string
+      member_count_cache: number
+      unread_cache: number
+      last_msg_at_cache: string | null
+      joined_at: string
+      deleted_at: string | null
+    }
+    expect(stored).toEqual({
+      course_id: courseId,
+      name_cache: '새 이름',
+      color_cache: 'blue',
+      member_count_cache: 5,
+      unread_cache: 3,
+      last_msg_at_cache: '2026-08-07T01:00:00.000Z',
+      joined_at: rejoinedAt,
+      deleted_at: null
+    })
+    expect(repo.listGroups()).toEqual([
+      expect.objectContaining({ id: 'remote-1', courseId, joinedAt: rejoinedAt })
+    ])
+  })
+
+  test('rejoining with an explicit null courseId unlinks the revived group', () => {
+    const courseId = seedCourse()
+    repo.upsertGroup({ id: 'remote-1', name: 'A', color: 'gold', courseId })
+    repo.removeGroup('remote-1')
+
+    const revived = repo.upsertGroup({
+      id: 'remote-1',
+      name: 'A',
+      color: 'gold',
+      courseId: null
+    })
+
+    expect(revived.courseId).toBeNull()
+    expect(repo.listGroups()).toEqual([
+      expect.objectContaining({ id: 'remote-1', courseId: null })
+    ])
   })
 
   test('retainGroups drops links the server no longer reports', () => {

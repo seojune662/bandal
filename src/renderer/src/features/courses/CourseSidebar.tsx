@@ -5,8 +5,8 @@ import { showToast } from '../../app/toast'
 import { openSettingsWindow } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
-import { TogetherSection } from '../group/TogetherSection'
-import { CourseLinks } from '../university/CourseLinks'
+import { CourseGroupsSection } from '../group/CourseGroupsSection'
+import { TogetherFooter } from '../group/TogetherFooter'
 import { UniversityShortcuts } from '../university/UniversityShortcuts'
 import { TabKindIcon } from '../workspace/workspaceIcons'
 import { CourseFormDialog, DeleteCourseDialog } from './CourseDialogs'
@@ -337,12 +337,12 @@ export function CourseSidebar(): JSX.Element {
                       )}
                     </button>
                   </div>
-                  {/* [M8] Per-course shortcuts pin under the open course only —
-                      showing them for every row would bury the course list. */}
+                  {/* Course-scoped favorites and groups stay under the open
+                      course only, preserving the existing collapse model. */}
                   {expanded && (
                     <div className="course-row__children">
-                      <CourseLinks courseId={course.id} />
                       <FavoritesSection courseId={course.id} />
+                      <CourseGroupsSection courseId={course.id} />
                     </div>
                   )}
                 </li>
@@ -352,9 +352,7 @@ export function CourseSidebar(): JSX.Element {
         )}
       </div>
 
-      {/* [P2-D] 함께하기 sits below 과목 and renders NOTHING when the build has
-          no Supabase keys (auth phase 'unconfigured') — absent, not disabled. */}
-      <TogetherSection />
+      <TogetherFooter />
 
       <footer className="rail-footer">
         <nav className="rail-nav" aria-label="앱 메뉴">

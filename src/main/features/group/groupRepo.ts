@@ -233,6 +233,9 @@ export function createGroupRepo(db: Database): GroupRepo {
   const getLink = db.prepare(
     'SELECT * FROM course_group_links WHERE remote_group_id = ? AND deleted_at IS NULL'
   )
+  const getAnyLink = db.prepare(
+    'SELECT * FROM course_group_links WHERE remote_group_id = ?'
+  )
 
   function linkRow(groupId: string): LinkRow | null {
     return (getLink.get(groupId) as LinkRow | undefined) ?? null
@@ -334,17 +337,26 @@ export function createGroupRepo(db: Database): GroupRepo {
         return rowToSummary(next)
       }
 
+      // `linkRow` deliberately hides soft-deleted rows, but the UNIQUE remote
+      // id still sees them. Preserve only the local course link when omitted;
+      // every cache value below belongs to the new membership period.
+      const deleted = (getAnyLink.get(groupId) as LinkRow | undefined) ?? null
       const row: LinkRow = {
-        id: randomUUID(),
-        course_id: input.courseId ?? null,
+        id: deleted?.id ?? randomUUID(),
+        course_id:
+          input.courseId === undefined
+            ? (deleted?.course_id ?? null)
+            : input.courseId,
         remote_group_id: groupId,
         name_cache: input.name,
         color_cache: input.color,
         member_count_cache: input.memberCount ?? 1,
         unread_cache: input.unread ?? 0,
         last_msg_at_cache: input.lastMsgAt ?? null,
+        // A restored membership starts a new membership period. Prefer the
+        // server timestamp when available and otherwise use the local join.
         joined_at: input.joinedAt ?? now,
-        created_at: now,
+        created_at: deleted?.created_at ?? now,
         updated_at: now,
         deleted_at: null
       }
@@ -352,8 +364,18 @@ export function createGroupRepo(db: Database): GroupRepo {
         `INSERT INTO course_group_links
            (id, course_id, remote_group_id, name_cache, color_cache,
             member_count_cache, unread_cache, last_msg_at_cache, joined_at,
-            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            created_at, updated_at, deleted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(remote_group_id) DO UPDATE SET
+           course_id = excluded.course_id,
+           name_cache = excluded.name_cache,
+           color_cache = excluded.color_cache,
+           member_count_cache = excluded.member_count_cache,
+           unread_cache = excluded.unread_cache,
+           last_msg_at_cache = excluded.last_msg_at_cache,
+           joined_at = excluded.joined_at,
+           updated_at = excluded.updated_at,
+           deleted_at = NULL`
       ).run(
         row.id,
         row.course_id,
@@ -365,7 +387,8 @@ export function createGroupRepo(db: Database): GroupRepo {
         row.last_msg_at_cache,
         row.joined_at,
         row.created_at,
-        row.updated_at
+        row.updated_at,
+        row.deleted_at
       )
       return rowToSummary(row)
     },

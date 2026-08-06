@@ -31,10 +31,10 @@ export interface TabRegistryEntry {
   /** Shared-icon name when one exists; workspaceIcons covers the rest. */
   icon: IconName | null
   defaultTitle: (descriptor: TabDescriptor) => string
-  /** 'global' = one per window, 'course' = one per course. */
-  singleton?: 'global' | 'course'
 }
 
+// `tabPanelId` is the sole dedupe key; registry metadata does not participate
+// in deciding whether an existing panel is focused or a new panel is opened.
 export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
   pdf: {
     component: PdfTab,
@@ -54,18 +54,13 @@ export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
   chat: {
     component: ChatTab,
     icon: null,
-    defaultTitle: tabTitle,
-    singleton: 'course'
+    defaultTitle: tabTitle
   },
   board: {
     component: BoardPanel,
     icon: null,
-    defaultTitle: tabTitle,
-    singleton: 'global'
+    defaultTitle: tabTitle
   },
-  // [P2-D] Singleton per REMOTE group — `tabPanelId` already returns
-  // `group-chat:${groupId}`, so dedupe falls out of the id and needs no
-  // entry in the `singleton` field (which only knows about courses).
   'group-chat': {
     component: GroupChatTab,
     icon: null,

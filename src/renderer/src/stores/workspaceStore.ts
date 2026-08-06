@@ -212,6 +212,12 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       const panelId = tabPanelId(descriptor)
       const existing = api.getPanel(panelId)
       if (existing !== undefined) {
+        // Refresh the params before focusing. The panel id does not always
+        // capture the whole payload: a 함께하기 tab is keyed by course but
+        // also carries the selected `groupId`, so focusing without updating
+        // would re-show whichever group was open and silently ignore the one
+        // the user just clicked.
+        existing.api.updateParameters({ descriptor })
         existing.api.setActive()
         return
       }

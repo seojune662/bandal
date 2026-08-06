@@ -24,7 +24,14 @@ const invokeMock = vi.mocked(invoke)
 
 interface FakePanel {
   id: string
-  api: { setActive: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }
+  api: {
+    setActive: ReturnType<typeof vi.fn>
+    close: ReturnType<typeof vi.fn>
+    // Real dockview panels always expose this; openTab refreshes params on an
+    // already-open panel so a re-open with a different payload (e.g. another
+    // group in the same 함께하기 tab) is not silently dropped.
+    updateParameters: ReturnType<typeof vi.fn>
+  }
 }
 
 function emptyLayout(): Record<string, unknown> {
@@ -53,7 +60,7 @@ class FakeDockview {
   addPanel(options: { id: string }): FakePanel {
     const panel: FakePanel = {
       id: options.id,
-      api: { setActive: vi.fn(), close: vi.fn() }
+      api: { setActive: vi.fn(), close: vi.fn(), updateParameters: vi.fn() }
     }
     this.panels.push(panel)
     this.addPanelCalls.push(options as unknown as Record<string, unknown>)
@@ -76,7 +83,7 @@ class FakeDockview {
     const panels = (data as { panels: Record<string, unknown> }).panels
     this.panels = Object.keys(panels).map((id) => ({
       id,
-      api: { setActive: vi.fn(), close: vi.fn() }
+      api: { setActive: vi.fn(), close: vi.fn(), updateParameters: vi.fn() }
     }))
   }
 

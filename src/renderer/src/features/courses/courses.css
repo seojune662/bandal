@@ -122,6 +122,9 @@
 }
 
 .course-row__children {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
   margin-inline-start: calc(var(--icon-button-size) + var(--space-1));
 }
 
@@ -206,10 +209,11 @@
   border-radius: var(--radius-pill);
 }
 
-/* Any workspace tab can be pinned below the existing per-course LMS links. */
+/* Any workspace tab or URL can be pinned below its course. */
 
 .favorites-section {
-  margin: var(--space-2) var(--space-1) var(--space-3);
+  min-width: 0;
+  margin: var(--space-1);
   padding: var(--space-2);
   background: var(--bg-app);
   border: 1px dashed var(--border-subtle);
@@ -235,12 +239,110 @@
   color: var(--text-secondary);
 }
 
+.favorites-section__add-link {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: var(--control-height);
+  gap: var(--space-1);
+  padding-inline: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+}
+
+.favorites-section__add-link:hover,
+.favorites-section__add-link:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+}
+
+.favorites-section__add-link:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.7;
+}
+
+.favorites-section__add-link svg {
+  font-size: var(--icon-size-sm);
+}
+
 .favorites-section__drop-copy {
   overflow: hidden;
+  margin-top: var(--space-1);
+  padding-inline: var(--space-1);
+  font-size: var(--text-xs);
   font-weight: 450;
   color: var(--text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.favorite-link-form {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  padding: var(--space-1);
+}
+
+.favorite-link-form label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.favorite-link-form input {
+  width: 100%;
+  min-width: 0;
+  height: var(--control-height);
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  background: var(--bg-app);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.favorite-link-form input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-muted);
+}
+
+.favorite-link-form__error {
+  font-size: var(--text-xs);
+  color: var(--danger);
+}
+
+.favorite-link-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.favorite-link-form__actions button {
+  min-height: var(--control-height);
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.favorite-link-form__actions button:hover,
+.favorite-link-form__actions button:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+}
+
+.favorite-link-form__actions button[type='submit'] {
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.favorite-link-form__actions button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.7;
 }
 
 .favorites-list {
@@ -248,6 +350,9 @@
   flex-direction: column;
   gap: var(--space-1);
   margin-top: var(--space-2);
+  max-height: calc(var(--rail-left-width) - var(--space-8));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   list-style: none;
 }
 

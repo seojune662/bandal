@@ -127,6 +127,13 @@ export function selectGroupsForCourse(
   return groups.filter((group) => group.courseId === courseId)
 }
 
+/** Groups joined before the user assigns them to a course. */
+export function selectUnassignedGroups(
+  groups: readonly GroupSummary[]
+): GroupSummary[] {
+  return groups.filter((group) => group.courseId === null)
+}
+
 export function selectTotalUnread(groups: readonly GroupSummary[]): number {
   return groups.reduce((sum, group) => sum + group.unread, 0)
 }

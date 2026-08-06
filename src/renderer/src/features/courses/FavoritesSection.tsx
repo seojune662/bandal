@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 import type { Favorite } from '../../../../shared/types/favorite'
 import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
@@ -18,6 +19,7 @@ import {
   moveFavoriteToEnd,
   serializeFavoriteTabDrag
 } from './favoriteDrop'
+import { buildLinkFavoriteInput } from './linkFavorite'
 
 interface FavoritesSectionProps {
   courseId: string | null
@@ -27,6 +29,7 @@ export function FavoritesSection({
   courseId
 }: FavoritesSectionProps): JSX.Element {
   const key = favoriteScopeKey(courseId)
+  const linkFormId = useId()
   const favorites = useFavoritesStore((state) => state.byCourse[key])
   const loading = useFavoritesStore(
     (state) => state.loadingByCourse[key] === true
@@ -38,8 +41,14 @@ export function FavoritesSection({
   const remove = useFavoritesStore((state) => state.remove)
   const reorder = useFavoritesStore((state) => state.reorder)
   const [dragOver, setDragOver] = useState(false)
+  const [isAddingLink, setAddingLink] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
+  const [linkLabel, setLinkLabel] = useState('')
+  const [linkError, setLinkError] = useState<string | null>(null)
+  const [isSavingLink, setSavingLink] = useState(false)
   const dragDepth = useRef(0)
   const requestedScope = useRef<string | null>(null)
+  const linkUrlRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (
@@ -51,6 +60,52 @@ export function FavoritesSection({
       void load(courseId)
     }
   }, [courseId, favorites, key, load, loading])
+
+  useEffect(() => {
+    if (isAddingLink) linkUrlRef.current?.focus()
+  }, [isAddingLink])
+
+  const closeLinkForm = (): void => {
+    setAddingLink(false)
+    setLinkUrl('')
+    setLinkLabel('')
+    setLinkError(null)
+  }
+
+  const handleAddLink = async (
+    event: React.FormEvent<HTMLFormElement>
+  ): Promise<void> => {
+    event.preventDefault()
+
+    let input
+    try {
+      input = buildLinkFavoriteInput(
+        courseId,
+        linkUrl,
+        linkLabel,
+        uuidv4()
+      )
+    } catch (validationError) {
+      setLinkError(
+        validationError instanceof Error
+          ? validationError.message
+          : '링크 정보를 확인해 주세요.'
+      )
+      return
+    }
+
+    setSavingLink(true)
+    setLinkError(null)
+    try {
+      await add(input)
+      showToast('링크를 즐겨찾기에 추가했어요.')
+      closeLinkForm()
+    } catch {
+      setLinkError('링크를 저장하지 못했어요. 다시 시도해 주세요.')
+    } finally {
+      setSavingLink(false)
+    }
+  }
 
   const saveOrder = (ids: string[]): void => {
     if (favorites?.every((favorite, index) => favorite.id === ids[index])) return
@@ -132,10 +187,72 @@ export function FavoritesSection({
     >
       <div className="favorites-section__heading">
         <span>즐겨찾기</span>
-        <span className="favorites-section__drop-copy" aria-hidden="true">
-          {dragOver ? '여기에 놓아 추가' : '탭을 끌어다 놓기'}
-        </span>
+        <button
+          type="button"
+          className="favorites-section__add-link"
+          aria-expanded={isAddingLink}
+          disabled={isSavingLink}
+          onClick={() => {
+            if (isAddingLink) closeLinkForm()
+            else {
+              setLinkError(null)
+              setAddingLink(true)
+            }
+          }}
+        >
+          <Icon name="link" />
+          링크 추가
+        </button>
       </div>
+
+      {isAddingLink && (
+        <form
+          className="favorite-link-form"
+          onSubmit={(event) => void handleAddLink(event)}
+        >
+          <label htmlFor={`${linkFormId}-url`}>URL</label>
+          <input
+            ref={linkUrlRef}
+            id={`${linkFormId}-url`}
+            type="text"
+            inputMode="url"
+            autoComplete="url"
+            placeholder="https://example.com"
+            value={linkUrl}
+            disabled={isSavingLink}
+            onChange={(event) => setLinkUrl(event.target.value)}
+          />
+          <label htmlFor={`${linkFormId}-label`}>이름</label>
+          <input
+            id={`${linkFormId}-label`}
+            type="text"
+            autoComplete="off"
+            placeholder="강의실"
+            value={linkLabel}
+            disabled={isSavingLink}
+            onChange={(event) => setLinkLabel(event.target.value)}
+          />
+          {linkError !== null && (
+            <p className="favorite-link-form__error" role="alert">
+              {linkError}
+            </p>
+          )}
+          <div className="favorite-link-form__actions">
+            <button type="button" disabled={isSavingLink} onClick={closeLinkForm}>
+              취소
+            </button>
+            <button type="submit" disabled={isSavingLink}>
+              {isSavingLink ? '추가 중…' : '추가'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {!isAddingLink && (
+        <p className="favorites-section__drop-copy" aria-hidden="true">
+          {dragOver ? '여기에 놓아 추가' : '탭을 끌어다 놓아도 추가할 수 있어요'}
+        </p>
+      )}
 
       {loading && favorites === undefined ? (
         <p className="favorites-section__status">불러오는 중…</p>

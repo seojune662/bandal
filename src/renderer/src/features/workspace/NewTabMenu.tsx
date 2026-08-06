@@ -160,20 +160,32 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         }
       })
     }
-    // [P2-D] Groups linked to this course. Only groups the user is already in
-    // appear here; discovery (만들기 / 코드로 참여) lives in the 함께하기 rail,
-    // and the list is empty — so this whole block is absent — when signed out
-    // or in an unconfigured build.
-    for (const group of groups.filter(
-      (entry) => entry.courseId === course.id && matches(entry.name)
-    )) {
+    // One course-scoped tab owns the in-panel group switcher. Keep the entry
+    // hidden when the course has no groups, and carry the matching group only
+    // when search entered through a group name.
+    const courseGroups = groups.filter((group) => group.courseId === course.id)
+    const matchingGroup =
+      trimmed.length > 0
+        ? courseGroups.find((group) => matches(group.name))
+        : undefined
+    if (
+      courseGroups.length > 0 &&
+      (matches('함께하기', '그룹') || matchingGroup !== undefined)
+    ) {
       result.push({
-        id: `group-chat:${group.id}`,
-        label: group.name,
-        hint: '그룹 채팅',
+        id: `group-chat:${course.id}`,
+        label: '함께하기',
+        hint: course.name,
         icon: <TabKindIcon kind="group-chat" />,
         run: () => {
-          openTab(descriptorFor('group-chat', { groupId: group.id }))
+          openTab(
+            descriptorFor('group-chat', {
+              courseId: course.id,
+              ...(matchingGroup !== undefined
+                ? { groupId: matchingGroup.id }
+                : {})
+            })
+          )
         }
       })
     }

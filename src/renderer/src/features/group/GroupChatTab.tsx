@@ -1,6 +1,6 @@
 /**
- * Group chat tab — a dockview panel keyed by `group-chat:${groupId}`, which
- * gives per-group singleton behaviour for free (tabIdentity §4.7).
+ * Group chat tab — a dockview panel keyed by course. A small switcher inside
+ * the panel chooses which of that course's groups is currently subscribed.
  *
  * Layout mirrors `ChatTab`: gate states first, then banner → scroller →
  * composer. The two additions over the AI tutor tab are the member rail with
@@ -16,7 +16,10 @@ import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
-import { useGroupsStore } from '../../stores/groupsStore'
+import {
+  selectGroupsForCourse,
+  useGroupsStore
+} from '../../stores/groupsStore'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { ConnectionBanner } from './ConnectionBanner'
 import { GroupComposer, type GroupComposerHandle } from './GroupComposer'
@@ -26,6 +29,7 @@ import { InvitePalette } from './InvitePalette'
 import { MemberList } from './MemberList'
 import { useGroupChat } from './useGroupChat'
 import './group.css'
+import './groupNavigation.css'
 import { BandalMark } from '../../components/BandalMark'
 
 const SCROLL_PIN_THRESHOLD_PX = 48
@@ -136,14 +140,14 @@ function CourseLinkBar({ groupId }: { groupId: string }): JSX.Element | null {
 
 interface GroupChatSurfaceProps {
   groupId: string
+  showCourseLink: boolean
   onCloseTab: () => void
-  onTitle: (title: string) => void
 }
 
 function GroupChatSurface({
   groupId,
-  onCloseTab,
-  onTitle
+  showCourseLink,
+  onCloseTab
 }: GroupChatSurfaceProps): JSX.Element {
   const session = useGroupChat(groupId)
   const [draft, setDraft] = useState('')
@@ -156,12 +160,6 @@ function GroupChatSurface({
   const isPinnedRef = useRef(true)
 
   const { state, phase, group, myUserId } = session
-
-  // The panel title lives in the local cache, so it is only known once the
-  // (network-free) open resolves — see tabIdentity's note on purity.
-  useEffect(() => {
-    if (group !== null) onTitle(group.name)
-  }, [group, onTitle])
 
   useEffect(() => {
     const scroller = scrollRef.current
@@ -280,7 +278,7 @@ function GroupChatSurface({
         </button>
       </header>
 
-      {group?.courseId == null && <CourseLinkBar groupId={groupId} />}
+      {showCourseLink && <CourseLinkBar groupId={groupId} />}
       <ConnectionBanner state={state.connection} />
 
       <div className="group-body">
@@ -349,28 +347,153 @@ function GroupChatSurface({
   )
 }
 
-export default function GroupChatTab(props: IDockviewPanelProps): JSX.Element {
-  const descriptor = descriptorFromParams(props.params)
-  const api = props.api
+interface CourseGroupPanelProps {
+  courseId: string | null
+  initialGroupId: string | undefined
+  api: IDockviewPanelProps['api']
+}
 
-  const onTitle = useCallback(
-    (title: string) => {
-      api.setTitle(title)
-    },
-    [api]
+function CourseGroupPanel({
+  courseId,
+  initialGroupId,
+  api
+}: CourseGroupPanelProps): JSX.Element {
+  const allGroups = useGroupsStore((state) => state.groups)
+  const initGroups = useGroupsStore((state) => state.init)
+  const groups = useMemo(
+    () => selectGroupsForCourse(allGroups, courseId),
+    [allGroups, courseId]
   )
+  const course = useCoursesStore((state) =>
+    courseId === null
+      ? undefined
+      : state.courses.find((entry) => entry.id === courseId)
+  )
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(() =>
+    initialGroupId ?? groups[0]?.id ?? null
+  )
+  const [loadingGroups, setLoadingGroups] = useState(groups.length === 0)
+
+  // The tab is keyed by course, so clicking a DIFFERENT group in the rail
+  // reuses this panel — dockview hands the new groupId down through params
+  // rather than remounting. Without this the click would only focus the tab
+  // and keep showing the previously selected group.
+  useEffect(() => {
+    if (initialGroupId !== undefined) {
+      setSelectedGroupId(initialGroupId)
+    }
+  }, [initialGroupId])
+
+  useEffect(() => {
+    let cancelled = false
+    void initGroups().finally(() => {
+      if (!cancelled) setLoadingGroups(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [initGroups])
+
+  const activeGroupId = groups.some((group) => group.id === selectedGroupId)
+    ? selectedGroupId
+    : (groups[0]?.id ?? null)
+
+  useEffect(() => {
+    if (groups.length > 0 && selectedGroupId !== activeGroupId) {
+      setSelectedGroupId(activeGroupId)
+    } else if (
+      !loadingGroups &&
+      groups.length === 0 &&
+      selectedGroupId !== null
+    ) {
+      setSelectedGroupId(null)
+    }
+  }, [activeGroupId, groups.length, loadingGroups, selectedGroupId])
+
+  useEffect(() => {
+    api.setTitle(courseId === null ? '과목 미지정' : (course?.name ?? '함께하기'))
+  }, [api, course?.name, courseId])
+
   const onCloseTab = useCallback(() => {
     api.close()
   }, [api])
+
+  if (activeGroupId === null) {
+    if (loadingGroups) {
+      return (
+        <div className="group-tab">
+          <div className="group-loading" role="status" aria-label="그룹 불러오는 중">
+            <BandalMark size={56} className="group-loading__moon" />
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="group-tab">
+        <div className="group-empty">
+          <BandalMark size={56} className="group-empty__moon" />
+          <h2 className="group-empty__title">이 과목에는 아직 그룹이 없어요</h2>
+          <p className="group-empty__desc">
+            {courseId === null
+              ? '사이드바 아래에서 초대 코드로 그룹에 참여해 보세요.'
+              : '사이드바에서 이 과목의 그룹을 만들거나 초대 코드로 참여해 보세요.'}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="group-course-panel">
+      {groups.length > 1 && (
+        <div className="group-switcher" role="group" aria-label="그룹 선택">
+          {groups.map((group) => {
+            const selected = group.id === activeGroupId
+            return (
+              <button
+                key={group.id}
+                type="button"
+                className="group-switcher__item"
+                aria-pressed={selected}
+                onClick={() => setSelectedGroupId(group.id)}
+              >
+                <span className="group-switcher__name">{group.name}</span>
+                {group.unread > 0 && (
+                  <span
+                    className="group-switcher__badge"
+                    aria-label={`읽지 않은 메시지 ${group.unread}개`}
+                  >
+                    {group.unread > 99 ? '99+' : group.unread}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      <GroupChatSurface
+        key={activeGroupId}
+        groupId={activeGroupId}
+        showCourseLink={courseId === null}
+        onCloseTab={onCloseTab}
+      />
+    </div>
+  )
+}
+
+export default function GroupChatTab(props: IDockviewPanelProps): JSX.Element {
+  const descriptor = descriptorFromParams(props.params)
 
   if (descriptor === null || descriptor.kind !== 'group-chat') {
     return <div className="group-tab" data-kind="unknown" />
   }
   return (
-    <GroupChatSurface
-      groupId={descriptor.payload.groupId}
-      onCloseTab={onCloseTab}
-      onTitle={onTitle}
+    <CourseGroupPanel
+      courseId={descriptor.payload.courseId}
+      initialGroupId={descriptor.payload.groupId}
+      api={props.api}
     />
   )
 }

@@ -119,6 +119,42 @@ describe('validateLayout', () => {
     expect(result!.droppedPanelIds).toEqual([idB])
   })
 
+  test('drops only a legacy group-chat panel that has no courseId', () => {
+    const legacyGroupPanelId = 'group-chat:g1'
+    const doc = layoutDoc(leaf('g1', [idA, legacyGroupPanelId]), {
+      [idA]: panelState(pdfA),
+      [legacyGroupPanelId]: {
+        id: legacyGroupPanelId,
+        contentComponent: 'group-chat',
+        params: {
+          descriptor: { kind: 'group-chat', payload: { groupId: 'g1' } }
+        }
+      }
+    })
+
+    const validate = (): ReturnType<typeof validateLayout> => validateLayout(doc)
+
+    expect(validate).not.toThrow()
+    const result = validate()
+    expect(result).not.toBeNull()
+    expect(result!.tabs).toEqual({ [idA]: pdfA })
+    expect(result!.droppedPanelIds).toEqual([legacyGroupPanelId])
+  })
+
+  test('accepts a course-scoped group-chat descriptor', () => {
+    const groupChat = descriptorFor('group-chat', { courseId: 'c1' })
+    const groupChatPanelId = tabPanelId(groupChat)
+    const doc = layoutDoc(leaf('g1', [groupChatPanelId]), {
+      [groupChatPanelId]: panelState(groupChat)
+    })
+
+    const result = validateLayout(doc)
+
+    expect(result).not.toBeNull()
+    expect(result!.tabs).toEqual({ [groupChatPanelId]: groupChat })
+    expect(result!.droppedPanelIds).toEqual([])
+  })
+
   test('keeps an explicit duplicate view of the same descriptor', () => {
     const duplicateId = createDuplicatePanelId(pdfA)
     const doc = layoutDoc(leaf('g1', [idA, duplicateId], duplicateId), {
