@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type {
   MaterialKind,
   MaterialNode,
@@ -22,32 +22,148 @@ function iconForKind(kind: MaterialKind | 'dir', expanded = false): IconName {
   }
 }
 
-function openMaterial(kind: MaterialKind, relPath: string): void {
-  openMaterialInWorkspace(kind, relPath)
-}
-
 /** pdf/md open as tabs; everything else opens in Finder (tooltip says so). */
 function rowTitle(kind: MaterialKind | 'dir', relPath: string): string {
   if (kind === 'dir' || kind === 'pdf' || kind === 'note') return relPath
   return `${relPath} — Finder에서 열기`
 }
 
+function focusAdjacentRow(
+  event: React.KeyboardEvent<HTMLButtonElement>,
+  direction: -1 | 1
+): void {
+  const container = event.currentTarget.closest<HTMLElement>(
+    '.material-tree, .material-results'
+  )
+  if (container === null) return
+  const rows = Array.from(
+    container.querySelectorAll<HTMLButtonElement>('[data-material-row="true"]')
+  )
+  const index = rows.indexOf(event.currentTarget)
+  const next = rows[index + direction]
+  if (next === undefined) return
+  event.preventDefault()
+  next.focus()
+}
+
+interface InlineNameEditorProps {
+  node: MaterialNode
+  onCancel: () => void
+  onRename: (newName: string) => Promise<string | null>
+}
+
+function InlineNameEditor({
+  node,
+  onCancel,
+  onRename
+}: InlineNameEditorProps): JSX.Element {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [draft, setDraft] = useState(node.name)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const input = inputRef.current
+      if (input === null) return
+      input.focus()
+      const extensionStart = node.kind === 'dir' ? -1 : node.name.lastIndexOf('.')
+      input.setSelectionRange(0, extensionStart > 0 ? extensionStart : node.name.length)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [node.kind, node.name])
+
+  const submit = async (): Promise<void> => {
+    if (pending) return
+    if (draft === node.name) {
+      onCancel()
+      return
+    }
+    setPending(true)
+    setError(null)
+    const renameError = await onRename(draft)
+    if (renameError !== null) {
+      setError(renameError)
+      setPending(false)
+    }
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      className="material-row__rename"
+      value={draft}
+      disabled={pending}
+      aria-label={`${node.name} 이름 변경`}
+      aria-invalid={error === null ? undefined : true}
+      title={error ?? undefined}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (!pending && error === null) onCancel()
+      }}
+      onKeyDown={(event) => {
+        event.stopPropagation()
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          void submit()
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          onCancel()
+        }
+      }}
+    />
+  )
+}
+
 interface TreeNodeProps {
   node: MaterialNode
   depth: number
   expandedPaths: Record<string, boolean>
+  editingRelPath: string | null
+  selectedRelPath: string | null
   onToggleFolder: (relPath: string) => void
+  onContextMenu: (event: React.MouseEvent, node: MaterialNode) => void
+  onCancelRename: () => void
+  onRename: (node: MaterialNode, newName: string) => Promise<string | null>
 }
 
 function TreeNode({
   node,
   depth,
   expandedPaths,
-  onToggleFolder
+  editingRelPath,
+  selectedRelPath,
+  onToggleFolder,
+  onContextMenu,
+  onCancelRename,
+  onRename
 }: TreeNodeProps): JSX.Element {
   const isDirectory = node.kind === 'dir'
   const expanded = isDirectory && expandedPaths[node.relPath] === true
+  const editing = editingRelPath === node.relPath
   const rowStyle = { '--tree-depth': depth } as CSSProperties
+  const rowContents = (
+    <>
+      <span
+        className="material-row__chevron"
+        data-visible={isDirectory}
+        data-expanded={expanded}
+      >
+        <Icon name="chevronRight" />
+      </span>
+      <Icon name={iconForKind(node.kind, expanded)} className="material-row__type" />
+      {editing ? (
+        <InlineNameEditor
+          node={node}
+          onCancel={onCancelRename}
+          onRename={(newName) => onRename(node, newName)}
+        />
+      ) : (
+        <span className="material-row__name">{node.name}</span>
+      )}
+    </>
+  )
 
   return (
     <li
@@ -55,34 +171,47 @@ function TreeNode({
       aria-level={depth + 1}
       aria-expanded={isDirectory ? expanded : undefined}
     >
-      <button
-        type="button"
-        className="material-row"
-        data-kind={node.kind}
-        style={rowStyle}
-        title={rowTitle(node.kind, node.relPath)}
-        onClick={() => {
-          if (isDirectory) onToggleFolder(node.relPath)
-        }}
-        onDoubleClick={() => {
-          if (!isDirectory && node.kind !== 'dir') {
-            openMaterial(node.kind, node.relPath)
-          }
-        }}
-      >
-        <span
-          className="material-row__chevron"
-          data-visible={isDirectory}
-          data-expanded={expanded}
+      {editing ? (
+        <div
+          className="material-row"
+          data-kind={node.kind}
+          data-selected={selectedRelPath === node.relPath || undefined}
+          style={rowStyle}
         >
-          <Icon name="chevronRight" />
-        </span>
-        <Icon
-          name={iconForKind(node.kind, expanded)}
-          className="material-row__type"
-        />
-        <span className="material-row__name">{node.name}</span>
-      </button>
+          {rowContents}
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="material-row"
+          data-material-row="true"
+          data-kind={node.kind}
+          data-selected={selectedRelPath === node.relPath || undefined}
+          style={rowStyle}
+          title={rowTitle(node.kind, node.relPath)}
+          onClick={() => {
+            if (isDirectory) onToggleFolder(node.relPath)
+            else if (node.kind !== 'dir') {
+              openMaterialInWorkspace(node.kind, node.relPath)
+            }
+          }}
+          onContextMenu={(event) => onContextMenu(event, node)}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowDown') focusAdjacentRow(event, 1)
+            if (event.key === 'ArrowUp') focusAdjacentRow(event, -1)
+            if (isDirectory && event.key === 'ArrowRight' && !expanded) {
+              event.preventDefault()
+              onToggleFolder(node.relPath)
+            }
+            if (isDirectory && event.key === 'ArrowLeft' && expanded) {
+              event.preventDefault()
+              onToggleFolder(node.relPath)
+            }
+          }}
+        >
+          {rowContents}
+        </button>
+      )}
       {isDirectory && expanded && node.children !== undefined && (
         <ul role="group">
           {node.children.map((child) => (
@@ -91,7 +220,12 @@ function TreeNode({
               node={child}
               depth={depth + 1}
               expandedPaths={expandedPaths}
+              editingRelPath={editingRelPath}
+              selectedRelPath={selectedRelPath}
               onToggleFolder={onToggleFolder}
+              onContextMenu={onContextMenu}
+              onCancelRename={onCancelRename}
+              onRename={onRename}
             />
           ))}
         </ul>
@@ -103,13 +237,23 @@ function TreeNode({
 interface MaterialTreeProps {
   nodes: MaterialNode[]
   expandedPaths: Record<string, boolean>
+  editingRelPath: string | null
+  selectedRelPath: string | null
   onToggleFolder: (relPath: string) => void
+  onContextMenu: (event: React.MouseEvent, node: MaterialNode) => void
+  onCancelRename: () => void
+  onRename: (node: MaterialNode, newName: string) => Promise<string | null>
 }
 
 export function MaterialTree({
   nodes,
   expandedPaths,
-  onToggleFolder
+  editingRelPath,
+  selectedRelPath,
+  onToggleFolder,
+  onContextMenu,
+  onCancelRename,
+  onRename
 }: MaterialTreeProps): JSX.Element {
   return (
     <ul className="material-tree" role="tree" aria-label="자료 파일 트리">
@@ -119,7 +263,12 @@ export function MaterialTree({
           node={node}
           depth={0}
           expandedPaths={expandedPaths}
+          editingRelPath={editingRelPath}
+          selectedRelPath={selectedRelPath}
           onToggleFolder={onToggleFolder}
+          onContextMenu={onContextMenu}
+          onCancelRename={onCancelRename}
+          onRename={onRename}
         />
       ))}
     </ul>
@@ -128,33 +277,48 @@ export function MaterialTree({
 
 interface MaterialSearchResultsProps {
   results: MaterialSearchHit[]
+  selectedRelPath: string | null
+  onContextMenu: (event: React.MouseEvent, node: MaterialNode) => void
 }
 
 export function MaterialSearchResults({
-  results
+  results,
+  selectedRelPath,
+  onContextMenu
 }: MaterialSearchResultsProps): JSX.Element {
   return (
     <ul className="material-results" aria-label="자료 검색 결과">
-      {results.map((result) => (
-        <li key={result.relPath}>
-          <button
-            type="button"
-            className="material-result"
-            data-kind={result.kind}
-            title={rowTitle(result.kind, result.relPath)}
-            onDoubleClick={() => openMaterial(result.kind, result.relPath)}
-          >
-            <Icon
-              name={iconForKind(result.kind)}
-              className="material-row__type"
-            />
-            <span>
-              <strong>{result.name}</strong>
-              <small>{result.relPath}</small>
-            </span>
-          </button>
-        </li>
-      ))}
+      {results.map((result) => {
+        const node: MaterialNode = {
+          relPath: result.relPath,
+          name: result.name,
+          kind: result.kind
+        }
+        return (
+          <li key={result.relPath}>
+            <button
+              type="button"
+              className="material-result"
+              data-material-row="true"
+              data-kind={result.kind}
+              data-selected={selectedRelPath === result.relPath || undefined}
+              title={rowTitle(result.kind, result.relPath)}
+              onClick={() => openMaterialInWorkspace(result.kind, result.relPath)}
+              onContextMenu={(event) => onContextMenu(event, node)}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowDown') focusAdjacentRow(event, 1)
+                if (event.key === 'ArrowUp') focusAdjacentRow(event, -1)
+              }}
+            >
+              <Icon name={iconForKind(result.kind)} className="material-row__type" />
+              <span>
+                <strong>{result.name}</strong>
+                <small>{result.relPath}</small>
+              </span>
+            </button>
+          </li>
+        )
+      })}
     </ul>
   )
 }

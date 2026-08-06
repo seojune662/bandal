@@ -4,10 +4,14 @@
  */
 
 import {
+  cpSync,
   copyFileSync,
   existsSync,
+  lstatSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   statSync
 } from 'node:fs'
 import { basename, extname, isAbsolute, join, posix } from 'node:path'
@@ -20,7 +24,7 @@ import type {
   MaterialNode,
   MaterialSearchHit
 } from '../../../shared/types/materials'
-import { NotFoundError, ValidationError } from '../../db/errors'
+import { ConflictError, NotFoundError, ValidationError } from '../../db/errors'
 import { nowIso, requireId, requireNonEmptyString, resolveInside } from '../../db/validate'
 
 export interface MaterialsRepo {
@@ -29,6 +33,24 @@ export interface MaterialsRepo {
   import(courseId: string, paths: string[]): ImportResult
   readFile(courseId: string, relPath: string): MaterialFileContent
   reveal(courseId: string, relPath: string): { ok: true }
+  rename(input: {
+    courseId: string
+    relPath: string
+    newName: string
+  }): { relPath: string }
+  softDelete(input: {
+    courseId: string
+    relPath: string
+  }): Promise<{ ok: true }>
+  duplicate(input: {
+    courseId: string
+    relPath: string
+  }): { relPath: string }
+  createFolder(input: {
+    courseId: string
+    dirRelPath: string
+    name: string
+  }): { relPath: string }
 }
 
 export interface MaterialsRepoDeps {
@@ -37,6 +59,8 @@ export interface MaterialsRepoDeps {
   getCourseFolder: (courseId: string) => string
   /** Reveals an absolute path in the OS file manager (electron shell). */
   revealItem: (absPath: string) => void
+  /** Moves an absolute path to the OS trash (electron shell.trashItem). */
+  trashItem: (absPath: string) => Promise<void>
 }
 
 const IMAGE_EXTENSIONS = new Set([
@@ -122,8 +146,53 @@ function unusedTargetName(dir: string, fileName: string): string {
   throw new ValidationError(`could not find a free name for "${fileName}"`)
 }
 
+/**
+ * Validates a single filesystem entry name. Unlike a path sanitizer, this
+ * rejects separators instead of deleting them: renderer input must never be
+ * transformed into a different path and then accepted.
+ */
+function requireBasename(value: unknown, field: string): string {
+  const name = requireNonEmptyString(value, field).trim()
+  if (name.includes('/') || name.includes('\\')) {
+    throw new ValidationError(`${field} must be a basename without path separators`)
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f]/.test(name)) {
+    throw new ValidationError(`${field} contains control characters`)
+  }
+  if (name === '.' || name === '..') {
+    throw new ValidationError(`${field} must name a file or folder`)
+  }
+  if (/[:*?"<>|]/.test(name)) {
+    throw new ValidationError(`${field} contains filesystem-hostile characters`)
+  }
+  if (name.length > 120) {
+    throw new ValidationError(`${field} must be at most 120 characters`)
+  }
+  return name
+}
+
+function assertFileOrDirectory(absPath: string, relPath: string): 'file' | 'dir' {
+  if (!existsSync(absPath)) {
+    throw new NotFoundError('material', relPath)
+  }
+  const stat = lstatSync(absPath)
+  if (stat.isFile()) return 'file'
+  if (stat.isDirectory()) return 'dir'
+  throw new ValidationError(`"${relPath}" is not a regular file or directory`)
+}
+
 export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
-  const { db, getCourseFolder, revealItem } = deps
+  const { db, getCourseFolder, revealItem, trashItem } = deps
+
+  function requireCourseFolder(courseId: string): { id: string; folder: string } {
+    const id = requireId(courseId, 'courseId')
+    const folder = getCourseFolder(id)
+    if (!existsSync(folder)) {
+      throw new NotFoundError('course folder', folder)
+    }
+    return { id, folder }
+  }
 
   /** Rebuilds the materials_index cache for a course from disk. */
   function rebuildIndex(courseId: string, folder: string): void {
@@ -153,8 +222,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
   }
 
   function resolveMaterial(courseId: string, relPath: string): { abs: string; folder: string } {
-    const id = requireId(courseId, 'courseId')
-    const folder = getCourseFolder(id)
+    const { folder } = requireCourseFolder(courseId)
     const abs = resolveInside(folder, requireNonEmptyString(relPath, 'relPath'))
     return { abs, folder }
   }
@@ -264,6 +332,87 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       }
       revealItem(abs)
       return { ok: true }
+    },
+
+    rename(input) {
+      const { abs: sourceAbs, folder } = resolveMaterial(
+        input.courseId,
+        input.relPath
+      )
+      assertFileOrDirectory(sourceAbs, input.relPath)
+      const newName = requireBasename(input.newName, 'newName')
+      const parentRelPath = posix.dirname(input.relPath)
+      const destinationRelPath =
+        parentRelPath === '.' ? newName : posix.join(parentRelPath, newName)
+      // Validate the destination independently before any existence check or
+      // mutation. This remains necessary even though newName is a basename.
+      const destinationAbs = resolveInside(folder, destinationRelPath)
+      if (destinationAbs === sourceAbs) return { relPath: input.relPath }
+      if (existsSync(destinationAbs)) {
+        throw new ConflictError(`material "${destinationRelPath}" already exists`)
+      }
+      renameSync(sourceAbs, destinationAbs)
+      return { relPath: destinationRelPath }
+    },
+
+    async softDelete(input) {
+      const { abs } = resolveMaterial(input.courseId, input.relPath)
+      assertFileOrDirectory(abs, input.relPath)
+      await trashItem(abs)
+      return { ok: true }
+    },
+
+    duplicate(input) {
+      const { abs: sourceAbs, folder } = resolveMaterial(
+        input.courseId,
+        input.relPath
+      )
+      const sourceKind = assertFileOrDirectory(sourceAbs, input.relPath)
+      const sourceName = posix.basename(input.relPath)
+      const extension = sourceKind === 'file' ? extname(sourceName) : ''
+      const stem = extension === '' ? sourceName : basename(sourceName, extension)
+      const parentRelPath = posix.dirname(input.relPath)
+
+      for (let n = 2; n <= 1000; n += 1) {
+        const candidateName = `${stem}-${n}${extension}`
+        const candidateRelPath =
+          parentRelPath === '.'
+            ? candidateName
+            : posix.join(parentRelPath, candidateName)
+        const candidateAbs = resolveInside(folder, candidateRelPath)
+        if (existsSync(candidateAbs)) continue
+        if (sourceKind === 'dir') {
+          cpSync(sourceAbs, candidateAbs, {
+            recursive: true,
+            errorOnExist: true,
+            force: false
+          })
+        } else {
+          copyFileSync(sourceAbs, candidateAbs)
+        }
+        return { relPath: candidateRelPath }
+      }
+      throw new ValidationError(`could not find a free name for "${sourceName}"`)
+    },
+
+    createFolder(input) {
+      const { folder } = requireCourseFolder(input.courseId)
+      if (typeof input.dirRelPath !== 'string') {
+        throw new ValidationError('dirRelPath must be a string')
+      }
+      const parentAbs = resolveInside(folder, input.dirRelPath, { allowRoot: true })
+      if (!existsSync(parentAbs) || !lstatSync(parentAbs).isDirectory()) {
+        throw new NotFoundError('material directory', input.dirRelPath)
+      }
+      const name = requireBasename(input.name, 'name')
+      const relPath =
+        input.dirRelPath === '' ? name : posix.join(input.dirRelPath, name)
+      const abs = resolveInside(folder, relPath)
+      if (existsSync(abs)) {
+        throw new ConflictError(`material "${relPath}" already exists`)
+      }
+      mkdirSync(abs)
+      return { relPath }
     }
   }
 }

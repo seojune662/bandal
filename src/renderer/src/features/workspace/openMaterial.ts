@@ -1,5 +1,5 @@
 /**
- * Glue for the materials sidebar: double-clicking a file opens it as a
+ * Glue for the materials sidebar: clicking a file opens it as a
  * workspace tab (pdf/md) or reveals it in Finder (images and everything
  * else — no dedicated tab kind). Kept here (not in the materials feature)
  * so the sidebar only needs a one-line call.

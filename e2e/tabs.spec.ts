@@ -54,7 +54,8 @@ test.describe('workspace tabs', () => {
       await expect(noteRow).toBeVisible({ timeout: 3_000 })
     }).toPass({ timeout: 30_000 })
 
-    await noteRow.dblclick()
+    // Single click opens — the tree stopped requiring a double click.
+    await noteRow.click()
 
     // Note tab opens with the file name and a live save-status chip.
     await expect(

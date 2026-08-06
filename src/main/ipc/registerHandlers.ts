@@ -91,7 +91,10 @@ export function registerHandlers(): IpcRouter {
   const materialsRepo = createMaterialsRepo({
     db,
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
-    revealItem: (absPath) => shell.showItemInFolder(absPath)
+    revealItem: (absPath) => shell.showItemInFolder(absPath),
+    // Trash, never unlink: these are the student's lecture materials and a
+    // mis-click must stay recoverable.
+    trashItem: (absPath) => shell.trashItem(absPath)
   })
   const notesRepo = createNotesRepo({
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
@@ -178,6 +181,10 @@ export function registerHandlers(): IpcRouter {
   handle('materials:import', (req) => materialsRepo.import(req.courseId, req.paths))
   handle('materials:reveal', (req) => materialsRepo.reveal(req.courseId, req.relPath))
   handle('materials:readFile', (req) => materialsRepo.readFile(req.courseId, req.relPath))
+  handle('materials:rename', (req) => materialsRepo.rename(req))
+  handle('materials:delete', (req) => materialsRepo.softDelete(req))
+  handle('materials:duplicate', (req) => materialsRepo.duplicate(req))
+  handle('materials:createFolder', (req) => materialsRepo.createFolder(req))
   handle('materials:watch', (req) => {
     materialsWatcher.watch(req.courseId)
     return OK

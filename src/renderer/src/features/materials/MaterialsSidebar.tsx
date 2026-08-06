@@ -1,12 +1,29 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Course } from '../../../../shared/types/course'
+import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
 import { invoke, onPush } from '../../lib/ipc'
 import { showToast } from '../../app/toast'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { normalizeCourseColor } from '../courses/courseColors'
+import { openMaterialInWorkspace } from '../workspace/openMaterial'
+import { descriptorFor, tabPanelId } from '../workspace/tabIdentity'
+import { MaterialDeleteDialog } from './MaterialDeleteDialog'
 import { MaterialSearchResults, MaterialTree } from './MaterialTree'
+import {
+  MaterialsContextMenu,
+  type MaterialsContextMenuState
+} from './MaterialsContextMenu'
+import {
+  absoluteMaterialPath,
+  kindForMaterialName,
+  materialBaseName,
+  materialParentPath,
+  targetDirectory,
+  unusedFolderName
+} from './materialPaths'
 import { useFileDropTarget } from './useFileDropTarget'
 import './materials.css'
 
@@ -14,6 +31,80 @@ const SEARCH_DEBOUNCE_MS = 240
 
 interface MaterialsSidebarProps {
   course: Course | null
+}
+
+interface EditingState {
+  relPath: string
+  /** New notes are already open before their first inline rename. */
+  reopenAfterRename: boolean
+}
+
+function operationError(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
+}
+
+function pathIsTargetOrChild(path: string, target: string): boolean {
+  return path === target || path.startsWith(`${target}/`)
+}
+
+function reconcileTabsAfterRename(
+  courseId: string,
+  node: MaterialNode,
+  newRelPath: string,
+  forceReopen: boolean
+): void {
+  const workspace = useWorkspaceStore.getState()
+  let reopened = false
+  for (const [panelId, descriptor] of Object.entries(workspace.openTabs)) {
+    if (descriptor.kind !== 'pdf' && descriptor.kind !== 'note') continue
+    if (descriptor.payload.courseId !== courseId) continue
+    if (!pathIsTargetOrChild(descriptor.payload.relPath, node.relPath)) continue
+    const suffix = descriptor.payload.relPath.slice(node.relPath.length)
+    workspace.closeTab(panelId)
+    const nextRelPath = `${newRelPath}${suffix}`
+    const nextKind =
+      node.kind === 'dir'
+        ? descriptor.kind
+        : kindForMaterialName(materialBaseName(nextRelPath))
+    if (nextKind === 'pdf' || nextKind === 'note') {
+      openMaterialInWorkspace(nextKind, nextRelPath)
+    }
+    reopened = true
+  }
+
+  if (node.kind !== 'dir') {
+    const oldKind = node.kind
+    if (oldKind === 'pdf' || oldKind === 'note') {
+      workspace.closeTab(
+        tabPanelId(descriptorFor(oldKind, { courseId, relPath: node.relPath }))
+      )
+    }
+  }
+
+  if (!reopened && forceReopen && node.kind !== 'dir') {
+    const newKind = kindForMaterialName(materialBaseName(newRelPath))
+    if (newKind === 'pdf' || newKind === 'note') {
+      openMaterialInWorkspace(newKind, newRelPath)
+    }
+  }
+}
+
+function closeDeletedTabs(courseId: string, node: MaterialNode): void {
+  const workspace = useWorkspaceStore.getState()
+  for (const [panelId, descriptor] of Object.entries(workspace.openTabs)) {
+    if (descriptor.kind !== 'pdf' && descriptor.kind !== 'note') continue
+    if (
+      descriptor.payload.courseId === courseId &&
+      pathIsTargetOrChild(descriptor.payload.relPath, node.relPath)
+    ) {
+      workspace.closeTab(panelId)
+    }
+  }
+  if (node.kind === 'pdf' || node.kind === 'note') {
+    workspace.closeTab(
+      tabPanelId(descriptorFor(node.kind, { courseId, relPath: node.relPath }))
+    )
+  }
 }
 
 export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element {
@@ -33,7 +124,21 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const [query, setQuery] = useState('')
   const [isDebouncing, setIsDebouncing] = useState(false)
   const [isRelinking, setIsRelinking] = useState(false)
+  const [contextMenu, setContextMenu] = useState<MaterialsContextMenuState | null>(
+    null
+  )
+  const [editing, setEditing] = useState<EditingState | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<MaterialNode | null>(null)
+  const [deletePending, setDeletePending] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const { isDropActive, dropProps } = useFileDropTarget(course?.id ?? null)
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), [])
+  const closeDeleteDialog = useCallback(() => {
+    if (deletePending) return
+    setDeleteTarget(null)
+    setDeleteError(null)
+  }, [deletePending])
 
   /** 연결 끊김 복구: re-pick the folder this course points at. */
   const relink = async (courseId: string): Promise<void> => {
@@ -53,6 +158,10 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   // Re-runs when the course is re-linked too — folderPath is part of the key.
   useEffect(() => {
     setQuery('')
+    setContextMenu(null)
+    setEditing(null)
+    setDeleteTarget(null)
+    setDeleteError(null)
     clearSearch()
     if (course === null || course.missing) {
       clear()
@@ -98,6 +207,183 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
 
   const searching = query.trim().length > 0
   const pendingSearch = isDebouncing || isSearching
+
+  const ensureFolderExpanded = (dirRelPath: string): void => {
+    if (dirRelPath === '') return
+    const materials = useMaterialsStore.getState()
+    if (materials.expandedPaths[dirRelPath] !== true) {
+      materials.toggleFolder(dirRelPath)
+    }
+  }
+
+  const ensureAncestorsExpanded = (relPath: string): void => {
+    const segments = materialParentPath(relPath).split('/').filter(Boolean)
+    let ancestor = ''
+    for (const segment of segments) {
+      ancestor = ancestor === '' ? segment : `${ancestor}/${segment}`
+      ensureFolderExpanded(ancestor)
+    }
+  }
+
+  const refreshAfterMutation = async (courseId: string): Promise<void> => {
+    await useMaterialsStore.getState().loadTree(courseId)
+  }
+
+  const handleContextMenu = (
+    event: React.MouseEvent,
+    target: MaterialNode | null
+  ): void => {
+    if (course === null || course.missing) return
+    event.preventDefault()
+    event.stopPropagation()
+    setEditing(null)
+    setContextMenu({
+      target,
+      x: event.clientX,
+      y: event.clientY,
+      placement: event.clientY > window.innerHeight / 2 ? 'top' : 'bottom',
+      align: event.clientX > window.innerWidth / 2 ? 'end' : 'start',
+      returnFocus: event.currentTarget as HTMLElement
+    })
+  }
+
+  const writeClipboard = async (value: string): Promise<void> => {
+    setContextMenu(null)
+    try {
+      await navigator.clipboard.writeText(value)
+      showToast('경로를 복사했어요.')
+    } catch (clipboardError) {
+      console.error('[Bandal] 경로를 복사하지 못했습니다.', clipboardError)
+      showToast('경로를 복사하지 못했습니다.', 'danger')
+    }
+  }
+
+  const createFile = async (target: MaterialNode | null): Promise<void> => {
+    if (course === null) return
+    setContextMenu(null)
+    const dirRelPath = targetDirectory(target)
+    try {
+      const created = await invoke('notes:create', {
+        courseId: course.id,
+        dirRelPath,
+        title: '새 파일'
+      })
+      ensureAncestorsExpanded(created.relPath)
+      openMaterialInWorkspace('note', created.relPath)
+      await refreshAfterMutation(course.id)
+      setEditing({ relPath: created.relPath, reopenAfterRename: true })
+    } catch (createError) {
+      console.error('[Bandal] 새 파일을 만들지 못했습니다.', createError)
+      showToast('새 파일을 만들지 못했습니다.', 'danger')
+    }
+  }
+
+  const createFolder = async (target: MaterialNode | null): Promise<void> => {
+    if (course === null) return
+    setContextMenu(null)
+    const dirRelPath = targetDirectory(target)
+    const name = unusedFolderName(useMaterialsStore.getState().tree, dirRelPath)
+    try {
+      const created = await invoke('materials:createFolder', {
+        courseId: course.id,
+        dirRelPath,
+        name
+      })
+      ensureAncestorsExpanded(created.relPath)
+      await refreshAfterMutation(course.id)
+      setEditing({ relPath: created.relPath, reopenAfterRename: false })
+    } catch (createError) {
+      console.error('[Bandal] 새 폴더를 만들지 못했습니다.', createError)
+      showToast('새 폴더를 만들지 못했습니다.', 'danger')
+    }
+  }
+
+  const duplicate = async (target: MaterialNode): Promise<void> => {
+    if (course === null) return
+    setContextMenu(null)
+    try {
+      const duplicated = await invoke('materials:duplicate', {
+        courseId: course.id,
+        relPath: target.relPath
+      })
+      ensureAncestorsExpanded(duplicated.relPath)
+      await refreshAfterMutation(course.id)
+      showToast('자료를 복제했어요.')
+    } catch (duplicateError) {
+      console.error('[Bandal] 자료를 복제하지 못했습니다.', duplicateError)
+      showToast('자료를 복제하지 못했습니다.', 'danger')
+    }
+  }
+
+  const reveal = async (target: MaterialNode): Promise<void> => {
+    if (course === null) return
+    setContextMenu(null)
+    try {
+      await invoke('materials:reveal', {
+        courseId: course.id,
+        relPath: target.relPath
+      })
+    } catch (revealError) {
+      console.error('[Bandal] Finder에서 자료를 열지 못했습니다.', revealError)
+      showToast('Finder에서 자료를 열지 못했습니다.', 'danger')
+    }
+  }
+
+  const beginRename = (target: MaterialNode): void => {
+    setContextMenu(null)
+    setQuery('')
+    clearSearch()
+    ensureAncestorsExpanded(target.relPath)
+    setEditing({ relPath: target.relPath, reopenAfterRename: false })
+  }
+
+  const rename = async (
+    node: MaterialNode,
+    newName: string
+  ): Promise<string | null> => {
+    if (course === null) return '과목을 선택하세요.'
+    try {
+      const renamed = await invoke('materials:rename', {
+        courseId: course.id,
+        relPath: node.relPath,
+        newName
+      })
+      reconcileTabsAfterRename(
+        course.id,
+        node,
+        renamed.relPath,
+        editing?.reopenAfterRename === true
+      )
+      await refreshAfterMutation(course.id)
+      setEditing(null)
+      return null
+    } catch (renameError) {
+      const message = operationError(renameError, '이름을 변경하지 못했습니다.')
+      console.error('[Bandal] 자료 이름을 변경하지 못했습니다.', renameError)
+      showToast('이름을 변경하지 못했습니다.', 'danger')
+      return message
+    }
+  }
+
+  const confirmDelete = async (): Promise<void> => {
+    if (course === null || deleteTarget === null) return
+    setDeletePending(true)
+    setDeleteError(null)
+    try {
+      await invoke('materials:delete', {
+        courseId: course.id,
+        relPath: deleteTarget.relPath
+      })
+      closeDeletedTabs(course.id, deleteTarget)
+      await refreshAfterMutation(course.id)
+      setDeleteTarget(null)
+      showToast('휴지통으로 이동했어요.')
+    } catch (deleteFailure) {
+      setDeleteError(operationError(deleteFailure, '휴지통으로 이동하지 못했습니다.'))
+    } finally {
+      setDeletePending(false)
+    }
+  }
 
   return (
     <aside
@@ -175,7 +461,10 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         </div>
       )}
 
-      <div className="app-rail__body materials-body">
+      <div
+        className="app-rail__body materials-body"
+        onContextMenu={(event) => handleContextMenu(event, null)}
+      >
         {course === null ? (
           <div className="empty-state empty-state--materials">
             <Icon name="folder" className="empty-state__folder" />
@@ -215,7 +504,11 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
               </button>
             </div>
           ) : (
-            <MaterialSearchResults results={searchResults} />
+            <MaterialSearchResults
+              results={searchResults}
+              selectedRelPath={contextMenu?.target?.relPath ?? null}
+              onContextMenu={handleContextMenu}
+            />
           )
         ) : tree.length === 0 ? (
           <div className="empty-state empty-state--materials">
@@ -229,10 +522,59 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           <MaterialTree
             nodes={tree}
             expandedPaths={expandedPaths}
+            editingRelPath={editing?.relPath ?? null}
+            selectedRelPath={contextMenu?.target?.relPath ?? null}
             onToggleFolder={toggleFolder}
+            onContextMenu={handleContextMenu}
+            onCancelRename={() => setEditing(null)}
+            onRename={rename}
           />
         )}
       </div>
+
+      {contextMenu !== null && (
+        <MaterialsContextMenu
+          {...contextMenu}
+          onClose={closeContextMenu}
+          onCreateFile={() => void createFile(contextMenu.target)}
+          onCreateFolder={() => void createFolder(contextMenu.target)}
+          onDuplicate={() => {
+            if (contextMenu.target !== null) void duplicate(contextMenu.target)
+          }}
+          onCopyAbsolutePath={() => {
+            if (course === null) return
+            void writeClipboard(
+              absoluteMaterialPath(
+                course.folderPath,
+                contextMenu.target?.relPath ?? ''
+              )
+            )
+          }}
+          onCopyRelativePath={() => {
+            void writeClipboard(contextMenu.target?.relPath ?? '.')
+          }}
+          onReveal={() => {
+            if (contextMenu.target !== null) void reveal(contextMenu.target)
+          }}
+          onRename={() => {
+            if (contextMenu.target !== null) beginRename(contextMenu.target)
+          }}
+          onDelete={() => {
+            if (contextMenu.target === null) return
+            setDeleteError(null)
+            setDeleteTarget(contextMenu.target)
+            setContextMenu(null)
+          }}
+        />
+      )}
+
+      <MaterialDeleteDialog
+        target={deleteTarget}
+        pending={deletePending}
+        error={deleteError}
+        onClose={closeDeleteDialog}
+        onConfirm={confirmDelete}
+      />
     </aside>
   )
 }

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
@@ -7,6 +7,7 @@ import {
   type MaterialsRepo
 } from '../../src/main/features/materials'
 import {
+  ConflictError,
   NotFoundError,
   PathTraversalError,
   ValidationError
@@ -20,6 +21,7 @@ describe('materialsRepo', () => {
   let courseId: string
   let courseFolder: string
   let revealed: string[]
+  let trashed: string[]
 
   beforeEach(() => {
     ctx = createTestDb()
@@ -31,10 +33,14 @@ describe('materialsRepo', () => {
     courseId = course.id
     courseFolder = course.folderPath
     revealed = []
+    trashed = []
     repo = createMaterialsRepo({
       db: ctx.db,
       getCourseFolder: (id) => courses.getFolder(id),
-      revealItem: (absPath) => revealed.push(absPath)
+      revealItem: (absPath) => revealed.push(absPath),
+      trashItem: async (absPath) => {
+        trashed.push(absPath)
+      }
     })
 
     // Fixture tree:
@@ -167,6 +173,130 @@ describe('materialsRepo', () => {
       expect(revealed).toEqual([join(courseFolder, 'syllabus.pdf')])
     })
   })
+
+  describe('rename', () => {
+    test('renames files and folders and returns a course-relative path', () => {
+      expect(
+        repo.rename({
+          courseId,
+          relPath: 'syllabus.pdf',
+          newName: 'course-outline.pdf'
+        })
+      ).toEqual({ relPath: 'course-outline.pdf' })
+      expect(existsSync(join(courseFolder, 'course-outline.pdf'))).toBe(true)
+
+      expect(
+        repo.rename({ courseId, relPath: 'notes/img', newName: 'figures' })
+      ).toEqual({ relPath: 'notes/figures' })
+      expect(existsSync(join(courseFolder, 'notes', 'figures', 'diagram.png'))).toBe(
+        true
+      )
+    })
+
+    test('rejects collisions and basename path separators', () => {
+      writeFileSync(join(courseFolder, 'already.pdf'), 'occupied')
+
+      expect(() =>
+        repo.rename({
+          courseId,
+          relPath: 'syllabus.pdf',
+          newName: 'already.pdf'
+        })
+      ).toThrow(ConflictError)
+      expect(() =>
+        repo.rename({
+          courseId,
+          relPath: 'syllabus.pdf',
+          newName: '../escaped.pdf'
+        })
+      ).toThrow(ValidationError)
+      expect(() =>
+        repo.rename({
+          courseId,
+          relPath: 'syllabus.pdf',
+          newName: 'sub\\escaped.pdf'
+        })
+      ).toThrow(ValidationError)
+    })
+  })
+
+  describe('softDelete', () => {
+    test('delegates files and directories to the OS trash without unlinking', async () => {
+      await expect(
+        repo.softDelete({ courseId, relPath: 'syllabus.pdf' })
+      ).resolves.toEqual({ ok: true })
+      await expect(
+        repo.softDelete({ courseId, relPath: 'notes/img' })
+      ).resolves.toEqual({ ok: true })
+
+      expect(trashed).toEqual([
+        join(courseFolder, 'syllabus.pdf'),
+        join(courseFolder, 'notes', 'img')
+      ])
+      // The fake trash implementation deliberately does not move anything;
+      // this proves the repo itself never calls unlink/rm.
+      expect(existsSync(join(courseFolder, 'syllabus.pdf'))).toBe(true)
+      expect(existsSync(join(courseFolder, 'notes', 'img'))).toBe(true)
+    })
+  })
+
+  describe('duplicate', () => {
+    test('uses -2/-3 collision names and recursively copies directories', () => {
+      expect(repo.duplicate({ courseId, relPath: 'syllabus.pdf' })).toEqual({
+        relPath: 'syllabus-2.pdf'
+      })
+      expect(repo.duplicate({ courseId, relPath: 'syllabus.pdf' })).toEqual({
+        relPath: 'syllabus-3.pdf'
+      })
+      expect(readFileSync(join(courseFolder, 'syllabus-2.pdf'), 'utf8')).toBe(
+        'pdf-bytes'
+      )
+
+      expect(repo.duplicate({ courseId, relPath: 'notes/img' })).toEqual({
+        relPath: 'notes/img-2'
+      })
+      expect(readFileSync(join(courseFolder, 'notes', 'img-2', 'diagram.png'), 'utf8')).toBe(
+        'png-bytes'
+      )
+    })
+  })
+
+  describe('createFolder', () => {
+    test('creates a folder under a validated course-relative directory', () => {
+      expect(
+        repo.createFolder({
+          courseId,
+          dirRelPath: 'notes',
+          name: 'week-2'
+        })
+      ).toEqual({ relPath: 'notes/week-2' })
+      expect(existsSync(join(courseFolder, 'notes', 'week-2'))).toBe(true)
+    })
+
+    test('rejects a name collision', () => {
+      expect(() =>
+        repo.createFolder({ courseId, dirRelPath: '', name: 'notes' })
+      ).toThrow(ConflictError)
+    })
+  })
+
+  describe('mutation path validation', () => {
+    test('rejects traversal, absolute paths, and null bytes before mutations', async () => {
+      expect(() =>
+        repo.rename({ courseId, relPath: '../outside', newName: 'safe' })
+      ).toThrow(PathTraversalError)
+      expect(() =>
+        repo.duplicate({ courseId, relPath: '/tmp/outside' })
+      ).toThrow(PathTraversalError)
+      expect(() =>
+        repo.createFolder({ courseId, dirRelPath: '../outside', name: 'safe' })
+      ).toThrow(PathTraversalError)
+      await expect(
+        repo.softDelete({ courseId, relPath: 'notes/\u0000outside' })
+      ).rejects.toThrow(PathTraversalError)
+      expect(trashed).toEqual([])
+    })
+  })
 })
 
 /**
@@ -200,7 +330,8 @@ describe('materialsRepo (linked course folder)', () => {
     repo = createMaterialsRepo({
       db: ctx.db,
       getCourseFolder: (id) => courses.getFolder(id),
-      revealItem: () => undefined
+      revealItem: () => undefined,
+      trashItem: async () => undefined
     })
   })
 
