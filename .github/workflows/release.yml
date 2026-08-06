@@ -131,6 +131,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Compiles main/preload/renderer into out/. electron-builder only
+      # *packages* — it does not compile — so without this it asars an empty
+      # tree and fails the entry-file sanity check. The `pnpm dist` script pairs
+      # the two for exactly this reason; the matrix command below cannot use
+      # that script because it needs the --publish flag.
+      - run: pnpm build
+
       # --- macOS signing -------------------------------------------------
       # Imports the Developer ID cert into a throwaway keychain. Without this
       # the build is unsigned, and an unsigned macOS app can neither pass
