@@ -15,13 +15,27 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type MutableRefObject
 } from 'react'
 import type { NoteContent, NoteRef } from '../../../../shared/types/note'
 import { invoke } from '../../lib/ipc'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { nativeHistoryGuard } from './nativeHistoryGuard'
+import {
+  EMPTY_NOTE_FORMAT_STATE,
+  getNoteFormatState,
+  type NoteFormatState
+} from './noteFormatting'
 import { NOTE_EDITOR_PLUGINS } from './noteEditorPlugins'
+import { NoteToolbar } from './NoteToolbar'
+import {
+  createNoteZoomShortcutPlugin,
+  NOTE_FONT_SCALE_STORAGE_KEY,
+  parseNoteFontScale,
+  stepNoteFontScale,
+  type NoteFontScale
+} from './noteZoom'
 import { taskListItemView } from './taskListView'
 import './note-tab.css'
 
@@ -61,13 +75,21 @@ export function isNoteConflict(error: unknown): boolean {
 
 function MilkdownNoteEditor({
   initialMarkdown,
-  onMarkdownChange
+  onMarkdownChange,
+  onFormatStateChange,
+  onZoomStep
 }: {
   initialMarkdown: string
   onMarkdownChange: (markdown: string) => void
+  onFormatStateChange: (state: NoteFormatState) => void
+  onZoomStep: (direction: -1 | 1) => void
 }): JSX.Element {
   const onChangeRef = useRef(onMarkdownChange)
+  const onFormatStateChangeRef = useRef(onFormatStateChange)
+  const onZoomStepRef = useRef(onZoomStep)
   onChangeRef.current = onMarkdownChange
+  onFormatStateChangeRef.current = onFormatStateChange
+  onZoomStepRef.current = onZoomStep
 
   const { loading } = useEditor(
     (root) => {
@@ -86,14 +108,23 @@ function MilkdownNoteEditor({
           ...plugins,
           // Keeps the native Edit-menu ⌘Z from editing around ProseMirror.
           nativeHistoryGuard(),
+          createNoteZoomShortcutPlugin((direction) =>
+            onZoomStepRef.current(direction)
+          ),
           new Plugin({
-            view: () => ({
-              update: (view, previousState) => {
-                if (previousState.doc.eq(view.state.doc)) return
-                const markdown = context.get(serializerCtx)(view.state.doc)
-                onChangeRef.current(markdown)
+            view: (initialView) => {
+              onFormatStateChangeRef.current(
+                getNoteFormatState(initialView.state)
+              )
+              return {
+                update: (view, previousState) => {
+                  onFormatStateChangeRef.current(getNoteFormatState(view.state))
+                  if (previousState.doc.eq(view.state.doc)) return
+                  const markdown = context.get(serializerCtx)(view.state.doc)
+                  onChangeRef.current(markdown)
+                }
               }
-            })
+            }
           })
         ])
       })
@@ -114,6 +145,40 @@ function MilkdownNoteEditor({
   )
 }
 
+function NoteEditorWorkspace({
+  initialMarkdown,
+  onMarkdownChange,
+  fontScale,
+  onFontScaleChange,
+  onZoomStep
+}: {
+  initialMarkdown: string
+  onMarkdownChange: (markdown: string) => void
+  fontScale: NoteFontScale
+  onFontScaleChange: (scale: NoteFontScale) => void
+  onZoomStep: (direction: -1 | 1) => void
+}): JSX.Element {
+  const [formatState, setFormatState] = useState<NoteFormatState>(
+    EMPTY_NOTE_FORMAT_STATE
+  )
+
+  return (
+    <div className="note-editor-scroll">
+      <NoteToolbar
+        formatState={formatState}
+        fontScale={fontScale}
+        onFontScaleChange={onFontScaleChange}
+      />
+      <MilkdownNoteEditor
+        initialMarkdown={initialMarkdown}
+        onMarkdownChange={onMarkdownChange}
+        onFormatStateChange={setFormatState}
+        onZoomStep={onZoomStep}
+      />
+    </div>
+  )
+}
+
 function useLatest<T>(value: T): MutableRefObject<T> {
   const valueRef = useRef(value)
   valueRef.current = value
@@ -126,6 +191,13 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   const [status, setStatus] = useState<SaveStatus>('saved')
   const [statusDetail, setStatusDetail] = useState<string | null>(null)
   const [conflictBusy, setConflictBusy] = useState(false)
+  const [fontScale, setFontScale] = useState<NoteFontScale>(() => {
+    try {
+      return parseNoteFontScale(localStorage.getItem(NOTE_FONT_SCALE_STORAGE_KEY))
+    } catch {
+      return 1
+    }
+  })
 
   const aliveRef = useRef(true)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -288,6 +360,36 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
     }
   }, [clearTimer])
 
+  useEffect(() => {
+    const syncFontScale = (event: Event): void => {
+      if (!(event instanceof CustomEvent)) return
+      const scale = parseNoteFontScale(String(event.detail))
+      setFontScale(scale)
+    }
+    window.addEventListener('bandal:note-font-scale', syncFontScale)
+    return () =>
+      window.removeEventListener('bandal:note-font-scale', syncFontScale)
+  }, [])
+
+  const changeFontScale = useCallback((scale: NoteFontScale): void => {
+    setFontScale(scale)
+    try {
+      localStorage.setItem(NOTE_FONT_SCALE_STORAGE_KEY, String(scale))
+    } catch {
+      // Storage may be unavailable in a locked-down renderer; keep the session value.
+    }
+    window.dispatchEvent(
+      new CustomEvent('bandal:note-font-scale', { detail: scale })
+    )
+  }, [])
+
+  const stepFontScale = useCallback(
+    (direction: -1 | 1): void => {
+      changeFontScale(stepNoteFontScale(fontScale, direction))
+    },
+    [changeFontScale, fontScale]
+  )
+
   const handleMarkdownChange = useCallback(
     (markdown: string): void => {
       if (markdown === currentMarkdownRef.current) return
@@ -390,11 +492,17 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
           필기를 불러오는 중…
         </div>
       ) : (
-        <div className="note-editor-scroll">
+        <div
+          className="note-editor"
+          style={{ '--note-font-scale': fontScale } as CSSProperties}
+        >
           <MilkdownProvider key={editorSeed.revision}>
-            <MilkdownNoteEditor
+            <NoteEditorWorkspace
               initialMarkdown={editorSeed.markdown}
               onMarkdownChange={handleMarkdownChange}
+              fontScale={fontScale}
+              onFontScaleChange={changeFontScale}
+              onZoomStep={stepFontScale}
             />
           </MilkdownProvider>
         </div>

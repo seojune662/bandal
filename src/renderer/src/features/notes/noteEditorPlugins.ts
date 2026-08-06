@@ -10,10 +10,13 @@ import type { MilkdownPlugin } from '@milkdown/ctx'
 import { history } from '@milkdown/plugin-history'
 import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
+import { slashMenu } from './slashMenuPlugin'
 
-export const NOTE_EDITOR_PLUGINS: readonly MilkdownPlugin[][] = [
+export const NOTE_EDITOR_PLUGINS: readonly (MilkdownPlugin | MilkdownPlugin[])[] = [
   commonmark,
   gfm,
+  // Direct ProseMirror plugin: placeholder and slash-triggered block menu.
+  slashMenu,
   // undo/redo — also supplies the Mod-z / Shift-Mod-z / Mod-y keymap.
   history
 ]

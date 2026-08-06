@@ -94,7 +94,10 @@ describe('migration 005', () => {
     const rows = testDb.db
       .prepare('SELECT version FROM migrations ORDER BY version')
       .all() as { version: number }[]
-    expect(rows.map((row) => row.version)).toEqual([1, 2, 3, 4, 5])
+    // Asserts what this test's name claims — that migration 5 ran — rather
+    // than the exact set, which every later migration would otherwise break.
+    // tests/main/migrations.test.ts owns the full-list assertion.
+    expect(rows.map((row) => row.version)).toContain(5)
   })
 })
 
