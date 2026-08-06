@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { DrawingColor } from '../../../../../shared/types/drawing'
 import { invoke } from '../../../lib/ipc'
+import { PdfToolIcon } from './pdfToolIcons'
 import type { DrawingsApi } from './useDrawings'
 import { usePdfToolStore, type PdfDrawingTool } from './toolStore'
 import './pdfTools.css'
@@ -15,19 +16,24 @@ interface ToolButton {
   tool: PdfDrawingTool
   label: string
   shortcut?: string
-  glyph: string
+  icon: JSX.Element
 }
 
 const TOOLS: readonly ToolButton[] = [
-  { tool: 'select', label: '선택', shortcut: 'V', glyph: '↖' },
-  { tool: 'pen', label: '펜', shortcut: 'P', glyph: '✎' },
-  { tool: 'highlighter', label: '형광펜', shortcut: 'H', glyph: '▰' },
-  { tool: 'eraser', label: '지우개', shortcut: 'E', glyph: '◇' },
-  { tool: 'text', label: '텍스트', shortcut: 'T', glyph: 'T' },
-  { tool: 'rect', label: '사각형', shortcut: 'R', glyph: '□' },
-  { tool: 'ellipse', label: '타원', shortcut: 'O', glyph: '○' },
-  { tool: 'arrow', label: '화살표', glyph: '→' },
-  { tool: 'line', label: '직선', glyph: '╱' }
+  { tool: 'select', label: '선택', shortcut: 'V', icon: <PdfToolIcon name="select" /> },
+  { tool: 'pen', label: '펜', shortcut: 'P', icon: <PdfToolIcon name="pen" /> },
+  {
+    tool: 'highlighter',
+    label: '형광펜',
+    shortcut: 'H',
+    icon: <PdfToolIcon name="highlighter" />
+  },
+  { tool: 'eraser', label: '지우개', shortcut: 'E', icon: <PdfToolIcon name="eraser" /> },
+  { tool: 'text', label: '텍스트', shortcut: 'T', icon: <PdfToolIcon name="text" /> },
+  { tool: 'rect', label: '사각형', shortcut: 'R', icon: <PdfToolIcon name="rect" /> },
+  { tool: 'ellipse', label: '타원', shortcut: 'O', icon: <PdfToolIcon name="ellipse" /> },
+  { tool: 'arrow', label: '화살표', icon: <PdfToolIcon name="arrow" /> },
+  { tool: 'line', label: '직선', icon: <PdfToolIcon name="line" /> }
 ]
 
 const COLORS: readonly DrawingColor[] = [
@@ -107,7 +113,7 @@ export function PdfToolRail({
 
   return (
     <div className="pdf-tool-rail" role="group" aria-label="자유 필기 도구">
-      <div className="pdf-tool-rail__tools">
+      <div className="pdf-tool-rail__group pdf-tool-rail__tools">
         {TOOLS.map((entry) => (
           <button
             key={entry.tool}
@@ -119,12 +125,16 @@ export function PdfToolRail({
             title={`${entry.label}${entry.shortcut === undefined ? '' : ` (${entry.shortcut})`}`}
             onClick={() => setActiveTool(entry.tool)}
           >
-            <span aria-hidden="true">{entry.glyph}</span>
+            {entry.icon}
           </button>
         ))}
       </div>
 
-      <div className="pdf-tool-rail__palette" aria-label="필기 색상">
+      <div
+        className="pdf-tool-rail__group pdf-tool-rail__palette"
+        role="group"
+        aria-label="필기 색상"
+      >
         {COLORS.map((entry) => (
           <button
             key={entry}
@@ -140,32 +150,34 @@ export function PdfToolRail({
         ))}
       </div>
 
-      <label className="pdf-tool-rail__range" title="선 굵기">
-        <span aria-hidden="true">●</span>
-        <input
-          type="range"
-          min="0.001"
-          max="0.025"
-          step="0.001"
-          value={width}
-          aria-label="선 굵기"
-          onChange={(event) => setWidth(Number(event.target.value))}
-        />
-      </label>
-      <label className="pdf-tool-rail__range" title="불투명도">
-        <span aria-hidden="true">◐</span>
-        <input
-          type="range"
-          min="0.1"
-          max="1"
-          step="0.05"
-          value={opacity}
-          aria-label="불투명도"
-          onChange={(event) => setOpacity(Number(event.target.value))}
-        />
-      </label>
+      <div className="pdf-tool-rail__group pdf-tool-rail__settings">
+        <label className="pdf-tool-rail__range" title="선 굵기">
+          <PdfToolIcon name="lineWidth" />
+          <input
+            type="range"
+            min="0.001"
+            max="0.025"
+            step="0.001"
+            value={width}
+            aria-label="선 굵기"
+            onChange={(event) => setWidth(Number(event.target.value))}
+          />
+        </label>
+        <label className="pdf-tool-rail__range" title="불투명도">
+          <PdfToolIcon name="opacity" />
+          <input
+            type="range"
+            min="0.1"
+            max="1"
+            step="0.05"
+            value={opacity}
+            aria-label="불투명도"
+            onChange={(event) => setOpacity(Number(event.target.value))}
+          />
+        </label>
+      </div>
 
-      <div className="pdf-tool-rail__history">
+      <div className="pdf-tool-rail__group pdf-tool-rail__history">
         <button
           type="button"
           className="pdf-tool-rail__button"
@@ -174,7 +186,7 @@ export function PdfToolRail({
           disabled={!drawingsApi.canUndo || drawingsApi.historyBusy}
           onClick={() => void drawingsApi.undo()}
         >
-          <span aria-hidden="true">↶</span>
+          <PdfToolIcon name="undo" />
         </button>
         <button
           type="button"
@@ -184,24 +196,32 @@ export function PdfToolRail({
           disabled={!drawingsApi.canRedo || drawingsApi.historyBusy}
           onClick={() => void drawingsApi.redo()}
         >
-          <span aria-hidden="true">↷</span>
+          <PdfToolIcon name="redo" />
         </button>
       </div>
 
-      <button
-        type="button"
-        className="pdf-tool-rail__export"
-        disabled={exporting}
-        onClick={() => void exportPdf()}
-      >
-        {exporting ? '내보내는 중…' : '주석 포함 내보내기'}
-      </button>
+      <div className="pdf-tool-rail__group pdf-tool-rail__export-group">
+        <button
+          type="button"
+          className="pdf-tool-rail__button pdf-tool-rail__export"
+          aria-label={exporting ? '주석 포함 PDF 내보내는 중' : '주석 포함 PDF 내보내기'}
+          title={exporting ? '주석 포함 PDF 내보내는 중' : '주석 포함 PDF 내보내기'}
+          disabled={exporting}
+          onClick={() => void exportPdf()}
+        >
+          <PdfToolIcon name="export" />
+        </button>
 
-      {(drawingsApi.error ?? exportMessage) !== null && (
-        <span className="pdf-tool-rail__status" role="status" title={drawingsApi.error ?? exportMessage ?? undefined}>
-          {drawingsApi.error ?? exportMessage}
-        </span>
-      )}
+        {(drawingsApi.error ?? exportMessage) !== null && (
+          <span
+            className="pdf-tool-rail__status"
+            role="status"
+            title={drawingsApi.error ?? exportMessage ?? undefined}
+          >
+            {drawingsApi.error ?? exportMessage}
+          </span>
+        )}
+      </div>
     </div>
   )
 }

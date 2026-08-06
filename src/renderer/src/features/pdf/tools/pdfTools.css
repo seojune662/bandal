@@ -5,27 +5,33 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+  padding-inline: var(--space-2);
   overflow-x: auto;
-  scrollbar-width: none;
+  overscroll-behavior-inline: contain;
+  border-inline: 1px solid var(--border-subtle);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 .pdf-tool-rail::-webkit-scrollbar {
-  display: none;
+  height: var(--space-1);
 }
 
-.pdf-tool-rail__tools,
-.pdf-tool-rail__palette,
-.pdf-tool-rail__history {
+.pdf-tool-rail::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-pill);
+}
+
+.pdf-tool-rail__group {
   display: flex;
   align-items: center;
   gap: var(--space-1);
   flex: 0 0 auto;
 }
 
-.pdf-tool-rail__tools,
-.pdf-tool-rail__history {
-  padding-inline: var(--space-1);
-  border-inline: 1px solid var(--border-subtle);
+.pdf-tool-rail__group + .pdf-tool-rail__group {
+  padding-inline-start: var(--space-2);
+  border-inline-start: 1px solid var(--border-subtle);
 }
 
 .pdf-tool-rail__button {
@@ -34,8 +40,8 @@
   flex: 0 0 auto;
   width: calc(var(--icon-button-size) - var(--space-1));
   height: calc(var(--icon-button-size) - var(--space-2));
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
+  font-size: var(--icon-size);
+  line-height: 1;
   color: var(--text-muted);
   border-radius: var(--radius-sm);
   transition:
@@ -115,8 +121,8 @@
 }
 
 .pdf-tool-rail__swatch[data-selected='true'] {
-  box-shadow: 0 0 0 2px var(--accent-muted);
-  outline: 1px solid var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
 }
 
 .pdf-tool-rail__range {
@@ -128,21 +134,19 @@
   color: var(--text-muted);
 }
 
+.pdf-tool-rail__range > svg {
+  flex: 0 0 auto;
+  font-size: var(--icon-size-sm);
+}
+
 .pdf-tool-rail__range input {
   width: var(--space-8);
   accent-color: var(--accent);
 }
 
 .pdf-tool-rail__export {
-  flex: 0 0 auto;
-  height: calc(var(--icon-button-size) - var(--space-2));
-  padding-inline: var(--space-2);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  white-space: nowrap;
   color: var(--accent);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
 }
 
 .pdf-tool-rail__export:hover,
@@ -156,12 +160,9 @@
 }
 
 .pdf-tool-rail__status {
-  max-width: calc(var(--space-8) * 2);
-  overflow: hidden;
   flex: 0 0 auto;
   font-size: var(--text-xs);
   color: var(--text-muted);
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
