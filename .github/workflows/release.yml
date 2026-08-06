@@ -162,14 +162,26 @@ jobs:
       # missing. Assert the inlining actually happened so it can never ship
       # quietly again. Never prints the values.
       - name: Assert the Supabase config was inlined
+        env:
+          MAIN_VITE_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
         run: |
+          # Exact match against the secret, not a /supabase\.co/ substring.
+          # @supabase/supabase-js ships ~200 placeholder URLs of its own
+          # (xyzcompany.supabase.co, example.supabase.co, ...), so a substring
+          # test can pass on a build whose real config is empty. Actions masks
+          # the value in logs, and nothing is printed either way.
           node -e "
-            const s = require('fs').readFileSync('out/main/index.js','utf8');
-            if (!/supabase\.co/.test(s)) {
-              console.error('::error::Supabase config was NOT inlined - 함께하기 would be absent from this build. Check the env block on the pnpm build step.');
+            const url = (process.env.MAIN_VITE_SUPABASE_URL || '').trim();
+            if (url === '') {
+              console.error('::error::secret MAIN_VITE_SUPABASE_URL is empty - 함께하기 would be absent from this build.');
               process.exit(1);
             }
-            console.log('Supabase config inlined.');
+            const s = require('fs').readFileSync('out/main/index.js','utf8');
+            if (!s.includes(url)) {
+              console.error('::error::the configured Supabase URL is not in out/main/index.js - check the env block on the pnpm build step.');
+              process.exit(1);
+            }
+            console.log('Supabase config inlined (exact match).');
           "
 
       # --- macOS signing -------------------------------------------------
