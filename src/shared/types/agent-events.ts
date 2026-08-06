@@ -6,6 +6,8 @@
  * This union is FROZEN for M1+ workstreams — extend, don't mutate.
  */
 
+import type { ChatAttachment } from './chat'
+
 export type AgentProvider = 'claude-code' | 'codex'
 
 export type AgentErrorCode =
@@ -199,7 +201,7 @@ export type Unsubscribe = () => void
 export interface AgentSession {
   /** Resolves once the CLI reports its session id. */
   readonly sessionId: Promise<string>
-  sendMessage(content: string): void
+  sendMessage(content: string, attachments?: readonly ChatAttachment[]): void
   /** Event stream: consume as an async iterable or subscribe with on(). */
   events: AsyncIterable<AgentEvent>
   on(cb: (event: AgentEvent) => void): Unsubscribe

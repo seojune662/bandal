@@ -167,6 +167,33 @@ export const migrations: Migration[] = [
          );`
       )
     }
+  },
+  {
+    // [M9] Free-form PDF markup (pen / highlighter / shapes / text boxes).
+    // Kept out of `annotations` on purpose: that table anchors to extracted
+    // text so it can detect drift, and drawings have no text to anchor to.
+    // All geometry in data_json is normalized 0..1 against the page box, so
+    // zoom and DPI changes never need a migration.
+    version: 6,
+    name: 'pdf-drawings',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS pdf_drawings (
+           id         TEXT PRIMARY KEY,
+           course_id  TEXT NOT NULL REFERENCES courses(id),
+           rel_path   TEXT NOT NULL,
+           page       INTEGER NOT NULL,
+           kind       TEXT NOT NULL,
+           data_json  TEXT NOT NULL,
+           style_json TEXT NOT NULL,
+           created_at TEXT NOT NULL,
+           updated_at TEXT NOT NULL,
+           deleted_at TEXT
+         );
+         CREATE INDEX IF NOT EXISTS idx_pdf_drawings_file_page
+           ON pdf_drawings (course_id, rel_path, page) WHERE deleted_at IS NULL;`
+      )
+    }
   }
 ]
 

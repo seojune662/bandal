@@ -48,9 +48,30 @@ export interface ChatOpenResult {
   availability: AgentAvailability
 }
 
+/**
+ * An image pasted or dropped into the composer. Sent inline to the CLI as a
+ * base64 content block and persisted inside the user text block's payload
+ * (`images: ChatAttachment[]`) — no new message_blocks kind, no migration.
+ */
+export interface ChatAttachment {
+  /** e.g. 'image/png'. Only image/* is accepted. */
+  mediaType: string
+  /** Raw base64, WITHOUT the `data:...;base64,` prefix. */
+  dataBase64: string
+}
+
 export interface ChatSendInput {
   courseId: string
   content: string
+  attachments?: ChatAttachment[]
+}
+
+/** One model offered by the CLI's `list_models` probe. */
+export interface AgentModelOption {
+  id: string
+  displayName: string
+  /** True for the CLI's own default when no --model is passed. */
+  isDefault: boolean
 }
 
 export interface ChatTurnSummary {

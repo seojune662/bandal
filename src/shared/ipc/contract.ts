@@ -45,7 +45,18 @@ import type {
   CreateCourseLinkInput,
   UpdateCourseLinkInput
 } from '../types/courseLink'
-import type { ChatOpenResult, ChatSendInput } from '../types/chat'
+import type {
+  AgentModelOption,
+  ChatOpenResult,
+  ChatSendInput
+} from '../types/chat'
+import type {
+  CreateDrawingInput,
+  Drawing,
+  ExportAnnotatedPdfInput,
+  ExportAnnotatedPdfResult,
+  UpdateDrawingInput
+} from '../types/drawing'
 import type {
   AgentAvailability,
   AgentProvider,
@@ -269,11 +280,47 @@ export interface IpcContract {
     req: { courseId: string }
     res: { ok: true }
   }
+  /**
+   * Pins the model for a course. Drops the warm CLI process so the next send
+   * respawns with `--model`; history and the resumable CLI session id survive.
+   */
+  'chat:setModel': {
+    req: { courseId: string; model: string }
+    res: { ok: true }
+  }
 
   // -- agent ----------------------------------------------------------------
   'agent:availability': {
     req: { provider: AgentProvider }
     res: AgentAvailability
+  }
+  /** Models the installed CLI reports. Cached in main for the process lifetime. */
+  'agent:models': {
+    req: { provider: AgentProvider }
+    res: { models: AgentModelOption[] }
+  }
+
+  // -- pdf drawings (free-form markup: pen, shapes, text boxes) --------------
+  'drawings:listForFile': {
+    req: { courseId: string; relPath: string }
+    res: Drawing[]
+  }
+  'drawings:create': {
+    req: CreateDrawingInput
+    res: Drawing
+  }
+  'drawings:update': {
+    req: UpdateDrawingInput
+    res: Drawing
+  }
+  'drawings:delete': {
+    req: { ids: string[] }
+    res: { ok: true }
+  }
+  /** Burns highlights + drawings into a NEW pdf; the original is never touched. */
+  'pdf:exportAnnotated': {
+    req: ExportAnnotatedPdfInput
+    res: ExportAnnotatedPdfResult
   }
 
   // -- settings -------------------------------------------------------------
