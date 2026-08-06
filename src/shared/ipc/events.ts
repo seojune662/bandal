@@ -18,6 +18,17 @@ export interface ChatEventBatch {
   events: AgentEvent[]
 }
 
+/**
+ * Progress lines from a provider CLI installer (`agent:install`). `done`
+ * marks the terminal frame; `ok` is only meaningful once done is true.
+ */
+export interface AgentInstallProgress {
+  provider: string
+  line: string
+  done: boolean
+  ok: boolean
+}
+
 /** Fired when the course folder changed on disk (watcher). */
 export interface MaterialsChanged {
   courseId: string
@@ -86,6 +97,8 @@ export interface PushEvents {
    * workspace toast and the Settings panel cannot disagree.
    */
   'update:changed': UpdateStatus
+  // -- agent setup ----------------------------------------------------------
+  'agent:install-progress': AgentInstallProgress
 }
 
 export type PushChannel = keyof PushEvents

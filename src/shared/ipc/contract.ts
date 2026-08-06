@@ -58,6 +58,12 @@ import type {
   UpdateDrawingInput
 } from '../types/drawing'
 import type {
+  CreateFavoriteInput,
+  Favorite,
+  RenameFavoriteInput,
+  ReorderFavoritesInput
+} from '../types/favorite'
+import type {
   AgentAvailability,
   AgentProvider,
   PermissionResponse
@@ -221,6 +227,21 @@ export interface IpcContract {
     req: { courseId: string; relPath: string }
     res: { relPath: string }
   }
+  /**
+   * Writes raw bytes into the course folder — the clipboard-paste path
+   * (⌘V of an image or text onto the materials rail). `fileName` is a
+   * basename; collisions get a `-2` suffix rather than overwriting.
+   */
+  'materials:writeFile': {
+    req: {
+      courseId: string
+      dirRelPath: string
+      fileName: string
+      encoding: 'utf8' | 'base64'
+      data: string
+    }
+    res: { relPath: string }
+  }
   'materials:createFolder': {
     req: { courseId: string; dirRelPath: string; name: string }
     res: { relPath: string }
@@ -345,6 +366,57 @@ export interface IpcContract {
   'pdf:exportAnnotated': {
     req: ExportAnnotatedPdfInput
     res: ExportAnnotatedPdfResult
+  }
+
+  // -- favorites (left-rail pins; any TabDescriptor) ------------------------
+  'favorites:list': {
+    req: { courseId: string | null }
+    res: Favorite[]
+  }
+  'favorites:add': {
+    req: CreateFavoriteInput
+    res: Favorite
+  }
+  'favorites:rename': {
+    req: RenameFavoriteInput
+    res: Favorite
+  }
+  'favorites:remove': {
+    req: { id: string }
+    res: { ok: true }
+  }
+  'favorites:reorder': {
+    req: ReorderFavoritesInput
+    res: { ok: true }
+  }
+
+  // -- agent setup ----------------------------------------------------------
+  /** The exact shell command `agent:install` would run, for display first. */
+  'agent:installCommand': {
+    req: { provider: AgentProvider }
+    res: { command: string; supported: boolean }
+  }
+  /**
+   * Runs the provider's official installer. Never called implicitly — the UI
+   * shows the command from `agent:installCommand` and waits for a click,
+   * because this mutates the user's machine outside the app sandbox.
+   * Progress streams via the `agent:install-progress` push event.
+   */
+  'agent:install': {
+    req: { provider: AgentProvider }
+    res: { ok: boolean; message: string }
+  }
+
+  // -- browser session ------------------------------------------------------
+  /** Signed-in sites in the browsing partition, for the settings list. */
+  'browser:sessionSites': {
+    req: Record<string, never>
+    res: { sites: { origin: string; cookieCount: number }[] }
+  }
+  /** Forgets one origin's cookies, or all of them when origin is null. */
+  'browser:clearSession': {
+    req: { origin: string | null }
+    res: { ok: true }
   }
 
   // -- settings -------------------------------------------------------------

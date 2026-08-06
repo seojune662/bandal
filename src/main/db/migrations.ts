@@ -194,6 +194,31 @@ export const migrations: Migration[] = [
            ON pdf_drawings (course_id, rel_path, page) WHERE deleted_at IS NULL;`
       )
     }
+  },
+  {
+    // [M10] Favorites: left-rail pins for ANY tab, superseding course_links
+    // (which only ever held LMS URLs). descriptor_json is the same
+    // TabDescriptor the dockview layout persists, so opening a favorite is
+    // just openTab(descriptor) — no second code path to keep in sync.
+    // course_id is nullable: NULL pins app-wide instead of to one course.
+    version: 7,
+    name: 'favorites',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS favorites (
+           id              TEXT PRIMARY KEY,
+           course_id       TEXT REFERENCES courses(id) ON DELETE CASCADE,
+           label           TEXT NOT NULL,
+           descriptor_json TEXT NOT NULL,
+           sort_order      INTEGER NOT NULL DEFAULT 0,
+           created_at      TEXT NOT NULL,
+           updated_at      TEXT NOT NULL,
+           deleted_at      TEXT
+         );
+         CREATE INDEX IF NOT EXISTS idx_favorites_course
+           ON favorites (course_id, sort_order) WHERE deleted_at IS NULL;`
+      )
+    }
   }
 ]
 

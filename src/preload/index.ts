@@ -45,7 +45,8 @@ const PUSH_CHANNELS: readonly PushChannel[] = [
   'group:event-batch',
   'groups:invalidated',
   // -- auto update ----------------------------------------------------------
-  'update:changed'
+  'update:changed',
+  'agent:install-progress'
 ]
 
 const bridge: BandalBridge = {
