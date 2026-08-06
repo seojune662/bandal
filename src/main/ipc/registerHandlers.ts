@@ -37,6 +37,7 @@ import {
   killAllClaudeProcessesSync
 } from '../features/agent'
 import { createBrowserSessionStore } from '../features/browser'
+import { createFavoritesRepo } from '../features/favorites'
 import { createGroupRuntime } from '../features/group'
 import { isAuthCallbackUrl } from '../features/group/authCallbackUrl'
 import { createUpdaterRuntime } from '../features/updater'
@@ -182,6 +183,7 @@ export function registerHandlers(): IpcRouter {
   handle('materials:import', (req) => materialsRepo.import(req.courseId, req.paths))
   handle('materials:reveal', (req) => materialsRepo.reveal(req.courseId, req.relPath))
   handle('materials:readFile', (req) => materialsRepo.readFile(req.courseId, req.relPath))
+  handle('materials:writeFile', (req) => materialsRepo.writeFile(req))
   handle('materials:rename', (req) => materialsRepo.rename(req))
   handle('materials:delete', (req) => materialsRepo.softDelete(req))
   handle('materials:duplicate', (req) => materialsRepo.duplicate(req))
@@ -302,6 +304,20 @@ export function registerHandlers(): IpcRouter {
       : { installed: false, loggedIn: false }
   )
   handle('agent:models', (req) => getAgentModels(req.provider))
+
+  // -- favorites (left-rail pins for any TabDescriptor) ---------------------
+  const favoritesRepo = createFavoritesRepo(db)
+  handle('favorites:list', (req) => favoritesRepo.list(req.courseId))
+  handle('favorites:add', (req) => favoritesRepo.add(req))
+  handle('favorites:rename', (req) => favoritesRepo.rename(req))
+  handle('favorites:remove', (req) => {
+    favoritesRepo.softDelete(req.id)
+    return OK
+  })
+  handle('favorites:reorder', (req) => {
+    favoritesRepo.reorder(req)
+    return OK
+  })
 
   // -- browser session ------------------------------------------------------
   // Restore / auto-persist / before-quit are already wired inside

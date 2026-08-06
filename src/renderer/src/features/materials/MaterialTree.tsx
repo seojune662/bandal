@@ -122,7 +122,9 @@ interface TreeNodeProps {
   expandedPaths: Record<string, boolean>
   editingRelPath: string | null
   selectedRelPath: string | null
+  pasteTargetDirRelPath: string | null
   onToggleFolder: (relPath: string) => void
+  onSelect: (node: MaterialNode) => void
   onContextMenu: (event: React.MouseEvent, node: MaterialNode) => void
   onCancelRename: () => void
   onRename: (node: MaterialNode, newName: string) => Promise<string | null>
@@ -134,7 +136,9 @@ function TreeNode({
   expandedPaths,
   editingRelPath,
   selectedRelPath,
+  pasteTargetDirRelPath,
   onToggleFolder,
+  onSelect,
   onContextMenu,
   onCancelRename,
   onRename
@@ -176,6 +180,12 @@ function TreeNode({
           className="material-row"
           data-kind={node.kind}
           data-selected={selectedRelPath === node.relPath || undefined}
+          data-paste-target={
+            isDirectory && pasteTargetDirRelPath === node.relPath
+              ? true
+              : undefined
+          }
+          data-material-path={node.relPath}
           style={rowStyle}
         >
           {rowContents}
@@ -187,9 +197,17 @@ function TreeNode({
           data-material-row="true"
           data-kind={node.kind}
           data-selected={selectedRelPath === node.relPath || undefined}
+          data-paste-target={
+            isDirectory && pasteTargetDirRelPath === node.relPath
+              ? true
+              : undefined
+          }
+          data-material-path={node.relPath}
           style={rowStyle}
           title={rowTitle(node.kind, node.relPath)}
+          onFocus={() => onSelect(node)}
           onClick={() => {
+            onSelect(node)
             if (isDirectory) onToggleFolder(node.relPath)
             else if (node.kind !== 'dir') {
               openMaterialInWorkspace(node.kind, node.relPath)
@@ -222,7 +240,9 @@ function TreeNode({
               expandedPaths={expandedPaths}
               editingRelPath={editingRelPath}
               selectedRelPath={selectedRelPath}
+              pasteTargetDirRelPath={pasteTargetDirRelPath}
               onToggleFolder={onToggleFolder}
+              onSelect={onSelect}
               onContextMenu={onContextMenu}
               onCancelRename={onCancelRename}
               onRename={onRename}
@@ -239,7 +259,9 @@ interface MaterialTreeProps {
   expandedPaths: Record<string, boolean>
   editingRelPath: string | null
   selectedRelPath: string | null
+  pasteTargetDirRelPath: string | null
   onToggleFolder: (relPath: string) => void
+  onSelect: (node: MaterialNode) => void
   onContextMenu: (event: React.MouseEvent, node: MaterialNode) => void
   onCancelRename: () => void
   onRename: (node: MaterialNode, newName: string) => Promise<string | null>
@@ -250,7 +272,9 @@ export function MaterialTree({
   expandedPaths,
   editingRelPath,
   selectedRelPath,
+  pasteTargetDirRelPath,
   onToggleFolder,
+  onSelect,
   onContextMenu,
   onCancelRename,
   onRename
@@ -265,7 +289,9 @@ export function MaterialTree({
           expandedPaths={expandedPaths}
           editingRelPath={editingRelPath}
           selectedRelPath={selectedRelPath}
+          pasteTargetDirRelPath={pasteTargetDirRelPath}
           onToggleFolder={onToggleFolder}
+          onSelect={onSelect}
           onContextMenu={onContextMenu}
           onCancelRename={onCancelRename}
           onRename={onRename}
@@ -278,12 +304,14 @@ export function MaterialTree({
 interface MaterialSearchResultsProps {
   results: MaterialSearchHit[]
   selectedRelPath: string | null
+  onSelect: (node: MaterialNode) => void
   onContextMenu: (event: React.MouseEvent, node: MaterialNode) => void
 }
 
 export function MaterialSearchResults({
   results,
   selectedRelPath,
+  onSelect,
   onContextMenu
 }: MaterialSearchResultsProps): JSX.Element {
   return (
@@ -302,8 +330,13 @@ export function MaterialSearchResults({
               data-material-row="true"
               data-kind={result.kind}
               data-selected={selectedRelPath === result.relPath || undefined}
+              data-material-path={result.relPath}
               title={rowTitle(result.kind, result.relPath)}
-              onClick={() => openMaterialInWorkspace(result.kind, result.relPath)}
+              onFocus={() => onSelect(node)}
+              onClick={() => {
+                onSelect(node)
+                openMaterialInWorkspace(result.kind, result.relPath)
+              }}
               onContextMenu={(event) => onContextMenu(event, node)}
               onKeyDown={(event) => {
                 if (event.key === 'ArrowDown') focusAdjacentRow(event, 1)

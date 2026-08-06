@@ -10,6 +10,11 @@ import { CourseLinks } from '../university/CourseLinks'
 import { UniversityShortcuts } from '../university/UniversityShortcuts'
 import { TabKindIcon } from '../workspace/workspaceIcons'
 import { CourseFormDialog, DeleteCourseDialog } from './CourseDialogs'
+import { FavoritesSection } from './FavoritesSection'
+import {
+  persistCollapsedCourseIds,
+  readCollapsedCourseIds
+} from './courseCollapse'
 import { folderProblemMessage } from './folderMessages'
 import { normalizeCourseColor } from './courseColors'
 import './courses.css'
@@ -83,6 +88,9 @@ export function CourseSidebar(): JSX.Element {
   const [deleteTarget, setDeleteTarget] = useState<Course | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [addMenu, setAddMenu] = useState<AddMenuState | null>(null)
+  const [collapsedCourseIds, setCollapsedCourseIds] = useState(
+    readCollapsedCourseIds
+  )
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const addMenuRef = useRef<HTMLDivElement>(null)
 
@@ -99,6 +107,19 @@ export function CourseSidebar(): JSX.Element {
   const closeAddMenu = useCallback(() => setAddMenu(null), [])
   useDismissableMenu(contextMenu !== null, contextMenuRef, closeContextMenu)
   useDismissableMenu(addMenu !== null, addMenuRef, closeAddMenu)
+
+  const setCourseExpanded = useCallback(
+    (courseId: string, expanded: boolean): void => {
+      setCollapsedCourseIds((current) => {
+        const next = new Set(current)
+        if (expanded) next.delete(courseId)
+        else next.add(courseId)
+        persistCollapsedCourseIds(next)
+        return next
+      })
+    },
+    []
+  )
 
   const handleContextMenu = (event: React.MouseEvent, course: Course): void => {
     event.preventDefault()
@@ -273,34 +294,57 @@ export function CourseSidebar(): JSX.Element {
             {visibleCourses.map((course) => {
               const selected = course.id === selectedCourseId
               const pending = course.id === pendingCourseId
+              const expanded = selected && !collapsedCourseIds.has(course.id)
               return (
                 <li key={course.id}>
-                  <button
-                    type="button"
+                  <div
                     className="course-row"
                     data-selected={selected}
                     data-missing={course.missing || undefined}
-                    aria-current={selected ? 'page' : undefined}
-                    disabled={pending}
-                    onClick={() => selectCourse(course.id)}
                     onContextMenu={(event) => handleContextMenu(event, course)}
                   >
-                    <span
-                      className="course-dot"
-                      data-course-color={normalizeCourseColor(course.color)}
-                    />
-                    <span className="course-row__name">{course.name}</span>
-                    {course.missing ? (
-                      <span className="course-row__badge">연결 끊김</span>
-                    ) : (
-                      <span className="course-row__hint" aria-hidden="true">
-                        ···
-                      </span>
-                    )}
-                  </button>
+                    <button
+                      type="button"
+                      className="course-row__toggle"
+                      aria-label={`${course.name} ${expanded ? '접기' : '펼치기'}`}
+                      aria-expanded={expanded}
+                      disabled={pending}
+                      onClick={() => {
+                        if (!selected) selectCourse(course.id)
+                        setCourseExpanded(course.id, !expanded)
+                      }}
+                    >
+                      <Icon name="chevronRight" />
+                    </button>
+                    <button
+                      type="button"
+                      className="course-row__select"
+                      aria-current={selected ? 'page' : undefined}
+                      disabled={pending}
+                      onClick={() => selectCourse(course.id)}
+                    >
+                      <span
+                        className="course-dot"
+                        data-course-color={normalizeCourseColor(course.color)}
+                      />
+                      <span className="course-row__name">{course.name}</span>
+                      {course.missing ? (
+                        <span className="course-row__badge">연결 끊김</span>
+                      ) : (
+                        <span className="course-row__hint" aria-hidden="true">
+                          ···
+                        </span>
+                      )}
+                    </button>
+                  </div>
                   {/* [M8] Per-course shortcuts pin under the open course only —
                       showing them for every row would bury the course list. */}
-                  {selected && <CourseLinks courseId={course.id} />}
+                  {expanded && (
+                    <div className="course-row__children">
+                      <CourseLinks courseId={course.id} />
+                      <FavoritesSection courseId={course.id} />
+                    </div>
+                  )}
                 </li>
               )
             })}

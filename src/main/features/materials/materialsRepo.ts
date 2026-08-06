@@ -12,7 +12,8 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
-  statSync
+  statSync,
+  writeFileSync
 } from 'node:fs'
 import { basename, extname, isAbsolute, join, posix } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -51,6 +52,13 @@ export interface MaterialsRepo {
     dirRelPath: string
     name: string
   }): { relPath: string }
+  writeFile(input: {
+    courseId: string
+    dirRelPath: string
+    fileName: string
+    encoding: 'utf8' | 'base64'
+    data: string
+  }): { relPath: string }
 }
 
 export interface MaterialsRepoDeps {
@@ -72,6 +80,8 @@ const TEXT_EXTENSIONS = new Set([
 ])
 /** Files larger than this are refused by readFile (base64 over IPC). */
 const MAX_READ_BYTES = 64 * 1024 * 1024
+/** Clipboard payloads are copied over IPC, so cap their decoded size. */
+const MAX_WRITE_BYTES = 50 * 1024 * 1024
 
 export function kindForFile(fileName: string): MaterialKind {
   const ext = extname(fileName).toLowerCase()
@@ -144,6 +154,44 @@ function unusedTargetName(dir: string, fileName: string): string {
     }
   }
   throw new ValidationError(`could not find a free name for "${fileName}"`)
+}
+
+/** Picks `name-2.ext`, `name-3.ext`, …, matching duplicate's convention. */
+function unusedDuplicateName(dir: string, fileName: string): string {
+  const extension = extname(fileName)
+  const stem = extension === '' ? fileName : basename(fileName, extension)
+  for (let number = 2; number <= 1000; number += 1) {
+    const candidate = `${stem}-${number}${extension}`
+    if (!existsSync(join(dir, candidate))) return candidate
+  }
+  throw new ValidationError(`could not find a free name for "${fileName}"`)
+}
+
+function decodeWriteData(
+  encoding: unknown,
+  data: unknown
+): Buffer {
+  if (encoding !== 'utf8' && encoding !== 'base64') {
+    throw new ValidationError('encoding must be "utf8" or "base64"')
+  }
+  if (typeof data !== 'string') {
+    throw new ValidationError('data must be a string')
+  }
+
+  const byteLength = Buffer.byteLength(data, encoding)
+  if (byteLength > MAX_WRITE_BYTES) {
+    throw new ValidationError(
+      `material is too large to write over IPC (${byteLength} bytes; maximum ${MAX_WRITE_BYTES} bytes)`
+    )
+  }
+  const bytes = Buffer.from(data, encoding)
+  // Keep the post-decode check too: malformed base64 must never bypass the cap.
+  if (bytes.byteLength > MAX_WRITE_BYTES) {
+    throw new ValidationError(
+      `material is too large to write over IPC (${bytes.byteLength} bytes; maximum ${MAX_WRITE_BYTES} bytes)`
+    )
+  }
+  return bytes
 }
 
 /**
@@ -369,30 +417,27 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       )
       const sourceKind = assertFileOrDirectory(sourceAbs, input.relPath)
       const sourceName = posix.basename(input.relPath)
-      const extension = sourceKind === 'file' ? extname(sourceName) : ''
-      const stem = extension === '' ? sourceName : basename(sourceName, extension)
       const parentRelPath = posix.dirname(input.relPath)
-
-      for (let n = 2; n <= 1000; n += 1) {
-        const candidateName = `${stem}-${n}${extension}`
-        const candidateRelPath =
-          parentRelPath === '.'
-            ? candidateName
-            : posix.join(parentRelPath, candidateName)
-        const candidateAbs = resolveInside(folder, candidateRelPath)
-        if (existsSync(candidateAbs)) continue
-        if (sourceKind === 'dir') {
-          cpSync(sourceAbs, candidateAbs, {
-            recursive: true,
-            errorOnExist: true,
-            force: false
-          })
-        } else {
-          copyFileSync(sourceAbs, candidateAbs)
-        }
-        return { relPath: candidateRelPath }
+      const parentAbs =
+        parentRelPath === '.'
+          ? folder
+          : resolveInside(folder, parentRelPath)
+      const candidateName = unusedDuplicateName(parentAbs, sourceName)
+      const candidateRelPath =
+        parentRelPath === '.'
+          ? candidateName
+          : posix.join(parentRelPath, candidateName)
+      const candidateAbs = resolveInside(folder, candidateRelPath)
+      if (sourceKind === 'dir') {
+        cpSync(sourceAbs, candidateAbs, {
+          recursive: true,
+          errorOnExist: true,
+          force: false
+        })
+      } else {
+        copyFileSync(sourceAbs, candidateAbs)
       }
-      throw new ValidationError(`could not find a free name for "${sourceName}"`)
+      return { relPath: candidateRelPath }
     },
 
     createFolder(input) {
@@ -412,6 +457,33 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         throw new ConflictError(`material "${relPath}" already exists`)
       }
       mkdirSync(abs)
+      return { relPath }
+    },
+
+    writeFile(input) {
+      const { folder } = requireCourseFolder(input.courseId)
+      if (typeof input.dirRelPath !== 'string') {
+        throw new ValidationError('dirRelPath must be a string')
+      }
+      const parentAbs = resolveInside(folder, input.dirRelPath, { allowRoot: true })
+      if (!existsSync(parentAbs) || !lstatSync(parentAbs).isDirectory()) {
+        throw new NotFoundError('material directory', input.dirRelPath)
+      }
+
+      const requestedName = requireBasename(input.fileName, 'fileName')
+      const requestedRelPath =
+        input.dirRelPath === ''
+          ? requestedName
+          : posix.join(input.dirRelPath, requestedName)
+      const requestedAbs = resolveInside(folder, requestedRelPath)
+      const fileName = existsSync(requestedAbs)
+        ? unusedDuplicateName(parentAbs, requestedName)
+        : requestedName
+      const relPath =
+        input.dirRelPath === '' ? fileName : posix.join(input.dirRelPath, fileName)
+      const abs = resolveInside(folder, relPath)
+      const bytes = decodeWriteData(input.encoding, input.data)
+      writeFileSync(abs, bytes, { flag: 'wx' })
       return { relPath }
     }
   }

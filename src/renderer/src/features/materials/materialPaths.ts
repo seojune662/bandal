@@ -17,6 +17,21 @@ export function targetDirectory(node: MaterialNode | null): string {
   return node.kind === 'dir' ? node.relPath : materialParentPath(node.relPath)
 }
 
+export function findMaterialNode(
+  nodes: MaterialNode[],
+  relPath: string | null
+): MaterialNode | null {
+  if (relPath === null) return null
+  for (const node of nodes) {
+    if (node.relPath === relPath) return node
+    if (node.kind === 'dir') {
+      const child = findMaterialNode(node.children ?? [], relPath)
+      if (child !== null) return child
+    }
+  }
+  return null
+}
+
 /** Joins a POSIX material path to either a POSIX or Windows course folder. */
 export function absoluteMaterialPath(
   courseFolder: string,

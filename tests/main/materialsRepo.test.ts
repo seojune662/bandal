@@ -280,6 +280,96 @@ describe('materialsRepo', () => {
     })
   })
 
+  describe('writeFile', () => {
+    test('writes utf8 and base64 data under a validated directory', () => {
+      expect(
+        repo.writeFile({
+          courseId,
+          dirRelPath: 'notes',
+          fileName: '붙여넣은 텍스트.md',
+          encoding: 'utf8',
+          data: '# 클립보드\n'
+        })
+      ).toEqual({ relPath: 'notes/붙여넣은 텍스트.md' })
+      expect(
+        readFileSync(join(courseFolder, 'notes', '붙여넣은 텍스트.md'), 'utf8')
+      ).toBe('# 클립보드\n')
+
+      expect(
+        repo.writeFile({
+          courseId,
+          dirRelPath: '',
+          fileName: 'clipboard.png',
+          encoding: 'base64',
+          data: Buffer.from('image-bytes').toString('base64')
+        })
+      ).toEqual({ relPath: 'clipboard.png' })
+      expect(readFileSync(join(courseFolder, 'clipboard.png')).toString()).toBe(
+        'image-bytes'
+      )
+    })
+
+    test('never overwrites and shares duplicate -2/-3 collision names', () => {
+      writeFileSync(join(courseFolder, 'capture.png'), 'original')
+
+      expect(
+        repo.writeFile({
+          courseId,
+          dirRelPath: '',
+          fileName: 'capture.png',
+          encoding: 'utf8',
+          data: 'second'
+        })
+      ).toEqual({ relPath: 'capture-2.png' })
+      expect(
+        repo.writeFile({
+          courseId,
+          dirRelPath: '',
+          fileName: 'capture.png',
+          encoding: 'utf8',
+          data: 'third'
+        })
+      ).toEqual({ relPath: 'capture-3.png' })
+      expect(readFileSync(join(courseFolder, 'capture.png'), 'utf8')).toBe('original')
+    })
+
+    test('rejects traversal and non-basename file names before writing', () => {
+      expect(() =>
+        repo.writeFile({
+          courseId,
+          dirRelPath: '../outside',
+          fileName: 'safe.md',
+          encoding: 'utf8',
+          data: 'nope'
+        })
+      ).toThrow(PathTraversalError)
+      expect(() =>
+        repo.writeFile({
+          courseId,
+          dirRelPath: '',
+          fileName: '../outside.md',
+          encoding: 'utf8',
+          data: 'nope'
+        })
+      ).toThrow(ValidationError)
+      expect(existsSync(join(ctx.dir, 'outside.md'))).toBe(false)
+    })
+
+    test('rejects payloads larger than 50MB before writing', () => {
+      const tooLarge = 'x'.repeat(50 * 1024 * 1024 + 1)
+      expect(() =>
+        repo.writeFile({
+          courseId,
+          dirRelPath: '',
+          fileName: 'too-large.md',
+          encoding: 'utf8',
+          data: tooLarge
+        })
+      ).toThrow(/too large.*maximum/i)
+      expect(existsSync(join(courseFolder, 'too-large.md'))).toBe(false)
+    })
+  })
+
   describe('mutation path validation', () => {
     test('rejects traversal, absolute paths, and null bytes before mutations', async () => {
       expect(() =>

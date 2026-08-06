@@ -12,54 +12,9 @@ import type {
   TabKind,
   TabPayloadMap
 } from '../../../../shared/tabs'
-
-export const TAB_KINDS: readonly TabKind[] = [
-  'pdf',
-  'note',
-  'browser',
-  'chat',
-  'board',
-  'group-chat'
-]
-
-export function isTabKind(value: unknown): value is TabKind {
-  return typeof value === 'string' && (TAB_KINDS as string[]).includes(value)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0
-}
-
-/** Hard structural validation of a persisted tab descriptor. */
-export function isTabDescriptor(value: unknown): value is TabDescriptor {
-  if (!isRecord(value) || !isTabKind(value['kind'])) return false
-  const payload = value['payload']
-  if (!isRecord(payload)) return false
-
-  switch (value['kind']) {
-    case 'pdf':
-    case 'note':
-      return (
-        isNonEmptyString(payload['courseId']) &&
-        isNonEmptyString(payload['relPath'])
-      )
-    case 'browser':
-      return (
-        isNonEmptyString(payload['tabId']) &&
-        typeof payload['initialUrl'] === 'string'
-      )
-    case 'chat':
-      return isNonEmptyString(payload['courseId'])
-    case 'board':
-      return true
-    case 'group-chat':
-      return isNonEmptyString(payload['groupId'])
-  }
-}
+// Re-exported so existing renderer imports keep working; the validator itself
+// now lives in shared/ because main validates descriptors too (favorites).
+export { TAB_KINDS, isTabKind, isTabDescriptor } from '../../../../shared/tabs'
 
 /**
  * Identity key == dockview panel id. Two descriptors that should share a

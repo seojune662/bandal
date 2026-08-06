@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Course } from '../../../../shared/types/course'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
@@ -18,13 +18,18 @@ import {
 } from './MaterialsContextMenu'
 import {
   absoluteMaterialPath,
+  findMaterialNode,
   kindForMaterialName,
   materialBaseName,
   materialParentPath,
   targetDirectory,
   unusedFolderName
 } from './materialPaths'
+import { isEditablePasteTarget } from './clipboardPaste'
+import { importDroppedFiles } from './importDrop'
+import { MaterialsIcon } from './materialIcons'
 import { useFileDropTarget } from './useFileDropTarget'
+import { useMaterialsPaste } from './useMaterialsPaste'
 import './materials.css'
 
 const SEARCH_DEBOUNCE_MS = 240
@@ -128,9 +133,13 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     null
   )
   const [editing, setEditing] = useState<EditingState | null>(null)
+  const [selectedRelPath, setSelectedRelPath] = useState<string | null>(null)
+  const [pasteFocused, setPasteFocused] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<MaterialNode | null>(null)
   const [deletePending, setDeletePending] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const sidebarRef = useRef<HTMLElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { isDropActive, dropProps } = useFileDropTarget(course?.id ?? null)
 
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
@@ -160,6 +169,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     setQuery('')
     setContextMenu(null)
     setEditing(null)
+    setSelectedRelPath(null)
     setDeleteTarget(null)
     setDeleteError(null)
     clearSearch()
@@ -208,22 +218,65 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const searching = query.trim().length > 0
   const pendingSearch = isDebouncing || isSearching
 
-  const ensureFolderExpanded = (dirRelPath: string): void => {
+  const ensureFolderExpanded = useCallback((dirRelPath: string): void => {
     if (dirRelPath === '') return
     const materials = useMaterialsStore.getState()
     if (materials.expandedPaths[dirRelPath] !== true) {
       materials.toggleFolder(dirRelPath)
     }
-  }
+  }, [])
 
-  const ensureAncestorsExpanded = (relPath: string): void => {
-    const segments = materialParentPath(relPath).split('/').filter(Boolean)
-    let ancestor = ''
-    for (const segment of segments) {
-      ancestor = ancestor === '' ? segment : `${ancestor}/${segment}`
-      ensureFolderExpanded(ancestor)
-    }
-  }
+  const ensureAncestorsExpanded = useCallback(
+    (relPath: string): void => {
+      const segments = materialParentPath(relPath).split('/').filter(Boolean)
+      let ancestor = ''
+      for (const segment of segments) {
+        ancestor = ancestor === '' ? segment : `${ancestor}/${segment}`
+        ensureFolderExpanded(ancestor)
+      }
+    },
+    [ensureFolderExpanded]
+  )
+
+  const handleCreated = useCallback(
+    (relPaths: string[]): void => {
+      const newest = relPaths.at(-1)
+      if (newest === undefined) return
+      ensureAncestorsExpanded(newest)
+      setSelectedRelPath(newest)
+    },
+    [ensureAncestorsExpanded]
+  )
+
+  const selectedNode = findMaterialNode(tree, selectedRelPath)
+  const pasteDirRelPath = targetDirectory(selectedNode)
+  const pasteDestinationName =
+    pasteDirRelPath === ''
+      ? `${course?.name ?? '과목'} 루트`
+      : `‘${materialBaseName(pasteDirRelPath)}’ 폴더`
+  const { pasteNotice, isPasting, onPaste } = useMaterialsPaste({
+    enabled: pasteFocused,
+    courseId: course !== null && !course.missing ? course.id : null,
+    courseName: course?.name ?? null,
+    dirRelPath: pasteDirRelPath,
+    destinationName: pasteDestinationName,
+    onCreated: handleCreated
+  })
+  const pasteReady = pasteFocused && course !== null && !course.missing
+
+  useEffect(() => {
+    if (selectedRelPath === null) return
+    const frame = window.requestAnimationFrame(() => {
+      const rows = sidebarRef.current?.querySelectorAll<HTMLElement>(
+        '[data-material-path]'
+      )
+      const row = Array.from(rows ?? []).find(
+        (candidate) => candidate.dataset.materialPath === selectedRelPath
+      )
+      row?.scrollIntoView({ block: 'nearest' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [selectedRelPath, tree])
 
   const refreshAfterMutation = async (courseId: string): Promise<void> => {
     await useMaterialsStore.getState().loadTree(courseId)
@@ -237,6 +290,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     event.preventDefault()
     event.stopPropagation()
     setEditing(null)
+    setSelectedRelPath(target?.relPath ?? null)
     setContextMenu({
       target,
       x: event.clientX,
@@ -271,6 +325,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       ensureAncestorsExpanded(created.relPath)
       openMaterialInWorkspace('note', created.relPath)
       await refreshAfterMutation(course.id)
+      setSelectedRelPath(created.relPath)
       setEditing({ relPath: created.relPath, reopenAfterRename: true })
     } catch (createError) {
       console.error('[Bandal] 새 파일을 만들지 못했습니다.', createError)
@@ -291,6 +346,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       })
       ensureAncestorsExpanded(created.relPath)
       await refreshAfterMutation(course.id)
+      setSelectedRelPath(created.relPath)
       setEditing({ relPath: created.relPath, reopenAfterRename: false })
     } catch (createError) {
       console.error('[Bandal] 새 폴더를 만들지 못했습니다.', createError)
@@ -308,6 +364,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       })
       ensureAncestorsExpanded(duplicated.relPath)
       await refreshAfterMutation(course.id)
+      setSelectedRelPath(duplicated.relPath)
       showToast('자료를 복제했어요.')
     } catch (duplicateError) {
       console.error('[Bandal] 자료를 복제하지 못했습니다.', duplicateError)
@@ -355,6 +412,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         editing?.reopenAfterRename === true
       )
       await refreshAfterMutation(course.id)
+      setSelectedRelPath(renamed.relPath)
       setEditing(null)
       return null
     } catch (renameError) {
@@ -376,6 +434,12 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       })
       closeDeletedTabs(course.id, deleteTarget)
       await refreshAfterMutation(course.id)
+      if (
+        selectedRelPath !== null &&
+        pathIsTargetOrChild(selectedRelPath, deleteTarget.relPath)
+      ) {
+        setSelectedRelPath(null)
+      }
       setDeleteTarget(null)
       showToast('휴지통으로 이동했어요.')
     } catch (deleteFailure) {
@@ -387,9 +451,34 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
 
   return (
     <aside
+      ref={sidebarRef}
       className="app-rail app-rail--right"
-      aria-label="자료"
+      role="region"
+      tabIndex={0}
+      aria-label="자료 사이드바. 포커스한 뒤 Command V로 자료 붙여넣기"
       data-drop-active={isDropActive || undefined}
+      data-paste-ready={pasteReady || undefined}
+      data-pasting={isPasting || undefined}
+      onPaste={onPaste}
+      onFocusCapture={(event) => {
+        setPasteFocused(!isEditablePasteTarget(event.target))
+      }}
+      onBlurCapture={(event) => {
+        const next = event.relatedTarget
+        if (!(next instanceof Node) || !event.currentTarget.contains(next)) {
+          setPasteFocused(false)
+        }
+      }}
+      onMouseDown={(event) => {
+        const target = event.target as HTMLElement
+        if (
+          target.closest('button, input, textarea, a, [contenteditable="true"]') ===
+          null
+        ) {
+          setSelectedRelPath(null)
+          event.currentTarget.focus()
+        }
+      }}
       {...dropProps}
     >
       <div className="rail-heading materials-heading">
@@ -405,19 +494,66 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
               {course.name}
             </span>
           )}
+          {pasteReady && (
+            <span
+              className="materials-heading__paste-hint"
+              role="status"
+              title={`⌘V로 ${pasteDestinationName}에 붙여넣기`}
+            >
+              ⌘V로 붙여넣기 · {pasteDestinationName}
+            </span>
+          )}
         </div>
-        <button
-          type="button"
-          className="bare-icon-button"
-          aria-label="자료 새로고침"
-          title="자료 새로고침"
-          disabled={course === null || isLoading}
-          onClick={() => {
-            if (course !== null) void loadTree(course.id)
-          }}
-        >
-          <Icon name="refresh" className={isLoading ? 'is-spinning' : ''} />
-        </button>
+        <div className="materials-heading__actions">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            hidden
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(event) => {
+              if (course === null || course.missing) return
+              const input = event.currentTarget
+              const files = Array.from(input.files ?? [])
+              input.value = ''
+              if (files.length === 0) return
+              void importDroppedFiles(course.id, files).then(handleCreated)
+            }}
+          />
+          <button
+            type="button"
+            className="bare-icon-button"
+            aria-label="자료 가져오기"
+            title="자료 가져오기"
+            disabled={course === null || course.missing || isPasting}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <MaterialsIcon name="fileImport" />
+          </button>
+          <button
+            type="button"
+            className="bare-icon-button"
+            aria-label="새 폴더 만들기"
+            title="새 폴더 만들기"
+            disabled={course === null || course.missing || isPasting}
+            onClick={() => void createFolder(null)}
+          >
+            <MaterialsIcon name="folderPlus" />
+          </button>
+          <button
+            type="button"
+            className="bare-icon-button"
+            aria-label="자료 새로고침"
+            title="자료 새로고침"
+            disabled={course === null || isLoading}
+            onClick={() => {
+              if (course !== null) void loadTree(course.id)
+            }}
+          >
+            <Icon name="refresh" className={isLoading ? 'is-spinning' : ''} />
+          </button>
+        </div>
       </div>
 
       <div className="rail-search">
@@ -463,8 +599,17 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
 
       <div
         className="app-rail__body materials-body"
+        data-paste-target-root={
+          pasteReady && pasteDirRelPath === '' ? true : undefined
+        }
         onContextMenu={(event) => handleContextMenu(event, null)}
       >
+        {pasteNotice !== null && (
+          <div className="materials-paste-notice" role="status">
+            <MaterialsIcon name="fileImport" />
+            <span>{pasteNotice}</span>
+          </div>
+        )}
         {course === null ? (
           <div className="empty-state empty-state--materials">
             <Icon name="folder" className="empty-state__folder" />
@@ -506,7 +651,8 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           ) : (
             <MaterialSearchResults
               results={searchResults}
-              selectedRelPath={contextMenu?.target?.relPath ?? null}
+              selectedRelPath={selectedRelPath}
+              onSelect={(node) => setSelectedRelPath(node.relPath)}
               onContextMenu={handleContextMenu}
             />
           )
@@ -515,7 +661,8 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
             <Icon name="folder" className="empty-state__folder" />
             <p className="empty-state__text">아직 자료가 없어요</p>
             <p className="empty-state__hint">
-              Finder에서 파일을 끌어다 놓으면 PDF, 노트, 이미지가 한곳에 정리돼요.
+              가져오기 버튼을 누르거나 Finder 파일을 끌어다 놓으세요. 이 영역을
+              선택한 뒤 ⌘V로 이미지와 텍스트도 추가할 수 있어요.
             </p>
           </div>
         ) : (
@@ -523,8 +670,12 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
             nodes={tree}
             expandedPaths={expandedPaths}
             editingRelPath={editing?.relPath ?? null}
-            selectedRelPath={contextMenu?.target?.relPath ?? null}
+            selectedRelPath={selectedRelPath}
+            pasteTargetDirRelPath={
+              pasteReady && pasteDirRelPath !== '' ? pasteDirRelPath : null
+            }
             onToggleFolder={toggleFolder}
+            onSelect={(node) => setSelectedRelPath(node.relPath)}
             onContextMenu={handleContextMenu}
             onCancelRename={() => setEditing(null)}
             onRename={rename}

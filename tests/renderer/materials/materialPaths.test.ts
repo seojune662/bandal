@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import type { MaterialNode } from '../../../src/shared/types/materials'
 import {
   absoluteMaterialPath,
+  findMaterialNode,
   kindForMaterialName,
   materialParentPath,
   targetDirectory,
@@ -28,6 +29,8 @@ describe('materialPaths', () => {
     expect(targetDirectory(tree[0] ?? null)).toBe('notes')
     expect(targetDirectory(tree[0]?.children?.[2] ?? null)).toBe('notes')
     expect(targetDirectory(null)).toBe('')
+    expect(findMaterialNode(tree, 'notes/week.md')?.name).toBe('week.md')
+    expect(findMaterialNode(tree, 'missing')).toBeNull()
   })
 
   test('joins absolute paths with the course folder native separator', () => {

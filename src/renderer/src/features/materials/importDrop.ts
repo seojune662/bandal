@@ -20,30 +20,42 @@ function fileName(path: string): string {
   return segments[segments.length - 1] ?? path
 }
 
-export async function importDroppedFiles(
+export async function importMaterialPaths(
   courseId: string,
-  files: readonly File[]
-): Promise<void> {
-  const paths = files.map(pathForFile).filter((path) => path.length > 0)
+  paths: readonly string[]
+): Promise<string[]> {
   if (paths.length === 0) {
     showToast('가져올 수 있는 파일이 없어요', 'danger')
-    return
+    return []
   }
 
   try {
-    const result = await invoke('materials:import', { courseId, paths })
+    const result = await invoke('materials:import', {
+      courseId,
+      paths: [...paths]
+    })
     if (result.imported.length > 0) {
       showToast(`${result.imported.length}개 가져옴`)
-      void useMaterialsStore.getState().loadTree(courseId, { silent: true })
+      await useMaterialsStore.getState().loadTree(courseId, { silent: true })
     }
     if (result.failed.length > 0) {
       const names = result.failed.map((entry) => fileName(entry.path)).join(', ')
       showToast(`${result.failed.length}개 실패: ${names}`, 'danger')
     }
+    return result.imported
   } catch (error) {
     showToast(
       error instanceof Error ? error.message : '파일을 가져오지 못했습니다.',
       'danger'
     )
+    return []
   }
+}
+
+export async function importDroppedFiles(
+  courseId: string,
+  files: readonly File[]
+): Promise<string[]> {
+  const paths = files.map(pathForFile).filter((path) => path.length > 0)
+  return importMaterialPaths(courseId, paths)
 }
