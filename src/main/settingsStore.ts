@@ -43,6 +43,11 @@ function isTheme(value: unknown): value is Settings['theme'] {
   return value === 'system' || isThemeId(value)
 }
 
+/** Only renderer locales shipped by this build are accepted from disk/IPC. */
+function isLocale(value: unknown): value is Settings['locale'] {
+  return value === 'ko-KR' || value === 'en-US'
+}
+
 /** [M6-A] Validates the persisted onboarding record, key by key. */
 function sanitizeOnboarding(raw: unknown): OnboardingState {
   if (typeof raw !== 'object' || raw === null) {
@@ -83,10 +88,7 @@ function sanitize(raw: unknown): Settings {
       typeof record.dataRoot === 'string' && record.dataRoot.length > 0
         ? record.dataRoot
         : defaults.dataRoot,
-    locale:
-      typeof record.locale === 'string' && record.locale.length > 0
-        ? record.locale
-        : defaults.locale,
+    locale: isLocale(record.locale) ? record.locale : defaults.locale,
     onboarding: sanitizeOnboarding(record.onboarding),
     university: sanitizeUniversitySettings(record.university)
   }

@@ -228,10 +228,9 @@
 }
 
 .group-loading__moon {
+  color: var(--accent);
   width: var(--empty-mark-size);
   height: var(--empty-mark-size);
-  background: linear-gradient(105deg, var(--accent) 50%, var(--accent-muted) 50%);
-  border-radius: 50%;
   animation: group-breathe 1.6s var(--ease-out) infinite alternate;
 }
 
@@ -722,10 +721,9 @@
 }
 
 .group-empty__moon {
+  color: var(--accent);
   width: var(--empty-mark-size);
   height: var(--empty-mark-size);
-  background: linear-gradient(105deg, var(--accent) 50%, var(--accent-muted) 50%);
-  border-radius: 50%;
   opacity: 0.7;
 }
 

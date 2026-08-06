@@ -1,14 +1,9 @@
+import { useId } from 'react'
+
 /**
- * The 반달 mark — one component, used everywhere the brand appears in-app.
- *
- * Same geometry as the app icon (scripts/generate-icon.mjs): a whole disc with
- * the right half finished in solid color and the left half held only by its
- * ring, tilted -14° with a terminator that bows 15% of the radius into the
- * dark side. Icon and app therefore read as the same mark.
- *
- * Colors come from `currentColor` alone, so the caller sets the role
- * (`color: var(--accent)`) and every theme follows for free — no raw color
- * values, per STYLEGUIDE §1.
+ * The 반달 mark — a lit spherical half held inside its complete, shadowed rim.
+ * Geometry follows the app icon: radius 9, a -14° axis, and a terminator that
+ * bows 15% of the radius into the unlit side.
  */
 
 const CX = 12
@@ -16,14 +11,18 @@ const CY = 12
 const R = 9
 const TILT = -14
 const TERMINATOR_BULGE = 0.15
+const TERMINATOR_RX = R * TERMINATOR_BULGE
 
-/** Right half-disc, closed by an arc that bows into the unlit side. */
+/** Lit hemisphere, closed by the curved terminator rather than a diameter. */
 const LIT_HALF = [
   `M ${CX} ${CY - R}`,
   `A ${R} ${R} 0 0 1 ${CX} ${CY + R}`,
-  `A ${(R * TERMINATOR_BULGE).toFixed(2)} ${R} 0 0 1 ${CX} ${CY - R}`,
+  `A ${TERMINATOR_RX} ${R} 0 0 1 ${CX} ${CY - R}`,
   'Z'
 ].join(' ')
+
+const LIT_LIMB = `M ${CX} ${CY - R} A ${R} ${R} 0 0 1 ${CX} ${CY + R}`
+const TERMINATOR = `M ${CX} ${CY + R} A ${TERMINATOR_RX} ${R} 0 0 1 ${CX} ${CY - R}`
 
 interface BandalMarkProps {
   /** Rendered box in px. Legible down to 14. */
@@ -41,6 +40,9 @@ export function BandalMark({
   className,
   title
 }: BandalMarkProps): JSX.Element {
+  const surfaceId = `bandal-surface-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
+  const isCompact = size <= 18
+
   return (
     <svg
       width={size}
@@ -50,22 +52,62 @@ export function BandalMark({
       role={title !== undefined ? 'img' : undefined}
       aria-hidden={title === undefined ? true : undefined}
       focusable="false"
+      shapeRendering="geometricPrecision"
     >
       {title !== undefined && <title>{title}</title>}
+      {!isCompact && (
+        <defs>
+          <linearGradient id={surfaceId} x1="4" y1="4" x2="20" y2="20">
+            <stop offset="0" stopColor="currentColor" stopOpacity={0.84} />
+            <stop offset="0.52" stopColor="currentColor" />
+            <stop offset="1" stopColor="currentColor" stopOpacity={0.88} />
+          </linearGradient>
+        </defs>
+      )}
       <g transform={`rotate(${TILT} ${CX} ${CY})`}>
-        {/* unfinished half: a whisper of body, plus the ring that closes it */}
-        <circle cx={CX} cy={CY} r={R} fill="currentColor" opacity={0.12} />
+        {/* The low-alpha body keeps the shadow side spherical on every theme. */}
+        <circle
+          cx={CX}
+          cy={CY}
+          r={R}
+          fill="currentColor"
+          opacity={isCompact ? 0.14 : 0.1}
+        />
+        <path
+          d={LIT_HALF}
+          fill={isCompact ? 'currentColor' : `url(#${surfaceId})`}
+        />
         <circle
           cx={CX}
           cy={CY}
           r={R}
           fill="none"
           stroke="currentColor"
-          strokeOpacity={0.42}
-          strokeWidth={1}
+          strokeOpacity={isCompact ? 0.5 : 0.4}
+          strokeWidth={0.9}
+          vectorEffect="non-scaling-stroke"
         />
-        {/* finished half */}
-        <path d={LIT_HALF} fill="currentColor" />
+        {!isCompact && (
+          <>
+            <path
+              d={LIT_LIMB}
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeOpacity={0.92}
+              strokeWidth={0.8}
+              vectorEffect="non-scaling-stroke"
+            />
+            <path
+              d={TERMINATOR}
+              fill="none"
+              stroke="currentColor"
+              strokeOpacity={0.16}
+              strokeWidth={0.7}
+              vectorEffect="non-scaling-stroke"
+            />
+          </>
+        )}
       </g>
     </svg>
   )

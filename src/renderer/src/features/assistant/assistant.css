@@ -23,7 +23,6 @@
   --bandal-phase-duration: 8s;
   --bandal-axis-duration: 24s;
   --bandal-glow-duration: 4s;
-  --bandal-shadow-color: var(--bg-overlay);
 
   display: inline-grid;
   flex: none;
@@ -37,6 +36,8 @@
   width: 100%;
   height: 100%;
   overflow: visible;
+  filter: drop-shadow(0 0 var(--space-1) var(--accent));
+  shape-rendering: geometricprecision;
   animation: bandal-glow var(--bandal-glow-duration) var(--ease-out) infinite alternate;
 }
 
@@ -44,9 +45,15 @@
   mask-type: alpha;
 }
 
-.bandal-orb-mark__mask-disc,
+.bandal-orb-mark__lit-half,
+.bandal-orb-mark__terminator,
 .bandal-orb-mark__moon {
-  fill: var(--accent);
+  fill: currentcolor;
+}
+
+.bandal-orb-mark__shadow {
+  fill: currentcolor;
+  opacity: 0.11;
 }
 
 .bandal-orb-mark__axis {
@@ -56,17 +63,31 @@
 }
 
 .bandal-orb-mark__terminator {
-  fill: var(--bandal-shadow-color);
   transform-box: view-box;
-  transform-origin: center;
+  transform: scaleX(0.15);
+  transform-origin: 16px 16px;
   animation: bandal-phase var(--bandal-phase-duration) var(--ease-out) infinite;
+}
+
+.bandal-orb-mark__moon {
+  opacity: 0.92;
+}
+
+.bandal-orb-mark__lit-edge {
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-width: 0.75;
+  opacity: 0.96;
+  vector-effect: non-scaling-stroke;
 }
 
 .bandal-orb-mark__rim {
   fill: none;
-  stroke: var(--accent);
-  stroke-width: 1;
-  opacity: 0.72;
+  stroke: currentcolor;
+  stroke-width: 0.9;
+  opacity: 0.48;
+  vector-effect: non-scaling-stroke;
 }
 
 .bandal-orb-mark[data-state='hover'] {
@@ -86,47 +107,38 @@
 }
 
 @keyframes bandal-phase {
-  0% {
-    rx: 14px;
-    transform: translateX(3px);
+  0%,
+  100% {
+    transform: scaleX(0.15);
   }
 
   32% {
-    rx: 14px;
-    transform: translateX(14px);
+    transform: scaleX(0.48);
   }
 
   64% {
-    rx: 8px;
-    transform: translateX(32px);
-  }
-
-  100% {
-    rx: 14px;
-    transform: translateX(14px);
+    transform: scaleX(0.96);
   }
 }
 
 @keyframes bandal-axis {
   from {
-    transform: rotate(-12deg);
+    transform: rotate(-14deg);
   }
 
   to {
-    transform: rotate(348deg);
+    transform: rotate(346deg);
   }
 }
 
 @keyframes bandal-glow {
   from {
     opacity: 0.78;
-    filter: drop-shadow(0 0 var(--space-1) var(--accent));
     transform: scale(0.96);
   }
 
   to {
     opacity: 1;
-    filter: drop-shadow(0 0 var(--space-2) var(--accent));
     transform: scale(1);
   }
 }
@@ -238,7 +250,6 @@
 
 .assistant-popup__identity .bandal-orb-mark {
   --bandal-mark-size: var(--icon-size);
-  --bandal-shadow-color: var(--bg-surface);
 }
 
 .assistant-popup__close {
@@ -289,7 +300,6 @@
 
 .assistant-popup__empty .bandal-orb-mark {
   --bandal-mark-size: var(--empty-mark-size);
-  --bandal-shadow-color: var(--bg-app);
 }
 
 .assistant-popup__resize {
@@ -383,11 +393,10 @@
   }
 
   .bandal-orb-mark__axis {
-    transform: rotate(-12deg);
+    transform: rotate(-14deg);
   }
 
   .bandal-orb-mark__terminator {
-    rx: 14px;
-    transform: translateX(14px);
+    transform: scaleX(0.15);
   }
 }

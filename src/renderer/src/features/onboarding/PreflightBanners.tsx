@@ -13,6 +13,7 @@ import {
   type PreflightIssueKind
 } from './useAgentPreflight'
 import './onboarding.css'
+import { BandalMark } from '../../components/BandalMark'
 
 const ISSUE_COPY: Record<
   PreflightIssueKind,
@@ -55,7 +56,7 @@ export function PreflightBanners({
         const copy = ISSUE_COPY[issue]
         return (
           <div className="preflight-banner" key={issue}>
-            <span className="preflight-banner__moon" aria-hidden="true" />
+            <BandalMark size={16} className="preflight-banner__moon" />
             <span className="preflight-banner__text">
               <strong>{copy.title}</strong> — {copy.hint}
             </span>

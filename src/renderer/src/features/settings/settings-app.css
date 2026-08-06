@@ -440,6 +440,32 @@
   line-height: 1.45;
 }
 
+.language-select {
+  flex: 0 0 auto;
+  min-width: 128px;
+  height: 34px;
+  padding: 0 var(--space-7) 0 var(--space-3);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.language-select:hover {
+  border-color: var(--text-muted);
+}
+
+.language-select:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
 .toggle {
   position: relative;
   flex: 0 0 auto;

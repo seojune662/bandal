@@ -250,13 +250,10 @@
 }
 
 .workspace-watermark__moon {
+  color: var(--accent);
   width: var(--empty-mark-size);
   height: var(--empty-mark-size);
   margin-bottom: var(--space-5);
-  background: linear-gradient(to right, var(--accent) 50%, var(--bg-raised) 50%);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-md);
 }
 
 .workspace-watermark h1 {

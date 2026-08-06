@@ -233,10 +233,9 @@
 }
 
 .onboarding-ai-checking__moon {
+  color: var(--accent);
   width: var(--icon-size);
   height: var(--icon-size);
-  background: linear-gradient(105deg, var(--accent) 50%, var(--accent-muted) 50%);
-  border-radius: 50%;
   animation: onboarding-breathe 1.6s var(--ease-out) infinite alternate;
 }
 
@@ -322,11 +321,10 @@
 }
 
 .preflight-banner__moon {
+  color: var(--accent);
   flex: 0 0 auto;
   width: var(--icon-size);
   height: var(--icon-size);
-  background: linear-gradient(105deg, var(--accent) 50%, var(--accent-muted) 50%);
-  border-radius: 50%;
 }
 
 .preflight-banner__text {

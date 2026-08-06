@@ -1,26 +1,71 @@
-/**
- * [M8] 설정 > University.
- *
- * Two jobs: change the school, and tune its shortcut list. Tuning is a
- * user-owned layer over the preset (docs/university-sites.md §6.2) — hiding a
- * service or flipping its 외부 브라우저 decision writes into settings, never
- * into the catalog, so an app update that fixes a URL cannot clobber it.
- *
- * 설정 창 톤은 합니다체 (docs/STYLEGUIDE.md §7).
- */
-
 import { useEffect, useState } from 'react'
-import { serviceKindLabel } from '../../../../shared/universities'
+import type {
+  ExternalReason,
+  ServiceKind,
+  University,
+  UniversityService,
+  VerificationLevel
+} from '../../../../shared/types/university'
+import { useLocale, useT } from '../../i18n'
 import { useUniversityStore } from '../../stores/universityStore'
-import {
-  externalReasonMessage,
-  verificationBadge,
-  verifiedAtLabel
-} from '../university/serviceCopy'
-import { UniversityPicker } from '../university/UniversityPicker'
+import { SettingsUniversityPicker } from './SettingsUniversityPicker'
 import '../university/university.css'
 
+type Translator = ReturnType<typeof useT>
+type CurrentLocale = ReturnType<typeof useLocale>
+
+function universityName(university: University, locale: CurrentLocale): string {
+  return locale === 'en-US' && university.nameEn.length > 0
+    ? university.nameEn
+    : university.nameKo
+}
+
+function serviceName(service: UniversityService, locale: CurrentLocale): string {
+  return locale === 'en-US' && service.labelEn !== undefined
+    ? service.labelEn
+    : service.label
+}
+
+function verifiedAtLabel(t: Translator, verifiedAt: string): string {
+  return verifiedAt.length === 0
+    ? t('settings.university.noVerifiedAt')
+    : t('settings.university.verifiedAt', { date: verifiedAt })
+}
+
+function verificationBadge(t: Translator, level: VerificationLevel): string | null {
+  switch (level) {
+    case 'verified':
+      return null
+    case 'partial':
+      return t('settings.university.verification.partial')
+    case 'unverified':
+      return t('settings.university.verification.unverified')
+  }
+}
+
+function serviceKindLabel(t: Translator, kind: ServiceKind): string {
+  return t(`settings.university.kind.${kind}`)
+}
+
+function externalReasonMessage(
+  t: Translator,
+  reason: ExternalReason | undefined
+): string {
+  switch (reason) {
+    case 'federated-login':
+      return t('settings.university.external.federated-login')
+    case 'ua-sniffing':
+      return t('settings.university.external.ua-sniffing')
+    case 'native-plugin':
+      return t('settings.university.external.native-plugin')
+    default:
+      return t('settings.university.external.default')
+  }
+}
+
 export function UniversitySettingsPanel(): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
   const loaded = useUniversityStore((state) => state.loaded)
   const settings = useUniversityStore((state) => state.settings)
   const university = useUniversityStore((state) => state.university)
@@ -52,17 +97,20 @@ export function UniversitySettingsPanel(): JSX.Element {
     <div className="settings-stack">
       <section className="settings-card">
         <div className="settings-card__header">
-          <h2>내 학교</h2>
+          <h2>{t('settings.university.mine.title')}</h2>
           <p>
             {university === null
-              ? '학교를 선택하면 학사 포털·강의실·도서관 바로가기가 왼쪽 사이드바에 표시됩니다.'
-              : `${university.nameKo} · ${verifiedAtLabel(university.verifiedAt)}`}
+              ? t('settings.university.mine.emptyHelp')
+              : t('settings.university.mine.selected', {
+                  name: universityName(university, locale),
+                  verifiedAt: verifiedAtLabel(t, university.verifiedAt)
+                })}
           </p>
         </div>
         {!loaded ? (
-          <p className="settings-feedback">불러오는 중입니다…</p>
+          <p className="settings-feedback">{t('settings.university.loading')}</p>
         ) : (
-          <UniversityPicker
+          <SettingsUniversityPicker
             selectedId={settings.universityId}
             customName={settings.customUniversity?.nameKo}
             busy={busy}
@@ -78,7 +126,7 @@ export function UniversitySettingsPanel(): JSX.Element {
               disabled={busy}
               onClick={() => run(() => clearSelection())}
             >
-              학교 선택 해제
+              {t('settings.university.clear')}
             </button>
           </div>
         )}
@@ -86,36 +134,39 @@ export function UniversitySettingsPanel(): JSX.Element {
           className={`settings-feedback${error !== null ? ' settings-feedback--error' : ''}`}
           aria-live="polite"
         >
-          {error ??
-            '주소는 앱과 함께 배포되며, 학교가 주소를 바꾸면 업데이트로 반영됩니다.'}
+          {error !== null
+            ? t('settings.university.saveError')
+            : t('settings.university.catalogHelp')}
         </p>
       </section>
 
       {university !== null && (
         <section className="settings-card">
           <div className="settings-card__header">
-            <h2>바로가기</h2>
-            <p>
-              앱 안 브라우저에서 열지, 기본 브라우저로 넘길지 서비스마다 정할 수
-              있습니다. 비밀번호는 저장하지 않습니다.
-            </p>
+            <h2>{t('settings.university.shortcuts.title')}</h2>
+            <p>{t('settings.university.shortcuts.description')}</p>
           </div>
 
           <div className="university-service-table">
             {services.map((service) => {
-              const badge = verificationBadge(service.verification)
+              const badge = verificationBadge(t, service.verification)
+              const label = serviceName(service, locale)
               return (
                 <div className="setting-row" key={service.id}>
                   <div className="setting-row__copy">
                     <div className="setting-row__label-line">
-                      <span className="setting-row__label">{service.label}</span>
-                      <span className="badge">{serviceKindLabel(service.kind)}</span>
+                      <span className="setting-row__label">{label}</span>
+                      <span className="badge">
+                        {serviceKindLabel(t, service.kind)}
+                      </span>
                       {badge !== null && <span className="badge">{badge}</span>}
                     </div>
                     <span className="setting-row__description">
                       {service.opensExternally
-                        ? externalReasonMessage(service.externalReason)
-                        : (service.note ?? service.url)}
+                        ? externalReasonMessage(t, service.externalReason)
+                        : locale === 'ko-KR'
+                          ? (service.note ?? service.url)
+                          : service.url}
                     </span>
                   </div>
                   <div className="university-service-table__actions">
@@ -123,7 +174,9 @@ export function UniversitySettingsPanel(): JSX.Element {
                       type="button"
                       role="switch"
                       aria-checked={service.opensExternally}
-                      aria-label={`${service.label} 기본 브라우저로 열기`}
+                      aria-label={t('settings.university.openExternal', {
+                        name: label
+                      })}
                       className={`toggle${service.opensExternally ? ' toggle--checked' : ''}`}
                       disabled={busy}
                       onClick={() =>
@@ -140,7 +193,7 @@ export function UniversitySettingsPanel(): JSX.Element {
                       disabled={busy}
                       onClick={() => run(() => setServiceHidden(service.id, true))}
                     >
-                      숨기기
+                      {t('settings.university.hide')}
                     </button>
                   </div>
                 </div>
@@ -153,11 +206,17 @@ export function UniversitySettingsPanel(): JSX.Element {
               <div className="setting-row">
                 <div className="setting-row__copy">
                   <div className="setting-row__label-line">
-                    <span className="setting-row__label">숨긴 바로가기</span>
-                    <span className="count-badge">{hiddenPresets.length}</span>
+                    <span className="setting-row__label">
+                      {t('settings.university.hidden')}
+                    </span>
+                    <span className="count-badge">
+                      {new Intl.NumberFormat(locale).format(hiddenPresets.length)}
+                    </span>
                   </div>
                   <span className="setting-row__description">
-                    {hiddenPresets.map((service) => service.label).join(', ')}
+                    {hiddenPresets
+                      .map((service) => serviceName(service, locale))
+                      .join(', ')}
                   </span>
                 </div>
                 <button
@@ -172,7 +231,7 @@ export function UniversitySettingsPanel(): JSX.Element {
                     })
                   }
                 >
-                  모두 되돌리기
+                  {t('settings.university.restoreAll')}
                 </button>
               </div>
             </div>

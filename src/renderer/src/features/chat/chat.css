@@ -95,10 +95,9 @@
 }
 
 .chat-loading__moon {
+  color: var(--accent);
   width: var(--empty-mark-size);
   height: var(--empty-mark-size);
-  background: linear-gradient(105deg, var(--accent) 50%, var(--accent-muted) 50%);
-  border-radius: 50%;
   opacity: 0.85;
   animation: chat-breathe 1.6s var(--ease-out) infinite alternate;
 }
@@ -139,10 +138,9 @@
 }
 
 .chat-gate__moon {
+  color: var(--accent);
   width: 2.25rem;
   height: 2.25rem;
-  background: linear-gradient(105deg, var(--accent) 50%, var(--accent-muted) 50%);
-  border-radius: 50%;
 }
 
 .chat-gate__eyebrow {
@@ -311,12 +309,10 @@
 }
 
 .chat-empty__moon {
+  color: var(--accent);
   width: var(--empty-mark-size);
   height: var(--empty-mark-size);
   margin-bottom: var(--space-3);
-  background: linear-gradient(105deg, var(--accent) 50%, var(--accent-muted) 50%);
-  border-radius: 50%;
-  box-shadow: var(--shadow-md);
   animation: chat-rise var(--dur-base) var(--ease-out);
 }
 

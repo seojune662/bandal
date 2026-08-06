@@ -22,17 +22,10 @@
 }
 
 .course-sidebar-chrome__mark {
+  color: var(--accent);
   width: var(--brand-mark-size);
   height: var(--brand-mark-size);
   flex: 0 0 auto;
-  background: linear-gradient(
-    to right,
-    var(--accent) 50%,
-    var(--bg-raised) 50%
-  );
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-sm);
 }
 
 .course-sidebar-chrome__name {

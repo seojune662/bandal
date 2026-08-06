@@ -26,6 +26,7 @@ import { InvitePalette } from './InvitePalette'
 import { MemberList } from './MemberList'
 import { useGroupChat } from './useGroupChat'
 import './group.css'
+import { BandalMark } from '../../components/BandalMark'
 
 const SCROLL_PIN_THRESHOLD_PX = 48
 const LOAD_OLDER_THRESHOLD_PX = 120
@@ -42,7 +43,7 @@ function descriptorFromParams(params: unknown): TabDescriptor | null {
 function EmptyInviteState({ onInvite }: { onInvite: () => void }): JSX.Element {
   return (
     <div className="group-empty">
-      <span className="group-empty__moon" aria-hidden="true" />
+      <BandalMark size={56} className="group-empty__moon" />
       <h2 className="group-empty__title">아직 나 혼자예요</h2>
       <p className="group-empty__desc">
         초대 코드를 카톡에 붙여넣으면 바로 들어와요.
@@ -59,7 +60,7 @@ function EmptyInviteState({ onInvite }: { onInvite: () => void }): JSX.Element {
 function EmptyConversationState(): JSX.Element {
   return (
     <div className="group-empty">
-      <span className="group-empty__moon" aria-hidden="true" />
+      <BandalMark size={56} className="group-empty__moon" />
       <h2 className="group-empty__title">첫 메시지를 남겨보세요</h2>
       <p className="group-empty__desc">
         과제 일정이나 역할 나누기부터 시작하면 좋아요.
@@ -72,7 +73,7 @@ function EmptyConversationState(): JSX.Element {
 function UnknownGroupState({ onClose }: { onClose: () => void }): JSX.Element {
   return (
     <div className="group-empty">
-      <span className="group-empty__moon" aria-hidden="true" />
+      <BandalMark size={56} className="group-empty__moon" />
       <h2 className="group-empty__title">더 이상 볼 수 없는 그룹이에요</h2>
       <p className="group-empty__desc">
         나갔거나, 그룹이 사라졌거나, 로그아웃 상태예요.
@@ -223,7 +224,7 @@ function GroupChatSurface({
     return (
       <div className="group-tab">
         <div className="group-loading" role="status" aria-label="불러오는 중">
-          <span className="group-loading__moon" />
+          <BandalMark size={56} className="group-loading__moon" />
         </div>
       </div>
     )
@@ -241,7 +242,7 @@ function GroupChatSurface({
     return (
       <div className="group-tab">
         <div className="group-empty">
-          <span className="group-empty__moon" aria-hidden="true" />
+          <BandalMark size={56} className="group-empty__moon" />
           <h2 className="group-empty__title">그룹 채팅을 열지 못했어요</h2>
           <p className="group-empty__desc">{session.openError}</p>
           <button

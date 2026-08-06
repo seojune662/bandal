@@ -13,6 +13,7 @@ import { MessageList } from './MessageList'
 import { useChatSession } from './useChatSession'
 import './chat.css'
 import './chat-blocks.css'
+import { BandalMark } from '../../components/BandalMark'
 
 const INSTALL_COMMAND = 'curl -fsSL https://claude.ai/install.sh | bash'
 const MIN_CLI = { major: 2, minor: 1 }
@@ -59,7 +60,7 @@ function GateCard({
   return (
     <div className="chat-gate">
       <div className="chat-gate__card">
-        <span className="chat-gate__moon" aria-hidden="true" />
+        <BandalMark size={36} className="chat-gate__moon" />
         <p className="chat-gate__eyebrow">{eyebrow}</p>
         <h2 className="chat-gate__title">{title}</h2>
         {children}
@@ -127,7 +128,7 @@ function EmptyState({
 }): JSX.Element {
   return (
     <div className="chat-empty">
-      <span className="chat-empty__moon" aria-hidden="true" />
+      <BandalMark size={56} className="chat-empty__moon" />
       <h2 className="chat-empty__title">
         이 과목에 대해 무엇이든 물어보세요
       </h2>
@@ -217,7 +218,7 @@ export function ChatSurface({
   if (phase === 'loading') {
     return root(
       <div className="chat-loading" role="status" aria-label="불러오는 중">
-        <span className="chat-loading__moon" />
+        <BandalMark size={56} className="chat-loading__moon" />
       </div>
     )
   }

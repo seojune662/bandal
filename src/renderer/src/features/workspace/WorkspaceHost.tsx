@@ -26,6 +26,7 @@ import { isTabDescriptor } from './tabIdentity'
 import { dockviewComponents } from './tabRegistry'
 import { TabKindIcon } from './workspaceIcons'
 import './workspace.css'
+import { BandalMark } from '../../components/BandalMark'
 
 const bandalTheme: DockviewTheme = {
   name: 'bandal',
@@ -88,7 +89,7 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
   if (course === null) {
     return (
       <div className="workspace-watermark">
-        <div className="workspace-watermark__moon" aria-hidden="true" />
+        <BandalMark size={56} className="workspace-watermark__moon" />
         <p className="eyebrow">STUDY WORKSPACE</p>
         <h1>오늘의 공부를 시작해볼까요?</h1>
         <p className="workspace-watermark__hint">
@@ -105,7 +106,7 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
       data-drop-active={isDropActive || undefined}
       {...dropProps}
     >
-      <div className="workspace-watermark__moon" aria-hidden="true" />
+      <BandalMark size={56} className="workspace-watermark__moon" />
       <p className="eyebrow">CURRENT COURSE</p>
       <h1>{course.name}</h1>
       <p className="workspace-watermark__hint">

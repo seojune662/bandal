@@ -27,6 +27,7 @@ import { useOnboardingStore } from './onboardingStore'
 import { useAgentPreflight } from './useAgentPreflight'
 import '../courses/courses.css'
 import './onboarding.css'
+import { BandalMark } from '../../components/BandalMark'
 
 const STEP_TITLES: readonly string[] = [
   '반달과 만나기',
@@ -275,7 +276,7 @@ function AiStep(): JSX.Element {
       <div className="onboarding-ai-card" aria-busy={checking}>
         {checking ? (
           <div className="onboarding-ai-checking" role="status">
-            <span className="onboarding-ai-checking__moon" aria-hidden="true" />
+            <BandalMark size={16} className="onboarding-ai-checking__moon" />
             연결 상태를 확인하는 중…
           </div>
         ) : status === 'error' ? (

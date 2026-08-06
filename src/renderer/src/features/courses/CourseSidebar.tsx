@@ -13,6 +13,7 @@ import { CourseFormDialog, DeleteCourseDialog } from './CourseDialogs'
 import { folderProblemMessage } from './folderMessages'
 import { normalizeCourseColor } from './courseColors'
 import './courses.css'
+import { BandalMark } from '../../components/BandalMark'
 
 interface ContextMenuState {
   course: Course
@@ -161,7 +162,7 @@ export function CourseSidebar(): JSX.Element {
     <aside className="app-rail app-rail--left" aria-label="과목 목록">
       <div className="course-sidebar-chrome">
         <span className="course-sidebar-chrome__traffic" aria-hidden="true" />
-        <span className="course-sidebar-chrome__mark" aria-hidden="true" />
+        <BandalMark size={18} className="course-sidebar-chrome__mark" />
         <span className="course-sidebar-chrome__name">Bandal</span>
         <button
           type="button"
@@ -239,7 +240,7 @@ export function CourseSidebar(): JSX.Element {
           </div>
         ) : courses.length === 0 ? (
           <div className="empty-state empty-state--courses">
-            <span className="empty-state__moon" aria-hidden="true" />
+            <BandalMark size={56} className="empty-state__moon" />
             <p className="empty-state__text">첫 과목을 만들어보세요</p>
             <p className="empty-state__hint">
               공부하던 폴더를 그대로 과목으로 가져올 수 있어요.
