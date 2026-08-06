@@ -35,3 +35,10 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# 자격증명이 섞이는 임시 메모 (untitled.md 에 OAuth client secret 이 있었다)
+untitled.md
+scratch.md
+
+# electron-vite 가 빌드 중 만들었다 지우는 임시 설정
+electron.vite.config.*.mjs

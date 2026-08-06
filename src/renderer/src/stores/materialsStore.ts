@@ -5,6 +5,7 @@ import type {
   MaterialSearchHit
 } from '../../../shared/types/materials'
 import { invoke } from '../lib/ipc'
+import type { ImmerStore } from './immerStore'
 
 interface MaterialsState {
   activeCourseId: string | null
@@ -29,7 +30,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '자료를 불러오지 못했습니다.'
 }
 
-export const useMaterialsStore = create<MaterialsState>()(
+export const useMaterialsStore: ImmerStore<MaterialsState> = create<MaterialsState>()(
   immer((set, get) => ({
     activeCourseId: null,
     tree: [],

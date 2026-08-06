@@ -9,6 +9,7 @@ import type {
 } from '../../../shared/types/course'
 import { folderProblemMessage } from '../features/courses/folderMessages'
 import { invoke } from '../lib/ipc'
+import type { ImmerStore } from './immerStore'
 import { useWorkspaceStore } from './workspaceStore'
 
 interface CoursesState {
@@ -46,7 +47,7 @@ function nextSelection(courses: Course[], removedId: string): string | null {
   return remaining[nextIndex]?.id ?? null
 }
 
-export const useCoursesStore = create<CoursesState>()(
+export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
   immer((set, get) => ({
     courses: [],
     selectedCourseId: null,
