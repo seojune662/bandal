@@ -15,6 +15,7 @@ import {
 } from '../workspace/panels/browserAnchor'
 import { useBrowserGuests, type BrowserNavState } from './browserGuestsStore'
 import { registerGuestElement, unregisterGuestElement } from './guestActions'
+import { useWebviewSelectionBridge } from './selectionBridge'
 import type {
   DidNavigateEvent,
   DidNavigateInPageEvent,
@@ -49,6 +50,7 @@ export function BrowserGuestView({
   const [rect, setRect] = useState<AnchorRect | null>(() =>
     getBrowserAnchorRect(tabId)
   )
+  useWebviewSelectionBridge(webviewRef)
 
   useEffect(
     () =>

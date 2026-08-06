@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { AssistantLayer } from '../features/assistant'
 import { BoardOverlay } from '../features/board/BoardPanel'
 import { BrowserWebviewLayer } from '../features/browser/BrowserWebviewLayer'
 import { CourseSidebar } from '../features/courses/CourseSidebar'
@@ -97,6 +98,11 @@ export function AppShell(): JSX.Element {
       ) : (
         needsNickname && <NicknameGate />
       )}
+      {/* [M9] The 반달 orb, its popup chat and the selection-following orb.
+          Mounted at shell level (not inside a panel) so the conversation
+          survives tab switches — the session itself lives in chatSessionStore,
+          keyed by course, so the tab and the popup share one dialogue. */}
+      <AssistantLayer />
       <ToastHost />
     </div>
   )
