@@ -335,3 +335,26 @@ jobs:
           # it is being asked to publish.
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
             -F draft=false --jq '.html_url'
+
+      # The marketing site reads the newest release tag at BUILD time, so a
+      # release it never rebuilt for leaves it advertising an old version while
+      # handing out the new binary (that gap reached v0.1.0-vs-v0.3.0). Vercel
+      # only rebuilds on a push to the site repo, so nudge it here.
+      #
+      # Optional by design: without the secret this skips instead of failing.
+      # A missing website refresh must never fail an otherwise good release.
+      - name: Rebuild the website so its version label follows this release
+        env:
+          HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::notice::VERCEL_DEPLOY_HOOK_URL is not set - skipping the website rebuild."
+            echo "::notice::Add it (Vercel > bandal-web > Settings > Git > Deploy Hooks) to keep the site's version label automatic."
+            exit 0
+          fi
+          code="$(curl -sS -X POST -o /dev/null -w '%{http_code}' "$HOOK")"
+          if [ "$code" -ge 400 ]; then
+            echo "::warning::Website rebuild hook returned HTTP $code. The release is fine; the site may show a stale version until its next deploy."
+          else
+            echo "Website rebuild triggered (HTTP $code)."
+          fi
