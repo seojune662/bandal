@@ -1,0 +1,225 @@
+# Builds and publishes a Bandal release for macOS and Windows.
+#
+# Trigger: push a tag like `v0.2.0`. The tag must match package.json `version`
+# exactly (minus the leading `v`) — electron-updater compares the running
+# app's version against the one in latest*.yml, and a mismatch means students
+# either never see the update or get offered one they already have. The
+# `verify` job below fails fast rather than let that ship.
+#
+# Shape:
+#
+#   verify ──► create-release (draft) ──┬─► build (macos)   ─┐
+#                                       └─► build (windows) ─┴─► publish
+#
+# The draft exists before the build jobs start because both would otherwise
+# race to create the same release and one would get a 422. It stays a draft
+# until BOTH platforms succeed: a half-published release means Windows students
+# see latest.yml missing while macOS students update fine, which is worse than
+# no release at all.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Lets you rehearse the whole pipeline against an existing tag without
+  # cutting a new one.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build (e.g. v0.2.0)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  verify:
+    name: Verify version and tests
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - id: resolve
+        name: Resolve tag and check it matches package.json
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag $TAG implies version $VERSION but package.json says $PKG_VERSION."
+            echo "::error::Bump package.json and re-tag — electron-updater compares these."
+            exit 1
+          fi
+          echo "Releasing $TAG (version $VERSION)"
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # A full install on purpose: the test suite opens real SQLite databases
+      # through the `better-sqlite3-node` alias, whose native binding is
+      # fetched by its own install script. `--ignore-scripts` would skip that
+      # and every repo/migration test would fail to load a binding.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  create-release:
+    name: Create draft release
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+      - name: Create the draft if it does not exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.verify.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — reusing it."
+          else
+            gh release create "$TAG" \
+              --draft \
+              --title "$TAG" \
+              --generate-notes
+          fi
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: [verify, create-release]
+    runs-on: ${{ matrix.os }}
+    # Notarization waits on Apple's service; 25 minutes is normal, so do not
+    # lower this without checking a real run.
+    timeout-minutes: 60
+    strategy:
+      # Do not cancel the other platform when one fails — knowing whether the
+      # failure is platform-specific is most of the debugging.
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-14
+            build: pnpm exec electron-builder --mac --publish always
+          - name: Windows
+            os: windows-latest
+            build: pnpm exec electron-builder --win --publish always
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # --- macOS signing -------------------------------------------------
+      # Imports the Developer ID cert into a throwaway keychain. Without this
+      # the build is unsigned, and an unsigned macOS app can neither pass
+      # Gatekeeper nor auto-update (Squirrel.Mac verifies the signature).
+      - name: Import Developer ID certificate
+        if: matrix.os == 'macos-14'
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.MAC_CERT_P12 }}
+          p12-password: ${{ secrets.MAC_CERT_PASSWORD }}
+
+      # electron-builder looks for the App Store Connect key at this exact
+      # path when APPLE_API_KEY names it. An API key is used rather than an
+      # Apple ID + app-specific password because it never triggers 2FA and
+      # does not expire — the one idea worth borrowing from the
+      # ios-app-store-submit playbook.
+      - name: Stage App Store Connect API key
+        if: matrix.os == 'macos-14'
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          mkdir -p ~/private_keys
+          KEY_PATH="$HOME/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_KEY_P8" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          # Exported here rather than in the build step's `env:` block —
+          # GitHub does not expand `~` or `$HOME` there, and electron-builder
+          # would look for a literal "~/private_keys/..." and fail to notarize.
+          echo "APPLE_API_KEY=$KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Build and publish
+        run: ${{ matrix.build }}
+        env:
+          # Publishing target: this repo. The built-in token is enough because
+          # source and releases live together.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Baked into the main bundle at build time by electron-vite. Without
+          # them the shipped app has no "함께하기" feature at all — it does not
+          # degrade, it disappears (see .env.example).
+          MAIN_VITE_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
+          MAIN_VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.MAIN_VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+          # Notarization (macOS only; ignored elsewhere). APPLE_API_KEY itself
+          # is exported to GITHUB_ENV by the staging step above, because a
+          # `~`/`$HOME` path does not expand in this block.
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      # Kept for post-mortems: the publish step uploads to the release, but a
+      # failed run leaves nothing to inspect otherwise.
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ matrix.os }}
+          path: |
+            release/*.yml
+            release/builder-*.yaml
+          if-no-files-found: ignore
+
+  publish:
+    name: Publish release
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+
+      - name: Check both platforms uploaded their update feed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.verify.outputs.tag }}"
+          ASSETS="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+          echo "$ASSETS"
+          MISSING=0
+          # These two files ARE the auto-update feed. A release without them
+          # installs fine but never updates anyone — the failure mode this
+          # whole pipeline exists to prevent.
+          for required in latest-mac.yml latest.yml; do
+            echo "$ASSETS" | grep -qx "$required" || { echo "::error::missing $required"; MISSING=1; }
+          done
+          exit $MISSING
+
+      - name: Undraft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ needs.verify.outputs.tag }}" --draft=false

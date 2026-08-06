@@ -1,0 +1,38 @@
+# Fast checks on every push and PR.
+#
+# Deliberately Linux-only and build-free: this exists so a release tag never
+# discovers a broken typecheck 20 minutes into a notarized macOS build. The
+# packaging itself is exercised by release.yml.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: Typecheck and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      # Full install, not `--ignore-scripts`: the test suite opens real SQLite
+      # databases via the `better-sqlite3-node` alias, and that binding comes
+      # from the package's own install script.
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+      - run: pnpm test
+
+      # electron-vite build catches renderer-only breakage that tsc misses
+      # (bad imports, missing assets). Cheap — about a second.
+      - run: pnpm build
