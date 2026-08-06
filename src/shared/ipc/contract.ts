@@ -201,6 +201,30 @@ export interface IpcContract {
     req: { courseId: string }
     res: { ok: true }
   }
+  /**
+   * File operations behind the materials tree's context menu. All of them
+   * take a course-relative path and resolve it under the course folder
+   * (db/validate.ts `resolveInside`) — an absolute path or a `..` escape is
+   * rejected, never clamped.
+   */
+  'materials:rename': {
+    /** `newName` is a bare basename, not a path. */
+    req: { courseId: string; relPath: string; newName: string }
+    res: { relPath: string }
+  }
+  /** Moves to the OS trash (recoverable) rather than unlinking. */
+  'materials:delete': {
+    req: { courseId: string; relPath: string }
+    res: { ok: true }
+  }
+  'materials:duplicate': {
+    req: { courseId: string; relPath: string }
+    res: { relPath: string }
+  }
+  'materials:createFolder': {
+    req: { courseId: string; dirRelPath: string; name: string }
+    res: { relPath: string }
+  }
   'materials:unwatch': {
     req: { courseId: string }
     res: { ok: true }

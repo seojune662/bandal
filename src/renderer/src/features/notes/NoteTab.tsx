@@ -353,6 +353,12 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   }, [])
 
   useEffect(() => {
+    // Revive on (re)mount. StrictMode mounts → unmounts → remounts the SAME
+    // instance, so refs survive the cycle: without this line the cleanup's
+    // `false` sticks, every `if (aliveRef.current)` guard fails, and the
+    // resolved notes:read is dropped on the floor — the tab then sits on
+    // "필기를 불러오는 중…" forever.
+    aliveRef.current = true
     return () => {
       clearTimer()
       void flushRef.current()

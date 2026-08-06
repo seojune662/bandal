@@ -2,6 +2,8 @@
  * [M6-A] Global keyboard shortcuts.
  *
  *   ⌘T      새 탭 메뉴 (workspace의 openNewTabMenu)
+ *   ⇧⌘M     새 마크다운 (과목 폴더에 .md 생성 후 탭으로 열기)
+ *   ⇧⌘B     새 브라우저 탭
  *   ⌘W      활성 탭 닫기 — 탭이 없으면 no-op (창은 절대 닫지 않는다;
  *           기본 메뉴의 ⌘W(Close Window)는 src/main/menu.ts가 ⇧⌘W로 옮겨
  *           이 chord가 렌더러까지 내려온다)
@@ -24,12 +26,15 @@ import { useEffect } from 'react'
 import { create } from 'zustand'
 import { onPush, openSettingsWindow } from '../lib/ipc'
 import { openNewTabMenu } from '../features/workspace/newTabMenuController'
+import { createBrowserTab, createMarkdownTab } from './tabCommands'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 
 // -- pure resolver ------------------------------------------------------------
 
 export type ShortcutAction =
   | { type: 'new-tab' }
+  | { type: 'new-markdown' }
+  | { type: 'new-browser-tab' }
   | { type: 'close-tab' }
   | { type: 'quick-search' }
   | { type: 'settings' }
@@ -49,8 +54,22 @@ export interface ShortcutInput {
 
 const GUEST_ALLOWED: ReadonlySet<ShortcutAction['type']> = new Set([
   'new-tab',
-  'close-tab'
+  'close-tab',
+  'new-markdown',
+  'new-browser-tab'
 ])
+
+/** ⇧-chords, kept apart because the plain resolver rejects shift outright. */
+function shiftActionForKey(key: string): ShortcutAction | null {
+  switch (key) {
+    case 'm':
+      return { type: 'new-markdown' }
+    case 'b':
+      return { type: 'new-browser-tab' }
+    default:
+      return null
+  }
+}
 
 function actionForKey(key: string): ShortcutAction | null {
   switch (key) {
@@ -75,7 +94,15 @@ function actionForKey(key: string): ShortcutAction | null {
 export function resolveShortcut(input: ShortcutInput): ShortcutAction | null {
   if (input.isComposing) return null
   if (!(input.metaKey || input.ctrlKey)) return null
-  if (input.altKey || input.shiftKey) return null
+  if (input.altKey) return null
+
+  if (input.shiftKey) {
+    const shifted = shiftActionForKey(input.key.toLowerCase())
+    if (shifted === null) return null
+    return input.targetIsWebview && !GUEST_ALLOWED.has(shifted.type)
+      ? null
+      : shifted
+  }
 
   const action = actionForKey(input.key.toLowerCase())
   if (action === null) return null
@@ -105,6 +132,12 @@ function runShortcutAction(action: ShortcutAction): void {
   switch (action.type) {
     case 'new-tab':
       openNewTabMenu()
+      return
+    case 'new-markdown':
+      void createMarkdownTab()
+      return
+    case 'new-browser-tab':
+      createBrowserTab()
       return
     case 'close-tab':
       useWorkspaceStore.getState().closeActiveTab()
