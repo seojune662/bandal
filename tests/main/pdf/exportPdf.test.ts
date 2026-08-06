@@ -1,6 +1,6 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { PDFDocument } from 'pdf-lib'
 import { createPdfExporter } from '../../../src/main/features/pdf'
 import { ValidationError } from '../../../src/main/db/errors'
@@ -12,6 +12,7 @@ describe('createPdfExporter', () => {
   let ctx: TestDb
   let sourcePath: string
   let sourceBytes: Buffer
+  const fontPath = join(process.cwd(), 'resources', 'fonts', 'NotoSansKR-Regular.otf')
 
   beforeEach(async () => {
     ctx = createTestDb()
@@ -23,7 +24,10 @@ describe('createPdfExporter', () => {
     writeFileSync(sourcePath, sourceBytes)
   })
 
-  afterEach(() => ctx.cleanup())
+  afterEach(() => {
+    vi.restoreAllMocks()
+    ctx.cleanup()
+  })
 
   test('writes a separate readable PDF and leaves the source bytes unchanged', async () => {
     const timestamp = '2026-01-01T00:00:00.000Z'
@@ -68,7 +72,8 @@ describe('createPdfExporter', () => {
     const exporter = createPdfExporter({
       getCourseFolder: () => ctx.dir,
       listDrawings: () => drawings,
-      listAnnotations: () => annotations
+      listAnnotations: () => annotations,
+      resolveFontPath: () => fontPath
     })
     const outputPath = join(ctx.dir, 'annotated.pdf')
 
@@ -77,6 +82,120 @@ describe('createPdfExporter', () => {
     expect(readFileSync(sourcePath)).toEqual(sourceBytes)
     expect(readFileSync(outputPath)).not.toEqual(sourceBytes)
     expect((await PDFDocument.load(readFileSync(outputPath))).getPageCount()).toBe(1)
+  })
+
+  test('exports a valid PDF containing a Korean textbox', async () => {
+    const timestamp = '2026-01-01T00:00:00.000Z'
+    const drawings: Drawing[] = [{
+      id: 'korean-text',
+      courseId: 'course-1',
+      relPath: 'slides/source.pdf',
+      page: 1,
+      kind: 'textbox',
+      data: {
+        box: { x: 0.1, y: 0.1, width: 0.22, height: 0.3 },
+        text: '공백없이이어지는한글도글자단위로줄바꿈됩니다'
+      },
+      style: { color: 'ink', width: 0.002, opacity: 1, fontScale: 1 },
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }]
+    const exporter = createPdfExporter({
+      getCourseFolder: () => ctx.dir,
+      listDrawings: () => drawings,
+      listAnnotations: () => [],
+      resolveFontPath: () => fontPath
+    })
+    const outputPath = join(ctx.dir, 'korean-annotated.pdf')
+
+    await exporter.exportAnnotated(
+      { courseId: 'course-1', relPath: 'slides/source.pdf' },
+      outputPath
+    )
+
+    const outputBytes = readFileSync(outputPath)
+    expect(outputBytes.subarray(0, 5).toString()).toBe('%PDF-')
+    expect((await PDFDocument.load(outputBytes)).getPageCount()).toBe(1)
+  })
+
+  test('falls back to Helvetica when the Korean font cannot be loaded', async () => {
+    const timestamp = '2026-01-01T00:00:00.000Z'
+    const drawings: Drawing[] = [{
+      id: 'fallback-text',
+      courseId: 'course-1',
+      relPath: 'slides/source.pdf',
+      page: 1,
+      kind: 'textbox',
+      data: {
+        box: { x: 0.1, y: 0.1, width: 0.5, height: 0.2 },
+        text: '한글 폰트를 찾을 수 없음'
+      },
+      style: { color: 'ink', width: 0.002, opacity: 1, fontScale: 1 },
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }]
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const exporter = createPdfExporter({
+      getCourseFolder: () => ctx.dir,
+      listDrawings: () => drawings,
+      listAnnotations: () => [],
+      resolveFontPath: () => join(ctx.dir, 'missing-font.otf')
+    })
+    const outputPath = join(ctx.dir, 'fallback-annotated.pdf')
+
+    await exporter.exportAnnotated(
+      { courseId: 'course-1', relPath: 'slides/source.pdf' },
+      outputPath
+    )
+
+    const outputBytes = readFileSync(outputPath)
+    expect(outputBytes.subarray(0, 5).toString()).toBe('%PDF-')
+    expect((await PDFDocument.load(outputBytes)).getPageCount()).toBe(1)
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('falling back to Helvetica'),
+      expect.anything()
+    )
+  })
+
+  test('resolves and reads the Korean font only once per exporter', async () => {
+    const timestamp = '2026-01-01T00:00:00.000Z'
+    const drawings: Drawing[] = [{
+      id: 'cached-font-text',
+      courseId: 'course-1',
+      relPath: 'slides/source.pdf',
+      page: 1,
+      kind: 'textbox',
+      data: {
+        box: { x: 0.1, y: 0.1, width: 0.5, height: 0.2 },
+        text: '캐시된 글꼴'
+      },
+      style: { color: 'ink', width: 0.002, opacity: 1, fontScale: 1 },
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }]
+    const cachedFontPath = join(ctx.dir, 'cached-font.otf')
+    copyFileSync(fontPath, cachedFontPath)
+    const resolveFontPath = vi.fn(() => cachedFontPath)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const exporter = createPdfExporter({
+      getCourseFolder: () => ctx.dir,
+      listDrawings: () => drawings,
+      listAnnotations: () => [],
+      resolveFontPath
+    })
+
+    await exporter.exportAnnotated(
+      { courseId: 'course-1', relPath: 'slides/source.pdf' },
+      join(ctx.dir, 'first-export.pdf')
+    )
+    unlinkSync(cachedFontPath)
+    await exporter.exportAnnotated(
+      { courseId: 'course-1', relPath: 'slides/source.pdf' },
+      join(ctx.dir, 'second-export.pdf')
+    )
+
+    expect(resolveFontPath).toHaveBeenCalledTimes(1)
+    expect(warn).not.toHaveBeenCalled()
   })
 
   test('refuses to overwrite the original path', async () => {

@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto'
 import { readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
+import fontkit from '@pdf-lib/fontkit'
 import {
   BlendMode,
   LineCapStyle,
@@ -23,6 +24,8 @@ import type {
 } from '../../../shared/types/drawing'
 import { ValidationError } from '../../db/errors'
 import { requireId, requireNonEmptyString, resolveInside } from '../../db/validate'
+
+const TEXTBOX_FONT_FILE = 'NotoSansKR-Regular.otf'
 
 const DRAWING_COLORS: Record<DrawingColor, Color> = {
   ink: rgb(0.08, 0.09, 0.12),
@@ -241,13 +244,49 @@ async function canonicalPath(path: string): Promise<string> {
   }
 }
 
-export function createPdfExporter(deps: {
+function resolveDefaultFontPath(): string {
+  // Keep Electron out of the module graph until the default is actually used.
+  // Vitest imports this module in plain Node and supplies resolveFontPath.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { app } = require('electron') as typeof import('electron')
+  return app.isPackaged
+    ? join(process.resourcesPath, 'fonts', TEXTBOX_FONT_FILE)
+    : join(app.getAppPath(), 'resources', 'fonts', TEXTBOX_FONT_FILE)
+}
+
+export interface PdfExporterDeps {
   getCourseFolder: (courseId: string) => string
   listDrawings: (courseId: string, relPath: string) => Drawing[]
   listAnnotations: (courseId: string, relPath: string) => Annotation[]
-}): {
+  resolveFontPath?: () => string
+}
+
+export function createPdfExporter(deps: PdfExporterDeps): {
   exportAnnotated(input: ExportAnnotatedPdfInput, savePath: string): Promise<void>
 } {
+  let fontBytesPromise: Promise<Uint8Array> | null = null
+
+  function loadFontBytes(): Promise<Uint8Array> {
+    fontBytesPromise ??= Promise.resolve().then(async () => {
+      const fontPath = (deps.resolveFontPath ?? resolveDefaultFontPath)()
+      return readFile(fontPath)
+    })
+    return fontBytesPromise
+  }
+
+  async function embedTextboxFont(pdf: PDFDocument): Promise<PDFFont> {
+    try {
+      pdf.registerFontkit(fontkit)
+      return await pdf.embedFont(await loadFontBytes(), { subset: true })
+    } catch (error) {
+      console.warn(
+        '[pdf] Noto Sans KR could not be loaded; falling back to Helvetica.',
+        error
+      )
+      return pdf.embedFont(StandardFonts.Helvetica)
+    }
+  }
+
   return {
     async exportAnnotated(input, savePathInput) {
       const courseId = requireId(input.courseId, 'courseId')
@@ -269,7 +308,7 @@ export function createPdfExporter(deps: {
       const annotations = deps.listAnnotations(courseId, relPath)
       const drawings = deps.listDrawings(courseId, relPath)
       const font = drawings.some((drawing) => drawing.kind === 'textbox')
-        ? await pdf.embedFont(StandardFonts.Helvetica)
+        ? await embedTextboxFont(pdf)
         : null
 
       for (const annotation of annotations) {
