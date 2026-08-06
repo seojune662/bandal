@@ -114,7 +114,10 @@ jobs:
         include:
           - name: macOS
             os: macos-14
-            build: pnpm exec electron-builder --mac --publish always
+            # MAC_IDENTITY is resolved to a SHA-1 hash by the step below, and
+            # expanded by the shell (not `${{ }}`) so it picks up the value the
+            # earlier step wrote to GITHUB_ENV.
+            build: pnpm exec electron-builder --mac --publish always -c.mac.identity="$MAC_IDENTITY"
           - name: Windows
             os: windows-latest
             build: pnpm exec electron-builder --win --publish always
@@ -148,6 +151,26 @@ jobs:
         with:
           p12-file-base64: ${{ secrets.MAC_CERT_P12 }}
           p12-password: ${{ secrets.MAC_CERT_PASSWORD }}
+
+      # Sign by certificate hash, not by name.
+      #
+      # The keychain holds two *valid* certificates both named
+      # "Developer ID Application: … (TEAMID)", so `codesign --sign "<name>"`
+      # aborts with `ambiguous (matches … and …)` before signing anything.
+      # A SHA-1 hash identifies exactly one. Resolved at runtime rather than
+      # hardcoded so a renewed certificate does not silently break the build.
+      - name: Resolve signing identity
+        if: matrix.os == 'macos-14'
+        run: |
+          HASH="$(security find-identity -v -p codesigning signing_temp.keychain \
+            | grep 'Developer ID Application' | head -1 | awk '{print $2}')"
+          if [ -z "$HASH" ]; then
+            echo "::error::No Developer ID Application identity in the signing keychain."
+            echo "::error::Check the MAC_CERT_P12 / MAC_CERT_PASSWORD secrets."
+            exit 1
+          fi
+          echo "Signing with $HASH"
+          echo "MAC_IDENTITY=$HASH" >> "$GITHUB_ENV"
 
       # electron-builder looks for the App Store Connect key at this exact
       # path when APPLE_API_KEY names it. An API key is used rather than an
