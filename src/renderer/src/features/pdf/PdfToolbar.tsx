@@ -6,6 +6,8 @@
 
 import { useEffect, useState } from 'react'
 import { Icon } from '../../app/icons'
+import { PdfToolRail } from './tools/PdfToolRail'
+import type { DrawingsApi } from './tools/useDrawings'
 
 export interface PdfToolbarProps {
   currentPage: number
@@ -13,6 +15,9 @@ export interface PdfToolbarProps {
   zoomPercent: number
   isRailOpen: boolean
   annotationCount: number
+  courseId: string
+  relPath: string
+  drawingsApi: DrawingsApi
   onJumpToPage: (page: number) => void
   onZoomIn: () => void
   onZoomOut: () => void
@@ -81,6 +86,12 @@ export function PdfToolbar(props: PdfToolbarProps): JSX.Element {
         currentPage={props.currentPage}
         numPages={props.numPages}
         onJumpToPage={props.onJumpToPage}
+      />
+
+      <PdfToolRail
+        courseId={props.courseId}
+        relPath={props.relPath}
+        drawingsApi={props.drawingsApi}
       />
 
       <div className="pdf-toolbar__zoom">

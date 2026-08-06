@@ -25,6 +25,7 @@ import { ValidationError } from '../db/errors'
 import { createMaterialsRepo, createMaterialsWatcher } from '../features/materials'
 import { createNotesRepo } from '../features/notes'
 import { createAnnotationsRepo } from '../features/annotations'
+import { createDrawingsRepo, createPdfExporter } from '../features/pdf'
 import { createBoardRepo } from '../features/board'
 import {
   createBinaryLocator,
@@ -196,6 +197,41 @@ export function registerHandlers(): IpcRouter {
   handle('annotations:create', (req) => annotationsRepo.create(req))
   handle('annotations:update', (req) => annotationsRepo.update(req))
   handle('annotations:delete', (req) => annotationsRepo.softDelete(req))
+
+  // -- pdf drawings (M9: free-form markup, kept apart from text highlights) --
+  const drawingsRepo = createDrawingsRepo(db)
+  handle('drawings:listForFile', (req) =>
+    drawingsRepo.listForFile(req.courseId, req.relPath)
+  )
+  handle('drawings:create', (req) => drawingsRepo.create(req))
+  handle('drawings:update', (req) => drawingsRepo.update(req))
+  handle('drawings:delete', (req) => {
+    drawingsRepo.softDelete(req.ids)
+    return OK
+  })
+
+  // Export burns markup into a NEW file — the source pdf is never written to.
+  const pdfExporter = createPdfExporter({
+    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
+    listDrawings: (courseId, relPath) =>
+      drawingsRepo.listForFile(courseId, relPath),
+    listAnnotations: (courseId, relPath) =>
+      annotationsRepo.listForFile({ courseId, relPath })
+  })
+  handle('pdf:exportAnnotated', async (req) => {
+    const baseName = req.relPath.split('/').pop() ?? 'document.pdf'
+    const suggested = baseName.replace(/\.pdf$/i, '') + ' (주석).pdf'
+    const result = await dialog.showSaveDialog({
+      title: '주석 포함 PDF로 내보내기',
+      defaultPath: suggested,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }]
+    })
+    if (result.canceled || result.filePath === undefined) {
+      return { savedPath: null }
+    }
+    await pdfExporter.exportAnnotated(req, result.filePath)
+    return { savedPath: result.filePath }
+  })
 
   // -- board ----------------------------------------------------------------
   handle('board:listTasks', (req) => boardRepo.list(req))

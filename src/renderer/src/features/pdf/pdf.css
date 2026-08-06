@@ -11,6 +11,14 @@
 }
 
 .pdf-tab {
+  /* Drawing ink palette is intentionally local to the PDF feature. */
+  --drawing-color-ink: var(--text-primary);
+  --drawing-color-red: var(--danger);
+  --drawing-color-orange: var(--course-orange);
+  --drawing-color-yellow: var(--course-gold);
+  --drawing-color-green: var(--course-green);
+  --drawing-color-blue: var(--course-blue);
+  --drawing-color-violet: var(--course-violet);
   display: flex;
   flex-direction: column;
   width: 100%;

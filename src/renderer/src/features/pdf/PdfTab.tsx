@@ -35,12 +35,15 @@ import { askAiAboutAnnotation } from './askAi'
 import { readPageSelection } from './lib/domSelection'
 import { normalizeSelectionRects } from './lib/annotationGeometry'
 import { pdfScrollMemory } from './lib/scrollMemory'
+import { useDrawings } from './tools/useDrawings'
+import { usePdfToolStore } from './tools/toolStore'
 import type {
   Annotation,
   AnnotationAnchor,
   AnnotationRect,
   HighlightColor
 } from '../../../../shared/types/annotation'
+import type { Drawing } from '../../../../shared/types/drawing'
 import type { TabDescriptor } from '../../../../shared/tabs'
 
 const ZOOM_MIN = 0.4
@@ -56,6 +59,7 @@ const SCROLL_SAVE_DEBOUNCE_MS = 250
 const JUMP_TOP_OFFSET_PX = 88
 
 const EMPTY_ANNOTATIONS: Annotation[] = []
+const EMPTY_DRAWINGS: Drawing[] = []
 
 interface PendingSelection {
   page: number
@@ -106,6 +110,8 @@ function PdfViewer({
   const doc = usePdfDocument(courseId, relPath)
   const annotationsApi = useAnnotations(courseId, relPath)
   const { annotations, byPage } = annotationsApi
+  const drawingsApi = useDrawings(courseId, relPath)
+  const activeTool = usePdfToolStore((state) => state.activeTool)
 
   const scrollerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -126,6 +132,14 @@ function PdfViewer({
   const [editPopover, setEditPopover] = useState<EditPopoverState | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [flashId, setFlashId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (activeTool !== 'select') {
+      setPendingSelection(null)
+      setEditPopover(null)
+      window.getSelection()?.removeAllRanges()
+    }
+  }, [activeTool])
 
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
@@ -415,13 +429,16 @@ function PdfViewer({
   const zoomPercent = Math.round(zoom * 100)
 
   return (
-    <div className="pdf-tab">
+    <div className="pdf-tab" data-tool={activeTool}>
       <PdfToolbar
         currentPage={currentPage}
         numPages={numPages}
         zoomPercent={zoomPercent}
         isRailOpen={isRailOpen}
         annotationCount={annotations.length}
+        courseId={courseId}
+        relPath={relPath}
+        drawingsApi={drawingsApi}
         onJumpToPage={jumpToPage}
         onZoomIn={() => applyZoom(zoom * ZOOM_STEP)}
         onZoomOut={() => applyZoom(zoom / ZOOM_STEP)}
@@ -451,6 +468,8 @@ function PdfViewer({
                   const pageNumber = index + 1
                   const pageAnnotations =
                     byPage.get(pageNumber) ?? EMPTY_ANNOTATIONS
+                  const pageDrawings =
+                    drawingsApi.byPage.get(pageNumber) ?? EMPTY_DRAWINGS
                   const idOnPage = (id: string | null): string | null =>
                     id !== null && pageOfAnnotation.get(id) === pageNumber
                       ? id
@@ -463,6 +482,10 @@ function PdfViewer({
                       aspect={pageAspects.get(pageNumber) ?? defaultAspect}
                       isVisible={visiblePages.has(pageNumber)}
                       annotations={pageAnnotations}
+                      drawings={pageDrawings}
+                      drawingsLoading={drawingsApi.loading}
+                      courseId={courseId}
+                      relPath={relPath}
                       staleIds={staleIds}
                       hoveredId={idOnPage(hoveredId)}
                       activeId={idOnPage(editPopover?.annotationId ?? null)}
@@ -471,6 +494,9 @@ function PdfViewer({
                       onAspect={handleAspect}
                       onAnnotationClick={handleAnnotationClick}
                       onHoverChange={setHoveredId}
+                      onDrawingCreate={drawingsApi.create}
+                      onDrawingUpdate={drawingsApi.update}
+                      onDrawingRemove={drawingsApi.remove}
                     />
                   )
                 })}

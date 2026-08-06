@@ -12,7 +12,13 @@
 import { memo, useCallback, useRef } from 'react'
 import { Page } from 'react-pdf'
 import { rectsContainPoint } from './lib/annotationGeometry'
+import { DrawingLayer } from './tools/DrawingLayer'
 import type { Annotation } from '../../../../shared/types/annotation'
+import type {
+  CreateDrawingInput,
+  Drawing,
+  UpdateDrawingInput
+} from '../../../../shared/types/drawing'
 
 export interface PdfPageViewProps {
   pageNumber: number
@@ -22,6 +28,10 @@ export interface PdfPageViewProps {
   aspect: number
   isVisible: boolean
   annotations: Annotation[]
+  drawings: Drawing[]
+  drawingsLoading: boolean
+  courseId: string
+  relPath: string
   staleIds: Set<string>
   hoveredId: string | null
   activeId: string | null
@@ -31,6 +41,9 @@ export interface PdfPageViewProps {
   /** Click resolved to an annotation (only fired when selection is empty). */
   onAnnotationClick: (annotation: Annotation, clientX: number, clientY: number) => void
   onHoverChange: (id: string | null) => void
+  onDrawingCreate: (input: CreateDrawingInput) => Promise<Drawing | null>
+  onDrawingUpdate: (input: UpdateDrawingInput) => Promise<Drawing | null>
+  onDrawingRemove: (ids: string[]) => Promise<boolean>
 }
 
 function annotationAtPoint(
@@ -70,6 +83,10 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
     aspect,
     isVisible,
     annotations,
+    drawings,
+    drawingsLoading,
+    courseId,
+    relPath,
     registerRef,
     onAspect,
     onAnnotationClick,
@@ -162,6 +179,18 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
               ))
             )}
           </div>
+          <DrawingLayer
+            courseId={courseId}
+            relPath={relPath}
+            page={pageNumber}
+            pageWidth={width}
+            aspect={aspect}
+            drawings={drawings}
+            loading={drawingsLoading}
+            create={props.onDrawingCreate}
+            update={props.onDrawingUpdate}
+            remove={props.onDrawingRemove}
+          />
         </>
       ) : (
         <div className="pdf-page__placeholder" style={{ height }} />
