@@ -127,25 +127,43 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
   )
 }
 
-function ChromeLeft(_props: IDockviewHeaderActionsProps): JSX.Element {
+function ChromeLeft(_props: IDockviewHeaderActionsProps): JSX.Element | null {
   const leftRailOpen = useUiStore((state) => state.leftRailOpen)
   const toggleLeftRail = useUiStore((state) => state.toggleLeftRail)
+
+  if (leftRailOpen) return null
 
   return (
     <div className="workspace-chrome">
       <span className="workspace-chrome__traffic" aria-hidden="true" />
-      <span className="workspace-chrome__brand" role="img" aria-label="반달">
-        <span className="workspace-chrome__mark" aria-hidden="true" />
-      </span>
       <button
         type="button"
         className="titlebar-button"
-        aria-label={leftRailOpen ? '과목 사이드바 접기' : '과목 사이드바 펼치기'}
-        aria-pressed={leftRailOpen}
-        title={leftRailOpen ? '과목 사이드바 접기' : '과목 사이드바 펼치기'}
+        aria-label="과목 사이드바 펼치기"
+        aria-pressed={false}
+        title="과목 사이드바 펼치기"
         onClick={toggleLeftRail}
       >
         <Icon name="layoutLeft" />
+      </button>
+    </div>
+  )
+}
+
+function AddTabAction(_props: IDockviewHeaderActionsProps): JSX.Element {
+  return (
+    <div className="workspace-tab-actions">
+      <button
+        type="button"
+        className="workspace-add-tab"
+        aria-label="새 탭 열기"
+        title="새 탭 열기"
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect()
+          openNewTabMenu({ x: rect.left, y: rect.bottom })
+        }}
+      >
+        <Icon name="plus" />
       </button>
     </div>
   )
@@ -157,18 +175,6 @@ function HeaderActions(_props: IDockviewHeaderActionsProps): JSX.Element {
 
   return (
     <div className="workspace-header-actions">
-      <button
-        type="button"
-        className="workspace-add-tab"
-        aria-label="새 탭 열기"
-        title="새 탭 열기"
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect()
-          openNewTabMenu({ x: rect.right - 300, y: rect.bottom + 6 })
-        }}
-      >
-        <Icon name="plus" />
-      </button>
       <button
         type="button"
         className="titlebar-button"
@@ -229,6 +235,7 @@ export function WorkspaceHost(): JSX.Element {
         defaultTabComponent={WorkspaceTab}
         watermarkComponent={Watermark}
         prefixHeaderActionsComponent={ChromeLeft}
+        leftHeaderActionsComponent={AddTabAction}
         rightHeaderActionsComponent={HeaderActions}
         onReady={onReady}
       />

@@ -39,7 +39,7 @@
   --dv-inactivegroup-visiblepanel-tab-color: var(--text-secondary);
   --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
   --dv-inactivegroup-hiddenpanel-tab-color: var(--text-muted);
-  --dv-tab-divider-color: transparent;
+  --dv-tab-divider-color: var(--border-subtle);
 
   --dv-separator-border: var(--border-subtle);
   --dv-sash-color: transparent;
@@ -84,40 +84,15 @@
 }
 
 .workspace-chrome__traffic {
+  display: none;
   width: 0;
   height: 100%;
   flex: 0 0 auto;
 }
 
 :root[data-platform='darwin'] .workspace-chrome__traffic {
+  display: block;
   width: var(--traffic-light-inset);
-}
-
-/* With the left rail open, macOS traffic lights sit over that rail instead
- * of the center workspace, so the tab strip must not reserve a second gap. */
-:root[data-platform='darwin']
-  .app-shell[data-left-rail='open']
-  .workspace-chrome__traffic {
-  width: 0;
-}
-
-.workspace-chrome__brand {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-}
-
-.workspace-chrome__mark {
-  width: var(--brand-mark-size);
-  height: var(--brand-mark-size);
-  background: linear-gradient(
-    to right,
-    var(--accent) 50%,
-    var(--bg-raised) 50%
-  );
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-sm);
 }
 
 /* -- custom tabs --------------------------------------------------------- */
@@ -142,6 +117,18 @@
 
 .bandal-dockview .dv-active-group .dv-active-tab::after {
   transform: scaleX(1);
+}
+
+/* Let inactive tabs define one another, while the active tab's background and
+ * accent underline stay visually uninterrupted on both sides. */
+.bandal-dockview
+  .dv-tabs-container.dv-horizontal
+  > .dv-active-tab::before,
+.bandal-dockview
+  .dv-tabs-container.dv-horizontal
+  > .dv-active-tab
+  + .dv-tab::before {
+  opacity: 0;
 }
 
 .workspace-tab {
@@ -210,7 +197,14 @@
   transform: scale(0.85);
 }
 
-/* -- group header "+" action --------------------------------------------- */
+/* -- group header actions ------------------------------------------------ */
+
+.workspace-tab-actions {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-inline: var(--space-1);
+}
 
 .workspace-header-actions {
   display: flex;
@@ -495,6 +489,18 @@
   color: var(--text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.new-tab-menu__shortcut {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.new-tab-menu__hint + .new-tab-menu__shortcut {
+  margin-left: var(--space-2);
 }
 
 .new-tab-menu__empty {

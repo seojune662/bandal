@@ -1,3 +1,54 @@
+.course-sidebar-chrome {
+  display: flex;
+  align-items: center;
+  height: var(--chrome-height);
+  flex: 0 0 var(--chrome-height);
+  gap: var(--space-2);
+  padding-inline: var(--space-2);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  box-sizing: border-box;
+  -webkit-app-region: drag;
+}
+
+.course-sidebar-chrome__traffic {
+  display: none;
+  height: 100%;
+  flex: 0 0 var(--traffic-light-inset);
+}
+
+:root[data-platform='darwin'] .course-sidebar-chrome__traffic {
+  display: block;
+}
+
+.course-sidebar-chrome__mark {
+  width: var(--brand-mark-size);
+  height: var(--brand-mark-size);
+  flex: 0 0 auto;
+  background: linear-gradient(
+    to right,
+    var(--accent) 50%,
+    var(--bg-raised) 50%
+  );
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
+}
+
+.course-sidebar-chrome__name {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.course-sidebar-chrome__toggle {
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
 .course-list-area {
   padding-inline: var(--space-2);
 }

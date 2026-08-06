@@ -5,11 +5,10 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { v4 as uuidv4 } from 'uuid'
 import type { Course } from '../../../../shared/types/course'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
-import { invoke } from '../../lib/ipc'
+import { createBrowserTab, createMarkdownTab } from '../../app/tabCommands'
 import { useGroupsStore } from '../../stores/groupsStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
@@ -19,12 +18,12 @@ import { TabKindIcon } from './workspaceIcons'
 
 const MENU_WIDTH_PX = 300
 const MAX_PDF_ITEMS = 8
-const DEFAULT_BROWSER_URL = 'https://www.google.com'
 
 interface MenuItem {
   id: string
   label: string
   hint?: string
+  shortcut?: string
   icon: JSX.Element
   run: () => void | Promise<void>
 }
@@ -34,11 +33,6 @@ function collectPdfs(nodes: MaterialNode[], into: MaterialNode[]): void {
     if (node.kind === 'pdf') into.push(node)
     if (node.children !== undefined) collectPdfs(node.children, into)
   }
-}
-
-function defaultNoteTitle(now: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `새 필기 ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}.${pad(now.getMinutes())}`
 }
 
 interface NewTabMenuProps {
@@ -73,9 +67,11 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
 
   const items = useMemo<MenuItem[]>(() => {
     const trimmed = query.trim()
-    const matches = (label: string): boolean =>
+    const matches = (...searchTerms: string[]): boolean =>
       trimmed.length === 0 ||
-      label.toLowerCase().includes(trimmed.toLowerCase())
+      searchTerms.some((term) =>
+        term.toLowerCase().includes(trimmed.toLowerCase())
+      )
     const result: MenuItem[] = []
 
     if (looksLikeUrl(trimmed)) {
@@ -86,46 +82,30 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         hint: '브라우저',
         icon: <TabKindIcon kind="browser" />,
         run: () => {
-          openTab(descriptorFor('browser', { tabId: uuidv4(), initialUrl: url }))
+          createBrowserTab(url)
         }
       })
     }
 
-    if (matches('새 필기')) {
+    if (matches('새 마크다운', '새 필기')) {
       const titled = trimmed.length > 0 && !looksLikeUrl(trimmed)
       result.push({
         id: 'new-note',
-        label: '새 필기',
+        label: '새 마크다운',
         ...(titled ? { hint: `"${trimmed}"` } : {}),
+        shortcut: '⇧⌘M',
         icon: <TabKindIcon kind="note" />,
-        run: async () => {
-          const title = titled ? trimmed : defaultNoteTitle(new Date())
-          try {
-            const ref = await invoke('notes:create', {
-              courseId: course.id,
-              dirRelPath: '',
-              title
-            })
-            openTab(descriptorFor('note', ref))
-            void useMaterialsStore.getState().loadTree(course.id)
-          } catch (error) {
-            console.error('[Bandal] 필기를 만들지 못했습니다.', error)
-          }
-        }
+        run: () => createMarkdownTab(titled ? trimmed : undefined)
       })
     }
     if (matches('새 브라우저 탭')) {
       result.push({
         id: 'new-browser',
         label: '새 브라우저 탭',
+        shortcut: '⇧⌘B',
         icon: <TabKindIcon kind="browser" />,
         run: () => {
-          openTab(
-            descriptorFor('browser', {
-              tabId: uuidv4(),
-              initialUrl: DEFAULT_BROWSER_URL
-            })
-          )
+          createBrowserTab()
         }
       })
     }
@@ -261,6 +241,11 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
                 <span className="new-tab-menu__label">{item.label}</span>
                 {item.hint !== undefined && (
                   <span className="new-tab-menu__hint">{item.hint}</span>
+                )}
+                {item.shortcut !== undefined && (
+                  <span className="new-tab-menu__shortcut" aria-hidden="true">
+                    {item.shortcut}
+                  </span>
                 )}
               </button>
             </li>

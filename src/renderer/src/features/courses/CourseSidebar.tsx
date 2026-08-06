@@ -73,6 +73,7 @@ export function CourseSidebar(): JSX.Element {
 
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
   const toggleBoardOverlay = useUiStore((state) => state.toggleBoardOverlay)
+  const toggleLeftRail = useUiStore((state) => state.toggleLeftRail)
 
   const [query, setQuery] = useState('')
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -158,6 +159,22 @@ export function CourseSidebar(): JSX.Element {
 
   return (
     <aside className="app-rail app-rail--left" aria-label="과목 목록">
+      <div className="course-sidebar-chrome">
+        <span className="course-sidebar-chrome__traffic" aria-hidden="true" />
+        <span className="course-sidebar-chrome__mark" aria-hidden="true" />
+        <span className="course-sidebar-chrome__name">Bandal</span>
+        <button
+          type="button"
+          className="titlebar-button course-sidebar-chrome__toggle"
+          aria-label="과목 사이드바 접기"
+          aria-pressed={true}
+          title="과목 사이드바 접기"
+          onClick={toggleLeftRail}
+        >
+          <Icon name="layoutLeft" />
+        </button>
+      </div>
+
       {/* [M8] 학교 학사 사이트 바로가기 — above 과목 because it is the same
           "where do I go" question, answered once per school. */}
       <UniversityShortcuts />

@@ -69,34 +69,13 @@
 
 .app-rail--left {
   grid-area: left;
+  padding-top: 0;
   border-right: 1px solid var(--border-subtle);
 }
 
 .app-rail--right {
   grid-area: right;
   border-left: 1px solid var(--border-subtle);
-}
-
-/* When the left rail owns the window's top-left corner, reserve a draggable
- * macOS traffic-light zone there. Children remain fully interactive.
- *
- * The reserve is --chrome-height, NOT --traffic-light-inset: that token is a
- * horizontal offset (lights span ~20-70px across), and spending it vertically
- * would burn 4.5rem to clear a ~1.5rem-tall control — re-wasting exactly the
- * space removing the titlebar just bought back. --chrome-height also lines the
- * rail's first row up with the bottom of the tab strip next to it. */
-:root[data-platform='darwin']
-  .app-shell[data-left-rail='open']
-  .app-rail--left {
-  padding-top: var(--chrome-height);
-  -webkit-app-region: drag;
-}
-
-:root[data-platform='darwin']
-  .app-shell[data-left-rail='open']
-  .app-rail--left
-  > * {
-  -webkit-app-region: no-drag;
 }
 
 .rail-heading {

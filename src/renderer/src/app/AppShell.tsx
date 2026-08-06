@@ -75,10 +75,15 @@ export function AppShell(): JSX.Element {
       data-left-rail={leftRailOpen ? 'open' : 'closed'}
       data-right-rail={rightRailOpen ? 'open' : 'closed'}
     >
-      {/* [M9] No dedicated titlebar row. The dockview tab strip IS the window
-          chrome now (WorkspaceHost's ChromeLeft/HeaderActions own the traffic
-          light inset, the 반달 mark and both rail toggles), which buys back a
-          full --chrome-height of vertical space. */}
+      {/* [M9] No dedicated titlebar row — that buys back a full
+          --chrome-height of vertical space. The chrome is split by who owns
+          the window's top-left corner:
+            - rail OPEN  → CourseSidebar's brand row (반달 mark + traffic-light
+              inset + collapse toggle) sits there.
+            - rail CLOSED → WorkspaceHost's ChromeLeft takes over with the
+              inset + an expand toggle, so the rail is never unrecoverable.
+          WorkspaceHost also owns `+` (after the last tab) and the right
+          rail toggle. */}
       {leftRailOpen && <CourseSidebar />}
 
       <main className="app-workspace" aria-label="작업 공간">
