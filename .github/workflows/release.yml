@@ -152,25 +152,49 @@ jobs:
           p12-file-base64: ${{ secrets.MAC_CERT_P12 }}
           p12-password: ${{ secrets.MAC_CERT_PASSWORD }}
 
-      # Sign by certificate hash, not by name.
+      # Leave exactly one Developer ID Application identity in the keychain.
       #
-      # The keychain holds two *valid* certificates both named
-      # "Developer ID Application: … (TEAMID)", so `codesign --sign "<name>"`
-      # aborts with `ambiguous (matches … and …)` before signing anything.
-      # A SHA-1 hash identifies exactly one. Resolved at runtime rather than
-      # hardcoded so a renewed certificate does not silently break the build.
-      - name: Resolve signing identity
+      # The .p12 carries two *valid* certificates with the identical name
+      # "Developer ID Application: … (TEAMID)". codesign then aborts with
+      # `ambiguous (matches … and …)` and signs nothing.
+      #
+      # Pinning `mac.identity` to a SHA-1 hash does NOT help: electron-builder
+      # resolves the hash correctly but still invokes `codesign --sign <name>`,
+      # so the name stays ambiguous. The duplicate itself has to go.
+      #
+      # This only touches the throwaway keychain the previous step created —
+      # nothing on a developer machine changes. Either certificate signs and
+      # notarizes fine (same team, both valid), so keeping the first is
+      # arbitrary but deterministic.
+      - name: Deduplicate signing identity
         if: matrix.os == 'macos-14'
         run: |
-          HASH="$(security find-identity -v -p codesigning signing_temp.keychain \
-            | grep 'Developer ID Application' | head -1 | awk '{print $2}')"
-          if [ -z "$HASH" ]; then
+          list_hashes() {
+            security find-identity -v -p codesigning signing_temp.keychain \
+              | grep 'Developer ID Application' | awk '{print $2}'
+          }
+          HASHES="$(list_hashes)"
+          if [ -z "$HASHES" ]; then
             echo "::error::No Developer ID Application identity in the signing keychain."
             echo "::error::Check the MAC_CERT_P12 / MAC_CERT_PASSWORD secrets."
             exit 1
           fi
-          echo "Signing with $HASH"
-          echo "MAC_IDENTITY=$HASH" >> "$GITHUB_ENV"
+          COUNT="$(echo "$HASHES" | wc -l | tr -d ' ')"
+          echo "Found $COUNT Developer ID Application identity/identities."
+          if [ "$COUNT" -gt 1 ]; then
+            for h in $(echo "$HASHES" | tail -n +2); do
+              echo "Removing duplicate $h from the temporary keychain"
+              security delete-certificate -Z "$h" signing_temp.keychain
+            done
+          fi
+          KEEP="$(list_hashes)"
+          if [ "$(echo "$KEEP" | wc -l | tr -d ' ')" -ne 1 ]; then
+            echo "::error::Expected exactly one signing identity, got:"
+            echo "$KEEP"
+            exit 1
+          fi
+          echo "Signing with $KEEP"
+          echo "MAC_IDENTITY=$KEEP" >> "$GITHUB_ENV"
 
       # electron-builder looks for the App Store Connect key at this exact
       # path when APPLE_API_KEY names it. An API key is used rather than an
