@@ -382,10 +382,21 @@ export function createClaudeCodeAdapter(
         subscribers.add(cb)
         return () => subscribers.delete(cb)
       },
-      sendMessage: (content: string) => {
+      sendMessage: (content, attachments = []) => {
+        const messageContent: Array<Record<string, unknown>> = attachments.map(
+          (attachment) => ({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: attachment.mediaType,
+              data: attachment.dataBase64
+            }
+          })
+        )
+        messageContent.push({ type: 'text', text: content })
         writeLine({
           type: 'user',
-          message: { role: 'user', content: [{ type: 'text', text: content }] }
+          message: { role: 'user', content: messageContent }
         })
       },
       respondPermission: (requestId: string, res: PermissionResponse) => {

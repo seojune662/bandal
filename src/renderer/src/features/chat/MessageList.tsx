@@ -52,9 +52,26 @@ function UserMessage({ message }: { message: MessageView }): JSX.Element {
   const text = message.blocks
     .map((block) => (block.kind === 'text' ? block.text : ''))
     .join('')
+  const images = message.blocks.flatMap((block) =>
+    block.kind === 'text' ? (block.images ?? []) : []
+  )
   return (
     <article className="chat-msg chat-msg--user">
-      <div className="chat-bubble">{text}</div>
+      <div className="chat-bubble">
+        {images.length > 0 && (
+          <div className="chat-bubble__images">
+            {images.map((image, index) => (
+              <img
+                key={`${image.mediaType}:${index}`}
+                className="chat-bubble__image"
+                src={`data:${image.mediaType};base64,${image.dataBase64}`}
+                alt={`첨부 이미지 ${index + 1}`}
+              />
+            ))}
+          </div>
+        )}
+        {text !== '' && <span>{text}</span>}
+      </div>
     </article>
   )
 }

@@ -19,7 +19,11 @@ import type {
   ToolResultSummary,
   Usage
 } from '../../../../shared/types/agent-events'
-import type { ChatMessage, MessageBlock } from '../../../../shared/types/chat'
+import type {
+  ChatAttachment,
+  ChatMessage,
+  MessageBlock
+} from '../../../../shared/types/chat'
 
 // -- view types ---------------------------------------------------------------
 
@@ -28,6 +32,8 @@ export interface TextBlockView {
   id: string
   text: string
   streaming: boolean
+  /** Present on persisted/local user text blocks with pasted images. */
+  images?: ChatAttachment[]
 }
 
 export interface ThinkingBlockView {
@@ -474,12 +480,21 @@ export function applyAgentEvents(
 export function appendLocalUserMessage(
   state: ChatViewState,
   id: string,
-  text: string
+  text: string,
+  images: ChatAttachment[] = []
 ): ChatViewState {
   const message: MessageView = {
     id,
     role: 'user',
-    blocks: [{ kind: 'text', id: `${id}-text`, text, streaming: false }],
+    blocks: [
+      {
+        kind: 'text',
+        id: `${id}-text`,
+        text,
+        streaming: false,
+        ...(images.length === 0 ? {} : { images })
+      }
+    ],
     streaming: false,
     interrupted: false
   }
@@ -545,18 +560,42 @@ function asString(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback
 }
 
+function asAttachments(value: unknown): ChatAttachment[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item) => {
+    if (typeof item !== 'object' || item === null) {
+      return []
+    }
+    const record = item as Record<string, unknown>
+    return typeof record['mediaType'] === 'string' &&
+      record['mediaType'].startsWith('image/') &&
+      typeof record['dataBase64'] === 'string'
+      ? [
+          {
+            mediaType: record['mediaType'],
+            dataBase64: record['dataBase64']
+          }
+        ]
+      : []
+  })
+}
+
 function persistedBlockToView(
   block: MessageBlock
 ): { view: BlockView | null; interrupted: boolean } {
   const payload = asRecord(block.payload)
   const interrupted = payload['interrupted'] === true
   if (block.kind === 'text' || block.kind === 'thinking') {
+    const images = block.kind === 'text' ? asAttachments(payload['images']) : []
     return {
       view: {
         kind: block.kind,
         id: block.id,
         text: asString(payload['text'], ''),
-        streaming: false
+        streaming: false,
+        ...(images.length === 0 ? {} : { images })
       },
       interrupted
     }

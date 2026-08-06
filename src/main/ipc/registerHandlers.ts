@@ -32,6 +32,7 @@ import {
   createClaudeCodeAdapter,
   createEventBatcher,
   createSessionManager,
+  getAgentModels,
   killAllClaudeProcessesSync
 } from '../features/agent'
 import { createGroupRuntime } from '../features/group'
@@ -229,7 +230,9 @@ export function registerHandlers(): IpcRouter {
   })
 
   handle('chat:open', (req) => sessionManager.open(req.courseId))
-  handle('chat:send', (req) => sessionManager.send(req.courseId, req.content))
+  handle('chat:send', (req) =>
+    sessionManager.send(req.courseId, req.content, req.attachments)
+  )
   handle('chat:cancel', (req) => {
     sessionManager.cancel(req.courseId)
     return OK
@@ -243,6 +246,10 @@ export function registerHandlers(): IpcRouter {
     eventBatcher.flush(req.courseId)
     return OK
   })
+  handle('chat:setModel', (req) => {
+    sessionManager.setModel(req.courseId, req.model)
+    return OK
+  })
 
   // -- agent (M4-H) ---------------------------------------------------------
   handle('agent:availability', async (req) =>
@@ -250,6 +257,7 @@ export function registerHandlers(): IpcRouter {
       ? binaryLocator.availability()
       : { installed: false, loggedIn: false }
   )
+  handle('agent:models', (req) => getAgentModels(req.provider))
 
   // -- settings (real implementation, settingsStore-owned) ------------------
   handle('settings:get', () => getSettings())

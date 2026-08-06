@@ -12,6 +12,7 @@ import type {
   PermissionResponse
 } from '../../../shared/types/agent-events'
 import type { ChatOpenResult, ChatSessionInfo } from '../../../shared/types/chat'
+import type { ChatAttachment } from '../../../shared/types/chat'
 import { AgentUnavailableError } from './binaryLocator'
 import type { BlockInput, ChatRepo } from './chatRepo'
 import type { ClaudeCodeSession } from './claude/ClaudeCodeAdapter'
@@ -36,7 +37,12 @@ export interface SessionManagerDeps {
 
 export interface SessionManager {
   open(courseId: string): Promise<ChatOpenResult>
-  send(courseId: string, content: string): Promise<{ turnSeq: number }>
+  send(
+    courseId: string,
+    content: string,
+    attachments?: ChatAttachment[]
+  ): Promise<{ turnSeq: number }>
+  setModel(courseId: string, model: string): void
   cancel(courseId: string): void
   respondPermission(
     courseId: string,
@@ -357,7 +363,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       }
     },
 
-    async send(courseId, content) {
+    async send(courseId, content, attachments = []) {
       const entry = entryFor(courseId)
       entry.lastUsedAt = Date.now()
       if (entry.idleTimer !== null) {
@@ -379,12 +385,26 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       entry.turnSeq = turnSeq
       entry.turnBlocks = new Map()
       deps.repo.appendMessage(courseId, entry.info.id, 'user', turnSeq, [
-        { kind: 'text', payload: { text: content } }
+        {
+          kind: 'text',
+          payload: {
+            text: content,
+            ...(attachments.length === 0 ? {} : { images: attachments })
+          }
+        }
       ])
       entry.info = { ...entry.info, status: 'running' }
       deps.repo.setStatus(entry.info.id, 'running')
-      session.sendMessage(content)
+      session.sendMessage(content, attachments)
       return { turnSeq }
+    },
+
+    setModel(courseId, model) {
+      const entry = entryFor(courseId)
+      const selected = model.trim()
+      deps.repo.setModel(entry.info.id, selected)
+      entry.info = { ...entry.info, model: selected }
+      dropSession(entry)
     },
 
     cancel(courseId) {

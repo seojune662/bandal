@@ -1,28 +1,40 @@
-/**
- * Chat composer: multiline auto-growing textarea (Enter 전송 / Shift+Enter
- * 줄바꿈), streaming stop button, permission-waiting state and the
- * usage-limit banner (input stays enabled).
- */
-
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useRef,
+  useState,
+  type ClipboardEvent,
   type KeyboardEvent
 } from 'react'
+import type { ChatAttachment } from '../../../../shared/types/chat'
+import type { MaterialSearchHit } from '../../../../shared/types/materials'
+import { invoke } from '../../lib/ipc'
 import type { LimitInfo } from './chatModel'
+import './composer.css'
 
 const MAX_TEXTAREA_HEIGHT_PX = 200
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const MAX_IMAGE_COUNT = 5
+const MENTION_DEBOUNCE_MS = 160
+const MAX_MENTION_RESULTS = 8
+
+interface MentionRange {
+  start: number
+  end: number
+  query: string
+}
 
 export interface ComposerHandle {
   focus: () => void
 }
 
 export interface ComposerProps {
+  courseId: string
   value: string
   onChange: (value: string) => void
-  onSend: () => void
+  onSend: (attachments: ChatAttachment[]) => void
   onCancel: () => void
   isStreaming: boolean
   isWaitingPermission: boolean
@@ -44,9 +56,41 @@ function formatResetTime(resetsAt: string | undefined): string | null {
   })
 }
 
+function mentionAt(text: string, caret: number): MentionRange | null {
+  const prefix = text.slice(0, caret)
+  const match = /(?:^|\s)@([^\s@]*)$/.exec(prefix)
+  if (match === null) {
+    return null
+  }
+  const atOffset = match[0].lastIndexOf('@')
+  const start = match.index + atOffset
+  return { start, end: caret, query: match[1] ?? '' }
+}
+
+function readImage(file: File): Promise<ChatAttachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error ?? new Error('read failed'))
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('read failed'))
+        return
+      }
+      const comma = reader.result.indexOf(',')
+      if (comma < 0) {
+        reject(new Error('invalid data URL'))
+        return
+      }
+      resolve({ mediaType: file.type, dataBase64: reader.result.slice(comma + 1) })
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(
   function Composer(
     {
+      courseId,
       value,
       onChange,
       onSend,
@@ -59,6 +103,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
     ref
   ): JSX.Element {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
+    const mentionSequenceRef = useRef(0)
+    const [attachments, setAttachments] = useState<ChatAttachment[]>([])
+    const [attachmentError, setAttachmentError] = useState<string | null>(null)
+    const [mention, setMention] = useState<MentionRange | null>(null)
+    const [mentionHits, setMentionHits] = useState<MaterialSearchHit[]>([])
+    const [mentionIndex, setMentionIndex] = useState(0)
+    const [isSearching, setIsSearching] = useState(false)
 
     useImperativeHandle(ref, () => ({
       focus: () => textareaRef.current?.focus()
@@ -76,17 +127,181 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
       )}px`
     }, [])
 
-    const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-      if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-        event.preventDefault()
-        if (!isStreaming && !disabled) {
-          onSend()
+    const updateMention = useCallback((text: string, caret: number) => {
+      setMention(mentionAt(text, caret))
+      setMentionIndex(0)
+    }, [])
+
+    useEffect(() => {
+      const sequence = ++mentionSequenceRef.current
+      if (mention === null) {
+        setMentionHits([])
+        setIsSearching(false)
+        return
+      }
+      const query = mention.query.trim()
+      if (query === '') {
+        setMentionHits([])
+        setIsSearching(false)
+        return
+      }
+      setIsSearching(true)
+      const timeout = window.setTimeout(() => {
+        void invoke('materials:search', { courseId, query })
+          .then((hits) => {
+            if (sequence !== mentionSequenceRef.current) {
+              return
+            }
+            setMentionHits(hits.slice(0, MAX_MENTION_RESULTS))
+            setMentionIndex(0)
+          })
+          .catch(() => {
+            if (sequence === mentionSequenceRef.current) {
+              setMentionHits([])
+            }
+          })
+          .finally(() => {
+            if (sequence === mentionSequenceRef.current) {
+              setIsSearching(false)
+            }
+          })
+      }, MENTION_DEBOUNCE_MS)
+      return () => window.clearTimeout(timeout)
+    }, [courseId, mention])
+
+    const selectMention = useCallback(
+      (hit: MaterialSearchHit) => {
+        if (mention === null) {
+          return
         }
+        const inserted = `@${hit.relPath} `
+        const next =
+          value.slice(0, mention.start) + inserted + value.slice(mention.end)
+        const caret = mention.start + inserted.length
+        onChange(next)
+        setMention(null)
+        setMentionHits([])
+        window.requestAnimationFrame(() => {
+          textareaRef.current?.focus()
+          textareaRef.current?.setSelectionRange(caret, caret)
+          resize()
+        })
+      },
+      [mention, onChange, resize, value]
+    )
+
+    const submit = useCallback(() => {
+      if (
+        isStreaming ||
+        disabled ||
+        (value.trim() === '' && attachments.length === 0)
+      ) {
+        return
+      }
+      onSend(attachments)
+      setAttachments([])
+      setAttachmentError(null)
+      setMention(null)
+      window.requestAnimationFrame(resize)
+    }, [attachments, disabled, isStreaming, onSend, resize, value])
+
+    const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+      if (event.nativeEvent.isComposing) {
+        return
+      }
+      if (mention !== null) {
+        const clamped = Math.min(
+          mentionIndex,
+          Math.max(mentionHits.length - 1, 0)
+        )
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          setMention(null)
+          setMentionHits([])
+          return
+        }
+        if (event.key === 'ArrowDown') {
+          event.preventDefault()
+          setMentionIndex((index) =>
+            Math.min(index + 1, Math.max(mentionHits.length - 1, 0))
+          )
+          return
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault()
+          setMentionIndex((index) => Math.max(index - 1, 0))
+          return
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          const selected = mentionHits[clamped]
+          if (selected !== undefined) {
+            selectMention(selected)
+          }
+          return
+        }
+        if (event.key === 'Tab' && mentionHits[clamped] !== undefined) {
+          event.preventDefault()
+          selectMention(mentionHits[clamped]!)
+          return
+        }
+      }
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault()
+        submit()
       }
     }
 
-    const canSend = !isStreaming && !disabled && value.trim() !== ''
+    const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>): void => {
+      const images = Array.from(event.clipboardData.files).filter((file) =>
+        file.type.startsWith('image/')
+      )
+      if (images.length === 0) {
+        return
+      }
+      event.preventDefault()
+      const remaining = MAX_IMAGE_COUNT - attachments.length
+      const sized = images.filter((file) => file.size <= MAX_IMAGE_BYTES)
+      const accepted = sized.slice(0, Math.max(remaining, 0))
+
+      if (images.some((file) => file.size > MAX_IMAGE_BYTES)) {
+        setAttachmentError('이미지는 한 장당 5MB까지 첨부할 수 있어요.')
+      } else if (images.length > remaining) {
+        setAttachmentError('이미지는 한 메시지에 최대 5장까지 첨부할 수 있어요.')
+      } else {
+        setAttachmentError(null)
+      }
+
+      if (accepted.length === 0) {
+        return
+      }
+      void Promise.allSettled(accepted.map(readImage)).then((results) => {
+        const read = results.flatMap((result) =>
+          result.status === 'fulfilled' ? [result.value] : []
+        )
+        setAttachments((current) =>
+          [...current, ...read].slice(0, MAX_IMAGE_COUNT)
+        )
+        if (read.length !== accepted.length) {
+          setAttachmentError('일부 이미지를 읽지 못했어요. 다시 붙여넣어 주세요.')
+        }
+      })
+    }
+
+    const removeAttachment = (index: number): void => {
+      setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))
+      setAttachmentError(null)
+    }
+
+    const canSend =
+      !isStreaming &&
+      !disabled &&
+      (value.trim() !== '' || attachments.length > 0)
     const resetTime = formatResetTime(limit?.resetsAt)
+    const clampedMentionIndex = Math.min(
+      mentionIndex,
+      Math.max(mentionHits.length - 1, 0)
+    )
 
     return (
       <div className="chat-composer-zone">
@@ -100,20 +315,92 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
             </span>
           </div>
         )}
+        {attachments.length > 0 && (
+          <div className="chat-attachments" aria-label="첨부 이미지">
+            {attachments.map((attachment, index) => (
+              <div
+                key={`${attachment.mediaType}:${index}`}
+                className="chat-attachment"
+              >
+                <img
+                  src={`data:${attachment.mediaType};base64,${attachment.dataBase64}`}
+                  alt={`첨부 이미지 ${index + 1}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(index)}
+                  aria-label={`첨부 이미지 ${index + 1} 제거`}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {attachmentError !== null && (
+          <p className="chat-attachment-error" role="alert">
+            {attachmentError}
+          </p>
+        )}
         <div className="chat-composer" data-streaming={isStreaming || undefined}>
+          {mention !== null && (
+            <div className="chat-mention" role="listbox" aria-label="과목 파일">
+              {mention.query.trim() === '' ? (
+                <p className="chat-mention__status">파일 이름을 입력하세요.</p>
+              ) : isSearching && mentionHits.length === 0 ? (
+                <p className="chat-mention__status">찾는 중…</p>
+              ) : mentionHits.length === 0 ? (
+                <p className="chat-mention__status">일치하는 파일이 없어요.</p>
+              ) : (
+                mentionHits.map((hit, index) => (
+                  <button
+                    key={hit.relPath}
+                    id={`chat-mention-${index}`}
+                    type="button"
+                    role="option"
+                    aria-selected={index === clampedMentionIndex}
+                    data-highlighted={index === clampedMentionIndex || undefined}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseEnter={() => setMentionIndex(index)}
+                    onClick={() => selectMention(hit)}
+                  >
+                    <span>{hit.name}</span>
+                    <small>{hit.relPath}</small>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
           <textarea
             ref={textareaRef}
             className="chat-composer__input"
             rows={1}
-            placeholder="무엇이든 물어보세요"
+            placeholder="무엇이든 물어보세요 · @로 파일 언급"
             value={value}
             disabled={disabled}
             onChange={(event) => {
               onChange(event.target.value)
+              updateMention(
+                event.target.value,
+                event.target.selectionStart ?? event.target.value.length
+              )
               resize()
             }}
+            onSelect={(event) => {
+              updateMention(
+                value,
+                event.currentTarget.selectionStart ?? value.length
+              )
+            }}
+            onPaste={handlePaste}
             onKeyDown={handleKeyDown}
             aria-label="메시지 입력"
+            aria-expanded={mention !== null}
+            aria-activedescendant={
+              mention !== null && mentionHits.length > 0
+                ? `chat-mention-${clampedMentionIndex}`
+                : undefined
+            }
           />
           {isStreaming ? (
             <button
@@ -131,7 +418,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
             <button
               type="button"
               className="chat-composer__action chat-composer__action--send"
-              onClick={onSend}
+              onClick={submit}
               disabled={!canSend}
               aria-label="메시지 보내기"
               title="보내기 (Enter)"

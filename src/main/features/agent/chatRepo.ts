@@ -36,6 +36,8 @@ export interface ChatRepo {
   getOrCreateSession(courseId: string, provider: AgentProvider): ChatSessionInfo
   /** Persists the resume record once the CLI reports its session id. */
   recordSessionStart(sessionId: string, record: SessionStartRecord): void
+  /** Pins a model without touching the resumable CLI session id. */
+  setModel(sessionId: string, model: string): void
   setStatus(sessionId: string, status: AgentSessionStatus): void
   nextTurnSeq(courseId: string): number
   appendMessage(
@@ -192,6 +194,16 @@ export function createChatRepo(db: Database): ChatRepo {
         record.transcriptPath,
         record.launchConfigJson,
         nowIso(),
+        nowIso(),
+        requireId(sessionId, 'sessionId')
+      )
+    },
+
+    setModel(sessionId, model) {
+      db.prepare(
+        `UPDATE agent_sessions SET model = ?, updated_at = ? WHERE id = ?`
+      ).run(
+        requireNonEmptyString(model, 'model').trim(),
         nowIso(),
         requireId(sessionId, 'sessionId')
       )

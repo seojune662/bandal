@@ -11,6 +11,7 @@ export {
 } from './claude/ClaudeCodeAdapter'
 export { createStreamMapper } from './claude/streamMapper'
 export { probeModels, FALLBACK_MODELS, type CliModel } from './claude/modelProbe'
+export { getAgentModels } from './agentModels'
 export { createEventBatcher, type EventBatcher } from './eventBatcher'
 export { createChatRepo, type ChatRepo } from './chatRepo'
 export {
