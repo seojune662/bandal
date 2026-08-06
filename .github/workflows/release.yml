@@ -90,8 +90,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ needs.verify.outputs.tag }}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists — reusing it."
+          # `gh release view <tag>` cannot resolve a DRAFT release — drafts are
+          # not addressable by tag until published, and it exits "release not
+          # found". Probing with it made a re-run try to create a second draft
+          # and take a 422. Go through the API, which does list drafts.
+          EXISTING="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -n1)"
+          if [ -n "$EXISTING" ]; then
+            echo "Release $TAG already exists (id $EXISTING) — reusing it."
           else
             gh release create "$TAG" \
               --draft \
@@ -262,7 +268,20 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ needs.verify.outputs.tag }}"
-          ASSETS="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+          # Same draft-invisibility trap as create-release: this release is
+          # still a draft at this point, so `gh release view` returns
+          # "release not found" and the check below failed even though both
+          # platforms had uploaded correctly. That is exactly how v0.1.1 built
+          # green on both runners and still never shipped.
+          RELEASE_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -n1)"
+          if [ -z "$RELEASE_ID" ]; then
+            echo "::error::No release found for $TAG (draft or published)."
+            exit 1
+          fi
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_ENV"
+          ASSETS="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+            --paginate --jq '.[].name')"
           echo "$ASSETS"
           MISSING=0
           # These two files ARE the auto-update feed. A release without them
@@ -276,4 +295,8 @@ jobs:
       - name: Undraft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${{ needs.verify.outputs.tag }}" --draft=false
+        run: |
+          # By id, not by tag — `gh release edit <tag>` cannot see the draft
+          # it is being asked to publish.
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            -F draft=false --jq '.html_url'
