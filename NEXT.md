@@ -59,15 +59,32 @@ mac·Windows 자동 빌드 + 앱 내 자동 업데이트가 붙었다. 전체 �
 - Windows 포팅 완료: `/bin/zsh` 하드코딩 제거, `.cmd` 실행, `taskkill` 트리 종료, `icon.ico`
 - 앱이 6시간마다 새 버전을 확인하고 토스트로 알린다 (설정 → About 에서 수동 확인)
 
-**아직 남은 사람 몫** (`docs/release.md` §3):
+**v0.1.0 이 실제로 배포됐다** (2026-08-06):
+https://github.com/seojune662/bandal/releases/tag/v0.1.0
 
-1. `seojune662/bandal` 에 소스 푸시 + **public 전환** (지금 커밋 0개)
-2. GitHub 시크릿 8개 등록 — 없으면 미서명으로 나가거나 "함께하기" 가 사라진다
-3. 첫 태그를 밀어 파이프라인 확인 — 실패해도 릴리스는 draft 로 남는다
-4. 두 버전으로 자동 업데이트 **실제 검증** (mac·Windows 각각)
+- macOS arm64·x64 (서명 + Apple 공증 완료 — `spctl` 이 `Notarized Developer ID` 로 판정)
+- Windows x64 NSIS (미서명, SmartScreen 경고 1회)
+- `latest-mac.yml` / `latest.yml` 둘 다 첨부 = 자동 업데이트 피드 정상
+- 시크릿 8개 등록 완료, 웹사이트 다운로드 링크 3개 모두 200
 
-⚠ x64 빌드를 돌린 뒤에는 `pnpm postinstall` 로 네이티브 모듈을 arm64 로 되돌려야
-`pnpm dev` / `pnpm e2e` 가 다시 돈다 — `docs/release.md` §7.
+첫 릴리스에서 파이프라인 버그 3개를 잡았고 전부 고쳐져 있다:
+1. 워크플로에 `electron-vite build` 가 빠져 asar 가 비어 있었다
+2. 이름이 같은 Developer ID 인증서가 두 장이라 codesign 이 ambiguous 로 죽었다
+   (해시 지정으로는 안 고쳐진다 — electron-builder 가 codesign 에는 이름을 넘긴다)
+3. 태그와 package.json version 은 정확히 같아야 한다 (`v0.1.0-rc.1` 은 막힌다)
+
+### 다음 릴리스에서 반드시 할 것
+
+**자동 업데이트는 아직 진짜로 검증되지 않았다.** 버전이 하나뿐이라 확인할 수가
+없다. `v0.1.1` 을 내고 나서 0.1.0 설치본으로 아래를 돌려야 완료다:
+
+1. v0.1.0 설치 → 실행
+2. v0.1.1 릴리스
+3. 설정 → About → 업데이트 확인
+4. 토스트 → 퍼센트 → 재시작 후 **버전이 0.1.1 인가**
+
+mac·Windows 양쪽에서. Squirrel.Mac 과 NSIS 는 다른 구현이라 한쪽 성공이 다른
+쪽을 보장하지 않는다. 상세는 `docs/release.md` §6.
 
 ## 3. 남은 백로그
 
