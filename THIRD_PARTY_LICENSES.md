@@ -57,6 +57,27 @@ SOFTWARE.
 
 ---
 
+## Noto Sans KR (bundled font)
+
+- Source: <https://github.com/notofonts/noto-cjk> (`Sans/SubsetOTF/KR/NotoSansKR-Regular.otf`)
+- License: SIL Open Font License 1.1
+- Copyright: Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved
+  Font Name 'Source'. Noto is a trademark of Google Inc.
+
+Shipped **unmodified** at `resources/fonts/NotoSansKR-Regular.otf` and packaged
+into `<Resources>/fonts/`. It is embedded (subset) into exported PDFs by
+`src/main/features/pdf/exportPdf.ts`: pdf-lib's built-in Helvetica is
+WinAnsi-only, so without a Unicode font every Hangul glyph in a text-box
+annotation would export as `?`.
+
+The OFL permits bundling and embedding. The full license text ships with the
+font upstream and is reproduced at
+<https://openfontlicense.org/open-font-license-official-text/>. Note the OFL's
+Reserved Font Name clause: the file must not be redistributed under a modified
+name, and this repository does not modify it.
+
+---
+
 Runtime npm dependencies (React, zustand, dockview, Milkdown, pdf.js,
 better-sqlite3, chokidar, immer, uuid, react-pdf) are used unmodified
 under their respective licenses; see `node_modules/<pkg>/LICENSE` and

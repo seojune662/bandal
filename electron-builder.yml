@@ -40,6 +40,16 @@ files:
   - '!node_modules/better-sqlite3/build/**/*.a'
   - '!node_modules/better-sqlite3/build/deps/**'
 
+# The Korean-capable font used to burn text-box markup into exported PDFs.
+# pdf-lib's built-in Helvetica is WinAnsi-only, so without this every Hangul
+# glyph exports as '?'. It lives outside asar so the main process can read it
+# with a plain fs call, and lands at <Resources>/fonts/ in the packaged app.
+extraResources:
+  - from: resources/fonts
+    to: fonts
+    filter:
+      - '**/*.otf'
+
 # better-sqlite3 ships a native .node binding that cannot load from inside
 # the asar archive.
 asarUnpack:
