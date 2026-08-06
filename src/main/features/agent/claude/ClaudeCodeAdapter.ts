@@ -5,14 +5,16 @@
  * Interactive permissions run over the stdio control protocol
  * (`--permission-prompt-tool stdio` → can_use_tool control_requests), cancel
  * uses the interrupt control_request, and teardown kills the whole process
- * group (the CLI spawns helpers).
+ * tree (the CLI spawns helpers). Spawning and killing go through
+ * ../platform.ts, which is where the POSIX/Windows differences live.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process'
+import { type ChildProcess } from 'node:child_process'
 import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { killProcessTree, spawnClaude } from '../platform'
 import type {
   AgentAdapter,
   AgentCapabilities,
@@ -62,17 +64,18 @@ export const CLAUDE_CAPABILITIES: AgentCapabilities = {
   cancel: true
 }
 
-/** Process groups of live sessions, for the synchronous exit-time sweep. */
+/** Root pids of live sessions, for the synchronous exit-time sweep. */
 const liveProcessGroups = new Set<number>()
 
-/** Kill every live CLI process group. Safe to call from process.on('exit'). */
+/**
+ * Kill every live CLI process tree. Safe to call from `process.on('exit')`.
+ *
+ * Also called before an auto-update restart: on Windows a surviving CLI child
+ * holds file handles that make the NSIS updater fail to replace the install.
+ */
 export function killAllClaudeProcessesSync(): void {
-  for (const pgid of liveProcessGroups) {
-    try {
-      process.kill(-pgid, 'SIGKILL')
-    } catch {
-      // already gone
-    }
+  for (const pid of liveProcessGroups) {
+    killProcessTree(pid, 'SIGKILL')
   }
   liveProcessGroups.clear()
 }
@@ -158,13 +161,14 @@ export interface ClaudeCodeSession extends AgentSession {
 
 export interface ClaudeCodeAdapterDeps {
   locator: BinaryLocator
-  spawnImpl?: typeof spawn
+  /** Injectable for tests. Defaults to the platform-aware spawn. */
+  spawnImpl?: typeof spawnClaude
 }
 
 export function createClaudeCodeAdapter(
   deps: ClaudeCodeAdapterDeps
 ): AgentAdapter & { startSession(opts: AgentStartSessionOptions): Promise<ClaudeCodeSession> } {
-  const spawnImpl = deps.spawnImpl ?? spawn
+  const spawnImpl = deps.spawnImpl ?? spawnClaude
 
   async function startSession(
     opts: AgentStartSessionOptions
@@ -177,9 +181,7 @@ export function createClaudeCodeAdapter(
     try {
       child = spawnImpl(binary.path, args, {
         cwd: opts.cwd,
-        env: buildChildEnv(loginPath),
-        detached: true, // own process group → group kill on dispose
-        stdio: ['pipe', 'pipe', 'pipe']
+        env: buildChildEnv(loginPath)
       })
     } catch (error) {
       throw new AgentUnavailableError(
@@ -329,17 +331,11 @@ export function createClaudeCodeAdapter(
         // stream already destroyed
       }
       if (pgid !== undefined && !exited) {
-        try {
-          process.kill(-pgid, 'SIGTERM')
-        } catch {
-          // already gone
-        }
+        // On Windows this is already a forced tree kill (`taskkill /T /F`), so
+        // the escalation timer below is a POSIX-only no-op there.
+        killProcessTree(pgid, 'SIGTERM')
         const killTimer = setTimeout(() => {
-          try {
-            process.kill(-pgid, 'SIGKILL')
-          } catch {
-            // already gone
-          }
+          killProcessTree(pgid, 'SIGKILL')
         }, SIGKILL_DELAY_MS)
         killTimer.unref()
       }

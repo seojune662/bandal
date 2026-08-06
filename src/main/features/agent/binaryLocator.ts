@@ -1,14 +1,27 @@
 /**
  * Locates the user's own Claude Code CLI binary and answers
- * `agent:availability`. Resolution order: configured path → ~/.local/bin/claude
- * → login-shell PATH (`zsh -lic 'command -v claude'`). Results are cached.
+ * `agent:availability`. Resolution order: configured path → well-known install
+ * dirs → PATH. Results are cached.
+ *
+ * On macOS/Linux the PATH comes from a *login shell* (`zsh -lic`), because a
+ * GUI-launched app inherits launchd's minimal PATH rather than the one the
+ * user's `.zshrc` builds. Windows has no such split — the process environment
+ * already carries the machine + user PATH — so that step is skipped there.
+ * See ./platform.ts for the rest of the OS differences.
  */
 
 import { execFile } from 'node:child_process'
-import { homedir } from 'node:os'
-import { join, delimiter, dirname } from 'node:path'
+import { dirname } from 'node:path'
 import { promisify } from 'node:util'
 import type { AgentAvailability, AgentErrorCode } from '../../../shared/types/agent-events'
+import {
+  claudeFileNames,
+  isWindows,
+  joinPath,
+  splitPath,
+  wellKnownClaudeDirs,
+  type Platform
+} from './platform'
 
 const execFileAsync = promisify(execFile)
 
@@ -49,6 +62,10 @@ export interface BinaryLocatorDeps {
     file: string,
     args: string[]
   ) => Promise<{ stdout: string; stderr: string }>
+  /** Injectable for tests — lets one OS exercise both platform branches. */
+  platform?: Platform
+  /** Injectable for tests (reads PATH / APPDATA / LOCALAPPDATA). */
+  env?: NodeJS.ProcessEnv
 }
 
 function parseVersion(stdout: string): string | null {
@@ -101,6 +118,10 @@ export function createBinaryLocator(deps: BinaryLocatorDeps = {}): BinaryLocator
     (async (file: string, args: string[]) =>
       execFileAsync(file, args, { timeout: EXEC_TIMEOUT_MS }))
 
+  const platform = deps.platform ?? process.platform
+  const env = deps.env ?? process.env
+  const fileNames = claudeFileNames(platform)
+
   let cachedBinary: LocatedBinary | null = null
   let cachedShellPath: string | null | undefined
 
@@ -117,6 +138,13 @@ export function createBinaryLocator(deps: BinaryLocatorDeps = {}): BinaryLocator
     if (cachedShellPath !== undefined) {
       return cachedShellPath
     }
+    // Windows: no login-shell concept. The inherited PATH is already the full
+    // machine + user PATH, so hand that back instead of shelling out.
+    if (isWindows(platform)) {
+      const inherited = env['PATH'] ?? env['Path'] ?? null
+      cachedShellPath = inherited === null || inherited === '' ? null : inherited
+      return cachedShellPath
+    }
     try {
       const { stdout } = await exec('/bin/zsh', ['-lic', 'echo -n "$PATH"'])
       const path = stdout.trim()
@@ -129,16 +157,26 @@ export function createBinaryLocator(deps: BinaryLocatorDeps = {}): BinaryLocator
 
   async function candidates(): Promise<string[]> {
     const list: string[] = []
+    const push = (path: string): void => {
+      if (!list.includes(path)) {
+        list.push(path)
+      }
+    }
+
     const configured = deps.configuredPath?.()
     if (configured !== undefined && configured !== '') {
-      list.push(configured)
+      push(configured)
     }
-    list.push(join(homedir(), '.local', 'bin', 'claude'))
+    for (const dir of wellKnownClaudeDirs(platform, env)) {
+      for (const name of fileNames) {
+        push(joinPath(platform, dir, name))
+      }
+    }
     const shellPath = await loginShellPath()
     if (shellPath !== null) {
-      for (const dir of shellPath.split(delimiter)) {
-        if (dir !== '' && !list.includes(join(dir, 'claude'))) {
-          list.push(join(dir, 'claude'))
+      for (const dir of splitPath(shellPath, platform)) {
+        for (const name of fileNames) {
+          push(joinPath(platform, dir, name))
         }
       }
     }
@@ -171,7 +209,9 @@ export function createBinaryLocator(deps: BinaryLocatorDeps = {}): BinaryLocator
     }
     throw new AgentUnavailableError(
       'not-installed',
-      'Claude Code CLI not found (checked configured path, ~/.local/bin and the login-shell PATH)'
+      isWindows(platform)
+        ? 'Claude Code CLI not found (checked configured path, %APPDATA%\\npm, %LOCALAPPDATA%\\Programs\\claude and PATH)'
+        : 'Claude Code CLI not found (checked configured path, ~/.local/bin and the login-shell PATH)'
     )
   }
 

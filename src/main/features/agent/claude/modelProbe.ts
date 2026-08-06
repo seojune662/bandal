@@ -5,9 +5,9 @@
  * parse, kill. Older CLIs answer with an error → static fallback.
  */
 
-import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { tmpdir } from 'node:os'
+import { killProcessTree, spawnClaude } from '../platform'
 
 const PROBE_TIMEOUT_MS = 10_000
 const PROBE_REQUEST_ID = 'bandal-list-models'
@@ -71,12 +71,12 @@ export interface ModelProbeOptions {
   binaryPath: string
   cwd?: string
   timeoutMs?: number
-  spawnImpl?: typeof spawn
+  spawnImpl?: typeof spawnClaude
 }
 
 /** Lists the models the user's CLI offers; falls back to a static list. */
 export async function probeModels(opts: ModelProbeOptions): Promise<CliModel[]> {
-  const spawnImpl = opts.spawnImpl ?? spawn
+  const spawnImpl = opts.spawnImpl ?? spawnClaude
   const env = { ...process.env }
   delete env['CLAUDECODE']
   delete env['CLAUDE_CODE_ENTRYPOINT']
@@ -86,16 +86,16 @@ export async function probeModels(opts: ModelProbeOptions): Promise<CliModel[]> 
     const finish = (models: CliModel[]): void => {
       if (!settled) {
         settled = true
-        try {
-          child.kill('SIGKILL')
-        } catch {
-          // already gone
+        // Tree kill, not `child.kill()`: on Windows the direct child is the
+        // `cmd.exe` shim, and killing it would orphan the real CLI process.
+        if (child.pid !== undefined) {
+          killProcessTree(child.pid, 'SIGKILL')
         }
         resolve(models)
       }
     }
 
-    let child: ReturnType<typeof spawn>
+    let child: ReturnType<typeof spawnClaude>
     try {
       child = spawnImpl(
         opts.binaryPath,
@@ -110,7 +110,14 @@ export async function probeModels(opts: ModelProbeOptions): Promise<CliModel[]> 
           '--disable-slash-commands',
           '--verbose'
         ],
-        { cwd: opts.cwd ?? tmpdir(), env, stdio: ['pipe', 'pipe', 'ignore'] }
+        {
+          cwd: opts.cwd ?? tmpdir(),
+          env,
+          stdio: ['pipe', 'pipe', 'ignore'],
+          // One-shot probe: killed explicitly by `finish`, no helper tree to
+          // sweep, so it can stay in this process's group.
+          detached: false
+        }
       )
     } catch {
       resolve(FALLBACK_MODELS)

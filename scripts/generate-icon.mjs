@@ -4,7 +4,8 @@
  * Emits SVG design sources (the truth), renders them to PNG at every macOS
  * iconset size with node-canvas (librsvg-backed, so each size is rasterized
  * from vector — no blurry bitmap downscales), packs `resources/icon.icns` via
- * `iconutil`, and writes a 512px `resources/icon.png`.
+ * `iconutil`, packs `resources/icon.ico` for Windows, and writes a 512px
+ * `resources/icon.png`.
  *
  * Usage: node scripts/generate-icon.mjs
  *
@@ -57,6 +58,8 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const { createCanvas, loadImage } = require('canvas')
+// Transpiled ESM: the callable lives on `.default` under require().
+const pngToIco = require('png-to-ico').default
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const RESOURCES_DIR = join(ROOT, 'resources')
@@ -223,6 +226,9 @@ const ICONSET_ENTRIES = [
   ['icon_512x512@2x.png', 1024]
 ]
 
+/** Raster sizes packed into resources/icon.ico (256 is the format ceiling). */
+const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
+
 async function main() {
   mkdirSync(RESOURCES_DIR, { recursive: true })
   rmSync(ICONSET_DIR, { recursive: true, force: true })
@@ -243,17 +249,39 @@ async function main() {
   // App icon PNG (512) for non-icns consumers.
   writeFileSync(join(RESOURCES_DIR, 'icon.png'), rendered.get(512))
 
-  execFileSync('iconutil', [
-    '-c',
-    'icns',
-    ICONSET_DIR,
-    '-o',
-    join(RESOURCES_DIR, 'icon.icns')
-  ])
+  // Windows .ico. Every size is re-rasterized from the vector rather than
+  // downscaled from one big PNG, which is the whole point of the tiered
+  // `iconSvg(size)` design — the 16px tile drops craters and thickens the ring.
+  // Letting electron-builder auto-convert icon.png would throw that away.
+  // 256 is the ICO format's ceiling.
+  const icoBuffers = []
+  for (const size of ICO_SIZES) {
+    if (!rendered.has(size)) {
+      rendered.set(size, await renderPng(size))
+    }
+    icoBuffers.push(rendered.get(size))
+  }
+  writeFileSync(join(RESOURCES_DIR, 'icon.ico'), await pngToIco(icoBuffers))
+
+  // `iconutil` is macOS-only. On other hosts the .ico and .png are still
+  // produced; the committed .icns stays as-is.
+  let madeIcns = false
+  if (process.platform === 'darwin') {
+    execFileSync('iconutil', [
+      '-c',
+      'icns',
+      ICONSET_DIR,
+      '-o',
+      join(RESOURCES_DIR, 'icon.icns')
+    ])
+    madeIcns = true
+  }
   rmSync(ICONSET_DIR, { recursive: true, force: true })
 
   console.log(
-    'Generated resources/icon.svg, icon-small.svg, icon.png (512px), icon.icns'
+    `Generated resources/icon.svg, icon-small.svg, icon.png (512px), icon.ico${
+      madeIcns ? ', icon.icns' : ' (icon.icns skipped: needs macOS iconutil)'
+    }`
   )
 }
 
