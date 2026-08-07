@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { showToast, ToastHost } from '../../app/toast'
 import { BandalMark } from '../../components/BandalMark'
-import { useT } from '../../i18n'
+import { useLocale, useT } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
 import type { AgentAvailability } from '../../../../shared/types/agent-events'
 import type { Course } from '../../../../shared/types/course'
@@ -42,6 +43,7 @@ interface Category {
 
 export function SettingsApp(): JSX.Element {
   const t = useT()
+  const locale = useLocale()
   const [activeCategory, setActiveCategory] = useState<CategoryId>('general')
   const [query, setQuery] = useState('')
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -55,6 +57,7 @@ export function SettingsApp(): JSX.Element {
   const [coursesLoading, setCoursesLoading] = useState(true)
   const [coursesError, setCoursesError] = useState<string | null>(null)
   const [includeArchived, setIncludeArchived] = useState(false)
+  const [pendingCourseId, setPendingCourseId] = useState<string | null>(null)
   const mountedRef = useRef(true)
 
   const categories = useMemo<readonly Category[]>(
@@ -218,6 +221,37 @@ export function SettingsApp(): JSX.Element {
     loadCourses(next)
   }
 
+  const handleRestoreCourse = async (course: Course): Promise<void> => {
+    if (pendingCourseId !== null) return
+    setPendingCourseId(course.id)
+    try {
+      const restored = await invoke('courses:archive', {
+        courseId: course.id,
+        archived: false
+      })
+      if (!mountedRef.current) return
+      setCourses((current) =>
+        current.map((item) => (item.id === restored.id ? restored : item))
+      )
+      showToast(
+        locale === 'ko-KR'
+          ? `“${course.name}” 과목을 복원했어요.`
+          : `Restored “${course.name}”.`
+      )
+    } catch {
+      if (mountedRef.current) {
+        showToast(
+          locale === 'ko-KR'
+            ? '과목을 복원하지 못했어요.'
+            : 'Could not restore the course.',
+          'danger'
+        )
+      }
+    } finally {
+      if (mountedRef.current) setPendingCourseId(null)
+    }
+  }
+
   const panel = {
     general: <GeneralPanel settings={settings} />,
     appearance: (
@@ -243,7 +277,9 @@ export function SettingsApp(): JSX.Element {
         loading={coursesLoading}
         error={coursesError}
         includeArchived={includeArchived}
+        pendingCourseId={pendingCourseId}
         onIncludeArchivedChange={handleArchivedChange}
+        onRestore={(course) => void handleRestoreCourse(course)}
         onRetry={() => loadCourses(includeArchived)}
       />
     ),
@@ -350,6 +386,7 @@ export function SettingsApp(): JSX.Element {
           </div>
         </main>
       </div>
+      <ToastHost />
     </div>
   )
 }

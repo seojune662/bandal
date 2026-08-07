@@ -3,15 +3,20 @@ import {
   existsSync,
   mkdirSync,
   openSync,
-  readdirSync,
   readSync,
   statSync,
   writeFileSync
 } from 'node:fs'
-import type { Dirent } from 'node:fs'
-import { extname, join, posix } from 'node:path'
+import { join } from 'node:path'
 import type { Database } from 'better-sqlite3'
 import type { ActivityEvent, ActivityKind } from '../../../shared/types/study'
+import type { MaterialKind } from '../../../shared/types/materials'
+import { resolveInside } from '../../db/validate'
+import {
+  MATERIAL_INDEX_STATE_REL_PATH,
+  MATERIAL_SCAN_MAX_DEPTH,
+  MATERIAL_SCAN_MAX_ENTRIES
+} from '../materials/materialsRepo'
 import type { ActivityRepo } from './activityRepo'
 
 const DOSSIER_REL_PATH = '.bandal/COURSE.md'
@@ -31,24 +36,38 @@ const SECTION_BUDGETS = {
   textboxes: 1_500
 } as const
 
-const IMAGE_EXTENSIONS = new Set([
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.svg',
-  '.bmp',
-  '.avif',
-  '.heic'
-])
-
 interface MaterialEntry {
   relPath: string
   absPath: string
   depth: number
   isDirectory: boolean
   kind: 'pdf' | 'markdown' | 'image' | 'other'
+}
+
+interface MaterialIndexRow {
+  rel_path: string
+  kind: MaterialKind
+  updated_at: string
+}
+
+interface MaterialIndexStateRow {
+  size: number
+  updated_at: string
+}
+
+interface LatestRow {
+  latest: string | null
+}
+
+interface MaterialIndexStatus {
+  unavailable: boolean
+  stale: boolean
+  truncated: boolean
+}
+
+interface MaterialSnapshot {
+  entries: MaterialEntry[]
+  status: MaterialIndexStatus
 }
 
 interface CountRow {
@@ -169,56 +188,148 @@ function renderLimitedSection(options: LimitedSectionOptions): string {
   return [...header, ...selected, ...overflow, ...footer].join('\n\n')
 }
 
-function materialKind(fileName: string): MaterialEntry['kind'] {
-  const extension = extname(fileName).toLowerCase()
-  if (extension === '.pdf') return 'pdf'
-  if (extension === '.md' || extension === '.markdown') return 'markdown'
-  if (IMAGE_EXTENSIONS.has(extension)) return 'image'
-  return 'other'
+function indexedMaterialKind(kind: MaterialKind): MaterialEntry['kind'] {
+  return kind === 'note' ? 'markdown' : kind
 }
 
-function scanMaterials(
-  absDir: string,
-  relDir = '',
-  depth = 0,
-  result: MaterialEntry[] = []
-): MaterialEntry[] {
-  let children: Dirent<string>[]
+/**
+ * Reads the bounded cache produced by materialsRepo. This deliberately never
+ * falls back to walking the course folder: rebuild() runs in chat:open, where
+ * even a bounded synchronous scan would still freeze every main-process IPC.
+ */
+function readMaterialSnapshot(
+  db: Database,
+  courseId: string,
+  courseFolder: string
+): MaterialSnapshot {
+  let rows: MaterialIndexRow[]
+  let state: MaterialIndexStateRow | undefined
+  let latestIndexUpdate: string | null
   try {
-    children = readdirSync(absDir, { withFileTypes: true })
+    state = db
+      .prepare(
+        `SELECT size, updated_at
+         FROM materials_index
+         WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL`
+      )
+      .get(courseId, MATERIAL_INDEX_STATE_REL_PATH) as
+      | MaterialIndexStateRow
+      | undefined
+    rows = db
+      .prepare(
+        `SELECT rel_path, kind, updated_at
+         FROM materials_index
+         WHERE course_id = ? AND rel_path != ? AND deleted_at IS NULL
+         ORDER BY rel_path ASC
+         LIMIT ?`
+      )
+      .all(
+        courseId,
+        MATERIAL_INDEX_STATE_REL_PATH,
+        MATERIAL_SCAN_MAX_ENTRIES + 1
+      ) as MaterialIndexRow[]
+    latestIndexUpdate = (
+      db
+        .prepare(
+          `SELECT MAX(updated_at) AS latest
+           FROM materials_index
+           WHERE course_id = ? AND deleted_at IS NULL`
+        )
+        .get(courseId) as LatestRow
+    ).latest
   } catch {
-    return result
+    return {
+      entries: [],
+      status: { unavailable: true, stale: false, truncated: false }
+    }
   }
 
-  children
-    .filter((child) => !child.name.startsWith('.'))
-    .sort((left, right) => {
-      if (left.isDirectory() !== right.isDirectory()) {
-        return left.isDirectory() ? -1 : 1
-      }
-      return left.name.localeCompare(right.name)
-    })
-    .forEach((child) => {
-      const relPath = relDir === '' ? child.name : posix.join(relDir, child.name)
-      const absPath = join(absDir, child.name)
-      if (child.isDirectory()) {
-        result.push({ relPath, absPath, depth, isDirectory: true, kind: 'other' })
-        scanMaterials(absPath, relPath, depth + 1, result)
-      } else if (child.isFile()) {
-        result.push({
+  const entries: MaterialEntry[] = []
+  const includedDirectories = new Set<string>()
+  let truncated = (state?.size ?? 0) !== 0 || rows.length > MATERIAL_SCAN_MAX_ENTRIES
+
+  for (const row of rows.slice(0, MATERIAL_SCAN_MAX_ENTRIES)) {
+    const segments = row.rel_path.split('/')
+    const depth = segments.length - 1
+    if (
+      row.rel_path === '' ||
+      segments.some((segment) => segment === '' || segment === '.' || segment === '..') ||
+      depth > MATERIAL_SCAN_MAX_DEPTH
+    ) {
+      truncated = true
+      continue
+    }
+
+    const missingDirectories: string[] = []
+    for (let index = 1; index < segments.length; index += 1) {
+      const relPath = segments.slice(0, index).join('/')
+      if (!includedDirectories.has(relPath)) missingDirectories.push(relPath)
+    }
+    if (
+      entries.length + missingDirectories.length + 1 >
+      MATERIAL_SCAN_MAX_ENTRIES
+    ) {
+      truncated = true
+      break
+    }
+
+    try {
+      for (const relPath of missingDirectories) {
+        entries.push({
           relPath,
-          absPath,
-          depth,
-          isDirectory: false,
-          kind: materialKind(child.name)
+          absPath: resolveInside(courseFolder, relPath),
+          depth: relPath.split('/').length - 1,
+          isDirectory: true,
+          kind: 'other'
         })
+        includedDirectories.add(relPath)
       }
-      // Symbolic links and special files are intentionally not followed.
-    })
-  return result
+      entries.push({
+        relPath: row.rel_path,
+        absPath: resolveInside(courseFolder, row.rel_path),
+        depth,
+        isDirectory: false,
+        kind: indexedMaterialKind(row.kind)
+      })
+    } catch {
+      truncated = true
+    }
+  }
+
+  let latestMaterialActivity: string | null = null
+  try {
+    latestMaterialActivity = (
+      db
+        .prepare(
+          `SELECT MAX(created_at) AS latest
+           FROM activity_events
+           WHERE course_id = ?
+             AND kind IN ('material-added', 'note-created', 'note-edited')`
+        )
+        .get(courseId) as LatestRow
+    ).latest
+  } catch {
+    // Missing activity history only disables the conservative stale signal.
+  }
+
+  const indexedAt = state?.updated_at ?? latestIndexUpdate
+  return {
+    entries,
+    status: {
+      unavailable: state === undefined && latestIndexUpdate === null,
+      stale:
+        indexedAt !== null &&
+        latestMaterialActivity !== null &&
+        latestMaterialActivity > indexedAt,
+      truncated
+    }
+  }
 }
 
-function materialSection(materials: MaterialEntry[]): string {
+function materialSection(
+  materials: MaterialEntry[],
+  status: MaterialIndexStatus
+): string {
   const files = materials.filter((entry) => !entry.isDirectory)
   const counts = {
     pdf: files.filter((entry) => entry.kind === 'pdf').length,
@@ -237,12 +348,26 @@ function materialSection(materials: MaterialEntry[]): string {
     if (entry.isDirectory) return `${indent}- 📁 ${inlineCode(`${entry.relPath}/`)}`
     return `${indent}- 📄 ${inlineCode(entry.relPath)} — ${labels[entry.kind]}`
   })
+  const intro = [
+    `파일 ${files.length}개 · 폴더 ${materials.length - files.length}개 ` +
+      `(PDF ${counts.pdf}, 마크다운 ${counts.markdown}, 이미지 ${counts.image}, 기타 ${counts.other})`
+  ]
+  if (status.unavailable) {
+    intro.push(
+      '⚠ 자료 인덱스가 아직 준비되지 않아 자료 목록이 포함되지 않음. 자료 사이드바를 새로 고치면 인덱스가 생성된다.'
+    )
+  } else if (status.truncated) {
+    intro.push(
+      `⚠ 스캔 상한(깊이 ${MATERIAL_SCAN_MAX_DEPTH}, 엔트리 ${MATERIAL_SCAN_MAX_ENTRIES.toLocaleString()}개)에 걸려 일부만 포함됨.`
+    )
+  } else if (status.stale) {
+    intro.push(
+      '⚠ 자료 인덱스보다 최근 변경 기록이 있어 현재 스냅샷의 일부만 포함됨. 자료 사이드바를 새로 고치면 갱신된다.'
+    )
+  }
   return renderLimitedSection({
     title: '자료 목록',
-    intro: [
-      `파일 ${files.length}개 · 폴더 ${materials.length - files.length}개 ` +
-        `(PDF ${counts.pdf}, 마크다운 ${counts.markdown}, 이미지 ${counts.image}, 기타 ${counts.other})`
-    ],
+    intro,
     entries,
     total: materials.length,
     budget: SECTION_BUDGETS.materials,
@@ -482,7 +607,7 @@ function textboxSection(db: Database, courseId: string): string {
 function createDossier(
   courseName: string,
   courseId: string,
-  materials: MaterialEntry[],
+  materials: MaterialSnapshot,
   activity: ActivityRepo,
   db: Database
 ): string {
@@ -495,11 +620,11 @@ function createDossier(
 
   return [
     header,
-    materialSection(materials),
+    materialSection(materials.entries, materials.status),
     activitySection(db, activity, courseId),
     taskSection(db, courseId),
     highlightSection(db, courseId),
-    noteSection(materials),
+    noteSection(materials.entries),
     textboxSection(db, courseId)
   ].join('\n\n') + '\n'
 }
@@ -522,7 +647,7 @@ export function createContextWriter(deps: {
         }
 
         const course = deps.getCourse(courseId)
-        const materials = scanMaterials(courseFolder)
+        const materials = readMaterialSnapshot(deps.db, courseId, courseFolder)
         const bandalDir = join(courseFolder, '.bandal')
         mkdirSync(bandalDir, { recursive: true })
         const files: Array<[string, string]> = [

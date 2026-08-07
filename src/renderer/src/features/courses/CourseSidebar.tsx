@@ -10,7 +10,11 @@ import { CourseGroupsSection } from '../group/CourseGroupsSection'
 import { TogetherFooter } from '../group/TogetherFooter'
 import { UniversityShortcuts } from '../university/UniversityShortcuts'
 import { TabKindIcon } from '../workspace/workspaceIcons'
-import { CourseFormDialog, DeleteCourseDialog } from './CourseDialogs'
+import {
+  ArchiveCourseDialog,
+  CourseFormDialog,
+  DeleteCourseDialog
+} from './CourseDialogs'
 import { FavoritesSection } from './FavoritesSection'
 import {
   persistCollapsedCourseIds,
@@ -77,6 +81,7 @@ export function CourseSidebar(): JSX.Element {
   const archiveCourse = useCoursesStore((state) => state.archiveCourse)
   const deleteCourse = useCoursesStore((state) => state.deleteCourse)
   const clearError = useCoursesStore((state) => state.clearError)
+  const loadCourses = useCoursesStore((state) => state.loadCourses)
 
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
   const toggleBoardOverlay = useUiStore((state) => state.toggleBoardOverlay)
@@ -86,6 +91,7 @@ export function CourseSidebar(): JSX.Element {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [linkTarget, setLinkTarget] = useState<PickedFolder | null>(null)
   const [renameTarget, setRenameTarget] = useState<Course | null>(null)
+  const [archiveTarget, setArchiveTarget] = useState<Course | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Course | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [addMenu, setAddMenu] = useState<AddMenuState | null>(null)
@@ -94,6 +100,14 @@ export function CourseSidebar(): JSX.Element {
   )
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const addMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const refreshAfterSettingsChange = (): void => {
+      void loadCourses()
+    }
+    window.addEventListener('focus', refreshAfterSettingsChange)
+    return () => window.removeEventListener('focus', refreshAfterSettingsChange)
+  }, [loadCourses])
 
   const visibleCourses = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
@@ -161,12 +175,15 @@ export function CourseSidebar(): JSX.Element {
     }
   }
 
-  const handleArchive = async (course: Course): Promise<void> => {
-    setContextMenu(null)
+  const handleArchive = async (): Promise<void> => {
+    if (archiveTarget === null) return
     try {
-      await archiveCourse(course.id)
+      await archiveCourse(archiveTarget.id, true)
+      showToast(`“${archiveTarget.name}” 과목을 보관했어요.`)
+      setArchiveTarget(null)
     } catch {
-      // The store exposes a persistent, dismissible error message.
+      showToast('과목을 보관하지 못했어요.', 'danger')
+      // Keep the confirmation open so the user can retry or cancel.
     }
   }
 
@@ -444,7 +461,11 @@ export function CourseSidebar(): JSX.Element {
           <button
             type="button"
             role="menuitem"
-            onClick={() => void handleArchive(contextMenu.course)}
+            onClick={() => {
+              clearError()
+              setArchiveTarget(contextMenu.course)
+              setContextMenu(null)
+            }}
           >
             <Icon name="archive" />
             보관
@@ -505,6 +526,13 @@ export function CourseSidebar(): JSX.Element {
         onSubmit={async (name) => {
           if (renameTarget !== null) await renameCourse(renameTarget.id, name)
         }}
+      />
+      <ArchiveCourseDialog
+        courseName={archiveTarget?.name ?? null}
+        pending={archiveTarget?.id === pendingCourseId}
+        error={archiveTarget === null ? null : error}
+        onClose={() => setArchiveTarget(null)}
+        onConfirm={handleArchive}
       />
       <DeleteCourseDialog
         courseName={deleteTarget?.name ?? null}

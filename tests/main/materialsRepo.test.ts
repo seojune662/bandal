@@ -4,6 +4,11 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
   createMaterialsRepo,
   kindForFile,
+  MATERIAL_INDEX_STATE_REL_PATH,
+  MATERIAL_SCAN_MAX_DEPTH,
+  MATERIAL_SCAN_MAX_ENTRIES,
+  MATERIAL_TREE_TRUNCATION_REL_PATH,
+  type MaterialsScanLimits,
   type MaterialsRepo
 } from '../../src/main/features/materials'
 import {
@@ -22,6 +27,23 @@ describe('materialsRepo', () => {
   let courseFolder: string
   let revealed: string[]
   let trashed: string[]
+
+  function limitedRepo(scanLimits: MaterialsScanLimits): MaterialsRepo {
+    return createMaterialsRepo({
+      db: ctx.db,
+      getCourseFolder: () => courseFolder,
+      revealItem: () => undefined,
+      trashItem: async () => undefined,
+      scanLimits
+    })
+  }
+
+  function flattenTree(nodes: ReturnType<MaterialsRepo['tree']>): string[] {
+    return nodes.flatMap((node) => [
+      node.relPath,
+      ...(node.kind === 'dir' ? flattenTree(node.children ?? []) : [])
+    ])
+  }
 
   beforeEach(() => {
     ctx = createTestDb()
@@ -75,6 +97,44 @@ describe('materialsRepo', () => {
       expect(pdf?.kind).toBe('pdf')
       expect(pdf?.size).toBeGreaterThan(0)
       expect(pdf?.mtime).toBeGreaterThan(0)
+    })
+
+    test('stops descending at the depth limit and adds a visible warning node', () => {
+      expect(MATERIAL_SCAN_MAX_DEPTH).toBe(12)
+      mkdirSync(join(courseFolder, 'a', 'b', 'c', 'd'), { recursive: true })
+      writeFileSync(join(courseFolder, 'a', 'b', 'c', 'd', 'too-deep.pdf'), 'pdf')
+
+      const tree = limitedRepo({ maxDepth: 2, maxEntries: 100 }).tree(courseId)
+      const paths = flattenTree(tree)
+
+      expect(paths).toContain('a/b/c')
+      expect(paths).not.toContain('a/b/c/d')
+      expect(paths).not.toContain('a/b/c/d/too-deep.pdf')
+      expect(paths).toContain(MATERIAL_TREE_TRUNCATION_REL_PATH)
+      expect(
+        tree.find((node) => node.relPath === MATERIAL_TREE_TRUNCATION_REL_PATH)
+          ?.name
+      ).toContain('일부 자료만 표시됨')
+    })
+
+    test('stops at the entry limit and persists the truncation signal', () => {
+      expect(MATERIAL_SCAN_MAX_ENTRIES).toBe(20_000)
+
+      const tree = limitedRepo({ maxDepth: 12, maxEntries: 3 }).tree(courseId)
+      const paths = flattenTree(tree)
+      const returnedEntries = paths.filter(
+        (path) => path !== MATERIAL_TREE_TRUNCATION_REL_PATH
+      )
+      const state = ctx.db
+        .prepare(
+          `SELECT size FROM materials_index
+           WHERE course_id = ? AND rel_path = ?`
+        )
+        .get(courseId, MATERIAL_INDEX_STATE_REL_PATH) as { size: number }
+
+      expect(returnedEntries.length).toBeLessThanOrEqual(3)
+      expect(paths).toContain(MATERIAL_TREE_TRUNCATION_REL_PATH)
+      expect(state.size).not.toBe(0)
     })
   })
 

@@ -4,6 +4,7 @@
  * half-moon avatar, 중단됨 treatment and a subtle usage footnote per turn.
  */
 
+import { memo } from 'react'
 import type { PermissionResponse } from '../../../../shared/types/agent-events'
 import type { BlockView, MessageView } from './chatModel'
 import { PermissionDialog } from './blocks/PermissionDialog'
@@ -21,15 +22,26 @@ function formatCost(costUsd: number): string {
   return `$${costUsd.toFixed(costUsd < 0.1 ? 4 : 2)}`
 }
 
-function BlockRenderer({
-  block,
-  pendingPermissionId,
-  onRespondPermission
-}: {
+interface BlockRendererProps {
   block: BlockView
   pendingPermissionId: string | null
   onRespondPermission: (requestId: string, response: PermissionResponse) => void
-}): JSX.Element | null {
+}
+
+function activePermissionForBlock(
+  block: BlockView,
+  pendingPermissionId: string | null
+): string | null {
+  return block.kind === 'permission' && block.id === pendingPermissionId
+    ? block.id
+    : null
+}
+
+const BlockRenderer = memo(function BlockRenderer({
+  block,
+  pendingPermissionId,
+  onRespondPermission
+}: BlockRendererProps): JSX.Element | null {
   switch (block.kind) {
     case 'text':
       return <TextBlock block={block} />
@@ -46,9 +58,43 @@ function BlockRenderer({
         />
       )
   }
+}, (previous, next) =>
+  previous.block === next.block &&
+  previous.onRespondPermission === next.onRespondPermission &&
+  activePermissionForBlock(previous.block, previous.pendingPermissionId) ===
+    activePermissionForBlock(next.block, next.pendingPermissionId)
+)
+
+/** Equality for immutable message view-models: id plus their content version. */
+export function areMessageViewsEqual(
+  previous: MessageView,
+  next: MessageView
+): boolean {
+  if (previous === next) return true
+  if (
+    previous.id !== next.id ||
+    previous.role !== next.role ||
+    previous.streaming !== next.streaming ||
+    previous.interrupted !== next.interrupted ||
+    previous.blocks.length !== next.blocks.length
+  ) {
+    return false
+  }
+  for (let index = 0; index < previous.blocks.length; index += 1) {
+    if (previous.blocks[index] !== next.blocks[index]) return false
+  }
+  return (
+    previous.stats?.durationMs === next.stats?.durationMs &&
+    previous.stats?.costUsd === next.stats?.costUsd &&
+    previous.stats?.usage === next.stats?.usage
+  )
 }
 
-function UserMessage({ message }: { message: MessageView }): JSX.Element {
+const UserMessage = memo(function UserMessage({
+  message
+}: {
+  message: MessageView
+}): JSX.Element {
   const text = message.blocks
     .map((block) => (block.kind === 'text' ? block.text : ''))
     .join('')
@@ -74,17 +120,31 @@ function UserMessage({ message }: { message: MessageView }): JSX.Element {
       </div>
     </article>
   )
-}
+}, (previous, next) => areMessageViewsEqual(previous.message, next.message))
 
-function AssistantMessage({
-  message,
-  pendingPermissionId,
-  onRespondPermission
-}: {
+interface AssistantMessageProps {
   message: MessageView
   pendingPermissionId: string | null
   onRespondPermission: (requestId: string, response: PermissionResponse) => void
-}): JSX.Element {
+}
+
+function activePermissionForMessage(
+  message: MessageView,
+  pendingPermissionId: string | null
+): string | null {
+  if (pendingPermissionId === null) return null
+  return message.blocks.some(
+    (block) => block.kind === 'permission' && block.id === pendingPermissionId
+  )
+    ? pendingPermissionId
+    : null
+}
+
+const AssistantMessage = memo(function AssistantMessage({
+  message,
+  pendingPermissionId,
+  onRespondPermission
+}: AssistantMessageProps): JSX.Element {
   const stats = message.stats
   return (
     <article
@@ -120,7 +180,14 @@ function AssistantMessage({
       </div>
     </article>
   )
-}
+}, (previous, next) =>
+  areMessageViewsEqual(previous.message, next.message) &&
+  previous.onRespondPermission === next.onRespondPermission &&
+  activePermissionForMessage(
+    previous.message,
+    previous.pendingPermissionId
+  ) === activePermissionForMessage(next.message, next.pendingPermissionId)
+)
 
 export interface MessageListProps {
   messages: MessageView[]

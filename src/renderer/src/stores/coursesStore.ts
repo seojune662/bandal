@@ -28,7 +28,7 @@ interface CoursesState {
   /** Repoints a 연결 끊김 course at another folder. */
   relinkCourse: (courseId: string, folderPath: string) => Promise<CourseFolderResult>
   renameCourse: (courseId: string, name: string) => Promise<Course>
-  archiveCourse: (courseId: string) => Promise<void>
+  archiveCourse: (courseId: string, archived: boolean) => Promise<void>
   deleteCourse: (courseId: string) => Promise<void>
   clearError: () => void
 }
@@ -213,21 +213,30 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
       }
     },
 
-    archiveCourse: async (courseId) => {
+    archiveCourse: async (courseId, archived) => {
       const { courses, selectedCourseId } = get()
       set((state) => {
         state.pendingCourseId = courseId
         state.error = null
       })
       try {
-        await invoke('courses:archive', { courseId, archived: true })
-        // The course row is gone from active listings; a queued layout save
-        // for it would be stale. Its agent session was disposed in main.
-        useWorkspaceStore.getState().discardPendingSave(courseId)
+        const updated = await invoke('courses:archive', { courseId, archived })
+        if (archived) {
+          // The course row is gone from active listings; a queued layout save
+          // for it would be stale. Its agent session was disposed in main.
+          useWorkspaceStore.getState().discardPendingSave(courseId)
+        }
         set((state) => {
-          state.courses = state.courses.filter((course) => course.id !== courseId)
-          if (selectedCourseId === courseId) {
-            state.selectedCourseId = nextSelection(courses, courseId)
+          if (archived) {
+            state.courses = state.courses.filter((course) => course.id !== courseId)
+            if (selectedCourseId === courseId) {
+              state.selectedCourseId = nextSelection(courses, courseId)
+            }
+          } else {
+            const index = state.courses.findIndex((course) => course.id === courseId)
+            if (index === -1) state.courses.push(updated)
+            else state.courses[index] = updated
+            state.courses.sort((a, b) => a.sortOrder - b.sortOrder)
           }
           state.pendingCourseId = null
         })

@@ -107,6 +107,12 @@ function handle<K extends IpcChannel>(
 
 const OK = { ok: true } as const
 
+/**
+ * How long quitting waits for in-flight IPC to land. Long enough for a message
+ * already on the wire, short enough that ⌘Q still feels instant.
+ */
+const QUIT_DRAIN_MS = 150
+
 /** Sends a push event to every open window. */
 function broadcast<K extends PushChannel>(
   channel: K,
@@ -546,6 +552,27 @@ export function registerHandlers(): IpcRouter {
   })
   const groups = (): ReturnType<typeof groupRuntime.service> =>
     groupRuntime.service()
+
+  // Give queued IPC one turn of the event loop before the process goes away.
+  //
+  // `notes:write` is synchronous once its handler runs, so a note is safe the
+  // moment main *handles* the message. The gap is earlier: the renderer's
+  // autosave fires `invoke('notes:write')` and the app can quit while that
+  // message is still in flight, which loses the student's last edit with no
+  // error anywhere. The renderer cannot close this on its own.
+  //
+  // This is a mitigation, not a guarantee — it does not survive SIGKILL or a
+  // crash. It does cover the ordinary "⌘Q right after typing" case, which is
+  // the one students actually hit.
+  let quitDrained = false
+  app.on('before-quit', (event) => {
+    if (quitDrained) return
+    quitDrained = true
+    event.preventDefault()
+    setTimeout(() => {
+      app.quit()
+    }, QUIT_DRAIN_MS)
+  })
 
   app.on('before-quit', () => {
     whiteboardService.dispose()

@@ -338,6 +338,12 @@
   transform: translateY(-1px);
 }
 
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
 .availability-skeleton,
 .course-loading {
   display: grid;
@@ -448,6 +454,13 @@
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+}
+
+.course-item__actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-2);
 }
 
 .empty-state {

@@ -513,3 +513,41 @@
   background: var(--accent);
   transform: translateX(18px);
 }
+
+.settings-app > .toast-host {
+  position: fixed;
+  bottom: var(--space-5);
+  left: 50%;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.settings-app .toast {
+  max-width: calc(100vw - var(--space-8));
+  padding: var(--space-2) var(--space-4);
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-md);
+}
+
+.settings-app .toast[data-tone='danger'] {
+  color: var(--danger);
+  background: var(--danger-muted);
+  border-color: var(--danger-muted);
+}
+
+.settings-app .toast:hover {
+  border-color: var(--accent);
+}

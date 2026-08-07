@@ -17,7 +17,20 @@ import {
   createCoursesRepo,
   type CoursesRepo
 } from '../../../src/main/features/courses'
+import { createMaterialsRepo } from '../../../src/main/features/materials'
 import { createTestDb, type TestDb } from '../helpers/testDb'
+
+const filesystemScan = vi.hoisted(() => ({ directoryReads: vi.fn() }))
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...actual,
+    opendirSync: (...args: Parameters<typeof actual.opendirSync>) => {
+      filesystemScan.directoryReads(args[0])
+      return actual.opendirSync(...args)
+    }
+  }
+})
 
 describe('context dossier', () => {
   let ctx: TestDb
@@ -53,6 +66,19 @@ describe('context dossier', () => {
 
   function dossier(): string {
     return readFileSync(join(courseFolder, '.bandal', 'COURSE.md'), 'utf8')
+  }
+
+  function indexMaterials(scanLimits?: {
+    maxDepth: number
+    maxEntries: number
+  }): void {
+    createMaterialsRepo({
+      db: ctx.db,
+      getCourseFolder: (id) => courses.getFolder(id),
+      revealItem: () => undefined,
+      trashItem: async () => undefined,
+      scanLimits
+    }).tree(courseId)
   }
 
   test('places third-party highlight quotes inside an explicit data-only boundary', () => {
@@ -112,6 +138,7 @@ describe('context dossier', () => {
     mkdirSync(join(courseFolder, 'notes'), { recursive: true })
     writeFileSync(join(courseFolder, 'lecture.pdf'), 'pdf')
     writeFileSync(join(courseFolder, 'notes', 'week1.md'), '# 연결 리스트\n본문')
+    indexMaterials()
     activity.record({
       courseId,
       kind: 'note-edited',
@@ -164,6 +191,31 @@ describe('context dossier', () => {
     expect(readFileSync(join(courseFolder, '.bandal', 'README.md'), 'utf8')).toContain(
       '직접 수정하지 마세요'
     )
+  })
+
+  test('reads the existing index without a second directory scan', () => {
+    writeFileSync(join(courseFolder, 'indexed.pdf'), 'pdf')
+    indexMaterials()
+    writeFileSync(join(courseFolder, 'not-indexed-yet.pdf'), 'pdf')
+    filesystemScan.directoryReads.mockClear()
+
+    writer().rebuild(courseId)
+    const markdown = dossier()
+
+    expect(filesystemScan.directoryReads).not.toHaveBeenCalled()
+    expect(markdown).toContain('indexed.pdf')
+    expect(markdown).not.toContain('not-indexed-yet.pdf')
+  })
+
+  test('writes the materials truncation signal into the dossier', () => {
+    for (let index = 0; index < 5; index += 1) {
+      writeFileSync(join(courseFolder, `material-${index}.pdf`), 'pdf')
+    }
+    indexMaterials({ maxDepth: 12, maxEntries: 3 })
+
+    writer().rebuild(courseId)
+
+    expect(dossier()).toContain('일부만 포함됨')
   })
 
   test('does not throw or recreate a missing course folder', () => {

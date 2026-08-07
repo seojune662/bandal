@@ -502,19 +502,25 @@ export function CoursesPanel({
   loading,
   error,
   includeArchived,
+  pendingCourseId,
   onIncludeArchivedChange,
+  onRestore,
   onRetry
 }: {
   courses: Course[]
   loading: boolean
   error: string | null
   includeArchived: boolean
+  pendingCourseId: string | null
   onIncludeArchivedChange: (next: boolean) => void
+  onRestore: (course: Course) => void
   onRetry: () => void
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const courseCount = new Intl.NumberFormat(locale).format(courses.length)
+  const restoreLabel = locale === 'ko-KR' ? '복원' : 'Restore'
+  const restoringLabel = locale === 'ko-KR' ? '복원 중…' : 'Restoring…'
 
   return (
     <div className="settings-stack">
@@ -529,7 +535,11 @@ export function CoursesPanel({
           )}
         </div>
 
-        <div className="course-list" aria-live="polite">
+        <div
+          className="course-list"
+          aria-live="polite"
+          aria-busy={pendingCourseId !== null}
+        >
           {loading ? (
             <div className="course-loading" aria-label={t('settings.courses.loading')}>
               <span />
@@ -566,7 +576,20 @@ export function CoursesPanel({
                   <span>{course.slug}</span>
                 </div>
                 {course.archived && (
-                  <span className="badge">{t('settings.courses.archived')}</span>
+                  <div className="course-item__actions">
+                    <span className="badge">{t('settings.courses.archived')}</span>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      aria-label={`${course.name} ${restoreLabel}`}
+                      disabled={pendingCourseId !== null}
+                      onClick={() => onRestore(course)}
+                    >
+                      {pendingCourseId === course.id
+                        ? restoringLabel
+                        : restoreLabel}
+                    </button>
+                  </div>
                 )}
               </div>
             ))

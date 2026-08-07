@@ -1,6 +1,6 @@
 /**
  * Materials repository. Source of truth is the course folder on disk;
- * `materials_index` is a rebuildable cache used only for search.
+ * `materials_index` is a rebuildable cache used by search and the dossier.
  */
 
 import {
@@ -9,12 +9,13 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  opendirSync,
   readFileSync,
-  readdirSync,
   renameSync,
   statSync,
   writeFileSync
 } from 'node:fs'
+import type { Dirent } from 'node:fs'
 import { basename, extname, isAbsolute, join, posix } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
@@ -69,6 +70,13 @@ export interface MaterialsRepoDeps {
   revealItem: (absPath: string) => void
   /** Moves an absolute path to the OS trash (electron shell.trashItem). */
   trashItem: (absPath: string) => Promise<void>
+  /** Production uses the exported defaults; tests may lower them. */
+  scanLimits?: MaterialsScanLimits
+}
+
+export interface MaterialsScanLimits {
+  maxDepth: number
+  maxEntries: number
 }
 
 /**
@@ -95,6 +103,39 @@ const MAX_READ_BYTES = 64 * 1024 * 1024
 /** Clipboard payloads are copied over IPC, so cap their decoded size. */
 const MAX_WRITE_BYTES = 50 * 1024 * 1024
 
+/**
+ * Twelve nested folders covers ordinary course layouts while bounding hostile
+ * or accidentally generated directory chains. Root entries are depth zero.
+ */
+export const MATERIAL_SCAN_MAX_DEPTH = 12
+/**
+ * Twenty thousand directory entries is well beyond a normal course, but puts
+ * a finite ceiling on synchronous main-process filesystem work.
+ */
+export const MATERIAL_SCAN_MAX_ENTRIES = 20_000
+
+export const MATERIAL_TREE_TRUNCATION_REL_PATH =
+  '.bandal/__materials_scan_truncated__'
+export const MATERIAL_INDEX_STATE_REL_PATH = '.bandal/__materials_index_state__'
+
+const TRUNCATED_BY_DEPTH = 1
+const TRUNCATED_BY_ENTRY_COUNT = 2
+
+type ScanTruncation = 'depth' | 'entries'
+
+interface WalkState {
+  entriesRead: number
+  files: MaterialNode[]
+  limits: MaterialsScanLimits
+  truncation: Set<ScanTruncation>
+}
+
+interface MaterialWalk {
+  nodes: MaterialNode[]
+  files: MaterialNode[]
+  truncation: Set<ScanTruncation>
+}
+
 export function kindForFile(fileName: string): MaterialKind {
   const ext = extname(fileName).toLowerCase()
   if (ext === '.pdf') return 'pdf'
@@ -107,52 +148,111 @@ function isHidden(name: string): boolean {
   return name.startsWith('.')
 }
 
-function walkDir(absDir: string, relDir: string): MaterialNode[] {
-  const entries = readdirSync(absDir, { withFileTypes: true })
-    .filter((entry) => !isHidden(entry.name))
-    .sort((a, b) => {
-      if (a.isDirectory() !== b.isDirectory()) {
-        return a.isDirectory() ? -1 : 1
-      }
-      return a.name.localeCompare(b.name)
-    })
+function sortedEntries(absDir: string, state: WalkState): Dirent<string>[] {
+  if (state.truncation.has('entries')) return []
 
+  const directory = opendirSync(absDir)
+  const entries: Dirent<string>[] = []
+  try {
+    while (true) {
+      const entry = directory.readSync()
+      if (entry === null) break
+
+      // One look-ahead entry is necessary to distinguish exactly-at-limit
+      // from truncated. It is never stat'ed or returned.
+      if (state.entriesRead >= state.limits.maxEntries) {
+        state.truncation.add('entries')
+        break
+      }
+      state.entriesRead += 1
+      // Hidden and special entries still consume the scan budget: otherwise
+      // a folder full of them could bypass the main-thread work ceiling.
+      if (!isHidden(entry.name)) entries.push(entry)
+    }
+  } finally {
+    directory.closeSync()
+  }
+
+  return entries.sort((a, b) => {
+    if (a.isDirectory() !== b.isDirectory()) {
+      return a.isDirectory() ? -1 : 1
+    }
+    return a.name.localeCompare(b.name)
+  })
+}
+
+function walkDir(
+  absDir: string,
+  relDir: string,
+  depth: number,
+  state: WalkState
+): MaterialNode[] {
+  const entries = sortedEntries(absDir, state)
   const nodes: MaterialNode[] = []
   for (const entry of entries) {
     const relPath = relDir === '' ? entry.name : posix.join(relDir, entry.name)
     const absPath = join(absDir, entry.name)
     if (entry.isDirectory()) {
+      let children: MaterialNode[] = []
+      if (depth >= state.limits.maxDepth) {
+        state.truncation.add('depth')
+      } else {
+        children = walkDir(absPath, relPath, depth + 1, state)
+      }
       nodes.push({
         relPath,
         name: entry.name,
         kind: 'dir',
-        children: walkDir(absPath, relPath)
+        children
       })
     } else if (entry.isFile()) {
       const stat = statSync(absPath)
-      nodes.push({
+      const node: MaterialNode = {
         relPath,
         name: entry.name,
         kind: kindForFile(entry.name),
         size: stat.size,
         mtime: Math.round(stat.mtimeMs)
-      })
+      }
+      nodes.push(node)
+      state.files.push(node)
     }
     // Symlinks and other entry types are intentionally skipped.
   }
   return nodes
 }
 
-function flattenFiles(nodes: MaterialNode[]): MaterialNode[] {
-  const files: MaterialNode[] = []
-  for (const node of nodes) {
-    if (node.kind === 'dir') {
-      files.push(...flattenFiles(node.children ?? []))
-    } else {
-      files.push(node)
-    }
+function scanMaterialTree(
+  folder: string,
+  limits: MaterialsScanLimits
+): MaterialWalk {
+  const state: WalkState = {
+    entriesRead: 0,
+    files: [],
+    limits,
+    truncation: new Set()
   }
-  return files
+  const nodes = walkDir(folder, '', 0, state)
+  return { nodes, files: state.files, truncation: state.truncation }
+}
+
+function truncationNode(
+  truncation: Set<ScanTruncation>,
+  limits: MaterialsScanLimits
+): MaterialNode {
+  const reasons: string[] = []
+  if (truncation.has('depth')) {
+    reasons.push(`깊이 ${limits.maxDepth}`)
+  }
+  if (truncation.has('entries')) {
+    reasons.push(`엔트리 ${limits.maxEntries.toLocaleString()}개`)
+  }
+  return {
+    relPath: MATERIAL_TREE_TRUNCATION_REL_PATH,
+    name: `⚠ 일부 자료만 표시됨 — 스캔 상한(${reasons.join(', ')}) 도달`,
+    kind: 'dir',
+    children: []
+  }
 }
 
 /** Picks `name.ext`, `name (2).ext`, … until the target does not exist. */
@@ -244,6 +344,10 @@ function assertFileOrDirectory(absPath: string, relPath: string): 'file' | 'dir'
 
 export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
   const { db, getCourseFolder, revealItem, trashItem } = deps
+  const scanLimits = deps.scanLimits ?? {
+    maxDepth: MATERIAL_SCAN_MAX_DEPTH,
+    maxEntries: MATERIAL_SCAN_MAX_ENTRIES
+  }
 
   function requireCourseFolder(courseId: string): { id: string; folder: string } {
     const id = requireId(courseId, 'courseId')
@@ -254,9 +358,8 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
     return { id, folder }
   }
 
-  /** Rebuilds the materials_index cache for a course from disk. */
-  function rebuildIndex(courseId: string, folder: string): void {
-    const files = flattenFiles(walkDir(folder, ''))
+  /** Rebuilds materials_index from an already completed tree scan. */
+  function rebuildIndex(courseId: string, scan: MaterialWalk): void {
     const now = nowIso()
     const rebuild = db.transaction(() => {
       db.prepare('DELETE FROM materials_index WHERE course_id = ?').run(courseId)
@@ -265,7 +368,22 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
            (id, course_id, rel_path, kind, size, mtime, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      for (const file of files) {
+      const truncationFlags =
+        (scan.truncation.has('depth') ? TRUNCATED_BY_DEPTH : 0) |
+        (scan.truncation.has('entries') ? TRUNCATED_BY_ENTRY_COUNT : 0)
+      // A hidden cache-only row distinguishes an indexed empty course from a
+      // course that has never been scanned, and carries truncation to dossier.
+      insert.run(
+        randomUUID(),
+        courseId,
+        MATERIAL_INDEX_STATE_REL_PATH,
+        'other',
+        truncationFlags,
+        Date.now(),
+        now,
+        now
+      )
+      for (const file of scan.files) {
         insert.run(
           randomUUID(),
           courseId,
@@ -296,7 +414,12 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         console.warn(`[materials] course folder missing on disk: ${folder}`)
         return []
       }
-      return walkDir(folder, '')
+      const scan = scanMaterialTree(folder, scanLimits)
+      rebuildIndex(id, scan)
+      if (scan.truncation.size > 0) {
+        scan.nodes.push(truncationNode(scan.truncation, scanLimits))
+      }
+      return scan.nodes
     },
 
     search(courseId, query) {
@@ -306,7 +429,8 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       if (!existsSync(folder)) {
         return []
       }
-      rebuildIndex(id, folder)
+      const scan = scanMaterialTree(folder, scanLimits)
+      rebuildIndex(id, scan)
 
       // Matching happens in JS, not in SQL, because SQLite's `instr` compares
       // bytes. macOS hands back decomposed (NFD) filenames from readdir while
@@ -323,9 +447,13 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           `SELECT rel_path, kind FROM materials_index
            WHERE course_id = ?
              AND deleted_at IS NULL
+             AND rel_path != ?
            ORDER BY rel_path ASC`
         )
-        .all(id) as { rel_path: string; kind: MaterialKind }[]
+        .all(id, MATERIAL_INDEX_STATE_REL_PATH) as {
+          rel_path: string
+          kind: MaterialKind
+        }[]
 
       return rows
         .filter((row) => searchKey(row.rel_path).includes(needle))

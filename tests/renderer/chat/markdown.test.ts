@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import {
+  IncrementalMarkdownParser,
   isSafeLinkHref,
   parseInline,
   parseMarkdown
@@ -128,5 +129,82 @@ describe('block parsing', () => {
     expect(paragraph.children).toEqual([
       { kind: 'text', text: '<img src=x onerror=alert(1)>' }
     ])
+  })
+})
+
+describe('incremental streaming parsing', () => {
+  test('matches full parsing at every streamed prefix', () => {
+    const parser = new IncrementalMarkdownParser()
+    const text = [
+      '# 제목',
+      '',
+      '문단 **강조**',
+      '계속',
+      '',
+      '- 하나',
+      '- 둘',
+      '',
+      '> 인용',
+      '',
+      '```ts',
+      'const ticks = `three`',
+      '```',
+      '마무리'
+    ].join('\n')
+
+    for (let length = 1; length <= text.length; length += 1) {
+      const prefix = text.slice(0, length)
+      expect(parser.parse(prefix)).toEqual(parseMarkdown(prefix))
+    }
+  })
+
+  test('completed blocks are parsed once while only the tail keeps growing', () => {
+    let blockParseCalls = 0
+    const parser = new IncrementalMarkdownParser(() => {
+      blockParseCalls += 1
+    })
+    let text = '첫째\n\n둘째\n\n셋째\n\n마지막'
+    const initial = parser.parse(text)
+    const completed = initial.slice(0, 3)
+    expect(blockParseCalls).toBe(4)
+
+    const deltas = [' 문단', '이', ' 계속', ' 자란다']
+    for (const delta of deltas) {
+      text += delta
+      parser.parse(text)
+    }
+
+    const final = parser.parse(text)
+    expect(blockParseCalls).toBe(4 + deltas.length)
+    expect(final.slice(0, 3)).toEqual(completed)
+    for (let index = 0; index < completed.length; index += 1) {
+      expect(final[index]).toBe(completed[index])
+    }
+  })
+
+  test('an open code fence consumes plain deltas without reparsing its body', () => {
+    let blockParseCalls = 0
+    const parser = new IncrementalMarkdownParser(() => {
+      blockParseCalls += 1
+    })
+    let text = '도입\n\n```ts\nconst value ='
+    parser.parse(text)
+    expect(blockParseCalls).toBe(2)
+
+    for (let index = 0; index < 50; index += 1) {
+      text += ` ${index}`
+      parser.parse(text)
+    }
+
+    expect(blockParseCalls).toBe(2)
+    expect(parser.parse(text)[1]).toMatchObject({
+      kind: 'code-block',
+      lang: 'ts',
+      text: expect.stringContaining(' 49')
+    })
+
+    text += '\n```'
+    expect(parser.parse(text)[1]).toMatchObject({ kind: 'code-block' })
+    expect(blockParseCalls).toBe(3)
   })
 })

@@ -115,8 +115,13 @@ function PdfViewer({
 
   const scrollerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
-  const { visiblePages, registerPage, elementFor, pageAtViewportCenter } =
-    useVisiblePages(scrollerRef)
+  const {
+    visiblePages,
+    registerPage,
+    elementFor,
+    pageAtViewportCenter,
+    invalidatePageOffsets
+  } = useVisiblePages(scrollerRef)
 
   const [pdfProxy, setPdfProxy] = useState<PDFDocumentProxy | null>(null)
   const [numPages, setNumPages] = useState(0)
@@ -166,18 +171,33 @@ function PdfViewer({
     const scroller = scrollerRef.current
     if (scroller === null) return
     const observer = new ResizeObserver(() => {
+      invalidatePageOffsets()
       setContainerWidth(scroller.clientWidth)
+      setCurrentPage(pageAtViewportCenter())
     })
     observer.observe(scroller)
     setContainerWidth(scroller.clientWidth)
     return () => observer.disconnect()
-  }, [])
+  }, [invalidatePageOffsets, pageAtViewportCenter])
 
   const defaultAspect = pageAspects.get(1) ?? DEFAULT_PAGE_ASPECT
   const pageWidth = Math.max(
     MIN_PAGE_WIDTH_PX,
     Math.round((containerWidth - PAGE_GUTTER_PX) * zoom)
   )
+
+  // Page boxes only move when document layout changes. Rebuild their cached
+  // centers here; ordinary scroll frames only perform a binary search.
+  useLayoutEffect(() => {
+    invalidatePageOffsets()
+    if (numPages > 0) setCurrentPage(pageAtViewportCenter())
+  }, [
+    pageWidth,
+    pageAspects,
+    numPages,
+    invalidatePageOffsets,
+    pageAtViewportCenter
+  ])
 
   // -- zoom -----------------------------------------------------------------
   const applyZoom = useCallback((next: number): void => {
@@ -197,7 +217,8 @@ function PdfViewer({
     if (scroller === null || fraction === null) return
     pendingCenterRef.current = null
     scroller.scrollTop = fraction * scroller.scrollHeight - scroller.clientHeight / 2
-  }, [zoom])
+    setCurrentPage(pageAtViewportCenter())
+  }, [zoom, pageAtViewportCenter])
 
   useEffect(() => {
     const scroller = scrollerRef.current

@@ -233,6 +233,92 @@ export function CourseFormDialog({
   )
 }
 
+interface ArchiveCourseDialogProps {
+  courseName: string | null
+  pending: boolean
+  error: string | null
+  onClose: () => void
+  onConfirm: () => Promise<void>
+}
+
+export function ArchiveCourseDialog({
+  courseName,
+  pending,
+  error,
+  onClose,
+  onConfirm
+}: ArchiveCourseDialogProps): JSX.Element | null {
+  const titleId = useId()
+  const dialogRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    if (courseName === null) return
+    const frame = window.requestAnimationFrame(() => {
+      dialogRef.current?.querySelector<HTMLElement>('button')?.focus()
+    })
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' && !pending) onClose()
+      keepFocusInside(event, dialogRef.current)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [courseName, onClose, pending])
+
+  if (courseName === null) return null
+
+  return (
+    <div
+      className="dialog-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !pending) onClose()
+      }}
+    >
+      <section
+        ref={dialogRef}
+        className="course-dialog course-dialog--confirm"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
+        <div className="confirm-dialog__icon" aria-hidden="true">
+          <Icon name="archive" />
+        </div>
+        <h2 id={titleId}>과목을 보관할까요?</h2>
+        <p>
+          <strong>{courseName}</strong> 과목이 목록에서 숨겨집니다. 자료와 기록은
+          그대로 남고, 나중에 설정에서 복원할 수 있어요.
+        </p>
+        {error !== null && (
+          <p className="confirm-dialog__error" role="alert">
+            {error}
+          </p>
+        )}
+        <footer className="dialog-actions">
+          <button
+            type="button"
+            className="button button--secondary"
+            disabled={pending}
+            onClick={onClose}
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            className="button button--primary"
+            disabled={pending}
+            onClick={() => void onConfirm()}
+          >
+            {pending ? '보관 중…' : '보관'}
+          </button>
+        </footer>
+      </section>
+    </div>
+  )
+}
+
 interface DeleteCourseDialogProps {
   courseName: string | null
   pending: boolean

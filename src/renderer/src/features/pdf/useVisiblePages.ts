@@ -19,6 +19,85 @@ export interface VisiblePagesApi {
   elementFor(page: number): HTMLElement | null
   /** Page whose box covers the vertical middle of the scroller viewport. */
   pageAtViewportCenter(): number
+  /** Marks cached page offsets stale after zoom or another layout change. */
+  invalidatePageOffsets(): void
+}
+
+export interface PageViewport {
+  readonly scrollTop: number
+  readonly clientHeight: number
+  getBoundingClientRect(): { top: number }
+}
+
+export interface PageBoxElement {
+  getBoundingClientRect(): { top: number; height: number }
+}
+
+interface PageCenter {
+  page: number
+  center: number
+}
+
+/**
+ * Measures page positions only while invalid, then answers scroll-frame
+ * queries by binary-searching cached content-space centers.
+ */
+export class PageCenterCache {
+  private centers: PageCenter[] = []
+  private invalid = true
+
+  invalidate(): void {
+    this.invalid = true
+  }
+
+  pageAtViewportCenter(
+    scroller: PageViewport,
+    elements: ReadonlyMap<number, PageBoxElement>
+  ): number {
+    if (this.invalid) this.measure(scroller, elements)
+    if (this.centers.length === 0) return 1
+
+    const target = scroller.scrollTop + scroller.clientHeight / 2
+    let low = 0
+    let high = this.centers.length
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2)
+      if ((this.centers[middle]?.center ?? 0) < target) {
+        low = middle + 1
+      } else {
+        high = middle
+      }
+    }
+    if (low === 0) return this.centers[0]?.page ?? 1
+    if (low === this.centers.length) {
+      return this.centers[this.centers.length - 1]?.page ?? 1
+    }
+    const before = this.centers[low - 1]
+    const after = this.centers[low]
+    if (before === undefined || after === undefined) return 1
+    return target - before.center <= after.center - target
+      ? before.page
+      : after.page
+  }
+
+  private measure(
+    scroller: PageViewport,
+    elements: ReadonlyMap<number, PageBoxElement>
+  ): void {
+    const scrollerTop = scroller.getBoundingClientRect().top
+    const scrollTop = scroller.scrollTop
+    const centers: PageCenter[] = []
+    for (const [page, element] of elements) {
+      const box = element.getBoundingClientRect()
+      centers.push({
+        page,
+        center: box.top - scrollerTop + scrollTop + box.height / 2
+      })
+    }
+    centers.sort((a, b) => a.center - b.center || a.page - b.page)
+    this.centers = centers
+    this.invalid = false
+  }
 }
 
 function setsEqual(a: Set<number>, b: Set<number>): boolean {
@@ -37,6 +116,7 @@ export function useVisiblePages(
   const elementsRef = useRef(new Map<number, HTMLElement>())
   const pageOfElementRef = useRef(new WeakMap<Element, number>())
   const intersectingRef = useRef(new Set<number>([1]))
+  const pageCenterCacheRef = useRef(new PageCenterCache())
 
   useEffect(() => {
     const scroller = scrollerRef.current
@@ -83,11 +163,13 @@ export function useVisiblePages(
       if (previous !== undefined && previous !== element) {
         observerRef.current?.unobserve(previous)
         elementsRef.current.delete(page)
+        pageCenterCacheRef.current.invalidate()
       }
       if (element !== null) {
         elementsRef.current.set(page, element)
         pageOfElementRef.current.set(element, page)
         observerRef.current?.observe(element)
+        if (previous !== element) pageCenterCacheRef.current.invalidate()
       }
     }
     refCallbacksRef.current.set(page, callback)
@@ -102,21 +184,21 @@ export function useVisiblePages(
   const pageAtViewportCenter = useCallback((): number => {
     const scroller = scrollerRef.current
     if (scroller === null) return 1
-    const scrollerBox = scroller.getBoundingClientRect()
-    const center = scrollerBox.top + scroller.clientHeight / 2
-    let best = 1
-    let bestDistance = Number.POSITIVE_INFINITY
-    for (const [page, element] of elementsRef.current) {
-      const box = element.getBoundingClientRect()
-      const middle = box.top + box.height / 2
-      const distance = Math.abs(middle - center)
-      if (distance < bestDistance) {
-        bestDistance = distance
-        best = page
-      }
-    }
-    return best
+    return pageCenterCacheRef.current.pageAtViewportCenter(
+      scroller,
+      elementsRef.current
+    )
   }, [scrollerRef])
 
-  return { visiblePages, registerPage, elementFor, pageAtViewportCenter }
+  const invalidatePageOffsets = useCallback((): void => {
+    pageCenterCacheRef.current.invalidate()
+  }, [])
+
+  return {
+    visiblePages,
+    registerPage,
+    elementFor,
+    pageAtViewportCenter,
+    invalidatePageOffsets
+  }
 }

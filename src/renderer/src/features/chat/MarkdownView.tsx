@@ -3,8 +3,12 @@
  * All text flows through React's escaping — no innerHTML anywhere.
  */
 
-import { memo } from 'react'
-import { parseMarkdown, type MdBlockNode, type MdInline } from './markdown'
+import { memo, useRef } from 'react'
+import {
+  IncrementalMarkdownParser,
+  type MdBlockNode,
+  type MdInline
+} from './markdown'
 
 function InlineNodes({ nodes }: { nodes: MdInline[] }): JSX.Element {
   return (
@@ -49,7 +53,11 @@ function InlineNodes({ nodes }: { nodes: MdInline[] }): JSX.Element {
   )
 }
 
-function BlockNode({ node }: { node: MdBlockNode }): JSX.Element {
+const BlockNode = memo(function BlockNode({
+  node
+}: {
+  node: MdBlockNode
+}): JSX.Element {
   switch (node.kind) {
     case 'paragraph':
       return (
@@ -97,7 +105,7 @@ function BlockNode({ node }: { node: MdBlockNode }): JSX.Element {
     case 'hr':
       return <hr className="chat-md__hr" />
   }
-}
+})
 
 export interface MarkdownViewProps {
   text: string
@@ -106,7 +114,11 @@ export interface MarkdownViewProps {
 export const MarkdownView = memo(function MarkdownView({
   text
 }: MarkdownViewProps): JSX.Element {
-  const blocks = parseMarkdown(text)
+  const parserRef = useRef<IncrementalMarkdownParser | null>(null)
+  if (parserRef.current === null) {
+    parserRef.current = new IncrementalMarkdownParser()
+  }
+  const blocks = parserRef.current.parse(text)
   return (
     <div className="chat-md">
       {blocks.map((node, index) => (

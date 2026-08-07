@@ -20,9 +20,16 @@ import {
   type MutableRefObject
 } from 'react'
 import type { NoteContent, NoteRef } from '../../../../shared/types/note'
+import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { nativeHistoryGuard } from './nativeHistoryGuard'
+import {
+  createNoteConflictCopy,
+  preserveNoteOnClose,
+  registerNoteFlushTriggers,
+  type NoteFlushResult
+} from './noteSaveSafety'
 import {
   EMPTY_NOTE_FORMAT_STATE,
   getNoteFormatState,
@@ -211,10 +218,13 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   const persistedMarkdownRef = useRef('')
   const mtimeRef = useRef<number | null>(null)
   const conflictRef = useRef(false)
-  const writeInFlightRef = useRef<Promise<void> | null>(null)
+  const writeInFlightRef = useRef<Promise<NoteFlushResult> | null>(null)
   const revisionRef = useRef(0)
-  const flushRef = useRef<(overwrite?: boolean) => Promise<void>>(async () => undefined)
+  const flushRef = useRef<(overwrite?: boolean) => Promise<NoteFlushResult>>(
+    async () => ({ status: 'unavailable' })
+  )
   const scheduleRef = useRef<() => void>(() => undefined)
+  const closeTaskRef = useRef<Promise<unknown> | null>(null)
   const noteRef = useLatest<NoteRef>({ courseId, relPath })
 
   const clearTimer = useCallback((): void => {
@@ -233,26 +243,32 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   )
 
   const flush = useCallback(
-    async (overwrite = false): Promise<void> => {
+    async (overwrite = false): Promise<NoteFlushResult> => {
       clearTimer()
 
       const inFlight = writeInFlightRef.current
       if (inFlight !== null) {
-        await inFlight
+        const result = await inFlight
         if (
           currentMarkdownRef.current !== persistedMarkdownRef.current &&
           (!conflictRef.current || overwrite)
         ) {
-          await flushRef.current(overwrite)
+          return flushRef.current(overwrite)
         }
-        return
+        return result
       }
 
-      if (mtimeRef.current === null || (conflictRef.current && !overwrite)) return
+      if (mtimeRef.current === null) return { status: 'unavailable' }
+      if (conflictRef.current && !overwrite) {
+        return {
+          status: 'conflict',
+          detail: '디스크의 파일이 편집 중 변경되었습니다.'
+        }
+      }
       const markdown = currentMarkdownRef.current
       if (markdown === persistedMarkdownRef.current && !overwrite) {
         setStatusIfMounted('saved')
-        return
+        return { status: 'saved' }
       }
 
       setStatusIfMounted('saving')
@@ -275,15 +291,22 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
             setStatusIfMounted('dirty')
             scheduleRef.current()
           }
+          return { status: 'saved' } as const
         } catch (error) {
           if (isNoteConflict(error)) {
+            const detail = '디스크의 파일이 편집 중 변경되었습니다.'
             conflictRef.current = true
-            setStatusIfMounted('conflict', '디스크의 파일이 편집 중 변경되었습니다.')
+            setStatusIfMounted('conflict', detail)
+            return { status: 'conflict', detail } as const
           } else if (overwrite) {
+            const detail = errorMessage(error)
             conflictRef.current = true
-            setStatusIfMounted('conflict', errorMessage(error))
+            setStatusIfMounted('conflict', detail)
+            return { status: 'error', detail } as const
           } else {
-            setStatusIfMounted('error', errorMessage(error))
+            const detail = errorMessage(error)
+            setStatusIfMounted('error', detail)
+            return { status: 'error', detail } as const
           }
         } finally {
           writeInFlightRef.current = null
@@ -297,12 +320,32 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
         !conflictRef.current &&
         currentMarkdownRef.current !== persistedMarkdownRef.current
       ) {
-        await flushRef.current()
+        return flushRef.current()
       }
+      return request
     },
     [clearTimer, noteRef, setStatusIfMounted]
   )
   flushRef.current = flush
+
+  const preserveOnClose = useCallback((): Promise<unknown> => {
+    const existing = closeTaskRef.current
+    if (existing !== null) return existing
+
+    const task = preserveNoteOnClose({
+      flush: () => flushRef.current(),
+      snapshot: () => ({
+        ref: noteRef.current,
+        markdown: currentMarkdownRef.current,
+        persistedMarkdown: persistedMarkdownRef.current,
+        conflict: conflictRef.current
+      }),
+      createConflictCopy: createNoteConflictCopy,
+      notify: showToast
+    })
+    closeTaskRef.current = task
+    return task
+  }, [noteRef])
 
   const scheduleSave = useCallback((): void => {
     if (!aliveRef.current || conflictRef.current) return
@@ -353,12 +396,14 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   }, [panelApi])
 
   useEffect(() => {
-    const handleBeforeUnload = (): void => {
-      void flushRef.current()
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [])
+    return registerNoteFlushTriggers({
+      windowTarget: window,
+      documentTarget: document,
+      visibilityState: () => document.visibilityState,
+      flush: () => void flushRef.current(),
+      close: () => void preserveOnClose()
+    })
+  }, [preserveOnClose])
 
   useEffect(() => {
     // Revive on (re)mount. StrictMode mounts → unmounts → remounts the SAME
@@ -367,12 +412,13 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
     // resolved notes:read is dropped on the floor — the tab then sits on
     // "필기를 불러오는 중…" forever.
     aliveRef.current = true
+    closeTaskRef.current = null
     return () => {
       clearTimer()
-      void flushRef.current()
       aliveRef.current = false
+      void preserveOnClose()
     }
-  }, [clearTimer])
+  }, [clearTimer, preserveOnClose])
 
   useEffect(() => {
     const syncFontScale = (event: Event): void => {
