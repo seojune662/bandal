@@ -81,11 +81,14 @@ jobs:
     name: Create draft release
     needs: verify
     runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.draft.outputs.release_id }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.verify.outputs.tag }}
       - name: Create the draft if it does not exist
+        id: draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -103,7 +106,14 @@ jobs:
               --draft \
               --title "$TAG" \
               --generate-notes
+            EXISTING="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+              --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -n1)"
           fi
+          # Every build job uploads into THIS id. Letting electron-builder
+          # publish on its own meant the two platform jobs each resolved the
+          # release independently and raced: v0.4.0 ended up as two drafts,
+          # one holding only the mac assets and the other only Windows.
+          echo "release_id=$EXISTING" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.name }}
@@ -123,10 +133,10 @@ jobs:
             # MAC_IDENTITY is resolved to a SHA-1 hash by the step below, and
             # expanded by the shell (not `${{ }}`) so it picks up the value the
             # earlier step wrote to GITHUB_ENV.
-            build: pnpm exec electron-builder --mac --publish always -c.mac.identity="$MAC_IDENTITY"
+            build: pnpm exec electron-builder --mac --publish never -c.mac.identity="$MAC_IDENTITY"
           - name: Windows
             os: windows-latest
-            build: pnpm exec electron-builder --win --publish always
+            build: pnpm exec electron-builder --win --publish never
     steps:
       - uses: actions/checkout@v7
         with:
@@ -259,7 +269,7 @@ jobs:
           # would look for a literal "~/private_keys/..." and fail to notarize.
           echo "APPLE_API_KEY=$KEY_PATH" >> "$GITHUB_ENV"
 
-      - name: Build and publish
+      - name: Build the installers
         run: ${{ matrix.build }}
         env:
           # Publishing target: this repo. The built-in token is enough because
@@ -279,6 +289,46 @@ jobs:
 
       # Kept for post-mortems: the publish step uploads to the release, but a
       # failed run leaves nothing to inspect otherwise.
+      # Uploading here, rather than letting electron-builder publish, is what
+      # makes the two platform jobs deterministic: both push into the single
+      # release id minted by create-release. `gh release upload` is not usable
+      # because it resolves by TAG, and a draft is not addressable by tag.
+      - name: Upload the installers into the draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+        run: |
+          if [ -z "$RELEASE_ID" ]; then
+            echo "::error::create-release did not hand down a release id."
+            exit 1
+          fi
+          shopt -s nullglob
+          uploaded=0
+          for file in release/*.dmg release/*.zip release/*.exe \
+                      release/*.blockmap release/latest*.yml; do
+            name="$(basename "$file")"
+            echo "uploading $name"
+            # Replace an existing asset so a re-run is idempotent rather than
+            # failing on a duplicate name.
+            existing="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+              --paginate --jq ".[] | select(.name==\"$name\") | .id" | head -n1)"
+            if [ -n "$existing" ]; then
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$existing" >/dev/null
+            fi
+            gh api -X POST \
+              --hostname uploads.github.com \
+              "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$name" \
+              -H 'Content-Type: application/octet-stream' \
+              --input "$file" >/dev/null
+            uploaded=$((uploaded + 1))
+          done
+          if [ "$uploaded" -eq 0 ]; then
+            echo "::error::electron-builder produced no artifacts to upload."
+            exit 1
+          fi
+          echo "uploaded $uploaded asset(s) into release $RELEASE_ID"
+
       - name: Upload build logs on failure
         if: failure()
         uses: actions/upload-artifact@v7
