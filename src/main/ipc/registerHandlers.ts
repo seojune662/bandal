@@ -49,6 +49,7 @@ import {
   createWhiteboardRepo,
   createWhiteboardService
 } from '../features/whiteboard'
+import { createCanvasRepo } from '../features/canvas'
 import { createGroupRuntime } from '../features/group'
 import { isAuthCallbackUrl } from '../features/group/authCallbackUrl'
 import { createUpdaterRuntime } from '../features/updater'
@@ -503,6 +504,23 @@ export function registerHandlers(): IpcRouter {
   handle('whiteboard:sync', (req) =>
     whiteboardService.sync(req.boardId, req.since)
   )
+
+  // -- personal whiteboards (local only) -------------------------------------
+  // `canvas:` and not `board:` — the latter already means the study TASK board.
+  const canvasRepo = createCanvasRepo(db)
+  handle('canvas:list', (req) => canvasRepo.listBoards(req.courseId))
+  handle('canvas:create', (req) => canvasRepo.createBoard(req))
+  handle('canvas:rename', (req) => canvasRepo.renameBoard(req))
+  handle('canvas:remove', (req) => {
+    canvasRepo.removeBoard(req.id)
+    return OK
+  })
+  handle('canvas:open', (req) => canvasRepo.open(req.boardId))
+  handle('canvas:putShape', (req) => canvasRepo.putShape(req))
+  handle('canvas:removeShapes', (req) => {
+    canvasRepo.removeShapes(req)
+    return OK
+  })
 
   // -- settings (real implementation, settingsStore-owned) ------------------
   handle('settings:get', () => getSettings())

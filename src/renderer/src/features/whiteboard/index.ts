@@ -1,4 +1,8 @@
-export { default as WhiteboardTab, WHITEBOARD_SYNC_INTERVAL_MS } from './WhiteboardTab'
+export {
+  GroupWhiteboardView,
+  WHITEBOARD_SYNC_INTERVAL_MS,
+  type GroupWhiteboardViewProps
+} from './WhiteboardTab'
 export {
   WhiteboardCanvas,
   type DrawableWhiteboardAvailability,

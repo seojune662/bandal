@@ -141,6 +141,28 @@ describe('validateLayout', () => {
     expect(result!.droppedPanelIds).toEqual([legacyGroupPanelId])
   })
 
+  test('silently drops a legacy group-whiteboard panel', () => {
+    const legacyPanelId = 'group-whiteboard:g1'
+    const doc = layoutDoc(leaf('g1', [idA, legacyPanelId]), {
+      [idA]: panelState(pdfA),
+      [legacyPanelId]: {
+        id: legacyPanelId,
+        contentComponent: 'group-whiteboard',
+        params: {
+          descriptor: { kind: 'group-whiteboard', payload: { groupId: 'g1' } }
+        }
+      }
+    })
+
+    const validate = (): ReturnType<typeof validateLayout> => validateLayout(doc)
+
+    expect(validate).not.toThrow()
+    const result = validate()
+    expect(result).not.toBeNull()
+    expect(result!.tabs).toEqual({ [idA]: pdfA })
+    expect(result!.droppedPanelIds).toEqual([legacyPanelId])
+  })
+
   test('accepts a course-scoped group-chat descriptor', () => {
     const groupChat = descriptorFor('group-chat', { courseId: 'c1' })
     const groupChatPanelId = tabPanelId(groupChat)

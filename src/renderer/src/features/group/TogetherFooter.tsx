@@ -101,7 +101,26 @@ export function TogetherFooter(): JSX.Element | null {
 
   const openGroup = useCallback(
     (groupId: string) => {
-      openTab(descriptorFor('group-chat', { courseId: null, groupId }))
+      openTab(
+        descriptorFor('group-chat', {
+          courseId: null,
+          groupId,
+          view: 'chat'
+        })
+      )
+    },
+    [openTab]
+  )
+
+  const openWhiteboard = useCallback(
+    (groupId: string) => {
+      openTab(
+        descriptorFor('group-chat', {
+          courseId: null,
+          groupId,
+          view: 'whiteboard'
+        })
+      )
     },
     [openTab]
   )
@@ -114,7 +133,8 @@ export function TogetherFooter(): JSX.Element | null {
       openTab(
         descriptorFor('group-chat', {
           courseId: joined?.courseId ?? null,
-          groupId
+          groupId,
+          view: 'chat'
         })
       )
     },
@@ -185,6 +205,7 @@ export function TogetherFooter(): JSX.Element | null {
                     key={group.id}
                     group={group}
                     onOpen={openGroup}
+                    onOpenWhiteboard={openWhiteboard}
                   />
                 ))}
               </ul>

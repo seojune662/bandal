@@ -24,6 +24,7 @@ export { TAB_KINDS, isTabKind, isTabDescriptor } from '../../../../shared/tabs'
  *  - board: global singleton
  *  - browser: keyed by its stable tabId (every new browser tab is unique)
  *  - group-chat: singleton per course (null course = the 미지정 bucket)
+ *  - whiteboard: one tab per course board
  */
 export function tabPanelId(descriptor: TabDescriptor): string {
   switch (descriptor.kind) {
@@ -40,8 +41,8 @@ export function tabPanelId(descriptor: TabDescriptor): string {
       // Keyed by COURSE, not group — one 함께하기 tab per course, with an
       // in-panel switcher. See GroupChatTabPayload.
       return `group-chat:${descriptor.payload.courseId ?? 'unassigned'}`
-    case 'group-whiteboard':
-      return `group-whiteboard:${descriptor.payload.groupId}`
+    case 'whiteboard':
+      return `whiteboard:${descriptor.payload.courseId}:${descriptor.payload.boardId}`
   }
 }
 
@@ -74,7 +75,7 @@ export function tabTitle(descriptor: TabDescriptor): string {
       // Pure by contract, so the group's cached name is NOT read here.
       // GroupChatTab renames the panel once the local cache resolves.
       return '그룹 채팅'
-    case 'group-whiteboard':
+    case 'whiteboard':
       return '화이트보드'
   }
 }
@@ -93,8 +94,8 @@ export function tabPayloadSummary(descriptor: TabDescriptor): string {
       return '모든 과목의 할 일'
     case 'group-chat':
       return `그룹 ${descriptor.payload.groupId}`
-    case 'group-whiteboard':
-      return `그룹 ${descriptor.payload.groupId}`
+    case 'whiteboard':
+      return `보드 ${descriptor.payload.boardId}`
   }
 }
 

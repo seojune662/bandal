@@ -13,6 +13,7 @@ import type { IDockviewPanelProps } from 'dockview'
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -29,6 +30,8 @@ import {
 } from './noteFormatting'
 import { NOTE_EDITOR_PLUGINS } from './noteEditorPlugins'
 import { NoteToolbar } from './NoteToolbar'
+import { QuizPreview } from './QuizPreview'
+import { splitQuizMarkdown } from './quizMarkdown'
 import {
   createNoteZoomShortcutPlugin,
   NOTE_FONT_SCALE_STORAGE_KEY,
@@ -42,6 +45,7 @@ import './note-tab.css'
 const SAVE_DELAY_MS = 800
 
 type SaveStatus = 'saved' | 'dirty' | 'saving' | 'conflict' | 'error'
+type NoteViewMode = 'edit' | 'quiz'
 
 interface EditorSeed {
   markdown: string
@@ -191,6 +195,8 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   const [status, setStatus] = useState<SaveStatus>('saved')
   const [statusDetail, setStatusDetail] = useState<string | null>(null)
   const [conflictBusy, setConflictBusy] = useState(false)
+  const [presentedMarkdown, setPresentedMarkdown] = useState('')
+  const [viewMode, setViewMode] = useState<NoteViewMode>('edit')
   const [fontScale, setFontScale] = useState<NoteFontScale>(() => {
     try {
       return parseNoteFontScale(localStorage.getItem(NOTE_FONT_SCALE_STORAGE_KEY))
@@ -317,6 +323,8 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
       conflictRef.current = false
       revisionRef.current += 1
       setEditorSeed({ markdown: note.markdown, revision: revisionRef.current })
+      setPresentedMarkdown(note.markdown)
+      setViewMode(splitQuizMarkdown(note.markdown) === null ? 'edit' : 'quiz')
       setLoadError(null)
       setStatusIfMounted('saved')
     },
@@ -400,6 +408,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
     (markdown: string): void => {
       if (markdown === currentMarkdownRef.current) return
       currentMarkdownRef.current = markdown
+      setPresentedMarkdown(markdown)
 
       if (conflictRef.current) return
       if (markdown === persistedMarkdownRef.current) {
@@ -434,6 +443,24 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
     }
   }, [])
 
+  const quizSections = useMemo(
+    () => splitQuizMarkdown(presentedMarkdown),
+    [presentedMarkdown]
+  )
+
+  const enterEditMode = useCallback((): void => {
+    revisionRef.current += 1
+    setEditorSeed({
+      markdown: currentMarkdownRef.current,
+      revision: revisionRef.current
+    })
+    setViewMode('edit')
+  }, [])
+
+  const enterQuizMode = useCallback((): void => {
+    setViewMode('quiz')
+  }, [])
+
   const fileName = relPath.split('/').at(-1) ?? relPath
 
   if (loadError !== null && editorSeed === null) {
@@ -454,16 +481,27 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
         <span className="note-toolbar__path" title={relPath}>
           {fileName}
         </span>
-        <span
-          className="note-save-status"
-          data-status={status}
-          title={statusDetail ?? STATUS_LABEL[status]}
-          role="status"
-          aria-live="polite"
-        >
-          <span className="note-save-status__dot" aria-hidden="true" />
-          {STATUS_LABEL[status]}
-        </span>
+        <div className="note-toolbar__actions">
+          {quizSections !== null && (
+            <button
+              type="button"
+              className="note-action note-toolbar__mode"
+              onClick={viewMode === 'quiz' ? enterEditMode : enterQuizMode}
+            >
+              {viewMode === 'quiz' ? '편집 모드' : '풀이 모드'}
+            </button>
+          )}
+          <span
+            className="note-save-status"
+            data-status={status}
+            title={statusDetail ?? STATUS_LABEL[status]}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="note-save-status__dot" aria-hidden="true" />
+            {STATUS_LABEL[status]}
+          </span>
+        </div>
       </header>
 
       {status === 'conflict' && (
@@ -502,15 +540,19 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
           className="note-editor"
           style={{ '--note-font-scale': fontScale } as CSSProperties}
         >
-          <MilkdownProvider key={editorSeed.revision}>
-            <NoteEditorWorkspace
-              initialMarkdown={editorSeed.markdown}
-              onMarkdownChange={handleMarkdownChange}
-              fontScale={fontScale}
-              onFontScaleChange={changeFontScale}
-              onZoomStep={stepFontScale}
-            />
-          </MilkdownProvider>
+          {viewMode === 'quiz' && quizSections !== null ? (
+            <QuizPreview sections={quizSections} />
+          ) : (
+            <MilkdownProvider key={editorSeed.revision}>
+              <NoteEditorWorkspace
+                initialMarkdown={editorSeed.markdown}
+                onMarkdownChange={handleMarkdownChange}
+                fontScale={fontScale}
+                onFontScaleChange={changeFontScale}
+                onZoomStep={stepFontScale}
+              />
+            </MilkdownProvider>
+          )}
         </div>
       )}
     </div>

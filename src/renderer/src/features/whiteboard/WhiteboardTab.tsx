@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState
-} from 'react'
-import type { IDockviewPanelProps } from 'dockview'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import type { DrawingShape } from '../../../../shared/types/drawing'
 import type {
@@ -17,7 +11,6 @@ import {
   useInkToolStore,
   type InkHistoryAction
 } from '../ink'
-import { isTabDescriptor } from '../workspace/tabIdentity'
 import {
   WhiteboardCanvas,
   type DrawableWhiteboardAvailability
@@ -38,53 +31,33 @@ function errorMessage(error: unknown): string {
     : '화이트보드를 불러오는 중 오류가 발생했어요.'
 }
 
-function groupIdFromParams(params: unknown): string | null {
-  if (typeof params !== 'object' || params === null) return null
-  const descriptor = (params as Record<string, unknown>)['descriptor']
-  return isTabDescriptor(descriptor) && descriptor.kind === 'group-whiteboard'
-    ? descriptor.payload.groupId
-    : null
-}
-
-function usePanelVisible(api: IDockviewPanelProps['api']): boolean {
-  const [panelActive, setPanelActive] = useState(
-    () => api.isActive && api.isVisible
-  )
+function useDocumentVisible(): boolean {
   const [documentVisible, setDocumentVisible] = useState(
-    () => typeof document === 'undefined' || document.visibilityState === 'visible'
+    () =>
+      typeof document === 'undefined' || document.visibilityState === 'visible'
   )
 
   useEffect(() => {
-    const update = (): void => setPanelActive(api.isActive && api.isVisible)
-    const activeDisposable = api.onDidActiveChange(update)
-    const visibleDisposable = api.onDidVisibilityChange(update)
-    return () => {
-      activeDisposable.dispose()
-      visibleDisposable.dispose()
-    }
-  }, [api])
-
-  useEffect(() => {
-    const update = (): void => setDocumentVisible(document.visibilityState === 'visible')
+    if (typeof document === 'undefined') return
+    const update = (): void =>
+      setDocumentVisible(document.visibilityState === 'visible')
     document.addEventListener('visibilitychange', update)
     return () => document.removeEventListener('visibilitychange', update)
   }, [])
 
-  return panelActive && documentVisible
+  return documentVisible
 }
 
 interface WhiteboardSessionProps {
   board: Whiteboard
   availability: DrawableWhiteboardAvailability
   initialShapes: readonly DrawingShape[]
-  panelApi: IDockviewPanelProps['api']
 }
 
 function WhiteboardSession({
   board,
   availability,
-  initialShapes,
-  panelApi
+  initialShapes
 }: WhiteboardSessionProps): JSX.Element {
   const surfaceKey = `whiteboard:${board.id}`
   const [shapes, setShapes] = useState<DrawingShape[]>(() =>
@@ -94,7 +67,7 @@ function WhiteboardSession({
   const shapesRef = useRef(shapes)
   const removedIdsRef = useRef(new Set<string>())
   const syncedAtRef = useRef<string | null>(null)
-  const panelVisible = usePanelVisible(panelApi)
+  const documentVisible = useDocumentVisible()
   const canUndo = useInkToolStore((state) =>
     (state.histories[surfaceKey]?.undo.length ?? 0) > 0
   )
@@ -242,7 +215,7 @@ function WhiteboardSession({
   }, [executeHistory, surfaceKey])
 
   useEffect(() => {
-    if (!panelVisible || availability.state !== 'ready') return
+    if (!documentVisible || availability.state !== 'ready') return
     let cancelled = false
     let inFlight = false
     const sync = async (): Promise<void> => {
@@ -275,7 +248,7 @@ function WhiteboardSession({
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [availability.state, board.id, panelVisible, replace])
+  }, [availability.state, board.id, documentVisible, replace])
 
   return (
     <WhiteboardCanvas
@@ -283,7 +256,7 @@ function WhiteboardSession({
       shapes={shapes}
       canUndo={canUndo}
       canRedo={canRedo}
-      controlsEnabled={panelVisible}
+      controlsEnabled={documentVisible}
       statusMessage={statusMessage}
       onCreate={(shape) => { addInternal(shape, true) }}
       onUpdate={(id, patch) => { updateInternal(id, patch, true) }}
@@ -308,27 +281,31 @@ function AvailabilityMessage({
   )
 }
 
-export default function WhiteboardTab(props: IDockviewPanelProps): JSX.Element {
-  const groupId = groupIdFromParams(props.params)
+export interface GroupWhiteboardViewProps {
+  groupId: string
+}
+
+export function GroupWhiteboardView(
+  props: GroupWhiteboardViewProps
+): JSX.Element {
+  const { groupId } = props
   const [loadState, setLoadState] = useState<LoadState>({ phase: 'loading' })
 
   useEffect(() => {
-    if (groupId === null) return
     let cancelled = false
     setLoadState({ phase: 'loading' })
     void invoke('whiteboard:open', { groupId }).then((result) => {
       if (!cancelled) setLoadState({ phase: 'loaded', result })
     }).catch((error: unknown) => {
-      if (!cancelled) setLoadState({ phase: 'error', message: errorMessage(error) })
+      if (!cancelled) {
+        setLoadState({ phase: 'error', message: errorMessage(error) })
+      }
     })
     return () => {
       cancelled = true
     }
   }, [groupId])
 
-  if (groupId === null) {
-    return <div className="whiteboard-state" data-availability="invalid" />
-  }
   if (loadState.phase === 'loading') {
     return (
       <div className="whiteboard-state" data-availability="loading">
@@ -346,7 +323,10 @@ export default function WhiteboardTab(props: IDockviewPanelProps): JSX.Element {
   }
 
   const { availability, board, shapes } = loadState.result
-  if (availability.state === 'signed-out' || availability.state === 'unconfigured') {
+  if (
+    availability.state === 'signed-out' ||
+    availability.state === 'unconfigured'
+  ) {
     return <AvailabilityMessage availability={availability} />
   }
   if (board === null) {
@@ -364,7 +344,6 @@ export default function WhiteboardTab(props: IDockviewPanelProps): JSX.Element {
       board={board}
       availability={availability}
       initialShapes={shapes}
-      panelApi={props.api}
     />
   )
 }

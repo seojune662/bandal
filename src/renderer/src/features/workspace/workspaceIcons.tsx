@@ -1,14 +1,14 @@
 /**
  * Tab-kind icons. `pdf`/`note` reuse the shared app icon set; the kinds the
- * shell does not know about yet (browser/chat/board/group-chat) are drawn here
- * so the workspace stays self-contained.
+ * shell does not know about yet (browser/chat/board/group-chat/whiteboard) are
+ * drawn here so the workspace stays self-contained.
  */
 
 import type { SVGProps } from 'react'
 import type { TabKind } from '../../../../shared/tabs'
 import { Icon } from '../../app/icons'
 
-type LocalKind = 'browser' | 'chat' | 'board' | 'group-chat' | 'group-whiteboard'
+type LocalKind = 'browser' | 'chat' | 'board' | 'group-chat' | 'whiteboard'
 
 const localPaths: Record<LocalKind, JSX.Element> = {
   browser: (
@@ -38,7 +38,7 @@ const localPaths: Record<LocalKind, JSX.Element> = {
       <path d="M8 17h8l4.5 3.5V17h0V9h-4.5" />
     </>
   ),
-  'group-whiteboard': (
+  whiteboard: (
     <>
       <rect x="3.5" y="4" width="17" height="14" rx="2" />
       <path d="m7 14 3-3 2.5 2 4-5M8 21h8M12 18v3" />
@@ -85,7 +85,7 @@ export function TabKindIcon({ kind, ...props }: TabKindIconProps): JSX.Element {
     case 'chat':
     case 'board':
     case 'group-chat':
-    case 'group-whiteboard':
+    case 'whiteboard':
       return <LocalIcon kind={kind} {...props} />
   }
 }

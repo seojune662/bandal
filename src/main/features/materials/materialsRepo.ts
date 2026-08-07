@@ -71,6 +71,18 @@ export interface MaterialsRepoDeps {
   trashItem: (absPath: string) => Promise<void>
 }
 
+/**
+ * Comparison form for filename search.
+ *
+ * NFC because macOS stores Korean filenames decomposed (NFD) while IME input
+ * produces composed (NFC) — without this, searching a Hangul filename that is
+ * visibly right in the tree returns nothing. Never use this for filesystem
+ * access; it is a matching key only.
+ */
+export function searchKey(value: string): string {
+  return value.normalize('NFC').toLowerCase()
+}
+
 const IMAGE_EXTENSIONS = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif', '.heic'
 ])
@@ -290,29 +302,39 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
     search(courseId, query) {
       const id = requireId(courseId, 'courseId')
       const folder = getCourseFolder(id)
-      const needle = requireNonEmptyString(query, 'query').trim().toLowerCase()
+      const needle = searchKey(requireNonEmptyString(query, 'query').trim())
       if (!existsSync(folder)) {
         return []
       }
       rebuildIndex(id, folder)
 
+      // Matching happens in JS, not in SQL, because SQLite's `instr` compares
+      // bytes. macOS hands back decomposed (NFD) filenames from readdir while
+      // a query typed with a Korean IME arrives composed (NFC), so
+      // `instr(lower(rel_path), '과제')` finds nothing for a file the student
+      // can plainly see in the tree. Comparing NFC-normalized forms fixes it.
+      //
+      // The STORED rel_path is deliberately left untouched — it is the
+      // filesystem's own spelling, and every read/open path resolves against
+      // it. Normalizing what we persist would break opening the very files
+      // this makes findable.
       const rows = db
         .prepare(
           `SELECT rel_path, kind FROM materials_index
            WHERE course_id = ?
              AND deleted_at IS NULL
-             AND instr(lower(rel_path), ?) > 0
            ORDER BY rel_path ASC`
         )
-        .all(id, needle) as { rel_path: string; kind: MaterialKind }[]
+        .all(id) as { rel_path: string; kind: MaterialKind }[]
 
       return rows
+        .filter((row) => searchKey(row.rel_path).includes(needle))
         .map((row) => {
           const name = posix.basename(row.rel_path)
-          const lowerName = name.toLowerCase()
+          const nameKey = searchKey(name)
           let score = 1
-          if (lowerName.includes(needle)) score = 2
-          if (lowerName.startsWith(needle)) score = 3
+          if (nameKey.includes(needle)) score = 2
+          if (nameKey.startsWith(needle)) score = 3
           return { relPath: row.rel_path, name, kind: row.kind, score }
         })
         .sort((a, b) => b.score - a.score || a.relPath.localeCompare(b.relPath))

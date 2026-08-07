@@ -66,6 +66,35 @@ describe('tabPanelId', () => {
     )
   })
 
+  test('group-chat identity ignores its requested view', () => {
+    const chat = descriptorFor('group-chat', {
+      courseId: 'c1',
+      groupId: 'g1',
+      view: 'chat'
+    })
+    const whiteboard = descriptorFor('group-chat', {
+      courseId: 'c1',
+      groupId: 'g1',
+      view: 'whiteboard'
+    })
+
+    expect(tabPanelId(chat)).toBe(tabPanelId(whiteboard))
+  })
+
+  test('personal whiteboards are keyed by course and board', () => {
+    const board = descriptorFor('whiteboard', {
+      courseId: 'c1',
+      boardId: 'b1'
+    })
+
+    expect(tabPanelId(board)).toBe('whiteboard:c1:b1')
+    expect(tabPanelId(board)).not.toBe(
+      tabPanelId(
+        descriptorFor('whiteboard', { courseId: 'c1', boardId: 'b2' })
+      )
+    )
+  })
+
   test('[P2] a group id never collides with a course-scoped chat id', () => {
     expect(
       tabPanelId(
@@ -90,7 +119,21 @@ describe('isTabDescriptor', () => {
     expect(isTabDescriptor(descriptorFor('board', {}))).toBe(true)
     expect(
       isTabDescriptor(
+        descriptorFor('whiteboard', { courseId: 'c', boardId: 'b1' })
+      )
+    ).toBe(true)
+    expect(
+      isTabDescriptor(
         descriptorFor('group-chat', { courseId: 'c', groupId: 'g1' })
+      )
+    ).toBe(true)
+    expect(
+      isTabDescriptor(
+        descriptorFor('group-chat', {
+          courseId: 'c',
+          groupId: 'g1',
+          view: 'whiteboard'
+        })
       )
     ).toBe(true)
     expect(isTabDescriptor(descriptorFor('group-chat', { courseId: null }))).toBe(
@@ -122,6 +165,12 @@ describe('isTabDescriptor', () => {
         payload: { courseId: 'c1', groupId: '' }
       })
     ).toBe(false)
+    expect(
+      isTabDescriptor({
+        kind: 'group-chat',
+        payload: { courseId: 'c1', view: 'files' }
+      })
+    ).toBe(false)
   })
 })
 
@@ -140,6 +189,11 @@ describe('tabTitle', () => {
       tabTitle(descriptorFor('browser', { tabId: 't', initialUrl: 'not a url' }))
     ).toBe('브라우저')
     expect(tabTitle(descriptorFor('board', {}))).toBe('학업 보드')
+    expect(
+      tabTitle(
+        descriptorFor('whiteboard', { courseId: 'c', boardId: 'b1' })
+      )
+    ).toBe('화이트보드')
   })
 
   test('[P2] group-chat falls back to a generic title', () => {

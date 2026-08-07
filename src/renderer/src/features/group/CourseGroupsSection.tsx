@@ -43,18 +43,24 @@ export function CourseGroupsSection(props: { courseId: string }): JSX.Element | 
 
   const openGroup = useCallback(
     (groupId: string) => {
-      openTab(descriptorFor('group-chat', { courseId, groupId }))
+      openTab(
+        descriptorFor('group-chat', { courseId, groupId, view: 'chat' })
+      )
     },
     [courseId, openTab]
   )
 
-  // The whiteboard is its own tab, one per group, so the row needs a second
-  // affordance — opening chat and then hunting for a board would bury it.
   const openWhiteboard = useCallback(
     (groupId: string): void => {
-      openTab(descriptorFor('group-whiteboard', { groupId }))
+      openTab(
+        descriptorFor('group-chat', {
+          courseId,
+          groupId,
+          view: 'whiteboard'
+        })
+      )
     },
-    [openTab]
+    [courseId, openTab]
   )
 
   const createForCourse = useCallback(async () => {

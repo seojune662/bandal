@@ -116,12 +116,14 @@ function signIn(): void {
 
 function groupTabMarkup(
   courseId: string | null,
-  initialGroupId?: string
+  initialGroupId?: string,
+  view?: 'chat' | 'whiteboard'
 ): string {
-  const payload =
-    initialGroupId === undefined
-      ? { courseId }
-      : { courseId, groupId: initialGroupId }
+  const payload = {
+    courseId,
+    ...(initialGroupId === undefined ? {} : { groupId: initialGroupId }),
+    ...(view === undefined ? {} : { view })
+  }
   const props = {
     params: { descriptor: { kind: 'group-chat', payload } },
     api: { close: vi.fn(), setTitle: vi.fn() }
@@ -141,6 +143,29 @@ beforeEach(() => {
 })
 
 describe('GroupChatTab course switcher', () => {
+  test('defaults to chat and exposes the two-view segment', () => {
+    mockedStores.groups.groups = [group('g-1', '전체방', course.id, 3)]
+
+    const html = groupTabMarkup(course.id)
+
+    expect(html).toContain('aria-label="함께하기 보기"')
+    expect(html).toContain('aria-pressed="true">채팅')
+    expect(html).toContain('화이트보드')
+    expect(html).toContain('group-view-switcher__badge')
+    expect(html).not.toContain('data-availability="loading"')
+  })
+
+  test('honors a whiteboard view request inside the same course panel', () => {
+    mockedStores.groups.groups = [group('g-1', '전체방', course.id)]
+
+    const html = groupTabMarkup(course.id, 'g-1', 'whiteboard')
+
+    expect(html).toContain(
+      'class="group-view-switcher__item" aria-pressed="true">화이트보드'
+    )
+    expect(html).toContain('data-availability="loading"')
+  })
+
   test('shows only the course groups and honors the requested initial group', () => {
     mockedStores.groups.groups = [
       group('g-1', '전체방', course.id, 3),
@@ -186,6 +211,7 @@ describe('TogetherFooter', () => {
     expect(html).toContain('과목 미지정')
     expect(html).toContain('초대받은 방')
     expect(html).toContain('읽지 않은 메시지 7개')
+    expect(html).toContain('aria-label="초대받은 방 화이트보드 열기"')
     expect(html).not.toContain('과목 방')
   })
 })
@@ -212,6 +238,7 @@ describe('CourseGroupsSection', () => {
 
     expect(html).toContain('알고리즘 전체방')
     expect(html).toContain('읽지 않은 메시지 2개')
+    expect(html).toContain('aria-label="알고리즘 전체방 화이트보드 열기"')
     expect(html).toContain('이 과목으로 그룹 만들기')
     expect(html).not.toContain('다른 과목 방')
   })

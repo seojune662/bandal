@@ -12,6 +12,37 @@ import { useMaterialsStore } from '../../stores/materialsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from './tabIdentity'
 
+export const MATERIAL_OPEN_DEDUPE_MS = 5 * 60 * 1000
+
+const materialOpenRecordedAt = new Map<string, number>()
+
+/** Pure duplicate decision used by the renderer-side activity throttle. */
+export function shouldRecordMaterialOpen(
+  lastRecordedAt: number | undefined,
+  now: number,
+  dedupeMs = MATERIAL_OPEN_DEDUPE_MS
+): boolean {
+  return (
+    lastRecordedAt === undefined ||
+    now < lastRecordedAt ||
+    now - lastRecordedAt >= dedupeMs
+  )
+}
+
+function recordMaterialOpened(courseId: string, relPath: string): void {
+  const key = `${courseId}\u0000${relPath}`
+  const now = Date.now()
+  if (!shouldRecordMaterialOpen(materialOpenRecordedAt.get(key), now)) return
+  materialOpenRecordedAt.set(key, now)
+
+  void invoke('activity:record', {
+    courseId,
+    kind: 'material-opened',
+    relPath,
+    summary: `${relPath}을(를) 열었습니다.`
+  }).catch(() => {})
+}
+
 export function openMaterialInWorkspace(
   kind: MaterialKind,
   relPath: string
@@ -35,13 +66,14 @@ export function openMaterialInCourse(
     useWorkspaceStore.getState().openTab(
       descriptorFor(kind, { courseId, relPath })
     )
+    recordMaterialOpened(courseId, relPath)
     return
   }
   // Images and other files have no tab kind — hand off to Finder.
-  void invoke('materials:reveal', { courseId, relPath }).catch(
-    (error: unknown) => {
+  void invoke('materials:reveal', { courseId, relPath })
+    .then(() => recordMaterialOpened(courseId, relPath))
+    .catch((error: unknown) => {
       console.error('[Bandal] 파일을 Finder에서 열지 못했습니다.', error)
       showToast('파일을 Finder에서 열지 못했습니다.', 'danger')
-    }
-  )
+    })
 }

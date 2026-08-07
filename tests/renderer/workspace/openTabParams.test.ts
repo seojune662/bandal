@@ -65,6 +65,10 @@ const GROUP_B: TabDescriptor = {
   kind: 'group-chat',
   payload: { courseId: 'c1', groupId: 'group-b' }
 }
+const GROUP_A_WHITEBOARD: TabDescriptor = {
+  kind: 'group-chat',
+  payload: { courseId: 'c1', groupId: 'group-a', view: 'whiteboard' }
+}
 
 describe('openTab on an existing panel', () => {
   beforeEach(() => {
@@ -95,6 +99,21 @@ describe('openTab on an existing panel', () => {
     })
     // And the panel really carries B now, not A.
     expect(panel?.params.descriptor).toEqual(GROUP_B)
+  })
+
+  test('reopening with a different view updates the same panel params', () => {
+    const { api, panels } = fakeApi()
+    useWorkspaceStore.getState().attachApi(api as never)
+
+    useWorkspaceStore.getState().openTab(GROUP_A)
+    useWorkspaceStore.getState().openTab(GROUP_A_WHITEBOARD)
+
+    const panel = panels.get(tabPanelId(GROUP_A))
+    expect(panels.size).toBe(1)
+    expect(panel?.api.updateParameters).toHaveBeenCalledWith({
+      descriptor: GROUP_A_WHITEBOARD
+    })
+    expect(panel?.params.descriptor).toEqual(GROUP_A_WHITEBOARD)
   })
 
   test('the panel is still focused after the params refresh', () => {

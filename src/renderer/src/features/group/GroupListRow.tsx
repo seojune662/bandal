@@ -4,7 +4,7 @@ import { normalizeCourseColor } from '../courses/courseColors'
 interface GroupListRowProps {
   group: GroupSummary
   onOpen: (groupId: string) => void
-  /** Opens the group's shared whiteboard instead of its chat. */
+  /** Opens the shared 함께하기 tab directly on its whiteboard view. */
   onOpenWhiteboard?: (groupId: string) => void
 }
 

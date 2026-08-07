@@ -1,6 +1,6 @@
 /**
- * Group chat tab — a dockview panel keyed by course. A small switcher inside
- * the panel chooses which of that course's groups is currently subscribed.
+ * Together tab — a dockview panel keyed by course. In-panel switchers choose
+ * the chat/whiteboard view and the course group currently in focus.
  *
  * Layout mirrors `ChatTab`: gate states first, then banner → scroller →
  * composer. The two additions over the AI tutor tab are the member rail with
@@ -11,7 +11,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { IDockviewPanelProps } from 'dockview'
-import type { TabDescriptor } from '../../../../shared/tabs'
+import type {
+  GroupChatTabPayload,
+  TabDescriptor
+} from '../../../../shared/tabs'
 import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
@@ -20,6 +23,7 @@ import {
   selectGroupsForCourse,
   useGroupsStore
 } from '../../stores/groupsStore'
+import { GroupWhiteboardView } from '../whiteboard/WhiteboardTab'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { ConnectionBanner } from './ConnectionBanner'
 import { GroupComposer, type GroupComposerHandle } from './GroupComposer'
@@ -348,16 +352,16 @@ function GroupChatSurface({
 }
 
 interface CourseGroupPanelProps {
-  courseId: string | null
-  initialGroupId: string | undefined
+  requestPayload: GroupChatTabPayload
   api: IDockviewPanelProps['api']
 }
 
 function CourseGroupPanel({
-  courseId,
-  initialGroupId,
+  requestPayload,
   api
 }: CourseGroupPanelProps): JSX.Element {
+  const { courseId, groupId: initialGroupId } = requestPayload
+  const initialView = requestPayload.view ?? 'chat'
   const allGroups = useGroupsStore((state) => state.groups)
   const initGroups = useGroupsStore((state) => state.init)
   const groups = useMemo(
@@ -372,6 +376,7 @@ function CourseGroupPanel({
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(() =>
     initialGroupId ?? groups[0]?.id ?? null
   )
+  const [view, setView] = useState<'chat' | 'whiteboard'>(initialView)
   const [loadingGroups, setLoadingGroups] = useState(groups.length === 0)
 
   // The tab is keyed by course, so clicking a DIFFERENT group in the rail
@@ -382,7 +387,14 @@ function CourseGroupPanel({
     if (initialGroupId !== undefined) {
       setSelectedGroupId(initialGroupId)
     }
-  }, [initialGroupId])
+  }, [initialGroupId, requestPayload])
+
+  // Reopening this course singleton with another entry-point updates params
+  // instead of remounting the panel. Mirror the groupId synchronization so a
+  // whiteboard affordance can focus an existing chat tab and change its view.
+  useEffect(() => {
+    setView(initialView)
+  }, [initialView, requestPayload])
 
   useEffect(() => {
     let cancelled = false
@@ -397,6 +409,8 @@ function CourseGroupPanel({
   const activeGroupId = groups.some((group) => group.id === selectedGroupId)
     ? selectedGroupId
     : (groups[0]?.id ?? null)
+  const activeUnread =
+    groups.find((group) => group.id === activeGroupId)?.unread ?? 0
 
   useEffect(() => {
     if (groups.length > 0 && selectedGroupId !== activeGroupId) {
@@ -446,6 +460,33 @@ function CourseGroupPanel({
 
   return (
     <div className="group-course-panel">
+      <div className="group-view-switcher" role="group" aria-label="함께하기 보기">
+        <button
+          type="button"
+          className="group-view-switcher__item"
+          aria-pressed={view === 'chat'}
+          onClick={() => setView('chat')}
+        >
+          채팅
+          {activeUnread > 0 && (
+            <span
+              className="group-view-switcher__badge"
+              aria-label={`읽지 않은 메시지 ${activeUnread}개`}
+            >
+              {activeUnread > 99 ? '99+' : activeUnread}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          className="group-view-switcher__item"
+          aria-pressed={view === 'whiteboard'}
+          onClick={() => setView('whiteboard')}
+        >
+          화이트보드
+        </button>
+      </div>
+
       {groups.length > 1 && (
         <div className="group-switcher" role="group" aria-label="그룹 선택">
           {groups.map((group) => {
@@ -473,12 +514,18 @@ function CourseGroupPanel({
         </div>
       )}
 
-      <GroupChatSurface
-        key={activeGroupId}
-        groupId={activeGroupId}
-        showCourseLink={courseId === null}
-        onCloseTab={onCloseTab}
-      />
+      {/* Mount only the visible surface: each surface owns subscriptions or
+          polling whose effect cleanup must run as soon as the user switches. */}
+      {view === 'chat' ? (
+        <GroupChatSurface
+          key={activeGroupId}
+          groupId={activeGroupId}
+          showCourseLink={courseId === null}
+          onCloseTab={onCloseTab}
+        />
+      ) : (
+        <GroupWhiteboardView key={activeGroupId} groupId={activeGroupId} />
+      )}
     </div>
   )
 }
@@ -491,8 +538,7 @@ export default function GroupChatTab(props: IDockviewPanelProps): JSX.Element {
   }
   return (
     <CourseGroupPanel
-      courseId={descriptor.payload.courseId}
-      initialGroupId={descriptor.payload.groupId}
+      requestPayload={descriptor.payload}
       api={props.api}
     />
   )
