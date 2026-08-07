@@ -1,5 +1,5 @@
 import { chmod, writeFile } from 'node:fs/promises'
-import { readFileSync, unlinkSync } from 'node:fs'
+import { existsSync, readFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import type {
   Cookie,
@@ -293,6 +293,12 @@ function buildBrowserSessionStore(
   }
 
   const restoreSnapshot = async (): Promise<void> => {
+    // Existence check FIRST, with plain fs. `canEncrypt()` reads the OS
+    // keychain, which on macOS shows a "wants to use your confidential
+    // information" password prompt. Asking that at every launch — including a
+    // first run with nothing saved yet — is alarming and buys nothing. No
+    // snapshot means there is nothing to decrypt, so never open the keychain.
+    if (!existsSync(snapshotPath)) return
     if (!canEncrypt()) return
 
     let snapshot: SessionCookieSnapshot
@@ -336,8 +342,6 @@ function buildBrowserSessionStore(
   }
 
   const writeSnapshot = async (): Promise<void> => {
-    if (!canEncrypt()) return
-
     let wroteEncryptedSnapshot = false
     try {
       const cookies = await deps.session.cookies.get({})
@@ -347,6 +351,15 @@ function buildBrowserSessionStore(
         const stored = storedCookie(cookie)
         if (stored !== null) sessionCookies.push(stored)
       }
+
+      // Nothing signed in yet → nothing worth encrypting. Checking this before
+      // canEncrypt() keeps the keychain prompt tied to an action the user can
+      // actually explain: they logged into a site in the in-app browser.
+      if (sessionCookies.length === 0) {
+        if (existsSync(snapshotPath)) discardSnapshot()
+        return
+      }
+      if (!canEncrypt()) return
 
       const snapshot: SessionCookieSnapshot = {
         format: SNAPSHOT_FORMAT,
@@ -409,7 +422,9 @@ function buildBrowserSessionStore(
     persist,
 
     startAutoPersist(): void {
-      if (!canEncrypt()) return
+      // Deliberately does NOT probe canEncrypt() here. That ran at startup and
+      // triggered the keychain prompt before the user had done anything; the
+      // check now happens inside writeSnapshot, once there is something to save.
       if (timer === undefined) {
         timer = setInterval(() => {
           void persist()

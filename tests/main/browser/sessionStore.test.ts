@@ -63,6 +63,34 @@ function fakeSafeStorage(available = true): SafeStorageLike {
   }
 }
 
+/**
+ * Counts every keychain touch. On macOS each of these can raise the
+ * "반달 wants to use your confidential information stored in 'bandal Safe
+ * Storage'" password dialog, so the tests below assert the count is ZERO in
+ * the situations where the app has nothing to protect.
+ */
+function countingSafeStorage(available = true): SafeStorageLike & {
+  touches(): number
+} {
+  let touches = 0
+  const inner = fakeSafeStorage(available)
+  return {
+    touches: () => touches,
+    isEncryptionAvailable: () => {
+      touches += 1
+      return inner.isEncryptionAvailable()
+    },
+    encryptString: (plainText) => {
+      touches += 1
+      return inner.encryptString(plainText)
+    },
+    decryptString: (encrypted) => {
+      touches += 1
+      return inner.decryptString(encrypted)
+    }
+  }
+}
+
 interface FakeSession {
   session: BrowserSessionLike
   setCalls: CookiesSetDetails[]
@@ -336,6 +364,79 @@ describe('site listing and clearing', () => {
 
     await expect(store.clear(null)).resolves.toEqual({ ok: true })
     expect(fake.current()).toEqual([])
-    expect(decryptedSnapshot(userDataPath, safeStorage)['cookies']).toEqual([])
+    // With nothing left to protect the snapshot is REMOVED, not rewritten
+    // empty. An empty file would survive to the next launch, where its mere
+    // existence reopens the OS keychain and shows the macOS "wants to use your
+    // confidential information" prompt for a payload of zero cookies.
+    expect(existsSync(snapshotPath(userDataPath))).toBe(false)
+  })
+})
+
+describe('keychain is only opened when there is something to protect', () => {
+  test('a first run with no snapshot never touches the keychain', async () => {
+    const safeStorage = countingSafeStorage()
+    const fake = fakeSession([])
+    const store = createBrowserSessionStore({
+      session: fake.session,
+      safeStorage,
+      userDataPath: temporaryUserData(),
+      now: () => 1_700_000_000_000
+    })
+
+    await store.restore()
+
+    // No snapshot file exists yet, so there is nothing to decrypt. Prompting
+    // for a keychain password before the user has done anything is alarming
+    // and buys nothing.
+    expect(safeStorage.touches()).toBe(0)
+  })
+
+  test('starting the auto-persist timer does not touch the keychain', () => {
+    const safeStorage = countingSafeStorage()
+    const store = createBrowserSessionStore({
+      session: fakeSession([]).session,
+      safeStorage,
+      userDataPath: temporaryUserData(),
+      now: () => 1_700_000_000_000
+    })
+
+    store.startAutoPersist()
+
+    expect(safeStorage.touches()).toBe(0)
+    store.dispose()
+  })
+
+  test('persisting with no session cookies never touches the keychain', async () => {
+    const safeStorage = countingSafeStorage()
+    // A persistent cookie is not a login session we need to carry over.
+    const fake = fakeSession([
+      cookie({ name: 'analytics', expirationDate: 2_000_000_000, session: false })
+    ])
+    const store = createBrowserSessionStore({
+      session: fake.session,
+      safeStorage,
+      userDataPath: temporaryUserData(),
+      now: () => 1_700_000_000_000
+    })
+
+    await store.persist()
+
+    expect(safeStorage.touches()).toBe(0)
+  })
+
+  test('the keychain IS used once a real session cookie exists', async () => {
+    const safeStorage = countingSafeStorage()
+    const store = createBrowserSessionStore({
+      session: fakeSession([cookie()]).session,
+      safeStorage,
+      userDataPath: temporaryUserData(),
+      now: () => 1_700_000_000_000
+    })
+
+    await store.persist()
+
+    // The prompt is now tied to something the user can explain: they signed
+    // into a site in the in-app browser.
+    expect(safeStorage.touches()).toBeGreaterThan(0)
   })
 })
