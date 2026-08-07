@@ -325,11 +325,20 @@ jobs:
             if [ -n "$existing" ]; then
               gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$existing" >/dev/null
             fi
-            gh api -X POST \
-              --hostname uploads.github.com \
-              "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$name" \
-              -H 'Content-Type: application/octet-stream' \
-              --input "$file" >/dev/null
+            # curl, not `gh api`: the asset upload lives on uploads.github.com
+            # and `gh api --hostname uploads.github.com` resolves that to
+            # api.uploads.github.com, which does not exist.
+            code="$(curl -sS -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"$file" \
+              -o /tmp/upload-response.json -w '%{http_code}' \
+              "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$name")"
+            if [ "$code" -ge 300 ]; then
+              echo "::error::upload of $name failed (HTTP $code)"
+              cat /tmp/upload-response.json
+              exit 1
+            fi
             uploaded=$((uploaded + 1))
           done
           if [ "$uploaded" -eq 0 ]; then
