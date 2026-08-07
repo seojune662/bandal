@@ -102,12 +102,21 @@ jobs:
           if [ -n "$EXISTING" ]; then
             echo "Release $TAG already exists (id $EXISTING) — reusing it."
           else
-            gh release create "$TAG" \
-              --draft \
-              --title "$TAG" \
-              --generate-notes
-            EXISTING="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-              --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -n1)"
+            # Created through the API, not `gh release create`, so the id comes
+            # straight back in the response. Re-querying the list right after
+            # creating returned nothing — the new draft is not visible there
+            # immediately, and the empty id then failed every upload job.
+            EXISTING="$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$TAG" \
+              -f name="$TAG" \
+              -F draft=true \
+              -F generate_release_notes=true \
+              --jq '.id')"
+            echo "Created draft release $TAG (id $EXISTING)."
+          fi
+          if [ -z "$EXISTING" ]; then
+            echo "::error::Could not resolve a release id for $TAG."
+            exit 1
           fi
           # Every build job uploads into THIS id. Letting electron-builder
           # publish on its own meant the two platform jobs each resolved the
