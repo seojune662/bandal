@@ -18,6 +18,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useNewTabMenu } from './newTabMenuController'
 import { descriptorFor, looksLikeUrl, normalizeUrl } from './tabIdentity'
 import { TabKindIcon } from './workspaceIcons'
+import { invoke } from '../../lib/ipc'
 
 const MAX_PDF_ITEMS = 8
 
@@ -136,6 +137,28 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         icon: <TabKindIcon kind="browser" />,
         run: () => {
           createBrowserTab()
+        }
+      })
+    }
+    // Personal whiteboards live under an expanded course in the rail, which
+    // is easy to miss when you are looking for "a tab". The omnibox is where
+    // students actually go to open one.
+    if (matches('새 화이트보드', '화이트보드', '마인드맵')) {
+      result.push({
+        id: 'new-whiteboard',
+        label: '새 화이트보드',
+        hint: '정리 · 마인드맵',
+        icon: <TabKindIcon kind="whiteboard" />,
+        run: async () => {
+          try {
+            const board = await invoke('canvas:create', { courseId: course.id })
+            openTab(descriptorFor('whiteboard', {
+              courseId: course.id,
+              boardId: board.id
+            }))
+          } catch (error) {
+            console.error('[Bandal] 화이트보드를 만들지 못했습니다.', error)
+          }
         }
       })
     }

@@ -17,7 +17,16 @@
  * protection for free.
  */
 
-import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { dirname, join } from 'node:path'
 
 /** The tiny slice of `safeStorage` we depend on — injectable for tests. */
@@ -58,20 +67,38 @@ function atomicWrite(filePath: string, data: Buffer): void {
  * block app boot (§1.4-3).
  */
 export function createSessionStore(deps: SessionStoreDeps): SupabaseStorageAdapter {
-  const canPersist = (() => {
-    try {
-      return deps.encryptor.isEncryptionAvailable()
-    } catch {
-      return false
+  // Resolved on FIRST USE, not at construction.
+  //
+  // `isEncryptionAvailable()` reads the OS keychain, which on macOS raises the
+  // "반달 wants to use your confidential information" password dialog. As an
+  // IIFE it fired the moment the group runtime was built — i.e. at launch, for
+  // every student, including one who has never signed in and has no session to
+  // decrypt. Nothing is gained by asking then.
+  let encryptionAvailable: boolean | undefined
+  const canPersist = (): boolean => {
+    if (encryptionAvailable === undefined) {
+      try {
+        encryptionAvailable = deps.encryptor.isEncryptionAvailable()
+      } catch {
+        encryptionAvailable = false
+      }
     }
-  })()
+    return encryptionAvailable
+  }
 
   // In-memory mirror. It is also the ONLY store when encryption is off.
   let cache: Envelope | null = null
 
   function load(): Envelope {
     if (cache !== null) return cache
-    if (!canPersist) {
+    // No session file means there is nothing to decrypt, so never open the
+    // keychain just to discover that. This is the launch path for a signed-out
+    // student and it must stay silent.
+    if (!existsSync(deps.filePath)) {
+      cache = {}
+      return cache
+    }
+    if (!canPersist()) {
       cache = {}
       return cache
     }
@@ -91,7 +118,18 @@ export function createSessionStore(deps: SessionStoreDeps): SupabaseStorageAdapt
   }
 
   function persist(): void {
-    if (!canPersist || cache === null) return
+    if (cache === null) return
+    // An empty envelope carries no session. Writing one would create a file
+    // whose mere existence makes the NEXT launch open the keychain.
+    if (Object.keys(cache).length === 0) {
+      try {
+        if (existsSync(deps.filePath)) unlinkSync(deps.filePath)
+      } catch {
+        // Best effort; a stale empty file is harmless beyond one prompt.
+      }
+      return
+    }
+    if (!canPersist()) return
     try {
       atomicWrite(deps.filePath, deps.encryptor.encryptString(JSON.stringify(cache)))
     } catch (error) {
