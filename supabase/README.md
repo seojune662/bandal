@@ -40,7 +40,7 @@ supabase/
 │   ├── 0007_safety_and_rate.sql          blocks / reports / rate_events
 │   ├── 0008_realtime_broadcast.sql       realtime.send 트리거 + realtime.messages 정책
 │   ├── 0009_cron_retention.sql           pg_cron 보존 정책 (없으면 건너뜀)
-│   └── 0010_whiteboards.sql              그룹 보드/도형 + 전용 토큰 버킷 + Broadcast
+│   └── 20260806000011_whiteboards.sql              그룹 보드/도형 + 전용 토큰 버킷 + Broadcast
 ├── tests/
 │   └── rls_verification.sql              P2-B + 화이트보드 게이트 6종 증명
 └── seed.sql                              로컬 개발 시드 (로컬 전용)

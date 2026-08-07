@@ -1,5 +1,5 @@
 -- ============================================================================
--- [C9] Bandal Phase 2 — 0010_whiteboards.sql
+-- [C9] Bandal Phase 2 — 20260806000011_whiteboards.sql
 --
 -- 만드는 것:
 --   * public.whiteboards                    — 그룹당 활성 보드 1개
