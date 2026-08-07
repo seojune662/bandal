@@ -43,6 +43,8 @@ import {
 } from '../features/agent'
 import { createBrowserSessionStore } from '../features/browser'
 import { createFavoritesRepo } from '../features/favorites'
+import { createActivityRepo, createContextWriter } from '../features/context'
+import { createStudyRunner } from '../features/study'
 import { createGroupRuntime } from '../features/group'
 import { isAuthCallbackUrl } from '../features/group/authCallbackUrl'
 import { createUpdaterRuntime } from '../features/updater'
@@ -206,7 +208,11 @@ export function registerHandlers(): IpcRouter {
   // -- materials ------------------------------------------------------------
   handle('materials:tree', (req) => materialsRepo.tree(req.courseId))
   handle('materials:search', (req) => materialsRepo.search(req.courseId, req.query))
-  handle('materials:import', (req) => materialsRepo.import(req.courseId, req.paths))
+  handle('materials:import', (req) => {
+    const result = materialsRepo.import(req.courseId, req.paths)
+    note(req.courseId, 'material-added', `자료 ${req.paths.length}개를 가져왔습니다.`)
+    return result
+  })
   handle('materials:reveal', (req) => materialsRepo.reveal(req.courseId, req.relPath))
   handle('materials:readFile', (req) => materialsRepo.readFile(req.courseId, req.relPath))
   handle('materials:writeFile', (req) => materialsRepo.writeFile(req))
@@ -225,12 +231,30 @@ export function registerHandlers(): IpcRouter {
 
   // -- notes ----------------------------------------------------------------
   handle('notes:read', (req) => notesRepo.read(req))
-  handle('notes:write', (req) => notesRepo.write(req))
-  handle('notes:create', (req) => notesRepo.create(req))
+  handle('notes:write', (req) => {
+    const result = notesRepo.write(req)
+    note(req.courseId, 'note-edited', `필기를 수정했습니다: ${req.relPath}`, req.relPath)
+    return result
+  })
+  handle('notes:create', (req) => {
+    const result = notesRepo.create(req)
+    note(req.courseId, 'note-created', `필기를 만들었습니다: ${result.relPath}`, result.relPath)
+    return result
+  })
 
   // -- annotations ----------------------------------------------------------
   handle('annotations:listForFile', (req) => annotationsRepo.listForFile(req))
-  handle('annotations:create', (req) => annotationsRepo.create(req))
+  handle('annotations:create', (req) => {
+    const result = annotationsRepo.create(req)
+    // The quote is the single best signal of what the student found important.
+    note(
+      req.courseId,
+      'highlight-created',
+      `${req.relPath} ${req.page}쪽을 강조했습니다: "${req.anchor.quote}"`,
+      req.relPath
+    )
+    return result
+  })
   handle('annotations:update', (req) => annotationsRepo.update(req))
   handle('annotations:delete', (req) => annotationsRepo.softDelete(req))
 
@@ -269,9 +293,53 @@ export function registerHandlers(): IpcRouter {
     return { savedPath: result.filePath }
   })
 
+  // -- course activity + AI context ------------------------------------------
+  //
+  // Recording lives HERE rather than in each feature repo on purpose: every
+  // action worth remembering already funnels through this file, so one place
+  // stays consistent instead of a `record()` call scattered across a dozen
+  // modules that later drift.
+  //
+  // Every call is best-effort. A failed activity write must never break the
+  // action the student actually asked for.
+  const activityRepo = createActivityRepo(db)
+  const contextWriter = createContextWriter({
+    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
+    getCourse: (courseId) => ({ name: coursesRepo.getById(courseId).name }),
+    activity: activityRepo,
+    db
+  })
+  const note = (
+    courseId: string,
+    kind: Parameters<typeof activityRepo.record>[0]['kind'],
+    summary: string,
+    relPath: string | null = null
+  ): void => {
+    try {
+      activityRepo.record({ courseId, kind, relPath, summary })
+    } catch (error) {
+      console.error('[activity] failed to record', kind, error)
+    }
+  }
+
+  handle('activity:record', (req) => {
+    note(req.courseId, req.kind, req.summary, req.relPath ?? null)
+    return OK
+  })
+  handle('activity:recent', (req) =>
+    activityRepo.recent(req.courseId, req.limit)
+  )
+  handle('context:rebuild', (req) => contextWriter.rebuild(req.courseId))
+
   // -- board ----------------------------------------------------------------
   handle('board:listTasks', (req) => boardRepo.list(req))
-  handle('board:createTask', (req) => boardRepo.create(req))
+  handle('board:createTask', (req) => {
+    const result = boardRepo.create(req)
+    if (req.courseId != null) {
+      note(req.courseId, 'task-created', `할 일을 추가했습니다: ${req.title}`)
+    }
+    return result
+  })
   handle('board:updateTask', (req) => boardRepo.update(req))
   handle('board:deleteTask', (req) => boardRepo.softDelete(req))
 
@@ -322,7 +390,16 @@ export function registerHandlers(): IpcRouter {
   const activeSessions = (): typeof sessionManager =>
     getSettings().agentProvider === 'codex' ? codexSessionManager : sessionManager
 
-  handle('chat:open', (req) => activeSessions().open(req.courseId))
+  // Refresh the dossier the agent reads before the session can ask for it.
+  // Best-effort: a context failure must not stop the student from chatting.
+  handle('chat:open', (req) => {
+    try {
+      contextWriter.rebuild(req.courseId)
+    } catch (error) {
+      console.error('[context] rebuild failed', error)
+    }
+    return activeSessions().open(req.courseId)
+  })
   handle('chat:send', (req) =>
     activeSessions().send(req.courseId, req.content, req.attachments)
   )
@@ -357,6 +434,25 @@ export function registerHandlers(): IpcRouter {
   const agentInstaller = createAgentInstaller({
     broadcast: (progress) => broadcast('agent:install-progress', progress)
   })
+  // -- AI study tools --------------------------------------------------------
+  // The recipes run through the course's normal agent session and write their
+  // answer into the course folder, so a result is editable, survives the
+  // session, and becomes context for later questions.
+  const studyRunner = createStudyRunner({
+    getCourse: (courseId) => ({
+      name: coursesRepo.getById(courseId).name,
+      folder: coursesRepo.getFolder(courseId)
+    }),
+    ask: async (courseId, prompt) => {
+      await activeSessions().send(courseId, prompt)
+    },
+    recordActivity: (courseId, summary, relPath) => {
+      note(courseId, 'study-tool-run', summary, relPath)
+    }
+  })
+  handle('study:tools', () => ({ tools: studyRunner.tools() }))
+  handle('study:run', (req) => studyRunner.run(req))
+
   handle('agent:installCommand', (req) => agentInstaller.commandFor(req.provider))
   handle('agent:install', (req) => agentInstaller.install(req.provider))
   handle('agent:models', (req) => getAgentModels(req.provider))

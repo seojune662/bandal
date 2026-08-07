@@ -64,6 +64,13 @@ import type {
   ReorderFavoritesInput
 } from '../types/favorite'
 import type {
+  ActivityEvent,
+  RecordActivityInput,
+  RunStudyToolInput,
+  RunStudyToolResult,
+  StudyToolDefinition
+} from '../types/study'
+import type {
   AgentAvailability,
   AgentProvider,
   PermissionResponse
@@ -419,6 +426,39 @@ export interface IpcContract {
     res: { ok: true }
   }
 
+  // -- course activity + AI study tools -------------------------------------
+  /**
+   * Appends one activity event. Most events are recorded in the main process
+   * where the actions already funnel through IPC; this channel exists for the
+   * few that only the renderer knows about (which tab the student opened).
+   */
+  'activity:record': {
+    req: RecordActivityInput
+    res: { ok: true }
+  }
+  'activity:recent': {
+    req: { courseId: string; limit?: number }
+    res: ActivityEvent[]
+  }
+  /** Rebuilds the `.bandal/` dossier the agent reads. Idempotent. */
+  'context:rebuild': {
+    req: { courseId: string }
+    res: { relPath: string }
+  }
+  'study:tools': {
+    req: Record<string, never>
+    res: { tools: StudyToolDefinition[] }
+  }
+  /**
+   * Runs a study recipe through the course's agent session. The answer is
+   * written into the course folder as markdown rather than returned inline, so
+   * it is editable, survives the session and feeds later questions.
+   */
+  'study:run': {
+    req: RunStudyToolInput
+    res: RunStudyToolResult
+  }
+
   // -- settings -------------------------------------------------------------
   'settings:get': {
     req: Record<string, never>
@@ -751,7 +791,12 @@ export const IPC_CHANNELS = [
   'update:status',
   'update:check',
   'update:download',
-  'update:install'
+  'update:install',
+  'activity:record',
+  'activity:recent',
+  'context:rebuild',
+  'study:tools',
+  'study:run'
 ] as const satisfies readonly IpcChannel[]
 
 // Fails to compile if a contract channel is missing from IPC_CHANNELS.

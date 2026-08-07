@@ -303,6 +303,34 @@ export const migrations: Migration[] = [
         taken.add(`${link.course_id}\u0000${link.url}`)
       }
     }
+  },
+  {
+    // [M12] Course activity log.
+    //
+    // The AI tutor could always read the course FOLDER, but never what the
+    // student did: which page they highlighted, which task they finished, what
+    // they asked last week. That history simply did not exist anywhere — every
+    // other table stores current state, not events. This is the missing half,
+    // and it feeds the `.bandal/` dossier the agent reads.
+    //
+    // Deliberately append-only and summary-first: `summary` is a ready-to-read
+    // line so building the dossier is a SELECT, not a join across six tables.
+    version: 9,
+    name: 'activity-events',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS activity_events (
+           id         TEXT PRIMARY KEY,
+           course_id  TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+           kind       TEXT NOT NULL,
+           rel_path   TEXT,
+           summary    TEXT NOT NULL,
+           created_at TEXT NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_activity_course_time
+           ON activity_events (course_id, created_at DESC);`
+      )
+    }
   }
 ]
 

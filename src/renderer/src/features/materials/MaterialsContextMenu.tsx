@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
+import { MaterialsStudyToolMenuItem } from '../study/MaterialsStudyToolMenuItem'
 
 export interface MaterialsContextMenuState {
   target: MaterialNode | null
@@ -113,6 +114,12 @@ export function MaterialsContextMenu({
         <Icon name="folderPlus" />새 폴더
       </button>
       <div className="materials-context-menu__separator" role="separator" />
+      <MaterialsStudyToolMenuItem
+        target={target}
+        x={x}
+        y={y}
+        onClose={onClose}
+      />
       <button
         type="button"
         role="menuitem"
