@@ -21,7 +21,8 @@ const KIND_LABEL: Record<TabDescriptor['kind'], string> = {
   browser: '브라우저',
   chat: 'AI 튜터',
   board: '학업 보드',
-  'group-chat': '그룹 채팅'
+  'group-chat': '그룹 채팅',
+  'group-whiteboard': '화이트보드'
 }
 
 function PanelBody({ descriptor }: { descriptor: TabDescriptor }): JSX.Element {

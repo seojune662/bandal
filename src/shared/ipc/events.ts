@@ -29,6 +29,16 @@ export interface AgentInstallProgress {
   ok: boolean
 }
 
+/**
+ * [M13] A shape someone else drew on the group whiteboard, or a removal.
+ * The payload carries the whole shape so the receiver draws it without a
+ * follow-up query.
+ */
+export interface WhiteboardChanged {
+  groupId: string
+  event: unknown
+}
+
 /** Fired when the course folder changed on disk (watcher). */
 export interface MaterialsChanged {
   courseId: string
@@ -99,6 +109,8 @@ export interface PushEvents {
   'update:changed': UpdateStatus
   // -- agent setup ----------------------------------------------------------
   'agent:install-progress': AgentInstallProgress
+  // -- group whiteboard -----------------------------------------------------
+  'whiteboard:changed': WhiteboardChanged
 }
 
 export type PushChannel = keyof PushEvents

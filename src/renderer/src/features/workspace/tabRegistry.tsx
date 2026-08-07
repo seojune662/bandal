@@ -25,6 +25,7 @@ import BoardPanel from '../board/BoardPanel'
 import ChatTab from '../chat/ChatTab'
 import PdfTab from '../pdf/PdfTab'
 import GroupChatTab from '../group/GroupChatTab'
+import WhiteboardTab from '../whiteboard/WhiteboardTab'
 
 export interface TabRegistryEntry {
   component: FunctionComponent<IDockviewPanelProps>
@@ -63,6 +64,11 @@ export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
   },
   'group-chat': {
     component: GroupChatTab,
+    icon: null,
+    defaultTitle: tabTitle
+  },
+  'group-whiteboard': {
+    component: WhiteboardTab,
     icon: null,
     defaultTitle: tabTitle
   }

@@ -39,9 +39,10 @@ supabase/
 │   ├── 0006_messages.sql                 messages + ★seq 트리거 + ★토큰 버킷
 │   ├── 0007_safety_and_rate.sql          blocks / reports / rate_events
 │   ├── 0008_realtime_broadcast.sql       realtime.send 트리거 + realtime.messages 정책
-│   └── 0009_cron_retention.sql           pg_cron 보존 정책 (없으면 건너뜀)
+│   ├── 0009_cron_retention.sql           pg_cron 보존 정책 (없으면 건너뜀)
+│   └── 0010_whiteboards.sql              그룹 보드/도형 + 전용 토큰 버킷 + Broadcast
 ├── tests/
-│   └── rls_verification.sql              P2-B 게이트 5종 증명 스크립트
+│   └── rls_verification.sql              P2-B + 화이트보드 게이트 6종 증명
 └── seed.sql                              로컬 개발 시드 (로컬 전용)
 ```
 
@@ -190,7 +191,7 @@ RLS 정책과 RPC 는 서로를 참조합니다. 예를 들어
 
 ## 6. 적용 후 반드시 확인할 것
 
-### 6.1 게이트 5종 — P2-B 완료 조건
+### 6.1 게이트 6종 — P2-B + 화이트보드 완료 조건
 
 1. 실제 계정 2개로 앱에 로그인해 프로필을 만듭니다.
 2. `select id, nickname from public.profiles order by created_at desc limit 5;` 로 uuid 2개를 확인합니다.
@@ -199,8 +200,12 @@ RLS 정책과 RPC 는 서로를 참조합니다. 예를 들어
 4. SQL 에디터에 **파일 전체를 한 번에** 붙여넣고 Run.
 5. 마지막 표에서 **모든 행이 `✅ PASS`** 여야 합니다.
 
-스크립트는 검증용 그룹/메시지/`rate_events` 를 실제로 만들었다가 마지막에 지웁니다.
+스크립트는 검증용 그룹/메시지/화이트보드/`rate_events` 를 실제로 만들었다가 마지막에 지웁니다.
 `cleanup` 행이 FAIL 이면 detail 에 찍힌 `group_id` 로 수동 정리하세요.
+
+추가된 ⑥ 게이트는 비멤버 숨김, 멤버 읽기/쓰기, 남의 도형 내용 수정·하드
+삭제 차단, 작성자/owner 소프트삭제, 같은 id 재전송의 PK 충돌, 그리고
+화이트보드 전용 버킷의 **200건 통과 / 201번째 `rate_limited`** 를 검증합니다.
 
 ### 6.2 스키마 위생 점검 (붙여넣어 실행)
 

@@ -192,3 +192,40 @@
     0 0 0 2px var(--bg-app),
     0 0 0 3.5px var(--accent);
 }
+
+/* The chat row and the whiteboard button sit side by side; the row keeps the
+ * flexible width so a long group name still truncates instead of pushing the
+ * board button off the rail. */
+.group-row-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.group-row-item > .group-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.group-row__board {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  font-size: var(--icon-size-sm);
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+.group-row__board:hover,
+.group-row__board:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+  border-color: var(--border-subtle);
+}
+
+.group-row__board:active {
+  transform: translateY(1px);
+}

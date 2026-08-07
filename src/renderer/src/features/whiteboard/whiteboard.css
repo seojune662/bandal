@@ -1,0 +1,243 @@
+.whiteboard,
+.whiteboard-state {
+  --drawing-color-ink: var(--text-primary);
+  --drawing-color-red: var(--danger);
+  --drawing-color-orange: var(--course-orange);
+  --drawing-color-yellow: var(--course-gold);
+  --drawing-color-green: var(--course-green);
+  --drawing-color-blue: var(--course-blue);
+  --drawing-color-violet: var(--course-violet);
+}
+
+.whiteboard {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  color: var(--text-primary);
+  background: var(--bg-app);
+}
+
+.whiteboard__notice,
+.whiteboard__status {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.whiteboard__notice {
+  color: var(--text-primary);
+  background: var(--accent-muted);
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+.whiteboard__status {
+  color: var(--danger);
+  background: var(--danger-muted);
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+.whiteboard__viewport {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-4);
+  overflow: hidden;
+}
+
+.whiteboard__canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-surface);
+  background-image:
+    linear-gradient(to right, var(--border-subtle) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border-subtle) 1px, transparent 1px);
+  background-size: var(--space-5) var(--space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.whiteboard__ink-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.whiteboard[data-tool='select'] .whiteboard__ink-layer {
+  cursor: default;
+}
+
+.whiteboard[data-tool='pen'] .whiteboard__ink-layer,
+.whiteboard[data-tool='highlighter'] .whiteboard__ink-layer,
+.whiteboard[data-tool='rect'] .whiteboard__ink-layer,
+.whiteboard[data-tool='ellipse'] .whiteboard__ink-layer,
+.whiteboard[data-tool='arrow'] .whiteboard__ink-layer,
+.whiteboard[data-tool='line'] .whiteboard__ink-layer {
+  cursor: crosshair;
+}
+
+.whiteboard[data-tool='eraser'] .whiteboard__ink-layer {
+  cursor: cell;
+}
+
+.whiteboard[data-tool='text'] .whiteboard__ink-layer {
+  cursor: text;
+}
+
+.whiteboard-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  background: var(--bg-surface);
+  border-block-end: 1px solid var(--border-subtle);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.whiteboard-tools__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+}
+
+.whiteboard-tools__group + .whiteboard-tools__group {
+  padding-inline-start: var(--space-2);
+  border-inline-start: 1px solid var(--border-subtle);
+}
+
+.whiteboard-tools__button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  font-size: var(--icon-size);
+  line-height: 1;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.whiteboard-tools__button:hover,
+.whiteboard-tools__button:focus-visible {
+  color: var(--accent);
+  background: var(--bg-raised);
+}
+
+.whiteboard-tools__button[data-active='true'] {
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.whiteboard-tools__button:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+.whiteboard-tools__button:disabled {
+  opacity: 0.45;
+}
+
+.whiteboard-tools__swatch {
+  --drawing-current-color: var(--drawing-color-ink);
+  flex: 0 0 auto;
+  width: var(--space-4);
+  height: var(--space-4);
+  background: var(--drawing-current-color);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.whiteboard-tools__swatch[data-color='red'] {
+  --drawing-current-color: var(--drawing-color-red);
+}
+
+.whiteboard-tools__swatch[data-color='orange'] {
+  --drawing-current-color: var(--drawing-color-orange);
+}
+
+.whiteboard-tools__swatch[data-color='yellow'] {
+  --drawing-current-color: var(--drawing-color-yellow);
+}
+
+.whiteboard-tools__swatch[data-color='green'] {
+  --drawing-current-color: var(--drawing-color-green);
+}
+
+.whiteboard-tools__swatch[data-color='blue'] {
+  --drawing-current-color: var(--drawing-color-blue);
+}
+
+.whiteboard-tools__swatch[data-color='violet'] {
+  --drawing-current-color: var(--drawing-color-violet);
+}
+
+.whiteboard-tools__swatch:hover,
+.whiteboard-tools__swatch:focus-visible {
+  transform: scale(1.18);
+}
+
+.whiteboard-tools__swatch[data-selected='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.whiteboard-tools__range {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.whiteboard-tools__range > svg {
+  flex: 0 0 auto;
+  font-size: var(--icon-size-sm);
+}
+
+.whiteboard-tools__range input {
+  width: var(--space-8);
+  accent-color: var(--accent);
+}
+
+.whiteboard-state {
+  display: grid;
+  place-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  padding: var(--space-6);
+  color: var(--text-primary);
+  text-align: center;
+  background: var(--bg-app);
+}
+
+.whiteboard-state__title,
+.whiteboard-state__message {
+  margin: 0;
+}
+
+.whiteboard-state__title {
+  font-size: var(--text-xl);
+}
+
+.whiteboard-state__message {
+  max-width: var(--dialog-width);
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+}

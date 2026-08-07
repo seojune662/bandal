@@ -46,7 +46,8 @@ const PUSH_CHANNELS: readonly PushChannel[] = [
   'groups:invalidated',
   // -- auto update ----------------------------------------------------------
   'update:changed',
-  'agent:install-progress'
+  'agent:install-progress',
+  'whiteboard:changed'
 ]
 
 const bridge: BandalBridge = {

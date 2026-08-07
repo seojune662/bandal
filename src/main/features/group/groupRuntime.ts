@@ -45,6 +45,15 @@ export interface GroupRuntime {
   service(): GroupService
   /** True once `service()` has actually been constructed. */
   isStarted(): boolean
+  /**
+   * [M13] The shared whiteboard talks to the same project as the group chat,
+   * so it borrows this client rather than building a second one — two clients
+   * would hold two sessions and disagree about who is signed in.
+   * null when the build has no Supabase keys.
+   */
+  getClient(): SupabaseClient | null
+  /** Remote user id, or null when signed out. */
+  getUserId(): string | null
   /** Safe to call unconditionally from `before-quit`. */
   dispose(): void
 }
@@ -52,6 +61,8 @@ export interface GroupRuntime {
 export function createGroupRuntime(deps: GroupRuntimeDeps): GroupRuntime {
   let service: GroupService | null = null
   let disposeInner: (() => void) | null = null
+  let sharedClient: SupabaseClient | null = null
+  let currentUserId: (() => string | null) | null = null
 
   function build(): GroupService {
     const repo = createGroupRepo(deps.db)
@@ -62,6 +73,7 @@ export function createGroupRuntime(deps: GroupRuntimeDeps): GroupRuntime {
       encryptor: safeStorage
     })
     const client: SupabaseClient | null = createSupabaseClient({ storage })
+    sharedClient = client
 
     const auth = createAuthService({
       client,
@@ -136,6 +148,7 @@ export function createGroupRuntime(deps: GroupRuntimeDeps): GroupRuntime {
       console.error('[group] session restore rejected', error)
     })
 
+    currentUserId = () => auth.userId()
     return built
   }
 
@@ -145,10 +158,20 @@ export function createGroupRuntime(deps: GroupRuntimeDeps): GroupRuntime {
       return service
     },
     isStarted: () => service !== null,
+    getClient() {
+      if (service === null) service = build()
+      return sharedClient
+    },
+    getUserId() {
+      if (service === null) service = build()
+      return currentUserId?.() ?? null
+    },
     dispose() {
       disposeInner?.()
       disposeInner = null
       service = null
+      sharedClient = null
+      currentUserId = null
     }
   }
 }

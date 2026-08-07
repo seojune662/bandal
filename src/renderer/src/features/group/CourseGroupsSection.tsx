@@ -48,6 +48,15 @@ export function CourseGroupsSection(props: { courseId: string }): JSX.Element | 
     [courseId, openTab]
   )
 
+  // The whiteboard is its own tab, one per group, so the row needs a second
+  // affordance — opening chat and then hunting for a board would bury it.
+  const openWhiteboard = useCallback(
+    (groupId: string): void => {
+      openTab(descriptorFor('group-whiteboard', { groupId }))
+    },
+    [openTab]
+  )
+
   const createForCourse = useCallback(async () => {
     if (course === undefined || creating) return
     setCreating(true)
@@ -92,7 +101,12 @@ export function CourseGroupsSection(props: { courseId: string }): JSX.Element | 
           <p className="course-groups-section__label">함께하기</p>
           <ul className="group-list">
             {groups.map((group) => (
-              <GroupListRow key={group.id} group={group} onOpen={openGroup} />
+              <GroupListRow
+                key={group.id}
+                group={group}
+                onOpen={openGroup}
+                onOpenWhiteboard={openWhiteboard}
+              />
             ))}
           </ul>
         </>

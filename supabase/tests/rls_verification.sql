@@ -1,17 +1,18 @@
 -- ============================================================================
 -- Bandal Phase 2 — P2-B 게이트 증명 스크립트 (rls_verification.sql)
 --
--- §7 P2-B 게이트 5종을 그대로 재현한다:
+-- §7 P2-B/P2-화이트보드 게이트 6종을 재현한다:
 --   ① 비멤버가 study_groups / messages / group_members 를 SELECT 하면 0행
 --   ② invite_codes 를 code 로 조회할 수 없다
 --   ③ join_group_with_code 6회 연속 시도 시 6번째가 거절된다
 --   ④ 21번째 메시지 즉시 전송 시 rate_limited
 --   ⑤ 모든 정책 쿼리가 재귀(42P17) 없이 응답한다
+--   ⑥ 화이트보드 RLS/멱등 PK/전용 토큰 버킷이 실제로 막는다
 --
 -- ---------------------------------------------------------------------------
 -- 실행 방법
 -- ---------------------------------------------------------------------------
--- 0. 0001~0009 마이그레이션을 전부 적용한다.
+-- 0. 0001~0009 후 0010_whiteboards.sql 까지 전부 적용한다.
 -- 1. 실제 계정 2개로 로그인해 프로필이 생기게 한다. 그리고 uuid 를 확인한다:
 --
 --       select id, nickname from public.profiles order by created_at desc limit 5;
@@ -104,6 +105,8 @@ declare
   v_a    uuid := (select v from p2b_cfg where k = 'user_a')::uuid;
   v_res  jsonb;
   v_gid  uuid;
+  v_bid  uuid;
+  v_sid  uuid := gen_random_uuid();
   v_code text;
 begin
   perform pg_temp.impersonate(v_a);
@@ -115,14 +118,27 @@ begin
   insert into public.messages (id, group_id, author_id, body)
   values (gen_random_uuid(), v_gid, v_a, '준비용 메시지');
 
+  insert into public.whiteboards (group_id, title)
+  values (v_gid, 'P2B 검증용 화이트보드')
+  returning id into v_bid;
+
+  insert into public.whiteboard_shapes (id, board_id, kind, data_json, style_json)
+  values (v_sid, v_bid, 'line', '{"x1":0,"y1":0,"x2":10,"y2":10}',
+          '{"color":"#111827","width":2}');
+
   perform pg_temp.unimpersonate();
 
-  insert into p2b_state (k, v) values ('group_id', v_gid::text), ('code', v_code);
+  insert into p2b_state (k, v) values
+    ('group_id', v_gid::text), ('code', v_code),
+    ('board_id', v_bid::text), ('shape_a_id', v_sid::text);
 
   insert into p2b_results (gate, name, passed, detail) values
     ('setup', 'create_group 이 그룹과 초대코드를 만든다',
      v_gid is not null and v_code ~ '^[0-9A-HJ-KM-NP-TV-Z]{6}$',
-     format('group=%s code=%s', v_gid, v_code));
+     format('group=%s code=%s', v_gid, v_code)),
+    ('setup', '멤버가 보드와 도형을 생성한다',
+     v_bid is not null and v_sid is not null,
+     format('board=%s shape=%s', v_bid, v_sid));
 exception when others then
   perform pg_temp.unimpersonate();
   insert into p2b_results (gate, name, passed, detail)
@@ -139,20 +155,25 @@ do $$
 declare
   v_b   uuid := (select v from p2b_cfg where k = 'user_b')::uuid;
   v_gid uuid := (select v from p2b_state where k = 'group_id')::uuid;
-  n_g int; n_m int; n_mem int;
+  v_bid uuid := (select v from p2b_state where k = 'board_id')::uuid;
+  n_g int; n_m int; n_mem int; n_w int; n_s int;
 begin
   perform pg_temp.impersonate(v_b);
 
   select count(*) into n_g   from public.study_groups  where id = v_gid;
   select count(*) into n_m   from public.messages      where group_id = v_gid;
   select count(*) into n_mem from public.group_members where group_id = v_gid;
+  select count(*) into n_w   from public.whiteboards   where id = v_bid;
+  select count(*) into n_s   from public.whiteboard_shapes where board_id = v_bid;
 
   perform pg_temp.unimpersonate();
 
   insert into p2b_results (gate, name, passed, detail) values
     ('①', '비멤버의 study_groups SELECT = 0행',  n_g   = 0, format('rows=%s', n_g)),
     ('①', '비멤버의 messages SELECT = 0행',      n_m   = 0, format('rows=%s', n_m)),
-    ('①', '비멤버의 group_members SELECT = 0행', n_mem = 0, format('rows=%s', n_mem));
+    ('①', '비멤버의 group_members SELECT = 0행', n_mem = 0, format('rows=%s', n_mem)),
+    ('⑥', '비멤버의 whiteboards SELECT = 0행', n_w = 0, format('rows=%s', n_w)),
+    ('⑥', '비멤버의 whiteboard_shapes SELECT = 0행', n_s = 0, format('rows=%s', n_s));
 exception when others then
   perform pg_temp.unimpersonate();
   insert into p2b_results (gate, name, passed, detail)
@@ -364,6 +385,163 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- ⑥ 화이트보드: 멤버 읽기/쓰기, 소프트삭제, PK 멱등, 토큰 버킷
+-- ---------------------------------------------------------------------------
+-- USER_B 를 같은 그룹의 일반 멤버로 만든 뒤 USER_A 도형을 공격한다.
+-- 그 전의 비멤버 숨김은 ①/⑥ 앞 검사에서 이미 증명했다.
+do $$
+declare
+  v_a          uuid := (select v from p2b_cfg where k = 'user_a')::uuid;
+  v_b          uuid := (select v from p2b_cfg where k = 'user_b')::uuid;
+  v_gid        uuid := (select v from p2b_state where k = 'group_id')::uuid;
+  v_bid        uuid := (select v from p2b_state where k = 'board_id')::uuid;
+  v_shape_a    uuid := (select v from p2b_state where k = 'shape_a_id')::uuid;
+  v_shape_b    uuid := gen_random_uuid();
+  v_shape_self uuid := gen_random_uuid();
+  v_read_ok    boolean := false;
+  v_write_ok   boolean := false;
+  v_dup_ok     boolean := false;
+  v_edit_ok    boolean := false;
+  v_hard_ok    boolean := false;
+  v_other_soft_ok boolean := false;
+  v_self_soft_ok  boolean := false;
+  v_owner_soft_ok boolean := false;
+  v_det text;
+  n int;
+begin
+  -- 테스트 픽스처 구성은 테이블 소유자 롤로 한다.
+  insert into public.group_members (group_id, user_id, role)
+  values (v_gid, v_b, 'member');
+
+  perform pg_temp.impersonate(v_b);
+
+  select count(*) into n from public.whiteboards where id = v_bid;
+  v_read_ok := (n = 1);
+
+  insert into public.whiteboard_shapes (id, board_id, kind, data_json, style_json)
+  values (v_shape_b, v_bid, 'rect', '{"x":1,"y":2,"w":30,"h":40}',
+          '{"stroke":"#2563eb"}');
+  get diagnostics n = row_count;
+  v_write_ok := (n = 1);
+
+  -- 같은 클라이언트 id 재전송은 중복행이 아니라 23505 로 멱등하게 끝난다.
+  begin
+    insert into public.whiteboard_shapes (id, board_id, kind, data_json, style_json)
+    values (v_shape_b, v_bid, 'rect', '{"x":999}', '{}');
+    v_det := '동일 id 중복 INSERT 가 성공했다(치명적)';
+  exception when unique_violation then
+    v_dup_ok := true;
+    v_det := format('%s / %s', sqlstate, sqlerrm);
+  end;
+
+  -- 일반 멤버가 남의 도형 내용을 바꾸는 UPDATE 문 자체를 컬럼 GRANT 가 막아야 한다.
+  begin
+    update public.whiteboard_shapes
+       set data_json = '{"tampered":true}'
+     where id = v_shape_a;
+    get diagnostics n = row_count;
+    v_edit_ok := (n = 0);
+  exception when insufficient_privilege then
+    v_edit_ok := true;
+  end;
+
+  -- DELETE 권한/정책이 없으므로 하드 삭제는 막힌다.
+  begin
+    delete from public.whiteboard_shapes where id = v_shape_a;
+    get diagnostics n = row_count;
+    v_hard_ok := (n = 0);
+  exception when insufficient_privilege then
+    v_hard_ok := true;
+  end;
+
+  -- deleted_at 은 열려 있어도 남의 도형은 UPDATE RLS 가 0행으로 숨긴다.
+  update public.whiteboard_shapes set deleted_at = now() where id = v_shape_a;
+  get diagnostics n = row_count;
+  v_other_soft_ok := (n = 0);
+
+  -- 작성자 본인의 소프트삭제는 통과한다.
+  insert into public.whiteboard_shapes (id, board_id, kind, data_json, style_json)
+  values (v_shape_self, v_bid, 'ellipse', '{"cx":5,"cy":5,"rx":2,"ry":3}', '{}');
+  update public.whiteboard_shapes set deleted_at = now() where id = v_shape_self;
+  get diagnostics n = row_count;
+  v_self_soft_ok := (n = 1);
+
+  perform pg_temp.unimpersonate();
+
+  -- 그룹 owner 는 다른 작성자의 도형을 소프트삭제할 수 있다.
+  perform pg_temp.impersonate(v_a);
+  update public.whiteboard_shapes set deleted_at = now() where id = v_shape_b;
+  get diagnostics n = row_count;
+  v_owner_soft_ok := (n = 1);
+  perform pg_temp.unimpersonate();
+
+  -- 공격 시도 후에도 USER_A 도형 내용과 활성 상태가 그대로여야 한다.
+  select count(*) into n
+    from public.whiteboard_shapes
+   where id = v_shape_a
+     and deleted_at is null
+     and data_json = '{"x1":0,"y1":0,"x2":10,"y2":10}'::jsonb;
+  v_edit_ok := v_edit_ok and n = 1;
+  v_other_soft_ok := v_other_soft_ok and n = 1;
+
+  insert into p2b_results (gate, name, passed, detail) values
+    ('⑥', '멤버는 whiteboards / whiteboard_shapes 를 읽고 쓴다',
+     v_read_ok and v_write_ok, format('read=%s write=%s', v_read_ok, v_write_ok)),
+    ('⑥', '같은 shape id 두 번 INSERT 는 PK 충돌로 멱등하다', v_dup_ok, v_det),
+    ('⑥', '남의 도형 내용을 UPDATE 할 수 없다', v_edit_ok, null),
+    ('⑥', '남의 도형을 하드 DELETE 할 수 없다', v_hard_ok, null),
+    ('⑥', '일반 멤버는 남의 도형을 소프트삭제할 수 없다', v_other_soft_ok, null),
+    ('⑥', '작성자는 자기 도형을 소프트삭제할 수 있다', v_self_soft_ok, null),
+    ('⑥', '그룹 owner 는 남의 도형을 소프트삭제할 수 있다', v_owner_soft_ok, null);
+exception when others then
+  perform pg_temp.unimpersonate();
+  insert into p2b_results (gate, name, passed, detail)
+  values ('⑥', '화이트보드 RLS/멱등 검증', false, format('%s / %s', sqlstate, sqlerrm));
+end;
+$$;
+
+-- 화이트보드 전용 버킷은 한 트랜잭션에서 200건을 통과시키고 201번째를 막는다.
+do $$
+declare
+  v_b   uuid := (select v from p2b_cfg where k = 'user_b')::uuid;
+  v_gid uuid := (select v from p2b_state where k = 'group_id')::uuid;
+  v_bid uuid := (select v from p2b_state where k = 'board_id')::uuid;
+  v_ok  boolean := false;
+  v_det text;
+  v_n   int := 0;
+  i int;
+begin
+  update public.group_members
+     set wb_tokens = 200, wb_tokens_at = now()
+   where group_id = v_gid and user_id = v_b;
+
+  perform pg_temp.impersonate(v_b);
+  begin
+    for i in 1..201 loop
+      insert into public.whiteboard_shapes (id, board_id, kind, data_json, style_json)
+      values (gen_random_uuid(), v_bid, 'line',
+              jsonb_build_object('n', i, 'x1', 0, 'y1', 0, 'x2', i, 'y2', i),
+              '{"color":"#111827"}');
+      v_n := i;
+    end loop;
+    v_det := '201건이 전부 통과했다 — 화이트보드 토큰 버킷이 동작하지 않는다';
+  exception when sqlstate 'P0001' then
+    v_ok := (sqlerrm = 'rate_limited' and v_n = 200);
+    v_det := format('%s건 통과 후 %s번째에서 중단: %s (%s)',
+                    v_n, v_n + 1, sqlerrm, sqlstate);
+  end;
+  perform pg_temp.unimpersonate();
+
+  insert into p2b_results (gate, name, passed, detail)
+  values ('⑥', '화이트보드 200건은 통과하고 201번째가 rate_limited', v_ok, v_det);
+exception when others then
+  perform pg_temp.unimpersonate();
+  insert into p2b_results (gate, name, passed, detail)
+  values ('⑥', '화이트보드 토큰 버킷', false, format('%s / %s', sqlstate, sqlerrm));
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- ⑤ RLS 재귀 없음 (42P17 이 어디서도 나지 않는다)
 -- ---------------------------------------------------------------------------
 -- 재귀는 "느려짐"이 아니라 **에러(42P17 infinite recursion detected in policy)** 로
@@ -375,7 +553,8 @@ declare
   v_tables text[] := array[
     'public.profiles', 'public.study_groups', 'public.group_members',
     'public.messages', 'public.friendships', 'public.group_invites',
-    'public.blocks', 'public.invite_codes', 'public.reports', 'public.rate_events'
+    'public.blocks', 'public.invite_codes', 'public.reports', 'public.rate_events',
+    'public.whiteboards', 'public.whiteboard_shapes'
   ];
   v_uid uuid;
   t text;
@@ -461,7 +640,10 @@ begin
                          'respond_friend_request','find_profile_by_nickname','leave_group',
                          'kick_member','set_member_role','mark_read','unread_counts',
                          'regenerate_invite_code','current_invite_code','mint_invite_code',
-                         'delete_message','load_messages','report_content','block_user')
+                         'delete_message','load_messages','report_content','block_user',
+                         'whiteboard_shapes_before_insert',
+                         'broadcast_whiteboard_shape_insert',
+                         'broadcast_whiteboard_shape_remove','prune_whiteboard_shapes')
   loop
     if not r.prosecdef then
       v_bad := v_bad || r.proname || '(not security definer) ';
@@ -565,6 +747,10 @@ declare
   v_gid uuid := (select v from p2b_state where k = 'group_id')::uuid;
 begin
   if v_gid is not null then
+    delete from public.whiteboard_shapes where board_id in (
+      select id from public.whiteboards where group_id = v_gid
+    );
+    delete from public.whiteboards   where group_id = v_gid;
     delete from public.messages      where group_id = v_gid;
     delete from public.invite_codes  where group_id = v_gid;
     delete from public.group_invites where group_id = v_gid;
@@ -576,7 +762,7 @@ begin
   delete from public.rate_events where user_id in (v_a, v_b);
 
   insert into p2b_results (gate, name, passed, detail)
-  values ('cleanup', '검증용 그룹/메시지/rate_events 삭제', true, v_gid::text);
+  values ('cleanup', '검증용 그룹/메시지/화이트보드/rate_events 삭제', true, v_gid::text);
 exception when others then
   insert into p2b_results (gate, name, passed, detail)
   values ('cleanup', '정리 실패 — 수동 삭제가 필요합니다', false,

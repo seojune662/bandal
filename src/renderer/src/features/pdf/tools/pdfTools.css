@@ -70,38 +70,31 @@
   opacity: 0.45;
 }
 
-.pdf-tool-rail__swatch,
-.pdf-textbox[data-color] {
+.pdf-tool-rail__swatch {
   --drawing-current-color: var(--drawing-color-ink);
 }
 
-.pdf-tool-rail__swatch[data-color='red'],
-.pdf-textbox[data-color='red'] {
+.pdf-tool-rail__swatch[data-color='red'] {
   --drawing-current-color: var(--drawing-color-red);
 }
 
-.pdf-tool-rail__swatch[data-color='orange'],
-.pdf-textbox[data-color='orange'] {
+.pdf-tool-rail__swatch[data-color='orange'] {
   --drawing-current-color: var(--drawing-color-orange);
 }
 
-.pdf-tool-rail__swatch[data-color='yellow'],
-.pdf-textbox[data-color='yellow'] {
+.pdf-tool-rail__swatch[data-color='yellow'] {
   --drawing-current-color: var(--drawing-color-yellow);
 }
 
-.pdf-tool-rail__swatch[data-color='green'],
-.pdf-textbox[data-color='green'] {
+.pdf-tool-rail__swatch[data-color='green'] {
   --drawing-current-color: var(--drawing-color-green);
 }
 
-.pdf-tool-rail__swatch[data-color='blue'],
-.pdf-textbox[data-color='blue'] {
+.pdf-tool-rail__swatch[data-color='blue'] {
   --drawing-current-color: var(--drawing-color-blue);
 }
 
-.pdf-tool-rail__swatch[data-color='violet'],
-.pdf-textbox[data-color='violet'] {
+.pdf-tool-rail__swatch[data-color='violet'] {
   --drawing-current-color: var(--drawing-color-violet);
 }
 
@@ -172,17 +165,18 @@
   z-index: 3;
   width: 100%;
   height: 100%;
-  overflow: visible;
-  touch-action: none;
 }
 
-.pdf-tab[data-tool='select'] .pdf-drawing-layer,
-.pdf-drawing-layer[data-loading='true'] {
+.pdf-tab[data-tool='select'] .pdf-drawing-layer {
   pointer-events: none;
 }
 
 .pdf-tab:not([data-tool='select']) .pdf-drawing-layer {
   pointer-events: auto;
+}
+
+.pdf-tab .pdf-drawing-layer.is-loading {
+  pointer-events: none;
 }
 
 .pdf-tab[data-tool='select'] .textLayer {
@@ -213,50 +207,4 @@
 .pdf-tab[data-tool='arrow'] .pdf-drawing-layer,
 .pdf-tab[data-tool='line'] .pdf-drawing-layer {
   cursor: crosshair;
-}
-
-.pdf-drawing-mark,
-.pdf-drawing-preview {
-  pointer-events: none;
-}
-
-.pdf-drawing-mark.is-highlighter,
-.pdf-drawing-preview.is-highlighter {
-  mix-blend-mode: multiply;
-}
-
-.pdf-textbox-object {
-  overflow: visible;
-}
-
-.pdf-textbox {
-  box-sizing: border-box;
-  width: 100%;
-  height: 100%;
-  padding: var(--space-1);
-  overflow: hidden;
-  font-family: var(--font-sans);
-  line-height: 1.35;
-  color: var(--drawing-current-color);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  background: transparent;
-  border: 1px solid transparent;
-}
-
-textarea.pdf-textbox {
-  outline: none;
-  resize: none;
-}
-
-.pdf-textbox.is-editing {
-  background: var(--bg-overlay);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-muted);
-}
-
-.pdf-textbox-resize {
-  cursor: nwse-resize;
-  stroke: var(--bg-surface);
-  stroke-width: 0.002;
 }

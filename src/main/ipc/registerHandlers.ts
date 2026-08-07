@@ -45,6 +45,10 @@ import { createBrowserSessionStore } from '../features/browser'
 import { createFavoritesRepo } from '../features/favorites'
 import { createActivityRepo, createContextWriter } from '../features/context'
 import { createStudyRunner } from '../features/study'
+import {
+  createWhiteboardRepo,
+  createWhiteboardService
+} from '../features/whiteboard'
 import { createGroupRuntime } from '../features/group'
 import { isAuthCallbackUrl } from '../features/group/authCallbackUrl'
 import { createUpdaterRuntime } from '../features/updater'
@@ -481,6 +485,25 @@ export function registerHandlers(): IpcRouter {
   }))
   handle('browser:clearSession', (req) => browserSessions.clear(req.origin))
 
+  // -- group whiteboard ------------------------------------------------------
+  // Borrows the group runtime's Supabase client: a second client would carry a
+  // second session and the two could disagree about who is signed in.
+  const whiteboardRepo = createWhiteboardRepo(db)
+  const whiteboardService = createWhiteboardService({
+    repo: whiteboardRepo,
+    getClient: () => groupRuntime.getClient(),
+    getUserId: () => groupRuntime.getUserId(),
+    emit: (groupId, event) => broadcast('whiteboard:changed', { groupId, event })
+  })
+  handle('whiteboard:open', (req) => whiteboardService.open(req.groupId))
+  handle('whiteboard:addShape', (req) => whiteboardService.addShape(req))
+  handle('whiteboard:removeShapes', (req) =>
+    whiteboardService.removeShapes(req)
+  )
+  handle('whiteboard:sync', (req) =>
+    whiteboardService.sync(req.boardId, req.since)
+  )
+
   // -- settings (real implementation, settingsStore-owned) ------------------
   handle('settings:get', () => getSettings())
   handle('settings:set', (req) => setSettings(req))
@@ -507,6 +530,7 @@ export function registerHandlers(): IpcRouter {
     groupRuntime.service()
 
   app.on('before-quit', () => {
+    whiteboardService.dispose()
     groupRuntime.dispose()
   })
   app.on('browser-window-blur', () => {
