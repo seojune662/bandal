@@ -53,6 +53,7 @@ import type {
 import type {
   CreateDrawingInput,
   Drawing,
+  DrawingShape,
   ExportAnnotatedPdfInput,
   ExportAnnotatedPdfResult,
   UpdateDrawingInput
@@ -72,8 +73,14 @@ import type {
 } from '../types/study'
 import type {
   AddWhiteboardShapeInput,
+  CreatePersonalBoardInput,
+  OpenPersonalBoardResult,
   OpenWhiteboardResult,
+  PersonalBoard,
+  PutPersonalShapeInput,
+  RemovePersonalShapesInput,
   RemoveWhiteboardShapesInput,
+  RenamePersonalBoardInput,
   WhiteboardShape
 } from '../types/whiteboard'
 import type {
@@ -485,6 +492,40 @@ export interface IpcContract {
     res: { shapes: WhiteboardShape[]; removedIds: string[]; syncedAt: string }
   }
 
+  // -- personal whiteboards (local only) -------------------------------------
+  //
+  // Prefixed `canvas:` rather than `board:` because `board:` already means the
+  // study TASK board (board:listTasks / createTask). Two unrelated features
+  // under one prefix is how a handler ends up wired to the wrong repo.
+  'canvas:list': {
+    req: { courseId: string }
+    res: PersonalBoard[]
+  }
+  'canvas:create': {
+    req: CreatePersonalBoardInput
+    res: PersonalBoard
+  }
+  'canvas:rename': {
+    req: RenamePersonalBoardInput
+    res: PersonalBoard
+  }
+  'canvas:remove': {
+    req: { id: string }
+    res: { ok: true }
+  }
+  'canvas:open': {
+    req: { boardId: string }
+    res: OpenPersonalBoardResult
+  }
+  'canvas:putShape': {
+    req: PutPersonalShapeInput
+    res: DrawingShape
+  }
+  'canvas:removeShapes': {
+    req: RemovePersonalShapesInput
+    res: { ok: true }
+  }
+
   // -- settings -------------------------------------------------------------
   'settings:get': {
     req: Record<string, never>
@@ -826,7 +867,14 @@ export const IPC_CHANNELS = [
   'whiteboard:open',
   'whiteboard:addShape',
   'whiteboard:removeShapes',
-  'whiteboard:sync'
+  'whiteboard:sync',
+  'canvas:list',
+  'canvas:create',
+  'canvas:rename',
+  'canvas:remove',
+  'canvas:open',
+  'canvas:putShape',
+  'canvas:removeShapes'
 ] as const satisfies readonly IpcChannel[]
 
 // Fails to compile if a contract channel is missing from IPC_CHANNELS.

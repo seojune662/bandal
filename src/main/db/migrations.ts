@@ -379,6 +379,47 @@ export const migrations: Migration[] = [
          );`
       )
     }
+  },
+  {
+    // [M14] Personal whiteboards — the student's own canvas, local only.
+    //
+    // Separate from whiteboard_shapes_cache because that table mirrors a
+    // REMOTE board: it carries board_id/group_id/author_id/pending and its
+    // rows are owned by the server. A personal board has no server, no author
+    // and nothing to sync, so reusing that table would mean every column
+    // except the geometry is dead weight and every query needs a "is this the
+    // local kind?" branch.
+    version: 11,
+    name: 'personal-whiteboards',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS whiteboards (
+           id         TEXT PRIMARY KEY,
+           course_id  TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+           title      TEXT NOT NULL,
+           sort_order INTEGER NOT NULL DEFAULT 0,
+           created_at TEXT NOT NULL,
+           updated_at TEXT NOT NULL,
+           deleted_at TEXT
+         );
+         CREATE INDEX IF NOT EXISTS idx_whiteboards_course
+           ON whiteboards (course_id, sort_order) WHERE deleted_at IS NULL;
+
+         CREATE TABLE IF NOT EXISTS whiteboard_local_shapes (
+           id         TEXT PRIMARY KEY,
+           board_id   TEXT NOT NULL REFERENCES whiteboards(id) ON DELETE CASCADE,
+           kind       TEXT NOT NULL,
+           data_json  TEXT NOT NULL,
+           style_json TEXT NOT NULL,
+           created_at TEXT NOT NULL,
+           updated_at TEXT NOT NULL,
+           deleted_at TEXT
+         );
+         CREATE INDEX IF NOT EXISTS idx_wb_local_board
+           ON whiteboard_local_shapes (board_id, created_at)
+           WHERE deleted_at IS NULL;`
+      )
+    }
   }
 ]
 

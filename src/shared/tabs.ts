@@ -15,7 +15,7 @@ export type TabKind =
   | 'chat'
   | 'board'
   | 'group-chat'
-  | 'group-whiteboard'
+  | 'whiteboard'
 
 export interface PdfTabPayload {
   courseId: string
@@ -59,15 +59,28 @@ export type BoardTabPayload = Record<string, never>
  * UNIQUE `remote_group_id`, so the old "zero or many courses" comment here
  * contradicted the schema.
  */
-/** [M13] The group's shared whiteboard. One board per group, one tab per group. */
-export interface GroupWhiteboardTabPayload {
-  groupId: string
+/**
+ * [M14] A personal whiteboard — the student's own canvas for organising ideas
+ * or sketching a mind map. Local only: it never leaves the machine, so it
+ * needs no account and works offline.
+ *
+ * A course can hold several, unlike the group board which is one per group.
+ */
+export interface WhiteboardTabPayload {
+  courseId: string
+  boardId: string
 }
 
 export interface GroupChatTabPayload {
   courseId: string | null
   /** Initially selected group; the panel switches among the course's groups. */
   groupId?: string
+  /**
+   * [M14] Which surface to show. 함께하기 is ONE tab per course that switches
+   * between talking and drawing — a second tab per group is exactly the
+   * proliferation the single-tab rule exists to prevent.
+   */
+  view?: 'chat' | 'whiteboard'
 }
 
 export interface TabPayloadMap {
@@ -77,7 +90,7 @@ export interface TabPayloadMap {
   chat: ChatTabPayload
   board: BoardTabPayload
   'group-chat': GroupChatTabPayload
-  'group-whiteboard': GroupWhiteboardTabPayload
+  whiteboard: WhiteboardTabPayload
 }
 
 /** Discriminated tab descriptor: { kind, payload } pairs, serializable. */
@@ -103,7 +116,7 @@ export const TAB_KINDS: readonly TabKind[] = [
   'chat',
   'board',
   'group-chat',
-  'group-whiteboard'
+  'whiteboard'
 ]
 
 export function isTabKind(value: unknown): value is TabKind {
@@ -140,13 +153,18 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
       return isNonEmptyString(payload['courseId'])
     case 'board':
       return true
-    case 'group-whiteboard':
-      return isNonEmptyString(payload['groupId'])
+    case 'whiteboard':
+      return (
+        isNonEmptyString(payload['courseId']) &&
+        isNonEmptyString(payload['boardId'])
+      )
     case 'group-chat': {
       const courseId = payload['courseId']
       if (courseId !== null && !isNonEmptyString(courseId)) return false
       const groupId = payload['groupId']
-      return groupId === undefined || isNonEmptyString(groupId)
+      if (groupId !== undefined && !isNonEmptyString(groupId)) return false
+      const view = payload['view']
+      return view === undefined || view === 'chat' || view === 'whiteboard'
     }
   }
 }

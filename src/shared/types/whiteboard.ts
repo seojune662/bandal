@@ -71,3 +71,45 @@ export interface OpenWhiteboardResult {
   board: Whiteboard | null
   shapes: WhiteboardShape[]
 }
+
+// -- personal whiteboards -----------------------------------------------------
+
+/**
+ * A board that never leaves the machine. No account, no sync, works offline —
+ * the student's own space for organising or sketching a mind map.
+ */
+export interface PersonalBoard {
+  id: string
+  courseId: string
+  title: string
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreatePersonalBoardInput {
+  courseId: string
+  title?: string
+}
+
+export interface RenamePersonalBoardInput {
+  id: string
+  title: string
+}
+
+export interface PutPersonalShapeInput {
+  boardId: string
+  /** Client-generated; re-putting the same id updates in place. */
+  id: string
+  shape: Omit<DrawingShape, 'id' | 'createdAt' | 'updatedAt'>
+}
+
+export interface RemovePersonalShapesInput {
+  boardId: string
+  ids: string[]
+}
+
+export interface OpenPersonalBoardResult {
+  board: PersonalBoard
+  shapes: DrawingShape[]
+}
