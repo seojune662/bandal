@@ -331,6 +331,54 @@ export const migrations: Migration[] = [
            ON activity_events (course_id, created_at DESC);`
       )
     }
+  },
+  {
+    // [M13] Local mirror of the group whiteboard.
+    //
+    // One table does both jobs. `pending = 1` means "drawn here, not yet
+    // accepted by the server" (the outbox), `pending = 0` means "confirmed"
+    // (the read cache). Keeping them separate would need a hand-off between
+    // two tables at exactly the moment a write succeeds, which is where that
+    // kind of design usually loses a stroke.
+    //
+    // Losing someone's drawing because the wifi dropped is not acceptable, so
+    // a stroke is written here FIRST and uploaded after — the same
+    // client-generated-id idempotency the chat outbox relies on.
+    version: 10,
+    name: 'whiteboard-local-mirror',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS whiteboard_shapes_cache (
+           id         TEXT PRIMARY KEY,
+           board_id   TEXT NOT NULL,
+           group_id   TEXT NOT NULL,
+           author_id  TEXT NOT NULL,
+           kind       TEXT NOT NULL,
+           data_json  TEXT NOT NULL,
+           style_json TEXT NOT NULL,
+           pending    INTEGER NOT NULL DEFAULT 0,
+           attempts   INTEGER NOT NULL DEFAULT 0,
+           created_at TEXT NOT NULL,
+           updated_at TEXT NOT NULL,
+           deleted_at TEXT
+         );
+         CREATE INDEX IF NOT EXISTS idx_wb_shapes_board
+           ON whiteboard_shapes_cache (board_id, created_at)
+           WHERE deleted_at IS NULL;
+         CREATE INDEX IF NOT EXISTS idx_wb_shapes_pending
+           ON whiteboard_shapes_cache (pending, attempts)
+           WHERE pending = 1;
+
+         CREATE TABLE IF NOT EXISTS whiteboard_boards_cache (
+           id         TEXT PRIMARY KEY,
+           group_id   TEXT NOT NULL UNIQUE,
+           title      TEXT NOT NULL,
+           synced_at  TEXT,
+           created_at TEXT NOT NULL,
+           updated_at TEXT NOT NULL
+         );`
+      )
+    }
   }
 ]
 

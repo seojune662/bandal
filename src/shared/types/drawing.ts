@@ -61,17 +61,27 @@ export interface DrawingStyle {
   fontScale?: number
 }
 
-export interface Drawing {
+/**
+ * A drawn shape with no idea what surface it sits on.
+ *
+ * Split out of `Drawing` so the same geometry can back both PDF markup and
+ * the shared whiteboard: everything above this line is already surface-free
+ * (0..1 normalized), and only `relPath`/`page` were ever PDF-specific.
+ */
+export interface DrawingShape {
   id: string
-  courseId: string
-  relPath: string
-  /** 1-based, matching `Annotation.page`. */
-  page: number
   kind: DrawingKind
   data: DrawingData
   style: DrawingStyle
   createdAt: string
   updatedAt: string
+}
+
+export interface Drawing extends DrawingShape {
+  courseId: string
+  relPath: string
+  /** 1-based, matching `Annotation.page`. */
+  page: number
 }
 
 export interface CreateDrawingInput {

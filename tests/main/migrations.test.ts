@@ -29,7 +29,8 @@ describe('migrations', () => {
       { version: 6, name: 'pdf-drawings' },
       { version: 7, name: 'favorites' },
       { version: 8, name: 'course-links-into-favorites' },
-      { version: 9, name: 'activity-events' }
+      { version: 9, name: 'activity-events' },
+      { version: 10, name: 'whiteboard-local-mirror' }
     ])
   })
 
@@ -111,6 +112,6 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(9)
+    expect(count.n).toBe(10)
   })
 })

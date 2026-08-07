@@ -15,6 +15,7 @@ export type TabKind =
   | 'chat'
   | 'board'
   | 'group-chat'
+  | 'group-whiteboard'
 
 export interface PdfTabPayload {
   courseId: string
@@ -58,6 +59,11 @@ export type BoardTabPayload = Record<string, never>
  * UNIQUE `remote_group_id`, so the old "zero or many courses" comment here
  * contradicted the schema.
  */
+/** [M13] The group's shared whiteboard. One board per group, one tab per group. */
+export interface GroupWhiteboardTabPayload {
+  groupId: string
+}
+
 export interface GroupChatTabPayload {
   courseId: string | null
   /** Initially selected group; the panel switches among the course's groups. */
@@ -71,6 +77,7 @@ export interface TabPayloadMap {
   chat: ChatTabPayload
   board: BoardTabPayload
   'group-chat': GroupChatTabPayload
+  'group-whiteboard': GroupWhiteboardTabPayload
 }
 
 /** Discriminated tab descriptor: { kind, payload } pairs, serializable. */
@@ -95,7 +102,8 @@ export const TAB_KINDS: readonly TabKind[] = [
   'browser',
   'chat',
   'board',
-  'group-chat'
+  'group-chat',
+  'group-whiteboard'
 ]
 
 export function isTabKind(value: unknown): value is TabKind {
@@ -132,6 +140,8 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
       return isNonEmptyString(payload['courseId'])
     case 'board':
       return true
+    case 'group-whiteboard':
+      return isNonEmptyString(payload['groupId'])
     case 'group-chat': {
       const courseId = payload['courseId']
       if (courseId !== null && !isNonEmptyString(courseId)) return false

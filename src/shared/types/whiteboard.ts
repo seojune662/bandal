@@ -1,0 +1,73 @@
+/**
+ * Shared whiteboard for a 함께하기 group.
+ *
+ * Scope decision: "같이 보고 각자 그리기" — a completed stroke is persisted and
+ * shows up for everyone within a second or two. There is no per-point op
+ * stream and no shared cursor, which is what keeps this buildable:
+ *
+ *  - The `messages` table cannot carry ink. Its token bucket is capacity 20 /
+ *    refill 2 per second (0006_messages.sql), which a single pen stroke would
+ *    blow through.
+ *  - One row per FINISHED shape instead. A minute of drawing is tens of rows,
+ *    not thousands of ops, so it fits comfortably in a normal insert budget
+ *    and needs no CRDT.
+ *  - Conflict resolution is therefore trivial: shapes are immutable once
+ *    written and only ever soft-deleted, so two people drawing at once cannot
+ *    produce a conflict — only a union.
+ *
+ * Ids are generated CLIENT-side (same trick as `messages`): a retry after a
+ * dropped response collides on the primary key, which makes the write
+ * idempotent without a dedupe table.
+ */
+
+import type { DrawingShape } from './drawing'
+
+export interface Whiteboard {
+  id: string
+  groupId: string
+  title: string
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WhiteboardShape extends DrawingShape {
+  boardId: string
+  /** Remote user id of whoever drew it. */
+  authorId: string
+}
+
+export interface CreateWhiteboardInput {
+  groupId: string
+  title?: string
+}
+
+export interface AddWhiteboardShapeInput {
+  boardId: string
+  /** Client-generated uuid — retrying with the same id is a no-op, not a duplicate. */
+  id: string
+  shape: Omit<DrawingShape, 'id' | 'createdAt' | 'updatedAt'>
+}
+
+export interface RemoveWhiteboardShapesInput {
+  boardId: string
+  ids: string[]
+}
+
+/**
+ * Why the board can be unusable even when the group is fine: the remote
+ * schema for whiteboards ships as its own migration, so a project that has
+ * not applied it yet must degrade to a clear message instead of a crash.
+ */
+export type WhiteboardAvailability =
+  | { state: 'ready' }
+  | { state: 'signed-out' }
+  | { state: 'unconfigured' }
+  /** Tables missing — the 0010 migration has not been applied to the project. */
+  | { state: 'not-provisioned' }
+
+export interface OpenWhiteboardResult {
+  availability: WhiteboardAvailability
+  board: Whiteboard | null
+  shapes: WhiteboardShape[]
+}

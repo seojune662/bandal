@@ -71,6 +71,12 @@ import type {
   StudyToolDefinition
 } from '../types/study'
 import type {
+  AddWhiteboardShapeInput,
+  OpenWhiteboardResult,
+  RemoveWhiteboardShapesInput,
+  WhiteboardShape
+} from '../types/whiteboard'
+import type {
   AgentAvailability,
   AgentProvider,
   PermissionResponse
@@ -459,6 +465,26 @@ export interface IpcContract {
     res: RunStudyToolResult
   }
 
+  // -- group whiteboard ------------------------------------------------------
+  /** Opens (or lazily creates) the group's board and returns every live shape. */
+  'whiteboard:open': {
+    req: { groupId: string }
+    res: OpenWhiteboardResult
+  }
+  'whiteboard:addShape': {
+    req: AddWhiteboardShapeInput
+    res: WhiteboardShape
+  }
+  'whiteboard:removeShapes': {
+    req: RemoveWhiteboardShapesInput
+    res: { ok: true }
+  }
+  /** Pulls shapes drawn since `since` — the catch-up path for a stale board. */
+  'whiteboard:sync': {
+    req: { boardId: string; since: string | null }
+    res: { shapes: WhiteboardShape[]; removedIds: string[]; syncedAt: string }
+  }
+
   // -- settings -------------------------------------------------------------
   'settings:get': {
     req: Record<string, never>
@@ -796,7 +822,11 @@ export const IPC_CHANNELS = [
   'activity:recent',
   'context:rebuild',
   'study:tools',
-  'study:run'
+  'study:run',
+  'whiteboard:open',
+  'whiteboard:addShape',
+  'whiteboard:removeShapes',
+  'whiteboard:sync'
 ] as const satisfies readonly IpcChannel[]
 
 // Fails to compile if a contract channel is missing from IPC_CHANNELS.
