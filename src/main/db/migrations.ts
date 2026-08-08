@@ -420,6 +420,27 @@ export const migrations: Migration[] = [
            WHERE deleted_at IS NULL;`
       )
     }
+  },
+  {
+    // [M15] Calendar-shaped board entries.
+    //
+    // A task, an assignment and an exam differ only in how they read on a
+    // date, so they share one table — three tables would mean three queries to
+    // draw one month and three copies of the due-date logic.
+    //
+    // `all_day` matters because "제출 마감 23:59" and "중간고사 (하루)" render
+    // and sort differently, and guessing from the time component gets it wrong
+    // for anything scheduled exactly at midnight.
+    version: 12,
+    name: 'board-task-kind-and-allday',
+    up: (db) => {
+      db.exec(
+        `ALTER TABLE board_tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'task';
+         ALTER TABLE board_tasks ADD COLUMN all_day INTEGER NOT NULL DEFAULT 0;
+         CREATE INDEX IF NOT EXISTS idx_board_tasks_due
+           ON board_tasks (due_at) WHERE deleted_at IS NULL AND due_at IS NOT NULL;`
+      )
+    }
   }
 ]
 

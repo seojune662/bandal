@@ -36,8 +36,10 @@ import type {
 } from '../types/annotation'
 import type {
   BoardTask,
+  CalendarRangeInput,
   CreateTaskInput,
   ListTasksInput,
+  UpcomingDeadline,
   UpdateTaskInput
 } from '../types/board'
 import type {
@@ -71,6 +73,7 @@ import type {
   RunStudyToolResult,
   StudyToolDefinition
 } from '../types/study'
+import type { SearchHit, StudyGap } from '../types/search'
 import type {
   AddWhiteboardShapeInput,
   CreatePersonalBoardInput,
@@ -526,6 +529,44 @@ export interface IpcContract {
     res: { ok: true }
   }
 
+  // -- calendar + deadlines ---------------------------------------------------
+  /** Entries whose due date falls in [from, to) — one query per month view. */
+  'calendar:range': {
+    req: CalendarRangeInput
+    res: BoardTask[]
+  }
+  /** Deadlines from now forward, already resolved to days-left. */
+  'calendar:upcoming': {
+    req: { courseId?: string | null; withinDays?: number; limit?: number }
+    res: UpcomingDeadline[]
+  }
+
+  // -- full-text search across course material --------------------------------
+  /**
+   * Searches inside notes and PDF text, not just filenames.
+   * PDF pages are indexed lazily — the renderer already extracts page text for
+   * highlighting, so it hands that over rather than parsing twice in main.
+   */
+  'search:query': {
+    req: { courseId: string; query: string; limit?: number }
+    res: { hits: SearchHit[] }
+  }
+  'search:indexPdfPages': {
+    req: {
+      courseId: string
+      relPath: string
+      pages: { page: number; text: string }[]
+    }
+    res: { ok: true }
+  }
+
+  // -- study gaps -------------------------------------------------------------
+  /** What the student has not touched yet, derived from the activity log. */
+  'insights:gaps': {
+    req: { courseId: string }
+    res: { gaps: StudyGap[] }
+  }
+
   // -- settings -------------------------------------------------------------
   'settings:get': {
     req: Record<string, never>
@@ -874,7 +915,12 @@ export const IPC_CHANNELS = [
   'canvas:remove',
   'canvas:open',
   'canvas:putShape',
-  'canvas:removeShapes'
+  'canvas:removeShapes',
+  'calendar:range',
+  'calendar:upcoming',
+  'search:query',
+  'search:indexPdfPages',
+  'insights:gaps'
 ] as const satisfies readonly IpcChannel[]
 
 // Fails to compile if a contract channel is missing from IPC_CHANNELS.
