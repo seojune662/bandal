@@ -17,8 +17,11 @@ import type { Annotation } from '../../../../shared/types/annotation'
 import type {
   CreateDrawingInput,
   Drawing,
+  DrawingClipSource,
   UpdateDrawingInput
 } from '../../../../shared/types/drawing'
+import { TabKindIcon } from '../workspace/workspaceIcons'
+import { pdfClipLabel, writeBandalClipDragData } from './clipTransfer'
 
 export interface PdfPageViewProps {
   pageNumber: number
@@ -27,6 +30,7 @@ export interface PdfPageViewProps {
   /** height / width — placeholder sizing before the page ever renders. */
   aspect: number
   isVisible: boolean
+  clipDragEnabled: boolean
   annotations: Annotation[]
   drawings: Drawing[]
   drawingsLoading: boolean
@@ -82,6 +86,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
     width,
     aspect,
     isVisible,
+    clipDragEnabled,
     annotations,
     drawings,
     drawingsLoading,
@@ -137,6 +142,11 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
   }, [onHoverChange])
 
   const height = Math.round(width * aspect)
+  const clipSource: DrawingClipSource = {
+    relPath,
+    page: pageNumber,
+    label: pdfClipLabel(relPath, pageNumber, false)
+  }
 
   return (
     <section
@@ -149,6 +159,23 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
+      {clipDragEnabled && (
+        <button
+          type="button"
+          className="pdf-page__clip-drag"
+          draggable
+          aria-label={`${pageNumber} 페이지를 화이트보드로 보내기`}
+          title="이 페이지를 화이트보드로 드래그"
+          onPointerDown={(event) => event.stopPropagation()}
+          onDragStart={(event) => {
+            event.stopPropagation()
+            writeBandalClipDragData(event.dataTransfer, clipSource)
+          }}
+        >
+          <TabKindIcon kind="whiteboard" />
+          보드로
+        </button>
+      )}
       {isVisible ? (
         <>
           <Page

@@ -48,6 +48,20 @@ export {
   type RateGuard,
   type RateRule
 } from './rateGuard'
+export {
+  createGroupNoteSharingService,
+  formatSharedNoteMessage,
+  parseSharedNoteMessage,
+  sanitizeSharedNoteTitle,
+  GROUP_MESSAGE_MAX_CHARS,
+  SHARED_NOTE_MARKER,
+  SharedNoteTooLongError,
+  type GroupNoteSharingDeps,
+  type GroupNoteSharingService,
+  type SaveSharedNoteInput,
+  type SharedNoteEnvelope,
+  type ShareNoteInput
+} from './noteSharing'
 export { createAuthService, isValidNickname, type AuthService } from './authService'
 export {
   AUTH_CALLBACK_URL,

@@ -7,6 +7,7 @@ import {
 } from 'react'
 import type {
   DrawingBox,
+  DrawingClipSource,
   DrawingKind,
   DrawingPoint,
   DrawingShape,
@@ -24,6 +25,7 @@ import {
   strokePath
 } from './inkGeometry'
 import type { InkTool, InkToolState } from './inkToolStore'
+import { ClipShape, type RenderClip } from './ClipShape'
 import './ink.css'
 
 export interface InkLayerProps {
@@ -43,6 +45,9 @@ export interface InkLayerProps {
   clampToBounds?: boolean
   ariaLabel: string
   className?: string
+  /** Surface-owned PDF renderer; omitted on PDF markup and group boards. */
+  renderClip?: RenderClip
+  onOpenClip?: (source: DrawingClipSource) => void
 }
 
 type ShapeTool = 'rect' | 'ellipse' | 'arrow' | 'line'
@@ -149,7 +154,9 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     onRemove,
     clampToBounds = true,
     ariaLabel,
-    className
+    className,
+    renderClip,
+    onOpenClip
   } = props
   const { activeTool, color, width, opacity } = tool
   const svgRef = useRef<SVGSVGElement>(null)
@@ -377,7 +384,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         Math.abs(completed.box.width - original.width) < 0.0005 &&
         Math.abs(completed.box.height - original.height) < 0.0005
       ) {
-        if (completed.kind === 'move') {
+        if (completed.kind === 'move' && completed.shape.kind === 'textbox') {
           setEditingId(completed.shape.id)
           setTextDraft(completed.shape.data.text ?? '')
         }
@@ -413,11 +420,14 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   }, [setGesture])
 
   const beginManipulation = useCallback((
-    event: ReactPointerEvent<SVGElement>,
+    event: ReactPointerEvent<Element>,
     shape: DrawingShape,
     kind: 'move' | 'resize'
   ): void => {
-    if (activeTool !== 'text' || editingId === shape.id || shape.data.box === undefined) return
+    const canManipulate =
+      (shape.kind === 'textbox' && activeTool === 'text') ||
+      (shape.kind === 'clip' && activeTool === 'select')
+    if (!canManipulate || editingId === shape.id || shape.data.box === undefined) return
     event.stopPropagation()
     event.preventDefault()
     const svg = svgRef.current
@@ -506,6 +516,20 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
               <line x1={endpoints[0].x} y1={endpoints[0].y} x2={endpoints[1].x} y2={endpoints[1].y} />
               {shape.kind === 'arrow' && <polyline points={arrowHeadPoints(endpoints[0], endpoints[1], shape.style.width, aspect)} />}
             </g>
+          )
+        }
+        if (shape.kind === 'clip' && box !== undefined) {
+          return (
+            <ClipShape
+              key={shape.id}
+              shape={shape}
+              box={box}
+              aspect={aspect}
+              selected={activeTool === 'select'}
+              renderClip={renderClip}
+              onOpenClip={onOpenClip}
+              onBeginManipulation={beginManipulation}
+            />
           )
         }
         if (shape.kind !== 'textbox' || box === undefined) return null

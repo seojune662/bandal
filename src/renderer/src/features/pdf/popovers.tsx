@@ -17,6 +17,8 @@ import type {
   Annotation,
   HighlightColor
 } from '../../../../shared/types/annotation'
+import type { DrawingClipSource } from '../../../../shared/types/drawing'
+import { writeBandalClipDragData } from './clipTransfer'
 
 const COLOR_LABEL: Record<HighlightColor, string> = {
   yellow: '노랑 형광펜',
@@ -81,12 +83,14 @@ function useDismiss(
 
 interface SelectionPopoverProps {
   position: ContentPoint
+  clipSource: DrawingClipSource
   onPick: (color: HighlightColor) => void
   onDismiss: () => void
 }
 
 export function SelectionPopover({
   position,
+  clipSource,
   onPick,
   onDismiss
 }: SelectionPopoverProps): JSX.Element {
@@ -112,6 +116,18 @@ export function SelectionPopover({
           onClick={() => onPick(color)}
         />
       ))}
+      <button
+        type="button"
+        className="pdf-popover__clip-drag"
+        draggable
+        title="선택 영역을 화이트보드로 드래그"
+        aria-label="선택 영역을 화이트보드로 보내기"
+        onDragStart={(event) => writeBandalClipDragData(event.dataTransfer, clipSource)}
+        onDragEnd={onDismiss}
+      >
+        <TabKindIcon kind="whiteboard" />
+        화이트보드로 보내기
+      </button>
     </div>
   )
 }
@@ -131,6 +147,8 @@ interface HighlightPopoverProps {
    * Receives the current comment draft so unsaved memo edits are included.
    */
   onAskAi: (draftComment: string | null) => void
+  /** Appends this highlight and the current memo draft to a study note. */
+  onSendToNote: (draftComment: string | null) => void
 }
 
 export function HighlightPopover({
@@ -141,7 +159,8 @@ export function HighlightPopover({
   onSaveComment,
   onDelete,
   onDismiss,
-  onAskAi
+  onAskAi,
+  onSendToNote
 }: HighlightPopoverProps): JSX.Element {
   // The draft lives outside React state so that every exit path can persist the
   // latest value — including the capture-phase outside click, which unmounts
@@ -284,17 +303,30 @@ export function HighlightPopover({
           }
         }}
       />
-      <button
-        type="button"
-        className="pdf-popover__ask-ai"
-        onClick={() => {
-          memo.commit()
-          onAskAi(normalizeMemo(memo.value()))
-        }}
-      >
-        <TabKindIcon kind="chat" />
-        AI에게 물어보기
-      </button>
+      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <button
+          type="button"
+          className="pdf-popover__ask-ai"
+          onClick={() => {
+            memo.commit()
+            onAskAi(normalizeMemo(memo.value()))
+          }}
+        >
+          <TabKindIcon kind="chat" />
+          AI에게 물어보기
+        </button>
+        <button
+          type="button"
+          className="pdf-popover__ask-ai"
+          onClick={() => {
+            memo.commit()
+            onSendToNote(normalizeMemo(memo.value()))
+          }}
+        >
+          <TabKindIcon kind="note" />
+          필기로 보내기
+        </button>
+      </div>
 
       {isDiscardArmed && (
         <div className="pdf-popover__discard" role="alert">

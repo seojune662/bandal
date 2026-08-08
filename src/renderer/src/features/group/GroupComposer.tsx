@@ -19,6 +19,7 @@ import {
   type KeyboardEvent
 } from 'react'
 import type { GroupConnectionState } from '../../../../shared/types/group'
+import { Icon } from '../../app/icons'
 import { GroupIcon } from './groupIcons'
 
 const MAX_BODY_LENGTH = 4000
@@ -36,6 +37,7 @@ interface GroupComposerProps {
   /** Seconds left on a send rate limit; 0 = unrestricted. */
   cooldown: number
   disabled?: boolean
+  onShareNote?: (() => void) | undefined
 }
 
 function placeholderFor(
@@ -49,7 +51,15 @@ function placeholderFor(
 
 export const GroupComposer = forwardRef<GroupComposerHandle, GroupComposerProps>(
   function GroupComposer(
-    { value, onChange, onSend, connection, cooldown, disabled = false },
+    {
+      value,
+      onChange,
+      onSend,
+      connection,
+      cooldown,
+      disabled = false,
+      onShareNote
+    },
     ref
   ) {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -84,6 +94,16 @@ export const GroupComposer = forwardRef<GroupComposerHandle, GroupComposerProps>
 
     return (
       <div className="group-composer" data-blocked={blocked || undefined}>
+        {onShareNote !== undefined && (
+          <button
+            type="button"
+            className="group-composer__share"
+            onClick={onShareNote}
+          >
+            <Icon name="fileText" />
+            <span>노트 공유</span>
+          </button>
+        )}
         <label className="sr-only" htmlFor="group-composer-input">
           메시지 입력
         </label>

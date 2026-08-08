@@ -52,7 +52,11 @@ import {
 import { createCanvasRepo } from '../features/canvas'
 import { createSearchIndex } from '../features/search'
 import { createInsights } from '../features/insights'
-import { createGroupRuntime } from '../features/group'
+import { createLinkService } from '../features/link'
+import {
+  createGroupNoteSharingService,
+  createGroupRuntime
+} from '../features/group'
 import { isAuthCallbackUrl } from '../features/group/authCallbackUrl'
 import { createUpdaterRuntime } from '../features/updater'
 
@@ -548,6 +552,24 @@ export function registerHandlers(): IpcRouter {
     return OK
   })
 
+  // -- note <-> material links -------------------------------------------------
+  // The note stays plain markdown; the link is an ordinary markdown link with
+  // a bandal: target, so the file still opens correctly in any other editor.
+  const linkService = createLinkService({
+    notes: notesRepo,
+    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
+  })
+  handle('link:sendHighlightToNote', (req) => {
+    const result = linkService.sendHighlightToNote(req)
+    note(
+      req.courseId,
+      'note-edited',
+      `하이라이트를 필기로 보냈습니다: ${result.relPath}`,
+      result.relPath
+    )
+    return result
+  })
+
   // -- full-text search + study gaps -----------------------------------------
   // The index is a rebuildable cache, not user data — same status as
   // materials_index — so it owns its own tables instead of a migration.
@@ -611,6 +633,16 @@ export function registerHandlers(): IpcRouter {
       app.quit()
     }, QUIT_DRAIN_MS)
   })
+
+  // Lazy `getGroupService` on purpose: building the router must not wake the
+  // group runtime, which would open the OS keychain at launch.
+  const noteSharing = createGroupNoteSharingService({
+    notesRepo,
+    getGroupService: () => groupRuntime.service(),
+    getCourseName: (courseId) => coursesRepo.getById(courseId).name
+  })
+  handle('group:shareNote', (req) => noteSharing.shareNote(req))
+  handle('group:saveSharedNote', (req) => noteSharing.saveSharedNote(req))
 
   app.on('before-quit', () => {
     whiteboardService.dispose()

@@ -17,6 +17,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type MutableRefObject
 } from 'react'
 import type { NoteContent, NoteRef } from '../../../../shared/types/note'
@@ -24,6 +25,7 @@ import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { nativeHistoryGuard } from './nativeHistoryGuard'
+import { openMaterialLink, resolveNoteLink } from './materialLinkNavigation'
 import {
   createNoteConflictCopy,
   preserveNoteOnClose,
@@ -73,6 +75,27 @@ const STATUS_LABEL: Record<SaveStatus, string> = {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function handleNoteLinkClick(
+  event: ReactMouseEvent<HTMLDivElement>,
+  courseId: string
+): void {
+  const target = event.target
+  if (!(target instanceof Element)) return
+  const anchor = target.closest<HTMLAnchorElement>('a[href]')
+  const href = anchor?.getAttribute('href')
+  if (href === null || href === undefined) return
+
+  const resolution = resolveNoteLink(href)
+  if (resolution.kind === 'pass-through') return
+  event.preventDefault()
+
+  if (resolution.kind === 'invalid-bandal') {
+    showToast('올바르지 않은 Bandal 자료 링크입니다.', 'danger')
+    return
+  }
+  openMaterialLink(courseId, resolution.link)
 }
 
 export function isNoteConflict(error: unknown): boolean {
@@ -585,6 +608,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
         <div
           className="note-editor"
           style={{ '--note-font-scale': fontScale } as CSSProperties}
+          onClickCapture={(event) => handleNoteLinkClick(event, courseId)}
         >
           {viewMode === 'quiz' && quizSections !== null ? (
             <QuizPreview sections={quizSections} />

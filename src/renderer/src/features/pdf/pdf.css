@@ -216,6 +216,35 @@
   animation: pdf-pulse 1.6s var(--ease-out) infinite alternate;
 }
 
+.pdf-page__clip-drag {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-end: var(--space-2);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control-height);
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  cursor: grab;
+}
+
+.pdf-page__clip-drag:hover,
+.pdf-page__clip-drag:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.pdf-page__clip-drag:active {
+  cursor: grabbing;
+}
+
 /* pdf.js canvas sits at z 0, our highlights at 1, the text layer at 2 —
  * so selection stays fully interactive above the highlight rects. */
 .pdf-highlight-layer {
@@ -341,9 +370,31 @@
 }
 
 .pdf-popover--selection {
+  align-items: center;
   display: flex;
   gap: var(--space-2);
   padding: var(--space-2);
+}
+
+.pdf-popover__clip-drag {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control-height);
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  border-inline-start: 1px solid var(--border-subtle);
+  cursor: grab;
+}
+
+.pdf-popover__clip-drag:hover,
+.pdf-popover__clip-drag:focus-visible {
+  color: var(--accent);
+}
+
+.pdf-popover__clip-drag:active {
+  cursor: grabbing;
 }
 
 .pdf-popover--edit {

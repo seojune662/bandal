@@ -31,6 +31,7 @@ import { GroupIcon } from './groupIcons'
 import { GroupMessageList } from './GroupMessageList'
 import { InvitePalette } from './InvitePalette'
 import { MemberList } from './MemberList'
+import { NoteSharePicker } from './NoteSharePicker'
 import { useGroupChat } from './useGroupChat'
 import './group.css'
 import './groupNavigation.css'
@@ -144,18 +145,21 @@ function CourseLinkBar({ groupId }: { groupId: string }): JSX.Element | null {
 
 interface GroupChatSurfaceProps {
   groupId: string
+  courseId: string | null
   showCourseLink: boolean
   onCloseTab: () => void
 }
 
 function GroupChatSurface({
   groupId,
+  courseId,
   showCourseLink,
   onCloseTab
 }: GroupChatSurfaceProps): JSX.Element {
   const session = useGroupChat(groupId)
   const [draft, setDraft] = useState('')
   const [invitePaletteOpen, setInvitePaletteOpen] = useState(false)
+  const [notePickerOpen, setNotePickerOpen] = useState(false)
   const [blockedUserIds, setBlockedUserIds] = useState<ReadonlySet<string>>(
     () => new Set()
   )
@@ -303,6 +307,7 @@ function GroupChatSurface({
               messages={state.messages}
               pending={state.pending}
               members={state.members}
+              courseId={courseId}
               myUserId={myUserId}
               blockedUserIds={blockedUserIds}
               onRetry={session.retry}
@@ -330,7 +335,19 @@ function GroupChatSurface({
         onSend={handleSend}
         connection={state.connection}
         cooldown={state.sendCooldown}
+        onShareNote={
+          courseId === null ? undefined : () => setNotePickerOpen(true)
+        }
       />
+
+      {courseId !== null && (
+        <NoteSharePicker
+          open={notePickerOpen}
+          groupId={groupId}
+          courseId={courseId}
+          onClose={() => setNotePickerOpen(false)}
+        />
+      )}
 
       <InvitePalette
         open={invitePaletteOpen}
@@ -520,6 +537,7 @@ function CourseGroupPanel({
         <GroupChatSurface
           key={activeGroupId}
           groupId={activeGroupId}
+          courseId={courseId}
           showCourseLink={courseId === null}
           onCloseTab={onCloseTab}
         />

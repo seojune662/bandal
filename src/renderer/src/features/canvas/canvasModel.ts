@@ -1,4 +1,4 @@
-import type { DrawingShape } from '../../../../shared/types/drawing'
+import type { DrawingBox, DrawingShape } from '../../../../shared/types/drawing'
 
 export type CanvasShapeInput = Omit<
   DrawingShape,
@@ -57,4 +57,36 @@ export function removeOptimisticCanvasShapes(
 ): DrawingShape[] {
   const removed = new Set(ids)
   return shapes.filter((shape) => !removed.has(shape.id))
+}
+
+export interface CanvasDropPoint {
+  x: number
+  y: number
+}
+
+const DEFAULT_CLIP_WIDTH = 1 / 3
+const MAX_CLIP_EXTENT = 0.9
+
+/** Places a clip around the drop point while preserving its pixel aspect. */
+export function clipBoxAtDrop(
+  point: CanvasDropPoint,
+  surfaceAspect: number,
+  clipAspect: number
+): DrawingBox {
+  const safeSurfaceAspect = surfaceAspect > 0 && Number.isFinite(surfaceAspect)
+    ? surfaceAspect
+    : 1
+  const safeClipAspect = clipAspect > 0 && Number.isFinite(clipAspect)
+    ? clipAspect
+    : 1
+  let width = DEFAULT_CLIP_WIDTH
+  let height = width * safeClipAspect / safeSurfaceAspect
+  if (height > MAX_CLIP_EXTENT) {
+    const scale = MAX_CLIP_EXTENT / height
+    width *= scale
+    height = MAX_CLIP_EXTENT
+  }
+  const x = Math.min(1 - width, Math.max(0, point.x - width / 2))
+  const y = Math.min(1 - height, Math.max(0, point.y - height / 2))
+  return { x, y, width, height }
 }

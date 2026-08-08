@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import type { DrawingShape } from '../../../src/shared/types/drawing'
 import {
+  clipBoxAtDrop,
   createOptimisticCanvasShape,
   putOptimisticCanvasShape,
   removeOptimisticCanvasShapes,
@@ -58,5 +59,24 @@ describe('personal canvas optimistic model', () => {
     expect(original).toEqual([first, second])
     expect(updated[0]?.data.text).toBe('바뀐 개념')
     expect(removed.map((entry) => entry.id)).toEqual(['first'])
+  })
+
+  test('places clips at one-third width and preserves their pixel aspect', () => {
+    const surfaceAspect = 0.75
+    const clipAspect = 1.5
+    const box = clipBoxAtDrop({ x: 0.5, y: 0.5 }, surfaceAspect, clipAspect)
+
+    expect(box.width).toBeCloseTo(1 / 3)
+    expect(box.x + box.width / 2).toBeCloseTo(0.5)
+    expect(box.y + box.height / 2).toBeCloseTo(0.5)
+    expect(box.height * surfaceAspect / box.width).toBeCloseTo(clipAspect)
+  })
+
+  test('keeps a dropped clip inside the finite board', () => {
+    const box = clipBoxAtDrop({ x: 1, y: 1 }, 1, 4)
+
+    expect(box.x + box.width).toBeLessThanOrEqual(1)
+    expect(box.y + box.height).toBeLessThanOrEqual(1)
+    expect(box.height).toBeLessThanOrEqual(0.9)
   })
 })

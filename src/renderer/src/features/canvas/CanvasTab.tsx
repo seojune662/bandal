@@ -2,12 +2,18 @@ import type { IDockviewPanelProps } from 'dockview'
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type RefObject
 } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import type { DrawingShape } from '../../../../shared/types/drawing'
+import type {
+  DrawingBox,
+  DrawingClipSource,
+  DrawingShape
+} from '../../../../shared/types/drawing'
 import type {
   OpenPersonalBoardResult,
   PersonalBoard
@@ -18,8 +24,16 @@ import {
   useInkToolStore,
   type InkHistoryAction
 } from '../ink'
+import {
+  BANDAL_CLIP_MIME,
+  readBandalClipDragData
+} from '../pdf/clipTransfer'
+import { requestPdfPageNavigation } from '../pdf/pdfPageNavigation'
+import { createPdfClipRenderer } from '../pdf/renderClip'
+import { openMaterialInCourse } from '../workspace/openMaterial'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import {
+  clipBoxAtDrop,
   createOptimisticCanvasShape,
   putOptimisticCanvasShape,
   removeOptimisticCanvasShapes,
@@ -37,6 +51,33 @@ type LoadState =
 interface CanvasSize {
   width: number
   height: number
+}
+
+function sameDrawingBox(left: DrawingBox | undefined, right: DrawingBox): boolean {
+  return left !== undefined &&
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height
+}
+
+function provisionalClipAspect(source: DrawingClipSource): number {
+  const pageAspect = Math.SQRT2
+  const crop = source.crop
+  return crop === undefined
+    ? pageAspect
+    : pageAspect * crop.height / crop.width
+}
+
+function readImageAspect(dataUrl: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const image = new Image()
+    image.onload = () => {
+      resolve(image.naturalWidth > 0 ? image.naturalHeight / image.naturalWidth : null)
+    }
+    image.onerror = () => resolve(null)
+    image.src = dataUrl
+  })
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -135,6 +176,10 @@ function CanvasSession({
   )
   const canRedo = useInkToolStore((state) =>
     (state.histories[surfaceKey]?.redo.length ?? 0) > 0
+  )
+  const renderClip = useMemo(
+    () => createPdfClipRenderer(initialBoard.courseId),
+    [initialBoard.courseId]
   )
 
   const replace = useCallback((next: DrawingShape[]): void => {
@@ -360,6 +405,57 @@ function CanvasSession({
   const aspect = size.width > 0 ? size.height / size.width : 1
   const baseWidthPx = size.width > 0 ? size.width : 1
 
+  const handleDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
+    if (!Array.from(event.dataTransfer.types).includes(BANDAL_CLIP_MIME)) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+  }, [])
+
+  const handleDrop = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
+    const source = readBandalClipDragData(event.dataTransfer)
+    if (source === null) return
+    const surface = canvasRef.current
+    if (surface === null) return
+    const bounds = surface.getBoundingClientRect()
+    if (bounds.width <= 0 || bounds.height <= 0) return
+    event.preventDefault()
+    const point = {
+      x: Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)),
+      y: Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height))
+    }
+    const initialBox = clipBoxAtDrop(point, aspect, provisionalClipAspect(source))
+    const created = addInternal({
+      kind: 'clip',
+      data: { box: initialBox, clip: source },
+      style: { color, width, opacity: 1 }
+    }, true)
+
+    // The placeholder lands immediately. Once the visible clip renderer has
+    // the real crop, refine only an untouched provisional box to its exact ratio.
+    void renderClip(source).then((dataUrl) =>
+      dataUrl === null ? null : readImageAspect(dataUrl)
+    ).then((clipAspect) => {
+      if (clipAspect === null) return
+      const current = shapesRef.current.find((shape) => shape.id === created.id)
+      if (current === undefined || !sameDrawingBox(current.data.box, initialBox)) return
+      updateInternal(created.id, {
+        data: {
+          ...current.data,
+          box: clipBoxAtDrop(point, aspect, clipAspect)
+        }
+      }, false)
+    }).catch(() => {})
+  }, [addInternal, aspect, color, renderClip, updateInternal, width])
+
+  const openClip = useCallback((source: DrawingClipSource): void => {
+    openMaterialInCourse(board.courseId, 'pdf', source.relPath)
+    requestPdfPageNavigation({
+      courseId: board.courseId,
+      relPath: source.relPath,
+      page: source.page
+    })
+  }, [board.courseId])
+
   return (
     <section className="canvas-tab" data-tool={activeTool}>
       <header className="canvas-tab__header">
@@ -411,7 +507,12 @@ function CanvasSession({
       )}
 
       <div className="canvas-tab__viewport">
-        <div ref={canvasRef} className="canvas-tab__surface">
+        <div
+          ref={canvasRef}
+          className="canvas-tab__surface"
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
           <InkLayer
             aspect={aspect}
             baseWidthPx={baseWidthPx}
@@ -423,6 +524,8 @@ function CanvasSession({
             clampToBounds={true}
             ariaLabel={`${board.title} 개인 화이트보드 캔버스`}
             className="canvas-tab__ink-layer"
+            renderClip={renderClip}
+            onOpenClip={openClip}
           />
         </div>
       </div>

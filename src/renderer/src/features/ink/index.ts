@@ -1,4 +1,5 @@
 export { InkLayer, type InkLayerProps } from './InkLayer'
+export { ClipShape, type RenderClip } from './ClipShape'
 export * from './inkGeometry'
 export {
   drawingFileKey,

@@ -19,6 +19,8 @@ import {
 import { Document } from 'react-pdf'
 import type { IDockviewPanelProps } from 'dockview'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
+import { showToast } from '../../app/toast'
+import { invoke } from '../../lib/ipc'
 import './pdfWorker'
 import 'react-pdf/dist/Page/TextLayer.css'
 import './pdf.css'
@@ -32,8 +34,12 @@ import { PdfPageView } from './PdfPageView'
 import { AnnotationRail } from './AnnotationRail'
 import { HighlightPopover, SelectionPopover, type ContentPoint } from './popovers'
 import { askAiAboutAnnotation } from './askAi'
+import {
+  PDF_ANNOTATION_JUMP_EVENT,
+  type PdfAnnotationJumpDetail
+} from '../notes/materialLinkNavigation'
 import { readPageSelection } from './lib/domSelection'
-import { normalizeSelectionRects } from './lib/annotationGeometry'
+import { normalizeSelectionRects, rectsBoundingBox } from './lib/annotationGeometry'
 import { pdfScrollMemory } from './lib/scrollMemory'
 import { useDrawings } from './tools/useDrawings'
 import { usePdfToolStore } from './tools/toolStore'
@@ -45,6 +51,12 @@ import type {
 } from '../../../../shared/types/annotation'
 import type { Drawing } from '../../../../shared/types/drawing'
 import type { TabDescriptor } from '../../../../shared/tabs'
+import { pdfClipLabel } from './clipTransfer'
+import {
+  PDF_PAGE_NAVIGATION_EVENT,
+  takePdfPageNavigation,
+  type PdfPageNavigationTarget
+} from './pdfPageNavigation'
 
 const ZOOM_MIN = 0.4
 const ZOOM_MAX = 4
@@ -388,12 +400,35 @@ function PdfViewer({
     [courseId]
   )
 
+  const sendToNote = useCallback(
+    async (
+      annotation: Annotation,
+      comment: string | null
+    ): Promise<void> => {
+      try {
+        const result = await invoke('link:sendHighlightToNote', {
+          courseId,
+          relPath,
+          page: annotation.page,
+          quote: annotation.anchor.quote,
+          comment,
+          annotationId: annotation.id
+        })
+        showToast(`필기로 보냈어요: ${result.relPath}`)
+      } catch (error) {
+        console.error('[Bandal] 하이라이트를 필기로 보내지 못했습니다.', error)
+        showToast('하이라이트를 필기로 보내지 못했습니다.', 'danger')
+      }
+    },
+    [courseId, relPath]
+  )
+
   // -- rail jump ------------------------------------------------------------
   const jumpToAnnotation = useCallback(
-    (annotation: Annotation): void => {
+    (annotation: Annotation): boolean => {
       const scroller = scrollerRef.current
       const element = elementFor(annotation.page)
-      if (scroller === null || element === null) return
+      if (scroller === null || element === null) return false
       const scrollerBox = scroller.getBoundingClientRect()
       const elementBox = element.getBoundingClientRect()
       const rectY = annotation.rects[0]?.y ?? 0
@@ -407,6 +442,7 @@ function PdfViewer({
         behavior: 'smooth'
       })
       flash(annotation.id)
+      return true
     },
     [elementFor, flash]
   )
@@ -425,6 +461,60 @@ function PdfViewer({
     },
     [elementFor, numPages]
   )
+
+  // A note link can activate an existing panel or mount a fresh one. The
+  // sender retries this event until annotations and page boxes are ready;
+  // once handled, this uses the same precise scroll + flash path as the rail.
+  useEffect(() => {
+    const handleLinkedAnnotation = (rawEvent: Event): void => {
+      if (!(rawEvent instanceof CustomEvent)) return
+      const detail = rawEvent.detail as Partial<PdfAnnotationJumpDetail> | null
+      if (
+        detail === null ||
+        detail.courseId !== courseId ||
+        detail.relPath !== relPath ||
+        typeof detail.annotationId !== 'string'
+      ) {
+        return
+      }
+      const annotation = annotations.find(
+        (entry) => entry.id === detail.annotationId
+      )
+      if (annotation !== undefined && jumpToAnnotation(annotation)) {
+        detail.handled = true
+      }
+    }
+    window.addEventListener(PDF_ANNOTATION_JUMP_EVENT, handleLinkedAnnotation)
+    return () =>
+      window.removeEventListener(
+        PDF_ANNOTATION_JUMP_EVENT,
+        handleLinkedAnnotation
+      )
+  }, [annotations, courseId, jumpToAnnotation, relPath])
+
+  useEffect(() => {
+    if (numPages === 0) return
+    let frame: number | null = null
+    const navigate = (page: number): void => {
+      if (frame !== null) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        frame = null
+        jumpToPage(page)
+      })
+    }
+    const handleNavigation = (event: Event): void => {
+      const detail = (event as CustomEvent<PdfPageNavigationTarget>).detail
+      if (detail.courseId !== courseId || detail.relPath !== relPath) return
+      navigate(takePdfPageNavigation(courseId, relPath) ?? detail.page)
+    }
+    window.addEventListener(PDF_PAGE_NAVIGATION_EVENT, handleNavigation)
+    const pendingPage = takePdfPageNavigation(courseId, relPath)
+    if (pendingPage !== null) navigate(pendingPage)
+    return () => {
+      window.removeEventListener(PDF_PAGE_NAVIGATION_EVENT, handleNavigation)
+      if (frame !== null) cancelAnimationFrame(frame)
+    }
+  }, [courseId, jumpToPage, numPages, relPath])
 
   const handleAspect = useCallback((page: number, aspect: number): void => {
     setPageAspects((current) => {
@@ -502,6 +592,7 @@ function PdfViewer({
                       width={pageWidth}
                       aspect={pageAspects.get(pageNumber) ?? defaultAspect}
                       isVisible={visiblePages.has(pageNumber)}
+                      clipDragEnabled={activeTool === 'select'}
                       annotations={pageAnnotations}
                       drawings={pageDrawings}
                       drawingsLoading={drawingsApi.loading}
@@ -527,6 +618,12 @@ function PdfViewer({
             {pendingSelection !== null && (
               <SelectionPopover
                 position={pendingSelection.position}
+                clipSource={{
+                  relPath,
+                  page: pendingSelection.page,
+                  crop: rectsBoundingBox(pendingSelection.rects),
+                  label: pdfClipLabel(relPath, pendingSelection.page, true)
+                }}
                 onPick={(color) => void createHighlight(color)}
                 onDismiss={() => setPendingSelection(null)}
               />
@@ -552,6 +649,10 @@ function PdfViewer({
                 onDismiss={() => setEditPopover(null)}
                 onAskAi={(draftComment) => {
                   askAi({ ...editedAnnotation, comment: draftComment })
+                  setEditPopover(null)
+                }}
+                onSendToNote={(draftComment) => {
+                  void sendToNote(editedAnnotation, draftComment)
                   setEditPopover(null)
                 }}
               />

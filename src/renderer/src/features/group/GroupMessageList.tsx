@@ -16,6 +16,8 @@ import type { GroupMember } from '../../../../shared/types/group'
 import { Icon } from '../../app/icons'
 import { GroupAvatar } from './GroupAvatar'
 import { GroupIcon } from './groupIcons'
+import { SharedNoteCard } from './SharedNoteCard'
+import { parseSharedNoteMessage } from './sharedNoteMessage'
 import {
   systemMessageText,
   type CommittedMessageView,
@@ -41,6 +43,12 @@ function sameBurst(
   if (previous.messageKind === 'system' || current.messageKind === 'system') {
     return false
   }
+  if (
+    parseSharedNoteMessage(previous.body) !== null ||
+    parseSharedNoteMessage(current.body) !== null
+  ) {
+    return false
+  }
   if (previous.authorId !== current.authorId) return false
   const gap =
     new Date(current.createdAt).getTime() - new Date(previous.createdAt).getTime()
@@ -52,6 +60,7 @@ interface CommittedRowProps {
   continuation: boolean
   isMine: boolean
   blocked: boolean
+  courseId: string | null
   onDelete: (messageId: string) => void
   onReport: (messageId: string) => void
 }
@@ -61,6 +70,7 @@ const CommittedRow = memo(function CommittedRow({
   continuation,
   isMine,
   blocked,
+  courseId,
   onDelete,
   onReport
 }: CommittedRowProps): JSX.Element {
@@ -81,6 +91,10 @@ const CommittedRow = memo(function CommittedRow({
       </li>
     )
   }
+
+  const sharedNote = message.deleted
+    ? null
+    : parseSharedNoteMessage(message.body)
 
   return (
     <li
@@ -106,6 +120,12 @@ const CommittedRow = memo(function CommittedRow({
           <p className="group-msg__text group-msg__text--deleted">
             삭제된 메시지
           </p>
+        ) : sharedNote !== null && message.body !== null ? (
+          <SharedNoteCard
+            note={sharedNote}
+            messageBody={message.body}
+            courseId={courseId}
+          />
         ) : (
           <p className="group-msg__text">
             {message.body}
@@ -142,15 +162,30 @@ const CommittedRow = memo(function CommittedRow({
 
 interface PendingRowProps {
   message: PendingMessageView
+  courseId: string | null
   onRetry: (localId: string) => void
 }
 
-function PendingRow({ message, onRetry }: PendingRowProps): JSX.Element {
+function PendingRow({
+  message,
+  courseId,
+  onRetry
+}: PendingRowProps): JSX.Element {
   const failed = message.state === 'failed'
+  const sharedNote = parseSharedNoteMessage(message.body)
   return (
     <li className="group-msg group-msg--pending" data-mine data-failed={failed || undefined}>
       <div className="group-msg__body">
-        <p className="group-msg__text">{message.body}</p>
+        {sharedNote === null ? (
+          <p className="group-msg__text">{message.body}</p>
+        ) : (
+          <SharedNoteCard
+            note={sharedNote}
+            messageBody={message.body}
+            courseId={courseId}
+            pending={!failed}
+          />
+        )}
         {failed ? (
           <p className="group-msg__failure" role="status">
             <GroupIcon name="alert" />
@@ -181,6 +216,7 @@ interface GroupMessageListProps {
   messages: readonly CommittedMessageView[]
   pending: readonly PendingMessageView[]
   members: readonly GroupMember[]
+  courseId: string | null
   myUserId: string | null
   blockedUserIds: ReadonlySet<string>
   onRetry: (localId: string) => void
@@ -191,6 +227,7 @@ interface GroupMessageListProps {
 export function GroupMessageList({
   messages,
   pending,
+  courseId,
   myUserId,
   blockedUserIds,
   onRetry,
@@ -206,12 +243,18 @@ export function GroupMessageList({
           continuation={sameBurst(messages[index - 1], message)}
           isMine={message.authorId === myUserId}
           blocked={blockedUserIds.has(message.authorId)}
+          courseId={courseId}
           onDelete={onDelete}
           onReport={onReport}
         />
       ))}
       {pending.map((message) => (
-        <PendingRow key={message.localId} message={message} onRetry={onRetry} />
+        <PendingRow
+          key={message.localId}
+          message={message}
+          courseId={courseId}
+          onRetry={onRetry}
+        />
       ))}
     </ul>
   )
