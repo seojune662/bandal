@@ -6,6 +6,7 @@ import { openSettingsWindow } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { CanvasSection } from '../canvas/CanvasSection'
+import { StudyGapList } from '../insights/StudyGapList'
 import { CourseGroupsSection } from '../group/CourseGroupsSection'
 import { TogetherFooter } from '../group/TogetherFooter'
 import { UniversityShortcuts } from '../university/UniversityShortcuts'
@@ -359,6 +360,7 @@ export function CourseSidebar(): JSX.Element {
                       course only, preserving the existing collapse model. */}
                   {expanded && (
                     <div className="course-row__children">
+                      <StudyGapList courseId={course.id} />
                       <FavoritesSection courseId={course.id} />
                       <CanvasSection courseId={course.id} />
                       <CourseGroupsSection courseId={course.id} />

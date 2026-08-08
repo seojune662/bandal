@@ -1,5 +1,3 @@
-/** Remote synchronization and realtime lifecycle for group whiteboards. */
-
 import { randomUUID } from 'node:crypto'
 import type {
   RealtimeChannel,
@@ -10,6 +8,7 @@ import type {
   AddWhiteboardShapeInput,
   OpenWhiteboardResult,
   RemoveWhiteboardShapesInput,
+  UpdateWhiteboardShapeInput,
   Whiteboard,
   WhiteboardShape
 } from '../../../shared/types/whiteboard'
@@ -24,8 +23,6 @@ export const BACKOFF_BASE_MS = 1_000
 export const BACKOFF_CAP_MS = 60_000
 const OUTBOX_BATCH_SIZE = 100
 const DEFAULT_BOARD_TITLE = '화이트보드'
-
-/** A real SupabaseClient satisfies this; tests may inject a structural fake. */
 export type SupabaseClientLike = Pick<
   SupabaseClient,
   'from' | 'channel' | 'removeChannel'
@@ -54,7 +51,6 @@ export interface WhiteboardServiceDeps {
   getClient: () => SupabaseClientLike | null
   getUserId: () => string | null
   emit: (groupId: string, event: WhiteboardPushEvent) => void
-  /** Test seams. Production uses normal wall time and unref'ed timers. */
   now?: () => number
   schedule?: (fn: () => void, ms: number) => NodeJS.Timeout
 }
@@ -62,8 +58,10 @@ export interface WhiteboardServiceDeps {
 export interface WhiteboardService {
   open(groupId: string): Promise<OpenWhiteboardResult>
   addShape(input: AddWhiteboardShapeInput): Promise<WhiteboardShape>
+  updateShape(input: UpdateWhiteboardShapeInput): Promise<WhiteboardShape>
   removeShapes(input: RemoveWhiteboardShapesInput): Promise<{ ok: true }>
   sync(boardId: string, since: string | null): Promise<WhiteboardSyncResult>
+  close(groupId: string): { ok: true }
   dispose(): void
 }
 
@@ -338,9 +336,6 @@ export function createWhiteboardService(
     const inMemory = nextTryAt.get(id)
     if (inMemory !== undefined) return inMemory
     if (attempts <= 0) return undefined
-    // Migration 10 persists the attempt count but has no next_try_at column.
-    // After a restart, conservatively wait one full delay for that persisted
-    // attempt rather than immediately hammering the remote endpoint.
     const dueAt = now() + backoffMs(attempts - 1)
     nextTryAt.set(id, dueAt)
     return dueAt
@@ -364,16 +359,24 @@ export function createWhiteboardService(
         data_json: shape.data,
         style_json: shape.style
       })) as QueryResponse
-      if (response.error != null && !isDuplicate(response.error)) {
-        if (isWhiteboardNotProvisioned(response.error, response.status)) {
-          provision.set(board.groupId, 'not-provisioned')
-          return null
+      if (response.error != null) {
+        if (!isDuplicate(response.error)) {
+          if (isWhiteboardNotProvisioned(response.error, response.status)) {
+            provision.set(board.groupId, 'not-provisioned')
+            return null
+          }
+          throw response.error
         }
-        throw response.error
+        const updateResponse = (await client
+          .from('whiteboard_shapes')
+          .update({ data_json: shape.data, style_json: shape.style })
+          .eq('board_id', shape.boardId)
+          .eq('id', shape.id)) as QueryResponse
+        if (updateResponse.error != null) throw updateResponse.error
       }
       // A delete may have raced this insert. Keep its tombstone pending so
       // the following drain pass removes the just-created remote row.
-      if (!deps.repo.isDeleted(shape.id)) deps.repo.markSynced(shape.id)
+      if (!deps.repo.isDeleted(shape.id)) deps.repo.markShapeSynced(shape)
       nextTryAt.delete(shape.id)
       return null
     } catch (error) {
@@ -381,6 +384,49 @@ export function createWhiteboardService(
         provision.set(board.groupId, 'not-provisioned')
         return null
       }
+      if (isPermanentUploadError(error)) {
+        deps.repo.park(shape.id)
+        nextTryAt.delete(shape.id)
+        return null
+      }
+      deps.repo.markAttempt(shape.id)
+      if (attempts + 1 >= MAX_WHITEBOARD_UPLOAD_ATTEMPTS) {
+        nextTryAt.delete(shape.id)
+        return null
+      }
+      const wait = uploadRetryMs(error, attempts)
+      nextTryAt.set(shape.id, now() + wait)
+      return wait
+    }
+  }
+
+  async function uploadUpdate(
+    client: SupabaseClientLike,
+    shape: WhiteboardShape
+  ): Promise<number | null> {
+    const board = deps.repo.getBoardById(shape.boardId)
+    if (board === null) {
+      deps.repo.markAttempt(shape.id)
+      return null
+    }
+    const attempts = deps.repo.attempts(shape.id)
+    try {
+      const response = (await client
+        .from('whiteboard_shapes')
+        .update({ data_json: shape.data, style_json: shape.style })
+        .eq('board_id', shape.boardId)
+        .eq('id', shape.id)) as QueryResponse
+      if (response.error != null) {
+        if (isWhiteboardNotProvisioned(response.error, response.status)) {
+          provision.set(board.groupId, 'not-provisioned')
+          return null
+        }
+        throw response.error
+      }
+      if (!deps.repo.isDeleted(shape.id)) deps.repo.markShapeSynced(shape)
+      nextTryAt.delete(shape.id)
+      return null
+    } catch (error) {
       if (isPermanentUploadError(error)) {
         deps.repo.park(shape.id)
         nextTryAt.delete(shape.id)
@@ -448,7 +494,9 @@ export function createWhiteboardService(
       if (board !== null && provision.get(board.groupId) === 'not-provisioned') {
         return
       }
-      const wait = await uploadShape(client, shape)
+      const wait = shape.updatedAt === shape.createdAt
+        ? await uploadShape(client, shape)
+        : await uploadUpdate(client, shape)
       if (wait !== null) {
         armWake(wait)
         return
@@ -507,7 +555,7 @@ export function createWhiteboardService(
       const query = client
         .from('whiteboard_shapes')
         .select(
-          'id, board_id, author_id, kind, data_json, style_json, created_at, deleted_at'
+          'id, board_id, author_id, kind, data_json, style_json, created_at, updated_at, deleted_at'
         )
         .eq('board_id', boardId)
       const response = (await query.order('created_at', {
@@ -533,7 +581,7 @@ export function createWhiteboardService(
           ? remoteShapes
           : remoteShapes.filter(
               (shape) =>
-                !confirmedBefore.has(shape.id) || shape.createdAt > since
+                !confirmedBefore.has(shape.id) || shape.updatedAt > since
             )
       deps.repo.applyRemote(remoteShapes)
       deps.repo.applyRemoteRemovals(removedIds)
@@ -703,6 +751,22 @@ export function createWhiteboardService(
       return shape
     },
 
+    async updateShape(input) {
+      const board = deps.repo.getBoardById(input.boardId)
+      if (board === null) throw new NotFoundError('whiteboard', input.boardId)
+      const current = deps.repo.listShapes(input.boardId).find(
+        (shape) => shape.id === input.id
+      )
+      const userId = deps.getUserId() ?? 'local'
+      if (current === undefined || current.authorId !== userId) {
+        throw new NotFoundError('whiteboard shape', input.id)
+      }
+      const shape = deps.repo.updateShape(input)
+      if (shape === null) throw new NotFoundError('whiteboard shape', input.id)
+      void startDrain()
+      return shape
+    },
+
     async removeShapes(input) {
       const board = deps.repo.getBoardById(input.boardId)
       if (board === null) throw new NotFoundError('whiteboard', input.boardId)
@@ -717,6 +781,11 @@ export function createWhiteboardService(
     async sync(boardId, since) {
       await startDrain()
       return fetchSync(boardId, since)
+    },
+
+    close(groupId) {
+      tearDownRealtime(groupId)
+      return { ok: true }
     },
 
     dispose() {

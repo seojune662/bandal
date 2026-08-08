@@ -104,6 +104,33 @@
   gap: var(--space-3);
 }
 
+.board-view-switch {
+  display: inline-flex;
+  padding: var(--space-1);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.board-view-switch button {
+  min-height: calc(var(--control-height) - var(--space-1));
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  border-radius: calc(var(--radius-sm) - var(--space-1));
+}
+
+.board-view-switch button:hover {
+  color: var(--text-primary);
+}
+
+.board-view-switch button[aria-pressed='true'] {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-sm);
+}
+
 .board-toggle {
   display: inline-flex;
   align-items: center;

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import type { DrawingShape } from '../../../src/shared/types/drawing'
 import type {
   AddWhiteboardShapeInput,
+  UpdateWhiteboardShapeInput,
   Whiteboard,
   WhiteboardShape
 } from '../../../src/shared/types/whiteboard'
@@ -31,6 +32,20 @@ function input(id = 'shape-1'): AddWhiteboardShapeInput {
       kind: 'ink',
       data: { points: [{ x: 0.1, y: 0.2, p: 0.5 }] },
       style: { color: 'blue', width: 0.01, opacity: 1 }
+    }
+  }
+}
+
+function updateInput(
+  id: string,
+  color: 'red' | 'green'
+): UpdateWhiteboardShapeInput {
+  return {
+    boardId: board.id,
+    id,
+    shape: {
+      ...input(id).shape,
+      style: { color, width: 0.02, opacity: 0.8 }
     }
   }
 }
@@ -123,12 +138,12 @@ describe('whiteboard local mirror', () => {
     ])
 
     expect(repo.listShapes(board.id)).toEqual([local])
-    expect(repo.pending(10)).toEqual([])
+    expect(repo.pending(10)).toEqual([local])
     expect(
       testDb.db
         .prepare('SELECT pending FROM whiteboard_shapes_cache WHERE id = ?')
         .get(local.id)
-    ).toEqual({ pending: 0 })
+    ).toEqual({ pending: 1 })
   })
 
   test('parks a row after six failed attempts', () => {
@@ -142,5 +157,31 @@ describe('whiteboard local mirror', () => {
         .prepare('SELECT pending FROM whiteboard_shapes_cache WHERE id = ?')
         .get(shape.id)
     ).toEqual({ pending: 1 })
+  })
+
+  test('updates a confirmed row in place and preserves its creation order', () => {
+    const inserted = repo.insertLocal(input(), 'user-1', board.groupId)
+    repo.markShapeSynced(inserted)
+
+    const once = repo.updateShape(updateInput(inserted.id, 'red'))
+    const twice = repo.updateShape(updateInput(inserted.id, 'green'))
+
+    expect(once).not.toBeNull()
+    expect(twice).toMatchObject({
+      id: inserted.id,
+      createdAt: inserted.createdAt,
+      style: { color: 'green' }
+    })
+    expect(twice?.updatedAt).not.toBe(inserted.updatedAt)
+    expect(repo.listShapes(board.id)).toHaveLength(1)
+    expect(repo.pending(10)).toEqual([twice])
+  })
+
+  test('keeps an edited never-uploaded row on the INSERT path', () => {
+    const inserted = repo.insertLocal(input(), 'user-1', board.groupId)
+    const updated = repo.updateShape(updateInput(inserted.id, 'red'))
+
+    expect(updated?.createdAt).toBe(inserted.createdAt)
+    expect(updated?.updatedAt).toBe(inserted.createdAt)
   })
 })

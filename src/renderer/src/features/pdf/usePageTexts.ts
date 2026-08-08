@@ -6,6 +6,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
+import {
+  indexExtractedPdfPage,
+  type PageTextIndexTarget
+} from '../search/pdfPageIndex'
 import { isAnchorStale } from './lib/quoteAnchor'
 import type { Annotation } from '../../../../shared/types/annotation'
 
@@ -27,7 +31,8 @@ export function joinTextItems(items: TextItemLike[]): string {
 /** Map of 1-based page number → extracted text (null while pending). */
 export function usePageTexts(
   pdf: PDFDocumentProxy | null,
-  annotatedPages: number[]
+  annotatedPages: number[],
+  indexTarget?: PageTextIndexTarget
 ): Map<number, string> {
   const [texts, setTexts] = useState<Map<number, string>>(new Map())
 
@@ -57,6 +62,14 @@ export function usePageTexts(
             next.set(pageNumber, text)
             return next
           })
+          if (indexTarget !== undefined) {
+            indexExtractedPdfPage(
+              indexTarget,
+              pdf.fingerprints[0] ?? 'unknown-fingerprint',
+              pageNumber,
+              text
+            )
+          }
         } catch {
           // Text extraction failure → leave page unknown (never marked stale).
         }
@@ -69,7 +82,7 @@ export function usePageTexts(
     // texts intentionally omitted: re-run is driven by pages/pdf; the
     // in-effect `has` checks make repeats idempotent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdf, pagesKey])
+  }, [pdf, pagesKey, indexTarget?.courseId, indexTarget?.relPath])
 
   return texts
 }

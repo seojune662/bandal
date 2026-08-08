@@ -7,7 +7,11 @@ import type {
 } from '../../../shared/types/study'
 import { ValidationError } from '../../db/errors'
 import { requireId, requireNonEmptyString, resolveInside } from '../../db/validate'
-import { buildStudyToolPrompt, STUDY_TOOLS } from './studyTools'
+import {
+  buildStudyToolPrompt,
+  STUDY_TOOLS,
+  type StudyPlanningContext
+} from './studyTools'
 
 const OUTPUT_DIRECTORY = 'AI 학습자료'
 
@@ -16,6 +20,8 @@ export function createStudyRunner(deps: {
   /** Sends a prompt through the course's existing agent session. */
   ask: (courseId: string, prompt: string) => Promise<void>
   recordActivity?: (courseId: string, summary: string, relPath: string) => void
+  /** Optional board + insights snapshot supplied by the main orchestrator. */
+  getPlanningContext?: (courseId: string) => StudyPlanningContext
 }): {
   run(input: RunStudyToolInput): Promise<RunStudyToolResult>
   tools(): StudyToolDefinition[]
@@ -49,9 +55,16 @@ export function createStudyRunner(deps: {
       input.relPath === null ? course.name : targetLabel,
       reservedPaths
     )
+    let planningContext: StudyPlanningContext = {}
+    try {
+      planningContext = deps.getPlanningContext?.(courseId) ?? {}
+    } catch {
+      // Planning signals enrich a tool run but must never block the tool itself.
+    }
     const recipePrompt = buildStudyToolPrompt(input, {
       courseName: course.name,
-      targetLabel: input.relPath === null ? '이 과목 전체' : targetLabel
+      targetLabel: input.relPath === null ? '이 과목 전체' : targetLabel,
+      ...planningContext
     })
     const prompt = [
       recipePrompt,

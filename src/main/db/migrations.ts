@@ -434,10 +434,27 @@ export const migrations: Migration[] = [
     version: 12,
     name: 'board-task-kind-and-allday',
     up: (db) => {
+      // SQLite has no `ADD COLUMN IF NOT EXISTS`, and the repo's rule is that
+      // re-applying a migration must be safe. Check the table first so a
+      // database whose bookkeeping row was lost — or replayed in a test —
+      // does not die on "duplicate column name".
+      const columns = new Set(
+        (db.prepare('PRAGMA table_info(board_tasks)').all() as { name: string }[]).map(
+          (column) => column.name
+        )
+      )
+      if (!columns.has('kind')) {
+        db.exec(
+          `ALTER TABLE board_tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'task'`
+        )
+      }
+      if (!columns.has('all_day')) {
+        db.exec(
+          `ALTER TABLE board_tasks ADD COLUMN all_day INTEGER NOT NULL DEFAULT 0`
+        )
+      }
       db.exec(
-        `ALTER TABLE board_tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'task';
-         ALTER TABLE board_tasks ADD COLUMN all_day INTEGER NOT NULL DEFAULT 0;
-         CREATE INDEX IF NOT EXISTS idx_board_tasks_due
+        `CREATE INDEX IF NOT EXISTS idx_board_tasks_due
            ON board_tasks (due_at) WHERE deleted_at IS NULL AND due_at IS NOT NULL;`
       )
     }

@@ -50,6 +50,8 @@ import {
   createWhiteboardService
 } from '../features/whiteboard'
 import { createCanvasRepo } from '../features/canvas'
+import { createSearchIndex } from '../features/search'
+import { createInsights } from '../features/insights'
 import { createGroupRuntime } from '../features/group'
 import { isAuthCallbackUrl } from '../features/group/authCallbackUrl'
 import { createUpdaterRuntime } from '../features/updater'
@@ -314,11 +316,22 @@ export function registerHandlers(): IpcRouter {
   // Every call is best-effort. A failed activity write must never break the
   // action the student actually asked for.
   const activityRepo = createActivityRepo(db)
+  const insights = createInsights({
+    db,
+    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
+  })
   const contextWriter = createContextWriter({
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
     getCourse: (courseId) => ({ name: coursesRepo.getById(courseId).name }),
     activity: activityRepo,
-    db
+    db,
+    // Injected rather than read inside the dossier so the context feature does
+    // not depend on board/insights. This is the only forward-looking part of
+    // the dossier — it turns "summarise this PDF" into "the exam is in 12 days
+    // and week 3 is still unopened".
+    getUpcomingDeadlines: (courseId) =>
+      boardRepo.upcoming({ courseId, withinDays: 30, limit: 8 }),
+    getStudyGaps: (courseId) => insights.gaps(courseId)
   })
   const note = (
     courseId: string,
@@ -352,6 +365,8 @@ export function registerHandlers(): IpcRouter {
     return result
   })
   handle('board:updateTask', (req) => boardRepo.update(req))
+  handle('calendar:range', (req) => boardRepo.listRange(req))
+  handle('calendar:upcoming', (req) => boardRepo.upcoming(req))
   handle('board:deleteTask', (req) => boardRepo.softDelete(req))
 
   // -- chat (M4-H: Claude Code CLI runtime) ---------------------------------
@@ -504,6 +519,11 @@ export function registerHandlers(): IpcRouter {
   })
   handle('whiteboard:open', (req) => whiteboardService.open(req.groupId))
   handle('whiteboard:addShape', (req) => whiteboardService.addShape(req))
+  handle('whiteboard:updateShape', (req) => whiteboardService.updateShape(req))
+  handle('whiteboard:close', (req) => {
+    whiteboardService.close(req.groupId)
+    return OK
+  })
   handle('whiteboard:removeShapes', (req) =>
     whiteboardService.removeShapes(req)
   )
@@ -527,6 +547,24 @@ export function registerHandlers(): IpcRouter {
     canvasRepo.removeShapes(req)
     return OK
   })
+
+  // -- full-text search + study gaps -----------------------------------------
+  // The index is a rebuildable cache, not user data — same status as
+  // materials_index — so it owns its own tables instead of a migration.
+  const searchIndex = createSearchIndex(db, {
+    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
+  })
+  handle('search:query', (req) => {
+    // Notes and text files are cheap to re-read; PDFs arrive from the renderer.
+    searchIndex.refreshTextFiles(req.courseId)
+    return { hits: searchIndex.query(req.courseId, req.query, req.limit) }
+  })
+  handle('search:indexPdfPages', (req) => {
+    searchIndex.indexPdfPages(req)
+    return OK
+  })
+
+  handle('insights:gaps', (req) => ({ gaps: insights.gaps(req.courseId) }))
 
   // -- settings (real implementation, settingsStore-owned) ------------------
   handle('settings:get', () => getSettings())

@@ -49,6 +49,25 @@ export interface AddWhiteboardShapeInput {
   shape: Omit<DrawingShape, 'id' | 'createdAt' | 'updatedAt'>
 }
 
+/**
+ * Edit a shape in place.
+ *
+ * Without this the UI faked an edit as delete + insert under a NEW id, which
+ * broke three things at once: undo entries pointed at ids that no longer
+ * existed (and undo then jammed permanently), `createdAt` was re-stamped so an
+ * edited shape jumped to the front of the z-order, and one drag cost two
+ * round-trips that could half-fail.
+ *
+ * Immutability is kept where it actually earned its keep: RLS lets you edit
+ * only shapes YOU drew, so two people can never contend for the same row and
+ * the "union, no CRDT" property still holds for everyone else's work.
+ */
+export interface UpdateWhiteboardShapeInput {
+  boardId: string
+  id: string
+  shape: Omit<DrawingShape, 'id' | 'createdAt' | 'updatedAt'>
+}
+
 export interface RemoveWhiteboardShapesInput {
   boardId: string
   ids: string[]

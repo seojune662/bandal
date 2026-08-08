@@ -16,6 +16,7 @@ import { invoke } from '../../lib/ipc'
 import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { normalizeCourseColor } from '../courses/courseColors'
+import { CalendarView } from '../calendar/CalendarView'
 import {
   BOARD_STATUSES,
   dueState,
@@ -254,6 +255,8 @@ function InlineCreator({
 
 function BoardSurface(): JSX.Element {
   const courses = useCoursesStore((state) => state.courses)
+  const [view, setView] = useState<'board' | 'calendar'>('calendar')
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0)
   const [tasks, setTasks] = useState<BoardTask[]>([])
   const [courseFilter, setCourseFilter] = useState<string | null | undefined>(undefined)
   const [hideDone, setHideDone] = useState(false)
@@ -447,8 +450,8 @@ function BoardSurface(): JSX.Element {
     <section className="board" aria-label="학업 보드" aria-busy={isLoading || isMutating}>
       <header className="board-toolbar">
         <div className="board-toolbar__title">
-          <p className="board-eyebrow">STUDY BOARD</p>
-          <h2>과제와 시험</h2>
+          <p className="board-eyebrow">{view === 'board' ? 'STUDY BOARD' : 'ACADEMIC CALENDAR'}</p>
+          <h2>{view === 'board' ? '과제와 시험' : '달력과 마감'}</h2>
         </div>
         <div className="board-toolbar__filters" aria-label="과목 필터">
           <button
@@ -483,7 +486,15 @@ function BoardSurface(): JSX.Element {
           ))}
         </div>
         <div className="board-toolbar__actions">
-          <label className="board-toggle">
+          <div className="board-view-switch" role="group" aria-label="보드 보기 방식">
+            <button type="button" aria-pressed={view === 'board'} onClick={() => setView('board')}>
+              목록
+            </button>
+            <button type="button" aria-pressed={view === 'calendar'} onClick={() => setView('calendar')}>
+              달력
+            </button>
+          </div>
+          {view === 'board' && <label className="board-toggle">
             <input
               type="checkbox"
               checked={hideDone}
@@ -491,14 +502,14 @@ function BoardSurface(): JSX.Element {
             />
             <span aria-hidden="true" />
             완료 숨기기
-          </label>
+          </label>}
           <button
             type="button"
             className="board-icon-button"
-            aria-label="태스크 새로고침"
+            aria-label={`${view === 'board' ? '태스크' : '달력'} 새로고침`}
             title="새로고침"
             disabled={isLoading || isMutating}
-            onClick={() => void loadTasks()}
+            onClick={() => view === 'board' ? void loadTasks() : setCalendarRefreshKey((key) => key + 1)}
           >
             <Icon name="refresh" />
           </button>
@@ -514,7 +525,16 @@ function BoardSurface(): JSX.Element {
         </div>
       )}
 
-      {tasks.length === 0 && !isLoading && (
+      {view === 'calendar' && (
+        <CalendarView
+          courses={courses}
+          courseId={courseFilter}
+          refreshKey={calendarRefreshKey}
+          onTasksChanged={() => loadTasks(false)}
+        />
+      )}
+
+      {view === 'board' && tasks.length === 0 && !isLoading && (
         <div className="board-zero-state">
           <span className="board-zero-state__mark" aria-hidden="true" />
           <div>
@@ -524,7 +544,7 @@ function BoardSurface(): JSX.Element {
         </div>
       )}
 
-      <div className="board-columns" data-column-count={statuses.length}>
+      {view === 'board' && <div className="board-columns" data-column-count={statuses.length}>
         {statuses.map((status) => {
           const columnTasks = tasksByStatus[status]
           const targetInColumn = dropTarget?.status === status
@@ -651,9 +671,9 @@ function BoardSurface(): JSX.Element {
             </section>
           )
         })}
-      </div>
+      </div>}
 
-      {contextMenu !== null && contextTask !== null && (
+      {view === 'board' && contextMenu !== null && contextTask !== null && (
         <div
           ref={contextMenuRef}
           className="board-context-menu"
@@ -691,7 +711,7 @@ function BoardSurface(): JSX.Element {
         </div>
       )}
 
-      {editor !== null && editingTask !== null && (
+      {view === 'board' && editor !== null && editingTask !== null && (
         <TaskEditorPopover
           task={editingTask}
           courses={courses}

@@ -137,6 +137,7 @@ class FakeQuery {
         ...payload,
         author_id: 'user-1',
         created_at: this.owner.iso(),
+        updated_at: this.owner.iso(),
         deleted_at: null
       })
       if (this.owner.loseNextShapeAck) {
@@ -148,7 +149,13 @@ class FakeQuery {
 
     if (this.operation === 'update') {
       for (const [id, row] of this.owner.shapes) {
-        if (this.matches(row)) this.owner.shapes.set(id, { ...row, ...this.payload })
+        if (this.matches(row)) {
+          this.owner.shapes.set(id, {
+            ...row,
+            ...this.payload,
+            updated_at: this.owner.iso()
+          })
+        }
       }
       return { data: null, error: null }
     }
@@ -166,6 +173,7 @@ class FakeQuery {
 class FakeChannel {
   private readonly handlers = new Map<string, (input: { payload: unknown }) => void>()
   private statusHandler: ((status: string) => void) | null = null
+  unsubscribed = false
 
   on(
     _type: string,
@@ -182,6 +190,7 @@ class FakeChannel {
   }
 
   unsubscribe(): Promise<'ok'> {
+    this.unsubscribed = true
     return Promise.resolve('ok')
   }
 
@@ -203,6 +212,7 @@ class FakeSupabase {
   loseNextShapeAck = false
   hideShapesFromSelect = false
   shapeInsertCalls = 0
+  removeChannelCalls = 0
 
   constructor(private readonly clock: () => number) {}
 
@@ -221,6 +231,7 @@ class FakeSupabase {
   }
 
   removeChannel(): Promise<'ok'> {
+    this.removeChannelCalls += 1
     return Promise.resolve('ok')
   }
 
@@ -358,6 +369,49 @@ describe('whiteboard upload outbox', () => {
     expect(result.removedIds).toEqual([local.id])
     expect(repo.listShapes(opened.board.id)).toEqual([])
   })
+
+  test('uploads repeated edits as one stable remote row', async () => {
+    const fake = new FakeSupabase(() => nowMs)
+    const whiteboard = makeService(() => fake.asClient())
+    const opened = await whiteboard.open('group-1')
+    if (opened.board === null) return
+    const inserted = await whiteboard.addShape(shapeInput(opened.board.id))
+    await whiteboard.sync(opened.board.id, null)
+    const canonical = repo.listShapes(opened.board.id)[0]
+    expect(canonical).toBeDefined()
+    if (canonical === undefined) return
+
+    nowMs += 1_000
+    const first = await whiteboard.updateShape({
+      ...shapeInput(opened.board.id, inserted.id),
+      shape: {
+        ...shapeInput(opened.board.id, inserted.id).shape,
+        style: { color: 'red', width: 0.02, opacity: 0.8 }
+      }
+    })
+    await whiteboard.sync(opened.board.id, null)
+    nowMs += 1_000
+    const second = await whiteboard.updateShape({
+      ...shapeInput(opened.board.id, inserted.id),
+      shape: {
+        ...shapeInput(opened.board.id, inserted.id).shape,
+        style: { color: 'green', width: 0.03, opacity: 0.7 }
+      }
+    })
+    await whiteboard.sync(opened.board.id, null)
+
+    expect(first.id).toBe(inserted.id)
+    expect(second).toMatchObject({
+      id: inserted.id,
+      createdAt: canonical.createdAt,
+      style: { color: 'green' }
+    })
+    expect(fake.shapes.size).toBe(1)
+    expect(fake.shapes.get(inserted.id)?.['style_json']).toMatchObject({
+      color: 'green'
+    })
+    expect(repo.pending(10)).toEqual([])
+  })
 })
 
 describe('remote availability and realtime', () => {
@@ -419,6 +473,20 @@ describe('remote availability and realtime', () => {
     })
     expect(repo.listShapes(opened.board.id)).toEqual([])
     expect(events.map(({ event }) => event.type)).toEqual(['shape', 'remove'])
+  })
+
+  test('close tears down only the requested group channel', async () => {
+    const fake = new FakeSupabase(() => nowMs)
+    const whiteboard = makeService(() => fake.asClient())
+    await whiteboard.open('group-1')
+    const channel = fake.channels.get('group:group-1')
+    expect(channel).toBeDefined()
+
+    expect(whiteboard.close('group-1')).toEqual({ ok: true })
+    expect(channel?.unsubscribed).toBe(true)
+    expect(fake.removeChannelCalls).toBe(1)
+    expect(whiteboard.close('group-1')).toEqual({ ok: true })
+    expect(fake.removeChannelCalls).toBe(1)
   })
 })
 

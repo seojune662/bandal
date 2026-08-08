@@ -84,6 +84,7 @@ import type {
   RemovePersonalShapesInput,
   RemoveWhiteboardShapesInput,
   RenamePersonalBoardInput,
+  UpdateWhiteboardShapeInput,
   WhiteboardShape
 } from '../types/whiteboard'
 import type {
@@ -484,6 +485,16 @@ export interface IpcContract {
   'whiteboard:addShape': {
     req: AddWhiteboardShapeInput
     res: WhiteboardShape
+  }
+  /** Edits a shape in place. RLS allows this only for shapes you drew. */
+  'whiteboard:updateShape': {
+    req: UpdateWhiteboardShapeInput
+    res: WhiteboardShape
+  }
+  /** Drops the realtime channel and polling for a board nobody is watching. */
+  'whiteboard:close': {
+    req: { groupId: string }
+    res: { ok: true }
   }
   'whiteboard:removeShapes': {
     req: RemoveWhiteboardShapesInput
@@ -920,7 +931,9 @@ export const IPC_CHANNELS = [
   'calendar:upcoming',
   'search:query',
   'search:indexPdfPages',
-  'insights:gaps'
+  'insights:gaps',
+  'whiteboard:updateShape',
+  'whiteboard:close'
 ] as const satisfies readonly IpcChannel[]
 
 // Fails to compile if a contract channel is missing from IPC_CHANNELS.

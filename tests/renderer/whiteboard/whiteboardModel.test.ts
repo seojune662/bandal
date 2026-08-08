@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'vitest'
 import type { DrawingShape } from '../../../src/shared/types/drawing'
-import { mergeWhiteboardShapes } from '../../../src/renderer/src/features/whiteboard/whiteboardModel'
+import {
+  mergeWhiteboardShapes,
+  updateWhiteboardShape
+} from '../../../src/renderer/src/features/whiteboard/whiteboardModel'
 
 function shape(id: string, updatedAt: string): DrawingShape {
   return {
@@ -33,5 +36,30 @@ describe('mergeWhiteboardShapes', () => {
     const removed = shape('removed-id', '2026-08-07T00:00:00.000Z')
 
     expect(mergeWhiteboardShapes([removed], [removed], ['removed-id'])).toEqual([])
+  })
+
+  test('keeps id, creation time, and z-order through repeated edits', () => {
+    const lower = shape('lower', '2026-08-07T00:00:00.000Z')
+    const upper = {
+      ...shape('upper', '2026-08-07T00:01:00.000Z'),
+      createdAt: '2026-08-07T00:01:00.000Z'
+    }
+
+    const once = updateWhiteboardShape(
+      [lower, upper],
+      lower.id,
+      { data: { points: [{ x: 0.4, y: 0.5, p: 0.5 }] } },
+      '2026-08-07T00:02:00.000Z'
+    )
+    const twice = updateWhiteboardShape(
+      once,
+      lower.id,
+      { style: { ...lower.style, opacity: 0.5 } },
+      '2026-08-07T00:03:00.000Z'
+    )
+
+    expect(twice.map(({ id }) => id)).toEqual(['lower', 'upper'])
+    expect(twice[0]?.createdAt).toBe(lower.createdAt)
+    expect(twice[0]?.updatedAt).toBe('2026-08-07T00:03:00.000Z')
   })
 })

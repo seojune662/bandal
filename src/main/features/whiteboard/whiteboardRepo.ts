@@ -8,6 +8,7 @@ import type {
 } from '../../../shared/types/drawing'
 import type {
   AddWhiteboardShapeInput,
+  UpdateWhiteboardShapeInput,
   Whiteboard,
   WhiteboardShape
 } from '../../../shared/types/whiteboard'
@@ -57,7 +58,9 @@ export interface WhiteboardRepo {
     authorId: string,
     groupId: string
   ): WhiteboardShape
+  updateShape(input: UpdateWhiteboardShapeInput): WhiteboardShape | null
   markSynced(id: string): void
+  markShapeSynced(shape: WhiteboardShape): void
   markAttempt(id: string): void
   park(id: string): void
   pending(limit: number): WhiteboardShape[]
@@ -98,6 +101,15 @@ function rowToShape(row: ShapeRow): WhiteboardShape {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
+}
+
+function nextShapeUpdatedAt(row: ShapeRow): string {
+  const current = Date.now()
+  const previous = Math.max(
+    Date.parse(row.created_at),
+    Date.parse(row.updated_at)
+  )
+  return new Date(Math.max(current, previous + 1)).toISOString()
 }
 
 export function createWhiteboardRepo(db: Database): WhiteboardRepo {
@@ -165,11 +177,22 @@ export function createWhiteboardRepo(db: Database): WhiteboardRepo {
            pending = CASE
              WHEN whiteboard_shapes_cache.pending = 1
               AND whiteboard_shapes_cache.deleted_at IS NOT NULL THEN 1
+             WHEN whiteboard_shapes_cache.pending = 1
+              AND whiteboard_shapes_cache.kind = excluded.kind
+              AND whiteboard_shapes_cache.data_json = excluded.data_json
+              AND whiteboard_shapes_cache.style_json = excluded.style_json THEN 0
+             WHEN whiteboard_shapes_cache.pending = 1 THEN 1
              ELSE 0 END,
            attempts = CASE
              WHEN whiteboard_shapes_cache.pending = 1
               AND whiteboard_shapes_cache.deleted_at IS NOT NULL
                THEN whiteboard_shapes_cache.attempts
+             WHEN whiteboard_shapes_cache.pending = 1
+              AND (
+                whiteboard_shapes_cache.kind != excluded.kind
+                OR whiteboard_shapes_cache.data_json != excluded.data_json
+                OR whiteboard_shapes_cache.style_json != excluded.style_json
+              ) THEN whiteboard_shapes_cache.attempts
              ELSE 0 END`
       )
       for (const shape of shapes) {
@@ -260,10 +283,67 @@ export function createWhiteboardRepo(db: Database): WhiteboardRepo {
       }
     },
 
+    updateShape(input) {
+      const id = requireId(input.id, 'id')
+      const boardId = requireId(input.boardId, 'boardId')
+      const existing = db
+        .prepare(
+          `SELECT * FROM whiteboard_shapes_cache
+            WHERE id = ? AND board_id = ? AND deleted_at IS NULL`
+        )
+        .get(id, boardId) as ShapeRow | undefined
+      if (existing === undefined || input.shape.kind !== existing.kind) return null
+
+      // A shape edited before its first upload must remain an INSERT in the
+      // durable outbox. Once confirmed, updated_at diverges from created_at
+      // and makes the same row a durable UPDATE across app restarts.
+      const updatedAt = existing.pending === 1 &&
+        existing.updated_at === existing.created_at
+        ? existing.created_at
+        : nextShapeUpdatedAt(existing)
+      db.prepare(
+        `UPDATE whiteboard_shapes_cache
+            SET data_json = ?, style_json = ?, updated_at = ?,
+                pending = 1, attempts = 0
+          WHERE id = ? AND board_id = ? AND deleted_at IS NULL`
+      ).run(
+        JSON.stringify(input.shape.data),
+        JSON.stringify(input.shape.style),
+        updatedAt,
+        id,
+        boardId
+      )
+      return rowToShape({
+        ...existing,
+        data_json: JSON.stringify(input.shape.data),
+        style_json: JSON.stringify(input.shape.style),
+        updated_at: updatedAt,
+        pending: 1,
+        attempts: 0
+      })
+    },
+
     markSynced(id) {
       db.prepare(
         'UPDATE whiteboard_shapes_cache SET pending = 0 WHERE id = ?'
       ).run(requireId(id, 'id'))
+    },
+
+    markShapeSynced(shape) {
+      db.prepare(
+        `UPDATE whiteboard_shapes_cache
+            SET pending = 0, attempts = 0
+          WHERE id = ? AND board_id = ? AND kind = ?
+            AND data_json = ? AND style_json = ?
+            AND updated_at = ? AND deleted_at IS NULL`
+      ).run(
+        requireId(shape.id, 'id'),
+        requireId(shape.boardId, 'boardId'),
+        shape.kind,
+        JSON.stringify(shape.data),
+        JSON.stringify(shape.style),
+        shape.updatedAt
+      )
     },
 
     markAttempt(id) {

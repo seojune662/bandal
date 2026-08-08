@@ -1,12 +1,14 @@
+import type { IDockviewPanelProps } from 'dockview'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import type { DrawingShape } from '../../../../shared/types/drawing'
 import type {
   OpenWhiteboardResult,
   Whiteboard,
-  WhiteboardAvailability
+  WhiteboardAvailability,
+  WhiteboardShape
 } from '../../../../shared/types/whiteboard'
-import { invoke } from '../../lib/ipc'
+import { invoke, onPush } from '../../lib/ipc'
 import {
   useInkToolStore,
   type InkHistoryAction
@@ -15,10 +17,13 @@ import {
   WhiteboardCanvas,
   type DrawableWhiteboardAvailability
 } from './WhiteboardCanvas'
-import { mergeWhiteboardShapes } from './whiteboardModel'
+import {
+  mergeWhiteboardShapes,
+  updateWhiteboardShape
+} from './whiteboardModel'
 import './whiteboard.css'
 
-export const WHITEBOARD_SYNC_INTERVAL_MS = 4_000
+export const WHITEBOARD_SYNC_INTERVAL_MS = 20_000
 
 type LoadState =
   | { phase: 'loading' }
@@ -48,16 +53,108 @@ function useDocumentVisible(): boolean {
   return documentVisible
 }
 
+function usePanelActive(api: IDockviewPanelProps['api']): boolean {
+  const [active, setActive] = useState(() => api.isActive && api.isVisible)
+
+  useEffect(() => {
+    const update = (): void => setActive(api.isActive && api.isVisible)
+    const activeDisposable = api.onDidActiveChange(update)
+    const visibleDisposable = api.onDidVisibilityChange(update)
+    return () => {
+      activeDisposable.dispose()
+      visibleDisposable.dispose()
+    }
+  }, [api])
+
+  return active
+}
+
+type RendererWhiteboardPushEvent =
+  | { type: 'shape'; shape: WhiteboardShape }
+  | { type: 'remove'; boardId: string; ids: string[] }
+  | {
+      type: 'sync'
+      boardId: string
+      shapes: WhiteboardShape[]
+      removedIds: string[]
+      syncedAt: string
+    }
+
+function asPushEvent(value: unknown): RendererWhiteboardPushEvent | null {
+  if (typeof value !== 'object' || value === null) return null
+  const event = value as Record<string, unknown>
+  if (event['type'] === 'shape') {
+    const shape = event['shape'] as WhiteboardShape | undefined
+    return shape !== undefined && typeof shape.id === 'string' &&
+      typeof shape.boardId === 'string'
+      ? { type: 'shape', shape }
+      : null
+  }
+  if (event['type'] === 'remove') {
+    const ids = event['ids']
+    return typeof event['boardId'] === 'string' && Array.isArray(ids)
+      ? {
+          type: 'remove',
+          boardId: event['boardId'],
+          ids: ids.filter((id): id is string => typeof id === 'string')
+        }
+      : null
+  }
+  if (event['type'] === 'sync') {
+    const shapes = event['shapes']
+    const removedIds = event['removedIds']
+    return typeof event['boardId'] === 'string' && Array.isArray(shapes) &&
+      Array.isArray(removedIds) && typeof event['syncedAt'] === 'string'
+      ? {
+          type: 'sync',
+          boardId: event['boardId'],
+          shapes: shapes as WhiteboardShape[],
+          removedIds: removedIds.filter(
+            (id): id is string => typeof id === 'string'
+          ),
+          syncedAt: event['syncedAt']
+        }
+      : null
+  }
+  return null
+}
+
+export function settleWhiteboardUndo(
+  surfaceKey: string,
+  execute: (action: InkHistoryAction) => InkHistoryAction | null
+): void {
+  const store = useInkToolStore.getState()
+  const action = store.beginUndo(surfaceKey)
+  if (action === null) return
+  const inverse = execute(action)
+  // A stale action is deliberately discarded. Putting it back would leave a
+  // permanently live undo button that can never reach the entry below it.
+  if (inverse !== null) store.finishUndo(surfaceKey, inverse)
+}
+
+export function settleWhiteboardRedo(
+  surfaceKey: string,
+  execute: (action: InkHistoryAction) => InkHistoryAction | null
+): void {
+  const store = useInkToolStore.getState()
+  const action = store.beginRedo(surfaceKey)
+  if (action === null) return
+  const inverse = execute(action)
+  if (inverse !== null) store.finishRedo(surfaceKey, inverse)
+}
+
 interface WhiteboardSessionProps {
   board: Whiteboard
   availability: DrawableWhiteboardAvailability
   initialShapes: readonly DrawingShape[]
+  panelActive: boolean
 }
 
 function WhiteboardSession({
   board,
   availability,
-  initialShapes
+  initialShapes,
+  panelActive
 }: WhiteboardSessionProps): JSX.Element {
   const surfaceKey = `whiteboard:${board.id}`
   const [shapes, setShapes] = useState<DrawingShape[]>(() =>
@@ -68,6 +165,7 @@ function WhiteboardSession({
   const removedIdsRef = useRef(new Set<string>())
   const syncedAtRef = useRef<string | null>(null)
   const documentVisible = useDocumentVisible()
+  const sessionActive = panelActive && documentVisible
   const canUndo = useInkToolStore((state) =>
     (state.histories[surfaceKey]?.undo.length ?? 0) > 0
   )
@@ -151,27 +249,48 @@ function WhiteboardSession({
   ): DrawingShape | null => {
     const before = shapesRef.current.find((shape) => shape.id === id)
     if (before === undefined) return null
-    removeInternal([id], false)
-    const replacement = addInternal({
-      kind: before.kind,
-      data: patch.data ?? before.data,
-      style: patch.style ?? before.style
-    }, false)
+    const next = updateWhiteboardShape(
+      shapesRef.current,
+      id,
+      patch,
+      new Date().toISOString()
+    )
+    const updated = next.find((shape) => shape.id === id)
+    if (updated === undefined) return null
+    replace(next)
     if (recordHistory) {
       useInkToolStore.getState().recordHistory(surfaceKey, {
         kind: 'update',
-        drawings: [{ ...before, id: replacement.id }]
+        drawings: [before]
       })
     }
-    return replacement
-  }, [addInternal, removeInternal, surfaceKey])
+    void invoke('whiteboard:updateShape', {
+      boardId: board.id,
+      id: updated.id,
+      shape: {
+        kind: updated.kind,
+        data: updated.data,
+        style: updated.style
+      }
+    }).then((saved) => {
+      replace(mergeWhiteboardShapes(
+        shapesRef.current,
+        [saved],
+        [...removedIdsRef.current]
+      ))
+      setStatusMessage(null)
+    }).catch(showSaveError)
+    return updated
+  }, [board.id, replace, showSaveError, surfaceKey])
 
   const executeHistory = useCallback((
     action: InkHistoryAction
   ): InkHistoryAction | null => {
     if (action.kind === 'remove') {
       const removed = removeInternal(action.drawings.map((shape) => shape.id), false)
-      return { kind: 'restore', drawings: removed }
+      return removed.length === 0
+        ? null
+        : { kind: 'restore', drawings: removed }
     }
     if (action.kind === 'restore') {
       const restored = action.drawings.map((shape) => addInternal({
@@ -191,31 +310,51 @@ function WhiteboardSession({
         style: target.style
       }, false)
       if (replacement === null) return null
-      inverse.push({ ...current, id: replacement.id })
+      inverse.push(current)
     }
     return { kind: 'update', drawings: inverse }
   }, [addInternal, removeInternal, updateInternal])
 
   const undo = useCallback((): void => {
-    const store = useInkToolStore.getState()
-    const action = store.beginUndo(surfaceKey)
-    if (action === null) return
-    const inverse = executeHistory(action)
-    if (inverse === null) store.cancelUndo(surfaceKey, action)
-    else store.finishUndo(surfaceKey, inverse)
+    settleWhiteboardUndo(surfaceKey, executeHistory)
   }, [executeHistory, surfaceKey])
 
   const redo = useCallback((): void => {
-    const store = useInkToolStore.getState()
-    const action = store.beginRedo(surfaceKey)
-    if (action === null) return
-    const inverse = executeHistory(action)
-    if (inverse === null) store.cancelRedo(surfaceKey, action)
-    else store.finishRedo(surfaceKey, inverse)
+    settleWhiteboardRedo(surfaceKey, executeHistory)
   }, [executeHistory, surfaceKey])
 
   useEffect(() => {
-    if (!documentVisible || availability.state !== 'ready') return
+    if (!sessionActive) return
+    return onPush('whiteboard:changed', ({ groupId, event: rawEvent }) => {
+      if (groupId !== board.groupId) return
+      const event = asPushEvent(rawEvent)
+      const eventBoardId = event?.type === 'shape'
+        ? event.shape.boardId
+        : event?.boardId
+      if (event === null || eventBoardId !== board.id) return
+      if (event.type === 'shape') {
+        replace(mergeWhiteboardShapes(
+          shapesRef.current,
+          [event.shape],
+          [...removedIdsRef.current]
+        ))
+        return
+      }
+      const removedIds = event.type === 'remove'
+        ? event.ids
+        : event.removedIds
+      for (const id of removedIds) removedIdsRef.current.add(id)
+      replace(mergeWhiteboardShapes(
+        shapesRef.current,
+        event.type === 'sync' ? event.shapes : [],
+        [...removedIdsRef.current]
+      ))
+      if (event.type === 'sync') syncedAtRef.current = event.syncedAt
+    })
+  }, [board.groupId, board.id, replace, sessionActive])
+
+  useEffect(() => {
+    if (!sessionActive || availability.state !== 'ready') return
     let cancelled = false
     let inFlight = false
     const sync = async (): Promise<void> => {
@@ -248,7 +387,7 @@ function WhiteboardSession({
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [availability.state, board.id, documentVisible, replace])
+  }, [availability.state, board.id, replace, sessionActive])
 
   return (
     <WhiteboardCanvas
@@ -256,7 +395,7 @@ function WhiteboardSession({
       shapes={shapes}
       canUndo={canUndo}
       canRedo={canRedo}
-      controlsEnabled={documentVisible}
+      controlsEnabled={sessionActive}
       statusMessage={statusMessage}
       onCreate={(shape) => { addInternal(shape, true) }}
       onUpdate={(id, patch) => { updateInternal(id, patch, true) }}
@@ -283,15 +422,18 @@ function AvailabilityMessage({
 
 export interface GroupWhiteboardViewProps {
   groupId: string
+  api: IDockviewPanelProps['api']
 }
 
 export function GroupWhiteboardView(
   props: GroupWhiteboardViewProps
 ): JSX.Element {
-  const { groupId } = props
+  const { groupId, api } = props
   const [loadState, setLoadState] = useState<LoadState>({ phase: 'loading' })
+  const panelActive = usePanelActive(api)
 
   useEffect(() => {
+    if (!panelActive) return
     let cancelled = false
     setLoadState({ phase: 'loading' })
     void invoke('whiteboard:open', { groupId }).then((result) => {
@@ -303,8 +445,9 @@ export function GroupWhiteboardView(
     })
     return () => {
       cancelled = true
+      void invoke('whiteboard:close', { groupId })
     }
-  }, [groupId])
+  }, [groupId, panelActive])
 
   if (loadState.phase === 'loading') {
     return (
@@ -344,6 +487,7 @@ export function GroupWhiteboardView(
       board={board}
       availability={availability}
       initialShapes={shapes}
+      panelActive={panelActive}
     />
   )
 }

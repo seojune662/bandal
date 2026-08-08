@@ -130,4 +130,42 @@ describe('studyRunner', () => {
     ).rejects.toThrow(ValidationError)
     expect(ask).not.toHaveBeenCalled()
   })
+
+  test('passes optional deadline and gap context into the generated prompt', async () => {
+    let capturedPrompt = ''
+    const runner = createStudyRunner({
+      getCourse: () => ({ name: '운영체제', folder: courseFolder }),
+      getPlanningContext: () => ({
+        asOf: '2026-08-08T00:00:00.000Z',
+        upcomingDeadlines: [
+          {
+            title: '기말 프로젝트',
+            dueAt: '2026-08-14T00:00:00.000Z',
+            daysLeft: 6
+          }
+        ],
+        studyGaps: [
+          {
+            kind: 'stale-course',
+            relPath: null,
+            message: '최근 활동이 없어요.',
+            weight: 30
+          }
+        ]
+      }),
+      ask: async (_courseId, prompt) => {
+        capturedPrompt = prompt
+      }
+    })
+
+    await runner.run({
+      courseId: COURSE_ID,
+      tool: 'exam-predictions',
+      relPath: null
+    })
+
+    expect(capturedPrompt).toContain('기말 프로젝트')
+    expect(capturedPrompt).toContain('D-6')
+    expect(capturedPrompt).toContain('stale-course')
+  })
 })

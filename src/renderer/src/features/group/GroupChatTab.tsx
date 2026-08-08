@@ -524,7 +524,11 @@ function CourseGroupPanel({
           onCloseTab={onCloseTab}
         />
       ) : (
-        <GroupWhiteboardView key={activeGroupId} groupId={activeGroupId} />
+        <GroupWhiteboardView
+          key={activeGroupId}
+          groupId={activeGroupId}
+          api={api}
+        />
       )}
     </div>
   )
