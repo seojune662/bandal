@@ -102,6 +102,16 @@ export interface PutPersonalShapeInput {
   /** Client-generated; re-putting the same id updates in place. */
   id: string
   shape: Omit<DrawingShape, 'id' | 'createdAt' | 'updatedAt'>
+  /**
+   * Explicitly bring a soft-deleted shape back. Only undo sets this.
+   *
+   * Without the flag a plain put silently cleared `deleted_at`, so anything
+   * that re-sent a shape after the eraser ran — a late in-flight save, a
+   * pending move — quietly resurrected it. The student erased something,
+   * reopened the board, and it was back. Deletion is a tombstone now, and
+   * un-deleting has to say so.
+   */
+  restore?: boolean
 }
 
 export interface RemovePersonalShapesInput {

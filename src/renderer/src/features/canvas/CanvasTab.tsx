@@ -152,7 +152,10 @@ function CanvasSession({
     setStatusMessage(errorMessage(error, '화이트보드 내용을 저장하지 못했어요.'))
   }, [])
 
-  const persistShape = useCallback((shape: DrawingShape): void => {
+  const persistShape = useCallback((
+    shape: DrawingShape,
+    restore = false
+  ): void => {
     const operation = nextOperation(shape.id)
     void invoke('canvas:putShape', {
       boardId: board.id,
@@ -161,7 +164,10 @@ function CanvasSession({
         kind: shape.kind,
         data: shape.data,
         style: shape.style
-      }
+      },
+      // Only undo may revive an erased shape. Every other save leaves a
+      // tombstone alone, so a late in-flight write cannot un-erase.
+      ...(restore ? { restore: true } : {})
     }).then((saved) => {
       if (
         operationRef.current.get(shape.id) === operation &&
@@ -208,7 +214,7 @@ function CanvasSession({
         drawings: [restored]
       })
     }
-    persistShape(restored)
+    persistShape(restored, true)
     return restored
   }, [persistShape, replace, surfaceKey])
 

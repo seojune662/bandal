@@ -245,7 +245,10 @@ export function createCanvasRepo(db: Database): CanvasRepo {
            data_json = excluded.data_json,
            style_json = excluded.style_json,
            updated_at = excluded.updated_at,
-           deleted_at = NULL`
+           -- A tombstone outranks a plain put. Only an explicit restore
+           -- (undo) revives a shape the eraser removed; a stale in-flight
+           -- save must never bring it back.
+           deleted_at = CASE WHEN ? THEN NULL ELSE whiteboard_local_shapes.deleted_at END`
       ).run(
         id,
         boardId,
@@ -253,7 +256,8 @@ export function createCanvasRepo(db: Database): CanvasRepo {
         JSON.stringify(shape.data),
         JSON.stringify(shape.style),
         createdAt,
-        now
+        now,
+        input.restore === true ? 1 : 0
       )
       return {
         id,
