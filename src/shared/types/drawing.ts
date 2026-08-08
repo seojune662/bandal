@@ -19,6 +19,14 @@ export type DrawingKind =
   | 'arrow'
   | 'line'
   | 'textbox'
+  /**
+   * A clipping of course material placed on a board — a PDF page region or a
+   * whole page. Stores a REFERENCE (path + page + crop), never pixels: a page
+   * crop as base64 would be hundreds of KB per shape, and the remote board
+   * caps `data_json` at 64KB. The renderer already has the PDF open, so it
+   * re-renders the region at display time.
+   */
+  | 'clip'
 
 /** Named palette entry. Renderer maps these to theme tokens, never to hex. */
 export type DrawingColor =
@@ -45,11 +53,25 @@ export interface DrawingBox {
 }
 
 /** Kind-specific geometry. `points` for strokes, `box` for shapes/text. */
+/** `clip` only — where the pinned material came from. */
+export interface DrawingClipSource {
+  /** Course-relative path of the source file. */
+  relPath: string
+  /** 1-based page for PDFs. */
+  page: number
+  /** Region of that page, normalized 0..1. Omit for the whole page. */
+  crop?: DrawingBox
+  /** Shown when the source cannot be rendered (file moved, not shared yet). */
+  label: string
+}
+
 export interface DrawingData {
   points?: DrawingPoint[]
   box?: DrawingBox
   /** textbox only. */
   text?: string
+  /** clip only. */
+  clip?: DrawingClipSource
 }
 
 export interface DrawingStyle {

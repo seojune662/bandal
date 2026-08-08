@@ -75,6 +75,10 @@ import type {
 } from '../types/study'
 import type { SearchHit, StudyGap } from '../types/search'
 import type {
+  SendHighlightToNoteInput,
+  SendHighlightToNoteResult
+} from '../types/link'
+import type {
   AddWhiteboardShapeInput,
   CreatePersonalBoardInput,
   OpenPersonalBoardResult,
@@ -578,6 +582,32 @@ export interface IpcContract {
     res: { gaps: StudyGap[] }
   }
 
+  // -- note ↔ material links --------------------------------------------------
+  /**
+   * Appends a highlight to a note as a quote plus a `bandal://` link back to
+   * the exact page. The note stays plain markdown.
+   */
+  'link:sendHighlightToNote': {
+    req: SendHighlightToNoteInput
+    res: SendHighlightToNoteResult
+  }
+
+  // -- sharing material into a group ------------------------------------------
+  /**
+   * Posts a note's contents into the group chat so classmates can save their
+   * own copy. Text, not a file: the project has no object storage, and a
+   * shared study note is small enough that a message carries it fine.
+   */
+  'group:shareNote': {
+    req: { groupId: string; courseId: string; relPath: string }
+    res: { ok: true }
+  }
+  /** Saves a shared note from a chat message into my own course folder. */
+  'group:saveSharedNote': {
+    req: { courseId: string; title: string; markdown: string }
+    res: { relPath: string }
+  }
+
   // -- settings -------------------------------------------------------------
   'settings:get': {
     req: Record<string, never>
@@ -933,7 +963,10 @@ export const IPC_CHANNELS = [
   'search:indexPdfPages',
   'insights:gaps',
   'whiteboard:updateShape',
-  'whiteboard:close'
+  'whiteboard:close',
+  'link:sendHighlightToNote',
+  'group:shareNote',
+  'group:saveSharedNote'
 ] as const satisfies readonly IpcChannel[]
 
 // Fails to compile if a contract channel is missing from IPC_CHANNELS.
