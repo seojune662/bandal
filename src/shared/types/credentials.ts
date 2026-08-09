@@ -31,10 +31,23 @@ export interface SavedLoginSummary {
 export interface SaveLoginInput {
   origin: string
   username: string
-  /** Only ever travels renderer → main. Never returned. */
+  /**
+   * Never returned, and in practice never sent either: the browser's save
+   * button goes through `credentials:capture`, which reads the typed password
+   * inside main. The settings window sends `''`, meaning "keep the stored
+   * password, change only the metadata".
+   */
   password: string
   autoSubmit?: boolean
 }
+
+/**
+ * Name of the function the browser tab installs in the guest page, which
+ * returns what the student typed into a login form. Main calls it directly so
+ * the password goes straight from the page into the encrypted file, without
+ * passing through the renderer.
+ */
+export const LOGIN_CAPTURE_GLOBAL = '__bandalCaptureUserEnteredLoginV1__'
 
 export interface FillLoginResult {
   /** False when nothing is stored for the origin, or encryption is off. */

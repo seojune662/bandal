@@ -75,12 +75,30 @@ export function resizeDrawingBox(
 }
 
 export function strokePath(
-  points: DrawingPoint[],
+  points: readonly DrawingPoint[],
   style: DrawingStyle,
   aspect: number,
   isHighlighter: boolean
 ): string {
-  if (points.length === 0 || aspect <= 0) return ''
+  if (
+    points.length < 2 ||
+    !Number.isFinite(aspect) ||
+    aspect <= 0 ||
+    !Number.isFinite(style.width) ||
+    style.width <= 0 ||
+    points.some((point) =>
+      !Number.isFinite(point.x) ||
+      !Number.isFinite(point.y) ||
+      !Number.isFinite(point.p)
+    )
+  ) {
+    return ''
+  }
+  const firstInput = points[0]
+  const hasLength = firstInput !== undefined && points.some((point) =>
+    point.x !== firstInput.x || point.y !== firstInput.y
+  )
+  if (!hasLength) return ''
   const outline = getStroke(
     points.map((point) => [
       point.x * STROKE_COORD_SCALE,
@@ -99,7 +117,13 @@ export function strokePath(
     }
   )
   const first = outline[0]
-  if (first === undefined) return ''
+  if (
+    first === undefined ||
+    outline.length < 3 ||
+    outline.some((point) => !Number.isFinite(point[0]) || !Number.isFinite(point[1]))
+  ) {
+    return ''
+  }
   const toPage = (point: Point2): Point2 => [
     point[0] / STROKE_COORD_SCALE,
     point[1] / STROKE_COORD_SCALE / aspect
@@ -138,6 +162,18 @@ export function arrowHeadPoints(
   width: number,
   aspect: number
 ): string {
+  if (
+    !Number.isFinite(aspect) ||
+    aspect <= 0 ||
+    !Number.isFinite(width) ||
+    width <= 0 ||
+    !Number.isFinite(start.x) ||
+    !Number.isFinite(start.y) ||
+    !Number.isFinite(end.x) ||
+    !Number.isFinite(end.y)
+  ) {
+    return ''
+  }
   const startPhysical: Point2 = [start.x, start.y * aspect]
   const endPhysical: Point2 = [end.x, end.y * aspect]
   const angle = Math.atan2(
@@ -190,7 +226,11 @@ function ellipsePolyline(box: DrawingBox, aspect: number): Point2[] {
 
 function drawingPolyline(shape: DrawingShape, aspect: number): Point2[] {
   if (shape.kind === 'ink' || shape.kind === 'highlighter') {
-    return (shape.data.points ?? []).map((point) => [point.x, point.y * aspect])
+    const points = (shape.data.points ?? [])
+      .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+      .map((point): Point2 => [point.x, point.y * aspect])
+    if (points.length > 0 || shape.data.box === undefined) return points
+    return boxPolyline(shape.data.box, aspect)
   }
   if (shape.kind === 'line' || shape.kind === 'arrow') {
     const endpoints = lineEndpoints(shape)
@@ -210,10 +250,31 @@ export function drawingHit(
   point: DrawingPoint,
   aspect: number
 ): boolean {
-  const polyline = drawingPolyline(shape, aspect)
-  if (polyline.length === 0) return false
-  const target: Point2 = [point.x, point.y * aspect]
-  const threshold = Math.max(0.007, shape.style.width / 2 + 0.005)
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return false
+  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 1
+  const box = shape.data.box
+  if (
+    shape.kind === 'textbox' &&
+    box !== undefined &&
+    [box.x, box.y, box.width, box.height].every(Number.isFinite) &&
+    point.x >= Math.min(box.x, box.x + box.width) &&
+    point.x <= Math.max(box.x, box.x + box.width) &&
+    point.y >= Math.min(box.y, box.y + box.height) &&
+    point.y <= Math.max(box.y, box.y + box.height)
+  ) {
+    return true
+  }
+  const polyline = drawingPolyline(shape, safeAspect).filter((entry) =>
+    Number.isFinite(entry[0]) && Number.isFinite(entry[1])
+  )
+  // A locationless saved shape cannot be targeted more precisely. Treat an
+  // explicit eraser gesture anywhere as permission to clean it up.
+  if (polyline.length === 0) return true
+  const target: Point2 = [point.x, point.y * safeAspect]
+  const shapeWidth = Number.isFinite(shape.style.width) && shape.style.width > 0
+    ? shape.style.width
+    : 0
+  const threshold = Math.max(0.007, shapeWidth / 2 + 0.005)
   if (polyline.length === 1) {
     const only = polyline[0]
     return only !== undefined && Math.hypot(target[0] - only[0], target[1] - only[1]) <= threshold

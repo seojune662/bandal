@@ -402,8 +402,12 @@ function CanvasSession({
     if (editingTitle) titleInputRef.current?.select()
   }, [editingTitle])
 
-  const aspect = size.width > 0 ? size.height / size.width : 1
-  const baseWidthPx = size.width > 0 ? size.width : 1
+  const hasMeasuredCanvas = Number.isFinite(size.width) &&
+    Number.isFinite(size.height) &&
+    size.width > 0 &&
+    size.height > 0
+  const aspect = hasMeasuredCanvas ? size.height / size.width : 0
+  const baseWidthPx = hasMeasuredCanvas ? size.width : 0
 
   const handleDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
     if (!Array.from(event.dataTransfer.types).includes(BANDAL_CLIP_MIME)) return
@@ -522,6 +526,7 @@ function CanvasSession({
             onUpdate={(id, patch) => { updateInternal(id, patch, true) }}
             onRemove={(ids) => { removeInternal(ids, true) }}
             clampToBounds={true}
+            deferTextCreation
             ariaLabel={`${board.title} 개인 화이트보드 캔버스`}
             className="canvas-tab__ink-layer"
             renderClip={renderClip}

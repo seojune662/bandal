@@ -624,9 +624,19 @@ export interface IpcContract {
     req: Record<string, never>
     res: SavedLoginSummary[]
   }
+  /** Metadata edits from the settings window. Send `password: ''` to keep it. */
   'credentials:save': {
     req: SaveLoginInput
     res: SavedLoginSummary
+  }
+  /**
+   * Saves what the student just typed into the login form in this guest. Main
+   * reads the field and stores it, so the password never enters this window.
+   * `null` means nothing was typed, so there is nothing to offer saving.
+   */
+  'credentials:capture': {
+    req: { origin: string; guestWebContentsId: number; autoSubmit?: boolean }
+    res: SavedLoginSummary | null
   }
   'credentials:forget': {
     req: { origin: string }
@@ -1003,6 +1013,7 @@ export const IPC_CHANNELS = [
   'credentials:availability',
   'credentials:list',
   'credentials:save',
+  'credentials:capture',
   'credentials:forget',
   'credentials:fill'
 ] as const satisfies readonly IpcChannel[]

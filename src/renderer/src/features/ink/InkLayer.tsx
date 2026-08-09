@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent
 } from 'react'
 import type {
@@ -43,6 +44,8 @@ export interface InkLayerProps {
   onRemove: (ids: string[]) => void
   /** Disable to preserve coordinates beyond the normalized finite surface. */
   clampToBounds?: boolean
+  /** Keep a new text box local until it contains text. PDF keeps its existing flow. */
+  deferTextCreation?: boolean
   ariaLabel: string
   className?: string
   /** Surface-owned PDF renderer; omitted on PDF markup and group boards. */
@@ -99,6 +102,44 @@ const TEXT_BOX_MAX_Y = 0.9
 const TEXT_BASE_FONT_RATIO = 0.026
 const RESIZE_HANDLE_SIZE = 0.016
 
+function isFinitePositive(value: number): boolean {
+  return Number.isFinite(value) && value > 0
+}
+
+function isRenderableBox(box: DrawingBox | undefined): box is DrawingBox {
+  return box !== undefined &&
+    Number.isFinite(box.x) &&
+    Number.isFinite(box.y) &&
+    isFinitePositive(box.width) &&
+    isFinitePositive(box.height)
+}
+
+function isRenderableSegment(
+  start: DrawingPoint,
+  end: DrawingPoint,
+  aspect: number
+): boolean {
+  const coordinates = [start.x, start.y, end.x, end.y]
+  return coordinates.every(Number.isFinite) &&
+    isFinitePositive(aspect) &&
+    Math.hypot(end.x - start.x, (end.y - start.y) * aspect) > 0
+}
+
+function hasMeasuredBounds(element: SVGSVGElement): boolean {
+  const bounds = element.getBoundingClientRect()
+  return isFinitePositive(bounds.width) && isFinitePositive(bounds.height)
+}
+
+export function createTextBoxShape(
+  box: DrawingBox,
+  text: string,
+  style: DrawingStyle
+): Omit<DrawingShape, 'id' | 'createdAt' | 'updatedAt'> | null {
+  return text.trim().length === 0 || !isRenderableBox(box)
+    ? null
+    : { kind: 'textbox', data: { box, text }, style }
+}
+
 function drawingStyle(
   tool: InkTool,
   width: number,
@@ -153,6 +194,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     onUpdate,
     onRemove,
     clampToBounds = true,
+    deferTextCreation = false,
     ariaLabel,
     className,
     renderClip,
@@ -166,7 +208,11 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   const pendingTextBox = useRef<PendingTextBox | null>(null)
   const [gesture, setGestureState] = useState<Gesture | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [newTextBox, setNewTextBox] = useState<DrawingBox | null>(null)
   const [textDraft, setTextDraft] = useState('')
+  const surfaceReady = isFinitePositive(aspect) &&
+    isFinitePositive(baseWidthPx) &&
+    Number.isFinite(baseWidthPx * aspect)
 
   const setGesture = useCallback((next: Gesture | null): void => {
     gestureRef.current = next
@@ -175,7 +221,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
 
   const pointFromSample = useCallback((sample: PointerSample): DrawingPoint | null => {
     const svg = svgRef.current
-    return svg === null
+    return svg === null || !surfaceReady || !hasMeasuredBounds(svg)
       ? null
       : normalizedPoint(
         svg,
@@ -184,7 +230,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         sample.pressure,
         clampToBounds
       )
-  }, [clampToBounds])
+  }, [clampToBounds, surfaceReady])
 
   const eraseAt = useCallback((
     current: Extract<Gesture, { kind: 'erase' }>,
@@ -242,6 +288,8 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   useEffect(() => {
     setGesture(null)
     setEditingId(null)
+    setNewTextBox(null)
+    pendingTextBox.current = null
   }, [activeTool, setGesture])
 
   useEffect(() => {
@@ -272,6 +320,13 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       width: TEXT_BOX_WIDTH,
       height: TEXT_BOX_HEIGHT
     }
+    if (deferTextCreation) {
+      pendingTextBox.current = null
+      setEditingId(null)
+      setTextDraft('')
+      setNewTextBox(box)
+      return
+    }
     pendingTextBox.current = {
       existingIds: new Set(shapes.map((shape) => shape.id)),
       box
@@ -289,10 +344,28 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     } else {
       focusCreatedTextBox(result)
     }
-  }, [clampToBounds, color, focusCreatedTextBox, onCreate, opacity, shapes, width])
+  }, [clampToBounds, color, deferTextCreation, focusCreatedTextBox,
+    onCreate, opacity, shapes, width])
+
+  const finishNewTextBox = useCallback((box: DrawingBox): void => {
+    setNewTextBox(null)
+    const shape = createTextBoxShape(
+      box,
+      textDraft,
+      drawingStyle('text', width, opacity, color)
+    )
+    if (shape !== null) onCreate(shape)
+  }, [color, onCreate, opacity, textDraft, width])
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<SVGSVGElement>): void => {
     if (activeTool === 'select' || event.button !== 0) return
+    if (!surfaceReady || !hasMeasuredBounds(event.currentTarget)) return
+    if (
+      deferTextCreation && activeTool === 'text' &&
+      (newTextBox !== null || editingId !== null)
+    ) {
+      return
+    }
     const point = normalizedPoint(
       event.currentTarget,
       event.clientX,
@@ -301,6 +374,9 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       clampToBounds
     )
     if (activeTool === 'text') {
+      // Without this, the pointer event's default focus move runs after
+      // autoFocus and immediately blurs/discards the empty local draft.
+      event.preventDefault()
       startTextBox(point)
       return
     }
@@ -324,7 +400,8 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     } else if (activeTool === 'eraser') {
       setGesture(eraseAt({ kind: 'erase', pointerId: event.pointerId, ids: new Set() }, point))
     }
-  }, [activeTool, clampToBounds, eraseAt, setGesture, startTextBox])
+  }, [activeTool, clampToBounds, deferTextCreation, editingId, eraseAt,
+    newTextBox, setGesture, startTextBox, surfaceReady])
 
   const handlePointerMove = useCallback((event: ReactPointerEvent<SVGSVGElement>): void => {
     if (gestureRef.current === null) return
@@ -347,12 +424,25 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   const commitGesture = useCallback((completed: Gesture): void => {
     if (completed.kind === 'stroke') {
       const kind: DrawingKind = completed.tool === 'pen' ? 'ink' : 'highlighter'
+      const nextStyle = drawingStyle(completed.tool, width, opacity, color)
+      if (
+        !surfaceReady ||
+        strokePath(
+          completed.points,
+          nextStyle,
+          aspect,
+          completed.tool === 'highlighter'
+        ).length === 0
+      ) {
+        return
+      }
       onCreate({
         kind,
         data: { points: completed.points },
-        style: drawingStyle(completed.tool, width, opacity, color)
+        style: nextStyle
       })
     } else if (completed.kind === 'shape') {
+      if (!surfaceReady) return
       const box = normalizedBox(completed.start, completed.end)
       const length = Math.hypot(
         completed.end.x - completed.start.x,
@@ -394,7 +484,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         data: { ...completed.shape.data, box: completed.box }
       })
     }
-  }, [aspect, color, onCreate, onRemove, onUpdate, opacity, width])
+  }, [aspect, color, onCreate, onRemove, onUpdate, opacity, surfaceReady, width])
 
   const handlePointerUp = useCallback((event: ReactPointerEvent<SVGSVGElement>): void => {
     pendingSample.current = {
@@ -427,7 +517,14 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     const canManipulate =
       (shape.kind === 'textbox' && activeTool === 'text') ||
       (shape.kind === 'clip' && activeTool === 'select')
-    if (!canManipulate || editingId === shape.id || shape.data.box === undefined) return
+    if (
+      !canManipulate ||
+      !surfaceReady ||
+      editingId === shape.id ||
+      shape.data.box === undefined
+    ) {
+      return
+    }
     event.stopPropagation()
     event.preventDefault()
     const svg = svgRef.current
@@ -447,7 +544,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       start,
       box: shape.data.box
     })
-  }, [activeTool, clampToBounds, editingId, setGesture])
+  }, [activeTool, clampToBounds, editingId, setGesture, surfaceReady])
 
   const startEditing = useCallback((shape: DrawingShape): void => {
     if (activeTool !== 'text') return
@@ -463,6 +560,25 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       onUpdate(shape.id, { data: { ...shape.data, text: textDraft } })
     }
   }, [onRemove, onUpdate, textDraft])
+
+  const textBoxContentStyle = useCallback((
+    box: DrawingBox,
+    shapeStyle: DrawingStyle
+  ): CSSProperties => {
+    const fontSize = baseWidthPx * TEXT_BASE_FONT_RATIO * (
+      isFinitePositive(shapeStyle.fontScale ?? 1) ? (shapeStyle.fontScale ?? 1) : 1
+    )
+    if (!deferTextCreation) return { fontSize, opacity: shapeStyle.opacity }
+    const baseHeightPx = baseWidthPx * aspect
+    return {
+      width: box.width * baseWidthPx,
+      height: box.height * baseHeightPx,
+      fontSize,
+      opacity: shapeStyle.opacity,
+      transform: `scale(${1 / baseWidthPx}, ${1 / baseHeightPx})`,
+      transformOrigin: 'top left'
+    }
+  }, [aspect, baseWidthPx, deferTextCreation])
 
   const erasedIds = gesture?.kind === 'erase' ? gesture.ids : new Set<string>()
   const style = drawingStyle(activeTool, width, opacity, color)
@@ -482,35 +598,43 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       onClick={(event) => event.stopPropagation()}
     >
       {shapes.filter((shape) => !erasedIds.has(shape.id)).map((shape) => {
+        if (!surfaceReady) return null
         const markColor = drawingColorVariable(shape.style.color)
         if (shape.kind === 'ink' || shape.kind === 'highlighter') {
+          const path = strokePath(
+            shape.data.points ?? [],
+            shape.style,
+            aspect,
+            shape.kind === 'highlighter'
+          )
+          if (path.length === 0) return null
           return (
             <path
               key={shape.id}
               className={shape.kind === 'highlighter'
                 ? 'ink-layer__mark is-highlighter'
                 : 'ink-layer__mark'}
-              d={strokePath(
-                shape.data.points ?? [],
-                shape.style,
-                aspect,
-                shape.kind === 'highlighter'
-              )}
+              d={path}
               fill={markColor}
               opacity={shape.style.opacity}
             />
           )
         }
         const box = boxForShape(shape, gesture)
-        if (shape.kind === 'rect' && box !== undefined) {
+        if (shape.kind === 'rect' && isRenderableBox(box)) {
           return <rect key={shape.id} className="ink-layer__mark" {...box} fill="none" stroke={markColor} strokeWidth={shape.style.width} opacity={shape.style.opacity} />
         }
-        if (shape.kind === 'ellipse' && box !== undefined) {
+        if (shape.kind === 'ellipse' && isRenderableBox(box)) {
           return <ellipse key={shape.id} className="ink-layer__mark" cx={box.x + box.width / 2} cy={box.y + box.height / 2} rx={box.width / 2} ry={box.height / 2} fill="none" stroke={markColor} strokeWidth={shape.style.width} opacity={shape.style.opacity} />
         }
         if (shape.kind === 'line' || shape.kind === 'arrow') {
           const endpoints = lineEndpoints(shape)
-          if (endpoints === null) return null
+          if (
+            endpoints === null ||
+            !isRenderableSegment(endpoints[0], endpoints[1], aspect)
+          ) {
+            return null
+          }
           return (
             <g key={shape.id} className="ink-layer__mark" stroke={markColor} strokeWidth={shape.style.width} opacity={shape.style.opacity} strokeLinecap="round" strokeLinejoin="round" fill="none">
               <line x1={endpoints[0].x} y1={endpoints[0].y} x2={endpoints[1].x} y2={endpoints[1].y} />
@@ -518,7 +642,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
             </g>
           )
         }
-        if (shape.kind === 'clip' && box !== undefined) {
+        if (shape.kind === 'clip' && isRenderableBox(box)) {
           return (
             <ClipShape
               key={shape.id}
@@ -532,8 +656,10 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
             />
           )
         }
-        if (shape.kind !== 'textbox' || box === undefined) return null
+        if (shape.kind !== 'textbox' || !isRenderableBox(box)) return null
         const isEditing = editingId === shape.id
+        if (!isEditing && (shape.data.text ?? '').trim().length === 0) return null
+        const contentStyle = textBoxContentStyle(box, shape.style)
         return (
           <g key={shape.id} className="ink-layer__textbox-group">
             <foreignObject
@@ -551,10 +677,9 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
                   className="ink-layer__textbox is-editing"
                   data-color={shape.style.color}
                   value={textDraft}
-                  style={{
-                    fontSize: baseWidthPx * TEXT_BASE_FONT_RATIO * (shape.style.fontScale ?? 1),
-                    opacity: shape.style.opacity
-                  }}
+                  aria-label="텍스트 입력"
+                  placeholder="텍스트를 입력하세요"
+                  style={contentStyle}
                   onPointerDown={(event) => event.stopPropagation()}
                   onChange={(event) => setTextDraft(event.target.value)}
                   onBlur={() => finishEditing(shape)}
@@ -571,10 +696,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
                 <div
                   className="ink-layer__textbox"
                   data-color={shape.style.color}
-                  style={{
-                    fontSize: baseWidthPx * TEXT_BASE_FONT_RATIO * (shape.style.fontScale ?? 1),
-                    opacity: shape.style.opacity
-                  }}
+                  style={contentStyle}
                 >
                   {shape.data.text}
                 </div>
@@ -595,25 +717,72 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         )
       })}
 
-      {gesture?.kind === 'stroke' && (
-        <path
-          className={gesture.tool === 'highlighter'
-            ? 'ink-layer__preview is-highlighter'
-            : 'ink-layer__preview'}
-          d={strokePath(gesture.points, style, aspect, gesture.tool === 'highlighter')}
-          fill={drawingColorVariable(style.color)}
-          opacity={style.opacity}
-        />
+      {newTextBox !== null && surfaceReady && isRenderableBox(newTextBox) && (
+        <foreignObject
+          {...newTextBox}
+          className="ink-layer__textbox-object"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <textarea
+            autoFocus
+            className="ink-layer__textbox is-editing"
+            data-color={color}
+            value={textDraft}
+            aria-label="텍스트 입력"
+            placeholder="텍스트를 입력하세요"
+            style={textBoxContentStyle(
+              newTextBox,
+              drawingStyle('text', width, opacity, color)
+            )}
+            onPointerDown={(event) => event.stopPropagation()}
+            onChange={(event) => setTextDraft(event.target.value)}
+            onBlur={() => finishNewTextBox(newTextBox)}
+            onKeyDown={(event) => {
+              if (
+                event.key === 'Escape' ||
+                ((event.metaKey || event.ctrlKey) && event.key === 'Enter')
+              ) {
+                event.currentTarget.blur()
+              }
+            }}
+          />
+        </foreignObject>
       )}
+
+      {gesture?.kind === 'stroke' && (() => {
+        const path = strokePath(
+          gesture.points,
+          style,
+          aspect,
+          gesture.tool === 'highlighter'
+        )
+        return path.length === 0
+          ? null
+          : (
+              <path
+                className={gesture.tool === 'highlighter'
+                  ? 'ink-layer__preview is-highlighter'
+                  : 'ink-layer__preview'}
+                d={path}
+                fill={drawingColorVariable(style.color)}
+                opacity={style.opacity}
+              />
+            )
+      })()}
       {gesture?.kind === 'shape' && (() => {
         const box = normalizedBox(gesture.start, gesture.end)
         const previewColor = drawingColorVariable(style.color)
         if (gesture.tool === 'rect') {
-          return <rect className="ink-layer__preview" {...box} fill="none" stroke={previewColor} strokeWidth={style.width} opacity={style.opacity} />
+          return isRenderableBox(box)
+            ? <rect className="ink-layer__preview" {...box} fill="none" stroke={previewColor} strokeWidth={style.width} opacity={style.opacity} />
+            : null
         }
         if (gesture.tool === 'ellipse') {
-          return <ellipse className="ink-layer__preview" cx={box.x + box.width / 2} cy={box.y + box.height / 2} rx={box.width / 2} ry={box.height / 2} fill="none" stroke={previewColor} strokeWidth={style.width} opacity={style.opacity} />
+          return isRenderableBox(box)
+            ? <ellipse className="ink-layer__preview" cx={box.x + box.width / 2} cy={box.y + box.height / 2} rx={box.width / 2} ry={box.height / 2} fill="none" stroke={previewColor} strokeWidth={style.width} opacity={style.opacity} />
+            : null
         }
+        if (!isRenderableSegment(gesture.start, gesture.end, aspect)) return null
         return (
           <g className="ink-layer__preview" fill="none" stroke={previewColor} strokeWidth={style.width} opacity={style.opacity} strokeLinecap="round" strokeLinejoin="round">
             <line x1={gesture.start.x} y1={gesture.start.y} x2={gesture.end.x} y2={gesture.end.y} />

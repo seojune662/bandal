@@ -16,6 +16,7 @@ import {
 import { useBrowserGuests, type BrowserNavState } from './browserGuestsStore'
 import { registerGuestElement, unregisterGuestElement } from './guestActions'
 import { useWebviewSelectionBridge } from './selectionBridge'
+import { useWebviewLoginBridge } from './loginBridge'
 import type {
   DidNavigateEvent,
   DidNavigateInPageEvent,
@@ -51,6 +52,7 @@ export function BrowserGuestView({
     getBrowserAnchorRect(tabId)
   )
   useWebviewSelectionBridge(webviewRef)
+  useWebviewLoginBridge(tabId, webviewRef)
 
   useEffect(
     () =>

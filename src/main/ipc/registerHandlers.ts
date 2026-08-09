@@ -43,6 +43,11 @@ import {
 } from '../features/agent'
 import { createBrowserSessionStore } from '../features/browser'
 import { createFavoritesRepo } from '../features/favorites'
+import {
+  createCredentialStore,
+  createLoginCapturer,
+  createLoginFiller
+} from '../features/credentials'
 import { createActivityRepo, createContextWriter } from '../features/context'
 import { createStudyRunner } from '../features/study'
 import {
@@ -486,6 +491,19 @@ export function registerHandlers(): IpcRouter {
   handle('agent:installCommand', (req) => agentInstaller.commandFor(req.provider))
   handle('agent:install', (req) => agentInstaller.install(req.provider))
   handle('agent:models', (req) => getAgentModels(req.provider))
+
+  // -- saved logins ----------------------------------------------------------
+  // `resolve()` deliberately has no channel. The password is read here, put
+  // straight into the guest page, and never travels back to the renderer.
+  const credentialStore = createCredentialStore()
+  const fillLogin = createLoginFiller(credentialStore)
+  const captureLogin = createLoginCapturer(credentialStore)
+  handle('credentials:availability', () => credentialStore.availability())
+  handle('credentials:list', () => credentialStore.list())
+  handle('credentials:save', (req) => credentialStore.save(req))
+  handle('credentials:capture', (req) => captureLogin(req))
+  handle('credentials:forget', (req) => credentialStore.forget(req.origin))
+  handle('credentials:fill', (req) => fillLogin(req))
 
   // -- favorites (left-rail pins for any TabDescriptor) ---------------------
   const favoritesRepo = createFavoritesRepo(db)

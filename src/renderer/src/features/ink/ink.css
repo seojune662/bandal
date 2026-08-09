@@ -61,8 +61,14 @@
 }
 
 textarea.ink-layer__textbox {
+  min-width: 0;
   outline: none;
   resize: none;
+  user-select: text;
+}
+
+textarea.ink-layer__textbox::placeholder {
+  color: var(--text-muted);
 }
 
 .ink-layer__textbox.is-editing {

@@ -9,6 +9,7 @@ import type {
 import { useLocale, useT } from '../../i18n'
 import { useUniversityStore } from '../../stores/universityStore'
 import { SettingsUniversityPicker } from './SettingsUniversityPicker'
+import { SavedLoginsSettings } from './SavedLoginsSettings'
 import '../university/university.css'
 
 type Translator = ReturnType<typeof useT>
@@ -238,6 +239,8 @@ export function UniversitySettingsPanel(): JSX.Element {
           )}
         </section>
       )}
+
+      <SavedLoginsSettings />
     </div>
   )
 }

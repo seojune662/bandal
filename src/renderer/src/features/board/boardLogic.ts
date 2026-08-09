@@ -49,15 +49,48 @@ export function filterTasks(
 /** Classifies a due date relative to `now`; invalid dates are treated as absent. */
 export function dueState(
   dueAt: string | null,
-  now: number | Date = Date.now()
+  now: number | Date = Date.now(),
+  allDay = false
 ): DueState {
   if (dueAt === null) return 'none'
   const dueTime = Date.parse(dueAt)
   if (Number.isNaN(dueTime)) return 'none'
   const nowTime = now instanceof Date ? now.getTime() : now
+  if (allDay) {
+    const due = new Date(dueTime)
+    const current = new Date(nowTime)
+    const dueDay = Date.UTC(due.getFullYear(), due.getMonth(), due.getDate())
+    const currentDay = Date.UTC(
+      current.getFullYear(),
+      current.getMonth(),
+      current.getDate()
+    )
+    if (dueDay < currentDay) return 'overdue'
+    return dueDay === currentDay ? 'upcoming' : 'later'
+  }
   if (dueTime < nowTime) return 'overdue'
   if (dueTime - nowTime <= UPCOMING_WINDOW_MS) return 'upcoming'
   return 'later'
+}
+
+/** Formats a due date as a local-calendar D-day label. */
+export function dueDayLabel(
+  dueAt: string | null,
+  now: number | Date = Date.now()
+): string | null {
+  if (dueAt === null) return null
+  const due = new Date(dueAt)
+  const current = now instanceof Date ? now : new Date(now)
+  if (Number.isNaN(due.getTime()) || Number.isNaN(current.getTime())) return null
+  const dueDay = Date.UTC(due.getFullYear(), due.getMonth(), due.getDate())
+  const currentDay = Date.UTC(
+    current.getFullYear(),
+    current.getMonth(),
+    current.getDate()
+  )
+  const difference = Math.round((dueDay - currentDay) / (24 * 60 * 60 * 1000))
+  if (difference === 0) return 'D-Day'
+  return difference > 0 ? `D-${difference}` : `D+${Math.abs(difference)}`
 }
 
 /**

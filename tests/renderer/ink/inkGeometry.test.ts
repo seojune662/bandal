@@ -46,11 +46,56 @@ describe('inkGeometry', () => {
     expect(path).toContain(' Q ')
   })
 
+  test('does not create a path for empty, one-point, or zero-length strokes', () => {
+    expect(strokePath([], shape({}).style, Math.SQRT2, false)).toBe('')
+    expect(strokePath([start], shape({}).style, Math.SQRT2, false)).toBe('')
+    expect(strokePath([start, { ...start }], shape({}).style, Math.SQRT2, false)).toBe('')
+  })
+
+  test.each([0, Number.NaN, Number.POSITIVE_INFINITY])(
+    'does not throw or draw with an invalid aspect (%s)',
+    (aspect) => {
+      expect(() => strokePath([start, end], shape({}).style, aspect, false)).not.toThrow()
+      expect(strokePath([start, end], shape({}).style, aspect, false)).toBe('')
+    }
+  )
+
+  test('does not draw a stroke whose width is zero', () => {
+    const zeroWidth = shape({ style: { color: 'ink', width: 0, opacity: 1 } })
+
+    expect(strokePath([start, end], zeroWidth.style, Math.SQRT2, false)).toBe('')
+  })
+
   test('hits an ink polyline within the eraser threshold', () => {
     const ink = shape({})
 
     expect(drawingHit(ink, { x: 0.5, y: 0.4, p: 0.5 }, Math.SQRT2)).toBe(true)
     expect(drawingHit(ink, { x: 0.05, y: 0.9, p: 0.5 }, Math.SQRT2)).toBe(false)
+  })
+
+  test('keeps degenerate saved shapes reachable by the eraser', () => {
+    const onePointInk = shape({ data: { points: [start] } })
+    const emptyInk = shape({ id: 'empty-shape', data: { points: [] } })
+    const zeroSizeRect = shape({
+      kind: 'rect',
+      data: { box: { x: start.x, y: start.y, width: 0, height: 0 } }
+    })
+
+    expect(drawingHit(onePointInk, start, Number.NaN)).toBe(true)
+    expect(drawingHit(emptyInk, end, Math.SQRT2)).toBe(true)
+    expect(drawingHit(zeroSizeRect, start, Math.SQRT2)).toBe(true)
+  })
+
+  test('hits the interior of an invisible empty textbox', () => {
+    const textbox = shape({
+      kind: 'textbox',
+      data: {
+        box: { x: 0.2, y: 0.2, width: 0.4, height: 0.3 },
+        text: ''
+      }
+    })
+
+    expect(drawingHit(textbox, { x: 0.4, y: 0.35, p: 0.5 }, Math.SQRT2)).toBe(true)
   })
 
   test('hits shape outlines without treating their center as a stroke', () => {

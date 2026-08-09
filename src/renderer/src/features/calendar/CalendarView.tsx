@@ -7,11 +7,13 @@ import { normalizeCourseColor } from '../courses/courseColors'
 import {
   calendarMonthGrid,
   dueAtForLocalInput,
+  localDateFromKey,
   localDateKey,
   localTimeInput,
   taskIsOverdue
 } from './calendarDate'
 import './calendar.css'
+import '../board/boardForms.css'
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as const
 const KIND_LABELS: Record<TaskKind, string> = {
@@ -100,7 +102,7 @@ function CalendarTaskForm({
   const [courseId, setCourseId] = useState(task?.courseId ?? defaultCourseId ?? '')
   const [day, setDay] = useState(task?.dueAt == null ? dateKey : localDateKey(task.dueAt))
   const [time, setTime] = useState(localTimeInput(task?.dueAt ?? null))
-  const [allDay, setAllDay] = useState(task?.allDay ?? false)
+  const [allDay, setAllDay] = useState(task?.allDay ?? true)
   const [error, setError] = useState<string | null>(null)
   const currentCourseMissing =
     courseId.length > 0 && !courses.some((course) => course.id === courseId)
@@ -139,29 +141,36 @@ function CalendarTaskForm({
           onChange={(event) => setTitle(event.target.value)}
         />
       </label>
-      <div className="calendar-form__row">
-        <label className="board-field">
-          <span>종류</span>
-          <select value={kind} onChange={(event) => setKind(event.target.value as TaskKind)}>
-            {Object.entries(KIND_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </label>
-        <label className="board-field">
-          <span>과목</span>
-          <select value={courseId} onChange={(event) => setCourseId(event.target.value)}>
-            <option value="">전체</option>
-            {currentCourseMissing && <option value={courseId}>목록에 없는 과목</option>}
-            {courses.map((course) => (
-              <option key={course.id} value={course.id}>{course.name}</option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <fieldset className="board-kind-picker calendar-kind-picker">
+        <legend>종류</legend>
+        <div>
+          {Object.entries(KIND_LABELS).map(([value, label]) => (
+            <label key={value}>
+              <input
+                type="radio"
+                name="calendar-task-kind"
+                value={value}
+                checked={kind === value}
+                onChange={() => setKind(value as TaskKind)}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <label className="board-field">
+        <span>과목</span>
+        <select value={courseId} onChange={(event) => setCourseId(event.target.value)}>
+          <option value="">전체</option>
+          {currentCourseMissing && <option value={courseId}>목록에 없는 과목</option>}
+          {courses.map((course) => (
+            <option key={course.id} value={course.id}>{course.name}</option>
+          ))}
+        </select>
+      </label>
       <div className="calendar-form__row calendar-form__date-row">
         <label className="board-field">
-          <span>날짜</span>
+          <span>날짜 <small>날짜만 고르면 하루 종일</small></span>
           <input type="date" value={day} required onChange={(event) => setDay(event.target.value)} />
         </label>
         <label className="board-field">
@@ -216,7 +225,10 @@ export function CalendarView({
   const [loading, setLoading] = useState(true)
   const [mutating, setMutating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [recentTaskId, setRecentTaskId] = useState<string | null>(null)
+  const [saveNotice, setSaveNotice] = useState<string | null>(null)
   const loadSequence = useRef(0)
+  const gridRef = useRef<HTMLDivElement>(null)
   const grid = useMemo(() => calendarMonthGrid(cursor, today), [cursor, today])
 
   const load = useCallback(async (): Promise<void> => {
@@ -242,6 +254,20 @@ export function CalendarView({
     return () => { loadSequence.current += 1 }
   }, [load, refreshKey])
 
+  useEffect(() => {
+    if (recentTaskId === null) return
+    const frame = window.requestAnimationFrame(() => {
+      gridRef.current
+        ?.querySelector<HTMLElement>(`[data-task-id="${recentTaskId}"]`)
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    })
+    const timer = window.setTimeout(() => setRecentTaskId(null), 2400)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [recentTaskId, tasks])
+
   const tasksByDay = useMemo(() => {
     const grouped = new Map<string, BoardTask[]>()
     tasks.forEach((task) => {
@@ -262,17 +288,26 @@ export function CalendarView({
     setSelectedKey(key)
     setEditingId(null)
     setAdding(false)
+    setSaveNotice(null)
   }
 
-  const refreshAfterMutation = async (): Promise<void> => {
-    await load()
-    await onTasksChanged?.()
+  const revealDate = (dateKey: string): void => {
+    const date = localDateFromKey(dateKey)
+    setCursor(new Date(date.getFullYear(), date.getMonth(), 1))
+    setSelectedKey(dateKey)
+  }
+
+  const beginAdd = (dateKey: string): void => {
+    revealDate(dateKey)
+    setEditingId(null)
+    setAdding(true)
+    setSaveNotice(null)
   }
 
   const createTask = async (draft: CalendarDraft): Promise<void> => {
     setMutating(true)
     try {
-      await invoke('board:createTask', {
+      const created = await invoke('board:createTask', {
         courseId: draft.courseId,
         title: draft.title,
         status: 'todo',
@@ -280,9 +315,12 @@ export function CalendarView({
         dueAt: draft.dueAt,
         allDay: draft.allDay
       })
-      setSelectedKey(draft.dateKey)
+      setTasks((current) => [...current.filter((task) => task.id !== created.id), created])
+      revealDate(draft.dateKey)
+      setRecentTaskId(created.id)
+      setSaveNotice(`${fullDateTitle(draft.dateKey)}에 “${created.title}” 일정을 추가했어요.`)
       setAdding(false)
-      await refreshAfterMutation()
+      await onTasksChanged?.()
     } finally {
       setMutating(false)
     }
@@ -292,7 +330,7 @@ export function CalendarView({
   const updateTask = async (task: BoardTask, draft: CalendarDraft): Promise<void> => {
     setMutating(true)
     try {
-      await invoke('board:updateTask', {
+      const updated = await invoke('board:updateTask', {
         id: task.id,
         title: draft.title,
         kind: draft.kind,
@@ -300,9 +338,12 @@ export function CalendarView({
         allDay: draft.allDay,
         ...(draft.courseId === task.courseId ? {} : { courseId: draft.courseId })
       })
-      setSelectedKey(draft.dateKey)
+      setTasks((current) => current.map((entry) => entry.id === updated.id ? updated : entry))
+      revealDate(draft.dateKey)
+      setRecentTaskId(updated.id)
+      setSaveNotice(`${fullDateTitle(draft.dateKey)}에서 변경한 일정을 확인하세요.`)
       setEditingId(null)
-      await refreshAfterMutation()
+      await onTasksChanged?.()
     } finally {
       setMutating(false)
     }
@@ -313,8 +354,10 @@ export function CalendarView({
     setMutating(true)
     try {
       await invoke('board:deleteTask', { id: task.id })
+      setTasks((current) => current.filter((entry) => entry.id !== task.id))
       setEditingId(null)
-      await refreshAfterMutation()
+      setSaveNotice('일정을 삭제했어요.')
+      await onTasksChanged?.()
     } finally {
       setMutating(false)
     }
@@ -354,23 +397,47 @@ export function CalendarView({
             <button type="button" aria-label="다시 시도" onClick={() => void load()}><Icon name="refresh" /></button>
           </div>
         )}
+        {!loading && error === null && tasks.length === 0 && (
+          <div className="calendar-empty-state">
+            <div>
+              <strong>과제 마감, 시험 일정, 할 일을 여기서 관리해요</strong>
+              <p>날짜를 누르면 할 일 · 과제 · 시험 · 수업을 바로 추가할 수 있어요.</p>
+            </div>
+            <button
+              type="button"
+              className="board-button board-button--primary"
+              onClick={() => beginAdd(selectedKey)}
+            >
+              <Icon name="plus" /> 첫 일정 추가
+            </button>
+          </div>
+        )}
         <div className="calendar-weekdays" aria-hidden="true">
           {WEEKDAYS.map((weekday) => <span key={weekday}>{weekday}</span>)}
         </div>
-        <div className="calendar-grid">
+        <div ref={gridRef} className="calendar-grid">
           {grid.days.map((day) => {
             const dayTasks = tasksByDay.get(day.key) ?? []
+            const containsRecentTask = dayTasks.some((task) => task.id === recentTaskId)
             return (
               <section
                 key={day.key}
                 className="calendar-day"
+                data-date-key={day.key}
                 data-outside={!day.inMonth || undefined}
                 data-today={day.isToday || undefined}
                 data-selected={selectedKey === day.key || undefined}
+                data-recent={containsRecentTask || undefined}
               >
-                <button type="button" className="calendar-day__number" onClick={() => selectDay(day.key)}>
+                <button
+                  type="button"
+                  className="calendar-day__number"
+                  title={`${fullDateTitle(day.key)}에 일정 추가`}
+                  onClick={() => beginAdd(day.key)}
+                >
                   <time dateTime={day.key} aria-current={day.isToday ? 'date' : undefined}>{day.date.getDate()}</time>
-                  <span className="sr-only">{fullDateTitle(day.key)} 일정 보기</span>
+                  <Icon name="plus" />
+                  <span className="sr-only">{fullDateTitle(day.key)}에 일정 추가</span>
                 </button>
                 <div className="calendar-day__items">
                   {dayTasks.slice(0, 3).map((task) => {
@@ -380,9 +447,11 @@ export function CalendarView({
                         key={task.id}
                         type="button"
                         className="calendar-entry"
+                        data-task-id={task.id}
                         data-kind={task.kind}
                         data-overdue={taskIsOverdue(task) || undefined}
                         data-done={task.status === 'done' || undefined}
+                        data-recent={recentTaskId === task.id || undefined}
                         data-course-color={course === null ? undefined : normalizeCourseColor(course.color)}
                         title={`${KIND_LABELS[task.kind]} · ${task.title}`}
                         onClick={() => { setSelectedKey(day.key); setAdding(false); setEditingId(task.id) }}
@@ -390,6 +459,7 @@ export function CalendarView({
                         <span className="board-course-dot" aria-hidden="true" />
                         <span className="calendar-entry__kind">{KIND_LABELS[task.kind]}</span>
                         <span className="calendar-entry__title">{task.title}</span>
+                        {taskIsOverdue(task) && <span className="calendar-entry__overdue">지남</span>}
                         {timeLabel(task) !== null && <time>{timeLabel(task)}</time>}
                       </button>
                     )
@@ -413,11 +483,15 @@ export function CalendarView({
             <h3>{fullDateTitle(selectedKey)}</h3>
           </div>
           {!adding && editingTask === null && (
-            <button type="button" className="board-button board-button--primary" onClick={() => setAdding(true)}>
+            <button type="button" className="board-button board-button--primary" onClick={() => beginAdd(selectedKey)}>
               <Icon name="plus" /> 일정 추가
             </button>
           )}
         </header>
+
+        {saveNotice !== null && (
+          <p className="calendar-agenda__notice" role="status">{saveNotice}</p>
+        )}
 
         {adding ? (
           <CalendarTaskForm
@@ -445,7 +519,14 @@ export function CalendarView({
         ) : selectedTasks.length === 0 ? (
           <div className="calendar-agenda__empty">
             <strong>등록된 일정이 없어요</strong>
-            <p>이 날짜에 과제, 시험 또는 수업을 추가할 수 있어요.</p>
+            <p>할 일 · 과제 · 시험 · 수업 중 하나를 추가해보세요.</p>
+            <button
+              type="button"
+              className="board-button board-button--primary"
+              onClick={() => beginAdd(selectedKey)}
+            >
+              <Icon name="plus" /> 이 날짜에 추가
+            </button>
           </div>
         ) : (
           <ul className="calendar-agenda__list">
@@ -456,15 +537,21 @@ export function CalendarView({
                   <button
                     type="button"
                     className="calendar-agenda__item"
+                    data-task-id={task.id}
                     data-kind={task.kind}
                     data-overdue={taskIsOverdue(task) || undefined}
+                    data-recent={recentTaskId === task.id || undefined}
                     data-course-color={course === null ? undefined : normalizeCourseColor(course.color)}
                     onClick={() => setEditingId(task.id)}
                   >
                     <span className="board-course-dot" aria-hidden="true" />
                     <span>
                       <strong>{task.title}</strong>
-                      <small>{KIND_LABELS[task.kind]} · {course?.name ?? '전체'}{timeLabel(task) === null ? '' : ` · ${timeLabel(task)}`}</small>
+                      <small>
+                        {KIND_LABELS[task.kind]} · {course?.name ?? '전체'}
+                        {timeLabel(task) === null ? '' : ` · ${timeLabel(task)}`}
+                        {taskIsOverdue(task) ? ' · 마감 지남' : ''}
+                      </small>
                     </span>
                     <Icon name="chevronRight" />
                   </button>

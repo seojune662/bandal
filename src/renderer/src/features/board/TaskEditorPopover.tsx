@@ -1,13 +1,28 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
-import type { BoardTask } from '../../../../shared/types/board'
+import type { BoardTask, TaskKind } from '../../../../shared/types/board'
 import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
 import { normalizeCourseColor } from '../courses/courseColors'
+import {
+  dueAtForLocalInput,
+  localDateKey,
+  localTimeInput
+} from '../calendar/calendarDate'
+import './boardForms.css'
+
+const KIND_LABELS: Record<TaskKind, string> = {
+  task: '할 일',
+  assignment: '과제',
+  exam: '시험',
+  class: '수업'
+}
 
 export interface TaskEditorDraft {
   title: string
   notes: string
+  kind: TaskKind
   dueAt: string | null
+  allDay: boolean
   courseId: string | null
 }
 
@@ -18,20 +33,6 @@ interface TaskEditorPopoverProps {
   onClose: () => void
   onSave: (draft: TaskEditorDraft) => Promise<void>
   onDelete: () => Promise<void>
-}
-
-function toDateTimeLocal(value: string | null): string {
-  if (value === null) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 16)
-}
-
-function toIso(value: string): string | null {
-  if (value.length === 0) return null
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
 
 export function TaskEditorPopover({
@@ -45,7 +46,12 @@ export function TaskEditorPopover({
   const popoverRef = useRef<HTMLDivElement>(null)
   const [title, setTitle] = useState(task.title)
   const [notes, setNotes] = useState(task.notes)
-  const [dueAt, setDueAt] = useState(() => toDateTimeLocal(task.dueAt))
+  const [kind, setKind] = useState<TaskKind>(task.kind)
+  const [dueDate, setDueDate] = useState(() =>
+    task.dueAt === null ? '' : localDateKey(task.dueAt)
+  )
+  const [dueTime, setDueTime] = useState(() => localTimeInput(task.dueAt))
+  const [hasTime, setHasTime] = useState(task.dueAt !== null && !task.allDay)
   const [courseId, setCourseId] = useState(task.courseId ?? '')
   const [isSaving, setIsSaving] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -83,7 +89,11 @@ export function TaskEditorPopover({
       await onSave({
         title: normalizedTitle,
         notes,
-        dueAt: toIso(dueAt),
+        kind,
+        dueAt: dueDate.length === 0
+          ? null
+          : dueAtForLocalInput(dueDate, dueTime, !hasTime),
+        allDay: dueDate.length > 0 && !hasTime,
         courseId: courseId.length === 0 ? null : courseId
       })
       onClose()
@@ -149,6 +159,24 @@ export function TaskEditorPopover({
           />
         </label>
 
+        <fieldset className="board-kind-picker">
+          <legend>종류</legend>
+          <div>
+            {Object.entries(KIND_LABELS).map(([value, label]) => (
+              <label key={value}>
+                <input
+                  type="radio"
+                  name={`board-editor-kind-${task.id}`}
+                  value={value}
+                  checked={kind === value}
+                  onChange={() => setKind(value as TaskKind)}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
         <label className="board-field" htmlFor="board-task-notes">
           <span>메모</span>
           <textarea
@@ -160,22 +188,41 @@ export function TaskEditorPopover({
           />
         </label>
 
-        <label className="board-field" htmlFor="board-task-due-at">
-          <span>마감일</span>
-          <div className="board-field__with-action">
+        <div className="board-editor__deadline">
+          <label className="board-field" htmlFor="board-task-due-date">
+            <span>마감일 <small>날짜만 고르면 하루 종일</small></span>
             <input
-              id="board-task-due-at"
-              type="datetime-local"
-              value={dueAt}
-              onChange={(event) => setDueAt(event.target.value)}
+              id="board-task-due-date"
+              type="date"
+              value={dueDate}
+              onChange={(event) => {
+                setDueDate(event.target.value)
+                if (event.target.value.length === 0) setHasTime(false)
+              }}
             />
-            {dueAt.length > 0 && (
-              <button type="button" onClick={() => setDueAt('')}>
-                지우기
-              </button>
-            )}
-          </div>
-        </label>
+          </label>
+          <label className="board-editor__time-toggle">
+            <input
+              type="checkbox"
+              checked={hasTime}
+              disabled={dueDate.length === 0}
+              onChange={(event) => setHasTime(event.target.checked)}
+            />
+            시간 지정
+          </label>
+          {hasTime && dueDate.length > 0 && (
+            <label className="board-field" htmlFor="board-task-due-time">
+              <span>마감 시각</span>
+              <input
+                id="board-task-due-time"
+                type="time"
+                value={dueTime}
+                required
+                onChange={(event) => setDueTime(event.target.value)}
+              />
+            </label>
+          )}
+        </div>
 
         <label className="board-field" htmlFor="board-task-course">
           <span>과목</span>

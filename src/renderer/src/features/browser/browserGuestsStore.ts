@@ -15,6 +15,7 @@
  */
 
 import { create } from 'zustand'
+import type { SavedLoginSummary } from '../../../../shared/types/credentials'
 import { getBrowserAnchorRect } from '../workspace/panels/browserAnchor'
 import { MAX_LIVE_GUESTS, pickEvictions, touchOrder } from './guestLru'
 
@@ -33,14 +34,24 @@ export interface BrowserNavState {
   canGoForward: boolean
 }
 
+export interface BrowserLoginState {
+  origin: string | null
+  hasLoginForm: boolean
+  savedLogin: SavedLoginSummary | null
+  pending: boolean
+  message: 'saved' | 'filled' | 'needs-input' | 'failed' | null
+}
+
 interface BrowserGuestsState {
   /** Live guests in LRU order (oldest first). */
   liveGuests: LiveGuest[]
   nav: Record<string, BrowserNavState>
+  login: Record<string, BrowserLoginState>
   ensureGuest: (tabId: string, initialUrl: string) => void
   touchGuest: (tabId: string) => void
   removeGuest: (tabId: string) => void
   updateNav: (tabId: string, patch: Partial<BrowserNavState>) => void
+  updateLogin: (tabId: string, patch: Partial<BrowserLoginState>) => void
 }
 
 export function initialNavState(url: string): BrowserNavState {
@@ -54,13 +65,23 @@ export function initialNavState(url: string): BrowserNavState {
   }
 }
 
+export function initialLoginState(): BrowserLoginState {
+  return {
+    origin: null,
+    hasLoginForm: false,
+    savedLogin: null,
+    pending: false,
+    message: null
+  }
+}
+
 /** Last committed URL per tab — survives eviction/destruction for restore. */
 const lastKnownUrls = new Map<string, string>()
 
-function withoutKeys(
-  nav: Record<string, BrowserNavState>,
+function withoutKeys<T>(
+  nav: Record<string, T>,
   keys: readonly string[]
-): Record<string, BrowserNavState> {
+): Record<string, T> {
   if (keys.length === 0) return nav
   const next = { ...nav }
   for (const key of keys) delete next[key]
@@ -70,9 +91,10 @@ function withoutKeys(
 export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
   liveGuests: [],
   nav: {},
+  login: {},
 
   ensureGuest: (tabId, initialUrl) => {
-    const { liveGuests, nav } = get()
+    const { liveGuests, nav, login } = get()
     if (liveGuests.some((guest) => guest.tabId === tabId)) {
       get().touchGuest(tabId)
       return
@@ -90,6 +112,10 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
       nav: {
         ...withoutKeys(nav, evicted),
         [tabId]: initialNavState(src)
+      },
+      login: {
+        ...withoutKeys(login, evicted),
+        [tabId]: initialLoginState()
       }
     })
   },
@@ -110,11 +136,12 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
   },
 
   removeGuest: (tabId) => {
-    const { liveGuests, nav } = get()
+    const { liveGuests, nav, login } = get()
     if (!liveGuests.some((guest) => guest.tabId === tabId)) return
     set({
       liveGuests: liveGuests.filter((guest) => guest.tabId !== tabId),
-      nav: withoutKeys(nav, [tabId])
+      nav: withoutKeys(nav, [tabId]),
+      login: withoutKeys(login, [tabId])
     })
   },
 
@@ -126,11 +153,18 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
       lastKnownUrls.set(tabId, patch.url)
     }
     set({ nav: { ...nav, [tabId]: { ...current, ...patch } } })
+  },
+
+  updateLogin: (tabId, patch) => {
+    const { login } = get()
+    const current = login[tabId]
+    if (current === undefined) return
+    set({ login: { ...login, [tabId]: { ...current, ...patch } } })
   }
 }))
 
 /** Test-only: reset the store and the session URL-restore map. */
 export function resetBrowserGuestsForTests(): void {
   lastKnownUrls.clear()
-  useBrowserGuests.setState({ liveGuests: [], nav: {} })
+  useBrowserGuests.setState({ liveGuests: [], nav: {}, login: {} })
 }

@@ -19,19 +19,22 @@ import { normalizeCourseColor } from '../courses/courseColors'
 import { CalendarView } from '../calendar/CalendarView'
 import {
   BOARD_STATUSES,
+  dueDayLabel,
   dueState,
   filterTasks,
   planTaskMove,
   sortTasks
 } from './boardLogic'
 import { TaskEditorPopover, type TaskEditorDraft } from './TaskEditorPopover'
+import { BoardQuickAdd, type BoardQuickAddDraft } from './BoardQuickAdd'
+import { dueAtForLocalInput } from '../calendar/calendarDate'
 import './board.css'
 import './boardPopovers.css'
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
-  todo: 'Todo',
-  'in-progress': 'In progress',
-  done: 'Done'
+  todo: '할 일',
+  'in-progress': '진행 중',
+  done: '완료'
 }
 
 const STATUS_EMPTY_LABELS: Record<TaskStatus, string> = {
@@ -96,6 +99,7 @@ interface TaskCardProps {
   course: Course | null
   now: number
   dragging: boolean
+  recentlyCreated: boolean
   disabled: boolean
   onOpen: (rect: DOMRect) => void
   onContextMenu: (x: number, y: number) => void
@@ -108,13 +112,15 @@ function TaskCard({
   course,
   now,
   dragging,
+  recentlyCreated,
   disabled,
   onOpen,
   onContextMenu,
   onDragStart,
   onDragEnd
 }: TaskCardProps): JSX.Element {
-  const deadlineState = dueState(task.dueAt, now)
+  const deadlineState = dueState(task.dueAt, now, task.allDay)
+  const deadlineLabel = dueDayLabel(task.dueAt, now)
   const open = (element: HTMLElement): void => {
     if (!dragging) onOpen(element.getBoundingClientRect())
   }
@@ -135,7 +141,10 @@ function TaskCard({
     <article
       className="board-card"
       data-status={task.status}
+      data-task-id={task.id}
+      data-due-state={task.status === 'done' ? undefined : deadlineState}
       data-dragging={dragging}
+      data-recent={recentlyCreated || undefined}
       tabIndex={0}
       role="button"
       aria-label={`${task.title} 상세 편집`}
@@ -150,7 +159,9 @@ function TaskCard({
       onDragEnd={onDragEnd}
     >
       <span className="board-card__grip" aria-hidden="true">
-        ⋮⋮
+        <span />
+        <span />
+        <span />
       </span>
       <h4 className="board-card__title">{task.title}</h4>
       <div className="board-card__meta">
@@ -165,13 +176,16 @@ function TaskCard({
           <span>{course?.name ?? (task.courseId === null ? '전체' : '알 수 없음')}</span>
         </span>
         {task.dueAt !== null && (
-          <span className="board-due" data-due-state={deadlineState}>
-            <span aria-hidden="true">◷</span>
-            {formatDueDate(task.dueAt)}
+          <span
+            className="board-due"
+            data-due-state={task.status === 'done' ? 'later' : deadlineState}
+          >
+            {deadlineLabel !== null && <strong>{deadlineLabel}</strong>}
+            <span>{formatDueDate(task.dueAt)}</span>
             <span className="sr-only">
-              {deadlineState === 'overdue'
+              {task.status !== 'done' && deadlineState === 'overdue'
                 ? '마감 지남'
-                : deadlineState === 'upcoming'
+                : task.status !== 'done' && deadlineState === 'upcoming'
                   ? '24시간 이내 마감'
                   : ''}
             </span>
@@ -179,77 +193,6 @@ function TaskCard({
         )}
       </div>
     </article>
-  )
-}
-
-interface InlineCreatorProps {
-  status: TaskStatus
-  active: boolean
-  disabled: boolean
-  onOpen: () => void
-  onCancel: () => void
-  onCreate: (title: string) => Promise<void>
-}
-
-function InlineCreator({
-  status,
-  active,
-  disabled,
-  onOpen,
-  onCancel,
-  onCreate
-}: InlineCreatorProps): JSX.Element {
-  const [title, setTitle] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (active) inputRef.current?.focus()
-    if (!active) setTitle('')
-  }, [active])
-
-  if (!active) {
-    return (
-      <button
-        type="button"
-        className="board-column__add"
-        aria-label={`${STATUS_LABELS[status]}에 태스크 추가`}
-        disabled={disabled}
-        onClick={onOpen}
-      >
-        <Icon name="plus" />
-      </button>
-    )
-  }
-
-  const submit = async (): Promise<void> => {
-    if (title.trim().length === 0) return
-    await onCreate(title.trim())
-    setTitle('')
-  }
-
-  return (
-    <div className="board-quick-add">
-      <input
-        ref={inputRef}
-        aria-label={`${STATUS_LABELS[status]} 새 태스크 제목`}
-        placeholder="태스크 제목"
-        value={title}
-        maxLength={200}
-        disabled={disabled}
-        onChange={(event) => setTitle(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault()
-            void submit().catch(() => undefined)
-          }
-          if (event.key === 'Escape') onCancel()
-        }}
-        onBlur={() => {
-          if (title.trim().length === 0) onCancel()
-        }}
-      />
-      <span>Enter로 추가 · Esc로 취소</span>
-    </div>
   )
 }
 
@@ -268,7 +211,9 @@ function BoardSurface(): JSX.Element {
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [editor, setEditor] = useState<EditorState | null>(null)
+  const [recentTaskId, setRecentTaskId] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const boardRef = useRef<HTMLElement>(null)
   const loadSequence = useRef(0)
   const contextMenuRef = useRef<HTMLDivElement>(null)
 
@@ -297,6 +242,20 @@ function BoardSurface(): JSX.Element {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (recentTaskId === null) return
+    const frame = window.requestAnimationFrame(() => {
+      boardRef.current
+        ?.querySelector<HTMLElement>(`[data-task-id="${recentTaskId}"]`)
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    })
+    const timer = window.setTimeout(() => setRecentTaskId(null), 2400)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [recentTaskId])
 
   useEffect(() => {
     if (contextMenu === null) return
@@ -337,16 +296,22 @@ function BoardSurface(): JSX.Element {
     return grouped
   }, [visibleTasks])
 
-  const createTask = async (status: TaskStatus, title: string): Promise<void> => {
+  const createTask = async (status: TaskStatus, draft: BoardQuickAddDraft): Promise<void> => {
     setIsMutating(true)
     setError(null)
     try {
       const created = await invoke('board:createTask', {
         courseId: courseFilter === undefined ? null : courseFilter,
-        title,
-        status
+        title: draft.title,
+        status,
+        kind: draft.kind,
+        dueAt: draft.dueDate.length === 0
+          ? null
+          : dueAtForLocalInput(draft.dueDate, '', true),
+        allDay: draft.dueDate.length > 0
       })
       setTasks((current) => [...current, created])
+      setRecentTaskId(created.id)
       setCreatingStatus(null)
     } catch (createError) {
       setError(errorMessage(createError))
@@ -413,7 +378,9 @@ function BoardSurface(): JSX.Element {
         id: task.id,
         title: draft.title,
         notes: draft.notes,
+        kind: draft.kind,
         dueAt: draft.dueAt,
+        allDay: draft.allDay,
         // Only send courseId on an actual move — same-course saves keep the
         // task's position untouched.
         ...(draft.courseId === task.courseId ? {} : { courseId: draft.courseId })
@@ -447,11 +414,32 @@ function BoardSurface(): JSX.Element {
     editor === null ? null : tasks.find((task) => task.id === editor.taskId) ?? null
 
   return (
-    <section className="board" aria-label="학업 보드" aria-busy={isLoading || isMutating}>
+    <section
+      ref={boardRef}
+      className="board"
+      aria-label="학업 보드"
+      aria-busy={isLoading || isMutating}
+    >
       <header className="board-toolbar">
         <div className="board-toolbar__title">
           <p className="board-eyebrow">{view === 'board' ? 'STUDY BOARD' : 'ACADEMIC CALENDAR'}</p>
           <h2>{view === 'board' ? '과제와 시험' : '달력과 마감'}</h2>
+        </div>
+        <div className="board-view-switch" role="group" aria-label="학업 보드 화면">
+          <button
+            type="button"
+            aria-pressed={view === 'calendar'}
+            onClick={() => setView('calendar')}
+          >
+            달력
+          </button>
+          <button
+            type="button"
+            aria-pressed={view === 'board'}
+            onClick={() => setView('board')}
+          >
+            목록
+          </button>
         </div>
         <div className="board-toolbar__filters" aria-label="과목 필터">
           <button
@@ -486,14 +474,6 @@ function BoardSurface(): JSX.Element {
           ))}
         </div>
         <div className="board-toolbar__actions">
-          <div className="board-view-switch" role="group" aria-label="보드 보기 방식">
-            <button type="button" aria-pressed={view === 'board'} onClick={() => setView('board')}>
-              목록
-            </button>
-            <button type="button" aria-pressed={view === 'calendar'} onClick={() => setView('calendar')}>
-              달력
-            </button>
-          </div>
           {view === 'board' && <label className="board-toggle">
             <input
               type="checkbox"
@@ -538,9 +518,16 @@ function BoardSurface(): JSX.Element {
         <div className="board-zero-state">
           <span className="board-zero-state__mark" aria-hidden="true" />
           <div>
-            <strong>다가오는 일정을 한눈에 정리해보세요</strong>
-            <p>각 컬럼의 + 버튼으로 첫 과제나 시험을 추가할 수 있어요.</p>
+            <strong>과제 마감, 시험 일정, 할 일을 여기서 관리해요</strong>
+            <p>상태별로 옮기며 진행 상황을 확인할 수 있어요.</p>
           </div>
+          <button
+            type="button"
+            className="board-button board-button--primary"
+            onClick={() => setCreatingStatus('todo')}
+          >
+            <Icon name="plus" /> 첫 일정 추가
+          </button>
         </div>
       )}
 
@@ -573,14 +560,6 @@ function BoardSurface(): JSX.Element {
                     {columnTasks.length}
                   </span>
                 </div>
-                <InlineCreator
-                  status={status}
-                  active={creatingStatus === status}
-                  disabled={isMutating}
-                  onOpen={() => setCreatingStatus(status)}
-                  onCancel={() => setCreatingStatus(null)}
-                  onCreate={(title) => createTask(status, title)}
-                />
               </header>
 
               {isLoading && tasks.length === 0 ? (
@@ -592,7 +571,7 @@ function BoardSurface(): JSX.Element {
                 <div className="board-column__cards">
                   {columnTasks.length === 0 && (
                     <div className="board-column__empty">
-                      <span aria-hidden="true">—</span>
+                      <span aria-hidden="true" />
                       <p>{STATUS_EMPTY_LABELS[status]}</p>
                     </div>
                   )}
@@ -638,6 +617,7 @@ function BoardSurface(): JSX.Element {
                           course={courseForTask(task, courses)}
                           now={now}
                           dragging={draggedTaskId === task.id}
+                          recentlyCreated={recentTaskId === task.id}
                           disabled={isMutating}
                           onOpen={(rect) => {
                             setContextMenu(null)
@@ -668,6 +648,14 @@ function BoardSurface(): JSX.Element {
                   />
                 </div>
               )}
+              <BoardQuickAdd
+                status={status}
+                active={creatingStatus === status}
+                disabled={isMutating}
+                onOpen={() => setCreatingStatus(status)}
+                onCancel={() => setCreatingStatus(null)}
+                onCreate={(draft) => createTask(status, draft)}
+              />
             </section>
           )
         })}

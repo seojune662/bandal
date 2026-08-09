@@ -15,6 +15,8 @@ export interface WebviewTag extends HTMLElement {
   stop(): void
   canGoBack(): boolean
   canGoForward(): boolean
+  getWebContentsId(): number
+  executeJavaScript(code: string, userGesture?: boolean): Promise<unknown>
 }
 
 export interface DidNavigateEvent extends Event {

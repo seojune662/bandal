@@ -20,6 +20,7 @@ import {
   type BrowserNavState
 } from './browserGuestsStore'
 import { guestActions } from './guestActions'
+import { fillLoginForTab, saveLoginForTab } from './loginBridge'
 import { resolveAddressInput } from './urlInput'
 import './browser.css'
 
@@ -48,6 +49,7 @@ function BrowserToolbar({ tabId, nav }: ToolbarProps): JSX.Element {
   const [draft, setDraft] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [isFaviconBroken, setFaviconBroken] = useState(false)
+  const login = useBrowserGuests((state) => state.login[tabId])
 
   useEffect(() => {
     setFaviconBroken(false)
@@ -135,6 +137,42 @@ function BrowserToolbar({ tabId, nav }: ToolbarProps): JSX.Element {
           }}
         />
       </form>
+
+      {login?.hasLoginForm === true && login.origin !== null && (
+        <div className="browser-login-action">
+          <button
+            type="button"
+            className="browser-login-button"
+            disabled={login.pending}
+            title={
+              login.savedLogin === null
+                ? '직접 입력한 아이디와 비밀번호를 안전하게 저장합니다.'
+                : `${login.savedLogin.username} 계정으로 채웁니다.`
+            }
+            onClick={() => {
+              if (login.savedLogin === null) void saveLoginForTab(tabId)
+              else void fillLoginForTab(tabId)
+            }}
+          >
+            {login.pending
+              ? '처리 중…'
+              : login.savedLogin === null
+                ? '이 사이트 로그인 저장'
+                : '로그인 채우기'}
+          </button>
+          {login.message !== null && (
+            <span className="browser-login-message" role="status">
+              {login.message === 'saved'
+                ? '저장됨'
+                : login.message === 'filled'
+                  ? '채움'
+                  : login.message === 'needs-input'
+                    ? '비밀번호를 직접 입력한 뒤 저장하세요.'
+                    : '처리하지 못했어요.'}
+            </span>
+          )}
+        </div>
+      )}
 
       <div
         className="browser-progress"
