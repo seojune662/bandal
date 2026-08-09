@@ -265,6 +265,7 @@
 /* -- watermark (empty workspace) ----------------------------------------- */
 
 .workspace-watermark {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -274,6 +275,22 @@
   color: var(--text-muted);
   text-align: center;
   background: var(--bg-app);
+}
+
+/*
+ * With no tabs open there is no tab bar to hold the "reopen sidebar" button,
+ * so it sits here instead — pinned to the top-left, out of the centred column.
+ */
+.workspace-watermark > .workspace-chrome {
+  position: absolute;
+  inset: 0 auto auto 0;
+  height: var(--chrome-height);
+}
+
+.workspace-watermark > .workspace-header-actions {
+  position: absolute;
+  inset: 0 0 auto auto;
+  height: var(--chrome-height);
 }
 
 .workspace-watermark__moon {

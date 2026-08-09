@@ -154,6 +154,8 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
   if (course === null) {
     return (
       <div className="workspace-watermark">
+        <ExpandLeftRail />
+        <ToggleRightRail />
         <BandalMark size={56} className="workspace-watermark__moon" />
         <p className="eyebrow">STUDY WORKSPACE</p>
         <h1>오늘의 공부를 시작해볼까요?</h1>
@@ -171,6 +173,8 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
       data-drop-active={isDropActive || undefined}
       {...dropProps}
     >
+      <ExpandLeftRail />
+      <ToggleRightRail />
       <BandalMark size={56} className="workspace-watermark__moon" />
       <p className="eyebrow">CURRENT COURSE</p>
       <h1>{course.name}</h1>
@@ -193,7 +197,14 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
   )
 }
 
-function ChromeLeft(_props: IDockviewHeaderActionsProps): JSX.Element | null {
+/**
+ * The way back to a collapsed course sidebar. It has to appear everywhere the
+ * sidebar can be collapsed from, which is why it is not simply a tab-bar
+ * action: dockview renders the tab bar only when a group exists, so with no
+ * tabs open there was no button anywhere and the sidebar could only be
+ * recovered by restarting the app.
+ */
+function ExpandLeftRail(): JSX.Element | null {
   const leftRailOpen = useUiStore((state) => state.leftRailOpen)
   const toggleLeftRail = useUiStore((state) => state.toggleLeftRail)
 
@@ -201,6 +212,7 @@ function ChromeLeft(_props: IDockviewHeaderActionsProps): JSX.Element | null {
 
   return (
     <div className="workspace-chrome">
+      {/* Keeps the button clear of the macOS window controls. */}
       <span className="workspace-chrome__traffic" aria-hidden="true" />
       <button
         type="button"
@@ -214,6 +226,10 @@ function ChromeLeft(_props: IDockviewHeaderActionsProps): JSX.Element | null {
       </button>
     </div>
   )
+}
+
+function ChromeLeft(_props: IDockviewHeaderActionsProps): JSX.Element | null {
+  return <ExpandLeftRail />
 }
 
 function AddTabAction(_props: IDockviewHeaderActionsProps): JSX.Element {
@@ -235,7 +251,8 @@ function AddTabAction(_props: IDockviewHeaderActionsProps): JSX.Element {
   )
 }
 
-function HeaderActions(_props: IDockviewHeaderActionsProps): JSX.Element {
+/** Same reasoning as ExpandLeftRail: needed outside the tab bar too. */
+function ToggleRightRail(): JSX.Element {
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
   const toggleRightRail = useUiStore((state) => state.toggleRightRail)
 
@@ -253,6 +270,10 @@ function HeaderActions(_props: IDockviewHeaderActionsProps): JSX.Element {
       </button>
     </div>
   )
+}
+
+function HeaderActions(_props: IDockviewHeaderActionsProps): JSX.Element {
+  return <ToggleRightRail />
 }
 
 export function WorkspaceHost(): JSX.Element {
