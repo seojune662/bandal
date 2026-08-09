@@ -10,6 +10,8 @@ import type {
   DrawingShape
 } from '../../../../shared/types/drawing'
 import { foreignObjectContentStyle } from './foreignObjectScale'
+import type { ResizeHandle } from './inkGeometry'
+import { ResizeHandles } from './ResizeHandles'
 
 export type RenderClip = (source: DrawingClipSource) => Promise<string | null>
 
@@ -25,7 +27,8 @@ interface ClipShapeProps {
   onBeginManipulation: (
     event: ReactPointerEvent<Element>,
     shape: DrawingShape,
-    kind: 'move' | 'resize'
+    kind: 'move' | 'resize',
+    handle?: ResizeHandle
   ) => void
 }
 
@@ -141,13 +144,12 @@ export function ClipShape({
         </div>
       </foreignObject>
       {selected && (
-        <rect
+        <ResizeHandles
           className="ink-layer__clip-resize"
-          x={box.x + box.width - 0.008}
-          y={box.y + box.height - 0.008 / aspect}
-          width={0.016}
-          height={0.016 / aspect}
-          onPointerDown={(event) => onBeginManipulation(event, shape, 'resize')}
+          box={box}
+          aspect={aspect}
+          onPointerDown={(event, handle) =>
+            onBeginManipulation(event, shape, 'resize', handle)}
         />
       )}
     </g>

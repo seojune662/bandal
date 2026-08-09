@@ -54,7 +54,7 @@ import {
   createWhiteboardRepo,
   createWhiteboardService
 } from '../features/whiteboard'
-import { createCanvasRepo } from '../features/canvas'
+import { createBoardPdfExporter, createCanvasRepo } from '../features/canvas'
 import { createSearchIndex } from '../features/search'
 import { createInsights } from '../features/insights'
 import { createLinkService } from '../features/link'
@@ -564,6 +564,24 @@ export function registerHandlers(): IpcRouter {
     return OK
   })
   handle('canvas:open', (req) => canvasRepo.open(req.boardId))
+  handle('canvas:setBackground', (req) => canvasRepo.setBackground(req))
+  const boardPdfExporter = createBoardPdfExporter({
+    openBoard: (boardId) => canvasRepo.open(boardId),
+    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
+  })
+  handle('canvas:exportPdf', async (req) => {
+    const result = await boardPdfExporter.exportBoard(req.boardId)
+    const board = canvasRepo.open(req.boardId).board
+    // The export really does drop a new PDF into the course folder, so this is
+    // a material appearing — no new activity kind needed.
+    note(
+      board.courseId,
+      'material-added',
+      `화이트보드를 PDF로 내보냈습니다: ${board.title}`,
+      result.relPath
+    )
+    return result
+  })
   handle('canvas:putShape', (req) => canvasRepo.putShape(req))
   handle('canvas:removeShapes', (req) => {
     canvasRepo.removeShapes(req)

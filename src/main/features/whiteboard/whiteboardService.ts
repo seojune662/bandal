@@ -592,18 +592,37 @@ export function createWhiteboardService(
       const confirmedBefore = new Set(deps.repo.confirmedShapeIds(boardId))
       const remoteIds = new Set(remoteShapes.map((shape) => shape.id))
       const removedIds = [...confirmedBefore].filter((id) => !remoteIds.has(id))
-      const shapes =
-        since === null
-          ? remoteShapes
-          : remoteShapes.filter(
-              (shape) =>
-                !confirmedBefore.has(shape.id) || shape.updatedAt > since
-            )
       deps.repo.applyRemote(remoteShapes)
       deps.repo.applyRemoteRemovals(removedIds)
       deps.repo.markBoardSynced(boardId, startedAt)
+
+      // Answer from the repo, not from the snapshot we just fetched. The repo
+      // holds local tombstones for erases the server has not accepted (or has
+      // refused), so the snapshot still lists those shapes as live. Returning
+      // it verbatim put them straight back on screen: the renderer merges
+      // additively and its own "removed" set is per-mount, so every reopen
+      // resurrected everything the student had erased.
+      const live = deps.repo.listShapes(boardId)
+      const liveIds = new Set(live.map((shape) => shape.id))
+      const shapes =
+        since === null
+          ? live
+          : live.filter(
+              (shape) =>
+                !confirmedBefore.has(shape.id) || shape.updatedAt > since
+            )
+      const goneIds = [
+        ...new Set([
+          ...removedIds,
+          // Erased here but still live for everyone else — the renderer must
+          // be told, or a merge would re-add them.
+          ...remoteShapes
+            .map((shape) => shape.id)
+            .filter((id) => !liveIds.has(id))
+        ])
+      ]
       provision.set(board.groupId, 'ready')
-      return { shapes, removedIds, syncedAt: startedAt }
+      return { shapes, removedIds: goneIds, syncedAt: startedAt }
     } catch (error) {
       if (
         error instanceof NotProvisionedError ||

@@ -97,13 +97,39 @@ export interface OpenWhiteboardResult {
  * A board that never leaves the machine. No account, no sync, works offline —
  * the student's own space for organising or sketching a mind map.
  */
+/** What the board is ruled with. `blank` is plain paper. */
+export type BoardBackground = 'grid' | 'dots' | 'lines' | 'blank'
+
+/** Paper colour. Dark is the original look; light suits printing and export. */
+export type BoardSurface = 'dark' | 'light'
+
+export const BOARD_BACKGROUNDS = [
+  'grid',
+  'dots',
+  'lines',
+  'blank'
+] as const satisfies readonly BoardBackground[]
+
+export const BOARD_SURFACES = [
+  'dark',
+  'light'
+] as const satisfies readonly BoardSurface[]
+
 export interface PersonalBoard {
   id: string
   courseId: string
   title: string
+  background: BoardBackground
+  surface: BoardSurface
   sortOrder: number
   createdAt: string
   updatedAt: string
+}
+
+export interface SetBoardBackgroundInput {
+  boardId: string
+  background?: BoardBackground
+  surface?: BoardSurface
 }
 
 export interface CreatePersonalBoardInput {

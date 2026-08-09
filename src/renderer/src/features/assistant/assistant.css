@@ -9,6 +9,8 @@
   --assistant-popup-width: calc(var(--dialog-width) + var(--space-8));
   --assistant-popup-height: calc(var(--dialog-width) + var(--space-8));
   --assistant-popup-min-height: calc(var(--control-height) * 8);
+  --assistant-popup-max-width: calc(100vw - var(--space-2) - var(--space-2));
+  --assistant-popup-max-height: calc(100vh - var(--space-2) - var(--space-2));
 
   position: fixed;
   inset: 0;
@@ -199,8 +201,13 @@
     var(--assistant-popup-height),
     calc(100vh - var(--space-5) - var(--space-5))
   );
-  min-width: min(var(--dialog-width), 100vw);
-  min-height: min(var(--assistant-popup-min-height), 100vh);
+  min-width: min(var(--dialog-width), var(--assistant-popup-max-width));
+  min-height: min(
+    var(--assistant-popup-min-height),
+    var(--assistant-popup-max-height)
+  );
+  max-width: var(--assistant-popup-max-width);
+  max-height: var(--assistant-popup-max-height);
   overflow: hidden;
   visibility: hidden;
   opacity: 0;
@@ -313,6 +320,18 @@
   color: var(--text-muted);
   cursor: nwse-resize;
   touch-action: none;
+  z-index: 1;
+}
+
+.assistant-popup__resize[data-corner='top-left'] {
+  top: 0;
+  right: auto;
+  bottom: auto;
+  left: 0;
+}
+
+.assistant-popup__resize[data-corner='top-left'] svg {
+  transform: rotate(180deg);
 }
 
 .assistant-popup__resize:hover,

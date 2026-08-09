@@ -129,4 +129,45 @@ describe('inkGeometry', () => {
     expect(resized.width).toBeCloseTo(0.5)
     expect(resized.height).toBeCloseTo(0.6)
   })
+
+  test.each([
+    ['nw', 0.25, 0.3, 0.35, 0.2],
+    ['ne', 0.2, 0.3, 0.45, 0.2],
+    ['sw', 0.25, 0.25, 0.35, 0.3],
+    ['se', 0.2, 0.25, 0.45, 0.3]
+  ] as const)(
+    'resizes from the %s handle while keeping its opposite corner fixed',
+    (handle, x, y, width, height) => {
+      const original = { x: 0.2, y: 0.25, width: 0.4, height: 0.25 }
+      const resized = resizeDrawingBox(original, 0.05, 0.05, true, handle)
+
+      expect(resized.x).toBeCloseTo(x)
+      expect(resized.y).toBeCloseTo(y)
+      expect(resized.width).toBeCloseTo(width)
+      expect(resized.height).toBeCloseTo(height)
+
+      const originalOppositeX = handle === 'nw' || handle === 'sw'
+        ? original.x + original.width
+        : original.x
+      const resizedOppositeX = handle === 'nw' || handle === 'sw'
+        ? resized.x + resized.width
+        : resized.x
+      const originalOppositeY = handle === 'nw' || handle === 'ne'
+        ? original.y + original.height
+        : original.y
+      const resizedOppositeY = handle === 'nw' || handle === 'ne'
+        ? resized.y + resized.height
+        : resized.y
+      expect(resizedOppositeX).toBeCloseTo(originalOppositeX)
+      expect(resizedOppositeY).toBeCloseTo(originalOppositeY)
+    }
+  )
+
+  test('keeps the old southeast resize behavior as the default', () => {
+    const original = { x: 0.2, y: 0.25, width: 0.4, height: 0.25 }
+
+    expect(resizeDrawingBox(original, 0.05, 0.05)).toEqual(
+      resizeDrawingBox(original, 0.05, 0.05, true, 'se')
+    )
+  })
 })

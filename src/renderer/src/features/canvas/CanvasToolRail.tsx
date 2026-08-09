@@ -1,5 +1,9 @@
 import { useEffect } from 'react'
 import type { DrawingColor } from '../../../../shared/types/drawing'
+import type {
+  BoardBackground,
+  BoardSurface
+} from '../../../../shared/types/whiteboard'
 import { useInkToolStore, type InkTool } from '../ink'
 import { CanvasToolIcon } from './CanvasToolIcon'
 
@@ -41,6 +45,13 @@ const COLOR_LABELS: Record<DrawingColor, string> = {
   violet: '보라'
 }
 
+const BACKGROUND_LABELS: Record<BoardBackground, string> = {
+  grid: '격자',
+  dots: '점',
+  lines: '줄',
+  blank: '없음'
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   return target.isContentEditable ||
@@ -51,16 +62,30 @@ export interface CanvasToolRailProps {
   canUndo: boolean
   canRedo: boolean
   enabled: boolean
+  background: BoardBackground
+  surface: BoardSurface
+  backgroundBusy: boolean
+  exportingPdf: boolean
   onUndo: () => void
   onRedo: () => void
+  onBackgroundChange: (background: BoardBackground) => void
+  onSurfaceToggle: () => void
+  onExportPdf: () => void
 }
 
 export function CanvasToolRail({
   canUndo,
   canRedo,
   enabled,
+  background,
+  surface,
+  backgroundBusy,
+  exportingPdf,
   onUndo,
-  onRedo
+  onRedo,
+  onBackgroundChange,
+  onSurfaceToggle,
+  onExportPdf
 }: CanvasToolRailProps): JSX.Element {
   const activeTool = useInkToolStore((state) => state.activeTool)
   const color = useInkToolStore((state) => state.color)
@@ -165,6 +190,45 @@ export function CanvasToolRail({
           onClick={onRedo}
         >
           <CanvasToolIcon name="redo" />
+        </button>
+      </div>
+
+      <div className="canvas-tools__group" role="group" aria-label="배경 설정">
+        <label className="canvas-tools__select-label">
+          <span>배경</span>
+          <select
+            value={background}
+            aria-label="배경 무늬"
+            disabled={!enabled || backgroundBusy}
+            onChange={(event) => {
+              onBackgroundChange(event.target.value as BoardBackground)
+            }}
+          >
+            {Object.entries(BACKGROUND_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="canvas-tools__text-button"
+          aria-label={`현재 ${surface === 'light' ? '밝은' : '어두운'} 바탕; 전환`}
+          title={surface === 'light' ? '어두운 바탕으로 전환' : '밝은 바탕으로 전환'}
+          disabled={!enabled || backgroundBusy}
+          onClick={onSurfaceToggle}
+        >
+          바탕: {surface === 'light' ? '밝게' : '어둡게'}
+        </button>
+      </div>
+
+      <div className="canvas-tools__group" role="group" aria-label="내보내기">
+        <button
+          type="button"
+          className="canvas-tools__text-button"
+          disabled={!enabled || backgroundBusy || exportingPdf}
+          onClick={onExportPdf}
+        >
+          {exportingPdf ? 'PDF 만드는 중…' : 'PDF로 내보내기'}
         </button>
       </div>
     </div>

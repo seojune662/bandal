@@ -23,17 +23,17 @@ import {
   normalizedBox,
   normalizedPoint,
   resizeDrawingBox,
+  type ResizeHandle,
   strokePath
 } from './inkGeometry'
 import type { InkTool, InkToolState } from './inkToolStore'
 import { ClipShape, type RenderClip } from './ClipShape'
 import { foreignObjectContentStyle } from './foreignObjectScale'
+import { ResizeHandles } from './ResizeHandles'
 import './ink.css'
 
 export interface InkLayerProps {
-  /** Height divided by width; restores physical proportions from 0..1 coordinates. */
   aspect: number
-  /** Pixel width used as the text box font-size basis. */
   baseWidthPx: number
   shapes: readonly DrawingShape[]
   tool: InkToolState
@@ -43,9 +43,7 @@ export interface InkLayerProps {
     patch: Partial<Pick<DrawingShape, 'data' | 'style'>>
   ) => void
   onRemove: (ids: string[]) => void
-  /** Disable to preserve coordinates beyond the normalized finite surface. */
   clampToBounds?: boolean
-  /** Keep a new text box local until it contains text. PDF keeps its existing flow. */
   deferTextCreation?: boolean
   ariaLabel: string
   className?: string
@@ -76,11 +74,19 @@ type Gesture =
       ids: Set<string>
     }
   | {
-      kind: 'move' | 'resize'
+      kind: 'move'
       pointerId: number
       shape: DrawingShape
       start: DrawingPoint
       box: DrawingBox
+    }
+  | {
+      kind: 'resize'
+      pointerId: number
+      shape: DrawingShape
+      start: DrawingPoint
+      box: DrawingBox
+      handle: ResizeHandle
     }
 
 interface PointerSample {
@@ -101,8 +107,6 @@ const TEXT_BOX_HEIGHT = 0.08
 const TEXT_BOX_MAX_X = 0.72
 const TEXT_BOX_MAX_Y = 0.9
 const TEXT_BASE_FONT_RATIO = 0.026
-const RESIZE_HANDLE_SIZE = 0.016
-
 function isFinitePositive(value: number): boolean {
   return Number.isFinite(value) && value > 0
 }
@@ -209,6 +213,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   const pendingTextBox = useRef<PendingTextBox | null>(null)
   const [gesture, setGestureState] = useState<Gesture | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [newTextBox, setNewTextBox] = useState<DrawingBox | null>(null)
   const [textDraft, setTextDraft] = useState('')
   const surfaceReady = isFinitePositive(aspect) &&
@@ -269,7 +274,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       if (original === undefined) return
       const box = current.kind === 'move'
         ? moveDrawingBox(original, dx, dy, clampToBounds)
-        : resizeDrawingBox(original, dx, dy, clampToBounds)
+        : resizeDrawingBox(original, dx, dy, clampToBounds, current.handle)
       setGesture({ ...current, box })
     }
   }, [clampToBounds, eraseAt, pointFromSample, setGesture])
@@ -289,6 +294,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   useEffect(() => {
     setGesture(null)
     setEditingId(null)
+    setSelectedId(null)
     setNewTextBox(null)
     pendingTextBox.current = null
   }, [activeTool, setGesture])
@@ -315,6 +321,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   }, [])
 
   const startTextBox = useCallback((point: DrawingPoint): void => {
+    setSelectedId(null)
     const box: DrawingBox = {
       x: clampToBounds ? Math.min(point.x, TEXT_BOX_MAX_X) : point.x,
       y: clampToBounds ? Math.min(point.y, TEXT_BOX_MAX_Y) : point.y,
@@ -359,7 +366,11 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   }, [color, onCreate, opacity, textDraft, width])
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<SVGSVGElement>): void => {
-    if (activeTool === 'select' || event.button !== 0) return
+    if (event.button !== 0) return
+    if (activeTool === 'select') {
+      if (event.target === event.currentTarget) setSelectedId(null)
+      return
+    }
     if (!surfaceReady || !hasMeasuredBounds(event.currentTarget)) return
     if (
       deferTextCreation && activeTool === 'text' &&
@@ -475,10 +486,6 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         Math.abs(completed.box.width - original.width) < 0.0005 &&
         Math.abs(completed.box.height - original.height) < 0.0005
       ) {
-        if (completed.kind === 'move' && completed.shape.kind === 'textbox') {
-          setEditingId(completed.shape.id)
-          setTextDraft(completed.shape.data.text ?? '')
-        }
         return
       }
       onUpdate(completed.shape.id, {
@@ -513,7 +520,8 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   const beginManipulation = useCallback((
     event: ReactPointerEvent<Element>,
     shape: DrawingShape,
-    kind: 'move' | 'resize'
+    kind: 'move' | 'resize',
+    handle: ResizeHandle = 'se'
   ): void => {
     const canManipulate =
       (shape.kind === 'textbox' && activeTool === 'text') ||
@@ -528,6 +536,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     }
     event.stopPropagation()
     event.preventDefault()
+    setSelectedId(shape.id)
     const svg = svgRef.current
     if (svg === null) return
     svg.setPointerCapture(event.pointerId)
@@ -538,13 +547,9 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       event.pressure,
       clampToBounds
     )
-    setGesture({
-      kind,
-      pointerId: event.pointerId,
-      shape,
-      start,
-      box: shape.data.box
-    })
+    setGesture(kind === 'resize'
+      ? { kind, pointerId: event.pointerId, shape, start, box: shape.data.box, handle }
+      : { kind, pointerId: event.pointerId, shape, start, box: shape.data.box })
   }, [activeTool, clampToBounds, editingId, setGesture, surfaceReady])
 
   const startEditing = useCallback((shape: DrawingShape): void => {
@@ -645,7 +650,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
               box={box}
               aspect={aspect}
               baseWidthPx={baseWidthPx}
-              selected={activeTool === 'select'}
+              selected={activeTool === 'select' && selectedId === shape.id}
               renderClip={renderClip}
               onOpenClip={onOpenClip}
               onBeginManipulation={beginManipulation}
@@ -698,15 +703,14 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
                 </div>
               )}
             </foreignObject>
-            {activeTool === 'text' && !isEditing && (
-              <rect
+            {activeTool === 'text' && selectedId === shape.id && !isEditing && (
+              <ResizeHandles
                 className="ink-layer__textbox-resize"
-                x={box.x + box.width - RESIZE_HANDLE_SIZE / 2}
-                y={box.y + box.height - RESIZE_HANDLE_SIZE / 2}
-                width={RESIZE_HANDLE_SIZE}
-                height={RESIZE_HANDLE_SIZE / aspect}
+                box={box}
+                aspect={aspect}
                 fill={markColor}
-                onPointerDown={(event) => beginManipulation(event, shape, 'resize')}
+                onPointerDown={(event, handle) =>
+                  beginManipulation(event, shape, 'resize', handle)}
               />
             )}
           </g>

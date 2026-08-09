@@ -24,10 +24,7 @@ import { invoke } from '../../lib/ipc'
 import './pdfWorker'
 import 'react-pdf/dist/Page/TextLayer.css'
 import './pdf.css'
-import { descriptorFor, isTabDescriptor } from '../workspace/tabIdentity'
-import { useWorkspaceStore } from '../../stores/workspaceStore'
-import { requestClipDelivery } from '../canvas/clipDelivery'
-import type { DrawingClipSource } from '../../../../shared/types/drawing'
+import { isTabDescriptor } from '../workspace/tabIdentity'
 import { usePdfDocument } from './usePdfDocument'
 import { useAnnotations } from './useAnnotations'
 import { usePageTexts, useStaleAnnotationIds } from './usePageTexts'
@@ -35,7 +32,12 @@ import { useVisiblePages } from './useVisiblePages'
 import { PdfToolbar } from './PdfToolbar'
 import { PdfPageView } from './PdfPageView'
 import { AnnotationRail } from './AnnotationRail'
-import { HighlightPopover, SelectionPopover, type ContentPoint } from './popovers'
+import {
+  HighlightPopover,
+  SelectionPopover,
+  WhiteboardPickerPopover,
+  type ContentPoint
+} from './popovers'
 import { askAiAboutAnnotation } from './askAi'
 import {
   PDF_ANNOTATION_JUMP_EVENT,
@@ -60,6 +62,7 @@ import {
   takePdfPageNavigation,
   type PdfPageNavigationTarget
 } from './pdfPageNavigation'
+import { useWhiteboardClipDelivery } from './useWhiteboardClipDelivery'
 
 const ZOOM_MIN = 0.4
 const ZOOM_MAX = 4
@@ -130,6 +133,7 @@ function PdfViewer({
 
   const scrollerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const whiteboardClip = useWhiteboardClipDelivery(courseId, contentRef)
   const {
     visiblePages,
     registerPage,
@@ -403,41 +407,6 @@ function PdfViewer({
     [courseId]
   )
 
-  /**
-   * Dragging a clip needs a whiteboard already open beside the PDF, which is a
-   * lot of setup for "put this page on my board". Clicking does the same thing
-   * without it: reuse the course's most recent board, or make the first one.
-   */
-  const sendClipToWhiteboard = useCallback(
-    async (source: DrawingClipSource): Promise<void> => {
-      try {
-        const boards = await invoke('canvas:list', { courseId })
-        // Prefer a board the student already has open — that is the one they
-        // would have dragged onto. `canvas:list` is ordered oldest-first, so
-        // otherwise fall back to their original board rather than a stray one.
-        const openBoardIds = new Set(
-          Object.values(useWorkspaceStore.getState().openTabs)
-            .filter((tab) => tab.kind === 'whiteboard')
-            .map((tab) => tab.payload.boardId)
-        )
-        const board =
-          boards.find((entry) => openBoardIds.has(entry.id)) ??
-          boards.at(0) ??
-          await invoke('canvas:create', { courseId })
-        // Queue before opening so a board mounting immediately still sees it.
-        requestClipDelivery(board.id, source)
-        useWorkspaceStore.getState().openTab(
-          descriptorFor('whiteboard', { courseId, boardId: board.id })
-        )
-        showToast(`${board.title}에 붙였어요`)
-      } catch (error) {
-        console.error('[Bandal] 화이트보드로 보내지 못했습니다.', error)
-        showToast('화이트보드로 보내지 못했습니다.', 'danger')
-      }
-    },
-    [courseId]
-  )
-
   const sendToNote = useCallback(
     async (
       annotation: Annotation,
@@ -631,7 +600,11 @@ function PdfViewer({
                       aspect={pageAspects.get(pageNumber) ?? defaultAspect}
                       isVisible={visiblePages.has(pageNumber)}
                       clipDragEnabled={activeTool === 'select'}
-                      onSendClip={(source) => { void sendClipToWhiteboard(source) }}
+                      onSendClip={(source, clientX, clientY) => {
+                        setPendingSelection(null)
+                        setEditPopover(null)
+                        void whiteboardClip.send(source, clientX, clientY)
+                      }}
                       annotations={pageAnnotations}
                       drawings={pageDrawings}
                       drawingsLoading={drawingsApi.loading}
@@ -694,6 +667,15 @@ function PdfViewer({
                   void sendToNote(editedAnnotation, draftComment)
                   setEditPopover(null)
                 }}
+              />
+            )}
+            {whiteboardClip.picker !== null && (
+              <WhiteboardPickerPopover
+                boards={whiteboardClip.picker.boards}
+                position={whiteboardClip.picker.position}
+                onPick={whiteboardClip.choose}
+                onCreate={() => { void whiteboardClip.create() }}
+                onDismiss={whiteboardClip.dismiss}
               />
             )}
           </div>

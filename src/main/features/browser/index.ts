@@ -4,17 +4,14 @@ export { hardenWindowWebviews } from './hardenWebviews'
 export { BROWSING_PARTITION } from './webviewPolicy'
 export { browsingUserAgent, hasChromeToken } from './userAgent'
 export {
-  BROWSER_SESSION_FILE_NAME,
-  RESTORED_COOKIE_TTL_SECONDS,
+  LEGACY_BROWSER_SESSION_FILE_NAME,
   cookieOrigin,
   cookieUrl,
-  createBrowserSessionStore,
-  isSessionCookie
+  createBrowserSessionStore
 } from './sessionStore'
 export type {
   BrowserSessionAppLike,
   BrowserSessionLike,
   BrowserSessionStore,
-  BrowserSessionStoreDeps,
-  SafeStorageLike
+  BrowserSessionStoreDeps
 } from './sessionStore'

@@ -30,6 +30,7 @@ import { importDroppedFiles } from './importDrop'
 import { MaterialsIcon } from './materialIcons'
 import { useFileDropTarget } from './useFileDropTarget'
 import { useMaterialsPaste } from './useMaterialsPaste'
+import { WhiteboardsGroup } from './WhiteboardsGroup'
 import './materials.css'
 
 const SEARCH_DEBOUNCE_MS = 240
@@ -494,15 +495,25 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
               {course.name}
             </span>
           )}
-          {pasteReady && (
-            <span
-              className="materials-heading__paste-hint"
-              role="status"
-              title={`⌘V로 ${pasteDestinationName}에 붙여넣기`}
-            >
-              ⌘V로 붙여넣기 · {pasteDestinationName}
-            </span>
-          )}
+          {/*
+            Always mounted, only hidden. Inserting this chip on focus grew the
+            heading, which pushed the whole sidebar down between mousedown and
+            mouseup — so the FIRST click on anything in here landed on empty
+            space and did nothing. Reserving the row keeps the layout still.
+          */}
+          <span
+            className="materials-heading__paste-hint"
+            role="status"
+            aria-hidden={!pasteReady}
+            data-visible={pasteReady || undefined}
+            title={
+              pasteReady
+                ? `⌘V로 ${pasteDestinationName}에 붙여넣기`
+                : undefined
+            }
+          >
+            {pasteReady ? `⌘V로 붙여넣기 · ${pasteDestinationName}` : '\u00a0'}
+          </span>
         </div>
         <div className="materials-heading__actions">
           <input
@@ -602,7 +613,6 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         data-paste-target-root={
           pasteReady && pasteDirRelPath === '' ? true : undefined
         }
-        onContextMenu={(event) => handleContextMenu(event, null)}
       >
         {pasteNotice !== null && (
           <div className="materials-paste-notice" role="status">
@@ -616,70 +626,84 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
             <p className="empty-state__text">과목을 선택하세요</p>
             <p className="empty-state__hint">선택한 과목의 자료가 여기에 표시됩니다.</p>
           </div>
-        ) : course.missing ? (
-          <div className="empty-state empty-state--materials">
-            <Icon name="folder" className="empty-state__folder" />
-            <p className="empty-state__text">폴더 연결이 끊겼어요</p>
-            <p className="empty-state__hint" title={course.folderPath}>
-              {course.folderPath} 을(를) 찾을 수 없어요. 폴더를 옮겼다면 다시
-              연결해주세요.
-            </p>
-            <button
-              type="button"
-              className="button button--primary"
-              disabled={isRelinking}
-              onClick={() => void relink(course.id)}
-            >
-              <Icon name="link" />
-              {isRelinking ? '연결 중…' : '다시 연결'}
-            </button>
-          </div>
-        ) : pendingSearch || (isLoading && !searching) ? (
-          <div className="loading-list" aria-label="자료 불러오는 중">
-            <span />
-            <span />
-            <span />
-          </div>
-        ) : searching ? (
-          searchResults.length === 0 ? (
-            <div className="rail-zero-result">
-              <p>일치하는 자료가 없어요</p>
-              <button type="button" onClick={() => setQuery('')}>
-                전체 자료 보기
-              </button>
-            </div>
-          ) : (
-            <MaterialSearchResults
-              results={searchResults}
-              selectedRelPath={selectedRelPath}
-              onSelect={(node) => setSelectedRelPath(node.relPath)}
-              onContextMenu={handleContextMenu}
-            />
-          )
-        ) : tree.length === 0 ? (
-          <div className="empty-state empty-state--materials">
-            <Icon name="folder" className="empty-state__folder" />
-            <p className="empty-state__text">아직 자료가 없어요</p>
-            <p className="empty-state__hint">
-              가져오기 버튼을 누르거나 Finder 파일을 끌어다 놓으세요. 이 영역을
-              선택한 뒤 ⌘V로 이미지와 텍스트도 추가할 수 있어요.
-            </p>
-          </div>
         ) : (
-          <MaterialTree
-            nodes={tree}
-            expandedPaths={expandedPaths}
-            editingRelPath={editing?.relPath ?? null}
-            selectedRelPath={selectedRelPath}
-            pasteTargetDirRelPath={
-              pasteReady && pasteDirRelPath !== '' ? pasteDirRelPath : null
-            }
-            onToggleFolder={toggleFolder}
-            onSelect={(node) => setSelectedRelPath(node.relPath)}
-            onContextMenu={handleContextMenu}
-            onCancelRename={() => setEditing(null)}
-            onRename={rename}
-          />
+          <>
+            <WhiteboardsGroup courseId={course.id} />
+            <section
+              className="materials-files-group"
+              aria-label="자료 파일"
+              onContextMenu={(event) => handleContextMenu(event, null)}
+            >
+              <div className="materials-group-heading">
+                <span>파일</span>
+              </div>
+              {course.missing ? (
+                <div className="empty-state empty-state--materials">
+                  <Icon name="folder" className="empty-state__folder" />
+                  <p className="empty-state__text">폴더 연결이 끊겼어요</p>
+                  <p className="empty-state__hint" title={course.folderPath}>
+                    {course.folderPath} 을(를) 찾을 수 없어요. 폴더를 옮겼다면 다시
+                    연결해주세요.
+                  </p>
+                  <button
+                    type="button"
+                    className="button button--primary"
+                    disabled={isRelinking}
+                    onClick={() => void relink(course.id)}
+                  >
+                    <Icon name="link" />
+                    {isRelinking ? '연결 중…' : '다시 연결'}
+                  </button>
+                </div>
+              ) : pendingSearch || (isLoading && !searching) ? (
+                <div className="loading-list" aria-label="자료 불러오는 중">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              ) : searching ? (
+                searchResults.length === 0 ? (
+                  <div className="rail-zero-result">
+                    <p>일치하는 자료가 없어요</p>
+                    <button type="button" onClick={() => setQuery('')}>
+                      전체 자료 보기
+                    </button>
+                  </div>
+                ) : (
+                  <MaterialSearchResults
+                    results={searchResults}
+                    selectedRelPath={selectedRelPath}
+                    onSelect={(node) => setSelectedRelPath(node.relPath)}
+                    onContextMenu={handleContextMenu}
+                  />
+                )
+              ) : tree.length === 0 ? (
+                <div className="empty-state empty-state--materials">
+                  <Icon name="folder" className="empty-state__folder" />
+                  <p className="empty-state__text">아직 자료가 없어요</p>
+                  <p className="empty-state__hint">
+                    가져오기 버튼을 누르거나 Finder 파일을 끌어다 놓으세요. 이
+                    영역을 선택한 뒤 ⌘V로 이미지와 텍스트도 추가할 수 있어요.
+                  </p>
+                </div>
+              ) : (
+                <MaterialTree
+                  nodes={tree}
+                  expandedPaths={expandedPaths}
+                  editingRelPath={editing?.relPath ?? null}
+                  selectedRelPath={selectedRelPath}
+                  pasteTargetDirRelPath={
+                    pasteReady && pasteDirRelPath !== '' ? pasteDirRelPath : null
+                  }
+                  onToggleFolder={toggleFolder}
+                  onSelect={(node) => setSelectedRelPath(node.relPath)}
+                  onContextMenu={handleContextMenu}
+                  onCancelRename={() => setEditing(null)}
+                  onRename={rename}
+                />
+              )}
+            </section>
+          </>
         )}
       </div>
 

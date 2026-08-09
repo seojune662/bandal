@@ -9,21 +9,26 @@ import {
 import { ChatSurface } from '../chat/ChatSurface'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { BandalOrbMark } from './BandalOrbMark'
+import {
+  clampPopupGeometry,
+  resizePopupGeometry,
+  type PopupGeometry,
+  type PopupResizeCorner,
+  type PopupSizeLimits,
+  type PopupViewport
+} from './popupGeometry'
 
 const STORAGE_KEY = 'bandal:assistant-popup-geometry:v1'
-
-interface PopupGeometry {
-  x: number
-  y: number
-  width: number
-  height: number
-}
 
 interface PointerGesture {
   pointerId: number
   startX: number
   startY: number
   geometry: PopupGeometry
+}
+
+interface ResizeGesture extends PointerGesture {
+  corner: PopupResizeCorner
 }
 
 export interface AssistantPopupProps {
@@ -66,26 +71,22 @@ function currentGeometry(element: HTMLElement): PopupGeometry {
   return { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
 }
 
-function clampGeometry(
-  geometry: PopupGeometry,
-  element: HTMLElement
-): PopupGeometry {
+function viewport(): PopupViewport {
+  return { width: window.innerWidth, height: window.innerHeight }
+}
+
+function parsedPixels(value: string, fallback: number): number {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function sizeLimits(element: HTMLElement): PopupSizeLimits {
   const computed = window.getComputedStyle(element)
-  const minWidth = Number.parseFloat(computed.minWidth) || 0
-  const minHeight = Number.parseFloat(computed.minHeight) || 0
-  const width = Math.min(
-    Math.max(geometry.width, Math.min(minWidth, window.innerWidth)),
-    window.innerWidth
-  )
-  const height = Math.min(
-    Math.max(geometry.height, Math.min(minHeight, window.innerHeight)),
-    window.innerHeight
-  )
   return {
-    x: Math.min(Math.max(geometry.x, 0), Math.max(window.innerWidth - width, 0)),
-    y: Math.min(Math.max(geometry.y, 0), Math.max(window.innerHeight - height, 0)),
-    width,
-    height
+    minWidth: parsedPixels(computed.minWidth, 0),
+    minHeight: parsedPixels(computed.minHeight, 0),
+    maxWidth: parsedPixels(computed.maxWidth, window.innerWidth),
+    maxHeight: parsedPixels(computed.maxHeight, window.innerHeight)
   }
 }
 
@@ -110,7 +111,7 @@ export function AssistantPopup({
   const popupRef = useRef<HTMLElement>(null)
   const geometryRef = useRef<PopupGeometry | null>(null)
   const moveRef = useRef<PointerGesture | null>(null)
-  const resizeRef = useRef<PointerGesture | null>(null)
+  const resizeRef = useRef<ResizeGesture | null>(null)
   const [geometry, setGeometry] = useState<PopupGeometry | null>(readGeometry)
   geometryRef.current = geometry
 
@@ -122,9 +123,10 @@ export function AssistantPopup({
   const clampCurrent = useCallback((): void => {
     const element = popupRef.current
     if (element === null) return
-    const next = clampGeometry(
+    const next = clampPopupGeometry(
       geometryRef.current ?? currentGeometry(element),
-      element
+      viewport(),
+      sizeLimits(element)
     )
     if (!sameGeometry(geometryRef.current, next)) updateGeometry(next)
     persistGeometry(next)
@@ -156,7 +158,7 @@ export function AssistantPopup({
   }, [visible])
 
   const beginMove = (event: ReactPointerEvent<HTMLElement>): void => {
-    if (event.button !== 0) return
+    if (event.button !== 0 || resizeRef.current !== null) return
     const target = event.target
     if (target instanceof Element && target.closest('button') !== null) return
     const element = popupRef.current
@@ -177,13 +179,14 @@ export function AssistantPopup({
     const element = popupRef.current
     if (gesture === null || element === null || gesture.pointerId !== event.pointerId) return
     updateGeometry(
-      clampGeometry(
+      clampPopupGeometry(
         {
           ...gesture.geometry,
           x: gesture.geometry.x + event.clientX - gesture.startX,
           y: gesture.geometry.y + event.clientY - gesture.startY
         },
-        element
+        viewport(),
+        sizeLimits(element)
       )
     )
   }
@@ -198,8 +201,11 @@ export function AssistantPopup({
     if (geometryRef.current !== null) persistGeometry(geometryRef.current)
   }
 
-  const beginResize = (event: ReactPointerEvent<HTMLButtonElement>): void => {
-    if (event.button !== 0) return
+  const beginResize = (
+    corner: PopupResizeCorner,
+    event: ReactPointerEvent<HTMLButtonElement>
+  ): void => {
+    if (event.button !== 0 || moveRef.current !== null) return
     const element = popupRef.current
     if (element === null) return
     const current = geometryRef.current ?? currentGeometry(element)
@@ -207,7 +213,8 @@ export function AssistantPopup({
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      geometry: current
+      geometry: current,
+      corner
     }
     event.currentTarget.setPointerCapture(event.pointerId)
     event.preventDefault()
@@ -219,13 +226,13 @@ export function AssistantPopup({
     const element = popupRef.current
     if (gesture === null || element === null || gesture.pointerId !== event.pointerId) return
     updateGeometry(
-      clampGeometry(
-        {
-          ...gesture.geometry,
-          width: gesture.geometry.width + event.clientX - gesture.startX,
-          height: gesture.geometry.height + event.clientY - gesture.startY
-        },
-        element
+      resizePopupGeometry(
+        gesture.geometry,
+        gesture.corner,
+        event.clientX - gesture.startX,
+        event.clientY - gesture.startY,
+        viewport(),
+        sizeLimits(element)
       )
     )
   }
@@ -299,8 +306,24 @@ export function AssistantPopup({
       <button
         type="button"
         className="assistant-popup__resize"
-        aria-label="채팅창 크기 조절"
-        onPointerDown={beginResize}
+        data-corner="top-left"
+        aria-label="왼쪽 위에서 채팅창 크기 조절"
+        onPointerDown={(event) => beginResize('top-left', event)}
+        onPointerMove={resize}
+        onPointerUp={finishResize}
+        onPointerCancel={finishResize}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M5 13h8V5M9 13l4-4" />
+        </svg>
+      </button>
+
+      <button
+        type="button"
+        className="assistant-popup__resize"
+        data-corner="bottom-right"
+        aria-label="오른쪽 아래에서 채팅창 크기 조절"
+        onPointerDown={(event) => beginResize('bottom-right', event)}
         onPointerMove={resize}
         onPointerUp={finishResize}
         onPointerCancel={finishResize}

@@ -12,7 +12,12 @@ const iconProps = {
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
   strokeWidth: 1.75,
-  viewBox: '0 0 24 24'
+  viewBox: '0 0 24 24',
+  // An SVG with only a viewBox has no intrinsic size and stretches to fill its
+  // container: in the materials context menu that turned the sparkle into a
+  // full-width blob covering the menu. Matches the shared `Icon` component.
+  width: '1em',
+  height: '1em'
 }
 
 export function StudyToolIcon({ tool }: StudyToolIconProps): JSX.Element {

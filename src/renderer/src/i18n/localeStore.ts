@@ -55,6 +55,11 @@ function initializeLocale(): Promise<void> {
   return initialization
 }
 
+/** Returns the locale currently applied by this renderer process. */
+export function getLocale(): Locale {
+  return useLocaleStore.getState().locale
+}
+
 export function useLocale(): Locale {
   const locale = useLocaleStore((state) => state.locale)
 

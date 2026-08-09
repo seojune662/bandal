@@ -94,6 +94,7 @@ import type {
   RemovePersonalShapesInput,
   RemoveWhiteboardShapesInput,
   RenamePersonalBoardInput,
+  SetBoardBackgroundInput,
   UpdateWhiteboardShapeInput,
   WhiteboardShape
 } from '../types/whiteboard'
@@ -544,6 +545,16 @@ export interface IpcContract {
   'canvas:putShape': {
     req: PutPersonalShapeInput
     res: DrawingShape
+  }
+  /** Paper style for a personal board — ruling and light/dark. */
+  'canvas:setBackground': {
+    req: SetBoardBackgroundInput
+    res: PersonalBoard
+  }
+  /** Renders the board to a PDF in the course folder. */
+  'canvas:exportPdf': {
+    req: { boardId: string }
+    res: { relPath: string }
   }
   'canvas:removeShapes': {
     req: RemovePersonalShapesInput
@@ -999,6 +1010,8 @@ export const IPC_CHANNELS = [
   'canvas:remove',
   'canvas:open',
   'canvas:putShape',
+  'canvas:setBackground',
+  'canvas:exportPdf',
   'canvas:removeShapes',
   'calendar:range',
   'calendar:upcoming',

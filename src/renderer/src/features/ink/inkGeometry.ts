@@ -13,6 +13,8 @@ const STROKE_COORD_SCALE = 1000
 const MIN_BOX_WIDTH = 0.03
 const MIN_BOX_HEIGHT = 0.025
 
+export type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se'
+
 export function drawingColorVariable(color: DrawingColor): string {
   return `var(--drawing-color-${color})`
 }
@@ -63,14 +65,33 @@ export function resizeDrawingBox(
   box: DrawingBox,
   dx: number,
   dy: number,
-  clampToBounds = true
+  clampToBounds = true,
+  handle: ResizeHandle = 'se'
 ): DrawingBox {
-  const width = Math.max(MIN_BOX_WIDTH, box.width + dx)
-  const height = Math.max(MIN_BOX_HEIGHT, box.height + dy)
+  const right = box.x + box.width
+  const bottom = box.y + box.height
+  const movesWest = handle === 'nw' || handle === 'sw'
+  const movesNorth = handle === 'nw' || handle === 'ne'
+
+  const x = movesWest
+    ? Math.min(right - MIN_BOX_WIDTH, clampToBounds ? Math.max(0, box.x + dx) : box.x + dx)
+    : box.x
+  const y = movesNorth
+    ? Math.min(bottom - MIN_BOX_HEIGHT, clampToBounds ? Math.max(0, box.y + dy) : box.y + dy)
+    : box.y
+  const width = movesWest
+    ? right - x
+    : Math.max(MIN_BOX_WIDTH, box.width + dx)
+  const height = movesNorth
+    ? bottom - y
+    : Math.max(MIN_BOX_HEIGHT, box.height + dy)
+
   return {
     ...box,
-    width: clampToBounds ? Math.min(1 - box.x, width) : width,
-    height: clampToBounds ? Math.min(1 - box.y, height) : height
+    x,
+    y,
+    width: clampToBounds && !movesWest ? Math.min(1 - box.x, width) : width,
+    height: clampToBounds && !movesNorth ? Math.min(1 - box.y, height) : height
   }
 }
 

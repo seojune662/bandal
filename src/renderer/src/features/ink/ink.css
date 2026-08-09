@@ -78,7 +78,6 @@ textarea.ink-layer__textbox::placeholder {
 }
 
 .ink-layer__textbox-resize {
-  cursor: nwse-resize;
   stroke: var(--bg-surface);
   stroke-width: 0.002;
 }
@@ -140,5 +139,18 @@ textarea.ink-layer__textbox::placeholder {
   fill: var(--accent);
   stroke: var(--bg-surface);
   stroke-width: 0.002;
+}
+
+.ink-layer__textbox-resize[data-resize-handle='nw'],
+.ink-layer__textbox-resize[data-resize-handle='se'],
+.ink-layer__clip-resize[data-resize-handle='nw'],
+.ink-layer__clip-resize[data-resize-handle='se'] {
   cursor: nwse-resize;
+}
+
+.ink-layer__textbox-resize[data-resize-handle='ne'],
+.ink-layer__textbox-resize[data-resize-handle='sw'],
+.ink-layer__clip-resize[data-resize-handle='ne'],
+.ink-layer__clip-resize[data-resize-handle='sw'] {
+  cursor: nesw-resize;
 }

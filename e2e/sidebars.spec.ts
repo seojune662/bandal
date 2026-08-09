@@ -47,8 +47,8 @@ test.describe('sidebars', () => {
   test('opening a tab does not leave two of either toggle', async () => {
     const { page } = bandal
     await page
-      .locator('aside.app-rail--left')
-      .getByRole('button', { name: '새 화이트보드' })
+      .locator('.whiteboards-group')
+      .getByRole('button', { name: '새 화이트보드 만들기' })
       .click()
     await expect(page.locator('.ink-layer')).toBeVisible()
 

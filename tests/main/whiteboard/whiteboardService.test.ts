@@ -499,3 +499,62 @@ describe('backoffMs', () => {
     expect(backoffMs(-1)).toBe(1_000)
   })
 })
+
+/**
+ * Reported three times: erase something on the shared board, go elsewhere,
+ * come back, and it is there again.
+ *
+ * The repo-level fixes were right but incomplete. `sync` answered with the
+ * snapshot it had just fetched from the server rather than with the reconciled
+ * local state. The server still lists a shape whose removal it has not
+ * accepted, so the shape came back down the wire; the renderer merges
+ * additively and its "removed" set is per-mount, so reopening the board
+ * resurrected everything the student had erased.
+ */
+describe('erasing on the shared board survives a reopen', () => {
+  test('sync does not hand back a shape that is locally erased', async () => {
+    const fake = new FakeSupabase(() => nowMs)
+    const whiteboard = makeService(() => fake.asClient())
+
+    const opened = await whiteboard.open('group-1')
+    const board = opened.board
+    expect(board).not.toBeNull()
+    if (board === null) return
+
+    await whiteboard.addShape(shapeInput(board.id, 'shape-1'))
+    await whiteboard.addShape(shapeInput(board.id, 'shape-2'))
+    await whiteboard.sync(board.id, null)
+
+    await whiteboard.removeShapes({ boardId: board.id, ids: ['shape-1'] })
+
+    // The server still reports it as live — exactly what happens when the
+    // delete matched no rows there (RLS, or it never arrived).
+    fake.shapes.set('shape-1', {
+      ...(fake.shapes.get('shape-1') ?? {}),
+      deleted_at: null
+    })
+
+    // A fresh mount syncs from scratch.
+    const result = await whiteboard.sync(board.id, null)
+
+    expect(result.shapes.map((shape) => shape.id)).toEqual(['shape-2'])
+    // And the renderer is told explicitly, so a merge cannot re-add it.
+    expect(result.removedIds).toContain('shape-1')
+  })
+
+  test('a shape nobody erased still arrives', async () => {
+    const fake = new FakeSupabase(() => nowMs)
+    const whiteboard = makeService(() => fake.asClient())
+
+    const opened = await whiteboard.open('group-1')
+    const board = opened.board
+    if (board === null) throw new Error('board')
+
+    await whiteboard.addShape(shapeInput(board.id, 'keeper'))
+
+    const result = await whiteboard.sync(board.id, null)
+
+    expect(result.shapes.map((shape) => shape.id)).toContain('keeper')
+    expect(result.removedIds).not.toContain('keeper')
+  })
+})

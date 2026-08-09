@@ -15,9 +15,12 @@ import type {
   DrawingShape
 } from '../../../../shared/types/drawing'
 import type {
+  BoardBackground,
   OpenPersonalBoardResult,
-  PersonalBoard
+  PersonalBoard,
+  SetBoardBackgroundInput
 } from '../../../../shared/types/whiteboard'
+import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
 import {
   InkLayer,
@@ -161,6 +164,8 @@ function CanvasSession({
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(initialBoard.title)
   const [renaming, setRenaming] = useState(false)
+  const [backgroundBusy, setBackgroundBusy] = useState(false)
+  const [exportingPdf, setExportingPdf] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const shapesRef = useRef(shapes)
@@ -395,6 +400,39 @@ function CanvasSession({
     }
   }, [board.id, board.title, titleDraft])
 
+  const updateBoardAppearance = useCallback(async (
+    patch: Omit<SetBoardBackgroundInput, 'boardId'>
+  ): Promise<void> => {
+    setBackgroundBusy(true)
+    try {
+      const updated = await invoke('canvas:setBackground', {
+        boardId: board.id,
+        ...patch
+      })
+      setBoard(updated)
+      setStatusMessage(null)
+    } catch (error: unknown) {
+      showToast(
+        errorMessage(error, '화이트보드 배경을 저장하지 못했어요.'),
+        'danger'
+      )
+    } finally {
+      setBackgroundBusy(false)
+    }
+  }, [board.id])
+
+  const exportBoardPdf = useCallback(async (): Promise<void> => {
+    setExportingPdf(true)
+    try {
+      const result = await invoke('canvas:exportPdf', { boardId: board.id })
+      showToast(`과목 폴더에 PDF로 내보냈어요: ${result.relPath}`)
+    } catch (error: unknown) {
+      showToast(errorMessage(error, 'PDF로 내보내지 못했어요.'), 'danger')
+    } finally {
+      setExportingPdf(false)
+    }
+  }, [board.id])
+
   useEffect(() => {
     panelApi.setTitle(board.title)
   }, [board.title, panelApi])
@@ -490,7 +528,12 @@ function CanvasSession({
   }, [board.courseId])
 
   return (
-    <section className="canvas-tab" data-tool={activeTool}>
+    <section
+      className="canvas-tab"
+      data-tool={activeTool}
+      data-background={board.background}
+      data-surface={board.surface}
+    >
       <header className="canvas-tab__header">
         {editingTitle ? (
           <input
@@ -531,8 +574,21 @@ function CanvasSession({
         canUndo={canUndo}
         canRedo={canRedo}
         enabled={panelActive}
+        background={board.background}
+        surface={board.surface}
+        backgroundBusy={backgroundBusy}
+        exportingPdf={exportingPdf}
         onUndo={undo}
         onRedo={redo}
+        onBackgroundChange={(background: BoardBackground) => {
+          void updateBoardAppearance({ background })
+        }}
+        onSurfaceToggle={() => {
+          void updateBoardAppearance({
+            surface: board.surface === 'light' ? 'dark' : 'light'
+          })
+        }}
+        onExportPdf={() => { void exportBoardPdf() }}
       />
 
       {statusMessage !== null && (

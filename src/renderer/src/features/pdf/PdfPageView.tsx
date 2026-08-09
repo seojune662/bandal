@@ -32,7 +32,11 @@ export interface PdfPageViewProps {
   isVisible: boolean
   clipDragEnabled: boolean
   /** Sends this page to a whiteboard without needing one open to drag onto. */
-  onSendClip: (source: DrawingClipSource) => void
+  onSendClip: (
+    source: DrawingClipSource,
+    clientX: number,
+    clientY: number
+  ) => void
   annotations: Annotation[]
   drawings: Drawing[]
   drawingsLoading: boolean
@@ -172,7 +176,12 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation()
-            onSendClip(clipSource)
+            const bounds = event.currentTarget.getBoundingClientRect()
+            onSendClip(
+              clipSource,
+              bounds.left + bounds.width / 2,
+              bounds.bottom
+            )
           }}
           onDragStart={(event) => {
             event.stopPropagation()

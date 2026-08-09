@@ -182,6 +182,11 @@ export function SettingsApp(): JSX.Element {
   }, [])
 
   useEffect(() => {
+    document.documentElement.lang = locale
+    document.title = `${t('settings.app.name')} — ${t('settings.window.title')}`
+  }, [locale, t])
+
+  useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: light)')
     const handleChange = (): void => {
       if (theme === 'system') applyTheme('system')

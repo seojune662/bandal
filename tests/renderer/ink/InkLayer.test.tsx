@@ -6,6 +6,11 @@ import {
   createTextBoxShape,
   InkLayer
 } from '../../../src/renderer/src/features/ink/InkLayer'
+import { ClipShape } from '../../../src/renderer/src/features/ink/ClipShape'
+import {
+  resizeHandleBoxes,
+  ResizeHandles
+} from '../../../src/renderer/src/features/ink/ResizeHandles'
 
 const box = { x: 0.2, y: 0.3, width: 0.26, height: 0.08 }
 const style = { color: 'ink' as const, width: 0.006, opacity: 1, fontScale: 1 }
@@ -70,5 +75,88 @@ describe('InkLayer textbox drafts', () => {
     expect(html).toContain('transform:scale(')
     expect(html).toContain('font-size:20.8px')
     expect(html).toContain('핵심 개념')
+  })
+})
+
+describe('InkLayer resize handles', () => {
+  const aspect = 2 / 3
+  const clipBox = { x: 0.2, y: 0.25, width: 0.4, height: 0.3 }
+  const clip = savedShape({
+    kind: 'clip',
+    data: {
+      box: clipBox,
+      clip: { relPath: 'lecture.pdf', page: 2, label: 'lecture.pdf · 2쪽' }
+    }
+  })
+
+  test('renders all four handles only when a clip is selected', () => {
+    const renderClip = (selected: boolean): string => renderToStaticMarkup(
+      <ClipShape
+        shape={clip}
+        box={clipBox}
+        aspect={aspect}
+        baseWidthPx={900}
+        selected={selected}
+        onBeginManipulation={vi.fn()}
+      />
+    )
+
+    expect(renderClip(false)).not.toContain('data-resize-handle')
+    const selected = renderClip(true)
+    for (const handle of ['nw', 'ne', 'sw', 'se']) {
+      expect(selected).toContain(`data-resize-handle="${handle}"`)
+    }
+  })
+
+  test('places square screen-space handles directly over every box corner', () => {
+    const surfaceRect = {
+      left: 110,
+      top: 70,
+      width: 900,
+      height: 600
+    }
+    const corners = {
+      nw: [clipBox.x, clipBox.y],
+      ne: [clipBox.x + clipBox.width, clipBox.y],
+      sw: [clipBox.x, clipBox.y + clipBox.height],
+      se: [clipBox.x + clipBox.width, clipBox.y + clipBox.height]
+    } as const
+
+    for (const handleBox of resizeHandleBoxes(clipBox, aspect)) {
+      const element = {
+        getBoundingClientRect: () => {
+          const left = surfaceRect.left + handleBox.x * surfaceRect.width
+          const top = surfaceRect.top + handleBox.y * surfaceRect.height
+          const width = handleBox.width * surfaceRect.width
+          const height = handleBox.height * surfaceRect.height
+          return { left, top, width, height, right: left + width, bottom: top + height }
+        }
+      } as SVGRectElement
+      const screen = element.getBoundingClientRect()
+      const [cornerX, cornerY] = corners[handleBox.handle]
+
+      expect(screen.width).toBeCloseTo(screen.height)
+      expect(screen.left + screen.width / 2).toBeCloseTo(
+        surfaceRect.left + cornerX * surfaceRect.width
+      )
+      expect(screen.top + screen.height / 2).toBeCloseTo(
+        surfaceRect.top + cornerY * surfaceRect.height
+      )
+    }
+  })
+
+  test('uses the shared four-corner renderer for textboxes too', () => {
+    const html = renderToStaticMarkup(
+      <svg viewBox="0 0 1 1" preserveAspectRatio="none">
+        <ResizeHandles
+          box={clipBox}
+          aspect={aspect}
+          className="ink-layer__textbox-resize"
+          onPointerDown={vi.fn()}
+        />
+      </svg>
+    )
+
+    expect(html.match(/ink-layer__textbox-resize/g)).toHaveLength(4)
   })
 })

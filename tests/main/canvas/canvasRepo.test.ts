@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { NotFoundError } from '../../../src/main/db/errors'
+import { NotFoundError, ValidationError } from '../../../src/main/db/errors'
 import {
   createCanvasRepo,
   type CanvasRepo
@@ -47,6 +47,7 @@ describe('canvasRepo', () => {
     const second = repo.createBoard({ courseId: 'course-1', title: '개념 지도' })
 
     expect(first.title).toBe('화이트보드 1')
+    expect(first).toMatchObject({ background: 'grid', surface: 'dark' })
     expect(second.sortOrder).toBe(1)
     expect(repo.listBoards('course-1').map((board) => board.id)).toEqual([
       first.id,
@@ -56,6 +57,34 @@ describe('canvasRepo', () => {
     const renamed = repo.renameBoard({ id: first.id, title: '  시험 정리  ' })
     expect(renamed.title).toBe('시험 정리')
     expect(repo.open(first.id).board.title).toBe('시험 정리')
+  })
+
+  test('updates valid background and surface values independently', () => {
+    const board = repo.createBoard({ courseId: 'course-1' })
+
+    const ruled = repo.setBackground({ boardId: board.id, background: 'lines' })
+    expect(ruled).toMatchObject({ background: 'lines', surface: 'dark' })
+
+    const light = repo.setBackground({ boardId: board.id, surface: 'light' })
+    expect(light).toMatchObject({ background: 'lines', surface: 'light' })
+    expect(repo.open(board.id).board).toEqual(light)
+  })
+
+  test('rejects background and surface values outside the shared unions', () => {
+    const board = repo.createBoard({ courseId: 'course-1' })
+
+    expect(() => repo.setBackground({
+      boardId: board.id,
+      background: 'paper' as never
+    })).toThrow(ValidationError)
+    expect(() => repo.setBackground({
+      boardId: board.id,
+      surface: 'sepia' as never
+    })).toThrow(ValidationError)
+    expect(repo.open(board.id).board).toMatchObject({
+      background: 'grid',
+      surface: 'dark'
+    })
   })
 
   test('soft-deletes a board and its live shapes', () => {
@@ -110,6 +139,10 @@ describe('canvasRepo', () => {
     expect(() => repo.listBoards('missing-course')).toThrow(NotFoundError)
     expect(() => repo.createBoard({ courseId: 'missing-course' })).toThrow(NotFoundError)
     expect(() => repo.renameBoard({ id: 'missing-board', title: '이름' })).toThrow(NotFoundError)
+    expect(() => repo.setBackground({
+      boardId: 'missing-board',
+      background: 'dots'
+    })).toThrow(NotFoundError)
     expect(() => repo.removeBoard('missing-board')).toThrow(NotFoundError)
     expect(() => repo.open('missing-board')).toThrow(NotFoundError)
     expect(() => repo.putShape(shapeInput('missing-board'))).toThrow(NotFoundError)

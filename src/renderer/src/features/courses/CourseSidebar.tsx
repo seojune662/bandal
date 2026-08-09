@@ -5,7 +5,6 @@ import { showToast } from '../../app/toast'
 import { openSettingsWindow } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
-import { CanvasSection } from '../canvas/CanvasSection'
 import { StudyGapList } from '../insights/StudyGapList'
 import { CourseGroupsSection } from '../group/CourseGroupsSection'
 import { TogetherFooter } from '../group/TogetherFooter'
@@ -362,7 +361,6 @@ export function CourseSidebar(): JSX.Element {
                     <div className="course-row__children">
                       <StudyGapList courseId={course.id} />
                       <FavoritesSection courseId={course.id} />
-                      <CanvasSection courseId={course.id} />
                       <CourseGroupsSection courseId={course.id} />
                     </div>
                   )}

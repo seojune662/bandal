@@ -8,12 +8,19 @@ import type {
 } from '../../../shared/types/drawing'
 import { DRAWING_KINDS } from '../../../shared/types/drawing'
 import type {
+  BoardBackground,
+  BoardSurface,
   CreatePersonalBoardInput,
   OpenPersonalBoardResult,
   PersonalBoard,
   PutPersonalShapeInput,
   RemovePersonalShapesInput,
-  RenamePersonalBoardInput
+  RenamePersonalBoardInput,
+  SetBoardBackgroundInput
+} from '../../../shared/types/whiteboard'
+import {
+  BOARD_BACKGROUNDS,
+  BOARD_SURFACES
 } from '../../../shared/types/whiteboard'
 import { NotFoundError, ValidationError } from '../../db/errors'
 import { nowIso, requireId, requireNonEmptyString } from '../../db/validate'
@@ -22,6 +29,8 @@ interface BoardRow {
   id: string
   course_id: string
   title: string
+  background: string
+  surface: string
   sort_order: number
   created_at: string
   updated_at: string
@@ -41,6 +50,7 @@ export interface CanvasRepo {
   listBoards(courseId: string): PersonalBoard[]
   createBoard(input: CreatePersonalBoardInput): PersonalBoard
   renameBoard(input: RenamePersonalBoardInput): PersonalBoard
+  setBackground(input: SetBoardBackgroundInput): PersonalBoard
   removeBoard(id: string): void
   open(boardId: string): OpenPersonalBoardResult
   putShape(input: PutPersonalShapeInput): DrawingShape
@@ -48,11 +58,31 @@ export interface CanvasRepo {
 }
 
 
+function boardBackground(value: unknown): BoardBackground {
+  const background = BOARD_BACKGROUNDS.find((candidate) => candidate === value)
+  if (background === undefined) {
+    throw new ValidationError(
+      `background must be one of ${BOARD_BACKGROUNDS.join(', ')}`
+    )
+  }
+  return background
+}
+
+function boardSurface(value: unknown): BoardSurface {
+  const surface = BOARD_SURFACES.find((candidate) => candidate === value)
+  if (surface === undefined) {
+    throw new ValidationError(`surface must be one of ${BOARD_SURFACES.join(', ')}`)
+  }
+  return surface
+}
+
 function rowToBoard(row: BoardRow): PersonalBoard {
   return {
     id: row.id,
     courseId: row.course_id,
     title: row.title,
+    background: boardBackground(row.background),
+    surface: boardSurface(row.surface),
     sortOrder: row.sort_order,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -128,6 +158,8 @@ export function createCanvasRepo(db: Database): CanvasRepo {
         id: randomUUID(),
         courseId,
         title,
+        background: 'grid',
+        surface: 'dark',
         sortOrder,
         createdAt: now,
         updatedAt: now
@@ -193,6 +225,32 @@ export function createCanvasRepo(db: Database): CanvasRepo {
       return rowToBoard({
         ...row,
         title,
+        updated_at: updatedAt
+      })
+    },
+
+    setBackground(input) {
+      const boardId = requireId(input.boardId, 'boardId')
+      const row = boardRowOrThrow(boardId)
+      const background = input.background === undefined
+        ? boardBackground(row.background)
+        : boardBackground(input.background)
+      const surface = input.surface === undefined
+        ? boardSurface(row.surface)
+        : boardSurface(input.surface)
+      if (background === row.background && surface === row.surface) {
+        return rowToBoard(row)
+      }
+      const updatedAt = nowIso()
+      db.prepare(
+        `UPDATE whiteboards
+            SET background = ?, surface = ?, updated_at = ?
+          WHERE id = ?`
+      ).run(background, surface, updatedAt, boardId)
+      return rowToBoard({
+        ...row,
+        background,
+        surface,
         updated_at: updatedAt
       })
     },

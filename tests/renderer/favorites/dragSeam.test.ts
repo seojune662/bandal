@@ -40,7 +40,12 @@ const DESCRIPTORS: TabDescriptor[] = [
     payload: { tabId: 't1', initialUrl: 'https://www.youtube.com' }
   },
   { kind: 'chat', payload: { courseId: 'c1' } },
-  { kind: 'board', payload: {} }
+  { kind: 'board', payload: {} },
+  { kind: 'whiteboard', payload: { courseId: 'c1', boardId: 'wb1' } },
+  {
+    kind: 'group-chat',
+    payload: { courseId: 'c1', groupId: 'group1', view: 'chat' }
+  }
 ]
 
 describe('tab → favorites drag seam', () => {

@@ -21,6 +21,23 @@ describe('i18n messages', () => {
     ).toBe('eTL 기본 브라우저로 열기')
   })
 
+  test('uses localized settings navigation labels', () => {
+    expect(translate('ko-KR', 'settings.back')).toBe('앱으로 돌아가기')
+    expect(translate('ko-KR', 'settings.eyebrow')).toBe('반달 설정')
+    expect(translate('ko-KR', 'settings.tagline')).toBe(
+      '내 리듬대로 공부해요.'
+    )
+    expect(translate('ko-KR', 'settings.group.settings')).toBe('설정')
+    expect(translate('ko-KR', 'settings.group.workspace')).toBe('학습 공간')
+    expect(translate('ko-KR', 'settings.group.info')).toBe('정보')
+    expect(translate('ko-KR', 'settings.category.general.label')).toBe('일반')
+    expect(translate('ko-KR', 'settings.category.appearance.label')).toBe('화면')
+    expect(translate('ko-KR', 'settings.category.university.label')).toBe('학교')
+    expect(translate('ko-KR', 'settings.category.courses.label')).toBe('과목')
+    expect(translate('ko-KR', 'settings.category.about.label')).toBe('정보')
+    expect(translate('en-US', 'settings.category.general.label')).toBe('General')
+  })
+
   test('falls back to Korean when the active locale is missing a key', () => {
     const key = 'settings.window.title'
     const mutableEnglish = enUS as Record<string, string>

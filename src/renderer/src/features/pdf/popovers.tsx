@@ -18,6 +18,7 @@ import type {
   HighlightColor
 } from '../../../../shared/types/annotation'
 import type { DrawingClipSource } from '../../../../shared/types/drawing'
+import type { PersonalBoard } from '../../../../shared/types/whiteboard'
 import { writeBandalClipDragData } from './clipTransfer'
 
 const COLOR_LABEL: Record<HighlightColor, string> = {
@@ -127,6 +128,56 @@ export function SelectionPopover({
       >
         <TabKindIcon kind="whiteboard" />
         화이트보드로 보내기
+      </button>
+    </div>
+  )
+}
+
+// -- whiteboard destination ------------------------------------------------
+
+interface WhiteboardPickerPopoverProps {
+  boards: PersonalBoard[]
+  position: ContentPoint
+  onPick: (board: PersonalBoard) => void
+  onCreate: () => void
+  onDismiss: () => void
+}
+
+export function WhiteboardPickerPopover({
+  boards,
+  position,
+  onPick,
+  onCreate,
+  onDismiss
+}: WhiteboardPickerPopoverProps): JSX.Element {
+  const ref = useDismiss(onDismiss)
+  return (
+    <div
+      ref={ref}
+      className="pdf-popover pdf-popover--edit"
+      role="menu"
+      aria-label="보낼 화이트보드 선택"
+      style={{ left: position.left, top: position.top }}
+    >
+      {boards.map((board) => (
+        <button
+          key={board.id}
+          type="button"
+          className="pdf-popover__ask-ai"
+          role="menuitem"
+          onClick={() => onPick(board)}
+        >
+          {board.title}
+        </button>
+      ))}
+      <button
+        type="button"
+        className="pdf-popover__ask-ai"
+        role="menuitem"
+        onClick={onCreate}
+      >
+        <TabKindIcon kind="whiteboard" />
+        새 화이트보드
       </button>
     </div>
   )

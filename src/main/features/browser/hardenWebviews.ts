@@ -40,11 +40,9 @@ function hardenBrowsingSession(): void {
 
   const browsingSession = session.fromPartition(BROWSING_PARTITION)
   const sessionStore = createBrowserSessionStore()
-  // restore() synchronously reads/decrypts the small snapshot and issues all
-  // cookies.set requests before its first await. Thus these requests reach the
-  // shared partition before the renderer can create its first webview.
-  void sessionStore.restore()
-  sessionStore.startAutoPersist()
+  // The persist: partition lets Chromium retain persistent cookies itself.
+  // Flush cookies and DOM storage on graceful quit without changing expiry.
+  sessionStore.startFlushOnQuit()
   browsingSession.setUserAgent(
     browsingUserAgent(browsingSession.getUserAgent(), app.getName())
   )

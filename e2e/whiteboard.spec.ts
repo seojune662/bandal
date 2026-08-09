@@ -28,8 +28,8 @@ test.describe('whiteboard', () => {
     const { page } = bandal
     await createCourse(page, '알고리즘')
     await page
-      .locator('aside.app-rail--left')
-      .getByRole('button', { name: '새 화이트보드' })
+      .locator('.whiteboards-group')
+      .getByRole('button', { name: '새 화이트보드 만들기' })
       .click()
 
     const surface = page.locator('.ink-layer')

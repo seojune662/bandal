@@ -458,6 +458,28 @@ export const migrations: Migration[] = [
            ON board_tasks (due_at) WHERE deleted_at IS NULL AND due_at IS NOT NULL;`
       )
     }
+  },
+  {
+    version: 13,
+    name: 'whiteboard-background',
+    up: (db) => {
+      const columns = new Set(
+        (db.prepare('PRAGMA table_info(whiteboards)').all() as { name: string }[]).map(
+          (column) => column.name
+        )
+      )
+      // Existing boards keep exactly what their owner has been looking at.
+      if (!columns.has('background')) {
+        db.exec(
+          `ALTER TABLE whiteboards ADD COLUMN background TEXT NOT NULL DEFAULT 'grid'`
+        )
+      }
+      if (!columns.has('surface')) {
+        db.exec(
+          `ALTER TABLE whiteboards ADD COLUMN surface TEXT NOT NULL DEFAULT 'dark'`
+        )
+      }
+    }
   }
 ]
 

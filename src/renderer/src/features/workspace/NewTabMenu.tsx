@@ -1,7 +1,8 @@
 /**
  * "+" new-tab menu — a lightweight take on Orca's typed omnibox: a filter
  * field on top; typing a URL turns the first entry into "open in browser",
- * plain text filters commands and the course's PDF materials.
+ * plain text filters commands and the course's PDF materials. PDFs are search
+ * results only; the default list leaves material browsing to the right rail.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -162,10 +163,10 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         }
       })
     }
-    if (matches('AI 튜터')) {
+    if (matches('AI', 'AI 튜터')) {
       result.push({
         id: 'chat',
-        label: 'AI 튜터',
+        label: 'AI',
         hint: course.name,
         icon: <TabKindIcon kind="chat" />,
         run: () => {
@@ -213,20 +214,24 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
       })
     }
 
-    const pdfs: MaterialNode[] = []
-    collectPdfs(tree, pdfs)
-    for (const pdf of pdfs.filter((node) => matches(node.name)).slice(0, MAX_PDF_ITEMS)) {
-      result.push({
-        id: `pdf:${pdf.relPath}`,
-        label: pdf.name,
-        hint: 'PDF 열기',
-        icon: <TabKindIcon kind="pdf" />,
-        run: () => {
-          openTab(
-            descriptorFor('pdf', { courseId: course.id, relPath: pdf.relPath })
-          )
-        }
-      })
+    if (trimmed.length > 0) {
+      const pdfs: MaterialNode[] = []
+      collectPdfs(tree, pdfs)
+      for (const pdf of pdfs
+        .filter((node) => matches(node.name))
+        .slice(0, MAX_PDF_ITEMS)) {
+        result.push({
+          id: `pdf:${pdf.relPath}`,
+          label: pdf.name,
+          hint: 'PDF 열기',
+          icon: <TabKindIcon kind="pdf" />,
+          run: () => {
+            openTab(
+              descriptorFor('pdf', { courseId: course.id, relPath: pdf.relPath })
+            )
+          }
+        })
+      }
     }
     return result
   }, [query, tree, groups, course.id, course.name, openTab])
