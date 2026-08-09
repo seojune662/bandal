@@ -24,7 +24,10 @@ import { invoke } from '../../lib/ipc'
 import './pdfWorker'
 import 'react-pdf/dist/Page/TextLayer.css'
 import './pdf.css'
-import { isTabDescriptor } from '../workspace/tabIdentity'
+import { descriptorFor, isTabDescriptor } from '../workspace/tabIdentity'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
+import { requestClipDelivery } from '../canvas/clipDelivery'
+import type { DrawingClipSource } from '../../../../shared/types/drawing'
 import { usePdfDocument } from './usePdfDocument'
 import { useAnnotations } from './useAnnotations'
 import { usePageTexts, useStaleAnnotationIds } from './usePageTexts'
@@ -400,6 +403,41 @@ function PdfViewer({
     [courseId]
   )
 
+  /**
+   * Dragging a clip needs a whiteboard already open beside the PDF, which is a
+   * lot of setup for "put this page on my board". Clicking does the same thing
+   * without it: reuse the course's most recent board, or make the first one.
+   */
+  const sendClipToWhiteboard = useCallback(
+    async (source: DrawingClipSource): Promise<void> => {
+      try {
+        const boards = await invoke('canvas:list', { courseId })
+        // Prefer a board the student already has open — that is the one they
+        // would have dragged onto. `canvas:list` is ordered oldest-first, so
+        // otherwise fall back to their original board rather than a stray one.
+        const openBoardIds = new Set(
+          Object.values(useWorkspaceStore.getState().openTabs)
+            .filter((tab) => tab.kind === 'whiteboard')
+            .map((tab) => tab.payload.boardId)
+        )
+        const board =
+          boards.find((entry) => openBoardIds.has(entry.id)) ??
+          boards.at(0) ??
+          await invoke('canvas:create', { courseId })
+        // Queue before opening so a board mounting immediately still sees it.
+        requestClipDelivery(board.id, source)
+        useWorkspaceStore.getState().openTab(
+          descriptorFor('whiteboard', { courseId, boardId: board.id })
+        )
+        showToast(`${board.title}에 붙였어요`)
+      } catch (error) {
+        console.error('[Bandal] 화이트보드로 보내지 못했습니다.', error)
+        showToast('화이트보드로 보내지 못했습니다.', 'danger')
+      }
+    },
+    [courseId]
+  )
+
   const sendToNote = useCallback(
     async (
       annotation: Annotation,
@@ -593,6 +631,7 @@ function PdfViewer({
                       aspect={pageAspects.get(pageNumber) ?? defaultAspect}
                       isVisible={visiblePages.has(pageNumber)}
                       clipDragEnabled={activeTool === 'select'}
+                      onSendClip={(source) => { void sendClipToWhiteboard(source) }}
                       annotations={pageAnnotations}
                       drawings={pageDrawings}
                       drawingsLoading={drawingsApi.loading}

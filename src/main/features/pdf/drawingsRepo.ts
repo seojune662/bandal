@@ -13,6 +13,7 @@ import type {
   DrawingStyle,
   UpdateDrawingInput
 } from '../../../shared/types/drawing'
+import { DRAWING_KINDS as ALL_DRAWING_KINDS } from '../../../shared/types/drawing'
 import { NotFoundError, ValidationError } from '../../db/errors'
 import { nowIso, requireId, requireInt, requireNonEmptyString } from '../../db/validate'
 
@@ -35,15 +36,14 @@ interface DrawingRow {
   updated_at: string
 }
 
-const DRAWING_KINDS: readonly DrawingKind[] = [
-  'ink',
-  'highlighter',
-  'rect',
-  'ellipse',
-  'arrow',
-  'line',
-  'textbox'
-]
+/**
+ * Everything except `clip`: a clip is a reference to a PDF page, and placing
+ * one back onto a PDF page has no meaning. Derived from the shared list rather
+ * than copied, so a new kind cannot be silently forgotten here.
+ */
+const DRAWING_KINDS: readonly DrawingKind[] = ALL_DRAWING_KINDS.filter(
+  (kind) => kind !== 'clip'
+)
 const DRAWING_COLORS: readonly DrawingColor[] = [
   'ink',
   'red',

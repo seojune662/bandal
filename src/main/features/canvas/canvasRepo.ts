@@ -6,6 +6,7 @@ import type {
   DrawingShape,
   DrawingStyle
 } from '../../../shared/types/drawing'
+import { DRAWING_KINDS } from '../../../shared/types/drawing'
 import type {
   CreatePersonalBoardInput,
   OpenPersonalBoardResult,
@@ -46,15 +47,6 @@ export interface CanvasRepo {
   removeShapes(input: RemovePersonalShapesInput): void
 }
 
-const DRAWING_KINDS: readonly DrawingKind[] = [
-  'ink',
-  'highlighter',
-  'rect',
-  'ellipse',
-  'arrow',
-  'line',
-  'textbox'
-]
 
 function rowToBoard(row: BoardRow): PersonalBoard {
   return {

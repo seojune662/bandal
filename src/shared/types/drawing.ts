@@ -28,6 +28,30 @@ export type DrawingKind =
    */
   | 'clip'
 
+/**
+ * Runtime witness for `DrawingKind`, so validators cannot silently fall behind
+ * the type. They did: `clip` was added to the union but not to the personal
+ * board's hand-copied list, so every clip a student put on a board was
+ * rejected on save and vanished when the board was reopened.
+ *
+ * The assignment below stops compiling if a kind is missing from the list.
+ */
+export const DRAWING_KINDS = [
+  'ink',
+  'highlighter',
+  'rect',
+  'ellipse',
+  'arrow',
+  'line',
+  'textbox',
+  'clip'
+] as const satisfies readonly DrawingKind[]
+
+type MissingDrawingKind = Exclude<DrawingKind, (typeof DRAWING_KINDS)[number]>
+const _allDrawingKindsListed: MissingDrawingKind extends never ? true : never =
+  true
+void _allDrawingKindsListed
+
 /** Named palette entry. Renderer maps these to theme tokens, never to hex. */
 export type DrawingColor =
   | 'ink'

@@ -9,6 +9,7 @@ import type {
   DrawingClipSource,
   DrawingShape
 } from '../../../../shared/types/drawing'
+import { foreignObjectContentStyle } from './foreignObjectScale'
 
 export type RenderClip = (source: DrawingClipSource) => Promise<string | null>
 
@@ -16,6 +17,8 @@ interface ClipShapeProps {
   shape: DrawingShape
   box: DrawingBox
   aspect: number
+  /** Pixel width of the surface; CSS inside the foreignObject is scaled by it. */
+  baseWidthPx: number
   selected: boolean
   renderClip?: RenderClip | undefined
   onOpenClip?: ((source: DrawingClipSource) => void) | undefined
@@ -44,6 +47,7 @@ export function ClipShape({
   shape,
   box,
   aspect,
+  baseWidthPx,
   selected,
   renderClip,
   onOpenClip,
@@ -100,6 +104,10 @@ export function ClipShape({
 
   if (source === undefined) return null
   const failed = loadState === 'error'
+  const contentStyle = foreignObjectContentStyle(box, baseWidthPx, aspect)
+  // Unmeasured surface: drawing now would size the border and radius against
+  // the normalized viewBox and paint a huge wedge over the board.
+  if (contentStyle === null) return null
 
   return (
     <g className="ink-layer__clip-group">
@@ -107,7 +115,7 @@ export function ClipShape({
         ref={objectRef}
         {...box}
         className="ink-layer__clip-object"
-        style={{ opacity: shape.style.opacity }}
+        style={{ opacity: shape.style.opacity, overflow: 'hidden' }}
         onPointerDown={(event) => onBeginManipulation(event, shape, 'move')}
         onDoubleClick={(event) => {
           event.stopPropagation()
@@ -116,6 +124,7 @@ export function ClipShape({
       >
         <div
           className="ink-layer__clip"
+          style={contentStyle}
           data-state={loadState}
           aria-label={`${source.label}${failed ? ', 원본을 찾을 수 없어요' : ''}`}
         >

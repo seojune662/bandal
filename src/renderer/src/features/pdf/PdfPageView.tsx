@@ -31,6 +31,8 @@ export interface PdfPageViewProps {
   aspect: number
   isVisible: boolean
   clipDragEnabled: boolean
+  /** Sends this page to a whiteboard without needing one open to drag onto. */
+  onSendClip: (source: DrawingClipSource) => void
   annotations: Annotation[]
   drawings: Drawing[]
   drawingsLoading: boolean
@@ -87,6 +89,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
     aspect,
     isVisible,
     clipDragEnabled,
+    onSendClip,
     annotations,
     drawings,
     drawingsLoading,
@@ -165,15 +168,19 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
           className="pdf-page__clip-drag"
           draggable
           aria-label={`${pageNumber} 페이지를 화이트보드로 보내기`}
-          title="이 페이지를 화이트보드로 드래그"
+          title="눌러서 화이트보드로 보내기 (끌어다 놓아도 돼요)"
           onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            onSendClip(clipSource)
+          }}
           onDragStart={(event) => {
             event.stopPropagation()
             writeBandalClipDragData(event.dataTransfer, clipSource)
           }}
         >
           <TabKindIcon kind="whiteboard" />
-          보드로
+          화이트보드로
         </button>
       )}
       {isVisible ? (

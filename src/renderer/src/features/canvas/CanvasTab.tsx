@@ -29,6 +29,7 @@ import {
   readBandalClipDragData
 } from '../pdf/clipTransfer'
 import { requestPdfPageNavigation } from '../pdf/pdfPageNavigation'
+import { CLIP_DELIVERY_EVENT, takeClipDeliveries } from './clipDelivery'
 import { createPdfClipRenderer } from '../pdf/renderClip'
 import { openMaterialInCourse } from '../workspace/openMaterial'
 import { isTabDescriptor } from '../workspace/tabIdentity'
@@ -415,18 +416,10 @@ function CanvasSession({
     event.dataTransfer.dropEffect = 'copy'
   }, [])
 
-  const handleDrop = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
-    const source = readBandalClipDragData(event.dataTransfer)
-    if (source === null) return
-    const surface = canvasRef.current
-    if (surface === null) return
-    const bounds = surface.getBoundingClientRect()
-    if (bounds.width <= 0 || bounds.height <= 0) return
-    event.preventDefault()
-    const point = {
-      x: Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)),
-      y: Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height))
-    }
+  const placeClip = useCallback((
+    source: DrawingClipSource,
+    point: { x: number; y: number }
+  ): void => {
     const initialBox = clipBoxAtDrop(point, aspect, provisionalClipAspect(source))
     const created = addInternal({
       kind: 'clip',
@@ -450,6 +443,42 @@ function CanvasSession({
       }, false)
     }).catch(() => {})
   }, [addInternal, aspect, color, renderClip, updateInternal, width])
+
+  const handleDrop = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
+    const source = readBandalClipDragData(event.dataTransfer)
+    if (source === null) return
+    const surface = canvasRef.current
+    if (surface === null) return
+    const bounds = surface.getBoundingClientRect()
+    if (bounds.width <= 0 || bounds.height <= 0) return
+    event.preventDefault()
+    placeClip(source, {
+      x: Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)),
+      y: Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height))
+    })
+  }, [placeClip])
+
+  // Clips sent from a PDF by clicking, rather than dragged onto the surface.
+  // They wait until the board is measured, otherwise the box would be sized
+  // against an aspect of 0 and come out wrong.
+  useEffect(() => {
+    if (!hasMeasuredCanvas) return
+    const drain = (): void => {
+      for (const [index, source] of takeClipDeliveries(board.id).entries()) {
+        // Count what is already here, not just this batch: sending three pages
+        // one at a time is three separate batches, and they would otherwise
+        // land on exactly the same spot and hide each other.
+        const placed =
+          shapesRef.current.filter((shape) => shape.kind === 'clip').length +
+          index
+        const offset = Math.min(placed, 8) * 0.035
+        placeClip(source, { x: 0.28 + offset, y: 0.16 + offset })
+      }
+    }
+    drain()
+    window.addEventListener(CLIP_DELIVERY_EVENT, drain)
+    return () => window.removeEventListener(CLIP_DELIVERY_EVENT, drain)
+  }, [board.id, hasMeasuredCanvas, placeClip])
 
   const openClip = useCallback((source: DrawingClipSource): void => {
     openMaterialInCourse(board.courseId, 'pdf', source.relPath)

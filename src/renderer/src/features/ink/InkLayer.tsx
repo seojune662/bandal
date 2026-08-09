@@ -27,6 +27,7 @@ import {
 } from './inkGeometry'
 import type { InkTool, InkToolState } from './inkToolStore'
 import { ClipShape, type RenderClip } from './ClipShape'
+import { foreignObjectContentStyle } from './foreignObjectScale'
 import './ink.css'
 
 export interface InkLayerProps {
@@ -569,15 +570,9 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       isFinitePositive(shapeStyle.fontScale ?? 1) ? (shapeStyle.fontScale ?? 1) : 1
     )
     if (!deferTextCreation) return { fontSize, opacity: shapeStyle.opacity }
-    const baseHeightPx = baseWidthPx * aspect
-    return {
-      width: box.width * baseWidthPx,
-      height: box.height * baseHeightPx,
-      fontSize,
-      opacity: shapeStyle.opacity,
-      transform: `scale(${1 / baseWidthPx}, ${1 / baseHeightPx})`,
-      transformOrigin: 'top left'
-    }
+    const scaled = foreignObjectContentStyle(box, baseWidthPx, aspect)
+    if (scaled === null) return { fontSize, opacity: shapeStyle.opacity }
+    return { ...scaled, fontSize, opacity: shapeStyle.opacity }
   }, [aspect, baseWidthPx, deferTextCreation])
 
   const erasedIds = gesture?.kind === 'erase' ? gesture.ids : new Set<string>()
@@ -649,6 +644,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
               shape={shape}
               box={box}
               aspect={aspect}
+              baseWidthPx={baseWidthPx}
               selected={activeTool === 'select'}
               renderClip={renderClip}
               onOpenClip={onOpenClip}
