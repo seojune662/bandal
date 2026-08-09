@@ -448,17 +448,33 @@ export function createWhiteboardService(
     removal: PendingWhiteboardRemoval
   ): Promise<number | null> {
     try {
+      // `.select()` so PostgREST reports WHICH rows changed. Without it an
+      // update that matched nothing — RLS filtered it out, or the shape was
+      // never uploaded — comes back with error: null, and treating that as
+      // success marked the tombstone confirmed while the server still held a
+      // live row. The next sync then brought the erased shape back.
       const response = (await client
         .from('whiteboard_shapes')
         .update({ deleted_at: removal.deletedAt })
         .eq('board_id', removal.boardId)
-        .eq('id', removal.id)) as QueryResponse
+        .eq('id', removal.id)
+        .select('id')) as QueryResponse
       if (response.error != null) {
         if (isWhiteboardNotProvisioned(response.error, response.status)) {
           provision.set(removal.groupId, 'not-provisioned')
           return null
         }
         throw response.error
+      }
+      const affected = Array.isArray(response.data) ? response.data.length : 0
+      if (affected === 0) {
+        // Nothing to delete server-side: either it never got there, or this
+        // shape belongs to someone else and RLS refused. Retrying cannot help
+        // in either case, and the local tombstone stands regardless — the
+        // shape stays gone for this student.
+        deps.repo.park(removal.id)
+        nextTryAt.delete(removal.id)
+        return null
       }
       deps.repo.markSynced(removal.id)
       nextTryAt.delete(removal.id)

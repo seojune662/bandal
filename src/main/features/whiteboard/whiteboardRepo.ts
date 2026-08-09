@@ -172,8 +172,21 @@ export function createWhiteboardRepo(db: Database): WhiteboardRepo {
              THEN whiteboard_shapes_cache.created_at ELSE excluded.created_at END,
            updated_at = CASE WHEN whiteboard_shapes_cache.pending = 1
              THEN whiteboard_shapes_cache.updated_at ELSE excluded.updated_at END,
-           deleted_at = CASE WHEN whiteboard_shapes_cache.pending = 1
-             THEN whiteboard_shapes_cache.deleted_at ELSE NULL END,
+           -- A local tombstone ALWAYS wins, pending or not.
+           --
+           -- This used to clear deleted_at once the removal was marked synced,
+           -- which meant any server row that still existed revived the shape
+           -- on the next sync. Combined with an upload that could report
+           -- success without touching a row, erasing on the shared board
+           -- looked fine and then undid itself after switching away.
+           --
+           -- Only an explicit restore un-deletes, exactly like the personal
+           -- canvas. Genuine server-side deletions arrive via
+           -- applyRemoteRemovals, not through this path.
+           deleted_at = CASE
+             WHEN whiteboard_shapes_cache.deleted_at IS NOT NULL
+               THEN whiteboard_shapes_cache.deleted_at
+             ELSE NULL END,
            pending = CASE
              WHEN whiteboard_shapes_cache.pending = 1
               AND whiteboard_shapes_cache.deleted_at IS NOT NULL THEN 1

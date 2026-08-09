@@ -79,6 +79,12 @@ import type {
   SendHighlightToNoteResult
 } from '../types/link'
 import type {
+  CredentialsAvailability,
+  FillLoginResult,
+  SaveLoginInput,
+  SavedLoginSummary
+} from '../types/credentials'
+import type {
   AddWhiteboardShapeInput,
   CreatePersonalBoardInput,
   OpenPersonalBoardResult,
@@ -608,6 +614,33 @@ export interface IpcContract {
     res: { relPath: string }
   }
 
+  // -- saved site logins ------------------------------------------------------
+  'credentials:availability': {
+    req: Record<string, never>
+    res: CredentialsAvailability
+  }
+  /** Summaries only — a stored password is never returned to the renderer. */
+  'credentials:list': {
+    req: Record<string, never>
+    res: SavedLoginSummary[]
+  }
+  'credentials:save': {
+    req: SaveLoginInput
+    res: SavedLoginSummary
+  }
+  'credentials:forget': {
+    req: { origin: string }
+    res: { ok: true }
+  }
+  /**
+   * Fills the login form in the browser guest showing `origin`. Main resolves
+   * the secret and injects it; the renderer only ever names the origin.
+   */
+  'credentials:fill': {
+    req: { origin: string; guestWebContentsId: number }
+    res: FillLoginResult
+  }
+
   // -- settings -------------------------------------------------------------
   'settings:get': {
     req: Record<string, never>
@@ -966,7 +999,12 @@ export const IPC_CHANNELS = [
   'whiteboard:close',
   'link:sendHighlightToNote',
   'group:shareNote',
-  'group:saveSharedNote'
+  'group:saveSharedNote',
+  'credentials:availability',
+  'credentials:list',
+  'credentials:save',
+  'credentials:forget',
+  'credentials:fill'
 ] as const satisfies readonly IpcChannel[]
 
 // Fails to compile if a contract channel is missing from IPC_CHANNELS.
