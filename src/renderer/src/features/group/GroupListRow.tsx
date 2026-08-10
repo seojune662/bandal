@@ -58,6 +58,7 @@ export function GroupListRow({
             <path d="M12 17v3" />
             <path d="M7 12c1.6-3.4 3-3.4 4.4 0 1.3 3.2 2.6 3.2 4-.6" />
           </svg>
+          <span>화이트보드</span>
         </button>
       )}
     </li>

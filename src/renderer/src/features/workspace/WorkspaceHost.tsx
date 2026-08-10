@@ -26,6 +26,7 @@ import { openNewTabMenu, useNewTabMenu } from './newTabMenuController'
 import { isTabDescriptor, tabTitle } from './tabIdentity'
 import { writeWorkspaceTabDragData } from './tabDrag'
 import { dockviewComponents } from './tabRegistry'
+import { installTabStripWheelScrolling } from './tabStripScroll'
 import { TabKindIcon } from './workspaceIcons'
 import './workspace.css'
 import { BandalMark } from '../../components/BandalMark'
@@ -287,11 +288,18 @@ export function WorkspaceHost(): JSX.Element {
   const isMenuOpen = useNewTabMenu((state) => state.isOpen)
   const closeMenu = useNewTabMenu((state) => state.close)
   const layoutSubscription = useRef<{ dispose: () => void } | null>(null)
+  const hostRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setActiveCourse(courseId)
     closeMenu()
   }, [courseId, setActiveCourse, closeMenu])
+
+  useEffect(() => {
+    const host = hostRef.current
+    if (host === null) return
+    return installTabStripWheelScrolling(host)
+  }, [])
 
   useEffect(() => {
     const flush = (): void => {
@@ -315,9 +323,10 @@ export function WorkspaceHost(): JSX.Element {
   }
 
   return (
-    <div className="workspace-host">
+    <div ref={hostRef} className="workspace-host">
       <DockviewReact
         theme={bandalTheme}
+        scrollbars="native"
         components={dockviewComponents}
         defaultTabComponent={WorkspaceTab}
         watermarkComponent={Watermark}

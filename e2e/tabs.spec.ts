@@ -1,10 +1,17 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 
 const SEEDED_NOTE = 'Seeded.md'
+const SCROLL_SAMPLE_COUNT = 12
+const WHEEL_DELTA = 32
+
+interface ScrollSample {
+  scrollLeft: number
+  timestamp: number
+}
 
 /** Opens the workspace "+" omnibox (header button, or watermark CTA when no tabs are open). */
 async function openNewTabMenu(page: Page): Promise<void> {
@@ -18,6 +25,52 @@ async function openNewTabMenu(page: Page): Promise<void> {
       .click()
   }
   await expect(page.getByRole('dialog', { name: '새 탭 열기' })).toBeVisible()
+}
+
+async function sampleContinuousWheel(
+  page: Page,
+  tabs: Locator,
+  deltaX: number,
+  deltaY: number
+): Promise<ScrollSample[]> {
+  await tabs.evaluate((element) => {
+    element.scrollLeft = 0
+  })
+  await tabs.hover()
+
+  const samples: ScrollSample[] = [{ scrollLeft: 0, timestamp: 0 }]
+  for (let index = 0; index < SCROLL_SAMPLE_COUNT; index += 1) {
+    await page.mouse.wheel(deltaX, deltaY)
+    samples.push(
+      await tabs.evaluate(
+        (element) =>
+          new Promise<ScrollSample>((resolve) => {
+            window.requestAnimationFrame((timestamp) => {
+              resolve({ scrollLeft: element.scrollLeft, timestamp })
+            })
+          })
+      )
+    )
+  }
+  return samples
+}
+
+function expectSteadyForwardScroll(samples: ScrollSample[]): void {
+  const positions = samples.map((sample) => sample.scrollLeft)
+  const scrollSteps = positions
+    .slice(1)
+    .map((position, index) => position - positions[index]!)
+  const frameGaps = samples
+    .slice(2)
+    .map((sample, index) => sample.timestamp - samples[index + 1]!.timestamp)
+
+  expect(positions.at(-1)).toBeGreaterThan(0)
+  expect(
+    scrollSteps.every((step) => step > 0),
+    `scrollLeft samples: ${positions.join(', ')}`
+  ).toBe(true)
+  expect(Math.max(...scrollSteps)).toBeLessThanOrEqual(WHEEL_DELTA * 1.5)
+  expect(Math.max(...frameGaps)).toBeLessThan(50)
 }
 
 test.describe('workspace tabs', () => {
@@ -106,5 +159,62 @@ test.describe('workspace tabs', () => {
     ).toBeVisible()
     // Browser chrome (nav + URL bar) is up regardless of load outcome.
     await expect(page.locator('.browser-toolbar')).toBeVisible()
+  })
+
+  test('scrolls an overflowing tab strip monotonically without dropped frames', async () => {
+    const { page } = bandal
+    const noteNames = Array.from(
+      { length: SCROLL_SAMPLE_COUNT },
+      (_, index) => `Scroll sample ${String(index + 1).padStart(2, '0')} long tab.md`
+    )
+    for (const noteName of noteNames) {
+      writeFileSync(join(courseDir, noteName), '# Scroll sample\n')
+    }
+
+    await page.getByRole('button', { name: '자료 새로고침' }).click()
+    for (const noteName of noteNames) {
+      const title = noteName.replace(/\.md$/, '')
+      const material = page.locator('.material-row', { hasText: title })
+      await expect(material).toBeVisible()
+      await material.click()
+      await expect(
+        page.locator('.workspace-tab__title', { hasText: title })
+      ).toBeVisible()
+    }
+
+    const tabs = page.locator('.dv-tabs-container.dv-horizontal').first()
+    const dimensions = await tabs.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth
+    }))
+    expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth)
+
+    // The newest (active) tab is deliberately offscreen. If dockview keeps
+    // revealing it after activation, the first sample jumps to the far end.
+    const activeTabStaysOffscreen = await tabs.evaluate((element) => {
+      element.scrollLeft = 0
+      const activeTab = element.querySelector<HTMLElement>('.dv-active-tab')
+      return (
+        activeTab !== null &&
+        activeTab.offsetLeft + activeTab.offsetWidth > element.clientWidth
+      )
+    })
+    expect(activeTabStaysOffscreen).toBe(true)
+
+    const horizontal = await sampleContinuousWheel(
+      page,
+      tabs,
+      WHEEL_DELTA,
+      0
+    )
+    expectSteadyForwardScroll(horizontal)
+
+    const vertical = await sampleContinuousWheel(
+      page,
+      tabs,
+      0,
+      WHEEL_DELTA
+    )
+    expectSteadyForwardScroll(vertical)
   })
 })

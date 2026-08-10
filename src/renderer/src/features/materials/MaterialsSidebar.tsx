@@ -8,6 +8,7 @@ import { useCoursesStore } from '../../stores/coursesStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { normalizeCourseColor } from '../courses/courseColors'
+import { CourseGroupsSection } from '../group/CourseGroupsSection'
 import { openMaterialInWorkspace } from '../workspace/openMaterial'
 import { descriptorFor, tabPanelId } from '../workspace/tabIdentity'
 import { MaterialDeleteDialog } from './MaterialDeleteDialog'
@@ -703,6 +704,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
                 />
               )}
             </section>
+            <CourseGroupsSection courseId={course.id} />
           </>
         )}
       </div>

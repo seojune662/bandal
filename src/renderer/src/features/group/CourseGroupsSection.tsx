@@ -13,8 +13,10 @@ import { GroupListRow } from './GroupListRow'
 import './group.css'
 import './groupNavigation.css'
 
-/** Groups and creation action belonging to one course row. */
-export function CourseGroupsSection(props: { courseId: string }): JSX.Element | null {
+/** Groups and creation action belonging to the selected course. */
+export function CourseGroupsSection(props: {
+  courseId: string
+}): JSX.Element | null {
   const { courseId } = props
   const auth = useAuthStore((state) => state.auth)
   const initAuth = useAuthStore((state) => state.init)
@@ -102,20 +104,27 @@ export function CourseGroupsSection(props: { courseId: string }): JSX.Element | 
 
   return (
     <section className="course-groups-section" aria-label="이 과목의 함께하기">
+      <div className="materials-group-heading">
+        <span>함께하기</span>
+      </div>
+
       {groups.length > 0 && (
-        <>
-          <p className="course-groups-section__label">함께하기</p>
-          <ul className="group-list">
-            {groups.map((group) => (
-              <GroupListRow
-                key={group.id}
-                group={group}
-                onOpen={openGroup}
-                onOpenWhiteboard={openWhiteboard}
-              />
-            ))}
-          </ul>
-        </>
+        <ul className="group-list">
+          {groups.map((group) => (
+            <GroupListRow
+              key={group.id}
+              group={group}
+              onOpen={openGroup}
+              onOpenWhiteboard={openWhiteboard}
+            />
+          ))}
+        </ul>
+      )}
+
+      {signedIn && groups.length === 0 && (
+        <p className="course-groups-section__empty">
+          아직 함께하는 그룹이 없어요.
+        </p>
       )}
 
       {signedIn && (

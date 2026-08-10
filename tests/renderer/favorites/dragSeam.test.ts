@@ -27,6 +27,7 @@ function fakeDataTransfer(): DataTransfer & { store: Map<string, string> } {
   const store = new Map<string, string>()
   return {
     store,
+    effectAllowed: 'move',
     setData: (format: string, data: string) => store.set(format, data),
     getData: (format: string) => store.get(format) ?? ''
   } as unknown as DataTransfer & { store: Map<string, string> }
@@ -55,6 +56,7 @@ describe('tab → favorites drag seam', () => {
       const transfer = fakeDataTransfer()
       writeWorkspaceTabDragData(transfer, descriptor, 'label')
 
+      expect(transfer.effectAllowed).toBe('copyMove')
       const raw = transfer.getData(BANDAL_TAB_DRAG_MIME)
       expect(raw).not.toBe('')
       expect(parseFavoriteDragPayload(raw)).toEqual(descriptor)

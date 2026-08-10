@@ -53,12 +53,13 @@
 }
 
 .materials-files-group,
-.whiteboards-group {
+.whiteboards-group,
+.course-groups-section {
   min-width: 0;
 }
 
-.materials-files-group + .whiteboards-group,
-.whiteboards-group + .materials-files-group {
+.whiteboards-group + .materials-files-group,
+.materials-files-group + .course-groups-section {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--border-subtle);

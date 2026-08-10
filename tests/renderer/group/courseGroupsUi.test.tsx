@@ -237,9 +237,25 @@ describe('CourseGroupsSection', () => {
     )
 
     expect(html).toContain('알고리즘 전체방')
+    expect(html).toContain(
+      'class="materials-group-heading"><span>함께하기</span>'
+    )
     expect(html).toContain('읽지 않은 메시지 2개')
     expect(html).toContain('aria-label="알고리즘 전체방 화이트보드 열기"')
+    expect(html).toContain('<span>화이트보드</span>')
     expect(html).toContain('이 과목으로 그룹 만들기')
     expect(html).not.toContain('다른 과목 방')
+  })
+
+  test('keeps an empty message and the create entry point for a signed-in course', () => {
+    signIn()
+
+    const html = renderToStaticMarkup(
+      <CourseGroupsSection courseId={course.id} />
+    )
+
+    expect(html).toContain('함께하기')
+    expect(html).toContain('아직 함께하는 그룹이 없어요.')
+    expect(html).toContain('이 과목으로 그룹 만들기')
   })
 })

@@ -6,7 +6,6 @@ import { openSettingsWindow } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { StudyGapList } from '../insights/StudyGapList'
-import { CourseGroupsSection } from '../group/CourseGroupsSection'
 import { TogetherFooter } from '../group/TogetherFooter'
 import { UniversityShortcuts } from '../university/UniversityShortcuts'
 import { TabKindIcon } from '../workspace/workspaceIcons'
@@ -355,13 +354,11 @@ export function CourseSidebar(): JSX.Element {
                       )}
                     </button>
                   </div>
-                  {/* Course-scoped favorites and groups stay under the open
-                      course only, preserving the existing collapse model. */}
+                  {/* Course-scoped favorites stay under the open course. */}
                   {expanded && (
                     <div className="course-row__children">
                       <StudyGapList courseId={course.id} />
                       <FavoritesSection courseId={course.id} />
-                      <CourseGroupsSection courseId={course.id} />
                     </div>
                   )}
                 </li>

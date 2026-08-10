@@ -64,6 +64,14 @@
   -webkit-app-region: drag;
 }
 
+/* Dockview's custom scrollbar ignores trackpad deltaX. Native scrolling keeps
+ * horizontal gestures on the compositor path; the host only converts pure
+ * vertical mouse-wheel input. Keep either gesture inside the tab strip. */
+.bandal-dockview .dv-tabs-container.dv-horizontal {
+  overscroll-behavior-inline: contain;
+  scroll-behavior: auto;
+}
+
 /* Keep dockview's native tab DnD and every header control interactive. The
  * remaining void area in the header stays draggable window chrome. */
 .bandal-dockview .dv-tab,
