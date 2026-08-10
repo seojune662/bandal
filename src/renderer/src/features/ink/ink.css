@@ -141,16 +141,80 @@ textarea.ink-layer__textbox::placeholder {
   stroke-width: 0.002;
 }
 
+.ink-layer__image-object {
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.ink-layer__image {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: var(--text-secondary);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+
+.ink-layer__image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ink-layer__image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  width: 100%;
+  height: 100%;
+  padding: var(--space-2);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+.ink-layer__image-placeholder strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ink-layer__image[data-state='error'] {
+  border-color: var(--danger);
+}
+
+.ink-layer__image[data-state='error'] .ink-layer__image-placeholder span {
+  color: var(--danger);
+}
+
+.ink-layer__image-resize {
+  fill: var(--accent);
+  stroke: var(--bg-surface);
+  stroke-width: 0.002;
+}
+
 .ink-layer__textbox-resize[data-resize-handle='nw'],
 .ink-layer__textbox-resize[data-resize-handle='se'],
 .ink-layer__clip-resize[data-resize-handle='nw'],
-.ink-layer__clip-resize[data-resize-handle='se'] {
+.ink-layer__clip-resize[data-resize-handle='se'],
+.ink-layer__image-resize[data-resize-handle='nw'],
+.ink-layer__image-resize[data-resize-handle='se'] {
   cursor: nwse-resize;
 }
 
 .ink-layer__textbox-resize[data-resize-handle='ne'],
 .ink-layer__textbox-resize[data-resize-handle='sw'],
 .ink-layer__clip-resize[data-resize-handle='ne'],
-.ink-layer__clip-resize[data-resize-handle='sw'] {
+.ink-layer__clip-resize[data-resize-handle='sw'],
+.ink-layer__image-resize[data-resize-handle='ne'],
+.ink-layer__image-resize[data-resize-handle='sw'] {
   cursor: nesw-resize;
 }

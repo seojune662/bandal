@@ -121,9 +121,17 @@ export interface PersonalBoard {
   title: string
   background: BoardBackground
   surface: BoardSurface
+  /** How many pages the board has. At least 1. */
+  pageCount: number
   sortOrder: number
   createdAt: string
   updatedAt: string
+}
+
+/** Personal-board shapes carry the page they live on; group boards are 1-page. */
+export interface SetBoardPageCountInput {
+  boardId: string
+  pageCount: number
 }
 
 export interface SetBoardBackgroundInput {
@@ -146,6 +154,8 @@ export interface PutPersonalShapeInput {
   boardId: string
   /** Client-generated; re-putting the same id updates in place. */
   id: string
+  /** 1-based page. Defaults to 1 so pre-pages callers keep working. */
+  page?: number
   shape: Omit<DrawingShape, 'id' | 'createdAt' | 'updatedAt'>
   /**
    * Explicitly bring a soft-deleted shape back. Only undo sets this.
@@ -164,7 +174,12 @@ export interface RemovePersonalShapesInput {
   ids: string[]
 }
 
+/** A board shape knows which page it sits on; geometry stays 0..1 in-page. */
+export interface PersonalBoardShape extends DrawingShape {
+  page: number
+}
+
 export interface OpenPersonalBoardResult {
   board: PersonalBoard
-  shapes: DrawingShape[]
+  shapes: PersonalBoardShape[]
 }

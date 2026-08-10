@@ -4,9 +4,7 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
-  type DragEvent as ReactDragEvent,
-  type RefObject
+  useState
 } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import type {
@@ -18,19 +16,15 @@ import type {
   BoardBackground,
   OpenPersonalBoardResult,
   PersonalBoard,
+  PersonalBoardShape,
   SetBoardBackgroundInput
 } from '../../../../shared/types/whiteboard'
 import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
 import {
-  InkLayer,
   useInkToolStore,
   type InkHistoryAction
 } from '../ink'
-import {
-  BANDAL_CLIP_MIME,
-  readBandalClipDragData
-} from '../pdf/clipTransfer'
 import { requestPdfPageNavigation } from '../pdf/pdfPageNavigation'
 import { CLIP_DELIVERY_EVENT, takeClipDeliveries } from './clipDelivery'
 import { createPdfClipRenderer } from '../pdf/renderClip'
@@ -45,17 +39,13 @@ import {
   type CanvasShapeInput
 } from './canvasModel'
 import { CanvasToolRail } from './CanvasToolRail'
+import { CanvasPage, DEFAULT_PAGE_ASPECT } from './CanvasPage'
 import './canvas.css'
 
 type LoadState =
   | { phase: 'loading' }
   | { phase: 'loaded'; result: OpenPersonalBoardResult }
   | { phase: 'error'; message: string }
-
-interface CanvasSize {
-  width: number
-  height: number
-}
 
 function sameDrawingBox(left: DrawingBox | undefined, right: DrawingBox): boolean {
   return left !== undefined &&
@@ -98,34 +88,6 @@ function descriptorFromParams(
     : null
 }
 
-function useCanvasSize(ref: RefObject<HTMLDivElement>): CanvasSize {
-  const [size, setSize] = useState<CanvasSize>({ width: 0, height: 0 })
-
-  useEffect(() => {
-    const element = ref.current
-    if (element === null) return
-    const update = (width: number, height: number): void => {
-      setSize((current) =>
-        current.width === width && current.height === height
-          ? current
-          : { width, height }
-      )
-    }
-    const rect = element.getBoundingClientRect()
-    update(rect.width, rect.height)
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (entry !== undefined) {
-        update(entry.contentRect.width, entry.contentRect.height)
-      }
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [ref])
-
-  return size
-}
-
 function usePanelActive(api: IDockviewPanelProps['api']): boolean {
   const [active, setActive] = useState(() => api.isActive && api.isVisible)
 
@@ -148,8 +110,16 @@ export function canvasUndoKey(boardId: string): string {
 
 interface CanvasSessionProps {
   initialBoard: PersonalBoard
-  initialShapes: readonly DrawingShape[]
+  initialShapes: readonly PersonalBoardShape[]
   panelApi: IDockviewPanelProps['api']
+}
+
+function withShapePage(shape: DrawingShape): PersonalBoardShape {
+  const candidate = (shape as DrawingShape & { page?: unknown }).page
+  const page = typeof candidate === 'number' && Number.isInteger(candidate) && candidate >= 1
+    ? candidate
+    : 1
+  return { ...shape, page }
 }
 
 function CanvasSession({
@@ -159,19 +129,22 @@ function CanvasSession({
 }: CanvasSessionProps): JSX.Element {
   const surfaceKey = canvasUndoKey(initialBoard.id)
   const [board, setBoard] = useState(initialBoard)
-  const [shapes, setShapes] = useState<DrawingShape[]>(() => [...initialShapes])
+  const [shapes, setShapes] = useState<PersonalBoardShape[]>(() => [...initialShapes])
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(initialBoard.title)
   const [renaming, setRenaming] = useState(false)
   const [backgroundBusy, setBackgroundBusy] = useState(false)
+  const [pageBusy, setPageBusy] = useState(false)
   const [exportingPdf, setExportingPdf] = useState(false)
-  const canvasRef = useRef<HTMLDivElement>(null)
+  const [visiblePage, setVisiblePage] = useState(1)
+  const viewportRef = useRef<HTMLDivElement>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const shapesRef = useRef(shapes)
   const operationRef = useRef(new Map<string, number>())
+  const visibilityRef = useRef(new Map<number, number>())
+  const pendingScrollPageRef = useRef<number | null>(null)
   const cancelledTitleRenameRef = useRef(false)
-  const size = useCanvasSize(canvasRef)
   const panelActive = usePanelActive(panelApi)
   const activeTool = useInkToolStore((state) => state.activeTool)
   const color = useInkToolStore((state) => state.color)
@@ -188,7 +161,7 @@ function CanvasSession({
     [initialBoard.courseId]
   )
 
-  const replace = useCallback((next: DrawingShape[]): void => {
+  const replace = useCallback((next: PersonalBoardShape[]): void => {
     shapesRef.current = next
     setShapes(next)
   }, [])
@@ -204,13 +177,14 @@ function CanvasSession({
   }, [])
 
   const persistShape = useCallback((
-    shape: DrawingShape,
+    shape: PersonalBoardShape,
     restore = false
   ): void => {
     const operation = nextOperation(shape.id)
     void invoke('canvas:putShape', {
       boardId: board.id,
       id: shape.id,
+      page: shape.page,
       shape: {
         kind: shape.kind,
         data: shape.data,
@@ -224,18 +198,22 @@ function CanvasSession({
         operationRef.current.get(shape.id) === operation &&
         shapesRef.current.some((entry) => entry.id === shape.id)
       ) {
-        replace(putOptimisticCanvasShape(shapesRef.current, saved))
+        replace(putOptimisticCanvasShape(shapesRef.current, {
+          ...saved,
+          page: shape.page
+        }))
       }
       setStatusMessage(null)
     }).catch(showSaveError)
   }, [board.id, nextOperation, replace, showSaveError])
 
   const addInternal = useCallback((
-    input: CanvasShapeInput,
+    input: Omit<CanvasShapeInput, 'page'>,
+    page: number,
     recordHistory: boolean
-  ): DrawingShape => {
+  ): PersonalBoardShape => {
     const optimistic = createOptimisticCanvasShape(
-      input,
+      { ...input, page },
       uuidv4(),
       new Date().toISOString()
     )
@@ -251,9 +229,9 @@ function CanvasSession({
   }, [persistShape, replace, surfaceKey])
 
   const restoreInternal = useCallback((
-    shape: DrawingShape,
+    shape: PersonalBoardShape,
     recordHistory: boolean
-  ): DrawingShape => {
+  ): PersonalBoardShape => {
     const restored = {
       ...shape,
       updatedAt: new Date().toISOString()
@@ -272,7 +250,7 @@ function CanvasSession({
   const removeInternal = useCallback((
     idsInput: readonly string[],
     recordHistory: boolean
-  ): DrawingShape[] => {
+  ): PersonalBoardShape[] => {
     const ids = [...new Set(idsInput)]
     const idSet = new Set(ids)
     const removed = shapesRef.current.filter((shape) => idSet.has(shape.id))
@@ -296,7 +274,7 @@ function CanvasSession({
     id: string,
     patch: Partial<Pick<DrawingShape, 'data' | 'style'>>,
     recordHistory: boolean
-  ): DrawingShape | null => {
+  ): PersonalBoardShape | null => {
     const before = shapesRef.current.find((shape) => shape.id === id)
     if (before === undefined) return null
     const now = new Date().toISOString()
@@ -333,7 +311,7 @@ function CanvasSession({
     }
     if (action.kind === 'restore') {
       const restored = action.drawings.map((shape) =>
-        restoreInternal(shape, false)
+        restoreInternal(withShapePage(shape), false)
       )
       return { kind: 'remove', drawings: restored }
     }
@@ -433,6 +411,24 @@ function CanvasSession({
     }
   }, [board.id])
 
+  const addPage = useCallback(async (): Promise<void> => {
+    const pageCount = board.pageCount + 1
+    setPageBusy(true)
+    try {
+      const updated = await invoke('canvas:setPageCount', {
+        boardId: board.id,
+        pageCount
+      })
+      pendingScrollPageRef.current = updated.pageCount
+      setBoard(updated)
+      setStatusMessage(null)
+    } catch (error: unknown) {
+      showToast(errorMessage(error, '페이지를 추가하지 못했어요.'), 'danger')
+    } finally {
+      setPageBusy(false)
+    }
+  }, [board.id, board.pageCount])
+
   useEffect(() => {
     panelApi.setTitle(board.title)
   }, [board.title, panelApi])
@@ -441,29 +437,50 @@ function CanvasSession({
     if (editingTitle) titleInputRef.current?.select()
   }, [editingTitle])
 
-  const hasMeasuredCanvas = Number.isFinite(size.width) &&
-    Number.isFinite(size.height) &&
-    size.width > 0 &&
-    size.height > 0
-  const aspect = hasMeasuredCanvas ? size.height / size.width : 0
-  const baseWidthPx = hasMeasuredCanvas ? size.width : 0
+  useEffect(() => {
+    const page = pendingScrollPageRef.current
+    if (page === null || page > board.pageCount) return
+    pendingScrollPageRef.current = null
+    setVisiblePage(page)
+    requestAnimationFrame(() => {
+      viewportRef.current
+        ?.querySelector(`[data-page-number="${page}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [board.pageCount])
 
-  const handleDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
-    if (!Array.from(event.dataTransfer.types).includes(BANDAL_CLIP_MIME)) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'copy'
+  const updatePageVisibility = useCallback((page: number, ratio: number): void => {
+    if (ratio > 0) visibilityRef.current.set(page, ratio)
+    else visibilityRef.current.delete(page)
+    let bestPage = 1
+    let bestRatio = -1
+    for (const [candidate, candidateRatio] of visibilityRef.current) {
+      if (
+        candidateRatio > bestRatio ||
+        (candidateRatio === bestRatio && candidate < bestPage)
+      ) {
+        bestPage = candidate
+        bestRatio = candidateRatio
+      }
+    }
+    if (bestRatio >= 0) setVisiblePage(bestPage)
   }, [])
 
   const placeClip = useCallback((
     source: DrawingClipSource,
-    point: { x: number; y: number }
+    point: { x: number; y: number },
+    page: number
   ): void => {
-    const initialBox = clipBoxAtDrop(point, aspect, provisionalClipAspect(source))
+    const initialBox = clipBoxAtDrop(
+      point,
+      DEFAULT_PAGE_ASPECT,
+      provisionalClipAspect(source)
+    )
     const created = addInternal({
       kind: 'clip',
       data: { box: initialBox, clip: source },
       style: { color, width, opacity: 1 }
-    }, true)
+    }, page, true)
 
     // The placeholder lands immediately. Once the visible clip renderer has
     // the real crop, refine only an untouched provisional box to its exact ratio.
@@ -476,47 +493,34 @@ function CanvasSession({
       updateInternal(created.id, {
         data: {
           ...current.data,
-          box: clipBoxAtDrop(point, aspect, clipAspect)
+          box: clipBoxAtDrop(point, DEFAULT_PAGE_ASPECT, clipAspect)
         }
       }, false)
     }).catch(() => {})
-  }, [addInternal, aspect, color, renderClip, updateInternal, width])
-
-  const handleDrop = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
-    const source = readBandalClipDragData(event.dataTransfer)
-    if (source === null) return
-    const surface = canvasRef.current
-    if (surface === null) return
-    const bounds = surface.getBoundingClientRect()
-    if (bounds.width <= 0 || bounds.height <= 0) return
-    event.preventDefault()
-    placeClip(source, {
-      x: Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)),
-      y: Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height))
-    })
-  }, [placeClip])
+  }, [addInternal, color, renderClip, updateInternal, width])
 
   // Clips sent from a PDF by clicking, rather than dragged onto the surface.
-  // They wait until the board is measured, otherwise the box would be sized
-  // against an aspect of 0 and come out wrong.
+  // Delivery follows the page with the greatest visible area. This keeps a
+  // click-to-send clip near the student's current work without adding a modal.
   useEffect(() => {
-    if (!hasMeasuredCanvas) return
     const drain = (): void => {
       for (const [index, source] of takeClipDeliveries(board.id).entries()) {
         // Count what is already here, not just this batch: sending three pages
         // one at a time is three separate batches, and they would otherwise
         // land on exactly the same spot and hide each other.
         const placed =
-          shapesRef.current.filter((shape) => shape.kind === 'clip').length +
+          shapesRef.current.filter(
+            (shape) => shape.page === visiblePage && shape.kind === 'clip'
+          ).length +
           index
         const offset = Math.min(placed, 8) * 0.035
-        placeClip(source, { x: 0.28 + offset, y: 0.16 + offset })
+        placeClip(source, { x: 0.28 + offset, y: 0.16 + offset }, visiblePage)
       }
     }
     drain()
     window.addEventListener(CLIP_DELIVERY_EVENT, drain)
     return () => window.removeEventListener(CLIP_DELIVERY_EVENT, drain)
-  }, [board.id, hasMeasuredCanvas, placeClip])
+  }, [board.id, placeClip, visiblePage])
 
   const openClip = useCallback((source: DrawingClipSource): void => {
     openMaterialInCourse(board.courseId, 'pdf', source.relPath)
@@ -577,6 +581,7 @@ function CanvasSession({
         background={board.background}
         surface={board.surface}
         backgroundBusy={backgroundBusy}
+        pageBusy={pageBusy}
         exportingPdf={exportingPdf}
         onUndo={undo}
         onRedo={redo}
@@ -588,6 +593,7 @@ function CanvasSession({
             surface: board.surface === 'light' ? 'dark' : 'light'
           })
         }}
+        onAddPage={() => { void addPage() }}
         onExportPdf={() => { void exportBoardPdf() }}
       />
 
@@ -595,28 +601,28 @@ function CanvasSession({
         <p className="canvas-tab__status" role="status">{statusMessage}</p>
       )}
 
-      <div className="canvas-tab__viewport">
-        <div
-          ref={canvasRef}
-          className="canvas-tab__surface"
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-        >
-          <InkLayer
-            aspect={aspect}
-            baseWidthPx={baseWidthPx}
-            shapes={shapes}
-            tool={{ activeTool, color, width, opacity }}
-            onCreate={(shape) => { addInternal(shape, true) }}
-            onUpdate={(id, patch) => { updateInternal(id, patch, true) }}
-            onRemove={(ids) => { removeInternal(ids, true) }}
-            clampToBounds={true}
-            deferTextCreation
-            ariaLabel={`${board.title} 개인 화이트보드 캔버스`}
-            className="canvas-tab__ink-layer"
-            renderClip={renderClip}
-            onOpenClip={openClip}
-          />
+      <div ref={viewportRef} className="canvas-tab__viewport">
+        <div className="canvas-tab__pages">
+          {Array.from({ length: board.pageCount }, (_, index) => index + 1).map(
+            (pageNumber) => (
+              <CanvasPage
+                key={pageNumber}
+                pageNumber={pageNumber}
+                boardTitle={board.title}
+                shapes={shapes.filter((shape) => shape.page === pageNumber)}
+                tool={{ activeTool, color, width, opacity }}
+                viewportRef={viewportRef}
+                renderClip={renderClip}
+                onOpenClip={openClip}
+                onCreate={(shape) => { addInternal(shape, pageNumber, true) }}
+                onUpdate={(id, patch) => { updateInternal(id, patch, true) }}
+                onRemove={(ids) => { removeInternal(ids, true) }}
+                onDropClip={placeClip}
+                onActivate={setVisiblePage}
+                onVisibilityChange={updatePageVisibility}
+              />
+            )
+          )}
         </div>
       </div>
     </section>

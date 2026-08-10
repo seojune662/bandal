@@ -9,18 +9,38 @@
  * wrapper's handlers.
  */
 
-import { memo, useCallback, useRef } from 'react'
+import {
+  memo,
+  useCallback,
+  useRef,
+  type ClipboardEvent as ReactClipboardEvent,
+  type DragEvent as ReactDragEvent
+} from 'react'
 import { Page } from 'react-pdf'
+import { showToast } from '../../app/toast'
+import { invoke } from '../../lib/ipc'
 import { rectsContainPoint } from './lib/annotationGeometry'
 import { DrawingLayer } from './tools/DrawingLayer'
+import { usePdfToolStore } from './tools/toolStore'
 import type { Annotation } from '../../../../shared/types/annotation'
 import type {
   CreateDrawingInput,
   Drawing,
   DrawingClipSource,
+  DrawingImageSource,
   UpdateDrawingInput
 } from '../../../../shared/types/drawing'
 import { TabKindIcon } from '../workspace/workspaceIcons'
+import { fileToBase64, pastedImageFileName } from '../materials/clipboardPaste'
+import {
+  BANDAL_IMAGE_MIME,
+  dataUrlImageAspect,
+  imageBoxAtPoint,
+  loadDrawingImage,
+  primeDrawingImageCache,
+  readBandalImageDragData
+} from '../ink'
+import { imageDataUrl } from '../image/imageSource'
 import { pdfClipLabel, writeBandalClipDragData } from './clipTransfer'
 
 export interface PdfPageViewProps {
@@ -74,6 +94,30 @@ function annotationAtPoint(
   return hit
 }
 
+function pointInPage(
+  element: HTMLElement,
+  clientX: number,
+  clientY: number
+): { x: number; y: number } | null {
+  const bounds = element.getBoundingClientRect()
+  if (bounds.width <= 0 || bounds.height <= 0) return null
+  return {
+    x: Math.min(1, Math.max(0, (clientX - bounds.left) / bounds.width)),
+    y: Math.min(1, Math.max(0, (clientY - bounds.top) / bounds.height))
+  }
+}
+
+function sameBox(
+  left: Drawing['data']['box'],
+  right: NonNullable<Drawing['data']['box']>
+): boolean {
+  return left !== undefined &&
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height
+}
+
 function highlightClass(
   annotation: Annotation,
   props: Pick<PdfPageViewProps, 'hoveredId' | 'activeId' | 'flashId' | 'staleIds'>
@@ -102,11 +146,19 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
     registerRef,
     onAspect,
     onAnnotationClick,
-    onHoverChange
+    onHoverChange,
+    onDrawingCreate,
+    onDrawingUpdate,
+    onDrawingRemove
   } = props
 
   const wrapperRef = useRef<HTMLElement | null>(null)
   const hoverFrame = useRef<number | null>(null)
+  const insertionPointRef = useRef({ x: 0.5, y: 0.5 })
+  const drawingsRef = useRef(drawings)
+  drawingsRef.current = drawings
+  const drawingColor = usePdfToolStore((state) => state.color)
+  const drawingWidth = usePdfToolStore((state) => state.width)
 
   const setRefs = useCallback(
     (element: HTMLElement | null): void => {
@@ -130,6 +182,11 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
 
   const handleMouseMove = useCallback(
     (event: React.MouseEvent<HTMLElement>): void => {
+      const element = wrapperRef.current
+      const point = element === null
+        ? null
+        : pointInPage(element, event.clientX, event.clientY)
+      if (point !== null) insertionPointRef.current = point
       if (annotations.length === 0) return
       const { clientX, clientY } = event
       if (hoverFrame.current !== null) return
@@ -148,6 +205,111 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
     onHoverChange(null)
   }, [onHoverChange])
 
+  const placeImage = useCallback(async (
+    source: DrawingImageSource,
+    point: { x: number; y: number },
+    knownImageAspect?: number
+  ): Promise<void> => {
+    const initialBox = imageBoxAtPoint(point, aspect, knownImageAspect ?? 1)
+    const created = await onDrawingCreate({
+      courseId,
+      relPath,
+      page: pageNumber,
+      kind: 'image',
+      data: { box: initialBox, image: source },
+      style: { color: drawingColor, width: drawingWidth, opacity: 1 }
+    })
+    if (created === null) throw new Error('이미지 도형을 저장하지 못했습니다.')
+    if (created.data.image === undefined) {
+      await onDrawingRemove([created.id])
+      throw new Error('이미지 경로를 저장하지 못했습니다.')
+    }
+    if (knownImageAspect !== undefined) return
+    const dataUrl = await loadDrawingImage(courseId, source)
+    const measuredAspect = dataUrl === null
+      ? null
+      : await dataUrlImageAspect(dataUrl)
+    if (measuredAspect === null) return
+    const current = drawingsRef.current.find((drawing) => drawing.id === created.id) ?? created
+    if (!sameBox(current.data.box, initialBox)) return
+    await onDrawingUpdate({
+      id: created.id,
+      data: {
+        ...current.data,
+        box: imageBoxAtPoint(point, aspect, measuredAspect),
+        image: source
+      }
+    })
+  }, [aspect, courseId, drawingColor, drawingWidth, onDrawingCreate,
+    onDrawingRemove, onDrawingUpdate, pageNumber, relPath])
+
+  const handlePaste = useCallback((event: ReactClipboardEvent<HTMLElement>): void => {
+    const imageFiles = Array.from(event.clipboardData.files).filter((file) =>
+      file.type.toLocaleLowerCase().startsWith('image/')
+    )
+    if (imageFiles.length === 0) return
+    event.preventDefault()
+    const origin = insertionPointRef.current
+    void (async () => {
+      const timestamp = new Date()
+      for (const [index, file] of imageFiles.entries()) {
+        const base64 = await fileToBase64(file)
+        const result = await invoke('materials:writeFile', {
+          courseId,
+          dirRelPath: '',
+          fileName: pastedImageFileName(file, timestamp),
+          encoding: 'base64',
+          data: base64
+        })
+        const source: DrawingImageSource = {
+          relPath: result.relPath,
+          label: result.relPath.split('/').at(-1) ?? result.relPath
+        }
+        const dataUrl = imageDataUrl(result.relPath, {
+          encoding: 'base64',
+          data: base64
+        })
+        if (dataUrl === null) throw new Error('지원하지 않는 이미지 형식입니다.')
+        primeDrawingImageCache(courseId, source, dataUrl)
+        const measuredAspect = await dataUrlImageAspect(dataUrl)
+        const offset = Math.min(index, 8) * 0.025
+        await placeImage(source, {
+          x: Math.min(1, origin.x + offset),
+          y: Math.min(1, origin.y + offset)
+        }, measuredAspect ?? undefined)
+      }
+      showToast(
+        imageFiles.length === 1
+          ? '이미지를 붙여넣었어요.'
+          : `${imageFiles.length}개 이미지를 붙여넣었어요.`
+      )
+    })().catch((error: unknown) => {
+      console.error('[Bandal] PDF에 이미지를 붙여넣지 못했습니다.', error)
+      showToast('이미지를 붙여넣지 못했습니다.', 'danger')
+    })
+  }, [courseId, placeImage])
+
+  const handleDragOver = useCallback((event: ReactDragEvent<HTMLElement>): void => {
+    if (!Array.from(event.dataTransfer.types).includes(BANDAL_IMAGE_MIME)) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+  }, [])
+
+  const handleDrop = useCallback((event: ReactDragEvent<HTMLElement>): void => {
+    const source = readBandalImageDragData(event.dataTransfer)
+    const element = wrapperRef.current
+    if (source === null || element === null) return
+    const point = pointInPage(element, event.clientX, event.clientY)
+    if (point === null) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+    insertionPointRef.current = point
+    void placeImage(source, point).catch((error: unknown) => {
+      console.error('[Bandal] PDF에 이미지를 놓지 못했습니다.', error)
+      showToast('이미지를 놓지 못했습니다.', 'danger')
+    })
+  }, [placeImage])
+
   const height = Math.round(width * aspect)
   const clipSource: DrawingClipSource = {
     relPath,
@@ -161,10 +323,20 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
       className="pdf-page"
       data-pdf-page={pageNumber}
       aria-label={`${pageNumber} 페이지`}
-      style={{ width, minHeight: height }}
+      tabIndex={-1}
+      style={{ width, minHeight: height, outline: 'none' }}
+      onPointerDown={(event) => {
+        if (!(event.target instanceof Element)) return
+        if (event.target.closest('button, input, textarea, [contenteditable="true"]') === null) {
+          event.currentTarget.focus({ preventScroll: true })
+        }
+      }}
       onClick={handleClick}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
+      onPaste={handlePaste}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
     >
       {clipDragEnabled && (
         <button
@@ -230,9 +402,9 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
             aspect={aspect}
             drawings={drawings}
             loading={drawingsLoading}
-            create={props.onDrawingCreate}
-            update={props.onDrawingUpdate}
-            remove={props.onDrawingRemove}
+            create={onDrawingCreate}
+            update={onDrawingUpdate}
+            remove={onDrawingRemove}
           />
         </>
       ) : (

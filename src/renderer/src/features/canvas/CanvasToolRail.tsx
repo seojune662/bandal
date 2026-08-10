@@ -65,11 +65,13 @@ export interface CanvasToolRailProps {
   background: BoardBackground
   surface: BoardSurface
   backgroundBusy: boolean
+  pageBusy: boolean
   exportingPdf: boolean
   onUndo: () => void
   onRedo: () => void
   onBackgroundChange: (background: BoardBackground) => void
   onSurfaceToggle: () => void
+  onAddPage: () => void
   onExportPdf: () => void
 }
 
@@ -80,11 +82,13 @@ export function CanvasToolRail({
   background,
   surface,
   backgroundBusy,
+  pageBusy,
   exportingPdf,
   onUndo,
   onRedo,
   onBackgroundChange,
   onSurfaceToggle,
+  onAddPage,
   onExportPdf
 }: CanvasToolRailProps): JSX.Element {
   const activeTool = useInkToolStore((state) => state.activeTool)
@@ -218,6 +222,17 @@ export function CanvasToolRail({
           onClick={onSurfaceToggle}
         >
           바탕: {surface === 'light' ? '밝게' : '어둡게'}
+        </button>
+      </div>
+
+      <div className="canvas-tools__group" role="group" aria-label="페이지">
+        <button
+          type="button"
+          className="canvas-tools__text-button"
+          disabled={!enabled || pageBusy}
+          onClick={onAddPage}
+        >
+          {pageBusy ? '페이지 추가 중…' : '페이지 추가'}
         </button>
       </div>
 

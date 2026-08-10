@@ -422,10 +422,7 @@ export function createBoardPdfExporter(deps: BoardPdfExporterDeps): BoardPdfExpo
       const pdf = await PDFDocument.create()
       pdf.setTitle(board.title)
       pdf.setCreator('Bandal')
-      const page = pdf.addPage([PageSizes.A4[1], PageSizes.A4[0]])
-      const { width, height } = page.getSize()
       const palette = BOARD_PALETTES[board.surface]
-      drawBackground(page, board.background, palette, width, height)
 
       const hasTextbox = shapes.some((shape) => shape.kind === 'textbox')
       let font: TextboxFont | null = null
@@ -441,19 +438,26 @@ export function createBoardPdfExporter(deps: BoardPdfExporterDeps): BoardPdfExpo
       }
 
       let skippedClips = 0
-      for (const shape of shapes) {
-        if (shape.kind === 'clip') {
-          skippedClips += 1
-        } else if (shape.kind === 'ink' || shape.kind === 'highlighter') {
-          drawInk(page, shape, palette, board.surface, width, height)
-        } else if (shape.kind === 'rect' || shape.kind === 'ellipse') {
-          if (shape.data.box !== undefined) {
-            drawBoxShape(page, shape, shape.data.box, palette, width, height)
+      for (let pageNumber = 1; pageNumber <= board.pageCount; pageNumber += 1) {
+        const page = pdf.addPage(PageSizes.A4)
+        const { width, height } = page.getSize()
+        drawBackground(page, board.background, palette, width, height)
+
+        for (const shape of shapes) {
+          if (shape.page !== pageNumber) continue
+          if (shape.kind === 'clip') {
+            skippedClips += 1
+          } else if (shape.kind === 'ink' || shape.kind === 'highlighter') {
+            drawInk(page, shape, palette, board.surface, width, height)
+          } else if (shape.kind === 'rect' || shape.kind === 'ellipse') {
+            if (shape.data.box !== undefined) {
+              drawBoxShape(page, shape, shape.data.box, palette, width, height)
+            }
+          } else if (shape.kind === 'line' || shape.kind === 'arrow') {
+            drawStraightLine(page, shape, palette, width, height)
+          } else if (font !== null && shape.data.box !== undefined) {
+            drawTextbox(page, shape, shape.data.box, font, palette, width, height)
           }
-        } else if (shape.kind === 'line' || shape.kind === 'arrow') {
-          drawStraightLine(page, shape, palette, width, height)
-        } else if (font !== null && shape.data.box !== undefined) {
-          drawTextbox(page, shape, shape.data.box, font, palette, width, height)
         }
       }
 

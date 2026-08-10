@@ -103,15 +103,47 @@
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.canvas-tab__pages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  width: min(calc(100% - 2 * var(--space-4)), 52rem);
+  margin-inline: auto;
+  padding-block: var(--space-6) var(--space-8);
+}
+
+.canvas-tab__page {
+  width: 100%;
+  scroll-margin-block-start: var(--space-4);
+}
+
+.canvas-tab__page-number {
+  width: max-content;
+  margin: 0 auto var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
 }
 
 .canvas-tab__surface {
   position: relative;
   width: 100%;
-  height: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1.41421356237;
   overflow: hidden;
   background-color: var(--canvas-paper);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
 }
 
 .canvas-tab[data-background='grid'] .canvas-tab__surface {
@@ -190,6 +222,12 @@
    * export) off the right edge where nobody would look for them.
    */
   flex-wrap: wrap;
+  /*
+   * Never give up height to the page viewport. As a flex child it was being
+   * shrunk to one row, so the wrapped second row — background, export, add
+   * page — was sliced off at the top edge of the pages below.
+   */
+  flex: 0 0 auto;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;

@@ -47,7 +47,11 @@ describe('canvasRepo', () => {
     const second = repo.createBoard({ courseId: 'course-1', title: '개념 지도' })
 
     expect(first.title).toBe('화이트보드 1')
-    expect(first).toMatchObject({ background: 'grid', surface: 'dark' })
+    expect(first).toMatchObject({
+      background: 'grid',
+      surface: 'dark',
+      pageCount: 1
+    })
     expect(second.sortOrder).toBe(1)
     expect(repo.listBoards('course-1').map((board) => board.id)).toEqual([
       first.id,
@@ -116,11 +120,88 @@ describe('canvasRepo', () => {
     })
 
     expect(updated.id).toBe(first.id)
+    expect(updated.page).toBe(1)
     expect(updated.createdAt).toBe(first.createdAt)
     expect(repo.open(board.id).shapes).toEqual([updated])
     expect(
       ctx.db.prepare('SELECT COUNT(*) AS count FROM whiteboard_local_shapes').get()
     ).toEqual({ count: 1 })
+  })
+
+  test('adds pages and persists shapes on their 1-based page', () => {
+    const board = repo.createBoard({ courseId: 'course-1' })
+    const paged = repo.setPageCount({ boardId: board.id, pageCount: 2 })
+    const saved = repo.putShape({ ...shapeInput(board.id), page: 2 })
+
+    expect(paged.pageCount).toBe(2)
+    expect(saved.page).toBe(2)
+    const reopenedRepo = createCanvasRepo(ctx.db)
+    expect(reopenedRepo.open(board.id)).toEqual({ board: paged, shapes: [saved] })
+    expect(
+      ctx.db.prepare('SELECT page FROM whiteboard_local_shapes WHERE id = ?').get(saved.id)
+    ).toEqual({ page: 2 })
+  })
+
+  test('defaults existing callers to page 1 and rejects pages outside the board', () => {
+    const board = repo.createBoard({ courseId: 'course-1' })
+
+    expect(repo.putShape(shapeInput(board.id)).page).toBe(1)
+    expect(() => repo.putShape({
+      ...shapeInput(board.id),
+      id: 'shape-zero',
+      page: 0
+    })).toThrow(ValidationError)
+    expect(() => repo.putShape({
+      ...shapeInput(board.id),
+      id: 'shape-two',
+      page: 2
+    })).toThrow(ValidationError)
+  })
+
+  test('opens legacy-style rows that omit page as page 1', () => {
+    const board = repo.createBoard({ courseId: 'course-1' })
+    const input = shapeInput(board.id)
+    const now = new Date().toISOString()
+    ctx.db.prepare(
+      `INSERT INTO whiteboard_local_shapes
+         (id, board_id, kind, data_json, style_json, created_at, updated_at, deleted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`
+    ).run(
+      input.id,
+      board.id,
+      input.shape.kind,
+      JSON.stringify(input.shape.data),
+      JSON.stringify(input.shape.style),
+      now,
+      now
+    )
+
+    expect(repo.open(board.id).shapes).toEqual([
+      expect.objectContaining({ id: input.id, page: 1 })
+    ])
+  })
+
+  test('never truncates a page containing live shapes', () => {
+    const board = repo.createBoard({ courseId: 'course-1' })
+    repo.setPageCount({ boardId: board.id, pageCount: 3 })
+    repo.putShape({ ...shapeInput(board.id), page: 3 })
+
+    expect(() => repo.setPageCount({ boardId: board.id, pageCount: 2 }))
+      .toThrow(ValidationError)
+    expect(repo.open(board.id).board.pageCount).toBe(3)
+
+    repo.removeShapes({ boardId: board.id, ids: ['shape-1'] })
+    expect(repo.setPageCount({ boardId: board.id, pageCount: 1 }).pageCount).toBe(1)
+  })
+
+  test('rejects invalid page counts', () => {
+    const board = repo.createBoard({ courseId: 'course-1' })
+
+    for (const pageCount of [0, 1.5, Number.NaN]) {
+      expect(() => repo.setPageCount({ boardId: board.id, pageCount }))
+        .toThrow(ValidationError)
+    }
+    expect(repo.open(board.id).board.pageCount).toBe(1)
   })
 
   test('soft-deletes shapes without affecting the board', () => {
@@ -142,6 +223,10 @@ describe('canvasRepo', () => {
     expect(() => repo.setBackground({
       boardId: 'missing-board',
       background: 'dots'
+    })).toThrow(NotFoundError)
+    expect(() => repo.setPageCount({
+      boardId: 'missing-board',
+      pageCount: 2
     })).toThrow(NotFoundError)
     expect(() => repo.removeBoard('missing-board')).toThrow(NotFoundError)
     expect(() => repo.open('missing-board')).toThrow(NotFoundError)

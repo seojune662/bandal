@@ -96,6 +96,7 @@ import type {
   RemoveWhiteboardShapesInput,
   RenamePersonalBoardInput,
   SetBoardBackgroundInput,
+  SetBoardPageCountInput,
   UpdateWhiteboardShapeInput,
   WhiteboardShape
 } from '../types/whiteboard'
@@ -548,6 +549,11 @@ export interface IpcContract {
     res: DrawingShape
   }
   /** Paper style for a personal board — ruling and light/dark. */
+  /** Adds or removes trailing pages. Never drops a page that has shapes. */
+  'canvas:setPageCount': {
+    req: SetBoardPageCountInput
+    res: PersonalBoard
+  }
   'canvas:setBackground': {
     req: SetBoardBackgroundInput
     res: PersonalBoard
@@ -1020,6 +1026,7 @@ export const IPC_CHANNELS = [
   'canvas:remove',
   'canvas:open',
   'canvas:putShape',
+  'canvas:setPageCount',
   'canvas:setBackground',
   'canvas:exportPdf',
   'canvas:removeShapes',

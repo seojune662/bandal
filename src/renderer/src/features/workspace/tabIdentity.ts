@@ -19,7 +19,7 @@ export { TAB_KINDS, isTabKind, isTabDescriptor } from '../../../../shared/tabs'
 /**
  * Identity key == dockview panel id. Two descriptors that should share a
  * tab produce the same key:
- *  - pdf/note: same course + same file
+ *  - pdf/note/image: same course + same file
  *  - chat: singleton per course
  *  - board: global singleton
  *  - browser: keyed by its stable tabId (every new browser tab is unique)
@@ -30,6 +30,7 @@ export function tabPanelId(descriptor: TabDescriptor): string {
   switch (descriptor.kind) {
     case 'pdf':
     case 'note':
+    case 'image':
       return `${descriptor.kind}:${descriptor.payload.courseId}:${descriptor.payload.relPath}`
     case 'browser':
       return `browser:${descriptor.payload.tabId}`
@@ -60,6 +61,7 @@ function stripExtension(name: string): string {
 export function tabTitle(descriptor: TabDescriptor): string {
   switch (descriptor.kind) {
     case 'pdf':
+    case 'image':
       return baseName(descriptor.payload.relPath)
     case 'note':
       return stripExtension(baseName(descriptor.payload.relPath))
@@ -85,6 +87,7 @@ export function tabPayloadSummary(descriptor: TabDescriptor): string {
   switch (descriptor.kind) {
     case 'pdf':
     case 'note':
+    case 'image':
       return descriptor.payload.relPath
     case 'browser':
       return descriptor.payload.initialUrl

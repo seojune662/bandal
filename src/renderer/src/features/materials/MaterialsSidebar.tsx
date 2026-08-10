@@ -496,25 +496,6 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
               {course.name}
             </span>
           )}
-          {/*
-            Always mounted, only hidden. Inserting this chip on focus grew the
-            heading, which pushed the whole sidebar down between mousedown and
-            mouseup — so the FIRST click on anything in here landed on empty
-            space and did nothing. Reserving the row keeps the layout still.
-          */}
-          <span
-            className="materials-heading__paste-hint"
-            role="status"
-            aria-hidden={!pasteReady}
-            data-visible={pasteReady || undefined}
-            title={
-              pasteReady
-                ? `⌘V로 ${pasteDestinationName}에 붙여넣기`
-                : undefined
-            }
-          >
-            {pasteReady ? `⌘V로 붙여넣기 · ${pasteDestinationName}` : '\u00a0'}
-          </span>
         </div>
         <div className="materials-heading__actions">
           <input

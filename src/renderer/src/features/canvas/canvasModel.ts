@@ -1,7 +1,8 @@
 import type { DrawingBox, DrawingShape } from '../../../../shared/types/drawing'
+import type { PersonalBoardShape } from '../../../../shared/types/whiteboard'
 
 export type CanvasShapeInput = Omit<
-  DrawingShape,
+  PersonalBoardShape,
   'id' | 'createdAt' | 'updatedAt'
 >
 
@@ -10,7 +11,7 @@ export function createOptimisticCanvasShape(
   input: CanvasShapeInput,
   id: string,
   timestamp: string
-): DrawingShape {
+): PersonalBoardShape {
   return {
     id,
     ...input,
@@ -21,9 +22,9 @@ export function createOptimisticCanvasShape(
 
 /** Inserts a new optimistic shape or replaces its server-confirmed version. */
 export function putOptimisticCanvasShape(
-  shapes: readonly DrawingShape[],
-  shape: DrawingShape
-): DrawingShape[] {
+  shapes: readonly PersonalBoardShape[],
+  shape: PersonalBoardShape
+): PersonalBoardShape[] {
   const index = shapes.findIndex((entry) => entry.id === shape.id)
   if (index < 0) return [...shapes, shape]
   return shapes.map((entry, entryIndex) =>
@@ -33,11 +34,11 @@ export function putOptimisticCanvasShape(
 
 /** Applies a text/move/resize edit before the upsert completes. */
 export function updateOptimisticCanvasShape(
-  shapes: readonly DrawingShape[],
+  shapes: readonly PersonalBoardShape[],
   id: string,
   patch: Partial<Pick<DrawingShape, 'data' | 'style'>>,
   timestamp: string
-): DrawingShape[] {
+): PersonalBoardShape[] {
   return shapes.map((shape) =>
     shape.id === id
       ? {
@@ -52,9 +53,9 @@ export function updateOptimisticCanvasShape(
 
 /** Hides erased shapes immediately while the soft-delete is persisted. */
 export function removeOptimisticCanvasShapes(
-  shapes: readonly DrawingShape[],
+  shapes: readonly PersonalBoardShape[],
   ids: readonly string[]
-): DrawingShape[] {
+): PersonalBoardShape[] {
   const removed = new Set(ids)
   return shapes.filter((shape) => !removed.has(shape.id))
 }

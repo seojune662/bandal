@@ -32,6 +32,28 @@ describe('tabPanelId', () => {
     expect(tabPanelId(pdfTab)).not.toBe(tabPanelId(other))
   })
 
+  test('images dedupe by course and relative path', () => {
+    const image = descriptorFor('image', {
+      courseId: 'c1',
+      relPath: 'figures/diagram.png'
+    })
+    const duplicate = descriptorFor('image', {
+      courseId: 'c1',
+      relPath: 'figures/diagram.png'
+    })
+
+    expect(tabPanelId(image)).toBe('image:c1:figures/diagram.png')
+    expect(tabPanelId(image)).toBe(tabPanelId(duplicate))
+    expect(tabPanelId(image)).not.toBe(
+      tabPanelId(
+        descriptorFor('image', {
+          courseId: 'c2',
+          relPath: 'figures/diagram.png'
+        })
+      )
+    )
+  })
+
   test('chat is singleton per course, board is a global singleton', () => {
     expect(tabPanelId(descriptorFor('chat', { courseId: 'c1' }))).toBe('chat:c1')
     expect(tabPanelId(descriptorFor('board', {}))).toBe('board')
@@ -112,6 +134,11 @@ describe('isTabDescriptor', () => {
     ).toBe(true)
     expect(
       isTabDescriptor(
+        descriptorFor('image', { courseId: 'c', relPath: 'figure.png' })
+      )
+    ).toBe(true)
+    expect(
+      isTabDescriptor(
         descriptorFor('browser', { tabId: 't', initialUrl: 'https://x.dev' })
       )
     ).toBe(true)
@@ -177,6 +204,14 @@ describe('isTabDescriptor', () => {
 describe('tabTitle', () => {
   test('derives titles from payloads', () => {
     expect(tabTitle(pdfTab)).toBe('intro.pdf')
+    expect(
+      tabTitle(
+        descriptorFor('image', {
+          courseId: 'c',
+          relPath: 'figures/diagram.final.png'
+        })
+      )
+    ).toBe('diagram.final.png')
     expect(
       tabTitle(descriptorFor('note', { courseId: 'c', relPath: 'a/메모.md' }))
     ).toBe('메모')

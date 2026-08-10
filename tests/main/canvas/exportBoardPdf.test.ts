@@ -43,11 +43,11 @@ function shape(
   }
 }
 
-async function pdfText(path: string): Promise<string> {
+async function pdfText(path: string, pageNumber = 1): Promise<string> {
   const task = getDocument({ data: new Uint8Array(readFileSync(path)) })
   const document = await task.promise
   try {
-    const page = await document.getPage(1)
+    const page = await document.getPage(pageNumber)
     const content = await page.getTextContent()
     return content.items
       .map((item) => 'str' in item ? item.str : '')
@@ -139,6 +139,46 @@ describe('createBoardPdfExporter', () => {
       width: expect.any(Number),
       height: expect.any(Number)
     })
+    const firstPage = (await PDFDocument.load(bytes)).getPages()[0]
+    expect(firstPage?.getWidth()).toBeLessThan(firstPage?.getHeight() ?? 0)
+  })
+
+  test('exports one portrait A4 sheet per board page with page-filtered shapes', async () => {
+    const board = repo.createBoard({ courseId: 'course-1', title: '여러 쪽' })
+    repo.setPageCount({ boardId: board.id, pageCount: 2 })
+    for (const [id, page, text] of [
+      ['page-1', 1, '첫 페이지'],
+      ['page-2', 2, '둘째 페이지']
+    ] as const) {
+      const entry = shape(id, 'textbox', {
+        box: { x: 0.1, y: 0.1, width: 0.5, height: 0.15 },
+        text
+      })
+      repo.putShape({
+        boardId: board.id,
+        id,
+        page,
+        shape: { kind: entry.kind, data: entry.data, style: entry.style }
+      })
+    }
+    const exporter = createBoardPdfExporter({
+      openBoard: (boardId) => repo.open(boardId),
+      getCourseFolder: () => ctx.dir,
+      resolveFontPath: () => fontPath
+    })
+
+    const result = await exporter.exportBoard(board.id)
+    const outputPath = join(ctx.dir, result.relPath)
+    const document = await PDFDocument.load(readFileSync(outputPath))
+
+    expect(document.getPageCount()).toBe(2)
+    for (const page of document.getPages()) {
+      expect(page.getWidth()).toBeLessThan(page.getHeight())
+    }
+    expect(await pdfText(outputPath, 1)).toContain('첫 페이지')
+    expect(await pdfText(outputPath, 1)).not.toContain('둘째 페이지')
+    expect(await pdfText(outputPath, 2)).toContain('둘째 페이지')
+    expect(await pdfText(outputPath, 2)).not.toContain('첫 페이지')
   })
 
   test('skips clips and reports their count without failing the export', async () => {

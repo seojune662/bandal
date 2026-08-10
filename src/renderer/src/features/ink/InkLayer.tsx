@@ -27,8 +27,9 @@ import {
   strokePath
 } from './inkGeometry'
 import type { InkTool, InkToolState } from './inkToolStore'
-import { ClipShape, type RenderClip } from './ClipShape'
+import type { RenderClip } from './ClipShape'
 import { foreignObjectContentStyle } from './foreignObjectScale'
+import { ReferencedShape } from './ReferencedShape'
 import { ResizeHandles } from './ResizeHandles'
 import './ink.css'
 
@@ -47,6 +48,8 @@ export interface InkLayerProps {
   deferTextCreation?: boolean
   ariaLabel: string
   className?: string
+  /** Course that owns image paths. Required only when image shapes are present. */
+  courseId?: string
   /** Surface-owned PDF renderer; omitted on PDF markup and group boards. */
   renderClip?: RenderClip
   onOpenClip?: (source: DrawingClipSource) => void
@@ -202,6 +205,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     deferTextCreation = false,
     ariaLabel,
     className,
+    courseId,
     renderClip,
     onOpenClip
   } = props
@@ -525,7 +529,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   ): void => {
     const canManipulate =
       (shape.kind === 'textbox' && activeTool === 'text') ||
-      (shape.kind === 'clip' && activeTool === 'select')
+      ((shape.kind === 'clip' || shape.kind === 'image') && activeTool === 'select')
     if (
       !canManipulate ||
       !surfaceReady ||
@@ -642,14 +646,15 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
             </g>
           )
         }
-        if (shape.kind === 'clip' && isRenderableBox(box)) {
+        if ((shape.kind === 'clip' || shape.kind === 'image') && isRenderableBox(box)) {
           return (
-            <ClipShape
+            <ReferencedShape
               key={shape.id}
               shape={shape}
               box={box}
               aspect={aspect}
               baseWidthPx={baseWidthPx}
+              courseId={courseId}
               selected={activeTool === 'select' && selectedId === shape.id}
               renderClip={renderClip}
               onOpenClip={onOpenClip}

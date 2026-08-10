@@ -1,7 +1,7 @@
 /**
  * Glue for the materials sidebar: clicking a file opens it as a
- * workspace tab (pdf/md) or reveals it in Finder (images and everything
- * else — no dedicated tab kind). Kept here (not in the materials feature)
+ * workspace tab (pdf/md/images) or reveals it in Finder (other files).
+ * Kept here (not in the materials feature)
  * so the sidebar only needs a one-line call.
  */
 
@@ -62,14 +62,14 @@ export function openMaterialInCourse(
   kind: MaterialKind,
   relPath: string
 ): void {
-  if (kind === 'pdf' || kind === 'note') {
+  if (kind === 'pdf' || kind === 'note' || kind === 'image') {
     useWorkspaceStore.getState().openTab(
       descriptorFor(kind, { courseId, relPath })
     )
     recordMaterialOpened(courseId, relPath)
     return
   }
-  // Images and other files have no tab kind — hand off to Finder.
+  // Files without a dedicated tab kind are handed off to Finder.
   void invoke('materials:reveal', { courseId, relPath })
     .then(() => recordMaterialOpened(courseId, relPath))
     .catch((error: unknown) => {

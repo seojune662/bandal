@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { DrawingShape } from '../../../src/shared/types/drawing'
+import type { PersonalBoardShape } from '../../../src/shared/types/whiteboard'
 import {
   clipBoxAtDrop,
   createOptimisticCanvasShape,
@@ -10,9 +11,14 @@ import {
 
 const timestamp = '2026-08-07T00:00:00.000Z'
 
-function shape(id: string, color: DrawingShape['style']['color'] = 'ink'): DrawingShape {
+function shape(
+  id: string,
+  color: DrawingShape['style']['color'] = 'ink',
+  page = 1
+): PersonalBoardShape {
   return createOptimisticCanvasShape(
     {
+      page,
       kind: 'textbox',
       data: {
         box: { x: 0.1, y: 0.1, width: 0.3, height: 0.1 },
@@ -35,13 +41,14 @@ describe('personal canvas optimistic model', () => {
   })
 
   test('reconciles the server result by id without making a duplicate', () => {
-    const optimistic = shape('same-id')
+    const optimistic = shape('same-id', 'ink', 2)
     const saved = {
-      ...shape('same-id', 'blue'),
+      ...shape('same-id', 'blue', 2),
       updatedAt: '2026-08-07T00:00:01.000Z'
     }
 
     expect(putOptimisticCanvasShape([optimistic], saved)).toEqual([saved])
+    expect(saved.page).toBe(2)
   })
 
   test('updates and removes shapes without mutating the previous array', () => {

@@ -13,17 +13,19 @@ import type {
   CreatePersonalBoardInput,
   OpenPersonalBoardResult,
   PersonalBoard,
+  PersonalBoardShape,
   PutPersonalShapeInput,
   RemovePersonalShapesInput,
   RenamePersonalBoardInput,
-  SetBoardBackgroundInput
+  SetBoardBackgroundInput,
+  SetBoardPageCountInput
 } from '../../../shared/types/whiteboard'
 import {
   BOARD_BACKGROUNDS,
   BOARD_SURFACES
 } from '../../../shared/types/whiteboard'
 import { NotFoundError, ValidationError } from '../../db/errors'
-import { nowIso, requireId, requireNonEmptyString } from '../../db/validate'
+import { nowIso, requireId, requireInt, requireNonEmptyString } from '../../db/validate'
 
 interface BoardRow {
   id: string
@@ -31,6 +33,7 @@ interface BoardRow {
   title: string
   background: string
   surface: string
+  page_count: number
   sort_order: number
   created_at: string
   updated_at: string
@@ -42,6 +45,7 @@ interface ShapeRow {
   kind: string
   data_json: string
   style_json: string
+  page: number
   created_at: string
   updated_at: string
 }
@@ -51,9 +55,10 @@ export interface CanvasRepo {
   createBoard(input: CreatePersonalBoardInput): PersonalBoard
   renameBoard(input: RenamePersonalBoardInput): PersonalBoard
   setBackground(input: SetBoardBackgroundInput): PersonalBoard
+  setPageCount(input: SetBoardPageCountInput): PersonalBoard
   removeBoard(id: string): void
   open(boardId: string): OpenPersonalBoardResult
-  putShape(input: PutPersonalShapeInput): DrawingShape
+  putShape(input: PutPersonalShapeInput): PersonalBoardShape
   removeShapes(input: RemovePersonalShapesInput): void
 }
 
@@ -83,18 +88,20 @@ function rowToBoard(row: BoardRow): PersonalBoard {
     title: row.title,
     background: boardBackground(row.background),
     surface: boardSurface(row.surface),
+    pageCount: row.page_count,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
 }
 
-function rowToShape(row: ShapeRow): DrawingShape {
+function rowToShape(row: ShapeRow): PersonalBoardShape {
   return {
     id: row.id,
     kind: row.kind as DrawingKind,
     data: JSON.parse(row.data_json) as DrawingData,
     style: JSON.parse(row.style_json) as DrawingStyle,
+    page: row.page,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
@@ -160,6 +167,7 @@ export function createCanvasRepo(db: Database): CanvasRepo {
         title,
         background: 'grid',
         surface: 'dark',
+        pageCount: 1,
         sortOrder,
         createdAt: now,
         updatedAt: now
@@ -255,6 +263,34 @@ export function createCanvasRepo(db: Database): CanvasRepo {
       })
     },
 
+    setPageCount(input) {
+      const boardId = requireId(input.boardId, 'boardId')
+      const row = boardRowOrThrow(boardId)
+      const pageCount = requireInt(input.pageCount, 'pageCount', 1)
+      if (pageCount === row.page_count) return rowToBoard(row)
+      if (pageCount < row.page_count) {
+        const truncatedShape = db
+          .prepare(
+            `SELECT id FROM whiteboard_local_shapes
+              WHERE board_id = ? AND page > ? AND deleted_at IS NULL
+              LIMIT 1`
+          )
+          .get(boardId, pageCount)
+        if (truncatedShape !== undefined) {
+          throw new ValidationError('cannot remove a page that contains shapes')
+        }
+      }
+      const updatedAt = nowIso()
+      db.prepare(
+        'UPDATE whiteboards SET page_count = ?, updated_at = ? WHERE id = ?'
+      ).run(pageCount, updatedAt, boardId)
+      return rowToBoard({
+        ...row,
+        page_count: pageCount,
+        updated_at: updatedAt
+      })
+    },
+
     removeBoard(idInput) {
       removeBoardTransaction(requireId(idInput, 'id'))
     },
@@ -274,8 +310,12 @@ export function createCanvasRepo(db: Database): CanvasRepo {
 
     putShape(input) {
       const boardId = requireId(input.boardId, 'boardId')
-      boardRowOrThrow(boardId)
+      const board = boardRowOrThrow(boardId)
       const id = requireId(input.id, 'id')
+      const page = requireInt(input.page ?? 1, 'page', 1)
+      if (page > board.page_count) {
+        throw new ValidationError(`page must be <= board pageCount (${board.page_count})`)
+      }
       const shape = assertShapeInput(input.shape)
       const existing = db
         .prepare('SELECT * FROM whiteboard_local_shapes WHERE id = ?')
@@ -288,12 +328,13 @@ export function createCanvasRepo(db: Database): CanvasRepo {
       const createdAt = existing?.created_at ?? now
       db.prepare(
         `INSERT INTO whiteboard_local_shapes
-           (id, board_id, kind, data_json, style_json, created_at, updated_at, deleted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+           (id, board_id, kind, data_json, style_json, page, created_at, updated_at, deleted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
          ON CONFLICT(id) DO UPDATE SET
            kind = excluded.kind,
            data_json = excluded.data_json,
            style_json = excluded.style_json,
+           page = excluded.page,
            updated_at = excluded.updated_at,
            -- A tombstone outranks a plain put. Only an explicit restore
            -- (undo) revives a shape the eraser removed; a stale in-flight
@@ -305,6 +346,7 @@ export function createCanvasRepo(db: Database): CanvasRepo {
         shape.kind,
         JSON.stringify(shape.data),
         JSON.stringify(shape.style),
+        page,
         createdAt,
         now,
         input.restore === true ? 1 : 0
@@ -312,6 +354,7 @@ export function createCanvasRepo(db: Database): CanvasRepo {
       return {
         id,
         ...shape,
+        page,
         createdAt,
         updatedAt: now
       }

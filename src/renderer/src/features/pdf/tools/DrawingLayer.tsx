@@ -61,6 +61,7 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
 
   return (
     <InkLayer
+      courseId={courseId}
       aspect={aspect}
       baseWidthPx={pageWidth}
       shapes={drawings}

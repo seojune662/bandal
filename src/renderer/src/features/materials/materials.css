@@ -12,24 +12,6 @@
   gap: var(--space-1);
 }
 
-.materials-heading__paste-hint {
-  display: block;
-  /* Occupies its row even when empty; see MaterialsSidebar for why. */
-  visibility: hidden;
-  overflow: hidden;
-  margin-top: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--accent);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.materials-heading__paste-hint[data-visible] {
-  visibility: visible;
-}
-
 .materials-heading__course {
   display: flex;
   align-items: center;
@@ -176,9 +158,14 @@
   transform-origin: bottom right;
 }
 
+/*
+ * Focus on this rail means "⌘V lands here". A full accent outline around the
+ * whole sidebar shouted it — the student focuses this panel constantly, so a
+ * loud frame is on screen most of the time. One accent edge on the side facing
+ * the workspace says the same thing quietly.
+ */
 .app-rail--right[data-paste-ready='true'] {
-  outline: calc(var(--space-1) / 2) solid var(--accent);
-  outline-offset: calc(var(--space-1) / -2);
+  box-shadow: inset 2px 0 0 0 var(--accent);
 }
 
 .materials-body[data-paste-target-root='true'] {

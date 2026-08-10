@@ -585,6 +585,7 @@ export function registerHandlers(): IpcRouter {
   })
   handle('canvas:open', (req) => canvasRepo.open(req.boardId))
   handle('canvas:setBackground', (req) => canvasRepo.setBackground(req))
+  handle('canvas:setPageCount', (req) => canvasRepo.setPageCount(req))
   const boardPdfExporter = createBoardPdfExporter({
     openBoard: (boardId) => canvasRepo.open(boardId),
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)

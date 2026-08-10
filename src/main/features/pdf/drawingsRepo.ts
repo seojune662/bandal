@@ -141,10 +141,31 @@ function assertData(value: unknown, kind: DrawingKind): DrawingData {
     throw new ValidationError('textbox data needs text')
   }
 
+  // An image shape stores a course-relative PATH, never pixels. Dropping it
+  // here would hand the renderer back a shape with nothing to draw — the same
+  // class of silent loss that made every whiteboard clip vanish on reopen.
+  const image = candidate.image
+  if (image !== undefined) {
+    if (
+      typeof image !== 'object' ||
+      image === null ||
+      typeof image.relPath !== 'string' ||
+      image.relPath.trim() === '' ||
+      typeof image.label !== 'string' ||
+      image.label.trim() === ''
+    ) {
+      throw new ValidationError('data.image needs relPath and label')
+    }
+  }
+  if (kind === 'image' && (image === undefined || box === undefined)) {
+    throw new ValidationError('image data needs a box and an image source')
+  }
+
   const result: DrawingData = {}
   if (points !== undefined) result.points = points
   if (box !== undefined) result.box = box
   if (text !== undefined) result.text = text
+  if (image !== undefined) result.image = { relPath: image.relPath, label: image.label }
   return result
 }
 

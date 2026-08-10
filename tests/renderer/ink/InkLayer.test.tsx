@@ -8,9 +8,22 @@ import {
 } from '../../../src/renderer/src/features/ink/InkLayer'
 import { ClipShape } from '../../../src/renderer/src/features/ink/ClipShape'
 import {
+  ImageShape,
+  loadDrawingImage
+} from '../../../src/renderer/src/features/ink/ImageShape'
+import {
+  BANDAL_IMAGE_MIME,
+  readBandalImageDragData,
+  writeBandalImageDragData
+} from '../../../src/renderer/src/features/ink/imageTransfer'
+import {
   resizeHandleBoxes,
   ResizeHandles
 } from '../../../src/renderer/src/features/ink/ResizeHandles'
+import {
+  setIpcAdapter,
+  type IpcAdapter
+} from '../../../src/renderer/src/lib/ipc'
 
 const box = { x: 0.2, y: 0.3, width: 0.26, height: 0.08 }
 const style = { color: 'ink' as const, width: 0.006, opacity: 1, fontScale: 1 }
@@ -158,5 +171,81 @@ describe('InkLayer resize handles', () => {
     )
 
     expect(html.match(/ink-layer__textbox-resize/g)).toHaveLength(4)
+  })
+})
+
+describe('InkLayer image shapes', () => {
+  const imageBox = { x: 0.12, y: 0.18, width: 0.42, height: 0.28 }
+  const image = savedShape({
+    kind: 'image',
+    data: {
+      box: imageBox,
+      image: { relPath: 'images/chart.png', label: 'chart.png' }
+    }
+  })
+
+  test('counter-scales HTML and reuses all four resize handles', () => {
+    const html = renderToStaticMarkup(
+      <ImageShape
+        shape={image}
+        box={imageBox}
+        aspect={0.75}
+        baseWidthPx={800}
+        courseId="course-1"
+        selected
+        onBeginManipulation={vi.fn()}
+      />
+    )
+
+    expect(html).toContain('ink-layer__image-group')
+    expect(html).toContain('transform:scale(0.00125, 0.0016666666666666668)')
+    expect(html).toContain('width:336px')
+    expect(html).toContain('height:168.00000000000003px')
+    for (const handle of ['nw', 'ne', 'sw', 'se']) {
+      expect(html).toContain(`data-resize-handle="${handle}"`)
+    }
+  })
+
+  test('uses a copy-compatible custom drag payload', () => {
+    const values = new Map<string, string>()
+    const transfer = {
+      effectAllowed: 'move',
+      setData: (format: string, value: string) => values.set(format, value),
+      getData: (format: string) => values.get(format) ?? ''
+    }
+    const source = { relPath: 'figures/chart.png', label: 'chart.png' }
+
+    writeBandalImageDragData(transfer, source)
+
+    expect(transfer.effectAllowed).toBe('copy')
+    expect(values.has(BANDAL_IMAGE_MIME)).toBe(true)
+    expect(readBandalImageDragData(transfer)).toEqual(source)
+  })
+
+  test('reads one course image once when multiple shapes use it', async () => {
+    const invoke = vi.fn(async () => ({ encoding: 'base64', data: 'YWJj' }))
+    setIpcAdapter({ invoke, on: vi.fn() } as unknown as IpcAdapter)
+    const source = { relPath: 'figures/cache-test.png', label: 'cache-test.png' }
+    try {
+      const urls = await Promise.all([
+        loadDrawingImage('course-cache-test', source),
+        loadDrawingImage('course-cache-test', source)
+      ])
+
+      expect(urls).toEqual([
+        'data:image/png;base64,YWJj',
+        'data:image/png;base64,YWJj'
+      ])
+      expect(invoke).toHaveBeenCalledTimes(1)
+    } finally {
+      setIpcAdapter(null)
+    }
+  })
+
+  test('quietly rejects malformed or unavailable drag data', () => {
+    expect(readBandalImageDragData({ getData: () => '' })).toBeNull()
+    expect(readBandalImageDragData({
+      getData: () => JSON.stringify({ relPath: '../escape.png', label: 'escape.png' })
+    })).toBeNull()
   })
 })

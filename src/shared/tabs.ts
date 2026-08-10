@@ -16,10 +16,17 @@ export type TabKind =
   | 'board'
   | 'group-chat'
   | 'whiteboard'
+  | 'image'
 
 export interface PdfTabPayload {
   courseId: string
   /** Path of the PDF relative to the course folder. */
+  relPath: string
+}
+
+export interface ImageTabPayload {
+  courseId: string
+  /** Path of the image relative to the course folder. */
   relPath: string
 }
 
@@ -91,6 +98,7 @@ export interface TabPayloadMap {
   board: BoardTabPayload
   'group-chat': GroupChatTabPayload
   whiteboard: WhiteboardTabPayload
+  image: ImageTabPayload
 }
 
 /** Discriminated tab descriptor: { kind, payload } pairs, serializable. */
@@ -109,18 +117,30 @@ export type TabId = string
 // across the project boundary (TS6307), which is exactly the kind of
 // main→renderer dependency the tsconfig split exists to prevent.
 
-export const TAB_KINDS: readonly TabKind[] = [
+/**
+ * Runtime witness for `TabKind`. It has to be exhaustive, and a hand-kept copy
+ * is not: `image` was added to the union and forgotten here, so `isTabKind`
+ * rejected every image descriptor and the tab silently refused to open. The
+ * same drift already cost us IPC channels and drawing kinds — the assignment
+ * below stops compiling when a kind is missing.
+ */
+export const TAB_KINDS = [
   'pdf',
   'note',
   'browser',
   'chat',
   'board',
   'group-chat',
-  'whiteboard'
-]
+  'whiteboard',
+  'image'
+] as const satisfies readonly TabKind[]
+
+type MissingTabKind = Exclude<TabKind, (typeof TAB_KINDS)[number]>
+const _allTabKindsListed: MissingTabKind extends never ? true : never = true
+void _allTabKindsListed
 
 export function isTabKind(value: unknown): value is TabKind {
-  return typeof value === 'string' && (TAB_KINDS as string[]).includes(value)
+  return typeof value === 'string' && (TAB_KINDS as readonly string[]).includes(value)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -157,6 +177,11 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
       return (
         isNonEmptyString(payload['courseId']) &&
         isNonEmptyString(payload['boardId'])
+      )
+    case 'image':
+      return (
+        isNonEmptyString(payload['courseId']) &&
+        isNonEmptyString(payload['relPath'])
       )
     case 'group-chat': {
       const courseId = payload['courseId']

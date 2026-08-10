@@ -27,6 +27,12 @@ export type DrawingKind =
    * re-renders the region at display time.
    */
   | 'clip'
+  /**
+   * An image the student put on a board or a PDF page. Stores a course-relative
+   * PATH, never pixels — the same reasoning as `clip`: the bytes are already on
+   * disk, and a base64 copy per shape would blow past the 64KB remote row cap.
+   */
+  | 'image'
 
 /**
  * Runtime witness for `DrawingKind`, so validators cannot silently fall behind
@@ -44,7 +50,8 @@ export const DRAWING_KINDS = [
   'arrow',
   'line',
   'textbox',
-  'clip'
+  'clip',
+  'image'
 ] as const satisfies readonly DrawingKind[]
 
 type MissingDrawingKind = Exclude<DrawingKind, (typeof DRAWING_KINDS)[number]>
@@ -96,6 +103,14 @@ export interface DrawingData {
   text?: string
   /** clip only. */
   clip?: DrawingClipSource
+  /** image only — course-relative path of the picture to draw in `box`. */
+  image?: DrawingImageSource
+}
+
+export interface DrawingImageSource {
+  relPath: string
+  /** Shown while loading and when the file has gone missing. */
+  label: string
 }
 
 export interface DrawingStyle {

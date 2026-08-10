@@ -480,6 +480,44 @@ export const migrations: Migration[] = [
         )
       }
     }
+  },
+  {
+    version: 14,
+    name: 'whiteboard-pages',
+    up: (db) => {
+      // A board used to be one surface stretched to whatever the panel happened
+      // to be, so resizing the window distorted every stroke. It becomes a stack
+      // of fixed-aspect pages instead: coordinates stay 0..1 *within a page*, so
+      // all existing geometry keeps working and old shapes simply belong to
+      // page 1.
+      const boards = new Set(
+        (db.prepare('PRAGMA table_info(whiteboards)').all() as { name: string }[]).map(
+          (column) => column.name
+        )
+      )
+      if (!boards.has('page_count')) {
+        db.exec(
+          'ALTER TABLE whiteboards ADD COLUMN page_count INTEGER NOT NULL DEFAULT 1'
+        )
+      }
+      const shapes = new Set(
+        (
+          db
+            .prepare('PRAGMA table_info(whiteboard_local_shapes)')
+            .all() as { name: string }[]
+        ).map((column) => column.name)
+      )
+      if (!shapes.has('page')) {
+        db.exec(
+          'ALTER TABLE whiteboard_local_shapes ADD COLUMN page INTEGER NOT NULL DEFAULT 1'
+        )
+      }
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_wb_local_board_page
+           ON whiteboard_local_shapes (board_id, page)
+           WHERE deleted_at IS NULL;`
+      )
+    }
   }
 ]
 
