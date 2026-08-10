@@ -6,6 +6,7 @@ import type {
 } from '../../../../shared/types/materials'
 import { Icon, type IconName } from '../../app/icons'
 import { openMaterialInWorkspace } from '../workspace/openMaterial'
+import { writeMaterialImageDragData } from './imageDrag'
 
 function iconForKind(kind: MaterialKind | 'dir', expanded = false): IconName {
   switch (kind) {
@@ -194,6 +195,7 @@ function TreeNode({
         <button
           type="button"
           className="material-row"
+          draggable={node.kind === 'image'}
           data-material-row="true"
           data-kind={node.kind}
           data-selected={selectedRelPath === node.relPath || undefined}
@@ -214,6 +216,13 @@ function TreeNode({
             }
           }}
           onContextMenu={(event) => onContextMenu(event, node)}
+          onDragStart={(event) => {
+            if (node.kind !== 'image') return
+            writeMaterialImageDragData(event.dataTransfer, {
+              relPath: node.relPath,
+              label: node.name
+            })
+          }}
           onKeyDown={(event) => {
             if (event.key === 'ArrowDown') focusAdjacentRow(event, 1)
             if (event.key === 'ArrowUp') focusAdjacentRow(event, -1)
@@ -327,6 +336,7 @@ export function MaterialSearchResults({
             <button
               type="button"
               className="material-result"
+              draggable={result.kind === 'image'}
               data-material-row="true"
               data-kind={result.kind}
               data-selected={selectedRelPath === result.relPath || undefined}
@@ -338,6 +348,13 @@ export function MaterialSearchResults({
                 openMaterialInWorkspace(result.kind, result.relPath)
               }}
               onContextMenu={(event) => onContextMenu(event, node)}
+              onDragStart={(event) => {
+                if (result.kind !== 'image') return
+                writeMaterialImageDragData(event.dataTransfer, {
+                  relPath: result.relPath,
+                  label: result.name
+                })
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'ArrowDown') focusAdjacentRow(event, 1)
                 if (event.key === 'ArrowUp') focusAdjacentRow(event, -1)

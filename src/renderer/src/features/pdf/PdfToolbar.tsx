@@ -13,6 +13,7 @@ export interface PdfToolbarProps {
   currentPage: number
   numPages: number
   zoomPercent: number
+  isPreviewOpen: boolean
   isRailOpen: boolean
   annotationCount: number
   courseId: string
@@ -22,6 +23,7 @@ export interface PdfToolbarProps {
   onZoomIn: () => void
   onZoomOut: () => void
   onZoomFit: () => void
+  onTogglePreview: () => void
   onToggleRail: () => void
 }
 
@@ -72,16 +74,28 @@ function PageJump({
 export function PdfToolbar(props: PdfToolbarProps): JSX.Element {
   const {
     zoomPercent,
+    isPreviewOpen,
     isRailOpen,
     annotationCount,
     onZoomIn,
     onZoomOut,
     onZoomFit,
+    onTogglePreview,
     onToggleRail
   } = props
 
   return (
     <div className="pdf-toolbar" role="toolbar" aria-label="PDF 뷰어 도구">
+      <button
+        type="button"
+        className="pdf-toolbar__preview-toggle"
+        aria-pressed={isPreviewOpen}
+        onClick={onTogglePreview}
+      >
+        <Icon name="layoutLeft" />
+        미리보기
+      </button>
+
       <PageJump
         currentPage={props.currentPage}
         numPages={props.numPages}

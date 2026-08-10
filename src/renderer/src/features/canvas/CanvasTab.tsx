@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type {
   DrawingBox,
   DrawingClipSource,
+  DrawingImageSource,
   DrawingShape
 } from '../../../../shared/types/drawing'
 import type {
@@ -20,8 +21,12 @@ import type {
   SetBoardBackgroundInput
 } from '../../../../shared/types/whiteboard'
 import { showToast } from '../../app/toast'
+import { Icon } from '../../app/icons'
 import { invoke } from '../../lib/ipc'
 import {
+  dataUrlImageAspect,
+  imageBoxAtPoint,
+  loadDrawingImage,
   useInkToolStore,
   type InkHistoryAction
 } from '../ink'
@@ -40,6 +45,7 @@ import {
 } from './canvasModel'
 import { CanvasToolRail } from './CanvasToolRail'
 import { CanvasPage, DEFAULT_PAGE_ASPECT } from './CanvasPage'
+import { CanvasPreviewPanel } from './CanvasPreviewPanel'
 import './canvas.css'
 
 type LoadState =
@@ -138,6 +144,7 @@ function CanvasSession({
   const [pageBusy, setPageBusy] = useState(false)
   const [exportingPdf, setExportingPdf] = useState(false)
   const [visiblePage, setVisiblePage] = useState(1)
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const viewportRef = useRef<HTMLDivElement>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const shapesRef = useRef(shapes)
@@ -437,17 +444,20 @@ function CanvasSession({
     if (editingTitle) titleInputRef.current?.select()
   }, [editingTitle])
 
+  const jumpToPage = useCallback((page: number): void => {
+    if (page < 1 || page > board.pageCount) return
+    setVisiblePage(page)
+    viewportRef.current
+      ?.querySelector(`[data-page-number="${page}"]`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [board.pageCount])
+
   useEffect(() => {
     const page = pendingScrollPageRef.current
     if (page === null || page > board.pageCount) return
     pendingScrollPageRef.current = null
-    setVisiblePage(page)
-    requestAnimationFrame(() => {
-      viewportRef.current
-        ?.querySelector(`[data-page-number="${page}"]`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
-  }, [board.pageCount])
+    requestAnimationFrame(() => jumpToPage(page))
+  }, [board.pageCount, jumpToPage])
 
   const updatePageVisibility = useCallback((page: number, ratio: number): void => {
     if (ratio > 0) visibilityRef.current.set(page, ratio)
@@ -465,6 +475,44 @@ function CanvasSession({
     }
     if (bestRatio >= 0) setVisiblePage(bestPage)
   }, [])
+
+  /**
+   * Same two-step as a clip: drop a provisional square immediately so the page
+   * reacts, then correct it to the picture's real ratio once measured — but
+   * only if the student has not already moved or resized it.
+   */
+  const placeImage = useCallback((
+    source: DrawingImageSource,
+    point: { x: number; y: number },
+    page: number
+  ): void => {
+    const initialBox = imageBoxAtPoint(point, DEFAULT_PAGE_ASPECT, 1)
+    const created = addInternal({
+      kind: 'image',
+      data: { box: initialBox, image: source },
+      style: { color, width, opacity: 1 }
+    }, page, true)
+
+    void loadDrawingImage(board.courseId, source)
+      .then((dataUrl) => (dataUrl === null ? null : dataUrlImageAspect(dataUrl)))
+      .then((imageAspect) => {
+        if (imageAspect === null) return
+        const current = shapesRef.current.find((shape) => shape.id === created.id)
+        if (
+          current === undefined ||
+          !sameDrawingBox(current.data.box, initialBox)
+        ) {
+          return
+        }
+        updateInternal(created.id, {
+          data: {
+            ...current.data,
+            box: imageBoxAtPoint(point, DEFAULT_PAGE_ASPECT, imageAspect)
+          }
+        }, false)
+      })
+      .catch(() => {})
+  }, [addInternal, board.courseId, color, updateInternal, width])
 
   const placeClip = useCallback((
     source: DrawingClipSource,
@@ -571,6 +619,15 @@ function CanvasSession({
             {board.title}
           </button>
         )}
+        <button
+          type="button"
+          className="canvas-tab__preview-toggle"
+          aria-pressed={isPreviewOpen}
+          onClick={() => setIsPreviewOpen((open) => !open)}
+        >
+          <Icon name="layoutLeft" />
+          미리보기
+        </button>
         <span className="canvas-tab__local-badge">이 기기에 저장됨</span>
       </header>
 
@@ -601,28 +658,41 @@ function CanvasSession({
         <p className="canvas-tab__status" role="status">{statusMessage}</p>
       )}
 
-      <div ref={viewportRef} className="canvas-tab__viewport">
-        <div className="canvas-tab__pages">
-          {Array.from({ length: board.pageCount }, (_, index) => index + 1).map(
-            (pageNumber) => (
-              <CanvasPage
-                key={pageNumber}
-                pageNumber={pageNumber}
-                boardTitle={board.title}
-                shapes={shapes.filter((shape) => shape.page === pageNumber)}
-                tool={{ activeTool, color, width, opacity }}
-                viewportRef={viewportRef}
-                renderClip={renderClip}
-                onOpenClip={openClip}
-                onCreate={(shape) => { addInternal(shape, pageNumber, true) }}
-                onUpdate={(id, patch) => { updateInternal(id, patch, true) }}
-                onRemove={(ids) => { removeInternal(ids, true) }}
-                onDropClip={placeClip}
-                onActivate={setVisiblePage}
-                onVisibilityChange={updatePageVisibility}
-              />
-            )
-          )}
+      <div className="canvas-tab__main">
+        {isPreviewOpen && (
+          <CanvasPreviewPanel
+            pageCount={board.pageCount}
+            currentPage={visiblePage}
+            background={board.background}
+            shapes={shapes}
+            onJump={jumpToPage}
+          />
+        )}
+        <div ref={viewportRef} className="canvas-tab__viewport">
+          <div className="canvas-tab__pages">
+            {Array.from({ length: board.pageCount }, (_, index) => index + 1).map(
+              (pageNumber) => (
+                <CanvasPage
+                  key={pageNumber}
+                  pageNumber={pageNumber}
+                  boardTitle={board.title}
+                  shapes={shapes.filter((shape) => shape.page === pageNumber)}
+                  tool={{ activeTool, color, width, opacity }}
+                  viewportRef={viewportRef}
+                  renderClip={renderClip}
+                  onOpenClip={openClip}
+                  onCreate={(shape) => { addInternal(shape, pageNumber, true) }}
+                  onUpdate={(id, patch) => { updateInternal(id, patch, true) }}
+                  onRemove={(ids) => { removeInternal(ids, true) }}
+                  courseId={board.courseId}
+                  onDropClip={placeClip}
+                  onDropImage={placeImage}
+                  onActivate={setVisiblePage}
+                  onVisibilityChange={updatePageVisibility}
+                />
+              )
+            )}
+          </div>
         </div>
       </div>
     </section>

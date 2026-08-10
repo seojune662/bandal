@@ -6,10 +6,16 @@ import {
   type RefObject
 } from 'react'
 import type {
-  DrawingClipSource
+  DrawingClipSource,
+  DrawingImageSource
 } from '../../../../shared/types/drawing'
 import type { PersonalBoardShape } from '../../../../shared/types/whiteboard'
-import { InkLayer, type InkLayerProps } from '../ink'
+import {
+  BANDAL_IMAGE_MIME,
+  InkLayer,
+  readBandalImageDragData,
+  type InkLayerProps
+} from '../ink'
 import {
   BANDAL_CLIP_MIME,
   readBandalClipDragData
@@ -25,6 +31,8 @@ interface PageSize {
 interface CanvasPageProps {
   pageNumber: number
   boardTitle: string
+  /** Needed to resolve image shapes; without it they render as empty boxes. */
+  courseId: string
   shapes: readonly PersonalBoardShape[]
   tool: InkLayerProps['tool']
   viewportRef: RefObject<HTMLDivElement>
@@ -35,6 +43,11 @@ interface CanvasPageProps {
   onRemove: InkLayerProps['onRemove']
   onDropClip: (
     source: DrawingClipSource,
+    point: { x: number; y: number },
+    page: number
+  ) => void
+  onDropImage: (
+    source: DrawingImageSource,
     point: { x: number; y: number },
     page: number
   ) => void
@@ -71,6 +84,7 @@ function usePageSize(ref: RefObject<HTMLDivElement>): PageSize {
 export function CanvasPage({
   pageNumber,
   boardTitle,
+  courseId,
   shapes,
   tool,
   viewportRef,
@@ -80,6 +94,7 @@ export function CanvasPage({
   onUpdate,
   onRemove,
   onDropClip,
+  onDropImage,
   onActivate,
   onVisibilityChange
 }: CanvasPageProps): JSX.Element {
@@ -105,22 +120,48 @@ export function CanvasPage({
   }, [onVisibilityChange, pageNumber, viewportRef])
 
   const handleDragOver = (event: ReactDragEvent<HTMLDivElement>): void => {
-    if (!Array.from(event.dataTransfer.types).includes(BANDAL_CLIP_MIME)) return
+    const types = Array.from(event.dataTransfer.types)
+    if (
+      !types.includes(BANDAL_CLIP_MIME) &&
+      !types.includes(BANDAL_IMAGE_MIME)
+    ) {
+      return
+    }
+    // `getData` is empty during dragover by spec, so the decision has to come
+    // from `types`. Without preventDefault the browser never fires `drop`.
     event.preventDefault()
     event.dataTransfer.dropEffect = 'copy'
   }
 
-  const handleDrop = (event: ReactDragEvent<HTMLDivElement>): void => {
-    const source = readBandalClipDragData(event.dataTransfer)
+  /** Normalized position inside this page, or null before it is measured. */
+  const pointAt = (
+    event: ReactDragEvent<HTMLDivElement>
+  ): { x: number; y: number } | null => {
     const surface = surfaceRef.current
-    if (source === null || surface === null) return
+    if (surface === null) return null
     const bounds = surface.getBoundingClientRect()
-    if (bounds.width <= 0 || bounds.height <= 0) return
-    event.preventDefault()
-    onDropClip(source, {
+    if (bounds.width <= 0 || bounds.height <= 0) return null
+    return {
       x: Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)),
       y: Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height))
-    }, pageNumber)
+    }
+  }
+
+  const handleDrop = (event: ReactDragEvent<HTMLDivElement>): void => {
+    const image = readBandalImageDragData(event.dataTransfer)
+    if (image !== null) {
+      const point = pointAt(event)
+      if (point === null) return
+      event.preventDefault()
+      onDropImage(image, point, pageNumber)
+      return
+    }
+    const source = readBandalClipDragData(event.dataTransfer)
+    if (source === null) return
+    const point = pointAt(event)
+    if (point === null) return
+    event.preventDefault()
+    onDropClip(source, point, pageNumber)
   }
 
   return (
@@ -136,6 +177,7 @@ export function CanvasPage({
         onDrop={handleDrop}
       >
         <InkLayer
+          courseId={courseId}
           aspect={DEFAULT_PAGE_ASPECT}
           baseWidthPx={size.width}
           shapes={shapes}

@@ -31,6 +31,7 @@ import { usePageTexts, useStaleAnnotationIds } from './usePageTexts'
 import { useVisiblePages } from './useVisiblePages'
 import { PdfToolbar } from './PdfToolbar'
 import { PdfPageView } from './PdfPageView'
+import { PdfPreviewPanel } from './PdfPreviewPanel'
 import { AnnotationRail } from './AnnotationRail'
 import {
   HighlightPopover,
@@ -150,6 +151,7 @@ function PdfViewer({
     () => pdfScrollMemory.get(courseId, relPath)?.zoom ?? 1
   )
   const [currentPage, setCurrentPage] = useState(1)
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [isRailOpen, setIsRailOpen] = useState(false)
   const [pendingSelection, setPendingSelection] =
     useState<PendingSelection | null>(null)
@@ -552,6 +554,7 @@ function PdfViewer({
         currentPage={currentPage}
         numPages={numPages}
         zoomPercent={zoomPercent}
+        isPreviewOpen={isPreviewOpen}
         isRailOpen={isRailOpen}
         annotationCount={annotations.length}
         courseId={courseId}
@@ -561,9 +564,18 @@ function PdfViewer({
         onZoomIn={() => applyZoom(zoom * ZOOM_STEP)}
         onZoomOut={() => applyZoom(zoom / ZOOM_STEP)}
         onZoomFit={() => applyZoom(1)}
+        onTogglePreview={() => setIsPreviewOpen((open) => !open)}
         onToggleRail={() => setIsRailOpen((open) => !open)}
       />
       <div className="pdf-tab__main">
+        {isPreviewOpen && (
+          <PdfPreviewPanel
+            pdf={pdfProxy}
+            numPages={numPages}
+            currentPage={currentPage}
+            onJump={jumpToPage}
+          />
+        )}
         <div
           ref={scrollerRef}
           className="pdf-scroller"
