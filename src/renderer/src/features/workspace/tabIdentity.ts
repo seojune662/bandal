@@ -7,6 +7,7 @@
  * Everything in this module is side-effect free and unit-testable.
  */
 
+import { NEW_TAB_URL } from '../../../../shared/tabs'
 import type {
   TabDescriptor,
   TabKind,
@@ -66,6 +67,10 @@ export function tabTitle(descriptor: TabDescriptor): string {
     case 'note':
       return stripExtension(baseName(descriptor.payload.relPath))
     case 'browser': {
+      // A fresh tab shows the app's start page, not a site. Naming it after the
+      // placeholder URL labelled every new tab "www.google.com" while the
+      // student was looking at 어디로 갈까요?.
+      if (descriptor.payload.initialUrl === NEW_TAB_URL) return '새 탭'
       const host = hostnameOf(descriptor.payload.initialUrl)
       return host ?? '브라우저'
     }

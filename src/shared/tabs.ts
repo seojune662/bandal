@@ -36,6 +36,13 @@ export interface NoteTabPayload {
   relPath: string
 }
 
+/**
+ * What a fresh browser tab carries. It is not navigated to — the app shows its
+ * own start page instead — but it stays a real URL so older saved layouts and
+ * favorites keep resolving.
+ */
+export const NEW_TAB_URL = 'https://www.google.com'
+
 export interface BrowserTabPayload {
   /** Stable id linking this tab to its main-process WebContentsView. */
   tabId: string

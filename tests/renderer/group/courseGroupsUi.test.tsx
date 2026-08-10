@@ -16,6 +16,8 @@ const mockedStores = vi.hoisted(() => ({
       online: false,
       errorCode: null
     },
+    hydrated: true,
+    initializing: false,
     init: vi.fn(async () => undefined),
     signIn: vi.fn()
   },
@@ -135,6 +137,8 @@ beforeEach(() => {
   mockedStores.auth.auth.phase = 'unconfigured'
   mockedStores.auth.auth.profile = null
   mockedStores.auth.auth.online = false
+  mockedStores.auth.hydrated = true
+  mockedStores.auth.initializing = false
   mockedStores.courses.courses = [course]
   mockedStores.courses.selectedCourseId = course.id
   mockedStores.groups.groups = []
@@ -194,6 +198,16 @@ describe('GroupChatTab course switcher', () => {
 })
 
 describe('TogetherFooter', () => {
+  test('shows a neutral entry point before auth restoration', () => {
+    mockedStores.auth.hydrated = false
+
+    const html = renderToStaticMarkup(<TogetherFooter />)
+
+    expect(html).toContain('함께하기 시작하기')
+    expect(html).not.toContain('>로그인<')
+    expect(mockedStores.auth.init).not.toHaveBeenCalled()
+  })
+
   test('is absent when community auth is unconfigured', () => {
     expect(renderToStaticMarkup(<TogetherFooter />)).toBe('')
   })

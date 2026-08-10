@@ -31,7 +31,3 @@ export interface DidNavigateInPageEvent extends Event {
 export interface PageTitleUpdatedEvent extends Event {
   title: string
 }
-
-export interface PageFaviconUpdatedEvent extends Event {
-  favicons: string[]
-}

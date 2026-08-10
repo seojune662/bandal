@@ -18,6 +18,7 @@ import type {
 import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
+import { useAuthStore } from '../../stores/authStore'
 import { useCoursesStore } from '../../stores/coursesStore'
 import {
   selectGroupsForCourse,
@@ -379,6 +380,8 @@ function CourseGroupPanel({
 }: CourseGroupPanelProps): JSX.Element {
   const { courseId, groupId: initialGroupId } = requestPayload
   const initialView = requestPayload.view ?? 'chat'
+  const authHydrated = useAuthStore((state) => state.hydrated)
+  const initAuth = useAuthStore((state) => state.init)
   const allGroups = useGroupsStore((state) => state.groups)
   const initGroups = useGroupsStore((state) => state.init)
   const groups = useMemo(
@@ -415,13 +418,22 @@ function CourseGroupPanel({
 
   useEffect(() => {
     let cancelled = false
-    void initGroups().finally(() => {
-      if (!cancelled) setLoadingGroups(false)
-    })
+    void initAuth()
+      .then(async () => {
+        // Opening a group tab is an explicit Together action, including when
+        // Dockview restores it from a saved layout. Restore auth first so the
+        // group list and unread counts are hydrated against the real session.
+        if (useAuthStore.getState().auth.phase === 'signed-in') {
+          await initGroups()
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingGroups(false)
+      })
     return () => {
       cancelled = true
     }
-  }, [initGroups])
+  }, [initAuth, initGroups])
 
   const activeGroupId = groups.some((group) => group.id === selectedGroupId)
     ? selectedGroupId
@@ -448,6 +460,20 @@ function CourseGroupPanel({
   const onCloseTab = useCallback(() => {
     api.close()
   }, [api])
+
+  if (!authHydrated) {
+    return (
+      <div className="group-tab">
+        <div
+          className="group-loading"
+          role="status"
+          aria-label="함께하기 불러오는 중"
+        >
+          <BandalMark size={56} className="group-loading__moon" />
+        </div>
+      </div>
+    )
+  }
 
   if (activeGroupId === null) {
     if (loadingGroups) {

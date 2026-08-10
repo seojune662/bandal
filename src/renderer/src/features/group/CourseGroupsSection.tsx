@@ -19,7 +19,6 @@ export function CourseGroupsSection(props: {
 }): JSX.Element | null {
   const { courseId } = props
   const auth = useAuthStore((state) => state.auth)
-  const initAuth = useAuthStore((state) => state.init)
   const allGroups = useGroupsStore((state) => state.groups)
   const initGroups = useGroupsStore((state) => state.init)
   const createGroup = useGroupsStore((state) => state.createGroup)
@@ -34,10 +33,6 @@ export function CourseGroupsSection(props: {
     () => selectGroupsForCourse(allGroups, courseId),
     [allGroups, courseId]
   )
-
-  useEffect(() => {
-    void initAuth()
-  }, [initAuth])
 
   useEffect(() => {
     if (signedIn) void initGroups()

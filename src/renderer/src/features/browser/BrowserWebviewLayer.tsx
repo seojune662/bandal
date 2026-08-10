@@ -37,9 +37,15 @@ function useGuestReaper(): void {
             openBrowserTabs.add(descriptor.payload.tabId)
           }
         }
-        const { liveGuests, removeGuest } = useBrowserGuests.getState()
-        for (const guest of liveGuests) {
-          if (!openBrowserTabs.has(guest.tabId)) removeGuest(guest.tabId)
+        const { nav, recent, startPageVisible, removeGuest } =
+          useBrowserGuests.getState()
+        const sessionTabIds = new Set([
+          ...Object.keys(nav),
+          ...Object.keys(recent),
+          ...Object.keys(startPageVisible)
+        ])
+        for (const tabId of sessionTabIds) {
+          if (!openBrowserTabs.has(tabId)) removeGuest(tabId)
         }
       }),
     []

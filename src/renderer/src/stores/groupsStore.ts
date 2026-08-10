@@ -37,6 +37,7 @@ interface GroupsStoreState {
 }
 
 let subscribed = false
+let initialization: Promise<void> | null = null
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '문제가 생겼어요.'
@@ -55,7 +56,16 @@ export const useGroupsStore = create<GroupsStoreState>()((set, get) => ({
         void get().load()
       })
     }
-    await get().load()
+    if (initialization === null) {
+      const request = get().load()
+      initialization = request
+      void request.finally(() => {
+        // Coalesce only overlapping mounts. A later sign-in (including an
+        // account switch in the same app run) must refresh the projection.
+        if (initialization === request) initialization = null
+      })
+    }
+    await initialization
   },
 
   load: async () => {
@@ -141,6 +151,7 @@ export function selectTotalUnread(groups: readonly GroupSummary[]): number {
 /** Test-only: drop the push subscription latch. */
 export function resetGroupsStoreForTests(): void {
   subscribed = false
+  initialization = null
   useGroupsStore.setState({
     groups: [],
     pendingInvites: [],

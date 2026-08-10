@@ -20,7 +20,6 @@ import { useWebviewLoginBridge } from './loginBridge'
 import type {
   DidNavigateEvent,
   DidNavigateInPageEvent,
-  PageFaviconUpdatedEvent,
   PageTitleUpdatedEvent,
   WebviewTag
 } from './webviewTypes'
@@ -51,6 +50,9 @@ export function BrowserGuestView({
   const [rect, setRect] = useState<AnchorRect | null>(() =>
     getBrowserAnchorRect(tabId)
   )
+  const startPageVisible = useBrowserGuests(
+    (state) => state.startPageVisible[tabId] === true
+  )
   useWebviewSelectionBridge(webviewRef)
   useWebviewLoginBridge(tabId, webviewRef)
 
@@ -63,7 +65,7 @@ export function BrowserGuestView({
   )
 
   // Becoming visible counts as "used" for LRU purposes.
-  const isVisible = rect !== null
+  const isVisible = rect !== null && !startPageVisible
   useEffect(() => {
     if (isVisible) useBrowserGuests.getState().touchGuest(tabId)
   }, [isVisible, tabId])
@@ -106,11 +108,6 @@ export function BrowserGuestView({
         ((event: PageTitleUpdatedEvent) =>
           update({ title: event.title })) as EventListener
       ],
-      [
-        'page-favicon-updated',
-        ((event: PageFaviconUpdatedEvent) =>
-          update({ favicon: event.favicons[0] ?? null })) as EventListener
-      ],
       ['did-fail-load', () => update({ loading: false })]
     ]
     for (const [name, listener] of listeners) {
@@ -125,7 +122,10 @@ export function BrowserGuestView({
   }, [tabId])
 
   return (
-    <div className="browser-guest" style={guestStyle(rect)}>
+    <div
+      className="browser-guest"
+      style={guestStyle(startPageVisible ? null : rect)}
+    >
       <webview
         ref={(element) => {
           webviewRef.current = element as WebviewTag | null

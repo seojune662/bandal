@@ -28,11 +28,17 @@ export interface LiveGuest {
 export interface BrowserNavState {
   url: string
   title: string
-  favicon: string | null
   loading: boolean
   canGoBack: boolean
   canGoForward: boolean
 }
+
+export interface BrowserVisit {
+  url: string
+  title: string
+}
+
+export const MAX_RECENT_VISITS = 6
 
 export interface BrowserLoginState {
   origin: string | null
@@ -47,7 +53,13 @@ interface BrowserGuestsState {
   liveGuests: LiveGuest[]
   nav: Record<string, BrowserNavState>
   login: Record<string, BrowserLoginState>
+  /** Recent pages live only for the lifetime of their browser tab. */
+  recent: Record<string, BrowserVisit[]>
+  /** undefined = a direct URL tab; true/false = start page visible/hidden. */
+  startPageVisible: Record<string, boolean | undefined>
+  ensureStartPage: (tabId: string) => void
   ensureGuest: (tabId: string, initialUrl: string) => void
+  setStartPageVisible: (tabId: string, visible: boolean) => void
   touchGuest: (tabId: string) => void
   removeGuest: (tabId: string) => void
   updateNav: (tabId: string, patch: Partial<BrowserNavState>) => void
@@ -58,7 +70,6 @@ export function initialNavState(url: string): BrowserNavState {
   return {
     url,
     title: '',
-    favicon: null,
     loading: false,
     canGoBack: false,
     canGoForward: false
@@ -78,6 +89,37 @@ export function initialLoginState(): BrowserLoginState {
 /** Last committed URL per tab — survives eviction/destruction for restore. */
 const lastKnownUrls = new Map<string, string>()
 
+function visitLabel(url: string, title: string): string {
+  const trimmedTitle = title.trim()
+  if (trimmedTitle.length > 0) return trimmedTitle
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
+
+function canRememberVisit(url: string): boolean {
+  try {
+    const protocol = new URL(url).protocol
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function rememberVisit(
+  visits: readonly BrowserVisit[],
+  url: string,
+  title: string
+): BrowserVisit[] {
+  if (!canRememberVisit(url)) return [...visits]
+  return [
+    { url, title: visitLabel(url, title) },
+    ...visits.filter((visit) => visit.url !== url)
+  ].slice(0, MAX_RECENT_VISITS)
+}
+
 function withoutKeys<T>(
   nav: Record<string, T>,
   keys: readonly string[]
@@ -92,9 +134,22 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
   liveGuests: [],
   nav: {},
   login: {},
+  recent: {},
+  startPageVisible: {},
+
+  ensureStartPage: (tabId) => {
+    const { nav, login, recent, startPageVisible } = get()
+    if (startPageVisible[tabId] !== undefined) return
+    set({
+      nav: { ...nav, [tabId]: nav[tabId] ?? initialNavState('') },
+      login: { ...login, [tabId]: login[tabId] ?? initialLoginState() },
+      recent: { ...recent, [tabId]: recent[tabId] ?? [] },
+      startPageVisible: { ...startPageVisible, [tabId]: true }
+    })
+  },
 
   ensureGuest: (tabId, initialUrl) => {
-    const { liveGuests, nav, login } = get()
+    const { liveGuests, nav, login, recent } = get()
     if (liveGuests.some((guest) => guest.tabId === tabId)) {
       get().touchGuest(tabId)
       return
@@ -116,8 +171,15 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
       login: {
         ...withoutKeys(login, evicted),
         [tabId]: initialLoginState()
-      }
+      },
+      recent: { ...recent, [tabId]: recent[tabId] ?? [] }
     })
+  },
+
+  setStartPageVisible: (tabId, visible) => {
+    const { startPageVisible } = get()
+    if (startPageVisible[tabId] === undefined) return
+    set({ startPageVisible: { ...startPageVisible, [tabId]: visible } })
   },
 
   touchGuest: (tabId) => {
@@ -136,23 +198,37 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
   },
 
   removeGuest: (tabId) => {
-    const { liveGuests, nav, login } = get()
-    if (!liveGuests.some((guest) => guest.tabId === tabId)) return
+    const { liveGuests, nav, login, recent, startPageVisible } = get()
     set({
       liveGuests: liveGuests.filter((guest) => guest.tabId !== tabId),
       nav: withoutKeys(nav, [tabId]),
-      login: withoutKeys(login, [tabId])
+      login: withoutKeys(login, [tabId]),
+      recent: withoutKeys(recent, [tabId]),
+      startPageVisible: withoutKeys(startPageVisible, [tabId])
     })
   },
 
   updateNav: (tabId, patch) => {
-    const { nav } = get()
+    const { nav, recent } = get()
     const current = nav[tabId]
     if (current === undefined) return
+    const next = { ...current, ...patch }
     if (typeof patch.url === 'string' && patch.url.length > 0) {
       lastKnownUrls.set(tabId, patch.url)
     }
-    set({ nav: { ...nav, [tabId]: { ...current, ...patch } } })
+
+    let nextRecent = recent[tabId] ?? []
+    if (typeof patch.url === 'string' && patch.url.length > 0) {
+      // A title from the prior page is stale until page-title-updated arrives.
+      nextRecent = rememberVisit(nextRecent, patch.url, patch.title ?? '')
+    } else if (typeof patch.title === 'string' && current.url.length > 0) {
+      nextRecent = rememberVisit(nextRecent, current.url, patch.title)
+    }
+
+    set({
+      nav: { ...nav, [tabId]: next },
+      recent: { ...recent, [tabId]: nextRecent }
+    })
   },
 
   updateLogin: (tabId, patch) => {
@@ -166,5 +242,11 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
 /** Test-only: reset the store and the session URL-restore map. */
 export function resetBrowserGuestsForTests(): void {
   lastKnownUrls.clear()
-  useBrowserGuests.setState({ liveGuests: [], nav: {}, login: {} })
+  useBrowserGuests.setState({
+    liveGuests: [],
+    nav: {},
+    login: {},
+    recent: {},
+    startPageVisible: {}
+  })
 }

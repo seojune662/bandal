@@ -7,7 +7,7 @@
  * (see browserAnchor.ts for the contract).
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { IDockviewPanelProps } from 'dockview'
 import type { BrowserTabPayload } from '../../../../shared/tabs'
 import { Icon } from '../../app/icons'
@@ -19,9 +19,15 @@ import {
   useBrowserGuests,
   type BrowserNavState
 } from './browserGuestsStore'
+import {
+  BrowserAddressInput,
+  BrowserBookmarksBar,
+  BrowserStartPage,
+  useBrowserFavoriteShortcuts
+} from './BrowserStartPage'
+import { opensOnStartPage } from './browserStartPageModel'
 import { guestActions } from './guestActions'
 import { fillLoginForTab, saveLoginForTab } from './loginBridge'
-import { resolveAddressInput } from './urlInput'
 import './browser.css'
 
 function browserPayloadFromParams(params: unknown): BrowserTabPayload | null {
@@ -42,137 +48,111 @@ function hostnameOf(url: string): string {
 interface ToolbarProps {
   tabId: string
   nav: BrowserNavState
+  onNavigate: (url: string) => void
 }
 
-function BrowserToolbar({ tabId, nav }: ToolbarProps): JSX.Element {
-  // null = mirror the live URL; string = the user is editing.
-  const [draft, setDraft] = useState<string | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [isFaviconBroken, setFaviconBroken] = useState(false)
+function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
   const login = useBrowserGuests((state) => state.login[tabId])
+  const startPage = useBrowserGuests((state) => state.startPageVisible[tabId])
+  const hasGuest = useBrowserGuests((state) =>
+    state.liveGuests.some((guest) => guest.tabId === tabId)
+  )
+  const showingStartPage = startPage === true
 
-  useEffect(() => {
-    setFaviconBroken(false)
-  }, [nav.favicon])
-
-  const submit = (): void => {
-    const url = resolveAddressInput(draft ?? '')
-    setDraft(null)
-    inputRef.current?.blur()
-    if (url !== null) guestActions.navigate(tabId, url)
+  const goBack = (): void => {
+    if (nav.canGoBack) guestActions.back(tabId)
+    else useBrowserGuests.getState().setStartPageVisible(tabId, true)
   }
 
-  const showFavicon = nav.favicon !== null && !isFaviconBroken
+  const goForward = (): void => {
+    if (showingStartPage) {
+      useBrowserGuests.getState().setStartPageVisible(tabId, false)
+    } else {
+      guestActions.forward(tabId)
+    }
+  }
 
   return (
     <div className="browser-toolbar">
       <button
         type="button"
         className="browser-nav-button"
-        aria-label="뒤로"
         title="뒤로"
-        disabled={!nav.canGoBack}
-        onClick={() => guestActions.back(tabId)}
+        disabled={
+          showingStartPage || (!nav.canGoBack && startPage === undefined)
+        }
+        onClick={goBack}
       >
         <BrowserIcon name="arrowLeft" />
+        <span>뒤로</span>
       </button>
       <button
         type="button"
         className="browser-nav-button"
-        aria-label="앞으로"
         title="앞으로"
-        disabled={!nav.canGoForward}
-        onClick={() => guestActions.forward(tabId)}
+        disabled={showingStartPage ? !hasGuest : !nav.canGoForward}
+        onClick={goForward}
       >
         <BrowserIcon name="arrowRight" />
+        <span>앞으로</span>
       </button>
       <button
         type="button"
         className="browser-nav-button"
-        aria-label={nav.loading ? '중지' : '새로고침'}
         title={nav.loading ? '중지' : '새로고침'}
+        disabled={showingStartPage}
         onClick={() =>
           nav.loading ? guestActions.stop(tabId) : guestActions.reload(tabId)
         }
       >
         <Icon name={nav.loading ? 'x' : 'refresh'} />
+        <span>{nav.loading ? '중지' : '새로고침'}</span>
       </button>
 
-      <form
-        className="browser-urlbar"
-        onSubmit={(event) => {
-          event.preventDefault()
-          submit()
-        }}
-      >
-        <span className="browser-urlbar__site" aria-hidden="true">
-          {showFavicon ? (
-            <img
-              className="browser-urlbar__favicon"
-              src={nav.favicon ?? undefined}
-              alt=""
-              onError={() => setFaviconBroken(true)}
-            />
-          ) : (
-            <BrowserIcon name="globe" />
-          )}
-        </span>
-        <input
-          ref={inputRef}
-          type="text"
-          spellCheck={false}
-          autoComplete="off"
-          aria-label="주소 또는 검색어"
-          placeholder="주소를 입력하거나 검색…"
-          value={draft ?? nav.url}
-          onChange={(event) => setDraft(event.target.value)}
-          onFocus={(event) => event.currentTarget.select()}
-          onBlur={() => setDraft(null)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              event.preventDefault()
-              setDraft(null)
-              event.currentTarget.blur()
-            }
-          }}
-        />
-      </form>
+      <BrowserAddressInput
+        ariaLabel="주소 또는 검색어"
+        mode="toolbar"
+        value={showingStartPage ? '' : nav.url}
+        onNavigate={onNavigate}
+      />
 
-      {login?.hasLoginForm === true && login.origin !== null && (
-        <div className="browser-login-action">
-          <button
-            type="button"
-            className="browser-login-button"
-            disabled={login.pending}
-            title={
-              login.savedLogin === null
-                ? '직접 입력한 아이디와 비밀번호를 안전하게 저장합니다.'
-                : `${login.savedLogin.username} 계정으로 채웁니다.`
-            }
-            onClick={() => {
-              if (login.savedLogin === null) void saveLoginForTab(tabId)
-              else void fillLoginForTab(tabId)
-            }}
-          >
-            {login.pending
-              ? '처리 중…'
-              : login.savedLogin === null
-                ? '이 사이트 로그인 저장'
-                : '로그인 채우기'}
-          </button>
-          {login.message !== null && (
-            <span className="browser-login-message" role="status">
-              {login.message === 'saved'
-                ? '저장됨'
-                : login.message === 'filled'
-                  ? '채움'
-                  : login.message === 'needs-input'
-                    ? '비밀번호를 직접 입력한 뒤 저장하세요.'
-                    : '처리하지 못했어요.'}
-            </span>
-          )}
-        </div>
-      )}
+      {!showingStartPage &&
+        login?.hasLoginForm === true &&
+        login.origin !== null && (
+          <div className="browser-login-action">
+            <button
+              type="button"
+              className="browser-login-button"
+              disabled={login.pending}
+              title={
+                login.savedLogin === null
+                  ? '직접 입력한 아이디와 비밀번호를 안전하게 저장합니다.'
+                  : `${login.savedLogin.username} 계정으로 채웁니다.`
+              }
+              onClick={() => {
+                if (login.savedLogin === null) void saveLoginForTab(tabId)
+                else void fillLoginForTab(tabId)
+              }}
+            >
+              {login.pending
+                ? '처리 중…'
+                : login.savedLogin === null
+                  ? '이 사이트 로그인 저장'
+                  : '로그인 채우기'}
+            </button>
+            {login.message !== null && (
+              <span className="browser-login-message" role="status">
+                {login.message === 'saved'
+                  ? '저장됨'
+                  : login.message === 'filled'
+                    ? '채움'
+                    : login.message === 'needs-input'
+                      ? '비밀번호를 직접 입력한 뒤 저장하세요.'
+                      : '처리하지 못했어요.'}
+              </span>
+            )}
+          </div>
+        )}
 
       <div
         className="browser-progress"
@@ -196,22 +176,48 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   const nav = useBrowserGuests((state) =>
     tabId !== '' ? state.nav[tabId] : undefined
   )
-  const navState = nav ?? initialNavState(initialUrl)
+  const storedStartPage = useBrowserGuests((state) =>
+    tabId !== '' ? state.startPageVisible[tabId] : undefined
+  )
+  const recent = useBrowserGuests((state) => state.recent[tabId] ?? [])
+  const showingStartPage =
+    storedStartPage ?? (payload !== null && opensOnStartPage(initialUrl))
+  const navState =
+    nav ?? initialNavState(showingStartPage ? '' : initialUrl)
+  const { favorites, loading: favoritesLoading, hasCourse } =
+    useBrowserFavoriteShortcuts()
 
-  // Create (or LRU-bump) the guest whenever this tab becomes visible.
+  const navigate = useCallback(
+    (url: string): void => {
+      if (tabId === '') return
+      const state = useBrowserGuests.getState()
+      if (state.liveGuests.some((guest) => guest.tabId === tabId)) {
+        guestActions.navigate(tabId, url)
+      } else {
+        state.ensureGuest(tabId, url)
+      }
+      state.setStartPageVisible(tabId, false)
+    },
+    [tabId]
+  )
+
+  // A new tab is app-rendered. Direct URL tabs still create their guest now.
   useEffect(() => {
     if (tabId !== '') {
-      useBrowserGuests.getState().ensureGuest(tabId, initialUrl)
+      const state = useBrowserGuests.getState()
+      if (opensOnStartPage(initialUrl)) state.ensureStartPage(tabId)
+      else state.ensureGuest(tabId, initialUrl)
     }
   }, [tabId, initialUrl])
 
   // Reflect the page title into the dockview tab.
   const { api } = props
   useEffect(() => {
-    if (navState.title !== '' && navState.title !== api.title) {
-      api.setTitle(navState.title)
-    }
-  }, [navState.title, api])
+    const title = showingStartPage
+      ? '새 탭'
+      : navState.title || hostnameOf(navState.url) || '브라우저'
+    if (title !== api.title) api.setTitle(title)
+  }, [api, navState.title, navState.url, showingStartPage])
 
   if (payload === null) {
     return <div className="workspace-panel" data-kind="unknown" />
@@ -219,17 +225,33 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
 
   return (
     <div className="browser-panel" data-kind="browser">
-      <BrowserToolbar tabId={tabId} nav={navState} />
+      <BrowserToolbar tabId={tabId} nav={navState} onNavigate={navigate} />
+      <BrowserBookmarksBar
+        favorites={favorites}
+        loading={favoritesLoading}
+        hasCourse={hasCourse}
+        onNavigate={navigate}
+      />
       <div
         ref={anchorRef}
         className="browser-anchor"
         data-browser-anchor={tabId}
       >
-        {/* Shown before first paint / if the guest renderer ever goes away. */}
-        <div className="browser-anchor__fallback">
-          <BrowserIcon name="globe" />
-          <span>{hostnameOf(navState.url)}</span>
-        </div>
+        {showingStartPage ? (
+          <BrowserStartPage
+            favorites={favorites}
+            favoritesLoading={favoritesLoading}
+            hasCourse={hasCourse}
+            recent={recent}
+            onNavigate={navigate}
+          />
+        ) : (
+          // Shown before first paint / if the guest renderer ever goes away.
+          <div className="browser-anchor__fallback">
+            <BrowserIcon name="globe" />
+            <span>{hostnameOf(navState.url)}</span>
+          </div>
+        )}
       </div>
     </div>
   )
