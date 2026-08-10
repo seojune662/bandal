@@ -4,7 +4,7 @@
  * half-moon avatar, 중단됨 treatment and a subtle usage footnote per turn.
  */
 
-import { memo } from 'react'
+import { memo, type ReactNode } from 'react'
 import type { PermissionResponse } from '../../../../shared/types/agent-events'
 import type { BlockView, MessageView } from './chatModel'
 import { PermissionDialog } from './blocks/PermissionDialog'
@@ -193,12 +193,14 @@ export interface MessageListProps {
   messages: MessageView[]
   pendingPermissionId: string | null
   onRespondPermission: (requestId: string, response: PermissionResponse) => void
+  children?: ReactNode
 }
 
 export function MessageList({
   messages,
   pendingPermissionId,
-  onRespondPermission
+  onRespondPermission,
+  children
 }: MessageListProps): JSX.Element {
   return (
     <div className="chat-thread" role="log" aria-label="AI 튜터 대화">
@@ -214,6 +216,7 @@ export function MessageList({
           />
         )
       )}
+      {children}
     </div>
   )
 }

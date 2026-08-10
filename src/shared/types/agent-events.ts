@@ -194,6 +194,10 @@ export interface AgentStartSessionOptions {
   /** Resume a previous CLI session when supported. */
   resumeCliSessionId?: string
   systemPromptAppend?: string
+  /** Bandal's in-app MCP server config, so the agent can act on the app. */
+  mcpConfigPath?: string
+  /** Allow rules for those tools, e.g. `mcp__bandal__create_course`. */
+  extraAllowedTools?: readonly string[]
 }
 
 export type Unsubscribe = () => void

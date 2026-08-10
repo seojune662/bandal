@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { onPush } from '../lib/ipc'
 import { AssistantLayer } from '../features/assistant'
 import { BoardOverlay } from '../features/board/BoardPanel'
 import { BrowserWebviewLayer } from '../features/browser/BrowserWebviewLayer'
@@ -57,6 +58,15 @@ export function AppShell(): JSX.Element {
     // [M8] 학교 바로가기 — the rail section renders nothing until this lands.
     void useUniversityStore.getState().init()
   }, [initTheme, loadCourses])
+
+  // The assistant can now create, rename and remove courses on its own, so the
+  // list has to follow changes it did not originate in this window.
+  useEffect(() => {
+    const unsubscribe = onPush('courses:changed', () => {
+      void loadCourses()
+    })
+    return unsubscribe
+  }, [loadCourses])
 
   // [M5] A file dropped outside a drop target must never navigate the window.
   useEffect(() => {

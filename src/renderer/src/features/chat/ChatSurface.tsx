@@ -11,6 +11,8 @@ import { useChatPromptStore } from './chatPromptBus'
 import { Composer, type ComposerHandle } from './Composer'
 import { MessageList } from './MessageList'
 import { useChatSession } from './useChatSession'
+import { AgentToolActivity } from './AgentToolCards'
+import { useAgentToolActivity } from './agentToolActivityStore'
 import {
   GateCard,
   InstallCard,
@@ -86,6 +88,7 @@ export function ChatSurface({
   variant = 'tab'
 }: ChatSurfaceProps): JSX.Element {
   const session = useChatSession(courseId)
+  const agentToolActivity = useAgentToolActivity(courseId)
   const [draft, setDraft] = useState('')
   const composerRef = useRef<ComposerHandle>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -111,7 +114,7 @@ export function ChatSurface({
     if (scroller !== null && isPinnedRef.current) {
       scroller.scrollTop = scroller.scrollHeight
     }
-  }, [state.messages])
+  }, [state.messages, agentToolActivity.items])
 
   const handleScroll = useCallback(() => {
     const scroller = scrollRef.current
@@ -191,7 +194,10 @@ export function ChatSurface({
     provider === 'claude-code' &&
     (state.notice?.code === 'version-too-old' ||
       !isCliVersionSupported(availability?.version))
-  const isEmpty = state.messages.length === 0
+  const hasAgentToolCards = agentToolActivity.items.some(
+    (item) => item.kind === 'confirmation' || item.actions.length > 0
+  )
+  const isEmpty = state.messages.length === 0 && !hasAgentToolCards
   const defaultModel = models.find((model) => model.isDefault) ?? models[0]
   const selectedModel = state.model ?? defaultModel?.id ?? ''
   const includesSelected = models.some((model) => model.id === selectedModel)
@@ -256,7 +262,13 @@ export function ChatSurface({
             messages={state.messages}
             pendingPermissionId={state.pendingPermissionId}
             onRespondPermission={session.respondPermission}
-          />
+          >
+            <AgentToolActivity
+              items={agentToolActivity.items}
+              onRespondConfirm={agentToolActivity.respondConfirm}
+              onUndoTurn={agentToolActivity.undoTurn}
+            />
+          </MessageList>
         )}
       </div>
       <Composer

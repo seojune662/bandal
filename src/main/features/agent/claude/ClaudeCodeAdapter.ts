@@ -100,6 +100,10 @@ export function buildClaudeArgs(opts: {
   resumeCliSessionId?: string
   model?: string
   systemPromptAppend?: string
+  /** Bandal's own in-app MCP server; see features/agentTools. */
+  mcpConfigPath?: string
+  /** Extra allow rules, e.g. `mcp__bandal__create_course`. */
+  extraAllowedTools?: readonly string[]
 }): string[] {
   const args = [
     '-p',
@@ -120,13 +124,19 @@ export function buildClaudeArgs(opts: {
     // accepting the splatted form, the extras would silently become positional
     // arguments in `-p` mode and the allowlist would collapse.
     '--allowedTools',
-    CLAUDE_ALLOWED_TOOLS.join(','),
+    [...CLAUDE_ALLOWED_TOOLS, ...(opts.extraAllowedTools ?? [])].join(','),
     '--disallowedTools',
     'Bash',
     '--disable-slash-commands',
     '--setting-sources',
     'user'
   ]
+  if (opts.mcpConfigPath !== undefined && opts.mcpConfigPath !== '') {
+    // `--strict-mcp-config` is not optional here. Without it the CLI also
+    // loads whatever MCP servers the student configured in ~/.claude, which
+    // has been handing the tutor dozens of unrelated tools (backlog P1).
+    args.push('--mcp-config', opts.mcpConfigPath, '--strict-mcp-config')
+  }
   if (opts.systemPromptAppend !== undefined && opts.systemPromptAppend !== '') {
     args.push('--append-system-prompt', opts.systemPromptAppend)
   }

@@ -33,8 +33,16 @@ export interface BandalBridge {
   openSettings(): Promise<void>
 }
 
-/** Only these push channels may be subscribed from the renderer. */
-const PUSH_CHANNELS: readonly PushChannel[] = [
+/**
+ * Only these push channels may be subscribed from the renderer.
+ *
+ * Hand-keeping this list has bitten us four times now (IPC channels, drawing
+ * kinds, tab kinds, and this). Declaring a channel in `events.ts` and
+ * forgetting it here does not fail quietly: `on()` throws, which takes down
+ * whatever component subscribed — the last time, the whole shell rendered
+ * blank. The assignment below stops compiling when a channel is missing.
+ */
+const PUSH_CHANNELS = [
   'chat:event-batch',
   'materials:changed',
   'browser:open-url',
@@ -47,8 +55,19 @@ const PUSH_CHANNELS: readonly PushChannel[] = [
   // -- auto update ----------------------------------------------------------
   'update:changed',
   'agent:install-progress',
-  'whiteboard:changed'
-]
+  'whiteboard:changed',
+  // -- surfaces the assistant can now change --------------------------------
+  'courses:changed',
+  'board:changed',
+  'canvas:changed',
+  'agentTools:confirm',
+  'agentTools:changed'
+] as const satisfies readonly PushChannel[]
+
+type MissingPushChannel = Exclude<PushChannel, (typeof PUSH_CHANNELS)[number]>
+const _allPushChannelsListed: MissingPushChannel extends never ? true : never =
+  true
+void _allPushChannelsListed
 
 const bridge: BandalBridge = {
   invoke(channel, req) {

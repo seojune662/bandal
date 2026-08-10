@@ -4,6 +4,7 @@
  */
 
 import type { AgentEvent } from '../types/agent-events'
+import type { AgentConfirmRequest } from '../types/agentTools'
 import type { Settings } from '../types/settings'
 import type { AuthState } from '../types/auth'
 import type { GroupsInvalidationReason } from '../types/group'
@@ -92,6 +93,16 @@ export interface GroupsInvalidated {
 
 export interface PushEvents {
   'chat:event-batch': ChatEventBatch
+  /** A course was created, renamed, archived or removed. */
+  'courses:changed': { }
+  /** Board tasks changed outside the board panel. */
+  'board:changed': { courseId: string }
+  /** A personal whiteboard or its shapes changed. */
+  'canvas:changed': { courseId: string }
+  /** A destructive assistant tool is waiting for the student. */
+  'agentTools:confirm': AgentConfirmRequest
+  /** One request finished changing things; show the change list. */
+  'agentTools:changed': { courseId: string; turnId: string }
   'materials:changed': MaterialsChanged
   'browser:open-url': BrowserOpenUrl
   'settings:changed': SettingsChanged

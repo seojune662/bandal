@@ -23,6 +23,7 @@
     "dist:unsigned": "electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg:arm64 -c.mac.notarize=false -c.mac.identity=null"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@supabase/supabase-js": "^2.112.1",
     "better-sqlite3": "^11.10.0",
     "chokidar": "^4.0.3",

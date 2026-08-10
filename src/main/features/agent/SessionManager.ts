@@ -33,6 +33,19 @@ export interface SessionManagerDeps {
   emit: (courseId: string, event: AgentEvent) => void
   idleReapMs?: number
   maxWarmSessions?: number
+  /**
+   * Starts Bandal's in-app MCP server for one course session, so the agent can
+   * act on the app itself. Optional: without it the agent keeps its file-only
+   * abilities and nothing else changes.
+   */
+  startToolServer?: (
+    courseId: string,
+    sessionKey: string
+  ) => Promise<{
+    mcpConfigPath: string
+    allowedTools: readonly string[]
+    close: () => Promise<void>
+  }>
 }
 
 export interface SessionManager {
@@ -70,6 +83,8 @@ interface CourseChat {
   pendingPermissions: Map<string, { toolName: string; input: unknown }>
   idleTimer: NodeJS.Timeout | null
   lastUsedAt: number
+  /** In-app MCP server bound to this session; closed with it. */
+  toolServer: { close: () => Promise<void> } | null
 }
 
 /** Builds the study-focused system prompt appended to the CLI defaults. */
@@ -105,7 +120,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         turnBlocks: new Map(),
         pendingPermissions: new Map(),
         idleTimer: null,
-        lastUsedAt: Date.now()
+        lastUsedAt: Date.now(),
+        toolServer: null
       }
       chats.set(courseId, entry)
     }
@@ -118,6 +134,10 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
     entry.session?.dispose()
     entry.session = null
     entry.sessionPromise = null
+    // The listening socket outlives the CLI otherwise, and its bearer token
+    // would keep working for anything else on the machine.
+    void entry.toolServer?.close().catch(() => undefined)
+    entry.toolServer = null
     if (entry.idleTimer !== null) {
       clearTimeout(entry.idleTimer)
       entry.idleTimer = null
@@ -160,6 +180,18 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       courseId: entry.courseId,
       cwd: course.folder,
       systemPromptAppend: buildStudyPrompt(course.name)
+    }
+    if (deps.startToolServer !== undefined) {
+      // A failure here must not cost the student their tutor: fall back to the
+      // file-only agent rather than refusing to open the chat.
+      try {
+        const tools = await deps.startToolServer(entry.courseId, entry.courseId)
+        entry.toolServer = tools
+        startOptions.mcpConfigPath = tools.mcpConfigPath
+        startOptions.extraAllowedTools = tools.allowedTools
+      } catch (error) {
+        console.error('[agent] in-app tools unavailable', error)
+      }
     }
     if (entry.info.cliSessionId !== null) {
       startOptions.resumeCliSessionId = entry.info.cliSessionId

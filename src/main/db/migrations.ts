@@ -518,6 +518,31 @@ export const migrations: Migration[] = [
            WHERE deleted_at IS NULL;`
       )
     }
+  },
+  {
+    version: 15,
+    name: 'agent-actions',
+    up: (db) => {
+      // What the assistant changed, so the student can see it and take it back.
+      // Only creations are undoable: deletes and overwrites were confirmed
+      // first and have nothing to restore from.
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS agent_actions (
+           id          TEXT PRIMARY KEY,
+           course_id   TEXT NOT NULL REFERENCES courses(id),
+           turn_id     TEXT NOT NULL,
+           tool        TEXT NOT NULL,
+           target_kind TEXT NOT NULL,
+           target_id   TEXT NOT NULL,
+           label       TEXT NOT NULL,
+           undoable    INTEGER NOT NULL DEFAULT 1,
+           undone_at   TEXT,
+           created_at  TEXT NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_agent_actions_turn
+           ON agent_actions (turn_id, created_at);`
+      )
+    }
   }
 ]
 

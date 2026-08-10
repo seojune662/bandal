@@ -195,7 +195,11 @@ beforeEach(() => {
   })
   vi.stubGlobal('window', {
     addEventListener: vi.fn(),
-    removeEventListener: vi.fn()
+    removeEventListener: vi.fn(),
+    // The shell subscribes to `courses:changed` now that the assistant can
+    // change the course list on its own. Unrelated to auth, but it runs in the
+    // same effect pass, and a missing `on` took the whole render down.
+    bandal: { on: vi.fn(() => () => undefined) }
   })
   harness.renderTogether = () => <TogetherFooter />
 })

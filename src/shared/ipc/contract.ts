@@ -80,6 +80,10 @@ import type {
   SendHighlightToNoteResult
 } from '../types/link'
 import type {
+  AgentConfirmResponse,
+  AgentTurnChanges
+} from '../types/agentTools'
+import type {
   CredentialsAvailability,
   FillLoginResult,
   SaveLoginInput,
@@ -678,6 +682,23 @@ export interface IpcContract {
     res: FillLoginResult
   }
 
+  // -- assistant actions on the app -----------------------------------------
+  /** Everything the assistant changed in one request, for the change list. */
+  'agentTools:changes': {
+    req: { turnId: string }
+    res: AgentTurnChanges
+  }
+  /** Takes back the creations from one request. Deletes are not undoable. */
+  'agentTools:undo': {
+    req: { turnId: string }
+    res: { undone: number }
+  }
+  /** Answer to a destructive tool waiting for the student. */
+  'agentTools:respondConfirm': {
+    req: AgentConfirmResponse
+    res: { ok: true }
+  }
+
   // -- settings -------------------------------------------------------------
   'settings:get': {
     req: Record<string, never>
@@ -973,6 +994,9 @@ export const IPC_CHANNELS = [
   'agent:install',
   'browser:sessionSites',
   'browser:clearSession',
+  'agentTools:changes',
+  'agentTools:undo',
+  'agentTools:respondConfirm',
   'settings:get',
   'settings:set',
   'layout:get',

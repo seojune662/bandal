@@ -65,6 +65,12 @@ import {
 } from '../features/group'
 import { isAuthCallbackUrl } from '../features/group/authCallbackUrl'
 import { createUpdaterRuntime } from '../features/updater'
+import {
+  createAgentConfirmer,
+  createAgentJournal,
+  createAgentTools,
+  startAgentToolsServer
+} from '../features/agentTools'
 
 /**
  * What `registerHandlers` hands back to `main/index.ts`.
@@ -171,7 +177,16 @@ export function registerHandlers(): IpcRouter {
 
   // -- courses --------------------------------------------------------------
   handle('courses:list', (req) => coursesRepo.list(req))
-  handle('courses:create', (req) => coursesRepo.create(req))
+  /**
+   * Broadcast on every course mutation, not just the agent's.
+   * Two windows can be open, and the assistant can now change the list from
+   * outside whichever one the student is looking at.
+   */
+  function courseListChanged<T>(result: T): T {
+    broadcast('courses:changed', {})
+    return result
+  }
+  handle('courses:create', (req) => courseListChanged(coursesRepo.create(req)))
   handle('courses:pickFolder', async () => {
     const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
     const options: Electron.OpenDialogOptions = {
@@ -188,7 +203,9 @@ export function registerHandlers(): IpcRouter {
     const path = normalizeFolderPath(picked)
     return { path, name: folderDisplayName(path) }
   })
-  handle('courses:addFromFolder', (req) => coursesRepo.addFromFolder(req))
+  handle('courses:addFromFolder', (req) =>
+    courseListChanged(coursesRepo.addFromFolder(req))
+  )
   handle('courses:relink', (req) => {
     const result = coursesRepo.relink(req)
     if (result.status === 'ok') {
@@ -198,16 +215,16 @@ export function registerHandlers(): IpcRouter {
     }
     return result
   })
-  handle('courses:rename', (req) => coursesRepo.rename(req))
+  handle('courses:rename', (req) => courseListChanged(coursesRepo.rename(req)))
   handle('courses:archive', (req) => {
     const course = coursesRepo.archive(req)
     if (req.archived) releaseCourseRuntime(req.courseId)
-    return course
+    return courseListChanged(course)
   })
   handle('courses:delete', (req) => {
     const result = coursesRepo.softDelete(req)
     releaseCourseRuntime(req.courseId)
-    return result
+    return courseListChanged(result)
   })
 
   // -- course links (M8) ----------------------------------------------------
@@ -409,6 +426,49 @@ export function registerHandlers(): IpcRouter {
   const codexLocator = createCodexBinaryLocator()
   const codexAdapter = createCodexAdapter({ locator: codexLocator })
 
+  // -- assistant acting on the app -------------------------------------------
+  // The agent reads third-party lecture PDFs, so these tools widen the blast
+  // radius of prompt injection. Three things hold that line and all three live
+  // here: destructive tools confirm, every call is journalled, and per-turn
+  // caps stop a poisoned document from creating hundreds of anything.
+  const agentJournal = createAgentJournal(db)
+  const agentConfirmer = createAgentConfirmer({
+    emit: (request) => broadcast('agentTools:confirm', request)
+  })
+  let agentTurnSeq = 0
+  const startToolServer = async (
+    courseId: string,
+    sessionKey: string
+  ): Promise<Awaited<ReturnType<typeof startAgentToolsServer>>> =>
+    startAgentToolsServer({
+      sessionId: sessionKey,
+      userDataPath: app.getPath('userData'),
+      deps: {
+        courseId,
+        getTurnId: () => `${courseId}:${agentTurnSeq}`,
+        coursesRepo,
+        materialsRepo,
+        notesRepo,
+        boardRepo,
+        canvasRepo,
+        confirm: (request) => agentConfirmer.confirm(request),
+        journal: {
+          record: (entry) => {
+            agentJournal.record(entry)
+            // Whatever the tool touched, the UI is now stale.
+            broadcast('courses:changed', {})
+            broadcast('board:changed', { courseId: entry.courseId })
+            broadcast('canvas:changed', { courseId: entry.courseId })
+            broadcast('materials:changed', { courseId: entry.courseId })
+            broadcast('agentTools:changed', {
+              courseId: entry.courseId,
+              turnId: entry.turnId
+            })
+          }
+        }
+      }
+    })
+
   const sessionManager = createSessionManager({
     adapter: claudeAdapter,
     repo: chatRepo,
@@ -416,7 +476,8 @@ export function registerHandlers(): IpcRouter {
       folder: coursesRepo.getFolder(courseId),
       name: coursesRepo.getById(courseId).name
     }),
-    emit: (courseId, event) => eventBatcher.push(courseId, event)
+    emit: (courseId, event) => eventBatcher.push(courseId, event),
+    startToolServer
   })
   app.on('before-quit', () => {
     materialsWatcher.dispose()
@@ -462,6 +523,42 @@ export function registerHandlers(): IpcRouter {
     activeSessions().cancel(req.courseId)
     return OK
   })
+  handle('agentTools:changes', (req) => agentJournal.forTurn(req.turnId))
+  handle('agentTools:undo', (req) =>
+    agentJournal.undoTurn(req.turnId, {
+      course: ({ targetId }) => {
+        coursesRepo.softDelete({ courseId: targetId })
+      },
+      // Notes are files, so both go to the OS trash — recoverable, unlike a
+      // hard unlink.
+      material: ({ courseId, targetId }) => {
+        void materialsRepo
+          .softDelete({ courseId, relPath: targetId })
+          .catch(() => undefined)
+      },
+      note: ({ courseId, targetId }) => {
+        void materialsRepo
+          .softDelete({ courseId, relPath: targetId })
+          .catch(() => undefined)
+      },
+      task: ({ targetId }) => {
+        boardRepo.softDelete({ id: targetId })
+      },
+      board: ({ targetId }) => {
+        canvasRepo.removeBoard(targetId)
+      },
+      shape: ({ targetId }) => {
+        const [boardId, shapeId] = targetId.split('\u0000')
+        if (boardId === undefined || shapeId === undefined) return
+        canvasRepo.removeShapes({ boardId, ids: [shapeId] })
+      }
+    })
+  )
+  handle('agentTools:respondConfirm', (req) => {
+    agentConfirmer.resolve(req)
+    return OK
+  })
+
   handle('chat:respondPermission', (req) => {
     activeSessions().respondPermission(req.courseId, req.requestId, req.response)
     return OK
