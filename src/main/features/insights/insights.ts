@@ -261,7 +261,8 @@ function noteStems(materials: readonly MaterialRow[]): Set<string> {
 function noNotesGaps(
   db: Database,
   courseId: string,
-  materials: readonly MaterialRow[]
+  materials: readonly MaterialRow[],
+  citedMaterialPaths: ReadonlySet<string>
 ): StudyGap[] {
   const currentPaths = new Set(materials.map((material) => material.rel_path))
   const existingNoteStems = noteStems(materials)
@@ -295,6 +296,7 @@ function noNotesGaps(
     .filter((row) => {
       if (!currentPaths.has(row.rel_path) || row.comment_count > 0) return false
       if (noteActivityPaths.has(row.rel_path)) return false
+      if (citedMaterialPaths.has(row.rel_path)) return false
       const stem = posix
         .basename(row.rel_path, posix.extname(row.rel_path))
         .normalize('NFKC')
@@ -407,10 +409,15 @@ function staleCourseGap(
   ]
 }
 
-export function createInsights(deps: {
+export interface InsightsDeps {
   db: Database
   getCourseFolder: (courseId: string) => string
-}): { gaps(courseId: string): StudyGap[] } {
+  getMaterialCitations?: (courseId: string) => Set<string> | string[]
+}
+
+export function createInsights(deps: InsightsDeps): {
+  gaps(courseId: string): StudyGap[]
+} {
   return {
     gaps(courseIdInput) {
       const courseId = requireId(courseIdInput, 'courseId')
@@ -419,9 +426,12 @@ export function createInsights(deps: {
       deps.getCourseFolder(courseId)
       const nowMs = Date.now()
       const materials = readMaterials(deps.db, courseId)
+      const citedMaterialPaths = new Set(
+        deps.getMaterialCitations?.(courseId) ?? []
+      )
       return [
         ...deadlineGaps(deps.db, courseId, materials, nowMs),
-        ...noNotesGaps(deps.db, courseId, materials),
+        ...noNotesGaps(deps.db, courseId, materials, citedMaterialPaths),
         ...neverOpenedGaps(deps.db, courseId, materials, nowMs),
         ...staleCourseGap(deps.db, courseId, nowMs)
       ]

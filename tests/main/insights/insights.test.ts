@@ -149,6 +149,42 @@ describe('createInsights', () => {
     expect(gap?.message).toContain('짧은 메모')
   })
 
+  test('removes a no-notes gap as soon as a note cites the material', () => {
+    const citations = new Set<string>()
+    insights = createInsights({
+      db: ctx.db,
+      getCourseFolder: () => ctx.dir,
+      getMaterialCitations: () => citations
+    })
+    addMaterial('강의/Chap2.pdf', 20)
+    addHighlight('강의/Chap2.pdf', null)
+
+    expect(
+      insights
+        .gaps(COURSE_ID)
+        .some((gap) => gap.kind === 'no-notes' && gap.relPath === '강의/Chap2.pdf')
+    ).toBe(true)
+
+    citations.add('강의/Chap2.pdf')
+    expect(
+      insights
+        .gaps(COURSE_ID)
+        .some((gap) => gap.kind === 'no-notes' && gap.relPath === '강의/Chap2.pdf')
+    ).toBe(false)
+  })
+
+  test('keeps filename-stem matching when the citation callback is omitted', () => {
+    addMaterial('강의/Chap3.pdf', 20)
+    addMaterial('필기/Chap3.md', 0, 'note')
+    addHighlight('강의/Chap3.pdf', null)
+
+    expect(
+      insights
+        .gaps(COURSE_ID)
+        .some((gap) => gap.kind === 'no-notes' && gap.relPath === '강의/Chap3.pdf')
+    ).toBe(false)
+  })
+
   test('links a close deadline only when the title has a unique material match', () => {
     addMaterial('과제/7장-그래프.pdf', 20)
     addMaterial('강의/8장-정렬.pdf', 20)

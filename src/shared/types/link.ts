@@ -39,3 +39,25 @@ export interface SendHighlightToNoteResult {
   relPath: string
   created: boolean
 }
+
+/**
+ * One place that points at a material — the reverse of `MaterialLink`.
+ *
+ * The forward direction (note → PDF page) has always worked: the markdown
+ * holds a `bandal://material?…` href you can click. The reverse — "which of
+ * my notes quote this page?" — had no representation at all, because those
+ * hrefs live in file text rather than in a table.
+ */
+export interface MaterialBacklink {
+  /** Note: course-relative path. Whiteboard: board id. */
+  ref: string
+  /** What to show: note filename or board title. */
+  label: string
+  /** Page of the target material, when the citation named one. */
+  page: number | null
+}
+
+export interface MaterialBacklinks {
+  notes: MaterialBacklink[]
+  boards: MaterialBacklink[]
+}

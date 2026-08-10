@@ -683,6 +683,8 @@ function PdfViewer({
 
         {isRailOpen && (
           <AnnotationRail
+            courseId={courseId}
+            relPath={relPath}
             annotations={annotations}
             staleIds={staleIds}
             activeId={editPopover?.annotationId ?? null}

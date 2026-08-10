@@ -75,6 +75,7 @@ import type {
 } from '../types/study'
 import type { SearchHit, StudyGap } from '../types/search'
 import type {
+  MaterialBacklinks,
   SendHighlightToNoteInput,
   SendHighlightToNoteResult
 } from '../types/link'
@@ -604,6 +605,15 @@ export interface IpcContract {
    * Appends a highlight to a note as a quote plus a `bandal://` link back to
    * the exact page. The note stays plain markdown.
    */
+  /**
+   * Everything that cites this material — notes that quote it, whiteboards
+   * that pin a clip of it. Derived on demand from note text and clip payloads;
+   * see `main/features/links`.
+   */
+  'links:forMaterial': {
+    req: { courseId: string; relPath: string }
+    res: MaterialBacklinks
+  }
   'link:sendHighlightToNote': {
     req: SendHighlightToNoteInput
     res: SendHighlightToNoteResult
@@ -1020,6 +1030,7 @@ export const IPC_CHANNELS = [
   'insights:gaps',
   'whiteboard:updateShape',
   'whiteboard:close',
+  'links:forMaterial',
   'link:sendHighlightToNote',
   'group:shareNote',
   'group:saveSharedNote',

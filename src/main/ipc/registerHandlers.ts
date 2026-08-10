@@ -58,6 +58,7 @@ import { createBoardPdfExporter, createCanvasRepo } from '../features/canvas'
 import { createSearchIndex } from '../features/search'
 import { createInsights } from '../features/insights'
 import { createLinkService } from '../features/link'
+import { createLinkIndex } from '../features/links'
 import {
   createGroupNoteSharingService,
   createGroupRuntime
@@ -325,9 +326,19 @@ export function registerHandlers(): IpcRouter {
   // Every call is best-effort. A failed activity write must never break the
   // action the student actually asked for.
   const activityRepo = createActivityRepo(db)
-  const insights = createInsights({
+  // Backlinks: who cites this material. Derived on demand from note text and
+  // clip payloads — see features/links. Declared before insights and the
+  // dossier because both now answer with real citations instead of guessing
+  // from filenames.
+  const linkIndex = createLinkIndex({
     db,
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
+  })
+  const insights = createInsights({
+    db,
+    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
+    getMaterialCitations: (courseId) =>
+      linkIndex.allForCourse(courseId).map((group) => group.relPath)
   })
   const contextWriter = createContextWriter({
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
@@ -340,7 +351,16 @@ export function registerHandlers(): IpcRouter {
     // and week 3 is still unopened".
     getUpcomingDeadlines: (courseId) =>
       boardRepo.upcoming({ courseId, withinDays: 30, limit: 8 }),
-    getStudyGaps: (courseId) => insights.gaps(courseId)
+    getStudyGaps: (courseId) => insights.gaps(courseId),
+    // The AI could not see whiteboards at all — no disk representation, no
+    // dossier section. `canvasRepo` is declared further down; these run at
+    // rebuild time (chat:open), long after registration finishes.
+    getWhiteboards: (courseId) =>
+      canvasRepo.listBoards(courseId).map((board) => ({
+        title: board.title,
+        shapeCount: canvasRepo.open(board.id).shapes.length
+      })),
+    getMaterialLinks: (courseId) => linkIndex.allForCourse(courseId)
   })
   const note = (
     courseId: string,
@@ -595,6 +615,10 @@ export function registerHandlers(): IpcRouter {
     notes: notesRepo,
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
   })
+  handle('links:forMaterial', (req) =>
+    linkIndex.forMaterial(req.courseId, req.relPath)
+  )
+
   handle('link:sendHighlightToNote', (req) => {
     const result = linkService.sendHighlightToNote(req)
     note(
