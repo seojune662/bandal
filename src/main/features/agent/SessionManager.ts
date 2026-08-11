@@ -44,6 +44,8 @@ export interface SessionManagerDeps {
   ) => Promise<{
     mcpConfigPath: string
     allowedTools: readonly string[]
+    url: string
+    token: string
     close: () => Promise<void>
   }>
 }
@@ -189,6 +191,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         entry.toolServer = tools
         startOptions.mcpConfigPath = tools.mcpConfigPath
         startOptions.extraAllowedTools = tools.allowedTools
+        startOptions.mcpHttp = { url: tools.url, token: tools.token }
       } catch (error) {
         console.error('[agent] in-app tools unavailable', error)
       }

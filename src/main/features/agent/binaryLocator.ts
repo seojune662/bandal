@@ -18,7 +18,9 @@ import {
   claudeFileNames,
   isWindows,
   joinPath,
+  LOGIN_SHELL_PATH_ARGS,
   splitPath,
+  stripShellBanner,
   wellKnownClaudeDirs,
   type Platform
 } from './platform'
@@ -146,8 +148,8 @@ export function createBinaryLocator(deps: BinaryLocatorDeps = {}): BinaryLocator
       return cachedShellPath
     }
     try {
-      const { stdout } = await exec('/bin/zsh', ['-lic', 'echo -n "$PATH"'])
-      const path = stdout.trim()
+      const { stdout } = await exec('/bin/zsh', [...LOGIN_SHELL_PATH_ARGS])
+      const path = stripShellBanner(stdout)
       cachedShellPath = path === '' ? null : path
     } catch {
       cachedShellPath = null

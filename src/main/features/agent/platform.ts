@@ -18,6 +18,7 @@
  */
 
 import { spawn as nodeSpawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { readdirSync } from 'node:fs'
 import crossSpawn from 'cross-spawn'
 import { homedir } from 'node:os'
 import { posix as posixPath, win32 as win32Path } from 'node:path'
@@ -83,6 +84,61 @@ export function wellKnownClaudeDirs(
     dirs.push(joinPath(platform, localAppData, 'Programs', 'claude', 'bin'))
   }
   return dirs
+}
+
+/**
+ * Login-shell PATH capture, banner-proof.
+ *
+ * `-i` is required: nvm/homebrew PATH setup commonly lives in `.zshrc`, which
+ * only interactive shells read. But interactive rc files may also print to
+ * stdout before our output (a `cat` banner on line 1 of `.zshrc` shipped a
+ * real bug: the banner's first line was taken as the npm path → spawn ENOENT).
+ * A NUL sentinel marks where the real value starts — nothing else in shell
+ * output contains NUL, so everything before the LAST NUL is rc noise.
+ */
+export const LOGIN_SHELL_PATH_ARGS: readonly string[] = [
+  '-lic',
+  'printf "\\0%s" "$PATH"'
+]
+
+/** Drops any rc-file banner noise printed before the NUL sentinel. */
+export function stripShellBanner(stdout: string): string {
+  const idx = stdout.lastIndexOf('\u0000')
+  return (idx === -1 ? stdout : stdout.slice(idx + 1)).trim()
+}
+
+/**
+ * nvm keeps node installs (and their npm/npx/codex shims) out of well-known
+ * prefixes entirely — `~/.nvm/versions/node/<v>/bin` only reaches PATH via
+ * `.zshrc`. Probe those dirs directly so a corrupted login-shell PATH can't
+ * hide an installed CLI. Newest version first.
+ */
+export function nvmBinDirs(
+  platform: Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env
+): string[] {
+  if (isWindows(platform)) return []
+  const nvmDir =
+    env['NVM_DIR'] !== undefined && env['NVM_DIR'] !== ''
+      ? env['NVM_DIR']
+      : joinPath(platform, homedir(), '.nvm')
+  const versionsDir = joinPath(platform, nvmDir, 'versions', 'node')
+  const numeric = (version: string): number[] =>
+    version
+      .replace(/^v/u, '')
+      .split('.')
+      .map((part) => Number.parseInt(part, 10) || 0)
+  try {
+    return readdirSync(versionsDir)
+      .sort((a, b) => {
+        const [aMaj = 0, aMin = 0, aPat = 0] = numeric(a)
+        const [bMaj = 0, bMin = 0, bPat = 0] = numeric(b)
+        return bMaj - aMaj || bMin - aMin || bPat - aPat
+      })
+      .map((version) => joinPath(platform, versionsDir, version, 'bin'))
+  } catch {
+    return []
+  }
 }
 
 /**

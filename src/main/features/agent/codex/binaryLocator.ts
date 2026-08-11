@@ -12,7 +12,10 @@ import {
 import {
   isWindows,
   joinPath,
+  LOGIN_SHELL_PATH_ARGS,
+  nvmBinDirs,
   splitPath,
+  stripShellBanner,
   type Platform
 } from '../platform'
 
@@ -49,7 +52,10 @@ function knownDirs(
     joinPath(platform, homedir(), '.local', 'bin'),
     joinPath(platform, homedir(), '.npm-global', 'bin'),
     '/opt/homebrew/bin',
-    '/usr/local/bin'
+    '/usr/local/bin',
+    // nvm installs never touch the prefixes above — without this a GUI-launched
+    // process whose login-shell PATH capture fails cannot see codex at all.
+    ...nvmBinDirs(platform, env)
   ]
 }
 
@@ -98,8 +104,8 @@ export function createCodexBinaryLocator(
       return cachedShellPath
     }
     try {
-      const { stdout } = await exec('/bin/zsh', ['-lic', 'echo -n "$PATH"'])
-      cachedShellPath = stdout.trim() || null
+      const { stdout } = await exec('/bin/zsh', [...LOGIN_SHELL_PATH_ARGS])
+      cachedShellPath = stripShellBanner(stdout) || null
     } catch {
       cachedShellPath = null
     }

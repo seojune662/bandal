@@ -501,7 +501,8 @@ export function registerHandlers(): IpcRouter {
       folder: coursesRepo.getFolder(courseId),
       name: coursesRepo.getById(courseId).name
     }),
-    emit: (courseId, event) => eventBatcher.push(courseId, event)
+    emit: (courseId, event) => eventBatcher.push(courseId, event),
+    startToolServer
   })
   const activeSessions = (): typeof sessionManager =>
     getSettings().agentProvider === 'codex' ? codexSessionManager : sessionManager

@@ -59,12 +59,17 @@ export interface CodexAdapterDeps {
   spawnImpl?: typeof spawnClaude
 }
 
+/** Env var carrying the in-app MCP bearer token — env, never argv. */
+export const CODEX_MCP_TOKEN_ENV_VAR = 'BANDAL_MCP_TOKEN'
+
 export interface BuildCodexArgsOptions {
   cwd: string
   prompt: string
   model?: string
   resumeCliSessionId?: string
   imagePaths?: readonly string[]
+  /** Bandal's in-app MCP server endpoint (token travels via env). */
+  mcpUrl?: string
 }
 
 export function buildCodexArgs(opts: BuildCodexArgsOptions): string[] {
@@ -80,6 +85,17 @@ export function buildCodexArgs(opts: BuildCodexArgsOptions): string[] {
     '-s',
     'workspace-write'
   ]
+  if (opts.mcpUrl !== undefined && opts.mcpUrl !== '') {
+    // Codex takes MCP config as TOML overrides, not a JSON --mcp-config file.
+    // The bearer token is referenced by env var name so it never hits argv
+    // (argv is visible to every process on the machine via ps).
+    args.push(
+      '-c',
+      `mcp_servers.bandal.url=${JSON.stringify(opts.mcpUrl)}`,
+      '-c',
+      `mcp_servers.bandal.bearer_token_env_var=${JSON.stringify(CODEX_MCP_TOKEN_ENV_VAR)}`
+    )
+  }
   if (opts.model !== undefined && opts.model !== '' && opts.model !== 'default') {
     args.push('-m', opts.model)
   }
@@ -98,7 +114,10 @@ export function buildCodexArgs(opts: BuildCodexArgsOptions): string[] {
   return args
 }
 
-function buildChildEnv(loginPath: string | null): NodeJS.ProcessEnv {
+function buildChildEnv(
+  loginPath: string | null,
+  mcpToken?: string
+): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env }
   // Bandal may itself have been launched from a Codex terminal. A nested turn
   // must receive the child thread id, not inherit its parent's identity.
@@ -106,6 +125,9 @@ function buildChildEnv(loginPath: string | null): NodeJS.ProcessEnv {
   delete env['CODEX_CI']
   if (loginPath !== null) {
     env['PATH'] = loginPath
+  }
+  if (mcpToken !== undefined) {
+    env[CODEX_MCP_TOKEN_ENV_VAR] = mcpToken
   }
   return env
 }
@@ -289,6 +311,7 @@ export function createCodexAdapter(
         prompt: promptFor(content),
         ...(opts.model === undefined ? {} : { model: opts.model }),
         ...(threadId === null ? {} : { resumeCliSessionId: threadId }),
+        ...(opts.mcpHttp === undefined ? {} : { mcpUrl: opts.mcpHttp.url }),
         imagePaths: materialized.paths
       })
       const stderrRing = createStderrRing()
@@ -299,7 +322,7 @@ export function createCodexAdapter(
       try {
         child = spawnImpl(binaryPath, args, {
           cwd: opts.cwd,
-          env: buildChildEnv(loginPath),
+          env: buildChildEnv(loginPath, opts.mcpHttp?.token),
           // Critical EOF contract — see the file header.
           stdio: ['ignore', 'pipe', 'pipe']
         })

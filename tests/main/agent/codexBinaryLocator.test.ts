@@ -24,7 +24,7 @@ describe('Codex binary locator', () => {
     })
     expect(calls).toContainEqual({
       file: '/bin/zsh',
-      args: ['-lic', 'echo -n "$PATH"']
+      args: ['-lic', 'printf "\\0%s" "$PATH"']
     })
   })
 

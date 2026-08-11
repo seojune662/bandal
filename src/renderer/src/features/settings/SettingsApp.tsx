@@ -4,7 +4,10 @@ import { showToast, ToastHost } from '../../app/toast'
 import { BandalMark } from '../../components/BandalMark'
 import { useLocale, useT } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
-import type { AgentAvailability } from '../../../../shared/types/agent-events'
+import type {
+  AgentAvailability,
+  AgentProvider
+} from '../../../../shared/types/agent-events'
 import type { Course } from '../../../../shared/types/course'
 import type {
   Settings,
@@ -48,6 +51,10 @@ interface SettingsAppProps {
   onClose?: () => void
 }
 
+const AGENT_PROVIDERS: readonly AgentProvider[] = ['claude-code', 'codex']
+
+type ProviderState<T> = Record<AgentProvider, T>
+
 export function SettingsApp({
   embedded = false,
   onClose
@@ -60,9 +67,19 @@ export function SettingsApp({
   const [theme, setTheme] = useState<ThemePreference>('dark')
   const [themeSaving, setThemeSaving] = useState(false)
   const [themeErrorKey, setThemeErrorKey] = useState<string | null>(null)
-  const [availability, setAvailability] = useState<AgentAvailability | null>(null)
-  const [availabilityLoading, setAvailabilityLoading] = useState(true)
-  const [availabilityError, setAvailabilityError] = useState<string | null>(null)
+  const [availability, setAvailability] = useState<
+    ProviderState<AgentAvailability | null>
+  >({ 'claude-code': null, codex: null })
+  const [availabilityLoading, setAvailabilityLoading] = useState<
+    ProviderState<boolean>
+  >({ 'claude-code': true, codex: true })
+  const [availabilityError, setAvailabilityError] = useState<
+    ProviderState<string | null>
+  >({ 'claude-code': null, codex: null })
+  const [agentProviderSaving, setAgentProviderSaving] = useState(false)
+  const [agentProviderFeedbackKey, setAgentProviderFeedbackKey] = useState<
+    string | null
+  >(null)
   const [courses, setCourses] = useState<Course[]>([])
   const [coursesLoading, setCoursesLoading] = useState(true)
   const [coursesError, setCoursesError] = useState<string | null>(null)
@@ -138,19 +155,35 @@ export function SettingsApp({
     )
   }, [categories, query])
 
-  const loadAvailability = (): void => {
-    setAvailabilityLoading(true)
-    setAvailabilityError(null)
-    void invoke('agent:availability', { provider: 'claude-code' })
-      .then((result) => {
-        if (mountedRef.current) setAvailability(result)
-      })
-      .catch(() => {
-        if (mountedRef.current) setAvailabilityError('availability-failed')
-      })
-      .finally(() => {
-        if (mountedRef.current) setAvailabilityLoading(false)
-      })
+  const loadAvailability = (target?: AgentProvider): void => {
+    const providers = target === undefined ? AGENT_PROVIDERS : [target]
+
+    for (const provider of providers) {
+      setAvailabilityLoading((current) => ({ ...current, [provider]: true }))
+      setAvailabilityError((current) => ({ ...current, [provider]: null }))
+      void invoke('agent:availability', { provider })
+        .then((result) => {
+          if (mountedRef.current) {
+            setAvailability((current) => ({ ...current, [provider]: result }))
+          }
+        })
+        .catch(() => {
+          if (mountedRef.current) {
+            setAvailabilityError((current) => ({
+              ...current,
+              [provider]: 'availability-failed'
+            }))
+          }
+        })
+        .finally(() => {
+          if (mountedRef.current) {
+            setAvailabilityLoading((current) => ({
+              ...current,
+              [provider]: false
+            }))
+          }
+        })
+    }
   }
 
   const loadCourses = (showArchived: boolean): void => {
@@ -240,6 +273,42 @@ export function SettingsApp({
       })
   }
 
+  const handleAgentProviderSelect = (nextProvider: AgentProvider): void => {
+    if (
+      settings === null ||
+      nextProvider === settings.agentProvider ||
+      agentProviderSaving
+    ) {
+      return
+    }
+
+    const previousProvider = settings.agentProvider
+    setSettings((current) =>
+      current === null ? current : { ...current, agentProvider: nextProvider }
+    )
+    setAgentProviderSaving(true)
+    setAgentProviderFeedbackKey('settings.ai.engine.saving')
+
+    void invoke('settings:set', { agentProvider: nextProvider })
+      .then((nextSettings) => {
+        if (!mountedRef.current) return
+        setSettings(nextSettings)
+        setAgentProviderFeedbackKey('settings.ai.engine.saved')
+      })
+      .catch(() => {
+        if (!mountedRef.current) return
+        setSettings((current) =>
+          current === null
+            ? current
+            : { ...current, agentProvider: previousProvider }
+        )
+        setAgentProviderFeedbackKey('settings.ai.engine.saveFailed')
+      })
+      .finally(() => {
+        if (mountedRef.current) setAgentProviderSaving(false)
+      })
+  }
+
   const handleArchivedChange = (next: boolean): void => {
     setIncludeArchived(next)
     loadCourses(next)
@@ -289,9 +358,19 @@ export function SettingsApp({
     ),
     ai: (
       <AiPanel
+        provider={settings?.agentProvider ?? 'claude-code'}
+        providerReady={settings !== null}
+        providerSaving={agentProviderSaving}
+        providerFeedback={
+          agentProviderFeedbackKey === null ? null : t(agentProviderFeedbackKey)
+        }
+        providerFeedbackError={
+          agentProviderFeedbackKey === 'settings.ai.engine.saveFailed'
+        }
         availability={availability}
         loading={availabilityLoading}
         error={availabilityError}
+        onProviderSelect={handleAgentProviderSelect}
         onRetry={loadAvailability}
       />
     ),

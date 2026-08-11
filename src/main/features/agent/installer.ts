@@ -1,12 +1,19 @@
 /** Provider CLI installers, invoked only by the explicit setup-card click. */
 
 import { spawnSync, type ChildProcess } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import type { AgentInstallProgress } from '../../../shared/ipc/events'
 import type { AgentProvider } from '../../../shared/types/agent-events'
 import { createBinaryLocator, type BinaryLocator } from './binaryLocator'
 import { createCodexBinaryLocator } from './codex/binaryLocator'
-import { killProcessTree, spawnClaude } from './platform'
+import {
+  killProcessTree,
+  LOGIN_SHELL_PATH_ARGS,
+  nvmBinDirs,
+  spawnClaude,
+  stripShellBanner
+} from './platform'
 
 export const CLAUDE_INSTALL_COMMAND =
   'curl -fsSL https://claude.ai/install.sh | bash'
@@ -17,14 +24,13 @@ function loginShellPathSync(): string | null {
   if (process.platform === 'win32') {
     return process.env['PATH'] ?? process.env['Path'] ?? null
   }
-  const result = spawnSync('/bin/zsh', ['-lic', 'echo -n "$PATH"'], {
+  const result = spawnSync('/bin/zsh', [...LOGIN_SHELL_PATH_ARGS], {
     encoding: 'utf8',
     windowsHide: true,
     timeout: 10_000
   })
-  return result.status === 0 && result.stdout.trim() !== ''
-    ? result.stdout.trim()
-    : (process.env['PATH'] ?? null)
+  const path = result.status === 0 ? stripShellBanner(result.stdout) : ''
+  return path !== '' ? path : (process.env['PATH'] ?? null)
 }
 
 function resolveNpmSync(): string | null {
@@ -40,13 +46,25 @@ function resolveNpmSync(): string | null {
 
   // Electron launched from Finder has launchd's minimal PATH. Ask the same
   // login shell used by the binary locators so an nvm/homebrew npm is found.
-  const found = spawnSync('/bin/zsh', ['-lic', 'command -v npm'], {
-    encoding: 'utf8',
-    windowsHide: true,
-    timeout: 10_000
-  })
-  if (found.status === 0 && found.stdout.trim() !== '') {
-    return found.stdout.trim().split('\n')[0] ?? null
+  // NUL sentinel + stripShellBanner: rc-file banners print BEFORE our output,
+  // and taking the first line here once turned ASCII art into "the npm path".
+  const found = spawnSync(
+    '/bin/zsh',
+    ['-lic', 'printf "\\0%s" "$(command -v npm)"'],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 10_000
+    }
+  )
+  if (found.status === 0) {
+    const npmPath = stripShellBanner(found.stdout)
+    if (npmPath.startsWith('/')) return npmPath
+  }
+  // Login shell failed or npm is not on its PATH — probe nvm installs directly.
+  for (const dir of nvmBinDirs()) {
+    const candidate = `${dir}/npm`
+    if (existsSync(candidate)) return candidate
   }
   const inherited = spawnSync('npm', ['--version'], {
     encoding: 'utf8',

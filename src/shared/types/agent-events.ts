@@ -198,6 +198,11 @@ export interface AgentStartSessionOptions {
   mcpConfigPath?: string
   /** Allow rules for those tools, e.g. `mcp__bandal__create_course`. */
   extraAllowedTools?: readonly string[]
+  /**
+   * The same in-app MCP server in raw form, for CLIs that take MCP config as
+   * flags (codex `-c mcp_servers.*`) instead of a JSON config file.
+   */
+  mcpHttp?: { url: string; token: string }
 }
 
 export type Unsubscribe = () => void

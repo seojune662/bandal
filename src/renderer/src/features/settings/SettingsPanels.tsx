@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
 import { BandalMark } from '../../components/BandalMark'
 import { LOCALES, setLocale, useLocale, useT } from '../../i18n'
 import type { Locale } from '../../i18n'
-import { invoke } from '../../lib/ipc'
+import { invoke, onPush } from '../../lib/ipc'
 import { useUpdateStore } from '../../stores/updateStore'
 import { SYSTEM_THEME } from '../../../../shared/theme'
 import type { ThemeId } from '../../../../shared/theme'
-import type { AgentAvailability } from '../../../../shared/types/agent-events'
+import type {
+  AgentAvailability,
+  AgentProvider
+} from '../../../../shared/types/agent-events'
 import type { Course } from '../../../../shared/types/course'
 import type {
   Settings,
@@ -401,19 +404,201 @@ function AvailabilityRows({
   )
 }
 
-export function AiPanel({
+type InstallStage =
+  | 'idle'
+  | 'loading-command'
+  | 'ready'
+  | 'installing'
+  | 'complete'
+  | 'error'
+
+type InstallError = 'command' | 'unsupported' | 'request' | 'failed' | null
+
+function CodexInstaller({
+  installed,
+  onRefresh
+}: {
+  installed: boolean
+  onRefresh: () => void
+}): JSX.Element | null {
+  const t = useT()
+  const [stage, setStage] = useState<InstallStage>('idle')
+  const [error, setError] = useState<InstallError>(null)
+  const [command, setCommand] = useState('')
+  const [logs, setLogs] = useState<string[]>([])
+  const refreshRequestedRef = useRef(false)
+
+  const finishInstallation = useCallback(
+    (ok: boolean) => {
+      setStage(ok ? 'complete' : 'error')
+      setError(ok ? null : 'failed')
+      if (ok && !refreshRequestedRef.current) {
+        refreshRequestedRef.current = true
+        onRefresh()
+      }
+    },
+    [onRefresh]
+  )
+
+  const loadCommand = useCallback(() => {
+    setStage('loading-command')
+    setError(null)
+    setCommand('')
+    void invoke('agent:installCommand', { provider: 'codex' }).then(
+      (result) => {
+        setCommand(result.command)
+        if (result.supported) {
+          setStage('ready')
+        } else {
+          setStage('error')
+          setError('unsupported')
+        }
+      },
+      () => {
+        setStage('error')
+        setError('command')
+      }
+    )
+  }, [])
+
+  useEffect(() => {
+    if (!installed) loadCommand()
+  }, [installed, loadCommand])
+
+  useEffect(
+    () =>
+      onPush('agent:install-progress', (progress) => {
+        if (progress.provider !== 'codex') return
+        if (progress.line !== '') {
+          setLogs((current) => [...current.slice(-119), progress.line])
+        }
+        if (progress.done) finishInstallation(progress.ok)
+      }),
+    [finishInstallation]
+  )
+
+  const install = (): void => {
+    if (stage !== 'ready') return
+    refreshRequestedRef.current = false
+    setLogs([])
+    setError(null)
+    setStage('installing')
+    void invoke('agent:install', { provider: 'codex' }).then(
+      (result) => finishInstallation(result.ok),
+      () => {
+        setStage('error')
+        setError('request')
+      }
+    )
+  }
+
+  if (installed && stage !== 'complete') return null
+
+  const errorKey =
+    error === 'unsupported'
+      ? 'settings.ai.install.unsupported'
+      : error === 'command'
+        ? 'settings.ai.install.commandFailed'
+        : error === 'request'
+          ? 'settings.ai.install.requestFailed'
+          : 'settings.ai.install.failed'
+
+  return (
+    <div className="settings-ai-installer">
+      {stage !== 'complete' && (
+        <div className="settings-ai-installer__copy">
+          <strong>{t('settings.ai.codex.notInstalledTitle')}</strong>
+          <span>{t('settings.ai.codex.notInstalledHelp')}</span>
+        </div>
+      )}
+
+      {stage === 'loading-command' && (
+        <p className="settings-ai-install-feedback" role="status">
+          {t('settings.ai.install.commandLoading')}
+        </p>
+      )}
+
+      {command !== '' && stage !== 'complete' && (
+        <div className="settings-ai-install-command">
+          <span>{t('settings.ai.install.commandLabel')}</span>
+          <code>{command}</code>
+        </div>
+      )}
+
+      {stage === 'ready' && (
+        <button
+          type="button"
+          className="secondary-button"
+          data-settings-install-action="true"
+          onClick={install}
+        >
+          {t('settings.ai.install.button')}
+        </button>
+      )}
+
+      {stage === 'installing' && (
+        <p className="settings-ai-install-feedback" role="status">
+          {t('settings.ai.install.installing')}
+        </p>
+      )}
+
+      {logs.length > 0 && (
+        <pre
+          className="settings-ai-install-logs"
+          aria-label={t('settings.ai.install.logsLabel')}
+          aria-live="polite"
+        >
+          {logs.join('\n')}
+        </pre>
+      )}
+
+      {stage === 'complete' && (
+        <p
+          className="settings-ai-install-feedback settings-ai-install-feedback--success"
+          role="status"
+        >
+          {t('settings.ai.install.complete')}
+        </p>
+      )}
+
+      {stage === 'error' && (
+        <div className="settings-ai-install-error" role="alert">
+          <span>{t(errorKey)}</span>
+          {error !== 'unsupported' && (
+            <button
+              type="button"
+              className="secondary-button"
+              data-settings-install-action="true"
+              onClick={loadCommand}
+            >
+              {t('settings.ai.install.retry')}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProviderCard({
+  provider,
   availability,
   loading,
   error,
   onRetry
 }: {
+  provider: AgentProvider
   availability: AgentAvailability | null
   loading: boolean
   error: string | null
   onRetry: () => void
 }): JSX.Element {
   const t = useT()
+  const codex = provider === 'codex'
   const installed = availability?.installed === true
+  const providerName = t(
+    codex ? 'settings.ai.codex.name' : 'settings.ai.claude.name'
+  )
   const statusLabel = loading
     ? t('settings.ai.checking')
     : error !== null
@@ -423,49 +608,76 @@ export function AiPanel({
         : t('settings.ai.notInstalled')
 
   return (
-    <div className="settings-stack">
-      <SettingsCard className="integration-card">
-        <div className="integration-card__heading">
-          <div className="provider-mark provider-mark--claude" aria-hidden="true">
-            C
-          </div>
-          <div className="integration-card__title">
-            <h2>Claude Code</h2>
-            <p>{t('settings.ai.claude.description')}</p>
-          </div>
-          <span
-            className={`status-pill status-pill--${
-              loading ? 'loading' : error !== null ? 'muted' : installed ? 'ready' : 'muted'
-            }`}
-          >
-            <span className="status-pill__dot" />
-            {statusLabel}
-          </span>
+    <SettingsCard className="integration-card">
+      <div
+        id={`settings-ai-provider-${provider}`}
+        className="integration-card__heading"
+      >
+        <div
+          className={`provider-mark provider-mark--${codex ? 'codex' : 'claude'}`}
+          aria-hidden="true"
+        >
+          {codex ? 'X' : 'C'}
         </div>
+        <div className="integration-card__title">
+          <h2>{providerName}</h2>
+          <p>
+            {t(
+              codex
+                ? 'settings.ai.codex.description'
+                : 'settings.ai.claude.description'
+            )}
+          </p>
+        </div>
+        <span
+          className={`status-pill status-pill--${
+            loading
+              ? 'loading'
+              : error !== null
+                ? 'muted'
+                : installed
+                  ? 'ready'
+                  : 'muted'
+          }`}
+        >
+          <span className="status-pill__dot" />
+          {statusLabel}
+        </span>
+      </div>
 
-        {loading ? (
-          <div
-            className="availability-skeleton"
-            aria-label={t('settings.ai.claude.checkingLabel')}
-          >
-            <span />
-            <span />
-            <span />
+      {loading && availability === null ? (
+        <div
+          className="availability-skeleton"
+          aria-label={t(
+            codex
+              ? 'settings.ai.codex.checkingLabel'
+              : 'settings.ai.claude.checkingLabel'
+          )}
+        >
+          <span />
+          <span />
+          <span />
+        </div>
+      ) : error !== null ? (
+        <div className="inline-notice">
+          <div>
+            <strong>{t('settings.ai.connectionFailed')}</strong>
+            <span>{t('settings.ai.tryAgainLater')}</span>
           </div>
-        ) : error !== null ? (
-          <div className="inline-notice">
-            <div>
-              <strong>{t('settings.ai.connectionFailed')}</strong>
-              <span>{t('settings.ai.tryAgainLater')}</span>
-            </div>
-            <button type="button" className="secondary-button" onClick={onRetry}>
-              {t('settings.ai.retry')}
-            </button>
-          </div>
-        ) : availability !== null ? (
-          <>
-            <AvailabilityRows availability={availability} />
-            {!availability.installed && (
+          <button type="button" className="secondary-button" onClick={onRetry}>
+            {t('settings.ai.retry')}
+          </button>
+        </div>
+      ) : availability !== null ? (
+        <>
+          <AvailabilityRows availability={availability} />
+          {codex ? (
+            <CodexInstaller
+              installed={availability.installed}
+              onRefresh={onRetry}
+            />
+          ) : (
+            !availability.installed && (
               <div className="inline-notice inline-notice--guidance">
                 <Icon name="sparkles" size={18} />
                 <div>
@@ -473,26 +685,133 @@ export function AiPanel({
                   <span>{t('settings.ai.claude.notInstalledHelp')}</span>
                 </div>
               </div>
-            )}
-          </>
-        ) : null}
+            )
+          )}
+        </>
+      ) : null}
+    </SettingsCard>
+  )
+}
+
+export function AiPanel({
+  provider,
+  providerReady,
+  providerSaving,
+  providerFeedback,
+  providerFeedbackError,
+  availability,
+  loading,
+  error,
+  onProviderSelect,
+  onRetry
+}: {
+  provider: AgentProvider
+  providerReady: boolean
+  providerSaving: boolean
+  providerFeedback: string | null
+  providerFeedbackError: boolean
+  availability: Record<AgentProvider, AgentAvailability | null>
+  loading: Record<AgentProvider, boolean>
+  error: Record<AgentProvider, string | null>
+  onProviderSelect: (provider: AgentProvider) => void
+  onRetry: (provider: AgentProvider) => void
+}): JSX.Element {
+  const t = useT()
+  const selectedProviderMissing =
+    !loading[provider] &&
+    error[provider] === null &&
+    availability[provider]?.installed === false
+
+  const revealProviderCard = (): void => {
+    const card = document.getElementById(`settings-ai-provider-${provider}`)
+    card?.scrollIntoView({ block: 'center' })
+    card
+      ?.closest('.settings-card')
+      ?.querySelector<HTMLButtonElement>('[data-settings-install-action="true"]')
+      ?.focus({ preventScroll: true })
+  }
+
+  return (
+    <div className="settings-stack">
+      <SettingsCard
+        title={t('settings.ai.engine.title')}
+        description={t('settings.ai.engine.description')}
+      >
+        <div className="settings-ai-engine">
+          <div
+            className="settings-ai-engine__segments"
+            role="radiogroup"
+            aria-label={t('settings.ai.engine.selectLabel')}
+            aria-busy={providerSaving}
+          >
+            {(['claude-code', 'codex'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                aria-checked={provider === option}
+                disabled={!providerReady || providerSaving}
+                className={`settings-ai-engine__segment${
+                  provider === option
+                    ? ' settings-ai-engine__segment--selected'
+                    : ''
+                }`}
+                onClick={() => onProviderSelect(option)}
+              >
+                {t(
+                  option === 'codex'
+                    ? 'settings.ai.codex.name'
+                    : 'settings.ai.claude.name'
+                )}
+              </button>
+            ))}
+          </div>
+
+
+          {selectedProviderMissing && (
+            <div className="settings-ai-engine__warning">
+              <div>
+                <strong>{t('settings.ai.engine.notInstalledTitle')}</strong>
+                <span>{t('settings.ai.engine.notInstalledHelp')}</span>
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={revealProviderCard}
+              >
+                {t('settings.ai.engine.installGuide')}
+              </button>
+            </div>
+          )}
+
+          <p
+            className={`settings-ai-engine__feedback${
+              providerFeedbackError
+                ? ' settings-ai-engine__feedback--error'
+                : ''
+            }`}
+            aria-live="polite"
+          >
+            {providerFeedback ?? ''}
+          </p>
+        </div>
       </SettingsCard>
 
-      <SettingsCard className="integration-card integration-card--upcoming">
-        <div className="integration-card__heading">
-          <div className="provider-mark" aria-hidden="true">
-            <Icon name="sparkles" size={18} />
-          </div>
-          <div className="integration-card__title">
-            <h2>Codex</h2>
-            <p>{t('settings.ai.codex.description')}</p>
-          </div>
-          <span className="badge">{t('settings.ai.upcoming')}</span>
-        </div>
-        <p className="integration-card__body-copy">
-          {t('settings.ai.upcomingHelp')}
-        </p>
-      </SettingsCard>
+      <ProviderCard
+        provider="claude-code"
+        availability={availability['claude-code']}
+        loading={loading['claude-code']}
+        error={error['claude-code']}
+        onRetry={() => onRetry('claude-code')}
+      />
+
+      <ProviderCard
+        provider="codex"
+        availability={availability.codex}
+        loading={loading.codex}
+        error={error.codex}
+        onRetry={() => onRetry('codex')}
+      />
     </div>
   )
 }

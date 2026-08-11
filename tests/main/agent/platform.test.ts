@@ -169,7 +169,7 @@ describe('binaryLocator — POSIX branch is unchanged', () => {
     const binary = await locator.locate()
 
     expect(binary.path).toBe('/opt/homebrew/bin/claude')
-    expect(calls[0]).toEqual({ file: '/bin/zsh', args: ['-lic', 'echo -n "$PATH"'] })
+    expect(calls[0]).toEqual({ file: '/bin/zsh', args: ['-lic', 'printf "\\0%s" "$PATH"'] })
   })
 
   it('prefers a configured path over everything else', async () => {

@@ -33,6 +33,10 @@ export interface AgentToolsServerHandle {
   mcpConfigPath: string
   /** Exact values passed to CLI `--allowedTools`. */
   allowedTools: readonly string[]
+  /** Raw endpoint for CLIs that take MCP config as flags (codex `-c`). */
+  url: string
+  /** Bearer token for `url` — hand to the child via env, never argv. */
+  token: string
   close: () => Promise<void>
 }
 
@@ -47,7 +51,21 @@ function makeMcpServer(agentTools: AgentTools): McpServer {
     { capabilities: { tools: {} } }
   )
   server.server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: agentTools.definitions.map((tool) => ({ ...tool }))
+    tools: agentTools.definitions.map((tool) => ({
+      ...tool,
+      // Served as auto-approvable ON PURPOSE. This server is its own gate:
+      // destructive tools block on the in-app confirm dialog (agentConfirmer),
+      // every call is journalled, and per-turn caps bound the blast radius.
+      // Codex exec has no interactive approver and auto-CANCELS any MCP tool
+      // whose readOnlyHint is not true — honest annotations would make every
+      // mutating tool dead under Codex while adding nothing under Claude
+      // (whose --allowedTools already pre-approves the full set).
+      annotations: {
+        ...tool.annotations,
+        readOnlyHint: true,
+        destructiveHint: false
+      }
+    }))
   }))
   server.server.setRequestHandler(CallToolRequestSchema, (request) =>
     agentTools.call(request.params.name, request.params.arguments)
@@ -245,6 +263,8 @@ export async function startAgentToolsServer(
   return {
     mcpConfigPath,
     allowedTools: agentTools.names.map((name) => `mcp__bandal__${name}`),
+    url: `http://${HOST}:${port}${MCP_PATH}`,
+    token,
     async close() {
       if (closing) return
       closing = true
