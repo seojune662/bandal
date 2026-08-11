@@ -8,6 +8,7 @@ import type { AgentProvider } from '../../../shared/types/agent-events'
 import { createBinaryLocator, type BinaryLocator } from './binaryLocator'
 import { createCodexBinaryLocator } from './codex/binaryLocator'
 import {
+  augmentedPathEnv,
   killProcessTree,
   LOGIN_SHELL_PATH_ARGS,
   nvmBinDirs,
@@ -183,13 +184,17 @@ export function createAgentInstaller(deps?: {
 
     let child: ChildProcess
     try {
-      const env: NodeJS.ProcessEnv = { ...process.env }
-      const loginPath = loginShellPathSync()
-      if (loginPath !== null) {
-        // npm installed by nvm uses `#!/usr/bin/env node`; its login-shell
-        // PATH must reach both the npm shim and the matching node binary.
-        env['PATH'] = loginPath
-      }
+      // npm installed by nvm uses `#!/usr/bin/env node`; the child's PATH
+      // must reach both the npm shim's own dir (sibling `node`) and the
+      // login-shell PATH, even when the latter could not be captured.
+      const env = file.startsWith('/')
+        ? augmentedPathEnv(file, loginShellPathSync())
+        : (() => {
+            const base: NodeJS.ProcessEnv = { ...process.env }
+            const loginPath = loginShellPathSync()
+            if (loginPath !== null) base['PATH'] = loginPath
+            return base
+          })()
       child = spawnClaude(file, args, {
         cwd: tmpdir(),
         env,

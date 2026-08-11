@@ -10,6 +10,7 @@ import {
   type LocatedBinary
 } from '../binaryLocator'
 import {
+  augmentedPathEnv,
   isWindows,
   joinPath,
   LOGIN_SHELL_PATH_ARGS,
@@ -26,7 +27,8 @@ export interface CodexBinaryLocatorDeps {
   configuredPath?: () => string | undefined
   exec?: (
     file: string,
-    args: string[]
+    args: string[],
+    opts?: { env?: NodeJS.ProcessEnv }
   ) => Promise<{ stdout: string; stderr: string }>
   platform?: Platform
   env?: NodeJS.ProcessEnv
@@ -86,8 +88,11 @@ export function createCodexBinaryLocator(
 ): BinaryLocator {
   const exec =
     deps.exec ??
-    (async (file: string, args: string[]) =>
-      execFileAsync(file, args, { timeout: EXEC_TIMEOUT_MS }))
+    (async (file: string, args: string[], opts?: { env?: NodeJS.ProcessEnv }) =>
+      execFileAsync(file, args, {
+        timeout: EXEC_TIMEOUT_MS,
+        ...(opts?.env === undefined ? {} : { env: opts.env })
+      }))
   const platform = deps.platform ?? process.platform
   const env = deps.env ?? process.env
 
@@ -140,23 +145,34 @@ export function createCodexBinaryLocator(
     if (cachedBinary !== null) {
       return cachedBinary
     }
+    let sawExecFailure = false
     for (const path of await candidates()) {
       try {
-        const { stdout, stderr } = await exec(path, ['--version'])
+        // Node-shim CLIs need `node` on the CHILD's PATH — probe with an
+        // augmented env or every nvm install reads as "not installed".
+        const { stdout, stderr } = await exec(path, ['--version'], {
+          env: augmentedPathEnv(path, cachedShellPath ?? null, env, platform)
+        })
         const version = parseVersion(`${stdout}\n${stderr}`)
         if (version !== null) {
           cachedBinary = { path, version }
           return cachedBinary
         }
-      } catch {
-        // Try the next well-known/PATH candidate.
+      } catch (error) {
+        // ENOENT = no file there, keep quiet. Anything else means the file
+        // exists but would not run — worth surfacing to the student.
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          sawExecFailure = true
+        }
       }
     }
     throw new AgentUnavailableError(
       'not-installed',
-      isWindows(platform)
-        ? 'Codex CLI를 찾지 못했습니다. %APPDATA%\\npm과 PATH를 확인했습니다.'
-        : 'Codex CLI를 찾지 못했습니다. npm 설치 경로와 로그인 셸 PATH를 확인했습니다.'
+      sawExecFailure
+        ? 'Codex CLI 파일은 있지만 실행하지 못했습니다. node 설치 상태를 확인해 주세요.'
+        : isWindows(platform)
+          ? 'Codex CLI를 찾지 못했습니다. %APPDATA%\\npm과 PATH를 확인했습니다.'
+          : 'Codex CLI를 찾지 못했습니다. npm 설치 경로와 로그인 셸 PATH를 확인했습니다.'
     )
   }
 
@@ -175,7 +191,9 @@ export function createCodexBinaryLocator(
     try {
       // `codex login status` writes its human-readable status to stderr in
       // 0.146.0, so parse both streams and trust its successful exit status.
-      const { stdout, stderr } = await exec(binary.path, ['login', 'status'])
+      const { stdout, stderr } = await exec(binary.path, ['login', 'status'], {
+        env: augmentedPathEnv(binary.path, cachedShellPath ?? null, env, platform)
+      })
       const auth = authStatus(`${stdout}\n${stderr}`)
       result.loggedIn = auth.loggedIn
       if (auth.subscriptionType !== undefined) {

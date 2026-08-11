@@ -142,6 +142,31 @@ export function nvmBinDirs(
 }
 
 /**
+ * Environment for probing or spawning a CLI candidate.
+ *
+ * Node-shim CLIs (`#!/usr/bin/env node` — every nvm/npm global install) need
+ * `node` reachable from the CHILD's own PATH; a Finder-launched Electron only
+ * carries launchd's minimal one, so probing such a shim dies at the shebang
+ * with exit 127 and looks exactly like "not installed". Order matters: the
+ * candidate's own dir first (its sibling `node`), then the login-shell PATH,
+ * then whatever the process already had.
+ */
+export function augmentedPathEnv(
+  candidatePath: string,
+  loginShellPath: string | null,
+  baseEnv: NodeJS.ProcessEnv = process.env,
+  platform: Platform = process.platform
+): NodeJS.ProcessEnv {
+  const pathModule = isWindows(platform) ? win32Path : posixPath
+  const dirs = [
+    pathModule.dirname(candidatePath),
+    ...(loginShellPath === null ? [] : splitPath(loginShellPath, platform)),
+    ...splitPath(baseEnv['PATH'] ?? baseEnv['Path'] ?? '', platform)
+  ]
+  return { ...baseEnv, PATH: [...new Set(dirs)].join(pathModule.delimiter) }
+}
+
+/**
  * Splits a PATH-like string into directories.
  *
  * `path.delimiter` is `;` on Windows and `:` elsewhere — but this module may be

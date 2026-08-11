@@ -15,6 +15,7 @@ import { dirname } from 'node:path'
 import { promisify } from 'node:util'
 import type { AgentAvailability, AgentErrorCode } from '../../../shared/types/agent-events'
 import {
+  augmentedPathEnv,
   claudeFileNames,
   isWindows,
   joinPath,
@@ -62,7 +63,8 @@ export interface BinaryLocatorDeps {
   /** Injectable exec for tests. */
   exec?: (
     file: string,
-    args: string[]
+    args: string[],
+    opts?: { env?: NodeJS.ProcessEnv }
   ) => Promise<{ stdout: string; stderr: string }>
   /** Injectable for tests — lets one OS exercise both platform branches. */
   platform?: Platform
@@ -117,8 +119,11 @@ function parseAuthStatus(stdout: string): AuthStatus {
 export function createBinaryLocator(deps: BinaryLocatorDeps = {}): BinaryLocator {
   const exec =
     deps.exec ??
-    (async (file: string, args: string[]) =>
-      execFileAsync(file, args, { timeout: EXEC_TIMEOUT_MS }))
+    (async (file: string, args: string[], opts?: { env?: NodeJS.ProcessEnv }) =>
+      execFileAsync(file, args, {
+        timeout: EXEC_TIMEOUT_MS,
+        ...(opts?.env === undefined ? {} : { env: opts.env })
+      }))
 
   const platform = deps.platform ?? process.platform
   const env = deps.env ?? process.env
@@ -129,7 +134,11 @@ export function createBinaryLocator(deps: BinaryLocatorDeps = {}): BinaryLocator
 
   async function tryVersion(path: string): Promise<string | null> {
     try {
-      const { stdout } = await exec(path, ['--version'])
+      // An npm-installed claude is a node shim: `node` must be reachable on
+      // the CHILD's PATH or the probe dies at the shebang (see codex locator).
+      const { stdout } = await exec(path, ['--version'], {
+        env: augmentedPathEnv(path, cachedShellPath ?? null, env, platform)
+      })
       return parseVersion(stdout)
     } catch {
       return null
@@ -230,7 +239,9 @@ export function createBinaryLocator(deps: BinaryLocatorDeps = {}): BinaryLocator
       loggedIn: false
     }
     try {
-      const { stdout } = await exec(binary.path, ['auth', 'status', '--json'])
+      const { stdout } = await exec(binary.path, ['auth', 'status', '--json'], {
+        env: augmentedPathEnv(binary.path, cachedShellPath ?? null, env, platform)
+      })
       const auth = parseAuthStatus(stdout)
       result.loggedIn = auth.loggedIn
       if (auth.subscriptionType !== undefined) {

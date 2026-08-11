@@ -30,7 +30,7 @@ import type {
 import type { ChatAttachment } from '../../../../shared/types/chat'
 import { attachJsonlStream, createStderrRing } from '../jsonlStream'
 import { AgentUnavailableError, type BinaryLocator } from '../binaryLocator'
-import { killProcessTree, spawnClaude } from '../platform'
+import { augmentedPathEnv, killProcessTree, spawnClaude } from '../platform'
 import { createCodexBinaryLocator } from './binaryLocator'
 import { createCodexStreamMapper } from './streamMapper'
 
@@ -116,16 +116,17 @@ export function buildCodexArgs(opts: BuildCodexArgsOptions): string[] {
 
 function buildChildEnv(
   loginPath: string | null,
+  binaryPath: string,
   mcpToken?: string
 ): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env }
+  // The binary's own dir goes first unconditionally: codex is a node shim, so
+  // even if the login-shell PATH capture failed, its sibling `node` must be
+  // reachable or the spawn dies at the shebang.
+  const env = augmentedPathEnv(binaryPath, loginPath)
   // Bandal may itself have been launched from a Codex terminal. A nested turn
   // must receive the child thread id, not inherit its parent's identity.
   delete env['CODEX_THREAD_ID']
   delete env['CODEX_CI']
-  if (loginPath !== null) {
-    env['PATH'] = loginPath
-  }
   if (mcpToken !== undefined) {
     env[CODEX_MCP_TOKEN_ENV_VAR] = mcpToken
   }
@@ -322,7 +323,7 @@ export function createCodexAdapter(
       try {
         child = spawnImpl(binaryPath, args, {
           cwd: opts.cwd,
-          env: buildChildEnv(loginPath, opts.mcpHttp?.token),
+          env: buildChildEnv(loginPath, binaryPath, opts.mcpHttp?.token),
           // Critical EOF contract — see the file header.
           stdio: ['ignore', 'pipe', 'pipe']
         })
