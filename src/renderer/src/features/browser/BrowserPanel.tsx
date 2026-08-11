@@ -7,10 +7,18 @@
  * (see browserAnchor.ts for the contract).
  */
 
-import { useCallback, useEffect, useRef } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import type { IDockviewPanelProps } from 'dockview'
 import type { BrowserTabPayload } from '../../../../shared/tabs'
 import { Icon } from '../../app/icons'
+import { favoriteScopeKey, useFavoritesStore } from '../../stores/favoritesStore'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { useBrowserAnchorRect } from '../workspace/panels/browserAnchor'
 import { BrowserIcon } from './browserIcons'
@@ -20,12 +28,15 @@ import {
   type BrowserNavState
 } from './browserGuestsStore'
 import {
-  BrowserAddressInput,
-  BrowserBookmarksBar,
-  useBrowserFavoriteShortcuts
-} from './BrowserStartPage'
+  browserFavoriteShortcuts,
+  hostnameForUrl,
+  initialForUrl,
+  toneForUrl,
+  type BrowserShortcut
+} from './browserStartPageModel'
 import { guestActions } from './guestActions'
 import { fillLoginForTab, saveLoginForTab } from './loginBridge'
+import { addressDisplayParts, resolveAddressInput } from './urlInput'
 import './browser.css'
 
 function browserPayloadFromParams(params: unknown): BrowserTabPayload | null {
@@ -49,6 +60,133 @@ interface ToolbarProps {
   onNavigate: (url: string) => void
 }
 
+function useBrowserFavoriteShortcuts(): BrowserShortcut[] {
+  const courseId = useWorkspaceStore((state) => state.activeCourseId)
+  const key = favoriteScopeKey(courseId)
+  const stored = useFavoritesStore((state) => state.byCourse[key])
+  const loading = useFavoritesStore(
+    (state) => state.loadingByCourse[key] === true
+  )
+  const load = useFavoritesStore((state) => state.load)
+
+  useEffect(() => {
+    if (courseId !== null && stored === undefined && !loading) {
+      void load(courseId)
+    }
+  }, [courseId, load, loading, stored])
+
+  return useMemo(() => browserFavoriteShortcuts(stored), [stored])
+}
+
+function BrowserSiteMark({ url }: { url: string }): JSX.Element {
+  return (
+    <span
+      className="browser-site-mark"
+      data-tone={toneForUrl(url)}
+      aria-hidden="true"
+    >
+      {initialForUrl(url)}
+    </span>
+  )
+}
+
+function BrowserAddressInput({
+  value,
+  onNavigate
+}: {
+  value: string
+  onNavigate: (url: string) => void
+}): JSX.Element {
+  const [draft, setDraft] = useState<string | null>(null)
+  const [focused, setFocused] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const parts = addressDisplayParts(value)
+  const showDisplayUrl = !focused && draft === null && value.length > 0
+
+  const submit = (): void => {
+    const url = resolveAddressInput(draft ?? value)
+    if (url === null) return
+    setDraft(null)
+    inputRef.current?.blur()
+    onNavigate(url)
+  }
+
+  return (
+    <form
+      className="browser-address"
+      role="search"
+      data-display-url={showDisplayUrl ? 'true' : undefined}
+      onSubmit={(event) => {
+        event.preventDefault()
+        submit()
+      }}
+    >
+      <BrowserIcon name={parts.secure ? 'lock' : 'globe'} />
+      <span className="browser-address__field">
+        <input
+          ref={inputRef}
+          type="text"
+          spellCheck={false}
+          autoComplete="off"
+          aria-label="주소 또는 검색어"
+          placeholder="검색어 또는 주소를 입력하세요"
+          value={draft ?? value}
+          onChange={(event) => setDraft(event.target.value)}
+          onFocus={(event) => {
+            setFocused(true)
+            event.currentTarget.select()
+          }}
+          onBlur={() => {
+            setFocused(false)
+            setDraft(null)
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              setDraft(null)
+              event.currentTarget.blur()
+            }
+          }}
+        />
+        {showDisplayUrl && (
+          <span className="browser-address__display" aria-hidden="true">
+            <span>{parts.prefix}</span>
+            <strong>{parts.domain}</strong>
+            <span>{parts.suffix}</span>
+          </span>
+        )}
+      </span>
+    </form>
+  )
+}
+
+function BrowserBookmarksBar({
+  favorites,
+  onNavigate
+}: {
+  favorites: readonly BrowserShortcut[]
+  onNavigate: (url: string) => void
+}): JSX.Element | null {
+  if (favorites.length === 0) return null
+
+  return (
+    <nav className="browser-bookmarks" aria-label="즐겨찾기 바로가기">
+      {favorites.map((favorite) => (
+        <button
+          key={favorite.id}
+          type="button"
+          className="browser-bookmark"
+          title={`${favorite.label} — ${hostnameForUrl(favorite.url)}`}
+          onClick={() => onNavigate(favorite.url)}
+        >
+          <BrowserSiteMark url={favorite.url} />
+          <span>{favorite.label}</span>
+        </button>
+      ))}
+    </nav>
+  )
+}
+
 function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
   const login = useBrowserGuests((state) => state.login[tabId])
 
@@ -57,82 +195,84 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
   }
 
   return (
-    <div className="browser-toolbar">
-      <button
-        type="button"
-        className="browser-nav-button"
-        title="뒤로"
-        disabled={!nav.canGoBack}
-        onClick={goBack}
-      >
-        <BrowserIcon name="arrowLeft" />
-        <span>뒤로</span>
-      </button>
-      <button
-        type="button"
-        className="browser-nav-button"
-        title="앞으로"
-        disabled={!nav.canGoForward}
-        onClick={() => guestActions.forward(tabId)}
-      >
-        <BrowserIcon name="arrowRight" />
-        <span>앞으로</span>
-      </button>
-      <button
-        type="button"
-        className="browser-nav-button"
-        title={nav.loading ? '중지' : '새로고침'}
-        onClick={() =>
-          nav.loading ? guestActions.stop(tabId) : guestActions.reload(tabId)
-        }
-      >
-        <Icon name={nav.loading ? 'x' : 'refresh'} />
-        <span>{nav.loading ? '중지' : '새로고침'}</span>
-      </button>
-
-      <BrowserAddressInput
-        ariaLabel="주소 또는 검색어"
-        mode="toolbar"
-        value={nav.url}
-        onNavigate={onNavigate}
-      />
-
-      {login?.hasLoginForm === true && login.origin !== null && (
-        <div className="browser-login-action">
+    <div className="browser-chrome">
+      <header className="browser-toolbar" aria-label="브라우저 도구 모음">
+        <div className="browser-toolbar__nav">
           <button
             type="button"
-            className="browser-login-button"
-            disabled={login.pending}
-            title={
-              login.savedLogin === null
-                ? '직접 입력한 아이디와 비밀번호를 안전하게 저장합니다.'
-                : `${login.savedLogin.username} 계정으로 채웁니다.`
-            }
-            onClick={() => {
-              if (login.savedLogin === null) void saveLoginForTab(tabId)
-              else void fillLoginForTab(tabId)
-            }}
+            className="browser-nav-button"
+            aria-label="뒤로"
+            title="뒤로"
+            disabled={!nav.canGoBack}
+            onClick={goBack}
           >
-            {login.pending
-              ? '처리 중…'
-              : login.savedLogin === null
-                ? '이 사이트 로그인 저장'
-                : '로그인 채우기'}
+            <BrowserIcon name="arrowLeft" />
           </button>
-          {login.message !== null && (
-            <span className="browser-login-message" role="status">
-              {login.message === 'saved'
-                ? '저장됨'
-                : login.message === 'filled'
-                  ? '채움'
-                  : login.message === 'needs-input'
-                    ? '비밀번호를 직접 입력한 뒤 저장하세요.'
-                    : '처리하지 못했어요.'}
-            </span>
+          <button
+            type="button"
+            className="browser-nav-button"
+            aria-label="앞으로"
+            title="앞으로"
+            disabled={!nav.canGoForward}
+            onClick={() => guestActions.forward(tabId)}
+          >
+            <BrowserIcon name="arrowRight" />
+          </button>
+          <button
+            type="button"
+            className="browser-nav-button"
+            aria-label={nav.loading ? '중지' : '새로고침'}
+            title={nav.loading ? '중지' : '새로고침'}
+            onClick={() =>
+              nav.loading
+                ? guestActions.stop(tabId)
+                : guestActions.reload(tabId)
+            }
+          >
+            <Icon name={nav.loading ? 'x' : 'refresh'} />
+          </button>
+        </div>
+
+        <BrowserAddressInput value={nav.url} onNavigate={onNavigate} />
+
+        <div className="browser-toolbar__actions">
+          {login?.hasLoginForm === true && login.origin !== null && (
+            <div className="browser-login-action">
+              <button
+                type="button"
+                className="browser-login-button"
+                disabled={login.pending}
+                title={
+                  login.savedLogin === null
+                    ? '직접 입력한 아이디와 비밀번호를 안전하게 저장합니다.'
+                    : `${login.savedLogin.username} 계정으로 채웁니다.`
+                }
+                onClick={() => {
+                  if (login.savedLogin === null) void saveLoginForTab(tabId)
+                  else void fillLoginForTab(tabId)
+                }}
+              >
+                {login.pending
+                  ? '처리 중…'
+                  : login.savedLogin === null
+                    ? '이 사이트 로그인 저장'
+                    : '로그인 채우기'}
+              </button>
+              {login.message !== null && (
+                <span className="browser-login-message" role="status">
+                  {login.message === 'saved'
+                    ? '저장됨'
+                    : login.message === 'filled'
+                      ? '채움'
+                      : login.message === 'needs-input'
+                        ? '비밀번호를 직접 입력한 뒤 저장하세요.'
+                        : '처리하지 못했어요.'}
+                </span>
+              )}
+            </div>
           )}
         </div>
-      )}
-
+      </header>
       <div
         className="browser-progress"
         data-active={nav.loading ? 'true' : undefined}
@@ -156,8 +296,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
     tabId !== '' ? state.nav[tabId] : undefined
   )
   const navState = nav ?? initialNavState(initialUrl)
-  const { favorites, loading: favoritesLoading, hasCourse } =
-    useBrowserFavoriteShortcuts()
+  const favorites = useBrowserFavoriteShortcuts()
 
   const navigate = useCallback(
     (url: string): void => {
@@ -194,12 +333,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   return (
     <div className="browser-panel" data-kind="browser">
       <BrowserToolbar tabId={tabId} nav={navState} onNavigate={navigate} />
-      <BrowserBookmarksBar
-        favorites={favorites}
-        loading={favoritesLoading}
-        hasCourse={hasCourse}
-        onNavigate={navigate}
-      />
+      <BrowserBookmarksBar favorites={favorites} onNavigate={navigate} />
       <div
         ref={anchorRef}
         className="browser-anchor"
