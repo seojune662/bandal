@@ -8,6 +8,7 @@
  * section comments so merges stay additive.
  */
 
+import { randomUUID } from 'node:crypto'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc/contract'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
@@ -171,8 +172,13 @@ export function registerHandlers(): IpcRouter {
   /** Course went away (delete/archive) → release its live resources. */
   function releaseCourseRuntime(courseId: string): void {
     materialsWatcher.unwatch(courseId)
-    sessionManager.close(courseId)
-    eventBatcher.flush(courseId)
+    // Sessions are conversation-keyed now: close every conversation of the
+    // course on both managers (only ones with messages can hold a warm CLI).
+    for (const conversation of chatRepo.listConversations(courseId)) {
+      sessionManager.close(courseId, conversation.id)
+      codexSessionManager.close(courseId, conversation.id)
+      eventBatcher.flush(conversation.id)
+    }
   }
 
   // -- courses --------------------------------------------------------------
@@ -476,7 +482,8 @@ export function registerHandlers(): IpcRouter {
       folder: coursesRepo.getFolder(courseId),
       name: coursesRepo.getById(courseId).name
     }),
-    emit: (courseId, event) => eventBatcher.push(courseId, event),
+    emit: (courseId, sessionId, event) =>
+      eventBatcher.push(courseId, sessionId, event),
     startToolServer
   })
   app.on('before-quit', () => {
@@ -501,11 +508,30 @@ export function registerHandlers(): IpcRouter {
       folder: coursesRepo.getFolder(courseId),
       name: coursesRepo.getById(courseId).name
     }),
-    emit: (courseId, event) => eventBatcher.push(courseId, event),
+    emit: (courseId, sessionId, event) =>
+      eventBatcher.push(courseId, sessionId, event),
     startToolServer
   })
-  const activeSessions = (): typeof sessionManager =>
-    getSettings().agentProvider === 'codex' ? codexSessionManager : sessionManager
+  const managerFor = (provider: string): typeof sessionManager =>
+    provider === 'codex' ? codexSessionManager : sessionManager
+  /**
+   * Provider is a per-CONVERSATION property: a persisted row routes by its own
+   * provider, a warm-but-unpersisted entry stays with whichever manager holds
+   * it, and only a brand-new conversation follows the settings default.
+   */
+  const resolveManager = (sessionId: string): typeof sessionManager => {
+    const row = chatRepo.getSession(sessionId)
+    if (row !== null) {
+      return managerFor(row.provider)
+    }
+    if (sessionManager.has(sessionId)) {
+      return sessionManager
+    }
+    if (codexSessionManager.has(sessionId)) {
+      return codexSessionManager
+    }
+    return managerFor(getSettings().agentProvider)
+  }
 
   // Refresh the dossier the agent reads before the session can ask for it.
   // Best-effort: a context failure must not stop the student from chatting.
@@ -515,13 +541,28 @@ export function registerHandlers(): IpcRouter {
     } catch (error) {
       console.error('[context] rebuild failed', error)
     }
-    return activeSessions().open(req.courseId)
+    return resolveManager(req.sessionId).open(req.courseId, req.sessionId)
   })
   handle('chat:send', (req) =>
-    activeSessions().send(req.courseId, req.content, req.attachments)
+    resolveManager(req.sessionId).send(
+      req.courseId,
+      req.sessionId,
+      req.content,
+      req.attachments
+    )
   )
   handle('chat:cancel', (req) => {
-    activeSessions().cancel(req.courseId)
+    resolveManager(req.sessionId).cancel(req.courseId, req.sessionId)
+    return OK
+  })
+  handle('chat:conversations', (req) => ({
+    conversations: chatRepo.listConversations(req.courseId)
+  }))
+  handle('chat:deleteConversation', (req) => {
+    // Close any warm CLI on either manager before the row disappears.
+    sessionManager.close(req.courseId, req.sessionId)
+    codexSessionManager.close(req.courseId, req.sessionId)
+    chatRepo.softDeleteSession(req.sessionId)
     return OK
   })
   handle('agentTools:changes', (req) => agentJournal.forTurn(req.turnId))
@@ -561,16 +602,21 @@ export function registerHandlers(): IpcRouter {
   })
 
   handle('chat:respondPermission', (req) => {
-    activeSessions().respondPermission(req.courseId, req.requestId, req.response)
+    resolveManager(req.sessionId).respondPermission(
+      req.courseId,
+      req.sessionId,
+      req.requestId,
+      req.response
+    )
     return OK
   })
   handle('chat:close', (req) => {
-    activeSessions().close(req.courseId)
-    eventBatcher.flush(req.courseId)
+    resolveManager(req.sessionId).close(req.courseId, req.sessionId)
+    eventBatcher.flush(req.sessionId)
     return OK
   })
   handle('chat:setModel', (req) => {
-    activeSessions().setModel(req.courseId, req.model)
+    resolveManager(req.sessionId).setModel(req.courseId, req.sessionId, req.model)
     return OK
   })
 
@@ -597,7 +643,12 @@ export function registerHandlers(): IpcRouter {
       folder: coursesRepo.getFolder(courseId)
     }),
     ask: async (courseId, prompt) => {
-      await activeSessions().send(courseId, prompt)
+      // Study tools ride the course's newest conversation so their answer
+      // lands where the student is already talking; a course with no
+      // conversations yet gets a fresh one.
+      const latest = chatRepo.listConversations(courseId)[0]
+      const sessionId = latest?.id ?? randomUUID()
+      await resolveManager(sessionId).send(courseId, sessionId, prompt)
     },
     recordActivity: (courseId, summary, relPath) => {
       note(courseId, 'study-tool-run', summary, relPath)

@@ -1,8 +1,11 @@
 /**
- * Per-course agent session lifecycle: lazy spawn on first message, resume via
- * the persisted CLI session id, idle reaping (10min), an LRU cap on warm
- * processes, permission-grant auto-allow, and atomic persistence of finished
- * turns (message + blocks on turn-complete).
+ * Per-CONVERSATION agent session lifecycle: lazy spawn on first message,
+ * resume via the persisted CLI session id, idle reaping (10min), an LRU cap
+ * on warm processes, permission-grant auto-allow, and atomic persistence of
+ * finished turns (message + blocks on turn-complete).
+ *
+ * A conversation id is renderer-minted and only becomes an agent_sessions row
+ * on the first send — a tab that never sent anything leaves zero rows.
  */
 
 import type {
@@ -14,6 +17,7 @@ import type {
 import type { ChatOpenResult, ChatSessionInfo } from '../../../shared/types/chat'
 import type { ChatAttachment } from '../../../shared/types/chat'
 import { AgentUnavailableError } from './binaryLocator'
+import { deriveConversationTitle } from './chatRepo'
 import type { BlockInput, ChatRepo } from './chatRepo'
 import type { ClaudeCodeSession } from './claude/ClaudeCodeAdapter'
 
@@ -30,11 +34,11 @@ export interface SessionManagerDeps {
   repo: ChatRepo
   getCourse: (courseId: string) => CourseRef
   /** Streams every renderer-visible event (feeds the event batcher). */
-  emit: (courseId: string, event: AgentEvent) => void
+  emit: (courseId: string, sessionId: string, event: AgentEvent) => void
   idleReapMs?: number
   maxWarmSessions?: number
   /**
-   * Starts Bandal's in-app MCP server for one course session, so the agent can
+   * Starts Bandal's in-app MCP server for one conversation, so the agent can
    * act on the app itself. Optional: without it the agent keeps its file-only
    * abilities and nothing else changes.
    */
@@ -51,20 +55,24 @@ export interface SessionManagerDeps {
 }
 
 export interface SessionManager {
-  open(courseId: string): Promise<ChatOpenResult>
+  open(courseId: string, sessionId: string): Promise<ChatOpenResult>
   send(
     courseId: string,
+    sessionId: string,
     content: string,
     attachments?: ChatAttachment[]
   ): Promise<{ turnSeq: number }>
-  setModel(courseId: string, model: string): void
-  cancel(courseId: string): void
+  setModel(courseId: string, sessionId: string, model: string): void
+  cancel(courseId: string, sessionId: string): void
   respondPermission(
     courseId: string,
+    sessionId: string,
     requestId: string,
     response: PermissionResponse
   ): void
-  close(courseId: string): void
+  close(courseId: string, sessionId: string): void
+  /** True while this manager holds a warm entry for the conversation. */
+  has(sessionId: string): boolean
   disposeAll(): void
 }
 
@@ -76,6 +84,9 @@ interface TurnBlock {
 
 interface CourseChat {
   courseId: string
+  sessionId: string
+  /** False until the first send creates the agent_sessions row. */
+  persisted: boolean
   info: ChatSessionInfo
   session: AgentSession | null
   sessionPromise: Promise<AgentSession> | null
@@ -107,14 +118,28 @@ export function buildStudyPrompt(courseName: string): string {
 export function createSessionManager(deps: SessionManagerDeps): SessionManager {
   const idleReapMs = deps.idleReapMs ?? IDLE_REAP_MS
   const maxWarm = deps.maxWarmSessions ?? MAX_WARM_SESSIONS
+  /** Keyed by CONVERSATION id (agent_sessions.id), not course. */
   const chats = new Map<string, CourseChat>()
 
-  function entryFor(courseId: string): CourseChat {
-    let entry = chats.get(courseId)
+  function entryFor(courseId: string, sessionId: string): CourseChat {
+    let entry = chats.get(sessionId)
     if (entry === undefined) {
+      const row = deps.repo.getSession(sessionId)
       entry = {
         courseId,
-        info: deps.repo.getOrCreateSession(courseId, deps.adapter.provider),
+        sessionId,
+        persisted: row !== null,
+        // Not persisted yet → a provisional info; the row appears on first send.
+        info: row ?? {
+          id: sessionId,
+          courseId,
+          provider: deps.adapter.provider,
+          cliSessionId: null,
+          model: null,
+          status: 'idle',
+          lastUsedAt: null,
+          title: null
+        },
         session: null,
         sessionPromise: null,
         unsubscribe: null,
@@ -125,7 +150,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         lastUsedAt: Date.now(),
         toolServer: null
       }
-      chats.set(courseId, entry)
+      chats.set(sessionId, entry)
     }
     return entry
   }
@@ -157,8 +182,13 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
   }
 
   function evictLruIfNeeded(current: CourseChat): void {
+    // A running conversation is never evicted — killing a streaming CLI to
+    // warm up another tab would cut off an answer mid-sentence.
     const warm = [...chats.values()].filter(
-      (entry) => entry.session !== null && entry !== current
+      (entry) =>
+        entry.session !== null &&
+        entry !== current &&
+        entry.info.status !== 'running'
     )
     if (warm.length < maxWarm) {
       return
@@ -187,7 +217,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       // A failure here must not cost the student their tutor: fall back to the
       // file-only agent rather than refusing to open the chat.
       try {
-        const tools = await deps.startToolServer(entry.courseId, entry.courseId)
+        const tools = await deps.startToolServer(entry.courseId, entry.sessionId)
         entry.toolServer = tools
         startOptions.mcpConfigPath = tools.mcpConfigPath
         startOptions.extraAllowedTools = tools.allowedTools
@@ -388,23 +418,24 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       console.error('[agent] failed to apply event', event.type, error)
     }
     if (shouldEmit) {
-      deps.emit(entry.courseId, event)
+      deps.emit(entry.courseId, entry.sessionId, event)
     }
   }
 
   return {
-    async open(courseId) {
-      const entry = entryFor(courseId)
+    async open(courseId, sessionId) {
+      const entry = entryFor(courseId, sessionId)
       const availability = await deps.adapter.checkAvailability()
       return {
-        history: deps.repo.historyTail(courseId),
+        // Provisional conversations have no rows, so the tail is just empty.
+        history: deps.repo.historyTail(sessionId),
         sessionInfo: entry.info,
         availability
       }
     },
 
-    async send(courseId, content, attachments = []) {
-      const entry = entryFor(courseId)
+    async send(courseId, sessionId, content, attachments = []) {
+      const entry = entryFor(courseId, sessionId)
       entry.lastUsedAt = Date.now()
       if (entry.idleTimer !== null) {
         clearTimeout(entry.idleTimer)
@@ -418,10 +449,20 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
           error instanceof Error ? error.message : 'Failed to start the agent'
         const code =
           error instanceof AgentUnavailableError ? error.code : 'spawn-failed'
-        deps.emit(courseId, { type: 'error', code, message, fatal: true })
+        deps.emit(courseId, sessionId, {
+          type: 'error',
+          code,
+          message,
+          fatal: true
+        })
         throw error
       }
-      const turnSeq = deps.repo.nextTurnSeq(courseId)
+      if (!entry.persisted) {
+        // First send materializes the conversation row (lazy creation).
+        deps.repo.createSession(sessionId, courseId, deps.adapter.provider)
+        entry.persisted = true
+      }
+      const turnSeq = deps.repo.nextTurnSeq(sessionId)
       entry.turnSeq = turnSeq
       entry.turnBlocks = new Map()
       deps.repo.appendMessage(courseId, entry.info.id, 'user', turnSeq, [
@@ -433,26 +474,35 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
           }
         }
       ])
+      const title = deriveConversationTitle(content)
+      if (title !== '') {
+        deps.repo.setTitleIfEmpty(sessionId, title)
+        entry.info = { ...entry.info, title: entry.info.title ?? title }
+      }
       entry.info = { ...entry.info, status: 'running' }
       deps.repo.setStatus(entry.info.id, 'running')
       session.sendMessage(content, attachments)
       return { turnSeq }
     },
 
-    setModel(courseId, model) {
-      const entry = entryFor(courseId)
+    setModel(courseId, sessionId, model) {
+      const entry = entryFor(courseId, sessionId)
       const selected = model.trim()
-      deps.repo.setModel(entry.info.id, selected)
+      // A provisional conversation has no row yet — the in-memory info carries
+      // the choice into ensureSession, and session-started persists it.
+      if (entry.persisted) {
+        deps.repo.setModel(entry.info.id, selected)
+      }
       entry.info = { ...entry.info, model: selected }
       dropSession(entry)
     },
 
-    cancel(courseId) {
-      chats.get(courseId)?.session?.cancel()
+    cancel(_courseId, sessionId) {
+      chats.get(sessionId)?.session?.cancel()
     },
 
-    respondPermission(courseId, requestId, response) {
-      const entry = chats.get(courseId)
+    respondPermission(courseId, sessionId, requestId, response) {
+      const entry = chats.get(sessionId)
       if (entry === undefined || entry.session === null) {
         return
       }
@@ -472,13 +522,17 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       entry.session.respondPermission(requestId, response)
     },
 
-    close(courseId) {
-      const entry = chats.get(courseId)
+    close(_courseId, sessionId) {
+      const entry = chats.get(sessionId)
       if (entry === undefined) {
         return
       }
       dropSession(entry)
-      chats.delete(courseId)
+      chats.delete(sessionId)
+    },
+
+    has(sessionId) {
+      return chats.has(sessionId)
     },
 
     disposeAll() {

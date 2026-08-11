@@ -1,7 +1,7 @@
 /**
- * [M5] Annotation → AI tutor glue: "AI에게 물어보기" opens (or focuses) the
- * course's chat tab and prefills the composer with a quoted, editable Korean
- * prompt. Nothing is auto-sent — the student reviews and edits first.
+ * [M5] Annotation → AI tutor glue: "AI에게 물어보기" opens a fresh chat tab
+ * and prefills the composer with a quoted, editable Korean prompt. Nothing is
+ * auto-sent — the student reviews and edits first.
  */
 
 import type { Annotation } from '../../../../shared/types/annotation'
@@ -29,7 +29,9 @@ export function askAiAboutAnnotation(
   courseId: string,
   annotation: Annotation
 ): void {
-  // Chat is a per-course singleton: openTab focuses it when already open.
-  useWorkspaceStore.getState().openTab(descriptorFor('chat', { courseId }))
-  requestChatPrompt(courseId, buildAnnotationPrompt(annotation))
+  const conversationId = crypto.randomUUID()
+  requestChatPrompt(conversationId, buildAnnotationPrompt(annotation))
+  useWorkspaceStore
+    .getState()
+    .openTab(descriptorFor('chat', { courseId, conversationId }))
 }

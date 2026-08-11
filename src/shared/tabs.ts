@@ -51,6 +51,13 @@ export interface BrowserTabPayload {
 
 export interface ChatTabPayload {
   courseId: string
+  /**
+   * Conversation id (renderer-minted uuid, becomes agent_sessions.id on the
+   * first send). OPTIONAL for legacy persisted layouts/favorites: a payload
+   * without one is normalized by ChatTab to the course's newest conversation
+   * (or a fresh uuid) on mount.
+   */
+  conversationId?: string
 }
 
 /** The board is a per-window singleton; it carries no payload. */
@@ -177,7 +184,11 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
         typeof payload['initialUrl'] === 'string'
       )
     case 'chat':
-      return isNonEmptyString(payload['courseId'])
+      return (
+        isNonEmptyString(payload['courseId']) &&
+        (payload['conversationId'] === undefined ||
+          isNonEmptyString(payload['conversationId']))
+      )
     case 'board':
       return true
     case 'whiteboard':

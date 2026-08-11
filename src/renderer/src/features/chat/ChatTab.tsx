@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react'
 import type { IDockviewPanelProps } from 'dockview'
 import type { TabDescriptor } from '../../../../shared/tabs'
+import { invoke } from '../../lib/ipc'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { ChatSurface } from './ChatSurface'
+import { useChatSessionStore } from './chatSessionStore'
 
 function descriptorFromParams(params: unknown): TabDescriptor | null {
   if (typeof params !== 'object' || params === null) {
@@ -11,12 +14,86 @@ function descriptorFromParams(params: unknown): TabDescriptor | null {
   return isTabDescriptor(candidate) ? candidate : null
 }
 
+/**
+ * Legacy persisted layouts/favorites carry no conversationId. Resolve one on
+ * mount — the course's newest conversation when it has any, else a fresh id —
+ * and write the normalized descriptor back into the panel params so the next
+ * layout save persists it.
+ */
+function useResolvedConversationId(
+  props: IDockviewPanelProps,
+  courseId: string | null,
+  fromPayload: string | undefined
+): string | null {
+  const [resolved, setResolved] = useState<string | null>(fromPayload ?? null)
+
+  useEffect(() => {
+    if (fromPayload !== undefined || courseId === null) {
+      setResolved(fromPayload ?? null)
+      return
+    }
+    let cancelled = false
+    void invoke('chat:conversations', { courseId })
+      .then(({ conversations }) => conversations[0]?.id ?? crypto.randomUUID())
+      .catch(() => crypto.randomUUID())
+      .then((conversationId) => {
+        if (cancelled) {
+          return
+        }
+        props.api.updateParameters({
+          descriptor: {
+            kind: 'chat',
+            payload: { courseId, conversationId }
+          } satisfies TabDescriptor
+        })
+        setResolved(conversationId)
+      })
+    return () => {
+      cancelled = true
+    }
+    // props.api is stable for the panel's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId, fromPayload])
+
+  return resolved
+}
+
 export default function ChatTab(props: IDockviewPanelProps): JSX.Element {
   const descriptor = descriptorFromParams(props.params)
-  if (descriptor === null || descriptor.kind !== 'chat') {
+  const isChat = descriptor !== null && descriptor.kind === 'chat'
+  const courseId = isChat ? descriptor.payload.courseId : null
+  const conversationId = useResolvedConversationId(
+    props,
+    courseId,
+    isChat ? descriptor.payload.conversationId : undefined
+  )
+
+  // The first message names the conversation — rename the tab to match, the
+  // same async-rename trick GroupChatTab uses.
+  const title = useChatSessionStore((state) =>
+    conversationId === null
+      ? null
+      : (state.sessions[conversationId]?.title ?? null)
+  )
+  useEffect(() => {
+    props.api.setTitle(title === null || title === '' ? 'AI 튜터' : title)
+    // props.api is stable for the panel's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title])
+
+  if (!isChat || courseId === null) {
     return <div className="chat-tab" data-kind="unknown" />
   }
+  if (conversationId === null) {
+    // Resolving the legacy payload — don't mount the surface against a
+    // conversation that is about to change identity.
+    return <div className="chat-tab" data-kind="resolving" />
+  }
   return (
-    <ChatSurface courseId={descriptor.payload.courseId} variant="tab" />
+    <ChatSurface
+      courseId={courseId}
+      conversationId={conversationId}
+      variant="tab"
+    />
   )
 }

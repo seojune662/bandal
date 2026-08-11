@@ -49,6 +49,7 @@ import type {
 } from '../types/courseLink'
 import type {
   AgentModelOption,
+  ChatConversationSummary,
   ChatOpenResult,
   ChatSendInput
 } from '../types/chat'
@@ -344,9 +345,9 @@ export interface IpcContract {
   }
 
   // -- chat -----------------------------------------------------------------
-  /** Opens (or resumes) the chat for a course. */
+  /** Opens (or resumes) one conversation of a course. */
   'chat:open': {
-    req: { courseId: string }
+    req: { courseId: string; sessionId: string }
     res: ChatOpenResult
   }
   /** Sends a user message; streaming arrives via `chat:event-batch`. */
@@ -355,23 +356,39 @@ export interface IpcContract {
     res: { turnSeq: number }
   }
   'chat:cancel': {
-    req: { courseId: string }
+    req: { courseId: string; sessionId: string }
     res: { ok: true }
   }
   'chat:respondPermission': {
-    req: { courseId: string; requestId: string; response: PermissionResponse }
+    req: {
+      courseId: string
+      sessionId: string
+      requestId: string
+      response: PermissionResponse
+    }
     res: { ok: true }
   }
   'chat:close': {
-    req: { courseId: string }
+    req: { courseId: string; sessionId: string }
     res: { ok: true }
   }
   /**
-   * Pins the model for a course. Drops the warm CLI process so the next send
-   * respawns with `--model`; history and the resumable CLI session id survive.
+   * Pins the model for a conversation. Drops the warm CLI process so the next
+   * send respawns with `--model`; history and the resumable CLI session id
+   * survive.
    */
   'chat:setModel': {
-    req: { courseId: string; model: string }
+    req: { courseId: string; sessionId: string; model: string }
+    res: { ok: true }
+  }
+  /** Conversation list for a course (zero-message conversations excluded). */
+  'chat:conversations': {
+    req: { courseId: string }
+    res: { conversations: ChatConversationSummary[] }
+  }
+  /** Soft-deletes a conversation and closes its warm CLI process, if any. */
+  'chat:deleteConversation': {
+    req: { courseId: string; sessionId: string }
     res: { ok: true }
   }
 
@@ -978,6 +995,8 @@ export const IPC_CHANNELS = [
   'chat:respondPermission',
   'chat:close',
   'chat:setModel',
+  'chat:conversations',
+  'chat:deleteConversation',
   'agent:availability',
   'agent:models',
   'drawings:listForFile',

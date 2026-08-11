@@ -5,10 +5,14 @@ import {
   useState,
   type ReactNode
 } from 'react'
+import type { AgentProvider } from '../../../../shared/types/agent-events'
 import type { ChatAttachment } from '../../../../shared/types/chat'
 import { Icon } from '../../app/icons'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
+import { descriptorFor } from '../workspace/tabIdentity'
 import { useChatPromptStore } from './chatPromptBus'
 import { Composer, type ComposerHandle } from './Composer'
+import { ConversationListMenu } from './ConversationListMenu'
 import { MessageList } from './MessageList'
 import { useChatSession } from './useChatSession'
 import { AgentToolActivity } from './AgentToolCards'
@@ -23,6 +27,7 @@ import {
 import './chat.css'
 import './chat-blocks.css'
 import './agent-setup.css'
+import './conversation-list.css'
 import { BandalMark } from '../../components/BandalMark'
 
 const MIN_CLI = { major: 2, minor: 1 }
@@ -36,6 +41,8 @@ const STARTER_PROMPTS = [
 
 export interface ChatSurfaceProps {
   courseId: string
+  /** Conversation id; surfaces without one (popup) fall back to courseId. */
+  conversationId?: string
   variant?: 'tab' | 'popup'
 }
 
@@ -85,10 +92,13 @@ function EmptyState({
 
 export function ChatSurface({
   courseId,
+  conversationId,
   variant = 'tab'
 }: ChatSurfaceProps): JSX.Element {
-  const session = useChatSession(courseId)
+  const conversationKey = conversationId ?? courseId
+  const session = useChatSession(courseId, conversationKey)
   const agentToolActivity = useAgentToolActivity(courseId)
+  const openTab = useWorkspaceStore((store) => store.openTab)
   const [draft, setDraft] = useState('')
   const composerRef = useRef<ComposerHandle>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -99,15 +109,18 @@ export function ChatSurface({
   const consumePrompt = useChatPromptStore((store) => store.consume)
 
   useEffect(() => {
-    if (pendingPrompt === null || pendingPrompt.courseId !== courseId) {
+    if (
+      pendingPrompt === null ||
+      pendingPrompt.conversationId !== conversationKey
+    ) {
       return
     }
-    const prompt = consumePrompt(courseId)
+    const prompt = consumePrompt(conversationKey)
     if (prompt !== null) {
       setDraft(prompt)
       composerRef.current?.focus()
     }
-  }, [pendingPrompt, consumePrompt, courseId])
+  }, [pendingPrompt, consumePrompt, conversationKey])
 
   useEffect(() => {
     const scroller = scrollRef.current
@@ -144,6 +157,32 @@ export function ChatSurface({
     composerRef.current?.focus()
   }, [])
 
+  const handleOpenConversation = useCallback(
+    (nextConversationId: string) => {
+      openTab(
+        descriptorFor('chat', {
+          courseId,
+          conversationId: nextConversationId
+        })
+      )
+    },
+    [courseId, openTab]
+  )
+
+  const handleNewConversation = useCallback(() => {
+    handleOpenConversation(crypto.randomUUID())
+  }, [handleOpenConversation])
+
+  const handleProviderChange = useCallback(
+    (nextProvider: AgentProvider) => {
+      const result = session.setProvider(nextProvider)
+      if (result.needsNewConversation) {
+        handleNewConversation()
+      }
+    },
+    [handleNewConversation, session.setProvider]
+  )
+
   const root = (children: ReactNode): JSX.Element => (
     <div className="chat-tab" data-variant={variant}>
       {children}
@@ -174,7 +213,7 @@ export function ChatSurface({
     return root(
       <InstallCard
         provider={provider}
-        onProviderChange={session.setProvider}
+        onProviderChange={handleProviderChange}
         onRefresh={session.refresh}
       />
     )
@@ -184,7 +223,7 @@ export function ChatSurface({
     return root(
       <LoginCard
         provider={provider}
-        onProviderChange={session.setProvider}
+        onProviderChange={handleProviderChange}
         onRefresh={session.refresh}
       />
     )
@@ -205,10 +244,18 @@ export function ChatSurface({
   return root(
     <>
       <header className="chat-header">
+        {variant === 'tab' && (
+          <ConversationListMenu
+            courseId={courseId}
+            currentConversationId={conversationKey}
+            onNewConversation={handleNewConversation}
+            onOpenConversation={handleOpenConversation}
+          />
+        )}
         <ProviderSelector
           compact
           provider={provider}
-          onChange={session.setProvider}
+          onChange={handleProviderChange}
           disabled={state.streaming}
         />
         <label className="chat-model">

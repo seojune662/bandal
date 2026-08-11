@@ -1,5 +1,5 @@
 /**
- * Per-course batching of AgentEvents into `chat:event-batch` frames.
+ * Per-CONVERSATION batching of AgentEvents into `chat:event-batch` frames.
  *
  * Delta events (text/thinking/tool-input) are coalesced: consecutive deltas
  * for the same block merge into one event, and delivery is debounced 40ms
@@ -14,8 +14,8 @@ export const BATCH_DEBOUNCE_MS = 40
 export const BATCH_MAX_WAIT_MS = 250
 
 export interface EventBatcher {
-  push(courseId: string, event: AgentEvent): void
-  flush(courseId: string): void
+  push(courseId: string, sessionId: string, event: AgentEvent): void
+  flush(sessionId: string): void
   dispose(): void
 }
 
@@ -25,7 +25,9 @@ export interface EventBatcherDeps {
   maxWaitMs?: number
 }
 
-interface CourseBuffer {
+interface SessionBuffer {
+  /** Carried on every frame so AssistantLayer can filter by course. */
+  courseId: string
   seq: number
   pending: AgentEvent[]
   debounceTimer: NodeJS.Timeout | null
@@ -72,18 +74,25 @@ function tryMerge(pending: AgentEvent[], event: AgentEvent): AgentEvent[] | null
 export function createEventBatcher(deps: EventBatcherDeps): EventBatcher {
   const debounceMs = deps.debounceMs ?? BATCH_DEBOUNCE_MS
   const maxWaitMs = deps.maxWaitMs ?? BATCH_MAX_WAIT_MS
-  const buffers = new Map<string, CourseBuffer>()
+  /** Keyed by CONVERSATION id — seq is monotonic per conversation. */
+  const buffers = new Map<string, SessionBuffer>()
 
-  function bufferFor(courseId: string): CourseBuffer {
-    let buffer = buffers.get(courseId)
+  function bufferFor(courseId: string, sessionId: string): SessionBuffer {
+    let buffer = buffers.get(sessionId)
     if (buffer === undefined) {
-      buffer = { seq: 0, pending: [], debounceTimer: null, maxWaitTimer: null }
-      buffers.set(courseId, buffer)
+      buffer = {
+        courseId,
+        seq: 0,
+        pending: [],
+        debounceTimer: null,
+        maxWaitTimer: null
+      }
+      buffers.set(sessionId, buffer)
     }
     return buffer
   }
 
-  function clearTimers(buffer: CourseBuffer): void {
+  function clearTimers(buffer: SessionBuffer): void {
     if (buffer.debounceTimer !== null) {
       clearTimeout(buffer.debounceTimer)
       buffer.debounceTimer = null
@@ -94,7 +103,7 @@ export function createEventBatcher(deps: EventBatcherDeps): EventBatcher {
     }
   }
 
-  function flushBuffer(courseId: string, buffer: CourseBuffer): void {
+  function flushBuffer(sessionId: string, buffer: SessionBuffer): void {
     clearTimers(buffer)
     if (buffer.pending.length === 0) {
       return
@@ -102,42 +111,42 @@ export function createEventBatcher(deps: EventBatcherDeps): EventBatcher {
     buffer.seq += 1
     const events = buffer.pending
     buffer.pending = []
-    deps.send({ courseId, seq: buffer.seq, events })
+    deps.send({ courseId: buffer.courseId, sessionId, seq: buffer.seq, events })
   }
 
   return {
-    push: (courseId, event) => {
-      const buffer = bufferFor(courseId)
+    push: (courseId, sessionId, event) => {
+      const buffer = bufferFor(courseId, sessionId)
       const merged = tryMerge(buffer.pending, event)
       buffer.pending = merged ?? [...buffer.pending, event]
 
       if (!isDelta(event)) {
-        flushBuffer(courseId, buffer)
+        flushBuffer(sessionId, buffer)
         return
       }
       if (buffer.debounceTimer !== null) {
         clearTimeout(buffer.debounceTimer)
       }
       buffer.debounceTimer = setTimeout(
-        () => flushBuffer(courseId, buffer),
+        () => flushBuffer(sessionId, buffer),
         debounceMs
       )
       if (buffer.maxWaitTimer === null) {
         buffer.maxWaitTimer = setTimeout(
-          () => flushBuffer(courseId, buffer),
+          () => flushBuffer(sessionId, buffer),
           maxWaitMs
         )
       }
     },
-    flush: (courseId) => {
-      const buffer = buffers.get(courseId)
+    flush: (sessionId) => {
+      const buffer = buffers.get(sessionId)
       if (buffer !== undefined) {
-        flushBuffer(courseId, buffer)
+        flushBuffer(sessionId, buffer)
       }
     },
     dispose: () => {
-      for (const [courseId, buffer] of buffers) {
-        flushBuffer(courseId, buffer)
+      for (const [sessionId, buffer] of buffers) {
+        flushBuffer(sessionId, buffer)
       }
       buffers.clear()
     }

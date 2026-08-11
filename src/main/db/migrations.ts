@@ -11,6 +11,7 @@
 
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
+import { deriveConversationTitle } from '../features/agent/chatRepo'
 import schemaSql from './schema.sql?raw'
 
 export interface Migration {
@@ -542,6 +543,67 @@ export const migrations: Migration[] = [
          CREATE INDEX IF NOT EXISTS idx_agent_actions_turn
            ON agent_actions (turn_id, created_at);`
       )
+    }
+  },
+  {
+    // [M16] Multiple conversations per course. A conversation IS an
+    // agent_sessions row, so all this needs is a display title (first user
+    // message, one line, ≤60 chars) and an index for the per-course list
+    // ordered by recency. Existing rows get their title backfilled from the
+    // earliest user message with exactly the rule new sends use.
+    version: 16,
+    name: 'agent-session-titles',
+    up: (db) => {
+      const columns = new Set(
+        (
+          db.prepare('PRAGMA table_info(agent_sessions)').all() as {
+            name: string
+          }[]
+        ).map((column) => column.name)
+      )
+      if (!columns.has('title')) {
+        db.exec(`ALTER TABLE agent_sessions ADD COLUMN title TEXT`)
+      }
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_agent_sessions_course_recency
+           ON agent_sessions (course_id, last_used_at DESC)
+           WHERE deleted_at IS NULL;`
+      )
+
+      const sessions = db
+        .prepare(
+          `SELECT id FROM agent_sessions
+           WHERE title IS NULL AND deleted_at IS NULL`
+        )
+        .all() as { id: string }[]
+      const firstUserText = db.prepare(
+        `SELECT b.payload_json AS payload
+           FROM messages m
+           JOIN message_blocks b ON b.message_id = m.id
+          WHERE m.session_id = ? AND m.role = 'user'
+            AND m.deleted_at IS NULL AND b.deleted_at IS NULL
+            AND b.kind = 'text'
+          ORDER BY m.turn_seq ASC, b.ord ASC
+          LIMIT 1`
+      )
+      const setTitle = db.prepare(
+        `UPDATE agent_sessions SET title = ? WHERE id = ?`
+      )
+      for (const { id } of sessions) {
+        const row = firstUserText.get(id) as { payload: string } | undefined
+        if (row === undefined) continue
+        let text = ''
+        try {
+          const parsed = JSON.parse(row.payload) as { text?: unknown }
+          text = typeof parsed.text === 'string' ? parsed.text : ''
+        } catch {
+          text = ''
+        }
+        const title = deriveConversationTitle(text)
+        if (title !== '') {
+          setTitle.run(title, id)
+        }
+      }
     }
   }
 ]

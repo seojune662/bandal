@@ -11,10 +11,13 @@ import type { GroupsInvalidationReason } from '../types/group'
 import type { GroupEvent } from '../types/group-events'
 import type { UpdateStatus } from '../types/update'
 
-/** Ordered batch of streaming agent events for a course chat. */
+/** Ordered batch of streaming agent events for ONE conversation. */
 export interface ChatEventBatch {
+  /** Kept alongside sessionId — AssistantLayer filters on the course. */
   courseId: string
-  /** Monotonic per-course sequence number for ordering / gap detection. */
+  /** Conversation id (agent_sessions.id) this batch belongs to. */
+  sessionId: string
+  /** Monotonic per-conversation sequence number for ordering / gap detection. */
   seq: number
   events: AgentEvent[]
 }

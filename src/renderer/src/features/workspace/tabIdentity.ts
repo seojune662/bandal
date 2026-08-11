@@ -21,7 +21,7 @@ export { TAB_KINDS, isTabKind, isTabDescriptor } from '../../../../shared/tabs'
  * Identity key == dockview panel id. Two descriptors that should share a
  * tab produce the same key:
  *  - pdf/note/image: same course + same file
- *  - chat: singleton per course
+ *  - chat: one tab per conversation (legacy payloads: singleton per course)
  *  - board: global singleton
  *  - browser: keyed by its stable tabId (every new browser tab is unique)
  *  - group-chat: singleton per course (null course = the 미지정 bucket)
@@ -36,7 +36,12 @@ export function tabPanelId(descriptor: TabDescriptor): string {
     case 'browser':
       return `browser:${descriptor.payload.tabId}`
     case 'chat':
-      return `chat:${descriptor.payload.courseId}`
+      // One tab per CONVERSATION. Legacy descriptors (no conversationId yet)
+      // keep the old per-course singleton id so persisted layouts still
+      // resolve; ChatTab normalizes them on mount.
+      return descriptor.payload.conversationId !== undefined
+        ? `chat:${descriptor.payload.courseId}:${descriptor.payload.conversationId}`
+        : `chat:${descriptor.payload.courseId}`
     case 'board':
       return 'board'
     case 'group-chat':

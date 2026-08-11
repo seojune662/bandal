@@ -19,10 +19,12 @@ import {
   sendChatMessage,
   setChatProvider,
   setChatModel,
-  useChatSessionStore
+  useChatSessionStore,
+  type SetChatProviderResult
 } from './chatSessionStore'
 
 export type { ChatPhase } from './chatSessionStore'
+export type { SetChatProviderResult } from './chatSessionStore'
 
 export interface ChatSessionApi {
   state: ChatViewState
@@ -31,6 +33,8 @@ export interface ChatSessionApi {
   availability: AgentAvailability | null
   openError: string | null
   models: AgentModelOption[]
+  /** Conversation title (first user message). Null until the first send. */
+  title: string | null
   send: (content: string, attachments?: ChatAttachment[]) => void
   cancel: () => void
   respondPermission: (
@@ -40,44 +44,62 @@ export interface ChatSessionApi {
   refresh: () => void
   dismissNotice: () => void
   setModel: (model: string) => void
-  setProvider: (provider: AgentProvider) => void
+  /**
+   * Switches provider. `{ needsNewConversation: true }` means this
+   * conversation already has history and cannot switch — the caller opens a
+   * new conversation instead (the preference itself is already saved).
+   */
+  setProvider: (provider: AgentProvider) => SetChatProviderResult
 }
 
-export function useChatSession(courseId: string): ChatSessionApi {
+export function useChatSession(
+  courseId: string,
+  conversationId: string
+): ChatSessionApi {
   const snapshot = useChatSessionStore(
     useCallback(
-      (store) => store.sessions[courseId] ?? selectChatSession(courseId),
-      [courseId]
+      (store) => store.sessions[conversationId] ?? selectChatSession(conversationId),
+      [conversationId]
     )
   )
 
-  useEffect(() => acquireChatSession(courseId), [courseId])
+  useEffect(
+    () => acquireChatSession(courseId, conversationId),
+    [courseId, conversationId]
+  )
 
   const send = useCallback(
     (content: string, attachments?: ChatAttachment[]) => {
-      sendChatMessage(courseId, content, attachments)
+      sendChatMessage(courseId, conversationId, content, attachments)
     },
-    [courseId]
+    [courseId, conversationId]
   )
-  const cancel = useCallback(() => cancelChatTurn(courseId), [courseId])
+  const cancel = useCallback(
+    () => cancelChatTurn(courseId, conversationId),
+    [courseId, conversationId]
+  )
   const respondPermission = useCallback(
     (requestId: string, response: PermissionResponse) => {
-      respondToChatPermission(courseId, requestId, response)
+      respondToChatPermission(courseId, conversationId, requestId, response)
     },
-    [courseId]
+    [courseId, conversationId]
   )
-  const refresh = useCallback(() => refreshChatSession(courseId), [courseId])
+  const refresh = useCallback(
+    () => refreshChatSession(courseId, conversationId),
+    [courseId, conversationId]
+  )
   const dismissNotice = useCallback(
-    () => dismissChatNotice(courseId),
-    [courseId]
+    () => dismissChatNotice(courseId, conversationId),
+    [courseId, conversationId]
   )
   const setModel = useCallback(
-    (model: string) => setChatModel(courseId, model),
-    [courseId]
+    (model: string) => setChatModel(courseId, conversationId, model),
+    [courseId, conversationId]
   )
   const setProvider = useCallback(
-    (provider: AgentProvider) => setChatProvider(courseId, provider),
-    [courseId]
+    (provider: AgentProvider) =>
+      setChatProvider(courseId, conversationId, provider),
+    [courseId, conversationId]
   )
 
   return {

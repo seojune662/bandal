@@ -10,6 +10,7 @@ import type { Database } from 'better-sqlite3'
 import type { AgentProvider } from '../../../shared/types/agent-events'
 import type {
   AgentSessionStatus,
+  ChatConversationSummary,
   ChatMessage,
   ChatSessionInfo,
   MessageBlock,
@@ -18,6 +19,17 @@ import type {
 import { nowIso, requireId, requireNonEmptyString } from '../../db/validate'
 
 export const HISTORY_TAIL_LIMIT = 300
+
+export const CONVERSATION_TITLE_MAX = 60
+
+/**
+ * Conversation title from the first user message: whitespace (newlines
+ * included) collapsed to single spaces, truncated to 60 chars. Shared with the
+ * migration backfill so old and new rows derive titles identically.
+ */
+export function deriveConversationTitle(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().slice(0, CONVERSATION_TITLE_MAX)
+}
 
 export interface BlockInput {
   kind: MessageBlockKind
@@ -32,14 +44,25 @@ export interface SessionStartRecord {
 }
 
 export interface ChatRepo {
-  /** Latest live session row for the course, creating one if missing. */
-  getOrCreateSession(courseId: string, provider: AgentProvider): ChatSessionInfo
+  /** Live session row by id, or null when it never persisted / was deleted. */
+  getSession(sessionId: string): ChatSessionInfo | null
+  /** Persists a conversation under a CALLER-supplied id (renderer-minted). */
+  createSession(
+    sessionId: string,
+    courseId: string,
+    provider: AgentProvider
+  ): ChatSessionInfo
+  /** Conversation list for a course; zero-message rows are excluded. */
+  listConversations(courseId: string): ChatConversationSummary[]
+  /** Sets the title once — later sends never rename the conversation. */
+  setTitleIfEmpty(sessionId: string, title: string): void
+  softDeleteSession(sessionId: string): void
   /** Persists the resume record once the CLI reports its session id. */
   recordSessionStart(sessionId: string, record: SessionStartRecord): void
   /** Pins a model without touching the resumable CLI session id. */
   setModel(sessionId: string, model: string): void
   setStatus(sessionId: string, status: AgentSessionStatus): void
-  nextTurnSeq(courseId: string): number
+  nextTurnSeq(sessionId: string): number
   appendMessage(
     courseId: string,
     sessionId: string,
@@ -47,7 +70,7 @@ export interface ChatRepo {
     turnSeq: number,
     blocks: BlockInput[]
   ): ChatMessage
-  historyTail(courseId: string, limit?: number): ChatMessage[]
+  historyTail(sessionId: string, limit?: number): ChatMessage[]
   /** Startup recovery: closes turns left dangling by a crash. */
   markDanglingInterrupted(): void
   listGrants(courseId: string): string[]
@@ -62,6 +85,7 @@ interface SessionRow {
   model: string | null
   status: string
   last_used_at: string | null
+  title: string | null
 }
 
 interface MessageRow {
@@ -89,7 +113,8 @@ function rowToSessionInfo(row: SessionRow): ChatSessionInfo {
     cliSessionId: row.cli_session_id,
     model: row.model,
     status: row.status as AgentSessionStatus,
-    lastUsedAt: row.last_used_at
+    lastUsedAt: row.last_used_at,
+    title: row.title
   }
 }
 
@@ -152,34 +177,85 @@ export function createChatRepo(db: Database): ChatRepo {
   }
 
   return {
-    getOrCreateSession(courseId, provider) {
-      const id = requireId(courseId, 'courseId')
-      const existing = db
+    getSession(sessionId) {
+      const row = db
         .prepare(
-          `SELECT * FROM agent_sessions
-           WHERE course_id = ? AND provider = ? AND deleted_at IS NULL
-           ORDER BY created_at DESC LIMIT 1`
+          `SELECT * FROM agent_sessions WHERE id = ? AND deleted_at IS NULL`
         )
-        .get(id, provider) as SessionRow | undefined
-      if (existing !== undefined) {
-        return rowToSessionInfo(existing)
-      }
+        .get(requireId(sessionId, 'sessionId')) as SessionRow | undefined
+      return row === undefined ? null : rowToSessionInfo(row)
+    },
+
+    createSession(sessionId, courseId, provider) {
+      const id = requireId(sessionId, 'sessionId')
+      const course = requireId(courseId, 'courseId')
       const now = nowIso()
-      const sessionId = randomUUID()
       db.prepare(
         `INSERT INTO agent_sessions
            (id, course_id, provider, cli_session_id, model, status, last_used_at, created_at, updated_at)
          VALUES (?, ?, ?, NULL, NULL, 'idle', NULL, ?, ?)`
-      ).run(sessionId, id, provider, now, now)
+      ).run(id, course, provider, now, now)
       return {
-        id: sessionId,
-        courseId: id,
+        id,
+        courseId: course,
         provider,
         cliSessionId: null,
         model: null,
         status: 'idle',
-        lastUsedAt: null
+        lastUsedAt: null,
+        title: null
       }
+    },
+
+    listConversations(courseId) {
+      // INNER JOIN on messages drops zero-message conversations: a tab that
+      // was opened but never used must not clutter the list.
+      const rows = db
+        .prepare(
+          `SELECT s.id, s.course_id, s.provider, s.title, s.model,
+                  s.last_used_at, s.created_at, COUNT(m.id) AS message_count
+             FROM agent_sessions s
+             JOIN messages m ON m.session_id = s.id AND m.deleted_at IS NULL
+            WHERE s.course_id = ? AND s.deleted_at IS NULL
+            GROUP BY s.id
+            ORDER BY COALESCE(s.last_used_at, s.created_at) DESC`
+        )
+        .all(requireId(courseId, 'courseId')) as {
+        id: string
+        course_id: string
+        provider: string
+        title: string | null
+        model: string | null
+        last_used_at: string | null
+        created_at: string
+        message_count: number
+      }[]
+      return rows.map((row) => ({
+        id: row.id,
+        courseId: row.course_id,
+        provider: row.provider as AgentProvider,
+        title: row.title,
+        model: row.model,
+        lastUsedAt: row.last_used_at,
+        createdAt: row.created_at,
+        messageCount: row.message_count
+      }))
+    },
+
+    setTitleIfEmpty(sessionId, title) {
+      const clean = requireNonEmptyString(title, 'title').trim()
+      db.prepare(
+        `UPDATE agent_sessions SET title = ?, updated_at = ?
+         WHERE id = ? AND (title IS NULL OR title = '')`
+      ).run(clean, nowIso(), requireId(sessionId, 'sessionId'))
+    },
+
+    softDeleteSession(sessionId) {
+      const now = nowIso()
+      db.prepare(
+        `UPDATE agent_sessions SET deleted_at = ?, updated_at = ?
+         WHERE id = ? AND deleted_at IS NULL`
+      ).run(now, now, requireId(sessionId, 'sessionId'))
     },
 
     recordSessionStart(sessionId, record) {
@@ -217,13 +293,13 @@ export function createChatRepo(db: Database): ChatRepo {
       ).run(status, nowIso(), nowIso(), requireId(sessionId, 'sessionId'))
     },
 
-    nextTurnSeq(courseId) {
+    nextTurnSeq(sessionId) {
       const row = db
         .prepare(
           `SELECT MAX(turn_seq) AS max FROM messages
-           WHERE course_id = ? AND deleted_at IS NULL`
+           WHERE session_id = ? AND deleted_at IS NULL`
         )
-        .get(requireId(courseId, 'courseId')) as { max: number | null }
+        .get(requireId(sessionId, 'sessionId')) as { max: number | null }
       return (row.max ?? 0) + 1
     },
 
@@ -240,13 +316,13 @@ export function createChatRepo(db: Database): ChatRepo {
       return insert()
     },
 
-    historyTail(courseId, limit = HISTORY_TAIL_LIMIT) {
-      const id = requireId(courseId, 'courseId')
+    historyTail(sessionId, limit = HISTORY_TAIL_LIMIT) {
+      const id = requireId(sessionId, 'sessionId')
       const rows = db
         .prepare(
           `SELECT * FROM (
              SELECT * FROM messages
-             WHERE course_id = ? AND deleted_at IS NULL
+             WHERE session_id = ? AND deleted_at IS NULL
              ORDER BY turn_seq DESC, CASE role WHEN 'user' THEN 1 ELSE 0 END, created_at DESC
              LIMIT ?
            ) ORDER BY turn_seq ASC, CASE role WHEN 'user' THEN 0 ELSE 1 END, created_at ASC`

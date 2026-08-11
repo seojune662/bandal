@@ -33,6 +33,7 @@ interface ResizeGesture extends PointerGesture {
 
 export interface AssistantPopupProps {
   visible: boolean
+  conversationId: string | null
   onClose: () => void
 }
 
@@ -105,6 +106,7 @@ function sameGeometry(
 
 export function AssistantPopup({
   visible,
+  conversationId,
   onClose
 }: AssistantPopupProps): JSX.Element {
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
@@ -293,13 +295,17 @@ export function AssistantPopup({
       </header>
 
       <div className="assistant-popup__body">
-        {selectedCourseId === null ? (
+        {selectedCourseId === null || conversationId === null ? (
           <div className="assistant-popup__empty" role="status">
             <BandalOrbMark />
             <p>과목을 먼저 고르세요</p>
           </div>
         ) : (
-          <ChatSurface courseId={selectedCourseId} variant="popup" />
+          <ChatSurface
+            courseId={selectedCourseId}
+            conversationId={conversationId}
+            variant="popup"
+          />
         )}
       </div>
 

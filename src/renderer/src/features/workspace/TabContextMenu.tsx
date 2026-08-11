@@ -173,13 +173,14 @@ export function TabContextMenu({
   const askTutorAboutFile = (): void => {
     if (!isFileTab) return
     const { courseId } = descriptor.payload
-    useWorkspaceStore
-      .getState()
-      .openTab(descriptorFor('chat', { courseId }))
+    const conversationId = crypto.randomUUID()
     requestChatPrompt(
-      courseId,
+      conversationId,
       `"${tabTitle(descriptor)}" 자료에 대해 질문하고 싶어: `
     )
+    useWorkspaceStore
+      .getState()
+      .openTab(descriptorFor('chat', { courseId, conversationId }))
   }
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {

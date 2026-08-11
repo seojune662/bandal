@@ -32,13 +32,23 @@ export interface ChatSessionSnapshot {
   availability: AgentAvailability | null
   openError: string | null
   models: AgentModelOption[]
+  /** Conversation title (first user message). Null until the first send. */
+  title: string | null
+}
+
+/** Result of setChatProvider: an in-use conversation cannot switch provider. */
+export interface SetChatProviderResult {
+  needsNewConversation: boolean
 }
 
 interface ChatSessionStoreState {
+  /** Keyed by CONVERSATION id, not course — one course holds many. */
   sessions: Record<string, ChatSessionSnapshot>
 }
 
-interface CourseRuntime {
+interface ConversationRuntime {
+  /** The course this conversation belongs to (needed for reopen). */
+  courseId: string
   refCount: number
   unsubscribe: Unsubscribe | null
   lastSeq: number | null
@@ -56,19 +66,21 @@ const EMPTY_SNAPSHOT: ChatSessionSnapshot = {
   provider: 'claude-code',
   availability: null,
   openError: null,
-  models: []
+  models: [],
+  title: null
 }
 
-const runtimes = new Map<string, CourseRuntime>()
+const runtimes = new Map<string, ConversationRuntime>()
 
 export const useChatSessionStore = create<ChatSessionStoreState>(() => ({
   sessions: {}
 }))
 
-function runtimeFor(courseId: string): CourseRuntime {
-  let runtime = runtimes.get(courseId)
+function runtimeFor(courseId: string, conversationId: string): ConversationRuntime {
+  let runtime = runtimes.get(conversationId)
   if (runtime === undefined) {
     runtime = {
+      courseId,
       refCount: 0,
       unsubscribe: null,
       lastSeq: null,
@@ -79,26 +91,26 @@ function runtimeFor(courseId: string): CourseRuntime {
       modelsPromise: null,
       modelsProvider: null
     }
-    runtimes.set(courseId, runtime)
+    runtimes.set(conversationId, runtime)
   }
   return runtime
 }
 
-function snapshotFor(courseId: string): ChatSessionSnapshot {
-  return useChatSessionStore.getState().sessions[courseId] ?? EMPTY_SNAPSHOT
+function snapshotFor(conversationId: string): ChatSessionSnapshot {
+  return useChatSessionStore.getState().sessions[conversationId] ?? EMPTY_SNAPSHOT
 }
 
 function updateSnapshot(
-  courseId: string,
+  conversationId: string,
   update: (current: ChatSessionSnapshot) => ChatSessionSnapshot
 ): void {
   useChatSessionStore.setState((store) => {
-    const current = store.sessions[courseId] ?? EMPTY_SNAPSHOT
+    const current = store.sessions[conversationId] ?? EMPTY_SNAPSHOT
     const next = update(current)
     if (next === current) {
       return store
     }
-    return { sessions: { ...store.sessions, [courseId]: next } }
+    return { sessions: { ...store.sessions, [conversationId]: next } }
   })
 }
 
@@ -108,8 +120,8 @@ function errorMessage(error: unknown): string {
     : '채팅을 여는 중 문제가 발생했습니다.'
 }
 
-function flushQueue(courseId: string): void {
-  const runtime = runtimeFor(courseId)
+function flushQueue(courseId: string, conversationId: string): void {
+  const runtime = runtimeFor(courseId, conversationId)
   runtime.raf = null
   if (runtime.hydrating || runtime.queue.length === 0) {
     return
@@ -117,33 +129,38 @@ function flushQueue(courseId: string): void {
   const events = runtime.queue
   runtime.queue = []
   startTransition(() => {
-    updateSnapshot(courseId, (current) => ({
+    updateSnapshot(conversationId, (current) => ({
       ...current,
       state: applyAgentEvents(current.state, events)
     }))
   })
 }
 
-function scheduleFlush(courseId: string): void {
-  const runtime = runtimeFor(courseId)
+function scheduleFlush(courseId: string, conversationId: string): void {
+  const runtime = runtimeFor(courseId, conversationId)
   if (runtime.raf !== null || runtime.refCount === 0) {
     return
   }
-  runtime.raf = requestAnimationFrame(() => flushQueue(courseId))
+  runtime.raf = requestAnimationFrame(() => flushQueue(courseId, conversationId))
 }
 
-function loadModels(courseId: string, provider: AgentProvider): void {
-  const runtime = runtimeFor(courseId)
+function loadModels(
+  courseId: string,
+  conversationId: string,
+  provider: AgentProvider
+): void {
+  const runtime = runtimeFor(courseId, conversationId)
   if (
     runtime.modelsPromise !== null ||
-    (runtime.modelsProvider === provider && snapshotFor(courseId).models.length > 0)
+    (runtime.modelsProvider === provider &&
+      snapshotFor(conversationId).models.length > 0)
   ) {
     return
   }
   runtime.modelsProvider = provider
   runtime.modelsPromise = invoke('agent:models', { provider })
     .then(({ models }) => {
-      updateSnapshot(courseId, (current) => ({ ...current, models }))
+      updateSnapshot(conversationId, (current) => ({ ...current, models }))
     })
     .catch(() => {
       // Main normally returns a fallback. Keep the selector usable if IPC is
@@ -154,26 +171,31 @@ function loadModels(courseId: string, provider: AgentProvider): void {
     })
 }
 
-async function openCourse(
+async function openConversation(
   courseId: string,
+  conversationId: string,
   opts: { discardQueue: boolean }
 ): Promise<void> {
-  const runtime = runtimeFor(courseId)
+  const runtime = runtimeFor(courseId, conversationId)
   const version = ++runtime.openVersion
   runtime.hydrating = true
   if (opts.discardQueue) {
     runtime.queue = []
   }
   try {
-    const result = await invoke('chat:open', { courseId })
+    const result = await invoke('chat:open', {
+      courseId,
+      sessionId: conversationId
+    })
     if (version !== runtime.openVersion) {
       return
     }
-    updateSnapshot(courseId, (current) => ({
+    updateSnapshot(conversationId, (current) => ({
       ...current,
       provider: result.sessionInfo?.provider ?? current.provider,
       availability: result.availability,
       openError: null,
+      title: result.sessionInfo?.title ?? current.title,
       state: hydrateFromHistory(
         result.history,
         result.sessionInfo?.model ?? null
@@ -182,13 +204,14 @@ async function openCourse(
     }))
     loadModels(
       courseId,
-      result.sessionInfo?.provider ?? snapshotFor(courseId).provider
+      conversationId,
+      result.sessionInfo?.provider ?? snapshotFor(conversationId).provider
     )
   } catch (error) {
     if (version !== runtime.openVersion) {
       return
     }
-    updateSnapshot(courseId, (current) => ({
+    updateSnapshot(conversationId, (current) => ({
       ...current,
       openError: errorMessage(error),
       phase: 'error'
@@ -196,37 +219,46 @@ async function openCourse(
   } finally {
     if (version === runtime.openVersion) {
       runtime.hydrating = false
-      scheduleFlush(courseId)
+      scheduleFlush(courseId, conversationId)
     }
   }
 }
 
 function handleBatch(
   courseId: string,
-  batch: { courseId: string; seq: number; events: AgentEvent[] }
+  conversationId: string,
+  batch: { sessionId: string; seq: number; events: AgentEvent[] }
 ): void {
-  if (batch.courseId !== courseId) {
+  if (batch.sessionId !== conversationId) {
     return
   }
-  const runtime = runtimeFor(courseId)
+  const runtime = runtimeFor(courseId, conversationId)
   const check = checkBatchSeq(runtime.lastSeq, batch.seq)
   if (check === 'stale') {
     return
   }
   runtime.lastSeq = batch.seq
   if (check === 'gap') {
-    void openCourse(courseId, { discardQueue: true })
+    void openConversation(courseId, conversationId, { discardQueue: true })
     return
   }
   runtime.queue.push(...batch.events)
-  scheduleFlush(courseId)
+  scheduleFlush(courseId, conversationId)
 }
 
-/** Retains the sole push listener for a course and preserves state on release. */
-export function acquireChatSession(courseId: string): () => void {
-  const runtime = runtimeFor(courseId)
-  if (useChatSessionStore.getState().sessions[courseId] === undefined) {
-    updateSnapshot(courseId, (current) => ({ ...current }))
+/**
+ * Retains the sole push listener for a conversation and preserves state on
+ * release. Refcounted per conversation: the same conversation mounted twice
+ * (tab + popup) shares one listener.
+ */
+export function acquireChatSession(
+  courseId: string,
+  conversationId: string
+): () => void {
+  const runtime = runtimeFor(courseId, conversationId)
+  runtime.courseId = courseId
+  if (useChatSessionStore.getState().sessions[conversationId] === undefined) {
+    updateSnapshot(conversationId, (current) => ({ ...current }))
   }
   const wasUnused = runtime.refCount === 0
   runtime.refCount += 1
@@ -234,9 +266,9 @@ export function acquireChatSession(courseId: string): () => void {
     runtime.lastSeq = null
     runtime.queue = []
     runtime.unsubscribe = onPush('chat:event-batch', (batch) => {
-      handleBatch(courseId, batch)
+      handleBatch(courseId, conversationId, batch)
     })
-    void openCourse(courseId, { discardQueue: false })
+    void openConversation(courseId, conversationId, { discardQueue: false })
   }
 
   let released = false
@@ -264,6 +296,7 @@ export function acquireChatSession(courseId: string): () => void {
 
 export function sendChatMessage(
   courseId: string,
+  conversationId: string,
   content: string,
   attachments: ChatAttachment[] = []
 ): void {
@@ -272,35 +305,41 @@ export function sendChatMessage(
     return
   }
   const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-  updateSnapshot(courseId, (current) => ({
+  // First message doubles as the title — optimistic, and identical to the rule
+  // main applies in setTitleIfEmpty, so the next open confirms it unchanged.
+  const derivedTitle = text.replace(/\s+/g, ' ').trim().slice(0, 60)
+  updateSnapshot(conversationId, (current) => ({
     ...current,
+    title: current.title ?? (derivedTitle === '' ? null : derivedTitle),
     state: appendLocalUserMessage(current.state, localId, text, attachments)
   }))
   const request = {
     courseId,
+    sessionId: conversationId,
     content: text,
     ...(attachments.length === 0 ? {} : { attachments })
   }
   void invoke('chat:send', request).catch(() => {
-    updateSnapshot(courseId, (current) => ({
+    updateSnapshot(conversationId, (current) => ({
       ...current,
       state: markSendFailed(current.state)
     }))
   })
 }
 
-export function cancelChatTurn(courseId: string): void {
-  void invoke('chat:cancel', { courseId }).catch(() => {
+export function cancelChatTurn(courseId: string, conversationId: string): void {
+  void invoke('chat:cancel', { courseId, sessionId: conversationId }).catch(() => {
     // Best-effort: turn-complete(interrupted) is authoritative.
   })
 }
 
 export function respondToChatPermission(
   courseId: string,
+  conversationId: string,
   requestId: string,
   response: PermissionResponse
 ): void {
-  updateSnapshot(courseId, (current) => ({
+  updateSnapshot(conversationId, (current) => ({
     ...current,
     state: applyLocalPermissionResponse(
       current.state,
@@ -310,6 +349,7 @@ export function respondToChatPermission(
   }))
   void invoke('chat:respondPermission', {
     courseId,
+    sessionId: conversationId,
     requestId,
     response
   }).catch(() => {
@@ -317,21 +357,31 @@ export function respondToChatPermission(
   })
 }
 
-export function refreshChatSession(courseId: string): void {
-  void openCourse(courseId, { discardQueue: false })
+export function refreshChatSession(
+  courseId: string,
+  conversationId: string
+): void {
+  void openConversation(courseId, conversationId, { discardQueue: false })
 }
 
-export function dismissChatNotice(courseId: string): void {
-  updateSnapshot(courseId, (current) => ({
+export function dismissChatNotice(
+  _courseId: string,
+  conversationId: string
+): void {
+  updateSnapshot(conversationId, (current) => ({
     ...current,
     state: clearNotice(current.state)
   }))
 }
 
-export function setChatModel(courseId: string, model: string): void {
-  void invoke('chat:setModel', { courseId, model })
+export function setChatModel(
+  courseId: string,
+  conversationId: string,
+  model: string
+): void {
+  void invoke('chat:setModel', { courseId, sessionId: conversationId, model })
     .then(() => {
-      updateSnapshot(courseId, (current) => ({
+      updateSnapshot(conversationId, (current) => ({
         ...current,
         state: { ...current.state, model }
       }))
@@ -341,14 +391,30 @@ export function setChatModel(courseId: string, model: string): void {
     })
 }
 
-/** Saves the preferred provider, closes the old runtime, then re-opens chat. */
+/**
+ * Saves the preferred provider. A conversation with no messages yet is simply
+ * reopened in place under the new provider; one that already has history
+ * cannot switch (its CLI transcript belongs to the old provider), so the
+ * caller gets `{ needsNewConversation: true }` and decides what to do.
+ */
 export function setChatProvider(
   courseId: string,
+  conversationId: string,
   provider: AgentProvider
-): void {
-  const runtime = runtimeFor(courseId)
+): SetChatProviderResult {
+  const hasMessages = snapshotFor(conversationId).state.messages.length > 0
+  if (hasMessages) {
+    // Still persist the preference: the NEW conversation the caller opens
+    // next is what follows settings' agentProvider.
+    void invoke('settings:set', { agentProvider: provider }).catch(() => {
+      // The caller surfaces provider problems on the next open.
+    })
+    return { needsNewConversation: true }
+  }
+
+  const runtime = runtimeFor(courseId, conversationId)
   runtime.modelsProvider = null
-  updateSnapshot(courseId, (current) => ({
+  updateSnapshot(conversationId, (current) => ({
     ...current,
     provider,
     phase: 'loading',
@@ -359,27 +425,28 @@ export function setChatProvider(
   void invoke('settings:set', { agentProvider: provider })
     .then(async () => {
       try {
-        await invoke('chat:close', { courseId })
+        await invoke('chat:close', { courseId, sessionId: conversationId })
       } catch {
         // The provider setting is authoritative. An older main process may not
-        // have a live course session to close, so continue with a fresh open.
+        // have a live session to close, so continue with a fresh open.
       }
-      if (snapshotFor(courseId).provider === provider) {
-        await openCourse(courseId, { discardQueue: true })
+      if (snapshotFor(conversationId).provider === provider) {
+        await openConversation(courseId, conversationId, { discardQueue: true })
       }
     })
     .catch((error: unknown) => {
-      if (snapshotFor(courseId).provider !== provider) {
+      if (snapshotFor(conversationId).provider !== provider) {
         return
       }
-      updateSnapshot(courseId, (current) => ({
+      updateSnapshot(conversationId, (current) => ({
         ...current,
         phase: 'error',
         openError: errorMessage(error)
       }))
     })
+  return { needsNewConversation: false }
 }
 
-export function selectChatSession(courseId: string): ChatSessionSnapshot {
-  return snapshotFor(courseId)
+export function selectChatSession(conversationId: string): ChatSessionSnapshot {
+  return snapshotFor(conversationId)
 }

@@ -10,6 +10,15 @@ import type { BandalOrbState } from './BandalOrbMark'
 import './assistant.css'
 
 const MAX_QUOTE_LENGTH = 2000
+const popupConversationIds = new Map<string, string>()
+
+function popupConversationIdFor(courseId: string): string {
+  const existing = popupConversationIds.get(courseId)
+  if (existing !== undefined) return existing
+  const conversationId = crypto.randomUUID()
+  popupConversationIds.set(courseId, conversationId)
+  return conversationId
+}
 
 function shortenQuote(text: string): string {
   if (text.length <= MAX_QUOTE_LENGTH) return text
@@ -118,17 +127,21 @@ function useAssistantActivity(
 /** Single shell-level entry point for the persistent assistant experience. */
 export function AssistantLayer(): JSX.Element {
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
+  const popupConversationId =
+    selectedCourseId === null
+      ? null
+      : popupConversationIdFor(selectedCourseId)
   const [popupOpen, setPopupOpen] = useState(false)
   const pendingPromptRef = useRef<string | null>(null)
   const { selection, clear } = useSelectionAnchor()
   const activity = useAssistantActivity(selectedCourseId, popupOpen)
 
   useEffect(() => {
-    if (selectedCourseId === null || pendingPromptRef.current === null) return
+    if (popupConversationId === null || pendingPromptRef.current === null) return
     const prompt = pendingPromptRef.current
     pendingPromptRef.current = null
-    requestChatPrompt(selectedCourseId, prompt)
-  }, [selectedCourseId])
+    requestChatPrompt(popupConversationId, prompt)
+  }, [popupConversationId])
 
   const togglePopup = useCallback((): void => {
     activity.clearAlert()
@@ -142,12 +155,12 @@ export function AssistantLayer(): JSX.Element {
       setPopupOpen(true)
       activity.clearAlert()
       const prompt = quotePrompt(picked)
-      if (selectedCourseId === null) pendingPromptRef.current = prompt
-      else requestChatPrompt(selectedCourseId, prompt)
+      if (popupConversationId === null) pendingPromptRef.current = prompt
+      else requestChatPrompt(popupConversationId, prompt)
       window.getSelection()?.removeAllRanges()
       clear()
     },
-    [activity, clear, selectedCourseId]
+    [activity, clear, popupConversationId]
   )
 
   const orbState: BandalOrbState = activity.busy
@@ -158,7 +171,11 @@ export function AssistantLayer(): JSX.Element {
 
   return (
     <div className="assistant-layer" data-assistant-layer="true">
-      <AssistantPopup visible={popupOpen} onClose={closePopup} />
+      <AssistantPopup
+        visible={popupOpen}
+        conversationId={popupConversationId}
+        onClose={closePopup}
+      />
       {selection !== null && (
         <SelectionOrb
           selection={selection}

@@ -170,7 +170,12 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         hint: course.name,
         icon: <TabKindIcon kind="chat" />,
         run: () => {
-          openTab(descriptorFor('chat', { courseId: course.id }))
+          openTab(
+            descriptorFor('chat', {
+              courseId: course.id,
+              conversationId: crypto.randomUUID()
+            })
+          )
         }
       })
     }

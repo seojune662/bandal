@@ -35,7 +35,8 @@ describe('migrations', () => {
       { version: 12, name: 'board-task-kind-and-allday' },
       { version: 13, name: 'whiteboard-background' },
       { version: 14, name: 'whiteboard-pages' },
-      { version: 15, name: 'agent-actions' }
+      { version: 15, name: 'agent-actions' },
+      { version: 16, name: 'agent-session-titles' }
     ])
   })
 
@@ -109,6 +110,57 @@ describe('migrations', () => {
     }
   })
 
+  test('backfills conversation titles from the earliest user message (migration 016)', () => {
+    // Arrange — a pre-016 session: title NULL, two user turns. Replaying the
+    // migration is safe by design (PRAGMA guard), so deleting its bookkeeping
+    // row and re-running is exactly the lost-bookkeeping case it must survive.
+    const now = new Date().toISOString()
+    ctx.db
+      .prepare(
+        `INSERT INTO courses (id, name, slug, color, folder_path, archived,
+                              sort_order, created_at, updated_at)
+         VALUES ('c1', 'OS', 'os', '#000', '/tmp/os', 0, 0, ?, ?)`
+      )
+      .run(now, now)
+    ctx.db
+      .prepare(
+        `INSERT INTO agent_sessions (id, course_id, provider, status, created_at, updated_at)
+         VALUES ('s1', 'c1', 'claude-code', 'idle', ?, ?)`
+      )
+      .run(now, now)
+    const insertMessage = ctx.db.prepare(
+      `INSERT INTO messages (id, course_id, session_id, role, turn_seq, created_at, updated_at)
+       VALUES (?, 'c1', 's1', 'user', ?, ?, ?)`
+    )
+    const insertBlock = ctx.db.prepare(
+      `INSERT INTO message_blocks (id, message_id, ord, kind, payload_json, created_at, updated_at)
+       VALUES (?, ?, 0, 'text', ?, ?, ?)`
+    )
+    insertMessage.run('m2', 2, now, now)
+    insertBlock.run('b2', 'm2', JSON.stringify({ text: 'later question' }), now, now)
+    insertMessage.run('m1', 1, now, now)
+    insertBlock.run(
+      'b1',
+      'm1',
+      JSON.stringify({ text: `  스케줄링\n알고리즘   설명해줘  ${'x'.repeat(80)}` }),
+      now,
+      now
+    )
+    ctx.db.prepare('DELETE FROM migrations WHERE version = 16').run()
+
+    // Act
+    runMigrations(ctx.db)
+
+    // Assert — earliest turn wins, whitespace collapsed, 60 chars max.
+    const row = ctx.db
+      .prepare('SELECT title FROM agent_sessions WHERE id = ?')
+      .get('s1') as { title: string }
+    expect(row.title).toBe(
+      `스케줄링 알고리즘 설명해줘 ${'x'.repeat(80)}`.slice(0, 60)
+    )
+    expect(row.title).toHaveLength(60)
+  })
+
   test('is idempotent when run twice on the same database', () => {
     // Act
     runMigrations(ctx.db)
@@ -117,6 +169,6 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(15)
+    expect(count.n).toBe(16)
   })
 })

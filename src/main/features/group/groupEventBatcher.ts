@@ -48,7 +48,7 @@ export function createGroupEventBatcher(
     maxWaitMs: deps.maxWaitMs ?? GROUP_BATCH_MAX_WAIT_MS,
     send: (batch) => {
       deps.send({
-        groupId: batch.courseId,
+        groupId: batch.sessionId,
         seq: batch.seq,
         events: batch.events as unknown as GroupEvent[]
       })
@@ -57,7 +57,9 @@ export function createGroupEventBatcher(
 
   return {
     push: (groupId, event) => {
-      inner.push(groupId, event as unknown as AgentEvent)
+      // The shared batcher is conversation-keyed (courseId, sessionId); a
+      // group has no such split, so the groupId serves as both.
+      inner.push(groupId, groupId, event as unknown as AgentEvent)
     },
     flush: (groupId) => {
       inner.flush(groupId)

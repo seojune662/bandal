@@ -40,6 +40,24 @@ export interface ChatSessionInfo {
   model: string | null
   status: AgentSessionStatus
   lastUsedAt: string | null
+  /** First user message, collapsed to one line (≤60 chars). Null until sent. */
+  title: string | null
+}
+
+/**
+ * One conversation in a course's conversation list. A conversation IS an
+ * `agent_sessions` row; rows with zero messages are never listed (a tab that
+ * was opened but never used leaves no visible trace).
+ */
+export interface ChatConversationSummary {
+  id: string
+  courseId: string
+  provider: AgentProvider
+  title: string | null
+  model: string | null
+  lastUsedAt: string | null
+  createdAt: string
+  messageCount: number
 }
 
 export interface ChatOpenResult {
@@ -62,6 +80,8 @@ export interface ChatAttachment {
 
 export interface ChatSendInput {
   courseId: string
+  /** Conversation id (renderer-minted uuid; becomes agent_sessions.id). */
+  sessionId: string
   content: string
   attachments?: ChatAttachment[]
 }

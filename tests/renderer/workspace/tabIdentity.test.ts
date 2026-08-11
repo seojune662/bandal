@@ -54,8 +54,16 @@ describe('tabPanelId', () => {
     )
   })
 
-  test('chat is singleton per course, board is a global singleton', () => {
+  test('chat keys off its conversation; legacy payloads stay course-keyed', () => {
     expect(tabPanelId(descriptorFor('chat', { courseId: 'c1' }))).toBe('chat:c1')
+    expect(
+      tabPanelId(descriptorFor('chat', { courseId: 'c1', conversationId: 'v1' }))
+    ).toBe('chat:c1:v1')
+    expect(
+      tabPanelId(descriptorFor('chat', { courseId: 'c1', conversationId: 'v1' }))
+    ).not.toBe(
+      tabPanelId(descriptorFor('chat', { courseId: 'c1', conversationId: 'v2' }))
+    )
     expect(tabPanelId(descriptorFor('board', {}))).toBe('board')
   })
 
