@@ -657,7 +657,10 @@ export function CourseSidebar(): JSX.Element {
         </div>
       )}
 
-      <div className="app-rail__body course-list-area">
+      <div
+        className="app-rail__body course-list-area"
+        data-tour="course-sidebar"
+      >
         {isLoading && courses.length === 0 && groups.length === 0 ? (
           <div className="loading-list" aria-label="과목 불러오는 중">
             <span />
@@ -668,9 +671,6 @@ export function CourseSidebar(): JSX.Element {
           <div className="empty-state empty-state--courses">
             <BandalMark size={56} className="empty-state__moon" />
             <p className="empty-state__text">첫 과목을 만들어보세요</p>
-            <p className="empty-state__hint">
-              공부하던 폴더를 그대로 과목으로 가져올 수 있어요.
-            </p>
             <button
               type="button"
               className="button button--primary"

@@ -517,10 +517,6 @@ function BoardSurface(): JSX.Element {
       {view === 'board' && tasks.length === 0 && !isLoading && (
         <div className="board-zero-state">
           <span className="board-zero-state__mark" aria-hidden="true" />
-          <div>
-            <strong>과제 마감, 시험 일정, 할 일을 여기서 관리해요</strong>
-            <p>상태별로 옮기며 진행 상황을 확인할 수 있어요.</p>
-          </div>
           <button
             type="button"
             className="board-button board-button--primary"

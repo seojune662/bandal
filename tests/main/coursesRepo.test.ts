@@ -260,6 +260,34 @@ describe('coursesRepo', () => {
     })
   })
 
+  describe('purge', () => {
+    test('rejects a live course', () => {
+      const course = repo.create({ name: '임시', color: 'gold' })
+      expect(() => repo.purge({ courseId: course.id })).toThrow(ValidationError)
+    })
+
+    test('rejects a linked course even after soft delete', () => {
+      const outside = join(ctx.dir, 'external-notes')
+      mkdirSync(outside, { recursive: true })
+      const { course } = repo.addFromFolder({ folderPath: outside, color: 'blue' })
+      repo.softDelete({ courseId: course.id })
+      expect(() => repo.purge({ courseId: course.id })).toThrow(ValidationError)
+    })
+
+    test('hard-deletes a soft-deleted managed course and returns its folder', () => {
+      const course = repo.create({ name: '반달 튜토리얼', color: 'gold' })
+      repo.softDelete({ courseId: course.id })
+
+      const result = repo.purge({ courseId: course.id })
+
+      expect(result.folderPath).toBe(normalizeFolderPath(course.folderPath))
+      const row = ctx.db
+        .prepare('SELECT id FROM courses WHERE id = ?')
+        .get(course.id)
+      expect(row).toBeUndefined()
+    })
+  })
+
   describe('missing folders', () => {
     test('marks a course whose folder disappeared as missing', () => {
       // Arrange

@@ -622,6 +622,20 @@
   color: var(--text-muted);
 }
 
+.favorites-section__empty {
+  display: grid;
+  place-items: center;
+}
+
+.favorites-section__empty-icon {
+  width: var(--text-xl);
+  height: var(--text-xl);
+  fill: none;
+  stroke: currentColor;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+}
+
 .favorites-section__error {
   color: var(--danger);
 }

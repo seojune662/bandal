@@ -283,11 +283,6 @@ export function AnnotationRail({
             <span className="pdf-rail__empty-mark" aria-hidden="true">
               <Icon name="pencil" />
             </span>
-            <p>
-              본문을 드래그해 형광펜을
-              <br />
-              그어보세요.
-            </p>
           </div>
         ) : (
           groups.map((group) => (

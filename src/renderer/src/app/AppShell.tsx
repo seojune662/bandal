@@ -9,6 +9,8 @@ import { NicknameGate } from '../features/group/NicknameGate'
 import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
 import { useOnboardingStore } from '../features/onboarding/onboardingStore'
 import { PreflightBanners } from '../features/onboarding/PreflightBanners'
+import { TourOverlay } from '../features/onboarding/tour/TourOverlay'
+import { useTourStore } from '../features/onboarding/tour/tourStore'
 import { useAgentPreflight } from '../features/onboarding/useAgentPreflight'
 import { SettingsApp } from '../features/settings/SettingsApp'
 import { useUpdateNotifications } from '../features/updates/useUpdateNotifications'
@@ -58,6 +60,7 @@ export function AppShell(): JSX.Element {
     void loadCourses()
     // [M6-A] First-run onboarding + live agent preflight (boot probe).
     void useOnboardingStore.getState().init()
+    void useTourStore.getState().init()
     void useAgentPreflight.getState().probe()
     // [M8] 학교 바로가기 — the rail section renders nothing until this lands.
     void useUniversityStore.getState().init()
@@ -143,6 +146,7 @@ export function AppShell(): JSX.Element {
           <SettingsApp embedded onClose={closeSettings} />
         </div>
       )}
+      <TourOverlay />
     </div>
   )
 }

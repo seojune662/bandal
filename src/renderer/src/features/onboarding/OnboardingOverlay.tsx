@@ -24,6 +24,7 @@ import { useUniversityStore } from '../../stores/universityStore'
 import { UniversityPicker } from '../university/UniversityPicker'
 import { ONBOARDING_STEP_COUNT, type OnboardingStep } from './onboardingModel'
 import { useOnboardingStore } from './onboardingStore'
+import { useTourStore } from './tour/tourStore'
 import { useAgentPreflight } from './useAgentPreflight'
 import '../courses/courses.css'
 import './onboarding.css'
@@ -356,6 +357,19 @@ export function OnboardingOverlay(): JSX.Element {
 
   const isLast = step === ONBOARDING_STEP_COUNT - 1
 
+  const handleLater = (): void => {
+    // Set the tutorial acknowledgement guard before the onboarding settings
+    // broadcast arrives, otherwise the main-window replay listener could
+    // interpret that close as a request to start immediately.
+    void useTourStore.getState().later()
+    completeAndAdvance(step)
+  }
+
+  const handlePrimary = (): void => {
+    completeAndAdvance(step)
+    if (isLast) void useTourStore.getState().start()
+  }
+
   return (
     <div className="onboarding-overlay" role="presentation">
       <div
@@ -408,9 +422,9 @@ export function OnboardingOverlay(): JSX.Element {
           <button
             type="button"
             className="onboarding-footer__skip"
-            onClick={dismiss}
+            onClick={isLast ? handleLater : dismiss}
           >
-            나중에 볼게요
+            {isLast ? '나중에' : '나중에 볼게요'}
           </button>
           <div className="onboarding-footer__nav">
             {step > 0 && (
@@ -425,9 +439,9 @@ export function OnboardingOverlay(): JSX.Element {
             <button
               type="button"
               className="button button--primary"
-              onClick={() => completeAndAdvance(step)}
+              onClick={handlePrimary}
             >
-              {isLast ? '반달 시작하기' : '다음'}
+              {isLast ? '둘러보기 시작' : '다음'}
             </button>
           </div>
         </footer>

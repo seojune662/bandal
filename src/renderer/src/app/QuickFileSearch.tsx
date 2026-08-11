@@ -166,22 +166,12 @@ export function QuickFileSearch(): JSX.Element | null {
         </div>
 
         <div className="quick-search__body">
-          {course === null ? (
-            <p className="quick-search__hint">
-              왼쪽에서 과목을 고르면 그 과목의 자료를 검색할 수 있어요.
-            </p>
-          ) : !showsResults ? (
-            <p className="quick-search__hint">
-              파일 이름으로 검색해요 — Enter로 열고, Esc로 닫아요.
-            </p>
-          ) : isSearching && hits.length === 0 ? (
+          {!showsResults ? null : isSearching && hits.length === 0 ? (
             <p className="quick-search__hint" role="status">
               찾는 중…
             </p>
           ) : hits.length === 0 ? (
-            <p className="quick-search__hint">
-              일치하는 자료가 없어요. 다른 이름으로 시도해보세요.
-            </p>
+            <p className="quick-search__hint">결과 없음</p>
           ) : (
             <ul className="quick-search__list" role="listbox" aria-label="검색 결과">
               {hits.map((hit, index) => (

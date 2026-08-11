@@ -44,6 +44,28 @@ export const DEFAULT_ONBOARDING: OnboardingState = {
   lastCompletedStep: 0
 }
 
+/**
+ * [R3] Interactive guided tour (임시 과목을 만들어 실제 UI를 짚는 둘러보기).
+ *
+ * - `seenVersion` is the TUTORIAL_VERSION the user last acknowledged
+ *   (started OR declined). 0 = never offered. Raising TUTORIAL_VERSION
+ *   shows the one-time corner prompt again for existing users.
+ * - `activeCourseId` is non-null only while a tour's temp course exists.
+ *   It is written BEFORE seeding so a crash mid-tour can be repaired on
+ *   the next boot (delete + purge the leftover course).
+ */
+export interface TutorialState {
+  seenVersion: number
+  activeCourseId: string | null
+}
+
+export const TUTORIAL_VERSION = 1
+
+export const DEFAULT_TUTORIAL: TutorialState = {
+  seenVersion: 0,
+  activeCourseId: null
+}
+
 export interface Settings {
   theme: ThemePreference
   /** Preferred AI agent provider. */
@@ -54,6 +76,8 @@ export interface Settings {
   locale: string
   /** [M6-A] First-run onboarding progress. */
   onboarding: OnboardingState
+  /** [R3] Guided-tour progress and crash-safety marker. */
+  tutorial: TutorialState
   /** [M8] Chosen school + the user layer over its preset shortcuts. */
   university: UniversitySettings
 }
@@ -64,6 +88,7 @@ export const DEFAULT_SETTINGS: Settings = {
   dataRoot: '',
   locale: 'ko-KR',
   onboarding: DEFAULT_ONBOARDING,
+  tutorial: DEFAULT_TUTORIAL,
   university: DEFAULT_UNIVERSITY_SETTINGS
 }
 

@@ -178,6 +178,7 @@ export function FavoritesSection({
   return (
     <section
       className="favorites-section"
+      data-tour="favorites-section"
       data-drag-over={dragOver || undefined}
       aria-label="즐겨찾기"
       onDragEnter={handleDragEnter}
@@ -248,9 +249,9 @@ export function FavoritesSection({
         </form>
       )}
 
-      {!isAddingLink && (
+      {!isAddingLink && dragOver && (
         <p className="favorites-section__drop-copy" aria-hidden="true">
-          {dragOver ? '여기에 놓아 추가' : '탭을 끌어다 놓아도 추가할 수 있어요'}
+          여기에 놓아 추가
         </p>
       )}
 
@@ -330,9 +331,15 @@ export function FavoritesSection({
           ))}
         </ul>
       ) : (
-        <p className="favorites-section__empty">
-          {dragOver ? '여기에 놓으면 즐겨찾기에 추가돼요' : '고정한 탭이 없어요'}
-        </p>
+        <div className="favorites-section__empty">
+          <svg
+            className="favorites-section__empty-icon"
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+          >
+            <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z" />
+          </svg>
+        </div>
       )}
 
       {error !== null && (

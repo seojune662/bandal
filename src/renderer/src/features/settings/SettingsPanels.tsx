@@ -107,11 +107,22 @@ export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.E
   const [onboardingReset, setOnboardingReset] = useState<
     'idle' | 'done' | 'failed'
   >('idle')
+  const [tutorialReset, setTutorialReset] = useState<
+    'idle' | 'done' | 'failed'
+  >('idle')
 
   const handleReopenOnboarding = (): void => {
     void invoke('settings:set', { onboarding: reopenedOnboarding() })
       .then(() => setOnboardingReset('done'))
       .catch(() => setOnboardingReset('failed'))
+  }
+
+  const handleReplayTutorial = (): void => {
+    void invoke('settings:set', {
+      tutorial: { seenVersion: 0, activeCourseId: null }
+    })
+      .then(() => setTutorialReset('done'))
+      .catch(() => setTutorialReset('failed'))
   }
 
   return (
@@ -189,24 +200,45 @@ export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.E
         title={t('settings.general.onboarding.title')}
         description={t('settings.general.onboarding.description')}
       >
-        <div className="setting-row">
-          <div className="setting-row__copy">
-            <div className="setting-row__label-line">
-              <span className="setting-row__label">
-                {t('settings.general.onboarding.reopen')}
+        <div className="settings-card__rows">
+          <div className="setting-row">
+            <div className="setting-row__copy">
+              <div className="setting-row__label-line">
+                <span className="setting-row__label">
+                  {t('settings.general.onboarding.reopen')}
+                </span>
+              </div>
+              <span className="setting-row__description">
+                {t(`settings.general.onboarding.${onboardingReset}`)}
               </span>
             </div>
-            <span className="setting-row__description">
-              {t(`settings.general.onboarding.${onboardingReset}`)}
-            </span>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleReopenOnboarding}
+            >
+              {t('settings.general.onboarding.reopen')}
+            </button>
           </div>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={handleReopenOnboarding}
-          >
-            {t('settings.general.onboarding.reopen')}
-          </button>
+          <div className="setting-row">
+            <div className="setting-row__copy">
+              <div className="setting-row__label-line">
+                <span className="setting-row__label">
+                  {t('settings.general.tutorial.reopen')}
+                </span>
+              </div>
+              <span className="setting-row__description">
+                {t(`settings.general.tutorial.${tutorialReset}`)}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleReplayTutorial}
+            >
+              {t('settings.general.tutorial.reopen')}
+            </button>
+          </div>
         </div>
       </SettingsCard>
     </div>

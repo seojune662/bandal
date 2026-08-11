@@ -183,6 +183,15 @@ export interface IpcContract {
     res: { ok: true }
   }
   /**
+   * Hard-deletes an already SOFT-DELETED managed course row and moves its
+   * folder to the OS trash. Triple-guarded (soft-deleted + managed + folder
+   * inside dataRoot) — exists for tutorial temp-course cleanup only.
+   */
+  'courses:purge': {
+    req: { courseId: string }
+    res: { ok: true }
+  }
+  /**
    * One drag = one atomic call. Moves a course into `groupId` (null =
    * ungrouped) AND positions it before `beforeCourseId` (null = append to the
    * end of the target group's block) in a single transaction, then returns
@@ -1014,6 +1023,7 @@ export const IPC_CHANNELS = [
   'courses:rename',
   'courses:archive',
   'courses:delete',
+  'courses:purge',
   'courses:organize',
   'courseGroups:list',
   'courseGroups:create',

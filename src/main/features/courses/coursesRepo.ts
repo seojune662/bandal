@@ -7,7 +7,7 @@
  */
 
 import { existsSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join, relative } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import type {
@@ -45,6 +45,13 @@ export interface CoursesRepo {
   }): Course[]
   /** Soft delete: the folder on disk is left untouched. */
   softDelete(input: { courseId: string }): { ok: true }
+  /**
+   * Hard-deletes an already soft-deleted MANAGED course row and returns its
+   * folder path so the caller can trash it. Triple-guarded — tutorial
+   * temp-course cleanup only; a live or linked or outside-dataRoot course is
+   * rejected with ValidationError.
+   */
+  purge(input: { courseId: string }): { ok: true; folderPath: string }
   /** Live (non-deleted) course by id; throws NotFoundError otherwise. */
   getById(courseId: string): Course
   /** Absolute course folder path; throws NotFoundError for unknown ids. */
@@ -69,6 +76,7 @@ interface CourseRow {
   sort_order: number
   created_at: string
   updated_at: string
+  deleted_at: string | null
 }
 
 function toSource(value: string): CourseSource {
@@ -349,6 +357,30 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
         row.id
       )
       return { ok: true }
+    },
+
+    purge(input) {
+      const id = requireId(input.courseId, 'courseId')
+      const row = db
+        .prepare('SELECT * FROM courses WHERE id = ?')
+        .get(id) as CourseRow | undefined
+      if (row === undefined) {
+        throw new ValidationError(`unknown course ${id}`)
+      }
+      if (row.deleted_at === null) {
+        throw new ValidationError('purge requires a soft-deleted course')
+      }
+      if (toSource(row.source) !== 'managed') {
+        throw new ValidationError('only managed courses can be purged')
+      }
+      const dataRoot = normalizeFolderPath(getDataRoot())
+      const folderPath = normalizeFolderPath(row.folder_path)
+      const rel = relative(dataRoot, folderPath)
+      if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
+        throw new ValidationError('course folder is outside the data root')
+      }
+      db.prepare('DELETE FROM courses WHERE id = ?').run(id)
+      return { ok: true, folderPath }
     },
 
     organize(input) {

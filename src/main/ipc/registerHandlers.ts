@@ -228,6 +228,17 @@ export function registerHandlers(): IpcRouter {
     if (req.archived) releaseCourseRuntime(req.courseId)
     return courseListChanged(course)
   })
+  handle('courses:purge', async (req) => {
+    const { folderPath } = coursesRepo.purge(req)
+    // Trash, never unlink: even the tutorial's own folder stays recoverable.
+    // The DB row removal above is the invariant; a trash failure only logs.
+    try {
+      await shell.trashItem(folderPath)
+    } catch (error) {
+      console.error('[courses] purge trash failed', error)
+    }
+    return courseListChanged(OK)
+  })
   handle('courses:delete', (req) => {
     const result = coursesRepo.softDelete(req)
     releaseCourseRuntime(req.courseId)

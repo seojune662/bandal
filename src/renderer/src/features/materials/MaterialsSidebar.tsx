@@ -600,6 +600,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
             <button
               type="button"
               className="bare-icon-button"
+              data-tour="materials-import"
               aria-label="자료 가져오기"
               disabled={course === null || course.missing || isPasting}
               onClick={() => fileInputRef.current?.click()}
@@ -789,11 +790,6 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
               ) : tree.length === 0 ? (
                 <div className="empty-state empty-state--materials">
                   <Icon name="folder" className="empty-state__folder" />
-                  <p className="empty-state__text">아직 자료가 없어요</p>
-                  <p className="empty-state__hint">
-                    가져오기 버튼을 누르거나 Finder 파일을 끌어다 놓으세요. 이
-                    영역을 선택한 뒤 ⌘V로 이미지와 텍스트도 추가할 수 있어요.
-                  </p>
                 </div>
               ) : (
                 <MaterialTree

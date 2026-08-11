@@ -65,9 +65,6 @@ export function UniversityShortcuts(): JSX.Element | null {
   if (university === null) {
     return (
       <section className="university-section" aria-label="학교 바로가기">
-        <p className="university-section__empty">
-          학교를 고르면 학사 사이트 바로가기가 여기에 떠요.
-        </p>
         <button
           type="button"
           className="university-section__pick"
@@ -89,9 +86,10 @@ export function UniversityShortcuts(): JSX.Element | null {
       </div>
 
       {visible.length === 0 ? (
-        <p className="university-section__empty">
-          아직 바로가기가 없어요. 설정에서 학교 서비스를 추가할 수 있어요.
-        </p>
+        <ServiceKindIcon
+          kind="homepage"
+          className="university-section__empty-icon"
+        />
       ) : (
         <ul className="university-shortcuts">
           {visible.map((service) => (

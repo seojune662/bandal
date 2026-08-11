@@ -399,10 +399,7 @@ export function CalendarView({
         )}
         {!loading && error === null && tasks.length === 0 && (
           <div className="calendar-empty-state">
-            <div>
-              <strong>과제 마감, 시험 일정, 할 일을 여기서 관리해요</strong>
-              <p>날짜를 누르면 할 일 · 과제 · 시험 · 수업을 바로 추가할 수 있어요.</p>
-            </div>
+            <strong>일정 없음</strong>
             <button
               type="button"
               className="board-button board-button--primary"
@@ -518,8 +515,7 @@ export function CalendarView({
           />
         ) : selectedTasks.length === 0 ? (
           <div className="calendar-agenda__empty">
-            <strong>등록된 일정이 없어요</strong>
-            <p>할 일 · 과제 · 시험 · 수업 중 하나를 추가해보세요.</p>
+            <strong>일정 없음</strong>
             <button
               type="button"
               className="board-button board-button--primary"

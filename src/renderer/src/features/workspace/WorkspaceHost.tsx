@@ -164,13 +164,6 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
         <ExpandLeftRail />
         <ToggleRightRail />
         <BandalMark size={56} className="workspace-watermark__moon" />
-        <p className="eyebrow">STUDY WORKSPACE</p>
-        <h1>오늘의 공부를 시작해볼까요?</h1>
-        <p className="workspace-watermark__hint">
-          왼쪽에서 과목을 고르면 그 과목의 작업 공간이 열려요.
-          <br />
-          아직 과목이 없다면 + 버튼으로 첫 과목을 만들어보세요.
-        </p>
       </div>
     )
   }
@@ -185,11 +178,6 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
       <BandalMark size={56} className="workspace-watermark__moon" />
       <p className="eyebrow">CURRENT COURSE</p>
       <h1>{course.name}</h1>
-      <p className="workspace-watermark__hint">
-        필기, PDF, 브라우저, AI 튜터를 탭으로 열 수 있어요.
-        <br />
-        Finder에서 파일을 끌어다 놓으면 자료로 가져와요.
-      </p>
       <button
         type="button"
         className="workspace-watermark__cta"
@@ -333,7 +321,7 @@ export function WorkspaceHost(): JSX.Element {
   }
 
   return (
-    <div ref={hostRef} className="workspace-host">
+    <div ref={hostRef} className="workspace-host" data-tour="tab-strip">
       <DockviewReact
         theme={bandalTheme}
         scrollbars="native"

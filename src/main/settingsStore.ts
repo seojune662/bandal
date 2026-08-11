@@ -9,11 +9,16 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { isThemeId } from '../shared/theme'
 import { sanitizeUniversitySettings } from '../shared/universities/sanitize'
-import { DEFAULT_ONBOARDING, DEFAULT_SETTINGS } from '../shared/types/settings'
+import {
+  DEFAULT_ONBOARDING,
+  DEFAULT_SETTINGS,
+  DEFAULT_TUTORIAL
+} from '../shared/types/settings'
 import type {
   OnboardingState,
   Settings,
-  SettingsPatch
+  SettingsPatch,
+  TutorialState
 } from '../shared/types/settings'
 
 const SETTINGS_FILE = 'settings.json'
@@ -90,7 +95,27 @@ function sanitize(raw: unknown): Settings {
         : defaults.dataRoot,
     locale: isLocale(record.locale) ? record.locale : defaults.locale,
     onboarding: sanitizeOnboarding(record.onboarding),
+    tutorial: sanitizeTutorial(record.tutorial),
     university: sanitizeUniversitySettings(record.university)
+  }
+}
+
+function sanitizeTutorial(raw: unknown): TutorialState {
+  if (typeof raw !== 'object' || raw === null) {
+    return { ...DEFAULT_TUTORIAL }
+  }
+  const record = raw as Record<string, unknown>
+  return {
+    seenVersion:
+      typeof record.seenVersion === 'number' &&
+      Number.isInteger(record.seenVersion) &&
+      record.seenVersion >= 0
+        ? record.seenVersion
+        : DEFAULT_TUTORIAL.seenVersion,
+    activeCourseId:
+      typeof record.activeCourseId === 'string' && record.activeCourseId !== ''
+        ? record.activeCourseId
+        : null
   }
 }
 

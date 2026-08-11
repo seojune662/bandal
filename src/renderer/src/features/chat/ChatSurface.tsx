@@ -184,7 +184,7 @@ export function ChatSurface({
   )
 
   const root = (children: ReactNode): JSX.Element => (
-    <div className="chat-tab" data-variant={variant}>
+    <div className="chat-tab" data-variant={variant} data-tour="assistant-panel">
       {children}
     </div>
   )

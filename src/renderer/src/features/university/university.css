@@ -102,11 +102,11 @@
   letter-spacing: var(--tracking-tight);
 }
 
-.university-section__empty {
-  margin: 0;
+.university-section__empty-icon {
+  align-self: center;
+  width: var(--text-xl);
+  height: var(--text-xl);
   color: var(--text-muted);
-  font-size: var(--text-xs);
-  line-height: 1.5;
 }
 
 .university-section__pick,

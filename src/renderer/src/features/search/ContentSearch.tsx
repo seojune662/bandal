@@ -233,15 +233,7 @@ export function ContentSearch(): JSX.Element | null {
         </div>
 
         <div className="content-search__body">
-          {course === null ? (
-            <p className="content-search__hint">
-              왼쪽에서 과목을 고르면 필기와 자료 본문을 검색할 수 있어요.
-            </p>
-          ) : !hasQuery ? (
-            <p className="content-search__hint">
-              기억나는 개념이나 문장을 입력하세요. ⇧⌘F로 다시 열 수 있어요.
-            </p>
-          ) : hasError ? (
+          {!hasQuery ? null : hasError ? (
             <p className="content-search__hint" role="alert">
               검색하지 못했어요. 잠시 후 다시 시도해 주세요.
             </p>
@@ -250,9 +242,7 @@ export function ContentSearch(): JSX.Element | null {
               자료 본문을 찾는 중…
             </p>
           ) : hits.length === 0 ? (
-            <p className="content-search__hint">
-              본문에서 일치하는 내용을 찾지 못했어요.
-            </p>
+            <p className="content-search__hint">결과 없음</p>
           ) : (
             <ul className="content-search__list" role="listbox" aria-label="본문 검색 결과">
               {hits.map((hit, index) => (
