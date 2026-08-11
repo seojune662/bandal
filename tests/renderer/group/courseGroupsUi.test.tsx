@@ -198,14 +198,14 @@ describe('GroupChatTab course switcher', () => {
 })
 
 describe('TogetherFooter', () => {
-  test('shows a neutral entry point before auth restoration', () => {
+  test('shows a restoring status before auth hydration', () => {
     mockedStores.auth.hydrated = false
 
     const html = renderToStaticMarkup(<TogetherFooter />)
 
-    expect(html).toContain('함께하기 시작하기')
+    expect(html).toContain('함께하기를 불러오고 있어요')
+    expect(html).not.toContain('함께하기 시작하기')
     expect(html).not.toContain('>로그인<')
-    expect(mockedStores.auth.init).not.toHaveBeenCalled()
   })
 
   test('is absent when community auth is unconfigured', () => {

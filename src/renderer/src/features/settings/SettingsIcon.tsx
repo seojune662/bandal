@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 export type IconName =
+  | 'account'
   | 'general'
   | 'appearance'
   | 'ai'
@@ -15,6 +16,12 @@ export type IconName =
 
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }): JSX.Element {
   const paths: Record<IconName, ReactNode> = {
+    account: (
+      <>
+        <circle cx="12" cy="8" r="3.5" />
+        <path d="M5 20c0-3.5 3.1-5.5 7-5.5s7 2 7 5.5" />
+      </>
+    ),
     'arrow-left': (
       <>
         <path d="m15 18-6-6 6-6" />
@@ -101,4 +108,3 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }): JS
     </svg>
   )
 }
-

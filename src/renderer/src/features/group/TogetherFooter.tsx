@@ -54,31 +54,12 @@ interface SignInCardProps {
   onSignIn: () => void
 }
 
-interface TogetherEntryCardProps {
-  restoring: boolean
-  onOpen: () => void
-}
-
-function TogetherEntryCard({
-  restoring,
-  onOpen
-}: TogetherEntryCardProps): JSX.Element {
+function AuthRestoringCard(): JSX.Element {
   return (
     <div className="group-signin">
-      <p className="group-signin__text" role={restoring ? 'status' : undefined}>
-        {restoring
-          ? '함께하기를 불러오고 있어요'
-          : '친구들과 공부하는 공간을 열어 보세요'}
+      <p className="group-signin__text" role="status">
+        함께하기를 불러오고 있어요
       </p>
-      <button
-        type="button"
-        className="button button--primary"
-        disabled={restoring}
-        onClick={onOpen}
-      >
-        <GroupIcon name="userPlus" />
-        {restoring ? '여는 중…' : '함께하기 시작하기'}
-      </button>
     </div>
   )
 }
@@ -106,7 +87,6 @@ function SignInCard({
 export function TogetherFooter(): JSX.Element | null {
   const auth = useAuthStore((state) => state.auth)
   const hydrated = useAuthStore((state) => state.hydrated)
-  const initializing = useAuthStore((state) => state.initializing)
   const initAuth = useAuthStore((state) => state.init)
   const signIn = useAuthStore((state) => state.signIn)
   const allGroups = useGroupsStore((state) => state.groups)
@@ -121,6 +101,10 @@ export function TogetherFooter(): JSX.Element | null {
     () => selectGroupsForCourse(allGroups, null),
     [allGroups]
   )
+
+  useEffect(() => {
+    void initAuth()
+  }, [initAuth])
 
   useEffect(() => {
     if (signedIn) void initGroups()
@@ -168,15 +152,10 @@ export function TogetherFooter(): JSX.Element | null {
     [openTab]
   )
 
-  // `unconfigured` is also the safe pre-restore placeholder. Do not interpret
-  // it as signed-out (or touch safeStorage) until the student enters Together.
   if (!hydrated) {
     return (
       <section className="together-footer" aria-label="함께하기">
-        <TogetherEntryCard
-          restoring={initializing}
-          onOpen={() => void initAuth()}
-        />
+        <AuthRestoringCard />
       </section>
     )
   }

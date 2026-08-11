@@ -204,28 +204,12 @@ beforeEach(() => {
   harness.renderTogether = () => <TogetherFooter />
 })
 
-describe('app shell lazy auth boundary', () => {
-  test('does not restore on shell mount and restores only after the Together entry click', () => {
-    let entryButton: ReactElement<{ onClick?: () => void }> | null = null
-    walk(AppShell(), (element) => {
-      if (
-        element.type === 'button' &&
-        (element.props as { className?: string }).className?.includes(
-          'button--primary'
-        )
-      ) {
-        entryButton = element as ReactElement<{ onClick?: () => void }>
-      }
-    })
+describe('app shell auth restoration', () => {
+  test('restores auth automatically on shell mount without a click', () => {
+    walk(AppShell(), () => undefined)
 
     for (const effect of harness.effects) effect()
 
-    expect(harness.authInvoke).not.toHaveBeenCalled()
-    expect(entryButton).not.toBeNull()
-
-    entryButton?.props.onClick?.()
-
-    expect(harness.authInvoke).toHaveBeenCalledTimes(1)
     expect(harness.authInvoke).toHaveBeenCalledWith('auth:getState', {})
   })
 

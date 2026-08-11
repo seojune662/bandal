@@ -23,6 +23,7 @@ import { folderProblemMessage } from './folderMessages'
 import { normalizeCourseColor } from './courseColors'
 import './courses.css'
 import { BandalMark } from '../../components/BandalMark'
+import { SidebarAccountEntry } from '../account/SidebarAccountEntry'
 
 interface ContextMenuState {
   course: Course
@@ -371,6 +372,7 @@ export function CourseSidebar(): JSX.Element {
       <TogetherFooter />
 
       <footer className="rail-footer">
+        <SidebarAccountEntry />
         <nav className="rail-nav" aria-label="앱 메뉴">
           <button
             type="button"

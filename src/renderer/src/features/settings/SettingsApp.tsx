@@ -10,6 +10,7 @@ import type {
   Settings,
   ThemePreference
 } from '../../../../shared/types/settings'
+import { AccountPanel } from './AccountPanel'
 import {
   AboutPanel,
   AiPanel,
@@ -24,6 +25,7 @@ import './settings-app.css'
 import './settings-panels.css'
 
 type CategoryId =
+  | 'account'
   | 'general'
   | 'appearance'
   | 'ai'
@@ -62,6 +64,13 @@ export function SettingsApp(): JSX.Element {
 
   const categories = useMemo<readonly Category[]>(
     () => [
+      {
+        id: 'account',
+        group: 'settings',
+        label: t('settings.category.account.label'),
+        description: t('settings.category.account.description'),
+        keywords: t('settings.category.account.keywords')
+      },
       {
         id: 'general',
         group: 'settings',
@@ -258,6 +267,7 @@ export function SettingsApp(): JSX.Element {
   }
 
   const panel = {
+    account: <AccountPanel />,
     general: <GeneralPanel settings={settings} />,
     appearance: (
       <AppearancePanel
