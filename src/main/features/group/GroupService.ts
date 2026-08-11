@@ -185,6 +185,51 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
   }
 
   /** Cheap value fingerprint of the cached list, for change detection. */
+  /** Best-effort mirror of a local course link to the per-user server backup. */
+  async function backupCourseLink(
+    groupId: string,
+    courseId: string | null
+  ): Promise<void> {
+    const client = deps.getClient()
+    if (client === null || deps.auth.userId() === null) return
+    try {
+      if (courseId === null) await rpc.deleteCourseLink(client, groupId)
+      else await rpc.upsertCourseLink(client, groupId, courseId)
+    } catch (error) {
+      console.error('[group] course link backup failed', error)
+    }
+  }
+
+  /**
+   * Re-applies server-backed course links to groups whose local link was
+   * reset (sign-out wipes the local cache). Local links win; course ids
+   * from other machines that do not exist here are skipped silently.
+   */
+  async function restoreCourseLinks(client: SupabaseClient): Promise<void> {
+    let links: { groupId: string; courseId: string }[]
+    try {
+      links = await rpc.selectCourseLinks(client)
+    } catch (error) {
+      console.error('[group] course link restore failed', error)
+      return
+    }
+    if (links.length === 0) return
+    const unlinked = new Set(
+      deps.repo
+        .listGroups()
+        .filter((group) => group.courseId === null)
+        .map((group) => group.id)
+    )
+    for (const link of links) {
+      if (!unlinked.has(link.groupId)) continue
+      try {
+        deps.repo.linkCourse(link.groupId, link.courseId)
+      } catch {
+        // 이 기기에 없는 과목 id(다른 기기의 백업)면 조용히 넘어간다.
+      }
+    }
+  }
+
   function groupsSignature(): string {
     return deps.repo
       .listGroups()
@@ -226,6 +271,7 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
           })
         }
         deps.repo.retainGroups(rows.map((row) => row.group.id))
+        await restoreCourseLinks(client)
         deps.auth.setOnline(true)
         if (groupsSignature() !== before) deps.invalidate('membership')
       } catch (error) {
@@ -356,6 +402,7 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
     linkCourse(groupId, courseId) {
       const summary = deps.repo.linkCourse(groupId, courseId)
       deps.invalidate('membership')
+      void backupCourseLink(groupId, courseId)
       return summary
     },
 

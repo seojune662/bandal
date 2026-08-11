@@ -418,6 +418,57 @@ export async function selectMyGroups(
   return out
 }
 
+// -- group↔course link backup (per-user, RLS-scoped) --------------------------
+// 과목은 로컬 소유 개념이라 연결의 진실은 로컬 SQLite다. 이 테이블은
+// 재로그인으로 로컬 캐시가 초기화될 때 연결을 복원하기 위한 백업이다.
+
+export async function upsertCourseLink(
+  client: SupabaseClient,
+  groupId: string,
+  courseId: string
+): Promise<void> {
+  const { error } = await client.from('group_course_links').upsert(
+    {
+      group_id: groupId,
+      course_id: courseId,
+      updated_at: new Date().toISOString()
+    },
+    { onConflict: 'user_id,group_id' }
+  )
+  if (error !== null) throw error
+}
+
+export async function deleteCourseLink(
+  client: SupabaseClient,
+  groupId: string
+): Promise<void> {
+  const { error } = await client
+    .from('group_course_links')
+    .delete()
+    .eq('group_id', groupId)
+  if (error !== null) throw error
+}
+
+export async function selectCourseLinks(
+  client: SupabaseClient
+): Promise<{ groupId: string; courseId: string }[]> {
+  const { data, error } = await client
+    .from('group_course_links')
+    .select('group_id, course_id')
+  if (error !== null) throw error
+  if (!Array.isArray(data)) return []
+  const out: { groupId: string; courseId: string }[] = []
+  for (const raw of data) {
+    const row = asRecord(raw)
+    const groupId = row['group_id']
+    const courseId = row['course_id']
+    if (typeof groupId === 'string' && typeof courseId === 'string') {
+      out.push({ groupId, courseId })
+    }
+  }
+  return out
+}
+
 export async function selectMembers(
   client: SupabaseClient,
   groupId: string
