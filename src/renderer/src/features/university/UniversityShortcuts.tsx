@@ -10,7 +10,7 @@
 
 import { useMemo, useState } from 'react'
 import type { ResolvedService } from '../../../../shared/universities'
-import { openSettingsWindow } from '../../lib/ipc'
+import { useUiStore } from '../../stores/uiStore'
 import { useUniversityStore } from '../../stores/universityStore'
 import { openShortcut } from './openService'
 import { externalReasonMessage } from './serviceCopy'
@@ -50,6 +50,7 @@ export function UniversityShortcuts(): JSX.Element | null {
   const loaded = useUniversityStore((state) => state.loaded)
   const university = useUniversityStore((state) => state.university)
   const services = useUniversityStore((state) => state.services)
+  const openSettings = useUiStore((state) => state.openSettings)
   const [showAll, setShowAll] = useState(false)
 
   const { primary, secondary } = useMemo(() => {
@@ -70,11 +71,7 @@ export function UniversityShortcuts(): JSX.Element | null {
         <button
           type="button"
           className="university-section__pick"
-          onClick={() => {
-            void openSettingsWindow().catch((error: unknown) => {
-              console.error('[Bandal] 설정 창을 열지 못했습니다.', error)
-            })
-          }}
+          onClick={openSettings}
         >
           학교 고르기
         </button>

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Course, PickedFolder } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
-import { openSettingsWindow } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { StudyGapList } from '../insights/StudyGapList'
@@ -86,6 +85,7 @@ export function CourseSidebar(): JSX.Element {
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
   const toggleBoardOverlay = useUiStore((state) => state.toggleBoardOverlay)
   const toggleLeftRail = useUiStore((state) => state.toggleLeftRail)
+  const openSettings = useUiStore((state) => state.openSettings)
 
   const [query, setQuery] = useState('')
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -388,11 +388,7 @@ export function CourseSidebar(): JSX.Element {
           <button
             type="button"
             className="rail-nav__item"
-            onClick={() => {
-              void openSettingsWindow().catch((settingsError: unknown) => {
-                console.error('[Bandal] 설정 창을 열지 못했습니다.', settingsError)
-              })
-            }}
+            onClick={openSettings}
           >
             <Icon name="settings" />
             <span>설정</span>

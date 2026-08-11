@@ -45,6 +45,7 @@ const GROUP_ID = 'mock-group-1'
 
 const MOCK_AUTH: AuthState = {
   phase: 'signed-in',
+  email: 'mock@bandal.app',
   profile: {
     id: ME,
     nickname: '나리',

@@ -8,7 +8,7 @@
  *           기본 메뉴의 ⌘W(Close Window)는 src/main/menu.ts가 ⇧⌘W로 옮겨
  *           이 chord가 렌더러까지 내려온다)
  *   ⌘P      빠른 파일 검색 (선택된 과목의 materials:search 옴니박스)
- *   ⌘,      설정 창 (메뉴 액셀러레이터가 먼저 먹지만, 여기도 폴백으로 처리)
+ *   ⌘,      설정 화면 (메뉴 액셀러레이터가 먼저 먹지만, 여기도 폴백으로 처리)
  *   ⌘1..9   n번째 탭 활성화
  *
  * Guard rules (all encoded in the pure `resolveShortcut`, unit-tested):
@@ -24,9 +24,10 @@
 
 import { useEffect } from 'react'
 import { create } from 'zustand'
-import { onPush, openSettingsWindow } from '../lib/ipc'
+import { onPush } from '../lib/ipc'
 import { openNewTabMenu } from '../features/workspace/newTabMenuController'
 import { createBrowserTab, createMarkdownTab } from './tabCommands'
+import { useUiStore } from '../stores/uiStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 
 // -- pure resolver ------------------------------------------------------------
@@ -146,9 +147,7 @@ function runShortcutAction(action: ShortcutAction): void {
       useQuickSearch.getState().toggle()
       return
     case 'settings':
-      void openSettingsWindow().catch((error: unknown) => {
-        console.error('[Bandal] 설정 창을 열지 못했습니다.', error)
-      })
+      useUiStore.getState().openSettings()
       return
     case 'activate-tab':
       useWorkspaceStore.getState().activateTabAt(action.index)

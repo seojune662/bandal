@@ -106,6 +106,8 @@ export interface PushEvents {
   'materials:changed': MaterialsChanged
   'browser:open-url': BrowserOpenUrl
   'settings:changed': SettingsChanged
+  /** Open the in-app settings overlay (app menu ⌘, or legacy callers). */
+  'ui:openSettings': { }
   'shortcut:passthrough': ShortcutPassthrough
   // -- groups (P2-C) --------------------------------------------------------
   'auth:changed': AuthState

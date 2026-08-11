@@ -12,7 +12,7 @@
 
 import { app, Menu } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
-import { openSettingsWindow } from './windows/settingsWindow'
+import { openSettingsInApp } from './windows/settingsWindow'
 
 export function installApplicationMenu(): void {
   const isMac = process.platform === 'darwin'
@@ -29,7 +29,7 @@ export function installApplicationMenu(): void {
                 label: '설정…',
                 accelerator: 'CmdOrCtrl+,',
                 click: () => {
-                  openSettingsWindow()
+                  openSettingsInApp()
                 }
               },
               { type: 'separator' },

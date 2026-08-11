@@ -12,8 +12,8 @@ export interface BrowserShortcut {
   url: string
 }
 
-export function opensOnStartPage(initialUrl: string): boolean {
-  return initialUrl === LEGACY_NEW_TAB_URL
+export function opensOnStartPage(_initialUrl: string): boolean {
+  return false
 }
 
 export function hostnameForUrl(url: string): string {

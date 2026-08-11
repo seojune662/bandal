@@ -26,8 +26,8 @@ function favorite(overrides: Partial<Favorite>): Favorite {
 }
 
 describe('browser start-page model', () => {
-  test('recognizes only the existing blank-tab marker', () => {
-    expect(opensOnStartPage(LEGACY_NEW_TAB_URL)).toBe(true)
+  test('never routes tabs to the retired start page', () => {
+    expect(opensOnStartPage(LEGACY_NEW_TAB_URL)).toBe(false)
     expect(opensOnStartPage('https://google.com')).toBe(false)
     expect(opensOnStartPage('https://example.com')).toBe(false)
   })

@@ -6,7 +6,7 @@ import { findDeepLinkArg } from './features/group/authCallbackUrl'
 import { registerHandlers } from './ipc/registerHandlers'
 import { installApplicationMenu } from './menu'
 import { createMainWindow } from './windows/mainWindow'
-import { openSettingsWindow } from './windows/settingsWindow'
+import { openSettingsInApp } from './windows/settingsWindow'
 import { reportFatalStartupError } from './startupError'
 
 // [M6-B testability] E2E runs (Playwright _electron) point the app at a
@@ -87,7 +87,7 @@ if (!app.requestSingleInstanceLock()) {
     // Temporary M0 channel to open the settings window from the renderer.
     // Replaced by an app menu entry in a later milestone.
     ipcMain.handle('window:openSettings', () => {
-      openSettingsWindow()
+      openSettingsInApp()
       return { ok: true }
     })
 

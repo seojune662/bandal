@@ -47,6 +47,7 @@ const PUSH_CHANNELS = [
   'materials:changed',
   'browser:open-url',
   'settings:changed',
+  'ui:openSettings',
   'shortcut:passthrough',
   // -- groups (P2-C) --------------------------------------------------------
   'auth:changed',

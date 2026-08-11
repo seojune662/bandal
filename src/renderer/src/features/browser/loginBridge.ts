@@ -191,10 +191,7 @@ async function applyReport(
   }
   update(tabId, { savedLogin: saved ?? null, pending: false })
 
-  if (
-    saved?.autoSubmit === true &&
-    autoFilledOrigins.get(tabId) !== report.origin
-  ) {
+  if (saved !== undefined && autoFilledOrigins.get(tabId) !== report.origin) {
     autoFilledOrigins.set(tabId, report.origin)
     update(tabId, { pending: true })
     const filled = await fill(tabId, report.origin)

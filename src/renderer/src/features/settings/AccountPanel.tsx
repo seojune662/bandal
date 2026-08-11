@@ -64,6 +64,7 @@ export function AccountPanel(): JSX.Element {
   }, [loadAuth])
 
   const profile = auth?.phase === 'signed-in' ? auth.profile : null
+  const email = auth?.email ?? null
 
   useEffect(() => {
     setNickname(profile?.nickname ?? '')
@@ -163,6 +164,9 @@ export function AccountPanel(): JSX.Element {
         />
         <div>
           <h2>{displayName}</h2>
+          {email !== null && (
+            <p className="account-profile-card__email">{email}</p>
+          )}
           <p>{t('settings.account.profile.description')}</p>
         </div>
       </section>

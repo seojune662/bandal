@@ -45,6 +45,13 @@
   line-height: 1.5;
 }
 
+.account-profile-card .account-profile-card__email {
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .account-nickname-form {
   display: flex;
   flex-direction: column;

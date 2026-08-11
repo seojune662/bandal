@@ -142,6 +142,9 @@ export function SidebarAccountEntry(): JSX.Element | null {
             />
             <div>
               <strong>{displayName}</strong>
+              {auth.email !== null && (
+                <span className="sidebar-account__email">{auth.email}</span>
+              )}
               <span>내 계정</span>
             </div>
           </div>

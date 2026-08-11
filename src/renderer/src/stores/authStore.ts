@@ -39,6 +39,7 @@ const INITIAL: AuthState = {
   // 'signed-out' would falsely show a login card before lazy restoration.
   phase: 'unconfigured',
   profile: null,
+  email: null,
   online: false,
   errorCode: null
 }

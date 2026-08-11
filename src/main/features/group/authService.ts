@@ -106,6 +106,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     : { ...UNCONFIGURED_AUTH_STATE }
   let token: string | null = null
   let uid: string | null = null
+  let email: string | null = null
   let unsubscribe: (() => void) | null = null
   /** The code currently being exchanged — the re-entrancy guard (§handleDeepLink). */
   let exchangingCode: string | null = null
@@ -122,6 +123,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     return publish({
       phase: 'error',
       profile: null,
+      email: null,
       online: state.online,
       errorCode
     })
@@ -140,7 +142,11 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         publish({ ...SIGNED_OUT_AUTH_STATE })
         return
       }
-      void adoptSession(session.access_token, session.user.id)
+      void adoptSession(
+        session.access_token,
+        session.user.id,
+        session.user.email ?? null
+      )
     })
     unsubscribe = () => {
       sub.subscription.unsubscribe()
@@ -162,15 +168,18 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
 
   async function adoptSession(
     accessToken: string,
-    userId: string
+    userId: string,
+    userEmail: string | null
   ): Promise<AuthState> {
     token = accessToken
     uid = userId
+    email = userEmail
     try {
       const profile = await loadProfile(userId)
       return publish({
         phase: 'signed-in',
         profile,
+        email,
         online: true,
         errorCode: null
       })
@@ -182,6 +191,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       return publish({
         phase: 'signed-in',
         profile: { id: userId, nickname: null, avatarColor: 'moon', avatarEmoji: '🌙' },
+        email,
         online: false,
         errorCode: null
       })
@@ -191,6 +201,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   function clearSession(): void {
     token = null
     uid = null
+    email = null
   }
 
   async function updateProfile(
@@ -233,7 +244,11 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           return publish({ ...SIGNED_OUT_AUTH_STATE })
         }
         ensureAuthSubscription(deps.client)
-        return await adoptSession(data.session.access_token, data.session.user.id)
+        return await adoptSession(
+          data.session.access_token,
+          data.session.user.id,
+          data.session.user.email ?? null
+        )
       } catch (error) {
         // Corrupt session file, expired refresh token, no network — all
         // non-fatal. The app is already running; we just stay signed out.
@@ -275,6 +290,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         publish({
           phase: 'signing-in',
           profile: null,
+          email: null,
           online: state.online,
           errorCode: null
         })
@@ -365,7 +381,11 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           return
         }
         ensureAuthSubscription(deps.client)
-        await adoptSession(data.session.access_token, data.session.user.id)
+        await adoptSession(
+          data.session.access_token,
+          data.session.user.id,
+          data.session.user.email ?? null
+        )
       } catch (error) {
         console.error('[group] code exchange threw', error)
         failed('network')

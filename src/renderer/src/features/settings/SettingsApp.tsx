@@ -43,7 +43,15 @@ interface Category {
   keywords: string
 }
 
-export function SettingsApp(): JSX.Element {
+interface SettingsAppProps {
+  embedded?: boolean
+  onClose?: () => void
+}
+
+export function SettingsApp({
+  embedded = false,
+  onClose
+}: SettingsAppProps = {}): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const [activeCategory, setActiveCategory] = useState<CategoryId>('general')
@@ -165,7 +173,7 @@ export function SettingsApp(): JSX.Element {
     const unsubscribe = onPush('settings:changed', ({ settings: next }) => {
       setSettings(next)
       setTheme(next.theme)
-      applyTheme(next.theme)
+      if (!embedded) applyTheme(next.theme)
     })
 
     void invoke('settings:get', {})
@@ -173,7 +181,7 @@ export function SettingsApp(): JSX.Element {
         if (!mountedRef.current) return
         setSettings(result)
         setTheme(result.theme)
-        applyTheme(result.theme)
+        if (!embedded) applyTheme(result.theme)
       })
       .catch(() => {
         if (mountedRef.current) {
@@ -188,27 +196,29 @@ export function SettingsApp(): JSX.Element {
       mountedRef.current = false
       unsubscribe()
     }
-  }, [])
+  }, [embedded])
 
   useEffect(() => {
+    if (embedded) return
     document.documentElement.lang = locale
     document.title = `${t('settings.app.name')} — ${t('settings.window.title')}`
-  }, [locale, t])
+  }, [embedded, locale, t])
 
   useEffect(() => {
+    if (embedded) return
     const media = window.matchMedia('(prefers-color-scheme: light)')
     const handleChange = (): void => {
       if (theme === 'system') applyTheme('system')
     }
     media.addEventListener('change', handleChange)
     return () => media.removeEventListener('change', handleChange)
-  }, [theme])
+  }, [embedded, theme])
 
   const handleThemeSelect = (nextTheme: ThemePreference): void => {
     if (nextTheme === theme || themeSaving) return
     const previousTheme = theme
     setTheme(nextTheme)
-    applyTheme(nextTheme)
+    if (!embedded) applyTheme(nextTheme)
     setThemeSaving(true)
     setThemeErrorKey(null)
 
@@ -217,12 +227,12 @@ export function SettingsApp(): JSX.Element {
         if (!mountedRef.current) return
         setSettings(nextSettings)
         setTheme(nextSettings.theme)
-        applyTheme(nextSettings.theme)
+        if (!embedded) applyTheme(nextSettings.theme)
       })
       .catch(() => {
         if (!mountedRef.current) return
         setTheme(previousTheme)
-        applyTheme(previousTheme)
+        if (!embedded) applyTheme(previousTheme)
         setThemeErrorKey('settings.appearance.saveFailed')
       })
       .finally(() => {
@@ -304,24 +314,35 @@ export function SettingsApp(): JSX.Element {
   const groups: readonly CategoryGroup[] = ['settings', 'workspace', 'info']
 
   return (
-    <div className="settings-app">
-      <header className="settings-titlebar titlebar-drag">
-        <div className="settings-titlebar__brand">
-          <BandalMark size={17} className="settings-titlebar__moon" />
-          <span>{t('settings.app.name')}</span>
-        </div>
-        <span className="settings-titlebar__divider" aria-hidden="true" />
-        <span className="settings-titlebar__label">
-          {t('settings.window.title')}
-        </span>
-      </header>
+    <div
+      className={`settings-app${embedded ? ' settings-app--embedded' : ''}`}
+    >
+      {!embedded && (
+        <header className="settings-titlebar titlebar-drag">
+          <div className="settings-titlebar__brand">
+            <BandalMark size={17} className="settings-titlebar__moon" />
+            <span>{t('settings.app.name')}</span>
+          </div>
+          <span className="settings-titlebar__divider" aria-hidden="true" />
+          <span className="settings-titlebar__label">
+            {t('settings.window.title')}
+          </span>
+        </header>
+      )}
 
       <div className="settings-layout">
         <aside
           className="settings-sidebar"
           aria-label={t('settings.navigation.label')}
         >
-          <button type="button" className="back-button" onClick={() => window.close()}>
+          <button
+            type="button"
+            className="back-button"
+            onClick={() => {
+              if (embedded) onClose?.()
+              else window.close()
+            }}
+          >
             <Icon name="arrow-left" size={17} />
             <span>{t('settings.back')}</span>
           </button>

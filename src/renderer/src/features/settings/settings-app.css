@@ -8,6 +8,26 @@
   background: var(--bg-app);
 }
 
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  min-width: 0;
+  min-height: 0;
+}
+
+.settings-app--embedded {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.settings-app--embedded .settings-content__inner {
+  width: 100%;
+}
+
+:root[data-platform='darwin'] .settings-app--embedded .settings-sidebar {
+  padding-top: calc(var(--chrome-height) + var(--space-2));
+}
+
 .settings-titlebar {
   display: flex;
   align-items: center;

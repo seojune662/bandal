@@ -10,6 +10,7 @@ import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
 import { useOnboardingStore } from '../features/onboarding/onboardingStore'
 import { PreflightBanners } from '../features/onboarding/PreflightBanners'
 import { useAgentPreflight } from '../features/onboarding/useAgentPreflight'
+import { SettingsApp } from '../features/settings/SettingsApp'
 import { useUpdateNotifications } from '../features/updates/useUpdateNotifications'
 import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
 import { selectNeedsNickname, useAuthStore } from '../stores/authStore'
@@ -32,6 +33,9 @@ export function AppShell(): JSX.Element {
   // (CourseSidebar) — this shell only owns the overlay itself.
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
   const closeBoardOverlay = useUiStore((state) => state.closeBoardOverlay)
+  const isSettingsOpen = useUiStore((state) => state.isSettingsOpen)
+  const openSettings = useUiStore((state) => state.openSettings)
+  const closeSettings = useUiStore((state) => state.closeSettings)
   const isOnboardingVisible = useOnboardingStore((state) => state.visible)
   // [P2-D] Signed in, but the account still carries the trigger's placeholder
   // handle. Never mounted before sign-in, so an unconfigured or signed-out
@@ -67,6 +71,21 @@ export function AppShell(): JSX.Element {
     })
     return unsubscribe
   }, [loadCourses])
+
+  useEffect(() => {
+    return onPush('ui:openSettings', () => openSettings())
+  }, [openSettings])
+
+  useEffect(() => {
+    if (!isSettingsOpen) return
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      closeSettings()
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [closeSettings, isSettingsOpen])
 
   // [M5] A file dropped outside a drop target must never navigate the window.
   useEffect(() => {
@@ -119,6 +138,11 @@ export function AppShell(): JSX.Element {
           keyed by course, so the tab and the popup share one dialogue. */}
       <AssistantLayer />
       <ToastHost />
+      {isSettingsOpen && (
+        <div className="settings-overlay">
+          <SettingsApp embedded onClose={closeSettings} />
+        </div>
+      )}
     </div>
   )
 }

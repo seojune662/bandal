@@ -42,6 +42,11 @@ export interface MyProfile {
 export interface AuthState {
   phase: AuthPhase
   profile: MyProfile | null
+  /**
+   * Signed-in account e-mail, for the owner's own account UI only — never
+   * shown to other members (their view goes through MyProfile).
+   */
+  email: string | null
   online: boolean
   errorCode: AuthErrorCode | null
 }
@@ -73,6 +78,7 @@ export type AuthSignInResult =
 export const SIGNED_OUT_AUTH_STATE: AuthState = {
   phase: 'signed-out',
   profile: null,
+  email: null,
   online: false,
   errorCode: null
 }
@@ -80,6 +86,7 @@ export const SIGNED_OUT_AUTH_STATE: AuthState = {
 export const UNCONFIGURED_AUTH_STATE: AuthState = {
   phase: 'unconfigured',
   profile: null,
+  email: null,
   online: false,
   errorCode: null
 }

@@ -17,6 +17,8 @@ interface UiState {
   rightRailOpen: boolean
   /** [M5] Study-board overlay above the workspace (board tab stays too). */
   isBoardOverlayOpen: boolean
+  /** Full-window in-app settings overlay (replaces the settings window). */
+  isSettingsOpen: boolean
   /** Load persisted settings and subscribe to changes. Call once at boot. */
   initTheme: () => Promise<void>
   /** Persist a new preference (round-trips through main). */
@@ -25,6 +27,8 @@ interface UiState {
   toggleRightRail: () => void
   toggleBoardOverlay: () => void
   closeBoardOverlay: () => void
+  openSettings: () => void
+  closeSettings: () => void
 }
 
 let themeInitialization: Promise<void> | null = null
@@ -50,6 +54,9 @@ export const useUiStore = create<UiState>()((set, get) => ({
   leftRailOpen: true,
   rightRailOpen: true,
   isBoardOverlayOpen: false,
+  isSettingsOpen: false,
+  openSettings: () => set({ isSettingsOpen: true }),
+  closeSettings: () => set({ isSettingsOpen: false }),
 
   initTheme: async () => {
     if (themeInitialization === null) {

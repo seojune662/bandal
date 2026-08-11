@@ -235,3 +235,172 @@
 .group-row__board:active {
   transform: translateY(1px);
 }
+
+.group-row__actions {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  font-size: var(--text-base);
+  line-height: 1;
+  color: var(--text-muted);
+  pointer-events: none;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+
+.group-row-item:hover .group-row__actions,
+.group-row-item:focus-within .group-row__actions,
+.group-row__actions[aria-expanded='true'] {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.group-row__actions:hover,
+.group-row__actions:focus-visible,
+.group-row__actions[aria-expanded='true'] {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+  border-color: var(--border-subtle);
+}
+
+.group-actions-menu {
+  position: fixed;
+  z-index: 35;
+  width: min(
+    calc(var(--context-menu-width) + var(--space-5)),
+    calc(100vw - var(--space-4))
+  );
+  max-height: calc(100vh - var(--space-8));
+  padding: var(--space-2);
+  overflow-y: auto;
+  color: var(--text-secondary);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  transform: translateX(-100%) translateY(var(--space-1));
+  transform-origin: top right;
+  backdrop-filter: blur(var(--space-3));
+}
+
+.group-actions-menu[data-placement='top'] {
+  transform: translateX(-100%)
+    translateY(calc(-100% - var(--space-1)));
+  transform-origin: bottom right;
+}
+
+.group-actions-menu button {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+.group-actions-menu button:hover:not(:disabled),
+.group-actions-menu button:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+}
+
+.group-actions-menu button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.group-actions-menu__chevron {
+  margin-left: auto;
+  font-size: var(--text-base);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.group-actions-menu button[aria-expanded='true']
+  .group-actions-menu__chevron {
+  transform: rotate(90deg);
+}
+
+.group-actions-menu__courses {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: calc(var(--control-height) * 5);
+  padding: var(--space-1) 0 var(--space-1) var(--space-2);
+  margin-left: var(--space-2);
+  overflow-y: auto;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.group-actions-menu__courses button {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.group-actions-menu__course-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-actions-menu__linked,
+.group-actions-menu__empty {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.group-actions-menu__empty {
+  padding: var(--space-2);
+}
+
+.group-actions-menu__separator {
+  display: block;
+  height: 1px;
+  margin: var(--space-2);
+  background: var(--border-subtle);
+}
+
+.group-actions-menu .group-actions-menu__danger {
+  color: var(--danger);
+}
+
+.group-actions-menu .group-actions-menu__danger:hover:not(:disabled),
+.group-actions-menu .group-actions-menu__danger:focus-visible {
+  background: var(--danger-muted);
+}
+
+.group-actions-menu__confirm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--space-1);
+  align-items: center;
+  padding-left: var(--space-2);
+}
+
+.group-actions-menu__confirm > span {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.group-actions-menu__confirm button {
+  width: auto;
+  min-height: var(--control-height);
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+}
