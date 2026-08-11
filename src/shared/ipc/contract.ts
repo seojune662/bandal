@@ -12,6 +12,7 @@ import type {
   AddCourseFromFolderInput,
   Course,
   CourseFolderResult,
+  CourseGroup,
   CreateCourseInput,
   PickedFolder,
   RelinkCourseInput,
@@ -181,6 +182,45 @@ export interface IpcContract {
     req: { courseId: string }
     res: { ok: true }
   }
+  /**
+   * One drag = one atomic call. Moves a course into `groupId` (null =
+   * ungrouped) AND positions it before `beforeCourseId` (null = append to the
+   * end of the target group's block) in a single transaction, then returns
+   * the refreshed full list so the renderer never has to interleave two
+   * mutations. `beforeCourseId` must already belong to the target group.
+   */
+  'courses:organize': {
+    req: {
+      courseId: string
+      groupId: string | null
+      beforeCourseId: string | null
+    }
+    res: Course[]
+  }
+
+  // -- course groups (과목 그룹/학기) ----------------------------------------
+  // ⚠ Prefix is `courseGroups:` — `groups:*` is TAKEN by the Phase-2 social
+  // 함께하기 feature below. These are purely local sidebar sections.
+  'courseGroups:list': {
+    req: Record<string, never>
+    res: CourseGroup[]
+  }
+  'courseGroups:create': {
+    req: { name: string }
+    res: CourseGroup
+  }
+  'courseGroups:rename': {
+    req: { groupId: string; name: string }
+    res: CourseGroup
+  }
+  /**
+   * Soft-deletes the group and sets every member course's groupId to null.
+   * Courses themselves are NEVER deleted by a group operation.
+   */
+  'courseGroups:delete': {
+    req: { groupId: string }
+    res: { ok: true }
+  }
 
   // -- course links (M8: per-course LMS shortcuts) --------------------------
   /** Shortcuts pinned under one course, in sidebar order. */
@@ -226,10 +266,23 @@ export interface IpcContract {
     req: { courseId: string; query: string }
     res: MaterialSearchHit[]
   }
-  /** Copies absolute paths into the course folder. */
+  /**
+   * Copies absolute paths into the course folder. `dirRelPath` targets a
+   * course-relative folder; '' or omitted means the course root.
+   */
   'materials:import': {
-    req: { courseId: string; paths: string[] }
+    req: { courseId: string; paths: string[]; dirRelPath?: string }
     res: ImportResult
+  }
+  /**
+   * Moves a file or folder to another course-relative directory
+   * (`toDirRelPath: ''` = course root). Collisions auto-rename with the
+   * import convention (`name (2).ext`); moving a folder into itself or a
+   * descendant is rejected. The folder watcher pushes `materials:changed`.
+   */
+  'materials:move': {
+    req: { courseId: string; fromRelPath: string; toDirRelPath: string }
+    res: { relPath: string }
   }
   /** Reveals the file in Finder / file manager. */
   'materials:reveal': {
@@ -961,6 +1014,11 @@ export const IPC_CHANNELS = [
   'courses:rename',
   'courses:archive',
   'courses:delete',
+  'courses:organize',
+  'courseGroups:list',
+  'courseGroups:create',
+  'courseGroups:rename',
+  'courseGroups:delete',
   'courseLinks:list',
   'courseLinks:create',
   'courseLinks:update',
@@ -969,6 +1027,7 @@ export const IPC_CHANNELS = [
   'materials:tree',
   'materials:search',
   'materials:import',
+  'materials:move',
   'materials:reveal',
   'materials:readFile',
   'materials:watch',

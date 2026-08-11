@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Course, PickedFolder } from '../../../../shared/types/course'
+import type {
+  Course,
+  CourseGroup,
+  PickedFolder
+} from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
+import { BandalMark } from '../../components/BandalMark'
+import { Tooltip } from '../../components/Tooltip'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
+import { SidebarAccountEntry } from '../account/SidebarAccountEntry'
 import { StudyGapList } from '../insights/StudyGapList'
 import { TogetherFooter } from '../group/TogetherFooter'
 import { UniversityShortcuts } from '../university/UniversityShortcuts'
@@ -13,16 +20,32 @@ import {
   CourseFormDialog,
   DeleteCourseDialog
 } from './CourseDialogs'
+import {
+  CourseGroupNameDialog,
+  DeleteCourseGroupDialog
+} from './CourseGroupDialogs'
+import { CourseGroupRow } from './CourseGroupRow'
 import { FavoritesSection } from './FavoritesSection'
 import {
   persistCollapsedCourseIds,
   readCollapsedCourseIds
 } from './courseCollapse'
+import {
+  canAcceptCourseDrag,
+  clearCurrentCourseDrag,
+  COURSE_DRAG_MIME,
+  getCurrentCourseDrag,
+  parseCourseDrag,
+  serializeCourseDrag,
+  setCurrentCourseDrag
+} from './courseDrag'
+import {
+  persistCollapsedGroupIds,
+  readCollapsedGroupIds
+} from './courseGroupCollapse'
 import { folderProblemMessage } from './folderMessages'
 import { normalizeCourseColor } from './courseColors'
 import './courses.css'
-import { BandalMark } from '../../components/BandalMark'
-import { SidebarAccountEntry } from '../account/SidebarAccountEntry'
 
 interface ContextMenuState {
   course: Course
@@ -35,6 +58,19 @@ interface AddMenuState {
   x: number
   y: number
 }
+
+interface GroupContextMenuState {
+  group: CourseGroup
+  x: number
+  y: number
+  placement: 'top' | 'bottom'
+  alignEnd: boolean
+}
+
+type CourseDropTarget =
+  | { kind: 'before'; courseId: string }
+  | { kind: 'group'; groupId: string }
+  | { kind: 'ungrouped'; position: 'top' | 'bottom' }
 
 /** Closes a floating menu on outside pointerdown, Escape or window blur. */
 function useDismissableMenu(
@@ -67,11 +103,16 @@ function useDismissableMenu(
 
 export function CourseSidebar(): JSX.Element {
   const courses = useCoursesStore((state) => state.courses)
+  const groups = useCoursesStore((state) => state.groups)
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
   const isLoading = useCoursesStore((state) => state.isLoading)
   const pendingCourseId = useCoursesStore((state) => state.pendingCourseId)
   const error = useCoursesStore((state) => state.error)
   const selectCourse = useCoursesStore((state) => state.selectCourse)
+  const createGroup = useCoursesStore((state) => state.createGroup)
+  const renameGroup = useCoursesStore((state) => state.renameGroup)
+  const deleteGroup = useCoursesStore((state) => state.deleteGroup)
+  const organizeCourse = useCoursesStore((state) => state.organizeCourse)
   const createCourse = useCoursesStore((state) => state.createCourse)
   const pickFolder = useCoursesStore((state) => state.pickFolder)
   const addCourseFromFolder = useCoursesStore((state) => state.addCourseFromFolder)
@@ -95,11 +136,26 @@ export function CourseSidebar(): JSX.Element {
   const [deleteTarget, setDeleteTarget] = useState<Course | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [addMenu, setAddMenu] = useState<AddMenuState | null>(null)
+  const [createGroupDialogOpen, setCreateGroupDialogOpen] = useState(false)
+  const [renameGroupTarget, setRenameGroupTarget] = useState<CourseGroup | null>(
+    null
+  )
+  const [deleteGroupTarget, setDeleteGroupTarget] = useState<CourseGroup | null>(
+    null
+  )
+  const [groupContextMenu, setGroupContextMenu] =
+    useState<GroupContextMenuState | null>(null)
+  const [dropTarget, setDropTarget] = useState<CourseDropTarget | null>(null)
+  const [draggingCourseId, setDraggingCourseId] = useState<string | null>(null)
   const [collapsedCourseIds, setCollapsedCourseIds] = useState(
     readCollapsedCourseIds
   )
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState(
+    readCollapsedGroupIds
+  )
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const addMenuRef = useRef<HTMLDivElement>(null)
+  const groupContextMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const refreshAfterSettingsChange = (): void => {
@@ -109,19 +165,63 @@ export function CourseSidebar(): JSX.Element {
     return () => window.removeEventListener('focus', refreshAfterSettingsChange)
   }, [loadCourses])
 
+  useEffect(
+    () => () => {
+      clearCurrentCourseDrag()
+    },
+    []
+  )
+
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const isSearching = query.length > 0
+
   const visibleCourses = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase()
     if (normalizedQuery.length === 0) return courses
     return courses.filter((course) =>
       course.name.toLocaleLowerCase().includes(normalizedQuery)
     )
-  }, [courses, query])
+  }, [courses, normalizedQuery])
+
+  const organizedCourses = useMemo(() => {
+    const sortedGroups = [...groups].sort(
+      (first, second) => first.sortOrder - second.sortOrder
+    )
+    const coursesByGroup = new Map<string, Course[]>()
+    for (const group of sortedGroups) coursesByGroup.set(group.id, [])
+
+    const ungroupedCourses: Course[] = []
+    for (const course of courses) {
+      if (course.groupId === null || !coursesByGroup.has(course.groupId)) {
+        ungroupedCourses.push(course)
+      } else {
+        coursesByGroup.get(course.groupId)?.push(course)
+      }
+    }
+
+    return { sortedGroups, coursesByGroup, ungroupedCourses }
+  }, [courses, groups])
 
   // Stable callbacks: the dismiss effect must not re-arm on every render.
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
   const closeAddMenu = useCallback(() => setAddMenu(null), [])
+  const closeGroupContextMenu = useCallback(
+    () => setGroupContextMenu(null),
+    []
+  )
   useDismissableMenu(contextMenu !== null, contextMenuRef, closeContextMenu)
   useDismissableMenu(addMenu !== null, addMenuRef, closeAddMenu)
+  useDismissableMenu(
+    groupContextMenu !== null,
+    groupContextMenuRef,
+    closeGroupContextMenu
+  )
+
+  useEffect(() => {
+    if (!isSearching) return
+    clearCurrentCourseDrag()
+    setDraggingCourseId(null)
+    setDropTarget(null)
+  }, [isSearching])
 
   const setCourseExpanded = useCallback(
     (courseId: string, expanded: boolean): void => {
@@ -136,9 +236,24 @@ export function CourseSidebar(): JSX.Element {
     []
   )
 
+  const setGroupCollapsed = useCallback(
+    (groupId: string, collapsed: boolean): void => {
+      setCollapsedGroupIds((current) => {
+        const next = new Set(current)
+        if (collapsed) next.add(groupId)
+        else next.delete(groupId)
+        persistCollapsedGroupIds(next)
+        return next
+      })
+    },
+    []
+  )
+
   const handleContextMenu = (event: React.MouseEvent, course: Course): void => {
     event.preventDefault()
     selectCourse(course.id)
+    setAddMenu(null)
+    setGroupContextMenu(null)
     setContextMenu({
       course,
       x: event.clientX,
@@ -149,7 +264,29 @@ export function CourseSidebar(): JSX.Element {
 
   const openAddMenu = (event: React.MouseEvent<HTMLButtonElement>): void => {
     const rect = event.currentTarget.getBoundingClientRect()
+    setContextMenu(null)
+    setGroupContextMenu(null)
     setAddMenu({ x: rect.right, y: rect.bottom })
+  }
+
+  const openGroupMenu = (
+    event: React.MouseEvent<HTMLElement>,
+    group: CourseGroup
+  ): void => {
+    const fromContextMenu = event.type === 'contextmenu'
+    const rect = event.currentTarget.getBoundingClientRect()
+    setAddMenu(null)
+    setContextMenu(null)
+    setGroupContextMenu({
+      group,
+      x: fromContextMenu ? event.clientX : rect.right,
+      y: fromContextMenu ? event.clientY : rect.bottom,
+      placement:
+        fromContextMenu && event.clientY > window.innerHeight / 2
+          ? 'top'
+          : 'bottom',
+      alignEnd: !fromContextMenu
+    })
   }
 
   /** Native folder picker → link dialog (name prefilled with the basename). */
@@ -197,22 +334,271 @@ export function CourseSidebar(): JSX.Element {
     }
   }
 
+  const handleDeleteGroup = async (): Promise<void> => {
+    if (deleteGroupTarget === null) return
+    await deleteGroup(deleteGroupTarget.id)
+    setCollapsedGroupIds((current) => {
+      if (!current.has(deleteGroupTarget.id)) return current
+      const next = new Set(current)
+      next.delete(deleteGroupTarget.id)
+      persistCollapsedGroupIds(next)
+      return next
+    })
+  }
+
+  const finishCourseDrag = (): void => {
+    clearCurrentCourseDrag()
+    setDraggingCourseId(null)
+    setDropTarget(null)
+  }
+
+  const startCourseDrag = (
+    event: React.DragEvent<HTMLDivElement>,
+    courseId: string
+  ): void => {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData(COURSE_DRAG_MIME, serializeCourseDrag(courseId))
+    setCurrentCourseDrag({ version: 1, courseId })
+    setDraggingCourseId(courseId)
+    setDropTarget(null)
+  }
+
+  const courseIdFromDrop = (
+    event: React.DragEvent<HTMLElement>
+  ): string | null => {
+    if (!canAcceptCourseDrag(event.dataTransfer.types)) return null
+    const current = getCurrentCourseDrag()
+    const parsed = parseCourseDrag(
+      event.dataTransfer.getData(COURSE_DRAG_MIME)
+    )
+    if (current === null || parsed?.courseId !== current.courseId) return null
+    return parsed.courseId
+  }
+
+  const isUpperCourseRowHalf = (
+    event: React.DragEvent<HTMLDivElement>
+  ): boolean => {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    return bounds.height === 0 || event.clientY <= bounds.top + bounds.height / 2
+  }
+
+  const organizeDroppedCourse = (
+    courseId: string,
+    groupId: string | null,
+    beforeCourseId: string | null
+  ): void => {
+    if (beforeCourseId === courseId) return
+    finishCourseDrag()
+    void organizeCourse(courseId, groupId, beforeCourseId).catch(() => {
+      // The store owns the persistent error shown above the list.
+    })
+  }
+
+  const renderCourse = (course: Course, dragEnabled: boolean): JSX.Element => {
+    const selected = course.id === selectedCourseId
+    const pending = course.id === pendingCourseId
+    const expanded = selected && !collapsedCourseIds.has(course.id)
+    const dropBefore =
+      dropTarget?.kind === 'before' && dropTarget.courseId === course.id
+
+    return (
+      <li key={course.id}>
+        <div
+          className="course-row"
+          data-selected={selected}
+          data-missing={course.missing || undefined}
+          data-drop-before={dropBefore || undefined}
+          data-dragging={draggingCourseId === course.id || undefined}
+          draggable={dragEnabled}
+          onContextMenu={(event) => handleContextMenu(event, course)}
+          onDragStart={
+            dragEnabled
+              ? (event) => startCourseDrag(event, course.id)
+              : undefined
+          }
+          onDragEnd={dragEnabled ? finishCourseDrag : undefined}
+          onDragOver={
+            dragEnabled
+              ? (event) => {
+                  const current = getCurrentCourseDrag()
+                  const accepts = canAcceptCourseDrag(event.dataTransfer.types)
+                  if (
+                    !accepts ||
+                    current === null ||
+                    current.courseId === course.id ||
+                    !isUpperCourseRowHalf(event)
+                  ) {
+                    setDropTarget((target) =>
+                      target?.kind === 'before' &&
+                      target.courseId === course.id
+                        ? null
+                        : target
+                    )
+                    return
+                  }
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setDropTarget({ kind: 'before', courseId: course.id })
+                }
+              : undefined
+          }
+          onDragLeave={
+            dragEnabled
+              ? (event) => {
+                  if (
+                    event.relatedTarget instanceof Node &&
+                    event.currentTarget.contains(event.relatedTarget)
+                  ) {
+                    return
+                  }
+                  setDropTarget((target) =>
+                    target?.kind === 'before' && target.courseId === course.id
+                      ? null
+                      : target
+                  )
+                }
+              : undefined
+          }
+          onDrop={
+            dragEnabled
+              ? (event) => {
+                  const current = getCurrentCourseDrag()
+                  if (
+                    current === null ||
+                    current.courseId === course.id ||
+                    !isUpperCourseRowHalf(event)
+                  ) {
+                    return
+                  }
+                  const draggedCourseId = courseIdFromDrop(event)
+                  if (draggedCourseId === null || draggedCourseId === course.id) {
+                    return
+                  }
+                  event.preventDefault()
+                  event.stopPropagation()
+                  organizeDroppedCourse(
+                    draggedCourseId,
+                    course.groupId,
+                    course.id
+                  )
+                }
+              : undefined
+          }
+        >
+          <button
+            type="button"
+            className="course-row__toggle"
+            aria-label={`${course.name} ${expanded ? '접기' : '펼치기'}`}
+            aria-expanded={expanded}
+            disabled={pending}
+            onClick={() => {
+              if (!selected) selectCourse(course.id)
+              setCourseExpanded(course.id, !expanded)
+            }}
+          >
+            <Icon name="chevronRight" />
+          </button>
+          <button
+            type="button"
+            className="course-row__select"
+            aria-current={selected ? 'page' : undefined}
+            disabled={pending}
+            onClick={() => selectCourse(course.id)}
+          >
+            <span
+              className="course-dot"
+              data-course-color={normalizeCourseColor(course.color)}
+            />
+            <span className="course-row__name">{course.name}</span>
+            {course.missing ? (
+              <span className="course-row__badge">연결 끊김</span>
+            ) : (
+              <span className="course-row__hint" aria-hidden="true">
+                ···
+              </span>
+            )}
+          </button>
+        </div>
+        {expanded && (
+          <div className="course-row__children">
+            <StudyGapList courseId={course.id} />
+            <FavoritesSection courseId={course.id} />
+          </div>
+        )}
+      </li>
+    )
+  }
+
+  const handleGroupDragOver = (
+    event: React.DragEvent<HTMLDivElement>,
+    groupId: string
+  ): void => {
+    if (
+      !canAcceptCourseDrag(event.dataTransfer.types) ||
+      getCurrentCourseDrag() === null
+    ) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    setDropTarget({ kind: 'group', groupId })
+  }
+
+  const handleGroupDrop = (
+    event: React.DragEvent<HTMLDivElement>,
+    groupId: string
+  ): void => {
+    if (getCurrentCourseDrag() === null) return
+    const draggedCourseId = courseIdFromDrop(event)
+    if (draggedCourseId === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    organizeDroppedCourse(draggedCourseId, groupId, null)
+  }
+
+  const handleUngroupedDragOver = (
+    event: React.DragEvent<HTMLLIElement>,
+    position: 'top' | 'bottom'
+  ): void => {
+    if (
+      !canAcceptCourseDrag(event.dataTransfer.types) ||
+      getCurrentCourseDrag() === null
+    ) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    setDropTarget({ kind: 'ungrouped', position })
+  }
+
+  const handleUngroupedDrop = (
+    event: React.DragEvent<HTMLLIElement>
+  ): void => {
+    if (getCurrentCourseDrag() === null) return
+    const draggedCourseId = courseIdFromDrop(event)
+    if (draggedCourseId === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    organizeDroppedCourse(draggedCourseId, null, null)
+  }
+
   return (
     <aside className="app-rail app-rail--left" aria-label="과목 목록">
       <div className="course-sidebar-chrome">
         <span className="course-sidebar-chrome__traffic" aria-hidden="true" />
         <BandalMark size={18} className="course-sidebar-chrome__mark" />
         <span className="course-sidebar-chrome__name">Bandal</span>
-        <button
-          type="button"
-          className="titlebar-button course-sidebar-chrome__toggle"
-          aria-label="과목 사이드바 접기"
-          aria-pressed={true}
-          title="과목 사이드바 접기"
-          onClick={toggleLeftRail}
-        >
-          <Icon name="layoutLeft" />
-        </button>
+        <Tooltip label="과목 사이드바 접기" placement="bottom">
+          <button
+            type="button"
+            className="titlebar-button course-sidebar-chrome__toggle"
+            aria-label="과목 사이드바 접기"
+            aria-pressed={true}
+            onClick={toggleLeftRail}
+          >
+            <Icon name="layoutLeft" />
+          </button>
+        </Tooltip>
       </div>
 
       {/* [M8] 학교 학사 사이트 바로가기 — above 과목 because it is the same
@@ -224,17 +610,18 @@ export function CourseSidebar(): JSX.Element {
           <p className="eyebrow">LIBRARY</p>
           <h2>과목</h2>
         </div>
-        <button
-          type="button"
-          className="bare-icon-button"
-          aria-label="과목 추가"
-          title="과목 추가"
-          aria-haspopup="menu"
-          aria-expanded={addMenu !== null}
-          onClick={openAddMenu}
-        >
-          <Icon name="plus" />
-        </button>
+        <Tooltip label="과목 추가" placement="bottom">
+          <button
+            type="button"
+            className="bare-icon-button"
+            aria-label="과목 추가"
+            aria-haspopup="menu"
+            aria-expanded={addMenu !== null}
+            onClick={openAddMenu}
+          >
+            <Icon name="plus" />
+          </button>
+        </Tooltip>
       </div>
 
       <div className="rail-search">
@@ -271,13 +658,13 @@ export function CourseSidebar(): JSX.Element {
       )}
 
       <div className="app-rail__body course-list-area">
-        {isLoading && courses.length === 0 ? (
+        {isLoading && courses.length === 0 && groups.length === 0 ? (
           <div className="loading-list" aria-label="과목 불러오는 중">
             <span />
             <span />
             <span />
           </div>
-        ) : courses.length === 0 ? (
+        ) : courses.length === 0 && groups.length === 0 ? (
           <div className="empty-state empty-state--courses">
             <BandalMark size={56} className="empty-state__moon" />
             <p className="empty-state__text">첫 과목을 만들어보세요</p>
@@ -300,71 +687,103 @@ export function CourseSidebar(): JSX.Element {
               새 과목 만들기
             </button>
           </div>
-        ) : visibleCourses.length === 0 ? (
+        ) : isSearching && visibleCourses.length === 0 ? (
           <div className="rail-zero-result">
             <p>일치하는 과목이 없어요</p>
             <button type="button" onClick={() => setQuery('')}>
               검색 지우기
             </button>
           </div>
+        ) : isSearching ? (
+          <ul className="course-list">
+            {visibleCourses.map((course) => renderCourse(course, false))}
+          </ul>
         ) : (
           <ul className="course-list">
-            {visibleCourses.map((course) => {
-              const selected = course.id === selectedCourseId
-              const pending = course.id === pendingCourseId
-              const expanded = selected && !collapsedCourseIds.has(course.id)
+            <li
+              className="course-ungrouped-drop-zone course-ungrouped-drop-zone--top"
+              data-drag-active={draggingCourseId !== null || undefined}
+              data-drop-ungrouped={
+                (dropTarget?.kind === 'ungrouped' &&
+                  dropTarget.position === 'top') ||
+                undefined
+              }
+              aria-hidden="true"
+              onDragOver={(event) => handleUngroupedDragOver(event, 'top')}
+              onDragLeave={() => {
+                setDropTarget((target) =>
+                  target?.kind === 'ungrouped' && target.position === 'top'
+                    ? null
+                    : target
+                )
+              }}
+              onDrop={handleUngroupedDrop}
+            />
+            {organizedCourses.ungroupedCourses.map((course) =>
+              renderCourse(course, true)
+            )}
+            {organizedCourses.sortedGroups.map((group) => {
+              const groupCourses =
+                organizedCourses.coursesByGroup.get(group.id) ?? []
               return (
-                <li key={course.id}>
-                  <div
-                    className="course-row"
-                    data-selected={selected}
-                    data-missing={course.missing || undefined}
-                    onContextMenu={(event) => handleContextMenu(event, course)}
-                  >
-                    <button
-                      type="button"
-                      className="course-row__toggle"
-                      aria-label={`${course.name} ${expanded ? '접기' : '펼치기'}`}
-                      aria-expanded={expanded}
-                      disabled={pending}
-                      onClick={() => {
-                        if (!selected) selectCourse(course.id)
-                        setCourseExpanded(course.id, !expanded)
-                      }}
-                    >
-                      <Icon name="chevronRight" />
-                    </button>
-                    <button
-                      type="button"
-                      className="course-row__select"
-                      aria-current={selected ? 'page' : undefined}
-                      disabled={pending}
-                      onClick={() => selectCourse(course.id)}
-                    >
-                      <span
-                        className="course-dot"
-                        data-course-color={normalizeCourseColor(course.color)}
-                      />
-                      <span className="course-row__name">{course.name}</span>
-                      {course.missing ? (
-                        <span className="course-row__badge">연결 끊김</span>
-                      ) : (
-                        <span className="course-row__hint" aria-hidden="true">
-                          ···
-                        </span>
-                      )}
-                    </button>
-                  </div>
-                  {/* Course-scoped favorites stay under the open course. */}
-                  {expanded && (
-                    <div className="course-row__children">
-                      <StudyGapList courseId={course.id} />
-                      <FavoritesSection courseId={course.id} />
-                    </div>
-                  )}
-                </li>
+                <CourseGroupRow
+                  key={group.id}
+                  group={group}
+                  courseCount={groupCourses.length}
+                  collapsed={collapsedGroupIds.has(group.id)}
+                  menuOpen={groupContextMenu?.group.id === group.id}
+                  dropInto={
+                    dropTarget?.kind === 'group' &&
+                    dropTarget.groupId === group.id
+                  }
+                  onToggle={() =>
+                    setGroupCollapsed(
+                      group.id,
+                      !collapsedGroupIds.has(group.id)
+                    )
+                  }
+                  onOpenMenu={(event) => openGroupMenu(event, group)}
+                  onHeaderDragOver={(event) =>
+                    handleGroupDragOver(event, group.id)
+                  }
+                  onHeaderDragLeave={(event) => {
+                    if (
+                      event.relatedTarget instanceof Node &&
+                      event.currentTarget.contains(event.relatedTarget)
+                    ) {
+                      return
+                    }
+                    setDropTarget((target) =>
+                      target?.kind === 'group' && target.groupId === group.id
+                        ? null
+                        : target
+                    )
+                  }}
+                  onHeaderDrop={(event) => handleGroupDrop(event, group.id)}
+                >
+                  {groupCourses.map((course) => renderCourse(course, true))}
+                </CourseGroupRow>
               )
             })}
+            <li
+              className="course-ungrouped-drop-zone course-ungrouped-drop-zone--bottom"
+              data-drag-active={draggingCourseId !== null || undefined}
+              data-drop-ungrouped={
+                (dropTarget?.kind === 'ungrouped' &&
+                  dropTarget.position === 'bottom') ||
+                undefined
+              }
+              aria-hidden="true"
+              onDragOver={(event) => handleUngroupedDragOver(event, 'bottom')}
+              onDragLeave={() => {
+                setDropTarget((target) =>
+                  target?.kind === 'ungrouped' && target.position === 'bottom'
+                    ? null
+                    : target
+                )
+              }}
+              onDrop={handleUngroupedDrop}
+            />
           </ul>
         )}
       </div>
@@ -406,7 +825,11 @@ export function CourseSidebar(): JSX.Element {
           data-align="end"
           style={{ left: addMenu.x, top: addMenu.y }}
         >
-          <button type="button" role="menuitem" onClick={() => void startFolderAdd()}>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => void startFolderAdd()}
+          >
             <Icon name="folderPlus" />
             폴더에서 추가
           </button>
@@ -419,6 +842,18 @@ export function CourseSidebar(): JSX.Element {
             }}
           >
             <Icon name="plus" />새 과목 만들기
+          </button>
+          <span className="context-menu__separator" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              clearError()
+              setAddMenu(null)
+              setCreateGroupDialogOpen(true)
+            }}
+          >
+            <Icon name="plus" />새 그룹 만들기
           </button>
         </div>
       )}
@@ -482,6 +917,46 @@ export function CourseSidebar(): JSX.Element {
         </div>
       )}
 
+      {groupContextMenu !== null && (
+        <div
+          ref={groupContextMenuRef}
+          className="context-menu"
+          role="menu"
+          aria-label={`${groupContextMenu.group.name} 그룹 메뉴`}
+          data-placement={groupContextMenu.placement}
+          data-align={groupContextMenu.alignEnd ? 'end' : undefined}
+          style={{ left: groupContextMenu.x, top: groupContextMenu.y }}
+        >
+          <p className="context-menu__label">{groupContextMenu.group.name}</p>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              clearError()
+              setRenameGroupTarget(groupContextMenu.group)
+              setGroupContextMenu(null)
+            }}
+          >
+            <Icon name="pencil" />
+            이름 변경
+          </button>
+          <span className="context-menu__separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="context-menu__danger"
+            onClick={() => {
+              clearError()
+              setDeleteGroupTarget(groupContextMenu.group)
+              setGroupContextMenu(null)
+            }}
+          >
+            <Icon name="trash" />
+            그룹 삭제
+          </button>
+        </div>
+      )}
+
       <CourseFormDialog
         open={createDialogOpen}
         mode="create"
@@ -535,6 +1010,30 @@ export function CourseSidebar(): JSX.Element {
         error={deleteTarget === null ? null : error}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
+      />
+      <CourseGroupNameDialog
+        open={createGroupDialogOpen}
+        mode="create"
+        onClose={() => setCreateGroupDialogOpen(false)}
+        onSubmit={async (name) => {
+          await createGroup(name)
+        }}
+      />
+      <CourseGroupNameDialog
+        open={renameGroupTarget !== null}
+        mode="rename"
+        initialName={renameGroupTarget?.name ?? ''}
+        onClose={() => setRenameGroupTarget(null)}
+        onSubmit={async (name) => {
+          if (renameGroupTarget !== null) {
+            await renameGroup(renameGroupTarget.id, name)
+          }
+        }}
+      />
+      <DeleteCourseGroupDialog
+        groupName={deleteGroupTarget?.name ?? null}
+        onClose={() => setDeleteGroupTarget(null)}
+        onConfirm={handleDeleteGroup}
       />
     </aside>
   )

@@ -158,21 +158,48 @@
   transform-origin: bottom right;
 }
 
-/*
- * Focus on this rail means "⌘V lands here". A full accent outline around the
- * whole sidebar shouted it — the student focuses this panel constantly, so a
- * loud frame is on screen most of the time. One accent edge on the side facing
- * the workspace says the same thing quietly.
- */
 .app-rail--right[data-paste-ready='true'] {
-  box-shadow: inset 2px 0 0 0 var(--accent);
+  position: relative;
+  background: var(--bg-raised);
+  transition: background 150ms ease;
 }
 
-.materials-body[data-paste-target-root='true'] {
+.app-rail--right[data-paste-ready='true']::before {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 0;
+  height: var(--space-8);
+  pointer-events: none;
+  content: '';
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--accent) 12%, transparent),
+    transparent
+  );
+}
+
+.app-rail--right[data-paste-ready='true'] .materials-heading .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+}
+
+.app-rail--right[data-paste-ready='true'] .materials-heading .eyebrow::after {
+  width: var(--space-1);
+  height: var(--space-1);
+  margin-inline-start: var(--space-2);
+  content: '';
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+}
+
+.materials-body[data-paste-target-root='true'],
+.materials-body[data-move-target-root='true'] {
   box-shadow: inset 0 0 0 calc(var(--space-1) / 2) var(--accent-muted);
 }
 
-.material-row[data-paste-target='true'] {
+.material-row[data-paste-target='true'],
+.material-row[data-move-target='true'] {
   color: var(--text-primary);
   background: var(--accent-muted);
   outline: calc(var(--space-1) / 4) dashed var(--accent);

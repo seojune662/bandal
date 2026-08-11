@@ -5,14 +5,14 @@ type MaterialsIconName = 'fileImport' | 'folderPlus'
 const PATHS: Record<MaterialsIconName, JSX.Element> = {
   fileImport: (
     <>
-      <path d="M6.5 3.5h7L18 8v12.5H6.5z" />
-      <path d="M13.5 3.5V8H18M12 10.5v6M9.5 14l2.5 2.5 2.5-2.5" />
+      <path d="M12 3.5v9M8.5 9l3.5 3.5L15.5 9" />
+      <path d="M4 14.5h4l1.5 2h5l1.5-2h4l-1.25 5.5H5.25z" />
     </>
   ),
   folderPlus: (
     <>
-      <path d="M3.5 6.5h6l2-2h3l2 2h4v12.5h-17z" />
-      <path d="M12 9.5v6M9 12.5h6" />
+      <path d="M3.5 6h6l2 2h9v11h-17z" />
+      <path d="M17 13.5v5M14.5 16h5" />
     </>
   )
 }

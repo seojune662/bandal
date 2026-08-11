@@ -7,6 +7,17 @@ import type {
 import { Icon, type IconName } from '../../app/icons'
 import { openMaterialInWorkspace } from '../workspace/openMaterial'
 import { writeMaterialImageDragData } from './imageDrag'
+import { isFileDrag } from './importDrop'
+import {
+  MATERIAL_MOVE_MIME,
+  canAcceptMaterialMove,
+  clearCurrentMaterialDrag,
+  getCurrentMaterialDrag,
+  parseMaterialMoveDrag,
+  serializeMaterialMoveDrag,
+  setCurrentMaterialDrag,
+  type MaterialMoveDragPayload
+} from './materialMoveDrag'
 
 function iconForKind(kind: MaterialKind | 'dir', expanded = false): IconName {
   switch (kind) {
@@ -27,6 +38,60 @@ function iconForKind(kind: MaterialKind | 'dir', expanded = false): IconName {
 function rowTitle(kind: MaterialKind | 'dir', relPath: string): string {
   if (kind === 'dir' || kind === 'pdf' || kind === 'note') return relPath
   return `${relPath} — Finder에서 열기`
+}
+
+function canMoveToDirectory(
+  payload: MaterialMoveDragPayload,
+  courseId: string,
+  dirRelPath: string
+): boolean {
+  if (payload.courseId !== courseId) return false
+  if (payload.kind !== 'dir') return true
+  return (
+    dirRelPath !== payload.relPath &&
+    !dirRelPath.startsWith(`${payload.relPath}/`)
+  )
+}
+
+function canDropCurrentMaterial(
+  dataTransfer: DataTransfer,
+  courseId: string,
+  dirRelPath: string
+): boolean {
+  if (!canAcceptMaterialMove([...dataTransfer.types])) return false
+  const payload = getCurrentMaterialDrag()
+  return (
+    payload !== null && canMoveToDirectory(payload, courseId, dirRelPath)
+  )
+}
+
+function startMaterialDrag(
+  dataTransfer: DataTransfer,
+  courseId: string,
+  node: MaterialNode
+): void {
+  const payload: MaterialMoveDragPayload = {
+    version: 1,
+    courseId,
+    relPath: node.relPath,
+    kind: node.kind
+  }
+  dataTransfer.effectAllowed = 'copyMove'
+  dataTransfer.setData(
+    MATERIAL_MOVE_MIME,
+    serializeMaterialMoveDrag({
+      courseId: payload.courseId,
+      relPath: payload.relPath,
+      kind: payload.kind
+    })
+  )
+  setCurrentMaterialDrag(payload)
+  if (node.kind === 'image') {
+    writeMaterialImageDragData(dataTransfer, {
+      relPath: node.relPath,
+      label: node.name
+    })
+  }
 }
 
 function focusAdjacentRow(
@@ -118,31 +183,41 @@ function InlineNameEditor({
 }
 
 interface TreeNodeProps {
+  courseId: string
   node: MaterialNode
   depth: number
   expandedPaths: Record<string, boolean>
   editingRelPath: string | null
   selectedRelPath: string | null
   pasteTargetDirRelPath: string | null
+  dropTargetDirRelPath: string | null
   onToggleFolder: (relPath: string) => void
   onSelect: (node: MaterialNode) => void
   onContextMenu: (event: React.MouseEvent, node: MaterialNode) => void
   onCancelRename: () => void
   onRename: (node: MaterialNode, newName: string) => Promise<string | null>
+  onDropTargetChange: (dirRelPath: string | null) => void
+  onMove: (payload: MaterialMoveDragPayload, toDirRelPath: string) => void
+  onImportFiles: (files: File[], dirRelPath: string) => void
 }
 
 function TreeNode({
+  courseId,
   node,
   depth,
   expandedPaths,
   editingRelPath,
   selectedRelPath,
   pasteTargetDirRelPath,
+  dropTargetDirRelPath,
   onToggleFolder,
   onSelect,
   onContextMenu,
   onCancelRename,
-  onRename
+  onRename,
+  onDropTargetChange,
+  onMove,
+  onImportFiles
 }: TreeNodeProps): JSX.Element {
   const isDirectory = node.kind === 'dir'
   const expanded = isDirectory && expandedPaths[node.relPath] === true
@@ -186,6 +261,11 @@ function TreeNode({
               ? true
               : undefined
           }
+          data-move-target={
+            isDirectory && dropTargetDirRelPath === node.relPath
+              ? true
+              : undefined
+          }
           data-material-path={node.relPath}
           style={rowStyle}
         >
@@ -195,12 +275,17 @@ function TreeNode({
         <button
           type="button"
           className="material-row"
-          draggable={node.kind === 'image'}
+          draggable
           data-material-row="true"
           data-kind={node.kind}
           data-selected={selectedRelPath === node.relPath || undefined}
           data-paste-target={
             isDirectory && pasteTargetDirRelPath === node.relPath
+              ? true
+              : undefined
+          }
+          data-move-target={
+            isDirectory && dropTargetDirRelPath === node.relPath
               ? true
               : undefined
           }
@@ -217,11 +302,89 @@ function TreeNode({
           }}
           onContextMenu={(event) => onContextMenu(event, node)}
           onDragStart={(event) => {
-            if (node.kind !== 'image') return
-            writeMaterialImageDragData(event.dataTransfer, {
-              relPath: node.relPath,
-              label: node.name
-            })
+            startMaterialDrag(event.dataTransfer, courseId, node)
+          }}
+          onDragEnd={() => {
+            clearCurrentMaterialDrag()
+            onDropTargetChange(null)
+          }}
+          onDragEnter={(event) => {
+            if (!isDirectory) return
+            if (isFileDrag(event.dataTransfer)) {
+              event.preventDefault()
+              event.stopPropagation()
+              event.dataTransfer.dropEffect = 'copy'
+              onDropTargetChange(node.relPath)
+              return
+            }
+            if (!canAcceptMaterialMove([...event.dataTransfer.types])) return
+            event.stopPropagation()
+            if (!canDropCurrentMaterial(event.dataTransfer, courseId, node.relPath)) {
+              onDropTargetChange(null)
+              return
+            }
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'move'
+            onDropTargetChange(node.relPath)
+          }}
+          onDragOver={(event) => {
+            if (!isDirectory) return
+            if (isFileDrag(event.dataTransfer)) {
+              event.preventDefault()
+              event.stopPropagation()
+              event.dataTransfer.dropEffect = 'copy'
+              onDropTargetChange(node.relPath)
+              return
+            }
+            if (!canAcceptMaterialMove([...event.dataTransfer.types])) return
+            event.stopPropagation()
+            if (!canDropCurrentMaterial(event.dataTransfer, courseId, node.relPath)) {
+              onDropTargetChange(null)
+              return
+            }
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'move'
+            onDropTargetChange(node.relPath)
+          }}
+          onDragLeave={(event) => {
+            if (!isDirectory) return
+            const handlesFiles = isFileDrag(event.dataTransfer)
+            const handlesMove = canAcceptMaterialMove([...event.dataTransfer.types])
+            if (!handlesFiles && !handlesMove) return
+            event.stopPropagation()
+            const nextTarget = event.relatedTarget
+            if (
+              nextTarget instanceof Node &&
+              event.currentTarget.contains(nextTarget)
+            ) {
+              return
+            }
+            onDropTargetChange(null)
+          }}
+          onDrop={(event) => {
+            if (!isDirectory) return
+            if (isFileDrag(event.dataTransfer)) {
+              event.preventDefault()
+              event.stopPropagation()
+              onDropTargetChange(null)
+              const files = [...event.dataTransfer.files]
+              if (files.length > 0) onImportFiles(files, node.relPath)
+              return
+            }
+            if (!canAcceptMaterialMove([...event.dataTransfer.types])) return
+            event.stopPropagation()
+            onDropTargetChange(null)
+            const payload = parseMaterialMoveDrag(
+              event.dataTransfer.getData(MATERIAL_MOVE_MIME)
+            )
+            if (
+              payload === null ||
+              !canMoveToDirectory(payload, courseId, node.relPath)
+            ) {
+              return
+            }
+            event.preventDefault()
+            onMove(payload, node.relPath)
           }}
           onKeyDown={(event) => {
             if (event.key === 'ArrowDown') focusAdjacentRow(event, 1)
@@ -244,17 +407,22 @@ function TreeNode({
           {node.children.map((child) => (
             <TreeNode
               key={child.relPath}
+              courseId={courseId}
               node={child}
               depth={depth + 1}
               expandedPaths={expandedPaths}
               editingRelPath={editingRelPath}
               selectedRelPath={selectedRelPath}
               pasteTargetDirRelPath={pasteTargetDirRelPath}
+              dropTargetDirRelPath={dropTargetDirRelPath}
               onToggleFolder={onToggleFolder}
               onSelect={onSelect}
               onContextMenu={onContextMenu}
               onCancelRename={onCancelRename}
               onRename={onRename}
+              onDropTargetChange={onDropTargetChange}
+              onMove={onMove}
+              onImportFiles={onImportFiles}
             />
           ))}
         </ul>
@@ -264,46 +432,61 @@ function TreeNode({
 }
 
 interface MaterialTreeProps {
+  courseId: string
   nodes: MaterialNode[]
   expandedPaths: Record<string, boolean>
   editingRelPath: string | null
   selectedRelPath: string | null
   pasteTargetDirRelPath: string | null
+  dropTargetDirRelPath: string | null
   onToggleFolder: (relPath: string) => void
   onSelect: (node: MaterialNode) => void
   onContextMenu: (event: React.MouseEvent, node: MaterialNode) => void
   onCancelRename: () => void
   onRename: (node: MaterialNode, newName: string) => Promise<string | null>
+  onDropTargetChange: (dirRelPath: string | null) => void
+  onMove: (payload: MaterialMoveDragPayload, toDirRelPath: string) => void
+  onImportFiles: (files: File[], dirRelPath: string) => void
 }
 
 export function MaterialTree({
+  courseId,
   nodes,
   expandedPaths,
   editingRelPath,
   selectedRelPath,
   pasteTargetDirRelPath,
+  dropTargetDirRelPath,
   onToggleFolder,
   onSelect,
   onContextMenu,
   onCancelRename,
-  onRename
+  onRename,
+  onDropTargetChange,
+  onMove,
+  onImportFiles
 }: MaterialTreeProps): JSX.Element {
   return (
     <ul className="material-tree" role="tree" aria-label="자료 파일 트리">
       {nodes.map((node) => (
         <TreeNode
           key={node.relPath}
+          courseId={courseId}
           node={node}
           depth={0}
           expandedPaths={expandedPaths}
           editingRelPath={editingRelPath}
           selectedRelPath={selectedRelPath}
           pasteTargetDirRelPath={pasteTargetDirRelPath}
+          dropTargetDirRelPath={dropTargetDirRelPath}
           onToggleFolder={onToggleFolder}
           onSelect={onSelect}
           onContextMenu={onContextMenu}
           onCancelRename={onCancelRename}
           onRename={onRename}
+          onDropTargetChange={onDropTargetChange}
+          onMove={onMove}
+          onImportFiles={onImportFiles}
         />
       ))}
     </ul>
@@ -311,17 +494,21 @@ export function MaterialTree({
 }
 
 interface MaterialSearchResultsProps {
+  courseId: string
   results: MaterialSearchHit[]
   selectedRelPath: string | null
   onSelect: (node: MaterialNode) => void
   onContextMenu: (event: React.MouseEvent, node: MaterialNode) => void
+  onDragEnd: () => void
 }
 
 export function MaterialSearchResults({
+  courseId,
   results,
   selectedRelPath,
   onSelect,
-  onContextMenu
+  onContextMenu,
+  onDragEnd
 }: MaterialSearchResultsProps): JSX.Element {
   return (
     <ul className="material-results" aria-label="자료 검색 결과">
@@ -336,7 +523,7 @@ export function MaterialSearchResults({
             <button
               type="button"
               className="material-result"
-              draggable={result.kind === 'image'}
+              draggable
               data-material-row="true"
               data-kind={result.kind}
               data-selected={selectedRelPath === result.relPath || undefined}
@@ -349,11 +536,11 @@ export function MaterialSearchResults({
               }}
               onContextMenu={(event) => onContextMenu(event, node)}
               onDragStart={(event) => {
-                if (result.kind !== 'image') return
-                writeMaterialImageDragData(event.dataTransfer, {
-                  relPath: result.relPath,
-                  label: result.name
-                })
+                startMaterialDrag(event.dataTransfer, courseId, node)
+              }}
+              onDragEnd={() => {
+                clearCurrentMaterialDrag()
+                onDragEnd()
               }}
               onKeyDown={(event) => {
                 if (event.key === 'ArrowDown') focusAdjacentRow(event, 1)

@@ -36,8 +36,46 @@ describe('migrations', () => {
       { version: 13, name: 'whiteboard-background' },
       { version: 14, name: 'whiteboard-pages' },
       { version: 15, name: 'agent-actions' },
-      { version: 16, name: 'agent-session-titles' }
+      { version: 16, name: 'agent-session-titles' },
+      { version: 17, name: 'course-groups' }
     ])
+  })
+
+  test('creates course_groups and courses.group_id (migration 017)', () => {
+    // Arrange
+    const now = new Date().toISOString()
+    ctx.db
+      .prepare(
+        `INSERT INTO course_groups (id, name, sort_order, created_at, updated_at)
+         VALUES ('g1', '1학기', 0, ?, ?)`
+      )
+      .run(now, now)
+    ctx.db
+      .prepare(
+        `INSERT INTO courses (id, name, slug, color, folder_path, archived,
+                              sort_order, group_id, created_at, updated_at)
+         VALUES ('c1', '자료구조', 'ds', '#000', '/tmp/ds', 0, 0, 'g1', ?, ?)`
+      )
+      .run(now, now)
+
+    // Act — a pre-017 style row written without group_id defaults to NULL.
+    ctx.db
+      .prepare(
+        `INSERT INTO courses (id, name, slug, color, folder_path, archived,
+                              sort_order, created_at, updated_at)
+         VALUES ('c2', '운영체제', 'os', '#000', '/tmp/os', 0, 1, ?, ?)`
+      )
+      .run(now, now)
+
+    // Assert
+    const grouped = ctx.db
+      .prepare('SELECT group_id FROM courses WHERE id = ?')
+      .get('c1') as { group_id: string | null }
+    const ungrouped = ctx.db
+      .prepare('SELECT group_id FROM courses WHERE id = ?')
+      .get('c2') as { group_id: string | null }
+    expect(grouped.group_id).toBe('g1')
+    expect(ungrouped.group_id).toBeNull()
   })
 
   test('creates course_links with a cascading course FK (migration 004)', () => {
@@ -169,6 +207,6 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(16)
+    expect(count.n).toBe(17)
   })
 })

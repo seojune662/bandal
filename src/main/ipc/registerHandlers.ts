@@ -17,6 +17,7 @@ import { getSettings, setSettings } from '../settingsStore'
 import { getDatabase } from '../db/database'
 import { createLayoutRepo } from '../db/layoutRepo'
 import {
+  createCourseGroupsRepo,
   createCourseLinksRepo,
   createCoursesRepo,
   folderDisplayName,
@@ -232,6 +233,24 @@ export function registerHandlers(): IpcRouter {
     releaseCourseRuntime(req.courseId)
     return courseListChanged(result)
   })
+  // 한 번의 드래그 = 한 번의 원자적 호출 (소속 + 위치). 갱신된 전체 목록을
+  // 돌려주고, 다른 창을 위해 courses:changed 도 쏜다.
+  handle('courses:organize', (req) => courseListChanged(coursesRepo.organize(req)))
+
+  // -- course groups (과목 그룹/학기) ----------------------------------------
+  // ⚠ `courseGroups:` prefix — `groups:*` is the Phase-2 social feature.
+  const courseGroupsRepo = createCourseGroupsRepo(db)
+  handle('courseGroups:list', () => courseGroupsRepo.list())
+  handle('courseGroups:create', (req) =>
+    courseListChanged(courseGroupsRepo.create(req))
+  )
+  handle('courseGroups:rename', (req) =>
+    courseListChanged(courseGroupsRepo.rename(req))
+  )
+  // 그룹 삭제는 멤버 과목의 groupId 를 NULL로 되돌릴 뿐, 과목은 지우지 않는다.
+  handle('courseGroups:delete', (req) =>
+    courseListChanged(courseGroupsRepo.delete(req))
+  )
 
   // -- course links (M8) ----------------------------------------------------
   handle('courseLinks:list', (req) => courseLinksRepo.list(req))
@@ -255,10 +274,12 @@ export function registerHandlers(): IpcRouter {
   handle('materials:tree', (req) => materialsRepo.tree(req.courseId))
   handle('materials:search', (req) => materialsRepo.search(req.courseId, req.query))
   handle('materials:import', (req) => {
-    const result = materialsRepo.import(req.courseId, req.paths)
+    const result = materialsRepo.import(req.courseId, req.paths, req.dirRelPath)
     note(req.courseId, 'material-added', `자료 ${req.paths.length}개를 가져왔습니다.`)
     return result
   })
+  // 이동 후 트리 갱신은 폴더 watcher 가 materials:changed 로 밀어준다.
+  handle('materials:move', (req) => materialsRepo.move(req))
   handle('materials:reveal', (req) => materialsRepo.reveal(req.courseId, req.relPath))
   handle('materials:readFile', (req) => materialsRepo.readFile(req.courseId, req.relPath))
   handle('materials:writeFile', (req) => materialsRepo.writeFile(req))

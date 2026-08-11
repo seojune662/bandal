@@ -53,6 +53,143 @@
   list-style: none;
 }
 
+.course-ungrouped-drop-zone {
+  min-height: calc(var(--space-1) / 2);
+  border-radius: var(--radius-sm);
+  transition:
+    min-height var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.course-ungrouped-drop-zone[data-drag-active='true'] {
+  min-height: var(--space-4);
+}
+
+.course-ungrouped-drop-zone[data-drop-ungrouped='true'] {
+  background: var(--accent-muted);
+  outline: calc(var(--space-1) / 4) dashed var(--accent);
+  outline-offset: calc(var(--space-1) / -2);
+}
+
+.course-group-row {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--space-1);
+  margin-block-start: var(--space-2);
+}
+
+.course-group-row__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--icon-button-size);
+  align-items: center;
+  min-height: var(--button-height);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.course-group-row__header:hover,
+.course-group-row__header:focus-within {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+}
+
+.course-group-row__header[data-drop-into='true'] {
+  color: var(--text-primary);
+  background: var(--accent-muted);
+  outline: calc(var(--space-1) / 4) dashed var(--accent);
+  outline-offset: calc(var(--space-1) / -2);
+}
+
+.course-group-row__toggle {
+  display: grid;
+  grid-template-columns: var(--icon-button-size) minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  min-height: var(--button-height);
+  gap: var(--space-1);
+  color: inherit;
+  text-align: left;
+  border-radius: var(--radius-sm);
+}
+
+.course-group-row__toggle > svg {
+  justify-self: center;
+  font-size: var(--icon-size-sm);
+  color: var(--text-muted);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.course-group-row__toggle[aria-expanded='true'] > svg {
+  transform: rotate(90deg);
+}
+
+.course-group-row__name {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  letter-spacing: var(--tracking-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.course-group-row__count {
+  padding-inline-end: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.course-group-row__menu-button {
+  display: grid;
+  place-items: center;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.course-group-row__header:hover .course-group-row__menu-button,
+.course-group-row__header:focus-within .course-group-row__menu-button,
+.course-group-row__menu-button[aria-expanded='true'] {
+  opacity: 1;
+}
+
+.course-group-row__menu-button:hover,
+.course-group-row__menu-button:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-overlay);
+}
+
+.course-group-row__toggle:focus-visible,
+.course-group-row__menu-button:focus-visible {
+  outline: calc(var(--space-1) / 2) solid var(--accent);
+  outline-offset: calc(var(--space-1) / -2);
+}
+
+.course-group-row__courses {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--space-1);
+  margin-inline-start: var(--space-2);
+  list-style: none;
+}
+
+.course-group-row__empty {
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
 .course-row {
   position: relative;
   display: grid;
@@ -66,6 +203,27 @@
   transition:
     color var(--dur-fast) var(--ease-out),
     background-color var(--dur-fast) var(--ease-out);
+}
+
+.course-row[draggable='true'] {
+  cursor: grab;
+}
+
+.course-row[data-dragging='true'] {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
+.course-row[data-drop-before='true']::after {
+  position: absolute;
+  inset-block-start: calc(var(--space-1) / -4);
+  inset-inline: var(--space-1);
+  z-index: 1;
+  height: calc(var(--space-1) / 2);
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  content: '';
+  pointer-events: none;
 }
 
 .course-row:hover {

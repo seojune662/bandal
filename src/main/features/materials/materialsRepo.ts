@@ -16,7 +16,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import type { Dirent } from 'node:fs'
-import { basename, extname, isAbsolute, join, posix } from 'node:path'
+import { basename, extname, isAbsolute, join, posix, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import type {
@@ -32,7 +32,14 @@ import { nowIso, requireId, requireNonEmptyString, resolveInside } from '../../d
 export interface MaterialsRepo {
   tree(courseId: string): MaterialNode[]
   search(courseId: string, query: string): MaterialSearchHit[]
-  import(courseId: string, paths: string[]): ImportResult
+  /** `dirRelPath` ''/생략 = 과목 폴더 루트. */
+  import(courseId: string, paths: string[], dirRelPath?: string): ImportResult
+  /** 파일/폴더를 다른 과목-상대 디렉터리로 옮긴다 ('' = 루트). */
+  move(input: {
+    courseId: string
+    fromRelPath: string
+    toDirRelPath: string
+  }): { relPath: string }
   readFile(courseId: string, relPath: string): MaterialFileContent
   reveal(courseId: string, relPath: string): { ok: true }
   rename(input: {
@@ -468,7 +475,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         .sort((a, b) => b.score - a.score || a.relPath.localeCompare(b.relPath))
     },
 
-    import(courseId, paths) {
+    import(courseId, paths, dirRelPath) {
       const id = requireId(courseId, 'courseId')
       const folder = getCourseFolder(id)
       // An arbitrary course folder can disappear (moved / unmounted); never
@@ -478,6 +485,15 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       }
       if (!Array.isArray(paths) || paths.length === 0) {
         throw new ValidationError('paths must be a non-empty array')
+      }
+      if (dirRelPath !== undefined && typeof dirRelPath !== 'string') {
+        throw new ValidationError('dirRelPath must be a string')
+      }
+      // '' 또는 생략 = 과목 폴더 루트. 하위 폴더는 존재하는 디렉터리여야 한다.
+      const targetDirRel = dirRelPath ?? ''
+      const targetDirAbs = resolveInside(folder, targetDirRel, { allowRoot: true })
+      if (!existsSync(targetDirAbs) || !lstatSync(targetDirAbs).isDirectory()) {
+        throw new NotFoundError('material directory', targetDirRel)
       }
 
       const imported: string[] = []
@@ -494,15 +510,54 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           if (!statSync(source).isFile()) {
             throw new ValidationError(`"${source}" is not a regular file`)
           }
-          const targetName = unusedTargetName(folder, basename(source))
-          copyFileSync(source, join(folder, targetName))
-          imported.push(targetName)
+          const targetName = unusedTargetName(targetDirAbs, basename(source))
+          copyFileSync(source, join(targetDirAbs, targetName))
+          imported.push(
+            targetDirRel === '' ? targetName : posix.join(targetDirRel, targetName)
+          )
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error)
           failed.push({ path: String(sourcePath), reason })
         }
       }
       return { imported, failed }
+    },
+
+    move(input) {
+      const { abs: sourceAbs, folder } = resolveMaterial(
+        input.courseId,
+        input.fromRelPath
+      )
+      assertFileOrDirectory(sourceAbs, input.fromRelPath)
+      if (typeof input.toDirRelPath !== 'string') {
+        throw new ValidationError('toDirRelPath must be a string')
+      }
+      const destDirAbs = resolveInside(folder, input.toDirRelPath, {
+        allowRoot: true
+      })
+      if (!existsSync(destDirAbs) || !lstatSync(destDirAbs).isDirectory()) {
+        throw new NotFoundError('material directory', input.toDirRelPath)
+      }
+      // 폴더를 자기 자신이나 그 하위로 옮기면 파일계가 꼬인다 — 거부한다.
+      if (destDirAbs === sourceAbs || destDirAbs.startsWith(sourceAbs + sep)) {
+        throw new ValidationError('폴더를 자기 안으로 옮길 수 없습니다')
+      }
+      const name = posix.basename(input.fromRelPath)
+      const parentRelPath = posix.dirname(input.fromRelPath)
+      const parentAbs =
+        parentRelPath === '.' ? folder : resolveInside(folder, parentRelPath)
+      // 같은 폴더로의 이동은 no-op — 충돌 개명이 이름만 바꾸는 사고를 막는다.
+      if (parentAbs === destDirAbs) {
+        return { relPath: input.fromRelPath }
+      }
+      const targetName = unusedTargetName(destDirAbs, name)
+      const relPath =
+        input.toDirRelPath === ''
+          ? targetName
+          : posix.join(input.toDirRelPath, targetName)
+      const destAbs = resolveInside(folder, relPath)
+      renameSync(sourceAbs, destAbs)
+      return { relPath }
     },
 
     readFile(courseId, relPath) {

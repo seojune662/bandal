@@ -82,6 +82,7 @@ const course: Course = {
   source: 'managed',
   missing: false,
   archived: false,
+  groupId: null,
   sortOrder: 0,
   createdAt: '2026-08-01T00:00:00.000Z',
   updatedAt: '2026-08-01T00:00:00.000Z'

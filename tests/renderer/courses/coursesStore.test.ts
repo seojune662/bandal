@@ -38,6 +38,7 @@ function course(
     source: 'managed',
     missing: false,
     archived,
+    groupId: null,
     sortOrder,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z'
@@ -49,6 +50,7 @@ beforeEach(() => {
   workspaceMocks.discardPendingSave.mockReset()
   useCoursesStore.setState({
     courses: [],
+    groups: [],
     selectedCourseId: null,
     isLoading: false,
     pendingCourseId: null,

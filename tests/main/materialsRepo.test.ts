@@ -204,6 +204,135 @@ describe('materialsRepo', () => {
       expect(result.failed).toHaveLength(2)
       expect(result.failed[0]?.reason).toContain('absolute')
     })
+
+    test('imports into a subfolder when dirRelPath is given, prefixing relPaths', () => {
+      // Arrange
+      const source = join(ctx.dir, 'external.pdf')
+      writeFileSync(source, 'external')
+      writeFileSync(join(courseFolder, 'notes', 'external.pdf'), 'already-there')
+
+      // Act — collision renaming happens inside the target folder.
+      const result = repo.import(courseId, [source], 'notes')
+
+      // Assert
+      expect(result.failed).toHaveLength(0)
+      expect(result.imported).toEqual(['notes/external (2).pdf'])
+      expect(existsSync(join(courseFolder, 'notes', 'external (2).pdf'))).toBe(true)
+    })
+
+    test('rejects a dirRelPath that is missing or escapes the course folder', () => {
+      // Arrange
+      const source = join(ctx.dir, 'external.pdf')
+      writeFileSync(source, 'external')
+
+      // Act / Assert
+      expect(() => repo.import(courseId, [source], 'ghost-folder')).toThrow(
+        NotFoundError
+      )
+      expect(() => repo.import(courseId, [source], '../outside')).toThrow(
+        PathTraversalError
+      )
+    })
+  })
+
+  describe('move', () => {
+    test('moves a root file into a folder and back, returning posix relPaths', () => {
+      // Act — root → folder.
+      expect(
+        repo.move({ courseId, fromRelPath: 'syllabus.pdf', toDirRelPath: 'notes' })
+      ).toEqual({ relPath: 'notes/syllabus.pdf' })
+      expect(existsSync(join(courseFolder, 'notes', 'syllabus.pdf'))).toBe(true)
+      expect(existsSync(join(courseFolder, 'syllabus.pdf'))).toBe(false)
+
+      // Act — folder → root ('' = course root).
+      expect(
+        repo.move({
+          courseId,
+          fromRelPath: 'notes/syllabus.pdf',
+          toDirRelPath: ''
+        })
+      ).toEqual({ relPath: 'syllabus.pdf' })
+      expect(existsSync(join(courseFolder, 'syllabus.pdf'))).toBe(true)
+    })
+
+    test('auto-renames on collision with the import (n) convention', () => {
+      // Arrange
+      writeFileSync(join(courseFolder, 'notes', 'syllabus.pdf'), 'occupied')
+
+      // Act
+      const result = repo.move({
+        courseId,
+        fromRelPath: 'syllabus.pdf',
+        toDirRelPath: 'notes'
+      })
+
+      // Assert — the occupant is untouched, the mover gets the (2) suffix.
+      expect(result).toEqual({ relPath: 'notes/syllabus (2).pdf' })
+      expect(readFileSync(join(courseFolder, 'notes', 'syllabus.pdf'), 'utf8')).toBe(
+        'occupied'
+      )
+      expect(
+        readFileSync(join(courseFolder, 'notes', 'syllabus (2).pdf'), 'utf8')
+      ).toBe('pdf-bytes')
+    })
+
+    test('is a no-op when the destination equals the current parent', () => {
+      // Act — same parent, even with a same-named sibling: nothing is renamed.
+      expect(
+        repo.move({
+          courseId,
+          fromRelPath: 'notes/week1.md',
+          toDirRelPath: 'notes'
+        })
+      ).toEqual({ relPath: 'notes/week1.md' })
+      expect(existsSync(join(courseFolder, 'notes', 'week1.md'))).toBe(true)
+      expect(existsSync(join(courseFolder, 'notes', 'week1 (2).md'))).toBe(false)
+    })
+
+    test('rejects moving a folder into itself or a descendant', () => {
+      // Act / Assert
+      expect(() =>
+        repo.move({ courseId, fromRelPath: 'notes', toDirRelPath: 'notes' })
+      ).toThrow(ValidationError)
+      expect(() =>
+        repo.move({ courseId, fromRelPath: 'notes', toDirRelPath: 'notes/img' })
+      ).toThrow(ValidationError)
+      // The tree is untouched.
+      expect(existsSync(join(courseFolder, 'notes', 'img', 'diagram.png'))).toBe(true)
+    })
+
+    test('rejects traversal on either side and unknown destinations', () => {
+      // Act / Assert
+      expect(() =>
+        repo.move({ courseId, fromRelPath: '../outside.pdf', toDirRelPath: '' })
+      ).toThrow(PathTraversalError)
+      expect(() =>
+        repo.move({ courseId, fromRelPath: 'syllabus.pdf', toDirRelPath: '../out' })
+      ).toThrow(PathTraversalError)
+      expect(() =>
+        repo.move({ courseId, fromRelPath: 'syllabus.pdf', toDirRelPath: 'ghost' })
+      ).toThrow(NotFoundError)
+      expect(() =>
+        repo.move({ courseId, fromRelPath: 'ghost.pdf', toDirRelPath: 'notes' })
+      ).toThrow(NotFoundError)
+      expect(existsSync(join(courseFolder, 'syllabus.pdf'))).toBe(true)
+    })
+
+    test('moves directories with their contents', () => {
+      // Arrange
+      mkdirSync(join(courseFolder, 'archive'))
+
+      // Act
+      expect(
+        repo.move({ courseId, fromRelPath: 'notes/img', toDirRelPath: 'archive' })
+      ).toEqual({ relPath: 'archive/img' })
+
+      // Assert
+      expect(
+        existsSync(join(courseFolder, 'archive', 'img', 'diagram.png'))
+      ).toBe(true)
+      expect(existsSync(join(courseFolder, 'notes', 'img'))).toBe(false)
+    })
   })
 
   describe('readFile', () => {

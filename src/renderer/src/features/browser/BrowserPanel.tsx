@@ -17,6 +17,7 @@ import {
 import type { IDockviewPanelProps } from 'dockview'
 import type { BrowserTabPayload } from '../../../../shared/tabs'
 import { Icon } from '../../app/icons'
+import { Tooltip } from '../../components/Tooltip'
 import { favoriteScopeKey, useFavoritesStore } from '../../stores/favoritesStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { isTabDescriptor } from '../workspace/tabIdentity'
@@ -172,16 +173,20 @@ function BrowserBookmarksBar({
   return (
     <nav className="browser-bookmarks" aria-label="즐겨찾기 바로가기">
       {favorites.map((favorite) => (
-        <button
+        <Tooltip
           key={favorite.id}
-          type="button"
-          className="browser-bookmark"
-          title={`${favorite.label} — ${hostnameForUrl(favorite.url)}`}
-          onClick={() => onNavigate(favorite.url)}
+          label={`${favorite.label} — ${hostnameForUrl(favorite.url)}`}
+          placement="bottom"
         >
-          <BrowserSiteMark url={favorite.url} />
-          <span>{favorite.label}</span>
-        </button>
+          <button
+            type="button"
+            className="browser-bookmark"
+            onClick={() => onNavigate(favorite.url)}
+          >
+            <BrowserSiteMark url={favorite.url} />
+            <span>{favorite.label}</span>
+          </button>
+        </Tooltip>
       ))}
     </nav>
   )
@@ -189,6 +194,10 @@ function BrowserBookmarksBar({
 
 function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
   const login = useBrowserGuests((state) => state.login[tabId])
+  const loginTooltip =
+    login?.savedLogin === null
+      ? '직접 입력한 아이디와 비밀번호를 안전하게 저장합니다.'
+      : `${login?.savedLogin.username ?? ''} 계정으로 채웁니다.`
 
   const goBack = (): void => {
     if (nav.canGoBack) guestActions.back(tabId)
@@ -198,39 +207,42 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
     <div className="browser-chrome">
       <header className="browser-toolbar" aria-label="브라우저 도구 모음">
         <div className="browser-toolbar__nav">
-          <button
-            type="button"
-            className="browser-nav-button"
-            aria-label="뒤로"
-            title="뒤로"
-            disabled={!nav.canGoBack}
-            onClick={goBack}
-          >
-            <BrowserIcon name="arrowLeft" />
-          </button>
-          <button
-            type="button"
-            className="browser-nav-button"
-            aria-label="앞으로"
-            title="앞으로"
-            disabled={!nav.canGoForward}
-            onClick={() => guestActions.forward(tabId)}
-          >
-            <BrowserIcon name="arrowRight" />
-          </button>
-          <button
-            type="button"
-            className="browser-nav-button"
-            aria-label={nav.loading ? '중지' : '새로고침'}
-            title={nav.loading ? '중지' : '새로고침'}
-            onClick={() =>
-              nav.loading
-                ? guestActions.stop(tabId)
-                : guestActions.reload(tabId)
-            }
-          >
-            <Icon name={nav.loading ? 'x' : 'refresh'} />
-          </button>
+          <Tooltip label="뒤로" placement="bottom">
+            <button
+              type="button"
+              className="browser-nav-button"
+              aria-label="뒤로"
+              disabled={!nav.canGoBack}
+              onClick={goBack}
+            >
+              <BrowserIcon name="arrowLeft" />
+            </button>
+          </Tooltip>
+          <Tooltip label="앞으로" placement="bottom">
+            <button
+              type="button"
+              className="browser-nav-button"
+              aria-label="앞으로"
+              disabled={!nav.canGoForward}
+              onClick={() => guestActions.forward(tabId)}
+            >
+              <BrowserIcon name="arrowRight" />
+            </button>
+          </Tooltip>
+          <Tooltip label={nav.loading ? '중지' : '새로고침'} placement="bottom">
+            <button
+              type="button"
+              className="browser-nav-button"
+              aria-label={nav.loading ? '중지' : '새로고침'}
+              onClick={() =>
+                nav.loading
+                  ? guestActions.stop(tabId)
+                  : guestActions.reload(tabId)
+              }
+            >
+              <Icon name={nav.loading ? 'x' : 'refresh'} />
+            </button>
+          </Tooltip>
         </div>
 
         <BrowserAddressInput value={nav.url} onNavigate={onNavigate} />
@@ -238,26 +250,23 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
         <div className="browser-toolbar__actions">
           {login?.hasLoginForm === true && login.origin !== null && (
             <div className="browser-login-action">
-              <button
-                type="button"
-                className="browser-login-button"
-                disabled={login.pending}
-                title={
-                  login.savedLogin === null
-                    ? '직접 입력한 아이디와 비밀번호를 안전하게 저장합니다.'
-                    : `${login.savedLogin.username} 계정으로 채웁니다.`
-                }
-                onClick={() => {
-                  if (login.savedLogin === null) void saveLoginForTab(tabId)
-                  else void fillLoginForTab(tabId)
-                }}
-              >
-                {login.pending
-                  ? '처리 중…'
-                  : login.savedLogin === null
-                    ? '이 사이트 로그인 저장'
-                    : '로그인 채우기'}
-              </button>
+              <Tooltip label={loginTooltip} placement="bottom">
+                <button
+                  type="button"
+                  className="browser-login-button"
+                  disabled={login.pending}
+                  onClick={() => {
+                    if (login.savedLogin === null) void saveLoginForTab(tabId)
+                    else void fillLoginForTab(tabId)
+                  }}
+                >
+                  {login.pending
+                    ? '처리 중…'
+                    : login.savedLogin === null
+                      ? '이 사이트 로그인 저장'
+                      : '로그인 채우기'}
+                </button>
+              </Tooltip>
               {login.message !== null && (
                 <span className="browser-login-message" role="status">
                   {login.message === 'saved'

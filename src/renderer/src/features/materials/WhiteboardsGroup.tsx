@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PersonalBoard } from '../../../../shared/types/whiteboard'
 import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
+import { Tooltip } from '../../components/Tooltip'
 import { invoke } from '../../lib/ipc'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor, tabPanelId } from '../workspace/tabIdentity'
@@ -242,16 +243,17 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
     <section className="whiteboards-group" aria-label="화이트보드">
       <div className="materials-group-heading">
         <span>화이트보드</span>
-        <button
-          type="button"
-          className="whiteboards-group__create"
-          aria-label="새 화이트보드 만들기"
-          title="새 화이트보드 만들기"
-          disabled={creating}
-          onClick={() => void createBoard()}
-        >
-          <Icon name="plus" />
-        </button>
+        <Tooltip label="새 화이트보드 만들기">
+          <button
+            type="button"
+            className="whiteboards-group__create"
+            aria-label="새 화이트보드 만들기"
+            disabled={creating}
+            onClick={() => void createBoard()}
+          >
+            <Icon name="plus" />
+          </button>
+        </Tooltip>
       </div>
 
       {boards === null && (
@@ -266,30 +268,33 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
             const pending = renamingId === board.id || removingId === board.id
             return (
               <li key={board.id}>
-                <button
-                  type="button"
-                  className="whiteboards-group__row"
-                  disabled={pending}
-                  title={board.title}
-                  onClick={() => openBoard(board.id)}
-                  onContextMenu={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    setMenu({
-                      board,
-                      x: event.clientX,
-                      y: event.clientY,
-                      placement:
-                        event.clientY > window.innerHeight / 2 ? 'top' : 'bottom',
-                      align:
-                        event.clientX > window.innerWidth / 2 ? 'end' : 'start',
-                      returnFocus: event.currentTarget
-                    })
-                  }}
-                >
-                  <WhiteboardIcon />
-                  <span>{board.title}</span>
-                </button>
+                <Tooltip label={board.title} placement="right">
+                  <button
+                    type="button"
+                    className="whiteboards-group__row"
+                    disabled={pending}
+                    onClick={() => openBoard(board.id)}
+                    onContextMenu={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setMenu({
+                        board,
+                        x: event.clientX,
+                        y: event.clientY,
+                        placement:
+                          event.clientY > window.innerHeight / 2
+                            ? 'top'
+                            : 'bottom',
+                        align:
+                          event.clientX > window.innerWidth / 2 ? 'end' : 'start',
+                        returnFocus: event.currentTarget
+                      })
+                    }}
+                  >
+                    <WhiteboardIcon />
+                    <span>{board.title}</span>
+                  </button>
+                </Tooltip>
               </li>
             )
           })}

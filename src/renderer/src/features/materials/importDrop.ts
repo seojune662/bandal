@@ -22,7 +22,8 @@ function fileName(path: string): string {
 
 export async function importMaterialPaths(
   courseId: string,
-  paths: readonly string[]
+  paths: readonly string[],
+  dirRelPath?: string
 ): Promise<string[]> {
   if (paths.length === 0) {
     showToast('가져올 수 있는 파일이 없어요', 'danger')
@@ -32,7 +33,9 @@ export async function importMaterialPaths(
   try {
     const result = await invoke('materials:import', {
       courseId,
-      paths: [...paths]
+      paths: [...paths],
+      // '' 또는 생략 = 과목 폴더 루트. 폴더 위에 드롭하면 그 폴더로 들어간다.
+      ...(dirRelPath !== undefined && dirRelPath !== '' ? { dirRelPath } : {})
     })
     if (result.imported.length > 0) {
       showToast(`${result.imported.length}개 가져옴`)
@@ -54,8 +57,9 @@ export async function importMaterialPaths(
 
 export async function importDroppedFiles(
   courseId: string,
-  files: readonly File[]
+  files: readonly File[],
+  dirRelPath?: string
 ): Promise<string[]> {
   const paths = files.map(pathForFile).filter((path) => path.length > 0)
-  return importMaterialPaths(courseId, paths)
+  return importMaterialPaths(courseId, paths, dirRelPath)
 }

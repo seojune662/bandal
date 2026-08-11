@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Course } from '../../../../shared/types/course'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
+import { Tooltip } from '../../components/Tooltip'
 import { invoke, onPush } from '../../lib/ipc'
 import { showToast } from '../../app/toast'
 import { useCoursesStore } from '../../stores/coursesStore'
@@ -27,9 +28,15 @@ import {
   unusedFolderName
 } from './materialPaths'
 import { isEditablePasteTarget } from './clipboardPaste'
-import { importDroppedFiles } from './importDrop'
+import { importDroppedFiles, isFileDrag } from './importDrop'
 import { MaterialsIcon } from './materialIcons'
-import { useFileDropTarget } from './useFileDropTarget'
+import {
+  MATERIAL_MOVE_MIME,
+  canAcceptMaterialMove,
+  getCurrentMaterialDrag,
+  parseMaterialMoveDrag,
+  type MaterialMoveDragPayload
+} from './materialMoveDrag'
 import { useMaterialsPaste } from './useMaterialsPaste'
 import { WhiteboardsGroup } from './WhiteboardsGroup'
 import './materials.css'
@@ -137,12 +144,15 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const [editing, setEditing] = useState<EditingState | null>(null)
   const [selectedRelPath, setSelectedRelPath] = useState<string | null>(null)
   const [pasteFocused, setPasteFocused] = useState(false)
+  const [isDropActive, setDropActive] = useState(false)
+  const [dropTargetDirRelPath, setDropTargetDirRelPath] = useState<string | null>(
+    null
+  )
   const [deleteTarget, setDeleteTarget] = useState<MaterialNode | null>(null)
   const [deletePending, setDeletePending] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const sidebarRef = useRef<HTMLElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { isDropActive, dropProps } = useFileDropTarget(course?.id ?? null)
 
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
   const closeDeleteDialog = useCallback(() => {
@@ -172,6 +182,8 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     setContextMenu(null)
     setEditing(null)
     setSelectedRelPath(null)
+    setDropActive(false)
+    setDropTargetDirRelPath(null)
     setDeleteTarget(null)
     setDeleteError(null)
     clearSearch()
@@ -282,6 +294,43 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
 
   const refreshAfterMutation = async (courseId: string): Promise<void> => {
     await useMaterialsStore.getState().loadTree(courseId)
+  }
+
+  const moveMaterial = async (
+    payload: MaterialMoveDragPayload,
+    toDirRelPath: string
+  ): Promise<void> => {
+    if (course === null || course.missing || payload.courseId !== course.id) return
+    const node =
+      findMaterialNode(useMaterialsStore.getState().tree, payload.relPath) ??
+      ({
+        relPath: payload.relPath,
+        name: materialBaseName(payload.relPath),
+        kind: payload.kind
+      } satisfies MaterialNode)
+    try {
+      const moved = await invoke('materials:move', {
+        courseId: course.id,
+        fromRelPath: payload.relPath,
+        toDirRelPath
+      })
+      reconcileTabsAfterRename(course.id, node, moved.relPath, false)
+      setQuery('')
+      clearSearch()
+      await refreshAfterMutation(course.id)
+      ensureAncestorsExpanded(moved.relPath)
+      setSelectedRelPath(moved.relPath)
+    } catch (moveError) {
+      console.error('[Bandal] 자료를 이동하지 못했습니다.', moveError)
+      showToast(operationError(moveError, '자료를 이동하지 못했습니다.'), 'danger')
+    }
+  }
+
+  const importFiles = (files: File[], dirRelPath?: string): void => {
+    setDropActive(false)
+    setDropTargetDirRelPath(null)
+    if (course === null || course.missing || files.length === 0) return
+    void importDroppedFiles(course.id, files, dirRelPath).then(handleCreated)
   }
 
   const handleContextMenu = (
@@ -481,7 +530,40 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           event.currentTarget.focus()
         }
       }}
-      {...dropProps}
+      onDragEnterCapture={(event) => {
+        if (course === null || course.missing || !isFileDrag(event.dataTransfer)) {
+          return
+        }
+        event.preventDefault()
+        setDropActive(true)
+      }}
+      onDragOverCapture={(event) => {
+        if (course === null || course.missing || !isFileDrag(event.dataTransfer)) {
+          return
+        }
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+        setDropActive(true)
+      }}
+      onDragLeaveCapture={(event) => {
+        if (!isFileDrag(event.dataTransfer)) return
+        const nextTarget = event.relatedTarget
+        if (
+          nextTarget instanceof Node &&
+          event.currentTarget.contains(nextTarget)
+        ) {
+          return
+        }
+        setDropActive(false)
+        setDropTargetDirRelPath(null)
+      }}
+      onDrop={(event) => {
+        if (course === null || course.missing || !isFileDrag(event.dataTransfer)) {
+          return
+        }
+        event.preventDefault()
+        importFiles([...event.dataTransfer.files])
+      }}
     >
       <div className="rail-heading materials-heading">
         <div className="materials-heading__text">
@@ -514,38 +596,41 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
               void importDroppedFiles(course.id, files).then(handleCreated)
             }}
           />
-          <button
-            type="button"
-            className="bare-icon-button"
-            aria-label="자료 가져오기"
-            title="자료 가져오기"
-            disabled={course === null || course.missing || isPasting}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <MaterialsIcon name="fileImport" />
-          </button>
-          <button
-            type="button"
-            className="bare-icon-button"
-            aria-label="새 폴더 만들기"
-            title="새 폴더 만들기"
-            disabled={course === null || course.missing || isPasting}
-            onClick={() => void createFolder(null)}
-          >
-            <MaterialsIcon name="folderPlus" />
-          </button>
-          <button
-            type="button"
-            className="bare-icon-button"
-            aria-label="자료 새로고침"
-            title="자료 새로고침"
-            disabled={course === null || isLoading}
-            onClick={() => {
-              if (course !== null) void loadTree(course.id)
-            }}
-          >
-            <Icon name="refresh" className={isLoading ? 'is-spinning' : ''} />
-          </button>
+          <Tooltip label="자료 가져오기">
+            <button
+              type="button"
+              className="bare-icon-button"
+              aria-label="자료 가져오기"
+              disabled={course === null || course.missing || isPasting}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <MaterialsIcon name="fileImport" />
+            </button>
+          </Tooltip>
+          <Tooltip label="새 폴더 만들기">
+            <button
+              type="button"
+              className="bare-icon-button"
+              aria-label="새 폴더 만들기"
+              disabled={course === null || course.missing || isPasting}
+              onClick={() => void createFolder(selectedNode)}
+            >
+              <MaterialsIcon name="folderPlus" />
+            </button>
+          </Tooltip>
+          <Tooltip label="자료 새로고침">
+            <button
+              type="button"
+              className="bare-icon-button"
+              aria-label="자료 새로고침"
+              disabled={course === null || isLoading}
+              onClick={() => {
+                if (course !== null) void loadTree(course.id)
+              }}
+            >
+              <Icon name="refresh" className={isLoading ? 'is-spinning' : ''} />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -595,6 +680,46 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         data-paste-target-root={
           pasteReady && pasteDirRelPath === '' ? true : undefined
         }
+        data-move-target-root={dropTargetDirRelPath === '' || undefined}
+        onDragEnter={(event) => {
+          if (event.target !== event.currentTarget) return
+          if (!canAcceptMaterialMove([...event.dataTransfer.types])) return
+          const payload = getCurrentMaterialDrag()
+          if (payload === null || payload.courseId !== course?.id) return
+          event.preventDefault()
+          event.stopPropagation()
+          event.dataTransfer.dropEffect = 'move'
+          setDropTargetDirRelPath('')
+        }}
+        onDragOver={(event) => {
+          if (event.target !== event.currentTarget) return
+          if (!canAcceptMaterialMove([...event.dataTransfer.types])) return
+          const payload = getCurrentMaterialDrag()
+          if (payload === null || payload.courseId !== course?.id) return
+          event.preventDefault()
+          event.stopPropagation()
+          event.dataTransfer.dropEffect = 'move'
+          setDropTargetDirRelPath('')
+        }}
+        onDragLeave={(event) => {
+          if (event.target !== event.currentTarget) return
+          if (!canAcceptMaterialMove([...event.dataTransfer.types])) return
+          event.stopPropagation()
+          setDropTargetDirRelPath(null)
+        }}
+        onDrop={(event) => {
+          if (event.target !== event.currentTarget) return
+          if (!canAcceptMaterialMove([...event.dataTransfer.types])) return
+          event.preventDefault()
+          event.stopPropagation()
+          setDropTargetDirRelPath(null)
+          const payload = parseMaterialMoveDrag(
+            event.dataTransfer.getData(MATERIAL_MOVE_MIME)
+          )
+          if (payload !== null && payload.courseId === course?.id) {
+            void moveMaterial(payload, '')
+          }
+        }}
       >
         {pasteNotice !== null && (
           <div className="materials-paste-notice" role="status">
@@ -653,10 +778,12 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
                   </div>
                 ) : (
                   <MaterialSearchResults
+                    courseId={course.id}
                     results={searchResults}
                     selectedRelPath={selectedRelPath}
                     onSelect={(node) => setSelectedRelPath(node.relPath)}
                     onContextMenu={handleContextMenu}
+                    onDragEnd={() => setDropTargetDirRelPath(null)}
                   />
                 )
               ) : tree.length === 0 ? (
@@ -670,6 +797,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
                 </div>
               ) : (
                 <MaterialTree
+                  courseId={course.id}
                   nodes={tree}
                   expandedPaths={expandedPaths}
                   editingRelPath={editing?.relPath ?? null}
@@ -677,11 +805,19 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
                   pasteTargetDirRelPath={
                     pasteReady && pasteDirRelPath !== '' ? pasteDirRelPath : null
                   }
+                  dropTargetDirRelPath={dropTargetDirRelPath}
                   onToggleFolder={toggleFolder}
                   onSelect={(node) => setSelectedRelPath(node.relPath)}
                   onContextMenu={handleContextMenu}
                   onCancelRename={() => setEditing(null)}
                   onRename={rename}
+                  onDropTargetChange={setDropTargetDirRelPath}
+                  onMove={(payload, toDirRelPath) => {
+                    void moveMaterial(payload, toDirRelPath)
+                  }}
+                  onImportFiles={(files, dirRelPath) => {
+                    importFiles(files, dirRelPath)
+                  }}
                 />
               )}
             </section>

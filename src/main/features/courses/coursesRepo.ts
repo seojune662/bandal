@@ -32,6 +32,17 @@ export interface CoursesRepo {
   relink(input: RelinkCourseInput): CourseFolderResult
   rename(input: RenameCourseInput): Course
   archive(input: { courseId: string; archived: boolean }): Course
+  /**
+   * 한 번의 드래그 = 한 번의 원자적 호출. `groupId`(null = 그룹 해제)로
+   * 소속을 바꾸고 `beforeCourseId` 앞에(null = 대상 그룹 블록의 끝에)
+   * 배치한 뒤, 전체 live 과목의 sort_order를 0..n으로 다시 매긴다.
+   * 갱신된 목록(list())을 돌려준다.
+   */
+  organize(input: {
+    courseId: string
+    groupId: string | null
+    beforeCourseId: string | null
+  }): Course[]
   /** Soft delete: the folder on disk is left untouched. */
   softDelete(input: { courseId: string }): { ok: true }
   /** Live (non-deleted) course by id; throws NotFoundError otherwise. */
@@ -54,6 +65,7 @@ interface CourseRow {
   folder_path: string
   source: string
   archived: number
+  group_id: string | null
   sort_order: number
   created_at: string
   updated_at: string
@@ -73,6 +85,7 @@ function rowToCourse(row: CourseRow): Course {
     source: toSource(row.source),
     missing: folderState(row.folder_path) !== 'ok',
     archived: row.archived === 1,
+    groupId: row.group_id ?? null,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -182,17 +195,21 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
     return { ...row, archived: 0, updated_at: now }
   }
 
+  function listCourses(input: { includeArchived?: boolean } = {}): Course[] {
+    const includeArchived = input.includeArchived === true
+    const rows = db
+      .prepare(
+        `SELECT * FROM courses
+         WHERE deleted_at IS NULL ${includeArchived ? '' : 'AND archived = 0'}
+         ORDER BY sort_order ASC, created_at ASC`
+      )
+      .all() as CourseRow[]
+    return rows.map(rowToCourse)
+  }
+
   return {
     list(input = {}) {
-      const includeArchived = input.includeArchived === true
-      const rows = db
-        .prepare(
-          `SELECT * FROM courses
-           WHERE deleted_at IS NULL ${includeArchived ? '' : 'AND archived = 0'}
-           ORDER BY sort_order ASC, created_at ASC`
-        )
-        .all() as CourseRow[]
-      return rows.map(rowToCourse)
+      return listCourses(input)
     },
 
     create(input) {
@@ -217,6 +234,8 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
         source: 'managed',
         missing: false,
         archived: false,
+        // 새 과목은 그룹 없이 시작한다 (INSERT의 group_id 기본값 NULL과 일치).
+        groupId: null,
         sortOrder: nextSortOrder(),
         createdAt: now,
         updatedAt: now
@@ -253,6 +272,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
         source: 'linked',
         missing: false,
         archived: false,
+        groupId: null,
         sortOrder: nextSortOrder(),
         createdAt: now,
         updatedAt: now
@@ -329,6 +349,82 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
         row.id
       )
       return { ok: true }
+    },
+
+    organize(input) {
+      const targetGroupId =
+        input.groupId === null ? null : requireId(input.groupId, 'groupId')
+      const beforeCourseId =
+        input.beforeCourseId === null
+          ? null
+          : requireId(input.beforeCourseId, 'beforeCourseId')
+
+      const apply = db.transaction(() => {
+        const dragged = getRowOrThrow(input.courseId)
+        if (beforeCourseId === dragged.id) {
+          throw new ValidationError('beforeCourseId must not be the dragged course')
+        }
+        if (targetGroupId !== null) {
+          const group = db
+            .prepare(
+              'SELECT id FROM course_groups WHERE id = ? AND deleted_at IS NULL'
+            )
+            .get(targetGroupId)
+          if (group === undefined) {
+            throw new NotFoundError('course group', targetGroupId)
+          }
+        }
+
+        // 전체 live 목록(아카이브 포함)을 현재 순서대로 만든다 — 상대 순서를
+        // 보존한 채 다시 매기기 위해 숨겨진 행까지 모두 포함해야 한다.
+        const rows = db
+          .prepare(
+            `SELECT id, group_id FROM courses
+             WHERE deleted_at IS NULL
+             ORDER BY sort_order ASC, created_at ASC`
+          )
+          .all() as { id: string; group_id: string | null }[]
+
+        const remaining = rows.filter((row) => row.id !== dragged.id)
+        let insertAt: number
+        if (beforeCourseId !== null) {
+          const before = remaining.find((row) => row.id === beforeCourseId)
+          if (before === undefined) {
+            throw new NotFoundError('course', beforeCourseId)
+          }
+          // 드롭 지점은 대상 그룹 블록 안이어야 한다. 다른 그룹의 행 앞에
+          // 끼워 넣으면 그룹 경계와 정렬이 서로 모순이 된다.
+          if ((before.group_id ?? null) !== targetGroupId) {
+            throw new ValidationError(
+              'beforeCourseId must belong to the target group'
+            )
+          }
+          insertAt = remaining.indexOf(before)
+        } else {
+          // null = 대상 그룹 블록의 끝. 그룹에 아무도 없으면 목록 맨 끝.
+          let lastMember = -1
+          remaining.forEach((row, index) => {
+            if ((row.group_id ?? null) === targetGroupId) lastMember = index
+          })
+          insertAt = lastMember === -1 ? remaining.length : lastMember + 1
+        }
+
+        const ordered = [...remaining]
+        ordered.splice(insertAt, 0, { id: dragged.id, group_id: targetGroupId })
+
+        const now = nowIso()
+        db.prepare(
+          'UPDATE courses SET group_id = ?, updated_at = ? WHERE id = ?'
+        ).run(targetGroupId, now, dragged.id)
+        const renumber = db.prepare(
+          'UPDATE courses SET sort_order = ?, updated_at = ? WHERE id = ?'
+        )
+        ordered.forEach((row, index) => {
+          renumber.run(index, now, row.id)
+        })
+      })
+      apply()
+      return listCourses()
     },
 
     getById(courseId) {

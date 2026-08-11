@@ -16,6 +16,8 @@ import {
 } from 'dockview'
 import 'dockview/dist/styles/dockview.css'
 import { Icon } from '../../app/icons'
+import { BandalMark } from '../../components/BandalMark'
+import { Tooltip } from '../../components/Tooltip'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
@@ -29,7 +31,6 @@ import { dockviewComponents } from './tabRegistry'
 import { installTabStripWheelScrolling } from './tabStripScroll'
 import { TabKindIcon } from './workspaceIcons'
 import './workspace.css'
-import { BandalMark } from '../../components/BandalMark'
 
 const bandalTheme: DockviewTheme = {
   name: 'bandal',
@@ -79,52 +80,57 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
 
   return (
     <>
-      <div
-        ref={tabRef}
-        className="workspace-tab"
-        title={title}
-        onContextMenu={(event) => {
-          if (descriptor === null || course === null) return
-          event.preventDefault()
-          event.stopPropagation()
-          props.api.setActive()
-          const panels = props.api.group.panels
-          const index = panels.findIndex((panel) => panel.id === props.api.id)
-          setContextMenu({
-            x: event.clientX,
-            y: event.clientY,
-            placement: event.clientY > window.innerHeight / 2 ? 'top' : 'bottom',
-            align: event.clientX > window.innerWidth / 2 ? 'end' : 'start',
-            rightPanelIds:
-              index < 0
-                ? []
-                : panels.slice(index + 1).map((panel) => panel.id)
-          })
-        }}
-        onMouseDown={(event) => {
-          if (event.button === 1) {
+      <Tooltip label={title} placement="bottom">
+        <div
+          ref={tabRef}
+          className="workspace-tab"
+          onContextMenu={(event) => {
+            if (descriptor === null || course === null) return
             event.preventDefault()
-            props.api.close()
-          }
-        }}
-      >
-        {descriptor !== null && (
-          <TabKindIcon kind={descriptor.kind} className="workspace-tab__kind" />
-        )}
-        <span className="workspace-tab__title">{title}</span>
-        <button
-          type="button"
-          className="workspace-tab__close"
-          aria-label={`${title} 탭 닫기`}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
             event.stopPropagation()
-            props.api.close()
+            props.api.setActive()
+            const panels = props.api.group.panels
+            const index = panels.findIndex((panel) => panel.id === props.api.id)
+            setContextMenu({
+              x: event.clientX,
+              y: event.clientY,
+              placement:
+                event.clientY > window.innerHeight / 2 ? 'top' : 'bottom',
+              align: event.clientX > window.innerWidth / 2 ? 'end' : 'start',
+              rightPanelIds:
+                index < 0
+                  ? []
+                  : panels.slice(index + 1).map((panel) => panel.id)
+            })
+          }}
+          onMouseDown={(event) => {
+            if (event.button === 1) {
+              event.preventDefault()
+              props.api.close()
+            }
           }}
         >
-          <Icon name="x" />
-        </button>
-      </div>
+          {descriptor !== null && (
+            <TabKindIcon
+              kind={descriptor.kind}
+              className="workspace-tab__kind"
+            />
+          )}
+          <span className="workspace-tab__title">{title}</span>
+          <button
+            type="button"
+            className="workspace-tab__close"
+            aria-label={`${title} 탭 닫기`}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              props.api.close()
+            }}
+          >
+            <Icon name="x" />
+          </button>
+        </div>
+      </Tooltip>
       {contextMenu !== null && descriptor !== null && course !== null && (
         <TabContextMenu
           descriptor={descriptor}
@@ -215,16 +221,17 @@ function ExpandLeftRail(): JSX.Element | null {
     <div className="workspace-chrome">
       {/* Keeps the button clear of the macOS window controls. */}
       <span className="workspace-chrome__traffic" aria-hidden="true" />
-      <button
-        type="button"
-        className="titlebar-button"
-        aria-label="과목 사이드바 펼치기"
-        aria-pressed={false}
-        title="과목 사이드바 펼치기"
-        onClick={toggleLeftRail}
-      >
-        <Icon name="layoutLeft" />
-      </button>
+      <Tooltip label="과목 사이드바 펼치기" placement="bottom">
+        <button
+          type="button"
+          className="titlebar-button"
+          aria-label="과목 사이드바 펼치기"
+          aria-pressed={false}
+          onClick={toggleLeftRail}
+        >
+          <Icon name="layoutLeft" />
+        </button>
+      </Tooltip>
     </div>
   )
 }
@@ -236,18 +243,19 @@ function ChromeLeft(_props: IDockviewHeaderActionsProps): JSX.Element | null {
 function AddTabAction(_props: IDockviewHeaderActionsProps): JSX.Element {
   return (
     <div className="workspace-tab-actions">
-      <button
-        type="button"
-        className="workspace-add-tab"
-        aria-label="새 탭 열기"
-        title="새 탭 열기"
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect()
-          openNewTabMenu({ x: rect.left, y: rect.bottom })
-        }}
-      >
-        <Icon name="plus" />
-      </button>
+      <Tooltip label="새 탭 열기" placement="bottom">
+        <button
+          type="button"
+          className="workspace-add-tab"
+          aria-label="새 탭 열기"
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect()
+            openNewTabMenu({ x: rect.left, y: rect.bottom })
+          }}
+        >
+          <Icon name="plus" />
+        </button>
+      </Tooltip>
     </div>
   )
 }
@@ -256,19 +264,21 @@ function AddTabAction(_props: IDockviewHeaderActionsProps): JSX.Element {
 function ToggleRightRail(): JSX.Element {
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
   const toggleRightRail = useUiStore((state) => state.toggleRightRail)
+  const label = rightRailOpen ? '자료 사이드바 접기' : '자료 사이드바 펼치기'
 
   return (
     <div className="workspace-header-actions">
-      <button
-        type="button"
-        className="titlebar-button"
-        aria-label={rightRailOpen ? '자료 사이드바 접기' : '자료 사이드바 펼치기'}
-        aria-pressed={rightRailOpen}
-        title={rightRailOpen ? '자료 사이드바 접기' : '자료 사이드바 펼치기'}
-        onClick={toggleRightRail}
-      >
-        <Icon name="layoutRight" />
-      </button>
+      <Tooltip label={label} placement="bottom">
+        <button
+          type="button"
+          className="titlebar-button"
+          aria-label={label}
+          aria-pressed={rightRailOpen}
+          onClick={toggleRightRail}
+        >
+          <Icon name="layoutRight" />
+        </button>
+      </Tooltip>
     </div>
   )
 }

@@ -4,6 +4,7 @@ import type {
   AddCourseFromFolderInput,
   Course,
   CourseFolderResult,
+  CourseGroup,
   CreateCourseInput,
   PickedFolder
 } from '../../../shared/types/course'
@@ -14,12 +15,24 @@ import { useWorkspaceStore } from './workspaceStore'
 
 interface CoursesState {
   courses: Course[]
+  /** 과목 그룹(학기) — 사이드바 섹션. loadCourses 가 함께 채운다. */
+  groups: CourseGroup[]
   selectedCourseId: string | null
   isLoading: boolean
   pendingCourseId: string | null
   error: string | null
   loadCourses: () => Promise<void>
   selectCourse: (courseId: string) => void
+  createGroup: (name: string) => Promise<CourseGroup>
+  renameGroup: (groupId: string, name: string) => Promise<CourseGroup>
+  /** 그룹만 지운다 — 멤버 과목은 그룹 해제될 뿐 삭제되지 않는다. */
+  deleteGroup: (groupId: string) => Promise<void>
+  /** 한 번의 드래그 = 소속 + 위치 원자 반영. 서버가 준 목록으로 교체한다. */
+  organizeCourse: (
+    courseId: string,
+    groupId: string | null,
+    beforeCourseId: string | null
+  ) => Promise<void>
   createCourse: (input: CreateCourseInput) => Promise<Course>
   /** Opens the native folder picker; resolves to null when cancelled. */
   pickFolder: () => Promise<PickedFolder | null>
@@ -50,6 +63,7 @@ function nextSelection(courses: Course[], removedId: string): string | null {
 export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
   immer((set, get) => ({
     courses: [],
+    groups: [],
     selectedCourseId: null,
     isLoading: false,
     pendingCourseId: null,
@@ -63,10 +77,15 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
       })
 
       try {
-        const courses = await invoke('courses:list', {})
+        // 그룹 목록은 과목 목록과 항상 짝으로 그려지므로 병렬로 함께 당긴다.
+        const [courses, groups] = await Promise.all([
+          invoke('courses:list', {}),
+          invoke('courseGroups:list', {})
+        ])
         if (sequence !== loadSequence) return
         set((state) => {
           state.courses = courses
+          state.groups = groups
           const selectionStillExists = courses.some(
             (course) => course.id === state.selectedCourseId
           )
@@ -79,6 +98,87 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
           state.isLoading = false
           state.error = errorMessage(error)
         })
+      }
+    },
+
+    createGroup: async (name) => {
+      set((state) => {
+        state.error = null
+      })
+      try {
+        const created = await invoke('courseGroups:create', { name })
+        set((state) => {
+          state.groups.push(created)
+          state.groups.sort((a, b) => a.sortOrder - b.sortOrder)
+        })
+        return created
+      } catch (error) {
+        set((state) => {
+          state.error = errorMessage(error)
+        })
+        throw error
+      }
+    },
+
+    renameGroup: async (groupId, name) => {
+      set((state) => {
+        state.error = null
+      })
+      try {
+        const renamed = await invoke('courseGroups:rename', { groupId, name })
+        set((state) => {
+          const index = state.groups.findIndex((group) => group.id === groupId)
+          if (index !== -1) state.groups[index] = renamed
+        })
+        return renamed
+      } catch (error) {
+        set((state) => {
+          state.error = errorMessage(error)
+        })
+        throw error
+      }
+    },
+
+    deleteGroup: async (groupId) => {
+      set((state) => {
+        state.error = null
+      })
+      try {
+        await invoke('courseGroups:delete', { groupId })
+        set((state) => {
+          state.groups = state.groups.filter((group) => group.id !== groupId)
+          // 서버와 같은 규칙: 멤버 과목은 그룹만 잃고 그대로 남는다.
+          for (const course of state.courses) {
+            if (course.groupId === groupId) course.groupId = null
+          }
+        })
+      } catch (error) {
+        set((state) => {
+          state.error = errorMessage(error)
+        })
+        throw error
+      }
+    },
+
+    organizeCourse: async (courseId, groupId, beforeCourseId) => {
+      set((state) => {
+        state.error = null
+      })
+      try {
+        const courses = await invoke('courses:organize', {
+          courseId,
+          groupId,
+          beforeCourseId
+        })
+        // 정렬과 소속은 서버가 원자적으로 확정한다 — 돌려준 목록으로 교체.
+        set((state) => {
+          state.courses = courses
+        })
+      } catch (error) {
+        set((state) => {
+          state.error = errorMessage(error)
+        })
+        throw error
       }
     },
 

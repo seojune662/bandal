@@ -605,6 +605,43 @@ export const migrations: Migration[] = [
         }
       }
     }
+  },
+  {
+    // [M17] 과목 그룹(학기). A group is a named bucket the sidebar renders as
+    // a section header; membership lives on the course row itself so a course
+    // is in at most one group and "ungrouped" is simply group_id NULL.
+    // Deleting a group soft-deletes the group row and NULLs the members'
+    // group_id — courses are never deleted by group operations.
+    version: 17,
+    name: 'course-groups',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS course_groups (
+           id         TEXT PRIMARY KEY,
+           name       TEXT NOT NULL,
+           sort_order INTEGER NOT NULL DEFAULT 0,
+           created_at TEXT NOT NULL,
+           updated_at TEXT NOT NULL,
+           deleted_at TEXT
+         );`
+      )
+      // SQLite has no ADD COLUMN IF NOT EXISTS; guard so replaying (lost
+      // bookkeeping row, tests) never dies on "duplicate column name".
+      const columns = new Set(
+        (db.prepare('PRAGMA table_info(courses)').all() as { name: string }[]).map(
+          (column) => column.name
+        )
+      )
+      if (!columns.has('group_id')) {
+        db.exec(
+          `ALTER TABLE courses ADD COLUMN group_id TEXT REFERENCES course_groups(id)`
+        )
+      }
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_courses_group
+           ON courses (group_id, sort_order) WHERE deleted_at IS NULL;`
+      )
+    }
   }
 ]
 

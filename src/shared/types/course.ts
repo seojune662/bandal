@@ -28,6 +28,20 @@ export interface Course {
    */
   missing: boolean
   archived: boolean
+  /** 과목 그룹(학기) id, ungrouped일 때 null. */
+  groupId: string | null
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * 과목 그룹(학기). A named sidebar section; membership is `Course.groupId`,
+ * so a course belongs to at most one group and null means ungrouped.
+ */
+export interface CourseGroup {
+  id: string
+  name: string
   sortOrder: number
   createdAt: string
   updatedAt: string
