@@ -29,19 +29,43 @@ interface CardPosition {
   placement: TourPlacement
 }
 
-const HOLE_PADDING = 8
-const CARD_GAP = 12
-const VIEWPORT_MARGIN = 16
+interface TourLayout {
+  width: number
+  height: number
+  holePadding: number
+  cardGap: number
+  viewportMargin: number
+}
+
+function tokenPixels(token: string): number {
+  const styles = window.getComputedStyle(document.documentElement)
+  const value = styles.getPropertyValue(token).trim()
+  const numeric = Number.parseFloat(value)
+  const rootFontSize = Number.parseFloat(styles.fontSize)
+  if (!Number.isFinite(numeric)) return rootFontSize
+  if (value.endsWith('rem')) return numeric * rootFontSize
+  return numeric
+}
+
+function currentLayout(): TourLayout {
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    holePadding: tokenPixels('--space-2'),
+    cardGap: tokenPixels('--space-3'),
+    viewportMargin: tokenPixels('--space-4')
+  }
+}
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), Math.max(minimum, maximum))
 }
 
-function paddedRect(rect: TourAnchorRect): TourAnchorRect {
-  const left = clamp(rect.left - HOLE_PADDING, 0, window.innerWidth)
-  const top = clamp(rect.top - HOLE_PADDING, 0, window.innerHeight)
-  const right = clamp(rect.right + HOLE_PADDING, left, window.innerWidth)
-  const bottom = clamp(rect.bottom + HOLE_PADDING, top, window.innerHeight)
+function paddedRect(rect: TourAnchorRect, layout: TourLayout): TourAnchorRect {
+  const left = clamp(rect.left - layout.holePadding, 0, layout.width)
+  const top = clamp(rect.top - layout.holePadding, 0, layout.height)
+  const right = clamp(rect.right + layout.holePadding, left, layout.width)
+  const bottom = clamp(rect.bottom + layout.holePadding, top, layout.height)
   return {
     top,
     right,
@@ -68,18 +92,19 @@ function opposite(placement: TourPlacement): TourPlacement {
 function cardPosition(
   hole: TourAnchorRect,
   size: CardSize,
-  preferred: TourPlacement
+  preferred: TourPlacement,
+  layout: TourLayout
 ): CardPosition {
   const space: Record<TourPlacement, number> = {
-    top: hole.top - VIEWPORT_MARGIN,
-    right: window.innerWidth - hole.right - VIEWPORT_MARGIN,
-    bottom: window.innerHeight - hole.bottom - VIEWPORT_MARGIN,
-    left: hole.left - VIEWPORT_MARGIN
+    top: hole.top - layout.viewportMargin,
+    right: layout.width - hole.right - layout.viewportMargin,
+    bottom: layout.height - hole.bottom - layout.viewportMargin,
+    left: hole.left - layout.viewportMargin
   }
   const needed = (placement: TourPlacement): number =>
     placement === 'top' || placement === 'bottom'
-      ? size.height + CARD_GAP
-      : size.width + CARD_GAP
+      ? size.height + layout.cardGap
+      : size.width + layout.cardGap
   const remaining = (['top', 'right', 'bottom', 'left'] as const).filter(
     (placement) => placement !== preferred && placement !== opposite(preferred)
   )
@@ -90,28 +115,30 @@ function cardPosition(
       space[candidate] > space[best] ? candidate : best
     )
 
-  let top = hole.bottom + CARD_GAP
+  let top = hole.bottom + layout.cardGap
   let left = hole.left + (hole.width - size.width) / 2
-  if (placement === 'top') top = hole.top - size.height - CARD_GAP
+  if (placement === 'top') {
+    top = hole.top - size.height - layout.cardGap
+  }
   if (placement === 'right') {
     top = hole.top + (hole.height - size.height) / 2
-    left = hole.right + CARD_GAP
+    left = hole.right + layout.cardGap
   }
   if (placement === 'left') {
     top = hole.top + (hole.height - size.height) / 2
-    left = hole.left - size.width - CARD_GAP
+    left = hole.left - size.width - layout.cardGap
   }
 
   return {
     top: clamp(
       top,
-      VIEWPORT_MARGIN,
-      window.innerHeight - size.height - VIEWPORT_MARGIN
+      layout.viewportMargin,
+      layout.height - size.height - layout.viewportMargin
     ),
     left: clamp(
       left,
-      VIEWPORT_MARGIN,
-      window.innerWidth - size.width - VIEWPORT_MARGIN
+      layout.viewportMargin,
+      layout.width - size.width - layout.viewportMargin
     ),
     placement
   }
@@ -232,6 +259,21 @@ function StepCard({
         {step.title}
       </h2>
       <div className="tour-card__body">{step.body}</div>
+      {step.id === 'favorites' && (
+        <div className="tour-favorite-demo" aria-hidden="true">
+          <div className="tour-favorite-demo__strip" />
+          <div className="tour-favorite-demo__tab">
+            <span className="tour-favorite-demo__tab-mark" />
+            열린 탭
+          </div>
+          <div className="tour-favorite-demo__target">
+            <svg viewBox="0 0 24 24">
+              <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z" />
+            </svg>
+            <span>즐겨찾기에 고정</span>
+          </div>
+        </div>
+      )}
       {anchorMissing && (
         <p className="tour-card__anchor-status" role="status">
           안내할 화면을 찾는 중이에요. 계속 보이지 않으면 자동으로 넘어가요.
@@ -275,19 +317,33 @@ function ActiveTourOverlay({
   const step = TOUR_STEPS[stepIndex] ?? TOUR_STEPS[0]
   const cardRef = useRef<HTMLDivElement>(null)
   const [cardSize, setCardSize] = useState<CardSize>({ width: 352, height: 240 })
+  const [layout, setLayout] = useState<TourLayout>(currentLayout)
   const onMissingTimeout = useCallback(() => next(), [next])
-  const anchorRect = useTourAnchor(step.target, onMissingTimeout)
+  const fallbackTarget = step.id === 'favorites' ? 'course-sidebar' : null
+  const anchorRect = useTourAnchor(
+    step.target,
+    onMissingTimeout,
+    fallbackTarget
+  )
   const hole = useMemo(
-    () => (anchorRect === null ? null : paddedRect(anchorRect)),
-    [anchorRect]
+    () => (anchorRect === null ? null : paddedRect(anchorRect, layout)),
+    [anchorRect, layout]
   )
   const position = useMemo(
     () =>
-      hole === null ? null : cardPosition(hole, cardSize, step.placement),
-    [cardSize, hole, step.placement]
+      hole === null
+        ? null
+        : cardPosition(hole, cardSize, step.placement, layout),
+    [cardSize, hole, layout, step.placement]
   )
 
   useEffect(() => acquirePointerPassthrough(), [])
+
+  useEffect(() => {
+    const updateLayout = (): void => setLayout(currentLayout())
+    window.addEventListener('resize', updateLayout)
+    return () => window.removeEventListener('resize', updateLayout)
+  }, [])
 
   useEffect(() => {
     if (status !== 'running') return

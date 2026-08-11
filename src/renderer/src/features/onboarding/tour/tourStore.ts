@@ -118,6 +118,31 @@ async function waitForWorkspaceCourse(
   })
 }
 
+async function waitForPaint(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve())
+  })
+}
+
+async function revealFavorites(courseId: string): Promise<void> {
+  const ui = useUiStore.getState()
+  if (!ui.leftRailOpen) ui.toggleLeftRail()
+  useCoursesStore.getState().selectCourse(courseId)
+  await waitForWorkspaceCourse(courseId)
+
+  // Let the rail mount and the selected course render before checking the
+  // local collapse state owned by CourseSidebar.
+  await waitForPaint()
+  await waitForPaint()
+  const toggle = document.querySelector<HTMLButtonElement>(
+    '.course-row[data-selected="true"] .course-row__toggle'
+  )
+  if (toggle?.getAttribute('aria-expanded') === 'false') {
+    toggle.click()
+    await waitForPaint()
+  }
+}
+
 async function prepareStep(
   action: TourBeforeAction | null,
   courseId: string,
@@ -125,6 +150,12 @@ async function prepareStep(
   assistantConversationId: string
 ): Promise<void> {
   if (action === null) return
+
+  if (action === 'reveal-favorites') {
+    await revealFavorites(courseId)
+    return
+  }
+
   useCoursesStore.getState().selectCourse(courseId)
   await waitForWorkspaceCourse(courseId)
 

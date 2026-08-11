@@ -6,10 +6,14 @@ export type TourAnchorKey =
   | 'tab-strip'
   | 'favorites-section'
   | 'assistant-panel'
+  | 'assistant-orb'
 
 export type TourPlacement = 'top' | 'right' | 'bottom' | 'left'
 
-export type TourBeforeAction = 'open-seed-note' | 'open-assistant'
+export type TourBeforeAction =
+  | 'open-seed-note'
+  | 'reveal-favorites'
+  | 'open-assistant'
 
 export interface TourStep {
   id: string

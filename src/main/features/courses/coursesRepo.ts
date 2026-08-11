@@ -379,7 +379,44 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
       if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
         throw new ValidationError('course folder is outside the data root')
       }
-      db.prepare('DELETE FROM courses WHERE id = ?').run(id)
+      // foreign_keys=ON: the row cannot go while children reference it. Chain
+      // order matters — grandchildren first (no course_id of their own), then
+      // messages before agent_sessions (messages FK it), then every table
+      // with a direct courses(id) FK, discovered dynamically so new tables
+      // keep purging without edits here.
+      const purgeTx = db.transaction((courseId: string) => {
+        db.prepare(
+          `DELETE FROM message_blocks WHERE message_id IN
+             (SELECT id FROM messages WHERE course_id = ?)`
+        ).run(courseId)
+        db.prepare(
+          `DELETE FROM whiteboard_local_shapes WHERE board_id IN
+             (SELECT id FROM whiteboards WHERE course_id = ?)`
+        ).run(courseId)
+        db.prepare('DELETE FROM messages WHERE course_id = ?').run(courseId)
+        const tables = db
+          .prepare(
+            `SELECT name FROM sqlite_master
+             WHERE type = 'table' AND name NOT IN ('courses', 'messages')
+               AND name NOT LIKE 'sqlite_%'`
+          )
+          .all() as { name: string }[]
+        for (const { name } of tables) {
+          const fks = db.pragma(`foreign_key_list("${name}")`) as {
+            table: string
+            from: string
+          }[]
+          for (const fk of fks) {
+            if (fk.table === 'courses') {
+              db.prepare(`DELETE FROM "${name}" WHERE "${fk.from}" = ?`).run(
+                courseId
+              )
+            }
+          }
+        }
+        db.prepare('DELETE FROM courses WHERE id = ?').run(courseId)
+      })
+      purgeTx(id)
       return { ok: true, folderPath }
     },
 

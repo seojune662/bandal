@@ -68,7 +68,7 @@ export const TOUR_STEPS = [
         고정돼요.
       </p>
     ),
-    before: null,
+    before: 'reveal-favorites',
     nextLabel: null
   },
   {
@@ -83,6 +83,17 @@ export const TOUR_STEPS = [
       </p>
     ),
     before: 'open-assistant',
+    nextLabel: null
+  },
+  {
+    id: 'assistant-orb',
+    target: 'assistant-orb',
+    placement: 'left',
+    title: '어디서든 반달 AI를 불러보세요',
+    body: (
+      <p>어디서든 떠 있는 반달을 누르면 AI를 바로 부를 수 있어요.</p>
+    ),
+    before: null,
     nextLabel: null
   },
   {

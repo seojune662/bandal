@@ -154,6 +154,7 @@ export function AssistantOrb({
       ref={buttonRef}
       type="button"
       className="assistant-orb"
+      data-tour="assistant-orb"
       data-positioned={position === null ? undefined : 'true'}
       style={style}
       aria-label={

@@ -274,6 +274,47 @@ describe('coursesRepo', () => {
       expect(() => repo.purge({ courseId: course.id })).toThrow(ValidationError)
     })
 
+    test('purges a course that has FK children across the whole graph', () => {
+      const course = repo.create({ name: '반달 튜토리얼', color: 'gold' })
+      const now = new Date().toISOString()
+      ctx.db
+        .prepare(
+          `INSERT INTO agent_sessions (id, course_id, provider, status, created_at, updated_at)
+           VALUES ('s1', ?, 'claude-code', 'idle', ?, ?)`
+        )
+        .run(course.id, now, now)
+      ctx.db
+        .prepare(
+          `INSERT INTO messages (id, course_id, session_id, role, turn_seq, created_at, updated_at)
+           VALUES ('m1', ?, 's1', 'user', 1, ?, ?)`
+        )
+        .run(course.id, now, now)
+      ctx.db
+        .prepare(
+          `INSERT INTO message_blocks (message_id, ord, kind, payload_json, created_at, updated_at)
+           VALUES ('m1', 0, 'text', '{"text":"hi"}', ?, ?)`
+        )
+        .run(now, now)
+      ctx.db
+        .prepare(
+          `INSERT INTO materials_index (id, course_id, rel_path, kind, size, mtime, created_at, updated_at)
+           VALUES ('mi1', ?, 'note.md', 'note', 1, 0, ?, ?)`
+        )
+        .run(course.id, now, now)
+      repo.softDelete({ courseId: course.id })
+
+      const result = repo.purge({ courseId: course.id })
+
+      expect(result.ok).toBe(true)
+      const remaining = ctx.db
+        .prepare('SELECT count(*) AS n FROM messages WHERE course_id = ?')
+        .get(course.id) as { n: number }
+      expect(remaining.n).toBe(0)
+      expect(
+        ctx.db.prepare('SELECT id FROM courses WHERE id = ?').get(course.id)
+      ).toBeUndefined()
+    })
+
     test('hard-deletes a soft-deleted managed course and returns its folder', () => {
       const course = repo.create({ name: '반달 튜토리얼', color: 'gold' })
       repo.softDelete({ courseId: course.id })
