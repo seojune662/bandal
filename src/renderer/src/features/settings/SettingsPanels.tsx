@@ -536,7 +536,7 @@ export function CoursesPanel({
         </div>
 
         <div
-          className="course-list"
+          className="settings-course-list"
           aria-live="polite"
           aria-busy={pendingCourseId !== null}
         >
@@ -547,8 +547,8 @@ export function CoursesPanel({
               <span />
             </div>
           ) : error !== null ? (
-            <div className="empty-state">
-              <div className="empty-state__icon">
+            <div className="settings-empty-state">
+              <div className="settings-empty-state__icon">
                 <Icon name="courses" />
               </div>
               <strong>{t('settings.courses.loadFailed')}</strong>
@@ -558,8 +558,8 @@ export function CoursesPanel({
               </button>
             </div>
           ) : courses.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state__icon">
+            <div className="settings-empty-state">
+              <div className="settings-empty-state__icon">
                 <Icon name="courses" />
               </div>
               <strong>{t('settings.courses.empty')}</strong>
