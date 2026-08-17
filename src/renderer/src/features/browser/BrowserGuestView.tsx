@@ -90,7 +90,19 @@ export function BrowserGuestView({
     }
 
     const listeners: ReadonlyArray<[string, EventListener]> = [
-      ['did-start-loading', () => update({ loading: true })],
+      [
+        'did-start-loading',
+        () => {
+          // iframe/광고 서브프레임 로드에도 이 이벤트가 온다 — 메인 프레임
+          // 항해가 아닐 때 로딩 바를 켜면 사이트가 "계속 로딩 중"으로 보인다.
+          try {
+            if (!element.isLoadingMainFrame()) return
+          } catch {
+            // not attached yet — treat as main-frame load
+          }
+          update({ loading: true })
+        }
+      ],
       ['did-stop-loading', () => update({ loading: false, ...historyState() })],
       [
         'did-navigate',

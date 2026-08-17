@@ -14,6 +14,7 @@ export interface WebviewTag extends HTMLElement {
   reload(): void
   stop(): void
   canGoBack(): boolean
+  isLoadingMainFrame(): boolean
   canGoForward(): boolean
   getWebContentsId(): number
   executeJavaScript(code: string, userGesture?: boolean): Promise<unknown>
