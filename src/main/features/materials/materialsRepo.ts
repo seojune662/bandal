@@ -38,6 +38,8 @@ export interface MaterialsRepo {
    * 호출하면 된다.
    */
   invalidateTree(courseId: string): void
+  /** 경로 이탈 가드를 거친 절대 경로. 네이티브 파일 드래그(startDrag)용. */
+  absolutePathFor(courseId: string, relPath: string): string
   /** `dirRelPath` ''/생략 = 과목 폴더 루트. */
   import(courseId: string, paths: string[], dirRelPath?: string): ImportResult
   /** 파일/폴더를 다른 과목-상대 디렉터리로 옮긴다 ('' = 루트). */
@@ -418,6 +420,14 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
     rebuild()
   }
 
+  function resolveMaterialAbs(courseId: string, relPath: string): string {
+    const { abs } = resolveMaterial(courseId, relPath)
+    if (!existsSync(abs)) {
+      throw new NotFoundError('material', relPath)
+    }
+    return abs
+  }
+
   function resolveMaterial(courseId: string, relPath: string): { abs: string; folder: string } {
     const { folder } = requireCourseFolder(courseId)
     const abs = resolveInside(folder, requireNonEmptyString(relPath, 'relPath'))
@@ -438,6 +448,10 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
   }
 
   return {
+    absolutePathFor(courseId, relPath) {
+      return resolveMaterialAbs(courseId, relPath)
+    },
+
     invalidateTree(courseId) {
       treeCache.delete(requireId(courseId, 'courseId'))
     },

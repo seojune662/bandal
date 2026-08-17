@@ -24,6 +24,11 @@ export interface BandalBridge {
    */
   pathForFile(file: File): string
   /**
+   * Promotes a material row drag to a NATIVE OS file drag (fire-and-forget).
+   * Needed so 웹뷰 안의 업로드 폼(메일 첨부, 과제 제출)이 진짜 파일로 받는다.
+   */
+  startMaterialDrag(courseId: string, relPath: string): void
+  /**
    * [M9] Host platform ('darwin' | 'win32' | 'linux'). The renderer needs it
    * to reserve the macOS traffic-light inset in the tab strip — reserving it
    * anywhere else leaves a dead gap in the window chrome.
@@ -99,6 +104,9 @@ const bridge: BandalBridge = {
     }
   },
   platform: process.platform,
+  startMaterialDrag(courseId, relPath) {
+    ipcRenderer.send('materials:startDrag', { courseId, relPath })
+  },
   async openSettings() {
     await ipcRenderer.invoke('window:openSettings')
   }

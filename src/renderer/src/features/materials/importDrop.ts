@@ -8,6 +8,7 @@
 
 import { showToast } from '../../app/toast'
 import { invoke, pathForFile } from '../../lib/ipc'
+import { useCoursesStore } from '../../stores/coursesStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
 
 /** True when the drag payload contains OS files (vs. in-app HTML5 dnd). */
@@ -55,11 +56,62 @@ export async function importMaterialPaths(
   }
 }
 
+/** 과목 폴더 안의 절대 경로를 posix relPath 로 바꾼다. 밖이면 null. */
+function relPathInsideCourse(
+  absPath: string,
+  courseFolder: string
+): string | null {
+  const normalized = absPath.replace(/\\/gu, '/')
+  const folder = courseFolder.replace(/\\/gu, '/').replace(/\/+$/u, '')
+  if (!normalized.startsWith(`${folder}/`)) return null
+  return normalized.slice(folder.length + 1)
+}
+
 export async function importDroppedFiles(
   courseId: string,
   files: readonly File[],
   dirRelPath?: string
 ): Promise<string[]> {
   const paths = files.map(pathForFile).filter((path) => path.length > 0)
-  return importMaterialPaths(courseId, paths, dirRelPath)
+
+  // 자료 행의 네이티브 드래그가 우리 패널로 돌아온 경우: 경로가 이 과목
+  // 폴더 안이면 복사(가져오기)가 아니라 이동이다. Finder 파일만 가져온다.
+  const courseFolder = useCoursesStore
+    .getState()
+    .courses.find((course) => course.id === courseId)?.folderPath
+  const toImport: string[] = []
+  const toMove: string[] = []
+  for (const path of paths) {
+    const rel =
+      courseFolder === undefined
+        ? null
+        : relPathInsideCourse(path, courseFolder)
+    if (rel === null) toImport.push(path)
+    else toMove.push(rel)
+  }
+
+  const moved: string[] = []
+  for (const fromRelPath of toMove) {
+    try {
+      const { relPath } = await invoke('materials:move', {
+        courseId,
+        fromRelPath,
+        toDirRelPath: dirRelPath ?? ''
+      })
+      moved.push(relPath)
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : '이동하지 못했습니다.',
+        'danger'
+      )
+    }
+  }
+  if (moved.length > 0) {
+    showToast(moved.length === 1 ? '이동했어요.' : `${moved.length}개 이동했어요.`)
+    await useMaterialsStore.getState().loadTree(courseId, { silent: true })
+  }
+
+  if (toImport.length === 0) return moved
+  const imported = await importMaterialPaths(courseId, toImport, dirRelPath)
+  return [...moved, ...imported]
 }

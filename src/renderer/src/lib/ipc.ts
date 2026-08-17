@@ -60,6 +60,11 @@ export function pathForFile(file: File): string {
   return window.bandal.pathForFile(file)
 }
 
+/** 자료 행 드래그를 OS 네이티브 파일 드래그로 승격한다(발사 후 망각). */
+export function startMaterialDrag(courseId: string, relPath: string): void {
+  window.bandal.startMaterialDrag(courseId, relPath)
+}
+
 /** Temporary M0 helper — opens the settings window. */
 export function openSettingsWindow(): Promise<void> {
   return window.bandal.openSettings()

@@ -17,6 +17,7 @@ export type TabKind =
   | 'group-chat'
   | 'whiteboard'
   | 'image'
+  | 'file'
 
 export interface PdfTabPayload {
   courseId: string
@@ -113,6 +114,17 @@ export interface TabPayloadMap {
   'group-chat': GroupChatTabPayload
   whiteboard: WhiteboardTabPayload
   image: ImageTabPayload
+  file: FileTabPayload
+}
+
+/**
+ * Generic in-app viewer for formats without a dedicated tab (docx, xlsx, csv,
+ * plain text, …). The FileTab component routes by extension; unsupported
+ * extensions never get a descriptor — openMaterial falls back to Finder.
+ */
+export interface FileTabPayload {
+  courseId: string
+  relPath: string
 }
 
 /** Discriminated tab descriptor: { kind, payload } pairs, serializable. */
@@ -146,7 +158,8 @@ export const TAB_KINDS = [
   'board',
   'group-chat',
   'whiteboard',
-  'image'
+  'image',
+  'file'
 ] as const satisfies readonly TabKind[]
 
 type MissingTabKind = Exclude<TabKind, (typeof TAB_KINDS)[number]>
@@ -197,6 +210,7 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
         isNonEmptyString(payload['boardId'])
       )
     case 'image':
+    case 'file':
       return (
         isNonEmptyString(payload['courseId']) &&
         isNonEmptyString(payload['relPath'])

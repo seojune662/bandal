@@ -1,0 +1,315 @@
+.file-panel,
+.file-docx,
+.file-sheet,
+.file-text {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.file-panel {
+  align-items: stretch;
+  justify-content: stretch;
+  color: var(--text-primary);
+  background: var(--bg-app);
+}
+
+.file-status {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  padding: var(--space-5);
+  color: var(--text-muted);
+  text-align: center;
+  background: var(--bg-app);
+}
+
+.file-status h2,
+.file-status p {
+  margin: 0;
+}
+
+.file-status h2 {
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+}
+
+.file-status p {
+  max-width: var(--dialog-width);
+  font-size: var(--text-sm);
+}
+
+.file-status--error {
+  color: var(--text-secondary);
+}
+
+.file-action,
+.file-sheet__tab {
+  min-height: var(--control-height);
+  padding-inline: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.file-action {
+  margin-top: var(--space-3);
+}
+
+.file-action:hover:not(:disabled),
+.file-action:focus-visible,
+.file-sheet__tab:hover,
+.file-sheet__tab:focus-visible {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.file-action:focus-visible,
+.file-sheet__tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.file-action:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.6;
+}
+
+.file-docx {
+  overflow: auto;
+  padding: var(--space-6);
+  background: var(--bg-app);
+  overscroll-behavior: contain;
+}
+
+.file-docx__document {
+  box-sizing: border-box;
+  width: min(52rem, 100%);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: var(--space-7);
+  color: var(--text-primary);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  user-select: text;
+}
+
+.file-docx__document :where(h1, h2, h3, h4, h5, h6) {
+  margin: var(--space-5) 0 var(--space-3);
+  color: var(--text-primary);
+  line-height: 1.3;
+  letter-spacing: var(--tracking-tight);
+}
+
+.file-docx__document :where(h1, h2) {
+  font-size: var(--text-xl);
+}
+
+.file-docx__document :where(h3, h4, h5, h6) {
+  font-size: var(--text-lg);
+}
+
+.file-docx__document :where(p, ul, ol, blockquote, table) {
+  margin: 0 0 var(--space-4);
+}
+
+.file-docx__document :where(ul, ol) {
+  padding-left: var(--space-6);
+}
+
+.file-docx__document blockquote {
+  padding-left: var(--space-4);
+  color: var(--text-secondary);
+  border-left: var(--space-1) solid var(--border-strong);
+}
+
+.file-docx__document table {
+  width: 100%;
+  overflow: hidden;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.file-docx__document :where(th, td) {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: top;
+  border: 1px solid var(--border-subtle);
+}
+
+.file-docx__document th {
+  background: var(--bg-raised);
+}
+
+.file-docx__document a {
+  color: var(--accent);
+}
+
+.file-docx__document img {
+  max-width: 100%;
+  height: auto;
+}
+
+.file-sheet,
+.file-text {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-app);
+}
+
+.file-sheet__toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--chrome-height);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.file-sheet__tabs {
+  display: flex;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.file-sheet__tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.file-sheet__tab[aria-selected='true'] {
+  color: var(--accent);
+  background: var(--accent-muted);
+  border-color: var(--accent);
+}
+
+.file-notice,
+.file-text__notice {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.file-notice {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.file-sheet__viewport {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.file-sheet__table {
+  width: max-content;
+  min-width: 100%;
+  font-size: var(--text-sm);
+  border-spacing: 0;
+  table-layout: auto;
+}
+
+.file-sheet__table :where(th, td) {
+  min-width: 6rem;
+  max-width: 28rem;
+  padding: var(--space-2) var(--space-3);
+  overflow: hidden;
+  color: var(--text-primary);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-right: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.file-sheet__table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-weight: 650;
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+}
+
+.file-sheet__table tbody tr:hover td {
+  background: var(--accent-muted);
+}
+
+.file-sheet__cell--number {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+.file-text__notice {
+  flex: 0 0 auto;
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.file-text__content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: var(--space-4);
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-primary);
+  tab-size: 2;
+  white-space: pre;
+  background: var(--bg-app);
+  overscroll-behavior: contain;
+  user-select: text;
+}
+
+.file-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip: rect(0 0 0 0);
+}
+
+@media (max-width: 40rem) {
+  .file-docx {
+    padding: var(--space-3);
+  }
+
+  .file-docx__document {
+    padding: var(--space-5);
+  }
+
+  .file-sheet__toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

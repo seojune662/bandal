@@ -25,6 +25,7 @@ import BoardPanel from '../board/BoardPanel'
 import ChatTab from '../chat/ChatTab'
 import PdfTab from '../pdf/PdfTab'
 import ImageTab from '../image/ImageTab'
+import FileTab from '../file/FileTab'
 import GroupChatTab from '../group/GroupChatTab'
 import CanvasTab from '../canvas/CanvasTab'
 
@@ -46,6 +47,11 @@ export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
   image: {
     component: ImageTab,
     icon: 'fileImage',
+    defaultTitle: tabTitle
+  },
+  file: {
+    component: FileTab,
+    icon: 'file',
     defaultTitle: tabTitle
   },
   note: {

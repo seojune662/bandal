@@ -23,6 +23,7 @@ const KIND_LABEL: Record<TabDescriptor['kind'], string> = {
   board: '학업 보드',
   'group-chat': '그룹 채팅',
   image: '이미지',
+  file: '문서 뷰어',
   whiteboard: '화이트보드'
 }
 

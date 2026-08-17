@@ -5,6 +5,7 @@ import type {
   MaterialSearchHit
 } from '../../../../shared/types/materials'
 import { Icon, type IconName } from '../../app/icons'
+import { startMaterialDrag as startNativeMaterialDrag } from '../../lib/ipc'
 import { openMaterialInWorkspace } from '../workspace/openMaterial'
 import { writeMaterialImageDragData } from './imageDrag'
 import { isFileDrag } from './importDrop'
@@ -66,11 +67,23 @@ function canDropCurrentMaterial(
   )
 }
 
-function startMaterialDrag(
-  dataTransfer: DataTransfer,
+function startMaterialDragEvent(
+  event: React.DragEvent,
   courseId: string,
   node: MaterialNode
 ): void {
+  // 파일 행은 진짜 OS 파일 드래그로 승격한다 — 웹뷰 안의 업로드 폼(메일
+  // 첨부, 과제 제출)이 일반 파일처럼 받는다. HTML5 드래그는 여기서 죽지만,
+  // 우리 패널 안의 이동은 importDroppedFiles 가 "과목 폴더 내부 경로면
+  // 이동"으로 판별하므로 폴더 간 이동도 그대로 동작한다.
+  // 예외: 이미지 행은 화이트보드/PDF 삽입 드래그가 커스텀 MIME 에 의존하므로
+  // HTML5 드래그를 유지한다(폴더 이동도 기존 MIME 경로로 동작).
+  if (node.kind !== 'dir' && node.kind !== 'image') {
+    event.preventDefault()
+    startNativeMaterialDrag(courseId, node.relPath)
+    return
+  }
+  const dataTransfer = event.dataTransfer
   const payload: MaterialMoveDragPayload = {
     version: 1,
     courseId,
@@ -333,7 +346,7 @@ function TreeNode({
           }}
           onContextMenu={(event) => onContextMenu(event, node)}
           onDragStart={(event) => {
-            startMaterialDrag(event.dataTransfer, courseId, node)
+            startMaterialDragEvent(event, courseId, node)
           }}
           onDragEnd={() => {
             clearCurrentMaterialDrag()
@@ -621,7 +634,7 @@ export function MaterialSearchResults({
               }}
               onContextMenu={(event) => onContextMenu(event, node)}
               onDragStart={(event) => {
-                startMaterialDrag(event.dataTransfer, courseId, node)
+                startMaterialDragEvent(event, courseId, node)
               }}
               onDragEnd={() => {
                 clearCurrentMaterialDrag()

@@ -32,6 +32,7 @@ export function tabPanelId(descriptor: TabDescriptor): string {
     case 'pdf':
     case 'note':
     case 'image':
+    case 'file':
       return `${descriptor.kind}:${descriptor.payload.courseId}:${descriptor.payload.relPath}`
     case 'browser':
       return `browser:${descriptor.payload.tabId}`
@@ -68,6 +69,7 @@ export function tabTitle(descriptor: TabDescriptor): string {
   switch (descriptor.kind) {
     case 'pdf':
     case 'image':
+    case 'file':
       return baseName(descriptor.payload.relPath)
     case 'note':
       return stripExtension(baseName(descriptor.payload.relPath))
@@ -98,6 +100,7 @@ export function tabPayloadSummary(descriptor: TabDescriptor): string {
     case 'pdf':
     case 'note':
     case 'image':
+    case 'file':
       return descriptor.payload.relPath
     case 'browser':
       return descriptor.payload.initialUrl

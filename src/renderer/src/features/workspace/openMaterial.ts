@@ -11,6 +11,7 @@ import type { MaterialKind } from '../../../../shared/types/materials'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from './tabIdentity'
+import { isViewableFile } from '../file/fileFormats'
 
 export const MATERIAL_OPEN_DEDUPE_MS = 5 * 60 * 1000
 
@@ -62,6 +63,13 @@ export function openMaterialInCourse(
   kind: MaterialKind,
   relPath: string
 ): void {
+  if (kind === 'other' && isViewableFile(relPath)) {
+    useWorkspaceStore.getState().openTab(
+      descriptorFor('file', { courseId, relPath })
+    )
+    recordMaterialOpened(courseId, relPath)
+    return
+  }
   if (kind === 'pdf' || kind === 'note' || kind === 'image') {
     useWorkspaceStore.getState().openTab(
       descriptorFor(kind, { courseId, relPath })
@@ -69,7 +77,7 @@ export function openMaterialInCourse(
     recordMaterialOpened(courseId, relPath)
     return
   }
-  // Files without a dedicated tab kind are handed off to Finder.
+  // Unsupported files are handed off to Finder.
   void invoke('materials:reveal', { courseId, relPath })
     .then(() => recordMaterialOpened(courseId, relPath))
     .catch((error: unknown) => {

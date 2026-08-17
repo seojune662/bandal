@@ -306,6 +306,31 @@ export function registerHandlers(): IpcRouter {
   handle('materials:delete', (req) => materialsRepo.softDelete(req))
   handle('materials:duplicate', (req) => materialsRepo.duplicate(req))
   handle('materials:createFolder', (req) => materialsRepo.createFolder(req))
+  // invoke 계약 밖의 fire-and-forget: startDrag 는 이벤트의 sender 가 필요하다.
+  // 자료 행을 끌면 진짜 OS 파일 드래그가 되어 웹뷰 안의 업로드 폼(메일 첨부,
+  // 과제 제출)이 일반 파일처럼 받는다.
+  ipcMain.on('materials:startDrag', (event, req: unknown) => {
+    try {
+      const record = req as { courseId?: unknown; relPath?: unknown }
+      if (
+        typeof record?.courseId !== 'string' ||
+        typeof record?.relPath !== 'string'
+      ) {
+        return
+      }
+      const abs = materialsRepo.absolutePathFor(record.courseId, record.relPath)
+      void app
+        .getFileIcon(abs, { size: 'normal' })
+        .then((icon) => {
+          event.sender.startDrag({ file: abs, icon })
+        })
+        .catch((error) => {
+          console.error('[materials] startDrag icon failed', error)
+        })
+    } catch (error) {
+      console.error('[materials] startDrag failed', error)
+    }
+  })
   handle('materials:downloadFromUrl', async (req) => {
     const { fileName, dataBase64 } = await fetchLinkForMaterials(req.url)
     return materialsRepo.writeFile({
