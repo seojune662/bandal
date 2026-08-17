@@ -25,6 +25,7 @@ import './pdfWorker'
 import 'react-pdf/dist/Page/TextLayer.css'
 import './pdf.css'
 import { isTabDescriptor } from '../workspace/tabIdentity'
+import { useHasBeenShown } from '../workspace/useHasBeenShown'
 import { usePdfDocument } from './usePdfDocument'
 import { useAnnotations } from './useAnnotations'
 import { usePageTexts, useStaleAnnotationIds } from './usePageTexts'
@@ -713,9 +714,17 @@ function PdfViewer({
 
 /** Dockview panel entry — same props contract as PlaceholderPanel. */
 export default function PdfTab(props: IDockviewPanelProps): JSX.Element {
+  const hasBeenShown = useHasBeenShown(props.api)
   const descriptor = descriptorFromParams(props.params)
   if (descriptor === null || descriptor.kind !== 'pdf') {
     return <div className="workspace-panel" data-kind="unknown" />
+  }
+  if (!hasBeenShown) {
+    return (
+      <div className="workspace-panel pdf-panel" data-kind="pdf">
+        <LoadingSkeleton />
+      </div>
+    )
   }
   const { courseId, relPath } = descriptor.payload
   return (

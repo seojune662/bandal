@@ -216,6 +216,22 @@ describe('canvasRepo', () => {
     ).toMatchObject({ deleted_at: expect.any(String) })
   })
 
+  test('countShapes counts live shapes without opening the board', () => {
+    const board = repo.createBoard({ courseId: 'course-1' })
+    expect(repo.countShapes(board.id)).toBe(0)
+
+    repo.putShape(shapeInput(board.id))
+    repo.putShape({ ...shapeInput(board.id), id: 'shape-2' })
+    expect(repo.countShapes(board.id)).toBe(2)
+
+    // Tombstoned shapes drop out of the count.
+    repo.removeShapes({ boardId: board.id, ids: ['shape-1'] })
+    expect(repo.countShapes(board.id)).toBe(1)
+
+    // 값싼 경로: 없는 보드는 throw 대신 0 — 호출부는 listBoards 결과만 넘긴다.
+    expect(repo.countShapes('missing-board')).toBe(0)
+  })
+
   test('throws NotFoundError for missing courses and boards', () => {
     expect(() => repo.listBoards('missing-course')).toThrow(NotFoundError)
     expect(() => repo.createBoard({ courseId: 'missing-course' })).toThrow(NotFoundError)

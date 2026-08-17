@@ -37,6 +37,7 @@ import {
   parseMaterialMoveDrag,
   type MaterialMoveDragPayload
 } from './materialMoveDrag'
+import { canAcceptUrlDrop, urlFromDrop } from './urlDrop'
 import { useMaterialsPaste } from './useMaterialsPaste'
 import { WhiteboardsGroup } from './WhiteboardsGroup'
 import './materials.css'
@@ -148,11 +149,20 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const [dropTargetDirRelPath, setDropTargetDirRelPath] = useState<string | null>(
     null
   )
+  const [urlDropTargetDirRelPath, setUrlDropTargetDirRelPath] = useState<
+    string | null
+  >(null)
+  const [downloadingDirRelPath, setDownloadingDirRelPath] = useState<
+    string | null
+  >(null)
   const [deleteTarget, setDeleteTarget] = useState<MaterialNode | null>(null)
   const [deletePending, setDeletePending] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const sidebarRef = useRef<HTMLElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const downloadPendingRef = useRef(false)
+  const activeCourseIdRef = useRef<string | null>(course?.id ?? null)
+  activeCourseIdRef.current = course?.id ?? null
 
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
   const closeDeleteDialog = useCallback(() => {
@@ -184,6 +194,8 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     setSelectedRelPath(null)
     setDropActive(false)
     setDropTargetDirRelPath(null)
+    setUrlDropTargetDirRelPath(null)
+    setDownloadingDirRelPath(null)
     setDeleteTarget(null)
     setDeleteError(null)
     clearSearch()
@@ -329,8 +341,44 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const importFiles = (files: File[], dirRelPath?: string): void => {
     setDropActive(false)
     setDropTargetDirRelPath(null)
+    setUrlDropTargetDirRelPath(null)
     if (course === null || course.missing || files.length === 0) return
     void importDroppedFiles(course.id, files, dirRelPath).then(handleCreated)
+  }
+
+  const downloadFromUrl = async (
+    url: string,
+    dirRelPath: string
+  ): Promise<void> => {
+    if (course === null || course.missing || downloadPendingRef.current) return
+    const courseId = course.id
+    downloadPendingRef.current = true
+    setDropTargetDirRelPath(null)
+    setUrlDropTargetDirRelPath(null)
+    setDownloadingDirRelPath(dirRelPath)
+    try {
+      const downloaded = await invoke('materials:downloadFromUrl', {
+        courseId,
+        dirRelPath,
+        url
+      })
+      showToast(`자료로 저장했어요: ${materialBaseName(downloaded.relPath)}`)
+      if (activeCourseIdRef.current !== courseId) return
+      setQuery('')
+      clearSearch()
+      await refreshAfterMutation(courseId)
+      ensureAncestorsExpanded(downloaded.relPath)
+      setSelectedRelPath(downloaded.relPath)
+    } catch (downloadError) {
+      console.error('[Bandal] 링크를 자료로 저장하지 못했습니다.', downloadError)
+      showToast(
+        operationError(downloadError, '링크를 자료로 저장하지 못했습니다.'),
+        'danger'
+      )
+    } finally {
+      downloadPendingRef.current = false
+      setDownloadingDirRelPath(null)
+    }
   }
 
   const handleContextMenu = (
@@ -531,14 +579,26 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         }
       }}
       onDragEnterCapture={(event) => {
-        if (course === null || course.missing || !isFileDrag(event.dataTransfer)) {
+        const types = [...event.dataTransfer.types]
+        if (
+          course === null ||
+          course.missing ||
+          canAcceptMaterialMove(types) ||
+          !isFileDrag(event.dataTransfer)
+        ) {
           return
         }
         event.preventDefault()
         setDropActive(true)
       }}
       onDragOverCapture={(event) => {
-        if (course === null || course.missing || !isFileDrag(event.dataTransfer)) {
+        const types = [...event.dataTransfer.types]
+        if (
+          course === null ||
+          course.missing ||
+          canAcceptMaterialMove(types) ||
+          !isFileDrag(event.dataTransfer)
+        ) {
           return
         }
         event.preventDefault()
@@ -546,7 +606,8 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         setDropActive(true)
       }}
       onDragLeaveCapture={(event) => {
-        if (!isFileDrag(event.dataTransfer)) return
+        const types = [...event.dataTransfer.types]
+        if (canAcceptMaterialMove(types) || !isFileDrag(event.dataTransfer)) return
         const nextTarget = event.relatedTarget
         if (
           nextTarget instanceof Node &&
@@ -557,12 +618,59 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         setDropActive(false)
         setDropTargetDirRelPath(null)
       }}
-      onDrop={(event) => {
-        if (course === null || course.missing || !isFileDrag(event.dataTransfer)) {
+      onDragEnter={(event) => {
+        if (
+          course === null ||
+          course.missing ||
+          downloadingDirRelPath !== null ||
+          !canAcceptUrlDrop([...event.dataTransfer.types])
+        ) {
           return
         }
         event.preventDefault()
-        importFiles([...event.dataTransfer.files])
+        event.dataTransfer.dropEffect = 'copy'
+        setDropTargetDirRelPath(null)
+        setUrlDropTargetDirRelPath('')
+      }}
+      onDragOver={(event) => {
+        if (
+          course === null ||
+          course.missing ||
+          downloadingDirRelPath !== null ||
+          !canAcceptUrlDrop([...event.dataTransfer.types])
+        ) {
+          return
+        }
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+        setDropTargetDirRelPath(null)
+        setUrlDropTargetDirRelPath('')
+      }}
+      onDragLeave={(event) => {
+        if (!canAcceptUrlDrop([...event.dataTransfer.types])) return
+        const nextTarget = event.relatedTarget
+        if (
+          nextTarget instanceof Node &&
+          event.currentTarget.contains(nextTarget)
+        ) {
+          return
+        }
+        setUrlDropTargetDirRelPath(null)
+      }}
+      onDrop={(event) => {
+        if (course === null || course.missing) return
+        const types = [...event.dataTransfer.types]
+        if (canAcceptMaterialMove(types)) return
+        if (isFileDrag(event.dataTransfer)) {
+          event.preventDefault()
+          importFiles([...event.dataTransfer.files])
+          return
+        }
+        if (!canAcceptUrlDrop(types) || downloadingDirRelPath !== null) return
+        event.preventDefault()
+        setUrlDropTargetDirRelPath(null)
+        const url = urlFromDrop(event.dataTransfer)
+        if (url !== null) void downloadFromUrl(url, '')
       }}
     >
       <div className="rail-heading materials-heading">
@@ -682,6 +790,9 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           pasteReady && pasteDirRelPath === '' ? true : undefined
         }
         data-move-target-root={dropTargetDirRelPath === '' || undefined}
+        data-url-target-root={urlDropTargetDirRelPath === '' || undefined}
+        data-downloading={downloadingDirRelPath === '' || undefined}
+        aria-busy={downloadingDirRelPath === '' || undefined}
         onDragEnter={(event) => {
           if (event.target !== event.currentTarget) return
           if (!canAcceptMaterialMove([...event.dataTransfer.types])) return
@@ -690,6 +801,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           event.preventDefault()
           event.stopPropagation()
           event.dataTransfer.dropEffect = 'move'
+          setUrlDropTargetDirRelPath(null)
           setDropTargetDirRelPath('')
         }}
         onDragOver={(event) => {
@@ -700,6 +812,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           event.preventDefault()
           event.stopPropagation()
           event.dataTransfer.dropEffect = 'move'
+          setUrlDropTargetDirRelPath(null)
           setDropTargetDirRelPath('')
         }}
         onDragLeave={(event) => {
@@ -707,6 +820,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           if (!canAcceptMaterialMove([...event.dataTransfer.types])) return
           event.stopPropagation()
           setDropTargetDirRelPath(null)
+          setUrlDropTargetDirRelPath(null)
         }}
         onDrop={(event) => {
           if (event.target !== event.currentTarget) return
@@ -744,6 +858,12 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
             >
               <div className="materials-group-heading">
                 <span>파일</span>
+                {downloadingDirRelPath === '' && (
+                  <span className="materials-download-status" role="status">
+                    <Icon name="refresh" className="is-spinning" />
+                    저장 중…
+                  </span>
+                )}
               </div>
               {course.missing ? (
                 <div className="empty-state empty-state--materials">
@@ -802,17 +922,23 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
                     pasteReady && pasteDirRelPath !== '' ? pasteDirRelPath : null
                   }
                   dropTargetDirRelPath={dropTargetDirRelPath}
+                  urlDropTargetDirRelPath={urlDropTargetDirRelPath}
+                  downloadingDirRelPath={downloadingDirRelPath}
                   onToggleFolder={toggleFolder}
                   onSelect={(node) => setSelectedRelPath(node.relPath)}
                   onContextMenu={handleContextMenu}
                   onCancelRename={() => setEditing(null)}
                   onRename={rename}
                   onDropTargetChange={setDropTargetDirRelPath}
+                  onUrlDropTargetChange={setUrlDropTargetDirRelPath}
                   onMove={(payload, toDirRelPath) => {
                     void moveMaterial(payload, toDirRelPath)
                   }}
                   onImportFiles={(files, dirRelPath) => {
                     importFiles(files, dirRelPath)
+                  }}
+                  onDownloadUrl={(url, dirRelPath) => {
+                    void downloadFromUrl(url, dirRelPath)
                   }}
                 />
               )}

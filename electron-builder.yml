@@ -104,7 +104,7 @@ mac:
   # env vars are absent, so local builds stay fast.
   notarize: true
   extendInfo:
-    CFBundleDisplayName: 반달
+    CFBundleDisplayName: Bandal
   # Applies to the zip target. Version-free so the website can link
   # `releases/latest/download/<name>` and never go stale on a new release.
   artifactName: ${productName}-${arch}-mac.${ext}
@@ -129,7 +129,7 @@ nsis:
   perMachine: false
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: 반달
+  shortcutName: Bandal
   artifactName: ${productName}-Setup.${ext}
 
 dmg:

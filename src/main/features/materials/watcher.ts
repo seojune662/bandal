@@ -6,8 +6,10 @@
  * callback, which registerHandlers turns into a `materials:changed` push.
  * Folder rename/delete out-of-band is non-fatal: chokidar keeps running (it
  * re-attaches if the path reappears) and the final debounced change lets the
- * renderer refresh into an empty tree. Search needs no extra invalidation —
- * `materials:search` rebuilds its index from disk on every call.
+ * renderer refresh into an empty tree. The `onChange` wiring in
+ * registerHandlers also calls `materialsRepo.invalidateTree` — tree/search
+ * now serve a per-course cache, and this watcher is what keeps that cache
+ * honest against out-of-band disk changes.
  */
 
 import { watch, type FSWatcher } from 'chokidar'

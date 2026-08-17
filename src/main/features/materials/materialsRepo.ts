@@ -32,6 +32,12 @@ import { nowIso, requireId, requireNonEmptyString, resolveInside } from '../../d
 export interface MaterialsRepo {
   tree(courseId: string): MaterialNode[]
   search(courseId: string, query: string): MaterialSearchHit[]
+  /**
+   * 캐시된 트리를 버린다. 저장소 자신의 변이는 내부에서 알아서 무효화하므로,
+   * 밖에서(watcher, 에이전트의 직접 파일 쓰기 등) 폴더가 바뀌었을 때만
+   * 호출하면 된다.
+   */
+  invalidateTree(courseId: string): void
   /** `dirRelPath` ''/생략 = 과목 폴더 루트. */
   import(courseId: string, paths: string[], dirRelPath?: string): ImportResult
   /** 파일/폴더를 다른 과목-상대 디렉터리로 옮긴다 ('' = 루트). */
@@ -356,6 +362,12 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
     maxEntries: MATERIAL_SCAN_MAX_ENTRIES
   }
 
+  // [perf] 과목 전환마다 폴더 전체를 다시 걷는 동기 스캔이 메인 프로세스
+  // 멈춤(비치볼)의 주범이었다. 스캔 결과를 과목별로 캐시하고, 저장소 변이와
+  // invalidateTree 호출(watcher 경유)에서만 버린다. materials_index 재구축도
+  // 실제 스캔이 일어날 때만 함께 일어난다.
+  const treeCache = new Map<string, MaterialNode[]>()
+
   function requireCourseFolder(courseId: string): { id: string; folder: string } {
     const id = requireId(courseId, 'courseId')
     const folder = getCourseFolder(id)
@@ -412,21 +424,35 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
     return { abs, folder }
   }
 
+  /** 캐시 미스에만 디스크를 걷고 materials_index 를 재구축한다. */
+  function cachedTree(courseId: string, folder: string): MaterialNode[] {
+    const cached = treeCache.get(courseId)
+    if (cached !== undefined) return cached
+    const scan = scanMaterialTree(folder, scanLimits)
+    rebuildIndex(courseId, scan)
+    if (scan.truncation.size > 0) {
+      scan.nodes.push(truncationNode(scan.truncation, scanLimits))
+    }
+    treeCache.set(courseId, scan.nodes)
+    return scan.nodes
+  }
+
   return {
+    invalidateTree(courseId) {
+      treeCache.delete(requireId(courseId, 'courseId'))
+    },
+
     tree(courseId) {
       const id = requireId(courseId, 'courseId')
       const folder = getCourseFolder(id)
       if (!existsSync(folder)) {
         // Folder was removed out-of-band; surface an empty tree, not a crash.
+        // 캐시도 함께 버린다 — 사라진 폴더의 옛 트리를 계속 보여주면 안 된다.
         console.warn(`[materials] course folder missing on disk: ${folder}`)
+        treeCache.delete(id)
         return []
       }
-      const scan = scanMaterialTree(folder, scanLimits)
-      rebuildIndex(id, scan)
-      if (scan.truncation.size > 0) {
-        scan.nodes.push(truncationNode(scan.truncation, scanLimits))
-      }
-      return scan.nodes
+      return cachedTree(id, folder)
     },
 
     search(courseId, query) {
@@ -434,10 +460,12 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       const folder = getCourseFolder(id)
       const needle = searchKey(requireNonEmptyString(query, 'query').trim())
       if (!existsSync(folder)) {
+        treeCache.delete(id)
         return []
       }
-      const scan = scanMaterialTree(folder, scanLimits)
-      rebuildIndex(id, scan)
+      // 캐시가 차 있으면 materials_index 는 그 스캔과 일치한다 — 키 입력마다
+      // 디스크를 다시 걷지 않는다. 비어 있으면 여기서 한 번만 채운다.
+      cachedTree(id, folder)
 
       // Matching happens in JS, not in SQL, because SQLite's `instr` compares
       // bytes. macOS hands back decomposed (NFD) filenames from readdir while
@@ -520,6 +548,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           failed.push({ path: String(sourcePath), reason })
         }
       }
+      if (imported.length > 0) treeCache.delete(id)
       return { imported, failed }
     },
 
@@ -557,6 +586,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           : posix.join(input.toDirRelPath, targetName)
       const destAbs = resolveInside(folder, relPath)
       renameSync(sourceAbs, destAbs)
+      treeCache.delete(requireId(input.courseId, 'courseId'))
       return { relPath }
     },
 
@@ -605,6 +635,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         throw new ConflictError(`material "${destinationRelPath}" already exists`)
       }
       renameSync(sourceAbs, destinationAbs)
+      treeCache.delete(requireId(input.courseId, 'courseId'))
       return { relPath: destinationRelPath }
     },
 
@@ -612,6 +643,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       const { abs } = resolveMaterial(input.courseId, input.relPath)
       assertFileOrDirectory(abs, input.relPath)
       await trashItem(abs)
+      treeCache.delete(requireId(input.courseId, 'courseId'))
       return { ok: true }
     },
 
@@ -642,6 +674,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       } else {
         copyFileSync(sourceAbs, candidateAbs)
       }
+      treeCache.delete(requireId(input.courseId, 'courseId'))
       return { relPath: candidateRelPath }
     },
 
@@ -662,6 +695,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         throw new ConflictError(`material "${relPath}" already exists`)
       }
       mkdirSync(abs)
+      treeCache.delete(requireId(input.courseId, 'courseId'))
       return { relPath }
     },
 
@@ -689,6 +723,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       const abs = resolveInside(folder, relPath)
       const bytes = decodeWriteData(input.encoding, input.data)
       writeFileSync(abs, bytes, { flag: 'wx' })
+      treeCache.delete(requireId(input.courseId, 'courseId'))
       return { relPath }
     }
   }

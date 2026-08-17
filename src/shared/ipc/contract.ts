@@ -346,6 +346,15 @@ export interface IpcContract {
     }
     res: { relPath: string }
   }
+  /**
+   * Downloads a dragged browser link straight into a course folder. Fetched
+   * with the `persist:browsing` session so portal logins carry over; name and
+   * path safety are enforced by the same guards as materials:writeFile.
+   */
+  'materials:downloadFromUrl': {
+    req: { courseId: string; dirRelPath: string; url: string }
+    res: { relPath: string }
+  }
   'materials:createFolder': {
     req: { courseId: string; dirRelPath: string; name: string }
     res: { relPath: string }
@@ -1046,6 +1055,7 @@ export const IPC_CHANNELS = [
   'materials:duplicate',
   'materials:writeFile',
   'materials:createFolder',
+  'materials:downloadFromUrl',
   'materials:unwatch',
   'notes:read',
   'notes:write',

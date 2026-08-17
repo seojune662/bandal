@@ -2,6 +2,7 @@ import type { IDockviewPanelProps } from 'dockview'
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { invoke } from '../../lib/ipc'
 import { isTabDescriptor } from '../workspace/tabIdentity'
+import { useHasBeenShown } from '../workspace/useHasBeenShown'
 import { imageDataUrl } from './imageSource'
 import './image.css'
 
@@ -164,11 +165,21 @@ function ImageViewer({
 }
 
 export default function ImageTab(props: IDockviewPanelProps): JSX.Element {
+  const hasBeenShown = useHasBeenShown(props.api)
   const candidate = props.params['descriptor']
   if (!isTabDescriptor(candidate) || candidate.kind !== 'image') {
     return (
       <div className="workspace-panel image-panel" data-kind="image">
         <ImageError />
+      </div>
+    )
+  }
+  if (!hasBeenShown) {
+    return (
+      <div className="workspace-panel image-panel" data-kind="image">
+        <div className="image-viewer__status" data-state="loading" role="status">
+          이미지를 불러오는 중…
+        </div>
       </div>
     )
   }

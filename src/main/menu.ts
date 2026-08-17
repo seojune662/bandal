@@ -21,7 +21,7 @@ export function installApplicationMenu(): void {
     ...(isMac
       ? ([
           {
-            label: app.name,
+            label: 'Bandal',
             submenu: [
               { role: 'about' },
               { type: 'separator' },

@@ -35,6 +35,7 @@ import { CLIP_DELIVERY_EVENT, takeClipDeliveries } from './clipDelivery'
 import { createPdfClipRenderer } from '../pdf/renderClip'
 import { openMaterialInCourse } from '../workspace/openMaterial'
 import { isTabDescriptor } from '../workspace/tabIdentity'
+import { useHasBeenShown } from '../workspace/useHasBeenShown'
 import {
   clipBoxAtDrop,
   createOptimisticCanvasShape,
@@ -699,12 +700,16 @@ function CanvasSession({
   )
 }
 
-export default function CanvasTab(props: IDockviewPanelProps): JSX.Element {
-  const descriptor = descriptorFromParams(props.params)
+function CanvasLoader({
+  descriptor,
+  panelApi
+}: {
+  descriptor: { courseId: string; boardId: string }
+  panelApi: IDockviewPanelProps['api']
+}): JSX.Element {
   const [loadState, setLoadState] = useState<LoadState>({ phase: 'loading' })
 
   useEffect(() => {
-    if (descriptor === null) return
     let cancelled = false
     setLoadState({ phase: 'loading' })
     void invoke('canvas:open', { boardId: descriptor.boardId }).then((result) => {
@@ -728,11 +733,8 @@ export default function CanvasTab(props: IDockviewPanelProps): JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [descriptor?.boardId, descriptor?.courseId])
+  }, [descriptor.boardId, descriptor.courseId])
 
-  if (descriptor === null) {
-    return <div className="canvas-state" data-state="invalid" />
-  }
   if (loadState.phase === 'loading') {
     return (
       <div className="canvas-state" data-state="loading">
@@ -754,7 +756,25 @@ export default function CanvasTab(props: IDockviewPanelProps): JSX.Element {
       key={loadState.result.board.id}
       initialBoard={loadState.result.board}
       initialShapes={loadState.result.shapes}
-      panelApi={props.api}
+      panelApi={panelApi}
     />
   )
+}
+
+export default function CanvasTab(props: IDockviewPanelProps): JSX.Element {
+  const hasBeenShown = useHasBeenShown(props.api)
+  const descriptor = descriptorFromParams(props.params)
+
+  if (descriptor === null) {
+    return <div className="canvas-state" data-state="invalid" />
+  }
+  if (!hasBeenShown) {
+    return (
+      <div className="canvas-state" data-state="loading" role="status">
+        <p>화이트보드를 불러오는 중…</p>
+      </div>
+    )
+  }
+
+  return <CanvasLoader descriptor={descriptor} panelApi={props.api} />
 }

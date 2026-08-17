@@ -58,6 +58,11 @@ export interface CanvasRepo {
   setPageCount(input: SetBoardPageCountInput): PersonalBoard
   removeBoard(id: string): void
   open(boardId: string): OpenPersonalBoardResult
+  /**
+   * 살아 있는 도형 개수만 센다 (COUNT(*)). 도시에처럼 개수만 필요한 곳이
+   * `open()` 으로 도형 전체를 로드하지 않게 하는 값싼 경로다.
+   */
+  countShapes(boardId: string): number
   putShape(input: PutPersonalShapeInput): PersonalBoardShape
   removeShapes(input: RemovePersonalShapesInput): void
 }
@@ -306,6 +311,19 @@ export function createCanvasRepo(db: Database): CanvasRepo {
         )
         .all(boardId) as ShapeRow[]
       return { board, shapes: rows.map(rowToShape) }
+    },
+
+    countShapes(boardIdInput) {
+      const boardId = requireId(boardIdInput, 'boardId')
+      // 보드 존재 검증을 생략한 값싼 경로: 없는 보드는 0으로 답한다.
+      // 호출부(도시에)는 listBoards 로 얻은 살아 있는 보드만 넘긴다.
+      const row = db
+        .prepare(
+          `SELECT COUNT(*) AS shape_count FROM whiteboard_local_shapes
+            WHERE board_id = ? AND deleted_at IS NULL`
+        )
+        .get(boardId) as { shape_count: number }
+      return row.shape_count
     },
 
     putShape(input) {

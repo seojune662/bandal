@@ -132,6 +132,7 @@ export function BrowserGuestView({
         }}
         src={src}
         partition={BROWSING_PARTITION}
+        allowpopups={true}
       />
     </div>
   )

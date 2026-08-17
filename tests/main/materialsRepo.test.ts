@@ -138,6 +138,67 @@ describe('materialsRepo', () => {
     })
   })
 
+  describe('tree cache', () => {
+    test('serves repeat calls from cache until invalidateTree', () => {
+      // Arrange — warm the cache, then change the disk out-of-band.
+      repo.tree(courseId)
+      writeFileSync(join(courseFolder, 'out-of-band.pdf'), 'x')
+
+      // Act / Assert — cache hit: no rescan, so the new file is invisible.
+      expect(flattenTree(repo.tree(courseId))).not.toContain('out-of-band.pdf')
+
+      // Invalidate (프로덕션에서는 watcher 가 해 준다) → next call rescans.
+      repo.invalidateTree(courseId)
+      expect(flattenTree(repo.tree(courseId))).toContain('out-of-band.pdf')
+    })
+
+    test('every tree-changing repo mutation invalidates the cache itself', () => {
+      repo.tree(courseId)
+      repo.createFolder({ courseId, dirRelPath: '', name: 'week-2' })
+      expect(flattenTree(repo.tree(courseId))).toContain('week-2')
+
+      repo.tree(courseId)
+      repo.writeFile({
+        courseId,
+        dirRelPath: '',
+        fileName: 'clip.md',
+        encoding: 'utf8',
+        data: 'x'
+      })
+      expect(flattenTree(repo.tree(courseId))).toContain('clip.md')
+
+      repo.tree(courseId)
+      repo.rename({ courseId, relPath: 'syllabus.pdf', newName: 'outline.pdf' })
+      expect(flattenTree(repo.tree(courseId))).toContain('outline.pdf')
+
+      repo.tree(courseId)
+      repo.duplicate({ courseId, relPath: 'outline.pdf' })
+      expect(flattenTree(repo.tree(courseId))).toContain('outline-2.pdf')
+
+      repo.tree(courseId)
+      repo.move({ courseId, fromRelPath: 'outline.pdf', toDirRelPath: 'notes' })
+      expect(flattenTree(repo.tree(courseId))).toContain('notes/outline.pdf')
+
+      const source = join(ctx.dir, 'imported.pdf')
+      writeFileSync(source, 'x')
+      repo.tree(courseId)
+      repo.import(courseId, [source])
+      expect(flattenTree(repo.tree(courseId))).toContain('imported.pdf')
+    })
+
+    test('softDelete invalidates even though trashing is delegated to the OS', async () => {
+      // The fake trash moves nothing, so prove the rescan happened via a file
+      // written out-of-band while the cache was warm.
+      repo.tree(courseId)
+      writeFileSync(join(courseFolder, 'ghost.md'), 'x')
+      expect(flattenTree(repo.tree(courseId))).not.toContain('ghost.md')
+
+      await repo.softDelete({ courseId, relPath: 'syllabus.pdf' })
+
+      expect(flattenTree(repo.tree(courseId))).toContain('ghost.md')
+    })
+  })
+
   describe('search', () => {
     test('finds files by case-insensitive substring over rel paths', () => {
       // Act
@@ -162,16 +223,32 @@ describe('materialsRepo', () => {
       expect(hits.map((h) => h.relPath)).toContain('notes/week1.md')
     })
 
-    test('rebuilds the index on demand so new files are found', () => {
-      // Arrange
-      repo.search(courseId, 'week') // builds index
+    test('rebuilds the index after invalidateTree so out-of-band files are found', () => {
+      // Arrange — the first search builds and caches the index; a file added
+      // behind the repo's back (프로덕션에서는 watcher 가 invalidate 해 준다)
+      // needs an explicit invalidation before it becomes searchable.
+      repo.search(courseId, 'week') // builds index + cache
       writeFileSync(join(courseFolder, 'week2-added-later.md'), 'x')
+      repo.invalidateTree(courseId)
 
       // Act
       const hits = repo.search(courseId, 'week2')
 
       // Assert
       expect(hits.map((h) => h.relPath)).toEqual(['week2-added-later.md'])
+    })
+
+    test('reuses the cached scan between keystrokes (no rescan per call)', () => {
+      // Arrange — warm the cache, then change the disk out-of-band.
+      repo.search(courseId, 'week')
+      writeFileSync(join(courseFolder, 'hidden-from-cache.md'), 'x')
+
+      // Act / Assert — cache hit: the out-of-band file is not rescanned in.
+      expect(repo.search(courseId, 'hidden-from-cache')).toEqual([])
+      // Existing files keep matching from the cached index.
+      expect(repo.search(courseId, 'week').map((h) => h.relPath)).toEqual([
+        'notes/week1.md'
+      ])
     })
 
     test('rejects an empty query', () => {
@@ -664,7 +741,8 @@ describe('materialsRepo (linked course folder)', () => {
   })
 
   test('returns an empty tree once the linked folder disappears', () => {
-    // Arrange
+    // Arrange — warm the cache first: a missing folder must beat a stale cache.
+    expect(repo.tree(courseId)).not.toEqual([])
     rmSync(linkedFolder, { recursive: true, force: true })
 
     // Act / Assert

@@ -43,7 +43,10 @@ import {
   getAgentModels,
   killAllClaudeProcessesSync
 } from '../features/agent'
-import { createBrowserSessionStore } from '../features/browser'
+import {
+  createBrowserSessionStore,
+  fetchLinkForMaterials
+} from '../features/browser'
 import { createFavoritesRepo } from '../features/favorites'
 import {
   createCredentialStore,
@@ -167,7 +170,12 @@ export function registerHandlers(): IpcRouter {
 
   const materialsWatcher = createMaterialsWatcher({
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
-    onChange: (courseId) => broadcast('materials:changed', { courseId })
+    onChange: (courseId) => {
+      // 브로드캐스트보다 먼저 캐시를 비운다 — 렌더러의 조용한 재조회가
+      // 반드시 새 트리를 보게 하기 위한 순서다.
+      materialsRepo.invalidateTree(courseId)
+      broadcast('materials:changed', { courseId })
+    }
   })
 
   /** Course went away (delete/archive) → release its live resources. */
@@ -298,6 +306,16 @@ export function registerHandlers(): IpcRouter {
   handle('materials:delete', (req) => materialsRepo.softDelete(req))
   handle('materials:duplicate', (req) => materialsRepo.duplicate(req))
   handle('materials:createFolder', (req) => materialsRepo.createFolder(req))
+  handle('materials:downloadFromUrl', async (req) => {
+    const { fileName, dataBase64 } = await fetchLinkForMaterials(req.url)
+    return materialsRepo.writeFile({
+      courseId: req.courseId,
+      dirRelPath: req.dirRelPath,
+      fileName,
+      encoding: 'base64',
+      data: dataBase64
+    })
+  })
   handle('materials:watch', (req) => {
     materialsWatcher.watch(req.courseId)
     return OK
@@ -308,14 +326,18 @@ export function registerHandlers(): IpcRouter {
   })
 
   // -- notes ----------------------------------------------------------------
+  // 필기는 notesRepo 가 과목 폴더에 직접 쓰므로 자료 트리 캐시를 여기서
+  // 무효화한다 (materialsRepo 변이는 스스로 무효화한다).
   handle('notes:read', (req) => notesRepo.read(req))
   handle('notes:write', (req) => {
     const result = notesRepo.write(req)
+    materialsRepo.invalidateTree(req.courseId)
     note(req.courseId, 'note-edited', `필기를 수정했습니다: ${req.relPath}`, req.relPath)
     return result
   })
   handle('notes:create', (req) => {
     const result = notesRepo.create(req)
+    materialsRepo.invalidateTree(req.courseId)
     note(req.courseId, 'note-created', `필기를 만들었습니다: ${result.relPath}`, result.relPath)
     return result
   })
@@ -410,10 +432,12 @@ export function registerHandlers(): IpcRouter {
     // The AI could not see whiteboards at all — no disk representation, no
     // dossier section. `canvasRepo` is declared further down; these run at
     // rebuild time (chat:open), long after registration finishes.
+    // countShapes 는 COUNT(*) 한 번이다 — 도시에가 개수만 쓰는데 보드마다
+    // 도형 전체를 열어 JSON 파싱하던 것이 chat:open 을 무겁게 만들었다.
     getWhiteboards: (courseId) =>
       canvasRepo.listBoards(courseId).map((board) => ({
         title: board.title,
-        shapeCount: canvasRepo.open(board.id).shapes.length
+        shapeCount: canvasRepo.countShapes(board.id)
       })),
     getMaterialLinks: (courseId) => linkIndex.allForCourse(courseId)
   })
@@ -437,7 +461,29 @@ export function registerHandlers(): IpcRouter {
   handle('activity:recent', (req) =>
     activityRepo.recent(req.courseId, req.limit)
   )
-  handle('context:rebuild', (req) => contextWriter.rebuild(req.courseId))
+
+  /**
+   * chat:open 마다 rebuild 를 반복할 필요는 없다 — 같은 과목에서 이 시간 안에
+   * 끝난 rebuild 가 있으면 건너뛴다. 대화를 연달아 여닫는 흔한 동선에서
+   * 자료가 많은 과목의 rebuild 폭주를 막는다.
+   */
+  const CONTEXT_REBUILD_COALESCE_MS = 15_000
+  const contextRebuiltAt = new Map<string, number>()
+  function rebuildContextCoalesced(courseId: string): void {
+    const last = contextRebuiltAt.get(courseId)
+    if (last !== undefined && Date.now() - last < CONTEXT_REBUILD_COALESCE_MS) {
+      return
+    }
+    contextWriter.rebuild(courseId)
+    contextRebuiltAt.set(courseId, Date.now())
+  }
+
+  handle('context:rebuild', (req) => {
+    // 명시적 요청은 절대 건너뛰지 않는다 — 완료 시각만 기록해 둔다.
+    const result = contextWriter.rebuild(req.courseId)
+    contextRebuiltAt.set(req.courseId, Date.now())
+    return result
+  })
 
   // -- board ----------------------------------------------------------------
   handle('board:listTasks', (req) => boardRepo.list(req))
@@ -493,7 +539,10 @@ export function registerHandlers(): IpcRouter {
         journal: {
           record: (entry) => {
             agentJournal.record(entry)
-            // Whatever the tool touched, the UI is now stale.
+            // Whatever the tool touched, the UI is now stale. 자료 캐시도
+            // 마찬가지다 — 필기 도구는 materialsRepo 를 거치지 않고 디스크에
+            // 쓰므로 여기서 무효화해야 한다.
+            materialsRepo.invalidateTree(entry.courseId)
             broadcast('courses:changed', {})
             broadcast('board:changed', { courseId: entry.courseId })
             broadcast('canvas:changed', { courseId: entry.courseId })
@@ -565,14 +614,19 @@ export function registerHandlers(): IpcRouter {
     return managerFor(getSettings().agentProvider)
   }
 
-  // Refresh the dossier the agent reads before the session can ask for it.
+  // Refresh the dossier the agent reads at session start.
   // Best-effort: a context failure must not stop the student from chatting.
+  // 응답한 뒤에 fire-and-forget 으로 미룬다 — 자료가 많은 과목에서 동기
+  // rebuild 가 대화 열기(과목 전환)를 통째로 막고 있었다. 실제 첫 메시지가
+  // 나가기 전에는 넉넉히 끝난다.
   handle('chat:open', (req) => {
-    try {
-      contextWriter.rebuild(req.courseId)
-    } catch (error) {
-      console.error('[context] rebuild failed', error)
-    }
+    setImmediate(() => {
+      try {
+        rebuildContextCoalesced(req.courseId)
+      } catch (error) {
+        console.error('[context] rebuild failed', error)
+      }
+    })
     return resolveManager(req.sessionId).open(req.courseId, req.sessionId)
   })
   handle('chat:send', (req) =>
@@ -774,6 +828,8 @@ export function registerHandlers(): IpcRouter {
   handle('canvas:exportPdf', async (req) => {
     const result = await boardPdfExporter.exportBoard(req.boardId)
     const board = canvasRepo.open(req.boardId).board
+    // 내보내기는 과목 폴더에 PDF 를 직접 떨어뜨린다 — 트리 캐시 무효화.
+    materialsRepo.invalidateTree(board.courseId)
     // The export really does drop a new PDF into the course folder, so this is
     // a material appearing — no new activity kind needed.
     note(
@@ -803,6 +859,8 @@ export function registerHandlers(): IpcRouter {
 
   handle('link:sendHighlightToNote', (req) => {
     const result = linkService.sendHighlightToNote(req)
+    // 필기 파일이 과목 폴더에 새로 생기거나 바뀔 수 있다.
+    materialsRepo.invalidateTree(req.courseId)
     note(
       req.courseId,
       'note-edited',
