@@ -335,6 +335,12 @@ export function registerHandlers(): IpcRouter {
     note(req.courseId, 'note-edited', `필기를 수정했습니다: ${req.relPath}`, req.relPath)
     return result
   })
+  handle('notes:rename', (req) => {
+    const result = notesRepo.rename(req)
+    materialsRepo.invalidateTree(req.courseId)
+    broadcast('materials:changed', { courseId: req.courseId })
+    return result
+  })
   handle('notes:create', (req) => {
     const result = notesRepo.create(req)
     materialsRepo.invalidateTree(req.courseId)

@@ -17,13 +17,12 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
-  type MutableRefObject
+  type MouseEvent as ReactMouseEvent
 } from 'react'
 import type { NoteContent, NoteRef } from '../../../../shared/types/note'
 import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
-import { isTabDescriptor } from '../workspace/tabIdentity'
+import { descriptorFor, isTabDescriptor } from '../workspace/tabIdentity'
 import { nativeHistoryGuard } from './nativeHistoryGuard'
 import { openMaterialLink, resolveNoteLink } from './materialLinkNavigation'
 import {
@@ -38,6 +37,10 @@ import {
   type NoteFormatState
 } from './noteFormatting'
 import { NOTE_EDITOR_PLUGINS } from './noteEditorPlugins'
+import {
+  registerOpenNoteSession,
+  retargetOpenNoteSession
+} from './noteSessionRegistry'
 import { NoteToolbar } from './NoteToolbar'
 import { QuizPreview } from './QuizPreview'
 import { splitQuizMarkdown } from './quizMarkdown'
@@ -75,6 +78,27 @@ const STATUS_LABEL: Record<SaveStatus, string> = {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function firstH1Title(markdown: string): string | null {
+  return /^#\s+(.*)$/m.exec(markdown)?.[1] ?? null
+}
+
+/** Mirrors the main-process title cleanup for a no-op rename comparison. */
+function normalizedTitleStem(title: string): string {
+  return title
+    .replace(/\.md$/iu, '')
+    .trim()
+    .replace(/[/\\:*?"<>|]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^\.+/, '')
+    .slice(0, 120)
+    .trim()
+}
+
+function noteStem(relPath: string): string {
+  const fileName = relPath.split('/').at(-1) ?? relPath
+  return fileName.replace(/\.md$/iu, '')
 }
 
 function handleNoteLinkClick(
@@ -213,12 +237,6 @@ function NoteEditorWorkspace({
   )
 }
 
-function useLatest<T>(value: T): MutableRefObject<T> {
-  const valueRef = useRef(value)
-  valueRef.current = value
-  return valueRef
-}
-
 function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Element {
   const [editorSeed, setEditorSeed] = useState<EditorSeed | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -227,6 +245,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   const [conflictBusy, setConflictBusy] = useState(false)
   const [presentedMarkdown, setPresentedMarkdown] = useState('')
   const [viewMode, setViewMode] = useState<NoteViewMode>('edit')
+  const [currentRelPath, setCurrentRelPath] = useState(relPath)
   const [fontScale, setFontScale] = useState<NoteFontScale>(() => {
     try {
       return parseNoteFontScale(localStorage.getItem(NOTE_FONT_SCALE_STORAGE_KEY))
@@ -240,6 +259,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   const currentMarkdownRef = useRef('')
   const persistedMarkdownRef = useRef('')
   const mtimeRef = useRef<number | null>(null)
+  const syncedTitleRef = useRef<string | null>(null)
   const conflictRef = useRef(false)
   const writeInFlightRef = useRef<Promise<NoteFlushResult> | null>(null)
   const revisionRef = useRef(0)
@@ -248,7 +268,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   )
   const scheduleRef = useRef<() => void>(() => undefined)
   const closeTaskRef = useRef<Promise<unknown> | null>(null)
-  const noteRef = useLatest<NoteRef>({ courseId, relPath })
+  const noteRef = useRef<NoteRef>({ courseId, relPath })
 
   const clearTimer = useCallback((): void => {
     if (timerRef.current === null) return
@@ -263,6 +283,51 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
       setStatusDetail(detail)
     },
     []
+  )
+
+  const retargetNote = useCallback(
+    (nextRelPath: string, mtime?: number): void => {
+      noteRef.current = { ...noteRef.current, relPath: nextRelPath }
+      if (mtime !== undefined) mtimeRef.current = mtime
+      if (aliveRef.current) setCurrentRelPath(nextRelPath)
+    },
+    []
+  )
+
+  const syncTitleToFileName = useCallback(
+    async (markdown: string): Promise<void> => {
+      const title = firstH1Title(markdown)
+      if (title === syncedTitleRef.current) return
+      if (title === null) {
+        syncedTitleRef.current = null
+        return
+      }
+
+      const ref = noteRef.current
+      if (noteStem(ref.relPath) === normalizedTitleStem(title)) {
+        syncedTitleRef.current = title
+        return
+      }
+
+      const renamed = await invoke('notes:rename', {
+        ...ref,
+        newName: title
+      })
+      if (!retargetOpenNoteSession(ref, renamed.relPath, renamed.mtime)) {
+        retargetNote(renamed.relPath, renamed.mtime)
+      }
+      if (aliveRef.current) {
+        panelApi.updateParameters({
+          descriptor: descriptorFor('note', {
+            courseId: ref.courseId,
+            relPath: renamed.relPath
+          })
+        })
+        panelApi.setTitle(noteStem(renamed.relPath))
+      }
+      syncedTitleRef.current = title
+    },
+    [panelApi, retargetNote]
   )
 
   const flush = useCallback(
@@ -307,6 +372,13 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
           mtimeRef.current = result.mtime
           persistedMarkdownRef.current = markdown
           conflictRef.current = false
+          try {
+            await syncTitleToFileName(markdown)
+          } catch (error) {
+            const detail = errorMessage(error)
+            setStatusIfMounted('error', detail)
+            return { status: 'error', detail } as const
+          }
 
           if (currentMarkdownRef.current === markdown) {
             setStatusIfMounted('saved')
@@ -347,7 +419,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
       }
       return request
     },
-    [clearTimer, noteRef, setStatusIfMounted]
+    [clearTimer, setStatusIfMounted, syncTitleToFileName]
   )
   flushRef.current = flush
 
@@ -386,6 +458,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
       currentMarkdownRef.current = note.markdown
       persistedMarkdownRef.current = note.markdown
       mtimeRef.current = note.mtime
+      syncedTitleRef.current = firstH1Title(note.markdown)
       conflictRef.current = false
       revisionRef.current += 1
       setEditorSeed({ markdown: note.markdown, revision: revisionRef.current })
@@ -410,6 +483,28 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   useEffect(() => {
     void loadNote()
   }, [loadNote])
+
+  useEffect(() => {
+    if (
+      noteRef.current.courseId === courseId &&
+      noteRef.current.relPath === relPath
+    ) {
+      return
+    }
+    noteRef.current = { courseId, relPath }
+    setCurrentRelPath(relPath)
+  }, [courseId, relPath])
+
+  useEffect(
+    () =>
+      registerOpenNoteSession(noteRef.current, {
+        panelId: panelApi.id,
+        flush: () => flushRef.current(),
+        ref: () => noteRef.current,
+        retarget: retargetNote
+      }),
+    [panelApi, retargetNote]
+  )
 
   useEffect(() => {
     const disposable = panelApi.onDidActiveChange(({ isActive }) => {
@@ -530,7 +625,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
     setViewMode('quiz')
   }, [])
 
-  const fileName = relPath.split('/').at(-1) ?? relPath
+  const fileName = currentRelPath.split('/').at(-1) ?? currentRelPath
 
   if (loadError !== null && editorSeed === null) {
     return (
@@ -547,7 +642,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   return (
     <div className="note-tab">
       <header className="note-toolbar">
-        <span className="note-toolbar__path" title={relPath}>
+        <span className="note-toolbar__path" title={currentRelPath}>
           {fileName}
         </span>
         <div className="note-toolbar__actions">
@@ -630,6 +725,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
 }
 
 export default function NoteTab(props: IDockviewPanelProps): JSX.Element {
+  const sessionIdRef = useRef<string | null>(null)
   const candidate = props.params['descriptor']
   if (!isTabDescriptor(candidate) || candidate.kind !== 'note') {
     return (
@@ -640,9 +736,10 @@ export default function NoteTab(props: IDockviewPanelProps): JSX.Element {
   }
 
   const { courseId, relPath } = candidate.payload
+  sessionIdRef.current ??= relPath
   return (
     <NoteSession
-      key={`${courseId}:${relPath}`}
+      key={`${courseId}:${sessionIdRef.current}`}
       courseId={courseId}
       relPath={relPath}
       panelApi={props.api}

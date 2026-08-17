@@ -3,7 +3,14 @@
  * DB is not involved. Every relPath goes through the path-traversal guard.
  */
 
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { dirname, extname, join } from 'node:path'
 import { posix } from 'node:path'
 import type {
@@ -19,6 +26,16 @@ export interface NotesRepo {
   read(input: NoteRef): NoteContent
   write(input: WriteNoteInput): { mtime: number }
   create(input: CreateNoteInput): NoteRef
+  /**
+   * 제목과 파일명을 한 트랜잭션으로 맞춘다: 제목을 정리(sanitize)하고,
+   * 충돌은 -2/-3 접미로 풀고, 문서의 첫 H1을 최종 이름으로 고쳐 쓴 뒤
+   * 파일명을 바꾼다. 에디터 제목 수정과 사이드바 이름 변경이 모두 이
+   * 하나를 통해 흐르므로 두 방향이 어긋날 수 없다.
+   */
+  rename(input: { courseId: string; relPath: string; newName: string }): {
+    relPath: string
+    mtime: number
+  }
 }
 
 export interface NotesRepoDeps {
@@ -122,6 +139,56 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
       const relPath =
         input.dirRelPath === '' ? fileName : posix.join(input.dirRelPath, fileName)
       return { courseId: id, relPath }
+    },
+
+    rename(input) {
+      const abs = resolveNote(input.courseId, input.relPath)
+      if (!existsSync(abs)) {
+        throw new NotFoundError('note', input.relPath)
+      }
+      // 호출자가 .md 를 붙여 보내도 관대하게 받아 준다(사이드바 인라인
+      // 편집기는 확장자까지 통째로 편집한다).
+      const requested = requireNonEmptyString(input.newName, 'newName')
+      const stem = sanitizeTitle(requested.replace(/\.md$/iu, ''))
+
+      const dirAbs = dirname(abs)
+      let fileName = `${stem}.md`
+      for (
+        let n = 2;
+        existsSync(join(dirAbs, fileName)) && join(dirAbs, fileName) !== abs;
+        n += 1
+      ) {
+        if (n > 1000) {
+          throw new ValidationError(`could not find a free name for "${stem}"`)
+        }
+        fileName = `${stem}-${n}.md`
+      }
+      const finalStem = fileName.replace(/\.md$/u, '')
+
+      // 첫 H1 을 최종 이름으로 고쳐 쓴다. H1 이 없으면 맨 위에 만들어
+      // 제목과 파일명이 항상 같은 곳을 가리키게 한다.
+      const original = readFileSync(abs, 'utf8')
+      const lines = original.split('\n')
+      const headingIndex = lines.findIndex((line) => /^#\s/u.test(line))
+      let updated: string
+      if (headingIndex >= 0) {
+        lines[headingIndex] = `# ${finalStem}`
+        updated = lines.join('\n')
+      } else {
+        updated = `# ${finalStem}\n\n${original}`
+      }
+      if (updated !== original) {
+        writeFileSync(abs, updated, 'utf8')
+      }
+
+      const nextAbs = join(dirAbs, fileName)
+      if (nextAbs !== abs) {
+        renameSync(abs, nextAbs)
+      }
+      const dirRel = posix.dirname(input.relPath)
+      const relPath =
+        dirRel === '.' ? fileName : posix.join(dirRel, fileName)
+      return { relPath, mtime: Math.round(statSync(nextAbs).mtimeMs) }
     }
   }
 }

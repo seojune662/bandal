@@ -377,6 +377,16 @@ export interface IpcContract {
     req: CreateNoteInput
     res: NoteRef
   }
+  /**
+   * Renames a note from its title in ONE transaction: sanitizes the stem,
+   * resolves collisions with a -2/-3 suffix, rewrites the first H1 to the
+   * final name, then renames the file. Editor-title edits and sidebar renames
+   * both flow through this so title and filename can never diverge.
+   */
+  'notes:rename': {
+    req: { courseId: string; relPath: string; newName: string }
+    res: { relPath: string; mtime: number }
+  }
 
   // -- annotations ----------------------------------------------------------
   'annotations:listForFile': {
@@ -1060,6 +1070,7 @@ export const IPC_CHANNELS = [
   'notes:read',
   'notes:write',
   'notes:create',
+  'notes:rename',
   'annotations:listForFile',
   'annotations:create',
   'annotations:update',

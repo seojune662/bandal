@@ -132,7 +132,14 @@ export function BrowserGuestView({
         }}
         src={src}
         partition={BROWSING_PARTITION}
-        allowpopups={true}
+        // Without this attribute Chromium drops window.open/target=_blank
+        // INSIDE the guest — main's setWindowOpenHandler never even fires
+        // (it still denies native windows and forwards URLs as Bandal tabs).
+        // @types/react types it as boolean, but React's runtime silently
+        // DROPS boolean-true for unknown attributes — only a string reaches
+        // the DOM, so the cast is load-bearing. Verified via
+        // renderToStaticMarkup: {true} → no attribute, '' → attribute set.
+        allowpopups={'' as unknown as boolean}
       />
     </div>
   )

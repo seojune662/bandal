@@ -12,13 +12,6 @@ declare global {
       webview: DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & {
         src?: string
         partition?: string
-        /**
-         * Without this, Chromium drops window.open/target=_blank INSIDE the
-         * guest — main's setWindowOpenHandler never even fires. With it, the
-         * handler still denies the native window and forwards the URL as a
-         * Bandal tab (hardenWebviews.ts), so popups stay contained.
-         */
-        allowpopups?: boolean
       }
     }
   }

@@ -28,6 +28,79 @@ describe('notesRepo', () => {
     ctx.cleanup()
   })
 
+  describe('rename', () => {
+    test('renames the file and rewrites the first H1 to the final name', () => {
+      writeFileSync(
+        join(courseFolder, 'old.md'),
+        '# 예전 제목\n\n본문은 그대로.\n',
+        'utf8'
+      )
+
+      const result = repo.rename({
+        courseId: COURSE_ID,
+        relPath: 'old.md',
+        newName: '해시 테이블 정리'
+      })
+
+      expect(result.relPath).toBe('해시 테이블 정리.md')
+      const renamed = repo.read({ courseId: COURSE_ID, relPath: result.relPath })
+      expect(renamed.markdown).toBe('# 해시 테이블 정리\n\n본문은 그대로.\n')
+      expect(existsSync(join(courseFolder, 'old.md'))).toBe(false)
+    })
+
+    test('resolves collisions with a suffix and titles match the final name', () => {
+      writeFileSync(join(courseFolder, '정리.md'), '# x\n', 'utf8')
+      writeFileSync(join(courseFolder, 'old.md'), '# y\n', 'utf8')
+
+      const result = repo.rename({
+        courseId: COURSE_ID,
+        relPath: 'old.md',
+        newName: '정리.md'
+      })
+
+      expect(result.relPath).toBe('정리-2.md')
+      expect(
+        repo.read({ courseId: COURSE_ID, relPath: '정리-2.md' }).markdown
+      ).toBe('# 정리-2\n')
+    })
+
+    test('same-name rename still syncs the heading and keeps the file', () => {
+      writeFileSync(join(courseFolder, '동일.md'), '# 다른 제목\n', 'utf8')
+
+      const result = repo.rename({
+        courseId: COURSE_ID,
+        relPath: '동일.md',
+        newName: '동일'
+      })
+
+      expect(result.relPath).toBe('동일.md')
+      expect(repo.read({ courseId: COURSE_ID, relPath: '동일.md' }).markdown).toBe(
+        '# 동일\n'
+      )
+    })
+
+    test('prepends an H1 when the note has none', () => {
+      writeFileSync(join(courseFolder, 'no-title.md'), '그냥 본문\n', 'utf8')
+
+      const result = repo.rename({
+        courseId: COURSE_ID,
+        relPath: 'no-title.md',
+        newName: '새 제목'
+      })
+
+      expect(
+        repo.read({ courseId: COURSE_ID, relPath: result.relPath }).markdown
+      ).toBe('# 새 제목\n\n그냥 본문\n')
+    })
+
+    test('rejects names with no filesystem-safe characters', () => {
+      writeFileSync(join(courseFolder, 'a.md'), '# a\n', 'utf8')
+      expect(() =>
+        repo.rename({ courseId: COURSE_ID, relPath: 'a.md', newName: '///' })
+      ).toThrow(ValidationError)
+    })
+  })
+
   describe('path-traversal guard', () => {
     test('rejects relPaths that escape the course folder via ..', () => {
       // Act / Assert

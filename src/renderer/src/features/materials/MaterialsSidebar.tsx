@@ -10,6 +10,12 @@ import { useMaterialsStore } from '../../stores/materialsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { normalizeCourseColor } from '../courses/courseColors'
 import { CourseGroupsSection } from '../group/CourseGroupsSection'
+import {
+  flushOpenNoteSession,
+  openNotePanelId,
+  openNoteRefForPanel,
+  retargetOpenNoteSession
+} from '../notes/noteSessionRegistry'
 import { openMaterialInWorkspace } from '../workspace/openMaterial'
 import { descriptorFor, tabPanelId } from '../workspace/tabIdentity'
 import { MaterialDeleteDialog } from './MaterialDeleteDialog'
@@ -69,14 +75,30 @@ function reconcileTabsAfterRename(
   forceReopen: boolean
 ): void {
   const workspace = useWorkspaceStore.getState()
+  const registeredNotePanelId =
+    node.kind === 'note'
+      ? (openNotePanelId({ courseId, relPath: newRelPath }) ??
+        openNotePanelId({ courseId, relPath: node.relPath }))
+      : null
+  const closedPanelIds = new Set<string>()
   let reopened = false
   for (const [panelId, descriptor] of Object.entries(workspace.openTabs)) {
     if (descriptor.kind !== 'pdf' && descriptor.kind !== 'note') continue
     if (descriptor.payload.courseId !== courseId) continue
     if (!pathIsTargetOrChild(descriptor.payload.relPath, node.relPath)) continue
-    const suffix = descriptor.payload.relPath.slice(node.relPath.length)
+    const liveNoteRef =
+      descriptor.kind === 'note' ? openNoteRefForPanel(panelId) : null
+    const sourceRelPath = liveNoteRef?.relPath ?? descriptor.payload.relPath
+    const nextRelPath = pathIsTargetOrChild(sourceRelPath, newRelPath)
+      ? sourceRelPath
+      : pathIsTargetOrChild(sourceRelPath, node.relPath)
+        ? `${newRelPath}${sourceRelPath.slice(node.relPath.length)}`
+        : `${newRelPath}${descriptor.payload.relPath.slice(node.relPath.length)}`
+    if (descriptor.kind === 'note') {
+      retargetOpenNoteSession(liveNoteRef ?? descriptor.payload, nextRelPath)
+    }
     workspace.closeTab(panelId)
-    const nextRelPath = `${newRelPath}${suffix}`
+    closedPanelIds.add(panelId)
     const nextKind =
       node.kind === 'dir'
         ? descriptor.kind
@@ -87,7 +109,24 @@ function reconcileTabsAfterRename(
     reopened = true
   }
 
-  if (node.kind !== 'dir') {
+  if (
+    !reopened &&
+    registeredNotePanelId !== null &&
+    !closedPanelIds.has(registeredNotePanelId)
+  ) {
+    const liveNoteRef = openNoteRefForPanel(registeredNotePanelId)
+    if (liveNoteRef !== null) {
+      retargetOpenNoteSession(liveNoteRef, newRelPath)
+    }
+    workspace.closeTab(registeredNotePanelId)
+    const nextKind = kindForMaterialName(materialBaseName(newRelPath))
+    if (nextKind === 'pdf' || nextKind === 'note') {
+      openMaterialInWorkspace(nextKind, newRelPath)
+    }
+    reopened = true
+  }
+
+  if (!reopened && node.kind !== 'dir') {
     const oldKind = node.kind
     if (oldKind === 'pdf' || oldKind === 'note') {
       workspace.closeTab(
@@ -499,19 +538,51 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   ): Promise<string | null> => {
     if (course === null) return '과목을 선택하세요.'
     try {
-      const renamed = await invoke('materials:rename', {
-        courseId: course.id,
-        relPath: node.relPath,
-        newName
-      })
+      let noteRef = { courseId: course.id, relPath: node.relPath }
+      if (node.kind === 'note') {
+        const flushed = await flushOpenNoteSession(noteRef)
+        if (
+          flushed !== null &&
+          flushed.result.status !== 'saved' &&
+          flushed.result.status !== 'unavailable'
+        ) {
+          showToast('저장되지 않아 이름을 변경하지 않았습니다.', 'danger')
+          return flushed.result.detail
+        }
+        if (flushed !== null) noteRef = flushed.ref
+      }
+
+      let renamedRelPath: string
+      if (node.kind === 'note') {
+        const renamed = await invoke('notes:rename', {
+          ...noteRef,
+          newName
+        })
+        renamedRelPath = renamed.relPath
+        retargetOpenNoteSession(noteRef, renamed.relPath, renamed.mtime)
+      } else {
+        const renamed = await invoke('materials:rename', {
+          ...noteRef,
+          newName
+        })
+        renamedRelPath = renamed.relPath
+      }
+      const reconciledNode =
+        node.kind === 'note' && node.relPath !== noteRef.relPath
+          ? {
+              ...node,
+              relPath: noteRef.relPath,
+              name: materialBaseName(noteRef.relPath)
+            }
+          : node
       reconcileTabsAfterRename(
         course.id,
-        node,
-        renamed.relPath,
+        reconciledNode,
+        renamedRelPath,
         editing?.reopenAfterRename === true
       )
       await refreshAfterMutation(course.id)
-      setSelectedRelPath(renamed.relPath)
+      setSelectedRelPath(renamedRelPath)
       setEditing(null)
       return null
     } catch (renameError) {
