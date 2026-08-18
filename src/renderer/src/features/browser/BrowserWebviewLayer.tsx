@@ -102,7 +102,19 @@ function useExternalAuthNotice(): void {
 function useDockviewDragActive(): boolean {
   const [isDragActive, setDragActive] = useState(false)
   useEffect(() => {
-    const start = (): void => setDragActive(true)
+    const start = (event?: Event): void => {
+      // Material file rows promote to a native OS drag (dragstart is
+      // cancelled, so no dragend ever fires) and their whole point is
+      // dropping INTO a guest page (mail attach, LMS upload). Passthrough
+      // would remove every guest from drag hit-testing — skip it.
+      const target = event?.target
+      if (target instanceof Element) {
+        const row = target.closest('[data-material-row]')
+        const kind = row?.getAttribute('data-kind')
+        if (row !== null && kind !== 'dir' && kind !== 'image') return
+      }
+      setDragActive(true)
+    }
     const end = (): void => setDragActive(false)
     const onSashRelease = (): void => {
       end()
@@ -122,11 +134,17 @@ function useDockviewDragActive(): boolean {
     window.addEventListener('dragend', end, true)
     window.addEventListener('drop', end, true)
     window.addEventListener('pointerdown', onPointerDown, true)
+    // Safety net: a cancelled dragstart never emits dragend, which used to
+    // leave passthrough stuck on (guests unclickable until the next drop).
+    window.addEventListener('mouseup', end, true)
+    window.addEventListener('blur', end)
     return () => {
       window.removeEventListener('dragstart', start, true)
       window.removeEventListener('dragend', end, true)
       window.removeEventListener('drop', end, true)
       window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('mouseup', end, true)
+      window.removeEventListener('blur', end)
       window.removeEventListener('pointerup', onSashRelease, true)
       window.removeEventListener('pointercancel', onSashRelease, true)
     }

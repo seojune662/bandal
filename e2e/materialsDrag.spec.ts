@@ -42,7 +42,9 @@ test('drags a material image with the ink/PDF payload into a PDF page', async ()
     await expect(imageRow).toBeVisible()
     await expect(imageRow).toHaveAttribute('draggable', 'true')
     await expect(pdfRow).toBeVisible()
-    await expect(pdfRow).not.toHaveAttribute('draggable', 'true')
+    // PDF rows are draggable too since v0.9.4 — dragstart promotes them to a
+    // native OS file drag (startNativeMaterialDrag), HTML5 drag is cancelled.
+    await expect(pdfRow).toHaveAttribute('draggable', 'true')
     await pdfRow.click()
 
     const targetPage = page.locator('.pdf-page').first()

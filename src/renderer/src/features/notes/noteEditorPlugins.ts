@@ -28,13 +28,12 @@ let prismPluginsPromise: Promise<MilkdownPlugin[]> | undefined
 
 export function loadNotePrismPlugins(): Promise<MilkdownPlugin[]> {
   if (prismPluginsPromise === undefined) {
-    prismPluginsPromise = import('@milkdown/plugin-prism').then(
-      ({ prism }) =>
-        // plugin-prism resolves Milkdown 7.22.1 while the app is on 7.22.0;
-        // their runtime plugin contract is identical, but the private Ctx type
-        // makes the two declarations nominally incompatible to TypeScript.
-        prism as unknown as MilkdownPlugin[]
-    )
+    // ⚠ plugin-prism MUST resolve the exact same @milkdown/core instance as
+    // the app: Slice/Timer identity is a per-module Symbol, so a second core
+    // copy makes editor.create() reject silently and every toolbar command
+    // no-op (the v0.13.0 dead-toolbar bug). Versions are pinned + overridden
+    // in package.json and deduped in electron.vite.config.ts — keep all three.
+    prismPluginsPromise = import('@milkdown/plugin-prism').then(({ prism }) => [...prism])
   }
   return prismPluginsPromise
 }

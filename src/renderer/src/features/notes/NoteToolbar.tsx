@@ -29,6 +29,8 @@ import {
   type MouseEvent as ReactMouseEvent
 } from 'react'
 import { callCommand } from '@milkdown/utils'
+import { showToast } from '../../app/toast'
+import { useT } from '../../i18n'
 import { insertNoteImageFiles } from './noteImagePlugin'
 import type { NoteFormatState } from './noteFormatting'
 import { toggleTaskListItems } from './noteFormatting'
@@ -92,6 +94,7 @@ export function NoteToolbar({
   onFontScaleChange
 }: NoteToolbarProps): JSX.Element {
   const [loading, getEditor] = useInstance()
+  const t = useT()
   const [moreOpen, setMoreOpen] = useState(false)
   const [linkOpen, setLinkOpen] = useState(false)
   const [linkHref, setLinkHref] = useState('https://')
@@ -102,13 +105,25 @@ export function NoteToolbar({
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   const run = useCallback(
-    (action: (editor: Editor) => void): void => {
+    (action: (editor: Editor) => unknown, actionName: string): void => {
       const editor = getEditor()
-      if (editor === undefined) return
-      action(editor)
+      if (editor === undefined) {
+        console.error(
+          '[Bandal] Note toolbar action skipped because the editor is unavailable.',
+          { action: actionName }
+        )
+        showToast(t('notes.editor.unavailable'), 'danger')
+        return
+      }
+      const handled = action(editor)
+      if (handled === false) {
+        console.warn('[Bandal] Note toolbar command returned false.', {
+          action: actionName
+        })
+      }
       editor.action((context) => context.get(editorViewCtx).focus())
     },
-    [getEditor]
+    [getEditor, t]
   )
 
   useEffect(() => {
@@ -142,7 +157,12 @@ export function NoteToolbar({
   useEffect(() => {
     if (loading) return
     const editor = getEditor()
-    if (editor === undefined) return
+    if (editor === undefined) {
+      console.error(
+        '[Bandal] Note slash toolbar bridge was not attached because the editor is unavailable.'
+      )
+      return
+    }
 
     let editorDom: HTMLElement | undefined
     const handleSlashAction = (event: Event): void => {
@@ -172,20 +192,24 @@ export function NoteToolbar({
   }, [getEditor, loading])
 
   const toggleTaskList = (): void => {
-    run((editor) => {
-      editor.action((context) => {
-        const view = context.get(editorViewCtx)
-        if (toggleTaskListItems(view)) return
-        if (callCommand(wrapInBulletListCommand.key)(context)) {
-          toggleTaskListItems(context.get(editorViewCtx))
-        }
-      })
-    })
+    run(
+      (editor) =>
+        editor.action((context) => {
+          const view = context.get(editorViewCtx)
+          if (toggleTaskListItems(view)) return true
+          if (!callCommand(wrapInBulletListCommand.key)(context)) return false
+          return toggleTaskListItems(context.get(editorViewCtx))
+        }),
+      'task-list'
+    )
   }
 
   const toggleLink = (): void => {
     if (formatState.link) {
-      run((editor) => editor.action(callCommand(toggleLinkCommand.key)))
+      run(
+        (editor) => editor.action(callCommand(toggleLinkCommand.key)),
+        'toggle-link'
+      )
       setLinkOpen(false)
       return
     }
@@ -198,8 +222,9 @@ export function NoteToolbar({
     event.preventDefault()
     const href = linkHref.trim()
     if (href.length === 0) return
-    run((editor) =>
-      editor.action(callCommand(toggleLinkCommand.key, { href }))
+    run(
+      (editor) => editor.action(callCommand(toggleLinkCommand.key, { href })),
+      'set-link'
     )
     setLinkOpen(false)
   }
@@ -212,34 +237,38 @@ export function NoteToolbar({
     const files = [...(event.currentTarget.files ?? [])]
     event.currentTarget.value = ''
     if (files.length === 0) return
-    run((editor) => {
-      editor.action((context) => {
-        void insertNoteImageFiles(
-          context.get(editorViewCtx),
-          courseId,
-          files
-        )
-      })
-    })
+    run(
+      (editor) =>
+        editor.action((context) => {
+          void insertNoteImageFiles(
+            context.get(editorViewCtx),
+            courseId,
+            files
+          )
+        }),
+      'insert-image'
+    )
   }
 
   const updateCodeLanguage = (language: string): void => {
     if (formatState.codeBlockPosition === null) return
-    run((editor) => {
-      editor.action(
-        callCommand(updateCodeBlockLanguageCommand.key, {
-          pos: formatState.codeBlockPosition,
-          language
-        })
-      )
-    })
+    run(
+      (editor) =>
+        editor.action(
+          callCommand(updateCodeBlockLanguageCommand.key, {
+            pos: formatState.codeBlockPosition,
+            language
+          })
+        ),
+      'update-code-block-language'
+    )
   }
 
   const commandButton = (
     label: string,
     text: string,
     active: boolean,
-    action: (editor: Editor) => void,
+    action: (editor: Editor) => unknown,
     className?: string
   ): JSX.Element => (
     <FormatButton
@@ -249,7 +278,7 @@ export function NoteToolbar({
       text={text}
       disabled={loading}
       className={className}
-      onClick={() => run(action)}
+      onClick={() => run(action, label)}
     />
   )
 
@@ -399,8 +428,10 @@ export function NoteToolbar({
               aria-checked={formatState.blockquote}
               onMouseDown={keepEditorFocused}
               onClick={() => {
-                run((editor) =>
-                  editor.action(callCommand(wrapInBlockquoteCommand.key))
+                run(
+                  (editor) =>
+                    editor.action(callCommand(wrapInBlockquoteCommand.key)),
+                  'blockquote'
                 )
                 setMoreOpen(false)
               }}
@@ -436,8 +467,10 @@ export function NoteToolbar({
               aria-checked={formatState.inlineCode}
               onMouseDown={keepEditorFocused}
               onClick={() => {
-                run((editor) =>
-                  editor.action(callCommand(toggleInlineCodeCommand.key))
+                run(
+                  (editor) =>
+                    editor.action(callCommand(toggleInlineCodeCommand.key)),
+                  'inline-code'
                 )
                 setMoreOpen(false)
               }}
@@ -451,8 +484,10 @@ export function NoteToolbar({
               aria-checked={formatState.codeBlockPosition !== null}
               onMouseDown={keepEditorFocused}
               onClick={() => {
-                run((editor) =>
-                  editor.action(callCommand(createCodeBlockCommand.key))
+                run(
+                  (editor) =>
+                    editor.action(callCommand(createCodeBlockCommand.key)),
+                  'code-block'
                 )
                 setMoreOpen(false)
               }}
@@ -465,7 +500,10 @@ export function NoteToolbar({
               role="menuitem"
               onMouseDown={keepEditorFocused}
               onClick={() => {
-                run((editor) => editor.action(callCommand(insertHrCommand.key)))
+                run(
+                  (editor) => editor.action(callCommand(insertHrCommand.key)),
+                  'horizontal-rule'
+                )
                 setMoreOpen(false)
               }}
             >
@@ -477,10 +515,12 @@ export function NoteToolbar({
               role="menuitem"
               onMouseDown={keepEditorFocused}
               onClick={() => {
-                run((editor) =>
-                  editor.action(
-                    callCommand(insertTableCommand.key, { row: 3, col: 3 })
-                  )
+                run(
+                  (editor) =>
+                    editor.action(
+                      callCommand(insertTableCommand.key, { row: 3, col: 3 })
+                    ),
+                  'table'
                 )
                 setMoreOpen(false)
               }}

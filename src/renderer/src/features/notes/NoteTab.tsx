@@ -1,5 +1,6 @@
 import {
   Editor,
+  EditorStatus,
   defaultValueCtx,
   nodeViewCtx,
   prosePluginsCtx,
@@ -22,6 +23,7 @@ import {
 } from 'react'
 import type { NoteContent, NoteRef } from '../../../../shared/types/note'
 import { showToast } from '../../app/toast'
+import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor, isTabDescriptor } from '../workspace/tabIdentity'
@@ -169,9 +171,14 @@ function MilkdownNoteEditor({
   onFormatStateChange: (state: NoteFormatState) => void
   onZoomStep: (direction: -1 | 1) => void
 }): JSX.Element {
+  const t = useT()
   const [editorPlugins, setEditorPlugins] = useState<
     readonly (MilkdownPlugin | MilkdownPlugin[])[] | null
   >(null)
+  const [editorInitialization, setEditorInitialization] = useState<
+    'idle' | 'initializing' | 'ready' | 'failed'
+  >('idle')
+  const editorAttemptRef = useRef(0)
   const onChangeRef = useRef(onMarkdownChange)
   const onFormatStateChangeRef = useRef(onFormatStateChange)
   const onZoomStepRef = useRef(onZoomStep)
@@ -194,51 +201,66 @@ function MilkdownNoteEditor({
     }
   }, [])
 
-  const { loading } = useEditor(
+  const { get: getEditor, loading } = useEditor(
     (root) => {
       if (editorPlugins === null) return undefined
-      const editor = Editor.make().config((context) => {
-        context.set(rootCtx, root)
-        context.set(defaultValueCtx, initialMarkdown)
-        context.set(rootAttrsCtx, {
-          'aria-label': '마크다운 필기 편집기',
-          'aria-multiline': 'true'
+      const attempt = editorAttemptRef.current + 1
+      editorAttemptRef.current = attempt
+      setEditorInitialization('initializing')
+
+      const editor = Editor.make()
+        .onStatusChange((status) => {
+          if (
+            editorAttemptRef.current === attempt &&
+            status === EditorStatus.Created
+          ) {
+            setEditorInitialization('ready')
+          }
         })
-        context.update(nodeViewCtx, (views) => [
-          ...views.filter(
-            ([name]) => name !== 'list_item' && name !== 'image'
-          ),
-          ['list_item', taskListItemView] as [string, typeof taskListItemView],
-          ['image', createNoteImageView(courseId)] as [
-            string,
-            ReturnType<typeof createNoteImageView>
-          ]
-        ])
-        context.update(prosePluginsCtx, (plugins) => [
-          ...plugins,
-          createNoteImagePlugin(courseId),
-          // Keeps the native Edit-menu ⌘Z from editing around ProseMirror.
-          nativeHistoryGuard(),
-          createNoteZoomShortcutPlugin((direction) =>
-            onZoomStepRef.current(direction)
-          ),
-          new Plugin({
-            view: (initialView) => {
-              onFormatStateChangeRef.current(
-                getNoteFormatState(initialView.state)
-              )
-              return {
-                update: (view, previousState) => {
-                  onFormatStateChangeRef.current(getNoteFormatState(view.state))
-                  if (previousState.doc.eq(view.state.doc)) return
-                  const markdown = context.get(serializerCtx)(view.state.doc)
-                  onChangeRef.current(markdown)
+        .config((context) => {
+          context.set(rootCtx, root)
+          context.set(defaultValueCtx, initialMarkdown)
+          context.set(rootAttrsCtx, {
+            'aria-label': '마크다운 필기 편집기',
+            'aria-multiline': 'true'
+          })
+          context.update(nodeViewCtx, (views) => [
+            ...views.filter(
+              ([name]) => name !== 'list_item' && name !== 'image'
+            ),
+            ['list_item', taskListItemView] as [string, typeof taskListItemView],
+            ['image', createNoteImageView(courseId)] as [
+              string,
+              ReturnType<typeof createNoteImageView>
+            ]
+          ])
+          context.update(prosePluginsCtx, (plugins) => [
+            ...plugins,
+            createNoteImagePlugin(courseId),
+            // Keeps the native Edit-menu ⌘Z from editing around ProseMirror.
+            nativeHistoryGuard(),
+            createNoteZoomShortcutPlugin((direction) =>
+              onZoomStepRef.current(direction)
+            ),
+            new Plugin({
+              view: (initialView) => {
+                onFormatStateChangeRef.current(
+                  getNoteFormatState(initialView.state)
+                )
+                return {
+                  update: (view, previousState) => {
+                    onFormatStateChangeRef.current(
+                      getNoteFormatState(view.state)
+                    )
+                    if (previousState.doc.eq(view.state.doc)) return
+                    const markdown = context.get(serializerCtx)(view.state.doc)
+                    onChangeRef.current(markdown)
+                  }
                 }
               }
-            }
-          })
-        ])
-      })
+            })
+          ])
+        })
 
       return editorPlugins.reduce(
         (instance, plugin) => instance.use(plugin),
@@ -248,9 +270,28 @@ function MilkdownNoteEditor({
     [courseId, editorPlugins, initialMarkdown]
   )
 
+  useEffect(() => {
+    if (editorInitialization !== 'initializing' || loading) return
+    const editor = getEditor()
+    if (editor?.status === EditorStatus.Created) {
+      setEditorInitialization('ready')
+      return
+    }
+    console.error(
+      '[Bandal] Note editor initialization finished without reaching Created.',
+      { status: editor?.status ?? 'unavailable' }
+    )
+    setEditorInitialization('failed')
+  }, [editorInitialization, getEditor, loading])
+
   return (
     <div className="note-editor-shell" aria-busy={loading}>
       {loading && <div className="note-editor-loading">편집기 준비 중…</div>}
+      {editorInitialization === 'failed' && (
+        <div className="note-editor-warning" role="alert">
+          {t('notes.editor.initializationFailed')}
+        </div>
+      )}
       <Milkdown />
     </div>
   )

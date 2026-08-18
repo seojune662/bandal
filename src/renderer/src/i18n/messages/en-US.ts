@@ -279,6 +279,11 @@ export const enUS: Record<MessageKey, string> = {
   'materials.favorite.added': 'Added to favorites.',
   'materials.favorite.addFailed': 'Could not add the favorite.',
 
+  'notes.editor.unavailable':
+    'The editor is unavailable. Try restarting the app.',
+  'notes.editor.initializationFailed':
+    'Editor initialization failed — try restarting the app',
+
   'browser.externalAuth.message':
     'Google sign-in continues in your default browser. Return to this window after signing in.',
   'browser.externalAuth.dismiss': 'Dismiss notice'

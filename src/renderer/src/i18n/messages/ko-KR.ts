@@ -277,6 +277,11 @@ export const koKR = {
   'materials.favorite.added': '즐겨찾기에 추가했어요.',
   'materials.favorite.addFailed': '즐겨찾기를 추가하지 못했어요.',
 
+  'notes.editor.unavailable':
+    '편집기를 사용할 수 없어요. 앱을 재시작해 보세요.',
+  'notes.editor.initializationFailed':
+    '편집기 초기화에 실패했어요 — 앱을 재시작해 보세요',
+
   'browser.externalAuth.message':
     '구글 로그인은 기본 브라우저에서 진행돼요. 로그인 후 이 창으로 돌아오세요.',
   'browser.externalAuth.dismiss': '안내 닫기'

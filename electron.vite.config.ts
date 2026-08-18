@@ -11,6 +11,20 @@ export default defineConfig({
   },
   renderer: {
     plugins: [react()],
+    resolve: {
+      // Milkdown Slice/Timer identity is a per-module-instance Symbol — TWO
+      // bundled copies of core silently reject editor.create() (the v0.13.0
+      // dead-toolbar bug). Force a single instance no matter what the
+      // dependency tree resolves.
+      dedupe: [
+        '@milkdown/core',
+        '@milkdown/ctx',
+        '@milkdown/utils',
+        '@milkdown/prose',
+        '@milkdown/transformer',
+        '@milkdown/exception'
+      ]
+    },
     build: {
       rollupOptions: {
         input: {
