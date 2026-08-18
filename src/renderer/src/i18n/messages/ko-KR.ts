@@ -277,6 +277,10 @@ export const koKR = {
   'materials.favorite.added': '즐겨찾기에 추가했어요.',
   'materials.favorite.addFailed': '즐겨찾기를 추가하지 못했어요.',
 
+  'workspace.tab.newInstanceTooltip':
+    '{title} · ⌘/Ctrl+클릭으로 새 인스턴스 열기',
+  'workspace.tab.context.openSplitRight': '오른쪽에 분할해서 열기',
+
   'notes.editor.unavailable':
     '편집기를 사용할 수 없어요. 앱을 재시작해 보세요.',
   'notes.editor.initializationFailed':

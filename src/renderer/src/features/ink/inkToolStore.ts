@@ -40,6 +40,8 @@ export interface InkToolStore<TShape extends DrawingShape = DrawingShape> extend
   setWidth: (width: number) => void
   setOpacity: (opacity: number) => void
   recordHistory: (surfaceKey: string, action: InkHistoryAction<TShape>) => void
+  /** Drops a surface's undo/redo stacks (panel unmount cleanup). */
+  clearHistory: (surfaceKey: string) => void
   beginUndo: (surfaceKey: string) => InkHistoryAction<TShape> | null
   finishUndo: (surfaceKey: string, inverse: InkHistoryAction<TShape>) => void
   cancelUndo: (surfaceKey: string, action: InkHistoryAction<TShape>) => void
@@ -53,6 +55,15 @@ const HISTORY_LIMIT = 100
 /** PDF compatibility key; every history API otherwise accepts any opaque surface key. */
 export function drawingFileKey(courseId: string, relPath: string): string {
   return JSON.stringify([courseId, relPath])
+}
+
+/**
+ * Same file, different panel → different undo stack. Without the instance
+ * dimension, two duplicate views of one PDF share a history and undo in one
+ * panel erases strokes drawn in the other.
+ */
+export function instanceSurfaceKey(fileKey: string, instanceId: string): string {
+  return `${fileKey}#${instanceId}`
 }
 
 function historyFor<TShape extends DrawingShape>(
@@ -79,6 +90,14 @@ export const useInkToolStore = create<InkToolStore>()((set, get) => ({
   setColor: (color) => set({ color }),
   setWidth: (width) => set({ width: Math.min(0.04, Math.max(0.001, width)) }),
   setOpacity: (opacity) => set({ opacity: Math.min(1, Math.max(0.05, opacity)) }),
+
+  clearHistory: (surfaceKey) => {
+    set((state) => {
+      if (!(surfaceKey in state.histories)) return state
+      const { [surfaceKey]: _dropped, ...rest } = state.histories
+      return { histories: rest }
+    })
+  },
 
   recordHistory: (surfaceKey, action) => {
     set((state) => {

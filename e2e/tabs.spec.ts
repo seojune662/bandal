@@ -99,7 +99,9 @@ test.describe('workspace tabs', () => {
       .map((entry) => entry.name)
     expect(folders.length).toBe(1)
     courseDir = join(bandal.dataRoot, folders[0]!)
-    writeFileSync(join(courseDir, SEEDED_NOTE), '# Seeded\n')
+    // Body paragraph included: typing must land OUTSIDE the H1 — editing the
+    // H1 renames the file (title↔filename sync) and breaks the disk poll.
+    writeFileSync(join(courseDir, SEEDED_NOTE), '# Seeded\n\nnote-body\n')
   })
 
   test.afterAll(async () => {
@@ -133,7 +135,7 @@ test.describe('workspace tabs', () => {
     // Type into the Milkdown editor.
     const editor = page.locator('[aria-label="마크다운 필기 편집기"]')
     await expect(editor).toBeVisible()
-    await editor.click()
+    await editor.getByText('note-body').click()
     await page.keyboard.press('End')
     await page.keyboard.type('autosave-e2e-marker')
 

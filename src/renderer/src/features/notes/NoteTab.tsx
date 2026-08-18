@@ -49,6 +49,16 @@ import {
   createNoteImageView
 } from './noteImagePlugin'
 import {
+  broadcastNoteEdit,
+  broadcastNoteSave,
+  claimNoteWriter,
+  currentNoteWriter,
+  isNoteWriter,
+  noteDocPeerCount,
+  noteFileKey,
+  subscribeNoteDoc
+} from './noteDocChannel'
+import {
   registerOpenNoteSession,
   retargetOpenNoteSession
 } from './noteSessionRegistry'
@@ -66,6 +76,10 @@ import { taskListItemView } from './taskListView'
 import './note-tab.css'
 
 const SAVE_DELAY_MS = 800
+/** Live-mirror latency between duplicate panels of the same file. */
+const EDIT_BROADCAST_DELAY_MS = 300
+/** Second, late scroll restore after the async editor plugins settle. */
+const SCROLL_RESTORE_RETRY_MS = 120
 
 type SaveStatus = 'saved' | 'dirty' | 'saving' | 'conflict' | 'error'
 type NoteViewMode = 'edit' | 'quiz'
@@ -367,6 +381,16 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   const scheduleRef = useRef<() => void>(() => undefined)
   const closeTaskRef = useRef<Promise<unknown> | null>(null)
   const noteRef = useRef<NoteRef>({ courseId, relPath })
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const broadcastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Remote markdown waiting for focus to leave before it can remount the editor. */
+  const pendingEditorMarkdownRef = useRef<string | null>(null)
+  const pendingScrollTopRef = useRef<number | null>(null)
+
+  const noteFileKeyNow = useCallback(
+    (): string => noteFileKey(noteRef.current.courseId, noteRef.current.relPath),
+    []
+  )
 
   const clearTimer = useCallback((): void => {
     if (timerRef.current === null) return
@@ -385,11 +409,22 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
 
   const retargetNote = useCallback(
     (nextRelPath: string, mtime?: number): void => {
+      const previousRelPath = noteRef.current.relPath
       noteRef.current = { ...noteRef.current, relPath: nextRelPath }
       if (mtime !== undefined) mtimeRef.current = mtime
-      if (aliveRef.current) setCurrentRelPath(nextRelPath)
+      if (!aliveRef.current || previousRelPath === nextRelPath) return
+      setCurrentRelPath(nextRelPath)
+      // Every session on the file is retargeted (H1 rename included), so each
+      // panel keeps its own dockview identity in sync here.
+      panelApi.updateParameters({
+        descriptor: descriptorFor('note', {
+          courseId: noteRef.current.courseId,
+          relPath: nextRelPath
+        })
+      })
+      panelApi.setTitle(noteStem(nextRelPath))
     },
-    []
+    [panelApi]
   )
 
   const syncTitleToFileName = useCallback(
@@ -411,22 +446,35 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
         ...ref,
         newName: title
       })
+      // Retargets EVERY session on the file — each panel (this one included)
+      // refreshes its own dockview descriptor and title via retargetNote.
       if (!retargetOpenNoteSession(ref, renamed.relPath, renamed.mtime)) {
         retargetNote(renamed.relPath, renamed.mtime)
       }
-      if (aliveRef.current) {
-        panelApi.updateParameters({
-          descriptor: descriptorFor('note', {
-            courseId: ref.courseId,
-            relPath: renamed.relPath
-          })
-        })
-        panelApi.setTitle(noteStem(renamed.relPath))
-      }
       syncedTitleRef.current = title
     },
-    [panelApi, retargetNote]
+    [retargetNote]
   )
+
+  const cancelEditBroadcast = useCallback((): void => {
+    if (broadcastTimerRef.current === null) return
+    clearTimeout(broadcastTimerRef.current)
+    broadcastTimerRef.current = null
+  }, [])
+
+  /** Debounced live mirror of local typing into the file's other panels. */
+  const scheduleEditBroadcast = useCallback((): void => {
+    if (noteDocPeerCount(noteFileKeyNow()) < 2) return
+    cancelEditBroadcast()
+    broadcastTimerRef.current = setTimeout(() => {
+      broadcastTimerRef.current = null
+      broadcastNoteEdit(
+        noteFileKeyNow(),
+        panelApi.id,
+        currentMarkdownRef.current
+      )
+    }, EDIT_BROADCAST_DELAY_MS)
+  }, [cancelEditBroadcast, noteFileKeyNow, panelApi])
 
   const flush = useCallback(
     async (overwrite = false): Promise<NoteFlushResult> => {
@@ -445,6 +493,17 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
       }
 
       if (mtimeRef.current === null) return { status: 'unavailable' }
+
+      // Single-writer rule: only the panel that last received a local edit
+      // persists the file. Mirroring panels report saved — their content is
+      // the writer's, and the writer's own flush covers it.
+      if (overwrite) {
+        claimNoteWriter(noteFileKeyNow(), panelApi.id)
+      } else if (!isNoteWriter(noteFileKeyNow(), panelApi.id)) {
+        setStatusIfMounted('saved')
+        return { status: 'saved' }
+      }
+
       if (conflictRef.current && !overwrite) {
         return {
           status: 'conflict',
@@ -470,6 +529,16 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
           mtimeRef.current = result.mtime
           persistedMarkdownRef.current = markdown
           conflictRef.current = false
+          // The saved content supersedes any pending live broadcast; peers
+          // get both the markdown and the fresh mtime so whichever panel
+          // edits next saves without an expectedMtime conflict.
+          cancelEditBroadcast()
+          broadcastNoteSave(
+            noteFileKey(ref.courseId, ref.relPath),
+            panelApi.id,
+            markdown,
+            result.mtime
+          )
           try {
             await syncTitleToFileName(markdown)
           } catch (error) {
@@ -488,6 +557,18 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
         } catch (error) {
           if (isNoteConflict(error)) {
             const detail = '디스크의 파일이 편집 중 변경되었습니다.'
+            if (
+              !overwrite &&
+              mtimeRef.current !== null &&
+              mtimeRef.current !== expectedMtime
+            ) {
+              // Another panel of this app saved while our write was in
+              // flight — its broadcast already refreshed our mtime. This is
+              // an in-app race, not an external change: leave conflictRef
+              // false so the outer flush retries instead of raising the
+              // conflict banner.
+              return { status: 'conflict', detail } as const
+            }
             conflictRef.current = true
             setStatusIfMounted('conflict', detail)
             return { status: 'conflict', detail } as const
@@ -506,8 +587,13 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
         }
       })()
       writeInFlightRef.current = request
-      await request
+      const result = await request
 
+      // In-app race (see the conflict handler above): retry against the
+      // propagated mtime instead of surfacing a conflict banner.
+      if (result.status === 'conflict' && !conflictRef.current && !overwrite) {
+        return flushRef.current()
+      }
       if (
         overwrite &&
         !conflictRef.current &&
@@ -515,9 +601,16 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
       ) {
         return flushRef.current()
       }
-      return request
+      return result
     },
-    [clearTimer, setStatusIfMounted, syncTitleToFileName]
+    [
+      cancelEditBroadcast,
+      clearTimer,
+      noteFileKeyNow,
+      panelApi,
+      setStatusIfMounted,
+      syncTitleToFileName
+    ]
   )
   flushRef.current = flush
 
@@ -553,6 +646,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   const applyLoadedNote = useCallback(
     (note: NoteContent): void => {
       clearTimer()
+      pendingEditorMarkdownRef.current = null
       currentMarkdownRef.current = note.markdown
       persistedMarkdownRef.current = note.markdown
       mtimeRef.current = note.mtime
@@ -567,6 +661,87 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
     },
     [clearTimer, setStatusIfMounted]
   )
+
+  /**
+   * Reflects remote (same-app, other-panel) markdown into this panel's
+   * editor by reseeding it — the same remount path the "다시 불러오기"
+   * button uses. While this panel holds focus the swap is deferred so the
+   * caret and IME state survive; the scroll position is captured and
+   * restored around the remount.
+   */
+  const applyMarkdownToEditor = useCallback((markdown: string): void => {
+    const root = containerRef.current
+    const active = document.activeElement
+    if (root !== null && active !== null && root.contains(active)) {
+      pendingEditorMarkdownRef.current = markdown
+      return
+    }
+    pendingEditorMarkdownRef.current = null
+    const scroller = root?.querySelector('.note-editor-scroll')
+    pendingScrollTopRef.current =
+      scroller instanceof HTMLElement ? scroller.scrollTop : null
+    revisionRef.current += 1
+    setEditorSeed({ markdown, revision: revisionRef.current })
+  }, [])
+
+  /** Applies markdown that arrived while this panel was focused. */
+  const flushPendingEditorMarkdown = useCallback((): void => {
+    const pending = pendingEditorMarkdownRef.current
+    if (pending === null) return
+    pendingEditorMarkdownRef.current = null
+    applyMarkdownToEditor(pending)
+  }, [applyMarkdownToEditor])
+
+  const handleRemoteEdit = useCallback(
+    (markdown: string): void => {
+      // The sender is now the writer — drop our stale save/broadcast timers.
+      clearTimer()
+      cancelEditBroadcast()
+      if (markdown === currentMarkdownRef.current) return
+      currentMarkdownRef.current = markdown
+      // The writer panel owns persistence of this content: mirroring panels
+      // must not treat it as their own dirty state (no save attempts, no
+      // conflict-copy toast when they close). Any conflict is likewise the
+      // writer's to detect and surface.
+      persistedMarkdownRef.current = markdown
+      conflictRef.current = false
+      syncedTitleRef.current = firstH1Title(markdown)
+      if (!aliveRef.current) return
+      setPresentedMarkdown(markdown)
+      setStatusIfMounted('saved')
+      applyMarkdownToEditor(markdown)
+    },
+    [applyMarkdownToEditor, cancelEditBroadcast, clearTimer, setStatusIfMounted]
+  )
+
+  const handleRemoteSave = useCallback(
+    (markdown: string, mtime: number): void => {
+      // The propagated mtime is what lets this panel save next without an
+      // expectedMtime conflict, writer or not.
+      mtimeRef.current = mtime
+      persistedMarkdownRef.current = markdown
+      if (currentNoteWriter(noteFileKeyNow()) === panelApi.id) {
+        // We already took over as writer with newer local edits; keep them.
+        return
+      }
+      conflictRef.current = false
+      if (markdown !== currentMarkdownRef.current) {
+        currentMarkdownRef.current = markdown
+        syncedTitleRef.current = firstH1Title(markdown)
+        if (aliveRef.current) {
+          setPresentedMarkdown(markdown)
+          applyMarkdownToEditor(markdown)
+        }
+      }
+      setStatusIfMounted('saved')
+    },
+    [applyMarkdownToEditor, noteFileKeyNow, panelApi, setStatusIfMounted]
+  )
+
+  const remoteEditRef = useRef(handleRemoteEdit)
+  const remoteSaveRef = useRef(handleRemoteSave)
+  remoteEditRef.current = handleRemoteEdit
+  remoteSaveRef.current = handleRemoteSave
 
   const loadNote = useCallback(async (): Promise<void> => {
     setLoadError(null)
@@ -604,12 +779,47 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
     [panelApi, retargetNote]
   )
 
+  // Live sync channel with other panels showing the same file. Re-subscribes
+  // under the new file key whenever a rename/move retargets this session.
+  useEffect(() => {
+    return subscribeNoteDoc(
+      noteFileKey(courseId, currentRelPath),
+      panelApi.id,
+      {
+        onRemoteEdit: (markdown) => remoteEditRef.current(markdown),
+        onRemoteSave: (markdown, mtime) =>
+          remoteSaveRef.current(markdown, mtime)
+      }
+    )
+  }, [courseId, currentRelPath, panelApi])
+
+  // Best-effort scroll restore around a remote-apply remount. The second,
+  // delayed pass covers the async editor-plugin load reflowing the document.
+  useEffect(() => {
+    if (editorSeed === null) return
+    const scrollTop = pendingScrollTopRef.current
+    if (scrollTop === null) return
+    pendingScrollTopRef.current = null
+    const restore = (): void => {
+      const scroller = containerRef.current?.querySelector('.note-editor-scroll')
+      if (scroller instanceof HTMLElement) scroller.scrollTop = scrollTop
+    }
+    const frame = requestAnimationFrame(restore)
+    const timeout = setTimeout(restore, SCROLL_RESTORE_RETRY_MS)
+    return () => {
+      cancelAnimationFrame(frame)
+      clearTimeout(timeout)
+    }
+  }, [editorSeed])
+
   useEffect(() => {
     const disposable = panelApi.onDidActiveChange(({ isActive }) => {
-      if (!isActive) void flushRef.current()
+      if (isActive) return
+      flushPendingEditorMarkdown()
+      void flushRef.current()
     })
     return () => disposable.dispose()
-  }, [panelApi])
+  }, [flushPendingEditorMarkdown, panelApi])
 
   useEffect(() => {
     return registerNoteFlushTriggers({
@@ -631,10 +841,11 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
     closeTaskRef.current = null
     return () => {
       clearTimer()
+      cancelEditBroadcast()
       aliveRef.current = false
       void preserveOnClose()
     }
-  }, [clearTimer, preserveOnClose])
+  }, [cancelEditBroadcast, clearTimer, preserveOnClose])
 
   useEffect(() => {
     const syncFontScale = (event: Event): void => {
@@ -670,6 +881,11 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
     (markdown: string): void => {
       if (markdown === currentMarkdownRef.current) return
       currentMarkdownRef.current = markdown
+      // Typing here makes this panel's doc authoritative for the file: any
+      // deferred remote content is stale, and this panel becomes the writer.
+      pendingEditorMarkdownRef.current = null
+      claimNoteWriter(noteFileKeyNow(), panelApi.id)
+      scheduleEditBroadcast()
       setPresentedMarkdown(markdown)
 
       if (conflictRef.current) return
@@ -681,7 +897,14 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
       setStatusIfMounted('dirty')
       scheduleSave()
     },
-    [clearTimer, scheduleSave, setStatusIfMounted]
+    [
+      clearTimer,
+      noteFileKeyNow,
+      panelApi,
+      scheduleEditBroadcast,
+      scheduleSave,
+      setStatusIfMounted
+    ]
   )
 
   const reloadFromDisk = useCallback(async (): Promise<void> => {
@@ -738,7 +961,15 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   }
 
   return (
-    <div className="note-tab">
+    <div
+      className="note-tab"
+      ref={containerRef}
+      onBlurCapture={(event) => {
+        const next = event.relatedTarget
+        if (next instanceof Node && event.currentTarget.contains(next)) return
+        flushPendingEditorMarkdown()
+      }}
+    >
       <header className="note-toolbar">
         <span className="note-toolbar__path" title={currentRelPath}>
           {fileName}

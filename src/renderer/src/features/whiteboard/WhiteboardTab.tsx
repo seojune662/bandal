@@ -1,5 +1,5 @@
 import type { IDockviewPanelProps } from 'dockview'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import type { DrawingShape } from '../../../../shared/types/drawing'
 import type {
@@ -10,6 +10,7 @@ import type {
 } from '../../../../shared/types/whiteboard'
 import { invoke, onPush } from '../../lib/ipc'
 import {
+  instanceSurfaceKey,
   useInkToolStore,
   type InkHistoryAction
 } from '../ink'
@@ -156,7 +157,14 @@ function WhiteboardSession({
   initialShapes,
   panelActive
 }: WhiteboardSessionProps): JSX.Element {
-  const surfaceKey = `whiteboard:${board.id}`
+  // Instance-scoped undo: duplicate views of one board must not share stacks.
+  const instanceId = useId()
+  const surfaceKey = instanceSurfaceKey(`whiteboard:${board.id}`, instanceId)
+  useEffect(() => {
+    return () => {
+      useInkToolStore.getState().clearHistory(surfaceKey)
+    }
+  }, [surfaceKey])
   const [shapes, setShapes] = useState<DrawingShape[]>(() =>
     mergeWhiteboardShapes([], initialShapes)
   )

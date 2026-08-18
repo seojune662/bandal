@@ -381,9 +381,21 @@ export function FavoritesSection({
                 type="button"
                 className="favorite-row__open"
                 title={favorite.label}
-                onClick={() =>
+                onClick={(event) => {
+                  const newInstance =
+                    favorite.descriptor.kind !== 'group-chat' &&
+                    favorite.descriptor.kind !== 'board' &&
+                    (window.bandal?.platform === 'darwin'
+                      ? event.metaKey
+                      : event.ctrlKey)
+                  if (newInstance) {
+                    useWorkspaceStore
+                      .getState()
+                      .openTab(favorite.descriptor, { newInstance: true })
+                    return
+                  }
                   useWorkspaceStore.getState().openTab(favorite.descriptor)
-                }
+                }}
               >
                 <TabKindIcon kind={favorite.descriptor.kind} />
                 <span>{favorite.label}</span>

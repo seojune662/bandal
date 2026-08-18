@@ -24,6 +24,10 @@ import { invoke } from '../lib/ipc'
 import { settingsSnapshot } from './settingsSnapshot'
 import { tabPanelId, tabTitle } from '../features/workspace/tabIdentity'
 import {
+  createDuplicatePanelId,
+  panelIdMatchesDescriptor
+} from '../features/workspace/tabDuplication'
+import {
   LAYOUT_SAVE_DEBOUNCE_MS,
   structuralKey,
   tabsFromLayout,
@@ -43,7 +47,9 @@ interface WorkspaceState {
   /** Swap the whole layout: save current course, hydrate the target. */
   setActiveCourse: (courseId: string | null) => void
   /** Open a tab, focusing the existing panel when the identity matches. */
-  openTab: (descriptor: TabDescriptor) => void
+  openTab: (descriptor: TabDescriptor, options?: { newInstance?: boolean }) => void
+  /** Closes the canonical tab and all its duplicate views. */
+  closeTabsMatching: (descriptor: TabDescriptor) => void
   closeTab: (panelId: string) => void
   closeOthers: (panelId: string) => void
   /** [M6-A] ⌘W: close the focused tab; no tab → no-op (never the window). */
@@ -208,9 +214,14 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       void hydrate(courseId, serial)
     },
 
-    openTab: (descriptor) => {
+    openTab: (descriptor, options) => {
       if (api === null) return
-      const panelId = tabPanelId(descriptor)
+      // newInstance: 같은 파일의 새 뷰를 하나 더 연다 (⌘클릭/분할 열기).
+      // 복제 패널 id 규칙은 탭 복제와 동일 — validateLayout이 이미 수용한다.
+      const panelId =
+        options?.newInstance === true
+          ? createDuplicatePanelId(descriptor)
+          : tabPanelId(descriptor)
       const existing = api.getPanel(panelId)
       if (existing !== undefined) {
         // Refresh the params before focusing. The panel id does not always
@@ -251,6 +262,15 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     closeTab: (panelId) => {
       if (api === null) return
       api.getPanel(panelId)?.api.close()
+    },
+
+    closeTabsMatching: (descriptor) => {
+      // Closes the canonical panel AND every duplicate view of the same tab —
+      // closing only tabPanelId(descriptor) leaves ::duplicate:: panels open.
+      if (api === null) return
+      for (const panel of [...api.panels]) {
+        if (panelIdMatchesDescriptor(panel.id, descriptor)) panel.api.close()
+      }
     },
 
     closeOthers: (panelId) => {

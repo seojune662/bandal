@@ -5,7 +5,7 @@ import { showToast } from '../../app/toast'
 import { Tooltip } from '../../components/Tooltip'
 import { invoke } from '../../lib/ipc'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
-import { descriptorFor, tabPanelId } from '../workspace/tabIdentity'
+import { descriptorFor } from '../workspace/tabIdentity'
 
 interface BoardMenuState {
   board: PersonalBoard
@@ -236,8 +236,8 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
       setBoards((current) =>
         current?.filter((entry) => entry.id !== board.id) ?? null
       )
-      useWorkspaceStore.getState().closeTab(
-        tabPanelId(descriptorFor('whiteboard', { courseId, boardId: board.id }))
+      useWorkspaceStore.getState().closeTabsMatching(
+        descriptorFor('whiteboard', { courseId, boardId: board.id })
       )
       showToast('화이트보드를 삭제했어요.')
     } catch (removeError: unknown) {

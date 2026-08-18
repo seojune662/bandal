@@ -17,7 +17,7 @@ import {
   retargetOpenNoteSession
 } from '../notes/noteSessionRegistry'
 import { openMaterialInWorkspace } from '../workspace/openMaterial'
-import { descriptorFor, tabPanelId } from '../workspace/tabIdentity'
+import { descriptorFor } from '../workspace/tabIdentity'
 import { MaterialDeleteDialog } from './MaterialDeleteDialog'
 import { MaterialSearchResults, MaterialTree } from './MaterialTree'
 import {
@@ -129,8 +129,8 @@ function reconcileTabsAfterRename(
   if (!reopened && node.kind !== 'dir') {
     const oldKind = node.kind
     if (oldKind === 'pdf' || oldKind === 'note') {
-      workspace.closeTab(
-        tabPanelId(descriptorFor(oldKind, { courseId, relPath: node.relPath }))
+      workspace.closeTabsMatching(
+        descriptorFor(oldKind, { courseId, relPath: node.relPath })
       )
     }
   }
@@ -155,8 +155,8 @@ function closeDeletedTabs(courseId: string, node: MaterialNode): void {
     }
   }
   if (node.kind === 'pdf' || node.kind === 'note') {
-    workspace.closeTab(
-      tabPanelId(descriptorFor(node.kind, { courseId, relPath: node.relPath }))
+    workspace.closeTabsMatching(
+      descriptorFor(node.kind, { courseId, relPath: node.relPath })
     )
   }
 }

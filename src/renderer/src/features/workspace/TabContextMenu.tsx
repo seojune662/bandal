@@ -6,6 +6,7 @@ import type { TabDescriptor } from '../../../../shared/tabs'
 import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
+import { useT } from '../../i18n'
 import { openInSystemBrowser } from '../university/openService'
 import { requestChatPrompt } from '../chat/chatPromptBus'
 import { guestActions } from '../browser/guestActions'
@@ -71,9 +72,12 @@ export function TabContextMenu({
   returnFocus,
   onClose
 }: TabContextMenuProps): JSX.Element {
+  const t = useT()
   const menuRef = useRef<HTMLDivElement>(null)
   const isFileTab = descriptor.kind === 'pdf' || descriptor.kind === 'note'
   const isBrowserTab = descriptor.kind === 'browser'
+  const canOpenNewInstance =
+    descriptor.kind !== 'group-chat' && descriptor.kind !== 'board'
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -111,6 +115,37 @@ export function TabContextMenu({
       sourcePanel !== undefined && sourceIndex !== undefined && sourceIndex >= 0
         ? { position: { referencePanel: sourcePanel, index: sourceIndex + 1 } }
         : {}
+
+    if (descriptor.kind === 'browser') {
+      const duplicateDescriptor = descriptorFor('browser', {
+        tabId: uuidv4(),
+        initialUrl: currentBrowserUrl(descriptor) ?? descriptor.payload.initialUrl
+      })
+      containerApi.addPanel({
+        id: tabPanelId(duplicateDescriptor),
+        component: duplicateDescriptor.kind,
+        title: label,
+        params: { descriptor: duplicateDescriptor },
+        ...position
+      })
+      return
+    }
+
+    containerApi.addPanel({
+      id: createDuplicatePanelId(descriptor),
+      component: descriptor.kind,
+      title: label,
+      params: { descriptor },
+      ...position
+    })
+  }
+
+  const openSplitRight = (): void => {
+    const sourcePanel = containerApi.getPanel(panelId)
+    if (sourcePanel === undefined || !canOpenNewInstance) return
+    const position = {
+      position: { referencePanel: sourcePanel, direction: 'right' as const }
+    }
 
     if (descriptor.kind === 'browser') {
       const duplicateDescriptor = descriptorFor('browser', {
@@ -261,6 +296,16 @@ export function TabContextMenu({
       <button type="button" role="menuitem" onClick={() => activate(duplicateTab)}>
         <Icon name="file" />탭 복제
       </button>
+      {canOpenNewInstance && (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => activate(openSplitRight)}
+        >
+          <Icon name="layoutRight" />
+          {t('workspace.tab.context.openSplitRight')}
+        </button>
+      )}
 
       {isFileTab && (
         <>

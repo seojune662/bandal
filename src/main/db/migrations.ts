@@ -642,6 +642,26 @@ export const migrations: Migration[] = [
            ON courses (group_id, sort_order) WHERE deleted_at IS NULL;`
       )
     }
+  },
+  {
+    // [M18] 영상 이어보기. Derived per-file view state (watch position +
+    // playback rate) — no id / soft-delete: the (course, file) pair IS the
+    // identity and losing a row only loses a resume point.
+    version: 18,
+    name: 'media-progress',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS media_progress (
+           course_id     TEXT NOT NULL REFERENCES courses(id),
+           rel_path      TEXT NOT NULL,
+           position_sec  REAL NOT NULL,
+           duration_sec  REAL,
+           playback_rate REAL NOT NULL DEFAULT 1,
+           updated_at    TEXT NOT NULL,
+           PRIMARY KEY (course_id, rel_path)
+         );`
+      )
+    }
   }
 ]
 

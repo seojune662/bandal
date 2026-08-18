@@ -75,6 +75,7 @@ import type {
   RunStudyToolResult,
   StudyToolDefinition
 } from '../types/study'
+import type { MediaProgress } from '../types/mediaProgress'
 import type { SearchHit, StudyGap } from '../types/search'
 import type {
   MaterialBacklinks,
@@ -362,6 +363,21 @@ export interface IpcContract {
   'materials:unwatch': {
     req: { courseId: string }
     res: { ok: true }
+  }
+  /** [M18] 영상 이어보기 — last watch position + playback rate per file. */
+  'media:getProgress': {
+    req: { courseId: string; relPath: string }
+    res: MediaProgress | null
+  }
+  'media:setProgress': {
+    req: {
+      courseId: string
+      relPath: string
+      positionSec: number
+      durationSec: number | null
+      playbackRate: number
+    }
+    res: MediaProgress
   }
 
   // -- notes ----------------------------------------------------------------
@@ -1086,6 +1102,8 @@ export const IPC_CHANNELS = [
   'materials:createFolder',
   'materials:downloadFromUrl',
   'materials:unwatch',
+  'media:getProgress',
+  'media:setProgress',
   'notes:read',
   'notes:write',
   'notes:create',

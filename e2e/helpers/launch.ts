@@ -59,7 +59,10 @@ export async function launchBandal(): Promise<BandalApp> {
           flowVersion: ONBOARDING_FLOW_VERSION,
           closedAt: new Date().toISOString(),
           lastCompletedStep: 3
-        }
+        },
+        // Tour offer (.tour-offer) is a pointer-intercepting dialog — it pops
+        // mid-test and steals clicks. Mark the tour as already seen.
+        tutorial: { seenVersion: 1, activeCourseId: null }
       },
       null,
       2

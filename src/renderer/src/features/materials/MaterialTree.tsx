@@ -339,11 +339,19 @@ function TreeNode({
           style={rowStyle}
           title={rowTitle(node.kind, node.relPath)}
           onFocus={() => onSelect(node)}
-          onClick={() => {
+          onClick={(event) => {
             onSelect(node)
             if (isDirectory) onToggleFolder(node.relPath)
             else if (node.kind !== 'dir') {
-              openMaterialInWorkspace(node.kind, node.relPath)
+              const newInstance =
+                window.bandal?.platform === 'darwin'
+                  ? event.metaKey
+                  : event.ctrlKey
+              openMaterialInWorkspace(
+                node.kind,
+                node.relPath,
+                newInstance ? { newInstance: true } : undefined
+              )
             }
           }}
           onContextMenu={(event) => onContextMenu(event, node)}
@@ -630,9 +638,17 @@ export function MaterialSearchResults({
               data-material-path={result.relPath}
               title={rowTitle(result.kind, result.relPath)}
               onFocus={() => onSelect(node)}
-              onClick={() => {
+              onClick={(event) => {
                 onSelect(node)
-                openMaterialInWorkspace(result.kind, result.relPath)
+                const newInstance =
+                  window.bandal?.platform === 'darwin'
+                    ? event.metaKey
+                    : event.ctrlKey
+                openMaterialInWorkspace(
+                  result.kind,
+                  result.relPath,
+                  newInstance ? { newInstance: true } : undefined
+                )
               }}
               onContextMenu={(event) => onContextMenu(event, node)}
               onDragStart={(event) => {

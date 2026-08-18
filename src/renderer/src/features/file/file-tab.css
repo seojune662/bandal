@@ -74,6 +74,31 @@
   outline-offset: calc(-1 * var(--space-1));
 }
 
+.file-video__rate-control {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 1;
+}
+
+.file-video__rate {
+  min-height: var(--control-height);
+  padding-inline: var(--space-2);
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  cursor: pointer;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+
+.file-video__rate:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: var(--space-1);
+}
+
 .file-video__status {
   position: absolute;
   inset: 0;

@@ -279,6 +279,10 @@ export const enUS: Record<MessageKey, string> = {
   'materials.favorite.added': 'Added to favorites.',
   'materials.favorite.addFailed': 'Could not add the favorite.',
 
+  'workspace.tab.newInstanceTooltip':
+    '{title} · ⌘/Ctrl-click to open another instance',
+  'workspace.tab.context.openSplitRight': 'Open in split to the right',
+
   'notes.editor.unavailable':
     'The editor is unavailable. Try restarting the app.',
   'notes.editor.initializationFailed':

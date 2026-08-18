@@ -2,6 +2,7 @@ import type { IDockviewPanelProps } from 'dockview'
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState
@@ -26,6 +27,7 @@ import { invoke } from '../../lib/ipc'
 import {
   dataUrlImageAspect,
   imageBoxAtPoint,
+  instanceSurfaceKey,
   loadDrawingImage,
   useInkToolStore,
   type InkHistoryAction
@@ -134,7 +136,14 @@ function CanvasSession({
   initialShapes,
   panelApi
 }: CanvasSessionProps): JSX.Element {
-  const surfaceKey = canvasUndoKey(initialBoard.id)
+  // Instance-scoped undo: duplicate views of one board must not share stacks.
+  const instanceId = useId()
+  const surfaceKey = instanceSurfaceKey(canvasUndoKey(initialBoard.id), instanceId)
+  useEffect(() => {
+    return () => {
+      useInkToolStore.getState().clearHistory(surfaceKey)
+    }
+  }, [surfaceKey])
   const [board, setBoard] = useState(initialBoard)
   const [shapes, setShapes] = useState<PersonalBoardShape[]>(() => [...initialShapes])
   const [statusMessage, setStatusMessage] = useState<string | null>(null)

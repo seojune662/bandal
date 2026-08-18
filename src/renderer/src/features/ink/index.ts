@@ -10,6 +10,7 @@ export * from './imagePlacement'
 export * from './inkGeometry'
 export {
   drawingFileKey,
+  instanceSurfaceKey,
   useInkToolStore,
   type InkHistory,
   type InkHistoryAction,

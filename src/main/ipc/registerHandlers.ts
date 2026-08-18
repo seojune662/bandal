@@ -39,6 +39,7 @@ import { ValidationError } from '../db/errors'
 import {
   createMaterialsRepo,
   createMaterialsWatcher,
+  createMediaProgressRepo,
   createMediaProtocolHandler,
   MEDIA_SCHEME
 } from '../features/materials'
@@ -452,6 +453,13 @@ export function registerHandlers(): IpcRouter {
     drawingsRepo.softDelete(req.ids)
     return OK
   })
+
+  // -- media progress (M18: 영상 이어보기) ----------------------------------
+  const mediaProgressRepo = createMediaProgressRepo(db)
+  handle('media:getProgress', (req) =>
+    mediaProgressRepo.get(req.courseId, req.relPath)
+  )
+  handle('media:setProgress', (req) => mediaProgressRepo.set(req))
 
   // Export burns markup into a NEW file — the source pdf is never written to.
   const pdfExporter = createPdfExporter({

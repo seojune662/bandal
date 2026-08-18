@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type {
   CreateDrawingInput,
   Drawing,
@@ -10,6 +10,7 @@ import {
   usePdfToolStore,
   type DrawingHistoryAction
 } from './toolStore'
+import { instanceSurfaceKey } from '../../ink/inkToolStore'
 
 export interface DrawingsApi {
   drawings: Drawing[]
@@ -49,7 +50,15 @@ function inputFor(drawing: Drawing): CreateDrawingInput {
 }
 
 export function useDrawings(courseId: string, relPath: string): DrawingsApi {
-  const fileKey = drawingFileKey(courseId, relPath)
+  // Per-mount undo stack: duplicate views of the same PDF must not share
+  // history (undo in one panel would erase strokes drawn in the other).
+  const instanceId = useId()
+  const fileKey = instanceSurfaceKey(drawingFileKey(courseId, relPath), instanceId)
+  useEffect(() => {
+    return () => {
+      usePdfToolStore.getState().clearHistory(fileKey)
+    }
+  }, [fileKey])
   const [drawings, setDrawings] = useState<Drawing[]>([])
   const [loading, setLoading] = useState(true)
   const [historyBusy, setHistoryBusy] = useState(false)

@@ -18,6 +18,7 @@ import 'dockview/dist/styles/dockview.css'
 import { Icon } from '../../app/icons'
 import { BandalMark } from '../../components/BandalMark'
 import { Tooltip } from '../../components/Tooltip'
+import { useT } from '../../i18n'
 import { flushLastActiveCoursePersist, useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
@@ -41,6 +42,7 @@ const bandalTheme: DockviewTheme = {
 }
 
 function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
+  const t = useT()
   const [title, setTitle] = useState(props.api.title ?? '')
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -62,6 +64,10 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
 
   const rawDescriptor = (props.params as Record<string, unknown>)['descriptor']
   const descriptor = isTabDescriptor(rawDescriptor) ? rawDescriptor : null
+  const canOpenNewInstance =
+    descriptor !== null &&
+    descriptor.kind !== 'group-chat' &&
+    descriptor.kind !== 'board'
 
   useEffect(() => {
     const dockviewTab = tabRef.current?.closest('.dv-tab')
@@ -80,7 +86,14 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
 
   return (
     <>
-      <Tooltip label={title} placement="bottom">
+      <Tooltip
+        label={
+          canOpenNewInstance
+            ? t('workspace.tab.newInstanceTooltip', { title })
+            : title
+        }
+        placement="bottom"
+      >
         <div
           ref={tabRef}
           className="workspace-tab"
@@ -108,6 +121,22 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
               event.preventDefault()
               props.api.close()
             }
+          }}
+          onClick={(event) => {
+            if (
+              descriptor === null ||
+              !canOpenNewInstance ||
+              !(window.bandal?.platform === 'darwin'
+                ? event.metaKey
+                : event.ctrlKey)
+            ) {
+              return
+            }
+            event.preventDefault()
+            event.stopPropagation()
+            useWorkspaceStore
+              .getState()
+              .openTab(descriptor, { newInstance: true })
           }}
         >
           {descriptor !== null && (

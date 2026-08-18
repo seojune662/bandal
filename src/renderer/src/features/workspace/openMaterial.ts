@@ -5,13 +5,18 @@
  * so the sidebar only needs a one-line call.
  */
 
+import type { TabDescriptor } from '../../../../shared/tabs'
+import type { MaterialKind } from '../../../../shared/types/materials'
 import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
-import type { MaterialKind } from '../../../../shared/types/materials'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from './tabIdentity'
 import { isViewableFile } from '../file/fileFormats'
+
+interface OpenMaterialOptions {
+  newInstance?: boolean
+}
 
 export const MATERIAL_OPEN_DEDUPE_MS = 5 * 60 * 1000
 
@@ -46,11 +51,12 @@ function recordMaterialOpened(courseId: string, relPath: string): void {
 
 export function openMaterialInWorkspace(
   kind: MaterialKind,
-  relPath: string
+  relPath: string,
+  options?: OpenMaterialOptions
 ): void {
   const courseId = useMaterialsStore.getState().activeCourseId
   if (courseId === null) return
-  openMaterialInCourse(courseId, kind, relPath)
+  openMaterialInCourse(courseId, kind, relPath, options)
 }
 
 /**
@@ -61,28 +67,31 @@ export function openMaterialInWorkspace(
 export function openMaterialInCourse(
   courseId: string,
   kind: MaterialKind,
-  relPath: string
+  relPath: string,
+  options?: OpenMaterialOptions
 ): void {
+  const openTab = (descriptor: TabDescriptor): void => {
+    if (options?.newInstance === true) {
+      useWorkspaceStore.getState().openTab(descriptor, { newInstance: true })
+      return
+    }
+    useWorkspaceStore.getState().openTab(descriptor)
+  }
+
   if (kind === 'other' && isViewableFile(relPath)) {
-    useWorkspaceStore.getState().openTab(
-      descriptorFor('file', { courseId, relPath })
-    )
+    openTab(descriptorFor('file', { courseId, relPath }))
     recordMaterialOpened(courseId, relPath)
     return
   }
   // 동영상은 범용 파일 탭으로 연다 — FileTab 의 'video' 분기(현재는 자리표시자,
   // VideoTab 워커가 bandal-media 스트리밍 뷰어로 교체)가 렌더링을 맡는다.
   if (kind === 'video') {
-    useWorkspaceStore.getState().openTab(
-      descriptorFor('file', { courseId, relPath })
-    )
+    openTab(descriptorFor('file', { courseId, relPath }))
     recordMaterialOpened(courseId, relPath)
     return
   }
   if (kind === 'pdf' || kind === 'note' || kind === 'image') {
-    useWorkspaceStore.getState().openTab(
-      descriptorFor(kind, { courseId, relPath })
-    )
+    openTab(descriptorFor(kind, { courseId, relPath }))
     recordMaterialOpened(courseId, relPath)
     return
   }
