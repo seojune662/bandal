@@ -11,6 +11,7 @@ import type {
 import { folderProblemMessage } from '../features/courses/folderMessages'
 import { invoke } from '../lib/ipc'
 import type { ImmerStore } from './immerStore'
+import { ensureSettingsLoaded, settingsSnapshot } from './settingsSnapshot'
 import { useWorkspaceStore } from './workspaceStore'
 
 interface CoursesState {
@@ -48,6 +49,32 @@ interface CoursesState {
 
 let loadSequence = 0
 
+/**
+ * [R3] 마지막 활성 과목을 settings 로 저장하는 디바운스. 과목을 빠르게
+ * 넘겨볼 때 settings:set 이 연타되지 않게 하고, 스냅샷과 같은 값이면
+ * 아예 쓰지 않아 settings:changed 왕복 루프를 막는다.
+ */
+const LAST_COURSE_PERSIST_DEBOUNCE_MS = 800
+let lastCoursePersistTimer: ReturnType<typeof setTimeout> | null = null
+
+function persistLastActiveCourse(courseId: string): void {
+  if (lastCoursePersistTimer !== null) clearTimeout(lastCoursePersistTimer)
+  if (settingsSnapshot().lastActiveCourseId === courseId) {
+    lastCoursePersistTimer = null
+    return
+  }
+  lastCoursePersistTimer = setTimeout(() => {
+    lastCoursePersistTimer = null
+    // 브로드캐스트가 스냅샷을 갱신하므로, 그 사이 같은 값이 되었으면 무시.
+    if (settingsSnapshot().lastActiveCourseId === courseId) return
+    void invoke('settings:set', { lastActiveCourseId: courseId }).catch(
+      (error: unknown) => {
+        console.error('[Bandal] 마지막 과목을 저장하지 못했습니다.', error)
+      }
+    )
+  }, LAST_COURSE_PERSIST_DEBOUNCE_MS)
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '요청을 처리하지 못했습니다.'
 }
@@ -78,9 +105,13 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
 
       try {
         // 그룹 목록은 과목 목록과 항상 짝으로 그려지므로 병렬로 함께 당긴다.
-        const [courses, groups] = await Promise.all([
+        // [R3] settings 도 함께 — 부팅 경로에서 마지막 과목 복원에 쓰이고,
+        // 이후 workspaceStore.openTab 의 동기 스냅샷 읽기도 데워 둔다.
+        const [courses, groups, settings] = await Promise.all([
           invoke('courses:list', {}),
-          invoke('courseGroups:list', {})
+          invoke('courseGroups:list', {}),
+          // 복원은 부가 기능 — settings 로드 실패가 과목 목록까지 막으면 안 된다.
+          ensureSettingsLoaded().catch(() => null)
         ])
         if (sequence !== loadSequence) return
         set((state) => {
@@ -89,7 +120,18 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
           const selectionStillExists = courses.some(
             (course) => course.id === state.selectedCourseId
           )
-          if (!selectionStillExists) state.selectedCourseId = courses[0]?.id ?? null
+          if (!selectionStillExists) {
+            // [R3] 부팅(또는 선택 과목 소멸) 시: 설정이 켜져 있고 기록된
+            // 과목이 아직 살아 있으면 그 과목을, 아니면 첫 과목을 고른다.
+            const remembered =
+              settings !== null &&
+              settings.restoreLastCourse &&
+              settings.lastActiveCourseId !== null &&
+              courses.some((course) => course.id === settings.lastActiveCourseId)
+                ? settings.lastActiveCourseId
+                : null
+            state.selectedCourseId = remembered ?? courses[0]?.id ?? null
+          }
           state.isLoading = false
         })
       } catch (error) {
@@ -187,6 +229,8 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
       set((state) => {
         state.selectedCourseId = courseId
       })
+      // [R3] 다음 부팅의 복원용. 값이 같으면 쓰지 않는다(디바운스 내부 처리).
+      persistLastActiveCourse(courseId)
     },
 
     createCourse: async (input) => {

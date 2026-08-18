@@ -21,6 +21,7 @@ import { create } from 'zustand'
 import type { DockviewApi } from 'dockview'
 import type { TabDescriptor } from '../../../shared/tabs'
 import { invoke } from '../lib/ipc'
+import { settingsSnapshot } from './settingsSnapshot'
 import { tabPanelId, tabTitle } from '../features/workspace/tabIdentity'
 import {
   LAYOUT_SAVE_DEBOUNCE_MS,
@@ -221,11 +222,29 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         existing.api.setActive()
         return
       }
+      // [R3] "현재 탭 옆에 열기" 설정: 새 탭을 활성 그룹의 끝이 아니라
+      // 지금 보고 있는 탭 바로 다음 칸에 넣는다(복제 탭과 같은 위치 규칙,
+      // TabContextMenu.duplicateTab 참고). 기존 패널을 포커스만 하는 위의
+      // 경로에는 적용하지 않는다 — 이미 있는 탭은 자리를 옮기지 않는다.
+      const activePanel = api.activePanel
+      const activeIndex =
+        activePanel === undefined
+          ? -1
+          : activePanel.group.panels.findIndex(
+              (panel) => panel.id === activePanel.id
+            )
+      const position =
+        settingsSnapshot().openAdjacentTab &&
+        activePanel !== undefined &&
+        activeIndex >= 0
+          ? { position: { referencePanel: activePanel, index: activeIndex + 1 } }
+          : {}
       api.addPanel({
         id: panelId,
         component: descriptor.kind,
         title: tabTitle(descriptor),
-        params: { descriptor }
+        params: { descriptor },
+        ...position
       })
     },
 

@@ -5,7 +5,10 @@
  */
 
 import { memo, type ReactNode } from 'react'
-import type { PermissionResponse } from '../../../../shared/types/agent-events'
+import type {
+  PermissionResponse,
+  Usage
+} from '../../../../shared/types/agent-events'
 import type { BlockView, MessageView } from './chatModel'
 import { PermissionDialog } from './blocks/PermissionDialog'
 import { TextBlock } from './blocks/TextBlock'
@@ -18,8 +21,45 @@ function formatDuration(durationMs: number): string {
     : `${(durationMs / 1000).toFixed(1)}초`
 }
 
-function formatCost(costUsd: number): string {
+export function formatCost(costUsd: number): string {
   return `$${costUsd.toFixed(costUsd < 0.1 ? 4 : 2)}`
+}
+
+export function formatTokenCount(value: number): string {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+  }
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(1).replace(/\.0$/, '')}k`
+  }
+  return Math.round(value).toLocaleString('en-US')
+}
+
+function cacheUsageTitle(usage: Usage): string | undefined {
+  const cache = [
+    usage.cacheReadTokens === undefined
+      ? null
+      : `캐시 읽기 ${usage.cacheReadTokens.toLocaleString('en-US')} tokens`,
+    usage.cacheCreationTokens === undefined
+      ? null
+      : `캐시 생성 ${usage.cacheCreationTokens.toLocaleString('en-US')} tokens`
+  ].filter((item): item is string => item !== null)
+  return cache.length === 0 ? undefined : cache.join(' · ')
+}
+
+export function UsageText({ usage }: { usage: Usage }): JSX.Element {
+  const cacheTitle = cacheUsageTitle(usage)
+  const cacheLabel = cacheTitle === undefined ? '' : `, ${cacheTitle}`
+  return (
+    <span
+      className="chat-usage"
+      aria-label={`입력 ${usage.inputTokens.toLocaleString('en-US')} tokens, 출력 ${usage.outputTokens.toLocaleString('en-US')} tokens${cacheLabel}`}
+      title={cacheTitle}
+    >
+      ↑{formatTokenCount(usage.inputTokens)} ↓
+      {formatTokenCount(usage.outputTokens)} tokens
+    </span>
+  )
 }
 
 interface BlockRendererProps {
@@ -167,11 +207,14 @@ const AssistantMessage = memo(function AssistantMessage({
         )}
         {!message.streaming &&
           stats !== undefined &&
-          (stats.durationMs !== undefined || stats.costUsd !== undefined) && (
+          (stats.durationMs !== undefined ||
+            stats.costUsd !== undefined ||
+            stats.usage !== undefined) && (
             <footer className="chat-msg__stats">
               {stats.durationMs !== undefined && (
                 <span>{formatDuration(stats.durationMs)}</span>
               )}
+              {stats.usage !== undefined && <UsageText usage={stats.usage} />}
               {stats.costUsd !== undefined && (
                 <span>{formatCost(stats.costUsd)}</span>
               )}

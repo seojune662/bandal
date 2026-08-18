@@ -9,6 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { accessSync, constants as fsConstants } from 'node:fs'
 import { extname } from 'node:path'
 import {
   app,
@@ -980,6 +981,34 @@ export function registerHandlers(): IpcRouter {
   // -- settings (real implementation, settingsStore-owned) ------------------
   handle('settings:get', () => getSettings())
   handle('settings:set', (req) => setSettings(req))
+  // [R3] dataRoot 변경. 새 과목만 새 위치에 생긴다 — 기존 과목 폴더는 절대
+  // 경로로 저장되어 있으므로 옮기지 않고 그대로 동작한다.
+  handle('settings:pickDataRoot', async () => {
+    const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const options: Electron.OpenDialogOptions = {
+      title: '과목 데이터 폴더 선택',
+      buttonLabel: '이 폴더 사용',
+      defaultPath: getSettings().dataRoot,
+      properties: ['openDirectory', 'createDirectory']
+    }
+    const result =
+      parent === undefined
+        ? await dialog.showOpenDialog(options)
+        : await dialog.showOpenDialog(parent, options)
+    const picked = result.filePaths[0]
+    if (result.canceled || picked === undefined) return null
+    const dataRoot = normalizeFolderPath(picked)
+    try {
+      accessSync(dataRoot, fsConstants.W_OK)
+    } catch {
+      throw new ValidationError(
+        '선택한 폴더에 쓸 수 없습니다. 다른 폴더를 골라 주세요.'
+      )
+    }
+    // setSettings 가 저장 + settings:changed 브로드캐스트까지 처리한다.
+    setSettings({ dataRoot })
+    return { dataRoot }
+  })
 
   // -- layout ---------------------------------------------------------------
   handle('layout:get', (req) => layoutRepo.get(req.courseId))

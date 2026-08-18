@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
@@ -96,6 +96,7 @@ describe('agent app tools', () => {
       'list_courses',
       'list_materials',
       'list_boards',
+      'read_material',
       'list_tasks',
       'create_course',
       'create_note',
@@ -115,6 +116,94 @@ describe('agent app tools', () => {
       'delete_course',
       'overwrite_note'
     ])
+  })
+
+  describe('read_material', () => {
+    test('reads a text material through the tool call path', async () => {
+      writeFileSync(
+        join(harness.courseFolder, 'week1.md'),
+        '# 1주차\n강의 요약',
+        'utf8'
+      )
+
+      const result = await harness.tools.call('read_material', {
+        courseId: harness.courseId,
+        relPath: 'week1.md'
+      })
+
+      expect(result.isError).toBeUndefined()
+      const payload = JSON.parse(message(result)) as {
+        supported: boolean
+        text: string
+      }
+      expect(payload.supported).toBe(true)
+      expect(payload.text).toBe('# 1주차\n강의 요약')
+    })
+
+    test('answers unsupported formats with a clear message, not an error', async () => {
+      writeFileSync(
+        join(harness.courseFolder, 'clip.mp4'),
+        Buffer.from([0, 1, 2])
+      )
+
+      const result = await harness.tools.call('read_material', {
+        courseId: harness.courseId,
+        relPath: 'clip.mp4'
+      })
+
+      expect(result.isError).toBeUndefined()
+      const payload = JSON.parse(message(result)) as {
+        supported: boolean
+        message: string
+      }
+      expect(payload.supported).toBe(false)
+      expect(payload.message).toContain('지원하지 않는 형식')
+    })
+
+    test('points PDF callers at reading the file directly', async () => {
+      writeFileSync(join(harness.courseFolder, 'slides.pdf'), '%PDF-1.4', 'utf8')
+
+      const result = await harness.tools.call('read_material', {
+        courseId: harness.courseId,
+        relPath: 'slides.pdf'
+      })
+
+      const payload = JSON.parse(message(result)) as {
+        supported: boolean
+        message: string
+      }
+      expect(payload.supported).toBe(false)
+      expect(payload.message).toContain('직접 읽으세요')
+    })
+
+    test('honors maxChars with a truncation marker', async () => {
+      writeFileSync(
+        join(harness.courseFolder, 'long.txt'),
+        'b'.repeat(100),
+        'utf8'
+      )
+
+      const result = await harness.tools.call('read_material', {
+        courseId: harness.courseId,
+        relPath: 'long.txt',
+        maxChars: 10
+      })
+
+      const payload = JSON.parse(message(result)) as { text: string }
+      expect(payload.text).toContain('b'.repeat(10))
+      expect(payload.text).not.toContain('b'.repeat(11))
+      expect(payload.text).toContain('잘림')
+    })
+
+    test('rejects paths that escape the course folder', async () => {
+      const result = await harness.tools.call('read_material', {
+        courseId: harness.courseId,
+        relPath: '../outside.txt'
+      })
+
+      expect(result.isError).toBe(true)
+      expect(message(result)).toContain('read_material')
+    })
   })
 
   describe('add_shapes geometry validation', () => {

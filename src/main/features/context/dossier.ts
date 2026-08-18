@@ -336,7 +336,10 @@ function materialSection(
   })
   const intro = [
     `파일 ${files.length}개 · 폴더 ${materials.length - files.length}개 ` +
-      `(PDF ${counts.pdf}, 마크다운 ${counts.markdown}, 이미지 ${counts.image}, 기타 ${counts.other})`
+      `(PDF ${counts.pdf}, 마크다운 ${counts.markdown}, 이미지 ${counts.image}, 기타 ${counts.other})`,
+    // [R3] 추출은 비동기(mammoth)라 동기적인 도시에 빌드에 넣지 않는다 —
+    // 대신 도구 호출로 전체 본문을 읽을 수 있음을 알려 준다.
+    '.docx 와 .xlsx/.xls 문서는 read_material 도구로 텍스트 내용을 읽을 수 있다.'
   ]
   if (status.unavailable) {
     intro.push(

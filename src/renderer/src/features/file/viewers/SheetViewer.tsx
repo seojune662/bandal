@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react'
+import type { CellObject, ColInfo, WorkSheet } from 'xlsx'
 import type { MaterialFileContent } from '../../../../../shared/types/materials'
 
 interface SheetViewerProps {
@@ -12,14 +13,37 @@ interface LoadedSheet {
   workbook: import('xlsx').WorkBook
 }
 
-interface SheetRows {
-  rows: unknown[][]
+interface VisibleMerge {
+  startRow: number
+  endRow: number
+  startColumn: number
+  endColumn: number
+  sourceRow: number
+  sourceColumn: number
+}
+
+interface SheetView {
+  worksheet: WorkSheet | null
+  startRow: number
+  endRow: number
+  startColumn: number
+  endColumn: number
+  rowCount: number
+  columnCount: number
+  columnWidths: Array<string | undefined>
+  mergesByRow: Map<number, VisibleMerge[]>
   truncated: boolean
+}
+
+interface RenderedCell {
+  cell: CellObject | undefined
+  colSpan: number
+  rowSpan: number
 }
 
 const MAX_RENDERED_ROWS = 2_000
 
-function cellText(value: unknown): string {
+function fallbackCellText(value: unknown): string {
   if (value === null || value === undefined) return ''
   if (value instanceof Date) return value.toLocaleString()
   if (typeof value === 'object') {
@@ -32,36 +56,142 @@ function cellText(value: unknown): string {
   return String(value)
 }
 
-function isNumericText(value: unknown): boolean {
-  if (typeof value === 'number') return true
-  if (typeof value !== 'string') return false
-  return /^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?$/.test(value.trim())
+function columnWidth(column: ColInfo | undefined): string | undefined {
+  if (column?.wpx !== undefined && Number.isFinite(column.wpx)) {
+    return `${Math.max(0, column.wpx)}px`
+  }
+  if (column?.wch !== undefined && Number.isFinite(column.wch)) {
+    return `${Math.max(0, column.wch)}ch`
+  }
+  return undefined
 }
 
-function rowsForSheet(loaded: LoadedSheet, sheetName: string): SheetRows {
+function viewForSheet(loaded: LoadedSheet, sheetName: string): SheetView {
   const worksheet = loaded.workbook.Sheets[sheetName]
   const ref = worksheet?.['!ref']
   if (worksheet === undefined || ref === undefined) {
-    return { rows: [], truncated: false }
+    return {
+      worksheet: null,
+      startRow: 0,
+      endRow: -1,
+      startColumn: 0,
+      endColumn: -1,
+      rowCount: 0,
+      columnCount: 0,
+      columnWidths: [],
+      mergesByRow: new Map(),
+      truncated: false
+    }
   }
 
   const originalRange = loaded.xlsx.utils.decode_range(ref)
   const totalRows = originalRange.e.r - originalRange.s.r + 1
-  const limitedRange = {
-    s: originalRange.s,
-    e: {
-      c: originalRange.e.c,
-      r: Math.min(originalRange.e.r, originalRange.s.r + MAX_RENDERED_ROWS - 1)
+  const endRow = Math.min(
+    originalRange.e.r,
+    originalRange.s.r + MAX_RENDERED_ROWS - 1
+  )
+  const mergesByRow = new Map<number, VisibleMerge[]>()
+
+  for (const merge of worksheet['!merges'] ?? []) {
+    const startRow = Math.max(merge.s.r, originalRange.s.r)
+    const endMergeRow = Math.min(merge.e.r, endRow)
+    const startColumn = Math.max(merge.s.c, originalRange.s.c)
+    const endColumn = Math.min(merge.e.c, originalRange.e.c)
+    if (startRow > endMergeRow || startColumn > endColumn) continue
+
+    const visibleMerge: VisibleMerge = {
+      startRow,
+      endRow: endMergeRow,
+      startColumn,
+      endColumn,
+      sourceRow: merge.s.r,
+      sourceColumn: merge.s.c
+    }
+    for (let row = startRow; row <= endMergeRow; row += 1) {
+      const rowMerges = mergesByRow.get(row)
+      if (rowMerges === undefined) {
+        mergesByRow.set(row, [visibleMerge])
+      } else {
+        rowMerges.push(visibleMerge)
+      }
     }
   }
-  const rows = loaded.xlsx.utils.sheet_to_json<unknown[]>(worksheet, {
-    header: 1,
-    range: limitedRange,
-    defval: '',
-    blankrows: true,
-    raw: false
+
+  mergesByRow.forEach((merges) => {
+    merges.sort((left, right) => left.startColumn - right.startColumn)
   })
-  return { rows, truncated: totalRows > MAX_RENDERED_ROWS }
+
+  const columnCount = originalRange.e.c - originalRange.s.c + 1
+  return {
+    worksheet,
+    startRow: originalRange.s.r,
+    endRow,
+    startColumn: originalRange.s.c,
+    endColumn: originalRange.e.c,
+    rowCount: endRow - originalRange.s.r + 1,
+    columnCount,
+    columnWidths: Array.from({ length: columnCount }, (_, index) =>
+      columnWidth(worksheet['!cols']?.[originalRange.s.c + index])
+    ),
+    mergesByRow,
+    truncated: totalRows > MAX_RENDERED_ROWS
+  }
+}
+
+function renderedCell(
+  loaded: LoadedSheet,
+  view: SheetView,
+  row: number,
+  column: number
+): RenderedCell | null {
+  const merge = view.mergesByRow
+    .get(row)
+    ?.find(
+      (candidate) =>
+        column >= candidate.startColumn && column <= candidate.endColumn
+    )
+
+  if (
+    merge !== undefined &&
+    (row !== merge.startRow || column !== merge.startColumn)
+  ) {
+    return null
+  }
+
+  const sourceRow = merge?.sourceRow ?? row
+  const sourceColumn = merge?.sourceColumn ?? column
+  const address = loaded.xlsx.utils.encode_cell({ r: sourceRow, c: sourceColumn })
+  return {
+    cell: view.worksheet?.[address] as CellObject | undefined,
+    colSpan:
+      merge === undefined ? 1 : merge.endColumn - merge.startColumn + 1,
+    rowSpan: merge === undefined ? 1 : merge.endRow - merge.startRow + 1
+  }
+}
+
+function formattedCellText(
+  loaded: LoadedSheet,
+  cell: CellObject | undefined
+): string {
+  if (cell === undefined) return ''
+  try {
+    return loaded.xlsx.utils.format_cell(cell)
+  } catch {
+    return fallbackCellText(cell.v)
+  }
+}
+
+function usesDateFormat(loaded: LoadedSheet, cell: CellObject): boolean {
+  const format =
+    typeof cell.z === 'number' ? loaded.xlsx.SSF._table?.[cell.z] : cell.z
+  return typeof format === 'string' && loaded.xlsx.SSF.is_date(format)
+}
+
+function isRightAligned(loaded: LoadedSheet, cell: CellObject | undefined): boolean {
+  return (
+    cell !== undefined &&
+    (cell.t === 'n' || cell.t === 'd' || usesDateFormat(loaded, cell))
+  )
 }
 
 export function SheetViewer({
@@ -81,7 +211,10 @@ export function SheetViewer({
     void import('xlsx')
       .then((xlsx) => {
         const workbook = xlsx.read(content.data, {
-          type: content.encoding === 'base64' ? 'base64' : 'string'
+          type: content.encoding === 'base64' ? 'base64' : 'string',
+          cellDates: true,
+          cellNF: true,
+          cellStyles: true
         })
         if (cancelled) return
         setLoaded({ xlsx, workbook })
@@ -96,11 +229,11 @@ export function SheetViewer({
     }
   }, [content, onError])
 
-  const sheetRows = useMemo(
+  const sheetView = useMemo(
     () =>
       loaded === null
-        ? { rows: [], truncated: false }
-        : rowsForSheet(loaded, activeSheet),
+        ? null
+        : viewForSheet(loaded, activeSheet),
     [activeSheet, loaded]
   )
 
@@ -112,12 +245,6 @@ export function SheetViewer({
     )
   }
 
-  const maxColumns = sheetRows.rows.reduce(
-    (maximum, row) => Math.max(maximum, row.length),
-    0
-  )
-  const headerRow = sheetRows.rows[0] ?? []
-  const bodyRows = sheetRows.rows.slice(1)
   const panelId = `${tabIdPrefix}-panel`
   const activeSheetIndex = loaded.workbook.SheetNames.indexOf(activeSheet)
 
@@ -171,7 +298,7 @@ export function SheetViewer({
             )
           })}
         </div>
-        {sheetRows.truncated && (
+        {sheetView?.truncated && (
           <p className="file-notice" role="status">
             처음 2,000행만 표시합니다.
           </p>
@@ -189,53 +316,98 @@ export function SheetViewer({
             : `${tabIdPrefix}-tab-${activeSheetIndex}`
         }
       >
-        {sheetRows.rows.length === 0 || maxColumns === 0 ? (
+        {sheetView === null ||
+        sheetView.worksheet === null ||
+        sheetView.rowCount === 0 ||
+        sheetView.columnCount === 0 ? (
           <div className="file-status">빈 시트입니다.</div>
         ) : (
           <table className="file-sheet__table">
             <caption className="file-visually-hidden">
               {fileName}의 {activeSheet} 시트
             </caption>
+            <colgroup>
+              <col className="file-sheet__row-number-column" />
+              {sheetView.columnWidths.map((width, index) => (
+                <col
+                  key={sheetView.startColumn + index}
+                  style={width === undefined ? undefined : { width }}
+                />
+              ))}
+            </colgroup>
             <thead>
               <tr>
-                {Array.from({ length: maxColumns }, (_, columnIndex) => {
-                  const value = headerRow[columnIndex]
-                  return (
-                    <th
-                      key={columnIndex}
-                      scope="col"
-                      className={
-                        isNumericText(value)
-                          ? 'file-sheet__cell--number'
-                          : undefined
-                      }
-                    >
-                      {cellText(value)}
-                    </th>
-                  )
-                })}
+                <th
+                  className="file-sheet__corner-header"
+                  aria-label="행 번호"
+                />
+                {Array.from(
+                  { length: sheetView.columnCount },
+                  (_, columnOffset) => {
+                    const columnIndex = sheetView.startColumn + columnOffset
+                    const width = sheetView.columnWidths[columnOffset]
+                    return (
+                      <th
+                        key={columnIndex}
+                        scope="col"
+                        className={`file-sheet__column-header${width === undefined ? ' file-sheet__column-header--auto' : ''}`}
+                        style={
+                          width === undefined
+                            ? undefined
+                            : {
+                                width,
+                                minWidth: width,
+                                maxWidth: width
+                              }
+                        }
+                      >
+                        {loaded.xlsx.utils.encode_col(columnIndex)}
+                      </th>
+                    )
+                  }
+                )}
               </tr>
             </thead>
             <tbody>
-              {bodyRows.map((row, rowIndex) => (
-                <tr key={rowIndex}>
-                  {Array.from({ length: maxColumns }, (_, columnIndex) => {
-                    const value = row[columnIndex]
-                    return (
-                      <td
-                        key={columnIndex}
-                        className={
-                          isNumericText(value)
-                            ? 'file-sheet__cell--number'
-                            : undefined
-                        }
-                      >
-                        {cellText(value)}
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
+              {Array.from({ length: sheetView.rowCount }, (_, rowOffset) => {
+                const rowIndex = sheetView.startRow + rowOffset
+                return (
+                  <tr key={rowIndex}>
+                    <th scope="row" className="file-sheet__row-header">
+                      {rowIndex + 1}
+                    </th>
+                    {Array.from(
+                      { length: sheetView.columnCount },
+                      (_, columnOffset) => {
+                        const columnIndex =
+                          sheetView.startColumn + columnOffset
+                        const rendered = renderedCell(
+                          loaded,
+                          sheetView,
+                          rowIndex,
+                          columnIndex
+                        )
+                        if (rendered === null) return null
+
+                        return (
+                          <td
+                            key={columnIndex}
+                            colSpan={rendered.colSpan}
+                            rowSpan={rendered.rowSpan}
+                            className={
+                              isRightAligned(loaded, rendered.cell)
+                                ? 'file-sheet__cell--number'
+                                : undefined
+                            }
+                          >
+                            {formattedCellText(loaded, rendered.cell)}
+                          </td>
+                        )
+                      }
+                    )}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}

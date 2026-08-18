@@ -140,6 +140,20 @@ export const AGENT_TOOL_DEFINITIONS = [
     annotations: readOnly
   },
   {
+    name: 'read_material',
+    description:
+      '자료 파일의 텍스트를 읽습니다. 텍스트/마크다운은 물론 .docx 와 .xlsx/.xls 도 텍스트로 변환해 돌려줍니다. PDF 는 이 도구 대신 파일을 직접 읽으세요.',
+    inputSchema: objectSchema(
+      {
+        courseId,
+        relPath,
+        maxChars: integer('돌려줄 최대 글자 수. 생략하면 20000')
+      },
+      ['courseId', 'relPath']
+    ),
+    annotations: readOnly
+  },
+  {
     name: 'list_tasks',
     description: '할 일 목록을 조회합니다. courseId를 생략하면 전체를 조회합니다.',
     inputSchema: objectSchema({

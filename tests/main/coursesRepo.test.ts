@@ -315,6 +315,29 @@ describe('coursesRepo', () => {
       ).toBeUndefined()
     })
 
+    test('[R3] purges a managed course even after dataRoot changed', () => {
+      // Arrange: 옛 dataRoot 아래에 managed 과목을 만들고, 그 뒤 설정에서
+      // dataRoot 가 다른 곳으로 옮겨진 상황을 재현한다.
+      const course = repo.create({ name: '반달 튜토리얼', color: 'gold' })
+      repo.softDelete({ courseId: course.id })
+      const movedRoot = join(ctx.dir, 'BandalMoved')
+      mkdirSync(movedRoot, { recursive: true })
+      const repoAfterMove = createCoursesRepo({
+        db: ctx.db,
+        getDataRoot: () => movedRoot
+      })
+
+      // Act
+      const result = repoAfterMove.purge({ courseId: course.id })
+
+      // Assert: managed + soft-deleted 두 겹 가드만 남았으므로 성공해야 한다.
+      expect(result.ok).toBe(true)
+      expect(result.folderPath).toBe(normalizeFolderPath(course.folderPath))
+      expect(
+        ctx.db.prepare('SELECT id FROM courses WHERE id = ?').get(course.id)
+      ).toBeUndefined()
+    })
+
     test('hard-deletes a soft-deleted managed course and returns its folder', () => {
       const course = repo.create({ name: '반달 튜토리얼', color: 'gold' })
       repo.softDelete({ courseId: course.id })

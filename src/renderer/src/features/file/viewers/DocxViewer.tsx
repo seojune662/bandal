@@ -14,7 +14,40 @@ const BLOCKED_ELEMENTS =
   'script, iframe, object, embed, link, meta, base, form, input, button, textarea, select, svg, math'
 const URL_ATTRIBUTES = new Set(['href', 'src', 'xlink:href', 'action', 'formaction'])
 const DANGEROUS_SCHEME = /^(?:javascript|vbscript|file|data):/i
-const INLINE_IMAGE = /^data:image\/(?:png|jpe?g|gif|webp|bmp);base64,/i
+const INLINE_IMAGE = /^data:image\/(?:png|jpe?g);base64,/i
+const SUPPORTED_IMAGE_TYPE = /^image\/(?:png|jpe?g)$/i
+const UNSUPPORTED_IMAGE_LABEL = '[이미지: 지원하지 않는 형식]'
+const UNSAFE_STYLE_VALUE =
+  /(?:url|expression)\s*\(|@import|(?:javascript|vbscript|file)\s*:|\\/i
+const SAFE_STYLE_PROPERTIES = new Set([
+  'color',
+  'background-color',
+  'font-weight',
+  'font-style',
+  'font-size',
+  'text-align',
+  'text-decoration',
+  'width',
+  'height'
+])
+const DOCX_STYLE_MAP = [
+  'b => strong',
+  'i => em',
+  "r[style-name='Strong'] => strong",
+  "r[style-name='Intense Emphasis'] => strong",
+  "r[style-name='Emphasis'] => em",
+  "p[style-name='Title'] => h1:fresh",
+  "p[style-name='Subtitle'] => h2:fresh",
+  ...Array.from(
+    { length: 6 },
+    (_, index) =>
+      `p[style-name='Heading ${index + 1}'] => h${index + 1}:fresh`
+  ),
+  ...Array.from(
+    { length: 6 },
+    (_, index) => `p[style-name='제목 ${index + 1}'] => h${index + 1}:fresh`
+  )
+]
 
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
   const binary = window.atob(base64)
@@ -26,22 +59,69 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
   return buffer
 }
 
+function isSafeStyleProperty(property: string): boolean {
+  return (
+    SAFE_STYLE_PROPERTIES.has(property) ||
+    property.startsWith('margin') ||
+    property.startsWith('padding') ||
+    property.startsWith('border')
+  )
+}
+
+function sanitizeStyleAttribute(
+  document: Document,
+  element: Element
+): void {
+  const source = element.getAttribute('style')
+  if (source === null) return
+
+  const parsedStyle = document.createElement('span').style
+  parsedStyle.cssText = source
+  const safeDeclarations: string[] = []
+
+  for (let index = 0; index < parsedStyle.length; index += 1) {
+    const property = parsedStyle.item(index).toLowerCase()
+    const value = parsedStyle.getPropertyValue(property).trim()
+    if (
+      isSafeStyleProperty(property) &&
+      value.length > 0 &&
+      !UNSAFE_STYLE_VALUE.test(value)
+    ) {
+      safeDeclarations.push(`${property}: ${value}`)
+    }
+  }
+
+  if (safeDeclarations.length === 0) {
+    element.removeAttribute('style')
+  } else {
+    element.setAttribute('style', safeDeclarations.join('; '))
+  }
+}
+
+function normalizedUrl(value: string): string {
+  return value.replace(/[\u0000-\u0020\u007f-\u009f]/g, '')
+}
+
 /** Defensive boundary for HTML produced from an untrusted external document. */
 export function sanitizeDocxHtml(html: string): string {
   const document = new DOMParser().parseFromString(html, 'text/html')
 
+  document
+    .querySelectorAll('img[data-docx-unsupported-image]')
+    .forEach((image) =>
+      image.replaceWith(document.createTextNode(UNSUPPORTED_IMAGE_LABEL))
+    )
   document.querySelectorAll(BLOCKED_ELEMENTS).forEach((element) => element.remove())
   document.body.querySelectorAll('*').forEach((element) => {
     for (const attribute of [...element.attributes]) {
       const name = attribute.name.toLowerCase()
       const value = attribute.value.trim()
-      if (
-        name.startsWith('on') ||
-        name === 'style' ||
-        name === 'srcdoc' ||
-        name === 'srcset'
-      ) {
+      if (name.startsWith('on') || name === 'srcdoc' || name === 'srcset') {
         element.removeAttribute(attribute.name)
+        continue
+      }
+      if (name === 'style') {
+        sanitizeStyleAttribute(document, element)
         continue
       }
       if (name === 'src' && value.length > 0 && !INLINE_IMAGE.test(value)) {
@@ -51,13 +131,13 @@ export function sanitizeDocxHtml(html: string): string {
       if (
         name !== 'src' &&
         URL_ATTRIBUTES.has(name) &&
-        DANGEROUS_SCHEME.test(value)
+        DANGEROUS_SCHEME.test(normalizedUrl(value))
       ) {
         element.removeAttribute(attribute.name)
       }
     }
 
-    if (element instanceof HTMLAnchorElement && element.hasAttribute('href')) {
+    if (element.tagName === 'A' && element.hasAttribute('href')) {
       element.setAttribute('target', '_blank')
       element.setAttribute('rel', 'noopener noreferrer')
     }
@@ -79,9 +159,36 @@ export function DocxViewer({
 
     void import('mammoth')
       .then(async (mammoth) => {
+        const convertImage = mammoth.default.images.imgElement(async (image) => {
+          const contentType = (image.contentType.split(';', 1)[0] ?? '')
+            .trim()
+            .toLowerCase()
+          if (!SUPPORTED_IMAGE_TYPE.test(contentType)) {
+            return {
+              src: '',
+              alt: UNSUPPORTED_IMAGE_LABEL,
+              'data-docx-unsupported-image': 'true'
+            }
+          }
+
+          try {
+            const imageBase64 = await image.readAsBase64String()
+            return { src: `data:${contentType};base64,${imageBase64}` }
+          } catch {
+            return {
+              src: '',
+              alt: UNSUPPORTED_IMAGE_LABEL,
+              'data-docx-unsupported-image': 'true'
+            }
+          }
+        })
         const result = await mammoth.default.convertToHtml(
           { arrayBuffer: base64ToArrayBuffer(base64) },
-          { externalFileAccess: false }
+          {
+            externalFileAccess: false,
+            styleMap: DOCX_STYLE_MAP,
+            convertImage
+          }
         )
         if (!cancelled) {
           setState({ status: 'ready', html: sanitizeDocxHtml(result.value) })

@@ -7,7 +7,7 @@
  */
 
 import { existsSync, mkdirSync } from 'node:fs'
-import { isAbsolute, join, relative } from 'node:path'
+import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import type {
@@ -47,9 +47,11 @@ export interface CoursesRepo {
   softDelete(input: { courseId: string }): { ok: true }
   /**
    * Hard-deletes an already soft-deleted MANAGED course row and returns its
-   * folder path so the caller can trash it. Triple-guarded — tutorial
-   * temp-course cleanup only; a live or linked or outside-dataRoot course is
-   * rejected with ValidationError.
+   * folder path so the caller can trash it. Double-guarded — tutorial
+   * temp-course cleanup only; a live or linked course is rejected with
+   * ValidationError. ([R3] dataRoot 가 바뀔 수 있게 되면서 "현재 dataRoot
+   * 안" 검사는 제거 — managed 는 반달이 만든 폴더라는 뜻이고, 삭제는
+   * trashItem 이라 복구 가능하다.)
    */
   purge(input: { courseId: string }): { ok: true; folderPath: string }
   /** Live (non-deleted) course by id; throws NotFoundError otherwise. */
@@ -373,12 +375,14 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
       if (toSource(row.source) !== 'managed') {
         throw new ValidationError('only managed courses can be purged')
       }
-      const dataRoot = normalizeFolderPath(getDataRoot())
+      // [R3] 예전에는 "현재 dataRoot 안의 폴더"인지도 검사했지만, 설정에서
+      // dataRoot 를 바꿀 수 있게 되면서 그 검사가 정당한 purge 를 막는다
+      // (옛 dataRoot 아래에 만들어진 managed 과목이 영원히 못 지워짐).
+      // source:'managed' 는 폴더를 반달이 당시의 dataRoot 아래에 직접
+      // 만들었다는 뜻이므로 managed + soft-deleted 두 겹이면 충분하고,
+      // 호출자(courses:purge)는 unlink 가 아니라 trashItem 으로 보내므로
+      // 실수해도 복구할 수 있다. containment 는 심층 방어였을 뿐이다.
       const folderPath = normalizeFolderPath(row.folder_path)
-      const rel = relative(dataRoot, folderPath)
-      if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
-        throw new ValidationError('course folder is outside the data root')
-      }
       // foreign_keys=ON: the row cannot go while children reference it. Chain
       // order matters — grandchildren first (no course_id of their own), then
       // messages before agent_sessions (messages FK it), then every table

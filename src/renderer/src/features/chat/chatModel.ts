@@ -107,6 +107,14 @@ export interface ChatViewState {
   notice: ChatNotice | null
   model: string | null
   counter: number
+  /**
+   * Usage observed since this renderer loaded the conversation. This is an
+   * intentionally ephemeral snapshot and resets when history is reloaded.
+   */
+  sessionUsage: Usage
+  sessionCostUsd: number
+  /** Last cumulative usage sample for the in-flight turn. */
+  currentTurnUsage: Usage | null
 }
 
 export const initialChatViewState: ChatViewState = {
@@ -116,7 +124,10 @@ export const initialChatViewState: ChatViewState = {
   limit: null,
   notice: null,
   model: null,
-  counter: 0
+  counter: 0,
+  sessionUsage: { inputTokens: 0, outputTokens: 0 },
+  sessionCostUsd: 0,
+  currentTurnUsage: null
 }
 
 // -- seq gap detection --------------------------------------------------------
@@ -169,6 +180,44 @@ function settleAllBlocks(blocks: readonly BlockView[]): BlockView[] {
     }
     return block
   })
+}
+
+function replaceTurnUsage(
+  total: Usage,
+  previous: Usage | null,
+  next: Usage
+): Usage {
+  return {
+    inputTokens:
+      total.inputTokens - (previous?.inputTokens ?? 0) + next.inputTokens,
+    outputTokens:
+      total.outputTokens - (previous?.outputTokens ?? 0) + next.outputTokens,
+    cacheReadTokens:
+      (total.cacheReadTokens ?? 0) -
+      (previous?.cacheReadTokens ?? 0) +
+      (next.cacheReadTokens ?? 0),
+    cacheCreationTokens:
+      (total.cacheCreationTokens ?? 0) -
+      (previous?.cacheCreationTokens ?? 0) +
+      (next.cacheCreationTokens ?? 0)
+  }
+}
+
+function applyUsage(
+  state: ChatViewState,
+  usage: Usage
+): ChatViewState {
+  return {
+    ...state,
+    // Usage samples are cumulative within a turn, so the latest sample
+    // replaces (rather than adds to) the previous in-flight value.
+    sessionUsage: replaceTurnUsage(
+      state.sessionUsage,
+      state.currentTurnUsage,
+      usage
+    ),
+    currentTurnUsage: usage
+  }
 }
 
 /**
@@ -369,10 +418,14 @@ function applyTurnComplete(
   event: Extract<AgentEvent, { type: 'turn-complete' }>
 ): ChatViewState {
   const interrupted = event.stopReason === 'interrupted'
+  // turn-complete is authoritative when it carries usage; otherwise the last
+  // cumulative usage event is the turn's final value. Replacing it here avoids
+  // counting Claude's streaming usage and final usage twice.
+  const finalUsage = event.usage ?? state.currentTurnUsage ?? undefined
   const stats: TurnStats = {
     ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }),
     ...(event.costUsd === undefined ? {} : { costUsd: event.costUsd }),
-    ...(event.usage === undefined ? {} : { usage: event.usage })
+    ...(finalUsage === undefined ? {} : { usage: finalUsage })
   }
   const last = state.messages[state.messages.length - 1]
   const messages =
@@ -392,7 +445,17 @@ function applyTurnComplete(
     ...state,
     messages,
     streaming: false,
-    pendingPermissionId: null
+    pendingPermissionId: null,
+    sessionUsage:
+      finalUsage === undefined
+        ? state.sessionUsage
+        : replaceTurnUsage(
+            state.sessionUsage,
+            state.currentTurnUsage,
+            finalUsage
+          ),
+    sessionCostUsd: state.sessionCostUsd + (event.costUsd ?? 0),
+    currentTurnUsage: null
   }
 }
 
@@ -425,7 +488,8 @@ function applyError(
     messages,
     notice,
     streaming: false,
-    pendingPermissionId: null
+    pendingPermissionId: null,
+    currentTurnUsage: null
   }
 }
 
@@ -463,7 +527,7 @@ export function applyAgentEvent(
     case 'error':
       return applyError(state, event)
     case 'usage':
-      return state
+      return applyUsage(state, event.usage)
   }
 }
 
@@ -503,13 +567,14 @@ export function appendLocalUserMessage(
     messages: [...state.messages, message],
     streaming: true,
     limit: null,
-    notice: null
+    notice: null,
+    currentTurnUsage: null
   }
 }
 
 /** Marks a send that failed before the stream produced any events. */
 export function markSendFailed(state: ChatViewState): ChatViewState {
-  return { ...state, streaming: false }
+  return { ...state, streaming: false, currentTurnUsage: null }
 }
 
 export function applyLocalPermissionResponse(

@@ -10,10 +10,17 @@
 
 import { useMemo, useState } from 'react'
 import type { ResolvedService } from '../../../../shared/universities'
+import { Icon } from '../../app/icons'
 import { useUiStore } from '../../stores/uiStore'
 import { useUniversityStore } from '../../stores/universityStore'
 import { openShortcut } from './openService'
 import { externalReasonMessage } from './serviceCopy'
+import {
+  persistUniversitySectionCollapsed,
+  persistUniversitySectionShowAll,
+  readUniversitySectionCollapsed,
+  readUniversitySectionShowAll
+} from './universityCollapse'
 import { ExternalIcon, ServiceKindIcon } from './universityIcons'
 import './university.css'
 
@@ -51,7 +58,8 @@ export function UniversityShortcuts(): JSX.Element | null {
   const university = useUniversityStore((state) => state.university)
   const services = useUniversityStore((state) => state.services)
   const openSettings = useUiStore((state) => state.openSettings)
-  const [showAll, setShowAll] = useState(false)
+  const [collapsed, setCollapsed] = useState(readUniversitySectionCollapsed)
+  const [showAll, setShowAll] = useState(readUniversitySectionShowAll)
 
   const { primary, secondary } = useMemo(() => {
     return {
@@ -78,35 +86,64 @@ export function UniversityShortcuts(): JSX.Element | null {
 
   const visible = showAll ? [...primary, ...secondary] : primary
 
+  const toggleCollapsed = (): void => {
+    setCollapsed((current) => {
+      const next = !current
+      persistUniversitySectionCollapsed(next)
+      return next
+    })
+  }
+
+  const toggleShowAll = (): void => {
+    setShowAll((current) => {
+      const next = !current
+      persistUniversitySectionShowAll(next)
+      return next
+    })
+  }
+
   return (
     <section className="university-section" aria-label="학교 바로가기">
-      <div className="university-section__heading">
-        <p className="eyebrow">CAMPUS</p>
-        <h3 className="university-section__name">{university.nameKo}</h3>
-      </div>
+      <button
+        type="button"
+        className="university-section__heading"
+        aria-label={`CAMPUS ${university.nameKo} ${collapsed ? '펼치기' : '접기'}`}
+        aria-expanded={!collapsed}
+        onClick={toggleCollapsed}
+      >
+        <Icon name="chevronRight" className="university-section__chevron" />
+        <span className="university-section__heading-copy">
+          <span className="eyebrow">CAMPUS</span>
+          <span className="university-section__name">{university.nameKo}</span>
+        </span>
+      </button>
 
-      {visible.length === 0 ? (
-        <ServiceKindIcon
-          kind="homepage"
-          className="university-section__empty-icon"
-        />
-      ) : (
-        <ul className="university-shortcuts">
-          {visible.map((service) => (
-            <ShortcutRow key={service.id} service={service} />
-          ))}
-        </ul>
-      )}
+      {!collapsed && (
+        <>
+          {visible.length === 0 ? (
+            <ServiceKindIcon
+              kind="homepage"
+              className="university-section__empty-icon"
+            />
+          ) : (
+            <ul className="university-shortcuts">
+              {visible.map((service) => (
+                <ShortcutRow key={service.id} service={service} />
+              ))}
+            </ul>
+          )}
 
-      {secondary.length > 0 && (
-        <button
-          type="button"
-          className="university-section__more"
-          aria-expanded={showAll}
-          onClick={() => setShowAll((value) => !value)}
-        >
-          {showAll ? '접기' : `더보기 ${secondary.length}`}
-        </button>
+          {secondary.length > 0 && (
+            <button
+              type="button"
+              className="university-section__more"
+              aria-expanded={showAll}
+              onClick={toggleShowAll}
+            >
+              {showAll ? '접기' : `더보기 ${secondary.length}`}
+            </button>
+          )}
+        </>
       )}
     </section>
   )

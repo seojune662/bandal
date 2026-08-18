@@ -101,6 +101,14 @@ function displayDataRoot(path: string | undefined): string {
   return path
 }
 
+function rejectedMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message
+  }
+  if (typeof error === 'string' && error.trim().length > 0) return error
+  return fallback
+}
+
 export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -110,6 +118,11 @@ export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.E
   const [tutorialReset, setTutorialReset] = useState<
     'idle' | 'done' | 'failed'
   >('idle')
+  const [pickedDataRoot, setPickedDataRoot] = useState<string | null>(null)
+  const [pickingDataRoot, setPickingDataRoot] = useState(false)
+  const [dataRootError, setDataRootError] = useState<string | null>(null)
+
+  useEffect(() => setPickedDataRoot(null), [settings?.dataRoot])
 
   const handleReopenOnboarding = (): void => {
     void invoke('settings:set', { onboarding: reopenedOnboarding() })
@@ -125,6 +138,22 @@ export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.E
       .catch(() => setTutorialReset('failed'))
   }
 
+  const handlePickDataRoot = (): void => {
+    if (pickingDataRoot) return
+    setPickingDataRoot(true)
+    setDataRootError(null)
+    void invoke('settings:pickDataRoot', {})
+      .then((result) => {
+        if (result !== null) setPickedDataRoot(result.dataRoot)
+      })
+      .catch((error: unknown) => {
+        setDataRootError(
+          rejectedMessage(error, t('settings.general.workspace.pickFailed'))
+        )
+      })
+      .finally(() => setPickingDataRoot(false))
+  }
+
   return (
     <div className="settings-stack">
       <SettingsCard
@@ -138,11 +167,32 @@ export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.E
           <Icon name="folder" size={17} />
           <input
             type="text"
-            value={displayDataRoot(settings?.dataRoot)}
+            value={displayDataRoot(pickedDataRoot ?? settings?.dataRoot)}
             aria-label={t('settings.general.workspace.pathLabel')}
             readOnly
           />
-          <span className="badge">{t('settings.general.comingSoon')}</span>
+        </div>
+        <div className="settings-card__rows">
+          <div className="setting-row">
+            <span
+              className={`setting-row__description${dataRootError === null ? '' : ' settings-feedback--error'}`}
+              role={dataRootError === null ? undefined : 'alert'}
+            >
+              {dataRootError ?? t('settings.general.workspace.moveNotice')}
+            </span>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={pickingDataRoot}
+              onClick={handlePickDataRoot}
+            >
+              {t(
+                pickingDataRoot
+                  ? 'settings.general.workspace.picking'
+                  : 'settings.general.workspace.change'
+              )}
+            </button>
+          </div>
         </div>
       </SettingsCard>
 
@@ -182,16 +232,18 @@ export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.E
           <ToggleRow
             label={t('settings.general.tabs.openBeside')}
             description={t('settings.general.tabs.openBesideDescription')}
-            checked={false}
-            disabled
-            badge={t('settings.general.preparing')}
+            checked={settings?.openAdjacentTab ?? false}
+            onChange={(openAdjacentTab) => {
+              void invoke('settings:set', { openAdjacentTab })
+            }}
           />
           <ToggleRow
             label={t('settings.general.tabs.restore')}
             description={t('settings.general.tabs.restoreDescription')}
-            checked={false}
-            disabled
-            badge={t('settings.general.preparing')}
+            checked={settings?.restoreLastCourse ?? false}
+            onChange={(restoreLastCourse) => {
+              void invoke('settings:set', { restoreLastCourse })
+            }}
           />
         </div>
       </SettingsCard>

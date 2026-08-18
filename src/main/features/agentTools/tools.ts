@@ -14,6 +14,10 @@ import type { BoardRepo } from '../board/boardRepo'
 import type { CanvasRepo } from '../canvas/canvasRepo'
 import type { CoursesRepo } from '../courses/coursesRepo'
 import type { MaterialsRepo } from '../materials/materialsRepo'
+import {
+  DEFAULT_EXTRACT_MAX_CHARS,
+  extractMaterialText
+} from '../materials/textExtract'
 import type { NotesRepo } from '../notes/notesRepo'
 import {
   AGENT_TOOL_DEFINITIONS,
@@ -309,6 +313,30 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
       return deps.canvasRepo.listBoards(
         stringField(input, 'courseId', { nonEmpty: true })
       )
+    },
+
+    async read_material(input) {
+      const courseId = stringField(input, 'courseId', { nonEmpty: true })
+      const relPath = stringField(input, 'relPath', { nonEmpty: true })
+      // 상한을 걸어 한 호출이 세션 문맥을 통째로 삼키지 못하게 한다.
+      const maxChars = Math.min(
+        optionalInteger(input, 'maxChars', 1) ?? DEFAULT_EXTRACT_MAX_CHARS,
+        200_000
+      )
+      const absPath = assertCoursePath(courseId, relPath)
+      const ext = posix.extname(relPath)
+      const text = await extractMaterialText(absPath, ext, maxChars)
+      if (text === null) {
+        return {
+          relPath,
+          supported: false,
+          message:
+            ext.toLowerCase() === '.pdf'
+              ? 'PDF 는 read_material 대신 파일을 직접 읽으세요.'
+              : `지원하지 않는 형식(${ext === '' ? '확장자 없음' : ext})입니다. 텍스트, 마크다운, .docx, .xlsx/.xls 만 읽을 수 있습니다.`
+        }
+      }
+      return { relPath, supported: true, text }
     },
 
     list_tasks(input) {

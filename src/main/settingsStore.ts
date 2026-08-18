@@ -1,25 +1,19 @@
 /**
  * Minimal working settings store: JSON file in app.getPath('userData').
  * Real implementation (not a stub) — theme must persist in M0.
+ *
+ * Sanitizers live in settingsSanitize.ts (electron-free, unit-testable);
+ * this file owns the electron-bound pieces: paths, cache, persistence and
+ * the `settings:changed` broadcast.
  */
 
 import { app, BrowserWindow } from 'electron'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { isThemeId } from '../shared/theme'
-import { sanitizeUniversitySettings } from '../shared/universities/sanitize'
-import {
-  DEFAULT_ONBOARDING,
-  DEFAULT_SETTINGS,
-  DEFAULT_TUTORIAL
-} from '../shared/types/settings'
-import type {
-  OnboardingState,
-  Settings,
-  SettingsPatch,
-  TutorialState
-} from '../shared/types/settings'
+import { DEFAULT_SETTINGS } from '../shared/types/settings'
+import type { Settings, SettingsPatch } from '../shared/types/settings'
+import { sanitizeSettings } from './settingsSanitize'
 
 const SETTINGS_FILE = 'settings.json'
 
@@ -42,90 +36,13 @@ function defaultsWithPaths(): Settings {
   }
 }
 
-/** Any registered theme id, or `system`. Unknown ids fall back to the default
- * (a settings.json written by a newer build must not brick an older one). */
-function isTheme(value: unknown): value is Settings['theme'] {
-  return value === 'system' || isThemeId(value)
-}
-
-/** Only renderer locales shipped by this build are accepted from disk/IPC. */
-function isLocale(value: unknown): value is Settings['locale'] {
-  return value === 'ko-KR' || value === 'en-US'
-}
-
-/** [M6-A] Validates the persisted onboarding record, key by key. */
-function sanitizeOnboarding(raw: unknown): OnboardingState {
-  if (typeof raw !== 'object' || raw === null) {
-    return { ...DEFAULT_ONBOARDING }
-  }
-  const record = raw as Record<string, unknown>
-  return {
-    flowVersion:
-      typeof record.flowVersion === 'number' &&
-      Number.isInteger(record.flowVersion) &&
-      record.flowVersion >= 0
-        ? record.flowVersion
-        : DEFAULT_ONBOARDING.flowVersion,
-    closedAt: typeof record.closedAt === 'string' ? record.closedAt : null,
-    lastCompletedStep:
-      typeof record.lastCompletedStep === 'number' &&
-      Number.isInteger(record.lastCompletedStep) &&
-      record.lastCompletedStep >= 0
-        ? record.lastCompletedStep
-        : DEFAULT_ONBOARDING.lastCompletedStep
-  }
-}
-
-/** Validates unknown JSON into Settings, falling back to defaults per key. */
-function sanitize(raw: unknown): Settings {
-  const defaults = defaultsWithPaths()
-  if (typeof raw !== 'object' || raw === null) {
-    return defaults
-  }
-  const record = raw as Record<string, unknown>
-  return {
-    theme: isTheme(record.theme) ? record.theme : defaults.theme,
-    agentProvider:
-      record.agentProvider === 'claude-code' || record.agentProvider === 'codex'
-        ? record.agentProvider
-        : defaults.agentProvider,
-    dataRoot:
-      typeof record.dataRoot === 'string' && record.dataRoot.length > 0
-        ? record.dataRoot
-        : defaults.dataRoot,
-    locale: isLocale(record.locale) ? record.locale : defaults.locale,
-    onboarding: sanitizeOnboarding(record.onboarding),
-    tutorial: sanitizeTutorial(record.tutorial),
-    university: sanitizeUniversitySettings(record.university)
-  }
-}
-
-function sanitizeTutorial(raw: unknown): TutorialState {
-  if (typeof raw !== 'object' || raw === null) {
-    return { ...DEFAULT_TUTORIAL }
-  }
-  const record = raw as Record<string, unknown>
-  return {
-    seenVersion:
-      typeof record.seenVersion === 'number' &&
-      Number.isInteger(record.seenVersion) &&
-      record.seenVersion >= 0
-        ? record.seenVersion
-        : DEFAULT_TUTORIAL.seenVersion,
-    activeCourseId:
-      typeof record.activeCourseId === 'string' && record.activeCourseId !== ''
-        ? record.activeCourseId
-        : null
-  }
-}
-
 export function getSettings(): Settings {
   if (cached !== null) {
     return cached
   }
   try {
     const raw: unknown = JSON.parse(readFileSync(settingsPath(), 'utf8'))
-    cached = sanitize(raw)
+    cached = sanitizeSettings(raw, defaultsWithPaths())
   } catch {
     // Missing or corrupt file → defaults.
     cached = defaultsWithPaths()
@@ -135,7 +52,7 @@ export function getSettings(): Settings {
 
 /** Applies a patch, persists to disk, and broadcasts `settings:changed`. */
 export function setSettings(patch: SettingsPatch): Settings {
-  const next = sanitize({ ...getSettings(), ...patch })
+  const next = sanitizeSettings({ ...getSettings(), ...patch }, defaultsWithPaths())
   cached = next
   try {
     const file = settingsPath()

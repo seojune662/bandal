@@ -80,6 +80,18 @@ export interface Settings {
   tutorial: TutorialState
   /** [M8] Chosen school + the user layer over its preset shortcuts. */
   university: UniversitySettings
+  /**
+   * [R3] 새 자료 탭을 지금 보고 있는 탭 바로 옆(같은 그룹, 다음 칸)에 연다.
+   * false면 dockview 기본 동작대로 활성 그룹의 끝에 붙는다.
+   */
+  openAdjacentTab: boolean
+  /** [R3] 앱을 다시 켰을 때 마지막으로 보던 과목을 복원한다. */
+  restoreLastCourse: boolean
+  /**
+   * [R3] 내부용 — 마지막으로 선택한 과목 id. 설정 파일에 저장해 창 사이에
+   * 자동으로 동기화된다(설정 UI에는 노출하지 않는다). null = 기록 없음.
+   */
+  lastActiveCourseId: string | null
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -89,7 +101,10 @@ export const DEFAULT_SETTINGS: Settings = {
   locale: 'ko-KR',
   onboarding: DEFAULT_ONBOARDING,
   tutorial: DEFAULT_TUTORIAL,
-  university: DEFAULT_UNIVERSITY_SETTINGS
+  university: DEFAULT_UNIVERSITY_SETTINGS,
+  openAdjacentTab: false,
+  restoreLastCourse: true,
+  lastActiveCourseId: null
 }
 
 export type SettingsPatch = Partial<Settings>

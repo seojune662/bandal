@@ -815,6 +815,16 @@ export interface IpcContract {
     req: SettingsPatch
     res: Settings
   }
+  /**
+   * [R3] Opens the native directory picker for a new dataRoot. Validates the
+   * chosen folder is writable, persists it (settings:changed broadcasts the
+   * update), and returns the new value. `null` = the user cancelled.
+   * Existing courses keep their absolute folder paths and are untouched.
+   */
+  'settings:pickDataRoot': {
+    req: Record<string, never>
+    res: { dataRoot: string } | null
+  }
 
   // -- layout (dockview persistence per course) -----------------------------
   'layout:get': {
@@ -1118,6 +1128,7 @@ export const IPC_CHANNELS = [
   'agentTools:respondConfirm',
   'settings:get',
   'settings:set',
+  'settings:pickDataRoot',
   'layout:get',
   'layout:save',
   'auth:getState',

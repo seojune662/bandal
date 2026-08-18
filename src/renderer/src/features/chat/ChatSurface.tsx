@@ -13,7 +13,7 @@ import { descriptorFor } from '../workspace/tabIdentity'
 import { useChatPromptStore } from './chatPromptBus'
 import { Composer, type ComposerHandle } from './Composer'
 import { ConversationListMenu } from './ConversationListMenu'
-import { MessageList } from './MessageList'
+import { formatCost, MessageList, UsageText } from './MessageList'
 import { useChatSession } from './useChatSession'
 import { AgentToolActivity } from './AgentToolCards'
 import { useAgentToolActivity } from './agentToolActivityStore'
@@ -213,6 +213,25 @@ export function ChatSurface({
   const defaultModel = models.find((model) => model.isDefault) ?? models[0]
   const selectedModel = state.model ?? defaultModel?.id ?? ''
   const includesSelected = models.some((model) => model.id === selectedModel)
+  const hasSessionUsage =
+    state.sessionUsage.inputTokens > 0 ||
+    state.sessionUsage.outputTokens > 0 ||
+    (state.sessionUsage.cacheReadTokens ?? 0) > 0 ||
+    (state.sessionUsage.cacheCreationTokens ?? 0) > 0 ||
+    state.sessionCostUsd > 0
+  const sessionUsageTitle = [
+    `입력 ${state.sessionUsage.inputTokens.toLocaleString('en-US')} tokens`,
+    `출력 ${state.sessionUsage.outputTokens.toLocaleString('en-US')} tokens`,
+    state.sessionUsage.cacheReadTokens === undefined
+      ? null
+      : `캐시 읽기 ${state.sessionUsage.cacheReadTokens.toLocaleString('en-US')} tokens`,
+    state.sessionUsage.cacheCreationTokens === undefined
+      ? null
+      : `캐시 생성 ${state.sessionUsage.cacheCreationTokens.toLocaleString('en-US')} tokens`,
+    state.sessionCostUsd > 0 ? `비용 ${formatCost(state.sessionCostUsd)}` : null
+  ]
+    .filter((item): item is string => item !== null)
+    .join(' · ')
 
   return root(
     <>
@@ -224,6 +243,15 @@ export function ChatSurface({
             onNewConversation={handleNewConversation}
             onOpenConversation={handleOpenConversation}
           />
+        )}
+        {hasSessionUsage && (
+          <div className="chat-session-usage" title={sessionUsageTitle}>
+            <span className="chat-session-usage__label">오늘 이 대화:</span>
+            <UsageText usage={state.sessionUsage} />
+            {state.sessionCostUsd > 0 && (
+              <span>· {formatCost(state.sessionCostUsd)}</span>
+            )}
+          </div>
         )}
         <ProviderSelector
           compact

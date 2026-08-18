@@ -336,12 +336,19 @@ describe('errors, limits and session events', () => {
     expect(state.model).toBe('claude-sonnet-4-5')
   })
 
-  test('usage event is a no-op', () => {
-    const state = applyAgentEvent(initialChatViewState, {
+  test('usage event accumulates into sessionUsage (last value wins per turn)', () => {
+    const first = applyAgentEvent(initialChatViewState, {
       type: 'usage',
       usage: { inputTokens: 1, outputTokens: 2 }
     })
-    expect(state).toBe(initialChatViewState)
+    expect(first.sessionUsage).toMatchObject({ inputTokens: 1, outputTokens: 2 })
+
+    // 같은 턴의 후속 usage는 누적치 갱신(교체)이지 이중 합산이 아니다.
+    const second = applyAgentEvent(first, {
+      type: 'usage',
+      usage: { inputTokens: 5, outputTokens: 9 }
+    })
+    expect(second.sessionUsage).toMatchObject({ inputTokens: 5, outputTokens: 9 })
   })
 })
 
