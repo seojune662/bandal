@@ -1,6 +1,6 @@
 import { BrowserWindow, nativeTheme, shell } from 'electron'
 import { join } from 'node:path'
-import { resolveWindowBackground } from '../../shared/theme'
+import { resolveWindowBackground, resolveWindowSymbolColor } from '../../shared/theme'
 import { hardenWindowWebviews } from '../features/browser'
 import { getSettings } from '../settingsStore'
 import { readWindowState, trackWindowState } from './windowBounds'
@@ -31,7 +31,24 @@ export function createMainWindow(): BrowserWindow {
     minWidth: 1024,
     minHeight: 640,
     show: false,
-    titleBarStyle: 'hiddenInset',
+    // macOS: traffic lights inset into our chrome. Windows: frameless + native
+    // caption buttons via titleBarOverlay — without it there are NO window
+    // controls at all (min/max/close), which shipped broken through v0.12.x.
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    ...(process.platform === 'win32'
+      ? {
+          titleBarOverlay: {
+            color: resolveBackground(),
+            symbolColor: resolveWindowSymbolColor(
+              getSettings().theme,
+              nativeTheme.shouldUseDarkColors
+            ),
+            // Matches --chrome-height (2.75rem) so the caption buttons align
+            // with the tab strip row.
+            height: 44
+          }
+        }
+      : {}),
     backgroundColor: resolveBackground(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

@@ -85,6 +85,10 @@
   --dialog-width: 24rem;
   --context-menu-width: 11rem;
   --traffic-light-inset: 4.5rem;
+  --window-controls-inset: calc(
+    100vw - env(titlebar-area-x, 0px) -
+      env(titlebar-area-width, calc(100vw - 138px)) + var(--space-2)
+  );
 
   /* Motion */
   --dur-fast: 120ms;

@@ -249,6 +249,15 @@
   padding-inline: var(--space-2);
 }
 
+/* With the right rail closed, this header reaches the window edge beneath
+ * Electron's caption buttons. env() tracks their actual width; the token has
+ * a 138px fallback plus a small safety gap for older overlay implementations. */
+:root[data-platform='win32']
+  .app-shell[data-right-rail='closed']
+  .workspace-header-actions {
+  margin-inline-end: var(--window-controls-inset);
+}
+
 .workspace-add-tab {
   display: grid;
   place-items: center;

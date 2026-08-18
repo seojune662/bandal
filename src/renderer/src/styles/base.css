@@ -106,6 +106,14 @@ input:disabled {
   -webkit-app-region: no-drag;
 }
 
+/* The Windows title-bar overlay occupies the top-right corner. When the
+ * materials rail owns that corner, start its content below the 44px overlay. */
+:root[data-platform='win32']
+  .app-shell[data-right-rail='open']
+  > .app-rail--right {
+  padding-top: calc(var(--chrome-height) + var(--space-2));
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

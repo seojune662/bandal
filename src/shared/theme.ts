@@ -124,5 +124,21 @@ export function resolveWindowBackground(
   return getTheme(id).windowBackground
 }
 
+/**
+ * [win32] Caption-button glyph color for `titleBarOverlay` — light glyphs on
+ * dark themes, dark glyphs on light themes. Same resolution rules as
+ * `resolveWindowBackground`.
+ */
+export function resolveWindowSymbolColor(
+  preference: ThemeId | 'system',
+  prefersDark: boolean
+): string {
+  const id =
+    preference === 'system'
+      ? SYSTEM_THEME[prefersDark ? 'dark' : 'light']
+      : preference
+  return getTheme(id).base === 'dark' ? '#f0ede6' : '#1f1a12'
+}
+
 /** The resolved (non-`system`) theme actually painted on `<html data-theme>`. */
 export type ResolvedTheme = ThemeId

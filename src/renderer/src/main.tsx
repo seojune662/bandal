@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css'
 import { AppShell } from './app/AppShell'
 import { installMockGroupsIfRequested } from './features/group/mockAdapter'
 // tokens.css pulls in every theme (styles/themes/index.css) — entry points
