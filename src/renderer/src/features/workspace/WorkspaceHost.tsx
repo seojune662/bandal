@@ -18,7 +18,7 @@ import 'dockview/dist/styles/dockview.css'
 import { Icon } from '../../app/icons'
 import { BandalMark } from '../../components/BandalMark'
 import { Tooltip } from '../../components/Tooltip'
-import { useCoursesStore } from '../../stores/coursesStore'
+import { flushLastActiveCoursePersist, useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useFileDropTarget } from '../materials/useFileDropTarget'
@@ -302,6 +302,7 @@ export function WorkspaceHost(): JSX.Element {
   useEffect(() => {
     const flush = (): void => {
       useWorkspaceStore.getState().flushPendingSave()
+      flushLastActiveCoursePersist()
     }
     window.addEventListener('beforeunload', flush)
     return () => {

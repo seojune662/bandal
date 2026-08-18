@@ -155,6 +155,7 @@ function CanvasSession({
   const cancelledTitleRenameRef = useRef(false)
   const panelActive = usePanelActive(panelApi)
   const activeTool = useInkToolStore((state) => state.activeTool)
+  const setActiveTool = useInkToolStore((state) => state.setActiveTool)
   const color = useInkToolStore((state) => state.color)
   const width = useInkToolStore((state) => state.width)
   const opacity = useInkToolStore((state) => state.opacity)
@@ -477,43 +478,26 @@ function CanvasSession({
     if (bestRatio >= 0) setVisiblePage(bestPage)
   }, [])
 
-  /**
-   * Same two-step as a clip: drop a provisional square immediately so the page
-   * reacts, then correct it to the picture's real ratio once measured — but
-   * only if the student has not already moved or resized it.
-   */
   const placeImage = useCallback((
     source: DrawingImageSource,
     point: { x: number; y: number },
     page: number
   ): void => {
-    const initialBox = imageBoxAtPoint(point, DEFAULT_PAGE_ASPECT, 1)
-    const created = addInternal({
-      kind: 'image',
-      data: { box: initialBox, image: source },
-      style: { color, width, opacity: 1 }
-    }, page, true)
-
     void loadDrawingImage(board.courseId, source)
       .then((dataUrl) => (dataUrl === null ? null : dataUrlImageAspect(dataUrl)))
       .then((imageAspect) => {
-        if (imageAspect === null) return
-        const current = shapesRef.current.find((shape) => shape.id === created.id)
-        if (
-          current === undefined ||
-          !sameDrawingBox(current.data.box, initialBox)
-        ) {
-          return
-        }
-        updateInternal(created.id, {
+        setActiveTool('select')
+        addInternal({
+          kind: 'image',
           data: {
-            ...current.data,
-            box: imageBoxAtPoint(point, DEFAULT_PAGE_ASPECT, imageAspect)
-          }
-        }, false)
+            box: imageBoxAtPoint(point, DEFAULT_PAGE_ASPECT, imageAspect ?? 1),
+            image: source
+          },
+          style: { color, width, opacity: 1 }
+        }, page, true)
       })
       .catch(() => {})
-  }, [addInternal, board.courseId, color, updateInternal, width])
+  }, [addInternal, board.courseId, color, setActiveTool, width])
 
   const placeClip = useCallback((
     source: DrawingClipSource,

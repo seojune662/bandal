@@ -499,14 +499,19 @@ export async function selectMembers(
 }
 
 export async function selectPendingInvites(
-  client: SupabaseClient
+  client: SupabaseClient,
+  userId: string
 ): Promise<PendingGroupInvite[]> {
+  // RLS also grants group *members* read access to their group's invites (for
+  // management screens), so without this filter the inviter reads back the row
+  // they just created — rendered with their own nickname via the inviter join.
   const { data, error } = await client
     .from('group_invites')
     .select(
       'id, group_id, created_at, study_groups!inner(name, color), profiles!group_invites_inviter_id_fkey(nickname)'
     )
     .eq('status', 'pending')
+    .eq('invitee_id', userId)
   if (error !== null) throw error
   if (!Array.isArray(data)) return []
 

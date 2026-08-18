@@ -2,11 +2,27 @@ import { describe, expect, test } from 'vitest'
 import {
   BROWSING_PARTITION,
   isAllowedAttach,
+  isBlockedEmbeddedAuthUrl,
   isNavigationAllowed,
   isPermissionAllowed,
   popupForwardUrl,
   sanitizeGuestWebPreferences
 } from '../../../src/main/features/browser/webviewPolicy'
+
+describe('isBlockedEmbeddedAuthUrl (Google embedded-login handoff)', () => {
+  test('matches Google account sign-in origins', () => {
+    expect(isBlockedEmbeddedAuthUrl('https://accounts.google.com/v3/signin')).toBe(true)
+    expect(isBlockedEmbeddedAuthUrl('https://accounts.youtube.com/accounts/SetSID')).toBe(true)
+  })
+
+  test('leaves ordinary browsing and lookalikes alone', () => {
+    expect(isBlockedEmbeddedAuthUrl('https://www.google.com/search?q=a')).toBe(false)
+    expect(isBlockedEmbeddedAuthUrl('https://mail.google.com/mail')).toBe(false)
+    expect(isBlockedEmbeddedAuthUrl('https://accounts.google.com.evil.io/')).toBe(false)
+    expect(isBlockedEmbeddedAuthUrl('http://accounts.google.com/')).toBe(false)
+    expect(isBlockedEmbeddedAuthUrl('not a url')).toBe(false)
+  })
+})
 
 describe('isAllowedAttach (fail-closed will-attach-webview)', () => {
   test('allows https src on the browsing partition', () => {

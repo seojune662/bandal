@@ -1,7 +1,13 @@
 import { useEffect, useRef } from 'react'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
+import { showToast } from '../../app/toast'
+import { useT } from '../../i18n'
+import { useFavoritesStore } from '../../stores/favoritesStore'
+import { useMaterialsStore } from '../../stores/materialsStore'
+import { materialDescriptor } from '../courses/favoriteDrop'
 import { MaterialsStudyToolMenuItem } from '../study/MaterialsStudyToolMenuItem'
+import { tabTitle } from '../workspace/tabIdentity'
 
 export interface MaterialsContextMenuState {
   target: MaterialNode | null
@@ -49,6 +55,28 @@ export function MaterialsContextMenu({
 }: MaterialsContextMenuProps): JSX.Element {
   const menuRef = useRef<HTMLDivElement>(null)
   const hasTarget = target !== null
+  const t = useT()
+  const activeCourseId = useMaterialsStore((state) => state.activeCourseId)
+  const addFavorite = useFavoritesStore((state) => state.add)
+  const favoriteDescriptor =
+    target !== null && target.kind !== 'dir' && activeCourseId !== null
+      ? materialDescriptor(activeCourseId, target.relPath)
+      : null
+
+  const handleAddFavorite = async (): Promise<void> => {
+    if (activeCourseId === null || favoriteDescriptor === null) return
+    onClose()
+    try {
+      await addFavorite({
+        courseId: activeCourseId,
+        label: tabTitle(favoriteDescriptor),
+        descriptor: favoriteDescriptor
+      })
+      showToast(t('materials.favorite.added'))
+    } catch {
+      showToast(t('materials.favorite.addFailed'), 'danger')
+    }
+  }
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -120,6 +148,15 @@ export function MaterialsContextMenu({
         y={y}
         onClose={onClose}
       />
+      {favoriteDescriptor !== null && (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => void handleAddFavorite()}
+        >
+          <Icon name="plus" />{t('materials.favorite.add')}
+        </button>
+      )}
       <button
         type="button"
         role="menuitem"

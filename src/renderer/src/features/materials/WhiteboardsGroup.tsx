@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { PersonalBoard } from '../../../../shared/types/whiteboard'
 import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
@@ -14,6 +14,10 @@ interface BoardMenuState {
   placement: 'top' | 'bottom'
   align: 'start' | 'end'
   returnFocus: HTMLElement
+}
+
+interface BoardRenameState extends BoardMenuState {
+  title: string
 }
 
 function operationError(error: unknown, fallback: string): string {
@@ -63,10 +67,14 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [menu, setMenu] = useState<BoardMenuState | null>(null)
+  const [renameDraft, setRenameDraft] = useState<BoardRenameState | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const renamePopoverRef = useRef<HTMLFormElement>(null)
   const activeCourseIdRef = useRef<string | null>(courseId)
+  const renameInputId = useId()
 
   const closeMenu = useCallback(() => setMenu(null), [])
+  const closeRename = useCallback(() => setRenameDraft(null), [])
 
   useEffect(() => {
     return () => {
@@ -80,6 +88,7 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
     setBoards(null)
     setError(null)
     setMenu(null)
+    setRenameDraft(null)
     setCreating(false)
     setRenamingId(null)
     setRemovingId(null)
@@ -122,6 +131,32 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
     }
   }, [closeMenu, menu])
 
+  const renamingBoardId = renameDraft?.board.id ?? null
+  useEffect(() => {
+    if (renamingBoardId === null) return
+    const dismissOnPointerDown = (event: PointerEvent): void => {
+      if (!renamePopoverRef.current?.contains(event.target as Node)) {
+        closeRename()
+      }
+    }
+    const dismissOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      closeRename()
+    }
+    window.addEventListener('pointerdown', dismissOnPointerDown)
+    window.addEventListener('keydown', dismissOnEscape)
+    window.addEventListener('blur', closeRename)
+    return () => {
+      window.removeEventListener('pointerdown', dismissOnPointerDown)
+      window.removeEventListener('keydown', dismissOnEscape)
+      window.removeEventListener('blur', closeRename)
+      if (renameDraft?.returnFocus.isConnected === true) {
+        renameDraft.returnFocus.focus()
+      }
+    }
+  }, [closeRename, renameDraft?.returnFocus, renamingBoardId])
+
   const openBoard = useCallback(
     (boardId: string): void => {
       useWorkspaceStore
@@ -151,16 +186,21 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
     }
   }
 
-  const renameBoard = async (board: PersonalBoard): Promise<void> => {
-    closeMenu()
-    const rawTitle = window.prompt('화이트보드 이름', board.title)
-    if (rawTitle === null) return
-    const title = rawTitle.trim()
+  const renameBoard = async (
+    event: React.FormEvent<HTMLFormElement>
+  ): Promise<void> => {
+    event.preventDefault()
+    if (renameDraft === null || renamingId !== null) return
+    const { board } = renameDraft
+    const title = renameDraft.title.trim()
     if (title.length === 0) {
       setError('화이트보드 이름을 입력해 주세요.')
       return
     }
-    if (title === board.title) return
+    if (title === board.title) {
+      closeRename()
+      return
+    }
 
     setRenamingId(board.id)
     setError(null)
@@ -172,6 +212,7 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
           entry.id === renamed.id ? renamed : entry
         ) ?? null
       )
+      closeRename()
     } catch (renameError: unknown) {
       if (activeCourseIdRef.current === courseId) {
         setError(
@@ -326,7 +367,10 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
             type="button"
             role="menuitem"
             disabled={renamingId !== null || removingId !== null}
-            onClick={() => void renameBoard(menu.board)}
+            onClick={() => {
+              setRenameDraft({ ...menu, title: menu.board.title })
+              setMenu(null)
+            }}
           >
             <Icon name="pencil" />이름 변경
           </button>
@@ -340,6 +384,52 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
             <Icon name="trash" />삭제
           </button>
         </div>
+      )}
+
+      {renameDraft !== null && (
+        <form
+          ref={renamePopoverRef}
+          className="whiteboard-rename-popover"
+          data-placement={renameDraft.placement}
+          data-align={renameDraft.align}
+          style={{ left: renameDraft.x, top: renameDraft.y }}
+          onSubmit={(event) => void renameBoard(event)}
+        >
+          <label htmlFor={renameInputId}>화이트보드 이름</label>
+          <div className="whiteboard-rename-popover__row">
+            <input
+              id={renameInputId}
+              type="text"
+              autoComplete="off"
+              autoFocus
+              value={renameDraft.title}
+              disabled={renamingId !== null}
+              onFocus={(event) => event.currentTarget.select()}
+              onChange={(event) =>
+                setRenameDraft((current) =>
+                  current === null
+                    ? null
+                    : { ...current, title: event.target.value }
+                )
+              }
+            />
+            <button
+              type="button"
+              disabled={renamingId !== null}
+              onClick={closeRename}
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              disabled={
+                renamingId !== null || renameDraft.title.trim().length === 0
+              }
+            >
+              {renamingId !== null ? '저장 중…' : '저장'}
+            </button>
+          </div>
+        </form>
       )}
     </section>
   )

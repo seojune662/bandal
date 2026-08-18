@@ -65,6 +65,26 @@ export function popupForwardUrl(url: string): string | null {
 }
 
 /**
+ * [§6.1 university-sites] Google refuses sign-in from embedded webviews
+ * (`disallowed_useragent`, enforced since 2023). Letting the guest reach
+ * accounts.google.com only shows the "안전하지 않을 수 있습니다" wall — and our
+ * popup-deny routing severs `window.opener`, so popup-based OAuth could never
+ * complete anyway. These URLs must be handed off to the system browser.
+ */
+export function isBlockedEmbeddedAuthUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:') return false
+    return (
+      parsed.hostname === 'accounts.google.com' ||
+      parsed.hostname === 'accounts.youtube.com'
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
  * [M6-A] Workspace shortcuts that must keep working while a guest page has
  * keyboard focus. Only ⌘T (new tab) and ⌘W (close tab) pass through — every
  * other app shortcut is intentionally dead inside a guest (the page owns its

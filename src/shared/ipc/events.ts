@@ -108,6 +108,11 @@ export interface PushEvents {
   'agentTools:changed': { courseId: string; turnId: string }
   'materials:changed': MaterialsChanged
   'browser:open-url': BrowserOpenUrl
+  /**
+   * A guest tried to reach a login origin Google blocks inside embedded
+   * webviews; main opened it in the system browser — show the user why.
+   */
+  'browser:external-auth': BrowserOpenUrl
   'settings:changed': SettingsChanged
   /** Open the in-app settings overlay (app menu ⌘, or legacy callers). */
   'ui:openSettings': { }

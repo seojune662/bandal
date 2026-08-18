@@ -5,11 +5,12 @@
  * Also owns the cross-cutting wiring:
  *  - guest destruction when the workspace closes a browser tab
  *  - `browser:open-url` pushes (denied window.open) → new Bandal browser tab
+ *  - `browser:external-auth` pushes → short-lived in-panel notice
  *  - pointer passthrough while dockview drags / the new-tab menu / any
  *    external overlay (webviewPassthrough tokens) are active
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { onPush } from '../../lib/ipc'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
@@ -22,6 +23,8 @@ import {
   onPointerPassthrough
 } from './webviewPassthrough'
 import './browser.css'
+
+const EXTERNAL_AUTH_NOTICE_MS = 6000
 
 /** Release guests whose tab is no longer open (closeTab / course switch). */
 function useGuestReaper(): void {
@@ -63,6 +66,33 @@ function useOpenUrlForwarding(): void {
       }),
     []
   )
+}
+
+/** Explain when main moves a guest auth flow to the default browser. */
+function useExternalAuthNotice(): void {
+  const dismissTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    const unsubscribe = onPush('browser:external-auth', ({ url }) => {
+      const state = useBrowserGuests.getState()
+      state.showExternalAuthNotice(url)
+
+      if (dismissTimer.current !== null) {
+        window.clearTimeout(dismissTimer.current)
+      }
+      dismissTimer.current = window.setTimeout(() => {
+        useBrowserGuests.getState().dismissExternalAuthNotice()
+        dismissTimer.current = null
+      }, EXTERNAL_AUTH_NOTICE_MS)
+    })
+
+    return () => {
+      unsubscribe()
+      if (dismissTimer.current !== null) {
+        window.clearTimeout(dismissTimer.current)
+      }
+    }
+  }, [])
 }
 
 /**
@@ -114,6 +144,7 @@ export function BrowserWebviewLayer(): JSX.Element {
   useEffect(() => onPointerPassthrough(setExternalToken), [])
   useGuestReaper()
   useOpenUrlForwarding()
+  useExternalAuthNotice()
 
   const isPassthrough = isDragActive || isMenuOpen || hasExternalToken
 

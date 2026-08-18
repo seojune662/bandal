@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { TabDescriptor } from '../../../../shared/tabs'
+import { isViewableFile } from '../file/fileFormats'
+import { kindForMaterialName } from '../materials/materialPaths'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 
 /** Shared with tab-strip/material-tree drag sources. */
@@ -23,18 +25,22 @@ function nonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }
 
-function materialDescriptor(
+export function materialDescriptor(
   courseId: string,
   relPath: string
 ): TabDescriptor | null {
-  const extension = relPath.includes('.')
-    ? relPath.slice(relPath.lastIndexOf('.')).toLocaleLowerCase()
-    : ''
-  if (extension === '.pdf') {
+  const kind = kindForMaterialName(relPath)
+  if (kind === 'pdf') {
     return { kind: 'pdf', payload: { courseId, relPath } }
   }
-  if (extension === '.md' || extension === '.markdown') {
+  if (kind === 'note') {
     return { kind: 'note', payload: { courseId, relPath } }
+  }
+  if (kind === 'image') {
+    return { kind: 'image', payload: { courseId, relPath } }
+  }
+  if (kind === 'video' || isViewableFile(relPath)) {
+    return { kind: 'file', payload: { courseId, relPath } }
   }
   return null
 }

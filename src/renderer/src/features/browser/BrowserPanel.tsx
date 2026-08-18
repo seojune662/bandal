@@ -18,6 +18,7 @@ import type { IDockviewPanelProps } from 'dockview'
 import type { BrowserTabPayload } from '../../../../shared/tabs'
 import { Icon } from '../../app/icons'
 import { Tooltip } from '../../components/Tooltip'
+import { useT } from '../../i18n'
 import { favoriteScopeKey, useFavoritesStore } from '../../stores/favoritesStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { isTabDescriptor } from '../workspace/tabIdentity'
@@ -59,6 +60,23 @@ interface ToolbarProps {
   tabId: string
   nav: BrowserNavState
   onNavigate: (url: string) => void
+}
+
+function usePanelVisible(api: IDockviewPanelProps['api']): boolean {
+  const [visible, setVisible] = useState(() => api.isActive && api.isVisible)
+
+  useEffect(() => {
+    const update = (): void => setVisible(api.isActive && api.isVisible)
+    const activeDisposable = api.onDidActiveChange(update)
+    const visibleDisposable = api.onDidVisibilityChange(update)
+    update()
+    return () => {
+      activeDisposable.dispose()
+      visibleDisposable.dispose()
+    }
+  }, [api])
+
+  return visible
 }
 
 function useBrowserFavoriteShortcuts(): BrowserShortcut[] {
@@ -300,9 +318,14 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
 
   const anchorRef = useRef<HTMLDivElement>(null)
   useBrowserAnchorRect(tabId, anchorRef)
+  const t = useT()
+  const isPanelVisible = usePanelVisible(props.api)
 
   const nav = useBrowserGuests((state) =>
     tabId !== '' ? state.nav[tabId] : undefined
+  )
+  const externalAuthNotice = useBrowserGuests(
+    (state) => state.externalAuthNotice
   )
   const navState = nav ?? initialNavState(initialUrl)
   const favorites = useBrowserFavoriteShortcuts()
@@ -343,6 +366,29 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
     <div className="browser-panel" data-kind="browser">
       <BrowserToolbar tabId={tabId} nav={navState} onNavigate={navigate} />
       <BrowserBookmarksBar favorites={favorites} onNavigate={navigate} />
+      {isPanelVisible && externalAuthNotice !== null && (
+        <div
+          key={externalAuthNotice.id}
+          className="browser-external-auth"
+          role="status"
+          aria-live="polite"
+        >
+          <BrowserIcon name="globe" />
+          <span className="browser-external-auth__message">
+            {t('browser.externalAuth.message')}
+          </span>
+          <button
+            type="button"
+            className="browser-external-auth__dismiss"
+            aria-label={t('browser.externalAuth.dismiss')}
+            onClick={() =>
+              useBrowserGuests.getState().dismissExternalAuthNotice()
+            }
+          >
+            <Icon name="x" />
+          </button>
+        </div>
+      )}
       <div
         ref={anchorRef}
         className="browser-anchor"

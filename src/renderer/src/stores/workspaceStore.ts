@@ -281,12 +281,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 
       const key = structuralKey(layout)
       if (key === lastStructuralKey) {
-        // Decorative churn (focus change). Refresh a pending snapshot so an
-        // already-scheduled save carries the latest active tab, but never
-        // start a save for focus alone.
-        if (pendingSave !== null && pendingSave.courseId === activeCourseId) {
-          pendingSave = { courseId: activeCourseId, layout }
-        }
+        // Decorative churn (focus change). No debounce timer for focus alone,
+        // but always park the snapshot so flush (beforeunload / course switch)
+        // carries the latest active tab — otherwise quitting after only
+        // switching tabs restores the wrong active tab.
+        pendingSave = { courseId: activeCourseId, layout }
         return
       }
       lastStructuralKey = key

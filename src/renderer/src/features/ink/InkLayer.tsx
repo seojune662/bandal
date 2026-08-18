@@ -213,6 +213,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   const pendingSample = useRef<PointerSample | null>(null)
   const pointerFrame = useRef<number | null>(null)
   const pendingTextBox = useRef<PendingTextBox | null>(null)
+  const previousShapeIds = useRef(new Set(shapes.map((shape) => shape.id)))
   const [gesture, setGestureState] = useState<Gesture | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -276,7 +277,14 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       if (original === undefined) return
       const box = current.kind === 'move'
         ? moveDrawingBox(original, dx, dy, clampToBounds)
-        : resizeDrawingBox(original, dx, dy, clampToBounds, current.handle)
+        : resizeDrawingBox(
+            original,
+            dx,
+            dy,
+            clampToBounds,
+            current.handle,
+            current.shape.kind === 'image'
+          )
       setGesture({ ...current, box })
     }
   }, [clampToBounds, eraseAt, pointFromSample, setGesture])
@@ -300,6 +308,16 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     setNewTextBox(null)
     pendingTextBox.current = null
   }, [activeTool, setGesture])
+
+  useEffect(() => {
+    const priorIds = previousShapeIds.current
+    previousShapeIds.current = new Set(shapes.map((shape) => shape.id))
+    if (activeTool !== 'select') return
+    const addedImage = [...shapes].reverse().find((shape) =>
+      shape.kind === 'image' && !priorIds.has(shape.id)
+    )
+    if (addedImage !== undefined) setSelectedId(addedImage.id)
+  }, [activeTool, shapes])
 
   useEffect(() => {
     const pending = pendingTextBox.current

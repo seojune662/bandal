@@ -272,5 +272,14 @@ export const enUS: Record<MessageKey, string> = {
   'settings.university.picker.urlPlaceholder': 'Paste a course URL from your LMS',
   'settings.university.picker.urlHelp': 'Adding a URL lets you attach classroom links to courses. You can also add it later.',
   'settings.university.picker.cancel': 'Cancel',
-  'settings.university.picker.add': 'Add'
+  'settings.university.picker.add': 'Add',
+
+  'favorites.emptyHelp': 'Add a tab or material to your favorites.',
+  'materials.favorite.add': 'Add to favorites',
+  'materials.favorite.added': 'Added to favorites.',
+  'materials.favorite.addFailed': 'Could not add the favorite.',
+
+  'browser.externalAuth.message':
+    'Google sign-in continues in your default browser. Return to this window after signing in.',
+  'browser.externalAuth.dismiss': 'Dismiss notice'
 }

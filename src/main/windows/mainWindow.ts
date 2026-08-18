@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { resolveWindowBackground } from '../../shared/theme'
 import { hardenWindowWebviews } from '../features/browser'
 import { getSettings } from '../settingsStore'
+import { readWindowState, trackWindowState } from './windowBounds'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -19,9 +20,14 @@ export function createMainWindow(): BrowserWindow {
     return mainWindow
   }
 
+  const windowState = readWindowState()
+
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: windowState.bounds?.width ?? 1280,
+    height: windowState.bounds?.height ?? 800,
+    ...(windowState.bounds !== null
+      ? { x: windowState.bounds.x, y: windowState.bounds.y }
+      : {}),
     minWidth: 1024,
     minHeight: 640,
     show: false,
@@ -40,6 +46,9 @@ export function createMainWindow(): BrowserWindow {
 
   // Must be attached before the renderer loads so no webview can slip past.
   hardenWindowWebviews(mainWindow)
+  trackWindowState(mainWindow)
+
+  if (windowState.maximized) mainWindow.maximize()
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()

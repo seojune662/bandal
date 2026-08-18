@@ -451,9 +451,10 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
 
     async listPendingInvites() {
       const client = deps.getClient()
-      if (client === null || deps.auth.userId() === null) return []
+      const userId = deps.auth.userId()
+      if (client === null || userId === null) return []
       try {
-        return await rpc.selectPendingInvites(client)
+        return await rpc.selectPendingInvites(client, userId)
       } catch (error) {
         console.error('[group] pending invites failed', error)
         return []

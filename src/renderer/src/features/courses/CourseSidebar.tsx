@@ -28,7 +28,8 @@ import { CourseGroupRow } from './CourseGroupRow'
 import { FavoritesSection } from './FavoritesSection'
 import {
   persistCollapsedCourseIds,
-  readCollapsedCourseIds
+  readCollapsedCourseIds,
+  selectAndExpandCourse
 } from './courseCollapse'
 import {
   canAcceptCourseDrag,
@@ -503,7 +504,14 @@ export function CourseSidebar(): JSX.Element {
             className="course-row__select"
             aria-current={selected ? 'page' : undefined}
             disabled={pending}
-            onClick={() => selectCourse(course.id)}
+            onClick={() =>
+              selectAndExpandCourse(
+                course.id,
+                expanded,
+                selectCourse,
+                setCourseExpanded
+              )
+            }
           >
             <span
               className="course-dot"

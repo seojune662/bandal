@@ -484,7 +484,7 @@
   font-size: var(--text-xs);
   color: var(--text-primary);
   background: var(--bg-app);
-  border: 1px solid var(--border-strong);
+  border: thin solid var(--border-strong);
   border-radius: var(--radius-sm);
   outline: none;
 }
@@ -613,6 +613,77 @@
   background: var(--bg-overlay);
 }
 
+.favorite-rename-popover {
+  position: fixed;
+  z-index: 31;
+  display: flex;
+  width: min(
+    calc(var(--context-menu-width) + var(--space-8)),
+    calc(var(--rail-left-width) - var(--space-4))
+  );
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  color: var(--text-primary);
+  background: var(--bg-overlay);
+  border: thin solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  transform: translateX(-100%);
+}
+
+.favorite-rename-popover[data-placement='top'] {
+  transform: translate(-100%, -100%);
+}
+
+.favorite-rename-popover label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.favorite-rename-popover__row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.favorite-rename-popover input {
+  min-width: 0;
+  min-height: var(--control-height);
+  flex: 1;
+  padding-inline: var(--space-2);
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-raised);
+  border: thin solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.favorite-rename-popover button {
+  min-height: var(--control-height);
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border-radius: var(--radius-sm);
+}
+
+.favorite-rename-popover button[type='submit'] {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+.favorite-rename-popover input:focus-visible,
+.favorite-rename-popover button:focus-visible {
+  outline: thin solid var(--accent);
+  outline-offset: var(--space-1);
+}
+
+.favorite-rename-popover button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.7;
+}
+
 .favorites-section__status,
 .favorites-section__empty,
 .favorites-section__error {
@@ -625,6 +696,8 @@
 .favorites-section__empty {
   display: grid;
   place-items: center;
+  gap: var(--space-2);
+  text-align: center;
 }
 
 .favorites-section__empty-icon {

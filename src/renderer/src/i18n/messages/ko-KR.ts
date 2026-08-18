@@ -270,7 +270,16 @@ export const koKR = {
   'settings.university.picker.urlPlaceholder': 'LMS에서 과목을 연 주소를 붙여넣어 주세요',
   'settings.university.picker.urlHelp': '주소를 넣어두면 과목마다 강의실 링크를 바로 붙일 수 있어요. 나중에 넣어도 괜찮아요.',
   'settings.university.picker.cancel': '취소',
-  'settings.university.picker.add': '추가'
+  'settings.university.picker.add': '추가',
+
+  'favorites.emptyHelp': '탭이나 자료를 즐겨찾기에 추가해 보세요.',
+  'materials.favorite.add': '즐겨찾기에 추가',
+  'materials.favorite.added': '즐겨찾기에 추가했어요.',
+  'materials.favorite.addFailed': '즐겨찾기를 추가하지 못했어요.',
+
+  'browser.externalAuth.message':
+    '구글 로그인은 기본 브라우저에서 진행돼요. 로그인 후 이 창으로 돌아오세요.',
+  'browser.externalAuth.dismiss': '안내 닫기'
 } as const
 
 export type MessageKey = keyof typeof koKR

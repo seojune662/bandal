@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type { Favorite } from '../../../../shared/types/favorite'
 import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
+import { useT } from '../../i18n'
 import {
   favoriteScopeKey,
   useFavoritesStore
@@ -25,10 +26,20 @@ interface FavoritesSectionProps {
   courseId: string | null
 }
 
+interface FavoriteRenameState {
+  id: string
+  label: string
+  originalLabel: string
+  x: number
+  y: number
+  placement: 'top' | 'bottom'
+}
+
 export function FavoritesSection({
   courseId
 }: FavoritesSectionProps): JSX.Element {
   const key = favoriteScopeKey(courseId)
+  const t = useT()
   const linkFormId = useId()
   const favorites = useFavoritesStore((state) => state.byCourse[key])
   const loading = useFavoritesStore(
@@ -46,9 +57,14 @@ export function FavoritesSection({
   const [linkLabel, setLinkLabel] = useState('')
   const [linkError, setLinkError] = useState<string | null>(null)
   const [isSavingLink, setSavingLink] = useState(false)
+  const [renameDraft, setRenameDraft] =
+    useState<FavoriteRenameState | null>(null)
+  const [isSavingRename, setSavingRename] = useState(false)
   const dragDepth = useRef(0)
   const requestedScope = useRef<string | null>(null)
   const linkUrlRef = useRef<HTMLInputElement>(null)
+  const renamePopoverRef = useRef<HTMLFormElement>(null)
+  const renameTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
     if (
@@ -64,6 +80,39 @@ export function FavoritesSection({
   useEffect(() => {
     if (isAddingLink) linkUrlRef.current?.focus()
   }, [isAddingLink])
+
+  const renamingFavoriteId = renameDraft?.id ?? null
+  useEffect(() => {
+    if (renamingFavoriteId === null) return
+    const closeOutside = (event: MouseEvent): void => {
+      if (
+        event.target instanceof Node &&
+        renamePopoverRef.current?.contains(event.target) === true
+      ) {
+        return
+      }
+      setRenameDraft(null)
+    }
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setRenameDraft(null)
+    }
+    document.addEventListener('mousedown', closeOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+      if (renameTriggerRef.current?.isConnected === true) {
+        renameTriggerRef.current.focus()
+      }
+    }
+  }, [renamingFavoriteId])
+
+  useEffect(() => {
+    setRenameDraft(null)
+    setSavingRename(false)
+  }, [key])
 
   const closeLinkForm = (): void => {
     setAddingLink(false)
@@ -114,17 +163,47 @@ export function FavoritesSection({
     })
   }
 
-  const handleRename = (favorite: Favorite): void => {
-    const next = window.prompt('즐겨찾기 이름', favorite.label)
-    if (next === null || next.trim().length === 0 || next.trim() === favorite.label) {
-      return
-    }
-    void rename({ id: favorite.id, label: next.trim() }).catch(() => {
-      showToast('즐겨찾기 이름을 바꾸지 못했어요.', 'danger')
+  const openRenamePopover = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    favorite: Favorite
+  ): void => {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    renameTriggerRef.current = event.currentTarget
+    setRenameDraft({
+      id: favorite.id,
+      label: favorite.label,
+      originalLabel: favorite.label,
+      x: bounds.right,
+      y: bounds.top > window.innerHeight / 2 ? bounds.top : bounds.bottom,
+      placement: bounds.top > window.innerHeight / 2 ? 'top' : 'bottom'
     })
   }
 
+  const handleRename = async (
+    event: React.FormEvent<HTMLFormElement>
+  ): Promise<void> => {
+    event.preventDefault()
+    if (renameDraft === null || isSavingRename) return
+    const label = renameDraft.label.trim()
+    if (label.length === 0) return
+    if (label === renameDraft.originalLabel) {
+      setRenameDraft(null)
+      return
+    }
+
+    setSavingRename(true)
+    try {
+      await rename({ id: renameDraft.id, label })
+      setRenameDraft(null)
+    } catch {
+      showToast('즐겨찾기 이름을 바꾸지 못했어요.', 'danger')
+    } finally {
+      setSavingRename(false)
+    }
+  }
+
   const handleRemove = (favorite: Favorite): void => {
+    if (renameDraft?.id === favorite.id) setRenameDraft(null)
     void remove(favorite.id).catch(() => {
       showToast('즐겨찾기를 제거하지 못했어요.', 'danger')
     })
@@ -263,7 +342,7 @@ export function FavoritesSection({
             <li
               key={favorite.id}
               className="favorite-row"
-              draggable
+              draggable={renameDraft?.id !== favorite.id}
               onDragStart={(event) => {
                 event.dataTransfer.effectAllowed = 'copyMove'
                 event.dataTransfer.setData(FAVORITE_ITEM_MIME, favorite.id)
@@ -314,7 +393,8 @@ export function FavoritesSection({
                   type="button"
                   aria-label={`${favorite.label} 이름 변경`}
                   title="이름 변경"
-                  onClick={() => handleRename(favorite)}
+                  aria-expanded={renameDraft?.id === favorite.id}
+                  onClick={(event) => openRenamePopover(event, favorite)}
                 >
                   <Icon name="pencil" />
                 </button>
@@ -339,7 +419,51 @@ export function FavoritesSection({
           >
             <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z" />
           </svg>
+          <span>{t('favorites.emptyHelp')}</span>
         </div>
+      )}
+
+      {renameDraft !== null && (
+        <form
+          ref={renamePopoverRef}
+          className="favorite-rename-popover"
+          data-placement={renameDraft.placement}
+          style={{ left: renameDraft.x, top: renameDraft.y }}
+          onSubmit={(event) => void handleRename(event)}
+        >
+          <label htmlFor={`${linkFormId}-favorite-name`}>즐겨찾기 이름</label>
+          <div className="favorite-rename-popover__row">
+            <input
+              id={`${linkFormId}-favorite-name`}
+              type="text"
+              autoComplete="off"
+              autoFocus
+              value={renameDraft.label}
+              disabled={isSavingRename}
+              onFocus={(event) => event.currentTarget.select()}
+              onChange={(event) =>
+                setRenameDraft((current) =>
+                  current === null
+                    ? null
+                    : { ...current, label: event.target.value }
+                )
+              }
+            />
+            <button
+              type="button"
+              disabled={isSavingRename}
+              onClick={() => setRenameDraft(null)}
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              disabled={isSavingRename || renameDraft.label.trim().length === 0}
+            >
+              {isSavingRename ? '저장 중…' : '저장'}
+            </button>
+          </div>
+        </form>
       )}
 
       {error !== null && (

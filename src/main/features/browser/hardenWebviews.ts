@@ -6,7 +6,7 @@
  * ./webviewPolicy.ts; this module only attaches them to electron objects.
  */
 
-import { app, session } from 'electron'
+import { app, session, shell } from 'electron'
 import type { BrowserWindow, Event as ElectronEvent, WebContents } from 'electron'
 import type {
   BrowserOpenUrl,
@@ -15,6 +15,7 @@ import type {
 import {
   BROWSING_PARTITION,
   isAllowedAttach,
+  isBlockedEmbeddedAuthUrl,
   isNavigationAllowed,
   isPermissionAllowed,
   passthroughShortcut,
@@ -64,7 +65,22 @@ function hardenBrowsingSession(): void {
  * waiting for renderer-side registration would race early redirects.
  */
 function attachGuestPolicies(host: WebContents, guest: WebContents): void {
+  // Google-blocked login origins never load in a guest — hand them to the
+  // system browser and tell the renderer so the tab can explain why.
+  const handOffExternalAuth = (url: string): void => {
+    void shell.openExternal(url)
+    if (!host.isDestroyed()) {
+      const payload: BrowserOpenUrl = { url }
+      host.send('browser:external-auth', payload)
+    }
+  }
+
   const navigationGuard = (event: ElectronEvent, url: string): void => {
+    if (isBlockedEmbeddedAuthUrl(url)) {
+      event.preventDefault()
+      handOffExternalAuth(url)
+      return
+    }
     if (!isNavigationAllowed(url)) event.preventDefault()
   }
   guest.on('will-navigate', navigationGuard)
@@ -73,6 +89,10 @@ function attachGuestPolicies(host: WebContents, guest: WebContents): void {
   // window.open / target=_blank: never a native window. http(s) targets are
   // forwarded to the renderer, which opens them as a new Bandal browser tab.
   guest.setWindowOpenHandler(({ url }) => {
+    if (isBlockedEmbeddedAuthUrl(url)) {
+      handOffExternalAuth(url)
+      return { action: 'deny' }
+    }
     const forwardUrl = popupForwardUrl(url)
     if (forwardUrl !== null && !host.isDestroyed()) {
       const payload: BrowserOpenUrl = { url: forwardUrl }

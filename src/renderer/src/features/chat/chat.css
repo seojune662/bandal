@@ -151,8 +151,10 @@
 .chat-gate {
   display: grid;
   flex: 1;
-  place-items: center;
+  min-height: 0;
   padding: var(--space-6);
+  overflow: auto;
+  place-items: safe center;
 }
 
 .chat-gate__card {

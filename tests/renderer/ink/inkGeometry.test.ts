@@ -170,4 +170,47 @@ describe('inkGeometry', () => {
       resizeDrawingBox(original, 0.05, 0.05, true, 'se')
     )
   })
+
+  test.each([
+    ['nw', 0.1, 0.02, 0.3, 0.3, 0.3, 0.15],
+    ['ne', 0.1, 0.02, 0.2, 0.2, 0.5, 0.25],
+    ['sw', -0.1, 0.02, 0.1, 0.25, 0.5, 0.25],
+    ['se', 0.1, 0.02, 0.2, 0.25, 0.5, 0.25]
+  ] as const)(
+    'locks image aspect from the %s handle using the dominant axis',
+    (handle, dx, dy, x, y, width, height) => {
+      const original = { x: 0.2, y: 0.25, width: 0.4, height: 0.2 }
+      const resized = resizeDrawingBox(original, dx, dy, true, handle, true)
+
+      expect(resized.x).toBeCloseTo(x)
+      expect(resized.y).toBeCloseTo(y)
+      expect(resized.width).toBeCloseTo(width)
+      expect(resized.height).toBeCloseTo(height)
+      expect(resized.width / resized.height).toBeCloseTo(
+        original.width / original.height
+      )
+    }
+  )
+
+  test('uses vertical movement when it is the dominant image resize axis', () => {
+    const original = { x: 0.2, y: 0.25, width: 0.4, height: 0.2 }
+    const resized = resizeDrawingBox(original, 0.01, 0.1, true, 'se', true)
+
+    expect(resized.width).toBeCloseTo(0.6)
+    expect(resized.height).toBeCloseTo(0.3)
+    expect(resized.width / resized.height).toBeCloseTo(2)
+  })
+
+  test.each(['nw', 'ne', 'sw', 'se'] as const)(
+    'keeps image minimum dimensions and aspect at the %s handle',
+    (handle) => {
+      const original = { x: 0.2, y: 0.25, width: 0.4, height: 0.2 }
+      const dx = handle === 'nw' || handle === 'sw' ? 0.5 : -0.5
+      const resized = resizeDrawingBox(original, dx, 0, true, handle, true)
+
+      expect(resized.width).toBeCloseTo(0.05)
+      expect(resized.height).toBeCloseTo(0.025)
+      expect(resized.width / resized.height).toBeCloseTo(2)
+    }
+  )
 })

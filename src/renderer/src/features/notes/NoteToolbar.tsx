@@ -311,7 +311,7 @@ export function NoteToolbar({
             onClick={toggleTaskList}
           />
         </div>
-        <div className="note-format-group">
+        <div className="note-format-group note-format-group--overflowable">
           {commandButton('인용', '❝', formatState.blockquote, (editor) =>
             editor.action(callCommand(wrapInBlockquoteCommand.key))
           )}
@@ -392,6 +392,73 @@ export function NoteToolbar({
         />
         {moreOpen && (
           <div className="note-format-more__menu" role="menu">
+            <button
+              type="button"
+              className="note-format-menu-button note-format-menu-button--compact"
+              role="menuitemcheckbox"
+              aria-checked={formatState.blockquote}
+              onMouseDown={keepEditorFocused}
+              onClick={() => {
+                run((editor) =>
+                  editor.action(callCommand(wrapInBlockquoteCommand.key))
+                )
+                setMoreOpen(false)
+              }}
+            >
+              인용
+            </button>
+            <button
+              type="button"
+              className="note-format-menu-button note-format-menu-button--compact"
+              role="menuitemcheckbox"
+              aria-checked={formatState.link}
+              onMouseDown={keepEditorFocused}
+              onClick={toggleLink}
+            >
+              {formatState.link ? '링크 해제' : '링크'}
+            </button>
+            <button
+              type="button"
+              className="note-format-menu-button note-format-menu-button--compact"
+              role="menuitem"
+              onMouseDown={keepEditorFocused}
+              onClick={() => {
+                chooseImage()
+                setMoreOpen(false)
+              }}
+            >
+              이미지
+            </button>
+            <button
+              type="button"
+              className="note-format-menu-button note-format-menu-button--compact"
+              role="menuitemcheckbox"
+              aria-checked={formatState.inlineCode}
+              onMouseDown={keepEditorFocused}
+              onClick={() => {
+                run((editor) =>
+                  editor.action(callCommand(toggleInlineCodeCommand.key))
+                )
+                setMoreOpen(false)
+              }}
+            >
+              인라인 코드
+            </button>
+            <button
+              type="button"
+              className="note-format-menu-button note-format-menu-button--compact"
+              role="menuitemcheckbox"
+              aria-checked={formatState.codeBlockPosition !== null}
+              onMouseDown={keepEditorFocused}
+              onClick={() => {
+                run((editor) =>
+                  editor.action(callCommand(createCodeBlockCommand.key))
+                )
+                setMoreOpen(false)
+              }}
+            >
+              코드 블록
+            </button>
             <button
               type="button"
               className="note-format-menu-button"

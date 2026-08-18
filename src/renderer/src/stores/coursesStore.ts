@@ -56,23 +56,46 @@ let loadSequence = 0
  */
 const LAST_COURSE_PERSIST_DEBOUNCE_MS = 800
 let lastCoursePersistTimer: ReturnType<typeof setTimeout> | null = null
+let pendingLastCourseId: string | null = null
+
+function sendLastActiveCourse(courseId: string): void {
+  // 브로드캐스트가 스냅샷을 갱신하므로, 그 사이 같은 값이 되었으면 무시.
+  if (settingsSnapshot().lastActiveCourseId === courseId) return
+  void invoke('settings:set', { lastActiveCourseId: courseId }).catch(
+    (error: unknown) => {
+      console.error('[Bandal] 마지막 과목을 저장하지 못했습니다.', error)
+    }
+  )
+}
 
 function persistLastActiveCourse(courseId: string): void {
   if (lastCoursePersistTimer !== null) clearTimeout(lastCoursePersistTimer)
   if (settingsSnapshot().lastActiveCourseId === courseId) {
     lastCoursePersistTimer = null
+    pendingLastCourseId = null
     return
   }
+  pendingLastCourseId = courseId
   lastCoursePersistTimer = setTimeout(() => {
     lastCoursePersistTimer = null
-    // 브로드캐스트가 스냅샷을 갱신하므로, 그 사이 같은 값이 되었으면 무시.
-    if (settingsSnapshot().lastActiveCourseId === courseId) return
-    void invoke('settings:set', { lastActiveCourseId: courseId }).catch(
-      (error: unknown) => {
-        console.error('[Bandal] 마지막 과목을 저장하지 못했습니다.', error)
-      }
-    )
+    pendingLastCourseId = null
+    sendLastActiveCourse(courseId)
   }, LAST_COURSE_PERSIST_DEBOUNCE_MS)
+}
+
+/**
+ * 과목 전환 직후 바로 종료하면 800ms 디바운스가 아직 안 터진 상태 —
+ * beforeunload 에서 호출해 마지막 전환을 잃지 않는다.
+ */
+export function flushLastActiveCoursePersist(): void {
+  if (pendingLastCourseId === null) return
+  if (lastCoursePersistTimer !== null) {
+    clearTimeout(lastCoursePersistTimer)
+    lastCoursePersistTimer = null
+  }
+  const courseId = pendingLastCourseId
+  pendingLastCourseId = null
+  sendLastActiveCourse(courseId)
 }
 
 function errorMessage(error: unknown): string {
@@ -134,6 +157,10 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
           }
           state.isLoading = false
         })
+        // [Gap B] 부팅에서 고른 과목도 영속 — 안 그러면 과목을 한 번도
+        // 전환하지 않은 사용자는 lastActiveCourseId 가 영영 비어 있다.
+        const bootSelection = get().selectedCourseId
+        if (bootSelection !== null) persistLastActiveCourse(bootSelection)
       } catch (error) {
         if (sequence !== loadSequence) return
         set((state) => {

@@ -51,6 +51,7 @@ const PUSH_CHANNELS = [
   'chat:event-batch',
   'materials:changed',
   'browser:open-url',
+  'browser:external-auth',
   'settings:changed',
   'ui:openSettings',
   'shortcut:passthrough',

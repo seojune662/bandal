@@ -158,6 +158,84 @@
   transform-origin: bottom right;
 }
 
+.whiteboard-rename-popover {
+  position: fixed;
+  z-index: 31;
+  display: flex;
+  width: min(
+    calc(var(--context-menu-width) + var(--space-8)),
+    calc(100vw - var(--space-4))
+  );
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  color: var(--text-primary);
+  background: var(--bg-overlay);
+  border: thin solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.whiteboard-rename-popover[data-align='end'] {
+  transform: translateX(-100%);
+}
+
+.whiteboard-rename-popover[data-placement='top'][data-align='start'] {
+  transform: translateY(-100%);
+}
+
+.whiteboard-rename-popover[data-placement='top'][data-align='end'] {
+  transform: translate(-100%, -100%);
+}
+
+.whiteboard-rename-popover label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.whiteboard-rename-popover__row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.whiteboard-rename-popover input {
+  min-width: 0;
+  min-height: var(--control-height);
+  flex: 1;
+  padding-inline: var(--space-2);
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-raised);
+  border: thin solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.whiteboard-rename-popover button {
+  min-height: var(--control-height);
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border-radius: var(--radius-sm);
+}
+
+.whiteboard-rename-popover button[type='submit'] {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+.whiteboard-rename-popover input:focus-visible,
+.whiteboard-rename-popover button:focus-visible {
+  outline: thin solid var(--accent);
+  outline-offset: var(--space-1);
+}
+
+.whiteboard-rename-popover button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.7;
+}
+
 .app-rail--right[data-paste-ready='true'] {
   position: relative;
   background: var(--bg-raised);

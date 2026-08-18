@@ -48,11 +48,18 @@ export interface BrowserLoginState {
   message: 'saved' | 'filled' | 'needs-input' | 'failed' | null
 }
 
+export interface BrowserExternalAuthNotice {
+  id: number
+  url: string
+}
+
 interface BrowserGuestsState {
   /** Live guests in LRU order (oldest first). */
   liveGuests: LiveGuest[]
   nav: Record<string, BrowserNavState>
   login: Record<string, BrowserLoginState>
+  /** Host-window notice that an auth URL moved to the default browser. */
+  externalAuthNotice: BrowserExternalAuthNotice | null
   /** Recent pages live only for the lifetime of their browser tab. */
   recent: Record<string, BrowserVisit[]>
   /** undefined = a direct URL tab; true/false = start page visible/hidden. */
@@ -64,6 +71,8 @@ interface BrowserGuestsState {
   removeGuest: (tabId: string) => void
   updateNav: (tabId: string, patch: Partial<BrowserNavState>) => void
   updateLogin: (tabId: string, patch: Partial<BrowserLoginState>) => void
+  showExternalAuthNotice: (url: string) => void
+  dismissExternalAuthNotice: () => void
 }
 
 export function initialNavState(url: string): BrowserNavState {
@@ -88,6 +97,7 @@ export function initialLoginState(): BrowserLoginState {
 
 /** Last committed URL per tab — survives eviction/destruction for restore. */
 const lastKnownUrls = new Map<string, string>()
+let nextExternalAuthNoticeId = 0
 
 function visitLabel(url: string, title: string): string {
   const trimmedTitle = title.trim()
@@ -134,6 +144,7 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
   liveGuests: [],
   nav: {},
   login: {},
+  externalAuthNotice: null,
   recent: {},
   startPageVisible: {},
 
@@ -236,16 +247,28 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
     const current = login[tabId]
     if (current === undefined) return
     set({ login: { ...login, [tabId]: { ...current, ...patch } } })
+  },
+
+  showExternalAuthNotice: (url) => {
+    set({
+      externalAuthNotice: { id: ++nextExternalAuthNoticeId, url }
+    })
+  },
+
+  dismissExternalAuthNotice: () => {
+    set({ externalAuthNotice: null })
   }
 }))
 
 /** Test-only: reset the store and the session URL-restore map. */
 export function resetBrowserGuestsForTests(): void {
   lastKnownUrls.clear()
+  nextExternalAuthNoticeId = 0
   useBrowserGuests.setState({
     liveGuests: [],
     nav: {},
     login: {},
+    externalAuthNotice: null,
     recent: {},
     startPageVisible: {}
   })

@@ -66,12 +66,51 @@ export function resizeDrawingBox(
   dx: number,
   dy: number,
   clampToBounds = true,
-  handle: ResizeHandle = 'se'
+  handle: ResizeHandle = 'se',
+  lockAspectRatio = false
 ): DrawingBox {
   const right = box.x + box.width
   const bottom = box.y + box.height
   const movesWest = handle === 'nw' || handle === 'sw'
   const movesNorth = handle === 'nw' || handle === 'ne'
+
+  if (
+    lockAspectRatio &&
+    Number.isFinite(box.width) &&
+    Number.isFinite(box.height) &&
+    box.width > 0 &&
+    box.height > 0
+  ) {
+    const horizontalDelta = movesWest ? -dx : dx
+    const verticalDelta = movesNorth ? -dy : dy
+    const requestedScale = Math.abs(dx) >= Math.abs(dy)
+      ? (box.width + horizontalDelta) / box.width
+      : (box.height + verticalDelta) / box.height
+    const minimumScale = Math.max(
+      MIN_BOX_WIDTH / box.width,
+      MIN_BOX_HEIGHT / box.height
+    )
+    const maximumScale = clampToBounds
+      ? Math.min(
+          (movesWest ? right : 1 - box.x) / box.width,
+          (movesNorth ? bottom : 1 - box.y) / box.height
+        )
+      : Number.POSITIVE_INFINITY
+    const scale = Math.max(
+      minimumScale,
+      Math.min(Math.max(minimumScale, maximumScale), requestedScale)
+    )
+    const width = box.width * scale
+    const height = box.height * scale
+
+    return {
+      ...box,
+      x: movesWest ? right - width : box.x,
+      y: movesNorth ? bottom - height : box.y,
+      width,
+      height
+    }
+  }
 
   const x = movesWest
     ? Math.min(right - MIN_BOX_WIDTH, clampToBounds ? Math.max(0, box.x + dx) : box.x + dx)

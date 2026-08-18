@@ -260,6 +260,8 @@
   padding: 0 var(--space-4);
   background: var(--bg-surface);
   border-bottom: thin solid var(--border-subtle);
+  container-name: note-format-bar;
+  container-type: inline-size;
 }
 
 .note-format-bar__scroll {
@@ -446,6 +448,10 @@
   border-radius: var(--radius-sm);
 }
 
+.note-format-menu-button--compact {
+  display: none;
+}
+
 .note-format-menu-button:hover {
   color: var(--text-primary);
   background: var(--bg-raised);
@@ -506,6 +512,16 @@
   color: var(--accent);
   background: var(--accent-muted);
   border-color: var(--accent);
+}
+
+@container note-format-bar (max-width: 43rem) {
+  .note-format-group--overflowable {
+    display: none;
+  }
+
+  .note-format-menu-button--compact {
+    display: block;
+  }
 }
 
 .note-slash-menu {

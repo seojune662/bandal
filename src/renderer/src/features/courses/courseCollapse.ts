@@ -9,6 +9,16 @@ interface StorageWriter {
   setItem: (key: string, value: string) => void
 }
 
+export function selectAndExpandCourse(
+  courseId: string,
+  expanded: boolean,
+  selectCourse: (id: string) => void,
+  setCourseExpanded: (id: string, expanded: boolean) => void
+): void {
+  selectCourse(courseId)
+  if (!expanded) setCourseExpanded(courseId, true)
+}
+
 export function readCollapsedCourseIds(
   storage: StorageReader | null =
     typeof window === 'undefined' ? null : window.localStorage

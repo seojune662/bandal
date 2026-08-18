@@ -31,7 +31,7 @@ describe('favorite drag payload', () => {
     expect(parseFavoriteDragPayload(raw)).toEqual(pdf)
   })
 
-  test('classifies PDF and Markdown material payloads by extension', () => {
+  test('classifies every material that has an in-app viewer', () => {
     expect(
       parseFavoriteDragPayload(
         serializeFavoriteMaterialDrag('c1', '자료/LECTURE.PDF')
@@ -51,6 +51,22 @@ describe('favorite drag payload', () => {
     expect(
       parseFavoriteDragPayload(
         serializeFavoriteMaterialDrag('c1', 'images/diagram.png')
+      )
+    ).toEqual({
+      kind: 'image',
+      payload: { courseId: 'c1', relPath: 'images/diagram.png' }
+    })
+    expect(
+      parseFavoriteDragPayload(
+        serializeFavoriteMaterialDrag('c1', 'data/results.xlsx')
+      )
+    ).toEqual({
+      kind: 'file',
+      payload: { courseId: 'c1', relPath: 'data/results.xlsx' }
+    })
+    expect(
+      parseFavoriteDragPayload(
+        serializeFavoriteMaterialDrag('c1', 'archive/raw.bin')
       )
     ).toBeNull()
   })

@@ -1,8 +1,9 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import {
   COLLAPSED_COURSES_STORAGE_KEY,
   persistCollapsedCourseIds,
-  readCollapsedCourseIds
+  readCollapsedCourseIds,
+  selectAndExpandCourse
 } from '../../../src/renderer/src/features/courses/courseCollapse'
 
 class MemoryStorage {
@@ -18,6 +19,26 @@ class MemoryStorage {
 }
 
 describe('course collapse persistence', () => {
+  test('selecting a collapsed course also expands it', () => {
+    const selectCourse = vi.fn()
+    const setCourseExpanded = vi.fn()
+
+    selectAndExpandCourse('c1', false, selectCourse, setCourseExpanded)
+
+    expect(selectCourse).toHaveBeenCalledWith('c1')
+    expect(setCourseExpanded).toHaveBeenCalledWith('c1', true)
+  })
+
+  test('selecting an expanded course leaves its expansion state alone', () => {
+    const selectCourse = vi.fn()
+    const setCourseExpanded = vi.fn()
+
+    selectAndExpandCourse('c1', true, selectCourse, setCourseExpanded)
+
+    expect(selectCourse).toHaveBeenCalledWith('c1')
+    expect(setCourseExpanded).not.toHaveBeenCalled()
+  })
+
   test('round-trips a stable per-course id set', () => {
     const storage = new MemoryStorage()
 
