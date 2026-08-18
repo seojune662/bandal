@@ -19,6 +19,8 @@ export interface UndoHandlers {
   task(input: UndoTarget): void
   board(input: UndoTarget): void
   shape(input: UndoTarget): void
+  /** 문서 제자리 편집의 되돌리기 — 백업을 원래 경로로 복원한다. */
+  'material-edit'(input: UndoTarget): void
 }
 
 export interface AgentJournal {

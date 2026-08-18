@@ -92,6 +92,8 @@ import {
   createAgentConfirmer,
   createAgentJournal,
   createAgentTools,
+  parseMaterialEditTargetId,
+  restoreMaterialBackup,
   startAgentToolsServer
 } from '../features/agentTools'
 
@@ -760,6 +762,21 @@ export function registerHandlers(): IpcRouter {
         const [boardId, shapeId] = targetId.split('\u0000')
         if (boardId === undefined || shapeId === undefined) return
         canvasRepo.removeShapes({ boardId, ids: [shapeId] })
+      },
+      // 문서 제자리 편집(edit_sheet / edit_docx_text)의 되돌리기 —
+      // 편집 직전 백업을 원래 경로 위로 복사한다. 파일이 그 사이
+      // 이동/개명됐어도 원래 경로에 복원한다.
+      'material-edit': ({ courseId, targetId }) => {
+        const parsed = parseMaterialEditTargetId(targetId)
+        if (parsed === null) return
+        restoreMaterialBackup({
+          courseFolder: coursesRepo.getFolder(courseId),
+          relPath: parsed.relPath,
+          backupAbs: parsed.backupAbs
+        })
+        // watcher 도 곧 알아채지만, 즉시성을 위해 직접 무효화·브로드캐스트.
+        materialsRepo.invalidateTree(courseId)
+        broadcast('materials:changed', { courseId })
       }
     })
   )

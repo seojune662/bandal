@@ -114,7 +114,9 @@ describe('agent app tools', () => {
       'delete_task',
       'delete_board',
       'delete_course',
-      'overwrite_note'
+      'overwrite_note',
+      'edit_sheet',
+      'edit_docx_text'
     ])
   })
 

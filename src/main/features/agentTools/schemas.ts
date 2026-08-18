@@ -346,6 +346,86 @@ export const AGENT_TOOL_DEFINITIONS = [
       ['courseId', 'relPath', 'markdown']
     ),
     annotations: confirms
+  },
+  {
+    name: 'edit_sheet',
+    description:
+      '확인을 받은 뒤 .xlsx 스프레드시트의 셀 값을 고치거나 끝에 행을 추가합니다. ' +
+      '값/수식 수준의 편집만 지원합니다 — 서식·차트·피벗은 보존되지만 이 도구로 편집할 수는 없습니다. ' +
+      '.xls 는 편집할 수 없습니다(.xlsx 만 저장 가능). 편집 전 원본은 자동 백업되어 되돌릴 수 있습니다.',
+    inputSchema: objectSchema(
+      {
+        courseId,
+        relPath,
+        sheet: string('시트 이름. 생략하면 첫 번째 시트를 편집합니다.'),
+        edits: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 200,
+          description:
+            '셀 단위 수정 목록. value 가 null 이면 셀을 비웁니다. ' +
+            '"=SUM(A1:A3)" 처럼 = 로 시작하는 문자열은 수식으로 저장됩니다.',
+          items: objectSchema(
+            {
+              cell: string('A1 형식 셀 주소 (예: "B2")'),
+              value: {
+                type: ['string', 'number', 'boolean', 'null'],
+                description: '새 값. null 은 셀 비우기, "=..." 는 수식.'
+              }
+            },
+            ['cell', 'value']
+          )
+        },
+        appendRows: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 200,
+          description:
+            '시트 끝에 추가할 행 목록. 각 행은 왼쪽 열부터의 값 배열이며 ' +
+            'null 은 빈 셀, "=..." 는 수식입니다. edits 와 appendRows 중 적어도 하나는 필요합니다.',
+          items: {
+            type: 'array',
+            items: { type: ['string', 'number', 'boolean', 'null'] }
+          }
+        }
+      },
+      ['courseId', 'relPath']
+    ),
+    annotations: confirms
+  },
+  {
+    name: 'edit_docx_text',
+    description:
+      '확인을 받은 뒤 .docx 문서의 본문 텍스트를 찾아 바꿉니다. run(서식이 같은 연속 구간) 안에 ' +
+      '온전히 들어 있는 문구만 매칭됩니다 — 문구 중간에 굵기·색 등 서식이 바뀌면 찾지 못하니, ' +
+      'read_material 로 정확한 문구를 확인한 뒤 사용하세요. 서식은 보존되고 편집 전 원본은 자동 백업됩니다.',
+    inputSchema: objectSchema(
+      {
+        courseId,
+        relPath,
+        replacements: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 20,
+          description: '순서대로 적용되는 찾아 바꾸기 목록 (1~20개)',
+          items: objectSchema(
+            {
+              find: string('찾을 텍스트. 대소문자까지 정확히 일치해야 합니다.'),
+              replace: string('바꿀 텍스트')
+            },
+            ['find', 'replace']
+          )
+        },
+        scope: {
+          type: 'string',
+          enum: ['first', 'all'],
+          description:
+            '각 항목을 첫 번째 일치만 바꿀지(first) 전부 바꿀지(all). 생략하면 all.'
+        }
+      },
+      ['courseId', 'relPath', 'replacements']
+    ),
+    annotations: confirms
   }
 ] as const satisfies readonly Tool[]
 

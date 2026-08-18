@@ -15,6 +15,11 @@ export type AgentActionTarget =
   | 'task'
   | 'board'
   | 'shape'
+  /**
+   * 기존 문서의 제자리 편집(edit_sheet / edit_docx_text). targetId 는
+   * `relPath\u0000backupAbs` — 되돌리기는 백업을 원래 경로로 복사한다.
+   */
+  | 'material-edit'
 
 export interface AgentAction {
   id: string

@@ -25,3 +25,11 @@ export {
   type UndoHandlers,
   type UndoTarget
 } from './journal'
+export {
+  backupMaterial,
+  materialEditTargetId,
+  parseMaterialEditTargetId,
+  restoreMaterialBackup,
+  MATERIAL_BACKUP_KEEP,
+  type MaterialBackup
+} from './documentBackup'

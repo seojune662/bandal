@@ -27,7 +27,8 @@ function undoHandlers(overrides: Partial<UndoHandlers> = {}): UndoHandlers {
     note: overrides.note ?? noop,
     task: overrides.task ?? noop,
     board: overrides.board ?? noop,
-    shape: overrides.shape ?? noop
+    shape: overrides.shape ?? noop,
+    'material-edit': overrides['material-edit'] ?? noop
   }
 }
 
@@ -117,6 +118,23 @@ describe('createAgentJournal', () => {
       undoable: false,
       undoneAt: null
     })
+  })
+
+  test('dispatches material-edit targets to the material-edit undo handler', () => {
+    record({
+      turnId: 'turn-1',
+      targetId: 'sheet.xlsx\u0000/backups/sheet.xlsx',
+      targetKind: 'material-edit'
+    })
+    const seen: string[] = []
+
+    expect(
+      journal.undoTurn(
+        'turn-1',
+        undoHandlers({ 'material-edit': ({ targetId }) => seen.push(targetId) })
+      )
+    ).toEqual({ undone: 1 })
+    expect(seen).toEqual(['sheet.xlsx\u0000/backups/sheet.xlsx'])
   })
 
   test('does not touch actions from another turn', () => {
