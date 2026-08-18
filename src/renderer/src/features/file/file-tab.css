@@ -1,7 +1,8 @@
 .file-panel,
 .file-docx,
 .file-sheet,
-.file-text {
+.file-text,
+.file-video {
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -45,6 +46,37 @@
 
 .file-status--error {
   color: var(--text-secondary);
+}
+
+.file-video {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--bg-app);
+}
+
+.file-video__media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  visibility: hidden;
+  background: var(--bg-app);
+}
+
+.file-video__media[data-visible='true'] {
+  visibility: visible;
+}
+
+.file-video__media:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: calc(-1 * var(--space-1));
+}
+
+.file-video__status {
+  position: absolute;
+  inset: 0;
 }
 
 .file-action,

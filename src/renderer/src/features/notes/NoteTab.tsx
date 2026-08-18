@@ -7,6 +7,7 @@ import {
   rootCtx,
   serializerCtx
 } from '@milkdown/core'
+import type { MilkdownPlugin } from '@milkdown/ctx'
 import { Plugin } from '@milkdown/prose/state'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react'
 import type { IDockviewPanelProps } from 'dockview'
@@ -22,6 +23,7 @@ import {
 import type { NoteContent, NoteRef } from '../../../../shared/types/note'
 import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor, isTabDescriptor } from '../workspace/tabIdentity'
 import { nativeHistoryGuard } from './nativeHistoryGuard'
 import { openMaterialLink, resolveNoteLink } from './materialLinkNavigation'
@@ -36,7 +38,14 @@ import {
   getNoteFormatState,
   type NoteFormatState
 } from './noteFormatting'
-import { NOTE_EDITOR_PLUGINS } from './noteEditorPlugins'
+import {
+  loadNoteEditorPlugins,
+  NOTE_EDITOR_PLUGINS
+} from './noteEditorPlugins'
+import {
+  createNoteImagePlugin,
+  createNoteImageView
+} from './noteImagePlugin'
 import {
   registerOpenNoteSession,
   retargetOpenNoteSession
@@ -112,7 +121,23 @@ function handleNoteLinkClick(
   if (href === null || href === undefined) return
 
   const resolution = resolveNoteLink(href)
-  if (resolution.kind === 'pass-through') return
+  if (resolution.kind === 'pass-through') {
+    let url: URL
+    try {
+      url = new URL(href)
+    } catch {
+      return
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return
+    event.preventDefault()
+    useWorkspaceStore.getState().openTab(
+      descriptorFor('browser', {
+        tabId: crypto.randomUUID(),
+        initialUrl: url.toString()
+      })
+    )
+    return
+  }
   event.preventDefault()
 
   if (resolution.kind === 'invalid-bandal') {
@@ -132,16 +157,21 @@ export function isNoteConflict(error: unknown): boolean {
 }
 
 function MilkdownNoteEditor({
+  courseId,
   initialMarkdown,
   onMarkdownChange,
   onFormatStateChange,
   onZoomStep
 }: {
+  courseId: string
   initialMarkdown: string
   onMarkdownChange: (markdown: string) => void
   onFormatStateChange: (state: NoteFormatState) => void
   onZoomStep: (direction: -1 | 1) => void
 }): JSX.Element {
+  const [editorPlugins, setEditorPlugins] = useState<
+    readonly (MilkdownPlugin | MilkdownPlugin[])[] | null
+  >(null)
   const onChangeRef = useRef(onMarkdownChange)
   const onFormatStateChangeRef = useRef(onFormatStateChange)
   const onZoomStepRef = useRef(onZoomStep)
@@ -149,8 +179,24 @@ function MilkdownNoteEditor({
   onFormatStateChangeRef.current = onFormatStateChange
   onZoomStepRef.current = onZoomStep
 
+  useEffect(() => {
+    let active = true
+    void loadNoteEditorPlugins()
+      .then((plugins) => {
+        if (active) setEditorPlugins(plugins)
+      })
+      .catch((error: unknown) => {
+        console.error('[Bandal] 코드 하이라이터를 불러오지 못했습니다.', error)
+        if (active) setEditorPlugins(NOTE_EDITOR_PLUGINS)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
   const { loading } = useEditor(
     (root) => {
+      if (editorPlugins === null) return undefined
       const editor = Editor.make().config((context) => {
         context.set(rootCtx, root)
         context.set(defaultValueCtx, initialMarkdown)
@@ -159,11 +205,18 @@ function MilkdownNoteEditor({
           'aria-multiline': 'true'
         })
         context.update(nodeViewCtx, (views) => [
-          ...views.filter(([name]) => name !== 'list_item'),
-          ['list_item', taskListItemView] as [string, typeof taskListItemView]
+          ...views.filter(
+            ([name]) => name !== 'list_item' && name !== 'image'
+          ),
+          ['list_item', taskListItemView] as [string, typeof taskListItemView],
+          ['image', createNoteImageView(courseId)] as [
+            string,
+            ReturnType<typeof createNoteImageView>
+          ]
         ])
         context.update(prosePluginsCtx, (plugins) => [
           ...plugins,
+          createNoteImagePlugin(courseId),
           // Keeps the native Edit-menu ⌘Z from editing around ProseMirror.
           nativeHistoryGuard(),
           createNoteZoomShortcutPlugin((direction) =>
@@ -187,12 +240,12 @@ function MilkdownNoteEditor({
         ])
       })
 
-      return NOTE_EDITOR_PLUGINS.reduce(
+      return editorPlugins.reduce(
         (instance, plugin) => instance.use(plugin),
         editor
       )
     },
-    [initialMarkdown]
+    [courseId, editorPlugins, initialMarkdown]
   )
 
   return (
@@ -204,12 +257,14 @@ function MilkdownNoteEditor({
 }
 
 function NoteEditorWorkspace({
+  courseId,
   initialMarkdown,
   onMarkdownChange,
   fontScale,
   onFontScaleChange,
   onZoomStep
 }: {
+  courseId: string
   initialMarkdown: string
   onMarkdownChange: (markdown: string) => void
   fontScale: NoteFontScale
@@ -223,11 +278,13 @@ function NoteEditorWorkspace({
   return (
     <div className="note-editor-scroll">
       <NoteToolbar
+        courseId={courseId}
         formatState={formatState}
         fontScale={fontScale}
         onFontScaleChange={onFontScaleChange}
       />
       <MilkdownNoteEditor
+        courseId={courseId}
         initialMarkdown={initialMarkdown}
         onMarkdownChange={onMarkdownChange}
         onFormatStateChange={setFormatState}
@@ -706,10 +763,11 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
           onClickCapture={(event) => handleNoteLinkClick(event, courseId)}
         >
           {viewMode === 'quiz' && quizSections !== null ? (
-            <QuizPreview sections={quizSections} />
+            <QuizPreview courseId={courseId} sections={quizSections} />
           ) : (
             <MilkdownProvider key={editorSeed.revision}>
               <NoteEditorWorkspace
+                courseId={courseId}
                 initialMarkdown={editorSeed.markdown}
                 onMarkdownChange={handleMarkdownChange}
                 fontScale={fontScale}

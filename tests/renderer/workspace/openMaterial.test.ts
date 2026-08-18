@@ -50,6 +50,21 @@ describe('openMaterialInCourse', () => {
     })
   })
 
+  test('routes video materials into the generic file tab', () => {
+    openMaterialInCourse('course-1', 'video', 'week1/lecture.mp4')
+
+    expect(openTabMock).toHaveBeenCalledWith({
+      kind: 'file',
+      payload: { courseId: 'course-1', relPath: 'week1/lecture.mp4' }
+    })
+    expect(invokeMock).toHaveBeenCalledWith('activity:record', {
+      courseId: 'course-1',
+      kind: 'material-opened',
+      relPath: 'week1/lecture.mp4',
+      summary: 'week1/lecture.mp4을(를) 열었습니다.'
+    })
+  })
+
   test('keeps other files on the Finder reveal path', async () => {
     openMaterialInCourse('course-1', 'other', 'archive.zip')
     await Promise.resolve()

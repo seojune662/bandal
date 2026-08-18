@@ -3,7 +3,7 @@
  * images, etc.), surfaced as a tree in the right rail.
  */
 
-export type MaterialKind = 'pdf' | 'note' | 'image' | 'other'
+export type MaterialKind = 'pdf' | 'note' | 'image' | 'video' | 'other'
 
 export interface MaterialNode {
   /** Path relative to the course folder root, POSIX separators. */

@@ -9,6 +9,7 @@ import { viewerKindFor, type FileViewerKind } from './fileFormats'
 import { DocxViewer } from './viewers/DocxViewer'
 import { SheetViewer } from './viewers/SheetViewer'
 import { TextViewer } from './viewers/TextViewer'
+import { VideoViewer } from './viewers/VideoViewer'
 import './file-tab.css'
 
 type FileLoadState =
@@ -89,6 +90,8 @@ function LoadedFile({
   }
 
   switch (viewerKind) {
+    case 'video':
+      return <VideoViewer courseId={courseId} relPath={relPath} />
     case 'docx':
       if (content.encoding !== 'base64') {
         return (
@@ -156,6 +159,13 @@ function FileLoader({
       }
     }
 
+    // 동영상은 bandal-media:// 프로토콜로 스트리밍하므로 IPC로 읽지 않는다.
+    if (viewerKind === 'video') {
+      return () => {
+        cancelled = true
+      }
+    }
+
     void invoke('materials:readFile', { courseId, relPath })
       .then((content) => {
         if (!cancelled) setState({ status: 'ready', content, viewerKind })
@@ -174,6 +184,9 @@ function FileLoader({
     }
   }, [courseId, relPath])
 
+  if (viewerKindFor(relPath) === 'video') {
+    return <VideoViewer courseId={courseId} relPath={relPath} />
+  }
   if (state.status === 'loading') {
     return (
       <div className="file-status" role="status">

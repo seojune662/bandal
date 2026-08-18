@@ -22,6 +22,8 @@ export type SlashMenuCommand =
   | 'ordered-list'
   | 'task-list'
   | 'blockquote'
+  | 'link'
+  | 'image'
   | 'code-block'
   | 'horizontal-rule'
   | 'table'
@@ -32,6 +34,11 @@ export interface SlashMenuItem {
   description: string
   keywords: readonly string[]
 }
+
+export type NoteSlashToolbarAction = 'link' | 'image'
+
+export const NOTE_SLASH_TOOLBAR_ACTION_EVENT =
+  'bandal:note-slash-toolbar-action'
 
 export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
   {
@@ -75,6 +82,18 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     label: '인용',
     description: '인용 블록',
     keywords: ['quote', 'blockquote']
+  },
+  {
+    command: 'link',
+    label: '링크',
+    description: '선택한 텍스트에 URL 연결',
+    keywords: ['link', 'url', 'href']
+  },
+  {
+    command: 'image',
+    label: '이미지',
+    description: '과목 assets 폴더에 이미지 삽입',
+    keywords: ['image', 'picture', 'photo']
   },
   {
     command: 'code-block',
@@ -360,6 +379,18 @@ function runSlashCommand(
     }
     case 'blockquote':
       return callCommand(wrapInBlockquoteCommand.key)(context)
+    case 'link':
+    case 'image':
+      view.dom.dispatchEvent(
+        new CustomEvent<NoteSlashToolbarAction>(
+          NOTE_SLASH_TOOLBAR_ACTION_EVENT,
+          {
+            bubbles: true,
+            detail: command
+          }
+        )
+      )
+      return true
     case 'code-block':
       return callCommand(createCodeBlockCommand.key)(context)
     case 'horizontal-rule':

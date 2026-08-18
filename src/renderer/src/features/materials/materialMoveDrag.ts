@@ -17,7 +17,7 @@ export interface MaterialMoveDragPayload {
   kind: 'dir' | MaterialKind
 }
 
-const MATERIAL_KINDS = new Set(['dir', 'pdf', 'note', 'image', 'other'])
+const MATERIAL_KINDS = new Set(['dir', 'pdf', 'note', 'image', 'video', 'other'])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

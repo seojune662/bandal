@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol } from 'electron'
 import { initDatabase, closeDatabase } from './db/database'
 import { createDeepLinkQueue } from './deepLinkQueue'
 import { findDeepLinkArg } from './features/group/authCallbackUrl'
@@ -16,6 +16,21 @@ const testUserDataDir = process.env['BANDAL_USER_DATA_DIR']
 if (testUserDataDir !== undefined && testUserDataDir !== '') {
   app.setPath('userData', testUserDataDir)
 }
+
+// [bandal-media] 자료 동영상 스트리밍 스킴. 특권 등록은 반드시 whenReady 전에
+// 해야 한다 (Electron 제약). stream: true 가 Range 기반 <video> 탐색의 핵심.
+// 실제 핸들러는 registerHandlers.ts 가 whenReady 후 protocol.handle 로 단다.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'bandal-media',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true
+    }
+  }
+])
 
 // Single-instance guard.
 if (!app.requestSingleInstanceLock()) {

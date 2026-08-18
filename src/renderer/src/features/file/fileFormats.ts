@@ -1,7 +1,9 @@
-export type FileViewerKind = 'docx' | 'sheet' | 'text'
+export type FileViewerKind = 'docx' | 'sheet' | 'text' | 'video'
 
 const DOCX_EXTENSIONS = ['.docx'] as const
 const SHEET_EXTENSIONS = ['.xlsx', '.xls', '.csv', '.tsv'] as const
+/** materialsRepo.kindForFile 의 VIDEO_EXTENSIONS 와 같은 목록이어야 한다. */
+const VIDEO_EXTENSIONS = ['.mp4', '.m4v', '.webm'] as const
 
 /**
  * Plain-text formats returned as UTF-8 by the material IPC, plus common
@@ -84,11 +86,13 @@ const TEXT_EXTENSIONS = [
 const DOCX_EXTENSION_SET: ReadonlySet<string> = new Set(DOCX_EXTENSIONS)
 const SHEET_EXTENSION_SET: ReadonlySet<string> = new Set(SHEET_EXTENSIONS)
 const TEXT_EXTENSION_SET: ReadonlySet<string> = new Set(TEXT_EXTENSIONS)
+const VIDEO_EXTENSION_SET: ReadonlySet<string> = new Set(VIDEO_EXTENSIONS)
 
 export const VIEWABLE_EXTENSIONS: ReadonlySet<string> = new Set([
   ...DOCX_EXTENSIONS,
   ...SHEET_EXTENSIONS,
-  ...TEXT_EXTENSIONS
+  ...TEXT_EXTENSIONS,
+  ...VIDEO_EXTENSIONS
 ])
 
 function extensionFor(relPath: string): string {
@@ -102,6 +106,7 @@ export function viewerKindFor(relPath: string): FileViewerKind | null {
   if (DOCX_EXTENSION_SET.has(extension)) return 'docx'
   if (SHEET_EXTENSION_SET.has(extension)) return 'sheet'
   if (TEXT_EXTENSION_SET.has(extension)) return 'text'
+  if (VIDEO_EXTENSION_SET.has(extension)) return 'video'
   return null
 }
 

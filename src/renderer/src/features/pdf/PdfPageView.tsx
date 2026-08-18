@@ -324,7 +324,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
       data-pdf-page={pageNumber}
       aria-label={`${pageNumber} 페이지`}
       tabIndex={-1}
-      style={{ width, minHeight: height, outline: 'none' }}
+      style={{ width, height, outline: 'none' }}
       onPointerDown={(event) => {
         if (!(event.target instanceof Element)) return
         if (event.target.closest('button, input, textarea, [contenteditable="true"]') === null) {

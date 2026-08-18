@@ -55,6 +55,13 @@ export function createMainWindow(): BrowserWindow {
     return { action: 'deny' }
   })
 
+  // 렌더러는 로컬 앱 문서다 — 어떤 최상위 내비게이션도 정상 경로가 아니다
+  // (버그이거나 처리되지 않은 링크 클릭). 허용 목록 없이 전부 막는다.
+  // <webview> 게스트의 내비게이션은 별개 webContents 라 영향받지 않는다.
+  mainWindow.webContents.on('will-navigate', (event) => {
+    event.preventDefault()
+  })
+
   if (process.env['ELECTRON_RENDERER_URL'] !== undefined) {
     void mainWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/index.html`)
   } else {

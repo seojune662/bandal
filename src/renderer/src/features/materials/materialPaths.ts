@@ -55,6 +55,8 @@ export function kindForMaterialName(name: string): MaterialKind {
   ) {
     return 'image'
   }
+  // main 의 kindForFile(materialsRepo.ts)과 반드시 같은 목록이어야 한다.
+  if (['.mp4', '.m4v', '.webm'].includes(extension)) return 'video'
   return 'other'
 }
 

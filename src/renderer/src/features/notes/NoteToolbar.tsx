@@ -2,7 +2,6 @@ import { editorViewCtx, type Editor } from '@milkdown/core'
 import {
   createCodeBlockCommand,
   insertHrCommand,
-  insertImageCommand,
   toggleEmphasisCommand,
   toggleInlineCodeCommand,
   toggleLinkCommand,
@@ -22,17 +21,25 @@ import { useInstance } from '@milkdown/react'
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
+  type ChangeEvent,
+  type FormEvent,
   type MouseEvent as ReactMouseEvent
 } from 'react'
 import { callCommand } from '@milkdown/utils'
+import { insertNoteImageFiles } from './noteImagePlugin'
 import type { NoteFormatState } from './noteFormatting'
 import { toggleTaskListItems } from './noteFormatting'
 import {
   NOTE_FONT_SCALES,
   type NoteFontScale
 } from './noteZoom'
+import {
+  NOTE_SLASH_TOOLBAR_ACTION_EVENT,
+  type NoteSlashToolbarAction
+} from './slashMenuPlugin'
 
 interface FormatButtonProps {
   active: boolean
@@ -72,19 +79,27 @@ function FormatButton({
 }
 
 export interface NoteToolbarProps {
+  courseId: string
   formatState: NoteFormatState
   fontScale: NoteFontScale
   onFontScaleChange: (scale: NoteFontScale) => void
 }
 
 export function NoteToolbar({
+  courseId,
   formatState,
   fontScale,
   onFontScaleChange
 }: NoteToolbarProps): JSX.Element {
   const [loading, getEditor] = useInstance()
   const [moreOpen, setMoreOpen] = useState(false)
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkHref, setLinkHref] = useState('https://')
+  const linkInputId = useId()
   const moreRef = useRef<HTMLDivElement>(null)
+  const linkRef = useRef<HTMLDivElement>(null)
+  const linkPopoverRef = useRef<HTMLFormElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   const run = useCallback(
     (action: (editor: Editor) => void): void => {
@@ -97,18 +112,24 @@ export function NoteToolbar({
   )
 
   useEffect(() => {
-    if (!moreOpen) return
+    if (!moreOpen && !linkOpen) return
     const closeOutside = (event: MouseEvent): void => {
       if (
         event.target instanceof Node &&
-        moreRef.current?.contains(event.target)
+        (moreRef.current?.contains(event.target) === true ||
+          linkRef.current?.contains(event.target) === true ||
+          linkPopoverRef.current?.contains(event.target) === true)
       ) {
         return
       }
       setMoreOpen(false)
+      setLinkOpen(false)
     }
     const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setMoreOpen(false)
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setMoreOpen(false)
+      setLinkOpen(false)
     }
     document.addEventListener('mousedown', closeOutside)
     document.addEventListener('keydown', closeOnEscape)
@@ -116,7 +137,39 @@ export function NoteToolbar({
       document.removeEventListener('mousedown', closeOutside)
       document.removeEventListener('keydown', closeOnEscape)
     }
-  }, [moreOpen])
+  }, [linkOpen, moreOpen])
+
+  useEffect(() => {
+    if (loading) return
+    const editor = getEditor()
+    if (editor === undefined) return
+
+    let editorDom: HTMLElement | undefined
+    const handleSlashAction = (event: Event): void => {
+      if (!(event instanceof CustomEvent)) return
+      const action = event.detail as NoteSlashToolbarAction
+      if (action === 'link') {
+        setMoreOpen(false)
+        setLinkHref('https://')
+        setLinkOpen(true)
+      } else if (action === 'image') {
+        imageInputRef.current?.click()
+      }
+    }
+    editor.action((context) => {
+      editorDom = context.get(editorViewCtx).dom
+      editorDom.addEventListener(
+        NOTE_SLASH_TOOLBAR_ACTION_EVENT,
+        handleSlashAction
+      )
+    })
+    return () => {
+      editorDom?.removeEventListener(
+        NOTE_SLASH_TOOLBAR_ACTION_EVENT,
+        handleSlashAction
+      )
+    }
+  }, [getEditor, loading])
 
   const toggleTaskList = (): void => {
     run((editor) => {
@@ -133,33 +186,46 @@ export function NoteToolbar({
   const toggleLink = (): void => {
     if (formatState.link) {
       run((editor) => editor.action(callCommand(toggleLinkCommand.key)))
+      setLinkOpen(false)
       return
     }
-
-    const href = window.prompt('링크 주소', formatState.linkHref ?? 'https://')
-    if (href === null || href.trim().length === 0) return
-    run((editor) =>
-      editor.action(callCommand(toggleLinkCommand.key, { href: href.trim() }))
-    )
+    setMoreOpen(false)
+    setLinkHref(formatState.linkHref ?? 'https://')
+    setLinkOpen((open) => !open)
   }
 
-  const insertImage = (): void => {
-    const src = window.prompt('이미지 주소', 'https://')
-    if (src === null || src.trim().length === 0) return
-    const alt = window.prompt('이미지 설명', '') ?? ''
+  const confirmLink = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    const href = linkHref.trim()
+    if (href.length === 0) return
     run((editor) =>
-      editor.action(
-        callCommand(insertImageCommand.key, { src: src.trim(), alt: alt.trim() })
-      )
+      editor.action(callCommand(toggleLinkCommand.key, { href }))
     )
+    setLinkOpen(false)
+  }
+
+  const chooseImage = (): void => {
+    imageInputRef.current?.click()
+  }
+
+  const insertSelectedImages = (event: ChangeEvent<HTMLInputElement>): void => {
+    const files = [...(event.currentTarget.files ?? [])]
+    event.currentTarget.value = ''
+    if (files.length === 0) return
+    run((editor) => {
+      editor.action((context) => {
+        void insertNoteImageFiles(
+          context.get(editorViewCtx),
+          courseId,
+          files
+        )
+      })
+    })
   }
 
   const updateCodeLanguage = (language: string): void => {
+    if (formatState.codeBlockPosition === null) return
     run((editor) => {
-      if (formatState.codeBlockPosition === null) {
-        editor.action(callCommand(createCodeBlockCommand.key, language))
-        return
-      }
       editor.action(
         callCommand(updateCodeBlockLanguageCommand.key, {
           pos: formatState.codeBlockPosition,
@@ -249,19 +315,29 @@ export function NoteToolbar({
           {commandButton('인용', '❝', formatState.blockquote, (editor) =>
             editor.action(callCommand(wrapInBlockquoteCommand.key))
           )}
-          <FormatButton
-            active={formatState.link}
-            label="링크"
-            text="↗"
-            disabled={loading}
-            onClick={toggleLink}
-          />
+          <div className="note-format-link" ref={linkRef}>
+            <FormatButton
+              active={formatState.link || linkOpen}
+              label={formatState.link ? '링크 해제' : '링크'}
+              text="↗"
+              disabled={loading}
+              onClick={toggleLink}
+            />
+          </div>
           <FormatButton
             active={false}
             label="이미지"
             text="▧"
             disabled={loading}
-            onClick={insertImage}
+            onClick={chooseImage}
+          />
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*,.avif,.bmp,.gif,.jpeg,.jpg,.png,.svg,.webp"
+            multiple
+            hidden
+            onChange={insertSelectedImages}
           />
           {commandButton(
             '인라인 코드',
@@ -271,8 +347,40 @@ export function NoteToolbar({
               editor.action(callCommand(toggleInlineCodeCommand.key)),
             'note-format-button--code'
           )}
+          {commandButton(
+            '코드 블록',
+            '{}',
+            formatState.codeBlockPosition !== null,
+            (editor) =>
+              editor.action(callCommand(createCodeBlockCommand.key)),
+            'note-format-button--code'
+          )}
         </div>
       </div>
+
+      {linkOpen && (
+        <form
+          ref={linkPopoverRef}
+          className="note-link-popover"
+          onSubmit={confirmLink}
+        >
+          <label htmlFor={linkInputId}>링크 주소</label>
+          <div className="note-link-popover__row">
+            <input
+              id={linkInputId}
+              type="url"
+              inputMode="url"
+              autoFocus
+              value={linkHref}
+              placeholder="https://example.com"
+              onChange={(event) => setLinkHref(event.target.value)}
+            />
+            <button type="submit" disabled={linkHref.trim().length === 0}>
+              확인
+            </button>
+          </div>
+        </form>
+      )}
 
       <div className="note-format-more" ref={moreRef}>
         <FormatButton
@@ -316,6 +424,7 @@ export function NoteToolbar({
             <label className="note-format-menu-field">
               <span>코드 블록 언어</span>
               <select
+                disabled={formatState.codeBlockPosition === null}
                 value={
                   formatState.codeBlockPosition === null
                     ? '__none__'
@@ -324,9 +433,9 @@ export function NoteToolbar({
                 onChange={(event) => updateCodeLanguage(event.target.value)}
               >
                 <option value="__none__" disabled>
-                  코드 블록 만들기…
+                  코드 블록 안에서 선택
                 </option>
-                <option value="">자동 감지</option>
+                <option value="">언어 없음</option>
                 <option value="typescript">TypeScript</option>
                 <option value="javascript">JavaScript</option>
                 <option value="python">Python</option>

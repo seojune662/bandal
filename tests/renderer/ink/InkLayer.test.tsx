@@ -89,6 +89,25 @@ describe('InkLayer textbox drafts', () => {
     expect(html).toContain('font-size:20.8px')
     expect(html).toContain('핵심 개념')
   })
+
+  test('counter-scales textbox HTML when text creation is not deferred', () => {
+    const html = renderToStaticMarkup(
+      <InkLayer
+        aspect={0.75}
+        baseWidthPx={800}
+        shapes={[
+          savedShape({ kind: 'textbox', data: { box, text: 'PDF 메모' } })
+        ]}
+        tool={{ activeTool: 'select', color: 'ink', width: 0.006, opacity: 1 }}
+        onCreate={vi.fn()}
+        onUpdate={vi.fn()}
+        onRemove={vi.fn()}
+        ariaLabel="PDF 주석"
+      />
+    )
+
+    expect(html).toContain('transform:scale(')
+  })
 })
 
 describe('InkLayer resize handles', () => {

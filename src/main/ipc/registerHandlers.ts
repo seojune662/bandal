@@ -9,7 +9,17 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { extname } from 'node:path'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  nativeImage,
+  protocol,
+  shell
+} from 'electron'
+import type { NativeImage } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc/contract'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
 import type { PushChannel, PushPayload } from '../../shared/ipc/events'
@@ -25,7 +35,13 @@ import {
 } from '../features/courses'
 import { normalizeHttpUrl } from '../../shared/universities/courseLink'
 import { ValidationError } from '../db/errors'
-import { createMaterialsRepo, createMaterialsWatcher } from '../features/materials'
+import {
+  createMaterialsRepo,
+  createMaterialsWatcher,
+  createMediaProtocolHandler,
+  MEDIA_SCHEME
+} from '../features/materials'
+import { DRAG_ICON_PNG_BASE64 } from './dragIcon'
 import { createNotesRepo } from '../features/notes'
 import { createAnnotationsRepo } from '../features/annotations'
 import { createDrawingsRepo, createPdfExporter } from '../features/pdf'
@@ -132,6 +148,20 @@ function handle<K extends IpcChannel>(
 const OK = { ok: true } as const
 
 /**
+ * [드래그아웃] startDrag 는 드래그 제스처와 같은 틱에 동기로 불러야 한다 —
+ * app.getFileIcon 을 기다렸다가 부르면 제스처가 끝나 드래그가 조용히 죽는다.
+ * 그래서 인라인 PNG 기본 아이콘으로 즉시 시작하고, 진짜 파일 아이콘은
+ * 드래그 시작 "후" 비동기로 받아 확장자별 캐시에 채워 다음 드래그에 쓴다.
+ *
+ * 주의: startDrag 는 빈 이미지에 throw 하므로 폴백은 반드시 디코드 가능한
+ * PNG 여야 한다 (tests/main/dragIcon.test.ts 가 상수를 검증한다).
+ */
+const FALLBACK_DRAG_ICON = nativeImage.createFromBuffer(
+  Buffer.from(DRAG_ICON_PNG_BASE64, 'base64')
+)
+const dragIconCache = new Map<string, NativeImage>()
+
+/**
  * How long quitting waits for in-flight IPC to land. Long enough for a message
  * already on the wire, short enough that ⌘Q still feels instant.
  */
@@ -178,6 +208,17 @@ export function registerHandlers(): IpcRouter {
       broadcast('materials:changed', { courseId })
     }
   })
+
+  // [bandal-media] 동영상 스트리밍 프로토콜. 스킴 특권 등록은 index.ts 가
+  // whenReady 전에 마쳤고, 핸들러는 materialsRepo 의 경로 가드를 재사용하므로
+  // 여기(레포 생성 직후)에서 등록한다. registerHandlers 는 앱당 한 번 불린다.
+  protocol.handle(
+    MEDIA_SCHEME,
+    createMediaProtocolHandler({
+      absolutePathFor: (courseId, relPath) =>
+        materialsRepo.absolutePathFor(courseId, relPath)
+    })
+  )
 
   /** Course went away (delete/archive) → release its live resources. */
   function releaseCourseRuntime(courseId: string): void {
@@ -320,14 +361,21 @@ export function registerHandlers(): IpcRouter {
         return
       }
       const abs = materialsRepo.absolutePathFor(record.courseId, record.relPath)
-      void app
-        .getFileIcon(abs, { size: 'normal' })
-        .then((icon) => {
-          event.sender.startDrag({ file: abs, icon })
-        })
-        .catch((error) => {
-          console.error('[materials] startDrag icon failed', error)
-        })
+      // 동기 호출이 핵심 — await/then 을 거치면 드래그 제스처가 죽는다.
+      const ext = extname(abs).toLowerCase()
+      const icon = dragIconCache.get(ext) ?? FALLBACK_DRAG_ICON
+      event.sender.startDrag({ file: abs, icon })
+      // 다음 드래그를 위한 캐시 채우기 — 이번 드래그에는 관여하지 않는다.
+      if (!dragIconCache.has(ext)) {
+        void app
+          .getFileIcon(abs, { size: 'normal' })
+          .then((fileIcon) => {
+            if (!fileIcon.isEmpty()) dragIconCache.set(ext, fileIcon)
+          })
+          .catch((error: unknown) => {
+            console.error('[materials] startDrag icon cache failed', error)
+          })
+      }
     } catch (error) {
       console.error('[materials] startDrag failed', error)
     }

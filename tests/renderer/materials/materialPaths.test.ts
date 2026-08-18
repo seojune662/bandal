@@ -45,6 +45,8 @@ describe('materialPaths', () => {
   test('classifies renamed files and picks an unused new-folder name', () => {
     expect(kindForMaterialName('lecture.PDF')).toBe('pdf')
     expect(kindForMaterialName('lecture.md')).toBe('note')
+    expect(kindForMaterialName('lecture.mp4')).toBe('video')
+    expect(kindForMaterialName('lecture.WEBM')).toBe('video')
     expect(kindForMaterialName('lecture.zip')).toBe('other')
     expect(unusedFolderName(tree, 'notes')).toBe('새 폴더-3')
     expect(unusedFolderName(tree, '')).toBe('새 폴더')

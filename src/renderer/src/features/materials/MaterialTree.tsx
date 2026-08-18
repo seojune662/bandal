@@ -36,9 +36,11 @@ function iconForKind(kind: MaterialKind | 'dir', expanded = false): IconName {
   }
 }
 
-/** pdf/md open as tabs; everything else opens in Finder (tooltip says so). */
+/** pdf/md/video open as tabs; everything else opens in Finder (tooltip says so). */
 function rowTitle(kind: MaterialKind | 'dir', relPath: string): string {
-  if (kind === 'dir' || kind === 'pdf' || kind === 'note') return relPath
+  if (kind === 'dir' || kind === 'pdf' || kind === 'note' || kind === 'video') {
+    return relPath
+  }
   return `${relPath} — Finder에서 열기`
 }
 

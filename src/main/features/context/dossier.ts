@@ -179,7 +179,10 @@ function renderLimitedSection(options: LimitedSectionOptions): string {
 }
 
 function indexedMaterialKind(kind: MaterialKind): MaterialEntry['kind'] {
-  return kind === 'note' ? 'markdown' : kind
+  if (kind === 'note') return 'markdown'
+  // 도시에(dossier)는 아직 동영상을 구분하지 않는다 — 기타로 집계한다.
+  if (kind === 'video') return 'other'
+  return kind
 }
 
 function readMaterialSnapshot(

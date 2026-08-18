@@ -2,28 +2,61 @@ import {
   Editor,
   defaultValueCtx,
   editorViewOptionsCtx,
+  nodeViewCtx,
   rootAttrsCtx,
   rootCtx
 } from '@milkdown/core'
+import type { MilkdownPlugin } from '@milkdown/ctx'
 import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react'
 import { useEffect, useState } from 'react'
+import { loadNotePrismPlugins } from './noteEditorPlugins'
+import { createNoteImageView } from './noteImagePlugin'
 import type { QuizMarkdownSections } from './quizMarkdown'
 
 function ReadonlyMarkdown({
+  courseId,
   markdown,
   label
 }: {
+  courseId: string
   markdown: string
   label: string
 }): JSX.Element {
+  const [prismPlugins, setPrismPlugins] = useState<MilkdownPlugin[] | null>(
+    null
+  )
+
+  useEffect(() => {
+    let active = true
+    void loadNotePrismPlugins()
+      .then((plugins) => {
+        if (active) setPrismPlugins(plugins)
+      })
+      .catch((error: unknown) => {
+        console.error('[Bandal] 코드 하이라이터를 불러오지 못했습니다.', error)
+        if (active) setPrismPlugins([])
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
   const { loading } = useEditor(
     (root) => {
+      if (prismPlugins === null) return undefined
       const editor = Editor.make().config((context) => {
         context.set(rootCtx, root)
         context.set(defaultValueCtx, markdown)
         context.set(rootAttrsCtx, { 'aria-label': label })
+        context.update(nodeViewCtx, (views) => [
+          ...views.filter(([name]) => name !== 'image'),
+          ['image', createNoteImageView(courseId)] as [
+            string,
+            ReturnType<typeof createNoteImageView>
+          ]
+        ])
         context.set(editorViewOptionsCtx, {
           editable: () => false,
           attributes: {
@@ -33,9 +66,12 @@ function ReadonlyMarkdown({
         })
       })
 
-      return editor.use(commonmark).use(gfm)
+      return prismPlugins.reduce(
+        (instance, plugin) => instance.use(plugin),
+        editor.use(commonmark).use(gfm)
+      )
     },
-    [label, markdown]
+    [courseId, label, markdown, prismPlugins]
   )
 
   return (
@@ -47,8 +83,10 @@ function ReadonlyMarkdown({
 }
 
 export function QuizPreview({
+  courseId,
   sections
 }: {
+  courseId: string
   sections: QuizMarkdownSections
 }): JSX.Element {
   const [answersRevealed, setAnswersRevealed] = useState(false)
@@ -81,13 +119,18 @@ export function QuizPreview({
 
       <div className="note-quiz-preview__scroll">
         <MilkdownProvider>
-          <ReadonlyMarkdown markdown={sections.questionMarkdown} label="퀴즈 문제" />
+          <ReadonlyMarkdown
+            courseId={courseId}
+            markdown={sections.questionMarkdown}
+            label="퀴즈 문제"
+          />
         </MilkdownProvider>
 
         {answersRevealed ? (
           <section className="note-quiz-preview__answers" aria-label="퀴즈 정답과 해설">
             <MilkdownProvider>
               <ReadonlyMarkdown
+                courseId={courseId}
                 markdown={sections.answerMarkdown}
                 label="퀴즈 정답과 해설"
               />

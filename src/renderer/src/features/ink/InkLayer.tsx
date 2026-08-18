@@ -107,8 +107,6 @@ interface PendingTextBox {
 const SHAPE_TOOLS: readonly ShapeTool[] = ['rect', 'ellipse', 'arrow', 'line']
 const TEXT_BOX_WIDTH = 0.26
 const TEXT_BOX_HEIGHT = 0.08
-const TEXT_BOX_MAX_X = 0.72
-const TEXT_BOX_MAX_Y = 0.9
 const TEXT_BASE_FONT_RATIO = 0.026
 function isFinitePositive(value: number): boolean {
   return Number.isFinite(value) && value > 0
@@ -327,8 +325,8 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   const startTextBox = useCallback((point: DrawingPoint): void => {
     setSelectedId(null)
     const box: DrawingBox = {
-      x: clampToBounds ? Math.min(point.x, TEXT_BOX_MAX_X) : point.x,
-      y: clampToBounds ? Math.min(point.y, TEXT_BOX_MAX_Y) : point.y,
+      x: clampToBounds ? Math.min(point.x, 1 - TEXT_BOX_WIDTH) : point.x,
+      y: clampToBounds ? Math.min(point.y, 1 - TEXT_BOX_HEIGHT) : point.y,
       width: TEXT_BOX_WIDTH,
       height: TEXT_BOX_HEIGHT
     }
@@ -578,11 +576,10 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     const fontSize = baseWidthPx * TEXT_BASE_FONT_RATIO * (
       isFinitePositive(shapeStyle.fontScale ?? 1) ? (shapeStyle.fontScale ?? 1) : 1
     )
-    if (!deferTextCreation) return { fontSize, opacity: shapeStyle.opacity }
     const scaled = foreignObjectContentStyle(box, baseWidthPx, aspect)
     if (scaled === null) return { fontSize, opacity: shapeStyle.opacity }
     return { ...scaled, fontSize, opacity: shapeStyle.opacity }
-  }, [aspect, baseWidthPx, deferTextCreation])
+  }, [aspect, baseWidthPx])
 
   const erasedIds = gesture?.kind === 'erase' ? gesture.ids : new Set<string>()
   const style = drawingStyle(activeTool, width, opacity, color)

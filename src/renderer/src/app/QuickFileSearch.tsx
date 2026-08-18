@@ -25,6 +25,7 @@ const KIND_ICONS: Record<MaterialKind, IconName> = {
   pdf: 'filePdf',
   note: 'fileText',
   image: 'fileImage',
+  video: 'file',
   other: 'file'
 }
 
@@ -32,6 +33,7 @@ const KIND_HINTS: Record<MaterialKind, string> = {
   pdf: '탭에서 열기',
   note: '탭에서 열기',
   image: 'Finder에서 보기',
+  video: '탭에서 열기',
   other: 'Finder에서 보기'
 }
 

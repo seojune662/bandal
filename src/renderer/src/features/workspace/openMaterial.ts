@@ -70,6 +70,15 @@ export function openMaterialInCourse(
     recordMaterialOpened(courseId, relPath)
     return
   }
+  // 동영상은 범용 파일 탭으로 연다 — FileTab 의 'video' 분기(현재는 자리표시자,
+  // VideoTab 워커가 bandal-media 스트리밍 뷰어로 교체)가 렌더링을 맡는다.
+  if (kind === 'video') {
+    useWorkspaceStore.getState().openTab(
+      descriptorFor('file', { courseId, relPath })
+    )
+    recordMaterialOpened(courseId, relPath)
+    return
+  }
   if (kind === 'pdf' || kind === 'note' || kind === 'image') {
     useWorkspaceStore.getState().openTab(
       descriptorFor(kind, { courseId, relPath })

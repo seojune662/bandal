@@ -109,6 +109,8 @@ export function searchKey(value: string): string {
 const IMAGE_EXTENSIONS = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif', '.heic'
 ])
+// bandal-media:// 스트리밍으로 재생 가능한 컨테이너만. (mediaProtocol.ts)
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.webm'])
 const TEXT_EXTENSIONS = new Set([
   '.md', '.markdown', '.txt', '.csv', '.tsv', '.json', '.yml', '.yaml',
   '.xml', '.html', '.css', '.js', '.ts', '.tex', '.log', '.srt', '.vtt'
@@ -156,6 +158,7 @@ export function kindForFile(fileName: string): MaterialKind {
   if (ext === '.pdf') return 'pdf'
   if (ext === '.md' || ext === '.markdown') return 'note'
   if (IMAGE_EXTENSIONS.has(ext)) return 'image'
+  if (VIDEO_EXTENSIONS.has(ext)) return 'video'
   return 'other'
 }
 
