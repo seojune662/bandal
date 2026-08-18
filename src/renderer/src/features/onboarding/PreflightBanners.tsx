@@ -21,15 +21,15 @@ const ISSUE_COPY: Record<
 > = {
   'not-installed': {
     title: 'Claude Code가 설치되어 있지 않아요',
-    hint: <>설치를 마치면 AI 튜터를 바로 쓸 수 있어요.</>
+    hint: <>AI 튜터의 연결하기 버튼에서 설치를 시작할 수 있어요.</>
+  },
+  'version-too-old': {
+    title: 'Claude Code 업데이트가 필요해요',
+    hint: <>AI 튜터의 업데이트하기 버튼으로 바로 진행할 수 있어요.</>
   },
   'not-logged-in': {
     title: '로그인이 필요해요',
-    hint: (
-      <>
-        터미널에서 <code>claude</code>를 실행해 로그인해 주세요.
-      </>
-    )
+    hint: <>AI 튜터의 로그인 창 열기 버튼으로 연결을 마쳐주세요.</>
   }
 }
 

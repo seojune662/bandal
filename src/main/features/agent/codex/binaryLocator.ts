@@ -1,13 +1,15 @@
 /** Locates the Codex CLI for GUI-launched Electron processes. */
 
-import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { promisify } from 'node:util'
 import type { AgentAvailability } from '../../../../shared/types/agent-events'
 import {
   AgentUnavailableError,
+  logProbeFailures,
+  unavailableSummary,
   type BinaryLocator,
-  type LocatedBinary
+  type LocatedBinary,
+  type ProbeFailure
 } from '../binaryLocator'
 import {
   augmentedPathEnv,
@@ -15,12 +17,13 @@ import {
   joinPath,
   LOGIN_SHELL_PATH_ARGS,
   nvmBinDirs,
+  probeExec,
   splitPath,
   stripShellBanner,
+  windowsCliInstallDirs,
   type Platform
 } from '../platform'
 
-const execFileAsync = promisify(execFile)
 const EXEC_TIMEOUT_MS = 10_000
 
 export interface CodexBinaryLocatorDeps {
@@ -32,6 +35,8 @@ export interface CodexBinaryLocatorDeps {
   ) => Promise<{ stdout: string; stderr: string }>
   platform?: Platform
   env?: NodeJS.ProcessEnv
+  /** Candidate prefilter, defaults to `existsSync` — see BinaryLocatorDeps. */
+  fileExists?: (path: string) => boolean
 }
 
 function fileNames(platform: Platform): string[] {
@@ -46,9 +51,14 @@ function knownDirs(
 ): string[] {
   if (isWindows(platform)) {
     const appData = env['APPDATA']
-    return appData === undefined || appData === ''
-      ? []
-      : [joinPath(platform, appData, 'npm')]
+    return [
+      ...(appData === undefined || appData === ''
+        ? []
+        : [joinPath(platform, appData, 'npm')]),
+      // Same user-level tool dirs the claude locator sweeps: native-installer
+      // target, Scoop shims, Volta, pnpm. GUI-launched PATH misses them all.
+      ...windowsCliInstallDirs(platform, env)
+    ]
   }
   return [
     joinPath(platform, homedir(), '.local', 'bin'),
@@ -89,10 +99,13 @@ export function createCodexBinaryLocator(
   const exec =
     deps.exec ??
     (async (file: string, args: string[], opts?: { env?: NodeJS.ProcessEnv }) =>
-      execFileAsync(file, args, {
-        timeout: EXEC_TIMEOUT_MS,
+      // probeExec, not execFile: `.cmd` shims need cross-spawn on Windows
+      // (execFile without a shell throws EINVAL there). See platform.ts.
+      probeExec(file, args, {
+        timeoutMs: EXEC_TIMEOUT_MS,
         ...(opts?.env === undefined ? {} : { env: opts.env })
       }))
+  const fileExists = deps.fileExists ?? existsSync
   const platform = deps.platform ?? process.platform
   const env = deps.env ?? process.env
 
@@ -145,43 +158,54 @@ export function createCodexBinaryLocator(
     if (cachedBinary !== null) {
       return cachedBinary
     }
-    let sawExecFailure = false
-    for (const path of await candidates()) {
-      try {
-        // Node-shim CLIs need `node` on the CHILD's PATH — probe with an
-        // augmented env or every nvm install reads as "not installed".
-        const { stdout, stderr } = await exec(path, ['--version'], {
-          env: augmentedPathEnv(path, cachedShellPath ?? null, env, platform)
-        })
-        const version = parseVersion(`${stdout}\n${stderr}`)
-        if (version !== null) {
-          cachedBinary = { path, version }
-          return cachedBinary
+    const failures: ProbeFailure[] = []
+    try {
+      let sawExecFailure = false
+      for (const path of await candidates()) {
+        // A PATH sweep yields dozens of candidates; only spawn what exists.
+        if (!fileExists(path)) {
+          continue
         }
-      } catch (error) {
-        // ENOENT = no file there, keep quiet. Anything else means the file
-        // exists but would not run — worth surfacing to the student.
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-          sawExecFailure = true
+        try {
+          // Node-shim CLIs need `node` on the CHILD's PATH — probe with an
+          // augmented env or every nvm install reads as "not installed".
+          const { stdout, stderr } = await exec(path, ['--version'], {
+            env: augmentedPathEnv(path, cachedShellPath ?? null, env, platform)
+          })
+          const version = parseVersion(`${stdout}\n${stderr}`)
+          if (version !== null) {
+            cachedBinary = { path, version }
+            return cachedBinary
+          }
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code
+          failures.push({ path, code: String(code ?? 'unknown') })
+          // ENOENT = no file there, keep quiet. Anything else means the file
+          // exists but would not run — worth surfacing to the student.
+          if (code !== 'ENOENT') {
+            sawExecFailure = true
+          }
         }
       }
+      throw new AgentUnavailableError(
+        'not-installed',
+        sawExecFailure
+          ? 'Codex CLI 파일은 있지만 실행하지 못했습니다. node 설치 상태를 확인해 주세요.'
+          : isWindows(platform)
+            ? 'Codex CLI를 찾지 못했습니다. %APPDATA%\\npm과 PATH를 확인했습니다.'
+            : 'Codex CLI를 찾지 못했습니다. npm 설치 경로와 로그인 셸 PATH를 확인했습니다.'
+      )
+    } finally {
+      logProbeFailures('codex-locator', failures)
     }
-    throw new AgentUnavailableError(
-      'not-installed',
-      sawExecFailure
-        ? 'Codex CLI 파일은 있지만 실행하지 못했습니다. node 설치 상태를 확인해 주세요.'
-        : isWindows(platform)
-          ? 'Codex CLI를 찾지 못했습니다. %APPDATA%\\npm과 PATH를 확인했습니다.'
-          : 'Codex CLI를 찾지 못했습니다. npm 설치 경로와 로그인 셸 PATH를 확인했습니다.'
-    )
   }
 
   async function availability(): Promise<AgentAvailability> {
     let binary: LocatedBinary
     try {
       binary = await locate()
-    } catch {
-      return { installed: false, loggedIn: false }
+    } catch (error) {
+      return unavailableSummary(error)
     }
     const result: AgentAvailability = {
       installed: true,

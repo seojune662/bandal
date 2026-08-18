@@ -173,6 +173,14 @@ export interface AgentAvailability {
   version?: string
   loggedIn: boolean
   subscriptionType?: string
+  /**
+   * Why the CLI is unavailable, when it is. `version-too-old` comes with
+   * `installed: true` + the found `version`, so the setup UI can say
+   * "update" instead of "install".
+   */
+  code?: AgentErrorCode
+  /** Human-readable detail matching `code`, for the setup UI. */
+  reason?: string
 }
 
 export interface AgentCapabilities {

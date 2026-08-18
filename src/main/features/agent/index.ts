@@ -28,9 +28,16 @@ export {
 export {
   createAgentInstaller,
   CLAUDE_INSTALL_COMMAND,
+  CLAUDE_INSTALL_COMMAND_WINDOWS,
   CODEX_INSTALL_COMMAND,
   AGENT_INSTALL_TIMEOUT_MS
 } from './installer'
+export {
+  createLoginLauncher,
+  loginShellCommand,
+  type LoginLauncher,
+  type LoginLauncherDeps
+} from './loginLauncher'
 export { probeModels, FALLBACK_MODELS, type CliModel } from './claude/modelProbe'
 export { getAgentModels } from './agentModels'
 export { createEventBatcher, type EventBatcher } from './eventBatcher'

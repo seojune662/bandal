@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { showToast, ToastHost } from '../../app/toast'
 import { BandalMark } from '../../components/BandalMark'
@@ -155,7 +155,7 @@ export function SettingsApp({
     )
   }, [categories, query])
 
-  const loadAvailability = (target?: AgentProvider): void => {
+  const loadAvailability = useCallback((target?: AgentProvider): void => {
     const providers = target === undefined ? AGENT_PROVIDERS : [target]
 
     for (const provider of providers) {
@@ -184,7 +184,7 @@ export function SettingsApp({
           }
         })
     }
-  }
+  }, [])
 
   const loadCourses = (showArchived: boolean): void => {
     setCoursesLoading(true)
@@ -229,7 +229,29 @@ export function SettingsApp({
       mountedRef.current = false
       unsubscribe()
     }
-  }, [embedded])
+  }, [embedded, loadAvailability])
+
+  useEffect(() => {
+    const refreshAvailability = (): void => loadAvailability()
+    const refreshWhenVisible = (): void => {
+      if (document.visibilityState === 'visible') refreshAvailability()
+    }
+    const unsubscribe = onPush('agent:install-progress', (progress) => {
+      if (
+        progress.done &&
+        (progress.provider === 'claude-code' || progress.provider === 'codex')
+      ) {
+        loadAvailability(progress.provider)
+      }
+    })
+    window.addEventListener('focus', refreshAvailability)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      unsubscribe()
+      window.removeEventListener('focus', refreshAvailability)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [loadAvailability])
 
   useEffect(() => {
     if (embedded) return

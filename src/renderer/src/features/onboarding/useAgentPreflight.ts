@@ -10,9 +10,12 @@
 
 import { create } from 'zustand'
 import type { AgentAvailability } from '../../../../shared/types/agent-events'
-import { invoke } from '../../lib/ipc'
+import { invoke, onPush } from '../../lib/ipc'
 
-export type PreflightIssueKind = 'not-installed' | 'not-logged-in'
+export type PreflightIssueKind =
+  | 'not-installed'
+  | 'version-too-old'
+  | 'not-logged-in'
 
 export type PreflightStatus = 'idle' | 'checking' | 'ready' | 'error'
 
@@ -41,6 +44,7 @@ export function issuesOf(
   availability: AgentAvailability | null
 ): PreflightIssueKind[] {
   if (availability === null) return []
+  if (availability.code === 'version-too-old') return ['version-too-old']
   if (!availability.installed) return ['not-installed']
   if (!availability.loggedIn) return ['not-logged-in']
   return []
@@ -90,6 +94,34 @@ interface PreflightStore extends PreflightState {
 }
 
 let inflight: Promise<void> | null = null
+let autoRefreshCleanup: (() => void) | null = null
+
+function ensureAutoRefresh(): void {
+  if (
+    autoRefreshCleanup !== null ||
+    typeof window === 'undefined' ||
+    typeof document === 'undefined'
+  ) {
+    return
+  }
+
+  const probe = (): void => {
+    void useAgentPreflight.getState().probe()
+  }
+  const probeWhenVisible = (): void => {
+    if (document.visibilityState === 'visible') probe()
+  }
+  window.addEventListener('focus', probe)
+  document.addEventListener('visibilitychange', probeWhenVisible)
+  const unsubscribe = onPush('agent:install-progress', (progress) => {
+    if (progress.provider === 'claude-code' && progress.done) probe()
+  })
+  autoRefreshCleanup = () => {
+    window.removeEventListener('focus', probe)
+    document.removeEventListener('visibilitychange', probeWhenVisible)
+    unsubscribe()
+  }
+}
 
 export const useAgentPreflight = create<PreflightStore>()((set, get) => {
   const dispatch = (action: PreflightAction): void => {
@@ -101,6 +133,7 @@ export const useAgentPreflight = create<PreflightStore>()((set, get) => {
     ...INITIAL_PREFLIGHT_STATE,
 
     probe: async () => {
+      ensureAutoRefresh()
       if (inflight !== null) return inflight
       dispatch({ type: 'probe-start' })
       inflight = invoke('agent:availability', { provider: 'claude-code' })

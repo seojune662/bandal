@@ -8,12 +8,17 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  augmentedPathEnv,
   claudeFileNames,
   isWindows,
   splitPath,
-  wellKnownClaudeDirs
+  wellKnownClaudeDirs,
+  windowsCliInstallDirs
 } from '../../../src/main/features/agent/platform'
 import { createBinaryLocator } from '../../../src/main/features/agent/binaryLocator'
+
+/** Locator tests fabricate paths, so the existsSync prefilter must pass all. */
+const anyFile = { fileExists: () => true }
 
 describe('isWindows', () => {
   it('is true only for win32', () => {
@@ -80,6 +85,50 @@ describe('wellKnownClaudeDirs', () => {
   it('skips dirs whose env var is absent rather than emitting "undefined\\npm"', () => {
     expect(wellKnownClaudeDirs('win32', {})).toEqual([])
   })
+
+  it('sweeps the native-installer, Scoop, Volta and pnpm dirs on Windows', () => {
+    const dirs = wellKnownClaudeDirs('win32', {
+      USERPROFILE: 'C:\\Users\\s',
+      LOCALAPPDATA: 'C:\\Users\\s\\AppData\\Local'
+    })
+    expect(dirs).toContain('C:\\Users\\s\\.local\\bin')
+    expect(dirs).toContain('C:\\Users\\s\\scoop\\shims')
+    expect(dirs).toContain('C:\\Users\\s\\AppData\\Local\\Volta\\bin')
+    expect(dirs).toContain('C:\\Users\\s\\AppData\\Local\\pnpm')
+  })
+})
+
+describe('windowsCliInstallDirs', () => {
+  it('emits nothing when the env vars are absent', () => {
+    expect(windowsCliInstallDirs('win32', {})).toEqual([])
+  })
+})
+
+describe('augmentedPathEnv', () => {
+  it('keeps exactly one canonical PATH key on Windows', () => {
+    const env = augmentedPathEnv(
+      'C:\\tools\\claude.cmd',
+      null,
+      { Path: 'C:\\Windows' },
+      'win32'
+    )
+    // A leftover `Path` next to our `PATH` makes the child's PATH
+    // non-deterministic — Windows env names are case-insensitive.
+    expect(env['Path']).toBeUndefined()
+    expect(env['PATH']).toContain('C:\\tools')
+    expect(env['PATH']).toContain('C:\\Windows')
+  })
+
+  it('leaves POSIX envs untouched apart from PATH', () => {
+    const env = augmentedPathEnv(
+      '/opt/homebrew/bin/claude',
+      '/custom/bin',
+      { PATH: '/usr/bin', HOME: '/Users/s' },
+      'darwin'
+    )
+    expect(env['PATH']).toBe('/opt/homebrew/bin:/custom/bin:/usr/bin')
+    expect(env['HOME']).toBe('/Users/s')
+  })
 })
 
 describe('binaryLocator — Windows branch', () => {
@@ -88,6 +137,7 @@ describe('binaryLocator — Windows branch', () => {
   it('reads PATH from the environment instead of shelling out to zsh', async () => {
     const calls: string[] = []
     const locator = createBinaryLocator({
+      ...anyFile,
       platform: 'win32',
       env: { PATH: 'C:\\tools' },
       exec: async (file) => {
@@ -109,6 +159,7 @@ describe('binaryLocator — Windows branch', () => {
 
   it('falls back to the Path spelling Windows sometimes uses', async () => {
     const locator = createBinaryLocator({
+      ...anyFile,
       platform: 'win32',
       env: { Path: 'C:\\tools' },
       exec: async (file) =>
@@ -122,6 +173,7 @@ describe('binaryLocator — Windows branch', () => {
 
   it('reports the Windows locations in the not-installed message', async () => {
     const locator = createBinaryLocator({
+      ...anyFile,
       platform: 'win32',
       env: { PATH: 'C:\\tools' },
       exec: async () => Promise.reject(new Error('not found'))
@@ -133,6 +185,7 @@ describe('binaryLocator — Windows branch', () => {
   it('probes %APPDATA%\\npm before PATH', async () => {
     const tried: string[] = []
     const locator = createBinaryLocator({
+      ...anyFile,
       platform: 'win32',
       env: { APPDATA: 'C:\\Roaming', PATH: 'C:\\tools' },
       exec: async (file) => {
@@ -152,6 +205,7 @@ describe('binaryLocator — POSIX branch is unchanged', () => {
   it('still asks a login shell for PATH', async () => {
     const calls: Array<{ file: string; args: string[] }> = []
     const locator = createBinaryLocator({
+      ...anyFile,
       platform: 'darwin',
       env: {},
       exec: async (file, args) => {
@@ -174,6 +228,7 @@ describe('binaryLocator — POSIX branch is unchanged', () => {
 
   it('prefers a configured path over everything else', async () => {
     const locator = createBinaryLocator({
+      ...anyFile,
       platform: 'darwin',
       env: {},
       configuredPath: () => '/custom/claude',
@@ -184,5 +239,74 @@ describe('binaryLocator — POSIX branch is unchanged', () => {
     })
 
     expect((await locator.locate()).path).toBe('/custom/claude')
+  })
+})
+
+describe('binaryLocator — availability keeps the failure reason', () => {
+  it('reports version-too-old as installed with code and found version', async () => {
+    const locator = createBinaryLocator({
+      ...anyFile,
+      platform: 'darwin',
+      env: {},
+      configuredPath: () => '/custom/claude',
+      exec: async (file) =>
+        file === '/custom/claude'
+          ? { stdout: 'claude 1.0.9', stderr: '' }
+          : Promise.reject(new Error('not found'))
+    })
+
+    const availability = await locator.availability()
+
+    // The CLI IS there — the UI must offer an update, not an install.
+    expect(availability.installed).toBe(true)
+    expect(availability.loggedIn).toBe(false)
+    expect(availability.version).toBe('1.0.9')
+    expect(availability.code).toBe('version-too-old')
+    expect(availability.reason).toMatch(/1\.0\.9/)
+  })
+
+  it('propagates the not-installed reason instead of a bare false', async () => {
+    const locator = createBinaryLocator({
+      fileExists: () => false,
+      platform: 'darwin',
+      env: {},
+      exec: async (file) => {
+        if (file === '/bin/zsh') {
+          return { stdout: '/opt/homebrew/bin', stderr: '' }
+        }
+        throw new Error('should not probe: nothing exists')
+      }
+    })
+
+    const availability = await locator.availability()
+
+    expect(availability).toMatchObject({
+      installed: false,
+      loggedIn: false,
+      code: 'not-installed'
+    })
+    expect(availability.reason).toMatch(/not found/)
+  })
+
+  it('skips candidates the fileExists prefilter rejects', async () => {
+    const probed: string[] = []
+    const locator = createBinaryLocator({
+      fileExists: (path) => path === '/opt/homebrew/bin/claude',
+      platform: 'darwin',
+      env: {},
+      exec: async (file) => {
+        if (file === '/bin/zsh') {
+          return { stdout: '/missing/bin:/opt/homebrew/bin', stderr: '' }
+        }
+        probed.push(file)
+        return { stdout: 'claude 2.1.222', stderr: '' }
+      }
+    })
+
+    const binary = await locator.locate()
+
+    expect(binary.path).toBe('/opt/homebrew/bin/claude')
+    // /missing/bin/claude never reached a spawn.
+    expect(probed).toEqual(['/opt/homebrew/bin/claude'])
   })
 })

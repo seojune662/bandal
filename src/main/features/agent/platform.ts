@@ -83,6 +83,37 @@ export function wellKnownClaudeDirs(
     dirs.push(joinPath(platform, localAppData, 'Programs', 'claude'))
     dirs.push(joinPath(platform, localAppData, 'Programs', 'claude', 'bin'))
   }
+  dirs.push(...windowsCliInstallDirs(platform, env))
+  return dirs
+}
+
+/**
+ * User-level Windows dirs where CLI tools commonly land but which a
+ * GUI-launched process's PATH often misses:
+ *
+ * - `%USERPROFILE%\.local\bin` — the claude native installer's target
+ * - `%USERPROFILE%\scoop\shims` — Scoop's shim directory
+ * - `%LOCALAPPDATA%\Volta\bin` — Volta-managed node/npm shims
+ * - `%LOCALAPPDATA%\pnpm` — pnpm's global bin dir
+ *
+ * Derived from env (not `homedir()`) so tests can exercise this branch from
+ * any OS and an empty env yields no phantom `undefined\...` paths.
+ */
+export function windowsCliInstallDirs(
+  platform: Platform,
+  env: NodeJS.ProcessEnv
+): string[] {
+  const dirs: string[] = []
+  const userProfile = env['USERPROFILE']
+  if (userProfile !== undefined && userProfile !== '') {
+    dirs.push(joinPath(platform, userProfile, '.local', 'bin'))
+    dirs.push(joinPath(platform, userProfile, 'scoop', 'shims'))
+  }
+  const localAppData = env['LOCALAPPDATA']
+  if (localAppData !== undefined && localAppData !== '') {
+    dirs.push(joinPath(platform, localAppData, 'Volta', 'bin'))
+    dirs.push(joinPath(platform, localAppData, 'pnpm'))
+  }
   return dirs
 }
 
@@ -163,7 +194,18 @@ export function augmentedPathEnv(
     ...(loginShellPath === null ? [] : splitPath(loginShellPath, platform)),
     ...splitPath(baseEnv['PATH'] ?? baseEnv['Path'] ?? '', platform)
   ]
-  return { ...baseEnv, PATH: [...new Set(dirs)].join(pathModule.delimiter) }
+  const result: NodeJS.ProcessEnv = {
+    ...baseEnv,
+    PATH: [...new Set(dirs)].join(pathModule.delimiter)
+  }
+  if (isWindows(platform)) {
+    // Windows env var names are case-insensitive, but a JS env object is not:
+    // if the base env spelled it `Path`, the child would receive BOTH `Path`
+    // (stale) and `PATH` (augmented) and which one wins is undefined. Keep a
+    // single canonical `PATH` key.
+    delete result['Path']
+  }
+  return result
 }
 
 /**
@@ -258,4 +300,129 @@ export function killProcessTree(
   } catch {
     // Already gone, or the group vanished between check and signal.
   }
+}
+
+/**
+ * Windows-safe probe runner for `--version` / auth-status checks.
+ *
+ * The binary locators used to probe with `promisify(execFile)`, which since
+ * Node's CVE-2024-27980 fix throws EINVAL for `.cmd`/`.bat` shims spawned
+ * without a shell — and npm's Windows install of claude/codex is EXACTLY such
+ * a shim. Sessions already went through cross-spawn (`spawnClaude`); the
+ * probes were the asymmetric gap that made an installed CLI read as
+ * "not installed" on Windows.
+ *
+ * cross-spawn routes `.cmd`/`.bat` through `cmd.exe` with proper argument
+ * escaping on Windows and delegates to plain `child_process.spawn` elsewhere,
+ * so the POSIX behavior is unchanged.
+ *
+ * Contract matches `execFile`: resolves with `{ stdout, stderr }` on exit 0,
+ * rejects on spawn failure (string `code` like 'ENOENT') and on non-zero exit
+ * (numeric `code`, stdout/stderr attached) so existing parse/catch logic in
+ * the locators keeps working. Timeouts kill the whole process tree — a hung
+ * `.cmd` shim leaves a `cmd.exe` + `node` pair behind otherwise.
+ */
+export interface ProbeExecOptions {
+  env?: NodeJS.ProcessEnv
+  /** Defaults to PROBE_EXEC_TIMEOUT_MS. */
+  timeoutMs?: number
+  /** Injectable for tests — defaults to cross-spawn. */
+  spawnFn?: typeof crossSpawn
+}
+
+export const PROBE_EXEC_TIMEOUT_MS = 10_000
+
+export interface ProbeExecError extends Error {
+  code?: number | string | null
+  signal?: NodeJS.Signals | null
+  stdout?: string
+  stderr?: string
+}
+
+export function probeExec(
+  file: string,
+  args: string[],
+  opts: ProbeExecOptions = {}
+): Promise<{ stdout: string; stderr: string }> {
+  const spawnFn = opts.spawnFn ?? crossSpawn
+  const timeoutMs = opts.timeoutMs ?? PROBE_EXEC_TIMEOUT_MS
+  return new Promise((resolve, reject) => {
+    let child: ChildProcess
+    try {
+      child = spawnFn(file, args, {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        // Own process group on POSIX so the timeout's group-kill reaches a
+        // node-shim's children too. Forced off on Windows (console popup);
+        // taskkill /T walks the tree there instead. Host platform on purpose —
+        // this is a real child of THIS process even under injected-platform
+        // tests. Same reasoning as spawnClaude above.
+        detached: !isWindows(),
+        ...(opts.env === undefined ? {} : { env: opts.env })
+      })
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error(String(error)))
+      return
+    }
+
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+    let timedOut = false
+
+    const finish = (fn: () => void): void => {
+      if (settled) {
+        return
+      }
+      settled = true
+      clearTimeout(timer)
+      fn()
+    }
+
+    const timer = setTimeout(() => {
+      timedOut = true
+      if (child.pid !== undefined) {
+        killProcessTree(child.pid, 'SIGKILL')
+      }
+      // Belt and braces: if the group kill found nothing (e.g. an injected
+      // spawnFn ignored `detached`), take out the direct child at least.
+      child.kill('SIGKILL')
+    }, timeoutMs)
+    timer.unref()
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8')
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8')
+    })
+    child.once('error', (error) => finish(() => reject(error)))
+    child.once('close', (code, signal) =>
+      finish(() => {
+        if (timedOut) {
+          const err: ProbeExecError = new Error(
+            `probe timed out after ${timeoutMs}ms: ${file}`
+          )
+          err.code = 'ETIMEDOUT'
+          err.stdout = stdout
+          err.stderr = stderr
+          reject(err)
+          return
+        }
+        if (code === 0) {
+          resolve({ stdout, stderr })
+          return
+        }
+        // execFile semantics: non-zero exit rejects, exit code on `code`.
+        const err: ProbeExecError = new Error(
+          `Command failed: ${file} ${args.join(' ')}\n${stderr}`
+        )
+        err.code = code ?? signal ?? null
+        err.signal = signal
+        err.stdout = stdout
+        err.stderr = stderr
+        reject(err)
+      })
+    )
+  })
 }

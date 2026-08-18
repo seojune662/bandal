@@ -18,11 +18,9 @@ import { useChatSession } from './useChatSession'
 import { AgentToolActivity } from './AgentToolCards'
 import { useAgentToolActivity } from './agentToolActivityStore'
 import {
+  AgentSetupCard,
   GateCard,
-  InstallCard,
-  LoginCard,
-  ProviderSelector,
-  providerLabel
+  ProviderSelector
 } from './AgentSetupCards'
 import './chat.css'
 import './chat-blocks.css'
@@ -30,7 +28,6 @@ import './agent-setup.css'
 import './conversation-list.css'
 import { BandalMark } from '../../components/BandalMark'
 
-const MIN_CLI = { major: 2, minor: 1 }
 const SCROLL_PIN_THRESHOLD_PX = 48
 
 const STARTER_PROMPTS = [
@@ -44,22 +41,6 @@ export interface ChatSurfaceProps {
   /** Conversation id; surfaces without one (popup) fall back to courseId. */
   conversationId?: string
   variant?: 'tab' | 'popup'
-}
-
-function isCliVersionSupported(version: string | undefined): boolean {
-  if (version === undefined) {
-    return true
-  }
-  const match = /^(\d+)\.(\d+)/.exec(version)
-  if (match === null) {
-    return true
-  }
-  const major = Number(match[1])
-  const minor = Number(match[2])
-  if (major !== MIN_CLI.major) {
-    return major > MIN_CLI.major
-  }
-  return minor >= MIN_CLI.minor
 }
 
 function EmptyState({
@@ -209,30 +190,22 @@ export function ChatSurface({
     )
   }
 
-  if (availability !== null && !availability.installed) {
+  if (
+    availability !== null &&
+    (availability.code === 'version-too-old' ||
+      !availability.installed ||
+      !availability.loggedIn)
+  ) {
     return root(
-      <InstallCard
+      <AgentSetupCard
         provider={provider}
+        availability={availability}
         onProviderChange={handleProviderChange}
         onRefresh={session.refresh}
       />
     )
   }
 
-  if (availability !== null && !availability.loggedIn) {
-    return root(
-      <LoginCard
-        provider={provider}
-        onProviderChange={handleProviderChange}
-        onRefresh={session.refresh}
-      />
-    )
-  }
-
-  const isVersionTooOld =
-    provider === 'claude-code' &&
-    (state.notice?.code === 'version-too-old' ||
-      !isCliVersionSupported(availability?.version))
   const hasAgentToolCards = agentToolActivity.items.some(
     (item) => item.kind === 'confirmation' || item.actions.length > 0
   )
@@ -278,13 +251,6 @@ export function ChatSurface({
           </select>
         </label>
       </header>
-      {isVersionTooOld && (
-        <div className="chat-banner" role="status">
-          {providerLabel(provider)} 버전이 오래됐어요 ({availability?.version ?? '알 수 없음'})
-          {' — '}
-          {MIN_CLI.major}.{MIN_CLI.minor} 이상으로 업데이트해 주세요.
-        </div>
-      )}
       {state.notice !== null && state.notice.code !== 'version-too-old' && (
         <div
           className="chat-banner chat-banner--error"

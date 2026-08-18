@@ -1,10 +1,14 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type ReactNode
 } from 'react'
-import type { AgentProvider } from '../../../../shared/types/agent-events'
+import type {
+  AgentAvailability,
+  AgentProvider
+} from '../../../../shared/types/agent-events'
 import { BandalMark } from '../../components/BandalMark'
 import { Icon } from '../../app/icons'
 import { invoke, onPush } from '../../lib/ipc'
@@ -79,7 +83,7 @@ export function GateCard({
   eyebrow: string
   title: string
   children: ReactNode
-  onRefresh: () => void
+  onRefresh?: () => void
 }): JSX.Element {
   return (
     <div className="chat-gate">
@@ -88,159 +92,277 @@ export function GateCard({
         <p className="chat-gate__eyebrow">{eyebrow}</p>
         <h2 className="chat-gate__title">{title}</h2>
         {children}
-        <button type="button" className="chat-gate__refresh" onClick={onRefresh}>
-          <Icon name="refresh" />
-          재확인
-        </button>
+        {onRefresh !== undefined && (
+          <button
+            type="button"
+            className="chat-gate__refresh"
+            onClick={onRefresh}
+          >
+            <Icon name="refresh" />
+            재확인
+          </button>
+        )}
       </div>
     </div>
   )
 }
 
-type InstallStage =
+type SetupStage =
   | 'idle'
-  | 'loading-command'
-  | 'confirming'
   | 'installing'
-  | 'complete'
+  | 'checking-install'
+  | 'opening-login'
+  | 'waiting-login'
   | 'error'
 
-export function InstallCard({
+function commandFromLoginFailure(message: string): string {
+  const match = /직접 실행해 주세요:\s*(.+)$/u.exec(message)
+  return match?.[1]?.trim() || message
+}
+
+export function AgentSetupCard({
   provider,
+  availability,
   onProviderChange,
   onRefresh
 }: {
   provider: AgentProvider
+  availability: AgentAvailability
   onProviderChange: (provider: AgentProvider) => void
   onRefresh: () => void
 }): JSX.Element {
-  const [stage, setStage] = useState<InstallStage>('idle')
+  const [stage, setStage] = useState<SetupStage>('idle')
   const [command, setCommand] = useState('')
-  const [supported, setSupported] = useState(true)
   const [logs, setLogs] = useState<string[]>([])
   const [message, setMessage] = useState('')
+  const [loginFailure, setLoginFailure] = useState('')
+  const [copied, setCopied] = useState(false)
+  const installStartedRef = useRef(false)
+  const installFinishedRef = useRef(false)
+  const continueAfterInstallRef = useRef(false)
+  const loginRequestedRef = useRef(false)
+
+  const needsUpdate = availability.code === 'version-too-old'
+  const needsInstall = !availability.installed || needsUpdate
+  const busy =
+    stage === 'installing' ||
+    stage === 'checking-install' ||
+    stage === 'opening-login'
 
   useEffect(() => {
     setStage('idle')
     setCommand('')
-    setSupported(true)
     setLogs([])
     setMessage('')
+    setLoginFailure('')
+    setCopied(false)
+    installStartedRef.current = false
+    installFinishedRef.current = false
+    continueAfterInstallRef.current = false
+    loginRequestedRef.current = false
   }, [provider])
+
+  useEffect(() => {
+    if (!needsInstall) return
+    let active = true
+    void invoke('agent:installCommand', { provider }).then(
+      (result) => {
+        if (active) setCommand(result.command)
+      },
+      () => undefined
+    )
+    return () => {
+      active = false
+    }
+  }, [needsInstall, provider])
+
+  useEffect(() => {
+    const refresh = (): void => onRefresh()
+    const refreshWhenVisible = (): void => {
+      if (document.visibilityState === 'visible') refresh()
+    }
+    const interval = window.setInterval(refresh, 3_000)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [onRefresh])
+
+  const finishInstallation = useCallback(
+    (ok: boolean) => {
+      if (installFinishedRef.current) return
+      installFinishedRef.current = true
+      installStartedRef.current = false
+      continueAfterInstallRef.current = ok
+      setStage(ok ? 'checking-install' : 'error')
+      onRefresh()
+    },
+    [onRefresh]
+  )
 
   useEffect(
     () =>
       onPush('agent:install-progress', (progress) => {
-        if (progress.provider !== provider) {
-          return
-        }
-        if (progress.line !== '') {
+        if (progress.provider !== provider) return
+        if (installStartedRef.current && progress.line !== '') {
           setLogs((current) => [...current.slice(-119), progress.line])
         }
-        if (progress.done) {
-          setStage(progress.ok ? 'complete' : 'error')
-        }
-      }),
-    [provider]
-  )
-
-  const showCommand = useCallback(() => {
-    setStage('loading-command')
-    setMessage('')
-    void invoke('agent:installCommand', { provider }).then(
-      (result) => {
-        setCommand(result.command)
-        setSupported(result.supported)
-        setStage('confirming')
-        if (!result.supported) {
-          setMessage(
-            provider === 'codex'
-              ? 'npm이 없어 자동 설치할 수 없어요. Node.js와 npm을 먼저 설치해 주세요.'
-              : '이 운영체제에서는 앱 내 자동 설치를 지원하지 않아요.'
-          )
-        }
-      },
-      () => {
-        setStage('error')
-        setMessage('설치 명령어를 불러오지 못했어요.')
-      }
-    )
-  }, [provider])
-
-  const install = useCallback(() => {
-    if (!supported || stage === 'installing') {
-      return
-    }
-    setLogs([])
-    setMessage('')
-    setStage('installing')
-    void invoke('agent:install', { provider }).then(
-      (result) => {
-        setStage(result.ok ? 'complete' : 'error')
-        setMessage(result.message)
-        if (result.ok) {
+        if (!progress.done) return
+        // Every completed install invalidates this snapshot, even when another
+        // surface initiated it. Only this surface's own install may auto-login.
+        if (installStartedRef.current) {
+          if (!progress.ok) {
+            setMessage('설치를 완료하지 못했어요. 진행 로그를 확인해 주세요.')
+          }
+          finishInstallation(progress.ok)
+        } else {
           onRefresh()
         }
+      }),
+    [finishInstallation, onRefresh, provider]
+  )
+
+  const openLogin = useCallback(() => {
+    if (loginRequestedRef.current) return
+    loginRequestedRef.current = true
+    setStage('opening-login')
+    setMessage('')
+    setLoginFailure('')
+    setCopied(false)
+    void invoke('agent:login', { provider }).then(
+      (result) => {
+        loginRequestedRef.current = false
+        if (result.ok) {
+          setStage('waiting-login')
+          setMessage('터미널에서 로그인을 마치면 자동으로 이어져요.')
+          onRefresh()
+          return
+        }
+        setStage('error')
+        setLoginFailure(result.message)
       },
       () => {
+        loginRequestedRef.current = false
         setStage('error')
-        setMessage('설치 요청을 완료하지 못했어요.')
+        setLoginFailure('로그인 창을 열지 못했어요. 잠시 후 다시 시도해 주세요.')
       }
     )
-  }, [onRefresh, provider, stage, supported])
+  }, [onRefresh, provider])
 
-  const cancelConfirmation = useCallback(() => {
-    setStage('idle')
-    setCommand('')
+  useEffect(() => {
+    if (!continueAfterInstallRef.current || needsInstall) return
+    continueAfterInstallRef.current = false
+    if (availability.loggedIn) {
+      setStage('idle')
+      return
+    }
+    openLogin()
+  }, [availability.loggedIn, needsInstall, openLogin])
+
+  const install = useCallback(() => {
+    if (busy) return
+    installStartedRef.current = true
+    installFinishedRef.current = false
+    continueAfterInstallRef.current = false
+    setStage('installing')
+    setLogs([])
     setMessage('')
-  }, [])
+    setLoginFailure('')
+
+    const commandReady =
+      command !== ''
+        ? Promise.resolve()
+        : invoke('agent:installCommand', { provider }).then((result) => {
+            setCommand(result.command)
+          })
+
+    void commandReady.then(
+      () =>
+        invoke('agent:install', { provider }).then(
+          (result) => {
+            setMessage(result.message)
+            finishInstallation(result.ok)
+          },
+          () => {
+            setMessage('설치 요청을 완료하지 못했어요.')
+            finishInstallation(false)
+          }
+        ),
+      () => {
+        setMessage('설치 명령어를 불러오지 못했어요.')
+        finishInstallation(false)
+      }
+    )
+  }, [busy, command, finishInstallation, provider])
+
+  const copyLoginCommand = useCallback(() => {
+    void navigator.clipboard
+      .writeText(commandFromLoginFailure(loginFailure))
+      .then(() => setCopied(true), () => setCopied(false))
+  }, [loginFailure])
+
+  const title = needsUpdate
+    ? '업데이트가 필요해요'
+    : needsInstall
+      ? `${providerLabel(provider)} 연결이 필요해요`
+      : `${providerLabel(provider)} 로그인이 필요해요`
+  const actionLabel = needsUpdate
+    ? stage === 'installing'
+      ? '업데이트 중…'
+      : stage === 'checking-install'
+        ? '업데이트 확인 중…'
+        : '업데이트하기'
+    : needsInstall
+      ? stage === 'installing'
+        ? '연결 중…'
+        : stage === 'checking-install'
+          ? '설치 확인 중…'
+          : '연결하기'
+      : stage === 'opening-login'
+        ? '로그인 창 여는 중…'
+        : '로그인 창 열기'
 
   return (
-    <GateCard
-      eyebrow="SETUP"
-      title={`${providerLabel(provider)} 설치가 필요해요`}
-      onRefresh={onRefresh}
-    >
+    <GateCard eyebrow="SETUP" title={title}>
       <ProviderSelector
         provider={provider}
         onChange={onProviderChange}
-        disabled={stage === 'installing'}
+        disabled={busy}
       />
-      <p className="chat-gate__desc">
-        AI 튜터는 내 컴퓨터에서 {providerLabel(provider)} CLI를 실행해요.
-        설치하기 전에 실행할 명령어를 그대로 보여드릴게요.
-      </p>
 
-      {(stage === 'idle' || stage === 'loading-command') && (
-        <button
-          type="button"
-          className="chat-gate__primary"
-          disabled={stage === 'loading-command'}
-          onClick={showCommand}
-        >
-          {stage === 'loading-command' ? '명령어 확인 중…' : '앱에서 설치'}
-        </button>
+      {needsUpdate ? (
+        <p className="chat-gate__desc">
+          현재 버전 {availability.version ?? '알 수 없음'}을 최신 버전으로
+          업데이트하면 자동으로 연결을 이어갈게요.
+        </p>
+      ) : needsInstall ? (
+        <p className="chat-gate__desc">
+          연결하기를 누르면 {providerLabel(provider)} CLI를 설치하고 로그인까지
+          이어서 도와드려요.
+        </p>
+      ) : (
+        <p className="chat-gate__desc">
+          로그인 창을 열고 터미널의 안내를 마치면 이 화면이 자동으로 넘어가요.
+        </p>
       )}
 
-      {command !== '' && (
-        <div className="chat-gate__command">
+      <button
+        type="button"
+        className="chat-gate__primary"
+        disabled={busy}
+        onClick={needsInstall ? install : openLogin}
+      >
+        {actionLabel}
+      </button>
+
+      {needsInstall && command !== '' && (
+        <details className="chat-gate__command">
+          <summary>설치 명령어 보기</summary>
           <code>{command}</code>
-        </div>
-      )}
-
-      {stage === 'confirming' && supported && (
-        <div className="chat-gate__actions">
-          <button type="button" className="chat-gate__primary" onClick={install}>
-            설치
-          </button>
-          <button
-            type="button"
-            className="chat-gate__secondary"
-            onClick={cancelConfirmation}
-          >
-            취소
-          </button>
-        </div>
+        </details>
       )}
 
       {stage === 'installing' && (
@@ -265,76 +387,66 @@ export function InstallCard({
           {message}
         </p>
       )}
+
+      {loginFailure !== '' && (
+        <div className="chat-gate__command" role="alert">
+          <code>{loginFailure}</code>
+          <button
+            type="button"
+            className="chat-gate__copy"
+            onClick={copyLoginCommand}
+          >
+            {copied ? '복사됨' : '명령 복사'}
+          </button>
+        </div>
+      )}
+
+      {availability.reason !== undefined && availability.reason !== '' && (
+        <p className="chat-gate__notice">{availability.reason}</p>
+      )}
     </GateCard>
   )
 }
 
-function ExternalLink({ url, children }: { url: string; children: ReactNode }): JSX.Element {
+/** Compatibility exports for consumers that still mount a specific gate. */
+export function InstallCard({
+  provider,
+  onProviderChange,
+  onRefresh,
+  availability = { installed: false, loggedIn: false }
+}: {
+  provider: AgentProvider
+  onProviderChange: (provider: AgentProvider) => void
+  onRefresh: () => void
+  availability?: AgentAvailability
+}): JSX.Element {
   return (
-    <button
-      type="button"
-      className="chat-gate__external"
-      onClick={() => {
-        void invoke('shell:openExternal', { url }).catch(() => undefined)
-      }}
-    >
-      {children}
-    </button>
+    <AgentSetupCard
+      provider={provider}
+      availability={availability}
+      onProviderChange={onProviderChange}
+      onRefresh={onRefresh}
+    />
   )
 }
 
 export function LoginCard({
   provider,
   onProviderChange,
-  onRefresh
+  onRefresh,
+  availability = { installed: true, loggedIn: false }
 }: {
   provider: AgentProvider
   onProviderChange: (provider: AgentProvider) => void
   onRefresh: () => void
+  availability?: AgentAvailability
 }): JSX.Element {
-  const cli = provider === 'claude-code' ? 'claude' : 'codex'
   return (
-    <GateCard
-      eyebrow="ACCOUNT"
-      title={`${providerLabel(provider)} 로그인이 필요해요`}
+    <AgentSetupCard
+      provider={provider}
+      availability={availability}
+      onProviderChange={onProviderChange}
       onRefresh={onRefresh}
-    >
-      <ProviderSelector provider={provider} onChange={onProviderChange} />
-      {provider === 'claude-code' ? (
-        <ol className="chat-gate__steps">
-          <li>
-            <span>Claude 계정이 없다면 먼저 가입해요.</span>
-            <ExternalLink url="https://claude.ai/">claude.ai 열기</ExternalLink>
-          </li>
-          <li>
-            <span>무료 사용량과 유료 요금제를 확인하고 나에게 맞게 선택해요.</span>
-            <ExternalLink url="https://claude.com/pricing">요금제 보기</ExternalLink>
-          </li>
-          <li>
-            <span>
-              터미널에서 <code className="chat-gate__inline-code">claude</code>를
-              실행하고 브라우저 로그인 안내를 마쳐요.
-            </span>
-          </li>
-        </ol>
-      ) : (
-        <ol className="chat-gate__steps">
-          <li>
-            <span>ChatGPT 계정이 없다면 먼저 가입해요.</span>
-            <ExternalLink url="https://chatgpt.com/">ChatGPT 열기</ExternalLink>
-          </li>
-          <li>
-            <span>
-              터미널에서 <code className="chat-gate__inline-code">codex</code>를
-              실행하고 ChatGPT 로그인을 선택해요.
-            </span>
-          </li>
-        </ol>
-      )}
-      <p className="chat-gate__desc">
-        로그인 완료 후 <code className="chat-gate__inline-code">{cli}</code>를
-        종료해도 괜찮아요. Bandal로 돌아와 재확인을 눌러주세요.
-      </p>
-    </GateCard>
+    />
   )
 }

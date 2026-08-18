@@ -39,6 +39,7 @@ import {
   createCodexAdapter,
   createCodexBinaryLocator,
   createAgentInstaller,
+  createLoginLauncher,
   killAllCodexProcessesSync,
   getAgentModels,
   killAllClaudeProcessesSync
@@ -746,9 +747,17 @@ export function registerHandlers(): IpcRouter {
 
   // Installers mutate the machine outside the app sandbox, so `agent:install`
   // is only ever reached from an explicit click after the UI has shown the
-  // exact command from `agent:installCommand`.
+  // exact command from `agent:installCommand`. The SAME locator singletons
+  // that serve `agent:availability` are passed in so post-install
+  // verification resets the caches the renderer actually queries.
   const agentInstaller = createAgentInstaller({
-    broadcast: (progress) => broadcast('agent:install-progress', progress)
+    broadcast: (progress) => broadcast('agent:install-progress', progress),
+    claudeLocator: binaryLocator,
+    codexLocator
+  })
+  const loginLauncher = createLoginLauncher({
+    claudeLocator: binaryLocator,
+    codexLocator
   })
   // -- AI study tools --------------------------------------------------------
   // The recipes run through the course's normal agent session and write their
@@ -776,6 +785,7 @@ export function registerHandlers(): IpcRouter {
 
   handle('agent:installCommand', (req) => agentInstaller.commandFor(req.provider))
   handle('agent:install', (req) => agentInstaller.install(req.provider))
+  handle('agent:login', (req) => loginLauncher.login(req.provider))
   handle('agent:models', (req) => getAgentModels(req.provider))
 
   // -- saved logins ----------------------------------------------------------

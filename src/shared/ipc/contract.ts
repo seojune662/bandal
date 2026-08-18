@@ -545,6 +545,15 @@ export interface IpcContract {
     req: { provider: AgentProvider }
     res: { ok: boolean; message: string }
   }
+  /**
+   * Opens a visible terminal preloaded with the provider's login command
+   * (absolute binary path, quoted). CLI login is an interactive OAuth flow
+   * that needs a TTY, so it cannot complete inside the app itself.
+   */
+  'agent:login': {
+    req: { provider: AgentProvider }
+    res: { ok: boolean; message: string }
+  }
 
   // -- browser session ------------------------------------------------------
   /** Signed-in sites in the browsing partition, for the settings list. */
@@ -1101,6 +1110,7 @@ export const IPC_CHANNELS = [
   'favorites:reorder',
   'agent:installCommand',
   'agent:install',
+  'agent:login',
   'browser:sessionSites',
   'browser:clearSession',
   'agentTools:changes',

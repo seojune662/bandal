@@ -436,136 +436,256 @@ function AvailabilityRows({
   )
 }
 
-type InstallStage =
+type ConnectionStage =
   | 'idle'
-  | 'loading-command'
-  | 'ready'
   | 'installing'
-  | 'complete'
+  | 'checking-install'
+  | 'opening-login'
+  | 'waiting-login'
   | 'error'
 
-type InstallError = 'command' | 'unsupported' | 'request' | 'failed' | null
+type ConnectionError = 'command' | 'request' | 'failed' | 'login-request' | null
 
-function CodexInstaller({
-  installed,
+function loginCommandFromMessage(message: string): string {
+  const match = /직접 실행해 주세요:\s*(.+)$/u.exec(message)
+  return match?.[1]?.trim() || message
+}
+
+function AgentConnector({
+  provider,
+  availability,
   onRefresh
 }: {
-  installed: boolean
+  provider: AgentProvider
+  availability: AgentAvailability
   onRefresh: () => void
 }): JSX.Element | null {
   const t = useT()
-  const [stage, setStage] = useState<InstallStage>('idle')
-  const [error, setError] = useState<InstallError>(null)
+  const [stage, setStage] = useState<ConnectionStage>('idle')
+  const [error, setError] = useState<ConnectionError>(null)
   const [command, setCommand] = useState('')
   const [logs, setLogs] = useState<string[]>([])
-  const refreshRequestedRef = useRef(false)
+  const [loginFailure, setLoginFailure] = useState('')
+  const [copied, setCopied] = useState(false)
+  const installStartedRef = useRef(false)
+  const installFinishedRef = useRef(false)
+  const continueAfterInstallRef = useRef(false)
+  const loginRequestedRef = useRef(false)
+
+  const needsUpdate = availability.code === 'version-too-old'
+  const needsInstall = !availability.installed || needsUpdate
+  const needsLogin =
+    availability.installed && !availability.loggedIn && !needsUpdate
+  const needsConnection = needsInstall || needsLogin
+  const providerName = t(
+    provider === 'codex' ? 'settings.ai.codex.name' : 'settings.ai.claude.name'
+  )
+  const busy =
+    stage === 'installing' ||
+    stage === 'checking-install' ||
+    stage === 'opening-login'
 
   const finishInstallation = useCallback(
-    (ok: boolean) => {
-      setStage(ok ? 'complete' : 'error')
-      setError(ok ? null : 'failed')
-      if (ok && !refreshRequestedRef.current) {
-        refreshRequestedRef.current = true
-        onRefresh()
-      }
+    (ok: boolean, failure: ConnectionError = 'failed') => {
+      if (installFinishedRef.current) return
+      installFinishedRef.current = true
+      installStartedRef.current = false
+      continueAfterInstallRef.current = ok
+      setStage(ok ? 'checking-install' : 'error')
+      setError(ok ? null : failure)
+      onRefresh()
     },
     [onRefresh]
   )
 
-  const loadCommand = useCallback(() => {
-    setStage('loading-command')
-    setError(null)
-    setCommand('')
-    void invoke('agent:installCommand', { provider: 'codex' }).then(
+  useEffect(() => {
+    if (!needsInstall) return
+    let active = true
+    void invoke('agent:installCommand', { provider }).then(
       (result) => {
-        setCommand(result.command)
-        if (result.supported) {
-          setStage('ready')
-        } else {
-          setStage('error')
-          setError('unsupported')
-        }
+        if (active) setCommand(result.command)
       },
-      () => {
-        setStage('error')
-        setError('command')
-      }
+      () => undefined
     )
-  }, [])
+    return () => {
+      active = false
+    }
+  }, [needsInstall, provider])
 
   useEffect(() => {
-    if (!installed) loadCommand()
-  }, [installed, loadCommand])
+    if (!needsConnection) return
+    const interval = window.setInterval(onRefresh, 3_000)
+    return () => window.clearInterval(interval)
+  }, [needsConnection, onRefresh])
 
   useEffect(
     () =>
       onPush('agent:install-progress', (progress) => {
-        if (progress.provider !== 'codex') return
-        if (progress.line !== '') {
+        if (progress.provider !== provider) return
+        if (installStartedRef.current && progress.line !== '') {
           setLogs((current) => [...current.slice(-119), progress.line])
         }
-        if (progress.done) finishInstallation(progress.ok)
+        if (!progress.done) return
+        if (installStartedRef.current) {
+          finishInstallation(progress.ok)
+        } else {
+          onRefresh()
+        }
       }),
-    [finishInstallation]
+    [finishInstallation, onRefresh, provider]
   )
 
+  const openLogin = useCallback(() => {
+    if (loginRequestedRef.current) return
+    loginRequestedRef.current = true
+    setStage('opening-login')
+    setError(null)
+    setLoginFailure('')
+    setCopied(false)
+    void invoke('agent:login', { provider }).then(
+      (result) => {
+        loginRequestedRef.current = false
+        if (result.ok) {
+          setStage('waiting-login')
+          onRefresh()
+          return
+        }
+        setStage('error')
+        setLoginFailure(result.message)
+      },
+      () => {
+        loginRequestedRef.current = false
+        setStage('error')
+        setError('login-request')
+      }
+    )
+  }, [onRefresh, provider])
+
+  useEffect(() => {
+    if (!continueAfterInstallRef.current || needsInstall) return
+    continueAfterInstallRef.current = false
+    if (availability.loggedIn) {
+      setStage('idle')
+      return
+    }
+    openLogin()
+  }, [availability.loggedIn, needsInstall, openLogin])
+
+  useEffect(() => {
+    if (needsConnection) return
+    setStage('idle')
+    setError(null)
+    setLoginFailure('')
+    installStartedRef.current = false
+    installFinishedRef.current = false
+    continueAfterInstallRef.current = false
+    loginRequestedRef.current = false
+  }, [needsConnection])
+
   const install = (): void => {
-    if (stage !== 'ready') return
-    refreshRequestedRef.current = false
+    if (busy) return
+    installStartedRef.current = true
+    installFinishedRef.current = false
+    continueAfterInstallRef.current = false
     setLogs([])
     setError(null)
+    setLoginFailure('')
     setStage('installing')
-    void invoke('agent:install', { provider: 'codex' }).then(
-      (result) => finishInstallation(result.ok),
+
+    const commandReady =
+      command !== ''
+        ? Promise.resolve()
+        : invoke('agent:installCommand', { provider }).then((result) => {
+            setCommand(result.command)
+          })
+
+    void commandReady.then(
+      () =>
+        invoke('agent:install', { provider }).then(
+          (result) => finishInstallation(result.ok),
+          () => {
+            finishInstallation(false, 'request')
+          }
+        ),
       () => {
+        installStartedRef.current = false
         setStage('error')
-        setError('request')
+        setError('command')
       }
     )
   }
 
-  if (installed && stage !== 'complete') return null
+  const copyLoginCommand = (): void => {
+    void navigator.clipboard
+      .writeText(loginCommandFromMessage(loginFailure))
+      .then(() => setCopied(true), () => setCopied(false))
+  }
+
+  if (!needsConnection) return null
 
   const errorKey =
-    error === 'unsupported'
-      ? 'settings.ai.install.unsupported'
-      : error === 'command'
-        ? 'settings.ai.install.commandFailed'
-        : error === 'request'
-          ? 'settings.ai.install.requestFailed'
+    error === 'command'
+      ? 'settings.ai.install.commandFailed'
+      : error === 'request'
+        ? 'settings.ai.install.requestFailed'
+        : error === 'login-request'
+          ? 'settings.ai.login.requestFailed'
           : 'settings.ai.install.failed'
+  const actionLabel = needsUpdate
+    ? stage === 'installing'
+      ? t('settings.ai.action.updating')
+      : stage === 'checking-install'
+        ? t('settings.ai.action.checkingUpdate')
+        : t('settings.ai.action.update')
+    : needsInstall
+      ? stage === 'installing'
+        ? t('settings.ai.action.connecting')
+        : stage === 'checking-install'
+          ? t('settings.ai.action.checkingInstall')
+          : t('settings.ai.action.connect')
+      : stage === 'opening-login'
+        ? t('settings.ai.action.openingLogin')
+        : t('settings.ai.action.login')
 
   return (
     <div className="settings-ai-installer">
-      {stage !== 'complete' && (
-        <div className="settings-ai-installer__copy">
-          <strong>{t('settings.ai.codex.notInstalledTitle')}</strong>
-          <span>{t('settings.ai.codex.notInstalledHelp')}</span>
-        </div>
-      )}
+      <div className="settings-ai-installer__copy">
+        <strong>
+          {t(
+            needsUpdate
+              ? 'settings.ai.setup.updateTitle'
+              : needsInstall
+                ? 'settings.ai.setup.connectTitle'
+                : 'settings.ai.setup.loginTitle',
+            { provider: providerName }
+          )}
+        </strong>
+        <span>
+          {needsUpdate
+            ? t('settings.ai.setup.updateHelp', {
+                version: availability.version ?? t('settings.ai.unknown')
+              })
+            : needsInstall
+              ? t('settings.ai.setup.connectHelp')
+              : t('settings.ai.setup.loginHelp')}
+        </span>
+      </div>
 
-      {stage === 'loading-command' && (
-        <p className="settings-ai-install-feedback" role="status">
-          {t('settings.ai.install.commandLoading')}
-        </p>
-      )}
+      <button
+        type="button"
+        className="secondary-button"
+        data-settings-connect-action="true"
+        disabled={busy}
+        onClick={needsInstall ? install : openLogin}
+      >
+        {actionLabel}
+      </button>
 
-      {command !== '' && stage !== 'complete' && (
-        <div className="settings-ai-install-command">
-          <span>{t('settings.ai.install.commandLabel')}</span>
+      {needsInstall && command !== '' && (
+        <details className="settings-ai-install-command">
+          <summary>{t('settings.ai.install.commandSummary')}</summary>
           <code>{command}</code>
-        </div>
-      )}
-
-      {stage === 'ready' && (
-        <button
-          type="button"
-          className="secondary-button"
-          data-settings-install-action="true"
-          onClick={install}
-        >
-          {t('settings.ai.install.button')}
-        </button>
+        </details>
       )}
 
       {stage === 'installing' && (
@@ -584,28 +704,39 @@ function CodexInstaller({
         </pre>
       )}
 
-      {stage === 'complete' && (
+      {(stage === 'checking-install' || stage === 'waiting-login') && (
         <p
           className="settings-ai-install-feedback settings-ai-install-feedback--success"
           role="status"
         >
-          {t('settings.ai.install.complete')}
+          {t(
+            stage === 'waiting-login'
+              ? 'settings.ai.login.waiting'
+              : 'settings.ai.install.checkingAgain'
+          )}
         </p>
       )}
 
-      {stage === 'error' && (
+      {stage === 'error' && loginFailure === '' && (
         <div className="settings-ai-install-error" role="alert">
           <span>{t(errorKey)}</span>
-          {error !== 'unsupported' && (
-            <button
-              type="button"
-              className="secondary-button"
-              data-settings-install-action="true"
-              onClick={loadCommand}
-            >
-              {t('settings.ai.install.retry')}
-            </button>
-          )}
+        </div>
+      )}
+
+      {loginFailure !== '' && (
+        <div className="settings-ai-install-error" role="alert">
+          <span>{loginFailure}</span>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={copyLoginCommand}
+          >
+            {t(
+              copied
+                ? 'settings.ai.login.copied'
+                : 'settings.ai.login.copyCommand'
+            )}
+          </button>
         </div>
       )}
     </div>
@@ -628,6 +759,10 @@ function ProviderCard({
   const t = useT()
   const codex = provider === 'codex'
   const installed = availability?.installed === true
+  const connected =
+    installed &&
+    availability?.loggedIn === true &&
+    availability.code !== 'version-too-old'
   const providerName = t(
     codex ? 'settings.ai.codex.name' : 'settings.ai.claude.name'
   )
@@ -635,9 +770,13 @@ function ProviderCard({
     ? t('settings.ai.checking')
     : error !== null
       ? t('settings.ai.checkFailed')
-      : installed
-        ? t('settings.ai.available')
-        : t('settings.ai.notInstalled')
+      : availability?.code === 'version-too-old'
+        ? t('settings.ai.updateRequired')
+        : connected
+          ? t('settings.ai.available')
+          : installed
+            ? t('settings.ai.loginRequired')
+            : t('settings.ai.notInstalled')
 
   return (
     <SettingsCard className="integration-card">
@@ -667,7 +806,7 @@ function ProviderCard({
               ? 'loading'
               : error !== null
                 ? 'muted'
-                : installed
+                : connected
                   ? 'ready'
                   : 'muted'
           }`}
@@ -703,24 +842,16 @@ function ProviderCard({
       ) : availability !== null ? (
         <>
           <AvailabilityRows availability={availability} />
-          {codex ? (
-            <CodexInstaller
-              installed={availability.installed}
-              onRefresh={onRetry}
-            />
-          ) : (
-            !availability.installed && (
-              <div className="inline-notice inline-notice--guidance">
-                <Icon name="sparkles" size={18} />
-                <div>
-                  <strong>{t('settings.ai.claude.notInstalledTitle')}</strong>
-                  <span>{t('settings.ai.claude.notInstalledHelp')}</span>
-                </div>
-              </div>
-            )
-          )}
+          <AgentConnector
+            provider={provider}
+            availability={availability}
+            onRefresh={onRetry}
+          />
         </>
       ) : null}
+      {availability?.reason !== undefined && availability.reason !== '' && (
+        <p className="settings-ai-install-feedback">{availability.reason}</p>
+      )}
     </SettingsCard>
   )
 }
@@ -749,19 +880,8 @@ export function AiPanel({
   onRetry: (provider: AgentProvider) => void
 }): JSX.Element {
   const t = useT()
-  const selectedProviderMissing =
-    !loading[provider] &&
-    error[provider] === null &&
-    availability[provider]?.installed === false
-
-  const revealProviderCard = (): void => {
-    const card = document.getElementById(`settings-ai-provider-${provider}`)
-    card?.scrollIntoView({ block: 'center' })
-    card
-      ?.closest('.settings-card')
-      ?.querySelector<HTMLButtonElement>('[data-settings-install-action="true"]')
-      ?.focus({ preventScroll: true })
-  }
+  const refreshClaude = useCallback(() => onRetry('claude-code'), [onRetry])
+  const refreshCodex = useCallback(() => onRetry('codex'), [onRetry])
 
   return (
     <div className="settings-stack">
@@ -800,22 +920,6 @@ export function AiPanel({
           </div>
 
 
-          {selectedProviderMissing && (
-            <div className="settings-ai-engine__warning">
-              <div>
-                <strong>{t('settings.ai.engine.notInstalledTitle')}</strong>
-                <span>{t('settings.ai.engine.notInstalledHelp')}</span>
-              </div>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={revealProviderCard}
-              >
-                {t('settings.ai.engine.installGuide')}
-              </button>
-            </div>
-          )}
-
           <p
             className={`settings-ai-engine__feedback${
               providerFeedbackError
@@ -834,7 +938,7 @@ export function AiPanel({
         availability={availability['claude-code']}
         loading={loading['claude-code']}
         error={error['claude-code']}
-        onRetry={() => onRetry('claude-code')}
+        onRetry={refreshClaude}
       />
 
       <ProviderCard
@@ -842,7 +946,7 @@ export function AiPanel({
         availability={availability.codex}
         loading={loading.codex}
         error={error.codex}
-        onRetry={() => onRetry('codex')}
+        onRetry={refreshCodex}
       />
     </div>
   )

@@ -18,6 +18,9 @@ import {
 
 export const CLAUDE_INSTALL_COMMAND =
   'curl -fsSL https://claude.ai/install.sh | bash'
+/** Windows equivalent of the official installer, run via powershell.exe. */
+export const CLAUDE_INSTALL_COMMAND_WINDOWS =
+  'irm https://claude.ai/install.ps1 | iex'
 export const CODEX_INSTALL_COMMAND = 'npm install -g @openai/codex'
 export const AGENT_INSTALL_TIMEOUT_MS = 5 * 60 * 1000
 
@@ -129,23 +132,30 @@ async function verifyInstalled(locator: BinaryLocator): Promise<boolean> {
  */
 export function createAgentInstaller(deps?: {
   broadcast?: (p: AgentInstallProgress) => void
+  /**
+   * The SAME locator instances registerHandlers serves `agent:availability`
+   * from. Install verification calls `reset()` on these, so passing private
+   * copies here would leave the served singletons caching "not installed"
+   * after a successful install. Defaults exist only for tests.
+   */
+  claudeLocator?: BinaryLocator
+  codexLocator?: BinaryLocator
 }): {
   commandFor(provider: AgentProvider): { command: string; supported: boolean }
   install(provider: AgentProvider): Promise<{ ok: boolean; message: string }>
 } {
   const broadcast = deps?.broadcast ?? (() => undefined)
-  const claudeLocator = createBinaryLocator()
-  const codexLocator = createCodexBinaryLocator()
+  const claudeLocator = deps?.claudeLocator ?? createBinaryLocator()
+  const codexLocator = deps?.codexLocator ?? createCodexBinaryLocator()
 
   function commandFor(
     provider: AgentProvider
   ): { command: string; supported: boolean } {
     if (provider === 'claude-code') {
-      return {
-        command: CLAUDE_INSTALL_COMMAND,
-        // The contracted installer is a POSIX curl|bash command.
-        supported: process.platform !== 'win32'
+      if (process.platform === 'win32') {
+        return { command: CLAUDE_INSTALL_COMMAND_WINDOWS, supported: true }
       }
+      return { command: CLAUDE_INSTALL_COMMAND, supported: true }
     }
     return {
       command: CODEX_INSTALL_COMMAND,
@@ -169,8 +179,21 @@ export function createAgentInstaller(deps?: {
     let file: string
     let args: string[]
     if (provider === 'claude-code') {
-      file = '/bin/sh'
-      args = ['-c', CLAUDE_INSTALL_COMMAND]
+      if (process.platform === 'win32') {
+        // The announced constant command, verbatim — no user input reaches
+        // this string. -NoProfile keeps user profiles from hijacking it.
+        file = 'powershell.exe'
+        args = [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-Command',
+          CLAUDE_INSTALL_COMMAND_WINDOWS
+        ]
+      } else {
+        file = '/bin/sh'
+        args = ['-c', CLAUDE_INSTALL_COMMAND]
+      }
     } else {
       const npmPath = resolveNpmSync()
       if (npmPath === null) {

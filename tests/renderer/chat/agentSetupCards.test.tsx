@@ -29,10 +29,9 @@ describe('agent setup copy', () => {
         onRefresh={() => undefined}
       />
     )
-    expect(html).toContain('Claude 계정이 없다면 먼저 가입해요.')
-    expect(html).toContain('무료 사용량과 유료 요금제')
-    expect(html).toContain('터미널에서')
-    expect(html).toContain('claude')
+    expect(html).toContain('Claude Code 로그인이 필요해요')
+    expect(html).toContain('로그인 창 열기')
+    expect(html).toContain('자동으로 넘어가요')
   })
 
   test('shows the ChatGPT account and codex login guide', () => {
@@ -43,8 +42,8 @@ describe('agent setup copy', () => {
         onRefresh={() => undefined}
       />
     )
-    expect(html).toContain('ChatGPT 계정이 없다면 먼저 가입해요.')
-    expect(html).toContain('ChatGPT 로그인을 선택해요.')
-    expect(html).toContain('codex')
+    expect(html).toContain('Codex (GPT) 로그인이 필요해요')
+    expect(html).toContain('로그인 창 열기')
+    expect(html).toContain('자동으로 넘어가요')
   })
 })

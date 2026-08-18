@@ -10,9 +10,8 @@
  * See ./platform.ts for the rest of the OS differences.
  */
 
-import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { promisify } from 'node:util'
 import type { AgentAvailability, AgentErrorCode } from '../../../shared/types/agent-events'
 import {
   augmentedPathEnv,
@@ -20,24 +19,82 @@ import {
   isWindows,
   joinPath,
   LOGIN_SHELL_PATH_ARGS,
+  probeExec,
   splitPath,
   stripShellBanner,
   wellKnownClaudeDirs,
   type Platform
 } from './platform'
 
-const execFileAsync = promisify(execFile)
-
 const EXEC_TIMEOUT_MS = 10_000
 export const MIN_CLI_VERSION = { major: 2, minor: 1 }
 
 export class AgentUnavailableError extends Error {
   readonly code: AgentErrorCode
+  /** The version actually found, when `code` is 'version-too-old'. */
+  readonly version?: string
 
-  constructor(code: AgentErrorCode, message: string) {
+  constructor(code: AgentErrorCode, message: string, version?: string) {
     super(message)
     this.name = 'AgentUnavailableError'
     this.code = code
+    if (version !== undefined) {
+      this.version = version
+    }
+  }
+}
+
+/** One candidate that existed on disk but failed to run, for diagnostics. */
+export interface ProbeFailure {
+  path: string
+  code: string
+}
+
+/** Concise once-per-locate log line so field reports carry the real cause. */
+export function logProbeFailures(tag: string, failures: ProbeFailure[]): void {
+  if (failures.length === 0) {
+    return
+  }
+  console.error(
+    `[${tag}] candidate probe failures: ${failures
+      .map((failure) => `${failure.path} (${failure.code})`)
+      .join(', ')}`
+  )
+}
+
+/**
+ * Maps a locate() failure to an AgentAvailability the renderer can act on.
+ * Used by both locators so `availability()` never collapses distinct causes
+ * ("version too old" vs "not installed" vs "exists but won't run") into one
+ * bare `{ installed: false }`.
+ */
+export function unavailableSummary(error: unknown): AgentAvailability {
+  if (error instanceof AgentUnavailableError) {
+    if (error.code === 'version-too-old') {
+      // The CLI IS installed — the UI should offer an update, not an install.
+      const result: AgentAvailability = {
+        installed: true,
+        loggedIn: false,
+        code: error.code,
+        reason: error.message
+      }
+      if (error.version !== undefined) {
+        result.version = error.version
+      }
+      return result
+    }
+    return {
+      installed: false,
+      loggedIn: false,
+      code: error.code,
+      reason: error.message
+    }
+  }
+  return {
+    installed: false,
+    loggedIn: false,
+    code: 'unknown',
+    reason: error instanceof Error ? error.message : String(error)
   }
 }
 
@@ -70,6 +127,12 @@ export interface BinaryLocatorDeps {
   platform?: Platform
   /** Injectable for tests (reads PATH / APPDATA / LOCALAPPDATA). */
   env?: NodeJS.ProcessEnv
+  /**
+   * Candidate prefilter, defaults to `existsSync`. Skips the expensive spawn
+   * probe for paths with no file behind them (PATH sweeps produce dozens).
+   * Tests that fabricate paths inject `() => true`.
+   */
+  fileExists?: (path: string) => boolean
 }
 
 function parseVersion(stdout: string): string | null {
@@ -120,10 +183,13 @@ export function createBinaryLocator(deps: BinaryLocatorDeps = {}): BinaryLocator
   const exec =
     deps.exec ??
     (async (file: string, args: string[], opts?: { env?: NodeJS.ProcessEnv }) =>
-      execFileAsync(file, args, {
-        timeout: EXEC_TIMEOUT_MS,
+      // probeExec, not execFile: `.cmd` shims need cross-spawn on Windows
+      // (execFile without a shell throws EINVAL there). See platform.ts.
+      probeExec(file, args, {
+        timeoutMs: EXEC_TIMEOUT_MS,
         ...(opts?.env === undefined ? {} : { env: opts.env })
       }))
+  const fileExists = deps.fileExists ?? existsSync
 
   const platform = deps.platform ?? process.platform
   const env = deps.env ?? process.env
@@ -132,7 +198,10 @@ export function createBinaryLocator(deps: BinaryLocatorDeps = {}): BinaryLocator
   let cachedBinary: LocatedBinary | null = null
   let cachedShellPath: string | null | undefined
 
-  async function tryVersion(path: string): Promise<string | null> {
+  async function tryVersion(
+    path: string,
+    failures: ProbeFailure[]
+  ): Promise<string | null> {
     try {
       // An npm-installed claude is a node shim: `node` must be reachable on
       // the CHILD's PATH or the probe dies at the shebang (see codex locator).
@@ -140,7 +209,11 @@ export function createBinaryLocator(deps: BinaryLocatorDeps = {}): BinaryLocator
         env: augmentedPathEnv(path, cachedShellPath ?? null, env, platform)
       })
       return parseVersion(stdout)
-    } catch {
+    } catch (error) {
+      failures.push({
+        path,
+        code: String((error as NodeJS.ErrnoException).code ?? 'unknown')
+      })
       return null
     }
   }
@@ -198,40 +271,50 @@ export function createBinaryLocator(deps: BinaryLocatorDeps = {}): BinaryLocator
     if (cachedBinary !== null) {
       return cachedBinary
     }
-    let sawBinary = false
-    let badVersion: string | null = null
-    for (const path of await candidates()) {
-      const version = await tryVersion(path)
-      if (version === null) {
-        continue
+    const failures: ProbeFailure[] = []
+    try {
+      let sawBinary = false
+      let badVersion: string | null = null
+      for (const path of await candidates()) {
+        // A PATH sweep yields dozens of candidates; only spawn what exists.
+        if (!fileExists(path)) {
+          continue
+        }
+        const version = await tryVersion(path, failures)
+        if (version === null) {
+          continue
+        }
+        sawBinary = true
+        if (isVersionSupported(version)) {
+          cachedBinary = { path, version }
+          return cachedBinary
+        }
+        badVersion = version
       }
-      sawBinary = true
-      if (isVersionSupported(version)) {
-        cachedBinary = { path, version }
-        return cachedBinary
+      if (sawBinary) {
+        throw new AgentUnavailableError(
+          'version-too-old',
+          `Claude Code ${badVersion ?? '?'} found, but ${MIN_CLI_VERSION.major}.${MIN_CLI_VERSION.minor}+ is required`,
+          badVersion ?? undefined
+        )
       }
-      badVersion = version
-    }
-    if (sawBinary) {
       throw new AgentUnavailableError(
-        'version-too-old',
-        `Claude Code ${badVersion ?? '?'} found, but ${MIN_CLI_VERSION.major}.${MIN_CLI_VERSION.minor}+ is required`
+        'not-installed',
+        isWindows(platform)
+          ? 'Claude Code CLI not found (checked configured path, %APPDATA%\\npm, %LOCALAPPDATA%\\Programs\\claude, common tool dirs and PATH)'
+          : 'Claude Code CLI not found (checked configured path, ~/.local/bin and the login-shell PATH)'
       )
+    } finally {
+      logProbeFailures('claude-locator', failures)
     }
-    throw new AgentUnavailableError(
-      'not-installed',
-      isWindows(platform)
-        ? 'Claude Code CLI not found (checked configured path, %APPDATA%\\npm, %LOCALAPPDATA%\\Programs\\claude and PATH)'
-        : 'Claude Code CLI not found (checked configured path, ~/.local/bin and the login-shell PATH)'
-    )
   }
 
   async function availability(): Promise<AgentAvailability> {
     let binary: LocatedBinary
     try {
       binary = await locate()
-    } catch {
-      return { installed: false, loggedIn: false }
+    } catch (error) {
+      return unavailableSummary(error)
     }
     const result: AgentAvailability = {
       installed: true,
