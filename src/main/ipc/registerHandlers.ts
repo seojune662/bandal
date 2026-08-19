@@ -19,7 +19,8 @@ import {
   nativeImage,
   protocol,
   session,
-  shell
+  shell,
+  webContents
 } from 'electron'
 import type { NativeImage } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc/contract'
@@ -30,7 +31,11 @@ import {
   createAuditRepo,
   createBrowserTools,
   createGrantsRepo,
-  createSeenRepo
+  createGuestRegistry,
+  createPageSurface,
+  createRunRegistry,
+  createSeenRepo,
+  GenerationTracker
 } from '../features/browserAgent'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
 import type { PushChannel, PushPayload } from '../../shared/ipc/events'
@@ -672,6 +677,65 @@ export function registerHandlers(): IpcRouter {
       // The app's own confirmer, not the CLI's permission flow — Codex has no
       // interactive approval at all (agentTools/confirm.ts).
       confirm: (request) => agentConfirmer.confirm(request),
+      // A live run drives a VISIBLE tab: the student watches the page move and
+      // can stop it. That is the mitigation for every reliability failure mode
+      // here, and a hidden guest would be background-throttled anyway.
+      page: createPageSurface({
+        resolveGuest: (tabId) => guestRegistry.resolve(tabId),
+        framesOf: (guest) => {
+          const wc = guest as unknown as Electron.WebContents
+          const main = wc.mainFrame
+          // Every frame, not just the main one: LearningX wraps Canvas in an
+          // iframe and SSO lives in one too. The existing in-page bridges are
+          // main-frame only, which is why they are blind to both.
+          return main.framesInSubtree.map((frame) => ({
+            executeJavaScript: (code: string) => frame.executeJavaScript(code)
+          }))
+        },
+        requestOpenTab: (url) => {
+          // Opening a page IS the start of a run — from here on the student
+          // has a strip and a 중지 button on the tab being driven.
+          if (browserRuns.forCourse(courseId) === null) {
+            browserRuns.start(courseId, '', '페이지를 여는 중', url)
+          }
+          broadcast('browser:open-url', { url })
+        },
+        awaitTabFor: (url, timeoutMs) =>
+          new Promise((resolve) => {
+            const pending = { url, resolve }
+            pendingTabOpens.add(pending)
+            setTimeout(() => {
+              if (pendingTabOpens.delete(pending)) resolve(null)
+            }, timeoutMs)
+          }),
+        generations,
+        run: {
+          assertLive: () => {
+            const live = browserRuns.forCourse(courseId)
+            if (live !== null) browserRuns.assertLive(live.runId)
+          },
+          step: (action, url) => {
+            const live = browserRuns.forCourse(courseId)
+            if (live !== null) browserRuns.step(live.runId, action, url)
+          },
+          wait: (message) => {
+            const live = browserRuns.forCourse(courseId)
+            if (live !== null) browserRuns.wait(live.runId, message)
+          },
+          awaitResume: (timeoutMs) =>
+            new Promise((resolve) => {
+              const live = browserRuns.forCourse(courseId)
+              if (live === null) {
+                resolve('stopped')
+                return
+              }
+              pendingResumes.set(live.runId, resolve)
+              setTimeout(() => {
+                if (pendingResumes.delete(live.runId)) resolve('stopped')
+              }, timeoutMs)
+            })
+        }
+      }),
       // The student's own login — the same session they signed in to by hand.
       fetch: (url) => session.fromPartition(BROWSING_PARTITION).fetch(url),
       // Same path a link-drag takes: browsing-session fetch with the 200MB
@@ -689,6 +753,67 @@ export function registerHandlers(): IpcRouter {
       }
     })
   }
+
+  // The glass box + the tab map the agent addresses pages through.
+  const browserRuns = createRunRegistry({
+    emit: (state) => broadcast('browserAgent:run-state', state)
+  })
+  const guestRegistry = createGuestRegistry({
+    fromId: (id) => webContents.fromId(id) as never,
+    // A guest the agent may drive is a webview on the hardened partition and
+    // nothing else — never the app's own renderer.
+    isBrowsingPartition: (guest) =>
+      (guest as unknown as { session?: Electron.Session }).session ===
+      session.fromPartition(BROWSING_PARTITION)
+  })
+  const generations = new GenerationTracker()
+
+  /** Resolvers waiting for a tab the agent asked the renderer to open. */
+  const pendingTabOpens = new Set<{
+    url: string
+    resolve: (tabId: string | null) => void
+  }>()
+  /** Resolvers waiting on a student who was handed the wheel. */
+  const pendingResumes = new Map<
+    string,
+    (outcome: 'resumed' | 'stopped') => void
+  >()
+
+  handle('browserAgent:registerTab', (req) => {
+    guestRegistry.register(req.tabId, req.webContentsId)
+    // A fresh attach means a fresh document: every outstanding ref dies.
+    generations.invalidate(req.tabId)
+    const guest = guestRegistry.resolve(req.tabId)
+    const url = guest === null ? '' : guest.getURL()
+    for (const pending of [...pendingTabOpens]) {
+      // Match loosely: the guest may already have redirected past the URL we
+      // asked for, which is normal on a portal.
+      if (url.startsWith(pending.url) || pending.url.startsWith(url)) {
+        pendingTabOpens.delete(pending)
+        // The strip belongs to the tab that just appeared.
+        for (const state of browserRuns.all()) {
+          if (state.tabId === '') {
+            browserRuns.attachTab(state.runId, req.tabId)
+            break
+          }
+        }
+        pending.resolve(req.tabId)
+      }
+    }
+    return OK
+  })
+  handle('browserAgent:stopRun', (req) => {
+    browserRuns.stop(req.runId)
+    pendingResumes.get(req.runId)?.('stopped')
+    pendingResumes.delete(req.runId)
+    return OK
+  })
+  handle('browserAgent:resumeRun', (req) => {
+    browserRuns.resume(req.runId)
+    pendingResumes.get(req.runId)?.('resumed')
+    pendingResumes.delete(req.runId)
+    return OK
+  })
 
   handle('browserAgent:grants', () => ({ grants: browserGrants.list() }))
   handle('browserAgent:revokeGrant', (req) => {
@@ -771,6 +896,7 @@ export function registerHandlers(): IpcRouter {
     startToolServer
   })
   app.on('before-quit', () => {
+    browserRuns.disposeAll()
     materialsWatcher.dispose()
     sessionManager.disposeAll()
     codexSessionManager.disposeAll()

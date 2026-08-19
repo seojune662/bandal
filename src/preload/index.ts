@@ -53,6 +53,7 @@ const PUSH_CHANNELS = [
   'browser:open-url',
   'browser:external-auth',
   'browser:download',
+  'browserAgent:run-state',
   'settings:changed',
   'ui:openSettings',
   'shortcut:passthrough',

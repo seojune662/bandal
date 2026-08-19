@@ -67,6 +67,21 @@ export interface SettingsChanged {
  * intercepts it via `before-input-event` and forwards it here so the
  * shortcuts hook can run the same action as a host-window keydown.
  */
+/**
+ * The glass box: what the agent is doing in a tab, right now.
+ *
+ * Pushed on every step so the student can watch a real page move, and stop it.
+ */
+export interface BrowserAgentRunState {
+  runId: string
+  courseId: string
+  tabId: string
+  status: 'running' | 'waiting' | 'stopped' | 'done'
+  /** One short line, in the student's language. */
+  action: string
+  url: string
+}
+
 /** One browser download's lifecycle, throttled while progressing. */
 export interface BrowserDownloadUpdate {
   id: string
@@ -155,6 +170,7 @@ export interface PushEvents {
   /** Open the in-app settings overlay (app menu ⌘, or legacy callers). */
   'ui:openSettings': { }
   'browser:download': BrowserDownloadUpdate
+  'browserAgent:run-state': BrowserAgentRunState
   'shortcut:passthrough': ShortcutPassthrough
   // -- groups (P2-C) --------------------------------------------------------
   'auth:changed': AuthState

@@ -90,6 +90,18 @@ export interface AgentToolsDeps {
       url: string,
       dirRelPath: string
     ) => Promise<unknown>
+    browser_open: (url: string) => Promise<unknown>
+    browser_snapshot: (tabId: string, maxChars: number | null) => Promise<unknown>
+    browser_read: (tabId: string, maxChars: number | null) => Promise<unknown>
+    browser_act: (
+      tabId: string,
+      ref: string,
+      action:
+        | { kind: 'click' }
+        | { kind: 'type'; text: string }
+        | { kind: 'select'; value: string }
+    ) => Promise<unknown>
+    browser_handoff: (tabId: string, message: string) => Promise<unknown>
   }
 }
 
@@ -931,7 +943,42 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
           )
         }
         return result
-      }
+      },
+      browser_open: (input) =>
+        browser.browser_open(stringField(input, 'url', { nonEmpty: true })),
+      browser_snapshot: (input) =>
+        browser.browser_snapshot(
+          stringField(input, 'tabId', { nonEmpty: true }),
+          optionalInteger(input, 'maxChars', 500) ?? null
+        ),
+      browser_read: (input) =>
+        browser.browser_read(
+          stringField(input, 'tabId', { nonEmpty: true }),
+          optionalInteger(input, 'maxChars', 500) ?? null
+        ),
+      browser_click: (input) =>
+        browser.browser_act(
+          stringField(input, 'tabId', { nonEmpty: true }),
+          stringField(input, 'ref', { nonEmpty: true }),
+          { kind: 'click' }
+        ),
+      browser_type: (input) =>
+        browser.browser_act(
+          stringField(input, 'tabId', { nonEmpty: true }),
+          stringField(input, 'ref', { nonEmpty: true }),
+          { kind: 'type', text: stringField(input, 'text') }
+        ),
+      browser_select: (input) =>
+        browser.browser_act(
+          stringField(input, 'tabId', { nonEmpty: true }),
+          stringField(input, 'ref', { nonEmpty: true }),
+          { kind: 'select', value: stringField(input, 'value') }
+        ),
+      browser_handoff: (input) =>
+        browser.browser_handoff(
+          stringField(input, 'tabId', { nonEmpty: true }),
+          stringField(input, 'message')
+        )
     }
     Object.assign(handlers, browserHandlers)
   }

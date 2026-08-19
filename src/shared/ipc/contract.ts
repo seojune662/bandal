@@ -664,6 +664,27 @@ export interface IpcContract {
     res: { ok: true }
   }
   /** What the agent actually did, newest first. */
+  /**
+   * Renderer tells main which guest belongs to which browser tab.
+   *
+   * Main only ever sees a WebContents id (that is all `did-attach-webview`
+   * gives it), while everything the agent addresses is a tabId. Pushed on
+   * every `dom-ready`, so it is self-healing after a crash or a reattach.
+   */
+  'browserAgent:registerTab': {
+    req: { tabId: string; webContentsId: number }
+    res: { ok: true }
+  }
+  /** Stops a run immediately; the next action throws rather than proceeding. */
+  'browserAgent:stopRun': {
+    req: { runId: string }
+    res: { ok: true }
+  }
+  /** The student took the wheel and pressed 계속. */
+  'browserAgent:resumeRun': {
+    req: { runId: string }
+    res: { ok: true }
+  }
   'browserAgent:auditTail': {
     req: { courseId: string | null; limit?: number }
     res: {
@@ -1250,6 +1271,9 @@ export const IPC_CHANNELS = [
   'browserAgent:grants',
   'browserAgent:revokeGrant',
   'browserAgent:auditTail',
+  'browserAgent:registerTab',
+  'browserAgent:stopRun',
+  'browserAgent:resumeRun',
   'agentTools:changes',
   'agentTools:undo',
   'agentTools:respondConfirm',

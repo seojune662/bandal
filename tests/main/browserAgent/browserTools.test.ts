@@ -322,4 +322,173 @@ describe('browser tools (read-only)', () => {
     })
   })
 
+  describe('interaction (DOM tier)', () => {
+    function page(over: Record<string, unknown> = {}) {
+      return {
+        openTab: vi.fn(async (url: string) => ({ tabId: 't1', url })),
+        generation: () => 3,
+        snapshot: vi.fn(async () => ({ url: `${ORIGIN}/w3`, outline: 'f0:e0@3 link "자료"' })),
+        read: vi.fn(async () => ({ url: `${ORIGIN}/w3`, text: '본문' })),
+        factsFor: vi.fn(async () => ({
+          tag: 'a',
+          type: null,
+          inNonGetForm: false,
+          href: '/f/1.pdf',
+          disabled: false
+        })),
+        act: vi.fn(async () => true),
+        currentUrl: () => `${ORIGIN}/w3`,
+        handoff: vi.fn(async () => 'resumed' as const),
+        assertLive: vi.fn(),
+        step: vi.fn(),
+        ...over
+      }
+    }
+
+    test('interacting needs its own grant — read is not enough', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'read' })
+      const p = page()
+      const result = await tools({ page: p }).browser_act('t1', 'f0:e0@3', {
+        kind: 'click'
+      })
+      expect(result.status).toBe('error')
+      expect(p.act).not.toHaveBeenCalled()
+    })
+
+    test('a stale ref is refused rather than clicking something else', async () => {
+      // The generation is 3; a ref from generation 2 names a different page.
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const p = page()
+      const result = await tools({ page: p }).browser_act('t1', 'f0:e0@2', {
+        kind: 'click'
+      })
+      expect(result.status).toBe('error')
+      if (result.status === 'error') expect(result.message).toContain('바뀌었')
+      expect(p.act).not.toHaveBeenCalled()
+    })
+
+    test('refuses to click anything that submits', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const p = page({
+        factsFor: async () => ({
+          tag: 'button',
+          type: 'submit',
+          inNonGetForm: true,
+          href: null,
+          disabled: false
+        })
+      })
+      const result = await tools({ page: p }).browser_act('t1', 'f0:e0@3', {
+        kind: 'click'
+      })
+      expect(result.status).toBe('error')
+      if (result.status === 'error') expect(result.message).toContain('직접')
+      expect(p.act).not.toHaveBeenCalled()
+    })
+
+    test('refuses to type into a password field', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const p = page({
+        factsFor: async () => ({
+          tag: 'input',
+          type: 'password',
+          inNonGetForm: true,
+          href: null,
+          disabled: false
+        })
+      })
+      const result = await tools({ page: p }).browser_act('t1', 'f0:e0@3', {
+        kind: 'type',
+        text: 'hunter2'
+      })
+      expect(result.status).toBe('error')
+      expect(p.act).not.toHaveBeenCalled()
+    })
+
+    test('performs an ordinary click and records it', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const p = page()
+      const result = await tools({ page: p }).browser_act('t1', 'f0:e0@3', {
+        kind: 'click'
+      })
+      expect(result.status).toBe('ok')
+      expect(p.act).toHaveBeenCalledTimes(1)
+      expect(audit.tail(COURSE).some((e) => e.detail.includes('click'))).toBe(true)
+    })
+
+    test('typed text is redacted in the audit like everything else', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const p = page({
+        factsFor: async () => ({
+          tag: 'input',
+          type: 'text',
+          inNonGetForm: false,
+          href: null,
+          disabled: false
+        })
+      })
+      await tools({ page: p }).browser_act('t1', 'f0:e0@3', {
+        kind: 'type',
+        text: '학번 2021123456'
+      })
+      const entry = audit.tail(COURSE).find((e) => e.detail.includes('type'))
+      expect(entry?.detail).not.toContain('2021123456')
+      expect(entry?.detail).toContain('██████')
+    })
+
+    test('중지 stops before the action, not after', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const p = page({
+        assertLive: () => {
+          throw new Error('학생이 중지했어요.')
+        }
+      })
+      await expect(
+        tools({ page: p }).browser_act('t1', 'f0:e0@3', { kind: 'click' })
+      ).rejects.toThrow('중지')
+      expect(p.act).not.toHaveBeenCalled()
+    })
+
+    test('snapshot and read need a read grant, and report the URL', async () => {
+      const confirm = vi.fn(async () => true)
+      const p = page()
+      const api = tools({ page: p, confirm })
+      const snap = await api.browser_snapshot('t1', null)
+      expect(snap.status).toBe('ok')
+      if (snap.status === 'ok') expect(snap.outline).toContain('f0:e0@3')
+
+      const read = await api.browser_read('t1', null)
+      expect(read.status).toBe('ok')
+    })
+
+    test('handoff is an outcome, not a failure', async () => {
+      const p = page()
+      const result = await tools({ page: p }).browser_handoff(
+        't1',
+        '로그인하고 계속을 눌러 주세요'
+      )
+      expect(result).toEqual({ status: 'resumed' })
+      expect(p.handoff).toHaveBeenCalled()
+    })
+
+    test('a stopped handoff reports the stop', async () => {
+      const p = page({ handoff: async () => 'stopped' as const })
+      const result = await tools({ page: p }).browser_handoff('t1', 'x')
+      expect(result.status).toBe('error')
+    })
+
+    test('without a page surface every interaction tool declines cleanly', async () => {
+      const api = tools()
+      for (const result of [
+        await api.browser_open(`${ORIGIN}/w3`),
+        await api.browser_snapshot('t1', null),
+        await api.browser_read('t1', null),
+        await api.browser_act('t1', 'f0:e0@3', { kind: 'click' }),
+        await api.browser_handoff('t1', 'x')
+      ]) {
+        expect(result.status).toBe('error')
+      }
+    })
+  })
+
 })

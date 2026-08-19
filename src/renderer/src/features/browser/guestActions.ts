@@ -7,6 +7,7 @@
  * is detached/booting, so every call is guarded.
  */
 
+import { invoke } from '../../lib/ipc'
 import type { FindInPageOptions, WebviewTag } from './webviewTypes'
 
 const elements = new Map<string, WebviewTag>()
@@ -26,7 +27,15 @@ export function registerGuestElement(tabId: string, element: WebviewTag): void {
 /** Call once the guest has attached, when its WebContents id exists. */
 export function registerGuestWebContents(tabId: string, element: WebviewTag): void {
   try {
-    tabIdByWebContents.set(element.getWebContentsId(), tabId)
+    const webContentsId = element.getWebContentsId()
+    tabIdByWebContents.set(webContentsId, tabId)
+    // Main only ever sees a WebContents id, so it needs the same mapping to
+    // let the agent address a tab. Re-sent per dom-ready: self-healing.
+    void invoke('browserAgent:registerTab', { tabId, webContentsId }).catch(
+      () => {
+        // The agent simply cannot reach this tab; nothing to surface.
+      }
+    )
   } catch {
     // Detached again already — the next dom-ready re-registers it.
   }

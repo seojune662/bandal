@@ -483,6 +483,79 @@ export const BROWSER_TOOL_DEFINITIONS = [
       ['courseId', 'url', 'dirRelPath']
     ),
     annotations: readOnly
+  },
+  {
+    name: 'browser_open',
+    description:
+      '반달 탭에서 주소를 엽니다. 학생이 그 사이트에 접근을 허용해야 동작하고, 탭은 학생에게 보입니다.',
+    inputSchema: objectSchema({ url: string('열 주소') }, ['url']),
+    annotations: readOnly
+  },
+  {
+    name: 'browser_snapshot',
+    description:
+      '열린 탭에서 누를 수 있는 것들의 목록을 봅니다. 각 줄 맨 앞이 요소 참조(f0:e12@3)이며, 페이지가 바뀌면 이전 참조는 무효가 됩니다.',
+    inputSchema: objectSchema(
+      { tabId: string('탭 id'), maxChars: integer('최대 글자 수. 생략하면 6000') },
+      ['tabId']
+    ),
+    annotations: readOnly
+  },
+  {
+    name: 'browser_read',
+    description: '열린 탭의 본문 텍스트를 읽습니다.',
+    inputSchema: objectSchema(
+      { tabId: string('탭 id'), maxChars: integer('최대 글자 수. 생략하면 8000') },
+      ['tabId']
+    ),
+    annotations: readOnly
+  },
+  {
+    name: 'browser_click',
+    description:
+      '요소를 누릅니다. 제출 버튼은 누르지 않습니다 — 제출은 학생이 직접 합니다.',
+    inputSchema: objectSchema(
+      { tabId: string('탭 id'), ref: string('browser_snapshot 이 준 요소 참조') },
+      ['tabId', 'ref']
+    ),
+    annotations: readOnly
+  },
+  {
+    name: 'browser_type',
+    description:
+      '입력 칸에 글을 넣습니다. 비밀번호 칸에는 절대 입력하지 않습니다.',
+    inputSchema: objectSchema(
+      {
+        tabId: string('탭 id'),
+        ref: string('browser_snapshot 이 준 요소 참조'),
+        text: string('입력할 글')
+      },
+      ['tabId', 'ref', 'text']
+    ),
+    annotations: readOnly
+  },
+  {
+    name: 'browser_select',
+    description: '선택 목록에서 값을 고릅니다.',
+    inputSchema: objectSchema(
+      {
+        tabId: string('탭 id'),
+        ref: string('browser_snapshot 이 준 요소 참조'),
+        value: string('고를 값')
+      },
+      ['tabId', 'ref', 'value']
+    ),
+    annotations: readOnly
+  },
+  {
+    name: 'browser_handoff',
+    description:
+      '학생에게 운전대를 넘깁니다. 로그인·OTP·보안 프로그램·캡차처럼 대신 할 수 없는 곳에서 쓰세요. 실패가 아니라 정상적인 결과입니다.',
+    inputSchema: objectSchema(
+      { tabId: string('탭 id'), message: string('학생에게 보여줄 한 줄') },
+      ['tabId', 'message']
+    ),
+    annotations: readOnly
   }
 ] as const
 

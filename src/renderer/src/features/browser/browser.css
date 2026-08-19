@@ -739,3 +739,69 @@
   object-fit: contain;
   border-radius: 2px;
 }
+
+/* Glass box. Present only while the agent is driving this tab — a strip over
+ * an idle page saying "reading…" is worse than no strip. */
+.browser-agent-run {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--accent-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.browser-agent-run__dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: browser-agent-pulse 1.6s var(--ease-out) infinite;
+}
+
+.browser-agent-run[data-stopped='true'] .browser-agent-run__dot,
+.browser-agent-run[data-waiting='true'] .browser-agent-run__dot {
+  animation: none;
+}
+
+.browser-agent-run[data-stopped='true'] .browser-agent-run__dot {
+  background: var(--text-muted);
+}
+
+.browser-agent-run__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browser-agent-run__action {
+  flex: none;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .browser-agent-run__dot {
+    animation: none;
+  }
+}
+
+@keyframes browser-agent-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}

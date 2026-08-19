@@ -19,6 +19,7 @@ import { selectNeedsNickname, useAuthStore } from '../stores/authStore'
 import { useCoursesStore } from '../stores/coursesStore'
 import { useUiStore } from '../stores/uiStore'
 import { useDownloads } from '../features/browser/downloadsStore'
+import { useAgentRuns } from '../features/browser/AgentRunBanner'
 import { useUniversityStore } from '../stores/universityStore'
 import { QuickFileSearch } from './QuickFileSearch'
 import { useGlobalShortcuts } from './shortcuts'
@@ -66,6 +67,7 @@ export function AppShell(): JSX.Element {
     // [M8] 학교 바로가기 — the rail section renders nothing until this lands.
     void useUniversityStore.getState().init()
     useDownloads.getState().init()
+    useAgentRuns.getState().init()
   }, [initTheme, loadCourses])
 
   // Browser downloads are filed under the selected course. Main only sees the

@@ -35,6 +35,7 @@ import { useDownloads } from './downloadsStore'
 import { toggleFavorite, useBrowserFavorite } from './browserFavorite'
 import { settingsSnapshot } from '../../stores/settingsSnapshot'
 import { BrowserFindBar } from './BrowserFindBar'
+import { AgentRunBanner } from './AgentRunBanner'
 import {
   searchEngine,
   useAddressSuggestions
@@ -444,6 +445,7 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
           )}
         </div>
       </header>
+      <AgentRunBanner tabId={tabId} />
       {findState !== undefined && (
         <BrowserFindBar tabId={tabId} state={findState} />
       )}

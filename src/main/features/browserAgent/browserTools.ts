@@ -21,6 +21,10 @@ import {
   type GrantsRepo
 } from './grants'
 import { checkNavigation } from './navigation'
+import { verdictFor } from './pageDriver'
+import { resolveRef } from './refs'
+import { DEFAULT_SNAPSHOT_CHARS } from './snapshot'
+import type { ElementFacts } from './actionPolicy'
 import { redactText, redactUrl } from './redact'
 import { itemKey, type SeenRepo } from './seenRepo'
 import {
@@ -77,6 +81,51 @@ export interface BrowserToolsDeps {
     summary: string
     details: string[]
   }) => Promise<boolean>
+  /**
+   * Driving a live guest. Absent for conversations that only read the LMS
+   * over the session — which is most of them, and the cheapest thing to be.
+   */
+  page?: PageSurface
+}
+
+/**
+ * Everything the interaction tools need from a live tab, injected so this
+ * module stays free of Electron.
+ */
+export interface PageSurface {
+  /** Opens (or reuses) a browser tab and returns its id. */
+  openTab: (url: string) => Promise<{ tabId: string; url: string }>
+  /** Current snapshot generation; bumped by the caller on navigation. */
+  generation: (tabId: string) => number
+  snapshot: (
+    tabId: string,
+    maxChars: number
+  ) => Promise<{ url: string; outline: string } | null>
+  read: (
+    tabId: string,
+    maxChars: number
+  ) => Promise<{ url: string; text: string } | null>
+  factsFor: (
+    tabId: string,
+    frameIndex: number,
+    elementIndex: number
+  ) => Promise<ElementFacts | null>
+  act: (
+    tabId: string,
+    frameIndex: number,
+    elementIndex: number,
+    action:
+      | { kind: 'click' }
+      | { kind: 'type'; text: string }
+      | { kind: 'select'; value: string }
+  ) => Promise<boolean>
+  currentUrl: (tabId: string) => string | null
+  /** Suspends the run and asks the student to take over. */
+  handoff: (tabId: string, message: string) => Promise<'resumed' | 'stopped'>
+  /** Throws if the student pressed 중지. */
+  assertLive: () => void
+  /** Updates the strip the student is reading. */
+  step: (action: string, url?: string) => void
 }
 
 export interface LmsCoursePageResult {
@@ -263,6 +312,165 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         audit('download', url, `실패: ${message}`)
         return { status: 'error', message }
       }
+    },
+
+    async browser_open(
+      url: string
+    ): Promise<
+      { status: 'ok'; tabId: string; url: string } | { status: 'error'; message: string }
+    > {
+      const page = deps.page
+      if (page === undefined) {
+        return { status: 'error', message: '이 대화에서는 페이지를 열 수 없어요.' }
+      }
+      page.assertLive()
+      const permitted = await gate(url, 'read')
+      if (!permitted.ok) return { status: 'error', message: permitted.message }
+
+      const opened = await page.openTab(url)
+      audit('navigate', opened.url, '탭에서 열었어요')
+      page.step('페이지를 여는 중', opened.url)
+      return { status: 'ok', tabId: opened.tabId, url: opened.url }
+    },
+
+    async browser_snapshot(
+      tabId: string,
+      maxChars: number | null
+    ): Promise<
+      { status: 'ok'; url: string; outline: string } | { status: 'error'; message: string }
+    > {
+      const page = deps.page
+      if (page === undefined) {
+        return { status: 'error', message: '이 대화에서는 페이지를 볼 수 없어요.' }
+      }
+      page.assertLive()
+      const url = page.currentUrl(tabId)
+      if (url === null) {
+        return { status: 'error', message: '그 탭을 찾지 못했어요.' }
+      }
+      const permitted = await gate(url, 'read')
+      if (!permitted.ok) return { status: 'error', message: permitted.message }
+
+      const result = await page.snapshot(tabId, maxChars ?? DEFAULT_SNAPSHOT_CHARS)
+      if (result === null) {
+        return { status: 'error', message: '페이지를 살펴보지 못했어요.' }
+      }
+      audit('snapshot', result.url, `${result.outline.length}자`)
+      page.step('페이지를 살펴보는 중', result.url)
+      return { status: 'ok', url: result.url, outline: result.outline }
+    },
+
+    async browser_read(
+      tabId: string,
+      maxChars: number | null
+    ): Promise<
+      { status: 'ok'; url: string; text: string } | { status: 'error'; message: string }
+    > {
+      const page = deps.page
+      if (page === undefined) {
+        return { status: 'error', message: '이 대화에서는 페이지를 읽을 수 없어요.' }
+      }
+      page.assertLive()
+      const url = page.currentUrl(tabId)
+      if (url === null) {
+        return { status: 'error', message: '그 탭을 찾지 못했어요.' }
+      }
+      const permitted = await gate(url, 'read')
+      if (!permitted.ok) return { status: 'error', message: permitted.message }
+
+      const result = await page.read(tabId, maxChars ?? 8000)
+      if (result === null) {
+        return { status: 'error', message: '페이지를 읽지 못했어요.' }
+      }
+      audit('read', result.url, `본문 ${result.text.length}자`)
+      return { status: 'ok', url: result.url, text: result.text }
+    },
+
+    /**
+     * click / type / select. All three share the gate, the ref generation
+     * check and the element policy, because the difference between them is
+     * only what happens after all three have said yes.
+     */
+    async browser_act(
+      tabId: string,
+      ref: string,
+      action:
+        | { kind: 'click' }
+        | { kind: 'type'; text: string }
+        | { kind: 'select'; value: string }
+    ): Promise<{ status: 'ok' } | { status: 'error'; message: string }> {
+      const page = deps.page
+      if (page === undefined) {
+        return { status: 'error', message: '이 대화에서는 페이지를 조작할 수 없어요.' }
+      }
+      page.assertLive()
+      const url = page.currentUrl(tabId)
+      if (url === null) {
+        return { status: 'error', message: '그 탭을 찾지 못했어요.' }
+      }
+      // Interacting is its own decision — a read grant never implies it.
+      const permitted = await gate(url, 'interact')
+      if (!permitted.ok) return { status: 'error', message: permitted.message }
+
+      const resolved = resolveRef(ref, page.generation(tabId))
+      if (!resolved.ok) {
+        audit('denied', url, `ref ${resolved.reason}`)
+        return { status: 'error', message: resolved.message }
+      }
+
+      const facts = await page.factsFor(
+        tabId,
+        resolved.frameIndex,
+        resolved.elementIndex
+      )
+      if (facts === null) {
+        return { status: 'error', message: '그 요소를 찾지 못했어요.' }
+      }
+      const verdict = verdictFor(action.kind, facts)
+      if (!verdict.allowed) {
+        audit('denied', url, `${action.kind}: ${verdict.reason}`)
+        return { status: 'error', message: verdict.message }
+      }
+
+      const ok = await page.act(
+        tabId,
+        resolved.frameIndex,
+        resolved.elementIndex,
+        action
+      )
+      if (!ok) return { status: 'error', message: '동작을 실행하지 못했어요.' }
+
+      // Typed text is audited through the same redaction as everything else,
+      // and a password field never reaches here at all (actionPolicy).
+      const detail =
+        action.kind === 'type'
+          ? `type ${facts.tag}: ${action.text}`
+          : action.kind === 'select'
+            ? `select ${action.value}`
+            : `click ${facts.tag} "${facts.href ?? ''}"`
+      audit('navigate', url, detail)
+      page.step('페이지를 조작하는 중', url)
+      return { status: 'ok' }
+    },
+
+    /**
+     * Hands the wheel back. Not a failure — a first-class outcome. SSO, OTP,
+     * nProtect and CAPTCHA are where an agent SHOULD stop, and pretending
+     * otherwise is how it clicks something it should not.
+     */
+    async browser_handoff(
+      tabId: string,
+      message: string
+    ): Promise<{ status: 'resumed' } | { status: 'error'; message: string }> {
+      const page = deps.page
+      if (page === undefined) {
+        return { status: 'error', message: '이 대화에서는 넘길 수 없어요.' }
+      }
+      const outcome = await page.handoff(tabId, message)
+      if (outcome === 'stopped') {
+        return { status: 'error', message: '학생이 중지했어요.' }
+      }
+      return { status: 'resumed' }
     },
 
     async lms_new_items(
