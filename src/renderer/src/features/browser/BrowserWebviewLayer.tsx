@@ -103,7 +103,7 @@ function useDockviewDragActive(): boolean {
   const [isDragActive, setDragActive] = useState(false)
   useEffect(() => {
     const start = (event?: Event): void => {
-      // Material file rows promote to a native OS drag (dragstart is
+      // Material file rows, including images, promote to a native OS drag (dragstart is
       // cancelled, so no dragend ever fires) and their whole point is
       // dropping INTO a guest page (mail attach, LMS upload). Passthrough
       // would remove every guest from drag hit-testing — skip it.
@@ -111,7 +111,7 @@ function useDockviewDragActive(): boolean {
       if (target instanceof Element) {
         const row = target.closest('[data-material-row]')
         const kind = row?.getAttribute('data-kind')
-        if (row !== null && kind !== 'dir' && kind !== 'image') return
+        if (row !== null && kind !== 'dir') return
       }
       setDragActive(true)
     }

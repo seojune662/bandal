@@ -1,24 +1,26 @@
 import type { DrawingImageSource } from '../../../../shared/types/drawing'
-import {
-  BANDAL_IMAGE_MIME,
-  writeBandalImageDragData
-} from '../ink/imageTransfer'
+import { pathForFile } from '../../lib/ipc'
+import { useCoursesStore } from '../../stores/coursesStore'
+import { relPathInsideCourse } from './importDrop'
+import { kindForMaterialName } from './materialPaths'
 
-export { BANDAL_IMAGE_MIME }
+type FilePathResolver = (file: File) => string
 
-interface MaterialImageDragDataWriter {
-  effectAllowed: string
-  setData: (format: string, data: string) => void
-}
-
-/** Writes the ink/PDF image contract plus a useful system drag fallback. */
-export function writeMaterialImageDragData(
-  dataTransfer: MaterialImageDragDataWriter,
-  source: DrawingImageSource
-): void {
-  writeBandalImageDragData(dataTransfer, source)
-  // PDF/ink request a copy, while Chromium or a parent drag owner may request
-  // move. Advertising both keeps the native HTML5 DnD negotiation valid.
-  dataTransfer.effectAllowed = 'copyMove'
-  dataTransfer.setData('text/plain', source.label)
+/** Resolves the first native dropped file to an image in this course. */
+export function imageSourceFromFileDrop(
+  courseId: string,
+  dataTransfer: DataTransfer,
+  resolveFilePath: FilePathResolver = pathForFile
+): DrawingImageSource | null {
+  const file = dataTransfer.files[0]
+  if (file === undefined) return null
+  const absolutePath = resolveFilePath(file)
+  if (absolutePath.length === 0) return null
+  const courseFolder = useCoursesStore
+    .getState()
+    .courses.find((course) => course.id === courseId)?.folderPath
+  if (courseFolder === undefined) return null
+  const relPath = relPathInsideCourse(absolutePath, courseFolder)
+  if (relPath === null || kindForMaterialName(relPath) !== 'image') return null
+  return { relPath, label: file.name }
 }

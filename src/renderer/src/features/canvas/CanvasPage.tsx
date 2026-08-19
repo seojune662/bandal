@@ -20,6 +20,7 @@ import {
   BANDAL_CLIP_MIME,
   readBandalClipDragData
 } from '../pdf/clipTransfer'
+import { imageSourceFromFileDrop } from '../materials/imageDrag'
 
 export const DEFAULT_PAGE_ASPECT = Math.SQRT2
 
@@ -123,7 +124,8 @@ export function CanvasPage({
     const types = Array.from(event.dataTransfer.types)
     if (
       !types.includes(BANDAL_CLIP_MIME) &&
-      !types.includes(BANDAL_IMAGE_MIME)
+      !types.includes(BANDAL_IMAGE_MIME) &&
+      !types.includes('Files')
     ) {
       return
     }
@@ -148,7 +150,9 @@ export function CanvasPage({
   }
 
   const handleDrop = (event: ReactDragEvent<HTMLDivElement>): void => {
-    const image = readBandalImageDragData(event.dataTransfer)
+    const image =
+      readBandalImageDragData(event.dataTransfer) ??
+      imageSourceFromFileDrop(courseId, event.dataTransfer)
     if (image !== null) {
       const point = pointAt(event)
       if (point === null) return

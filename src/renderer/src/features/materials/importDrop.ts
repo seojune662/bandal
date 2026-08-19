@@ -57,7 +57,7 @@ export async function importMaterialPaths(
 }
 
 /** 과목 폴더 안의 절대 경로를 posix relPath 로 바꾼다. 밖이면 null. */
-function relPathInsideCourse(
+export function relPathInsideCourse(
   absPath: string,
   courseFolder: string
 ): string | null {

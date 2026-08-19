@@ -8,14 +8,7 @@ const BANDAL_IMAGE_MIME = 'application/x-bandal-material-image'
 const IMAGE_NAME = 'drag-source.png'
 const PDF_NAME = 'drop-target.pdf'
 
-interface DragStartSnapshot {
-  types: string[]
-  effectAllowed: string
-  customData: string
-  textData: string
-}
-
-test('drags a material image with the ink/PDF payload into a PDF page', async () => {
+test('promotes image rows to native drag and keeps PDF image insertion', async () => {
   const bandal = await launchBandal()
   try {
     const { page } = bandal
@@ -50,43 +43,54 @@ test('drags a material image with the ink/PDF payload into a PDF page', async ()
     const targetPage = page.locator('.pdf-page').first()
     await expect(targetPage).toBeVisible({ timeout: 30_000 })
 
-    await page.evaluate((mime) => {
+    await page.evaluate(() => {
       type DiagnosticWindow = Window & {
-        __materialImageDragStart?: DragStartSnapshot
+        __materialImageDragStart?: boolean
       }
       document.addEventListener(
         'dragstart',
         (event) => {
-          if (event.dataTransfer === null) return
-          ;(window as DiagnosticWindow).__materialImageDragStart = {
-            types: [...event.dataTransfer.types],
-            effectAllowed: event.dataTransfer.effectAllowed,
-            customData: event.dataTransfer.getData(mime),
-            textData: event.dataTransfer.getData('text/plain')
-          }
+          if (event.defaultPrevented) return
+          ;(window as DiagnosticWindow).__materialImageDragStart = true
         },
         { once: true }
       )
-    }, BANDAL_IMAGE_MIME)
+    })
 
-    // Uses Chromium's native HTML5 DnD path in the production Electron build.
-    await imageRow.dragTo(targetPage)
+    await imageRow.evaluate((row) => {
+      row.dispatchEvent(new DragEvent('dragstart', {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: new DataTransfer()
+      }))
+    })
 
     const dragStart = await page.evaluate(() => {
       return (
         window as Window & {
-          __materialImageDragStart?: DragStartSnapshot
+          __materialImageDragStart?: boolean
         }
       ).__materialImageDragStart
     })
-    expect(dragStart?.types).toContain(BANDAL_IMAGE_MIME)
-    expect(dragStart?.types).toContain('text/plain')
-    expect(dragStart?.effectAllowed).toBe('copyMove')
-    expect(JSON.parse(dragStart?.customData ?? '')).toEqual({
-      relPath: IMAGE_NAME,
-      label: IMAGE_NAME
-    })
-    expect(dragStart?.textData).toBe(IMAGE_NAME)
+    expect(dragStart).toBeUndefined()
+
+    await targetPage.evaluate((element, { mime, imageName }) => {
+      const dataTransfer = new DataTransfer()
+      dataTransfer.setData(mime, JSON.stringify({
+        relPath: imageName,
+        label: imageName
+      }))
+      const bounds = element.getBoundingClientRect()
+      const eventInit: DragEventInit = {
+        bubbles: true,
+        cancelable: true,
+        clientX: bounds.left + bounds.width / 2,
+        clientY: bounds.top + bounds.height / 2,
+        dataTransfer
+      }
+      element.dispatchEvent(new DragEvent('dragover', eventInit))
+      element.dispatchEvent(new DragEvent('drop', eventInit))
+    }, { mime: BANDAL_IMAGE_MIME, imageName: IMAGE_NAME })
 
     await expect(page.locator('.ink-layer__image-group')).toHaveCount(1)
     await expect(page.locator('.ink-layer__image')).toHaveAttribute(

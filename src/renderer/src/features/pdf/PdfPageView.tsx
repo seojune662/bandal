@@ -32,6 +32,7 @@ import type {
 } from '../../../../shared/types/drawing'
 import { TabKindIcon } from '../workspace/workspaceIcons'
 import { fileToBase64, pastedImageFileName } from '../materials/clipboardPaste'
+import { imageSourceFromFileDrop } from '../materials/imageDrag'
 import {
   BANDAL_IMAGE_MIME,
   dataUrlImageAspect,
@@ -290,13 +291,16 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
   }, [courseId, placeImage])
 
   const handleDragOver = useCallback((event: ReactDragEvent<HTMLElement>): void => {
-    if (!Array.from(event.dataTransfer.types).includes(BANDAL_IMAGE_MIME)) return
+    const types = Array.from(event.dataTransfer.types)
+    if (!types.includes(BANDAL_IMAGE_MIME) && !types.includes('Files')) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'copy'
   }, [])
 
   const handleDrop = useCallback((event: ReactDragEvent<HTMLElement>): void => {
-    const source = readBandalImageDragData(event.dataTransfer)
+    const source =
+      readBandalImageDragData(event.dataTransfer) ??
+      imageSourceFromFileDrop(courseId, event.dataTransfer)
     const element = wrapperRef.current
     if (source === null || element === null) return
     const point = pointInPage(element, event.clientX, event.clientY)
@@ -308,7 +312,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
       console.error('[Bandal] PDF에 이미지를 놓지 못했습니다.', error)
       showToast('이미지를 놓지 못했습니다.', 'danger')
     })
-  }, [placeImage])
+  }, [courseId, placeImage])
 
   const height = Math.round(width * aspect)
   const clipSource: DrawingClipSource = {
