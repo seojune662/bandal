@@ -5,6 +5,7 @@ import {
   isBlockedEmbeddedAuthUrl,
   isNavigationAllowed,
   isPermissionAllowed,
+  passthroughShortcut,
   popupForwardUrl,
   sanitizeGuestWebPreferences
 } from '../../../src/main/features/browser/webviewPolicy'
@@ -141,5 +142,75 @@ describe('popupForwardUrl (window.open → new Bandal tab)', () => {
     expect(popupForwardUrl('file:///etc/passwd')).toBeNull()
     expect(popupForwardUrl('about:blank')).toBeNull()
     expect(popupForwardUrl('')).toBeNull()
+  })
+})
+
+describe('passthroughShortcut (chords a focused guest would otherwise eat)', () => {
+  const chord = (over: Partial<Parameters<typeof passthroughShortcut>[0]> = {}) => ({
+    type: 'keyDown',
+    key: 't',
+    meta: true,
+    control: false,
+    alt: false,
+    shift: false,
+    ...over
+  })
+
+  test('passes ⌘T and ⌘W through', () => {
+    expect(passthroughShortcut(chord({ key: 't' }))).toBe('new-tab')
+    expect(passthroughShortcut(chord({ key: 'w' }))).toBe('close-tab')
+  })
+
+  test('accepts ctrl as well as meta, and is case-insensitive', () => {
+    expect(passthroughShortcut(chord({ meta: false, control: true }))).toBe('new-tab')
+    expect(passthroughShortcut(chord({ key: 'T' }))).toBe('new-tab')
+  })
+
+  test('only fires on keyDown', () => {
+    expect(passthroughShortcut(chord({ type: 'keyUp' }))).toBeNull()
+    expect(passthroughShortcut(chord({ type: 'char' }))).toBeNull()
+  })
+
+  test('passes browser-chrome chords through as well', () => {
+    expect(passthroughShortcut(chord({ key: 'r' }))).toBe('reload')
+    expect(passthroughShortcut(chord({ key: 'l' }))).toBe('focus-address')
+    expect(passthroughShortcut(chord({ key: '=' }))).toBe('zoom-in')
+    expect(passthroughShortcut(chord({ key: '-' }))).toBe('zoom-out')
+    expect(passthroughShortcut(chord({ key: '0' }))).toBe('zoom-reset')
+    expect(passthroughShortcut(chord({ key: '9' }))).toBe('activate-last-tab')
+    // ⌘F belongs to the browser, not the page — Chrome steals it too.
+    expect(passthroughShortcut(chord({ key: 'f' }))).toBe('find')
+  })
+
+  test('alt always disqualifies', () => {
+    expect(passthroughShortcut(chord({ alt: true }))).toBeNull()
+    expect(passthroughShortcut(chord({ meta: false, control: false }))).toBeNull()
+  })
+
+  test('takes the shifted browser conventions from the page', () => {
+    expect(passthroughShortcut(chord({ key: 'r', shift: true }))).toBe(
+      'reload-hard'
+    )
+    expect(passthroughShortcut(chord({ key: 't', shift: true }))).toBe(
+      'reopen-tab'
+    )
+    expect(passthroughShortcut(chord({ key: '[', shift: true }))).toBe('prev-tab')
+    expect(passthroughShortcut(chord({ key: ']', shift: true }))).toBe('next-tab')
+  })
+
+  test('leaves the app-only shifted chords with the page', () => {
+    // ⌘⇧B (new browser tab) / ⌘⇧M (new note) are ours but would be startling
+    // to fire from inside a page.
+    for (const key of ['b', 'm', 'w']) {
+      expect(passthroughShortcut(chord({ key, shift: true })), key).toBeNull()
+    }
+  })
+
+  test('leaves app-only shortcuts dead inside a guest', () => {
+    // The page owns its own keymap. ⌘P (quick search), ⌘, (settings) and
+    // ⌘1..8 are ours but would be startling to fire mid-page.
+    for (const key of ['p', ',', '1', '8']) {
+      expect(passthroughShortcut(chord({ key })), key).toBeNull()
+    }
   })
 })

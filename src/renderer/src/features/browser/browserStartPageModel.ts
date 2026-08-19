@@ -12,10 +12,6 @@ export interface BrowserShortcut {
   url: string
 }
 
-export function opensOnStartPage(_initialUrl: string): boolean {
-  return false
-}
-
 export function hostnameForUrl(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./i, '')

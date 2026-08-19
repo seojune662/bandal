@@ -16,3 +16,9 @@ export type {
   BrowserSessionStore,
   BrowserSessionStoreDeps
 } from './sessionStore'
+export {
+  attachDownloadHandler,
+  createDownloadHandler,
+  downloadFileName,
+  type BrowserDownloadUpdate
+} from './downloads'

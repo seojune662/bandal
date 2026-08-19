@@ -85,11 +85,29 @@ export function isBlockedEmbeddedAuthUrl(url: string): boolean {
 }
 
 /**
- * [M6-A] Workspace shortcuts that must keep working while a guest page has
- * keyboard focus. Only ⌘T (new tab) and ⌘W (close tab) pass through — every
- * other app shortcut is intentionally dead inside a guest (the page owns its
- * own keymap). Matches a bare meta/ctrl chord: alt or shift disqualifies.
+ * [M6-A] Shortcuts that must keep working while a guest page has keyboard
+ * focus. Two families qualify:
+ *  - tab lifecycle (⌘T/⌘W/⌘9), which is the app's, not the page's
+ *  - browser chrome (⌘R/⌘L/zoom), which every browser takes from the page too
+ *
+ * Everything else is intentionally dead inside a guest: the page owns its own
+ * keymap. `alt` always disqualifies; `shift` only combines with ⌘R.
  */
+export type PassthroughAction =
+  | 'new-tab'
+  | 'close-tab'
+  | 'activate-last-tab'
+  | 'reload'
+  | 'reload-hard'
+  | 'focus-address'
+  | 'find'
+  | 'reopen-tab'
+  | 'prev-tab'
+  | 'next-tab'
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'zoom-reset'
+
 export function passthroughShortcut(input: {
   type: string
   key: string
@@ -97,13 +115,43 @@ export function passthroughShortcut(input: {
   control: boolean
   alt: boolean
   shift: boolean
-}): 'new-tab' | 'close-tab' | null {
+}): PassthroughAction | null {
   if (input.type !== 'keyDown') return null
-  if (!(input.meta || input.control) || input.alt || input.shift) return null
+  if (!(input.meta || input.control) || input.alt) return null
   const key = input.key.toLowerCase()
-  if (key === 't') return 'new-tab'
-  if (key === 'w') return 'close-tab'
-  return null
+  if (input.shift) {
+    // Shifted chords we take from the page: reload-hard, reopen-tab and tab
+    // cycling — all browser conventions. ⌘⇧B (new browser tab) and ⌘⇧M stay
+    // with the page.
+    if (key === 'r') return 'reload-hard'
+    if (key === 't') return 'reopen-tab'
+    if (key === '[') return 'prev-tab'
+    if (key === ']') return 'next-tab'
+    return null
+  }
+  switch (key) {
+    case 't':
+      return 'new-tab'
+    case 'w':
+      return 'close-tab'
+    case '9':
+      return 'activate-last-tab'
+    case 'r':
+      return 'reload'
+    case 'l':
+      return 'focus-address'
+    case 'f':
+      return 'find'
+    case '=':
+    case '+':
+      return 'zoom-in'
+    case '-':
+      return 'zoom-out'
+    case '0':
+      return 'zoom-reset'
+    default:
+      return null
+  }
 }
 
 /**

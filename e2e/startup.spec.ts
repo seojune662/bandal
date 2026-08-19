@@ -53,15 +53,17 @@ test.describe('cold launch', () => {
     ).toBeVisible()
   })
 
-  test('a new browser tab opens the start page, named as one', async () => {
+  test('a new browser tab opens with chrome, named as one', async () => {
+    // The app-rendered start page was retired in the Quiet Chrome redesign;
+    // a new tab is now an ordinary guest with the toolbar over it.
     const { page } = bandal
     await page.keyboard.press('Shift+Meta+KeyB')
 
-    await expect(page.locator('.browser-start')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('.browser-toolbar').first()).toBeVisible({
+      timeout: 15_000
+    })
     await expect(
       page.locator('.workspace-tab__title', { hasText: '새 탭' })
     ).toBeVisible()
-    // The sections that make it feel like a browser rather than a bare field.
-    await expect(page.locator('.browser-start__section')).toHaveCount(3)
   })
 })

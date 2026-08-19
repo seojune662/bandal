@@ -27,6 +27,12 @@ import { create } from 'zustand'
 import { onPush } from '../lib/ipc'
 import { openNewTabMenu } from '../features/workspace/newTabMenuController'
 import { createBrowserTab, createMarkdownTab } from './tabCommands'
+import { tabIdForWebContents } from '../features/browser/guestActions'
+import { tabPanelId } from '../features/workspace/tabIdentity'
+import type { ShortcutPassthrough } from '../../../shared/ipc/events'
+import { guestActions } from '../features/browser/guestActions'
+import { useBrowserGuests } from '../features/browser/browserGuestsStore'
+import { DEFAULT_ZOOM_LEVEL, zoomIn, zoomOut } from '../features/browser/zoom'
 import { useUiStore } from '../stores/uiStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 
@@ -40,6 +46,15 @@ export type ShortcutAction =
   | { type: 'quick-search' }
   | { type: 'settings' }
   | { type: 'activate-tab'; index: number }
+  | { type: 'activate-last-tab' }
+  // Browser-only. No-ops unless a browser tab is focused (or the chord came
+  // out of a guest page, which names its own tab).
+  | { type: 'browser-reload'; ignoreCache: boolean }
+  | { type: 'browser-focus-address' }
+  | { type: 'browser-find' }
+  | { type: 'reopen-tab' }
+  | { type: 'cycle-tab'; delta: number }
+  | { type: 'browser-zoom'; direction: 'in' | 'out' | 'reset' }
 
 export interface ShortcutInput {
   key: string
@@ -57,7 +72,14 @@ const GUEST_ALLOWED: ReadonlySet<ShortcutAction['type']> = new Set([
   'new-tab',
   'close-tab',
   'new-markdown',
-  'new-browser-tab'
+  'new-browser-tab',
+  'activate-last-tab',
+  'browser-reload',
+  'browser-focus-address',
+  'browser-find',
+  'reopen-tab',
+  'cycle-tab',
+  'browser-zoom'
 ])
 
 /** ⇧-chords, kept apart because the plain resolver rejects shift outright. */
@@ -67,6 +89,14 @@ function shiftActionForKey(key: string): ShortcutAction | null {
       return { type: 'new-markdown' }
     case 'b':
       return { type: 'new-browser-tab' }
+    case 'r':
+      return { type: 'browser-reload', ignoreCache: true }
+    case 't':
+      return { type: 'reopen-tab' }
+    case '[':
+      return { type: 'cycle-tab', delta: -1 }
+    case ']':
+      return { type: 'cycle-tab', delta: 1 }
     default:
       return null
   }
@@ -82,8 +112,23 @@ function actionForKey(key: string): ShortcutAction | null {
       return { type: 'quick-search' }
     case ',':
       return { type: 'settings' }
+    case 'r':
+      return { type: 'browser-reload', ignoreCache: false }
+    case 'l':
+      return { type: 'browser-focus-address' }
+    case 'f':
+      return { type: 'browser-find' }
+    case '=':
+    case '+':
+      return { type: 'browser-zoom', direction: 'in' }
+    case '-':
+      return { type: 'browser-zoom', direction: 'out' }
+    case '0':
+      return { type: 'browser-zoom', direction: 'reset' }
     default: {
-      if (/^[1-9]$/.test(key)) {
+      // ⌘9 is "last tab" in every browser, not the ninth one.
+      if (key === '9') return { type: 'activate-last-tab' }
+      if (/^[1-8]$/.test(key)) {
         return { type: 'activate-tab', index: Number(key) - 1 }
       }
       return null
@@ -129,7 +174,16 @@ export const useQuickSearch = create<QuickSearchState>()((set) => ({
 
 // -- dispatch + registration --------------------------------------------------
 
-function runShortcutAction(action: ShortcutAction): void {
+/**
+ * `originTabId` is set only for chords replayed out of a guest page. A guest
+ * lives in a fixed layer outside the dockview panel DOM and focusing it does
+ * NOT make its panel active, so 'close-tab' has to name the tab explicitly —
+ * otherwise ⌘W in a split closes whichever panel dockview thinks is active.
+ */
+function runShortcutAction(
+  action: ShortcutAction,
+  originTabId?: string
+): void {
   switch (action.type) {
     case 'new-tab':
       openNewTabMenu()
@@ -141,6 +195,17 @@ function runShortcutAction(action: ShortcutAction): void {
       createBrowserTab()
       return
     case 'close-tab':
+      if (originTabId !== undefined) {
+        useWorkspaceStore
+          .getState()
+          .closeTab(
+            tabPanelId({
+              kind: 'browser',
+              payload: { tabId: originTabId, initialUrl: '' }
+            })
+          )
+        return
+      }
       useWorkspaceStore.getState().closeActiveTab()
       return
     case 'quick-search':
@@ -151,7 +216,95 @@ function runShortcutAction(action: ShortcutAction): void {
       return
     case 'activate-tab':
       useWorkspaceStore.getState().activateTabAt(action.index)
+      return
+    case 'activate-last-tab':
+      useWorkspaceStore.getState().activateLastTab()
+      return
+    case 'browser-reload': {
+      const target = browserTarget(originTabId)
+      if (target === null) return
+      if (action.ignoreCache) guestActions.reloadIgnoringCache(target)
+      else guestActions.reload(target)
+      return
+    }
+    case 'browser-focus-address': {
+      const target = browserTarget(originTabId)
+      if (target === null) return
+      useBrowserGuests.getState().requestAddressFocus(target)
+      return
+    }
+    case 'reopen-tab':
+      useWorkspaceStore.getState().reopenClosedTab()
+      return
+    case 'cycle-tab':
+      useWorkspaceStore.getState().activateRelativeTab(action.delta)
+      return
+    case 'browser-find': {
+      const target = browserTarget(originTabId)
+      if (target === null) return
+      useBrowserGuests.getState().openFind(target)
+      return
+    }
+    case 'browser-zoom': {
+      const target = browserTarget(originTabId)
+      if (target === null) return
+      const store = useBrowserGuests.getState()
+      const current = store.zoom[target] ?? DEFAULT_ZOOM_LEVEL
+      const next =
+        action.direction === 'reset'
+          ? DEFAULT_ZOOM_LEVEL
+          : action.direction === 'in'
+            ? zoomIn(current)
+            : zoomOut(current)
+      store.setZoom(target, next)
+      guestActions.setZoom(target, next)
+    }
   }
+}
+
+/** Main names the chord; the renderer owns what it means. */
+function passthroughAction(
+  action: ShortcutPassthrough['action']
+): ShortcutAction | null {
+  switch (action) {
+    case 'new-tab':
+      return { type: 'new-tab' }
+    case 'close-tab':
+      return { type: 'close-tab' }
+    case 'activate-last-tab':
+      return { type: 'activate-last-tab' }
+    case 'reload':
+      return { type: 'browser-reload', ignoreCache: false }
+    case 'reload-hard':
+      return { type: 'browser-reload', ignoreCache: true }
+    case 'focus-address':
+      return { type: 'browser-focus-address' }
+    case 'find':
+      return { type: 'browser-find' }
+    case 'reopen-tab':
+      return { type: 'reopen-tab' }
+    case 'prev-tab':
+      return { type: 'cycle-tab', delta: -1 }
+    case 'next-tab':
+      return { type: 'cycle-tab', delta: 1 }
+    case 'zoom-in':
+      return { type: 'browser-zoom', direction: 'in' }
+    case 'zoom-out':
+      return { type: 'browser-zoom', direction: 'out' }
+    case 'zoom-reset':
+      return { type: 'browser-zoom', direction: 'reset' }
+    default:
+      return null
+  }
+}
+
+/**
+ * A chord replayed out of a guest names its own tab; one typed in the app
+ * chrome applies to the focused browser tab, and does nothing over a PDF,
+ * a note or the board.
+ */
+function browserTarget(originTabId?: string): string | null {
+  return originTabId ?? useWorkspaceStore.getState().activeBrowserTabId()
 }
 
 function isWebviewTarget(target: EventTarget | null): boolean {
@@ -183,9 +336,14 @@ export function useGlobalShortcuts(): void {
 
     // ⌘T/⌘W typed INSIDE a browser guest arrive via main's
     // before-input-event interception (the guest never sees the chord).
-    const unsubscribe = onPush('shortcut:passthrough', ({ action }) => {
-      runShortcutAction({ type: action })
-    })
+    const unsubscribe = onPush(
+      'shortcut:passthrough',
+      ({ action, webContentsId }) => {
+        const originTabId = tabIdForWebContents(webContentsId) ?? undefined
+        const resolved = passthroughAction(action)
+        if (resolved !== null) runShortcutAction(resolved, originTabId)
+      }
+    )
 
     return () => {
       window.removeEventListener('keydown', onKeyDown)

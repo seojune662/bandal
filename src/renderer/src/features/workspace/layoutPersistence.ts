@@ -199,7 +199,13 @@ function stripDecorative(value: unknown): unknown {
   if (!isRecord(value)) return value
   const out: Record<string, unknown> = {}
   for (const [key, entry] of Object.entries(value)) {
-    if (key === 'activeGroup' || key === 'activeView') continue
+    // `initialUrl` tracks where a browser tab currently IS, so it changes on
+    // every navigation. Treating it as structural would schedule a debounced
+    // write per page load (an SPA would hammer it); leaving it out means the
+    // parked snapshot still carries it to disk on quit and course switch.
+    if (key === 'activeGroup' || key === 'activeView' || key === 'initialUrl') {
+      continue
+    }
     out[key] = stripDecorative(entry)
   }
   return out

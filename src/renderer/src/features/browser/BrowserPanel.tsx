@@ -29,6 +29,10 @@ import {
   useBrowserGuests,
   type BrowserNavState
 } from './browserGuestsStore'
+import { BrowserErrorPage } from './BrowserErrorPage'
+import { DEFAULT_ZOOM_LEVEL, isDefaultZoom, zoomPercent } from './zoom'
+import { useDownloads } from './downloadsStore'
+import { BrowserFindBar } from './BrowserFindBar'
 import {
   browserFavoriteShortcuts,
   hostnameForUrl,
@@ -111,14 +115,23 @@ function BrowserSiteMark({ url }: { url: string }): JSX.Element {
 
 function BrowserAddressInput({
   value,
-  onNavigate
+  onNavigate,
+  focusSeq
 }: {
   value: string
   onNavigate: (url: string) => void
+  /** Increments when ⌘L asks for focus; 0 = never asked. */
+  focusSeq: number
 }): JSX.Element {
   const [draft, setDraft] = useState<string | null>(null)
   const [focused, setFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (focusSeq === 0) return
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [focusSeq])
   const parts = addressDisplayParts(value)
   const showDisplayUrl = !focused && draft === null && value.length > 0
 
@@ -212,6 +225,14 @@ function BrowserBookmarksBar({
 
 function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
   const login = useBrowserGuests((state) => state.login[tabId])
+  const zoomLevel = useBrowserGuests(
+    (state) => state.zoom[tabId] ?? DEFAULT_ZOOM_LEVEL
+  )
+  const addressFocusSeq = useBrowserGuests(
+    (state) => state.addressFocusSeq[tabId] ?? 0
+  )
+  const activeDownloads = useDownloads((state) => state.activeCount)
+  const findState = useBrowserGuests((state) => state.find[tabId])
   const loginTooltip =
     login?.savedLogin === null
       ? '직접 입력한 아이디와 비밀번호를 안전하게 저장합니다.'
@@ -263,9 +284,38 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
           </Tooltip>
         </div>
 
-        <BrowserAddressInput value={nav.url} onNavigate={onNavigate} />
+        <BrowserAddressInput
+          value={nav.url}
+          onNavigate={onNavigate}
+          focusSeq={addressFocusSeq}
+        />
 
         <div className="browser-toolbar__actions">
+          {activeDownloads > 0 && (
+            <Tooltip
+              label={`${activeDownloads}개 내려받는 중`}
+              placement="bottom"
+            >
+              <span className="browser-download-badge" role="status">
+                <BrowserIcon name="download" />
+                {activeDownloads}
+              </span>
+            </Tooltip>
+          )}
+          {!isDefaultZoom(zoomLevel) && (
+            <Tooltip label="기본 크기로 (⌘0)" placement="bottom">
+              <button
+                type="button"
+                className="browser-zoom-pill"
+                onClick={() => {
+                  useBrowserGuests.getState().setZoom(tabId, DEFAULT_ZOOM_LEVEL)
+                  guestActions.setZoom(tabId, DEFAULT_ZOOM_LEVEL)
+                }}
+              >
+                {zoomPercent(zoomLevel)}%
+              </button>
+            </Tooltip>
+          )}
           {login?.hasLoginForm === true && login.origin !== null && (
             <div className="browser-login-action">
               <Tooltip label={loginTooltip} placement="bottom">
@@ -300,6 +350,9 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
           )}
         </div>
       </header>
+      {findState !== undefined && (
+        <BrowserFindBar tabId={tabId} state={findState} />
+      )}
       <div
         className="browser-progress"
         data-active={nav.loading ? 'true' : undefined}
@@ -324,6 +377,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   const nav = useBrowserGuests((state) =>
     tabId !== '' ? state.nav[tabId] : undefined
   )
+  const overlay = useBrowserGuests((state) => state.overlay[tabId] ?? null)
   const externalAuthNotice = useBrowserGuests(
     (state) => state.externalAuthNotice
   )
@@ -339,7 +393,8 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
       } else {
         state.ensureGuest(tabId, url)
       }
-      state.setStartPageVisible(tabId, false)
+      // A fresh address dismisses whatever the last load left on screen.
+      state.setOverlay(tabId, null)
     },
     [tabId]
   )
@@ -357,6 +412,23 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
     const title = navState.title || hostnameOf(navState.url) || '브라우저'
     if (title !== api.title) api.setTitle(title)
   }, [api, navState.title, navState.url])
+
+  // Remember where the tab actually is, so restarting does not throw the
+  // student back to the URL the tab was opened with. `initialUrl` is excluded
+  // from the structural key (layoutPersistence), so this costs no extra write:
+  // the parked snapshot carries it on quit and on course switch.
+  useEffect(() => {
+    if (tabId === '' || navState.url === '' || navState.url === initialUrl) {
+      return
+    }
+    api.updateParameters({
+      descriptor: {
+        kind: 'browser',
+        payload: { tabId, initialUrl: navState.url }
+      }
+    })
+    useWorkspaceStore.getState().notifyLayoutChanged()
+  }, [api, initialUrl, navState.url, tabId])
 
   if (payload === null) {
     return <div className="workspace-panel" data-kind="unknown" />
@@ -394,11 +466,15 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
         className="browser-anchor"
         data-browser-anchor={tabId}
       >
-        {/* Shown before first paint / if the guest renderer ever goes away. */}
-        <div className="browser-anchor__fallback">
-          <BrowserIcon name="globe" />
-          <span>{hostnameOf(navState.url)}</span>
-        </div>
+        {overlay !== null ? (
+          <BrowserErrorPage tabId={tabId} overlay={overlay} />
+        ) : (
+          /* Shown before first paint / if the guest renderer ever goes away. */
+          <div className="browser-anchor__fallback">
+            <BrowserIcon name="globe" />
+            <span>{hostnameOf(navState.url)}</span>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
   createMaterialsRepo,
@@ -653,6 +654,121 @@ describe('materialsRepo', () => {
       expect(trashed).toEqual([])
     })
   })
+
+  describe('adoptFile (browser downloads)', () => {
+    function staged(name: string, body = 'downloaded-bytes'): string {
+      const dir = join(ctx.dir, 'staging', randomUUID())
+      mkdirSync(dir, { recursive: true })
+      const path = join(dir, name)
+      writeFileSync(path, body)
+      return path
+    }
+
+    test('moves a staged file into the course and consumes it', () => {
+      const source = staged('3주차.pdf')
+      const { relPath } = repo.adoptFile({
+        courseId,
+        dirRelPath: 'notes',
+        fileName: '3주차.pdf',
+        sourcePath: source
+      })
+
+      expect(relPath).toBe('notes/3주차.pdf')
+      expect(readFileSync(join(courseFolder, relPath), 'utf8')).toBe(
+        'downloaded-bytes'
+      )
+      // Staging must not keep a second copy of a 300MB lecture video around.
+      expect(existsSync(source)).toBe(false)
+    })
+
+    test('lands at the course root for an empty dirRelPath', () => {
+      const { relPath } = repo.adoptFile({
+        courseId,
+        dirRelPath: '',
+        fileName: 'handout.pdf',
+        sourcePath: staged('handout.pdf')
+      })
+      expect(relPath).toBe('handout.pdf')
+    })
+
+    test('suffixes instead of overwriting an existing file', () => {
+      // Downloading the same lecture twice must never destroy the annotated one.
+      const { relPath } = repo.adoptFile({
+        courseId,
+        dirRelPath: '',
+        fileName: 'syllabus.pdf',
+        sourcePath: staged('syllabus.pdf', 'second')
+      })
+      expect(relPath).toBe('syllabus-2.pdf')
+      expect(readFileSync(join(courseFolder, 'syllabus.pdf'), 'utf8')).toBe(
+        'pdf-bytes'
+      )
+    })
+
+    test('refuses to escape the course folder', () => {
+      for (const fileName of ['../escape.pdf', 'a/b.pdf', '/etc/passwd']) {
+        expect(() =>
+          repo.adoptFile({
+            courseId,
+            dirRelPath: '',
+            fileName,
+            sourcePath: staged('x.pdf')
+          }),
+          fileName
+        ).toThrow()
+      }
+      expect(() =>
+        repo.adoptFile({
+          courseId,
+          dirRelPath: '../..',
+          fileName: 'x.pdf',
+          sourcePath: staged('x.pdf')
+        })
+      ).toThrow()
+    })
+
+    test('requires an absolute, existing source', () => {
+      expect(() =>
+        repo.adoptFile({
+          courseId,
+          dirRelPath: '',
+          fileName: 'x.pdf',
+          sourcePath: 'relative/x.pdf'
+        })
+      ).toThrow()
+      expect(() =>
+        repo.adoptFile({
+          courseId,
+          dirRelPath: '',
+          fileName: 'x.pdf',
+          sourcePath: join(ctx.dir, 'staging', 'missing.pdf')
+        })
+      ).toThrow()
+    })
+
+    test('rejects an unknown target directory', () => {
+      expect(() =>
+        repo.adoptFile({
+          courseId,
+          dirRelPath: 'no-such-folder',
+          fileName: 'x.pdf',
+          sourcePath: staged('x.pdf')
+        })
+      ).toThrow()
+    })
+
+    test('invalidates the tree cache so the file shows up', () => {
+      repo.tree(courseId) // warm
+      repo.adoptFile({
+        courseId,
+        dirRelPath: '',
+        fileName: 'fresh.pdf',
+        sourcePath: staged('fresh.pdf')
+      })
+      expect(flattenTree(repo.tree(courseId))).toContain('fresh.pdf')
+    })
+  })
+
 })
 
 /**
@@ -773,4 +889,5 @@ describe('kindForFile', () => {
     expect(kindForFile('a.webm')).toBe('video')
     expect(kindForFile('a.pptx')).toBe('other')
   })
+
 })

@@ -14,7 +14,7 @@ import { BROWSING_PARTITION } from './webviewPolicy'
 /** 수업 자료 기준 넉넉한 상한 — 폭주하는 응답에서 메모리를 지킨다. */
 const DOWNLOAD_MAX_BYTES = 200 * 1024 * 1024
 
-const FALLBACK_FILE_NAME = '다운로드'
+export const FALLBACK_FILE_NAME = '다운로드'
 
 /** Content-Disposition → URL 경로 → 폴백 순서로 파일 이름 후보를 고른다. */
 export function fileNameForDownload(
@@ -60,7 +60,8 @@ function fileNameFromUrl(url: string): string | null {
 }
 
 /** 경로 구분자·제어 문자를 걷어내 requireBasename 이 거부할 이름을 막는다. */
-function sanitizeFileName(raw: string): string {
+/** Shared with the will-download handler: strips separators and control chars. */
+export function sanitizeFileName(raw: string): string {
   return raw
     .replace(/[/\\\u0000-\u001f]/gu, ' ')
     .replace(/\s+/gu, ' ')

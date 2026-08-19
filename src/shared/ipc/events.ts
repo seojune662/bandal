@@ -67,8 +67,45 @@ export interface SettingsChanged {
  * intercepts it via `before-input-event` and forwards it here so the
  * shortcuts hook can run the same action as a host-window keydown.
  */
+/** One browser download's lifecycle, throttled while progressing. */
+export interface BrowserDownloadUpdate {
+  id: string
+  webContentsId: number | null
+  fileName: string
+  receivedBytes: number
+  /** 0 when the server sends no Content-Length. */
+  totalBytes: number
+  state: 'progressing' | 'completed' | 'cancelled' | 'interrupted'
+  /** Course-relative path, once the file is in the course folder. */
+  relPath: string | null
+  courseId: string | null
+  /** The transfer worked but filing it did not. */
+  failureReason: string | null
+}
+
 export interface ShortcutPassthrough {
-  action: 'new-tab' | 'close-tab'
+  action:
+    | 'new-tab'
+    | 'close-tab'
+    | 'activate-last-tab'
+    | 'reload'
+    | 'reload-hard'
+    | 'focus-address'
+    | 'find'
+    | 'reopen-tab'
+    | 'prev-tab'
+    | 'next-tab'
+    | 'zoom-in'
+    | 'zoom-out'
+    | 'zoom-reset'
+  /**
+   * The guest that swallowed the chord, so the renderer can act on ITS tab.
+   * Guests live in a fixed layer outside the dockview panel DOM and focusing
+   * one does not make its panel active, so without this ⌘W in a split closes
+   * whichever tab dockview happens to consider active — not the one the
+   * student is typing into.
+   */
+  webContentsId: number
 }
 
 /**
@@ -116,6 +153,7 @@ export interface PushEvents {
   'settings:changed': SettingsChanged
   /** Open the in-app settings overlay (app menu ⌘, or legacy callers). */
   'ui:openSettings': { }
+  'browser:download': BrowserDownloadUpdate
   'shortcut:passthrough': ShortcutPassthrough
   // -- groups (P2-C) --------------------------------------------------------
   'auth:changed': AuthState

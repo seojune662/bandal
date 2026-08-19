@@ -16,6 +16,16 @@
 
 import { create } from 'zustand'
 import type { SavedLoginSummary } from '../../../../shared/types/credentials'
+import type { BrowserOverlay } from './loadError'
+
+export interface BrowserFindState {
+  query: string
+  /** 1-based position of the highlighted match; 0 = none yet. */
+  activeMatch: number
+  matchCount: number
+  /** Bumped by ⌘F so the input re-focuses even when already open. */
+  focusSeq: number
+}
 import { getBrowserAnchorRect } from '../workspace/panels/browserAnchor'
 import { MAX_LIVE_GUESTS, pickEvictions, touchOrder } from './guestLru'
 
@@ -62,11 +72,36 @@ interface BrowserGuestsState {
   externalAuthNotice: BrowserExternalAuthNotice | null
   /** Recent pages live only for the lifetime of their browser tab. */
   recent: Record<string, BrowserVisit[]>
-  /** undefined = a direct URL tab; true/false = start page visible/hidden. */
-  startPageVisible: Record<string, boolean | undefined>
-  ensureStartPage: (tabId: string) => void
+  /**
+   * Host DOM shown in the tab's anchor INSTEAD of the guest. The guest keeps
+   * living (and loading) underneath; only its rect is withheld, so dismissing
+   * an overlay never costs a reload. null / absent = show the guest.
+   */
+  overlay: Record<string, BrowserOverlay | null | undefined>
+  /**
+   * Chromium zoom level per tab. The store is the source of truth: the level
+   * lives on the render process, so a cross-origin navigation drops it and the
+   * guest view re-applies from here.
+   */
+  zoom: Record<string, number | undefined>
+  /**
+   * Bumped to ask a panel's omnibox to take focus (⌘L). A counter rather than
+   * a boolean so pressing ⌘L twice in a row still moves focus back.
+   */
+  addressFocusSeq: Record<string, number | undefined>
+  /** ⌘F bar, per tab. Absent = closed. */
+  find: Record<string, BrowserFindState | undefined>
   ensureGuest: (tabId: string, initialUrl: string) => void
-  setStartPageVisible: (tabId: string, visible: boolean) => void
+  requestAddressFocus: (tabId: string) => void
+  openFind: (tabId: string) => void
+  closeFind: (tabId: string) => void
+  setFindQuery: (tabId: string, query: string) => void
+  setFindResult: (
+    tabId: string,
+    result: { activeMatch: number; matchCount: number }
+  ) => void
+  setOverlay: (tabId: string, overlay: BrowserOverlay | null) => void
+  setZoom: (tabId: string, level: number) => void
   touchGuest: (tabId: string) => void
   removeGuest: (tabId: string) => void
   updateNav: (tabId: string, patch: Partial<BrowserNavState>) => void
@@ -146,18 +181,10 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
   login: {},
   externalAuthNotice: null,
   recent: {},
-  startPageVisible: {},
-
-  ensureStartPage: (tabId) => {
-    const { nav, login, recent, startPageVisible } = get()
-    if (startPageVisible[tabId] !== undefined) return
-    set({
-      nav: { ...nav, [tabId]: nav[tabId] ?? initialNavState('') },
-      login: { ...login, [tabId]: login[tabId] ?? initialLoginState() },
-      recent: { ...recent, [tabId]: recent[tabId] ?? [] },
-      startPageVisible: { ...startPageVisible, [tabId]: true }
-    })
-  },
+  overlay: {},
+  zoom: {},
+  addressFocusSeq: {},
+  find: {},
 
   ensureGuest: (tabId, initialUrl) => {
     const { liveGuests, nav, login, recent } = get()
@@ -187,10 +214,68 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
     })
   },
 
-  setStartPageVisible: (tabId, visible) => {
-    const { startPageVisible } = get()
-    if (startPageVisible[tabId] === undefined) return
-    set({ startPageVisible: { ...startPageVisible, [tabId]: visible } })
+  openFind: (tabId) => {
+    const { find } = get()
+    // Re-opening while open must re-focus the field, not reset the query.
+    set({
+      find: {
+        ...find,
+        [tabId]: {
+          query: find[tabId]?.query ?? '',
+          activeMatch: find[tabId]?.activeMatch ?? 0,
+          matchCount: find[tabId]?.matchCount ?? 0,
+          focusSeq: (find[tabId]?.focusSeq ?? 0) + 1
+        }
+      }
+    })
+  },
+
+  closeFind: (tabId) => {
+    const { find } = get()
+    if (find[tabId] === undefined) return
+    set({ find: withoutKeys(find, [tabId]) })
+  },
+
+  setFindQuery: (tabId, query) => {
+    const { find } = get()
+    const current = find[tabId]
+    if (current === undefined) return
+    set({
+      find: {
+        ...find,
+        // A new query invalidates the old counts; showing them would lie.
+        [tabId]: { ...current, query, activeMatch: 0, matchCount: 0 }
+      }
+    })
+  },
+
+  setFindResult: (tabId, result) => {
+    const { find } = get()
+    const current = find[tabId]
+    if (current === undefined) return
+    set({ find: { ...find, [tabId]: { ...current, ...result } } })
+  },
+
+  requestAddressFocus: (tabId) => {
+    const { addressFocusSeq } = get()
+    set({
+      addressFocusSeq: {
+        ...addressFocusSeq,
+        [tabId]: (addressFocusSeq[tabId] ?? 0) + 1
+      }
+    })
+  },
+
+  setZoom: (tabId, level) => {
+    const { zoom } = get()
+    if (zoom[tabId] === level) return
+    set({ zoom: { ...zoom, [tabId]: level } })
+  },
+
+  setOverlay: (tabId, overlay) => {
+    const current = get().overlay
+    if ((current[tabId] ?? null) === overlay) return
+    set({ overlay: { ...current, [tabId]: overlay } })
   },
 
   touchGuest: (tabId) => {
@@ -209,13 +294,16 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
   },
 
   removeGuest: (tabId) => {
-    const { liveGuests, nav, login, recent, startPageVisible } = get()
+    const { liveGuests, nav, login, recent, overlay, zoom } = get()
     set({
       liveGuests: liveGuests.filter((guest) => guest.tabId !== tabId),
       nav: withoutKeys(nav, [tabId]),
       login: withoutKeys(login, [tabId]),
       recent: withoutKeys(recent, [tabId]),
-      startPageVisible: withoutKeys(startPageVisible, [tabId])
+      overlay: withoutKeys(overlay, [tabId]),
+      zoom: withoutKeys(zoom, [tabId]),
+      addressFocusSeq: withoutKeys(get().addressFocusSeq, [tabId]),
+      find: withoutKeys(get().find, [tabId])
     })
   },
 
@@ -270,6 +358,9 @@ export function resetBrowserGuestsForTests(): void {
     login: {},
     externalAuthNotice: null,
     recent: {},
-    startPageVisible: {}
+    overlay: {},
+    zoom: {},
+    addressFocusSeq: {},
+    find: {}
   })
 }

@@ -55,34 +55,55 @@ describe('ensureGuest', () => {
   })
 })
 
-describe('app-rendered start page', () => {
-  test('starts without creating a webview guest', () => {
-    store().ensureStartPage('new-tab')
+describe('anchor overlay (host DOM shown instead of the guest)', () => {
+  const failure = {
+    kind: 'error' as const,
+    errorCode: -105,
+    errorDescription: 'ERR_NAME_NOT_RESOLVED',
+    url: 'https://nope.invalid'
+  }
 
-    expect(store().liveGuests).toEqual([])
-    expect(store().nav['new-tab']?.url).toBe('')
-    expect(store().startPageVisible['new-tab']).toBe(true)
+  test('a tab has no overlay until something sets one', () => {
+    store().ensureGuest('t1', 'https://example.invalid')
+    expect(store().overlay['t1'] ?? null).toBeNull()
   })
 
-  test('keeps a guest alive while the start page replaces it', () => {
-    store().ensureStartPage('new-tab')
-    store().ensureGuest('new-tab', 'https://example.invalid')
-    store().setStartPageVisible('new-tab', false)
-    store().setStartPageVisible('new-tab', true)
+  test('an overlay keeps the guest alive — only its rect is withheld', () => {
+    // Destroying the guest instead would turn 다시 시도 into a cold reload
+    // and lose the page's history.
+    store().ensureGuest('t1', 'https://example.invalid')
+    store().setOverlay('t1', failure)
 
     expect(store().liveGuests).toEqual([
-      { tabId: 'new-tab', src: 'https://example.invalid' }
+      { tabId: 't1', src: 'https://example.invalid' }
     ])
-    expect(store().startPageVisible['new-tab']).toBe(true)
+    expect(store().overlay['t1']).toEqual(failure)
   })
 
-  test('cleans up a start-only tab that never created a guest', () => {
-    store().ensureStartPage('new-tab')
-    store().removeGuest('new-tab')
+  test('setting null dismisses it', () => {
+    store().ensureGuest('t1', 'https://example.invalid')
+    store().setOverlay('t1', failure)
+    store().setOverlay('t1', null)
+    expect(store().overlay['t1'] ?? null).toBeNull()
+  })
 
-    expect(store().nav['new-tab']).toBeUndefined()
-    expect(store().recent['new-tab']).toBeUndefined()
-    expect(store().startPageVisible['new-tab']).toBeUndefined()
+  test('closing the tab forgets its overlay', () => {
+    store().ensureGuest('t1', 'https://example.invalid')
+    store().setOverlay('t1', failure)
+    store().removeGuest('t1')
+
+    expect(store().nav['t1']).toBeUndefined()
+    expect(store().recent['t1']).toBeUndefined()
+    expect(store().overlay['t1']).toBeUndefined()
+  })
+
+  test('overlays are per tab', () => {
+    store().ensureGuest('t1', 'https://a.invalid')
+    store().ensureGuest('t2', 'https://b.invalid')
+    store().setOverlay('t1', failure)
+
+    expect(store().overlay['t1']).toEqual(failure)
+    expect(store().overlay['t2'] ?? null).toBeNull()
   })
 })
 

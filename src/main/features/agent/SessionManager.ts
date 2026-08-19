@@ -44,7 +44,13 @@ export interface SessionManagerDeps {
    */
   startToolServer?: (
     courseId: string,
-    sessionKey: string
+    sessionKey: string,
+    /**
+     * The conversation's live turn number. The tool server groups a turn's
+     * journal rows and resets its per-turn budgets when this changes, so it
+     * must track `repo.nextTurnSeq` — not a counter owned by the caller.
+     */
+    getTurnSeq: () => number
   ) => Promise<{
     mcpConfigPath: string
     allowedTools: readonly string[]
@@ -217,7 +223,11 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       // A failure here must not cost the student their tutor: fall back to the
       // file-only agent rather than refusing to open the chat.
       try {
-        const tools = await deps.startToolServer(entry.courseId, entry.sessionId)
+        const tools = await deps.startToolServer(
+          entry.courseId,
+          entry.sessionId,
+          () => entry.turnSeq
+        )
         entry.toolServer = tools
         startOptions.mcpConfigPath = tools.mcpConfigPath
         startOptions.extraAllowedTools = tools.allowedTools

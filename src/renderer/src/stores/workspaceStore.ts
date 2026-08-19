@@ -19,6 +19,7 @@
 
 import { create } from 'zustand'
 import type { DockviewApi } from 'dockview'
+import { isTabDescriptor } from '../../../shared/tabs'
 import type { TabDescriptor } from '../../../shared/tabs'
 import { invoke } from '../lib/ipc'
 import { settingsSnapshot } from './settingsSnapshot'
@@ -54,8 +55,19 @@ interface WorkspaceState {
   closeOthers: (panelId: string) => void
   /** [M6-A] ⌘W: close the focused tab; no tab → no-op (never the window). */
   closeActiveTab: () => void
-  /** [M6-A] ⌘1..9: activate the nth open tab (0-based); out of range → no-op. */
+  /** [M6-A] ⌘1..8: activate the nth open tab (0-based); out of range → no-op. */
   activateTabAt: (index: number) => void
+  /** ⌘9: the LAST tab, following browser convention rather than the 9th. */
+  activateLastTab: () => void
+  /** ⌃Tab / ⌘⇧[ ] — wraps at both ends. */
+  activateRelativeTab: (delta: number) => void
+  /** ⌘⇧T. Re-opens the most recently closed tab of the current course. */
+  reopenClosedTab: () => void
+  /**
+   * tabId of the focused browser tab, or null when the active tab is anything
+   * else. Browser-only chords (⌘R, ⌘L, zoom) are no-ops over a PDF or a note.
+   */
+  activeBrowserTabId: () => string | null
   /** Wired to dockview's onDidLayoutChange by WorkspaceHost. */
   notifyLayoutChanged: () => void
   /** Send any pending save immediately (course switch / beforeunload). */
@@ -74,6 +86,19 @@ interface PendingSave {
 
 // Imperative, non-reactive internals.
 let api: DockviewApi | null = null
+
+/**
+ * ⌘⇧T stack. Bounded, and cleared on course switch — reopening a tab from a
+ * different course would open a file that is not in the course on screen.
+ */
+const CLOSED_TAB_LIMIT = 10
+let closedTabs: TabDescriptor[] = []
+
+function rememberClosed(params: unknown): void {
+  const descriptor = (params as { descriptor?: unknown } | undefined)?.descriptor
+  if (!isTabDescriptor(descriptor)) return
+  closedTabs = [...closedTabs, descriptor].slice(-CLOSED_TAB_LIMIT)
+}
 let switchSerial = 0
 let suppressLayoutEvents = false
 let lastStructuralKey = ''
@@ -200,6 +225,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     setActiveCourse: (courseId) => {
       if (get().activeCourseId === courseId) return
       const serial = ++switchSerial
+      // A tab closed in the previous course must not reopen into this one.
+      closedTabs = []
       flush() // persist the outgoing course's layout before swapping
       set({
         activeCourseId: courseId,
@@ -261,7 +288,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 
     closeTab: (panelId) => {
       if (api === null) return
-      api.getPanel(panelId)?.api.close()
+      const panel = api.getPanel(panelId)
+      if (panel === undefined) return
+      rememberClosed(panel.params)
+      panel.api.close()
     },
 
     closeTabsMatching: (descriptor) => {
@@ -282,12 +312,49 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 
     closeActiveTab: () => {
       if (api === null) return
-      api.activePanel?.api.close()
+      const panel = api.activePanel
+      if (panel === undefined || panel === null) return
+      rememberClosed(panel.params)
+      panel.api.close()
     },
 
     activateTabAt: (index) => {
       if (api === null || index < 0) return
       api.panels[index]?.api.setActive()
+    },
+
+    activateLastTab: () => {
+      if (api === null) return
+      api.panels[api.panels.length - 1]?.api.setActive()
+    },
+
+    activateRelativeTab: (delta) => {
+      if (api === null) return
+      const panels = api.panels
+      if (panels.length === 0) return
+      const current = panels.findIndex(
+        (panel) => panel.id === api?.activePanel?.id
+      )
+      const from = current === -1 ? 0 : current
+      const next = (((from + delta) % panels.length) + panels.length) % panels.length
+      panels[next]?.api.setActive()
+    },
+
+    reopenClosedTab: () => {
+      const descriptor = closedTabs.pop()
+      if (descriptor === undefined) return
+      get().openTab(descriptor)
+    },
+
+    activeBrowserTabId: () => {
+      if (api === null) return null
+      const descriptor = (
+        api.activePanel?.params as { descriptor?: unknown } | undefined
+      )?.descriptor
+      if (!isTabDescriptor(descriptor) || descriptor.kind !== 'browser') {
+        return null
+      }
+      return descriptor.payload.tabId
     },
 
     notifyLayoutChanged: () => {

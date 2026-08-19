@@ -14,10 +14,23 @@ import {
   type AnchorRect
 } from '../workspace/panels/browserAnchor'
 import { useBrowserGuests, type BrowserNavState } from './browserGuestsStore'
-import { registerGuestElement, unregisterGuestElement } from './guestActions'
+import { ABORTED_ERROR_CODE } from './loadError'
+import {
+  BrowserContextMenu,
+  type BrowserContextMenuState
+} from './BrowserContextMenu'
+import { isDefaultZoom } from './zoom'
+import {
+  registerGuestElement,
+  registerGuestWebContents,
+  unregisterGuestElement
+} from './guestActions'
 import { useWebviewSelectionBridge } from './selectionBridge'
 import { useWebviewLoginBridge } from './loginBridge'
 import type {
+  ContextMenuEvent,
+  FoundInPageEvent,
+  DidFailLoadEvent,
   DidNavigateEvent,
   DidNavigateInPageEvent,
   PageTitleUpdatedEvent,
@@ -50,8 +63,10 @@ export function BrowserGuestView({
   const [rect, setRect] = useState<AnchorRect | null>(() =>
     getBrowserAnchorRect(tabId)
   )
-  const startPageVisible = useBrowserGuests(
-    (state) => state.startPageVisible[tabId] === true
+  const [contextMenu, setContextMenu] =
+    useState<BrowserContextMenuState | null>(null)
+  const overlayVisible = useBrowserGuests(
+    (state) => (state.overlay[tabId] ?? null) !== null
   )
   useWebviewSelectionBridge(webviewRef)
   useWebviewLoginBridge(tabId, webviewRef)
@@ -65,7 +80,7 @@ export function BrowserGuestView({
   )
 
   // Becoming visible counts as "used" for LRU purposes.
-  const isVisible = rect !== null && !startPageVisible
+  const isVisible = rect !== null && !overlayVisible
   useEffect(() => {
     if (isVisible) useBrowserGuests.getState().touchGuest(tabId)
   }, [isVisible, tabId])
@@ -77,6 +92,15 @@ export function BrowserGuestView({
 
     const update = (patch: Partial<BrowserNavState>): void => {
       useBrowserGuests.getState().updateNav(tabId, patch)
+    }
+    const applyZoom = (): void => {
+      const level = useBrowserGuests.getState().zoom[tabId]
+      if (level === undefined || isDefaultZoom(level)) return
+      try {
+        element.setZoomLevel(level)
+      } catch {
+        // Detached; the next dom-ready re-applies it.
+      }
     }
     const historyState = (): Partial<BrowserNavState> => {
       try {
@@ -100,6 +124,7 @@ export function BrowserGuestView({
           } catch {
             // not attached yet — treat as main-frame load
           }
+          useBrowserGuests.getState().setOverlay(tabId, null)
           update({ loading: true })
         }
       ],
@@ -120,7 +145,70 @@ export function BrowserGuestView({
         ((event: PageTitleUpdatedEvent) =>
           update({ title: event.title })) as EventListener
       ],
-      ['did-fail-load', () => update({ loading: false })]
+      [
+        'did-fail-load',
+        ((event: DidFailLoadEvent) => {
+          update({ loading: false })
+          // Subframe failures (ads, trackers, a dead iframe) must never take
+          // over the whole tab — the page around them is fine.
+          if (event.isMainFrame === false) return
+          if (event.errorCode === ABORTED_ERROR_CODE) return
+          useBrowserGuests.getState().setOverlay(tabId, {
+            kind: 'error',
+            errorCode: event.errorCode,
+            errorDescription: event.errorDescription,
+            url: event.validatedURL
+          })
+        }) as EventListener
+      ],
+      [
+        // Not a nav concern: this is where the guest's WebContents id first
+        // exists, and main needs the id -> tabId mapping to route a chord it
+        // swallowed (see ShortcutPassthrough). Re-running per navigation is
+        // harmless and self-healing.
+        'dom-ready',
+        () => {
+          registerGuestWebContents(tabId, element)
+          applyZoom()
+        }
+      ],
+      [
+        // A cross-origin navigation gets a new render process, and the zoom
+        // level lives on the process — without this the page silently snaps
+        // back to 100% mid-session.
+        'did-navigate',
+        () => applyZoom()
+      ],
+      [
+        'context-menu',
+        ((event: ContextMenuEvent) => {
+          // Guest-viewport coordinates: the menu is host DOM, so shift them by
+          // where the guest actually sits on screen.
+          const rect = element.getBoundingClientRect()
+          setContextMenu({
+            x: rect.left + event.params.x,
+            y: rect.top + event.params.y,
+            guestX: event.params.x,
+            guestY: event.params.y,
+            linkURL: event.params.linkURL,
+            srcURL: event.params.srcURL,
+            mediaType: event.params.mediaType,
+            selectionText: event.params.selectionText,
+            pageURL: event.params.pageURL
+          })
+        }) as EventListener
+      ],
+      [
+        'found-in-page',
+        ((event: FoundInPageEvent) => {
+          // Intermediate updates carry running totals; only the final one is
+          // authoritative for the count.
+          useBrowserGuests.getState().setFindResult(tabId, {
+            activeMatch: event.result.activeMatchOrdinal,
+            matchCount: event.result.matches
+          })
+        }) as EventListener
+      ]
     ]
     for (const [name, listener] of listeners) {
       element.addEventListener(name, listener)
@@ -136,7 +224,7 @@ export function BrowserGuestView({
   return (
     <div
       className="browser-guest"
-      style={guestStyle(startPageVisible ? null : rect)}
+      style={guestStyle(overlayVisible ? null : rect)}
     >
       <webview
         ref={(element) => {
@@ -153,6 +241,13 @@ export function BrowserGuestView({
         // renderToStaticMarkup: {true} → no attribute, '' → attribute set.
         allowpopups={'' as unknown as boolean}
       />
+      {contextMenu !== null && (
+        <BrowserContextMenu
+          tabId={tabId}
+          state={contextMenu}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   )
 }

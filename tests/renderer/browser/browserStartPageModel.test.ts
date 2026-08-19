@@ -5,7 +5,6 @@ import {
   browserFavoriteShortcuts,
   hostnameForUrl,
   initialForUrl,
-  opensOnStartPage,
   toneForUrl
 } from '../../../src/renderer/src/features/browser/browserStartPageModel'
 
@@ -26,12 +25,6 @@ function favorite(overrides: Partial<Favorite>): Favorite {
 }
 
 describe('browser start-page model', () => {
-  test('never routes tabs to the retired start page', () => {
-    expect(opensOnStartPage(LEGACY_NEW_TAB_URL)).toBe(false)
-    expect(opensOnStartPage('https://google.com')).toBe(false)
-    expect(opensOnStartPage('https://example.com')).toBe(false)
-  })
-
   test('derives a local, deterministic domain mark', () => {
     expect(hostnameForUrl('https://www.example.com/path')).toBe('example.com')
     expect(initialForUrl('https://www.example.com/path')).toBe('E')

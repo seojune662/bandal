@@ -107,7 +107,7 @@ function attachGuestPolicies(host: WebContents, guest: WebContents): void {
     const action = passthroughShortcut(input)
     if (action !== null && !host.isDestroyed()) {
       event.preventDefault()
-      const payload: ShortcutPassthrough = { action }
+      const payload: ShortcutPassthrough = { action, webContentsId: guest.id }
       host.send('shortcut:passthrough', payload)
     }
   })

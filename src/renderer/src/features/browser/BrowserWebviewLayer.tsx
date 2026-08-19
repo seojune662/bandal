@@ -40,12 +40,12 @@ function useGuestReaper(): void {
             openBrowserTabs.add(descriptor.payload.tabId)
           }
         }
-        const { nav, recent, startPageVisible, removeGuest } =
+        const { nav, recent, overlay, removeGuest } =
           useBrowserGuests.getState()
         const sessionTabIds = new Set([
           ...Object.keys(nav),
           ...Object.keys(recent),
-          ...Object.keys(startPageVisible)
+          ...Object.keys(overlay)
         ])
         for (const tabId of sessionTabIds) {
           if (!openBrowserTabs.has(tabId)) removeGuest(tabId)

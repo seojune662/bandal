@@ -49,19 +49,52 @@ describe('resolveShortcut — chords', () => {
     })
   })
 
-  test('⌘1..⌘9 activate the nth tab (0-based index)', () => {
+  test('⌘1..⌘8 activate the nth tab (0-based index)', () => {
     expect(resolveShortcut(input({ key: '1', metaKey: true }))).toEqual({
       type: 'activate-tab',
       index: 0
     })
-    expect(resolveShortcut(input({ key: '9', metaKey: true }))).toEqual({
+    expect(resolveShortcut(input({ key: '8', metaKey: true }))).toEqual({
       type: 'activate-tab',
-      index: 8
+      index: 7
     })
   })
 
-  test('⌘0 is not a shortcut', () => {
-    expect(resolveShortcut(input({ key: '0', metaKey: true }))).toBeNull()
+  test('⌘9 is the LAST tab, as in every browser', () => {
+    expect(resolveShortcut(input({ key: '9', metaKey: true }))).toEqual({
+      type: 'activate-last-tab'
+    })
+  })
+
+  test('browser chrome chords resolve', () => {
+    expect(resolveShortcut(input({ key: 'r', metaKey: true }))).toEqual({
+      type: 'browser-reload',
+      ignoreCache: false
+    })
+    expect(
+      resolveShortcut(input({ key: 'r', metaKey: true, shiftKey: true }))
+    ).toEqual({ type: 'browser-reload', ignoreCache: true })
+    expect(resolveShortcut(input({ key: 'l', metaKey: true }))).toEqual({
+      type: 'browser-focus-address'
+    })
+    expect(resolveShortcut(input({ key: 'f', metaKey: true }))).toEqual({
+      type: 'browser-find'
+    })
+  })
+
+  test('⌘+ / ⌘- / ⌘0 drive zoom', () => {
+    expect(resolveShortcut(input({ key: '=', metaKey: true }))).toEqual({
+      type: 'browser-zoom',
+      direction: 'in'
+    })
+    expect(resolveShortcut(input({ key: '-', metaKey: true }))).toEqual({
+      type: 'browser-zoom',
+      direction: 'out'
+    })
+    expect(resolveShortcut(input({ key: '0', metaKey: true }))).toEqual({
+      type: 'browser-zoom',
+      direction: 'reset'
+    })
   })
 
   test('ctrl works as the modifier too (non-mac parity)', () => {
@@ -83,13 +116,32 @@ describe('resolveShortcut — guards', () => {
     expect(resolveShortcut(input({ key: 'w' }))).toBeNull()
   })
 
-  test('alt or shift disqualifies the chord (⌘⇧T ≠ ⌘T)', () => {
-    expect(
-      resolveShortcut(input({ key: 't', metaKey: true, shiftKey: true }))
-    ).toBeNull()
+  test('alt always disqualifies the chord', () => {
     expect(
       resolveShortcut(input({ key: 'w', metaKey: true, altKey: true }))
     ).toBeNull()
+    expect(
+      resolveShortcut(input({ key: 't', metaKey: true, altKey: true }))
+    ).toBeNull()
+  })
+
+  test('⇧ selects a different action rather than being ignored', () => {
+    // ⌘T opens the new-tab menu; ⌘⇧T reopens the last closed tab.
+    expect(
+      resolveShortcut(input({ key: 't', metaKey: true, shiftKey: true }))
+    ).toEqual({ type: 'reopen-tab' })
+    expect(resolveShortcut(input({ key: 't', metaKey: true }))).toEqual({
+      type: 'new-tab'
+    })
+  })
+
+  test('⌘⇧[ and ⌘⇧] cycle tabs', () => {
+    expect(
+      resolveShortcut(input({ key: '[', metaKey: true, shiftKey: true }))
+    ).toEqual({ type: 'cycle-tab', delta: -1 })
+    expect(
+      resolveShortcut(input({ key: ']', metaKey: true, shiftKey: true }))
+    ).toEqual({ type: 'cycle-tab', delta: 1 })
   })
 
   test('IME composition suppresses everything', () => {

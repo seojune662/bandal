@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { accessSync, constants as fsConstants } from 'node:fs'
-import { extname } from 'node:path'
+import { extname, join } from 'node:path'
 import {
   app,
   BrowserWindow,
@@ -18,6 +18,7 @@ import {
   ipcMain,
   nativeImage,
   protocol,
+  session,
   shell
 } from 'electron'
 import type { NativeImage } from 'electron'
@@ -63,6 +64,8 @@ import {
   killAllClaudeProcessesSync
 } from '../features/agent'
 import {
+  attachDownloadHandler,
+  BROWSING_PARTITION,
   createBrowserSessionStore,
   fetchLinkForMaterials
 } from '../features/browser'
@@ -610,17 +613,23 @@ export function registerHandlers(): IpcRouter {
   const agentConfirmer = createAgentConfirmer({
     emit: (request) => broadcast('agentTools:confirm', request)
   })
-  let agentTurnSeq = 0
   const startToolServer = async (
     courseId: string,
-    sessionKey: string
+    sessionKey: string,
+    getTurnSeq: () => number
   ): Promise<Awaited<ReturnType<typeof startAgentToolsServer>>> =>
     startAgentToolsServer({
       sessionId: sessionKey,
       userDataPath: app.getPath('userData'),
       deps: {
         courseId,
-        getTurnId: () => `${courseId}:${agentTurnSeq}`,
+        // Keyed by conversation, not course: two conversations in one course
+        // are separate turn streams, and Claude and Codex share this factory.
+        // The number comes from `chatRepo.nextTurnSeq` via SessionManager —
+        // a module-level counter here would never advance, which silently
+        // froze `AGENT_TURN_LIMITS` (a spent budget stayed spent until the app
+        // restarted) and lumped every action ever into one undo group.
+        getTurnId: () => `${sessionKey}:${getTurnSeq()}`,
         coursesRepo,
         materialsRepo,
         notesRepo,
@@ -897,6 +906,28 @@ export function registerHandlers(): IpcRouter {
   handle('browser:sessionSites', async () => ({
     sites: await browserSessions.listSites()
   }))
+
+  // -- browser downloads ----------------------------------------------------
+  // `will-download` only sees the guest, so the renderer tells us which course
+  // a download belongs to. null = no course selected → the OS default folder.
+  let downloadCourseId: string | null = null
+  handle('browser:setDownloadTarget', (req) => {
+    downloadCourseId = req.courseId
+    return OK
+  })
+  attachDownloadHandler(session.fromPartition(BROWSING_PARTITION), {
+    stagingRoot: join(app.getPath('temp'), 'bandal-downloads'),
+    getTargetCourseId: () => downloadCourseId,
+    adoptFile: (input) => materialsRepo.adoptFile(input),
+    emit: (update) => {
+      broadcast('browser:download', update)
+      // The watcher also fires, but announcing the course explicitly keeps the
+      // tree honest when the file lands while another course is on screen.
+      if (update.state === 'completed' && update.courseId !== null) {
+        broadcast('materials:changed', { courseId: update.courseId })
+      }
+    }
+  })
   handle('browser:clearSession', (req) => browserSessions.clear(req.origin))
 
   // -- group whiteboard ------------------------------------------------------

@@ -1,0 +1,202 @@
+/**
+ * Browser downloads land in the course folder, not `~/Downloads`.
+ *
+ * Getting a lecture PDF out of the school LMS and next to the rest of the
+ * course is the weekly action this whole embedded browser exists for, and
+ * until now Chromium's default sent it somewhere else entirely
+ * (improvement-backlog §6.2, NEXT.md #23).
+ *
+ * ## Why stage in temp and adopt afterwards
+ *
+ * `item.setSavePath()` has to be called synchronously inside the handler, so
+ * the destination is chosen before a single byte arrives. Pointing it straight
+ * at the course folder would mean:
+ *   - the materials watcher sees a growing partial file and puts it in the tree
+ *   - a cancelled or interrupted download leaves a corrupt "lecture PDF" there
+ *   - name-collision handling would have to run before we know the real name
+ *
+ * So Chromium streams into a private staging dir and, only on `completed`,
+ * `materialsRepo.adoptFile` moves it in under the same path guards every other
+ * write goes through. The bytes never pass through this process.
+ */
+
+import { randomUUID } from 'node:crypto'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import type { DownloadItem, Session } from 'electron'
+import {
+  FALLBACK_FILE_NAME,
+  sanitizeFileName
+} from './linkDownload'
+
+import type { BrowserDownloadUpdate } from '../../../shared/ipc/events'
+
+export type { BrowserDownloadUpdate }
+
+export interface DownloadsDeps {
+  /** Where staged files live. Injected so tests need no Electron. */
+  stagingRoot: string
+  /**
+   * Course to file downloads under, or null when no course is selected — then
+   * the download is left to the OS default rather than silently dropped.
+   */
+  getTargetCourseId: () => string | null
+  adoptFile: (input: {
+    courseId: string
+    dirRelPath: string
+    fileName: string
+    sourcePath: string
+  }) => { relPath: string }
+  emit: (update: BrowserDownloadUpdate) => void
+  /** Progress is throttled to this; `updated` fires per chunk. */
+  progressIntervalMs?: number
+  now?: () => number
+}
+
+const DEFAULT_PROGRESS_INTERVAL_MS = 200
+
+/** `item.getFilename()` is Chromium's already-parsed Content-Disposition. */
+export function downloadFileName(raw: string): string {
+  const cleaned = sanitizeFileName(raw)
+  return cleaned === '' ? FALLBACK_FILE_NAME : cleaned
+}
+
+/**
+ * The core, free of Electron types beyond the item itself, so the state
+ * machine is testable against a fake.
+ */
+export function createDownloadHandler(deps: DownloadsDeps) {
+  const interval = deps.progressIntervalMs ?? DEFAULT_PROGRESS_INTERVAL_MS
+  const now = deps.now ?? Date.now
+
+  return function handle(
+    item: Pick<
+      DownloadItem,
+      | 'getFilename'
+      | 'getTotalBytes'
+      | 'getReceivedBytes'
+      | 'setSavePath'
+      | 'getSavePath'
+      | 'on'
+    >,
+    webContentsId: number | null
+  ): void {
+    const id = randomUUID()
+    const fileName = downloadFileName(item.getFilename())
+    const courseId = deps.getTargetCourseId()
+
+    // No course selected: let Chromium do its default thing. Refusing the
+    // download outright would be worse than putting it in ~/Downloads.
+    if (courseId === null) {
+      deps.emit({
+        id,
+        webContentsId,
+        fileName,
+        receivedBytes: 0,
+        totalBytes: item.getTotalBytes(),
+        state: 'progressing',
+        relPath: null,
+        courseId: null,
+        failureReason: null
+      })
+      return
+    }
+
+    const stagingDir = join(deps.stagingRoot, id)
+    mkdirSync(stagingDir, { recursive: true })
+    const stagedPath = join(stagingDir, fileName)
+    item.setSavePath(stagedPath)
+
+    const base = {
+      id,
+      webContentsId,
+      fileName,
+      totalBytes: item.getTotalBytes(),
+      courseId
+    }
+    deps.emit({
+      ...base,
+      receivedBytes: 0,
+      state: 'progressing',
+      relPath: null,
+      failureReason: null
+    })
+
+    let lastEmit = 0
+    item.on('updated', (_event, state) => {
+      const at = now()
+      // `updated` fires per chunk — a 300MB video would flood the renderer.
+      if (state === 'progressing' && at - lastEmit < interval) return
+      lastEmit = at
+      deps.emit({
+        ...base,
+        receivedBytes: item.getReceivedBytes(),
+        totalBytes: item.getTotalBytes(),
+        state: 'progressing',
+        relPath: null,
+        failureReason: null
+      })
+    })
+
+    item.on('done', (_event, state) => {
+      if (state !== 'completed') {
+        cleanStaging(stagingDir)
+        deps.emit({
+          ...base,
+          receivedBytes: item.getReceivedBytes(),
+          state: state === 'cancelled' ? 'cancelled' : 'interrupted',
+          relPath: null,
+          failureReason: null
+        })
+        return
+      }
+      try {
+        const { relPath } = deps.adoptFile({
+          courseId,
+          dirRelPath: '',
+          fileName,
+          sourcePath: item.getSavePath()
+        })
+        deps.emit({
+          ...base,
+          receivedBytes: item.getReceivedBytes(),
+          state: 'completed',
+          relPath,
+          failureReason: null
+        })
+      } catch (error) {
+        // The transfer worked; only filing it failed. Say so rather than
+        // reporting a download failure the student cannot act on.
+        deps.emit({
+          ...base,
+          receivedBytes: item.getReceivedBytes(),
+          state: 'interrupted',
+          relPath: null,
+          failureReason:
+            error instanceof Error ? error.message : 'could not file the download'
+        })
+      } finally {
+        cleanStaging(stagingDir)
+      }
+    })
+  }
+}
+
+function cleanStaging(dir: string): void {
+  try {
+    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true })
+  } catch {
+    // A leftover temp dir is harmless; the OS reclaims it.
+  }
+}
+
+/** Wires the handler onto the browsing session. Idempotent per session. */
+export function attachDownloadHandler(
+  browsingSession: Session,
+  deps: DownloadsDeps
+): void {
+  const handle = createDownloadHandler(deps)
+  browsingSession.on('will-download', (_event, item, webContents) => {
+    handle(item, webContents?.id ?? null)
+  })
+}

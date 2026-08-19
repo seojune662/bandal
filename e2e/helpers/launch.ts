@@ -31,6 +31,8 @@ export interface BandalApp {
   dataRoot: string
   /** Temp Electron userData dir (settings.json, bandal.db). */
   userDataDir: string
+  /** Parent of both, for relaunching into the same profile. */
+  profileDir: string
   close: () => Promise<void>
 }
 
@@ -39,35 +41,48 @@ export interface BandalApp {
  * main window to render. Onboarding is pre-marked closed so specs land
  * directly on the shell.
  */
-export async function launchBandal(): Promise<BandalApp> {
-  const profileDir = mkdtempSync(join(tmpdir(), 'bandal-e2e-'))
+/**
+ * `reuseProfileDir` relaunches against an existing profile, which is the only
+ * way to test anything that must survive a restart (layout restore, cookies).
+ * Pair it with `keepProfileOnClose` on the FIRST launch, or `close()` deletes
+ * the profile the relaunch is supposed to read.
+ */
+export async function launchBandal(
+  options: { reuseProfileDir?: string; keepProfileOnClose?: boolean } = {}
+): Promise<BandalApp> {
+  const profileDir =
+    options.reuseProfileDir ?? mkdtempSync(join(tmpdir(), 'bandal-e2e-'))
   const userDataDir = join(profileDir, 'user-data')
   const dataRoot = join(profileDir, 'Bandal')
   mkdirSync(userDataDir, { recursive: true })
   mkdirSync(dataRoot, { recursive: true })
 
   // Seed settings: dark theme, temp data root, onboarding already dismissed.
-  writeFileSync(
-    join(userDataDir, 'settings.json'),
-    JSON.stringify(
-      {
-        theme: 'dark',
-        agentProvider: 'claude-code',
-        dataRoot,
-        locale: 'ko-KR',
-        onboarding: {
-          flowVersion: ONBOARDING_FLOW_VERSION,
-          closedAt: new Date().toISOString(),
-          lastCompletedStep: 3
+  // Only for a FRESH profile — a relaunch must keep what the first run wrote
+  // (lastActiveCourseId above all), or nothing course-scoped can be restored.
+  if (options.reuseProfileDir === undefined) {
+    writeFileSync(
+      join(userDataDir, 'settings.json'),
+      JSON.stringify(
+        {
+          theme: 'dark',
+          agentProvider: 'claude-code',
+          dataRoot,
+          locale: 'ko-KR',
+          onboarding: {
+            flowVersion: ONBOARDING_FLOW_VERSION,
+            closedAt: new Date().toISOString(),
+            lastCompletedStep: 3
+          },
+          // Tour offer (.tour-offer) is a pointer-intercepting dialog — it
+          // pops mid-test and steals clicks. Mark the tour as already seen.
+          tutorial: { seenVersion: 1, activeCourseId: null }
         },
-        // Tour offer (.tour-offer) is a pointer-intercepting dialog — it pops
-        // mid-test and steals clicks. Mark the tour as already seen.
-        tutorial: { seenVersion: 1, activeCourseId: null }
-      },
-      null,
-      2
+        null,
+        2
+      )
     )
-  )
+  }
 
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env)) {
@@ -92,10 +107,14 @@ export async function launchBandal(): Promise<BandalApp> {
 
   const close = async (): Promise<void> => {
     await app.close()
-    rmSync(profileDir, { recursive: true, force: true })
+    // A relaunch test has to read this profile back, so the first run keeps it
+    // and the second run is what finally removes it.
+    if (options.keepProfileOnClose !== true) {
+      rmSync(profileDir, { recursive: true, force: true })
+    }
   }
 
-  return { app, page, dataRoot, userDataDir, close }
+  return { app, page, dataRoot, userDataDir, profileDir, close }
 }
 
 /**

@@ -582,6 +582,18 @@ export interface IpcContract {
     req: { origin: string | null }
     res: { ok: true }
   }
+  /**
+   * Course that browser downloads should be filed under. Main cannot know it:
+   * `will-download` only sees the guest. null = no course selected, in which
+   * case the download falls through to the OS download folder.
+   *
+   * Deliberately NOT read from `settings.lastActiveCourseId` — that write is
+   * debounced, so a download could land in the previously selected course.
+   */
+  'browser:setDownloadTarget': {
+    req: { courseId: string | null }
+    res: { ok: true }
+  }
 
   // -- course activity + AI study tools -------------------------------------
   /**
@@ -1141,6 +1153,7 @@ export const IPC_CHANNELS = [
   'agent:login',
   'browser:sessionSites',
   'browser:clearSession',
+  'browser:setDownloadTarget',
   'agentTools:changes',
   'agentTools:undo',
   'agentTools:respondConfirm',

@@ -13,6 +13,7 @@ import {
   readFileSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeFileSync
 } from 'node:fs'
 import type { Dirent } from 'node:fs'
@@ -74,6 +75,22 @@ export interface MaterialsRepo {
     fileName: string
     encoding: 'utf8' | 'base64'
     data: string
+  }): { relPath: string }
+  /**
+   * Moves an already-written file into the course folder.
+   *
+   * `writeFile` takes the whole payload as a string, which is fine for a note
+   * but would hold a 300MB lecture video in memory. A browser download is
+   * streamed to a staging path by Chromium and then adopted here, so the bytes
+   * never pass through the main process — but every path guard `writeFile`
+   * runs still applies.
+   */
+  adoptFile(input: {
+    courseId: string
+    dirRelPath: string
+    fileName: string
+    /** Absolute path of the staged file. It is consumed (moved). */
+    sourcePath: string
   }): { relPath: string }
 }
 
@@ -740,6 +757,52 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       const abs = resolveInside(folder, relPath)
       const bytes = decodeWriteData(input.encoding, input.data)
       writeFileSync(abs, bytes, { flag: 'wx' })
+      treeCache.delete(requireId(input.courseId, 'courseId'))
+      return { relPath }
+    },
+
+    adoptFile(input) {
+      const { folder } = requireCourseFolder(input.courseId)
+      if (typeof input.dirRelPath !== 'string') {
+        throw new ValidationError('dirRelPath must be a string')
+      }
+      const sourcePath = requireNonEmptyString(input.sourcePath, 'sourcePath')
+      if (!isAbsolute(sourcePath)) {
+        throw new ValidationError('sourcePath must be absolute')
+      }
+      if (!existsSync(sourcePath) || !lstatSync(sourcePath).isFile()) {
+        throw new NotFoundError('staged download', sourcePath)
+      }
+      const parentAbs = resolveInside(folder, input.dirRelPath, {
+        allowRoot: true
+      })
+      if (!existsSync(parentAbs) || !lstatSync(parentAbs).isDirectory()) {
+        throw new NotFoundError('material directory', input.dirRelPath)
+      }
+
+      const requestedName = requireBasename(input.fileName, 'fileName')
+      const requestedAbs = resolveInside(
+        folder,
+        input.dirRelPath === ''
+          ? requestedName
+          : posix.join(input.dirRelPath, requestedName)
+      )
+      const fileName = existsSync(requestedAbs)
+        ? unusedDuplicateName(parentAbs, requestedName)
+        : requestedName
+      const relPath =
+        input.dirRelPath === '' ? fileName : posix.join(input.dirRelPath, fileName)
+      const abs = resolveInside(folder, relPath)
+
+      try {
+        renameSync(sourcePath, abs)
+      } catch (error) {
+        // Staging lives in the OS temp dir, which is very often a different
+        // volume — rename fails with EXDEV there and a copy is the only move.
+        if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error
+        copyFileSync(sourcePath, abs)
+        unlinkSync(sourcePath)
+      }
       treeCache.delete(requireId(input.courseId, 'courseId'))
       return { relPath }
     }

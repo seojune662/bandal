@@ -5,7 +5,14 @@
 
 import type { SVGProps } from 'react'
 
-export type BrowserIconName = 'arrowLeft' | 'arrowRight' | 'globe' | 'lock'
+export type BrowserIconName =
+  | 'arrowLeft'
+  | 'arrowRight'
+  | 'globe'
+  | 'lock'
+  | 'download'
+  | 'chevronUp'
+  | 'chevronDown'
 
 interface BrowserIconProps extends SVGProps<SVGSVGElement> {
   name: BrowserIconName
@@ -13,6 +20,11 @@ interface BrowserIconProps extends SVGProps<SVGSVGElement> {
 
 const paths: Record<BrowserIconName, JSX.Element> = {
   arrowLeft: <path d="M19 12H5m6-6-6 6 6 6" />,
+  chevronUp: <path d="m6 14.5 6-6 6 6" />,
+  chevronDown: <path d="m6 9.5 6 6 6-6" />,
+  download: (
+    <path d="M12 3.5v11m0 0 4.5-4.5M12 14.5 7.5 10M4.5 17v2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2" />
+  ),
   arrowRight: <path d="M5 12h14m-6-6 6 6-6 6" />,
   globe: (
     <>

@@ -18,6 +18,7 @@ import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
 import { selectNeedsNickname, useAuthStore } from '../stores/authStore'
 import { useCoursesStore } from '../stores/coursesStore'
 import { useUiStore } from '../stores/uiStore'
+import { useDownloads } from '../features/browser/downloadsStore'
 import { useUniversityStore } from '../stores/universityStore'
 import { QuickFileSearch } from './QuickFileSearch'
 import { useGlobalShortcuts } from './shortcuts'
@@ -64,7 +65,20 @@ export function AppShell(): JSX.Element {
     void useAgentPreflight.getState().probe()
     // [M8] 학교 바로가기 — the rail section renders nothing until this lands.
     void useUniversityStore.getState().init()
+    useDownloads.getState().init()
   }, [initTheme, loadCourses])
+
+  // Browser downloads are filed under the selected course. Main only sees the
+  // guest, so the renderer has to name the course — and re-name it on every
+  // switch, or a download lands in whichever course was open at boot.
+  useEffect(() => {
+    void useDownloads
+      .getState()
+      .setTargetCourse(selectedCourseId)
+      .catch((error: unknown) => {
+        console.error('[Bandal] 다운로드 저장 위치를 설정하지 못했습니다.', error)
+      })
+  }, [selectedCourseId])
 
   // The assistant can now create, rename and remove courses on its own, so the
   // list has to follow changes it did not originate in this window.

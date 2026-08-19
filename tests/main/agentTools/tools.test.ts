@@ -25,6 +25,8 @@ interface Harness {
   tools: AgentTools
   deps: AgentToolsDeps
   actions: AgentJournalEntry[]
+  /** Advances the turn, the way a new `send()` does in production. */
+  nextTurn: () => void
 }
 
 function makeHarness(): Harness {
@@ -45,9 +47,10 @@ function makeHarness(): Harness {
   const boardRepo = createBoardRepo(ctx.db)
   const canvasRepo = createCanvasRepo(ctx.db)
   const actions: AgentJournalEntry[] = []
+  let turnSeq = 1
   const deps: AgentToolsDeps = {
     courseId: hostCourse.id,
-    getTurnId: () => 'turn-1',
+    getTurnId: () => `turn-${turnSeq}`,
     coursesRepo,
     materialsRepo,
     notesRepo,
@@ -62,7 +65,10 @@ function makeHarness(): Harness {
     courseFolder: hostCourse.folderPath,
     tools: createAgentTools(deps),
     deps,
-    actions
+    actions,
+    nextTurn: () => {
+      turnSeq += 1
+    }
   }
 }
 
@@ -295,6 +301,50 @@ describe('agent app tools', () => {
     })
     expect(overflow.isError).toBe(true)
     expect(message(overflow)).toContain('상한은 20개')
+  })
+
+  test('frees the per-turn budget once the turn advances', async () => {
+    // Regression: `getTurnId` used to be backed by a module-level counter in
+    // registerHandlers that was never incremented, so it returned the same id
+    // for the life of the process. `used` only resets when the id changes,
+    // which made every budget cumulative — once a student's agent had created
+    // 20 courses across a whole session, `create_course` stayed dead until the
+    // app restarted, with no message explaining why.
+    for (let index = 0; index < AGENT_TURN_LIMITS.courses; index += 1) {
+      const result = await harness.tools.call('create_course', {
+        name: `1턴 과목 ${index}`,
+        color: 'blue'
+      })
+      expect(result.isError).not.toBe(true)
+    }
+    expect(
+      (
+        await harness.tools.call('create_course', {
+          name: '1턴 초과',
+          color: 'blue'
+        })
+      ).isError
+    ).toBe(true)
+
+    harness.nextTurn()
+
+    const afterTurn = await harness.tools.call('create_course', {
+      name: '2턴 과목',
+      color: 'blue'
+    })
+    expect(afterTurn.isError).not.toBe(true)
+  })
+
+  test('groups a turn\u2019s journal rows under that turn', async () => {
+    // The same frozen id lumped every action ever taken into one undo group.
+    await harness.tools.call('create_course', { name: '저널 1턴', color: 'blue' })
+    harness.nextTurn()
+    await harness.tools.call('create_course', { name: '저널 2턴', color: 'blue' })
+
+    const turnIds = harness.actions
+      .filter((action) => action.tool === 'create_course')
+      .map((action) => action.turnId)
+    expect(new Set(turnIds).size).toBe(2)
   })
 
   test('rejects file creations beyond the per-turn limit', async () => {
