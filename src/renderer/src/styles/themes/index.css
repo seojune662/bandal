@@ -2,13 +2,17 @@
  * entry point that loads tokens gets all themes — no per-entry imports.
  *
  * Adding a theme: drop `<id>.css` next to these, add one `@import` line here,
- * and add one entry to `THEMES` in `src/shared/theme.ts`. Nothing else.
+ * one entry in `THEMES` (`src/shared/theme.ts`), and one
+ * `--swatch-<palette>-<newmode>-*` set per palette in `styles/palettes/`.
+ * A theme file owns the mode: surfaces, text, borders, shadows and every
+ * content color (`--course-*`, `--highlight-*`, `--status-*`, `--danger*`).
+ * The accent family is the palette layer's job — see `palettes/index.css`.
  * Order does not matter: each file scopes its tokens to its own
  * `:root[data-theme='<id>']` selector.
  */
 
-@import './dark-navy.css';      /* id: dark          — 반달 다크 (default) */
-@import './light.css';          /* id: light         — 반달 라이트 */
+@import './dark-navy.css';      /* id: dark          — 다크 (default) */
+@import './light.css';          /* id: light         — 라이트 */
 @import './midnight.css';       /* id: midnight      — 자정 (OLED) */
 @import './sepia.css';          /* id: sepia         — 세피아 (열람실) */
 @import './high-contrast.css';  /* id: high-contrast — 고대비 */

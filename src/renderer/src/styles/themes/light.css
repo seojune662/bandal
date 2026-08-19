@@ -1,5 +1,5 @@
-/* 반달 라이트 (id: light) — warm paper, designed on its own terms (not an
- * inversion of 반달 다크): ivory paper surfaces, ink-brown text, and a
+/* 라이트 (id: light) — warm paper at the 반달 palette, designed on its own
+ * terms (not an inversion of the dark mode): ivory surfaces, ink-brown text, and a
  * bronzed amber accent dark enough to be read as text and as a button label.
  * Registered in src/shared/theme.ts; `windowBackground` must equal `--bg-app`.
  *
@@ -8,13 +8,6 @@
  *   text-muted/bg-app 5.06 (was 3.62) · accent-as-text/bg-app 5.14 (was 3.40)
  *   on-accent/accent 5.61 · on-danger/danger 5.52
  */
-
-:root {
-  --preview-light-bg: oklch(97% 0.012 85);
-  --preview-light-surface: oklch(98.5% 0.007 90);
-  --preview-light-text: oklch(25% 0.02 70);
-  --preview-light-accent: oklch(52% 0.105 75);
-}
 
 :root[data-theme='light'] {
   color-scheme: light;

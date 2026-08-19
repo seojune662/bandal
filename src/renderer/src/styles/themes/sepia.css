@@ -13,13 +13,6 @@
  *   accent-as-text/bg-app 6.24 · on-accent/accent 7.79 · on-danger/danger 7.14
  */
 
-:root {
-  --preview-sepia-bg: oklch(92.5% 0.028 82);
-  --preview-sepia-surface: oklch(95.5% 0.022 84);
-  --preview-sepia-text: oklch(28% 0.03 58);
-  --preview-sepia-accent: oklch(44% 0.12 252);
-}
-
 :root[data-theme='sepia'] {
   color-scheme: light;
 

@@ -1,0 +1,132 @@
+/* 이끼 (id: moss) — deep-green charcoal with a sage signal.
+ *
+ * Point of view: the palette for the long sit. Green is the hue the eye
+ * accommodates with the least effort, so the shell is a green-leaning charcoal
+ * (hue 156–160) and the accent is a sage that reads as "still here" rather
+ * than "look at me" — the opposite of gold's urgency. Nothing in it competes
+ * with a PDF page.
+ *
+ * See ink.css for the layering rule (palettes own surfaces + accent; modes
+ * own --course-*, --highlight-*, --status-* and --danger*).
+ *
+ * --text-muted is 63%, not 61%: 61% measured 4.31 against --bg-raised.
+ */
+
+:root {
+  --swatch-moss-dark-bg: oklch(17% 0.014 160);
+  --swatch-moss-dark-surface: oklch(20% 0.017 158);
+  --swatch-moss-dark-text: oklch(93% 0.01 140);
+  --swatch-moss-dark-accent: oklch(80% 0.09 125);
+
+  --swatch-moss-light-bg: oklch(96.8% 0.008 140);
+  --swatch-moss-light-surface: oklch(98.3% 0.005 140);
+  --swatch-moss-light-text: oklch(23% 0.02 150);
+  --swatch-moss-light-accent: oklch(46% 0.1 140);
+
+  --swatch-moss-midnight-bg: oklch(0% 0 0);
+  --swatch-moss-midnight-surface: oklch(13% 0.008 160);
+  --swatch-moss-midnight-text: oklch(88% 0.006 140);
+  --swatch-moss-midnight-accent: oklch(72% 0.07 130);
+
+  --swatch-moss-sepia-bg: oklch(92.5% 0.028 82);
+  --swatch-moss-sepia-surface: oklch(95.5% 0.022 84);
+  --swatch-moss-sepia-text: oklch(28% 0.03 58);
+  --swatch-moss-sepia-accent: oklch(42% 0.09 150);
+
+  --swatch-moss-high-contrast-bg: oklch(100% 0 0);
+  --swatch-moss-high-contrast-surface: oklch(95% 0 0);
+  --swatch-moss-high-contrast-text: oklch(0% 0 0);
+  --swatch-moss-high-contrast-accent: oklch(40% 0.11 145);
+
+  --swatch-moss-graphite-bg: oklch(28% 0 0);
+  --swatch-moss-graphite-surface: oklch(33% 0 0);
+  --swatch-moss-graphite-text: oklch(95% 0 0);
+  --swatch-moss-graphite-accent: oklch(76% 0.05 135);
+}
+
+/* --- tinted modes ------------------------------------------------------- */
+
+:root[data-palette='moss'][data-theme='dark'] {
+  --bg-app: oklch(17% 0.014 160);        /* #0a110d */
+  --bg-surface: oklch(20% 0.017 158);
+  --bg-raised: oklch(24.5% 0.02 156);
+  --bg-overlay: oklch(28.5% 0.022 156 / 0.92);
+
+  --text-primary: oklch(93% 0.01 140);
+  --text-secondary: oklch(74% 0.02 145);
+  --text-muted: oklch(63% 0.03 148);     /* AA fix: 61% measured 4.31/raised */
+
+  --accent: oklch(80% 0.09 125);
+  --accent-muted: oklch(80% 0.09 125 / 0.15);
+  --on-accent: oklch(17% 0.014 160);
+  --on-danger: oklch(17% 0.014 160);
+  --backdrop: oklch(5% 0.01 160 / 0.68);
+
+  --border-subtle: oklch(92% 0.015 140 / 0.08);
+  --border-strong: oklch(92% 0.015 140 / 0.18);
+
+  --shadow-sm: 0 1px 2px oklch(4% 0.01 160 / 0.5);
+  --shadow-md: 0 4px 12px oklch(4% 0.01 160 / 0.45);
+  --shadow-lg: 0 12px 32px oklch(4% 0.01 160 / 0.55);
+}
+
+:root[data-palette='moss'][data-theme='light'] {
+  --bg-app: oklch(96.8% 0.008 140);      /* #f2f6f1 */
+  --bg-surface: oklch(98.3% 0.005 140);
+  --bg-raised: oklch(100% 0 0);
+  --bg-overlay: oklch(100% 0 0 / 0.94);
+
+  --text-primary: oklch(23% 0.02 150);
+  --text-secondary: oklch(43% 0.025 148);
+  --text-muted: oklch(50% 0.025 148);
+
+  --accent: oklch(46% 0.1 140);
+  --accent-muted: oklch(46% 0.1 140 / 0.13);
+  --on-accent: oklch(100% 0 0);
+  --backdrop: oklch(22% 0.025 150 / 0.38);
+
+  --border-subtle: oklch(30% 0.03 145 / 0.12);
+  --border-strong: oklch(30% 0.03 145 / 0.26);
+
+  --shadow-sm: 0 1px 2px oklch(30% 0.02 148 / 0.1);
+  --shadow-md: 0 4px 12px oklch(30% 0.02 148 / 0.12);
+  --shadow-lg: 0 12px 32px oklch(30% 0.02 148 / 0.16);
+}
+
+:root[data-palette='moss'][data-theme='midnight'] {
+  --bg-app: oklch(0% 0 0);
+  --bg-surface: oklch(13% 0.008 160);
+  --bg-raised: oklch(18% 0.01 158);
+  --bg-overlay: oklch(16% 0.01 158 / 0.96);
+
+  --text-primary: oklch(88% 0.006 140);
+  --text-secondary: oklch(72% 0.01 145);
+  --text-muted: oklch(62% 0.014 145);
+
+  --accent: oklch(72% 0.07 130);
+  --accent-muted: oklch(72% 0.07 130 / 0.18);
+  --on-accent: oklch(0% 0 0);
+
+  --border-subtle: oklch(88% 0.006 140 / 0.13);
+  --border-strong: oklch(88% 0.006 140 / 0.28);
+}
+
+/* --- flat modes: accent only -------------------------------------------- */
+
+:root[data-palette='moss'][data-theme='sepia'] {
+  --accent: oklch(42% 0.09 150);
+  --accent-muted: oklch(42% 0.09 150 / 0.13);
+  --on-accent: oklch(100% 0 0);
+}
+
+:root[data-palette='moss'][data-theme='high-contrast'] {
+  --accent: oklch(40% 0.11 145);
+  --accent-muted: oklch(40% 0.11 145 / 0.15);
+  --on-accent: oklch(100% 0 0);
+}
+
+:root[data-palette='moss'][data-theme='graphite'] {
+  --accent: oklch(76% 0.05 135);
+  --accent-muted: oklch(76% 0.05 135 / 0.18);
+  --on-accent: oklch(28% 0 0);
+}

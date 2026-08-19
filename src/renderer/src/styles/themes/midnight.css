@@ -12,13 +12,6 @@
  *   on-accent/accent 11.16 · on-danger/danger 6.81
  */
 
-:root {
-  --preview-midnight-bg: oklch(0% 0 0);
-  --preview-midnight-surface: oklch(15% 0.006 260);
-  --preview-midnight-text: oklch(88% 0.006 250);
-  --preview-midnight-accent: oklch(80% 0.09 80);
-}
-
 :root[data-theme='midnight'] {
   color-scheme: dark;
 

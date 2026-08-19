@@ -12,6 +12,15 @@ interface BandalBridgeWindow {
   }
 }
 
+/** The resolved `--bg-app` — the one token both axes can move. */
+async function readBgApp(page: Page): Promise<string> {
+  return page.evaluate(() =>
+    getComputedStyle(document.documentElement)
+      .getPropertyValue('--bg-app')
+      .trim()
+  )
+}
+
 async function assertNoHorizontalOverflow(page: Page): Promise<void> {
   const overflow = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -64,6 +73,47 @@ test.describe('theme', () => {
     })
 
     // Round-trip back to dark: the broadcast keeps working both ways.
+    await page.evaluate(async () => {
+      const bridge = (window as unknown as BandalBridgeWindow).bandal
+      await bridge.invoke('settings:set', { theme: 'dark' })
+    })
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  })
+
+  test('layers a palette over the mode without changing it', async () => {
+    const { page } = bandal
+    await expect(page.locator('html')).toHaveAttribute('data-palette', 'bandal')
+    const bandalBg = await readBgApp(page)
+
+    await page.evaluate(async () => {
+      const bridge = (window as unknown as BandalBridgeWindow).bandal
+      await bridge.invoke('settings:set', { palette: 'moss' })
+    })
+
+    // The mode is untouched; only the color family moved.
+    await expect(page.locator('html')).toHaveAttribute('data-palette', 'moss')
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+    expect(await readBgApp(page)).not.toBe(bandalBg)
+    await assertNoHorizontalOverflow(page)
+    await page.screenshot({
+      path: join(SCREENSHOT_DIR, 'palette-moss-dark.png')
+    })
+
+    // A flat mode: 이끼 re-tints the accent but must inherit 흑연's gray surfaces.
+    await page.evaluate(async () => {
+      const bridge = (window as unknown as BandalBridgeWindow).bandal
+      await bridge.invoke('settings:set', { theme: 'graphite' })
+    })
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
+    const mossGraphite = await readBgApp(page)
+
+    await page.evaluate(async () => {
+      const bridge = (window as unknown as BandalBridgeWindow).bandal
+      await bridge.invoke('settings:set', { palette: 'bandal' })
+    })
+    await expect(page.locator('html')).toHaveAttribute('data-palette', 'bandal')
+    expect(await readBgApp(page)).toBe(mossGraphite)
+
     await page.evaluate(async () => {
       const bridge = (window as unknown as BandalBridgeWindow).bandal
       await bridge.invoke('settings:set', { theme: 'dark' })

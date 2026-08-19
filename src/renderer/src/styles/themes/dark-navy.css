@@ -1,22 +1,16 @@
-/* 반달 다크 (id: dark) — the default theme.
+/* 다크 (id: dark) — the default mode, written at the 반달 palette.
  * Deep night-sky navy layers with a warm moon-gold accent (반달 identity).
+ * A palette may re-cut these surfaces; see styles/palettes/.
  * Registered in src/shared/theme.ts; `windowBackground` there must equal
- * `--bg-app` below (#09101e) or the window flashes on launch.
+ * `--bg-app` below (#09101e) or the window flashes on launch. The picker's
+ * swatches for this mode live in `styles/palettes/<palette>.css`, one set per
+ * palette, since a palette can re-cut these surfaces.
  *
  * Measured contrast (see docs/STYLEGUIDE.md §1.2 for the full table):
  *   text-primary/bg-app 15.00 · text-secondary/bg-app 8.25
  *   text-muted/bg-app 5.65 · text-muted/bg-raised 4.63 (worst body pair, AA)
  *   accent-as-text/bg-app 11.94 · on-accent/accent 11.94 · on-danger/danger 7.21
  */
-
-/* Preview swatches — always readable, whatever theme is active. Consumed by
- * the Appearance picker via var(--preview-dark-*). */
-:root {
-  --preview-dark-bg: oklch(17.5% 0.032 262);
-  --preview-dark-surface: oklch(21.5% 0.036 260);
-  --preview-dark-text: oklch(92% 0.012 250);
-  --preview-dark-accent: oklch(85% 0.095 82);
-}
 
 :root[data-theme='dark'] {
   color-scheme: dark;

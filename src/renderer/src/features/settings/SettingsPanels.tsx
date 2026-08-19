@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
+import type {
+  CSSProperties,
+  KeyboardEvent,
+  MutableRefObject,
+  ReactNode
+} from 'react'
 import { BandalMark } from '../../components/BandalMark'
 import { LOCALES, setLocale, useLocale, useT } from '../../i18n'
 import type { Locale } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
 import { useUpdateStore } from '../../stores/updateStore'
 import { SYSTEM_THEME } from '../../../../shared/theme'
-import type { ThemeId } from '../../../../shared/theme'
+import type { PaletteId, ThemeId } from '../../../../shared/theme'
 import type {
   AgentAvailability,
   AgentProvider
@@ -19,6 +24,7 @@ import type {
 import { reopenedOnboarding } from '../onboarding/onboardingModel'
 import { Icon } from './SettingsIcon'
 
+/** Picker order for the *mode* axis — the registry order, then `system`. */
 const THEME_OPTIONS: readonly ThemePreference[] = [
   'dark',
   'light',
@@ -27,6 +33,14 @@ const THEME_OPTIONS: readonly ThemePreference[] = [
   'high-contrast',
   'graphite',
   'system'
+]
+
+/** Picker order for the *palette* axis — mirrors PALETTES in shared/theme.ts. */
+const PALETTE_OPTIONS: readonly PaletteId[] = [
+  'bandal',
+  'ink',
+  'lavender',
+  'moss'
 ]
 
 const APP_VERSION = '0.1.0'
@@ -297,12 +311,19 @@ export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.E
   )
 }
 
-function previewPalette(id: ThemeId): CSSProperties {
+/**
+ * Points a preview card at one (palette, mode) cell of the swatch table that
+ * `styles/palettes/*.css` exports. Both axes are needed because a palette
+ * re-cuts the surfaces of the tinted modes — a mode card has no single color
+ * until you know which family is active.
+ */
+function swatchVars(palette: PaletteId, mode: ThemeId): CSSProperties {
+  const cell = `--swatch-${palette}-${mode}`
   return {
-    '--preview-bg': `var(--preview-${id}-bg)`,
-    '--preview-surface': `var(--preview-${id}-surface)`,
-    '--preview-text': `var(--preview-${id}-text)`,
-    '--preview-accent': `var(--preview-${id}-accent)`
+    '--preview-bg': `var(${cell}-bg)`,
+    '--preview-surface': `var(${cell}-surface)`,
+    '--preview-text': `var(${cell}-text)`,
+    '--preview-accent': `var(${cell}-accent)`
   } as CSSProperties
 }
 
@@ -317,19 +338,25 @@ function PreviewBody(): JSX.Element {
   )
 }
 
-function ThemePreview({ theme }: { theme: ThemePreference }): JSX.Element {
+function ThemePreview({
+  theme,
+  palette
+}: {
+  theme: ThemePreference
+  palette: PaletteId
+}): JSX.Element {
   if (theme === 'system') {
     return (
       <div className="theme-preview theme-preview--system" aria-hidden="true">
         <span
           className="theme-preview__half"
-          style={previewPalette(SYSTEM_THEME.dark)}
+          style={swatchVars(palette, SYSTEM_THEME.dark)}
         >
           <PreviewBody />
         </span>
         <span
           className="theme-preview__half"
-          style={previewPalette(SYSTEM_THEME.light)}
+          style={swatchVars(palette, SYSTEM_THEME.light)}
         >
           <PreviewBody />
         </span>
@@ -340,7 +367,7 @@ function ThemePreview({ theme }: { theme: ThemePreference }): JSX.Element {
   return (
     <div
       className="theme-preview"
-      style={previewPalette(theme)}
+      style={swatchVars(palette, theme)}
       aria-hidden="true"
     >
       <PreviewBody />
@@ -348,30 +375,31 @@ function ThemePreview({ theme }: { theme: ThemePreference }): JSX.Element {
   )
 }
 
-export function AppearancePanel({
-  theme,
-  saving,
-  error,
-  onSelect
-}: {
-  theme: ThemePreference
-  saving: boolean
-  error: string | null
-  onSelect: (theme: ThemePreference) => void
-}): JSX.Element {
-  const t = useT()
-  const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
-  const selectedIndex = Math.max(0, THEME_OPTIONS.indexOf(theme))
+/**
+ * Roving-tabindex keyboard model shared by both appearance radiogroups:
+ * arrows move *and* select (the preview is the feedback), Home/End jump.
+ */
+function useRovingRadios<T extends string>(
+  options: readonly T[],
+  value: T,
+  onSelect: (next: T) => void
+): {
+  refs: MutableRefObject<Array<HTMLButtonElement | null>>
+  selectedIndex: number
+  handleKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void
+} {
+  const refs = useRef<Array<HTMLButtonElement | null>>([])
+  const selectedIndex = Math.max(0, options.indexOf(value))
 
   const moveTo = (index: number): void => {
-    const count = THEME_OPTIONS.length
+    const count = options.length
     const next = ((index % count) + count) % count
-    optionRefs.current[next]?.focus()
-    onSelect(THEME_OPTIONS[next]!)
+    refs.current[next]?.focus()
+    onSelect(options[next]!)
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    const current = THEME_OPTIONS.indexOf(theme)
+    const current = options.indexOf(value)
     switch (event.key) {
       case 'ArrowRight':
       case 'ArrowDown':
@@ -389,15 +417,87 @@ export function AppearancePanel({
         break
       case 'End':
         event.preventDefault()
-        moveTo(THEME_OPTIONS.length - 1)
+        moveTo(options.length - 1)
         break
       default:
         break
     }
   }
 
+  return { refs, selectedIndex, handleKeyDown }
+}
+
+/**
+ * Appearance is two independent axes (see src/shared/theme.ts): the *mode*
+ * owns the surface ladder, the *palette* owns the color family. Two grids
+ * rather than one 24-cell grid — the cross product is what the tokens
+ * compose, not something the student should have to scan.
+ */
+export function AppearancePanel({
+  theme,
+  palette,
+  saving,
+  error,
+  onSelect,
+  onSelectPalette
+}: {
+  theme: ThemePreference
+  palette: PaletteId
+  saving: boolean
+  error: string | null
+  onSelect: (theme: ThemePreference) => void
+  onSelectPalette: (palette: PaletteId) => void
+}): JSX.Element {
+  const t = useT()
+  const modes = useRovingRadios(THEME_OPTIONS, theme, onSelect)
+  const palettes = useRovingRadios(PALETTE_OPTIONS, palette, onSelectPalette)
+
   return (
     <div className="settings-stack">
+      <SettingsCard
+        title={t('settings.appearance.palette.title')}
+        description={t('settings.appearance.palette.description')}
+      >
+        <div
+          className="theme-grid theme-grid--palette"
+          role="radiogroup"
+          aria-label={t('settings.appearance.palette.selectLabel')}
+          aria-busy={saving}
+          onKeyDown={palettes.handleKeyDown}
+        >
+          {PALETTE_OPTIONS.map((option, index) => {
+            const selected = palette === option
+            return (
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                ref={(node) => {
+                  palettes.refs.current[index] = node
+                }}
+                aria-checked={selected}
+                tabIndex={index === palettes.selectedIndex ? 0 : -1}
+                className={`theme-choice${selected ? ' theme-choice--selected' : ''}`}
+                onClick={() => onSelectPalette(option)}
+              >
+                <ThemePreview theme={theme} palette={option} />
+                <span className="theme-choice__copy">
+                  <span className="theme-choice__label">
+                    {t(`settings.appearance.palette.${option}.label`)}
+                    <span className="theme-choice__check">
+                      {selected && <Icon name="check" size={14} />}
+                    </span>
+                  </span>
+                  <span className="theme-choice__description">
+                    {t(`settings.appearance.palette.${option}.description`)}
+                  </span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </SettingsCard>
+
       <SettingsCard
         title={t('settings.appearance.theme.title')}
         description={t('settings.appearance.theme.description')}
@@ -407,7 +507,7 @@ export function AppearancePanel({
           role="radiogroup"
           aria-label={t('settings.appearance.theme.selectLabel')}
           aria-busy={saving}
-          onKeyDown={handleKeyDown}
+          onKeyDown={modes.handleKeyDown}
         >
           {THEME_OPTIONS.map((option, index) => {
             const selected = theme === option
@@ -417,14 +517,14 @@ export function AppearancePanel({
                 type="button"
                 role="radio"
                 ref={(node) => {
-                  optionRefs.current[index] = node
+                  modes.refs.current[index] = node
                 }}
                 aria-checked={selected}
-                tabIndex={index === selectedIndex ? 0 : -1}
+                tabIndex={index === modes.selectedIndex ? 0 : -1}
                 className={`theme-choice${selected ? ' theme-choice--selected' : ''}`}
                 onClick={() => onSelect(option)}
               >
-                <ThemePreview theme={option} />
+                <ThemePreview theme={option} palette={palette} />
                 <span className="theme-choice__copy">
                   <span className="theme-choice__label">
                     {t(`settings.appearance.theme.${option}.label`)}

@@ -2,6 +2,7 @@
  * rules. Entry points only need `styles/tokens.css`; adding a theme never
  * touches main.tsx / settings-main.tsx. See themes/index.css. */
 @import './themes/index.css';
+@import './palettes/index.css';
 
 /* [C4] Semantic design tokens.
  * Color values live in themes/<id>.css — one self-contained file per theme,

@@ -1,5 +1,5 @@
 import { SYSTEM_THEME } from '../../../../shared/theme'
-import type { ResolvedTheme } from '../../../../shared/theme'
+import type { PaletteId, ResolvedTheme } from '../../../../shared/theme'
 import type { ThemePreference } from '../../../../shared/types/settings'
 
 function resolveTheme(theme: ThemePreference): ResolvedTheme {
@@ -11,6 +11,8 @@ function resolveTheme(theme: ThemePreference): ResolvedTheme {
   return theme
 }
 
-export function applyTheme(theme: ThemePreference): void {
+/** Paints both axes: `data-theme` is the mode, `data-palette` the family. */
+export function applyTheme(theme: ThemePreference, palette: PaletteId): void {
   document.documentElement.dataset['theme'] = resolveTheme(theme)
+  document.documentElement.dataset['palette'] = palette
 }

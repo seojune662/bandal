@@ -1,11 +1,18 @@
-/* Theme picker. Scales to N themes: the registry drives the card count, the
- * grid just reflows. Each card paints its own palette through the
- * --preview-* variables the theme files export (see themes/*.css). */
+/* Appearance picker — two grids of the same card, one per axis (color family,
+ * then mode). Scales to N of either: the registries drive the card count and
+ * the grid reflows. Each card paints one (palette, mode) cell of the swatch
+ * table via --preview-*; see swatchVars() and styles/palettes/*.css. */
 .theme-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
   gap: var(--space-3);
   padding: 0 var(--space-5);
+}
+
+/* The family axis carries fewer, broader choices, so its cards get more room —
+ * the size difference is what stops the two grids reading as one 24-cell wall. */
+.theme-grid--palette {
+  grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
 }
 
 .theme-choice {
@@ -912,7 +919,8 @@
   }
 
   /* Narrow: two columns, and the card turns into a row (preview | copy). */
-  .theme-grid {
+  .theme-grid,
+  .theme-grid--palette {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

@@ -3,8 +3,8 @@
  */
 
 import type { AgentProvider } from './agent-events'
-import { DEFAULT_THEME_ID } from '../theme'
-import type { ThemeId } from '../theme'
+import { DEFAULT_PALETTE_ID, DEFAULT_THEME_ID } from '../theme'
+import type { PaletteId, ThemeId } from '../theme'
 import { DEFAULT_UNIVERSITY_SETTINGS } from './university'
 import type { UniversitySettings } from './university'
 
@@ -68,6 +68,12 @@ export const DEFAULT_TUTORIAL: TutorialState = {
 
 export interface Settings {
   theme: ThemePreference
+  /**
+   * The color family layered over `theme` (src/shared/theme.ts). Independent
+   * of `system`: the OS picks the mode, this picks the hue. Absent in files
+   * written before v0.15, which sanitize to the 반달 default.
+   */
+  palette: PaletteId
   /** Preferred AI agent provider. */
   agentProvider: AgentProvider
   /** Root folder for course data. Defaults to ~/Documents/Bandal. */
@@ -96,6 +102,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: DEFAULT_THEME_ID,
+  palette: DEFAULT_PALETTE_ID,
   agentProvider: 'claude-code',
   dataRoot: '',
   locale: 'ko-KR',

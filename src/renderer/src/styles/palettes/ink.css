@@ -1,0 +1,160 @@
+/* 흑묵 (id: ink) — achromatic ink with one restrained gold.
+ *
+ * Point of view: 반달 다크 spends its color budget twice — a navy shell AND a
+ * gold accent. 흑묵 spends it once. Surfaces drop to near-zero chroma
+ * (0.004–0.006) so the shell reads as paper-and-ink, and the gold is pulled
+ * down from 0.095 to 0.065 chroma: still unmistakably 반달's gold, but it
+ * stops competing with the content. Its 세피아 is a greyer sheet than 반달's
+ * (chroma 0.02 vs 0.028) with a 먹-black accent — the only palette that
+ * re-tints a flat mode.
+ *
+ * Layering: a palette owns surfaces, text, borders, the accent and the
+ * shadow/backdrop tints. It never touches --course-*, --highlight-*,
+ * --status-* or --danger* — content colors belong to the mode, so a course
+ * tagged 초록 looks the same in every palette.
+ *
+ * --text-muted is 62%, not the 58% first drafted: 58% measured 3.94 against
+ * --bg-raised, below the 4.5 body-text floor (same fix 반달 다크 took in
+ * §10.4.1). Run `node scripts/check-contrast.mjs` after any edit here.
+ */
+
+:root {
+  --swatch-ink-dark-bg: oklch(15.5% 0.004 270);
+  --swatch-ink-dark-surface: oklch(18.5% 0.005 270);
+  --swatch-ink-dark-text: oklch(93% 0.005 90);
+  --swatch-ink-dark-accent: oklch(79% 0.065 85);
+
+  --swatch-ink-light-bg: oklch(97% 0.004 90);
+  --swatch-ink-light-surface: oklch(98.5% 0.003 90);
+  --swatch-ink-light-text: oklch(24% 0.008 80);
+  --swatch-ink-light-accent: oklch(52% 0.08 78);
+
+  --swatch-ink-midnight-bg: oklch(0% 0 0);
+  --swatch-ink-midnight-surface: oklch(14% 0.003 270);
+  --swatch-ink-midnight-text: oklch(88% 0.004 90);
+  --swatch-ink-midnight-accent: oklch(74% 0.055 85);
+
+  --swatch-ink-sepia-bg: oklch(92.5% 0.02 85);
+  --swatch-ink-sepia-surface: oklch(95.5% 0.016 86);
+  --swatch-ink-sepia-text: oklch(28% 0.025 60);
+  --swatch-ink-sepia-accent: oklch(35% 0.012 270);
+
+  --swatch-ink-high-contrast-bg: oklch(100% 0 0);
+  --swatch-ink-high-contrast-surface: oklch(95% 0 0);
+  --swatch-ink-high-contrast-text: oklch(0% 0 0);
+  --swatch-ink-high-contrast-accent: oklch(42% 0.09 70);
+
+  --swatch-ink-graphite-bg: oklch(28% 0 0);
+  --swatch-ink-graphite-surface: oklch(33% 0 0);
+  --swatch-ink-graphite-text: oklch(95% 0 0);
+  --swatch-ink-graphite-accent: oklch(80% 0.05 85);
+}
+
+/* --- tinted modes: surfaces, text and borders are re-cut ---------------- */
+
+:root[data-palette='ink'][data-theme='dark'] {
+  --bg-app: oklch(15.5% 0.004 270);      /* #0b0c0e */
+  --bg-surface: oklch(18.5% 0.005 270);
+  --bg-raised: oklch(23% 0.006 270);
+  --bg-overlay: oklch(27% 0.006 270 / 0.92);
+
+  --text-primary: oklch(93% 0.005 90);
+  --text-secondary: oklch(72% 0.008 80);
+  --text-muted: oklch(62% 0.01 80);      /* AA fix: 58% measured 3.94/raised */
+
+  --accent: oklch(79% 0.065 85);
+  --accent-muted: oklch(79% 0.065 85 / 0.13);
+  --on-accent: oklch(15.5% 0.004 270);
+  --on-danger: oklch(15.5% 0.004 270);
+  --backdrop: oklch(4% 0.004 270 / 0.68);
+
+  --border-subtle: oklch(92% 0.005 90 / 0.07);
+  --border-strong: oklch(92% 0.005 90 / 0.16);
+
+  --shadow-sm: 0 1px 2px oklch(3% 0.004 270 / 0.5);
+  --shadow-md: 0 4px 12px oklch(3% 0.004 270 / 0.45);
+  --shadow-lg: 0 12px 32px oklch(3% 0.004 270 / 0.55);
+}
+
+:root[data-palette='ink'][data-theme='light'] {
+  --bg-app: oklch(97% 0.004 90);         /* #f6f5f2 */
+  --bg-surface: oklch(98.5% 0.003 90);
+  --bg-raised: oklch(100% 0 0);
+  --bg-overlay: oklch(100% 0 0 / 0.94);
+
+  --text-primary: oklch(24% 0.008 80);
+  --text-secondary: oklch(44% 0.01 80);
+  --text-muted: oklch(52% 0.01 80);
+
+  --accent: oklch(52% 0.08 78);
+  /* 0.15, not the 0.13 the other palettes use: 흑묵's accent carries less
+   * chroma, so the same alpha left the selection fill at 1.19 against
+   * --bg-surface — under the 1.20 "the fill must be visible" floor. */
+  --accent-muted: oklch(52% 0.08 78 / 0.15);
+  --on-accent: oklch(100% 0 0);
+  --backdrop: oklch(22% 0.008 80 / 0.38);
+
+  --border-subtle: oklch(30% 0.01 80 / 0.12);
+  --border-strong: oklch(30% 0.01 80 / 0.26);
+
+  --shadow-sm: 0 1px 2px oklch(30% 0.008 80 / 0.1);
+  --shadow-md: 0 4px 12px oklch(30% 0.008 80 / 0.12);
+  --shadow-lg: 0 12px 32px oklch(30% 0.008 80 / 0.16);
+}
+
+:root[data-palette='ink'][data-theme='midnight'] {
+  --bg-app: oklch(0% 0 0);
+  --bg-surface: oklch(14% 0.003 270);
+  --bg-raised: oklch(19% 0.004 270);
+  --bg-overlay: oklch(17% 0.004 270 / 0.96);
+
+  --text-primary: oklch(88% 0.004 90);
+  --text-secondary: oklch(72% 0.006 85);
+  --text-muted: oklch(62% 0.008 85);
+
+  --accent: oklch(74% 0.055 85);
+  --accent-muted: oklch(74% 0.055 85 / 0.16);
+  --on-accent: oklch(0% 0 0);
+
+  --border-subtle: oklch(88% 0.004 90 / 0.13);
+  --border-strong: oklch(88% 0.004 90 / 0.28);
+}
+
+/* 흑묵's own paper: greyer than 반달 세피아, with a 먹-black accent. The only
+ * flat-mode surface override any palette makes. */
+:root[data-palette='ink'][data-theme='sepia'] {
+  --bg-app: oklch(92.5% 0.02 85);        /* #ece6d8 */
+  --bg-surface: oklch(95.5% 0.016 86);
+  --bg-raised: oklch(97.8% 0.01 88);
+  --bg-overlay: oklch(97% 0.012 88 / 0.95);
+
+  --text-primary: oklch(28% 0.025 60);
+  --text-secondary: oklch(44% 0.026 62);
+  --text-muted: oklch(49% 0.025 64);
+
+  --accent: oklch(35% 0.012 270);
+  --accent-muted: oklch(35% 0.012 270 / 0.12);
+  --on-accent: oklch(100% 0 0);
+  --backdrop: oklch(28% 0.025 60 / 0.4);
+
+  --border-subtle: oklch(30% 0.03 60 / 0.14);
+  --border-strong: oklch(30% 0.03 60 / 0.3);
+
+  --shadow-sm: 0 1px 2px oklch(30% 0.03 62 / 0.12);
+  --shadow-md: 0 4px 12px oklch(30% 0.03 62 / 0.14);
+  --shadow-lg: 0 12px 32px oklch(30% 0.03 62 / 0.18);
+}
+
+/* --- flat modes: the surface ladder is the mode's, only the accent moves -- */
+
+:root[data-palette='ink'][data-theme='high-contrast'] {
+  --accent: oklch(42% 0.09 70);
+  --accent-muted: oklch(42% 0.09 70 / 0.15);
+  --on-accent: oklch(100% 0 0);
+}
+
+:root[data-palette='ink'][data-theme='graphite'] {
+  --accent: oklch(80% 0.05 85);
+  --accent-muted: oklch(80% 0.05 85 / 0.18);
+  --on-accent: oklch(28% 0 0);
+}

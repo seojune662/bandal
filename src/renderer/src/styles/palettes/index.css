@@ -1,0 +1,22 @@
+/* Palette registry (CSS half) — the second axis over `themes/`.
+ *
+ * A theme file owns the *mode* (surface ladder, text ramp, borders, shadows,
+ * and every content color: --course-*, --highlight-*, --status-*, --danger*).
+ * A palette file owns the *color family*: the accent everywhere, plus the
+ * surfaces/text/borders/shadow tints on the modes it re-cuts.
+ *
+ * Order matters here only against `themes/index.css`: this file must be
+ * imported AFTER it, because `[data-palette][data-theme]` beats `[data-theme]`
+ * on specificity but ties are broken by source order for equal-specificity
+ * rules inside a palette file.
+ *
+ * Adding a palette: drop `<id>.css` next to these, add one `@import` line,
+ * and add one entry to `PALETTES` in `src/shared/theme.ts`. Every palette must
+ * export the 24 `--swatch-<id>-<mode>-{bg,surface,text,accent}` variables the
+ * Appearance picker reads.
+ */
+
+@import './bandal.css';    /* id: bandal   — 반달 (identity; no overrides) */
+@import './ink.css';       /* id: ink      — 흑묵 */
+@import './lavender.css';  /* id: lavender — 라벤더 */
+@import './moss.css';      /* id: moss     — 이끼 */

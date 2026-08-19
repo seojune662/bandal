@@ -13,13 +13,6 @@
  *   on-accent/accent 8.17 · on-danger/danger 5.94
  */
 
-:root {
-  --preview-graphite-bg: oklch(28% 0 0);
-  --preview-graphite-surface: oklch(33% 0 0);
-  --preview-graphite-text: oklch(95% 0 0);
-  --preview-graphite-accent: oklch(80% 0.115 196);
-}
-
 :root[data-theme='graphite'] {
   color-scheme: dark;
 

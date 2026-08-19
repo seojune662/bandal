@@ -5,7 +5,7 @@
 
 import { create } from 'zustand'
 import { SYSTEM_THEME } from '../../../shared/theme'
-import type { ResolvedTheme } from '../../../shared/theme'
+import type { PaletteId, ResolvedTheme } from '../../../shared/theme'
 import { DEFAULT_SETTINGS } from '../../../shared/types/settings'
 import type { ThemePreference } from '../../../shared/types/settings'
 import { invoke, onPush } from '../lib/ipc'
@@ -13,6 +13,8 @@ import { invoke, onPush } from '../lib/ipc'
 interface UiState {
   themePreference: ThemePreference
   resolvedTheme: ResolvedTheme
+  /** The color family layered over `resolvedTheme` (`<html data-palette>`). */
+  palette: PaletteId
   leftRailOpen: boolean
   rightRailOpen: boolean
   /** [M5] Study-board overlay above the workspace (board tab stays too). */
@@ -23,6 +25,8 @@ interface UiState {
   initTheme: () => Promise<void>
   /** Persist a new preference (round-trips through main). */
   setThemePreference: (pref: ThemePreference) => Promise<void>
+  /** Persist a new color family (round-trips through main). */
+  setPalette: (palette: PaletteId) => Promise<void>
   toggleLeftRail: () => void
   toggleRightRail: () => void
   toggleBoardOverlay: () => void
@@ -44,13 +48,15 @@ function resolve(pref: ThemePreference): ResolvedTheme {
   return pref
 }
 
-function applyToDocument(theme: ResolvedTheme): void {
+function applyToDocument(theme: ResolvedTheme, palette: PaletteId): void {
   document.documentElement.dataset['theme'] = theme
+  document.documentElement.dataset['palette'] = palette
 }
 
 export const useUiStore = create<UiState>()((set, get) => ({
   themePreference: DEFAULT_SETTINGS.theme,
   resolvedTheme: resolve(DEFAULT_SETTINGS.theme),
+  palette: DEFAULT_SETTINGS.palette,
   leftRailOpen: true,
   rightRailOpen: true,
   isBoardOverlayOpen: false,
@@ -63,13 +69,21 @@ export const useUiStore = create<UiState>()((set, get) => ({
       themeInitialization = (async () => {
         const settings = await invoke('settings:get', {})
         const resolved = resolve(settings.theme)
-        applyToDocument(resolved)
-        set({ themePreference: settings.theme, resolvedTheme: resolved })
+        applyToDocument(resolved, settings.palette)
+        set({
+          themePreference: settings.theme,
+          resolvedTheme: resolved,
+          palette: settings.palette
+        })
 
         onPush('settings:changed', ({ settings: next }) => {
           const nextResolved = resolve(next.theme)
-          applyToDocument(nextResolved)
-          set({ themePreference: next.theme, resolvedTheme: nextResolved })
+          applyToDocument(nextResolved, next.palette)
+          set({
+            themePreference: next.theme,
+            resolvedTheme: nextResolved,
+            palette: next.palette
+          })
         })
 
         window
@@ -77,7 +91,7 @@ export const useUiStore = create<UiState>()((set, get) => ({
           .addEventListener('change', () => {
             if (get().themePreference === 'system') {
               const nextResolved = resolve('system')
-              applyToDocument(nextResolved)
+              applyToDocument(nextResolved, get().palette)
               set({ resolvedTheme: nextResolved })
             }
           })
@@ -95,9 +109,15 @@ export const useUiStore = create<UiState>()((set, get) => ({
   setThemePreference: async (pref) => {
     // Optimistic apply; the settings:changed broadcast confirms it.
     const resolved = resolve(pref)
-    applyToDocument(resolved)
+    applyToDocument(resolved, get().palette)
     set({ themePreference: pref, resolvedTheme: resolved })
     await invoke('settings:set', { theme: pref })
+  },
+
+  setPalette: async (palette) => {
+    applyToDocument(get().resolvedTheme, palette)
+    set({ palette })
+    await invoke('settings:set', { palette })
   },
 
   toggleLeftRail: () => {

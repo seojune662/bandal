@@ -10,8 +10,8 @@ let mainWindow: BrowserWindow | null = null
 /** Painted before any CSS loads, so it must track the theme's --bg-app
  * exactly (src/shared/theme.ts) or launch flashes the wrong color. */
 function resolveBackground(): string {
-  const { theme } = getSettings()
-  return resolveWindowBackground(theme, nativeTheme.shouldUseDarkColors)
+  const { theme, palette } = getSettings()
+  return resolveWindowBackground(theme, palette, nativeTheme.shouldUseDarkColors)
 }
 
 export function createMainWindow(): BrowserWindow {

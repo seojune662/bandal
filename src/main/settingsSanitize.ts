@@ -4,7 +4,7 @@
  * settingsStore supplies the environment-dependent defaults.
  */
 
-import { isThemeId } from '../shared/theme'
+import { isPaletteId, isThemeId } from '../shared/theme'
 import { sanitizeUniversitySettings } from '../shared/universities/sanitize'
 import { DEFAULT_ONBOARDING, DEFAULT_TUTORIAL } from '../shared/types/settings'
 import type {
@@ -17,6 +17,11 @@ import type {
  * (a settings.json written by a newer build must not brick an older one). */
 function isTheme(value: unknown): value is Settings['theme'] {
   return value === 'system' || isThemeId(value)
+}
+
+/** Any registered palette id. Same fall-back rule as `isTheme`. */
+function isPalette(value: unknown): value is Settings['palette'] {
+  return isPaletteId(value)
 }
 
 /** Only renderer locales shipped by this build are accepted from disk/IPC. */
@@ -77,6 +82,7 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
   const record = raw as Record<string, unknown>
   return {
     theme: isTheme(record.theme) ? record.theme : defaults.theme,
+    palette: isPalette(record.palette) ? record.palette : defaults.palette,
     agentProvider:
       record.agentProvider === 'claude-code' || record.agentProvider === 'codex'
         ? record.agentProvider

@@ -1,0 +1,46 @@
+/* 반달 (id: bandal) — the identity palette, and the only one with no override
+ * block: its values ARE the ones written directly in `themes/<mode>.css`.
+ *
+ * What this file does carry is the picker's swatch table. Every palette
+ * exports `--swatch-<palette>-<mode>-{bg,surface,text,accent}` at bare
+ * `:root` — unconditionally, so the Appearance picker can show *any*
+ * (palette, mode) pair regardless of which one is currently active. The
+ * component composes the variable name in JS from its two axes; see
+ * `previewPalette()` in SettingsPanels.tsx.
+ *
+ * These four values per pair must mirror `--bg-app`, `--bg-surface`,
+ * `--text-primary` and `--accent` exactly — `tests/main/theme.test.ts` and
+ * `scripts/check-contrast.mjs` both fail on drift.
+ */
+
+:root {
+  --swatch-bandal-dark-bg: oklch(17.5% 0.032 262);
+  --swatch-bandal-dark-surface: oklch(21.5% 0.036 260);
+  --swatch-bandal-dark-text: oklch(92% 0.012 250);
+  --swatch-bandal-dark-accent: oklch(85% 0.095 82);
+
+  --swatch-bandal-light-bg: oklch(97% 0.012 85);
+  --swatch-bandal-light-surface: oklch(98.5% 0.007 90);
+  --swatch-bandal-light-text: oklch(25% 0.02 70);
+  --swatch-bandal-light-accent: oklch(52% 0.105 75);
+
+  --swatch-bandal-midnight-bg: oklch(0% 0 0);
+  --swatch-bandal-midnight-surface: oklch(15% 0.006 260);
+  --swatch-bandal-midnight-text: oklch(88% 0.006 250);
+  --swatch-bandal-midnight-accent: oklch(80% 0.09 80);
+
+  --swatch-bandal-sepia-bg: oklch(92.5% 0.028 82);
+  --swatch-bandal-sepia-surface: oklch(95.5% 0.022 84);
+  --swatch-bandal-sepia-text: oklch(28% 0.03 58);
+  --swatch-bandal-sepia-accent: oklch(44% 0.12 252);
+
+  --swatch-bandal-high-contrast-bg: oklch(100% 0 0);
+  --swatch-bandal-high-contrast-surface: oklch(95% 0 0);
+  --swatch-bandal-high-contrast-text: oklch(0% 0 0);
+  --swatch-bandal-high-contrast-accent: oklch(42% 0.15 258);
+
+  --swatch-bandal-graphite-bg: oklch(28% 0 0);
+  --swatch-bandal-graphite-surface: oklch(33% 0 0);
+  --swatch-bandal-graphite-text: oklch(95% 0 0);
+  --swatch-bandal-graphite-accent: oklch(80% 0.115 196);
+}

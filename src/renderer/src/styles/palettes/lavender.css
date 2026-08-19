@@ -1,0 +1,133 @@
+/* 라벤더 (id: lavender) — cool near-black with a lavender signal.
+ *
+ * Point of view: 반달 다크's navy is a *warm-leaning* cool; this one goes the
+ * other way. Surfaces sit at hue 288–290 (violet-black) and the accent is
+ * lavender rather than gold, so the whole shell reads as one cold family with
+ * no warm anchor. That is the point at 2 a.m.: nothing on screen suggests
+ * daylight. Its 세피아 keeps 반달's warm paper on purpose — the violet ink on
+ * warm paper is the contrast that makes the mode work.
+ *
+ * See ink.css for the layering rule (palettes own surfaces + accent; modes
+ * own --course-*, --highlight-*, --status-* and --danger*).
+ *
+ * --text-muted is 62%, not 60%: 60% measured 4.37 against --bg-raised.
+ */
+
+:root {
+  --swatch-lavender-dark-bg: oklch(14.5% 0.018 290);
+  --swatch-lavender-dark-surface: oklch(17.5% 0.022 288);
+  --swatch-lavender-dark-text: oklch(93% 0.01 290);
+  --swatch-lavender-dark-accent: oklch(76% 0.09 295);
+
+  --swatch-lavender-light-bg: oklch(97% 0.006 300);
+  --swatch-lavender-light-surface: oklch(98.5% 0.004 300);
+  --swatch-lavender-light-text: oklch(23% 0.02 295);
+  --swatch-lavender-light-accent: oklch(48% 0.13 295);
+
+  --swatch-lavender-midnight-bg: oklch(0% 0 0);
+  --swatch-lavender-midnight-surface: oklch(13% 0.012 290);
+  --swatch-lavender-midnight-text: oklch(88% 0.008 290);
+  --swatch-lavender-midnight-accent: oklch(70% 0.08 295);
+
+  --swatch-lavender-sepia-bg: oklch(92.5% 0.028 82);
+  --swatch-lavender-sepia-surface: oklch(95.5% 0.022 84);
+  --swatch-lavender-sepia-text: oklch(28% 0.03 58);
+  --swatch-lavender-sepia-accent: oklch(44% 0.13 300);
+
+  --swatch-lavender-high-contrast-bg: oklch(100% 0 0);
+  --swatch-lavender-high-contrast-surface: oklch(95% 0 0);
+  --swatch-lavender-high-contrast-text: oklch(0% 0 0);
+  --swatch-lavender-high-contrast-accent: oklch(40% 0.16 295);
+
+  --swatch-lavender-graphite-bg: oklch(28% 0 0);
+  --swatch-lavender-graphite-surface: oklch(33% 0 0);
+  --swatch-lavender-graphite-text: oklch(95% 0 0);
+  --swatch-lavender-graphite-accent: oklch(76% 0.07 295);
+}
+
+/* --- tinted modes ------------------------------------------------------- */
+
+:root[data-palette='lavender'][data-theme='dark'] {
+  --bg-app: oklch(14.5% 0.018 290);      /* #0a0911 */
+  --bg-surface: oklch(17.5% 0.022 288);
+  --bg-raised: oklch(22% 0.026 288);
+  --bg-overlay: oklch(26% 0.028 288 / 0.92);
+
+  --text-primary: oklch(93% 0.01 290);
+  --text-secondary: oklch(73% 0.02 290);
+  --text-muted: oklch(62% 0.03 290);     /* AA fix: 60% measured 4.37/raised */
+
+  --accent: oklch(76% 0.09 295);
+  --accent-muted: oklch(76% 0.09 295 / 0.16);
+  --on-accent: oklch(14.5% 0.018 290);
+  --on-danger: oklch(14.5% 0.018 290);
+  --backdrop: oklch(4% 0.014 290 / 0.68);
+
+  --border-subtle: oklch(90% 0.02 290 / 0.08);
+  --border-strong: oklch(90% 0.02 290 / 0.18);
+
+  --shadow-sm: 0 1px 2px oklch(3% 0.012 290 / 0.5);
+  --shadow-md: 0 4px 12px oklch(3% 0.012 290 / 0.45);
+  --shadow-lg: 0 12px 32px oklch(3% 0.012 290 / 0.55);
+}
+
+:root[data-palette='lavender'][data-theme='light'] {
+  --bg-app: oklch(97% 0.006 300);        /* #f6f4f9 */
+  --bg-surface: oklch(98.5% 0.004 300);
+  --bg-raised: oklch(100% 0 0);
+  --bg-overlay: oklch(100% 0 0 / 0.94);
+
+  --text-primary: oklch(23% 0.02 295);
+  --text-secondary: oklch(43% 0.025 295);
+  --text-muted: oklch(51% 0.025 295);
+
+  --accent: oklch(48% 0.13 295);
+  --accent-muted: oklch(48% 0.13 295 / 0.13);
+  --on-accent: oklch(100% 0 0);
+  --backdrop: oklch(22% 0.025 295 / 0.38);
+
+  --border-subtle: oklch(30% 0.03 295 / 0.12);
+  --border-strong: oklch(30% 0.03 295 / 0.26);
+
+  --shadow-sm: 0 1px 2px oklch(30% 0.02 295 / 0.1);
+  --shadow-md: 0 4px 12px oklch(30% 0.02 295 / 0.12);
+  --shadow-lg: 0 12px 32px oklch(30% 0.02 295 / 0.16);
+}
+
+:root[data-palette='lavender'][data-theme='midnight'] {
+  --bg-app: oklch(0% 0 0);
+  --bg-surface: oklch(13% 0.012 290);
+  --bg-raised: oklch(18% 0.015 290);
+  --bg-overlay: oklch(16% 0.015 290 / 0.96);
+
+  --text-primary: oklch(88% 0.008 290);
+  --text-secondary: oklch(72% 0.012 290);
+  --text-muted: oklch(62% 0.016 290);
+
+  --accent: oklch(70% 0.08 295);
+  --accent-muted: oklch(70% 0.08 295 / 0.18);
+  --on-accent: oklch(0% 0 0);
+
+  --border-subtle: oklch(88% 0.008 290 / 0.13);
+  --border-strong: oklch(88% 0.008 290 / 0.28);
+}
+
+/* --- flat modes: accent only -------------------------------------------- */
+
+:root[data-palette='lavender'][data-theme='sepia'] {
+  --accent: oklch(44% 0.13 300);
+  --accent-muted: oklch(44% 0.13 300 / 0.13);
+  --on-accent: oklch(100% 0 0);
+}
+
+:root[data-palette='lavender'][data-theme='high-contrast'] {
+  --accent: oklch(40% 0.16 295);
+  --accent-muted: oklch(40% 0.16 295 / 0.15);
+  --on-accent: oklch(100% 0 0);
+}
+
+:root[data-palette='lavender'][data-theme='graphite'] {
+  --accent: oklch(76% 0.07 295);
+  --accent-muted: oklch(76% 0.07 295 / 0.18);
+  --on-accent: oklch(28% 0 0);
+}

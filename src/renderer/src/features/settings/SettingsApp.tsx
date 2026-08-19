@@ -9,6 +9,7 @@ import type {
   AgentProvider
 } from '../../../../shared/types/agent-events'
 import type { Course } from '../../../../shared/types/course'
+import type { PaletteId } from '../../../../shared/theme'
 import type {
   Settings,
   ThemePreference
@@ -65,6 +66,7 @@ export function SettingsApp({
   const [query, setQuery] = useState('')
   const [settings, setSettings] = useState<Settings | null>(null)
   const [theme, setTheme] = useState<ThemePreference>('dark')
+  const [palette, setPalette] = useState<PaletteId>('bandal')
   const [themeSaving, setThemeSaving] = useState(false)
   const [themeErrorKey, setThemeErrorKey] = useState<string | null>(null)
   const [availability, setAvailability] = useState<
@@ -206,7 +208,8 @@ export function SettingsApp({
     const unsubscribe = onPush('settings:changed', ({ settings: next }) => {
       setSettings(next)
       setTheme(next.theme)
-      if (!embedded) applyTheme(next.theme)
+      setPalette(next.palette)
+      if (!embedded) applyTheme(next.theme, next.palette)
     })
 
     void invoke('settings:get', {})
@@ -214,7 +217,8 @@ export function SettingsApp({
         if (!mountedRef.current) return
         setSettings(result)
         setTheme(result.theme)
-        if (!embedded) applyTheme(result.theme)
+        setPalette(result.palette)
+        if (!embedded) applyTheme(result.theme, result.palette)
       })
       .catch(() => {
         if (mountedRef.current) {
@@ -263,36 +267,57 @@ export function SettingsApp({
     if (embedded) return
     const media = window.matchMedia('(prefers-color-scheme: light)')
     const handleChange = (): void => {
-      if (theme === 'system') applyTheme('system')
+      if (theme === 'system') applyTheme('system', palette)
     }
     media.addEventListener('change', handleChange)
     return () => media.removeEventListener('change', handleChange)
-  }, [embedded, theme])
+  }, [embedded, palette, theme])
 
-  const handleThemeSelect = (nextTheme: ThemePreference): void => {
-    if (nextTheme === theme || themeSaving) return
-    const previousTheme = theme
-    setTheme(nextTheme)
-    if (!embedded) applyTheme(nextTheme)
+  /**
+   * Both appearance axes save the same way: paint optimistically, persist,
+   * then reconcile with whatever main actually stored (and roll the pair back
+   * together on failure — a half-applied appearance is worse than neither).
+   */
+  const saveAppearance = (
+    next: { theme: ThemePreference; palette: PaletteId }
+  ): void => {
+    if (themeSaving) return
+    const previous = { theme, palette }
+    if (next.theme === previous.theme && next.palette === previous.palette) {
+      return
+    }
+    setTheme(next.theme)
+    setPalette(next.palette)
+    if (!embedded) applyTheme(next.theme, next.palette)
     setThemeSaving(true)
     setThemeErrorKey(null)
 
-    void invoke('settings:set', { theme: nextTheme })
+    void invoke('settings:set', next)
       .then((nextSettings) => {
         if (!mountedRef.current) return
         setSettings(nextSettings)
         setTheme(nextSettings.theme)
-        if (!embedded) applyTheme(nextSettings.theme)
+        setPalette(nextSettings.palette)
+        if (!embedded) applyTheme(nextSettings.theme, nextSettings.palette)
       })
       .catch(() => {
         if (!mountedRef.current) return
-        setTheme(previousTheme)
-        if (!embedded) applyTheme(previousTheme)
+        setTheme(previous.theme)
+        setPalette(previous.palette)
+        if (!embedded) applyTheme(previous.theme, previous.palette)
         setThemeErrorKey('settings.appearance.saveFailed')
       })
       .finally(() => {
         if (mountedRef.current) setThemeSaving(false)
       })
+  }
+
+  const handleThemeSelect = (nextTheme: ThemePreference): void => {
+    saveAppearance({ theme: nextTheme, palette })
+  }
+
+  const handlePaletteSelect = (nextPalette: PaletteId): void => {
+    saveAppearance({ theme, palette: nextPalette })
   }
 
   const handleAgentProviderSelect = (nextProvider: AgentProvider): void => {
@@ -373,9 +398,11 @@ export function SettingsApp({
     appearance: (
       <AppearancePanel
         theme={theme}
+        palette={palette}
         saving={themeSaving}
         error={themeErrorKey === null ? null : t(themeErrorKey)}
         onSelect={handleThemeSelect}
+        onSelectPalette={handlePaletteSelect}
       />
     ),
     ai: (
