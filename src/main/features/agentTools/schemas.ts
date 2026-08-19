@@ -459,6 +459,30 @@ export const BROWSER_TOOL_DEFINITIONS = [
       ['courseId']
     ),
     annotations: readOnly
+  },
+  {
+    name: 'lms_list',
+    description:
+      '강의실의 목록 전체를 돌려줍니다(새 항목만이 아니라). kind: files | modules | assignments | announcements. 생략하면 files.',
+    inputSchema: objectSchema(
+      { courseId, kind: nullableString('무엇을 볼지. 생략하면 files(자료)') },
+      ['courseId']
+    ),
+    annotations: readOnly
+  },
+  {
+    name: 'browser_download',
+    description:
+      '강의실의 파일 하나를 과목 폴더로 내려받습니다. 학생이 그 사이트에 "내려받기" 권한을 허용해 둔 경우에만 동작합니다. dirRelPath 는 과목 폴더 기준 상대 경로이며 빈 문자열이면 최상위입니다.',
+    inputSchema: objectSchema(
+      {
+        courseId,
+        url: string('내려받을 파일 주소'),
+        dirRelPath: string('과목 폴더 기준 상대 경로. 최상위는 빈 문자열')
+      },
+      ['courseId', 'url', 'dirRelPath']
+    ),
+    annotations: readOnly
   }
 ] as const
 

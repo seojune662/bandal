@@ -669,8 +669,24 @@ export function registerHandlers(): IpcRouter {
           .list({ courseId: id })
           .map((link) => ({ url: link.url, lmsCourseId: link.lmsCourseId })),
       specFor: (url) => specForUrl(url),
+      // The app's own confirmer, not the CLI's permission flow — Codex has no
+      // interactive approval at all (agentTools/confirm.ts).
+      confirm: (request) => agentConfirmer.confirm(request),
       // The student's own login — the same session they signed in to by hand.
-      fetch: (url) => session.fromPartition(BROWSING_PARTITION).fetch(url)
+      fetch: (url) => session.fromPartition(BROWSING_PARTITION).fetch(url),
+      // Same path a link-drag takes: browsing-session fetch with the 200MB
+      // cap, then materialsRepo's own guards. One download implementation,
+      // not two.
+      collect: async ({ courseId: target, url, dirRelPath }) => {
+        const { fileName, dataBase64 } = await fetchLinkForMaterials(url)
+        return materialsRepo.writeFile({
+          courseId: target,
+          dirRelPath,
+          fileName,
+          encoding: 'base64',
+          data: dataBase64
+        })
+      }
     })
   }
 

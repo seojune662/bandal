@@ -14,7 +14,12 @@
  */
 
 import type { AuditRepo } from './audit'
-import type { BrowserCapability, GrantsRepo } from './grants'
+import {
+  GRANT_DAYS,
+  normalizeOrigin,
+  type BrowserCapability,
+  type GrantsRepo
+} from './grants'
 import { checkNavigation } from './navigation'
 import { redactText, redactUrl } from './redact'
 import { itemKey, type SeenRepo } from './seenRepo'
@@ -49,6 +54,29 @@ export interface BrowserToolsDeps {
   specFor: (url: string) => Pick<CourseLinkSpec, 'platform'> | null
   /** Browsing-partition fetch — the student's own login. */
   fetch: (url: string) => Promise<Response>
+  /**
+   * Downloads a URL through the browsing session and files it in the course.
+   * Injected rather than reached for directly so this module stays testable
+   * without Electron, and so the caller keeps owning the per-turn budget and
+   * the undo journal.
+   */
+  collect?: (input: {
+    courseId: string
+    url: string
+    dirRelPath: string
+  }) => Promise<{ relPath: string }>
+  /**
+   * Asks the student. Reuses the app's own confirmer rather than the CLI's
+   * permission flow, for the reason already documented in
+   * `agentTools/confirm.ts`: Codex's `respondPermission` is a no-op, so a
+   * provider permission card would leave that provider unguarded.
+   */
+  confirm: (request: {
+    courseId: string
+    tool: string
+    summary: string
+    details: string[]
+  }) => Promise<boolean>
 }
 
 export interface LmsCoursePageResult {
@@ -79,11 +107,24 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
     })
   }
 
-  /** Shared gate: deny-list, scheme, and the student's grant. */
-  function gate(
+  const CAPABILITY_LABEL: Record<BrowserCapability, string> = {
+    read: '읽기',
+    interact: '조작',
+    download: '내려받기'
+  }
+
+  /**
+   * Deny-list, scheme, and the student's grant — and, when only the grant is
+   * missing, the ask that creates one.
+   *
+   * The ask is how a grant comes into existence at all: there is no settings
+   * switch that pre-authorises an origin, because a permission granted away
+   * from the moment it is used is one nobody thinks about.
+   */
+  async function gate(
     url: string,
     capability: BrowserCapability
-  ): { ok: true } | { ok: false; message: string } {
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
     const held = deps.grants.find({
       courseId: deps.courseId,
       url,
@@ -94,11 +135,49 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       capability,
       heldCapability: held?.capability ?? null
     })
-    if (!verdict.allowed) {
+
+    if (verdict.allowed) {
+      if (held !== null) deps.grants.touch(held.id)
+      return { ok: true }
+    }
+
+    // Anything other than a missing grant is categorical — a 수강신청 page is
+    // refused because of what it is, and asking would imply otherwise.
+    if (verdict.reason !== 'no-grant') {
       audit('denied', url, `${verdict.reason}: ${verdict.message}`)
       return { ok: false, message: verdict.message }
     }
-    if (held !== null) deps.grants.touch(held.id)
+
+    const origin = normalizeOrigin(url)
+    if (origin === null) {
+      audit('denied', url, 'malformed origin')
+      return { ok: false, message: verdict.message }
+    }
+
+    const approved = await deps.confirm({
+      courseId: deps.courseId,
+      tool: 'browser_access',
+      summary: `${origin}에 ${CAPABILITY_LABEL[capability]} 권한을 허용할까요?`,
+      details: [
+        `이 과목에서만, ${GRANT_DAYS}일 동안 유효합니다.`,
+        '설정 > AI > 에이전트 접근 권한에서 언제든 해제할 수 있습니다.'
+      ]
+    })
+    if (!approved) {
+      audit('denied', url, '학생이 거부함')
+      return { ok: false, message: '학생이 접근을 허용하지 않았어요.' }
+    }
+
+    const created = deps.grants.grant({
+      courseId: deps.courseId,
+      url: origin,
+      capability
+    })
+    if (created === null) {
+      return { ok: false, message: verdict.message }
+    }
+    audit('grant', origin, `${CAPABILITY_LABEL[capability]} · ${GRANT_DAYS}일`)
+    deps.grants.touch(created.id)
     return { ok: true }
   }
 
@@ -109,6 +188,80 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       return {
         url: `${target.origin}/courses/${target.lmsCourseId}`,
         platform: target.platform
+      }
+    },
+
+    /**
+     * The whole list, not just what is new. `lms_new_items` answers "anything
+     * I have not seen"; this answers "what is there", which is what collecting
+     * this week's handouts needs.
+     */
+    async lms_list(
+      courseId: string,
+      rawKind: string | null
+    ): Promise<
+      | { status: 'ok'; kind: LmsListKind; items: { title: string; at: string | null; url: string }[] }
+      | { status: 'error'; message: string }
+    > {
+      const kind: LmsListKind = LIST_KINDS.includes(rawKind as LmsListKind)
+        ? (rawKind as LmsListKind)
+        : 'files'
+      const target = targetFor(courseId)
+      if (target === null) {
+        return {
+          status: 'error',
+          message:
+            '이 과목에 학교 강의실이 연결돼 있지 않아요. 과목 링크를 먼저 추가해 주세요.'
+        }
+      }
+      const permitted = await gate(target.origin, 'read')
+      if (!permitted.ok) return { status: 'error', message: permitted.message }
+
+      const result = await fetchLmsList({ fetch: deps.fetch }, target, kind)
+      if (result.status !== 'ok') {
+        audit('read', target.origin, `${kind}: ${result.message}`)
+        return { status: 'error', message: result.message }
+      }
+      audit('read', target.origin, `${kind}: ${result.items.length}건 조회`)
+      return {
+        status: 'ok',
+        kind,
+        items: result.items.map((item) => ({
+          title: item.title,
+          at: item.at,
+          url: item.url
+        }))
+      }
+    },
+
+    /**
+     * Pulls one file into the course folder.
+     *
+     * Needs its own `download` capability: reading a page and taking files off
+     * it are separate decisions, and a read grant must never imply this.
+     */
+    async browser_download(
+      courseId: string,
+      url: string,
+      dirRelPath: string
+    ): Promise<
+      { status: 'ok'; relPath: string } | { status: 'error'; message: string }
+    > {
+      if (deps.collect === undefined) {
+        return { status: 'error', message: '이 대화에서는 내려받을 수 없어요.' }
+      }
+      const permitted = await gate(url, 'download')
+      if (!permitted.ok) return { status: 'error', message: permitted.message }
+
+      try {
+        const { relPath } = await deps.collect({ courseId, url, dirRelPath })
+        audit('download', url, `자료 «${relPath}»`)
+        return { status: 'ok', relPath }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : '내려받지 못했어요.'
+        audit('download', url, `실패: ${message}`)
+        return { status: 'error', message }
       }
     },
 
@@ -132,7 +285,7 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         }
       }
 
-      const permitted = gate(target.origin, 'read')
+      const permitted = await gate(target.origin, 'read')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
 
       const result = await fetchLmsList({ fetch: deps.fetch }, target, kind)

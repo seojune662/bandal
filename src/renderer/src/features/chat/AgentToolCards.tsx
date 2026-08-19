@@ -59,13 +59,13 @@ export function AgentConfirmCard({
   return (
     <article
       className="chat-agent-confirm"
-      aria-label="파괴적 변경 확인"
+      aria-label={confirmKindLabel(request.tool)}
       data-resolved={isPending ? undefined : true}
     >
       <header className="chat-agent-confirm__header">
         <div className="chat-agent-confirm__heading">
           <span className="chat-agent-confirm__eyebrow">
-            파괴적 변경 확인
+            {confirmKindLabel(request.tool)}
           </span>
           <h3 className="chat-agent-confirm__summary">{request.summary}</h3>
         </div>
@@ -127,6 +127,14 @@ export function AgentConfirmCard({
       )}
     </article>
   )
+}
+
+/**
+ * Asking for access to a school site is not a destructive change, and calling
+ * it one trains the student to click through the label rather than read it.
+ */
+function confirmKindLabel(tool: string): string {
+  return tool === 'browser_access' ? '사이트 접근 허용' : '파괴적 변경 확인'
 }
 
 export interface AgentTurnChangesCardProps {

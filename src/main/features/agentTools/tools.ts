@@ -83,7 +83,13 @@ export interface AgentToolsDeps {
    */
   browser?: {
     lms_course_page: (courseId: string) => unknown
+    lms_list: (courseId: string, kind: string | null) => Promise<unknown>
     lms_new_items: (courseId: string, kind: string | null) => Promise<unknown>
+    browser_download: (
+      courseId: string,
+      url: string,
+      dirRelPath: string
+    ) => Promise<unknown>
   }
 }
 
@@ -887,11 +893,45 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
     > = {
       lms_course_page: (input) =>
         browser.lms_course_page(stringField(input, 'courseId', { nonEmpty: true })),
+      lms_list: (input) =>
+        browser.lms_list(
+          stringField(input, 'courseId', { nonEmpty: true }),
+          optionalString(input, 'kind') ?? null
+        ),
       lms_new_items: (input) =>
         browser.lms_new_items(
           stringField(input, 'courseId', { nonEmpty: true }),
           optionalString(input, 'kind') ?? null
-        )
+        ),
+      browser_download: async (input) => {
+        const context = currentTurn()
+        const courseId = stringField(input, 'courseId', { nonEmpty: true })
+        const url = stringField(input, 'url', { nonEmpty: true })
+        const dirRelPath = stringField(input, 'dirRelPath')
+        // Path safety and the per-turn file budget are the SAME ones
+        // `write_file` obeys — a download is a file creation, so a poisoned
+        // page cannot use it to slip past a cap the other tools respect.
+        assertCoursePath(courseId, dirRelPath, true)
+        reserve('files', 1)
+
+        const result = (await browser.browser_download(
+          courseId,
+          url,
+          dirRelPath
+        )) as { status: string; relPath?: string }
+        if (result.status === 'ok' && typeof result.relPath === 'string') {
+          record(
+            context,
+            courseId,
+            'browser_download' as AgentToolName,
+            'material',
+            result.relPath,
+            `자료 «${result.relPath}»`,
+            true
+          )
+        }
+        return result
+      }
     }
     Object.assign(handlers, browserHandlers)
   }

@@ -42,6 +42,9 @@ describe('browser tools (read-only)', () => {
         { url: `${ORIGIN}/courses/12345`, lmsCourseId: '12345' }
       ],
       specFor: () => ({ platform: 'canvas' }),
+      // Default to declining: a test that wants access has to say so, the
+      // same way a student does.
+      confirm: async () => false,
       fetch: fetch as unknown as (url: string) => Promise<Response>,
       ...over
     })
@@ -75,14 +78,39 @@ describe('browser tools (read-only)', () => {
     })
   })
 
-  test('refuses to read without a grant, and records the refusal', async () => {
-    const result = await tools().lms_new_items(COURSE, 'announcements')
+  test('asks before reading a site for the first time, and honours a no', async () => {
+    const confirm = vi.fn(async () => false)
+    const result = await tools({ confirm }).lms_new_items(COURSE, 'announcements')
+
+    expect(confirm).toHaveBeenCalledTimes(1)
     expect(result.status).toBe('error')
     expect(fetch).not.toHaveBeenCalled()
+    expect(grants.list(COURSE)).toEqual([])
 
     const tail = audit.tail(COURSE)
     expect(tail[0]?.action).toBe('denied')
-    expect(tail[0]?.detail).toContain('no-grant')
+    expect(tail[0]?.detail).toContain('거부')
+  })
+
+  test('a yes creates a scoped, expiring grant and proceeds', async () => {
+    const confirm = vi.fn(async () => true)
+    const result = await tools({ confirm }).lms_new_items(COURSE, 'announcements')
+
+    expect(result.status).toBe('ok')
+    const [grant] = grants.list(COURSE)
+    expect(grant?.origin).toBe(ORIGIN)
+    expect(grant?.capability).toBe('read')
+    // Not "forever": it has an end date the student can see.
+    expect(grant?.expiresAt.length).toBeGreaterThan(0)
+    expect(audit.tail(COURSE).some((e) => e.action === 'grant')).toBe(true)
+  })
+
+  test('does not ask twice for the same site', async () => {
+    const confirm = vi.fn(async () => true)
+    const api = tools({ confirm })
+    await api.lms_new_items(COURSE, 'announcements')
+    await api.lms_new_items(COURSE, 'announcements')
+    expect(confirm).toHaveBeenCalledTimes(1)
   })
 
   test('the first look records the list instead of dumping it', async () => {
@@ -182,4 +210,116 @@ describe('browser tools (read-only)', () => {
     expect(result.status).toBe('error')
     if (result.status === 'error') expect(result.message).toContain('로그인')
   })
+  describe('collection', () => {
+    test('lms_list returns the whole list, not just what is new', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'read' })
+      const api = tools()
+      // Even after a diff has consumed them, listing still shows everything.
+      await api.lms_new_items(COURSE, 'announcements')
+      const result = await api.lms_list(COURSE, 'announcements')
+      expect(result.status).toBe('ok')
+      if (result.status === 'ok') expect(result.items).toHaveLength(1)
+    })
+
+    test('lms_list defaults to files — what collecting handouts needs', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'read' })
+      const result = await tools().lms_list(COURSE, null)
+      if (result.status === 'ok') expect(result.kind).toBe('files')
+    })
+
+    test('a read grant does NOT authorise downloading — it asks again', async () => {
+      // Looking at a page and taking files off it are separate decisions.
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'read' })
+      const confirm = vi.fn(async () => false)
+      const collect = vi.fn()
+      const result = await tools({ collect, confirm }).browser_download(
+        COURSE,
+        `${ORIGIN}/files/1.pdf`,
+        ''
+      )
+      expect(confirm).toHaveBeenCalledTimes(1)
+      expect(result.status).toBe('error')
+      expect(collect).not.toHaveBeenCalled()
+    })
+
+    test('a hard-denied origin is never even asked about', async () => {
+      // Asking would imply a yes could unlock it. It cannot.
+      const confirm = vi.fn(async () => true)
+      const collect = vi.fn()
+      await tools({ collect, confirm }).browser_download(
+        COURSE,
+        'https://sugang.snu.ac.kr/files/1.pdf',
+        ''
+      )
+      expect(confirm).not.toHaveBeenCalled()
+      expect(collect).not.toHaveBeenCalled()
+    })
+
+    test('downloads with a download grant, and journals the path', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'download' })
+      const collect = vi.fn(async () => ({ relPath: '3주차/강의자료.pdf' }))
+      const result = await tools({ collect }).browser_download(
+        COURSE,
+        `${ORIGIN}/files/1.pdf`,
+        '3주차'
+      )
+      expect(result).toEqual({ status: 'ok', relPath: '3주차/강의자료.pdf' })
+      expect(collect).toHaveBeenCalledWith({
+        courseId: COURSE,
+        url: `${ORIGIN}/files/1.pdf`,
+        dirRelPath: '3주차'
+      })
+      const entry = audit.tail(COURSE)[0]
+      expect(entry?.action).toBe('download')
+      expect(entry?.detail).toContain('강의자료.pdf')
+    })
+
+    test('a download grant covers reading too', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'download' })
+      const result = await tools().lms_list(COURSE, 'files')
+      expect(result.status).toBe('ok')
+    })
+
+    test('never downloads from a hard-denied origin', async () => {
+      grants.grant({
+        courseId: COURSE,
+        url: 'https://sugang.snu.ac.kr',
+        capability: 'download'
+      })
+      const collect = vi.fn()
+      const result = await tools({ collect }).browser_download(
+        COURSE,
+        'https://sugang.snu.ac.kr/files/1.pdf',
+        ''
+      )
+      expect(result.status).toBe('error')
+      expect(collect).not.toHaveBeenCalled()
+    })
+
+    test('a failed download reports the reason and audits it', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'download' })
+      const result = await tools({
+        collect: async () => {
+          throw new Error('파일이 너무 큽니다')
+        }
+      }).browser_download(COURSE, `${ORIGIN}/files/1.pdf`, '')
+
+      expect(result.status).toBe('error')
+      if (result.status === 'error') {
+        expect(result.message).toContain('너무 큽니다')
+      }
+      expect(audit.tail(COURSE)[0]?.detail).toContain('실패')
+    })
+
+    test('says so plainly when the session cannot download at all', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'download' })
+      const result = await tools().browser_download(
+        COURSE,
+        `${ORIGIN}/files/1.pdf`,
+        ''
+      )
+      expect(result.status).toBe('error')
+    })
+  })
+
 })
