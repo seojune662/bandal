@@ -29,6 +29,9 @@ import {
 } from './documentEdit'
 import {
   AGENT_TOOL_DEFINITIONS,
+  BROWSER_TOOL_DEFINITIONS,
+  BROWSER_TOOL_NAMES,
+  type BrowserToolName,
   AGENT_TOOL_NAMES,
   type AgentToolName
 } from './schemas'
@@ -72,11 +75,22 @@ export interface AgentToolsDeps {
   journal: {
     record: (entry: AgentJournalEntry) => void
   }
+  /**
+   * Read-only LMS tools. Present only for conversations doing browser work —
+   * their schemas are ~1k tokens on every turn otherwise, including one that
+   * just asks about a PDF. `--allowedTools` is derived from `names` at spawn,
+   * so this is naturally per session.
+   */
+  browser?: {
+    lms_course_page: (courseId: string) => unknown
+    lms_new_items: (courseId: string, kind: string | null) => Promise<unknown>
+  }
 }
 
 export interface AgentTools {
   readonly definitions: readonly Tool[]
-  readonly names: readonly AgentToolName[]
+  /** Includes the browser tools when this session has them. */
+  readonly names: readonly (AgentToolName | BrowserToolName)[]
   call: (name: string, args?: unknown) => Promise<CallToolResult>
 }
 
@@ -865,9 +879,32 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
     }
   }
 
+  const browser = deps.browser
+  if (browser !== undefined) {
+    const browserHandlers: Record<
+      string,
+      (input: Record<string, unknown>) => Promise<unknown> | unknown
+    > = {
+      lms_course_page: (input) =>
+        browser.lms_course_page(stringField(input, 'courseId', { nonEmpty: true })),
+      lms_new_items: (input) =>
+        browser.lms_new_items(
+          stringField(input, 'courseId', { nonEmpty: true }),
+          optionalString(input, 'kind') ?? null
+        )
+    }
+    Object.assign(handlers, browserHandlers)
+  }
+
   return {
-    definitions: AGENT_TOOL_DEFINITIONS,
-    names: AGENT_TOOL_NAMES,
+    definitions:
+      browser === undefined
+        ? AGENT_TOOL_DEFINITIONS
+        : [...AGENT_TOOL_DEFINITIONS, ...BROWSER_TOOL_DEFINITIONS],
+    names:
+      browser === undefined
+        ? AGENT_TOOL_NAMES
+        : [...AGENT_TOOL_NAMES, ...BROWSER_TOOL_NAMES],
     async call(name, args = {}) {
       const handler = handlers[name as AgentToolName]
       if (handler === undefined) {

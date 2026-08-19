@@ -15,6 +15,7 @@ import type {
   ThemePreference
 } from '../../../../shared/types/settings'
 import { AccountPanel } from './AccountPanel'
+import { AgentAccessPanel } from './AgentAccessPanel'
 import { BrowsingDataPanel } from './BrowsingDataPanel'
 import {
   AboutPanel,
@@ -412,6 +413,7 @@ export function SettingsApp({
       />
     ),
     ai: (
+      <>
       <AiPanel
         provider={settings?.agentProvider ?? 'claude-code'}
         providerReady={settings !== null}
@@ -428,6 +430,8 @@ export function SettingsApp({
         onProviderSelect={handleAgentProviderSelect}
         onRetry={loadAvailability}
       />
+      <AgentAccessPanel />
+      </>
     ),
     university: <UniversitySettingsPanel />,
     courses: (

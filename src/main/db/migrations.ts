@@ -694,6 +694,65 @@ export const migrations: Migration[] = [
            ON browser_history (host);`
       )
     }
+  },
+  {
+    // [M20] What the agent may do in the browser, and what it did.
+    //
+    // A grant is a TUPLE (course, exact origin, capability) with an expiry —
+    // never a tool name, never course-wide, never permanent. The existing
+    // tool-permission grant is all three of those and cannot be listed or
+    // revoked (backlog §5.8); this deliberately inherits none of it.
+    //
+    // `browser_audit` is append-only. Values are redacted before they get
+    // here (browserAgent/redact.ts): a password is absent rather than masked.
+    version: 20,
+    name: 'browser-agent-grants-audit',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS browser_grants (
+           id           TEXT PRIMARY KEY,
+           course_id    TEXT NOT NULL,
+           origin       TEXT NOT NULL,
+           capability   TEXT NOT NULL,
+           created_at   TEXT NOT NULL,
+           expires_at   TEXT NOT NULL,
+           revoked_at   TEXT,
+           last_used_at TEXT
+         );`
+      )
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_browser_grants_lookup
+           ON browser_grants (course_id, origin);`
+      )
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS browser_audit (
+           id         TEXT PRIMARY KEY,
+           course_id  TEXT NOT NULL,
+           run_id     TEXT NOT NULL,
+           action     TEXT NOT NULL,
+           url        TEXT NOT NULL,
+           detail     TEXT NOT NULL,
+           created_at TEXT NOT NULL
+         );`
+      )
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_browser_audit_course
+           ON browser_audit (course_id, created_at DESC);`
+      )
+      // Diff ledger: which LMS items this course has already been told about.
+      // The ONLY way "새 공지 있어?" is answerable rather than "여기 공지 30개".
+      // Holds ids and titles, never page content, and dies with the course.
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS browser_seen (
+           course_id  TEXT NOT NULL,
+           list_key   TEXT NOT NULL,
+           item_key   TEXT NOT NULL,
+           title      TEXT NOT NULL,
+           first_seen TEXT NOT NULL,
+           PRIMARY KEY (course_id, list_key, item_key)
+         );`
+      )
+    }
   }
 ]
 

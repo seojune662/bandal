@@ -429,6 +429,45 @@ export const AGENT_TOOL_DEFINITIONS = [
   }
 ] as const satisfies readonly Tool[]
 
+/**
+ * Browser tools, registered only when a conversation is actually doing
+ * browser work.
+ *
+ * They are ~1k tokens of schema on EVERY turn of EVERY course chat, including
+ * "이 PDF 3쪽 설명해 줘". `--allowedTools` is computed from `agentTools.names`
+ * at spawn, so gating here is naturally per-session and costs nothing.
+ */
+export const BROWSER_TOOL_DEFINITIONS = [
+  {
+    name: 'lms_course_page',
+    description:
+      '과목에 연결된 학교 강의실(LMS) 주소를 확인합니다. 연결이 없으면 null 을 돌려줍니다.',
+    inputSchema: objectSchema({ courseId }, ['courseId']),
+    annotations: readOnly
+  },
+  {
+    name: 'lms_new_items',
+    description:
+      '강의실에서 지난번 확인 이후 새로 올라온 항목만 돌려줍니다. 페이지를 열지 않고 학생이 이미 로그인한 세션으로 조회합니다. kind: announcements | assignments | modules | files.',
+    inputSchema: objectSchema(
+      {
+        courseId,
+        kind: nullableString(
+          '무엇을 볼지. 생략하면 announcements(공지)'
+        )
+      },
+      ['courseId']
+    ),
+    annotations: readOnly
+  }
+] as const
+
+export const BROWSER_TOOL_NAMES = BROWSER_TOOL_DEFINITIONS.map(
+  (definition) => definition.name
+) as readonly BrowserToolName[]
+
+export type BrowserToolName = (typeof BROWSER_TOOL_DEFINITIONS)[number]['name']
+
 export type AgentToolName = (typeof AGENT_TOOL_DEFINITIONS)[number]['name']
 
 export const AGENT_TOOL_NAMES = AGENT_TOOL_DEFINITIONS.map(

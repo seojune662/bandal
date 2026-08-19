@@ -482,4 +482,55 @@ describe('agent app tools', () => {
     expect(message(result)).toContain('[not-found]')
     expect(message(result)).toContain('다시 호출하세요')
   })
+  describe('browser tools capability gate', () => {
+    test('are absent by default, so they cost nothing on an ordinary turn', () => {
+      // ~1k tokens of schema on EVERY turn of EVERY course chat otherwise,
+      // including one that only asks about a PDF.
+      expect(harness.tools.names).not.toContain('lms_new_items')
+      expect(
+        harness.tools.definitions.some((d) => d.name === 'lms_new_items')
+      ).toBe(false)
+    })
+
+    test('appear only when the session is given them', async () => {
+      const tools = createAgentTools({
+        ...harness.deps,
+        browser: {
+          lms_course_page: () => ({ url: 'https://x/courses/1' }),
+          lms_new_items: async () => ({ status: 'ok', items: [] })
+        }
+      })
+      expect(tools.names).toContain('lms_new_items')
+      expect(tools.names).toContain('lms_course_page')
+
+      const result = await tools.call('lms_new_items', { courseId: 'c' })
+      expect(result.isError).not.toBe(true)
+    })
+
+    test('an unknown tool is still refused when browser tools are on', async () => {
+      const tools = createAgentTools({
+        ...harness.deps,
+        browser: {
+          lms_course_page: () => ({}),
+          lms_new_items: async () => ({})
+        }
+      })
+      expect((await tools.call('lms_delete_everything', {})).isError).toBe(true)
+    })
+
+    test('courseId is required', async () => {
+      const tools = createAgentTools({
+        ...harness.deps,
+        browser: {
+          lms_course_page: () => ({}),
+          lms_new_items: async () => ({})
+        }
+      })
+      expect((await tools.call('lms_new_items', {})).isError).toBe(true)
+      expect(
+        (await tools.call('lms_new_items', { courseId: '  ' })).isError
+      ).toBe(true)
+    })
+  })
+
 })

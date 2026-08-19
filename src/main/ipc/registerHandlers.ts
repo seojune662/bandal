@@ -24,6 +24,14 @@ import {
 import type { NativeImage } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc/contract'
 import { matchCourseByUrl } from '../../shared/universities/matchCourseByUrl'
+import { resolveUniversity } from '../../shared/universities'
+import type { LmsPlatform } from '../../shared/types/university'
+import {
+  createAuditRepo,
+  createBrowserTools,
+  createGrantsRepo,
+  createSeenRepo
+} from '../features/browserAgent'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
 import type { PushChannel, PushPayload } from '../../shared/ipc/events'
 import { getSettings, setSettings } from '../settingsStore'
@@ -616,6 +624,74 @@ export function registerHandlers(): IpcRouter {
   const agentConfirmer = createAgentConfirmer({
     emit: (request) => broadcast('agentTools:confirm', request)
   })
+  // -- the agent's read-only view of a course's LMS -------------------------
+  // Registered per session only when the course has a classroom linked: the
+  // schemas cost ~1k tokens on every turn otherwise, including a turn that
+  // only asks about a PDF.
+  /**
+   * The active school's LMS spec, when this URL is on its classroom host.
+   * The spec carries the platform, which is what decides whether a JSON
+   * endpoint exists at all.
+   */
+  const specForUrl = (url: string): { platform: LmsPlatform } | null => {
+    const spec = resolveUniversity(getSettings().university)?.courseLink
+    if (spec === undefined) return null
+    try {
+      return new RegExp(spec.idPattern).test(url)
+        ? { platform: spec.platform }
+        : null
+    } catch {
+      return null
+    }
+  }
+
+  const browserGrants = createGrantsRepo(db)
+  const browserAudit = createAuditRepo(db)
+  browserAudit.prune()
+  const browserSeen = createSeenRepo(db)
+
+  const browserToolsFor = (
+    courseId: string,
+    getRunId: () => string
+  ): ReturnType<typeof createBrowserTools> | undefined => {
+    const links = courseLinksRepo
+      .list({ courseId })
+      .filter((link) => link.lmsCourseId !== null)
+    if (links.length === 0) return undefined
+    return createBrowserTools({
+      courseId,
+      getRunId,
+      grants: browserGrants,
+      audit: browserAudit,
+      seen: browserSeen,
+      courseLinks: (id) =>
+        courseLinksRepo
+          .list({ courseId: id })
+          .map((link) => ({ url: link.url, lmsCourseId: link.lmsCourseId })),
+      specFor: (url) => specForUrl(url),
+      // The student's own login — the same session they signed in to by hand.
+      fetch: (url) => session.fromPartition(BROWSING_PARTITION).fetch(url)
+    })
+  }
+
+  handle('browserAgent:grants', () => ({ grants: browserGrants.list() }))
+  handle('browserAgent:revokeGrant', (req) => {
+    browserGrants.revoke(req.id)
+    return OK
+  })
+  handle('browserAgent:auditTail', (req) => ({
+    entries: browserAudit
+      .tail(req.courseId, req.limit)
+      .map(({ id, courseId, action, url, detail, createdAt }) => ({
+        id,
+        courseId,
+        action,
+        url,
+        detail,
+        createdAt
+      }))
+  }))
+
   const startToolServer = async (
     courseId: string,
     sessionKey: string,
@@ -639,6 +715,14 @@ export function registerHandlers(): IpcRouter {
         boardRepo,
         canvasRepo,
         confirm: (request) => agentConfirmer.confirm(request),
+        // `exactOptionalPropertyTypes`: the key must be absent, not undefined.
+        ...(() => {
+          const browser = browserToolsFor(
+            courseId,
+            () => `${sessionKey}:${getTurnSeq()}`
+          )
+          return browser === undefined ? {} : { browser }
+        })(),
         journal: {
           record: (entry) => {
             agentJournal.record(entry)

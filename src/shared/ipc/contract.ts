@@ -638,6 +638,46 @@ export interface IpcContract {
     res: { dataUrl: string | null }
   }
 
+  // -- agent browser access ---------------------------------------------------
+  /**
+   * Live and past access grants. Revoked ones stay listed so a student can see
+   * that a permission existed — backlog §5.8's complaint about the tool grant
+   * is precisely that it was invisible.
+   */
+  'browserAgent:grants': {
+    req: Record<string, never>
+    res: {
+      grants: {
+        id: string
+        courseId: string
+        origin: string
+        capability: 'read' | 'interact' | 'download'
+        createdAt: string
+        expiresAt: string
+        revokedAt: string | null
+        lastUsedAt: string | null
+      }[]
+    }
+  }
+  'browserAgent:revokeGrant': {
+    req: { id: string }
+    res: { ok: true }
+  }
+  /** What the agent actually did, newest first. */
+  'browserAgent:auditTail': {
+    req: { courseId: string | null; limit?: number }
+    res: {
+      entries: {
+        id: string
+        courseId: string
+        action: string
+        url: string
+        detail: string
+        createdAt: string
+      }[]
+    }
+  }
+
   // -- course activity + AI study tools -------------------------------------
   /**
    * Appends one activity event. Most events are recorded in the main process
@@ -1207,6 +1247,9 @@ export const IPC_CHANNELS = [
   'browser:clearHistory',
   'browser:courseForUrl',
   'browser:favicon',
+  'browserAgent:grants',
+  'browserAgent:revokeGrant',
+  'browserAgent:auditTail',
   'agentTools:changes',
   'agentTools:undo',
   'agentTools:respondConfirm',
