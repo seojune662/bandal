@@ -34,6 +34,26 @@ export interface SendHighlightToNoteInput {
   noteRelPath?: string
 }
 
+/**
+ * A quote clipped from a web page in the embedded browser.
+ *
+ * Deliberately a sibling of `SendHighlightToNoteInput` rather than a widening
+ * of it: that one's `relPath`/`page`/`annotationId` are required and carry the
+ * backlink index. A web clip has no material behind it, so the source line is
+ * an ordinary markdown link and the note stays readable in any editor.
+ */
+export interface SendWebClipToNoteInput {
+  courseId: string
+  /** Page the quote came from. */
+  url: string
+  /** Page title; falls back to the host when a page has none. */
+  title: string
+  quote: string
+  comment: string | null
+  /** Omit to append to the course's default study note. */
+  noteRelPath?: string
+}
+
 export interface SendHighlightToNoteResult {
   /** Note that was written to. */
   relPath: string

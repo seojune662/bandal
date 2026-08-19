@@ -80,6 +80,9 @@ describe('resolveShortcut — chords', () => {
     expect(resolveShortcut(input({ key: 'f', metaKey: true }))).toEqual({
       type: 'browser-find'
     })
+    expect(resolveShortcut(input({ key: 'd', metaKey: true }))).toEqual({
+      type: 'browser-bookmark'
+    })
   })
 
   test('⌘+ / ⌘- / ⌘0 drive zoom', () => {

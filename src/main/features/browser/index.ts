@@ -22,3 +22,11 @@ export {
   downloadFileName,
   type BrowserDownloadUpdate
 } from './downloads'
+export {
+  createHistoryRepo,
+  hostOf,
+  isRecordableUrl,
+  type HistoryEntry,
+  type HistoryRepo
+} from './historyRepo'
+export { createFaviconFetcher } from './favicon'

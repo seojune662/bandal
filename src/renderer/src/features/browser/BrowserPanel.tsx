@@ -32,7 +32,13 @@ import {
 import { BrowserErrorPage } from './BrowserErrorPage'
 import { DEFAULT_ZOOM_LEVEL, isDefaultZoom, zoomPercent } from './zoom'
 import { useDownloads } from './downloadsStore'
+import { toggleFavorite, useBrowserFavorite } from './browserFavorite'
+import { settingsSnapshot } from '../../stores/settingsSnapshot'
 import { BrowserFindBar } from './BrowserFindBar'
+import {
+  searchEngine,
+  useAddressSuggestions
+} from './useAddressSuggestions'
 import {
   browserFavoriteShortcuts,
   hostnameForUrl,
@@ -116,31 +122,51 @@ function BrowserSiteMark({ url }: { url: string }): JSX.Element {
 function BrowserAddressInput({
   value,
   onNavigate,
-  focusSeq
+  focusSeq,
+  favicon
 }: {
   value: string
   onNavigate: (url: string) => void
   /** Increments when ⌘L asks for focus; 0 = never asked. */
   focusSeq: number
+  /** data: URL, or undefined to fall back to the generic globe. */
+  favicon: string | undefined
 }): JSX.Element {
   const [draft, setDraft] = useState<string | null>(null)
   const [focused, setFocused] = useState(false)
+  const [highlighted, setHighlighted] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const suggestions = useAddressSuggestions(draft)
 
   useEffect(() => {
     if (focusSeq === 0) return
     inputRef.current?.focus()
     inputRef.current?.select()
   }, [focusSeq])
+  useEffect(() => setHighlighted(0), [draft])
+
   const parts = addressDisplayParts(value)
   const showDisplayUrl = !focused && draft === null && value.length > 0
+  const open = focused && draft !== null && suggestions.length > 0
+  const clamped = Math.min(highlighted, Math.max(0, suggestions.length - 1))
 
-  const submit = (): void => {
-    const url = resolveAddressInput(draft ?? value)
-    if (url === null) return
+  const go = (url: string): void => {
     setDraft(null)
     inputRef.current?.blur()
     onNavigate(url)
+  }
+
+  const submit = (): void => {
+    // ↵ takes the highlighted row when one is, otherwise the literal input —
+    // so typing and pressing enter never lands somewhere unexpected.
+    const picked = open ? suggestions[clamped] : undefined
+    if (picked !== undefined) {
+      go(picked.url)
+      return
+    }
+    const url = resolveAddressInput(draft ?? value, searchEngine())
+    if (url === null) return
+    go(url)
   }
 
   return (
@@ -153,7 +179,11 @@ function BrowserAddressInput({
         submit()
       }}
     >
-      <BrowserIcon name={parts.secure ? 'lock' : 'globe'} />
+      {favicon === undefined ? (
+        <BrowserIcon name={parts.secure ? 'lock' : 'globe'} />
+      ) : (
+        <img className="browser-address__favicon" src={favicon} alt="" />
+      )}
       <span className="browser-address__field">
         <input
           ref={inputRef}
@@ -172,11 +202,27 @@ function BrowserAddressInput({
             setFocused(false)
             setDraft(null)
           }}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls="browser-address-suggestions"
+          aria-autocomplete="list"
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.preventDefault()
               setDraft(null)
               event.currentTarget.blur()
+              return
+            }
+            if (!open) return
+            if (event.key === 'ArrowDown') {
+              event.preventDefault()
+              setHighlighted((index) => (index + 1) % suggestions.length)
+            } else if (event.key === 'ArrowUp') {
+              event.preventDefault()
+              setHighlighted(
+                (index) =>
+                  (index - 1 + suggestions.length) % suggestions.length
+              )
             }
           }}
         />
@@ -188,6 +234,38 @@ function BrowserAddressInput({
           </span>
         )}
       </span>
+      {open && (
+        <ul
+          id="browser-address-suggestions"
+          className="browser-suggestions"
+          role="listbox"
+        >
+          {suggestions.map((suggestion, index) => (
+            <li key={`${suggestion.kind}:${suggestion.url}`}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={index === clamped}
+                data-highlighted={index === clamped ? 'true' : undefined}
+                className="browser-suggestion"
+                onMouseEnter={() => setHighlighted(index)}
+                // The input's blur would close the list before a click lands.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => go(suggestion.url)}
+              >
+                <span className="browser-suggestion__label">
+                  {suggestion.label}
+                </span>
+                {suggestion.detail !== '' && (
+                  <span className="browser-suggestion__detail">
+                    {suggestion.detail}
+                  </span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </form>
   )
 }
@@ -232,6 +310,8 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
     (state) => state.addressFocusSeq[tabId] ?? 0
   )
   const activeDownloads = useDownloads((state) => state.activeCount)
+  const starred = useBrowserFavorite(nav.url)
+  const favicon = useBrowserGuests((state) => state.favicon[tabId])
   const findState = useBrowserGuests((state) => state.find[tabId])
   const loginTooltip =
     login?.savedLogin === null
@@ -288,9 +368,23 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
           value={nav.url}
           onNavigate={onNavigate}
           focusSeq={addressFocusSeq}
+          favicon={favicon}
         />
 
         <div className="browser-toolbar__actions">
+          <Tooltip
+            label={starred === null ? '즐겨찾기에 추가 (⌘D)' : '즐겨찾기에서 빼기'}
+            placement="bottom"
+          >
+            <button
+              type="button"
+              className="browser-nav-button"
+              aria-pressed={starred !== null}
+              onClick={() => toggleFavorite(tabId, nav)}
+            >
+              <BrowserIcon name={starred === null ? 'star' : 'starFilled'} />
+            </button>
+          </Tooltip>
           {activeDownloads > 0 && (
             <Tooltip
               label={`${activeDownloads}개 내려받는 중`}
@@ -417,6 +511,17 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   // student back to the URL the tab was opened with. `initialUrl` is excluded
   // from the structural key (layoutPersistence), so this costs no extra write:
   // the parked snapshot carries it on quit and on course switch.
+  // A visible LMS course page decides where its downloads go.
+  useEffect(() => {
+    if (!isPanelVisible || navState.url === '') return
+    void useDownloads
+      .getState()
+      .followPage(navState.url, settingsSnapshot().lastActiveCourseId)
+      .catch(() => {
+        // Falls back to the selected course; nothing to surface.
+      })
+  }, [isPanelVisible, navState.url])
+
   useEffect(() => {
     if (tabId === '' || navState.url === '' || navState.url === initialUrl) {
       return

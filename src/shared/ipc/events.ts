@@ -92,6 +92,7 @@ export interface ShortcutPassthrough {
     | 'reload-hard'
     | 'focus-address'
     | 'find'
+    | 'bookmark'
     | 'reopen-tab'
     | 'prev-tab'
     | 'next-tab'

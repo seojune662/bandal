@@ -15,6 +15,7 @@ import type {
   ThemePreference
 } from '../../../../shared/types/settings'
 import { AccountPanel } from './AccountPanel'
+import { BrowsingDataPanel } from './BrowsingDataPanel'
 import {
   AboutPanel,
   AiPanel,
@@ -394,7 +395,12 @@ export function SettingsApp({
 
   const panel = {
     account: <AccountPanel />,
-    general: <GeneralPanel settings={settings} />,
+    general: (
+      <>
+        <GeneralPanel settings={settings} />
+        <BrowsingDataPanel settings={settings} />
+      </>
+    ),
     appearance: (
       <AppearancePanel
         theme={theme}

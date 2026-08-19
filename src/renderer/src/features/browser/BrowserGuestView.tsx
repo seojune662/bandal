@@ -14,6 +14,8 @@ import {
   type AnchorRect
 } from '../workspace/panels/browserAnchor'
 import { useBrowserGuests, type BrowserNavState } from './browserGuestsStore'
+import { invoke } from '../../lib/ipc'
+import { settingsSnapshot } from '../../stores/settingsSnapshot'
 import { ABORTED_ERROR_CODE } from './loadError'
 import {
   BrowserContextMenu,
@@ -28,6 +30,7 @@ import {
 import { useWebviewSelectionBridge } from './selectionBridge'
 import { useWebviewLoginBridge } from './loginBridge'
 import type {
+  PageFaviconUpdatedEvent,
   ContextMenuEvent,
   FoundInPageEvent,
   DidFailLoadEvent,
@@ -194,8 +197,26 @@ export function BrowserGuestView({
             srcURL: event.params.srcURL,
             mediaType: event.params.mediaType,
             selectionText: event.params.selectionText,
-            pageURL: event.params.pageURL
+            pageURL: event.params.pageURL,
+            pageTitle:
+              useBrowserGuests.getState().nav[tabId]?.title ?? '',
+            courseId: settingsSnapshot().lastActiveCourseId
           })
+        }) as EventListener
+      ],
+      [
+        'page-favicon-updated',
+        ((event: PageFaviconUpdatedEvent) => {
+          // Chromium lists every declared icon; the last is the best match.
+          const best = event.favicons.at(-1)
+          if (best === undefined) return
+          void invoke('browser:favicon', { url: best })
+            .then((result) => {
+              useBrowserGuests.getState().setFavicon(tabId, result.dataUrl)
+            })
+            .catch(() => {
+              // A missing icon is a missing icon; the globe stands in.
+            })
         }) as EventListener
       ],
       [

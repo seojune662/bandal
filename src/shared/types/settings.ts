@@ -4,6 +4,7 @@
 
 import type { AgentProvider } from './agent-events'
 import { DEFAULT_PALETTE_ID, DEFAULT_THEME_ID } from '../theme'
+import { DEFAULT_SEARCH_ENGINE, type SearchEngineId } from '../search'
 import type { PaletteId, ThemeId } from '../theme'
 import { DEFAULT_UNIVERSITY_SETTINGS } from './university'
 import type { UniversitySettings } from './university'
@@ -93,6 +94,8 @@ export interface Settings {
   openAdjacentTab: boolean
   /** [R3] 앱을 다시 켰을 때 마지막으로 보던 과목을 복원한다. */
   restoreLastCourse: boolean
+  /** 주소창에 URL이 아닌 말을 넣었을 때 쓸 검색 엔진. */
+  browserSearchEngine: SearchEngineId
   /**
    * [R3] 내부용 — 마지막으로 선택한 과목 id. 설정 파일에 저장해 창 사이에
    * 자동으로 동기화된다(설정 UI에는 노출하지 않는다). null = 기록 없음.
@@ -111,6 +114,7 @@ export const DEFAULT_SETTINGS: Settings = {
   university: DEFAULT_UNIVERSITY_SETTINGS,
   openAdjacentTab: false,
   restoreLastCourse: true,
+  browserSearchEngine: DEFAULT_SEARCH_ENGINE,
   lastActiveCourseId: null
 }
 

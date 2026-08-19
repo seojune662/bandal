@@ -13,7 +13,8 @@ const EMPTY = {
   linkURL: '',
   srcURL: '',
   mediaType: 'none',
-  selectionText: ''
+  selectionText: '',
+  courseId: 'course-1'
 }
 
 describe('contextMenuItems', () => {
@@ -60,10 +61,21 @@ describe('contextMenuItems', () => {
     }
   })
 
-  test('a selection adds copy / search', () => {
+  test('a selection adds copy / search / clip', () => {
     const items = contextMenuItems({ ...EMPTY, selectionText: '해시 충돌' })
     expect(items).toContain('copy-selection')
     expect(items).toContain('search-selection')
+    expect(items).toContain('clip-to-note')
+  })
+
+  test('without a course there is nowhere to clip to', () => {
+    const items = contextMenuItems({
+      ...EMPTY,
+      selectionText: '해시 충돌',
+      courseId: null
+    })
+    expect(items).toContain('copy-selection')
+    expect(items).not.toContain('clip-to-note')
   })
 
   test('a whitespace-only selection is not a selection', () => {

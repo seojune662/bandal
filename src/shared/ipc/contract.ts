@@ -80,6 +80,7 @@ import type { SearchHit, StudyGap } from '../types/search'
 import type {
   MaterialBacklinks,
   SendHighlightToNoteInput,
+  SendWebClipToNoteInput,
   SendHighlightToNoteResult
 } from '../types/link'
 import type {
@@ -595,6 +596,48 @@ export interface IpcContract {
     res: { ok: true }
   }
 
+  // -- browser history ------------------------------------------------------
+  /** Upsert on visit. A revisit bumps the count, it does not append a row. */
+  'browser:recordVisit': {
+    req: { url: string; title: string; courseId: string | null }
+    res: { ok: true }
+  }
+  /** Ranked omnibox candidates. Empty query returns nothing. */
+  'browser:searchHistory': {
+    req: { query: string; limit?: number }
+    res: {
+      entries: {
+        url: string
+        title: string
+        host: string
+        visitCount: number
+        lastVisitedAt: string
+      }[]
+    }
+  }
+  /** `null` clears everything; a course id clears just that course's rows. */
+  'browser:clearHistory': {
+    req: { courseId: string | null }
+    res: { ok: true }
+  }
+  /**
+   * Which course an LMS page belongs to, by its saved course links. null when
+   * nothing matches or the answer is ambiguous — never a guess.
+   */
+  'browser:courseForUrl': {
+    req: { url: string }
+    res: { courseId: string | null }
+  }
+  /**
+   * A page's favicon as a `data:` URL. Fetched in main because the renderer
+   * CSP blocks remote images — see main/features/browser/favicon.ts for why
+   * relaxing it is the wrong trade.
+   */
+  'browser:favicon': {
+    req: { url: string }
+    res: { dataUrl: string | null }
+  }
+
   // -- course activity + AI study tools -------------------------------------
   /**
    * Appends one activity event. Most events are recorded in the main process
@@ -761,6 +804,11 @@ export interface IpcContract {
   }
   'link:sendHighlightToNote': {
     req: SendHighlightToNoteInput
+    res: SendHighlightToNoteResult
+  }
+  /** Same destination as a PDF highlight, but the source is a web page. */
+  'link:sendWebClipToNote': {
+    req: SendWebClipToNoteInput
     res: SendHighlightToNoteResult
   }
 
@@ -1154,6 +1202,11 @@ export const IPC_CHANNELS = [
   'browser:sessionSites',
   'browser:clearSession',
   'browser:setDownloadTarget',
+  'browser:recordVisit',
+  'browser:searchHistory',
+  'browser:clearHistory',
+  'browser:courseForUrl',
+  'browser:favicon',
   'agentTools:changes',
   'agentTools:undo',
   'agentTools:respondConfirm',
@@ -1224,6 +1277,7 @@ export const IPC_CHANNELS = [
   'whiteboard:close',
   'links:forMaterial',
   'link:sendHighlightToNote',
+  'link:sendWebClipToNote',
   'group:shareNote',
   'group:saveSharedNote',
   'credentials:availability',

@@ -17,6 +17,7 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { invoke } from '../../lib/ipc'
+import { showToast } from '../../app/toast'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { guestActions } from './guestActions'
@@ -36,6 +37,10 @@ export interface BrowserContextMenuState {
   /** Guest-relative coordinates, for `copyImageAt`. */
   guestX: number
   guestY: number
+  /** Page title, for the clip's source line. */
+  pageTitle: string
+  /** Course a clip would be filed under; null = no course selected. */
+  courseId: string | null
 }
 
 export type ContextMenuItemId =
@@ -46,6 +51,7 @@ export type ContextMenuItemId =
   | 'save-image'
   | 'copy-selection'
   | 'search-selection'
+  | 'clip-to-note'
   | 'reload'
   | 'copy-page-url'
   | 'open-external'
@@ -59,7 +65,7 @@ export function contextMenuItems(
   state: Pick<
     BrowserContextMenuState,
     'linkURL' | 'srcURL' | 'mediaType' | 'selectionText'
-  >
+  > & { courseId: string | null }
 ): ContextMenuItemId[] {
   const items: ContextMenuItemId[] = []
   if (state.linkURL !== '') {
@@ -70,6 +76,9 @@ export function contextMenuItems(
   }
   if (state.selectionText.trim() !== '') {
     items.push('copy-selection', 'search-selection')
+    // Only offered with a course to file it under; a clip has nowhere to go
+    // otherwise, and a disabled row would just be noise.
+    if (state.courseId !== null) items.push('clip-to-note')
   }
   // Always available, so a right-click anywhere does something useful.
   items.push('reload', 'copy-page-url', 'open-external')
@@ -145,6 +154,25 @@ export function BrowserContextMenu({
     'copy-selection': {
       label: '복사',
       run: () => guestActions.copySelection(tabId)
+    },
+    'clip-to-note': {
+      label: '필기에 담기',
+      run: () => {
+        if (state.courseId === null) return
+        void invoke('link:sendWebClipToNote', {
+          courseId: state.courseId,
+          url: state.pageURL,
+          title: state.pageTitle,
+          quote: state.selectionText,
+          comment: null
+        })
+          .then((result) => {
+            showToast(`«${result.relPath}»에 담았어요.`)
+          })
+          .catch(() => {
+            showToast('필기에 담지 못했어요.', 'danger')
+          })
+      }
     },
     'search-selection': {
       label: `\u201c${trimmed}\u201d 검색`,

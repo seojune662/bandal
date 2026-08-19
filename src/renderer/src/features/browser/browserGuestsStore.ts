@@ -26,6 +26,8 @@ export interface BrowserFindState {
   /** Bumped by ⌘F so the input re-focuses even when already open. */
   focusSeq: number
 }
+import { invoke } from '../../lib/ipc'
+import { settingsSnapshot } from '../../stores/settingsSnapshot'
 import { getBrowserAnchorRect } from '../workspace/panels/browserAnchor'
 import { MAX_LIVE_GUESTS, pickEvictions, touchOrder } from './guestLru'
 
@@ -91,6 +93,9 @@ interface BrowserGuestsState {
   addressFocusSeq: Record<string, number | undefined>
   /** ⌘F bar, per tab. Absent = closed. */
   find: Record<string, BrowserFindState | undefined>
+  /** Favicon as a data URL, per tab. Absent = show the generic globe. */
+  favicon: Record<string, string | undefined>
+  setFavicon: (tabId: string, dataUrl: string | null) => void
   ensureGuest: (tabId: string, initialUrl: string) => void
   requestAddressFocus: (tabId: string) => void
   openFind: (tabId: string) => void
@@ -175,6 +180,32 @@ function withoutKeys<T>(
   return next
 }
 
+/**
+ * Remembers a page once it has both a committed URL and a title.
+ *
+ * Fired from `updateNav` rather than from a navigation event so a page is
+ * recorded with the name a student would recognise: `did-navigate` lands
+ * before `page-title-updated`, and a history row titled with its own URL is
+ * useless in the omnibox.
+ */
+function recordVisitFrom(
+  current: BrowserNavState,
+  patch: Partial<BrowserNavState>
+): void {
+  const url = patch.url ?? current.url
+  const title = patch.title ?? current.title
+  if (url === '' || title === '') return
+  // Same (url, title) as we already reported for this tab: nothing new.
+  if (patch.url === undefined && patch.title === undefined) return
+  void invoke('browser:recordVisit', {
+    url,
+    title,
+    courseId: settingsSnapshot().lastActiveCourseId
+  }).catch(() => {
+    // History is a convenience; never let it surface as an error.
+  })
+}
+
 export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
   liveGuests: [],
   nav: {},
@@ -185,6 +216,7 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
   zoom: {},
   addressFocusSeq: {},
   find: {},
+  favicon: {},
 
   ensureGuest: (tabId, initialUrl) => {
     const { liveGuests, nav, login, recent } = get()
@@ -211,6 +243,17 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
         [tabId]: initialLoginState()
       },
       recent: { ...recent, [tabId]: recent[tabId] ?? [] }
+    })
+  },
+
+  setFavicon: (tabId, dataUrl) => {
+    const { favicon } = get()
+    if ((favicon[tabId] ?? null) === dataUrl) return
+    set({
+      favicon:
+        dataUrl === null
+          ? withoutKeys(favicon, [tabId])
+          : { ...favicon, [tabId]: dataUrl }
     })
   },
 
@@ -303,7 +346,8 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
       overlay: withoutKeys(overlay, [tabId]),
       zoom: withoutKeys(zoom, [tabId]),
       addressFocusSeq: withoutKeys(get().addressFocusSeq, [tabId]),
-      find: withoutKeys(get().find, [tabId])
+      find: withoutKeys(get().find, [tabId]),
+      favicon: withoutKeys(get().favicon, [tabId])
     })
   },
 
@@ -311,6 +355,7 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
     const { nav, recent } = get()
     const current = nav[tabId]
     if (current === undefined) return
+    recordVisitFrom(current, patch)
     const next = { ...current, ...patch }
     if (typeof patch.url === 'string' && patch.url.length > 0) {
       lastKnownUrls.set(tabId, patch.url)
@@ -361,6 +406,7 @@ export function resetBrowserGuestsForTests(): void {
     overlay: {},
     zoom: {},
     addressFocusSeq: {},
-    find: {}
+    find: {},
+    favicon: {}
   })
 }

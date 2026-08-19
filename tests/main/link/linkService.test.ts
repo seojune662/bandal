@@ -5,11 +5,15 @@ import {
   createLinkService,
   defaultStudyNoteTitle,
   hasAnnotationLink,
-  highlightMarkdown
+  highlightMarkdown,
+  webClipMarkdown
 } from '../../../src/main/features/link'
 import { createNotesRepo, type NotesRepo } from '../../../src/main/features/notes'
 import { createTestDb, type TestDb } from '../helpers/testDb'
-import type { SendHighlightToNoteInput } from '../../../src/shared/types/link'
+import type {
+  SendHighlightToNoteInput,
+  SendWebClipToNoteInput
+} from '../../../src/shared/types/link'
 
 const COURSE_ID = 'course-link-test'
 
@@ -117,4 +121,88 @@ describe('linkService', () => {
     expect(defaultStudyNoteTitle('/courses/자료:구조?')).toBe('자료구조 학습노트')
   })
 })
+
+describe('web clips', () => {
+  let ctx: TestDb
+  let courseFolder: string
+  let notes: NotesRepo
+
+  function clip(
+    overrides: Partial<SendWebClipToNoteInput> = {}
+  ): SendWebClipToNoteInput {
+    return {
+      courseId: COURSE_ID,
+      url: 'https://myetl.snu.ac.kr/courses/12345/pages/week-3',
+      title: '자료구조 3주차',
+      quote: '해시 충돌은 체이닝으로 해결할 수 있다.',
+      comment: null,
+      ...overrides
+    }
+  }
+
+  function service() {
+    return createLinkService({ notes, getCourseFolder: () => courseFolder })
+  }
+
+  beforeEach(() => {
+    ctx = createTestDb()
+    courseFolder = join(ctx.dir, '자료구조 & 알고리즘')
+    mkdirSync(courseFolder, { recursive: true })
+    notes = createNotesRepo({ getCourseFolder: () => courseFolder })
+  })
+
+  afterEach(() => {
+    ctx.cleanup()
+  })
+
+  test('writes a blockquote with an ordinary markdown link', () => {
+    const result = service().sendWebClipToNote(clip())
+    const markdown = readFileSync(join(courseFolder, result.relPath), 'utf8')
+
+    expect(markdown).toContain('> 해시 충돌은 체이닝으로 해결할 수 있다.')
+    // A plain https link, so the note still resolves outside Bandal.
+    expect(markdown).toContain(
+      '[자료구조 3주차](https://myetl.snu.ac.kr/courses/12345/pages/week-3)'
+    )
+    expect(markdown).not.toContain('bandal://')
+  })
+
+  test('falls back to the host when a page has no title', () => {
+    expect(webClipMarkdown(clip({ title: '   ' }))).toContain(
+      '[myetl.snu.ac.kr](https://myetl.snu.ac.kr/courses/12345/pages/week-3)'
+    )
+  })
+
+  test('keeps a multi-line quote as one blockquote', () => {
+    const block = webClipMarkdown(clip({ quote: '첫 줄\r\n\n둘째 줄' }))
+    expect(block).toContain('> 첫 줄')
+    expect(block).toContain('> 둘째 줄')
+  })
+
+  test('includes the comment when there is one', () => {
+    expect(webClipMarkdown(clip({ comment: '시험 범위' }))).toContain('시험 범위')
+  })
+
+  test('clipping the same quote twice does not duplicate it', () => {
+    const svc = service()
+    svc.sendWebClipToNote(clip())
+    const result = svc.sendWebClipToNote(clip())
+    const markdown = readFileSync(join(courseFolder, result.relPath), 'utf8')
+
+    expect(markdown.split('해시 충돌은 체이닝으로').length - 1).toBe(1)
+  })
+
+  test('rejects a non-http url', () => {
+    // A hostile page controls the selection API; a file:// or javascript:
+    // source must never reach a note.
+    for (const url of ['file:///etc/passwd', 'javascript:alert(1)', 'nope']) {
+      expect(() => service().sendWebClipToNote(clip({ url })), url).toThrow()
+    }
+  })
+
+  test('rejects an empty quote', () => {
+    expect(() => service().sendWebClipToNote(clip({ quote: '  ' }))).toThrow()
+  })
+})
+
 

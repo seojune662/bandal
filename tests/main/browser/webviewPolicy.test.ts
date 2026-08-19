@@ -180,6 +180,7 @@ describe('passthroughShortcut (chords a focused guest would otherwise eat)', () 
     expect(passthroughShortcut(chord({ key: '9' }))).toBe('activate-last-tab')
     // ⌘F belongs to the browser, not the page — Chrome steals it too.
     expect(passthroughShortcut(chord({ key: 'f' }))).toBe('find')
+    expect(passthroughShortcut(chord({ key: 'd' }))).toBe('bookmark')
   })
 
   test('alt always disqualifies', () => {

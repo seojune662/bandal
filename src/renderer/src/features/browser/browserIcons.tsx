@@ -13,6 +13,8 @@ export type BrowserIconName =
   | 'download'
   | 'chevronUp'
   | 'chevronDown'
+  | 'star'
+  | 'starFilled'
 
 interface BrowserIconProps extends SVGProps<SVGSVGElement> {
   name: BrowserIconName
@@ -20,6 +22,15 @@ interface BrowserIconProps extends SVGProps<SVGSVGElement> {
 
 const paths: Record<BrowserIconName, JSX.Element> = {
   arrowLeft: <path d="M19 12H5m6-6-6 6 6 6" />,
+  star: (
+    <path d="m12 3.8 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8Z" />
+  ),
+  starFilled: (
+    <path
+      fill="currentColor"
+      d="m12 3.8 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8Z"
+    />
+  ),
   chevronUp: <path d="m6 14.5 6-6 6 6" />,
   chevronDown: <path d="m6 9.5 6 6 6-6" />,
   download: (

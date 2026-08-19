@@ -101,6 +101,7 @@ export type PassthroughAction =
   | 'reload-hard'
   | 'focus-address'
   | 'find'
+  | 'bookmark'
   | 'reopen-tab'
   | 'prev-tab'
   | 'next-tab'
@@ -142,6 +143,8 @@ export function passthroughShortcut(input: {
       return 'focus-address'
     case 'f':
       return 'find'
+    case 'd':
+      return 'bookmark'
     case '=':
     case '+':
       return 'zoom-in'

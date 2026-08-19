@@ -23,6 +23,7 @@ import {
 } from 'electron'
 import type { NativeImage } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc/contract'
+import { matchCourseByUrl } from '../../shared/universities/matchCourseByUrl'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
 import type { PushChannel, PushPayload } from '../../shared/ipc/events'
 import { getSettings, setSettings } from '../settingsStore'
@@ -67,6 +68,8 @@ import {
   attachDownloadHandler,
   BROWSING_PARTITION,
   createBrowserSessionStore,
+  createFaviconFetcher,
+  createHistoryRepo,
   fetchLinkForMaterials
 } from '../features/browser'
 import { createFavoritesRepo } from '../features/favorites'
@@ -915,6 +918,48 @@ export function registerHandlers(): IpcRouter {
     downloadCourseId = req.courseId
     return OK
   })
+  // -- browser history ------------------------------------------------------
+  const historyRepo = createHistoryRepo(db)
+  // Pruning on boot rather than per write keeps the visit path a single upsert.
+  historyRepo.prune()
+  handle('browser:recordVisit', (req) => {
+    historyRepo.recordVisit(req)
+    return OK
+  })
+  handle('browser:searchHistory', (req) => ({
+    entries: historyRepo
+      .search(req.query, req.limit)
+      .map(({ url, title, host, visitCount, lastVisitedAt }) => ({
+        url,
+        title,
+        host,
+        visitCount,
+        lastVisitedAt
+      }))
+  }))
+  handle('browser:clearHistory', (req) => {
+    historyRepo.clear(req.courseId)
+    return OK
+  })
+  const faviconFor = createFaviconFetcher()
+  handle('browser:favicon', async (req) => ({
+    dataUrl: await faviconFor(req.url)
+  }))
+  handle('browser:courseForUrl', (req) => ({
+    courseId: matchCourseByUrl(
+      req.url,
+      coursesRepo
+        .list({ includeArchived: false })
+        .flatMap((course) =>
+          courseLinksRepo.list({ courseId: course.id }).map((link) => ({
+            courseId: course.id,
+            url: link.url,
+            lmsCourseId: link.lmsCourseId ?? null
+          }))
+        )
+    )
+  }))
+
   attachDownloadHandler(session.fromPartition(BROWSING_PARTITION), {
     stagingRoot: join(app.getPath('temp'), 'bandal-downloads'),
     getTargetCourseId: () => downloadCourseId,
@@ -1011,6 +1056,18 @@ export function registerHandlers(): IpcRouter {
       req.courseId,
       'note-edited',
       `하이라이트를 필기로 보냈습니다: ${result.relPath}`,
+      result.relPath
+    )
+    return result
+  })
+
+  handle('link:sendWebClipToNote', (req) => {
+    const result = linkService.sendWebClipToNote(req)
+    materialsRepo.invalidateTree(req.courseId)
+    note(
+      req.courseId,
+      'note-edited',
+      `웹 페이지를 필기로 보냈습니다: ${result.relPath}`,
       result.relPath
     )
     return result

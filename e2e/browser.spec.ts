@@ -183,6 +183,70 @@ test.describe('browser', () => {
     }
   })
 
+  test('the omnibox suggests a page the student has already visited', async () => {
+    const server: FileServer = await startFileServer({
+      '/etl': {
+        fileName: 'etl.html',
+        contentType: 'text/html; charset=utf-8',
+        attachment: false,
+        body: '<html><head><title>자료구조 강의실</title></head><body>etl</body></html>'
+      }
+    })
+    try {
+      const { page } = bandal
+      await openBrowserTab(page, `${server.origin}/etl`)
+      // Wait for the title, which is what history stores it under.
+      await expect(
+        page.locator('.workspace-tab__title', { hasText: '자료구조 강의실' })
+      ).toBeVisible({ timeout: 15_000 })
+
+      // Type a fragment of the TITLE — a plain URL match would prove nothing.
+      await page.keyboard.press('Meta+KeyL')
+      await page.locator('.browser-address input').last().fill('강의실')
+
+      const suggestion = page
+        .locator('.browser-suggestion', { hasText: '자료구조 강의실' })
+        .first()
+      await expect(suggestion).toBeVisible({ timeout: 10_000 })
+      await expect(suggestion).toContainText(`${server.origin}/etl`)
+    } finally {
+      await server.close()
+    }
+  })
+
+  test('⌘D stars the page and it shows up in the bookmarks bar', async () => {
+    const server: FileServer = await startFileServer({
+      '/lms': {
+        fileName: 'l.html',
+        contentType: 'text/html; charset=utf-8',
+        attachment: false,
+        body: '<html><head><title>학사정보시스템</title></head><body>lms</body></html>'
+      }
+    })
+    try {
+      const { page } = bandal
+      await openBrowserTab(page, `${server.origin}/lms`)
+      await expect(
+        page.locator('.workspace-tab__title', { hasText: '학사정보시스템' })
+      ).toBeVisible({ timeout: 15_000 })
+
+      // The bar renders nothing until the course has a browser favorite.
+      await expect(page.locator('.browser-bookmarks')).toHaveCount(0)
+      await page.keyboard.press('Meta+KeyD')
+
+      const bookmark = page.locator('.browser-bookmark', {
+        hasText: '학사정보시스템'
+      })
+      await expect(bookmark).toBeVisible({ timeout: 10_000 })
+
+      // Pressing it again takes the page back out.
+      await page.keyboard.press('Meta+KeyD')
+      await expect(bookmark).toHaveCount(0)
+    } finally {
+      await server.close()
+    }
+  })
+
   test('a downloaded file lands in the course folder, not ~/Downloads', async () => {
     // The whole reason the embedded browser exists: getting a lecture handout
     // next to the rest of the course without a manual move.

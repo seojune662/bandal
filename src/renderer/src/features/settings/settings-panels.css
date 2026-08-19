@@ -955,3 +955,60 @@
     animation: none;
   }
 }
+
+/* Browsing data. `settings-` prefixed like everything else in this file: the
+ * settings surface loads into the main window and an unprefixed class has
+ * leaked into the sidebar before. */
+.settings-site-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0 var(--space-5);
+  list-style: none;
+}
+
+.settings-site-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.settings-site-row__origin {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-site-row__action {
+  flex: none;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+}
+
+.settings-site-row__action:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.settings-site-row__action:disabled {
+  opacity: 0.45;
+}
+
+.settings-danger-row {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) 0;
+}

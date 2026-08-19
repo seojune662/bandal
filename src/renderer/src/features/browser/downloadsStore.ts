@@ -22,6 +22,9 @@ interface DownloadsState {
   /** Newest first. */
   downloads: BrowserDownload[]
   activeCount: number
+  /** What main is currently filing downloads under. */
+  targetCourseId: string | null
+  followPage: (url: string, fallbackCourseId: string | null) => Promise<void>
   init: () => void
   /** Tells main where completed downloads should be filed. */
   setTargetCourse: (courseId: string | null) => Promise<void>
@@ -33,6 +36,7 @@ let initialized = false
 export const useDownloads = create<DownloadsState>()((set, get) => ({
   downloads: [],
   activeCount: 0,
+  targetCourseId: null,
 
   init: () => {
     if (initialized) return
@@ -86,6 +90,26 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
   },
 
   setTargetCourse: async (courseId) => {
+    set({ targetCourseId: courseId })
+    await invoke('browser:setDownloadTarget', { courseId })
+  },
+
+  /**
+   * Files downloads under the course the OPEN PAGE is about, when the page is
+   * a recognised LMS course. A student on 자료구조's LMS page means the handout
+   * to go to 자료구조, whatever the sidebar happens to have selected.
+   * Falls back to the selected course when nothing matches — never guesses.
+   */
+  followPage: async (url, fallbackCourseId) => {
+    let courseId = fallbackCourseId
+    try {
+      const matched = await invoke('browser:courseForUrl', { url })
+      if (matched.courseId !== null) courseId = matched.courseId
+    } catch {
+      // Matching is an optimisation; the fallback is always correct-ish.
+    }
+    if (courseId === get().targetCourseId) return
+    set({ targetCourseId: courseId })
     await invoke('browser:setDownloadTarget', { courseId })
   },
 

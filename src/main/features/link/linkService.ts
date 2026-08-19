@@ -1,7 +1,8 @@
 import { basename } from 'node:path'
 import type {
   SendHighlightToNoteInput,
-  SendHighlightToNoteResult
+  SendHighlightToNoteResult,
+  SendWebClipToNoteInput
 } from '../../../shared/types/link'
 import type { NoteContent } from '../../../shared/types/note'
 import { NotFoundError, ValidationError } from '../../db/errors'
@@ -14,6 +15,9 @@ export interface LinkServiceDeps {
 }
 
 export interface LinkService {
+  sendWebClipToNote(
+    input: SendWebClipToNoteInput
+  ): SendHighlightToNoteResult
   sendHighlightToNote(
     input: SendHighlightToNoteInput
   ): SendHighlightToNoteResult
@@ -67,6 +71,32 @@ export function highlightMarkdown(input: SendHighlightToNoteInput): string {
   return [quote, comment, source].filter((part) => part.length > 0).join('\n\n')
 }
 
+/**
+ * Renders a web clip. The source is a plain markdown link, so the note keeps
+ * working outside Bandal — unlike a `bandal://material?…` href, an https URL
+ * resolves for anyone.
+ */
+export function webClipMarkdown(input: SendWebClipToNoteInput): string {
+  const quote = input.quote
+    .replace(/\r\n?/g, '\n')
+    .trim()
+    .split('\n')
+    .map((line) => (line.length > 0 ? `> ${line}` : '>'))
+    .join('\n')
+  const comment = input.comment?.trim() ?? ''
+  const label = input.title.trim() === '' ? hostLabel(input.url) : input.title.trim()
+  const source = `[${label}](${input.url})`
+  return [quote, comment, source].filter((part) => part.length > 0).join('\n\n')
+}
+
+function hostLabel(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./i, '')
+  } catch {
+    return url
+  }
+}
+
 /** Pure duplicate check based on the annotation id embedded in link URLs. */
 export function hasAnnotationLink(
   markdown: string,
@@ -88,6 +118,29 @@ export function appendMarkdown(markdown: string, block: string): string {
       ? '\n'
       : '\n\n'
   return `${markdown}${separator}${block}\n`
+}
+
+function validateWebClip(input: SendWebClipToNoteInput): void {
+  for (const [field, value] of [
+    ['courseId', input.courseId],
+    ['url', input.url],
+    ['quote', input.quote]
+  ] as const) {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new ValidationError(`${field} must be a non-empty string`)
+    }
+  }
+  // A clip must be a real page, not a local file or a script URL smuggled in
+  // from a hostile page's selection API.
+  let protocol: string
+  try {
+    protocol = new URL(input.url).protocol
+  } catch {
+    throw new ValidationError('url must be absolute')
+  }
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    throw new ValidationError('url must be http(s)')
+  }
 }
 
 function validateInput(input: SendHighlightToNoteInput): void {
@@ -134,6 +187,35 @@ export function createLinkService(deps: LinkServiceDeps): LinkService {
   }
 
   return {
+    sendWebClipToNote(input) {
+      validateWebClip(input)
+      const { courseId, url, quote } = input
+      const target =
+        input.noteRelPath === undefined
+          ? defaultNote(courseId)
+          : {
+              note: deps.notes.read({
+                courseId,
+                relPath: input.noteRelPath
+              }),
+              created: false
+            }
+
+      const block = webClipMarkdown({ ...input, courseId, url, quote })
+      // Same quote from the same page twice is almost always a double-click,
+      // not a second thought.
+      if (target.note.markdown.includes(block)) {
+        return { relPath: target.note.relPath, created: target.created }
+      }
+
+      deps.notes.write({
+        courseId,
+        relPath: target.note.relPath,
+        markdown: appendMarkdown(target.note.markdown, block)
+      })
+      return { relPath: target.note.relPath, created: target.created }
+    },
+
     sendHighlightToNote(input) {
       validateInput(input)
       const target =

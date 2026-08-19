@@ -111,6 +111,8 @@
 }
 
 .browser-address {
+  /* Anchor for the suggestion dropdown. */
+  position: relative;
   display: flex;
   flex: 1 1 0;
   gap: var(--space-2);
@@ -674,4 +676,66 @@
 .browser-context-menu__item:focus-visible {
   background: var(--accent-muted);
   outline: none;
+}
+
+/* Omnibox suggestions. Anchored to the pill, above the guest layer. */
+.browser-suggestions {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  left: 0;
+  z-index: 40;
+  max-height: 22rem;
+  padding: var(--space-1);
+  overflow-y: auto;
+  list-style: none;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px);
+}
+
+.browser-suggestion {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border-radius: var(--radius-sm);
+}
+
+.browser-suggestion[data-highlighted='true'] {
+  background: var(--accent-muted);
+}
+
+.browser-suggestion__label {
+  flex: 0 1 auto;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browser-suggestion__detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Favicon in the omnibox. Fetched main-side and handed over as a data: URL,
+ * so the renderer CSP never has to allow remote images. */
+.browser-address__favicon {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  object-fit: contain;
+  border-radius: 2px;
 }

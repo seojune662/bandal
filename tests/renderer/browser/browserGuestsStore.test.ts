@@ -4,7 +4,15 @@
  * path we want to exercise.
  */
 
-import { beforeEach, describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+
+// The store reports visits to main so the omnibox can rank them; there is no
+// `window` here, and history is not what these tests are about.
+vi.mock('../../../src/renderer/src/lib/ipc', () => ({
+  invoke: vi.fn(async () => ({ ok: true })),
+  onPush: vi.fn(() => () => {})
+}))
+
 import {
   MAX_RECENT_VISITS,
   resetBrowserGuestsForTests,

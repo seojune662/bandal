@@ -32,6 +32,7 @@ import { tabPanelId } from '../features/workspace/tabIdentity'
 import type { ShortcutPassthrough } from '../../../shared/ipc/events'
 import { guestActions } from '../features/browser/guestActions'
 import { useBrowserGuests } from '../features/browser/browserGuestsStore'
+import { toggleFavorite } from '../features/browser/browserFavorite'
 import { DEFAULT_ZOOM_LEVEL, zoomIn, zoomOut } from '../features/browser/zoom'
 import { useUiStore } from '../stores/uiStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
@@ -52,6 +53,7 @@ export type ShortcutAction =
   | { type: 'browser-reload'; ignoreCache: boolean }
   | { type: 'browser-focus-address' }
   | { type: 'browser-find' }
+  | { type: 'browser-bookmark' }
   | { type: 'reopen-tab' }
   | { type: 'cycle-tab'; delta: number }
   | { type: 'browser-zoom'; direction: 'in' | 'out' | 'reset' }
@@ -77,6 +79,7 @@ const GUEST_ALLOWED: ReadonlySet<ShortcutAction['type']> = new Set([
   'browser-reload',
   'browser-focus-address',
   'browser-find',
+  'browser-bookmark',
   'reopen-tab',
   'cycle-tab',
   'browser-zoom'
@@ -118,6 +121,8 @@ function actionForKey(key: string): ShortcutAction | null {
       return { type: 'browser-focus-address' }
     case 'f':
       return { type: 'browser-find' }
+    case 'd':
+      return { type: 'browser-bookmark' }
     case '=':
     case '+':
       return { type: 'browser-zoom', direction: 'in' }
@@ -245,6 +250,14 @@ function runShortcutAction(
       useBrowserGuests.getState().openFind(target)
       return
     }
+    case 'browser-bookmark': {
+      const target = browserTarget(originTabId)
+      if (target === null) return
+      const nav = useBrowserGuests.getState().nav[target]
+      if (nav === undefined) return
+      toggleFavorite(target, nav)
+      return
+    }
     case 'browser-zoom': {
       const target = browserTarget(originTabId)
       if (target === null) return
@@ -281,6 +294,8 @@ function passthroughAction(
       return { type: 'browser-focus-address' }
     case 'find':
       return { type: 'browser-find' }
+    case 'bookmark':
+      return { type: 'browser-bookmark' }
     case 'reopen-tab':
       return { type: 'reopen-tab' }
     case 'prev-tab':

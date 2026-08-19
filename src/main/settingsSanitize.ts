@@ -5,6 +5,7 @@
  */
 
 import { isPaletteId, isThemeId } from '../shared/theme'
+import { isSearchEngineId } from '../shared/search'
 import { sanitizeUniversitySettings } from '../shared/universities/sanitize'
 import { DEFAULT_ONBOARDING, DEFAULT_TUTORIAL } from '../shared/types/settings'
 import type {
@@ -83,6 +84,9 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
   return {
     theme: isTheme(record.theme) ? record.theme : defaults.theme,
     palette: isPalette(record.palette) ? record.palette : defaults.palette,
+    browserSearchEngine: isSearchEngineId(record.browserSearchEngine)
+      ? record.browserSearchEngine
+      : defaults.browserSearchEngine,
     agentProvider:
       record.agentProvider === 'claude-code' || record.agentProvider === 'codex'
         ? record.agentProvider

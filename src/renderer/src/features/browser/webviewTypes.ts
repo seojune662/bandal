@@ -92,3 +92,8 @@ export interface ContextMenuEvent extends Event {
     pageURL: string
   }
 }
+
+/** `page-favicon-updated`. Chromium reports every declared icon, best last. */
+export interface PageFaviconUpdatedEvent extends Event {
+  favicons: string[]
+}

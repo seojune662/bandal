@@ -662,6 +662,38 @@ export const migrations: Migration[] = [
          );`
       )
     }
+  },
+  {
+    // [M19] Browser history. Derived from browsing, so no soft-delete: a row
+    // is either there or forgotten, and losing the table only costs an
+    // omnibox suggestion. Keyed by URL because "how often / how recently"
+    // is the whole point — a second visit updates, it does not append.
+    //
+    // `course_id` records which course was open at the time, so history can
+    // be scoped and deleted with the course. It is NOT a foreign key: a visit
+    // outlives the course it happened in, and a FK would block course delete.
+    version: 19,
+    name: 'browser-history',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS browser_history (
+           url             TEXT PRIMARY KEY,
+           title           TEXT NOT NULL,
+           host            TEXT NOT NULL,
+           course_id       TEXT,
+           visit_count     INTEGER NOT NULL DEFAULT 1,
+           last_visited_at TEXT NOT NULL
+         );`
+      )
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_browser_history_visited
+           ON browser_history (last_visited_at DESC);`
+      )
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_browser_history_host
+           ON browser_history (host);`
+      )
+    }
   }
 ]
 
