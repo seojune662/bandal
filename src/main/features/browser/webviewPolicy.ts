@@ -12,6 +12,8 @@
  * The wiring against real electron objects lives in ./hardenWebviews.ts.
  */
 
+import { classifyExternalScheme } from './externalScheme'
+
 /** The only session embedded browser guests may attach to. */
 export const BROWSING_PARTITION = 'persist:browsing'
 
@@ -234,4 +236,114 @@ export function sanitizeGuestWebPreferences(
   webPreferences['enableBlinkFeatures'] = ''
   webPreferences['webviewTag'] = false
   webPreferences['partition'] = BROWSING_PARTITION
+  // Chromium's built-in PDF viewer. Electron defaults `plugins` to false,
+  // which meant a .pdf link downloaded instead of rendering and every
+  // <embed type="application/pdf"> came up blank — while Safari and Chrome
+  // both show it. In Electron 35 (Chromium 134) this flag enables PDFium and
+  // nothing else: NPAPI went in Chromium 45, PPAPI/Flash in 88. PDFium itself
+  // runs out-of-process in Chromium's own sandbox, the same posture Chrome
+  // ships. Nothing here touches preload, node integration, webSecurity or the
+  // partition allowlist.
+  //
+  // It also makes `navigator.pdfViewerEnabled` true and `navigator.plugins`
+  // non-empty, which legacy Korean report viewers branch on.
+  webPreferences['plugins'] = true
+}
+
+/**
+ * A popup whose document the OPENER writes, rather than one the network
+ * serves.
+ *
+ * There is no URL to forward to a Bandal tab, so forwarding is structurally
+ * impossible — and denying it hands the page `null`, which is what killed
+ * 서울대 shine's OZ Report Viewer with "Failed to create the report manager":
+ * the next line was `w.document.write(...)` on null.
+ *
+ *   window.open('', 'printWin').document.write(...)   ← 고지서·증명서 출력
+ *   window.open(URL.createObjectURL(pdfBlob))         ← PDF 미리보기
+ *
+ * A blob: URL is keyed to the CREATING document, so even a same-partition tab
+ * would 404 on it. It has to be a real window.
+ *
+ * Safety rests on origin inheritance: an about:blank child IS the opener's
+ * origin, and a blob: child is scoped to it. Neither gains anything the opener
+ * did not already have — this is what every browser does.
+ */
+export function isOpenerScopedPopupTarget(url: string): boolean {
+  // Chromium reports `window.open('', …)` as either form depending on how it
+  // resolved the empty string.
+  if (url === '' || url === 'about:blank') return true
+  return url.startsWith('blob:https://') || url.startsWith('blob:http://')
+}
+
+export type PopupDecision =
+  /** Hand to the system browser; the embedded view is refused by the site. */
+  | { kind: 'external' }
+  /** A real popup window. */
+  | { kind: 'window'; scope: 'opener' | 'sso' }
+  /** Open as a Bandal tab; `window.opener` is severed. */
+  | { kind: 'tab'; url: string }
+  /** A custom scheme worth asking the student about. */
+  | { kind: 'scheme' }
+  | { kind: 'deny' }
+
+/**
+ * What `window.open` should become. Pure, so every branch is testable without
+ * an Electron window.
+ */
+export function decidePopup(input: {
+  openerUrl: string
+  targetUrl: string
+}): PopupDecision {
+  const { openerUrl, targetUrl } = input
+  if (isBlockedEmbeddedAuthUrl(targetUrl)) return { kind: 'external' }
+  if (isOpenerScopedPopupTarget(targetUrl)) return { kind: 'window', scope: 'opener' }
+  if (isSameSiteAcademicPopup(openerUrl, targetUrl)) {
+    return { kind: 'window', scope: 'sso' }
+  }
+  const forwardUrl = popupForwardUrl(targetUrl)
+  if (forwardUrl !== null) return { kind: 'tab', url: forwardUrl }
+  // The scheme classifier — not this function — decides what is worth asking
+  // about, so a `deny` here really does mean denied and `scheme` really does
+  // mean a dialog is coming.
+  return classifyExternalScheme(targetUrl).kind === 'ask'
+    ? { kind: 'scheme' }
+    : { kind: 'deny' }
+}
+
+const POPUP_MIN_PX = 320
+const POPUP_MAX_WIDTH_PX = 1400
+const POPUP_MAX_HEIGHT_PX = 1200
+/** An SSO sheet. Narrow on purpose — it is a login form. */
+const SSO_SIZE = { width: 520, height: 640 } as const
+/** A document the opener writes: a 고지서 at 520x640 is unreadable. */
+const OPENER_SIZE = { width: 900, height: 760 } as const
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function featureNumber(features: string, key: string): number | null {
+  const match = new RegExp(`(?:^|,)\\s*${key}\\s*=\\s*(\\d+)`).exec(features)
+  if (match === null) return null
+  const value = Number.parseInt(match[1] ?? '', 10)
+  return Number.isFinite(value) ? value : null
+}
+
+/**
+ * How big a popup should be. The site's own `features` string wins when it is
+ * sane, clamped so a page cannot open a 1x1 window (invisible) or one larger
+ * than any screen.
+ */
+export function popupWindowSize(
+  scope: 'opener' | 'sso',
+  features: string
+): { width: number; height: number } {
+  const base = scope === 'sso' ? SSO_SIZE : OPENER_SIZE
+  const width = featureNumber(features, 'width') ?? base.width
+  const height = featureNumber(features, 'height') ?? base.height
+  return {
+    width: clamp(width, POPUP_MIN_PX, POPUP_MAX_WIDTH_PX),
+    height: clamp(height, POPUP_MIN_PX, POPUP_MAX_HEIGHT_PX)
+  }
 }

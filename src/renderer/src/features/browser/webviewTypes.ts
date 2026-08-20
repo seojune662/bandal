@@ -38,6 +38,14 @@ export interface WebviewTag extends HTMLElement {
   downloadURL(url: string): void
   copy(): void
   copyImageAt(x: number, y: number): void
+  /**
+   * The only way to find out why a site is broken from inside a release
+   * build. `browserAgent/cdp.ts` already expects a student to have DevTools
+   * attached and yields the debugger to them, so nothing else has to change.
+   */
+  openDevTools(options?: { mode?: 'detach' | 'right' | 'bottom' }): void
+  /** Resolves with the page rendered to PDF bytes. */
+  printToPDF(options: Record<string, unknown>): Promise<Uint8Array>
 }
 
 export interface DidNavigateEvent extends Event {

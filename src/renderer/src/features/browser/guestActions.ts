@@ -100,6 +100,14 @@ export const guestActions = {
   copySelection: (tabId: string): void => {
     withGuest(tabId, (element) => element.copy())
   },
+  /**
+   * The only way to find out why a Korean portal is broken from inside a
+   * release build — which is the only place a real school login exists.
+   */
+  openDevTools: (tabId: string): void => {
+    withGuest(tabId, (element) => element.openDevTools({ mode: 'detach' }))
+  },
+
   copyImageAt: (tabId: string, x: number, y: number): void => {
     withGuest(tabId, (element) => element.copyImageAt(x, y))
   },

@@ -1,14 +1,17 @@
 import { describe, expect, test } from 'vitest'
 import {
   BROWSING_PARTITION,
+  academicSite,
+  decidePopup,
   isAllowedAttach,
   isBlockedEmbeddedAuthUrl,
   isNavigationAllowed,
-  academicSite,
+  isOpenerScopedPopupTarget,
   isPermissionAllowed,
   isSameSiteAcademicPopup,
   passthroughShortcut,
   popupForwardUrl,
+  popupWindowSize,
   sanitizeGuestWebPreferences
 } from '../../../src/main/features/browser/webviewPolicy'
 
@@ -281,5 +284,135 @@ describe('isSameSiteAcademicPopup (SSO exception)', () => {
         'https://accounts.google.com/signin'
       )
     ).toBe(false)
+  })
+})
+
+
+describe('isOpenerScopedPopupTarget', () => {
+  test('the two forms window.open("") can resolve to', () => {
+    // Chromium reports the empty target as either, depending on resolution.
+    expect(isOpenerScopedPopupTarget('')).toBe(true)
+    expect(isOpenerScopedPopupTarget('about:blank')).toBe(true)
+  })
+
+  test('a blob URL from an http(s) opener', () => {
+    expect(isOpenerScopedPopupTarget('blob:https://shine.snu.ac.kr/uuid')).toBe(true)
+    expect(isOpenerScopedPopupTarget('blob:http://127.0.0.1:8080/uuid')).toBe(true)
+  })
+
+  test('nothing else, including near-misses', () => {
+    // Exact match on about:blank, or about:config walks in behind it.
+    expect(isOpenerScopedPopupTarget('about:blankx')).toBe(false)
+    expect(isOpenerScopedPopupTarget('about:srcdoc')).toBe(false)
+    expect(isOpenerScopedPopupTarget('about:config')).toBe(false)
+    expect(isOpenerScopedPopupTarget('blob:null/uuid')).toBe(false)
+    expect(isOpenerScopedPopupTarget('blob:file:///uuid')).toBe(false)
+    expect(isOpenerScopedPopupTarget('javascript:alert(1)')).toBe(false)
+    expect(isOpenerScopedPopupTarget('https://example.com')).toBe(false)
+  })
+})
+
+describe('decidePopup', () => {
+  const OPENER = 'https://shine.snu.ac.kr/com/ozReportViewer.action'
+  const decide = (targetUrl: string, openerUrl = OPENER) =>
+    decidePopup({ openerUrl, targetUrl })
+
+  test('an opener-written document becomes a real window', () => {
+    // THE regression. This returning null is what made OZ Report Viewer die
+    // with "Failed to create the report manager" — the next line was
+    // w.document.write(...) on null.
+    expect(decide('')).toEqual({ kind: 'window', scope: 'opener' })
+    expect(decide('about:blank')).toEqual({ kind: 'window', scope: 'opener' })
+    expect(decide('blob:https://shine.snu.ac.kr/x')).toEqual({
+      kind: 'window',
+      scope: 'opener'
+    })
+  })
+
+  test('a same-university target keeps the SSO window path', () => {
+    expect(
+      decide('https://portal.inha.ac.kr:8443/sso', 'https://portal.inha.ac.kr/')
+    ).toEqual({ kind: 'window', scope: 'sso' })
+  })
+
+  test('an ordinary web target still becomes a Bandal tab', () => {
+    expect(decide('https://google.com/')).toEqual({
+      kind: 'tab',
+      url: 'https://google.com/'
+    })
+  })
+
+  test('embedded-blocked auth goes to the system browser', () => {
+    expect(decide('https://accounts.google.com/v3/signin')).toEqual({
+      kind: 'external'
+    })
+  })
+
+  test('a launcher scheme is offered to the student, not silently dropped', () => {
+    expect(decide('wizvera://install?x=1')).toEqual({ kind: 'scheme' })
+    expect(decide('ozviewer://open')).toEqual({ kind: 'scheme' })
+  })
+
+  test('the dangerous shapes are denied outright', () => {
+    expect(decide('data:text/html,<script>1</script>')).toEqual({ kind: 'deny' })
+    expect(decide('javascript:alert(1)')).toEqual({ kind: 'deny' })
+    expect(decide('about:config')).toEqual({ kind: 'deny' })
+  })
+})
+
+describe('popupForwardUrl regression locks', () => {
+  test('opener-scoped targets are NOT smuggled into the tab branch', () => {
+    // They have no URL to forward; a tab would 404 on a blob and be blank on
+    // about:blank, with window.opener severed either way.
+    expect(popupForwardUrl('about:blank')).toBeNull()
+    expect(popupForwardUrl('blob:https://a/b')).toBeNull()
+  })
+})
+
+describe('popupWindowSize', () => {
+  test('a login sheet stays narrow, a document gets room', () => {
+    expect(popupWindowSize('sso', '')).toEqual({ width: 520, height: 640 })
+    // A 고지서 at 520x640 is unreadable.
+    expect(popupWindowSize('opener', '')).toEqual({ width: 900, height: 760 })
+  })
+
+  test('the site may size its own window', () => {
+    expect(popupWindowSize('sso', 'width=680,height=900')).toEqual({
+      width: 680,
+      height: 900
+    })
+  })
+
+  test('but not to something invisible or larger than a screen', () => {
+    expect(popupWindowSize('opener', 'width=1,height=1')).toEqual({
+      width: 320,
+      height: 320
+    })
+    expect(popupWindowSize('opener', 'width=9000,height=9000')).toEqual({
+      width: 1400,
+      height: 1200
+    })
+  })
+})
+
+describe('sanitizeGuestWebPreferences — the PDF viewer', () => {
+  test('plugins is on, so a PDF renders instead of downloading', () => {
+    const prefs: Record<string, unknown> = {}
+    sanitizeGuestWebPreferences(prefs)
+    expect(prefs['plugins']).toBe(true)
+  })
+
+  test('and every hardening flag still holds', () => {
+    const prefs: Record<string, unknown> = {
+      preload: '/evil.js',
+      nodeIntegration: true,
+      sandbox: false
+    }
+    sanitizeGuestWebPreferences(prefs)
+    expect(prefs['preload']).toBeUndefined()
+    expect(prefs['nodeIntegration']).toBe(false)
+    expect(prefs['sandbox']).toBe(true)
+    expect(prefs['contextIsolation']).toBe(true)
+    expect(prefs['webSecurity']).toBe(true)
   })
 })

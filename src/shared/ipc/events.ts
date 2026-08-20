@@ -170,6 +170,25 @@ export interface PushEvents {
   'materials:changed': MaterialsChanged
   'browser:open-url': BrowserOpenUrl
   /**
+   * Something the browser refused, so it can be seen instead of guessed at.
+   *
+   * Every deny path used to be a silent `preventDefault()`. A page that
+   * stopped working looked identical to a page that had nothing to do.
+   */
+  'browser:blocked': {
+    kind: 'navigation' | 'popup' | 'scheme'
+    url: string
+    reason: string
+  }
+  /** A popup was refused by the per-guest cap, not by policy. */
+  'browser:popup-blocked': { url: string; reason: 'burst' | 'limit' }
+  /** A custom-scheme handoff finished (or found no program to hand to). */
+  'browser:external-scheme': {
+    url: string
+    origin: string
+    outcome: 'opened' | 'cancelled' | 'blocked' | 'no-handler'
+  }
+  /**
    * Bring an existing browser tab forward so its guest mounts again.
    *
    * The agent needs this because a tab the student can see may have had its

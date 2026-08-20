@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { onPush } from '../../lib/ipc'
+import { showToast } from '../../app/toast'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { useNewTabMenu } from '../workspace/newTabMenuController'
@@ -97,6 +98,31 @@ function useExternalAuthNotice(): void {
 }
 
 /**
+ * Say when the browser refuses something the page asked for.
+ *
+ * Silence here is what made a broken portal indistinguishable from a page
+ * with nothing to do — the app knew exactly what it had blocked and told
+ * nobody.
+ */
+function useBlockedNotices(): void {
+  useEffect(() => {
+    const unsubscribePopup = onPush('browser:popup-blocked', () => {
+      // No 허용 button on purpose: a one-click popup allowlist is a phishing
+      // lever, and a page that needs a fourth window at once is not a page.
+      showToast('팝업을 막았어요.')
+    })
+    const unsubscribeScheme = onPush('browser:external-scheme', ({ outcome }) => {
+      if (outcome !== 'no-handler') return
+      showToast('이 프로그램이 설치되어 있지 않아요.')
+    })
+    return () => {
+      unsubscribePopup()
+      unsubscribeScheme()
+    }
+  }, [])
+}
+
+/**
  * True while a dockview interaction owns the pointer: HTML5 dnd (tab/group
  * drags) or a sash resize drag started on a `.dv-sash`.
  */
@@ -164,6 +190,7 @@ export function BrowserWebviewLayer(): JSX.Element {
   useGuestReaper()
   useOpenUrlForwarding()
   useExternalAuthNotice()
+  useBlockedNotices()
   useAgentTabSync()
   useActivateTabRequests()
 

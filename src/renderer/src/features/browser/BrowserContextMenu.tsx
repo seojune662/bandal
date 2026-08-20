@@ -55,6 +55,7 @@ export type ContextMenuItemId =
   | 'reload'
   | 'copy-page-url'
   | 'open-external'
+  | 'inspect'
 
 /**
  * Which entries a click offers, given what was under the cursor. Pure so the
@@ -81,7 +82,10 @@ export function contextMenuItems(
     if (state.courseId !== null) items.push('clip-to-note')
   }
   // Always available, so a right-click anywhere does something useful.
-  items.push('reload', 'copy-page-url', 'open-external')
+  // 검사 is here rather than behind a dev flag because a broken Korean portal
+  // is only diagnosable from a real login on a real machine — which is a
+  // release build, by definition.
+  items.push('reload', 'copy-page-url', 'open-external', 'inspect')
   return items
 }
 
@@ -189,6 +193,10 @@ export function BrowserContextMenu({
     'open-external': {
       label: '기본 브라우저에서 열기',
       run: () => void invoke('shell:openExternal', { url: state.pageURL })
+    },
+    inspect: {
+      label: '검사',
+      run: () => guestActions.openDevTools(tabId)
     }
   }
   const items = contextMenuItems(state).map((id) => ({ id, ...actions[id] }))
