@@ -13,6 +13,7 @@ import type {
   ShortcutPassthrough
 } from '../../../shared/ipc/events'
 import {
+  isSameSiteAcademicPopup,
   BROWSING_PARTITION,
   isAllowedAttach,
   isBlockedEmbeddedAuthUrl,
@@ -93,12 +94,65 @@ function attachGuestPolicies(host: WebContents, guest: WebContents): void {
       handOffExternalAuth(url)
       return { action: 'deny' }
     }
+
+    // [§7.2.10] SSO exception. Forwarding a popup to a Bandal tab severs
+    // `window.opener`, and an SSO popup that reports back with
+    // `window.opener.postMessage` then waits forever — 인하·아주·세종·경희
+    // portals all use window.open for login and ID lookup. Only within the
+    // SAME university, and the new window inherits the same hardening: the
+    // browsing partition, no node integration, context isolation, sandbox.
+    if (isSameSiteAcademicPopup(guest.getURL(), url)) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 520,
+          height: 640,
+          // No app chrome on it: this is the site's own window, not ours.
+          autoHideMenuBar: true,
+          webPreferences: {
+            partition: BROWSING_PARTITION,
+            nodeIntegration: false,
+            nodeIntegrationInWorker: false,
+            contextIsolation: true,
+            sandbox: true,
+            webSecurity: true,
+            webviewTag: false
+          }
+        }
+      }
+    }
+
     const forwardUrl = popupForwardUrl(url)
     if (forwardUrl !== null && !host.isDestroyed()) {
       const payload: BrowserOpenUrl = { url: forwardUrl }
       host.send('browser:open-url', payload)
     }
     return { action: 'deny' }
+  })
+
+  // A popup we allowed is still a window that can navigate. Without this the
+  // SSO exception would be a hole: the child could walk to file:// or a
+  // custom scheme, which is exactly what `will-navigate` exists to stop.
+  guest.on('did-create-window', (window) => {
+    const child = window.webContents
+    const guard = (event: { preventDefault: () => void }, url: string): void => {
+      if (isBlockedEmbeddedAuthUrl(url)) {
+        event.preventDefault()
+        handOffExternalAuth(url)
+        return
+      }
+      if (!isNavigationAllowed(url)) event.preventDefault()
+    }
+    child.on('will-navigate', guard)
+    child.on('will-redirect', guard)
+    // A popup may not open further popups; one exception is enough.
+    child.setWindowOpenHandler(({ url }) => {
+      const forwardUrl = popupForwardUrl(url)
+      if (forwardUrl !== null && !host.isDestroyed()) {
+        host.send('browser:open-url', { url: forwardUrl } as BrowserOpenUrl)
+      }
+      return { action: 'deny' }
+    })
   })
 
   // [M6-A] ⌘T/⌘W keep working while the guest has keyboard focus: intercept

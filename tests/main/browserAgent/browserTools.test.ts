@@ -491,4 +491,155 @@ describe('browser tools (read-only)', () => {
     })
   })
 
+  describe('irreversible actions', () => {
+    function page(over: Record<string, unknown> = {}) {
+      return {
+        openTab: vi.fn(async (url: string) => ({ tabId: 't1', url })),
+        generation: () => 3,
+        snapshot: vi.fn(async () => ({ url: `${ORIGIN}/w3`, outline: '' })),
+        read: vi.fn(async () => ({ url: `${ORIGIN}/w3`, text: '' })),
+        factsFor: vi.fn(async () => ({
+          tag: 'button',
+          type: 'submit',
+          inNonGetForm: true,
+          href: null,
+          disabled: false
+        })),
+        act: vi.fn(async () => true),
+        currentUrl: () => `${ORIGIN}/w3`,
+        handoff: vi.fn(async () => 'resumed' as const),
+        assertLive: vi.fn(),
+        step: vi.fn(),
+        ...over
+      }
+    }
+
+    function commit(over: Record<string, unknown> = {}) {
+      return {
+        submit: vi.fn(async () => true),
+        useSavedLogin: vi.fn(async () => ({ filled: true, username: 'a' })),
+        attachFile: vi.fn(async () => true),
+        ...over
+      }
+    }
+
+    test('submit asks EVERY time, even with an interact grant', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const confirm = vi.fn(async () => true)
+      const c = commit()
+      const api = tools({ page: page(), commit: c, confirm })
+
+      await api.browser_submit('t1', 'f0:e0@3')
+      await api.browser_submit('t1', 'f0:e0@3')
+      // Twice asked, twice — a grant covers clicking around, never this.
+      expect(confirm).toHaveBeenCalledTimes(2)
+      expect(c.submit).toHaveBeenCalledTimes(2)
+    })
+
+    test('the submit prompt says it is not remembered', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const confirm = vi.fn(async () => true)
+      await tools({ page: page(), commit: commit(), confirm }).browser_submit(
+        't1',
+        'f0:e0@3'
+      )
+      const request = confirm.mock.calls[0]?.[0] as { details: string[] }
+      expect(request.details.join(' ')).toContain('기억해 두지 않습니다')
+    })
+
+    test('a no means nothing is submitted', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const c = commit()
+      const result = await tools({
+        page: page(),
+        commit: c,
+        confirm: async () => false
+      }).browser_submit('t1', 'f0:e0@3')
+
+      expect(result.status).toBe('error')
+      expect(c.submit).not.toHaveBeenCalled()
+      expect(audit.tail(COURSE)[0]?.detail).toContain('거부')
+    })
+
+    test('a stale ref is refused before the student is even asked', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const confirm = vi.fn(async () => true)
+      const result = await tools({
+        page: page(),
+        commit: commit(),
+        confirm
+      }).browser_submit('t1', 'f0:e0@1')
+
+      expect(result.status).toBe('error')
+      expect(confirm).not.toHaveBeenCalled()
+    })
+
+    test('saved login asks every time and never returns the secret', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const confirm = vi.fn(async () => true)
+      const result = await tools({
+        page: page(),
+        commit: commit(),
+        confirm
+      }).browser_use_saved_login('t1')
+
+      expect(confirm).toHaveBeenCalledTimes(1)
+      expect(result).toEqual({ status: 'ok', filled: true })
+      // There is no field through which a password could travel.
+      expect(JSON.stringify(result)).not.toContain('username')
+    })
+
+    test('the saved-login prompt promises fill without submit', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const confirm = vi.fn(async () => true)
+      await tools({ page: page(), commit: commit(), confirm }).browser_use_saved_login('t1')
+      const request = confirm.mock.calls[0]?.[0] as { details: string[] }
+      expect(request.details.join(' ')).toContain('제출은 하지 않습니다')
+    })
+
+    test('the audit never records a credential, only that it happened', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      await tools({
+        page: page(),
+        commit: commit(),
+        confirm: async () => true
+      }).browser_use_saved_login('t1')
+
+      const entries = audit.tail(COURSE).map((e) => e.detail).join(' ')
+      expect(entries).toContain('saved-login')
+      expect(entries).not.toContain('hunter')
+    })
+
+    test('attaching a file needs interact and a live ref', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const c = commit()
+      const result = await tools({
+        page: page(),
+        commit: c,
+        confirm: async () => true
+      }).browser_attach_file('t1', 'f0:e0@3', COURSE, '3주차/보고서.pdf')
+
+      expect(result.status).toBe('ok')
+      expect(c.attachFile).toHaveBeenCalledWith(
+        't1',
+        0,
+        0,
+        COURSE,
+        '3주차/보고서.pdf'
+      )
+    })
+
+    test('without a commit surface all three decline cleanly', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const api = tools({ page: page() })
+      for (const result of [
+        await api.browser_submit('t1', 'f0:e0@3'),
+        await api.browser_use_saved_login('t1'),
+        await api.browser_attach_file('t1', 'f0:e0@3', COURSE, 'x.pdf')
+      ]) {
+        expect(result.status).toBe('error')
+      }
+    })
+  })
+
 })

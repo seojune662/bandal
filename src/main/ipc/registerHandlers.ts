@@ -24,6 +24,7 @@ import {
 } from 'electron'
 import type { NativeImage } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc/contract'
+import { resolveInside } from '../db/validate'
 import { matchCourseByUrl } from '../../shared/universities/matchCourseByUrl'
 import { resolveUniversity } from '../../shared/universities'
 import type { LmsPlatform } from '../../shared/types/university'
@@ -34,6 +35,7 @@ import {
   createGuestRegistry,
   createPageSurface,
   createRunRegistry,
+  setFileInputFiles,
   createSeenRepo,
   GenerationTracker
 } from '../features/browserAgent'
@@ -736,6 +738,74 @@ export function registerHandlers(): IpcRouter {
             })
         }
       }),
+      commit: {
+        /**
+         * The submit click itself. Reached only after an explicit yes that is
+         * never remembered — see `browser_submit`.
+         */
+        submit: async (tabId, frameIndex, elementIndex) => {
+          const guest = guestRegistry.resolve(tabId)
+          if (guest === null) return false
+          const wc = guest as unknown as Electron.WebContents
+          const frame = wc.mainFrame.framesInSubtree[frameIndex]
+          if (frame === undefined) return false
+          // Located exactly the way the snapshot indexed it.
+          const source = `(() => {
+            const nodes = document.querySelectorAll('a[href], button, input, select, textarea, h1, h2, h3');
+            let seen = -1;
+            for (const node of nodes) {
+              const style = window.getComputedStyle(node);
+              if (style.display === 'none' || style.visibility === 'hidden') continue;
+              const rect = node.getBoundingClientRect();
+              if (rect.width <= 0 || rect.height <= 0) continue;
+              seen += 1;
+              if (seen === ${elementIndex}) { node.click(); return true; }
+            }
+            return false;
+          })()`
+          try {
+            return (await frame.executeJavaScript(source)) === true
+          } catch {
+            return false
+          }
+        },
+
+        /**
+         * Reuses `createLoginFiller` unchanged. The agent hands over a tab and
+         * learns whether it worked — the secret never enters the agent path,
+         * let alone the model's context.
+         */
+        useSavedLogin: async (tabId) => {
+          const guest = guestRegistry.resolve(tabId)
+          if (guest === null) return { filled: false, username: null }
+          const result = await fillLogin({
+            origin: guest.getURL(),
+            guestWebContentsId: guest.id
+          })
+          return { filled: result.filled, username: null }
+        },
+
+        /**
+         * `DOM.setFileInputFiles` — the one thing JavaScript genuinely cannot
+         * do. CDP is attached for this single call and detached immediately.
+         */
+        attachFile: async (tabId, frameIndex, elementIndex, target, relPath) => {
+          const guest = guestRegistry.resolve(tabId)
+          if (guest === null) return false
+          void frameIndex
+          const absPath = resolveInside(coursesRepo.getFolder(target), relPath)
+          try {
+            return await setFileInputFiles(
+              guest as unknown as { debugger: Electron.Debugger },
+              `input[type=file]:nth-of-type(${elementIndex + 1}), input[type=file]`,
+              [absPath]
+            )
+          } catch {
+            // DevTools already owns the debugger, or the page went away.
+            return false
+          }
+        }
+      },
       // The student's own login — the same session they signed in to by hand.
       fetch: (url) => session.fromPartition(BROWSING_PARTITION).fetch(url),
       // Same path a link-drag takes: browsing-session fetch with the 200MB

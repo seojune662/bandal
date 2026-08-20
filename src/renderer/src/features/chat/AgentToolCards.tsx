@@ -134,7 +134,16 @@ export function AgentConfirmCard({
  * it one trains the student to click through the label rather than read it.
  */
 function confirmKindLabel(tool: string): string {
-  return tool === 'browser_access' ? '사이트 접근 허용' : '파괴적 변경 확인'
+  switch (tool) {
+    case 'browser_access':
+      return '사이트 접근 허용'
+    case 'browser_submit':
+      return '제출 확인'
+    case 'browser_use_saved_login':
+      return '저장된 로그인 사용'
+    default:
+      return '파괴적 변경 확인'
+  }
 }
 
 export interface AgentTurnChangesCardProps {

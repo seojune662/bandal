@@ -4,7 +4,9 @@ import {
   isAllowedAttach,
   isBlockedEmbeddedAuthUrl,
   isNavigationAllowed,
+  academicSite,
   isPermissionAllowed,
+  isSameSiteAcademicPopup,
   passthroughShortcut,
   popupForwardUrl,
   sanitizeGuestWebPreferences
@@ -213,5 +215,71 @@ describe('passthroughShortcut (chords a focused guest would otherwise eat)', () 
     for (const key of ['p', ',', '1', '8']) {
       expect(passthroughShortcut(chord({ key })), key).toBeNull()
     }
+  })
+})
+
+describe('academicSite', () => {
+  test('treats ac.kr as a public suffix', () => {
+    // `inha.ac.kr` is the university; `ac.kr` is everyone.
+    expect(academicSite('https://portal.inha.ac.kr:8443/x')).toBe('inha.ac.kr')
+    expect(academicSite('https://sso.inha.ac.kr/')).toBe('inha.ac.kr')
+    expect(academicSite('https://myetl.snu.ac.kr/courses/1')).toBe('snu.ac.kr')
+  })
+
+  test('a bare public suffix is not a site', () => {
+    expect(academicSite('https://ac.kr/')).toBeNull()
+  })
+
+  test('ordinary domains use the last two labels', () => {
+    expect(academicSite('https://a.b.example.com/')).toBe('example.com')
+  })
+
+  test('junk and non-http are not sites', () => {
+    for (const url of ['', 'nope', 'file:///x', 'https://localhost']) {
+      expect(academicSite(url), url).toBeNull()
+    }
+  })
+})
+
+describe('isSameSiteAcademicPopup (SSO exception)', () => {
+  const portal = 'https://portal.inha.ac.kr:8443/main'
+
+  test('allows a real popup within the same university', () => {
+    // Forwarding it to a tab severs window.opener, and an SSO popup that
+    // reports back with postMessage then waits forever.
+    expect(isSameSiteAcademicPopup(portal, 'https://sso.inha.ac.kr/login')).toBe(
+      true
+    )
+  })
+
+  test('ignores the port — the IdP is :8443 and the portal is :443', () => {
+    expect(
+      isSameSiteAcademicPopup('https://portal.inha.ac.kr/', 'https://sso.inha.ac.kr:8443/')
+    ).toBe(true)
+  })
+
+  test('refuses a popup to a different institution', () => {
+    expect(isSameSiteAcademicPopup(portal, 'https://myetl.snu.ac.kr/')).toBe(false)
+  })
+
+  test('refuses a popup to anywhere off-campus', () => {
+    // Keeping the opener relationship is exactly what an attacker would want.
+    for (const target of [
+      'https://evil.example.com/',
+      'https://inha.ac.kr.evil.com/',
+      'file:///etc/passwd',
+      'javascript:alert(1)'
+    ]) {
+      expect(isSameSiteAcademicPopup(portal, target), target).toBe(false)
+    }
+  })
+
+  test('never allows embedded Google auth as a popup', () => {
+    expect(
+      isSameSiteAcademicPopup(
+        'https://accounts.google.com/x',
+        'https://accounts.google.com/signin'
+      )
+    ).toBe(false)
   })
 })

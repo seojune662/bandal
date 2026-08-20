@@ -158,6 +158,61 @@ export function passthroughShortcut(input: {
 }
 
 /**
+ * Registrable site for a Korean academic host.
+ *
+ * `ac.kr` is a public suffix, so `inha.ac.kr` — not `ac.kr` — is the unit that
+ * means "the same university". Everything else falls back to the last two
+ * labels, which is right for `example.com` and wrong for nothing we care about.
+ */
+export function academicSite(url: string): string | null {
+  let host: string
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null
+    host = parsed.hostname.toLowerCase()
+  } catch {
+    return null
+  }
+  const labels = host.split('.')
+  if (labels.length < 2) return null
+  // `*.ac.kr`, `*.edu`, `*.go.kr` … anything with a two-label public suffix.
+  const twoLabelSuffixes = ['ac.kr', 'go.kr', 'or.kr', 're.kr', 'co.kr']
+  const lastTwo = labels.slice(-2).join('.')
+  if (twoLabelSuffixes.includes(lastTwo)) {
+    return labels.length >= 3 ? labels.slice(-3).join('.') : null
+  }
+  return lastTwo
+}
+
+/**
+ * Whether a `window.open` may become a REAL popup window rather than a Bandal
+ * tab.
+ *
+ * Forwarding every popup to a tab severs `window.opener`, and an SSO popup
+ * that reports back with `window.opener.postMessage` then waits forever —
+ * 인하대·아주대·세종대·경희대 portals all use `window.open` for login, ID
+ * lookup and menu navigation (docs/university-sites.md §7.2.10).
+ *
+ * The exception is deliberately narrow: same university, http(s) only. A
+ * popup to anywhere else is still denied and forwarded, because the opener
+ * relationship is exactly what an attacker would want to keep.
+ *
+ * Note the port is NOT part of the comparison here on purpose — 인하대's IdP
+ * is `:8443` and its portal is `:443`, and they are the same institution.
+ */
+export function isSameSiteAcademicPopup(
+  openerUrl: string,
+  targetUrl: string
+): boolean {
+  const opener = academicSite(openerUrl)
+  const target = academicSite(targetUrl)
+  if (opener === null || target === null) return false
+  if (!isNavigationAllowed(targetUrl)) return false
+  if (isBlockedEmbeddedAuthUrl(targetUrl)) return false
+  return opener === target
+}
+
+/**
  * Force the hardened guest webPreferences in-place. Mutation is deliberate:
  * Electron's `will-attach-webview` contract only honors changes made to the
  * `webPreferences` object it hands us.

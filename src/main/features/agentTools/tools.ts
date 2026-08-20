@@ -102,6 +102,14 @@ export interface AgentToolsDeps {
         | { kind: 'select'; value: string }
     ) => Promise<unknown>
     browser_handoff: (tabId: string, message: string) => Promise<unknown>
+    browser_submit: (tabId: string, ref: string) => Promise<unknown>
+    browser_use_saved_login: (tabId: string) => Promise<unknown>
+    browser_attach_file: (
+      tabId: string,
+      ref: string,
+      courseId: string,
+      relPath: string
+    ) => Promise<unknown>
   }
 }
 
@@ -978,7 +986,28 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
         browser.browser_handoff(
           stringField(input, 'tabId', { nonEmpty: true }),
           stringField(input, 'message')
+        ),
+      browser_submit: (input) =>
+        browser.browser_submit(
+          stringField(input, 'tabId', { nonEmpty: true }),
+          stringField(input, 'ref', { nonEmpty: true })
+        ),
+      browser_use_saved_login: (input) =>
+        browser.browser_use_saved_login(
+          stringField(input, 'tabId', { nonEmpty: true })
+        ),
+      browser_attach_file: (input) => {
+        const courseId = stringField(input, 'courseId', { nonEmpty: true })
+        const relPath = stringField(input, 'relPath', { nonEmpty: true })
+        // The same path guard every other file tool obeys.
+        assertCoursePath(courseId, relPath)
+        return browser.browser_attach_file(
+          stringField(input, 'tabId', { nonEmpty: true }),
+          stringField(input, 'ref', { nonEmpty: true }),
+          courseId,
+          relPath
         )
+      }
     }
     Object.assign(handlers, browserHandlers)
   }

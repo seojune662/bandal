@@ -24,3 +24,9 @@ export {
 } from './snapshot'
 export { canClick, canSelect, canType, type ElementFacts } from './actionPolicy'
 export { createPageSurface } from './pageSurface'
+export {
+  CdpUnavailable,
+  insertText,
+  setFileInputFiles,
+  withDebugger
+} from './cdp'

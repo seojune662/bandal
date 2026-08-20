@@ -86,6 +86,29 @@ export interface BrowserToolsDeps {
    * over the session — which is most of them, and the cheapest thing to be.
    */
   page?: PageSurface
+  /**
+   * Submitting, attaching a file, and using a saved login. Separate from
+   * `page` because these are the irreversible ones — a conversation that only
+   * reads should not be able to reach them by accident.
+   */
+  commit?: CommitSurface
+}
+
+export interface CommitSurface {
+  /** Presses a submit control. Only ever called after an explicit yes. */
+  submit: (tabId: string, frameIndex: number, elementIndex: number) => Promise<boolean>
+  /** Fills the saved login for the page's origin. Never returns the secret. */
+  useSavedLogin: (
+    tabId: string
+  ) => Promise<{ filled: boolean; username: string | null }>
+  /** Attaches a course file to a file input. */
+  attachFile: (
+    tabId: string,
+    frameIndex: number,
+    elementIndex: number,
+    courseId: string,
+    relPath: string
+  ) => Promise<boolean>
 }
 
 /**
@@ -471,6 +494,155 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         return { status: 'error', message: '학생이 중지했어요.' }
       }
       return { status: 'resumed' }
+    },
+
+    /**
+     * Presses submit — and asks, every single time.
+     *
+     * This gate is never rememberable. On the web, submit is the entire set of
+     * irreversible acts: 과제 제출, 게시글, 수강신청, 메시지, 결제. Enumerating
+     * dangerous PAGES is unreliable; enumerating the dangerous VERB is exact.
+     * A grant covers reading and clicking around; it never covers this.
+     */
+    async browser_submit(
+      tabId: string,
+      ref: string
+    ): Promise<{ status: 'ok' } | { status: 'error'; message: string }> {
+      const page = deps.page
+      const commit = deps.commit
+      if (page === undefined || commit === undefined) {
+        return { status: 'error', message: '이 대화에서는 제출할 수 없어요.' }
+      }
+      page.assertLive()
+      const url = page.currentUrl(tabId)
+      if (url === null) {
+        return { status: 'error', message: '그 탭을 찾지 못했어요.' }
+      }
+      const permitted = await gate(url, 'interact')
+      if (!permitted.ok) return { status: 'error', message: permitted.message }
+
+      const resolved = resolveRef(ref, page.generation(tabId))
+      if (!resolved.ok) {
+        audit('denied', url, `submit ref ${resolved.reason}`)
+        return { status: 'error', message: resolved.message }
+      }
+      const facts = await page.factsFor(
+        tabId,
+        resolved.frameIndex,
+        resolved.elementIndex
+      )
+      if (facts === null) {
+        return { status: 'error', message: '그 요소를 찾지 못했어요.' }
+      }
+
+      const approved = await deps.confirm({
+        courseId: deps.courseId,
+        tool: 'browser_submit',
+        summary: `${normalizeOrigin(url) ?? url} 에서 제출할까요?`,
+        details: [
+          '되돌릴 수 없는 동작입니다.',
+          '이 승인은 이번 한 번만 유효하고, 기억해 두지 않습니다.'
+        ]
+      })
+      if (!approved) {
+        audit('denied', url, 'submit: 학생이 거부함')
+        return { status: 'error', message: '학생이 제출을 승인하지 않았어요.' }
+      }
+
+      const ok = await commit.submit(
+        tabId,
+        resolved.frameIndex,
+        resolved.elementIndex
+      )
+      audit('navigate', url, ok ? 'submit 실행' : 'submit 실패')
+      return ok
+        ? { status: 'ok' }
+        : { status: 'error', message: '제출하지 못했어요.' }
+    },
+
+    /**
+     * Signs in with a login the student already saved.
+     *
+     * The agent names an origin and learns only whether it worked. There is no
+     * parameter through which it could ask for the secret and no field in the
+     * result that carries one — Aside ships an agent-scoped password manager;
+     * this ships an agent that structurally cannot read a password.
+     */
+    async browser_use_saved_login(
+      tabId: string
+    ): Promise<
+      { status: 'ok'; filled: boolean } | { status: 'error'; message: string }
+    > {
+      const page = deps.page
+      const commit = deps.commit
+      if (page === undefined || commit === undefined) {
+        return { status: 'error', message: '이 대화에서는 로그인할 수 없어요.' }
+      }
+      page.assertLive()
+      const url = page.currentUrl(tabId)
+      if (url === null) {
+        return { status: 'error', message: '그 탭을 찾지 못했어요.' }
+      }
+      const permitted = await gate(url, 'interact')
+      if (!permitted.ok) return { status: 'error', message: permitted.message }
+
+      const origin = normalizeOrigin(url) ?? url
+      const approved = await deps.confirm({
+        courseId: deps.courseId,
+        tool: 'browser_use_saved_login',
+        summary: `${origin} 에 저장된 로그인을 사용할까요?`,
+        details: [
+          '아이디와 비밀번호를 채우기만 하고, 제출은 하지 않습니다.',
+          '이 승인은 이번 한 번만 유효하고, 기억해 두지 않습니다.'
+        ]
+      })
+      if (!approved) {
+        audit('denied', url, 'saved-login: 학생이 거부함')
+        return { status: 'error', message: '학생이 로그인을 승인하지 않았어요.' }
+      }
+
+      const result = await commit.useSavedLogin(tabId)
+      // Only the origin and whether it worked. Never the username's value in
+      // a form that could be reconstructed, never the secret.
+      audit('navigate', url, result.filled ? 'saved-login 채움' : 'saved-login 없음')
+      return { status: 'ok', filled: result.filled }
+    },
+
+    /** Attaches a course file to a file input (`DOM.setFileInputFiles`). */
+    async browser_attach_file(
+      tabId: string,
+      ref: string,
+      courseId: string,
+      relPath: string
+    ): Promise<{ status: 'ok' } | { status: 'error'; message: string }> {
+      const page = deps.page
+      const commit = deps.commit
+      if (page === undefined || commit === undefined) {
+        return { status: 'error', message: '이 대화에서는 파일을 붙일 수 없어요.' }
+      }
+      page.assertLive()
+      const url = page.currentUrl(tabId)
+      if (url === null) {
+        return { status: 'error', message: '그 탭을 찾지 못했어요.' }
+      }
+      const permitted = await gate(url, 'interact')
+      if (!permitted.ok) return { status: 'error', message: permitted.message }
+
+      const resolved = resolveRef(ref, page.generation(tabId))
+      if (!resolved.ok) {
+        return { status: 'error', message: resolved.message }
+      }
+      const ok = await commit.attachFile(
+        tabId,
+        resolved.frameIndex,
+        resolved.elementIndex,
+        courseId,
+        relPath
+      )
+      audit('navigate', url, ok ? `파일 첨부 «${relPath}»` : '파일 첨부 실패')
+      return ok
+        ? { status: 'ok' }
+        : { status: 'error', message: '파일을 붙이지 못했어요.' }
     },
 
     async lms_new_items(

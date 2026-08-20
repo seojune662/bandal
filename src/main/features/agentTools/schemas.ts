@@ -556,6 +556,37 @@ export const BROWSER_TOOL_DEFINITIONS = [
       ['tabId', 'message']
     ),
     annotations: readOnly
+  },
+  {
+    name: 'browser_submit',
+    description:
+      '폼을 제출합니다. 되돌릴 수 없는 동작이라 학생에게 매번 묻고, 그 승인은 기억되지 않습니다. 확신이 없으면 browser_handoff 로 넘기세요.',
+    inputSchema: objectSchema(
+      { tabId: string('탭 id'), ref: string('제출 버튼의 요소 참조') },
+      ['tabId', 'ref']
+    ),
+    annotations: readOnly
+  },
+  {
+    name: 'browser_use_saved_login',
+    description:
+      '학생이 저장해 둔 로그인으로 아이디·비밀번호를 채웁니다. 채우기만 하고 제출하지 않습니다. 비밀번호는 돌려받을 수 없습니다.',
+    inputSchema: objectSchema({ tabId: string('탭 id') }, ['tabId']),
+    annotations: readOnly
+  },
+  {
+    name: 'browser_attach_file',
+    description: '과목 폴더의 파일을 파일 선택 칸에 붙입니다.',
+    inputSchema: objectSchema(
+      {
+        tabId: string('탭 id'),
+        ref: string('파일 선택 칸의 요소 참조'),
+        courseId,
+        relPath
+      },
+      ['tabId', 'ref', 'courseId', 'relPath']
+    ),
+    annotations: readOnly
   }
 ] as const
 
