@@ -23,6 +23,7 @@ describe('contextMenuItems', () => {
     expect(contextMenuItems(EMPTY)).toEqual([
       'reload',
       'copy-page-url',
+      'print',
       'open-external',
       'inspect'
     ])
@@ -101,6 +102,7 @@ describe('contextMenuItems', () => {
       'save-image',
       'reload',
       'copy-page-url',
+      'print',
       'open-external',
       'inspect'
     ])

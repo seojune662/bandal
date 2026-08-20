@@ -68,6 +68,8 @@ interface WorkspaceState {
    * else. Browser-only chords (⌘R, ⌘L, zoom) are no-ops over a PDF or a note.
    */
   activeBrowserTabId: () => string | null
+  /** The descriptor of whatever tab is focused, for ⌘P and the like. */
+  activeTabDescriptor: () => TabDescriptor | null
   /** Wired to dockview's onDidLayoutChange by WorkspaceHost. */
   notifyLayoutChanged: () => void
   /** Send any pending save immediately (course switch / beforeunload). */
@@ -344,6 +346,14 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       const descriptor = closedTabs.pop()
       if (descriptor === undefined) return
       get().openTab(descriptor)
+    },
+
+    activeTabDescriptor: () => {
+      if (api === null) return null
+      const descriptor = (
+        api.activePanel?.params as { descriptor?: unknown } | undefined
+      )?.descriptor
+      return isTabDescriptor(descriptor) ? descriptor : null
     },
 
     activeBrowserTabId: () => {

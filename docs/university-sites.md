@@ -978,3 +978,35 @@ CREATE INDEX idx_course_links_course ON course_links(course_id, sort_order);
 - ⚠️ **provenance 경고:** 아주대를 조사한 하위 에이전트가 승인 없이 대학 IP에 **TCP 포트 스캔**을 수행한 사실이
   보고됐다. 본 문서의 아주대 항목은 그 결과에 의존하지 않으며, **일반 HTTPS GET만으로 재현 가능한 내용만** 남겼다.
   향후 리서치에서는 포트 스캔을 명시적으로 금지할 것.
+
+## OZ Report Viewer (FORCS) — 한국 대학·행정 시스템의 표준 리포트 뷰어
+
+`shine.snu.ac.kr/com/ozReportViewer.action` 같은 주소로 고지서·증명서·성적표를
+그린다. 서울대 외에도 다수 대학과 행정 시스템이 같은 제품을 쓴다.
+
+### 반달에서 죽었던 이유 (v0.17.1 까지)
+
+`Error code:1020070004 / Document: Failed to create the report manager` 와
+회색 빈 캔버스. 원인은 뷰어가 아니라 **우리 팝업 정책**이었다.
+
+1. **`window.open('')` 이 조용히 거부됐다.** `about:blank` 팝업은
+   `academicSite()` 가 프로토콜 검사에서 null 을 돌려주는 바람에 학술 팝업
+   예외에 안 걸리고, `popupForwardUrl` 이 `isHttpUrl` 로 걸러 탭으로도 안
+   넘어가 결국 `deny` 였다. 페이지는 `null` 을 받고 다음 줄의
+   `w.document.write(...)` 에서 죽는다.
+   **이건 한국 기업용 뷰어가 출력물을 그리는 표준 관용구다.** 다음에 비슷한
+   증상을 보면 여기부터 의심할 것.
+2. **`plugins` 가 꺼져 있었다.** Electron 기본값이 `false` 라 PDFium 이 없었고,
+   그래서 `navigator.plugins` 가 비어 있었다. 레거시 한국 뷰어는 이 목록을 보고
+   플러그인/HTML5/설치안내 중 하나로 분기하는데, 빈 목록에서 죽은 가지로 빠진다.
+3. **커스텀 스킴이 무반응이었다.** 뷰어가 로컬 헬퍼를 띄우는 구성이면
+   `ozviewer:` 같은 스킴이 아무 표시 없이 막혔다.
+
+셋 다 고쳐졌다(`webviewPolicy.decidePopup`, `sanitizeGuestWebPreferences`,
+`externalScheme.ts`).
+
+### 진단하는 법
+
+우클릭 → **검사**로 DevTools 를 연다. 릴리즈 빌드에서도 열린다 — 깨진 한국
+포털은 실제 로그인이 있는 실제 기기에서만 재현되기 때문이다. 콘솔에
+`Cannot read properties of null` 이 보이면 거의 확실히 팝업 문제다.

@@ -195,6 +195,8 @@ export interface PushEvents {
    * guest evicted by the LRU — there is nothing to read until it is back.
    */
   'browser:activate-tab': { tabId: string }
+  /** 파일 ▸ 인쇄… (or ⌘P over a printable tab) was chosen. */
+  'ui:print': { }
   /**
    * A guest tried to reach a login origin Google blocks inside embedded
    * webviews; main opened it in the system browser — show the user why.

@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { accessSync, constants as fsConstants } from 'node:fs'
+import { accessSync, constants as fsConstants, writeFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import {
   app,
@@ -54,6 +54,8 @@ import {
 } from '../features/courses'
 import { normalizeHttpUrl } from '../../shared/universities/courseLink'
 import { ValidationError } from '../db/errors'
+import { PRINT_PDF_MAX_BYTES, printPdfBytes } from '../features/print'
+import { setPrintMenuEnabled } from '../menu'
 import {
   createMaterialsRepo,
   createMaterialsWatcher,
@@ -491,6 +493,42 @@ export function registerHandlers(): IpcRouter {
     listAnnotations: (courseId, relPath) =>
       annotationsRepo.listForFile({ courseId, relPath })
   })
+  // -- printing ---------------------------------------------------------------
+  handle('print:pdf', async (req) => {
+    const bytes = Buffer.from(req.base64, 'base64')
+    if (bytes.byteLength > PRINT_PDF_MAX_BYTES) {
+      throw new ValidationError('인쇄할 내용이 너무 큽니다')
+    }
+    const result = await printPdfBytes({
+      bytes,
+      jobName: req.jobName,
+      parent: BrowserWindow.getFocusedWindow()
+    })
+    return { ok: true as const, printed: result.printed }
+  })
+  handle('print:savePdfAs', async (req) => {
+    const result = await dialog.showSaveDialog({
+      title: 'PDF로 저장',
+      defaultPath: req.suggestedName,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }]
+    })
+    if (result.canceled || result.filePath === undefined) {
+      return { ok: true as const, canceled: true, savedPath: null }
+    }
+    writeFileSync(result.filePath, Buffer.from(req.base64, 'base64'))
+    return { ok: true as const, canceled: false, savedPath: result.filePath }
+  })
+  handle('print:pdfFromUrl', async (req) => {
+    // The guest is already showing this PDF, but printToPDF cannot rasterize
+    // plugin content — so fetch the original bytes instead of a blank render.
+    const fetched = await fetchLinkForMaterials(req.url)
+    return { base64: fetched.dataBase64 }
+  })
+  handle('window:setPrintEnabled', (req) => {
+    setPrintMenuEnabled(req.enabled)
+    return OK
+  })
+
   handle('pdf:exportAnnotated', async (req) => {
     const baseName = req.relPath.split('/').pop() ?? 'document.pdf'
     const suggested = baseName.replace(/\.pdf$/i, '') + ' (주석).pdf'

@@ -21,6 +21,7 @@ import { showToast } from '../../app/toast'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { guestActions } from './guestActions'
+import { usePrintStore } from '../print/printStore'
 import { acquirePointerPassthrough } from './webviewPassthrough'
 import { resolveAddressInput } from './urlInput'
 import { v4 as uuidv4 } from 'uuid'
@@ -55,6 +56,7 @@ export type ContextMenuItemId =
   | 'reload'
   | 'copy-page-url'
   | 'open-external'
+  | 'print'
   | 'inspect'
 
 /**
@@ -85,7 +87,7 @@ export function contextMenuItems(
   // 검사 is here rather than behind a dev flag because a broken Korean portal
   // is only diagnosable from a real login on a real machine — which is a
   // release build, by definition.
-  items.push('reload', 'copy-page-url', 'open-external', 'inspect')
+  items.push('reload', 'copy-page-url', 'print', 'open-external', 'inspect')
   return items
 }
 
@@ -193,6 +195,13 @@ export function BrowserContextMenu({
     'open-external': {
       label: '기본 브라우저에서 열기',
       run: () => void invoke('shell:openExternal', { url: state.pageURL })
+    },
+    print: {
+      label: '인쇄…',
+      run: () => usePrintStore.getState().open(
+        { kind: 'browser', tabId },
+        state.pageTitle
+      )
     },
     inspect: {
       label: '검사',

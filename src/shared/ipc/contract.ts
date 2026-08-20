@@ -866,6 +866,46 @@ export interface IpcContract {
     res: { ok: true }
   }
 
+  // -- printing ---------------------------------------------------------------
+  /**
+   * Prints PDF bytes the renderer already previewed.
+   *
+   * Deliberately not "print the tab": `printToPDF` and the platform print job
+   * are different pipelines that disagree on pagination, so printing the live
+   * page would not match what the student just looked at. See
+   * features/print/printWindow.ts.
+   */
+  'print:pdf': {
+    req: { base64: string; jobName: string }
+    res: { ok: true; printed: boolean }
+  }
+  'print:savePdfAs': {
+    req: { base64: string; suggestedName: string }
+    res: { ok: true; canceled: boolean; savedPath: string | null }
+  }
+  /**
+   * The bytes of a PDF the guest is already displaying.
+   *
+   * `printToPDF` does not rasterize plugin content, so a tab whose top-level
+   * document IS a PDF would preview blank. Fetched on the browsing session so
+   * the portal's own cookies carry.
+   */
+  'print:pdfFromUrl': {
+    req: { url: string }
+    res: { base64: string }
+  }
+  /**
+   * Enables or disables 파일 ▸ 인쇄….
+   *
+   * The menu item owns ⌘P, and a DISABLED menu item does not perform its key
+   * equivalent — the event falls through to the renderer, where ⌘P is still
+   * 빠른 파일 검색. That is the whole mechanism for making ⌘P mean two things.
+   */
+  'window:setPrintEnabled': {
+    req: { enabled: boolean }
+    res: { ok: true }
+  }
+
   // -- note ↔ material links --------------------------------------------------
   /**
    * Appends a highlight to a note as a quote plus a `bandal://` link back to
@@ -1288,6 +1328,10 @@ export const IPC_CHANNELS = [
   'browserAgent:grants',
   'browserAgent:revokeGrant',
   'browserAgent:auditTail',
+  'print:pdf',
+  'print:savePdfAs',
+  'print:pdfFromUrl',
+  'window:setPrintEnabled',
   'browserAgent:registerTab',
   'browserAgent:syncTabs',
   'browserAgent:stopRun',

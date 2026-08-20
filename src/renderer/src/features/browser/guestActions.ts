@@ -104,6 +104,43 @@ export const guestActions = {
    * The only way to find out why a Korean portal is broken from inside a
    * release build — which is the only place a real school login exists.
    */
+  /** Renders the page to PDF bytes. Rejects if the guest is not attached. */
+  printToPdf: async (
+    tabId: string,
+    options: Record<string, unknown>
+  ): Promise<Uint8Array> => {
+    const element = elements.get(tabId)
+    if (element === undefined) throw new Error('이 탭을 인쇄할 수 없어요.')
+    return element.printToPDF(options)
+  },
+
+  /**
+   * The guest's top-level content type.
+   *
+   * A tab already showing a PDF cannot be rendered with printToPDF — plugin
+   * content is not rasterized and the result is blank.
+   */
+  contentType: async (tabId: string): Promise<string | null> => {
+    const element = elements.get(tabId)
+    if (element === undefined) return null
+    try {
+      const value = await element.executeJavaScript('document.contentType')
+      return typeof value === 'string' ? value : null
+    } catch {
+      return null
+    }
+  },
+
+  currentUrl: (tabId: string): string | null => {
+    const element = elements.get(tabId)
+    if (element === undefined) return null
+    try {
+      return element.getURL()
+    } catch {
+      return null
+    }
+  },
+
   openDevTools: (tabId: string): void => {
     withGuest(tabId, (element) => element.openDevTools({ mode: 'detach' }))
   },

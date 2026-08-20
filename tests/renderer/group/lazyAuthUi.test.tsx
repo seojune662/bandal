@@ -152,10 +152,27 @@ vi.mock('../../../src/renderer/src/stores/universityStore', () => ({
   useUniversityStore: { getState: () => ({ init: vi.fn() }) }
 }))
 
+// The shell mounts the print preview; this walk calls components as plain
+// functions, so its store needs the same stub treatment as the others.
+vi.mock('../../../src/renderer/src/features/print/printStore', () => ({
+  usePrintStore: Object.assign(
+    (selector: (state: Record<string, unknown>) => unknown) =>
+      selector({ target: null, phase: { status: 'rendering' }, prefs: {}, title: '' }),
+    { getState: () => ({ open: vi.fn(), close: vi.fn() }) }
+  )
+}))
+
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
-  useWorkspaceStore: (
-    selector: (state: { openTab: ReturnType<typeof vi.fn> }) => unknown
-  ) => selector({ openTab: vi.fn() })
+  useWorkspaceStore: Object.assign(
+    (selector: (state: { openTab: ReturnType<typeof vi.fn> }) => unknown) =>
+      selector({ openTab: vi.fn() }),
+    {
+      // usePrintRequests reads the focused tab imperatively to decide whether
+      // 파일 ▸ 인쇄… owns ⌘P.
+      getState: () => ({ activeTabDescriptor: () => null }),
+      subscribe: () => () => undefined
+    }
+  )
 }))
 
 import React from 'react'

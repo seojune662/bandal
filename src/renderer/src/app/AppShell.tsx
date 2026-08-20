@@ -3,6 +3,8 @@ import { onPush } from '../lib/ipc'
 import { AssistantLayer } from '../features/assistant'
 import { BoardOverlay } from '../features/board/BoardPanel'
 import { BrowserWebviewLayer } from '../features/browser/BrowserWebviewLayer'
+import { PrintPreviewOverlay } from '../features/print/PrintPreviewOverlay'
+import { usePrintRequests } from '../features/print/usePrintRequests'
 import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { MaterialsSidebar } from '../features/materials/MaterialsSidebar'
 import { NicknameGate } from '../features/group/NicknameGate'
@@ -27,6 +29,7 @@ import { ToastHost } from './toast'
 import './app-shell.css'
 
 export function AppShell(): JSX.Element {
+  usePrintRequests()
   const courses = useCoursesStore((state) => state.courses)
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
   const loadCourses = useCoursesStore((state) => state.loadCourses)
@@ -142,6 +145,7 @@ export function AppShell(): JSX.Element {
       {rightRailOpen && <MaterialsSidebar course={selectedCourse} />}
 
       <BrowserWebviewLayer />
+      <PrintPreviewOverlay />
       {isBoardOverlayOpen && <BoardOverlay onClose={closeBoardOverlay} />}
       <QuickFileSearch />
       {/* One modal at a time: first-run onboarding outranks the nickname step,
