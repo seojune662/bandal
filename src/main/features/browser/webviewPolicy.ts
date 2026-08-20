@@ -6,7 +6,7 @@
  *  - fail-closed `will-attach-webview`: partition allowlist + forced
  *    sandbox/contextIsolation/webSecurity + preload removal
  *  - navigation guard shared by `will-navigate` AND `will-redirect`
- *  - deny-by-default permission policy (fullscreen only)
+ *  - a tiered permission policy (./permissionPolicy.ts)
  *  - `setWindowOpenHandler` → deny + forward http(s) URLs to the renderer
  *
  * The wiring against real electron objects lives in ./hardenWebviews.ts.
@@ -16,13 +16,6 @@ import { classifyExternalScheme } from './externalScheme'
 
 /** The only session embedded browser guests may attach to. */
 export const BROWSING_PARTITION = 'persist:browsing'
-
-/** Deny-by-default permission allowlist for the browsing session. */
-const ALLOWED_PERMISSIONS: ReadonlySet<string> = new Set(['fullscreen'])
-
-export function isPermissionAllowed(permission: string): boolean {
-  return ALLOWED_PERMISSIONS.has(permission)
-}
 
 function isHttpUrl(url: string): boolean {
   try {

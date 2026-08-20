@@ -86,6 +86,8 @@ import {
   attachDownloadHandler,
   BROWSING_PARTITION,
   createBrowserSessionStore,
+  createPermissionsRepo,
+  useSitePermissions,
   createFaviconFetcher,
   createHistoryRepo,
   fetchLinkForMaterials
@@ -1302,6 +1304,20 @@ export function registerHandlers(): IpcRouter {
   handle('browser:sessionSites', async () => ({
     sites: await browserSessions.listSites()
   }))
+
+  // -- site permissions -----------------------------------------------------
+  // The session's permission handlers are installed before any window exists,
+  // so they take the repo by injection rather than importing the database.
+  const permissionsRepo = createPermissionsRepo(db)
+  useSitePermissions(permissionsRepo)
+  handle('browser:sitePermissions', () => ({
+    permissions: permissionsRepo.list()
+  }))
+  handle('browser:forgetPermission', (req) => {
+    if (req.id === null) permissionsRepo.forgetAll()
+    else permissionsRepo.forget(req.id)
+    return OK
+  })
 
   // -- browser downloads ----------------------------------------------------
   // `will-download` only sees the guest, so the renderer tells us which course

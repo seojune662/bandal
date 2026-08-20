@@ -753,6 +753,33 @@ export const migrations: Migration[] = [
          );`
       )
     }
+  },
+  {
+    // [M21] What a WEBSITE may do — camera, location, notifications.
+    //
+    // Deliberately a different table from browser_grants: those are what the
+    // AI agent may do in a course, these are what a site may do in the
+    // browser. One table would make one revocation screen that lies about
+    // both — "카메라 취소" would leave the student wondering why the
+    // assistant still reads the page.
+    //
+    // No expiry, unlike agent grants. Chrome and Safari both remember a site
+    // permission until it is revoked, and one that lapses silently mid-term
+    // is worse than one the student can see and remove.
+    version: 21,
+    name: 'browser-site-permissions',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS browser_permissions (
+           id         TEXT PRIMARY KEY,
+           origin     TEXT NOT NULL,
+           permission TEXT NOT NULL,
+           decision   TEXT NOT NULL,
+           decided_at TEXT NOT NULL,
+           UNIQUE (origin, permission)
+         );`
+      )
+    }
   }
 ]
 

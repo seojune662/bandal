@@ -866,6 +866,26 @@ export interface IpcContract {
     res: { ok: true }
   }
 
+  // -- site permissions -------------------------------------------------------
+  /** Every camera/location/notification answer the student has given. */
+  'browser:sitePermissions': {
+    req: { }
+    res: {
+      permissions: {
+        id: string
+        origin: string
+        permission: string
+        decision: 'granted' | 'denied'
+        decidedAt: string
+      }[]
+    }
+  }
+  /** `id: null` forgets every remembered answer. */
+  'browser:forgetPermission': {
+    req: { id: string | null }
+    res: { ok: true }
+  }
+
   // -- printing ---------------------------------------------------------------
   /**
    * Prints PDF bytes the renderer already previewed.
@@ -1328,6 +1348,8 @@ export const IPC_CHANNELS = [
   'browserAgent:grants',
   'browserAgent:revokeGrant',
   'browserAgent:auditTail',
+  'browser:sitePermissions',
+  'browser:forgetPermission',
   'print:pdf',
   'print:savePdfAs',
   'print:pdfFromUrl',

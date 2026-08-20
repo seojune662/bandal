@@ -7,7 +7,6 @@ import {
   isBlockedEmbeddedAuthUrl,
   isNavigationAllowed,
   isOpenerScopedPopupTarget,
-  isPermissionAllowed,
   isSameSiteAcademicPopup,
   passthroughShortcut,
   popupForwardUrl,
@@ -118,23 +117,6 @@ describe('sanitizeGuestWebPreferences', () => {
     expect(prefs['allowRunningInsecureContent']).toBe(false)
     expect(prefs['webviewTag']).toBe(false)
     expect(prefs['partition']).toBe(BROWSING_PARTITION)
-  })
-})
-
-describe('permission policy (deny-by-default)', () => {
-  test('allows fullscreen only', () => {
-    expect(isPermissionAllowed('fullscreen')).toBe(true)
-    for (const denied of [
-      'media',
-      'geolocation',
-      'notifications',
-      'clipboard-read',
-      'midi',
-      'openExternal',
-      'pointerLock'
-    ]) {
-      expect(isPermissionAllowed(denied)).toBe(false)
-    }
   })
 })
 

@@ -18,11 +18,12 @@ import {
   isAllowedAttach,
   isBlockedEmbeddedAuthUrl,
   isNavigationAllowed,
-  isPermissionAllowed,
   passthroughShortcut,
   popupWindowSize,
   sanitizeGuestWebPreferences
 } from './webviewPolicy'
+import { permissionLabel, permissionTier } from './permissionPolicy'
+import type { PermissionsRepo } from './permissionsRepo'
 import {
   classifyExternalScheme,
   externalSchemeDisplay,
@@ -42,6 +43,57 @@ let browsingSessionHardened = false
  *  - [§6.1] a plain Chrome user agent, so UA-sniffing 학사 포털 stop failing
  *    closed on the `Electron/` and app-name tokens (see ./userAgent.ts)
  */
+/**
+ * Remembered site decisions. Injected once at startup so this module keeps
+ * knowing nothing about SQLite.
+ */
+let sitePermissions: PermissionsRepo | null = null
+
+export function useSitePermissions(repo: PermissionsRepo): void {
+  sitePermissions = repo
+}
+
+function originOf(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null
+    return parsed.origin
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Asks the student whether a site may do something.
+ *
+ * A native dialog for the same reason the external-scheme one is: a page can
+ * draw a convincing copy of any in-app surface inside its own rect, and this
+ * question is exactly the one worth spoofing. The answer is remembered per
+ * origin and listed in 설정 → 브라우저.
+ */
+async function askSitePermission(
+  origin: string,
+  permission: string
+): Promise<boolean> {
+  const owner = BrowserWindow.getFocusedWindow()
+  const options: Electron.MessageBoxOptions = {
+    type: 'question',
+    noLink: true,
+    buttons: ['차단', '허용'],
+    defaultId: 0,
+    cancelId: 0,
+    message: `${origin} 이(가) ${permissionLabel(permission)}을(를) 요청합니다.`,
+    detail: '이 선택은 이 사이트에 대해 기억됩니다. 설정 → 브라우저에서 언제든 되돌릴 수 있습니다.'
+  }
+  const { response } =
+    owner === null
+      ? await dialog.showMessageBox(options)
+      : await dialog.showMessageBox(owner, options)
+  const granted = response === 1
+  sitePermissions?.remember(origin, permission, granted ? 'granted' : 'denied')
+  return granted
+}
+
 function hardenBrowsingSession(): void {
   if (browsingSessionHardened) return
   browsingSessionHardened = true
@@ -55,13 +107,46 @@ function hardenBrowsingSession(): void {
     browsingUserAgent(browsingSession.getUserAgent(), app.getName())
   )
   browsingSession.setPermissionRequestHandler(
-    (_webContents, permission, callback) => {
-      callback(isPermissionAllowed(permission))
+    (webContents, permission, callback, details) => {
+      const tier = permissionTier(permission)
+      if (tier !== 'ask') {
+        callback(tier === 'grant')
+        return
+      }
+      const origin = originOf(
+        details.requestingUrl !== '' && details.requestingUrl !== undefined
+          ? details.requestingUrl
+          : (webContents?.getURL() ?? '')
+      )
+      if (origin === null) {
+        callback(false)
+        return
+      }
+      const remembered = sitePermissions?.decisionFor(origin, permission) ?? null
+      if (remembered !== null) {
+        callback(remembered === 'granted')
+        return
+      }
+      void askSitePermission(origin, permission).then(callback)
     }
   )
+  // SYNCHRONOUS — it cannot prompt. It answers from what the student already
+  // decided and refuses the rest; the async request handler above is the only
+  // place a question can be asked.
   browsingSession.setPermissionCheckHandler(
-    (_webContents, permission) => isPermissionAllowed(permission)
+    (_webContents, permission, requestingOrigin) => {
+      const tier = permissionTier(permission)
+      if (tier === 'grant') return true
+      if (tier === 'deny') return false
+      const origin = originOf(requestingOrigin)
+      if (origin === null) return false
+      return sitePermissions?.decisionFor(origin, permission) === 'granted'
+    }
   )
+  // Physical devices are refused outright, so a page cannot even enumerate
+  // them — the permission tiers alone would still let `requestDevice` show a
+  // chooser that then denies.
+  browsingSession.setDevicePermissionHandler(() => false)
   browsingSession.webRequest.onBeforeRequest((details, callback) => {
     callback({ cancel: details.url.startsWith('file:') })
   })
