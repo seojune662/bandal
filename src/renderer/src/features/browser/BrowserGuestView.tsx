@@ -197,10 +197,34 @@ export function BrowserGuestView({
             srcURL: event.params.srcURL,
             mediaType: event.params.mediaType,
             selectionText: event.params.selectionText,
+            isEditable: event.params.isEditable === true,
             pageURL: event.params.pageURL,
             pageTitle:
               useBrowserGuests.getState().nav[tabId]?.title ?? '',
             courseId: settingsSnapshot().lastActiveCourseId
+          })
+        }) as EventListener
+      ],
+      [
+        // A dead renderer used to leave a blank rect under a live-looking
+        // toolbar, with the PREVIOUS title still in the tab. Closing the tab
+        // was the only way out.
+        'render-process-gone',
+        ((event: Event & { reason?: string }) => {
+          useBrowserGuests.getState().setOverlay(tabId, {
+            kind: 'crashed',
+            url: useBrowserGuests.getState().nav[tabId]?.url ?? '',
+            reason: event.reason ?? 'crashed'
+          })
+        }) as EventListener
+      ],
+      [
+        'crashed',
+        (() => {
+          useBrowserGuests.getState().setOverlay(tabId, {
+            kind: 'crashed',
+            url: useBrowserGuests.getState().nav[tabId]?.url ?? '',
+            reason: 'crashed'
           })
         }) as EventListener
       ],

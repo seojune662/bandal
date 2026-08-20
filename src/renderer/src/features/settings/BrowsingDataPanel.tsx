@@ -101,6 +101,23 @@ export function BrowsingDataPanel({
       .finally(() => setBusy(null))
   }
 
+  /**
+   * Cookies were never the whole story: an LMS keeps its token in
+   * localStorage and a Canvas-style SPA restores from IndexedDB, so
+   * "로그아웃" left the student logged in. A stale service worker serves an
+   * old bundle forever, which is the "저만 깨져요" report with no fix.
+   */
+  const clearStorage = (): void => {
+    setBusy('storage')
+    void invoke('browser:clearStorage', { origin: null, cache: true })
+      .then(() => {
+        setFeedback('저장된 사이트 데이터와 캐시를 지웠습니다.')
+        loadSites()
+      })
+      .catch(() => setFeedback('사이트 데이터를 지우지 못했습니다.'))
+      .finally(() => setBusy(null))
+  }
+
   const clearHistory = (): void => {
     setBusy('history')
     void invoke('browser:clearHistory', { courseId: null })
@@ -181,6 +198,14 @@ export function BrowsingDataPanel({
             onClick={clearHistory}
           >
             방문 기록 지우기
+          </button>
+          <button
+            type="button"
+            className="settings-site-row__action"
+            disabled={busy !== null}
+            onClick={clearStorage}
+          >
+            사이트 데이터·캐시 지우기
           </button>
         </div>
         <p className="settings-feedback" aria-live="polite">

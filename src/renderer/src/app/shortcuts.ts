@@ -48,6 +48,8 @@ export type ShortcutAction =
   | { type: 'settings' }
   | { type: 'activate-tab'; index: number }
   | { type: 'activate-last-tab' }
+  | { type: 'browser-back' }
+  | { type: 'browser-forward' }
   // Browser-only. No-ops unless a browser tab is focused (or the chord came
   // out of a guest page, which names its own tab).
   | { type: 'browser-reload'; ignoreCache: boolean }
@@ -76,6 +78,9 @@ const GUEST_ALLOWED: ReadonlySet<ShortcutAction['type']> = new Set([
   'new-markdown',
   'new-browser-tab',
   'activate-last-tab',
+  'activate-tab',
+  'browser-back',
+  'browser-forward',
   'browser-reload',
   'browser-focus-address',
   'browser-find',
@@ -130,6 +135,10 @@ function actionForKey(key: string): ShortcutAction | null {
       return { type: 'browser-zoom', direction: 'out' }
     case '0':
       return { type: 'browser-zoom', direction: 'reset' }
+    case '[':
+      return { type: 'browser-back' }
+    case ']':
+      return { type: 'browser-forward' }
     default: {
       // ⌘9 is "last tab" in every browser, not the ninth one.
       if (key === '9') return { type: 'activate-last-tab' }
@@ -225,6 +234,18 @@ function runShortcutAction(
     case 'activate-last-tab':
       useWorkspaceStore.getState().activateLastTab()
       return
+    case 'browser-back': {
+      const target = browserTarget(originTabId)
+      if (target === null) return
+      guestActions.back(target)
+      return
+    }
+    case 'browser-forward': {
+      const target = browserTarget(originTabId)
+      if (target === null) return
+      guestActions.forward(target)
+      return
+    }
     case 'browser-reload': {
       const target = browserTarget(originTabId)
       if (target === null) return
@@ -286,6 +307,19 @@ function passthroughAction(
       return { type: 'close-tab' }
     case 'activate-last-tab':
       return { type: 'activate-last-tab' }
+    case 'activate-tab-1':
+    case 'activate-tab-2':
+    case 'activate-tab-3':
+    case 'activate-tab-4':
+    case 'activate-tab-5':
+    case 'activate-tab-6':
+    case 'activate-tab-7':
+    case 'activate-tab-8':
+      return { type: 'activate-tab', index: Number(action.slice(-1)) - 1 }
+    case 'browser-back':
+      return { type: 'browser-back' }
+    case 'browser-forward':
+      return { type: 'browser-forward' }
     case 'reload':
       return { type: 'browser-reload', ignoreCache: false }
     case 'reload-hard':

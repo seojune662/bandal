@@ -1,0 +1,204 @@
+/**
+ * Why this page is broken.
+ *
+ * The OZ Report Viewer failure took a codebase archaeology session to reason
+ * about, because the app knew exactly what it had blocked and told nobody.
+ * This is the affordance that makes the next one a paste instead of an
+ * investigation — and it works in a release build, where DevTools is the only
+ * other option and a student cannot be walked through it over KakaoTalk.
+ *
+ * Third instance of the console-bridge pattern (`selectionBridge.ts`,
+ * `loginBridge.ts`): a reporter injected with `executeJavaScript` on
+ * `dom-ready`, read back through the DOM `console-message` event behind a
+ * `__bandal_*__` prefix. No preload, no Electron API in the guest, no sandbox
+ * relaxation.
+ *
+ * The environment probe is the valuable half. It answers, in one line, every
+ * question we had to answer by reading source: is the PDF viewer on, did
+ * `window.open` return null, what actually threw.
+ */
+
+import { useEffect, type RefObject } from 'react'
+import type { WebviewTag } from './webviewTypes'
+
+const CONSOLE_PREFIX = '__bandal_diag__'
+/** Enough to see a failure and its aftermath; small enough to paste. */
+const MAX_ENTRIES = 100
+
+export interface DiagnosticEntry {
+  kind: 'error' | 'rejection' | 'console' | 'open-null' | 'env' | 'blocked'
+  message: string
+  at: string
+}
+
+export interface TabDiagnostics {
+  url: string
+  entries: DiagnosticEntry[]
+}
+
+const byTab = new Map<string, TabDiagnostics>()
+
+export const BROWSER_DIAGNOSTICS_EVENT = 'bandal:browser-diagnostics'
+
+function record(tabId: string, url: string, entry: DiagnosticEntry): void {
+  const current = byTab.get(tabId) ?? { url, entries: [] }
+  const entries = [...current.entries, entry].slice(-MAX_ENTRIES)
+  byTab.set(tabId, { url, entries })
+  window.dispatchEvent(new CustomEvent(BROWSER_DIAGNOSTICS_EVENT, { detail: tabId }))
+}
+
+export function diagnosticsFor(tabId: string): TabDiagnostics | null {
+  return byTab.get(tabId) ?? null
+}
+
+export function clearDiagnostics(tabId: string): void {
+  byTab.delete(tabId)
+}
+
+/** Records something main refused, so blocks sit beside the errors they cause. */
+export function recordBlocked(tabId: string, message: string): void {
+  const current = byTab.get(tabId)
+  record(tabId, current?.url ?? '', {
+    kind: 'blocked',
+    message,
+    at: new Date().toISOString()
+  })
+}
+
+/** Everything the student can paste into an issue. */
+export function diagnosticsReport(tabId: string): string {
+  const diagnostics = byTab.get(tabId)
+  if (diagnostics === null || diagnostics === undefined) return ''
+  return [
+    `URL: ${diagnostics.url}`,
+    '',
+    ...diagnostics.entries.map(
+      (entry) => `[${entry.kind}] ${entry.at} ${entry.message}`
+    )
+  ].join('\n')
+}
+
+const REPORTER_SOURCE = `(() => {
+  if (window.__bandalDiagReporterInstalledV1__ === true) return;
+  Object.defineProperty(window, '__bandalDiagReporterInstalledV1__', {
+    value: true, configurable: false, enumerable: false, writable: false
+  });
+  const prefix = ${JSON.stringify(CONSOLE_PREFIX)};
+  const send = (kind, message) => {
+    try {
+      console.log(prefix + JSON.stringify({
+        kind,
+        message: String(message).slice(0, 2000),
+        url: location.href
+      }));
+    } catch (ignored) { /* a message we cannot serialise is not worth throwing over */ }
+  };
+  window.addEventListener('error', (event) => {
+    send('error', (event.message || '') + ' @ ' + (event.filename || '') + ':' + (event.lineno || 0));
+  }, true);
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    send('rejection', reason && reason.message ? reason.message : String(reason));
+  });
+  const nativeError = console.error.bind(console);
+  console.error = (...args) => {
+    send('console', args.map((a) => {
+      try { return typeof a === 'string' ? a : JSON.stringify(a); } catch (e) { return String(a); }
+    }).join(' '));
+    nativeError(...args);
+  };
+  // The single most useful signal: a page whose window.open came back null is
+  // a page our popup policy just broke.
+  const nativeOpen = window.open.bind(window);
+  window.open = (...args) => {
+    const result = nativeOpen(...args);
+    if (result === null) send('open-null', 'window.open(' + String(args[0] ?? '') + ') returned null');
+    return result;
+  };
+  // One-shot environment probe — answers the questions we previously had to
+  // answer by reading our own source.
+  send('env', JSON.stringify({
+    plugins: navigator.plugins ? navigator.plugins.length : 0,
+    pdfViewerEnabled: navigator.pdfViewerEnabled === true,
+    pdfMime: !!(navigator.mimeTypes && navigator.mimeTypes['application/pdf']),
+    cookieEnabled: navigator.cookieEnabled,
+    contentType: document.contentType,
+    frames: window.frames.length
+  }));
+})();`
+
+interface ConsoleMessageEvent extends Event {
+  message: string
+}
+
+function parse(
+  message: string
+): { kind: DiagnosticEntry['kind']; message: string; url: string } | null {
+  if (!message.startsWith(CONSOLE_PREFIX)) return null
+  try {
+    const parsed: unknown = JSON.parse(message.slice(CONSOLE_PREFIX.length))
+    if (typeof parsed !== 'object' || parsed === null) return null
+    const candidate = parsed as Record<string, unknown>
+    const kind = candidate['kind']
+    const text = candidate['message']
+    const url = candidate['url']
+    if (typeof kind !== 'string' || typeof text !== 'string') return null
+    if (typeof url !== 'string' || url.length > 20_000) return null
+    if (
+      kind !== 'error' &&
+      kind !== 'rejection' &&
+      kind !== 'console' &&
+      kind !== 'open-null' &&
+      kind !== 'env'
+    ) {
+      return null
+    }
+    return { kind, message: text.slice(0, 2000), url }
+  } catch {
+    return null
+  }
+}
+
+export function useWebviewDiagnosticsBridge(
+  tabId: string,
+  webviewRef: RefObject<WebviewTag | null>
+): void {
+  useEffect(() => {
+    const webview = webviewRef.current
+    if (webview === null) return
+
+    const inject = (): void => {
+      try {
+        void webview.executeJavaScript(REPORTER_SOURCE).catch(() => {
+          // Cross-origin or gone. Navigation supplies another dom-ready.
+        })
+      } catch {
+        // Not attached yet.
+      }
+    }
+    const onConsoleMessage = (rawEvent: Event): void => {
+      const event = rawEvent as ConsoleMessageEvent
+      if (typeof event.message !== 'string') return
+      const payload = parse(event.message)
+      if (payload === null) return
+      record(tabId, payload.url, {
+        kind: payload.kind,
+        message: payload.message,
+        at: new Date().toISOString()
+      })
+    }
+    // A fresh document is a fresh investigation; keeping the old entries
+    // would attribute the last page's errors to this one.
+    const onStartLoading = (): void => clearDiagnostics(tabId)
+
+    webview.addEventListener('dom-ready', inject)
+    webview.addEventListener('did-start-loading', onStartLoading)
+    webview.addEventListener('console-message', onConsoleMessage)
+    inject()
+    return () => {
+      webview.removeEventListener('dom-ready', inject)
+      webview.removeEventListener('did-start-loading', onStartLoading)
+      webview.removeEventListener('console-message', onConsoleMessage)
+    }
+  }, [tabId, webviewRef])
+}

@@ -29,7 +29,8 @@ import {
   useBrowserGuests,
   type BrowserNavState
 } from './browserGuestsStore'
-import { BrowserErrorPage } from './BrowserErrorPage'
+import { BrowserCrashPage, BrowserErrorPage } from './BrowserErrorPage'
+import { BrowserDownloadsPanel } from './BrowserDownloadsPanel'
 import { DEFAULT_ZOOM_LEVEL, isDefaultZoom, zoomPercent } from './zoom'
 import { useDownloads } from './downloadsStore'
 import { toggleFavorite, useBrowserFavorite } from './browserFavorite'
@@ -180,9 +181,27 @@ function BrowserAddressInput({
         submit()
       }}
     >
-      {favicon === undefined ? (
-        <BrowserIcon name={parts.secure ? 'lock' : 'globe'} />
-      ) : (
+      {/* The favicon used to REPLACE this, and every real site has a
+          favicon — so the lock was only ever visible on sites without an
+          icon, and an http:// phishing clone of a 학사포털 looked exactly
+          like the real https:// one. They are different facts and both get
+          shown. */}
+      <span
+        className={
+          parts.secure
+            ? 'browser-address__security'
+            : 'browser-address__security browser-address__security--insecure'
+        }
+        title={
+          parts.secure
+            ? '이 연결은 암호화돼 있어요'
+            : '암호화되지 않은 연결이에요. 비밀번호를 입력하지 마세요.'
+        }
+        aria-label={parts.secure ? '보안 연결' : '보안되지 않은 연결'}
+      >
+        <BrowserIcon name={parts.secure ? 'lock' : 'insecure'} />
+      </span>
+      {favicon !== undefined && (
         <img className="browser-address__favicon" src={favicon} alt="" />
       )}
       <span className="browser-address__field">
@@ -311,6 +330,8 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
     (state) => state.addressFocusSeq[tabId] ?? 0
   )
   const activeDownloads = useDownloads((state) => state.activeCount)
+  const anyDownloads = useDownloads((state) => state.downloads.length > 0)
+  const [downloadsOpen, setDownloadsOpen] = useState(false)
   const starred = useBrowserFavorite(nav.url)
   const favicon = useBrowserGuests((state) => state.favicon[tabId])
   const findState = useBrowserGuests((state) => state.find[tabId])
@@ -386,16 +407,31 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
               <BrowserIcon name={starred === null ? 'star' : 'starFilled'} />
             </button>
           </Tooltip>
-          {activeDownloads > 0 && (
+          {(activeDownloads > 0 || anyDownloads) && (
             <Tooltip
-              label={`${activeDownloads}개 내려받는 중`}
+              label={
+                activeDownloads > 0
+                  ? `${activeDownloads}개 내려받는 중`
+                  : '받은 파일'
+              }
               placement="bottom"
             >
-              <span className="browser-download-badge" role="status">
+              {/* Was a non-interactive <span>: the count was visible and the
+                  transfer was not stoppable. */}
+              <button
+                type="button"
+                className="browser-download-badge"
+                aria-expanded={downloadsOpen}
+                aria-label="다운로드"
+                onClick={() => setDownloadsOpen((open) => !open)}
+              >
                 <BrowserIcon name="download" />
-                {activeDownloads}
-              </span>
+                {activeDownloads > 0 ? activeDownloads : null}
+              </button>
             </Tooltip>
+          )}
+          {downloadsOpen && (
+            <BrowserDownloadsPanel onClose={() => setDownloadsOpen(false)} />
           )}
           {!isDefaultZoom(zoomLevel) && (
             <Tooltip label="기본 크기로 (⌘0)" placement="bottom">
@@ -513,6 +549,23 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   // student back to the URL the tab was opened with. `initialUrl` is excluded
   // from the structural key (layoutPersistence), so this costs no extra write:
   // the parked snapshot carries it on quit and on course switch.
+  /**
+   * Hand keyboard focus to the page when its tab becomes active.
+   *
+   * Chrome focuses the document. Without this, activating a browser tab left
+   * focus in the host chrome: ↓ and PageDown did nothing, Tab did not move
+   * between form fields, and typing went nowhere until the student clicked
+   * into the page.
+   */
+  useEffect(() => {
+    if (!isPanelVisible || tabId === '') return undefined
+    // One frame, so dockview has finished moving the panel before we take focus.
+    const handle = window.requestAnimationFrame(() => {
+      guestActions.focus(tabId)
+    })
+    return () => window.cancelAnimationFrame(handle)
+  }, [isPanelVisible, tabId])
+
   // A visible LMS course page decides where its downloads go.
   useEffect(() => {
     if (!isPanelVisible || navState.url === '') return
@@ -574,7 +627,11 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
         data-browser-anchor={tabId}
       >
         {overlay !== null ? (
-          <BrowserErrorPage tabId={tabId} overlay={overlay} />
+          overlay.kind === 'crashed' ? (
+            <BrowserCrashPage tabId={tabId} overlay={overlay} />
+          ) : (
+            <BrowserErrorPage tabId={tabId} overlay={overlay} />
+          )
         ) : (
           /* Shown before first paint / if the guest renderer ever goes away. */
           <div className="browser-anchor__fallback">

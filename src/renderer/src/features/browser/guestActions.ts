@@ -104,6 +104,31 @@ export const guestActions = {
    * The only way to find out why a Korean portal is broken from inside a
    * release build — which is the only place a real school login exists.
    */
+  /** Chrome focuses the document when a tab activates; so do we. */
+  focus: (tabId: string): void => {
+    withGuest(tabId, (element) => element.focus())
+  },
+
+  paste: (tabId: string): void => {
+    withGuest(tabId, (element) => element.paste())
+  },
+
+  cut: (tabId: string): void => {
+    withGuest(tabId, (element) => element.cut())
+  },
+
+  selectAll: (tabId: string): void => {
+    withGuest(tabId, (element) => element.selectAll())
+  },
+
+  undo: (tabId: string): void => {
+    withGuest(tabId, (element) => element.undo())
+  },
+
+  redo: (tabId: string): void => {
+    withGuest(tabId, (element) => element.redo())
+  },
+
   /** Renders the page to PDF bytes. Rejects if the guest is not attached. */
   printToPdf: async (
     tabId: string,

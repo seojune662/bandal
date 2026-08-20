@@ -50,8 +50,24 @@ const BLOCKED_SCHEMES: ReadonlySet<string> = new Set([
   'bandal'
 ])
 
+/**
+ * Schemes every OS already owns and every browser opens with at most a
+ * one-line notice. Warning about 교수님 이메일 링크 in the same red-toned box
+ * used for an unknown installer teaches the student to ignore the box.
+ */
+const EVERYDAY_SCHEMES: ReadonlySet<string> = new Set([
+  'mailto',
+  'tel',
+  'sms',
+  'facetime',
+  'facetime-audio',
+  'webcal'
+])
+
 export type ExternalSchemeVerdict =
   | { kind: 'blocked'; reason: 'scheme' | 'shape' | 'length' }
+  /** An everyday handoff: confirm once, quietly. */
+  | { kind: 'everyday'; scheme: string }
   | { kind: 'ask'; scheme: string }
 
 export function classifyExternalScheme(url: string): ExternalSchemeVerdict {
@@ -68,6 +84,7 @@ export function classifyExternalScheme(url: string): ExternalSchemeVerdict {
     return { kind: 'blocked', reason: 'scheme' }
   }
   if (BLOCKED_SCHEMES.has(scheme)) return { kind: 'blocked', reason: 'scheme' }
+  if (EVERYDAY_SCHEMES.has(scheme)) return { kind: 'everyday', scheme }
   return { kind: 'ask', scheme }
 }
 

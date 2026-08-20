@@ -55,6 +55,12 @@ export interface MaterialsChanged {
  */
 export interface BrowserOpenUrl {
   url: string
+  /**
+   * ⌘-click / middle-click. Chrome opens these behind the current tab;
+   * yanking focus five times while a student queues up five 공지 links is
+   * exactly what the modifier exists to avoid.
+   */
+  background?: boolean
 }
 
 /** Fired after settings change from any window. */
@@ -103,6 +109,16 @@ export interface ShortcutPassthrough {
     | 'new-tab'
     | 'close-tab'
     | 'activate-last-tab'
+    | 'activate-tab-1'
+    | 'activate-tab-2'
+    | 'activate-tab-3'
+    | 'activate-tab-4'
+    | 'activate-tab-5'
+    | 'activate-tab-6'
+    | 'activate-tab-7'
+    | 'activate-tab-8'
+    | 'browser-back'
+    | 'browser-forward'
     | 'reload'
     | 'reload-hard'
     | 'focus-address'

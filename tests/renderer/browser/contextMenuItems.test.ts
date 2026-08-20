@@ -118,3 +118,54 @@ describe('contextMenuItems', () => {
     expect(new Set(items).size).toBe(items.length)
   })
 })
+
+describe('contextMenuItems — editable fields', () => {
+  const editable = (over: Record<string, unknown> = {}) =>
+    contextMenuItems({
+      linkURL: '',
+      srcURL: '',
+      mediaType: 'none',
+      selectionText: '',
+      isEditable: true,
+      courseId: 'ds',
+      ...over
+    } as Parameters<typeof contextMenuItems>[0])
+
+  test('a text field offers 붙여넣기 and 전체 선택', () => {
+    // Korean students paste 학번 into portal fields constantly, and this menu
+    // used to offer them 새로고침 · 페이지 주소 복사 · 검사 — nothing usable.
+    const items = editable()
+    expect(items).toContain('paste')
+    expect(items).toContain('select-all')
+  })
+
+  test('with a selection it also offers 잘라내기 and 복사', () => {
+    const items = editable({ selectionText: '2021123456' })
+    expect(items).toContain('cut-selection')
+    expect(items).toContain('copy-selection')
+    expect(items.indexOf('cut-selection')).toBeLessThan(items.indexOf('paste'))
+  })
+
+  test('no selection means nothing to cut', () => {
+    expect(editable()).not.toContain('cut-selection')
+  })
+
+  test('a link inside a contenteditable keeps BOTH families, as Chrome does', () => {
+    const items = editable({ linkURL: 'https://x/' })
+    expect(items).toContain('open-link')
+    expect(items).toContain('paste')
+  })
+
+  test('a non-editable page never offers 붙여넣기', () => {
+    expect(
+      contextMenuItems({
+        linkURL: '',
+        srcURL: '',
+        mediaType: 'none',
+        selectionText: '',
+        isEditable: false,
+        courseId: 'ds'
+      } as Parameters<typeof contextMenuItems>[0])
+    ).not.toContain('paste')
+  })
+})

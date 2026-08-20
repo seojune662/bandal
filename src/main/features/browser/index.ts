@@ -18,6 +18,7 @@ export type {
 } from './sessionStore'
 export {
   attachDownloadHandler,
+  downloadControls,
   createDownloadHandler,
   downloadFileName,
   type BrowserDownloadUpdate

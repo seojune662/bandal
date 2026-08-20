@@ -61,10 +61,13 @@ function useGuestReaper(): void {
 function useOpenUrlForwarding(): void {
   useEffect(
     () =>
-      onPush('browser:open-url', ({ url }) => {
+      onPush('browser:open-url', ({ url, background }) => {
         useWorkspaceStore
           .getState()
-          .openTab(descriptorFor('browser', { tabId: uuidv4(), initialUrl: url }))
+          .openTab(
+            descriptorFor('browser', { tabId: uuidv4(), initialUrl: url }),
+            background === true ? { background: true } : undefined
+          )
       }),
     []
   )
@@ -111,12 +114,20 @@ function useBlockedNotices(): void {
       // lever, and a page that needs a fourth window at once is not a page.
       showToast('팝업을 막았어요.')
     })
+    // Main emits this on every deny. Nobody was listening, so a page that
+    // navigated to a hard-blocked scheme produced a console.warn and nothing
+    // else — the 보안 프로그램 설치 link just did nothing, forever.
+    const unsubscribeBlocked = onPush('browser:blocked', ({ kind }) => {
+      if (kind !== 'navigation') return
+      showToast('이 주소는 반달에서 열 수 없어요.')
+    })
     const unsubscribeScheme = onPush('browser:external-scheme', ({ outcome }) => {
       if (outcome !== 'no-handler') return
       showToast('이 프로그램이 설치되어 있지 않아요.')
     })
     return () => {
       unsubscribePopup()
+      unsubscribeBlocked()
       unsubscribeScheme()
     }
   }, [])

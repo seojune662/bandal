@@ -48,7 +48,14 @@ interface WorkspaceState {
   /** Swap the whole layout: save current course, hydrate the target. */
   setActiveCourse: (courseId: string | null) => void
   /** Open a tab, focusing the existing panel when the identity matches. */
-  openTab: (descriptor: TabDescriptor, options?: { newInstance?: boolean }) => void
+  openTab: (
+    descriptor: TabDescriptor,
+    options?: {
+      newInstance?: boolean
+      /** ⌘-click: open it but stay where you are, as every browser does. */
+      background?: boolean
+    }
+  ) => void
   /** Closes the canonical tab and all its duplicate views. */
   closeTabsMatching: (descriptor: TabDescriptor) => void
   closeTab: (panelId: string) => void
@@ -259,7 +266,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         // would re-show whichever group was open and silently ignore the one
         // the user just clicked.
         existing.api.updateParameters({ descriptor })
-        existing.api.setActive()
+        if (options?.background !== true) existing.api.setActive()
         return
       }
       // [R3] "현재 탭 옆에 열기" 설정: 새 탭을 활성 그룹의 끝이 아니라
@@ -279,13 +286,20 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         activeIndex >= 0
           ? { position: { referencePanel: activePanel, index: activeIndex + 1 } }
           : {}
-      api.addPanel({
+      const added = api.addPanel({
         id: panelId,
         component: descriptor.kind,
         title: tabTitle(descriptor),
         params: { descriptor },
         ...position
       })
+      // dockview activates a new panel by default. ⌘-clicking five 공지 links
+      // would otherwise yank focus five times and leave the student on the
+      // last one.
+      if (options?.background === true && activePanel !== undefined) {
+        activePanel.api.setActive()
+        void added
+      }
     },
 
     closeTab: (panelId) => {

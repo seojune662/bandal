@@ -86,6 +86,7 @@ import {
   attachDownloadHandler,
   BROWSING_PARTITION,
   createBrowserSessionStore,
+  downloadControls,
   createPermissionsRepo,
   useSitePermissions,
   createFaviconFetcher,
@@ -1304,6 +1305,29 @@ export function registerHandlers(): IpcRouter {
   handle('browser:sessionSites', async () => ({
     sites: await browserSessions.listSites()
   }))
+
+  handle('browser:controlDownload', (req) => {
+    if (req.action === 'cancel') downloadControls.cancel(req.id)
+    else if (req.action === 'pause') downloadControls.pause(req.id)
+    else downloadControls.resume(req.id)
+    return OK
+  })
+  /**
+   * Clearing cookies was never enough.
+   *
+   * An LMS keeps its JWT in localStorage and a Canvas-style SPA restores from
+   * IndexedDB, so "로그아웃" left the student logged in. And a stale service
+   * worker registered by a 학사 포털 serves an old bundle forever — the
+   * classic "저만 깨져요, 크롬에선 되는데요" with no button that fixes it.
+   */
+  handle('browser:clearStorage', async (req) => {
+    const browsing = session.fromPartition(BROWSING_PARTITION)
+    await browsing.clearStorageData(
+      req.origin === null ? {} : { origin: req.origin }
+    )
+    if (req.cache) await browsing.clearCache()
+    return OK
+  })
 
   // -- site permissions -----------------------------------------------------
   // The session's permission handlers are installed before any window exists,

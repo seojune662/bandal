@@ -34,6 +34,8 @@ export interface BrowserContextMenuState {
   srcURL: string
   mediaType: string
   selectionText: string
+  /** A text field or contenteditable was under the cursor. */
+  isEditable: boolean
   pageURL: string
   /** Guest-relative coordinates, for `copyImageAt`. */
   guestX: number
@@ -51,6 +53,9 @@ export type ContextMenuItemId =
   | 'copy-image'
   | 'save-image'
   | 'copy-selection'
+  | 'cut-selection'
+  | 'paste'
+  | 'select-all'
   | 'search-selection'
   | 'clip-to-note'
   | 'reload'
@@ -67,7 +72,7 @@ export type ContextMenuItemId =
 export function contextMenuItems(
   state: Pick<
     BrowserContextMenuState,
-    'linkURL' | 'srcURL' | 'mediaType' | 'selectionText'
+    'linkURL' | 'srcURL' | 'mediaType' | 'selectionText' | 'isEditable'
   > & { courseId: string | null }
 ): ContextMenuItemId[] {
   const items: ContextMenuItemId[] = []
@@ -76,6 +81,15 @@ export function contextMenuItems(
   }
   if (state.mediaType === 'image' && state.srcURL !== '') {
     items.push('copy-image', 'save-image')
+  }
+  // Korean students paste 학번 into portal fields constantly, and this menu
+  // used to offer them 새로고침 · 페이지 주소 복사 · 검사 — nothing usable.
+  if (state.isEditable) {
+    if (state.selectionText.trim() !== '') items.push('cut-selection', 'copy-selection')
+    items.push('paste', 'select-all')
+    if (state.selectionText.trim() !== '') items.push('search-selection')
+    items.push('reload', 'copy-page-url', 'print', 'open-external', 'inspect')
+    return items
   }
   if (state.selectionText.trim() !== '') {
     items.push('copy-selection', 'search-selection')
@@ -160,6 +174,18 @@ export function BrowserContextMenu({
     'copy-selection': {
       label: '복사',
       run: () => guestActions.copySelection(tabId)
+    },
+    'cut-selection': {
+      label: '잘라내기',
+      run: () => guestActions.cut(tabId)
+    },
+    paste: {
+      label: '붙여넣기',
+      run: () => guestActions.paste(tabId)
+    },
+    'select-all': {
+      label: '전체 선택',
+      run: () => guestActions.selectAll(tabId)
     },
     'clip-to-note': {
       label: '필기에 담기',

@@ -42,7 +42,6 @@ const ASK: ReadonlySet<string> = new Set([
   'notifications',
   'geolocation',
   'media',
-  'mediaKeySystem',
   'clipboard-read',
   'display-capture',
   'midi',
@@ -58,6 +57,12 @@ const ASK: ReadonlySet<string> = new Set([
  * it through a generic yes/no would hide exactly the detail that matters.
  */
 const HARD_DENY: ReadonlySet<string> = new Set([
+  // Stock Electron ships no Widevine CDM, so a granted `mediaKeySystem` still
+  // cannot play protected video. Asking would produce the worst failure shape
+  // there is: a prompt the student answers and nothing happens. Playing DRM
+  // lecture video needs the castlabs Electron fork, which is a build and
+  // signing decision, not a permission one.
+  'mediaKeySystem',
   'hid',
   'serial',
   'usb',
@@ -86,8 +91,6 @@ export function permissionLabel(permission: string): string {
       return '현재 위치 확인'
     case 'media':
       return '카메라와 마이크 사용'
-    case 'mediaKeySystem':
-      return '보호된 영상 재생'
     case 'clipboard-read':
       return '클립보드 읽기'
     case 'display-capture':

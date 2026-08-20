@@ -37,6 +37,11 @@ export interface WebviewTag extends HTMLElement {
   /** Same `will-download` path a real click takes — cookies, redirects, name. */
   downloadURL(url: string): void
   copy(): void
+  cut(): void
+  paste(): void
+  selectAll(): void
+  undo(): void
+  redo(): void
   copyImageAt(x: number, y: number): void
   /**
    * The only way to find out why a site is broken from inside a release

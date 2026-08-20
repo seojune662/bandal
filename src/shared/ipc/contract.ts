@@ -866,6 +866,24 @@ export interface IpcContract {
     res: { ok: true }
   }
 
+  // -- download controls ------------------------------------------------------
+  /**
+   * Cancel / pause / resume a live transfer.
+   *
+   * The only control that existed was 닫기, which removed the row while the
+   * transfer kept running invisibly — quitting the app was the only way to
+   * stop a 2GB video on tethering.
+   */
+  'browser:controlDownload': {
+    req: { id: string; action: 'cancel' | 'pause' | 'resume' }
+    res: { ok: true }
+  }
+  /** Clears cache and site storage, not just cookies. */
+  'browser:clearStorage': {
+    req: { origin: string | null; cache: boolean }
+    res: { ok: true }
+  }
+
   // -- site permissions -------------------------------------------------------
   /** Every camera/location/notification answer the student has given. */
   'browser:sitePermissions': {
@@ -1348,6 +1366,8 @@ export const IPC_CHANNELS = [
   'browserAgent:grants',
   'browserAgent:revokeGrant',
   'browserAgent:auditTail',
+  'browser:controlDownload',
+  'browser:clearStorage',
   'browser:sitePermissions',
   'browser:forgetPermission',
   'print:pdf',

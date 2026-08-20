@@ -194,10 +194,21 @@ describe('passthroughShortcut (chords a focused guest would otherwise eat)', () 
     }
   })
 
-  test('leaves app-only shortcuts dead inside a guest', () => {
-    // The page owns its own keymap. ⌘P (quick search), ⌘, (settings) and
-    // ⌘1..8 are ours but would be startling to fire mid-page.
-    for (const key of ['p', ',', '1', '8']) {
+  test('switches tabs from inside a page, the way a browser does', () => {
+    // These used to be deliberately dead ("startling to fire mid-page"), but
+    // Chrome switches tabs on ⌘1..8 wherever focus is — tab switching is tab
+    // lifetime, not page content. Click into a page, press ⌘2, and nothing
+    // used to happen.
+    expect(passthroughShortcut(chord({ key: '1' }))).toBe('activate-tab-1')
+    expect(passthroughShortcut(chord({ key: '8' }))).toBe('activate-tab-8')
+    expect(passthroughShortcut(chord({ key: '[' }))).toBe('browser-back')
+    expect(passthroughShortcut(chord({ key: ']' }))).toBe('browser-forward')
+  })
+
+  test('leaves the genuinely app-only chords to the page', () => {
+    // ⌘, opens settings; ⌘P belongs to the 파일 menu item, which macOS
+    // resolves before the event ever reaches a guest.
+    for (const key of ['p', ',']) {
       expect(passthroughShortcut(chord({ key })), key).toBeNull()
     }
   })

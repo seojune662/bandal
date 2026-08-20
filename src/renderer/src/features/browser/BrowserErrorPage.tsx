@@ -12,7 +12,11 @@ import { invoke } from '../../lib/ipc'
 import { BrowserIcon } from './browserIcons'
 import { useBrowserGuests } from './browserGuestsStore'
 import { guestActions } from './guestActions'
-import { errorCopy, type BrowserOverlay } from './loadError'
+import {
+  errorCopy,
+  type BrowserCrashOverlay,
+  type BrowserLoadErrorOverlay
+} from './loadError'
 import { hostnameForUrl } from './browserStartPageModel'
 
 export function BrowserErrorPage({
@@ -20,7 +24,7 @@ export function BrowserErrorPage({
   overlay
 }: {
   tabId: string
-  overlay: BrowserOverlay
+  overlay: BrowserLoadErrorOverlay
 }): JSX.Element | null {
   const copy = errorCopy(overlay.errorCode, hostnameForUrl(overlay.url))
   if (copy === null) return null
@@ -58,6 +62,45 @@ export function BrowserErrorPage({
       <code className="browser-error__code">
         {overlay.errorDescription} ({overlay.errorCode})
       </code>
+    </div>
+  )
+}
+
+/**
+ * A guest whose renderer process died.
+ *
+ * Separate from the load-error page because the recovery is different: there
+ * is no error code to explain and nothing to hand to the system browser — the
+ * page was fine, the process was not. 다시 불러오기 rebuilds it in place.
+ */
+export function BrowserCrashPage({
+  tabId,
+  overlay
+}: {
+  tabId: string
+  overlay: BrowserCrashOverlay
+}): JSX.Element {
+  return (
+    <div className="browser-error" role="alert">
+      <BrowserIcon name="globe" />
+      <h2 className="browser-error__title">이 페이지가 멈췄어요</h2>
+      <p className="browser-error__detail">
+        {hostnameForUrl(overlay.url)} 을(를) 보여주던 과정이 중단됐어요. 다시
+        불러오면 대부분 해결돼요.
+      </p>
+      <div className="browser-error__actions">
+        <button
+          type="button"
+          className="browser-error__action browser-error__action--primary"
+          onClick={() => {
+            useBrowserGuests.getState().setOverlay(tabId, null)
+            guestActions.reload(tabId)
+          }}
+        >
+          다시 불러오기
+        </button>
+      </div>
+      <code className="browser-error__code">{overlay.reason}</code>
     </div>
   )
 }

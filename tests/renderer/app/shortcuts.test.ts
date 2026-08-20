@@ -156,14 +156,17 @@ describe('resolveShortcut — guards', () => {
     ).toBeNull()
   })
 
-  test('webview focus allows only ⌘T/⌘W', () => {
+  test('webview focus keeps tab lifetime and browser chrome, not app chrome', () => {
     const inGuest = (key: string): ReturnType<typeof resolveShortcut> =>
       resolveShortcut(input({ key, metaKey: true, targetIsWebview: true }))
     expect(inGuest('t')).toEqual({ type: 'new-tab' })
     expect(inGuest('w')).toEqual({ type: 'close-tab' })
+    // Chrome switches tabs on ⌘1..8 wherever focus is; so do we now.
+    expect(inGuest('1')).toEqual({ type: 'activate-tab', index: 0 })
+    expect(inGuest('[')).toEqual({ type: 'browser-back' })
+    // Genuinely app-only: ⌘P belongs to the 파일 menu, ⌘, to settings.
     expect(inGuest('p')).toBeNull()
     expect(inGuest(',')).toBeNull()
-    expect(inGuest('1')).toBeNull()
   })
 
   test('unrelated keys resolve to nothing', () => {

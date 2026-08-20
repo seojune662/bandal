@@ -10,6 +10,7 @@ export type BrowserIconName =
   | 'arrowRight'
   | 'globe'
   | 'lock'
+  | 'insecure'
   | 'download'
   | 'chevronUp'
   | 'chevronDown'
@@ -41,6 +42,15 @@ const paths: Record<BrowserIconName, JSX.Element> = {
     <>
       <circle cx="12" cy="12" r="8.5" />
       <path d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.2 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.2-3.6-8.5s1.2-6.2 3.6-8.5Z" />
+    </>
+  ),
+  // A struck-through lock, the shape Chrome and Safari both settled on for
+  // "this connection is not private".
+  insecure: (
+    <>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 6.9-2.7" />
+      <path d="m4 4 16 16" />
     </>
   ),
   lock: (

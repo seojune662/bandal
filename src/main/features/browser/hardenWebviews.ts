@@ -22,6 +22,8 @@ import {
   popupWindowSize,
   sanitizeGuestWebPreferences
 } from './webviewPolicy'
+import { installDisplayMediaHandler } from './displayMedia'
+import { askForCredentials, resolveAuthPrompt } from './httpAuth'
 import { permissionLabel, permissionTier } from './permissionPolicy'
 import type { PermissionsRepo } from './permissionsRepo'
 import {
@@ -147,9 +149,18 @@ function hardenBrowsingSession(): void {
   // them — the permission tiers alone would still let `requestDevice` show a
   // chooser that then denies.
   browsingSession.setDevicePermissionHandler(() => false)
-  browsingSession.webRequest.onBeforeRequest((details, callback) => {
-    callback({ cancel: details.url.startsWith('file:') })
-  })
+  // Granting display-capture is necessary but NOT sufficient: without this,
+  // getDisplayMedia() still rejects and the prompt the student just answered
+  // means nothing.
+  installDisplayMediaHandler()
+  // Filtered: an unfiltered handler routes EVERY subresource of every page
+  // through a main-process callback, and a 학사 포털 issues 300+ per load.
+  browsingSession.webRequest.onBeforeRequest(
+    { urls: ['file://*/*'] },
+    (details, callback) => {
+      callback({ cancel: details.url.startsWith('file:') })
+    }
+  )
 }
 
 const popupLimiter = createPopupLimiter(() => Date.now())
@@ -213,18 +224,32 @@ async function offerExternalScheme(
   try {
     const owner = BrowserWindow.fromWebContents(host)
     const origin = requestingOriginOf(guest.getURL())
-    const options: Electron.MessageBoxOptions = {
-      type: 'warning',
-      noLink: true,
-      buttons: ['취소', '열기'],
-      defaultId: 0,
-      cancelId: 0,
-      message: '이 페이지가 다른 프로그램을 열려고 합니다.',
-      detail:
-        `요청한 사이트: ${origin}\n` +
-        `실행할 주소: ${externalSchemeDisplay(url)}\n\n` +
-        '모르는 프로그램이라면 취소하십시오.'
-    }
+    // mailto:/tel: get a quiet one-liner. Putting a 교수님 이메일 링크 behind
+    // the same red-toned "모르는 프로그램이라면 취소하십시오" box as an
+    // unknown installer is how a student learns to ignore that box.
+    const everyday = verdict.kind === 'everyday'
+    const options: Electron.MessageBoxOptions = everyday
+      ? {
+          type: 'question',
+          noLink: true,
+          buttons: ['취소', '열기'],
+          defaultId: 1,
+          cancelId: 0,
+          message: `${externalSchemeDisplay(url)} 을(를) 여시겠습니까?`,
+          detail: `${origin} 에서 요청했습니다.`
+        }
+      : {
+          type: 'warning',
+          noLink: true,
+          buttons: ['취소', '열기'],
+          defaultId: 0,
+          cancelId: 0,
+          message: '이 페이지가 다른 프로그램을 열려고 합니다.',
+          detail:
+            `요청한 사이트: ${origin}\n` +
+            `실행할 주소: ${externalSchemeDisplay(url)}\n\n` +
+            '모르는 프로그램이라면 취소하십시오.'
+        }
     const { response } =
       owner === null
         ? await dialog.showMessageBox(options)
@@ -242,6 +267,59 @@ async function offerExternalScheme(
   } finally {
     schemeAsksInFlight.delete(guest.id)
   }
+}
+
+function certificateLabel(certificate: Electron.Certificate): string {
+  const name = certificate.subjectName !== '' ? certificate.subjectName : certificate.subject?.commonName
+  const issuer = certificate.issuerName !== '' ? certificate.issuerName : certificate.issuer?.commonName
+  return `${name ?? '이름 없음'} · 발급 ${issuer ?? '알 수 없음'}`
+}
+
+async function confirmCertificate(
+  host: WebContents,
+  url: string,
+  certificate: Electron.Certificate | undefined
+): Promise<boolean> {
+  if (certificate === undefined) return false
+  const owner = BrowserWindow.fromWebContents(host)
+  const options: Electron.MessageBoxOptions = {
+    type: 'question',
+    noLink: true,
+    buttons: ['취소', '보내기'],
+    defaultId: 0,
+    cancelId: 0,
+    message: `${requestingOriginOf(url)} 이(가) 인증서를 요구합니다.`,
+    detail: `${certificateLabel(certificate)}\n\n보내면 이 인증서로 신원이 확인됩니다.`
+  }
+  const { response } =
+    owner === null
+      ? await dialog.showMessageBox(options)
+      : await dialog.showMessageBox(owner, options)
+  return response === 1
+}
+
+async function chooseCertificate(
+  host: WebContents,
+  url: string,
+  list: Electron.Certificate[]
+): Promise<Electron.Certificate | null> {
+  const owner = BrowserWindow.fromWebContents(host)
+  // Cancel first, so the default is never "assert an identity".
+  const options: Electron.MessageBoxOptions = {
+    type: 'question',
+    noLink: true,
+    buttons: ['취소', ...list.map(certificateLabel)],
+    defaultId: 0,
+    cancelId: 0,
+    message: `${requestingOriginOf(url)} 이(가) 인증서를 요구합니다.`,
+    detail: '어떤 인증서를 보낼지 고르십시오.'
+  }
+  const { response } =
+    owner === null
+      ? await dialog.showMessageBox(options)
+      : await dialog.showMessageBox(owner, options)
+  if (response === 0) return null
+  return list[response - 1] ?? null
 }
 
 /**
@@ -312,7 +390,10 @@ function attachGuestPolicies(host: WebContents, guest: WebContents): void {
 
     if (decision.kind === 'tab') {
       if (!host.isDestroyed()) {
-        const payload: BrowserOpenUrl = { url: decision.url }
+        const payload: BrowserOpenUrl = {
+          url: decision.url,
+          background: details.disposition === 'background-tab'
+        }
         host.send('browser:open-url', payload)
       }
       return { action: 'deny' }
@@ -364,7 +445,85 @@ function attachGuestPolicies(host: WebContents, guest: WebContents): void {
     })
   })
 
+  /**
+   * Client certificates (mTLS).
+   *
+   * Electron's default when this event is UNHANDLED is to silently use the
+   * FIRST certificate in the list. So a 정부/공공 mTLS endpoint got whichever
+   * one the keychain happened to enumerate first — a stale dev cert, an
+   * expired one, someone else's — and then failed with an opaque server error
+   * or, worse, authenticated as the wrong identity. On macOS the keychain
+   * unlock prompt is attributed to "bandal", not to the site, so the student
+   * has no idea what consented to what.
+   *
+   * Note this is the narrow mTLS case. 공동인증서(구 공인인증서) files under
+   * ~/NPKI are not TLS client certs and never reach here — those are driven by
+   * a native helper over a custom scheme (externalScheme.ts).
+   */
+  guest.on('select-client-certificate', (event, url, list, callback) => {
+    event.preventDefault()
+    if (list.length === 0) return
+    if (list.length === 1) {
+      // Still worth confirming: this is an identity being asserted.
+      void confirmCertificate(host, url, list[0]).then((ok) => {
+        if (ok && list[0] !== undefined) callback(list[0])
+      })
+      return
+    }
+    void chooseCertificate(host, url, list).then((chosen) => {
+      if (chosen !== null) callback(chosen)
+    })
+  })
+
+  // HTTP Basic / Digest / NTLM / Negotiate. With NO listener Electron
+  // CANCELS the request — which is why 도서관 프록시 and older 학사 시스템
+  // rendered a blank rect with no prompt and no way in.
+  guest.on('login', (event, _details, authInfo, callback) => {
+    event.preventDefault()
+    void resolveAuthPrompt(
+      {
+        isProxy: authInfo.isProxy,
+        host: authInfo.host,
+        port: authInfo.port,
+        realm: authInfo.realm,
+        scheme: authInfo.scheme
+      },
+      { ask: askForCredentials }
+    ).then((result) => {
+      if (result === null) callback()
+      else callback(result.username, result.password)
+    })
+  })
+
   guest.once('destroyed', () => popupLimiter.forget(guest.id))
+
+  /**
+   * `beforeunload`.
+   *
+   * Electron's contract is inverted from the obvious reading: with NO
+   * listener the unload is CANCELLED and no dialog is shown, so a 수강신청 or
+   * 성적입력 page that sets `onbeforeunload` made every link and every ⌘R do
+   * nothing at all. The page looked frozen and nothing was logged.
+   */
+  guest.on('will-prevent-unload', (event) => {
+    const owner = BrowserWindow.fromWebContents(host)
+    const options: Electron.MessageBoxSyncOptions = {
+      type: 'question',
+      noLink: true,
+      buttons: ['머무르기', '나가기'],
+      defaultId: 0,
+      cancelId: 0,
+      message: '이 페이지에서 나가시겠습니까?',
+      detail: '작성 중인 내용이 저장되지 않을 수 있습니다.'
+    }
+    const choice =
+      owner === null
+        ? dialog.showMessageBoxSync(options)
+        : dialog.showMessageBoxSync(owner, options)
+    // preventDefault here means "let the navigation proceed" — it cancels the
+    // page's cancellation.
+    if (choice === 1) event.preventDefault()
+  })
 
   // [M6-A] ⌘T/⌘W keep working while the guest has keyboard focus: intercept
   // them before the guest page sees the chord and replay them in the host.

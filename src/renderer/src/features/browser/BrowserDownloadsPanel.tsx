@@ -1,0 +1,127 @@
+/**
+ * The downloads list.
+ *
+ * There was none: a non-interactive count badge and a toast that disappeared
+ * after 60 seconds. So a 300MB 강의 영상 started on tethering could not be
+ * stopped — the only button was 닫기, which removed the row while the transfer
+ * kept running invisibly, and quitting the app was the real cancel button.
+ *
+ * `dismiss` had zero callers before this: it was the leftover of a panel
+ * nobody built.
+ */
+
+import { useEffect, useRef } from 'react'
+import { invoke } from '../../lib/ipc'
+import { Icon } from '../../app/icons'
+import { BrowserIcon } from './browserIcons'
+import { useDownloads, type BrowserDownload } from './downloadsStore'
+
+function sizeLabel(bytes: number): string {
+  if (bytes <= 0) return ''
+  const mb = bytes / (1024 * 1024)
+  return mb >= 1 ? `${mb.toFixed(1)}MB` : `${Math.round(bytes / 1024)}KB`
+}
+
+function progressLabel(download: BrowserDownload): string {
+  const received = sizeLabel(download.receivedBytes)
+  // A blob download reports totalBytes 0, so a percentage would read 0% while
+  // it works. Show what actually arrived instead.
+  if (download.totalBytes <= 0) return received
+  const percent = Math.min(
+    100,
+    Math.round((download.receivedBytes / download.totalBytes) * 100)
+  )
+  return `${percent}% · ${received} / ${sizeLabel(download.totalBytes)}`
+}
+
+function stateLabel(download: BrowserDownload): string {
+  switch (download.state) {
+    case 'completed':
+      return download.relPath ?? '완료'
+    case 'cancelled':
+      return '취소했어요'
+    case 'interrupted':
+      return download.failureReason ?? '받지 못했어요'
+    default:
+      return progressLabel(download)
+  }
+}
+
+export function BrowserDownloadsPanel({
+  onClose
+}: {
+  onClose: () => void
+}): JSX.Element {
+  const downloads = useDownloads((state) => state.downloads)
+  const dismiss = useDownloads((state) => state.dismiss)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target
+      if (target instanceof Node && ref.current?.contains(target) === true) return
+      onClose()
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+
+  const control = (id: string, action: 'cancel' | 'pause' | 'resume'): void => {
+    void invoke('browser:controlDownload', { id, action }).catch(() => {
+      // The transfer finished between render and click; the row updates itself.
+    })
+  }
+
+  return (
+    <div ref={ref} className="browser-downloads" role="dialog" aria-label="다운로드">
+      {downloads.length === 0 ? (
+        <p className="browser-downloads__empty">받은 파일이 없어요.</p>
+      ) : (
+        <ul className="browser-downloads__list">
+          {downloads.map((download) => {
+            const running = download.state === 'progressing'
+            return (
+              <li key={download.id} className="browser-downloads__row">
+                <BrowserIcon name="download" />
+                <span className="browser-downloads__text">
+                  <span className="browser-downloads__name">
+                    {download.fileName}
+                  </span>
+                  <span className="browser-downloads__meta">
+                    {stateLabel(download)}
+                  </span>
+                </span>
+                {running ? (
+                  <button
+                    type="button"
+                    className="browser-downloads__action"
+                    aria-label={`${download.fileName} 받기 취소`}
+                    onClick={() => control(download.id, 'cancel')}
+                  >
+                    취소
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="browser-downloads__action"
+                    aria-label={`${download.fileName} 목록에서 지우기`}
+                    onClick={() => dismiss(download.id)}
+                  >
+                    <Icon name="x" />
+                  </button>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}

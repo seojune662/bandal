@@ -65,6 +65,51 @@ export function downloadFileName(raw: string): string {
  * The core, free of Electron types beyond the item itself, so the state
  * machine is testable against a fake.
  */
+/**
+ * Live transfers, so 취소 / 일시중지 can reach them.
+ *
+ * Chrome puts these on every download row. We had none: the only button was
+ * 닫기, which removed the row while the transfer kept running invisibly, and
+ * quitting the app was the only way to stop a 2GB video on tethering.
+ */
+export interface DownloadControls {
+  cancel: (id: string) => void
+  pause: (id: string) => void
+  resume: (id: string) => void
+}
+
+type ControllableItem = Pick<
+  DownloadItem,
+  'cancel' | 'pause' | 'resume' | 'isPaused' | 'canResume'
+>
+
+const liveDownloads = new Map<string, ControllableItem>()
+
+export const downloadControls: DownloadControls = {
+  cancel: (id) => {
+    try {
+      liveDownloads.get(id)?.cancel()
+    } catch {
+      // Already finished; the 'done' handler has cleaned up.
+    }
+  },
+  pause: (id) => {
+    try {
+      liveDownloads.get(id)?.pause()
+    } catch {
+      // Same.
+    }
+  },
+  resume: (id) => {
+    try {
+      const item = liveDownloads.get(id)
+      if (item !== undefined && item.canResume()) item.resume()
+    } catch {
+      // Same.
+    }
+  }
+}
+
 export function createDownloadHandler(deps: DownloadsDeps) {
   const interval = deps.progressIntervalMs ?? DEFAULT_PROGRESS_INTERVAL_MS
   const now = deps.now ?? Date.now
@@ -84,20 +129,57 @@ export function createDownloadHandler(deps: DownloadsDeps) {
     const id = randomUUID()
     const fileName = downloadFileName(item.getFilename())
     const courseId = deps.getTargetCourseId()
+    liveDownloads.set(id, item as unknown as ControllableItem)
+    item.on('done', () => liveDownloads.delete(id))
 
-    // No course selected: let Chromium do its default thing. Refusing the
-    // download outright would be worse than putting it in ~/Downloads.
+    // No course selected: let Chromium do its default thing (~/Downloads).
+    // Refusing the download outright would be worse.
+    //
+    // This still has to follow the item to completion. It used to emit one
+    // 'progressing' and attach nothing, so the row sat at 0 bytes forever —
+    // never completing, never swept by the recent-downloads TTL, and never
+    // saying where the file actually landed.
     if (courseId === null) {
+      const loose = { id, webContentsId, fileName, courseId: null }
       deps.emit({
-        id,
-        webContentsId,
-        fileName,
+        ...loose,
         receivedBytes: 0,
         totalBytes: item.getTotalBytes(),
         state: 'progressing',
         relPath: null,
-        courseId: null,
         failureReason: null
+      })
+      let looseLastEmit = 0
+      item.on('updated', (_event, state) => {
+        const at = now()
+        if (state === 'progressing' && at - looseLastEmit < interval) return
+        looseLastEmit = at
+        deps.emit({
+          ...loose,
+          receivedBytes: item.getReceivedBytes(),
+          totalBytes: item.getTotalBytes(),
+          state: 'progressing',
+          relPath: null,
+          failureReason: null
+        })
+      })
+      item.on('done', (_event, state) => {
+        deps.emit({
+          ...loose,
+          receivedBytes: item.getReceivedBytes(),
+          totalBytes: item.getTotalBytes(),
+          state:
+            state === 'completed'
+              ? 'completed'
+              : state === 'cancelled'
+                ? 'cancelled'
+                : 'interrupted',
+          // Not a course-relative path — the absolute one, because the whole
+          // point is that the student cannot otherwise find the file.
+          relPath: state === 'completed' ? item.getSavePath() : null,
+          failureReason:
+            state === 'completed' ? null : '과목을 선택하지 않아 기본 폴더에 받았어요.'
+        })
       })
       return
     }

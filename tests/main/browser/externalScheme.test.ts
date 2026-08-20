@@ -29,9 +29,16 @@ describe('classifyExternalScheme', () => {
     expect(classifyExternalScheme('astxsvc://run').kind).toBe('ask')
   })
 
-  test('mailto and tel are ordinary handoffs too', () => {
-    expect(classifyExternalScheme('mailto:a@b.ac.kr').kind).toBe('ask')
-    expect(classifyExternalScheme('tel:0212345678').kind).toBe('ask')
+  test('mailto and tel are everyday, not "다른 프로그램"', () => {
+    // Warning about a 교수님 이메일 링크 in the same red-toned box as an
+    // unknown installer is how a student learns to ignore that box.
+    expect(classifyExternalScheme('mailto:a@b.ac.kr').kind).toBe('everyday')
+    expect(classifyExternalScheme('tel:0212345678').kind).toBe('everyday')
+    expect(classifyExternalScheme('sms:01012345678').kind).toBe('everyday')
+  })
+
+  test('a university helper is still the warning path', () => {
+    expect(classifyExternalScheme('wizvera://install').kind).toBe('ask')
   })
 
   test('code execution and local file access are never offered', () => {

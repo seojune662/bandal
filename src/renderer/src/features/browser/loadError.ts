@@ -14,7 +14,22 @@
  * Codes: https://source.chromium.org/chromium/chromium/src/+/main:net/base/net_error_list.h
  */
 
-export interface BrowserOverlay {
+/**
+ * A guest whose renderer died.
+ *
+ * Without this the tab became a permanently blank rect showing the PREVIOUS
+ * title and URL under a live-looking toolbar: the overlay was null and the
+ * anchor rect non-null, so the dead webview element just stayed on top and
+ * the only fix was closing the tab.
+ */
+export interface BrowserCrashOverlay {
+  kind: 'crashed'
+  url: string
+  /** 'killed' when the OS reclaimed it (usually memory pressure). */
+  reason: string
+}
+
+export interface BrowserLoadErrorOverlay {
   kind: 'error'
   /** Chromium net error code (negative). */
   errorCode: number
@@ -23,6 +38,8 @@ export interface BrowserOverlay {
   /** The URL that failed, for the retry. */
   url: string
 }
+
+export type BrowserOverlay = BrowserLoadErrorOverlay | BrowserCrashOverlay
 
 export interface LoadErrorCopy {
   title: string

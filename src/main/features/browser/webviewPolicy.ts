@@ -92,6 +92,16 @@ export type PassthroughAction =
   | 'new-tab'
   | 'close-tab'
   | 'activate-last-tab'
+  | 'activate-tab-1'
+  | 'activate-tab-2'
+  | 'activate-tab-3'
+  | 'activate-tab-4'
+  | 'activate-tab-5'
+  | 'activate-tab-6'
+  | 'activate-tab-7'
+  | 'activate-tab-8'
+  | 'browser-back'
+  | 'browser-forward'
   | 'reload'
   | 'reload-hard'
   | 'focus-address'
@@ -130,8 +140,23 @@ export function passthroughShortcut(input: {
       return 'new-tab'
     case 'w':
       return 'close-tab'
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+    case '8':
+      // Tab switching is tab lifetime, not page content. Click into a page
+      // and press ⌘2 and nothing used to happen.
+      return `activate-tab-${key}` as PassthroughAction
     case '9':
       return 'activate-last-tab'
+    case '[':
+      return 'browser-back'
+    case ']':
+      return 'browser-forward'
     case 'r':
       return 'reload'
     case 'l':
@@ -241,6 +266,13 @@ export function sanitizeGuestWebPreferences(
   // It also makes `navigator.pdfViewerEnabled` true and `navigator.plugins`
   // non-empty, which legacy Korean report viewers branch on.
   webPreferences['plugins'] = true
+  // Chrome offers "이 페이지에서 추가 대화상자를 만들지 않도록 차단" after a
+  // few. We had no escape hatch at all: a `while(true){alert()}` — an ad, or
+  // a broken portal script — produced an unbounded chain of window-modal
+  // native boxes that froze 필기, 보드 and 채팅 along with the browser.
+  webPreferences['safeDialogs'] = true
+  webPreferences['safeDialogsMessage'] =
+    '이 페이지가 대화상자를 계속 띄우고 있어요. 더 이상 보여주지 않을게요.'
 }
 
 /**
@@ -299,7 +331,8 @@ export function decidePopup(input: {
   // The scheme classifier — not this function — decides what is worth asking
   // about, so a `deny` here really does mean denied and `scheme` really does
   // mean a dialog is coming.
-  return classifyExternalScheme(targetUrl).kind === 'ask'
+  const verdict = classifyExternalScheme(targetUrl).kind
+  return verdict === 'ask' || verdict === 'everyday'
     ? { kind: 'scheme' }
     : { kind: 'deny' }
 }

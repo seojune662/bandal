@@ -51,6 +51,13 @@ describe('permissionTier', () => {
     }
   })
 
+  test('DRM is refused, not asked about — Electron ships no Widevine', () => {
+    // A prompt the student answers and nothing happens is the worst failure
+    // shape a permission can have. Playing DRM lecture video needs the
+    // castlabs Electron fork: a build decision, not a permission one.
+    expect(permissionTier('mediaKeySystem')).toBe('deny')
+  })
+
   test('openExternal is refused here, because it has its own flow', () => {
     // externalScheme.ts shows the full URL and the requesting origin. A
     // generic yes/no would hide exactly the detail that matters.
@@ -76,8 +83,7 @@ describe('permissionLabel', () => {
       'display-capture',
       'midi',
       'midiSysex',
-      'window-management',
-      'mediaKeySystem'
+      'window-management'
     ]) {
       expect(permissionTier(permission)).toBe('ask')
       // A prompt that says "media" in a Korean app is not a prompt.
