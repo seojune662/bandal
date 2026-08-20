@@ -5,6 +5,7 @@ import type {
   AgentConfirmRequest
 } from '../../../../shared/types/agentTools'
 import { invoke, onPush, type Unsubscribe } from '../../lib/ipc'
+import { showToast } from '../../app/toast'
 
 export type AgentUndoState = 'idle' | 'pending' | 'complete' | 'error'
 
@@ -203,9 +204,20 @@ export function acquireAgentToolActivity(courseId: string): () => void {
         fetchTurnChanges(courseId, event.turnId)
       }
     })
+    // The in-app tools failed to come up. Say so — otherwise the assistant
+    // just quietly cannot touch the app or the browser, and explains that as
+    // if it were a limitation of the product.
+    const unsubscribeUnavailable = onPush('agentTools:unavailable', (event) => {
+      if (event.courseId !== courseId) return
+      showToast(
+        '앱 도구를 불러오지 못했어요. 대화를 다시 열면 복구돼요.',
+        'danger'
+      )
+    })
     runtime.unsubscribe = () => {
       unsubscribeConfirm()
       unsubscribeChanged()
+      unsubscribeUnavailable()
     }
   }
 

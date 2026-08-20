@@ -159,8 +159,23 @@ export interface PushEvents {
   'agentTools:confirm': AgentConfirmRequest
   /** One request finished changing things; show the change list. */
   'agentTools:changed': { courseId: string; turnId: string }
+  /**
+   * The in-app MCP server failed to start for a conversation.
+   *
+   * Surfaced rather than logged because the symptom — an assistant that
+   * quietly cannot touch the app or the browser — is indistinguishable from a
+   * missing feature unless we say so.
+   */
+  'agentTools:unavailable': { courseId: string; sessionId: string }
   'materials:changed': MaterialsChanged
   'browser:open-url': BrowserOpenUrl
+  /**
+   * Bring an existing browser tab forward so its guest mounts again.
+   *
+   * The agent needs this because a tab the student can see may have had its
+   * guest evicted by the LRU — there is nothing to read until it is back.
+   */
+  'browser:activate-tab': { tabId: string }
   /**
    * A guest tried to reach a login origin Google blocks inside embedded
    * webviews; main opened it in the system browser — show the user why.

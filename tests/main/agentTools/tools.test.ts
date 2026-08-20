@@ -482,14 +482,37 @@ describe('agent app tools', () => {
     expect(message(result)).toContain('[not-found]')
     expect(message(result)).toContain('다시 호출하세요')
   })
-  describe('browser tools capability gate', () => {
-    test('are absent by default, so they cost nothing on an ordinary turn', () => {
-      // ~1k tokens of schema on EVERY turn of EVERY course chat otherwise,
-      // including one that only asks about a PDF.
+  describe('browser tools registration', () => {
+    test('are absent when the caller supplies none', () => {
+      // The optionality is for tests and for any future caller that genuinely
+      // has no browser. The APP always supplies them — see
+      // registerHandlers.browserToolsFor.
       expect(harness.tools.names).not.toContain('lms_new_items')
       expect(
         harness.tools.definitions.some((d) => d.name === 'lms_new_items')
       ).toBe(false)
+    })
+
+    test('browser_tabs is registered and callable', async () => {
+      // The regression this locks: browser tools used to be gated on the
+      // course having a classroom linked, so a student looking at their
+      // university portal was told the assistant had no way to read a
+      // browser. That was true, and it was the bug.
+      const tools = createAgentTools({
+        ...harness.deps,
+        browser: {
+          browser_tabs: () => ({
+            status: 'ok',
+            tabs: [{ tabId: 't1', title: '포털', url: 'https://x/', active: true, asleep: false }],
+            activeTabId: 't1'
+          }),
+          lms_course_page: () => ({}),
+          lms_new_items: async () => ({})
+        }
+      })
+      expect(tools.names).toContain('browser_tabs')
+      const result = await tools.call('browser_tabs', {})
+      expect(result.isError).not.toBe(true)
     })
 
     test('appear only when the session is given them', async () => {

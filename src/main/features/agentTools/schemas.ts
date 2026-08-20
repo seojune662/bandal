@@ -430,14 +430,23 @@ export const AGENT_TOOL_DEFINITIONS = [
 ] as const satisfies readonly Tool[]
 
 /**
- * Browser tools, registered only when a conversation is actually doing
- * browser work.
+ * Browser tools.
  *
- * They are ~1k tokens of schema on EVERY turn of EVERY course chat, including
- * "이 PDF 3쪽 설명해 줘". `--allowedTools` is computed from `agentTools.names`
- * at spawn, so gating here is naturally per-session and costs nothing.
+ * These used to be gated on the course having a classroom linked, to save the
+ * ~1k tokens of schema they cost on every turn. That trade was wrong: a
+ * student with their university portal open in front of them was told the
+ * assistant had "no tool to read the browser". The schemas ride at the front
+ * of the prompt cache, so the saving was near zero and the cost was a whole
+ * feature. See registerHandlers.ts `browserToolsFor`.
  */
 export const BROWSER_TOOL_DEFINITIONS = [
+  {
+    name: 'browser_tabs',
+    description:
+      '학생이 지금 반달 브라우저에 열어 둔 탭들을 봅니다. 입력이 없습니다. 각 탭의 tabId·제목·주소를 돌려주며, active 가 true 인 탭이 학생이 보고 있는 탭입니다. "지금 열려 있는 페이지"에 대한 질문은 여기서 시작합니다 — 목록을 보는 데는 권한이 필요 없지만, 그 탭을 실제로 읽으려면 browser_read 나 browser_snapshot 이 학생에게 한 번 물어봅니다.',
+    inputSchema: objectSchema({}, []),
+    annotations: readOnly
+  },
   {
     name: 'lms_course_page',
     description:

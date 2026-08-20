@@ -18,6 +18,7 @@ import { descriptorFor } from '../workspace/tabIdentity'
 import { useNewTabMenu } from '../workspace/newTabMenuController'
 import { BrowserGuestView } from './BrowserGuestView'
 import { useBrowserGuests } from './browserGuestsStore'
+import { useActivateTabRequests, useAgentTabSync } from './agentTabSync'
 import {
   isPointerPassthroughActive,
   onPointerPassthrough
@@ -163,6 +164,8 @@ export function BrowserWebviewLayer(): JSX.Element {
   useGuestReaper()
   useOpenUrlForwarding()
   useExternalAuthNotice()
+  useAgentTabSync()
+  useActivateTabRequests()
 
   const isPassthrough = isDragActive || isMenuOpen || hasExternalToken
 

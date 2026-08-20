@@ -32,6 +32,10 @@ export interface PageSurfaceDeps {
   requestOpenTab: (url: string) => void
   /** Resolves with the tabId once the renderer registers a guest for `url`. */
   awaitTabFor: (url: string, timeoutMs: number) => Promise<string | null>
+  /** Asks the renderer to bring an existing tab forward. */
+  requestActivateTab: (tabId: string) => void
+  /** Resolves once that tab's guest has registered itself again. */
+  awaitTabRegister: (tabId: string, timeoutMs: number) => Promise<boolean>
   generations: GenerationTracker
   /**
    * Commits text over CDP. Optional: without it typing degrades to the DOM
@@ -66,6 +70,12 @@ export function createPageSurface(deps: PageSurfaceDeps): PageSurface {
         throw new Error('탭을 여는 데 실패했어요.')
       }
       return { tabId, url }
+    },
+
+    async wakeTab(tabId) {
+      if (deps.resolveGuest(tabId) !== null) return true
+      deps.requestActivateTab(tabId)
+      return deps.awaitTabRegister(tabId, OPEN_TIMEOUT_MS)
     },
 
     generation(tabId) {

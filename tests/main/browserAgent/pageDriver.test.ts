@@ -197,6 +197,8 @@ describe('pageSurface typing path', () => {
       ],
       requestOpenTab: () => undefined,
       awaitTabFor: async () => 't1',
+      requestActivateTab: () => undefined,
+      awaitTabRegister: async () => true,
       generations: { current: () => 1 } as never,
       insertText,
       run: {
@@ -229,6 +231,8 @@ describe('pageSurface typing path', () => {
       ],
       requestOpenTab: () => undefined,
       awaitTabFor: async () => 't1',
+      requestActivateTab: () => undefined,
+      awaitTabRegister: async () => true,
       generations: { current: () => 1 } as never,
       insertText: async () => {
         throw new Error('debugger already attached')

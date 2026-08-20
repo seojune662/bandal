@@ -82,6 +82,17 @@ export interface BrowserToolsDeps {
     details: string[]
   }) => Promise<boolean>
   /**
+   * The browser tabs the student can see, as published by the renderer.
+   *
+   * Deliberately NOT the guest registry: hidden guests are evicted by the LRU
+   * and only their last URL survives in the renderer store, so a registry
+   * listing would omit tabs that are plainly on screen.
+   */
+  openTabs?: () => {
+    tabs: { tabId: string; title: string; url: string; asleep: boolean }[]
+    activeTabId: string | null
+  }
+  /**
    * Driving a live guest. Absent for conversations that only read the LMS
    * over the session — which is most of them, and the cheapest thing to be.
    */
@@ -118,6 +129,11 @@ export interface CommitSurface {
 export interface PageSurface {
   /** Opens (or reuses) a browser tab and returns its id. */
   openTab: (url: string) => Promise<{ tabId: string; url: string }>
+  /**
+   * Brings an existing tab forward so its guest mounts again. Returns false
+   * if it never came back — the LRU may have dropped it for good.
+   */
+  wakeTab: (tabId: string) => Promise<boolean>
   /** Current snapshot generation; bumped by the caller on navigation. */
   generation: (tabId: string) => number
   snapshot: (
@@ -163,6 +179,20 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       if (target !== null) return target
     }
     return null
+  }
+
+  /**
+   * The tab's current URL, waking the guest if the LRU dropped it.
+   *
+   * A hidden guest beyond MAX_LIVE_GUESTS is destroyed while its tab stays on
+   * screen. Without this, asking about a tab the student can plainly see
+   * answers "그 탭을 찾지 못했어요", which reads as a bug because it is one.
+   */
+  async function urlOfTab(page: PageSurface, tabId: string): Promise<string | null> {
+    const current = page.currentUrl(tabId)
+    if (current !== null) return current
+    const woke = await page.wakeTab(tabId)
+    return woke ? page.currentUrl(tabId) : null
   }
 
   function audit(
@@ -337,6 +367,46 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       }
     },
 
+    /**
+     * The tabs the student has open, so "the page I am looking at" is
+     * addressable at all.
+     *
+     * Listing needs no grant. These are titles and URLs of pages the student
+     * put on their own screen, and refusing to name them would only make the
+     * assistant claim it cannot see a browser that is right there. READING one
+     * still goes through `gate` — enumeration is free, content is not.
+     */
+    browser_tabs(): {
+      status: 'ok'
+      tabs: {
+        tabId: string
+        title: string
+        url: string
+        active: boolean
+        asleep: boolean
+      }[]
+      activeTabId: string | null
+    } {
+      const source = deps.openTabs
+      if (source === undefined) {
+        return { status: 'ok', tabs: [], activeTabId: null }
+      }
+      const { tabs, activeTabId } = source()
+      audit('snapshot', '', `탭 ${tabs.length}개를 확인했어요`)
+      return {
+        status: 'ok',
+        tabs: tabs.map((tab) => ({
+          tabId: tab.tabId,
+          // Portal URLs carry student numbers; titles carry names.
+          title: redactText(tab.title),
+          url: redactUrl(tab.url),
+          active: tab.tabId === activeTabId,
+          asleep: tab.asleep
+        })),
+        activeTabId
+      }
+    },
+
     async browser_open(
       url: string
     ): Promise<
@@ -367,7 +437,7 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         return { status: 'error', message: '이 대화에서는 페이지를 볼 수 없어요.' }
       }
       page.assertLive()
-      const url = page.currentUrl(tabId)
+      const url = await urlOfTab(page, tabId)
       if (url === null) {
         return { status: 'error', message: '그 탭을 찾지 못했어요.' }
       }
@@ -394,7 +464,7 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         return { status: 'error', message: '이 대화에서는 페이지를 읽을 수 없어요.' }
       }
       page.assertLive()
-      const url = page.currentUrl(tabId)
+      const url = await urlOfTab(page, tabId)
       if (url === null) {
         return { status: 'error', message: '그 탭을 찾지 못했어요.' }
       }

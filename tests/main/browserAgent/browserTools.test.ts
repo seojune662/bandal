@@ -642,4 +642,59 @@ describe('browser tools (read-only)', () => {
     })
   })
 
+  describe('browser_tabs', () => {
+    const OPEN = {
+      tabs: [
+        {
+          tabId: 't1',
+          title: '서울대학교 포털',
+          url: 'https://my.snu.ac.kr/p/ST/?sid=2021123456',
+          asleep: false
+        },
+        { tabId: 't2', title: '받은편지함', url: 'https://mail.snu.ac.kr/', asleep: true }
+      ],
+      activeTabId: 't1'
+    }
+
+    test('lists what the student has open without any grant', () => {
+      // Enumeration must not need permission. These are titles of pages the
+      // student put on their own screen, and refusing to name them is what
+      // made the assistant claim it could not see the browser at all.
+      const result = tools({ openTabs: () => OPEN }).browser_tabs()
+      expect(result.status).toBe('ok')
+      expect(result.tabs.map((tab) => tab.tabId)).toEqual(['t1', 't2'])
+      expect(grants.list(COURSE)).toHaveLength(0)
+    })
+
+    test('marks the tab the student is looking at', () => {
+      const result = tools({ openTabs: () => OPEN }).browser_tabs()
+      expect(result.activeTabId).toBe('t1')
+      expect(result.tabs[0]?.active).toBe(true)
+      expect(result.tabs[1]?.active).toBe(false)
+    })
+
+    test('reports an evicted guest as asleep rather than hiding it', () => {
+      // A hidden guest past MAX_LIVE_GUESTS is destroyed while its tab stays
+      // on screen. Dropping it here would answer "you have nothing open".
+      const result = tools({ openTabs: () => OPEN }).browser_tabs()
+      expect(result.tabs[1]?.asleep).toBe(true)
+    })
+
+    test('redacts the student number portal URLs carry', () => {
+      const result = tools({ openTabs: () => OPEN }).browser_tabs()
+      expect(result.tabs[0]?.url).not.toContain('2021123456')
+    })
+
+    test('no tabs open is an empty list, not an error', () => {
+      const result = tools({
+        openTabs: () => ({ tabs: [], activeTabId: null })
+      }).browser_tabs()
+      expect(result).toEqual({ status: 'ok', tabs: [], activeTabId: null })
+    })
+
+    test('leaves an audit row', () => {
+      tools({ openTabs: () => OPEN }).browser_tabs()
+      expect(audit.tail(COURSE, 5)).not.toHaveLength(0)
+    })
+  })
 })

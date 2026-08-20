@@ -675,6 +675,30 @@ export interface IpcContract {
     req: { tabId: string; webContentsId: number }
     res: { ok: true }
   }
+  /**
+   * Renderer publishes the browser tabs the student can actually see.
+   *
+   * NOT derived from the guest registry on purpose: live guests are capped at
+   * MAX_LIVE_GUESTS and hidden ones are destroyed by the LRU, keeping only
+   * their last URL in the renderer store. A tab the student is looking at
+   * would then be missing from the agent's list, which is the one thing this
+   * must never do. Pushed whenever the set changes; self-healing like
+   * `registerTab`.
+   */
+  'browserAgent:syncTabs': {
+    req: {
+      courseId: string
+      tabs: {
+        tabId: string
+        title: string
+        url: string
+        /** The guest was evicted; reading it has to wake it first. */
+        asleep: boolean
+      }[]
+      activeTabId: string | null
+    }
+    res: { ok: true }
+  }
   /** Stops a run immediately; the next action throws rather than proceeding. */
   'browserAgent:stopRun': {
     req: { runId: string }
@@ -1272,6 +1296,7 @@ export const IPC_CHANNELS = [
   'browserAgent:revokeGrant',
   'browserAgent:auditTail',
   'browserAgent:registerTab',
+  'browserAgent:syncTabs',
   'browserAgent:stopRun',
   'browserAgent:resumeRun',
   'agentTools:changes',

@@ -632,10 +632,17 @@ export function registerHandlers(): IpcRouter {
   const agentConfirmer = createAgentConfirmer({
     emit: (request) => broadcast('agentTools:confirm', request)
   })
-  // -- the agent's read-only view of a course's LMS -------------------------
-  // Registered per session only when the course has a classroom linked: the
-  // schemas cost ~1k tokens on every turn otherwise, including a turn that
-  // only asks about a PDF.
+  // -- the agent's view of the browser and the course's LMS ----------------
+  // Registered for EVERY session. This used to be gated on the course having a
+  // classroom linked, to save the ~1k tokens the schemas cost per turn — but
+  // the gate meant a student looking at their university portal was told the
+  // agent had "no tool to read the browser", which was literally true and
+  // completely wrong. The schemas ride at the front of the prompt cache, so
+  // the real cost is near zero; the gate cost a whole feature.
+  //
+  // The LMS-only tools (`lms_*`) still degrade on their own when no classroom
+  // is linked — siteRecipes.ts bails on a null lmsCourseId — so keeping them
+  // registered costs nothing but an honest "this course has no classroom yet".
   /**
    * The active school's LMS spec, when this URL is on its classroom host.
    * The spec carries the platform, which is what decides whether a JSON
@@ -661,11 +668,7 @@ export function registerHandlers(): IpcRouter {
   const browserToolsFor = (
     courseId: string,
     getRunId: () => string
-  ): ReturnType<typeof createBrowserTools> | undefined => {
-    const links = courseLinksRepo
-      .list({ courseId })
-      .filter((link) => link.lmsCourseId !== null)
-    if (links.length === 0) return undefined
+  ): ReturnType<typeof createBrowserTools> => {
     return createBrowserTools({
       courseId,
       getRunId,
@@ -677,6 +680,15 @@ export function registerHandlers(): IpcRouter {
           .list({ courseId: id })
           .map((link) => ({ url: link.url, lmsCourseId: link.lmsCourseId })),
       specFor: (url) => specForUrl(url),
+      // Scoped to the course this conversation belongs to: a chat about
+      // 자료구조 has no business naming the tabs open under another course.
+      openTabs: () =>
+        openBrowserTabs.courseId === courseId
+          ? {
+              tabs: openBrowserTabs.tabs,
+              activeTabId: openBrowserTabs.activeTabId
+            }
+          : { tabs: [], activeTabId: null },
       // The app's own confirmer, not the CLI's permission flow — Codex has no
       // interactive approval at all (agentTools/confirm.ts).
       confirm: (request) => agentConfirmer.confirm(request),
@@ -709,6 +721,16 @@ export function registerHandlers(): IpcRouter {
             pendingTabOpens.add(pending)
             setTimeout(() => {
               if (pendingTabOpens.delete(pending)) resolve(null)
+            }, timeoutMs)
+          }),
+        requestActivateTab: (tabId) => {
+          broadcast('browser:activate-tab', { tabId })
+        },
+        awaitTabRegister: (tabId, timeoutMs) =>
+          new Promise((resolve) => {
+            pendingTabWakes.set(tabId, resolve)
+            setTimeout(() => {
+              if (pendingTabWakes.delete(tabId)) resolve(false)
             }, timeoutMs)
           }),
         generations,
@@ -860,6 +882,19 @@ export function registerHandlers(): IpcRouter {
     string,
     (outcome: 'resumed' | 'stopped') => void
   >()
+  /** Resolvers waiting for an evicted guest to mount again. */
+  const pendingTabWakes = new Map<string, (woke: boolean) => void>()
+  /**
+   * The browser tabs the renderer says the student can see.
+   *
+   * The renderer is the authority here, not `guestRegistry`: hidden guests
+   * beyond MAX_LIVE_GUESTS are destroyed while their tabs stay on screen.
+   */
+  let openBrowserTabs: {
+    courseId: string
+    tabs: { tabId: string; title: string; url: string; asleep: boolean }[]
+    activeTabId: string | null
+  } = { courseId: '', tabs: [], activeTabId: null }
 
   handle('browserAgent:registerTab', (req) => {
     guestRegistry.register(req.tabId, req.webContentsId)
@@ -881,6 +916,16 @@ export function registerHandlers(): IpcRouter {
         }
         pending.resolve(req.tabId)
       }
+    }
+    pendingTabWakes.get(req.tabId)?.(true)
+    pendingTabWakes.delete(req.tabId)
+    return OK
+  })
+  handle('browserAgent:syncTabs', (req) => {
+    openBrowserTabs = {
+      courseId: req.courseId,
+      tabs: req.tabs.map((tab) => ({ ...tab })),
+      activeTabId: req.activeTabId
     }
     return OK
   })
@@ -938,14 +983,10 @@ export function registerHandlers(): IpcRouter {
         boardRepo,
         canvasRepo,
         confirm: (request) => agentConfirmer.confirm(request),
-        // `exactOptionalPropertyTypes`: the key must be absent, not undefined.
-        ...(() => {
-          const browser = browserToolsFor(
-            courseId,
-            () => `${sessionKey}:${getTurnSeq()}`
-          )
-          return browser === undefined ? {} : { browser }
-        })(),
+        browser: browserToolsFor(
+          courseId,
+          () => `${sessionKey}:${getTurnSeq()}`
+        ),
         journal: {
           record: (entry) => {
             agentJournal.record(entry)
@@ -975,7 +1016,10 @@ export function registerHandlers(): IpcRouter {
     }),
     emit: (courseId, sessionId, event) =>
       eventBatcher.push(courseId, sessionId, event),
-    startToolServer
+    startToolServer,
+    reportToolsUnavailable: (courseId, sessionId) => {
+      broadcast('agentTools:unavailable', { courseId, sessionId })
+    }
   })
   app.on('before-quit', () => {
     browserRuns.disposeAll()
@@ -1002,7 +1046,10 @@ export function registerHandlers(): IpcRouter {
     }),
     emit: (courseId, sessionId, event) =>
       eventBatcher.push(courseId, sessionId, event),
-    startToolServer
+    startToolServer,
+    reportToolsUnavailable: (courseId, sessionId) => {
+      broadcast('agentTools:unavailable', { courseId, sessionId })
+    }
   })
   const managerFor = (provider: string): typeof sessionManager =>
     provider === 'codex' ? codexSessionManager : sessionManager

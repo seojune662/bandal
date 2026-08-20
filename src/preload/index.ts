@@ -51,6 +51,7 @@ const PUSH_CHANNELS = [
   'chat:event-batch',
   'materials:changed',
   'browser:open-url',
+  'browser:activate-tab',
   'browser:external-auth',
   'browser:download',
   'browserAgent:run-state',
@@ -70,6 +71,7 @@ const PUSH_CHANNELS = [
   'board:changed',
   'canvas:changed',
   'agentTools:confirm',
+  'agentTools:unavailable',
   'agentTools:changed'
 ] as const satisfies readonly PushChannel[]
 

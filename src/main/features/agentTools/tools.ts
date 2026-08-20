@@ -76,12 +76,11 @@ export interface AgentToolsDeps {
     record: (entry: AgentJournalEntry) => void
   }
   /**
-   * Read-only LMS tools. Present only for conversations doing browser work —
-   * their schemas are ~1k tokens on every turn otherwise, including one that
-   * just asks about a PDF. `--allowedTools` is derived from `names` at spawn,
-   * so this is naturally per session.
+   * Browser and LMS tools. Optional so tests can build a tool set without
+   * them; the app always supplies them (see registerHandlers `browserToolsFor`).
    */
   browser?: {
+    browser_tabs: () => unknown
     lms_course_page: (courseId: string) => unknown
     lms_list: (courseId: string, kind: string | null) => Promise<unknown>
     lms_new_items: (courseId: string, kind: string | null) => Promise<unknown>
@@ -911,6 +910,7 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
       string,
       (input: Record<string, unknown>) => Promise<unknown> | unknown
     > = {
+      browser_tabs: () => browser.browser_tabs(),
       lms_course_page: (input) =>
         browser.lms_course_page(stringField(input, 'courseId', { nonEmpty: true })),
       lms_list: (input) =>
