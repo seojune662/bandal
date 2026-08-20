@@ -173,3 +173,76 @@ describe('verdictFor', () => {
     expect(verdictFor('type', password).allowed).toBe(false)
   })
 })
+
+describe('pageSurface typing path', () => {
+  test('regression: insertText must actually be reachable', async () => {
+    // v0.17.0 shipped a CDP module whose PRIMARY justification —
+    // `Input.insertText` for Hangul — had no caller, so the bundler removed
+    // it entirely. Unit tests passed because they exercised the function in
+    // isolation; only grepping the built asar caught it.
+    const { createPageSurface } = await import(
+      '../../../src/main/features/browserAgent/pageSurface'
+    )
+    const insertText = vi.fn(async () => undefined)
+    const executed: string[] = []
+    const surface = createPageSurface({
+      resolveGuest: () => ({}) as never,
+      framesOf: () => [
+        {
+          executeJavaScript: async (code: string) => {
+            executed.push(code)
+            return { ok: true, facts: null }
+          }
+        }
+      ],
+      requestOpenTab: () => undefined,
+      awaitTabFor: async () => 't1',
+      generations: { current: () => 1 } as never,
+      insertText,
+      run: {
+        assertLive: () => undefined,
+        step: () => undefined,
+        wait: () => undefined,
+        awaitResume: async () => 'resumed' as const
+      }
+    })
+
+    expect(await surface.act('t1', 0, 0, { kind: 'type', text: '해시' })).toBe(true)
+    expect(insertText).toHaveBeenCalledWith('t1', '해시')
+  })
+
+  test('falls back to the DOM tier when the debugger is unavailable', async () => {
+    // A student with DevTools open must still be able to use the agent.
+    const { createPageSurface } = await import(
+      '../../../src/main/features/browserAgent/pageSurface'
+    )
+    let calls = 0
+    const surface = createPageSurface({
+      resolveGuest: () => ({}) as never,
+      framesOf: () => [
+        {
+          executeJavaScript: async () => {
+            calls += 1
+            return { ok: true, facts: null }
+          }
+        }
+      ],
+      requestOpenTab: () => undefined,
+      awaitTabFor: async () => 't1',
+      generations: { current: () => 1 } as never,
+      insertText: async () => {
+        throw new Error('debugger already attached')
+      },
+      run: {
+        assertLive: () => undefined,
+        step: () => undefined,
+        wait: () => undefined,
+        awaitResume: async () => 'resumed' as const
+      }
+    })
+
+    expect(await surface.act('t1', 0, 0, { kind: 'type', text: '해시' })).toBe(true)
+    // Focus attempt + the real DOM-tier write.
+    expect(calls).toBe(2)
+  })
+})

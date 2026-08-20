@@ -35,6 +35,7 @@ import {
   createGuestRegistry,
   createPageSurface,
   createRunRegistry,
+  insertText,
   setFileInputFiles,
   createSeenRepo,
   GenerationTracker
@@ -711,6 +712,17 @@ export function registerHandlers(): IpcRouter {
             }, timeoutMs)
           }),
         generations,
+        // Hangul: `sendInputEvent` has no IME path, so text typed through the
+        // DOM tier never fires `compositionend`. This is the gap CDP is here
+        // for; it degrades silently when the debugger is unavailable.
+        insertText: async (tabId, text) => {
+          const guest = guestRegistry.resolve(tabId)
+          if (guest === null) throw new Error('no guest')
+          await insertText(
+            guest as unknown as { debugger: Electron.Debugger },
+            text
+          )
+        },
         run: {
           assertLive: () => {
             const live = browserRuns.forCourse(courseId)

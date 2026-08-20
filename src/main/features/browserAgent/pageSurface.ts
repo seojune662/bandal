@@ -33,6 +33,12 @@ export interface PageSurfaceDeps {
   /** Resolves with the tabId once the renderer registers a guest for `url`. */
   awaitTabFor: (url: string, timeoutMs: number) => Promise<string | null>
   generations: GenerationTracker
+  /**
+   * Commits text over CDP. Optional: without it typing degrades to the DOM
+   * tier, which is correct for plain fields and wrong only for pages that
+   * listen for `compositionend`.
+   */
+  insertText?: (tabId: string, text: string) => Promise<void>
   run: {
     assertLive: () => void
     step: (action: string, url?: string) => void
@@ -101,6 +107,29 @@ export function createPageSurface(deps: PageSurfaceDeps): PageSurface {
     async act(tabId, frameIndex, elementIndex, action) {
       const driver = driverFor(tabId)
       if (driver === null) return false
+
+      if (action.kind === 'type' && deps.insertText !== undefined) {
+        // The reason CDP exists here. `Input.insertText` commits text the way
+        // an IME does, so 한글 arrives intact and `compositionend` listeners
+        // actually fire — neither is true of a value-setter write.
+        //
+        // Focus the field through the DOM tier first (harmless, and the only
+        // way to say WHICH field), then commit the text over CDP. If the
+        // debugger is unavailable — the student has DevTools open — fall back
+        // to the DOM tier rather than failing the action.
+        const focused = await driver.act(frameIndex, elementIndex, {
+          kind: 'type',
+          text: ''
+        })
+        if (!focused.ok) return false
+        try {
+          await deps.insertText(tabId, action.text)
+          return true
+        } catch {
+          // Degrade, do not fail.
+        }
+      }
+
       const result = await driver.act(frameIndex, elementIndex, action)
       return result.ok
     },
