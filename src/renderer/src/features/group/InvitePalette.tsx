@@ -25,6 +25,7 @@ import type {
 import { invoke } from '../../lib/ipc'
 import { Icon } from '../../app/icons'
 import { GroupAvatar } from './GroupAvatar'
+import { InviteCodePanel } from './InviteCodePanel'
 
 const SERVER_LOOKUP_DEBOUNCE_MS = 300
 
@@ -158,6 +159,8 @@ export function InvitePalette({
       }}
     >
       <div className="group-palette">
+        <InviteCodePanel groupId={groupId} />
+
         <div className="group-palette__search">
           <Icon name="search" />
           <label className="sr-only" htmlFor="group-palette-input">

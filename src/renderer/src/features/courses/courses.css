@@ -302,24 +302,6 @@
   margin-inline-start: calc(var(--icon-button-size) + var(--space-1));
 }
 
-.course-row__children .study-gap-list {
-  margin: 0;
-  padding: var(--space-1) 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-}
-
-.course-row__children .study-gap-list__button,
-.course-row__children .study-gap-list__message {
-  background: transparent;
-}
-
-.course-row__children .study-gap-list__button:hover,
-.course-row__children .study-gap-list__button:focus-visible {
-  background: var(--bg-raised);
-}
-
 .course-dot {
   width: var(--course-dot-size);
   height: var(--course-dot-size);

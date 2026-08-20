@@ -9,7 +9,9 @@ import {
 } from '../../stores/groupsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
+import { GroupIcon } from './groupIcons'
 import { GroupListRow } from './GroupListRow'
+import { JoinCodeOverlay } from './JoinCodeOverlay'
 import './group.css'
 import './groupNavigation.css'
 
@@ -23,11 +25,13 @@ export function CourseGroupsSection(props: {
   const initGroups = useGroupsStore((state) => state.init)
   const createGroup = useGroupsStore((state) => state.createGroup)
   const leaveGroup = useGroupsStore((state) => state.leaveGroup)
+  const joinWithCode = useGroupsStore((state) => state.joinWithCode)
   const course = useCoursesStore((state) =>
     state.courses.find((entry) => entry.id === courseId)
   )
   const openTab = useWorkspaceStore((state) => state.openTab)
   const [creating, setCreating] = useState(false)
+  const [joinOpen, setJoinOpen] = useState(false)
   const signedIn = auth.phase === 'signed-in'
   const groups = useMemo(
     () => selectGroupsForCourse(allGroups, courseId),
@@ -58,6 +62,24 @@ export function CourseGroupsSection(props: {
       )
     },
     [courseId, openTab]
+  )
+
+  const openJoinedGroup = useCallback(
+    (groupId: string) => {
+      // Joining from this course's section does not make the group belong to
+      // it — the code decides which group, the owner decides its course.
+      const joined = useGroupsStore
+        .getState()
+        .groups.find((group) => group.id === groupId)
+      openTab(
+        descriptorFor('group-chat', {
+          courseId: joined?.courseId ?? null,
+          groupId,
+          view: 'chat'
+        })
+      )
+    },
+    [openTab]
   )
 
   const createForCourse = useCallback(async () => {
@@ -123,16 +145,37 @@ export function CourseGroupsSection(props: {
       )}
 
       {signedIn && (
-        <button
-          type="button"
-          className="group-create"
-          disabled={creating || course === undefined}
-          onClick={() => void createForCourse()}
-        >
-          <Icon name="plus" />
-          {creating ? '그룹 만드는 중…' : '이 과목으로 그룹 만들기'}
-        </button>
+        <div className="course-groups-section__actions">
+          <button
+            type="button"
+            className="group-create"
+            disabled={creating || course === undefined}
+            onClick={() => void createForCourse()}
+          >
+            <Icon name="plus" />
+            {creating ? '그룹 만드는 중…' : '이 과목으로 그룹 만들기'}
+          </button>
+          <button
+            type="button"
+            className="group-create group-create--secondary"
+            onClick={() => setJoinOpen(true)}
+          >
+            <GroupIcon name="ticket" />
+            코드로 참여
+          </button>
+        </div>
       )}
+
+      <JoinCodeOverlay
+        open={joinOpen}
+        onClose={() => setJoinOpen(false)}
+        onJoin={joinWithCode}
+        onJoined={(groupId, alreadyMember) => {
+          setJoinOpen(false)
+          openJoinedGroup(groupId)
+          showToast(alreadyMember ? '이미 들어가 있는 그룹이에요.' : '참여했어요!')
+        }}
+      />
     </section>
   )
 }

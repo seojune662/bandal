@@ -13,7 +13,6 @@ import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { GroupIcon } from './groupIcons'
 import { GroupListRow } from './GroupListRow'
-import { JoinCodeOverlay } from './JoinCodeOverlay'
 import './group.css'
 import './groupNavigation.css'
 
@@ -92,10 +91,8 @@ export function TogetherFooter(): JSX.Element | null {
   const allGroups = useGroupsStore((state) => state.groups)
   const pendingInvites = useGroupsStore((state) => state.pendingInvites)
   const initGroups = useGroupsStore((state) => state.init)
-  const joinWithCode = useGroupsStore((state) => state.joinWithCode)
   const respondInvite = useGroupsStore((state) => state.respondInvite)
   const openTab = useWorkspaceStore((state) => state.openTab)
-  const [joinOpen, setJoinOpen] = useState(false)
   const signedIn = auth.phase === 'signed-in'
   const unassignedGroups = useMemo(
     () => selectGroupsForCourse(allGroups, null),
@@ -136,22 +133,6 @@ export function TogetherFooter(): JSX.Element | null {
     [openTab]
   )
 
-  const openJoinedGroup = useCallback(
-    (groupId: string) => {
-      const joined = useGroupsStore
-        .getState()
-        .groups.find((group) => group.id === groupId)
-      openTab(
-        descriptorFor('group-chat', {
-          courseId: joined?.courseId ?? null,
-          groupId,
-          view: 'chat'
-        })
-      )
-    },
-    [openTab]
-  )
-
   if (!hydrated) {
     return (
       <section className="together-footer" aria-label="함께하기">
@@ -176,18 +157,6 @@ export function TogetherFooter(): JSX.Element | null {
         />
       ) : (
         <>
-          <div className="together-footer__actions">
-            <span className="together-footer__label">함께하기</span>
-            <button
-              type="button"
-              className="together-footer__join"
-              onClick={() => setJoinOpen(true)}
-            >
-              <GroupIcon name="ticket" />
-              코드로 참여
-            </button>
-          </div>
-
           {pendingInvites.length > 0 && (
             <ul className="group-invites">
               {pendingInvites.map((invite) => (
@@ -232,17 +201,6 @@ export function TogetherFooter(): JSX.Element | null {
           )}
         </>
       )}
-
-      <JoinCodeOverlay
-        open={joinOpen}
-        onClose={() => setJoinOpen(false)}
-        onJoin={joinWithCode}
-        onJoined={(groupId, alreadyMember) => {
-          setJoinOpen(false)
-          openJoinedGroup(groupId)
-          showToast(alreadyMember ? '이미 들어가 있는 그룹이에요.' : '참여했어요!')
-        }}
-      />
     </section>
   )
 }

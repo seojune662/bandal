@@ -493,8 +493,8 @@ function CourseGroupPanel({
           <h2 className="group-empty__title">이 과목에는 아직 그룹이 없어요</h2>
           <p className="group-empty__desc">
             {courseId === null
-              ? '사이드바 아래에서 초대 코드로 그룹에 참여해 보세요.'
-              : '사이드바에서 이 과목의 그룹을 만들거나 초대 코드로 참여해 보세요.'}
+              ? '자료 패널의 함께하기에서 코드로 참여해 보세요.'
+              : '자료 패널의 함께하기에서 그룹을 만들거나 코드로 참여해 보세요.'}
           </p>
         </div>
       </div>

@@ -1444,7 +1444,6 @@ export function registerHandlers(): IpcRouter {
     return OK
   })
 
-  handle('insights:gaps', (req) => ({ gaps: insights.gaps(req.courseId) }))
 
   // -- settings (real implementation, settingsStore-owned) ------------------
   handle('settings:get', () => getSettings())

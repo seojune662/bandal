@@ -222,7 +222,9 @@ describe('TogetherFooter', () => {
 
     const html = renderToStaticMarkup(<TogetherFooter />)
 
-    expect(html).toContain('코드로 참여')
+    // 코드로 참여 moved to the materials sidebar, next to 그룹 만들기 — joining
+    // and creating are the same decision and belonged side by side.
+    expect(html).not.toContain('코드로 참여')
     expect(html).toContain('과목 미지정')
     expect(html).toContain('초대받은 방')
     expect(html).toContain('읽지 않은 메시지 7개')
@@ -259,6 +261,7 @@ describe('CourseGroupsSection', () => {
     expect(html).toContain('aria-label="알고리즘 전체방 화이트보드 열기"')
     expect(html).toContain('<span>화이트보드</span>')
     expect(html).toContain('이 과목으로 그룹 만들기')
+    expect(html).toContain('코드로 참여')
     expect(html).not.toContain('다른 과목 방')
   })
 

@@ -76,7 +76,7 @@ import type {
   StudyToolDefinition
 } from '../types/study'
 import type { MediaProgress } from '../types/mediaProgress'
-import type { SearchHit, StudyGap } from '../types/search'
+import type { SearchHit } from '../types/search'
 import type {
   MaterialBacklinks,
   SendHighlightToNoteInput,
@@ -866,13 +866,6 @@ export interface IpcContract {
     res: { ok: true }
   }
 
-  // -- study gaps -------------------------------------------------------------
-  /** What the student has not touched yet, derived from the activity log. */
-  'insights:gaps': {
-    req: { courseId: string }
-    res: { gaps: StudyGap[] }
-  }
-
   // -- note ↔ material links --------------------------------------------------
   /**
    * Appends a highlight to a note as a quote plus a `bandal://` link back to
@@ -1364,7 +1357,6 @@ export const IPC_CHANNELS = [
   'calendar:upcoming',
   'search:query',
   'search:indexPdfPages',
-  'insights:gaps',
   'whiteboard:updateShape',
   'whiteboard:close',
   'links:forMaterial',

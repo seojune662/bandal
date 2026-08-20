@@ -745,3 +745,81 @@
 .group-palette__error {
   color: var(--danger);
 }
+
+/* -- 초대 코드 -------------------------------------------------------------
+ * Sits at the top of the invite palette because pasting a code into KakaoTalk
+ * is what almost everyone does; the nickname search below is the deliberate,
+ * slower path. The code itself is the largest thing on the panel — it exists
+ * to be read aloud and retyped.
+ */
+.invite-code {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.invite-code__label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-wide);
+}
+
+.invite-code__row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.invite-code__value {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.18em;
+}
+
+.invite-code__copy {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border: 0;
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.invite-code__copy:hover,
+.invite-code__copy:focus-visible {
+  color: var(--accent);
+}
+
+.invite-code__status {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.invite-code__regenerate {
+  align-self: flex-start;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-decoration: underline;
+  background: none;
+  border: 0;
+}
+
+.invite-code__regenerate:hover:not(:disabled),
+.invite-code__regenerate:focus-visible {
+  color: var(--accent);
+}
+
+.invite-code__regenerate:disabled {
+  opacity: 0.5;
+}

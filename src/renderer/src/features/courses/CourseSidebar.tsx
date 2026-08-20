@@ -11,7 +11,6 @@ import { Tooltip } from '../../components/Tooltip'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { SidebarAccountEntry } from '../account/SidebarAccountEntry'
-import { StudyGapList } from '../insights/StudyGapList'
 import { TogetherFooter } from '../group/TogetherFooter'
 import { UniversityShortcuts } from '../university/UniversityShortcuts'
 import { TabKindIcon } from '../workspace/workspaceIcons'
@@ -529,7 +528,6 @@ export function CourseSidebar(): JSX.Element {
         </div>
         {expanded && (
           <div className="course-row__children">
-            <StudyGapList courseId={course.id} />
             <FavoritesSection courseId={course.id} />
           </div>
         )}
