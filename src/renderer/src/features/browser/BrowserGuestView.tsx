@@ -29,6 +29,7 @@ import {
 } from './guestActions'
 import { useWebviewSelectionBridge } from './selectionBridge'
 import { useWebviewLoginBridge } from './loginBridge'
+import { useWebviewDiagnosticsBridge } from './diagnosticsBridge'
 import type {
   PageFaviconUpdatedEvent,
   ContextMenuEvent,
@@ -73,6 +74,7 @@ export function BrowserGuestView({
   )
   useWebviewSelectionBridge(webviewRef)
   useWebviewLoginBridge(tabId, webviewRef)
+  useWebviewDiagnosticsBridge(tabId, webviewRef)
 
   useEffect(
     () =>

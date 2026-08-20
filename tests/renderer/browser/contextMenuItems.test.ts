@@ -25,6 +25,7 @@ describe('contextMenuItems', () => {
       'copy-page-url',
       'print',
       'open-external',
+      'diagnose',
       'inspect'
     ])
   })
@@ -104,6 +105,7 @@ describe('contextMenuItems', () => {
       'copy-page-url',
       'print',
       'open-external',
+      'diagnose',
       'inspect'
     ])
   })

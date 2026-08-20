@@ -31,6 +31,8 @@ import {
 } from './browserGuestsStore'
 import { BrowserCrashPage, BrowserErrorPage } from './BrowserErrorPage'
 import { BrowserDownloadsPanel } from './BrowserDownloadsPanel'
+import { BrowserDiagnosticsPanel } from './BrowserDiagnosticsPanel'
+import { OPEN_DIAGNOSTICS_EVENT } from './diagnosticsBridge'
 import { DEFAULT_ZOOM_LEVEL, isDefaultZoom, zoomPercent } from './zoom'
 import { useDownloads } from './downloadsStore'
 import { toggleFavorite, useBrowserFavorite } from './browserFavorite'
@@ -332,6 +334,19 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
   const activeDownloads = useDownloads((state) => state.activeCount)
   const anyDownloads = useDownloads((state) => state.downloads.length > 0)
   const [downloadsOpen, setDownloadsOpen] = useState(false)
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+
+  // The context menu lives outside this subtree, so it asks by event rather
+  // than by threading a callback through four components.
+  useEffect(() => {
+    const onOpen = (event: Event): void => {
+      if ((event as CustomEvent<string>).detail === tabId) {
+        setDiagnosticsOpen(true)
+      }
+    }
+    window.addEventListener(OPEN_DIAGNOSTICS_EVENT, onOpen)
+    return () => window.removeEventListener(OPEN_DIAGNOSTICS_EVENT, onOpen)
+  }, [tabId])
   const starred = useBrowserFavorite(nav.url)
   const favicon = useBrowserGuests((state) => state.favicon[tabId])
   const findState = useBrowserGuests((state) => state.find[tabId])
@@ -432,6 +447,12 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
           )}
           {downloadsOpen && (
             <BrowserDownloadsPanel onClose={() => setDownloadsOpen(false)} />
+          )}
+          {diagnosticsOpen && (
+            <BrowserDiagnosticsPanel
+              tabId={tabId}
+              onClose={() => setDiagnosticsOpen(false)}
+            />
           )}
           {!isDefaultZoom(zoomLevel) && (
             <Tooltip label="기본 크기로 (⌘0)" placement="bottom">

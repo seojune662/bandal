@@ -39,6 +39,12 @@ export interface TabDiagnostics {
 const byTab = new Map<string, TabDiagnostics>()
 
 export const BROWSER_DIAGNOSTICS_EVENT = 'bandal:browser-diagnostics'
+export const OPEN_DIAGNOSTICS_EVENT = 'bandal:open-diagnostics'
+
+/** Asks the panel that owns this tab to show its diagnostics. */
+export function openDiagnostics(tabId: string): void {
+  window.dispatchEvent(new CustomEvent(OPEN_DIAGNOSTICS_EVENT, { detail: tabId }))
+}
 
 function record(tabId: string, url: string, entry: DiagnosticEntry): void {
   const current = byTab.get(tabId) ?? { url, entries: [] }

@@ -21,6 +21,7 @@ import { showToast } from '../../app/toast'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { guestActions } from './guestActions'
+import { openDiagnostics } from './diagnosticsBridge'
 import { usePrintStore } from '../print/printStore'
 import { acquirePointerPassthrough } from './webviewPassthrough'
 import { resolveAddressInput } from './urlInput'
@@ -62,6 +63,7 @@ export type ContextMenuItemId =
   | 'copy-page-url'
   | 'open-external'
   | 'print'
+  | 'diagnose'
   | 'inspect'
 
 /**
@@ -88,7 +90,7 @@ export function contextMenuItems(
     if (state.selectionText.trim() !== '') items.push('cut-selection', 'copy-selection')
     items.push('paste', 'select-all')
     if (state.selectionText.trim() !== '') items.push('search-selection')
-    items.push('reload', 'copy-page-url', 'print', 'open-external', 'inspect')
+    items.push('reload', 'copy-page-url', 'print', 'open-external', 'diagnose', 'inspect')
     return items
   }
   if (state.selectionText.trim() !== '') {
@@ -101,7 +103,14 @@ export function contextMenuItems(
   // 검사 is here rather than behind a dev flag because a broken Korean portal
   // is only diagnosable from a real login on a real machine — which is a
   // release build, by definition.
-  items.push('reload', 'copy-page-url', 'print', 'open-external', 'inspect')
+  items.push(
+    'reload',
+    'copy-page-url',
+    'print',
+    'open-external',
+    'diagnose',
+    'inspect'
+  )
   return items
 }
 
@@ -228,6 +237,10 @@ export function BrowserContextMenu({
         { kind: 'browser', tabId },
         state.pageTitle
       )
+    },
+    diagnose: {
+      label: '이 페이지 진단',
+      run: () => openDiagnostics(tabId)
     },
     inspect: {
       label: '검사',

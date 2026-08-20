@@ -899,3 +899,97 @@
   color: var(--accent);
   background: var(--bg-raised);
 }
+
+/* 페이지 진단 — the artifact a student pastes into a message instead of being
+ * walked through DevTools over KakaoTalk. */
+.browser-diagnostics {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: var(--space-2);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: min(32rem, 90vw);
+  max-height: 24rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.browser-diagnostics__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.browser-diagnostics__head h2 {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.browser-diagnostics__close {
+  display: flex;
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+}
+
+.browser-diagnostics__empty {
+  padding: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.browser-diagnostics__list {
+  flex: 1;
+  padding: var(--space-2);
+  overflow-y: auto;
+  list-style: none;
+}
+
+.browser-diagnostics__row {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.browser-diagnostics__kind {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.browser-diagnostics__message {
+  min-width: 0;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
+.browser-diagnostics__actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.browser-diagnostics__action {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+.browser-diagnostics__action:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.browser-diagnostics__action:disabled {
+  opacity: 0.5;
+}
