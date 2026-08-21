@@ -11,16 +11,22 @@ export interface UndoTarget {
   targetId: string
 }
 
-/** Synchronous deletion functions supplied by the app's repository layer. */
+export type UndoResult = {
+  actionId: string
+  ok: boolean
+  error?: string
+}
+
+/** Async deletion functions supplied by the app's repository layer. */
 export interface UndoHandlers {
-  course(input: UndoTarget): void
-  material(input: UndoTarget): void
-  note(input: UndoTarget): void
-  task(input: UndoTarget): void
-  board(input: UndoTarget): void
-  shape(input: UndoTarget): void
+  course(input: UndoTarget): Promise<void>
+  material(input: UndoTarget): Promise<void>
+  note(input: UndoTarget): Promise<void>
+  task(input: UndoTarget): Promise<void>
+  board(input: UndoTarget): Promise<void>
+  shape(input: UndoTarget): Promise<void>
   /** 문서 제자리 편집의 되돌리기 — 백업을 원래 경로로 복원한다. */
-  'material-edit'(input: UndoTarget): void
+  'material-edit'(input: UndoTarget): Promise<void>
 }
 
 export interface AgentJournal {
@@ -28,7 +34,10 @@ export interface AgentJournal {
     entry: Omit<AgentAction, 'id' | 'createdAt' | 'undoneAt'>
   ): AgentAction
   forTurn(turnId: string): AgentTurnChanges
-  undoTurn(turnId: string, undoers: UndoHandlers): { undone: number }
+  undoTurn(
+    turnId: string,
+    undoers: UndoHandlers
+  ): Promise<{ undone: number; results: UndoResult[] }>
 }
 
 interface AgentActionRow {
@@ -110,25 +119,34 @@ export function createAgentJournal(db: Database): AgentJournal {
       return { turnId, actions: rows.map(rowToAction) }
     },
 
-    undoTurn(turnId, undoers) {
+    async undoTurn(turnId, undoers) {
       const rows = selectUndoableForTurn.all(turnId) as AgentActionRow[]
       let undone = 0
-      const failures: Array<{ actionId: string; error: unknown }> = []
+      const results: UndoResult[] = []
 
       for (const row of rows) {
         const action = rowToAction(row)
         try {
-          undoers[action.targetKind]({
+          await undoers[action.targetKind]({
             courseId: action.courseId,
             targetId: action.targetId
           })
           const result = markUndone.run(new Date().toISOString(), action.id)
-          if (result.changes === 1) undone += 1
+          if (result.changes !== 1) {
+            throw new Error(`action "${action.id}" was not marked undone`)
+          }
+          undone += 1
+          results.push({ actionId: action.id, ok: true })
         } catch (error) {
-          failures.push({ actionId: action.id, error })
+          results.push({
+            actionId: action.id,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error)
+          })
         }
       }
 
+      const failures = results.filter((result) => !result.ok)
       if (failures.length > 0) {
         console.error(
           `[agentTools] ${failures.length} action(s) failed to undo for turn "${turnId}"`,
@@ -136,7 +154,7 @@ export function createAgentJournal(db: Database): AgentJournal {
         )
       }
 
-      return { undone }
+      return { undone, results }
     }
   }
 }

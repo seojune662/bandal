@@ -445,6 +445,17 @@ export interface IpcContract {
     req: UpdateTaskInput
     res: BoardTask
   }
+  'board:reorderTasks': {
+    req: {
+      courseId: string
+      updates: Array<{
+        id: string
+        status?: BoardTask['status']
+        sortOrder: number
+      }>
+    }
+    res: BoardTask[]
+  }
   'board:deleteTask': {
     req: { id: string }
     res: { ok: true }
@@ -495,6 +506,16 @@ export interface IpcContract {
   /** Soft-deletes a conversation and closes its warm CLI process, if any. */
   'chat:deleteConversation': {
     req: { courseId: string; sessionId: string }
+    res: { ok: true }
+  }
+  'chat:grants': {
+    req: { courseId: string }
+    res: {
+      grants: Array<{ id: string; rule: string; createdAt: string }>
+    }
+  }
+  'chat:revokeGrant': {
+    req: { id: string }
     res: { ok: true }
   }
 
@@ -1114,7 +1135,10 @@ export interface IpcContract {
   /** Takes back the creations from one request. Deletes are not undoable. */
   'agentTools:undo': {
     req: { turnId: string }
-    res: { undone: number }
+    res: {
+      undone: number
+      results: Array<{ actionId: string; ok: boolean; error?: string }>
+    }
   }
   /** Answer to a destructive tool waiting for the student. */
   'agentTools:respondConfirm': {
@@ -1415,6 +1439,7 @@ export const IPC_CHANNELS = [
   'board:listTasks',
   'board:createTask',
   'board:updateTask',
+  'board:reorderTasks',
   'board:deleteTask',
   'chat:open',
   'chat:send',
@@ -1424,6 +1449,8 @@ export const IPC_CHANNELS = [
   'chat:setModel',
   'chat:conversations',
   'chat:deleteConversation',
+  'chat:grants',
+  'chat:revokeGrant',
   'overlay:getState',
   'overlay:setCourse',
   'overlay:togglePopup',

@@ -44,6 +44,12 @@ export interface SessionStartRecord {
   launchConfigJson: string | null
 }
 
+export interface PermissionGrantDetails {
+  id: string
+  rule: string
+  createdAt: string
+}
+
 export interface ChatRepo {
   /** Live session row by id, or null when it never persisted / was deleted. */
   getSession(sessionId: string): ChatSessionInfo | null
@@ -79,7 +85,9 @@ export interface ChatRepo {
   /** Startup recovery: closes turns left dangling by a crash. */
   markDanglingInterrupted(): void
   listGrants(courseId: string): string[]
+  listGrantDetails(courseId: string): PermissionGrantDetails[]
   addGrant(courseId: string, rule: string): void
+  removeGrant(id: string): void
 }
 
 interface SessionRow {
@@ -403,6 +411,25 @@ export function createChatRepo(db: Database): ChatRepo {
       return rows.map((row) => row.rule)
     },
 
+    listGrantDetails(courseId) {
+      const rows = db
+        .prepare(
+          `SELECT id, rule, created_at FROM permission_grants
+           WHERE course_id = ? AND deleted_at IS NULL
+           ORDER BY created_at ASC, rowid ASC`
+        )
+        .all(requireId(courseId, 'courseId')) as Array<{
+        id: string
+        rule: string
+        created_at: string
+      }>
+      return rows.map((row) => ({
+        id: row.id,
+        rule: row.rule,
+        createdAt: row.created_at
+      }))
+    },
+
     addGrant(courseId, rule) {
       const id = requireId(courseId, 'courseId')
       const cleanRule = requireNonEmptyString(rule, 'rule').trim()
@@ -420,6 +447,14 @@ export function createChatRepo(db: Database): ChatRepo {
         `INSERT INTO permission_grants (id, course_id, rule, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?)`
       ).run(randomUUID(), id, cleanRule, now, now)
+    },
+
+    removeGrant(id) {
+      const now = nowIso()
+      db.prepare(
+        `UPDATE permission_grants SET deleted_at = ?, updated_at = ?
+         WHERE id = ? AND deleted_at IS NULL`
+      ).run(now, now, requireId(id, 'id'))
     }
   }
 }

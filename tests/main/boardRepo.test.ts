@@ -214,6 +214,54 @@ describe('boardRepo', () => {
     })
   })
 
+  describe('reorderTasks', () => {
+    test('updates status and order together and returns the changed rows', () => {
+      const first = repo.create({ courseId, title: 'first' })
+      const second = repo.create({ courseId, title: 'second' })
+
+      const changed = repo.reorderTasks(courseId, [
+        { id: second.id, sortOrder: 0 },
+        { id: first.id, status: 'in-progress', sortOrder: 1 }
+      ])
+
+      expect(changed.map((task) => ({
+        id: task.id,
+        status: task.status,
+        sortOrder: task.sortOrder
+      }))).toEqual([
+        { id: second.id, status: 'todo', sortOrder: 0 },
+        { id: first.id, status: 'in-progress', sortOrder: 1 }
+      ])
+      expect(repo.list({ courseId }).map((task) => ({
+        id: task.id,
+        status: task.status,
+        sortOrder: task.sortOrder
+      }))).toEqual([
+        { id: first.id, status: 'in-progress', sortOrder: 1 },
+        { id: second.id, status: 'todo', sortOrder: 0 }
+      ])
+    })
+
+    test('rolls back every update when a later task is invalid', () => {
+      const first = repo.create({ courseId, title: 'first' })
+      const second = repo.create({ courseId, title: 'second' })
+
+      expect(() => repo.reorderTasks(courseId, [
+        { id: first.id, status: 'done', sortOrder: 9 },
+        { id: 'missing-task', sortOrder: 0 }
+      ])).toThrow(NotFoundError)
+
+      expect(repo.list({ courseId, includeDone: true }).map((task) => ({
+        id: task.id,
+        status: task.status,
+        sortOrder: task.sortOrder
+      }))).toEqual([
+        { id: first.id, status: 'todo', sortOrder: 0 },
+        { id: second.id, status: 'todo', sortOrder: 1 }
+      ])
+    })
+  })
+
   describe('softDelete', () => {
     test('removes the task from listings', () => {
       // Arrange

@@ -76,6 +76,7 @@ export interface WhiteboardRepo {
   confirmedShapeIds(boardId: string): string[]
   pendingRemovals(limit: number): PendingWhiteboardRemoval[]
   applyRemoteRemovals(ids: readonly string[]): void
+  clearAll(): void
 }
 
 function parseJsonObject<T extends object>(json: string): T {
@@ -501,6 +502,15 @@ export function createWhiteboardRepo(db: Database): WhiteboardRepo {
         for (const id of shapeIds) statement.run(now, id)
       })
       apply(ids)
+    },
+
+    clearAll() {
+      const run = db.transaction(() => {
+        db.prepare('DELETE FROM whiteboard_shapes_cache').run()
+        db.prepare('DELETE FROM whiteboard_boards_cache').run()
+      })
+      run()
+      boardAuthors.clear()
     }
   }
 }

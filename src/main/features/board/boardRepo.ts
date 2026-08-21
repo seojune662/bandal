@@ -32,6 +32,14 @@ export interface BoardRepo {
   upcoming(input?: ListUpcomingInput): UpcomingDeadline[]
   create(input: CreateTaskInput): BoardTask
   update(input: UpdateTaskInput): BoardTask
+  reorderTasks(
+    courseId: string,
+    updates: Array<{
+      id: string
+      status?: BoardTask['status']
+      sortOrder: number
+    }>
+  ): BoardTask[]
   softDelete(input: { id: string }): { ok: true }
 }
 
@@ -142,6 +150,56 @@ export function createBoardRepo(db: Database): BoardRepo {
     }
     return (row.max ?? -1) + 1
   }
+
+  const reorderTasksTransaction = db.transaction(
+    (
+      rawCourseId: string,
+      updates: Array<{
+        id: string
+        status?: BoardTask['status']
+        sortOrder: number
+      }>
+    ): BoardTask[] => {
+      const courseId = requireId(rawCourseId, 'courseId')
+      assertCourseExists(courseId)
+      const updateRow = db.prepare(
+        `UPDATE board_tasks
+         SET status = ?, sort_order = ?, updated_at = ?
+         WHERE id = ? AND course_id = ? AND deleted_at IS NULL`
+      )
+      const changed: BoardTask[] = []
+      const now = nowIso()
+
+      for (const update of updates) {
+        const id = requireId(update.id, 'updates[].id')
+        const sortOrder = requireInt(update.sortOrder, 'updates[].sortOrder', 0)
+        const row = db
+          .prepare(
+            `SELECT * FROM board_tasks
+             WHERE id = ? AND course_id = ? AND deleted_at IS NULL`
+          )
+          .get(id, courseId) as TaskRow | undefined
+        if (row === undefined) throw new NotFoundError('task', id)
+
+        const status =
+          update.status === undefined
+            ? (row.status as TaskStatus)
+            : assertStatus(update.status)
+        const result = updateRow.run(status, sortOrder, now, id, courseId)
+        if (result.changes !== 1) throw new NotFoundError('task', id)
+        changed.push(
+          rowToTask({
+            ...row,
+            status,
+            sort_order: sortOrder,
+            updated_at: now
+          })
+        )
+      }
+
+      return changed
+    }
+  )
 
   return {
     list(input = {}) {
@@ -350,6 +408,10 @@ export function createBoardRepo(db: Database): BoardRepo {
         course_id: courseId,
         updated_at: now
       })
+    },
+
+    reorderTasks(courseId, updates) {
+      return reorderTasksTransaction(courseId, updates)
     },
 
     softDelete(input) {

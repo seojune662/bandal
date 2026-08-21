@@ -84,7 +84,7 @@ function payload<T>(result: CallToolResult): T {
 
 /** registerHandlers 의 material-edit undo 와 같은 복원 경로. */
 function undoHandlersFor(harness: Harness): UndoHandlers {
-  const noop = (): void => undefined
+  const noop = async (): Promise<void> => undefined
   return {
     course: noop,
     material: noop,
@@ -92,7 +92,7 @@ function undoHandlersFor(harness: Harness): UndoHandlers {
     task: noop,
     board: noop,
     shape: noop,
-    'material-edit': ({ courseId, targetId }) => {
+    'material-edit': async ({ courseId, targetId }) => {
       const parsed = parseMaterialEditTargetId(targetId)
       if (parsed === null) return
       restoreMaterialBackup({
@@ -275,8 +275,11 @@ describe('edit_sheet', () => {
     expect(readFileSync(absPath)).not.toEqual(original)
 
     expect(
-      harness.journal.undoTurn('turn-1', undoHandlersFor(harness))
-    ).toEqual({ undone: 1 })
+      await harness.journal.undoTurn('turn-1', undoHandlersFor(harness))
+    ).toEqual({
+      undone: 1,
+      results: [{ actionId: expect.any(String), ok: true }]
+    })
     expect(readFileSync(absPath)).toEqual(original)
   })
 })
@@ -438,8 +441,11 @@ describe('edit_docx_text', () => {
     expect(readFileSync(absPath)).not.toEqual(original)
 
     expect(
-      harness.journal.undoTurn('turn-1', undoHandlersFor(harness))
-    ).toEqual({ undone: 1 })
+      await harness.journal.undoTurn('turn-1', undoHandlersFor(harness))
+    ).toEqual({
+      undone: 1,
+      results: [{ actionId: expect.any(String), ok: true }]
+    })
     expect(readFileSync(absPath)).toEqual(original)
   })
 })

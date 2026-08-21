@@ -75,6 +75,21 @@ afterEach(() => {
 })
 
 describe('whiteboard local mirror', () => {
+  test('clearAll wipes both whiteboard cache tables', () => {
+    repo.insertLocal(input(), 'user-1', board.groupId)
+
+    repo.clearAll()
+
+    expect(
+      testDb.db.prepare('SELECT COUNT(*) AS count FROM whiteboard_shapes_cache').get()
+    ).toEqual({ count: 0 })
+    expect(
+      testDb.db.prepare('SELECT COUNT(*) AS count FROM whiteboard_boards_cache').get()
+    ).toEqual({ count: 0 })
+    expect(repo.getBoardByGroup(board.groupId)).toBeNull()
+    expect(repo.listShapes(board.id)).toEqual([])
+  })
+
   test('stores a local shape as a durable pending row', () => {
     const shape = repo.insertLocal(input(), 'user-1', board.groupId)
 
