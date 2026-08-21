@@ -1,0 +1,140 @@
+.bandal-orb-mark {
+  --bandal-mark-size: var(--icon-button-size);
+  --bandal-phase-duration: 8s;
+  --bandal-axis-duration: 24s;
+  --bandal-glow-duration: 4s;
+
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: var(--bandal-mark-size);
+  height: var(--bandal-mark-size);
+  color: var(--accent);
+}
+
+.bandal-orb-mark svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 var(--space-1) var(--accent));
+  shape-rendering: geometricprecision;
+  animation: bandal-glow var(--bandal-glow-duration) var(--ease-out) infinite alternate;
+}
+
+.bandal-orb-mark__mask {
+  mask-type: alpha;
+}
+
+.bandal-orb-mark__lit-half,
+.bandal-orb-mark__terminator,
+.bandal-orb-mark__moon {
+  fill: currentcolor;
+}
+
+.bandal-orb-mark__shadow {
+  fill: currentcolor;
+  opacity: 0.11;
+}
+
+.bandal-orb-mark__axis {
+  transform-box: view-box;
+  transform-origin: center;
+  animation: bandal-axis var(--bandal-axis-duration) linear infinite;
+}
+
+.bandal-orb-mark__terminator {
+  transform-box: view-box;
+  transform: scaleX(0.15);
+  transform-origin: 16px 16px;
+  animation: bandal-phase var(--bandal-phase-duration) var(--ease-out) infinite;
+}
+
+.bandal-orb-mark__moon {
+  opacity: 0.92;
+}
+
+.bandal-orb-mark__lit-edge {
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-width: 0.75;
+  opacity: 0.96;
+  vector-effect: non-scaling-stroke;
+}
+
+.bandal-orb-mark__rim {
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 0.9;
+  opacity: 0.48;
+  vector-effect: non-scaling-stroke;
+}
+
+.bandal-orb-mark[data-state='hover'] {
+  --bandal-phase-duration: 4s;
+  --bandal-axis-duration: 12s;
+  --bandal-glow-duration: 2s;
+}
+
+.bandal-orb-mark[data-state='busy'] {
+  --bandal-phase-duration: 1.8s;
+  --bandal-axis-duration: 2.4s;
+  --bandal-glow-duration: 1.2s;
+}
+
+.bandal-orb-mark[data-state='alert'] {
+  --bandal-glow-duration: 0.8s;
+}
+
+@keyframes bandal-phase {
+  0%,
+  100% {
+    transform: scaleX(0.15);
+  }
+
+  32% {
+    transform: scaleX(0.48);
+  }
+
+  64% {
+    transform: scaleX(0.96);
+  }
+}
+
+@keyframes bandal-axis {
+  from {
+    transform: rotate(-14deg);
+  }
+
+  to {
+    transform: rotate(346deg);
+  }
+}
+
+@keyframes bandal-glow {
+  from {
+    opacity: 0.78;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bandal-orb-mark svg,
+  .bandal-orb-mark__axis,
+  .bandal-orb-mark__terminator {
+    animation: none;
+  }
+
+  .bandal-orb-mark__axis {
+    transform: rotate(-14deg);
+  }
+
+  .bandal-orb-mark__terminator {
+    transform: scaleX(0.15);
+  }
+}

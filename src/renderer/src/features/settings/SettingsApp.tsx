@@ -429,6 +429,7 @@ export function SettingsApp({
     ai: (
       <>
         <AiPanel
+          settings={settings}
           provider={settings?.agentProvider ?? "claude-code"}
           providerReady={settings !== null}
           providerSaving={agentProviderSaving}

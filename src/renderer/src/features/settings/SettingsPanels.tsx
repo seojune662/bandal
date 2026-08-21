@@ -1058,7 +1058,14 @@ function ProviderCard({
   )
 }
 
+export function DesktopPermissionsSlot(
+  _props: { settings: Settings }
+): JSX.Element | null {
+  return null
+}
+
 export function AiPanel({
+  settings,
   provider,
   providerReady,
   providerSaving,
@@ -1070,6 +1077,7 @@ export function AiPanel({
   onProviderSelect,
   onRetry
 }: {
+  settings: Settings | null
   provider: AgentProvider
   providerReady: boolean
   providerSaving: boolean
@@ -1085,8 +1093,70 @@ export function AiPanel({
   const refreshClaude = useCallback(() => onRetry('claude-code'), [onRetry])
   const refreshCodex = useCallback(() => onRetry('codex'), [onRetry])
 
+  const selectAssistantMode = (assistantMode: Settings['assistantMode']): void => {
+    if (settings === null || settings.assistantMode === assistantMode) return
+    void invoke('settings:set', { assistantMode }).catch(() => {
+      // settings:changed is the only source of visible state.
+    })
+  }
+
+  const toggleDesktopKeepAlive = (keepAliveOnClose: boolean): void => {
+    if (settings === null) return
+    void invoke('settings:set', {
+      desktopOrb: { ...settings.desktopOrb, keepAliveOnClose }
+    }).catch(() => {
+      // settings:changed is the only source of visible state.
+    })
+  }
+
   return (
     <div className="settings-stack">
+      <SettingsCard
+        title={t('settings.ai.orb.title')}
+        description={t('settings.ai.orb.description')}
+      >
+        <div className="settings-ai-orb">
+          <div className="setting-row settings-ai-orb__mode">
+            <div className="setting-row__copy">
+              <div
+                className="settings-ai-engine__segments"
+                role="radiogroup"
+                aria-label={t('settings.ai.orb.mode.selectLabel')}
+              >
+                {(['in-app', 'desktop'] as const).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    role="radio"
+                    aria-checked={settings?.assistantMode === option}
+                    disabled={settings === null}
+                    className={`settings-ai-engine__segment${
+                      settings?.assistantMode === option
+                        ? ' settings-ai-engine__segment--selected'
+                        : ''
+                    }`}
+                    onClick={() => selectAssistantMode(option)}
+                  >
+                    {t(`settings.ai.orb.mode.${option === 'in-app' ? 'inApp' : 'desktop'}`)}
+                  </button>
+                ))}
+              </div>
+              <span className="setting-row__description">
+                {t('settings.ai.orb.mode.desktopDescription')}
+              </span>
+            </div>
+          </div>
+          <ToggleRow
+            label={t('settings.ai.orb.keepAlive')}
+            description={t('settings.ai.orb.keepAliveDescription')}
+            checked={settings?.desktopOrb.keepAliveOnClose ?? false}
+            disabled={settings?.assistantMode !== 'desktop'}
+            onChange={toggleDesktopKeepAlive}
+          />
+          {settings !== null && <DesktopPermissionsSlot settings={settings} />}
+        </div>
+      </SettingsCard>
+
       <SettingsCard
         title={t('settings.ai.engine.title')}
         description={t('settings.ai.engine.description')}

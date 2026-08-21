@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { onPush } from '../lib/ipc'
 import { AssistantLayer } from '../features/assistant'
 import { BoardOverlay } from '../features/board/BoardPanel'
@@ -18,9 +18,11 @@ import { useAgentPreflight } from '../features/onboarding/useAgentPreflight'
 import { SettingsApp } from '../features/settings/SettingsApp'
 import { useUpdateNotifications } from '../features/updates/useUpdateNotifications'
 import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
+import { descriptorFor } from '../features/workspace/tabIdentity'
 import { selectNeedsNickname, useAuthStore } from '../stores/authStore'
 import { useCoursesStore } from '../stores/coursesStore'
 import { useUiStore } from '../stores/uiStore'
+import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useDownloads } from '../features/browser/downloadsStore'
 import { useAgentRuns } from '../features/browser/AgentRunBanner'
 import { useUniversityStore } from '../stores/universityStore'
@@ -34,7 +36,17 @@ export function AppShell(): JSX.Element {
   useAgentWorkspaceSync()
   const courses = useCoursesStore((state) => state.courses)
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
+  const selectCourse = useCoursesStore((state) => state.selectCourse)
   const loadCourses = useCoursesStore((state) => state.loadCourses)
+  const activeWorkspaceCourseId = useWorkspaceStore(
+    (state) => state.activeCourseId
+  )
+  const workspaceHydration = useWorkspaceStore((state) => state.hydration)
+  const openTab = useWorkspaceStore((state) => state.openTab)
+  const [pendingChat, setPendingChat] = useState<{
+    courseId: string
+    conversationId: string
+  } | null>(null)
   const initTheme = useUiStore((state) => state.initTheme)
   const leftRailOpen = useUiStore((state) => state.leftRailOpen)
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
@@ -99,6 +111,49 @@ export function AppShell(): JSX.Element {
   useEffect(() => {
     return onPush('ui:openSettings', () => openSettings())
   }, [openSettings])
+
+  useEffect(() => {
+    return onPush('ui:openChat', (payload) => {
+      setPendingChat(payload)
+      selectCourse(payload.courseId)
+    })
+  }, [selectCourse])
+
+  useEffect(() => {
+    if (pendingChat === null) return
+    if (selectedCourseId !== pendingChat.courseId) {
+      if (courses.some((course) => course.id === pendingChat.courseId)) {
+        selectCourse(pendingChat.courseId)
+      }
+      return
+    }
+    if (
+      activeWorkspaceCourseId !== pendingChat.courseId ||
+      workspaceHydration !== 'ready'
+    ) {
+      return
+    }
+    openTab(
+      descriptorFor('chat', {
+        courseId: pendingChat.courseId,
+        conversationId: pendingChat.conversationId
+      })
+    )
+    setPendingChat((current) =>
+      current?.courseId === pendingChat.courseId &&
+      current.conversationId === pendingChat.conversationId
+        ? null
+        : current
+    )
+  }, [
+    activeWorkspaceCourseId,
+    courses,
+    openTab,
+    pendingChat,
+    selectCourse,
+    selectedCourseId,
+    workspaceHydration
+  ])
 
   useEffect(() => {
     if (!isSettingsOpen) return

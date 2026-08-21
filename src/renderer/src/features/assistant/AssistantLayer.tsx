@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { onPush } from '../../lib/ipc'
+import type { AssistantMode } from '../../../../shared/types/settings'
+import { invoke, onPush } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { requestChatPrompt } from '../chat/chatPromptBus'
 import { AssistantOrb } from './AssistantOrb'
 import { CharmLayer } from './charms'
 import { AssistantPopup } from './AssistantPopup'
 import { SelectionOrb } from './SelectionOrb'
+import { useAssistantActivity } from './useAssistantActivity'
 import { useSelectionAnchor, type AnchoredSelection } from './useSelectionAnchor'
 import type { BandalOrbState } from './BandalOrbMark'
 import './assistant.css'
@@ -39,104 +41,53 @@ function quotePrompt(selection: AnchoredSelection): string {
   return `${quote}\n>\n> (${source}에서)`
 }
 
-function useAssistantActivity(
-  courseId: string | null,
-  popupOpen: boolean
-): { busy: boolean; alert: boolean; clearAlert: () => void } {
-  const popupOpenRef = useRef(popupOpen)
-  const answerWhileClosedRef = useRef(false)
-  const [eventBusy, setEventBusy] = useState(false)
-  const [surfaceBusy, setSurfaceBusy] = useState(false)
-  const [alert, setAlert] = useState(false)
-  popupOpenRef.current = popupOpen
+function useAssistantMode(): AssistantMode | null {
+  const [mode, setMode] = useState<AssistantMode | null>(null)
 
   useEffect(() => {
-    if (popupOpen) setAlert(false)
-  }, [popupOpen])
-
-  useEffect(() => {
-    setEventBusy(false)
-    setAlert(false)
-    answerWhileClosedRef.current = false
-    if (courseId === null) return
-
-    return onPush('chat:event-batch', (batch) => {
-      if (batch.courseId !== courseId) return
-      let startsActivity = false
-      let endsActivity = false
-      let containsAnswer = false
-
-      for (const event of batch.events) {
-        if (
-          event.type === 'text-delta' ||
-          event.type === 'text-final' ||
-          event.type === 'thinking-delta' ||
-          event.type === 'tool-start' ||
-          event.type === 'permission-request'
-        ) {
-          startsActivity = true
-        }
-        if (event.type === 'text-delta' || event.type === 'text-final') {
-          containsAnswer = true
-        }
-        if (
-          event.type === 'turn-complete' ||
-          (event.type === 'error' && event.fatal)
-        ) {
-          endsActivity = true
-        }
-      }
-
-      if (startsActivity) setEventBusy(true)
-      if (containsAnswer && !popupOpenRef.current) {
-        answerWhileClosedRef.current = true
-      }
-      if (endsActivity) {
-        setEventBusy(false)
-        if (answerWhileClosedRef.current && !popupOpenRef.current) {
-          setAlert(true)
-        }
-        answerWhileClosedRef.current = false
-      }
+    let active = true
+    let receivedPush = false
+    const unsubscribe = onPush('settings:changed', ({ settings }) => {
+      receivedPush = true
+      setMode(settings.assistantMode)
     })
-  }, [courseId])
-
-  useEffect(() => {
-    const popup = document.querySelector('.assistant-popup')
-    if (popup === null) return
-    const update = (): void => {
-      setSurfaceBusy(
-        popup.querySelector('[data-streaming]:not([data-streaming="false"])') !==
-          null
-      )
+    void invoke('settings:get', {})
+      .then((settings) => {
+        if (active && !receivedPush) setMode(settings.assistantMode)
+      })
+      .catch((error: unknown) => {
+        console.error('[Bandal] 어시스턴트 표시 설정을 불러오지 못했습니다.', error)
+      })
+    return () => {
+      active = false
+      unsubscribe()
     }
-    const observer = new MutationObserver(update)
-    observer.observe(popup, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      attributeFilter: ['data-streaming']
-    })
-    update()
-    return () => observer.disconnect()
-  }, [courseId])
+  }, [])
 
-  const clearAlert = useCallback((): void => setAlert(false), [])
-  return { busy: eventBusy || surfaceBusy, alert, clearAlert }
+  return mode
 }
 
-/** Single shell-level entry point for the persistent assistant experience. */
-export function AssistantLayer(): JSX.Element {
-  const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
-  const popupConversationId =
-    selectedCourseId === null
-      ? null
-      : popupConversationIdFor(selectedCourseId)
+interface InAppAssistantProps {
+  selectedCourseId: string | null
+  popupConversationId: string | null
+  selection: AnchoredSelection | null
+  clearSelection: () => void
+}
+
+function InAppAssistant({
+  selectedCourseId,
+  popupConversationId,
+  selection,
+  clearSelection
+}: InAppAssistantProps): JSX.Element {
   const [popupOpen, setPopupOpen] = useState(false)
   const pendingPromptRef = useRef<string | null>(null)
   const orbRef = useRef<HTMLButtonElement>(null)
-  const { selection, clear } = useSelectionAnchor()
-  const activity = useAssistantActivity(selectedCourseId, popupOpen)
+  const activity = useAssistantActivity({
+    courseId: selectedCourseId,
+    popupOpen,
+    observeRoot: '.assistant-popup'
+  })
 
   useEffect(() => {
     if (popupConversationId === null || pendingPromptRef.current === null) return
@@ -160,9 +111,9 @@ export function AssistantLayer(): JSX.Element {
       if (popupConversationId === null) pendingPromptRef.current = prompt
       else requestChatPrompt(popupConversationId, prompt)
       window.getSelection()?.removeAllRanges()
-      clear()
+      clearSelection()
     },
-    [activity, clear, popupConversationId]
+    [activity, clearSelection, popupConversationId]
   )
 
   const orbState: BandalOrbState = activity.busy
@@ -172,7 +123,7 @@ export function AssistantLayer(): JSX.Element {
       : 'idle'
 
   return (
-    <div className="assistant-layer" data-assistant-layer="true">
+    <>
       <CharmLayer orbRef={orbRef} orbState={orbState} />
       <AssistantPopup
         visible={popupOpen}
@@ -192,6 +143,49 @@ export function AssistantLayer(): JSX.Element {
         state={orbState}
         onToggle={togglePopup}
       />
+    </>
+  )
+}
+
+/** Single shell-level entry point for the persistent assistant experience. */
+export function AssistantLayer(): JSX.Element {
+  const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
+  const popupConversationId =
+    selectedCourseId === null
+      ? null
+      : popupConversationIdFor(selectedCourseId)
+  const assistantMode = useAssistantMode()
+  const { selection, clear } = useSelectionAnchor()
+
+  const pickDesktopSelection = useCallback(
+    (picked: AnchoredSelection): void => {
+      const prompt = quotePrompt(picked)
+      void invoke('overlay:prompt', { prompt }).catch((error: unknown) => {
+        console.error('[Bandal] 선택한 내용을 데스크톱 대화로 보내지 못했습니다.', error)
+      })
+      window.getSelection()?.removeAllRanges()
+      clear()
+    },
+    [clear]
+  )
+
+  return (
+    <div className="assistant-layer" data-assistant-layer="true">
+      {assistantMode === 'in-app' && (
+        <InAppAssistant
+          selectedCourseId={selectedCourseId}
+          popupConversationId={popupConversationId}
+          selection={selection}
+          clearSelection={clear}
+        />
+      )}
+      {assistantMode === 'desktop' && selection !== null && (
+        <SelectionOrb
+          selection={selection}
+          courseAvailable={selectedCourseId !== null}
+          onPick={pickDesktopSelection}
+        />
+      )}
     </div>
   )
 }
