@@ -1091,6 +1091,9 @@ export function registerHandlers(): IpcRouter {
             broadcast('materials:changed', { courseId: entry.courseId })
             broadcast('agentTools:changed', {
               courseId: entry.courseId,
+              // Route to the conversation that caused it. Course-level routing
+              // put the change list in every chat of that course.
+              conversationId: sessionKey,
               turnId: entry.turnId
             })
           }

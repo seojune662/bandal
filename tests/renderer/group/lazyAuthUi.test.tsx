@@ -70,8 +70,16 @@ vi.mock('../../../src/renderer/src/stores/groupsStore', () => ({
 }))
 
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({
-  useCoursesStore: (selector: (state: typeof harness.courses) => unknown) =>
-    selector(harness.courses)
+  useCoursesStore: Object.assign(
+    (selector: (state: typeof harness.courses) => unknown) =>
+      selector(harness.courses),
+    {
+      // The shell publishes app state to the agent and reads both stores
+      // imperatively to do it.
+      getState: () => harness.courses,
+      subscribe: () => () => undefined
+    }
+  )
 }))
 
 vi.mock('../../../src/renderer/src/stores/uiStore', () => ({
@@ -216,7 +224,13 @@ beforeEach(() => {
     // The shell subscribes to `courses:changed` now that the assistant can
     // change the course list on its own. Unrelated to auth, but it runs in the
     // same effect pass, and a missing `on` took the whole render down.
-    bandal: { on: vi.fn(() => () => undefined) }
+    bandal: { on: vi.fn(() => () => undefined) },
+    // The shell debounces its app-state publish; a window without timers takes
+    // the whole render down.
+    setTimeout: vi.fn(() => 0),
+    clearTimeout: vi.fn(),
+    requestAnimationFrame: vi.fn(() => 0),
+    cancelAnimationFrame: vi.fn()
   })
   harness.renderTogether = () => <TogetherFooter />
 })

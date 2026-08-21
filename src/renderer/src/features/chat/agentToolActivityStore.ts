@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react'
 import { create } from 'zustand'
 import type {
   AgentAction,
+  AgentConfirmScope,
   AgentConfirmRequest
 } from '../../../../shared/types/agentTools'
 import { invoke, onPush, type Unsubscribe } from '../../lib/ipc'
@@ -34,7 +35,7 @@ export interface AgentToolActivitySnapshot {
 }
 
 interface AgentToolActivityStoreState {
-  courses: Record<string, AgentToolActivitySnapshot>
+  conversations: Record<string, AgentToolActivitySnapshot>
 }
 
 interface AgentToolRuntime {
@@ -46,39 +47,41 @@ const EMPTY_SNAPSHOT: AgentToolActivitySnapshot = { items: [] }
 const runtimes = new Map<string, AgentToolRuntime>()
 
 export const useAgentToolActivityStore =
-  create<AgentToolActivityStoreState>(() => ({ courses: {} }))
+  create<AgentToolActivityStoreState>(() => ({ conversations: {} }))
 
-function snapshotFor(courseId: string): AgentToolActivitySnapshot {
-  return useAgentToolActivityStore.getState().courses[courseId] ?? EMPTY_SNAPSHOT
+function snapshotFor(conversationId: string): AgentToolActivitySnapshot {
+  return useAgentToolActivityStore.getState().conversations[conversationId] ?? EMPTY_SNAPSHOT
 }
 
 function updateSnapshot(
-  courseId: string,
+  conversationId: string,
   update: (
     current: AgentToolActivitySnapshot
   ) => AgentToolActivitySnapshot
 ): void {
   useAgentToolActivityStore.setState((store) => {
-    const current = store.courses[courseId] ?? EMPTY_SNAPSHOT
+    const current = store.conversations[conversationId] ?? EMPTY_SNAPSHOT
     const next = update(current)
     if (next === current) {
       return store
     }
-    return { courses: { ...store.courses, [courseId]: next } }
+    return {
+      conversations: { ...store.conversations, [conversationId]: next }
+    }
   })
 }
 
-function runtimeFor(courseId: string): AgentToolRuntime {
-  let runtime = runtimes.get(courseId)
+function runtimeFor(conversationId: string): AgentToolRuntime {
+  let runtime = runtimes.get(conversationId)
   if (runtime === undefined) {
     runtime = { refCount: 0, unsubscribe: null }
-    runtimes.set(courseId, runtime)
+    runtimes.set(conversationId, runtime)
   }
   return runtime
 }
 
 function appendConfirmation(request: AgentConfirmRequest): void {
-  updateSnapshot(request.courseId, (current) => {
+  updateSnapshot(request.conversationId, (current) => {
     const existingIndex = current.items.findIndex(
       (item) =>
         item.kind === 'confirmation' &&
@@ -109,11 +112,11 @@ function appendConfirmation(request: AgentConfirmRequest): void {
 }
 
 function updateConfirmation(
-  courseId: string,
+  conversationId: string,
   requestId: string,
   update: (item: AgentConfirmationActivity) => AgentConfirmationActivity
 ): void {
-  updateSnapshot(courseId, (current) => {
+  updateSnapshot(conversationId, (current) => {
     let changed = false
     const items = current.items.map((item) => {
       if (
@@ -129,8 +132,8 @@ function updateConfirmation(
   })
 }
 
-function ensureChangesActivity(courseId: string, turnId: string): void {
-  updateSnapshot(courseId, (current) => {
+function ensureChangesActivity(conversationId: string, turnId: string): void {
+  updateSnapshot(conversationId, (current) => {
     const existing = current.items.find(
       (item) => item.kind === 'changes' && item.turnId === turnId
     )
@@ -153,11 +156,11 @@ function ensureChangesActivity(courseId: string, turnId: string): void {
 }
 
 function updateChanges(
-  courseId: string,
+  conversationId: string,
   turnId: string,
   update: (item: AgentChangesActivity) => AgentChangesActivity
 ): void {
-  updateSnapshot(courseId, (current) => {
+  updateSnapshot(conversationId, (current) => {
     let changed = false
     const items = current.items.map((item) => {
       if (item.kind !== 'changes' || item.turnId !== turnId) {
@@ -170,11 +173,11 @@ function updateChanges(
   })
 }
 
-function fetchTurnChanges(courseId: string, turnId: string): void {
-  ensureChangesActivity(courseId, turnId)
+function fetchTurnChanges(conversationId: string, turnId: string): void {
+  ensureChangesActivity(conversationId, turnId)
   void invoke('agentTools:changes', { turnId })
     .then((changes) => {
-      updateChanges(courseId, turnId, (item) => ({
+      updateChanges(conversationId, turnId, (item) => ({
         ...item,
         turnId: changes.turnId,
         actions: changes.actions,
@@ -182,7 +185,7 @@ function fetchTurnChanges(courseId: string, turnId: string): void {
       }))
     })
     .catch(() => {
-      updateChanges(courseId, turnId, (item) => ({
+      updateChanges(conversationId, turnId, (item) => ({
         ...item,
         loadState: 'error'
       }))
@@ -190,25 +193,28 @@ function fetchTurnChanges(courseId: string, turnId: string): void {
 }
 
 /** Retains both assistant-tool push listeners while a course chat is mounted. */
-export function acquireAgentToolActivity(courseId: string): () => void {
-  const runtime = runtimeFor(courseId)
+export function acquireAgentToolActivity(conversationId: string): () => void {
+  const runtime = runtimeFor(conversationId)
   runtime.refCount += 1
   if (runtime.refCount === 1) {
     const unsubscribeConfirm = onPush('agentTools:confirm', (request) => {
-      if (request.courseId === courseId) {
+      // Was `request.conversationId === conversationId`. That is why an approval card
+      // appeared in EVERY past conversation of the same course: one card, one
+      // course key, every ChatSurface mounted for it.
+      if (request.conversationId === conversationId) {
         appendConfirmation(request)
       }
     })
     const unsubscribeChanged = onPush('agentTools:changed', (event) => {
-      if (event.courseId === courseId) {
-        fetchTurnChanges(courseId, event.turnId)
+      if (event.conversationId === conversationId) {
+        fetchTurnChanges(conversationId, event.turnId)
       }
     })
     // The in-app tools failed to come up. Say so — otherwise the assistant
     // just quietly cannot touch the app or the browser, and explains that as
     // if it were a limitation of the product.
     const unsubscribeUnavailable = onPush('agentTools:unavailable', (event) => {
-      if (event.courseId !== courseId) return
+      if (event.sessionId !== conversationId) return
       showToast(
         '앱 도구를 불러오지 못했어요. 대화를 다시 열면 복구돼요.',
         'danger'
@@ -236,11 +242,12 @@ export function acquireAgentToolActivity(courseId: string): () => void {
 }
 
 export function respondToAgentConfirm(
-  courseId: string,
+  conversationId: string,
   requestId: string,
-  approved: boolean
+  approved: boolean,
+  scope?: AgentConfirmScope
 ): void {
-  const confirmation = snapshotFor(courseId).items.find(
+  const confirmation = snapshotFor(conversationId).items.find(
     (item) =>
       item.kind === 'confirmation' && item.request.requestId === requestId
   )
@@ -252,14 +259,19 @@ export function respondToAgentConfirm(
     return
   }
 
-  updateConfirmation(courseId, requestId, (item) => ({
+  updateConfirmation(conversationId, requestId, (item) => ({
     ...item,
     isResponding: true,
     hasResponseError: false
   }))
-  void invoke('agentTools:respondConfirm', { requestId, approved })
+  void invoke('agentTools:respondConfirm', {
+    requestId,
+    approved,
+    // `exactOptionalPropertyTypes`: the key must be absent, not undefined.
+    ...(scope === undefined ? {} : { scope })
+  })
     .then(() => {
-      updateConfirmation(courseId, requestId, (item) => ({
+      updateConfirmation(conversationId, requestId, (item) => ({
         ...item,
         response: approved,
         isResponding: false,
@@ -267,7 +279,7 @@ export function respondToAgentConfirm(
       }))
     })
     .catch(() => {
-      updateConfirmation(courseId, requestId, (item) => ({
+      updateConfirmation(conversationId, requestId, (item) => ({
         ...item,
         isResponding: false,
         hasResponseError: true
@@ -275,8 +287,8 @@ export function respondToAgentConfirm(
     })
 }
 
-export function undoAgentTurn(courseId: string, turnId: string): void {
-  const changes = snapshotFor(courseId).items.find(
+export function undoAgentTurn(conversationId: string, turnId: string): void {
+  const changes = snapshotFor(conversationId).items.find(
     (item) => item.kind === 'changes' && item.turnId === turnId
   )
   if (
@@ -289,14 +301,14 @@ export function undoAgentTurn(courseId: string, turnId: string): void {
     return
   }
 
-  updateChanges(courseId, turnId, (item) => ({
+  updateChanges(conversationId, turnId, (item) => ({
     ...item,
     undoState: 'pending'
   }))
   void invoke('agentTools:undo', { turnId })
     .then(() => {
       const undoneAt = new Date().toISOString()
-      updateChanges(courseId, turnId, (item) => ({
+      updateChanges(conversationId, turnId, (item) => ({
         ...item,
         actions: item.actions.map((action) =>
           action.undoable && action.undoneAt === null
@@ -305,10 +317,10 @@ export function undoAgentTurn(courseId: string, turnId: string): void {
         ),
         undoState: 'complete'
       }))
-      fetchTurnChanges(courseId, turnId)
+      fetchTurnChanges(conversationId, turnId)
     })
     .catch(() => {
-      updateChanges(courseId, turnId, (item) => ({
+      updateChanges(conversationId, turnId, (item) => ({
         ...item,
         undoState: 'error'
       }))
@@ -316,29 +328,36 @@ export function undoAgentTurn(courseId: string, turnId: string): void {
 }
 
 export interface AgentToolActivityApi extends AgentToolActivitySnapshot {
-  respondConfirm: (requestId: string, approved: boolean) => void
+  respondConfirm: (
+    requestId: string,
+    approved: boolean,
+    scope?: AgentConfirmScope
+  ) => void
   undoTurn: (turnId: string) => void
 }
 
-export function useAgentToolActivity(courseId: string): AgentToolActivityApi {
+export function useAgentToolActivity(
+  conversationKey: string
+): AgentToolActivityApi {
+  const conversationId = conversationKey
   const snapshot = useAgentToolActivityStore(
     useCallback(
-      (store) => store.courses[courseId] ?? EMPTY_SNAPSHOT,
-      [courseId]
+      (store) => store.conversations[conversationId] ?? EMPTY_SNAPSHOT,
+      [conversationId]
     )
   )
 
-  useEffect(() => acquireAgentToolActivity(courseId), [courseId])
+  useEffect(() => acquireAgentToolActivity(conversationId), [conversationId])
 
   const respondConfirm = useCallback(
-    (requestId: string, approved: boolean) => {
-      respondToAgentConfirm(courseId, requestId, approved)
+    (requestId: string, approved: boolean, scope?: AgentConfirmScope) => {
+      respondToAgentConfirm(conversationId, requestId, approved, scope)
     },
-    [courseId]
+    [conversationId]
   )
   const undoTurn = useCallback(
-    (turnId: string) => undoAgentTurn(courseId, turnId),
-    [courseId]
+    (turnId: string) => undoAgentTurn(conversationId, turnId),
+    [conversationId]
   )
 
   return { ...snapshot, respondConfirm, undoTurn }

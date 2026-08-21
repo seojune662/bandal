@@ -174,7 +174,15 @@ export interface PushEvents {
   /** A destructive assistant tool is waiting for the student. */
   'agentTools:confirm': AgentConfirmRequest
   /** One request finished changing things; show the change list. */
-  'agentTools:changed': { courseId: string; turnId: string }
+  /**
+   * `conversationId` so the change list lands in the chat that caused it —
+   * course-level routing put it in every conversation of that course.
+   */
+  'agentTools:changed': {
+    courseId: string
+    conversationId: string
+    turnId: string
+  }
   /**
    * The in-app MCP server failed to start for a conversation.
    *

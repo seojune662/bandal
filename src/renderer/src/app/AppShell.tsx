@@ -5,6 +5,7 @@ import { BoardOverlay } from '../features/board/BoardPanel'
 import { BrowserWebviewLayer } from '../features/browser/BrowserWebviewLayer'
 import { PrintPreviewOverlay } from '../features/print/PrintPreviewOverlay'
 import { usePrintRequests } from '../features/print/usePrintRequests'
+import { useAgentWorkspaceSync } from '../features/agent/workspaceSync'
 import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { MaterialsSidebar } from '../features/materials/MaterialsSidebar'
 import { NicknameGate } from '../features/group/NicknameGate'
@@ -30,6 +31,7 @@ import './app-shell.css'
 
 export function AppShell(): JSX.Element {
   usePrintRequests()
+  useAgentWorkspaceSync()
   const courses = useCoursesStore((state) => state.courses)
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
   const loadCourses = useCoursesStore((state) => state.loadCourses)
