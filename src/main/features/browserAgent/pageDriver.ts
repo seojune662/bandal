@@ -96,6 +96,55 @@ function toElements(raw: unknown): SnapshotElement[] {
   })
 }
 
+/**
+ * A page script that never comes back.
+ *
+ * A guest showing a native `alert()` blocks its renderer, so
+ * `executeJavaScript` never settles — and with no timeout, EVERY later tool
+ * call on that tab hung with it. The agent did not fail; it stopped existing.
+ *
+ * Rejecting is the honest outcome: the caller turns it into a message the
+ * student can act on ("페이지가 응답하지 않아요"), which is recoverable. A
+ * silent hang is not.
+ */
+export const PAGE_SCRIPT_TIMEOUT_MS = 5_000
+
+class PageScriptTimeout extends Error {
+  constructor() {
+    super('페이지가 응답하지 않아요. 알림 창이 떠 있는지 확인해 주세요.')
+    this.name = 'PageScriptTimeout'
+  }
+}
+
+function runScript(
+  frame: DriverFrame,
+  code: string,
+  timeoutMs: number = PAGE_SCRIPT_TIMEOUT_MS
+): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      reject(new PageScriptTimeout())
+    }, timeoutMs)
+    frame.executeJavaScript(code).then(
+      (value) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error: unknown) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      }
+    )
+  })
+}
+
 export function createPageDriver(deps: PageDriverDeps) {
   async function snapshot(
     generation: number,
@@ -106,7 +155,7 @@ export function createPageDriver(deps: PageDriverDeps) {
 
     for (const [frameIndex, frame] of frames.entries()) {
       try {
-        const raw = (await frame.executeJavaScript(
+        const raw = (await runScript(frame, 
           SNAPSHOT_SOURCE
         )) as RawFrameResult
         collected.push({
@@ -131,7 +180,7 @@ export function createPageDriver(deps: PageDriverDeps) {
     const [main] = deps.frames()
     if (main === undefined) return { url: deps.currentUrl(), text: '' }
     try {
-      const raw = (await main.executeJavaScript(READ_SOURCE)) as {
+      const raw = (await runScript(main, READ_SOURCE)) as {
         url?: unknown
         text?: unknown
       }
@@ -262,7 +311,7 @@ export function createPageDriver(deps: PageDriverDeps) {
     })()`
 
     try {
-      const raw = (await frame.executeJavaScript(source)) as {
+      const raw = (await runScript(frame, source)) as {
         ok?: unknown
         facts?: unknown
         problem?: unknown

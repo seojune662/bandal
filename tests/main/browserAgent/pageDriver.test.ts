@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest'
 import {
   createPageDriver,
   verdictFor,
+  PAGE_SCRIPT_TIMEOUT_MS,
   type DriverFrame
 } from '../../../src/main/features/browserAgent/pageDriver'
 
@@ -418,5 +419,46 @@ describe('pageSurface typing path', () => {
     ).toBe(true)
     // Focus attempt + the real DOM-tier write.
     expect(calls).toBe(2)
+  })
+})
+
+describe('a page that never answers', () => {
+  test('rejects instead of hanging forever', async () => {
+    // A guest showing a native alert() blocks its renderer, so
+    // executeJavaScript never settles. With no timeout, every later tool call
+    // on that tab hung with it — the agent did not fail, it stopped existing.
+    vi.useFakeTimers()
+    try {
+      const stuck: DriverFrame = {
+        executeJavaScript: () => new Promise(() => undefined)
+      }
+      const driver = createPageDriver({
+        frames: () => [stuck],
+        currentUrl: () => 'https://portal.ac.kr/'
+      })
+      const pending = driver.read(1000)
+      await vi.advanceTimersByTimeAsync(PAGE_SCRIPT_TIMEOUT_MS + 100)
+      // read() swallows failures into empty text; the point is that it RETURNS.
+      await expect(pending).resolves.toEqual({
+        url: 'https://portal.ac.kr/',
+        text: ''
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('a script that answers in time is untouched', async () => {
+    const quick: DriverFrame = {
+      executeJavaScript: async () => ({
+        url: 'https://portal.ac.kr/',
+        text: '본문'
+      })
+    }
+    const driver = createPageDriver({
+      frames: () => [quick],
+      currentUrl: () => 'https://portal.ac.kr/'
+    })
+    expect((await driver.read(1000)).text).toBe('본문')
   })
 })
