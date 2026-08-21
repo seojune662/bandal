@@ -1,2 +1,13 @@
-// 후속 MCP 레지스트리 워커가 채움.
-export {}
+export {
+  createMcpRegistry,
+  MCP_REGISTRY_FILE_NAME,
+  toSummary
+} from './registryStore'
+export type { McpRegistry, McpRegistryDeps } from './registryStore'
+export {
+  buildClaudeMcpConfig,
+  buildCodexMcpOverrides,
+  claudeAllowRulesFor,
+  promptHintFor
+} from './mcpConfig'
+export { testMcpServer } from './testConnection'
