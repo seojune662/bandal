@@ -42,6 +42,7 @@ import {
 } from '../features/browserAgent'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
 import type { PushChannel, PushPayload } from '../../shared/ipc/events'
+import type { AgentAppState } from '../../shared/types/agentTools'
 import { getSettings, setSettings } from '../settingsStore'
 import { getDatabase } from '../db/database'
 import { createLayoutRepo } from '../db/layoutRepo'
@@ -931,6 +932,41 @@ export function registerHandlers(): IpcRouter {
    * The renderer is the authority here, not `guestRegistry`: hidden guests
    * beyond MAX_LIVE_GUESTS are destroyed while their tabs stay on screen.
    */
+  /**
+   * What the student is looking at in Bandal, published by the renderer.
+   *
+   * The browser half of this already existed; the app half did not, which is
+   * why an instruction about the sidebar was resolved against the portal.
+   */
+  let workspaceSnapshot: {
+    selectedCourseId: string | null
+    tabs: { kind: string; title: string; active: boolean }[]
+  } = { selectedCourseId: null, tabs: [] }
+
+  const appStateSnapshot = (): AgentAppState => {
+    const groups = courseGroupsRepo.list()
+    const names = new Map(groups.map((group) => [group.id, group.name]))
+    return {
+      selectedCourseId: workspaceSnapshot.selectedCourseId,
+      groups: groups.map((group) => ({ id: group.id, name: group.name })),
+      courses: coursesRepo.list({ includeArchived: false }).map((course) => ({
+        id: course.id,
+        name: course.name,
+        groupId: course.groupId,
+        groupName:
+          course.groupId === null ? null : (names.get(course.groupId) ?? null)
+      })),
+      workspaceTabs: workspaceSnapshot.tabs,
+      browserTabs: openBrowserTabs.tabs.map((tab) => ({
+        tabId: tab.tabId,
+        title: tab.title,
+        url: tab.url,
+        active: tab.tabId === openBrowserTabs.activeTabId,
+        asleep: tab.asleep
+      }))
+    }
+  }
+
   let openBrowserTabs: {
     courseId: string
     tabs: { tabId: string; title: string; url: string; asleep: boolean }[]
@@ -960,6 +996,13 @@ export function registerHandlers(): IpcRouter {
     }
     pendingTabWakes.get(req.tabId)?.(true)
     pendingTabWakes.delete(req.tabId)
+    return OK
+  })
+  handle('agent:syncWorkspace', (req) => {
+    workspaceSnapshot = {
+      selectedCourseId: req.selectedCourseId,
+      tabs: req.tabs.map((tab) => ({ ...tab }))
+    }
     return OK
   })
   handle('browserAgent:syncTabs', (req) => {
@@ -1019,6 +1062,8 @@ export function registerHandlers(): IpcRouter {
         // restarted) and lumped every action ever into one undo group.
         getTurnId: () => `${sessionKey}:${getTurnSeq()}`,
         coursesRepo,
+        courseGroupsRepo,
+        appState: () => appStateSnapshot(),
         materialsRepo,
         notesRepo,
         boardRepo,

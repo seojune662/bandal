@@ -99,7 +99,14 @@ describe('agent app tools', () => {
 
   test('exposes only the contracted app tools', () => {
     expect(harness.tools.names).toEqual([
+      'app_state',
       'list_courses',
+      'list_course_groups',
+      'create_course_group',
+      'rename_course_group',
+      'delete_course_group',
+      'set_course_group',
+      'archive_course',
       'list_materials',
       'list_boards',
       'read_material',

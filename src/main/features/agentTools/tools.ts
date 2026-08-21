@@ -13,6 +13,8 @@ import { resolveInside } from '../../db/validate'
 import type { BoardRepo } from '../board/boardRepo'
 import type { CanvasRepo } from '../canvas/canvasRepo'
 import type { CoursesRepo } from '../courses/coursesRepo'
+import type { CourseGroupsRepo } from '../courses/courseGroupsRepo'
+import type { AgentAppState } from '../../../shared/types/agentTools'
 import type { MaterialsRepo } from '../materials/materialsRepo'
 import {
   DEFAULT_EXTRACT_MAX_CHARS,
@@ -50,8 +52,35 @@ export interface AgentToolsDeps {
   getTurnId: () => string
   coursesRepo: Pick<
     CoursesRepo,
-    'list' | 'create' | 'rename' | 'softDelete' | 'getById' | 'getFolder'
+    | 'list'
+    | 'create'
+    | 'rename'
+    | 'softDelete'
+    | 'getById'
+    | 'getFolder'
+    | 'organize'
+    | 'archive'
   >
+  /**
+   * 학기 그룹 — the named sidebar sections the student sees.
+   *
+   * This was fully built (repo, IPC, drag-and-drop UI) and completely
+   * unreachable by the agent: the word "group" appeared zero times in this
+   * whole layer, while `list_courses` handed out a `groupId` UUID with no way
+   * to resolve it. A student asking to "change the semester" got the browser.
+   */
+  courseGroupsRepo: Pick<
+    CourseGroupsRepo,
+    'list' | 'create' | 'rename' | 'delete'
+  >
+  /**
+   * What the student is looking at right now, published by the renderer.
+   *
+   * The agent could see the web (browser_tabs) and nothing of the app it
+   * lives in, so any instruction about the app was resolved against the only
+   * surface it could see.
+   */
+  appState?: () => AgentAppState
   materialsRepo: Pick<
     MaterialsRepo,
     'tree' | 'writeFile' | 'createFolder' | 'rename' | 'softDelete'
@@ -345,9 +374,112 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
     AgentToolName,
     (input: Record<string, unknown>) => Promise<unknown> | unknown
   > = {
+    app_state() {
+      const state = deps.appState?.()
+      if (state === undefined) {
+        return {
+          selectedCourseId: null,
+          groups: [],
+          courses: [],
+          workspaceTabs: [],
+          browserTabs: []
+        }
+      }
+      return state
+    },
+
     list_courses(input) {
       const includeArchived = optionalBoolean(input, 'includeArchived') ?? false
-      return deps.coursesRepo.list({ includeArchived })
+      // groupName, not just groupId: a bare UUID is worse than nothing —
+      // the agent can see something is there and cannot read it, so it guesses.
+      const groups = new Map(
+        deps.courseGroupsRepo.list().map((group) => [group.id, group.name])
+      )
+      return deps.coursesRepo.list({ includeArchived }).map((course) => ({
+        ...course,
+        groupName:
+          course.groupId === null ? null : (groups.get(course.groupId) ?? null)
+      }))
+    },
+
+    list_course_groups() {
+      return deps.courseGroupsRepo.list()
+    },
+
+    create_course_group(input) {
+      return deps.courseGroupsRepo.create({
+        name: stringField(input, 'name', { nonEmpty: true })
+      })
+    },
+
+    async rename_course_group(input) {
+      const context = currentTurn()
+      const groupId = stringField(input, 'groupId', { nonEmpty: true })
+      const name = stringField(input, 'name', { nonEmpty: true })
+      const before = deps.courseGroupsRepo
+        .list()
+        .find((group) => group.id === groupId)
+      if (before === undefined) throw new NotFoundError('courseGroup', groupId)
+      await approve(context, 'rename_course_group', `학기 이름을 «${name}» 로 바꿉니다.`, [
+        `지금 이름: ${before.name}`,
+        '안에 든 과목은 그대로 있습니다.'
+      ])
+      const group = deps.courseGroupsRepo.rename({ groupId, name })
+      record(
+        context,
+        deps.courseId,
+        'rename_course_group',
+        'course',
+        groupId,
+        `${before.name} → ${name}`,
+        false
+      )
+      return group
+    },
+
+    async delete_course_group(input) {
+      const context = currentTurn()
+      const groupId = stringField(input, 'groupId', { nonEmpty: true })
+      const before = deps.courseGroupsRepo
+        .list()
+        .find((group) => group.id === groupId)
+      if (before === undefined) throw new NotFoundError('courseGroup', groupId)
+      await approve(context, 'delete_course_group', `학기 «${before.name}» 를 없앱니다.`, [
+        '안에 든 과목은 삭제되지 않고 그룹에서 빠져 나옵니다.'
+      ])
+      deps.courseGroupsRepo.delete({ groupId })
+      record(
+        context,
+        deps.courseId,
+        'delete_course_group',
+        'course',
+        groupId,
+        before.name,
+        false
+      )
+      return { ok: true as const }
+    },
+
+    set_course_group(input) {
+      const courseId = stringField(input, 'courseId', { nonEmpty: true })
+      const groupId = optionalString(input, 'groupId') ?? null
+      const beforeCourseId = optionalString(input, 'beforeCourseId') ?? null
+      return deps.coursesRepo.organize({ courseId, groupId, beforeCourseId })
+    },
+
+    async archive_course(input) {
+      const context = currentTurn()
+      const courseId = stringField(input, 'courseId', { nonEmpty: true })
+      const archived = optionalBoolean(input, 'archived') ?? true
+      const course = deps.coursesRepo.getById(courseId)
+      await approve(
+        context,
+        'archive_course',
+        archived ? `과목 «${course.name}» 을 보관합니다.` : `과목 «${course.name}» 의 보관을 풉니다.`,
+        ['자료는 그대로 남고 목록에서만 빠집니다.']
+      )
+      deps.coursesRepo.archive({ courseId, archived })
+      return { ok: true as const }
     },
 
     list_materials(input) {

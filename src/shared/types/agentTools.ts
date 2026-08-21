@@ -49,6 +49,40 @@ export interface AgentTurnChanges {
  * approval at all (`respondPermission` is a no-op there), so relying on it
  * would leave that provider unguarded.
  */
+/**
+ * What the student is looking at in Bandal right now.
+ *
+ * The agent could see the web — `browser_tabs` — and nothing at all of the
+ * app it lives in. So an instruction about the app ("학기를 바꿔줘", meaning
+ * the sidebar's 2026년 1학기 group) had exactly one referent the agent could
+ * resolve: a `<select>` on the portal. It was not a reasoning failure; it was
+ * the only reading its world model permitted.
+ *
+ * Published by the renderer, cached by main — the same self-healing shape as
+ * `browserAgent:syncTabs`, which this channel absorbs.
+ */
+export interface AgentAppState {
+  /** The course the student has selected in the sidebar. */
+  selectedCourseId: string | null
+  /** 학기 그룹 — the named sidebar sections. */
+  groups: { id: string; name: string }[]
+  courses: {
+    id: string
+    name: string
+    groupId: string | null
+    groupName: string | null
+  }[]
+  /** Non-browser tabs: pdf, note, board, whiteboard, chat, group-chat. */
+  workspaceTabs: { kind: string; title: string; active: boolean }[]
+  browserTabs: {
+    tabId: string
+    title: string
+    url: string
+    active: boolean
+    asleep: boolean
+  }[]
+}
+
 export interface AgentConfirmRequest {
   requestId: string
   courseId: string

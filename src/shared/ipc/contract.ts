@@ -699,6 +699,21 @@ export interface IpcContract {
     }
     res: { ok: true }
   }
+  /**
+   * Renderer publishes what the student is looking at in the APP.
+   *
+   * Sibling of `browserAgent:syncTabs`, and the half that was missing: the
+   * agent could see the web and nothing of Bandal, so "학기를 바꿔줘" — meaning
+   * the sidebar's 2026년 1학기 group — had only one resolvable referent, a
+   * `<select>` on the portal.
+   */
+  'agent:syncWorkspace': {
+    req: {
+      selectedCourseId: string | null
+      tabs: { kind: string; title: string; active: boolean }[]
+    }
+    res: { ok: true }
+  }
   /** Stops a run immediately; the next action throws rather than proceeding. */
   'browserAgent:stopRun': {
     req: { runId: string }
@@ -1376,6 +1391,7 @@ export const IPC_CHANNELS = [
   'window:setPrintEnabled',
   'browserAgent:registerTab',
   'browserAgent:syncTabs',
+  'agent:syncWorkspace',
   'browserAgent:stopRun',
   'browserAgent:resumeRun',
   'agentTools:changes',

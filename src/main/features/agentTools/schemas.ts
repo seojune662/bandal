@@ -122,10 +122,74 @@ const confirms = {
 
 export const AGENT_TOOL_DEFINITIONS = [
   {
+    name: 'app_state',
+    description:
+      '학생이 지금 반달에서 보고 있는 것을 봅니다. 입력이 없습니다. 어느 과목이 선택돼 있는지, 사이드바에 어떤 학기 그룹이 있는지, 어떤 탭이 열려 있는지(웹·PDF·필기·보드)를 돌려줍니다. **지시가 앱에 대한 것인지 웹페이지에 대한 것인지 헷갈리면 여기서 시작하세요.**',
+    inputSchema: objectSchema({}, []),
+    annotations: readOnly
+  },
+  {
     name: 'list_courses',
-    description: '살아있는 과목 목록을 조회합니다.',
+    description:
+      '살아있는 과목 목록을 조회합니다. 각 과목은 groupId 와 groupName 을 가지며, 이는 사이드바에서 그 과목이 들어 있는 학기 그룹입니다(그룹이 없으면 둘 다 null).',
     inputSchema: objectSchema({ includeArchived: boolean('보관된 과목도 포함할지 여부') }),
     annotations: readOnly
+  },
+  {
+    name: 'list_course_groups',
+    description:
+      '사이드바의 학기 그룹 목록입니다. 「2026년 1학기」처럼 학생이 과목을 묶어 두는 이름 있는 구획이며, 학기를 바꾸거나 정리해 달라는 요청은 대개 이것을 가리킵니다.',
+    inputSchema: objectSchema({}, []),
+    annotations: readOnly
+  },
+  {
+    name: 'create_course_group',
+    description: '새 학기 그룹을 만듭니다. 예: "2026년 2학기".',
+    inputSchema: objectSchema({ name: string('그룹 이름') }, ['name']),
+    annotations: readOnly
+  },
+  {
+    name: 'rename_course_group',
+    description:
+      '학기 그룹의 이름을 바꿉니다. 안에 든 과목은 그대로입니다. 학생이 "학기를 바꿔줘"라고 하면 보통 이것입니다.',
+    inputSchema: objectSchema(
+      { groupId: string('그룹 ID. list_course_groups 결과의 id'), name: string('새 이름') },
+      ['groupId', 'name']
+    ),
+    annotations: confirms
+  },
+  {
+    name: 'delete_course_group',
+    description:
+      '학기 그룹을 없앱니다. 안에 든 과목은 삭제되지 않고 그룹에서 빠져 나옵니다.',
+    inputSchema: objectSchema({ groupId: string('그룹 ID') }, ['groupId']),
+    annotations: confirms
+  },
+  {
+    name: 'set_course_group',
+    description:
+      '과목을 학기 그룹에 넣거나 뺍니다. groupId 가 null 이면 그룹에서 빼냅니다. 사이드바에서 과목을 끌어다 놓는 것과 같은 동작입니다.',
+    inputSchema: objectSchema(
+      {
+        courseId,
+        groupId: nullableString('넣을 그룹 ID. null 이면 그룹에서 빼냅니다'),
+        beforeCourseId: nullableString(
+          '이 과목 바로 앞에 놓습니다. null 이면 맨 뒤'
+        )
+      },
+      ['courseId', 'groupId']
+    ),
+    annotations: readOnly
+  },
+  {
+    name: 'archive_course',
+    description:
+      '과목을 보관하거나 보관을 풉니다. 삭제와 다릅니다 — 자료는 그대로 남고 목록에서만 빠집니다.',
+    inputSchema: objectSchema(
+      { courseId, archived: boolean('true 면 보관, false 면 되돌리기') },
+      ['courseId', 'archived']
+    ),
+    annotations: confirms
   },
   {
     name: 'list_materials',
