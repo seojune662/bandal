@@ -14,6 +14,10 @@ import type { BoardRepo } from '../board/boardRepo'
 import type { CanvasRepo } from '../canvas/canvasRepo'
 import type { CoursesRepo } from '../courses/coursesRepo'
 import type { CourseGroupsRepo } from '../courses/courseGroupsRepo'
+import type { CourseLinksRepo } from '../courses/courseLinksRepo'
+import type { FavoritesRepo } from '../favorites'
+import type { SearchIndex } from '../search/searchIndex'
+import type { LinkService } from '../link/linkService'
 import type { AgentAppState } from '../../../shared/types/agentTools'
 import type { MaterialsRepo } from '../materials/materialsRepo'
 import {
@@ -83,8 +87,26 @@ export interface AgentToolsDeps {
   appState?: () => AgentAppState
   materialsRepo: Pick<
     MaterialsRepo,
-    'tree' | 'writeFile' | 'createFolder' | 'rename' | 'softDelete'
+    | 'tree'
+    | 'writeFile'
+    | 'createFolder'
+    | 'rename'
+    | 'softDelete'
+    | 'move'
+    | 'duplicate'
   >
+  /**
+   * The course's saved classroom links.
+   *
+   * The agent had `lms_course_page`, `lms_list` and `lms_new_items` and no
+   * way to CREATE the link they all depend on — so "새 공지 있어?" answered
+   * "이 과목엔 강의실이 연결돼 있지 않아요" and the agent could do nothing
+   * about it.
+   */
+  courseLinksRepo: Pick<CourseLinksRepo, 'list' | 'create' | 'update' | 'delete'>
+  favoritesRepo: Pick<FavoritesRepo, 'list' | 'add' | 'rename' | 'softDelete'>
+  searchIndex: Pick<SearchIndex, 'query'>
+  linkService: Pick<LinkService, 'sendHighlightToNote' | 'sendWebClipToNote'>
   notesRepo: Pick<NotesRepo, 'read' | 'write' | 'create'>
   boardRepo: Pick<BoardRepo, 'list' | 'create' | 'update' | 'softDelete'>
   canvasRepo: Pick<
@@ -97,6 +119,7 @@ export interface AgentToolsDeps {
     | 'removeBoard'
     | 'open'
     | 'putShape'
+    | 'removeShapes'
   >
   /**
    * `conversationId` is supplied by the injection site, which is the only
