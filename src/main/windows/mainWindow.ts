@@ -1,17 +1,33 @@
-import { BrowserWindow, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, nativeTheme, shell } from 'electron'
 import { join } from 'node:path'
-import { resolveWindowBackground, resolveWindowSymbolColor } from '../../shared/theme'
+import {
+  resolveWindowBackground as resolveThemeWindowBackground,
+  resolveWindowSymbolColor
+} from '../../shared/theme'
 import { hardenWindowWebviews } from '../features/browser'
 import { getSettings } from '../settingsStore'
-import { readWindowState, trackWindowState } from './windowBounds'
+import { createWindowStateStore } from './windowBounds'
 
 let mainWindow: BrowserWindow | null = null
+const mainWindowClosedListeners = new Set<() => void>()
+const MIN_WIDTH = 1024
+const MIN_HEIGHT = 640
 
 /** Painted before any CSS loads, so it must track the theme's --bg-app
  * exactly (src/shared/theme.ts) or launch flashes the wrong color. */
-function resolveBackground(): string {
+export function resolveWindowBackground(): string {
   const { theme, palette } = getSettings()
-  return resolveWindowBackground(theme, palette, nativeTheme.shouldUseDarkColors)
+  return resolveThemeWindowBackground(
+    theme,
+    palette,
+    nativeTheme.shouldUseDarkColors
+  )
+}
+
+/** Subscribes to the main window lifetime without taking ownership of it. */
+export function onMainWindowClosed(cb: () => void): () => void {
+  mainWindowClosedListeners.add(cb)
+  return () => mainWindowClosedListeners.delete(cb)
 }
 
 export function createMainWindow(): BrowserWindow {
@@ -20,7 +36,12 @@ export function createMainWindow(): BrowserWindow {
     return mainWindow
   }
 
-  const windowState = readWindowState()
+  const windowStateStore = createWindowStateStore({
+    file: join(app.getPath('userData'), 'window-state.json'),
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT
+  })
+  const windowState = windowStateStore.read()
 
   mainWindow = new BrowserWindow({
     width: windowState.bounds?.width ?? 1280,
@@ -28,8 +49,8 @@ export function createMainWindow(): BrowserWindow {
     ...(windowState.bounds !== null
       ? { x: windowState.bounds.x, y: windowState.bounds.y }
       : {}),
-    minWidth: 1024,
-    minHeight: 640,
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT,
     show: false,
     // macOS: traffic lights inset into our chrome. Windows: frameless + native
     // caption buttons via titleBarOverlay — without it there are NO window
@@ -38,7 +59,7 @@ export function createMainWindow(): BrowserWindow {
     ...(process.platform === 'win32'
       ? {
           titleBarOverlay: {
-            color: resolveBackground(),
+            color: resolveWindowBackground(),
             symbolColor: resolveWindowSymbolColor(
               getSettings().theme,
               nativeTheme.shouldUseDarkColors
@@ -49,7 +70,7 @@ export function createMainWindow(): BrowserWindow {
           }
         }
       : {}),
-    backgroundColor: resolveBackground(),
+    backgroundColor: resolveWindowBackground(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -63,7 +84,7 @@ export function createMainWindow(): BrowserWindow {
 
   // Must be attached before the renderer loads so no webview can slip past.
   hardenWindowWebviews(mainWindow)
-  trackWindowState(mainWindow)
+  windowStateStore.track(mainWindow)
 
   if (windowState.maximized) mainWindow.maximize()
 
@@ -73,6 +94,7 @@ export function createMainWindow(): BrowserWindow {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    for (const listener of mainWindowClosedListeners) listener()
   })
 
   // Open target=_blank links in the external browser, never in-app.

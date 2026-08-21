@@ -49,6 +49,10 @@ extraResources:
     to: fonts
     filter:
       - '**/*.otf'
+  - from: resources
+    to: tray
+    filter:
+      - 'tray*'
 
 # better-sqlite3 ships a native .node binding that cannot load from inside
 # the asar archive.

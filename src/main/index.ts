@@ -1,13 +1,35 @@
-import path from 'node:path'
-import { app, BrowserWindow, ipcMain, protocol } from 'electron'
+import path, { join } from 'node:path'
+import { app, ipcMain, protocol } from 'electron'
+import type { Settings, SettingsPatch } from '../shared/types/settings'
 import { initDatabase, closeDatabase } from './db/database'
 import { createDeepLinkQueue } from './deepLinkQueue'
 import { findDeepLinkArg } from './features/group/authCallbackUrl'
-import { registerHandlers } from './ipc/registerHandlers'
+import { broadcast, registerHandlers } from './ipc/registerHandlers'
 import { installApplicationMenu } from './menu'
-import { createMainWindow } from './windows/mainWindow'
+import { getSettings, setSettings as persistSettings } from './settingsStore'
+import {
+  createMainWindow,
+  getMainWindow,
+  onMainWindowClosed,
+  resolveWindowBackground
+} from './windows/mainWindow'
+import { createOverlayController } from './windows/overlayController'
 import { openSettingsInApp } from './windows/settingsWindow'
+import { installTray } from './windows/tray'
 import { reportFatalStartupError } from './startupError'
+
+const settingsChangedListeners = new Set<(settings: Settings) => void>()
+
+function onSettingsChanged(cb: (settings: Settings) => void): () => void {
+  settingsChangedListeners.add(cb)
+  return () => settingsChangedListeners.delete(cb)
+}
+
+function setSettings(patch: SettingsPatch): Settings {
+  const settings = persistSettings(patch)
+  for (const listener of settingsChangedListeners) listener(settings)
+  return settings
+}
 
 // [M6-B testability] E2E runs (Playwright _electron) point the app at a
 // throwaway profile so tests never touch the real userData. Must run before
@@ -97,7 +119,31 @@ if (!app.requestSingleInstanceLock()) {
       return
     }
 
-    const router = registerHandlers()
+    const overlay = createOverlayController({
+      getSettings,
+      onSettingsChanged,
+      broadcast,
+      getMainWindow,
+      createMainWindow,
+      preloadPath: join(__dirname, '../preload/index.js'),
+      windowBackground: resolveWindowBackground,
+      userDataPath: app.getPath('userData')
+    })
+    const tray = installTray({
+      getSettings,
+      setSettings,
+      openMain: () => {
+        const main = getMainWindow() ?? createMainWindow()
+        main.show()
+        main.focus()
+      },
+      quit: () => {
+        overlay.markQuitting()
+        app.quit()
+      }
+    })
+    onSettingsChanged(() => tray.refresh())
+    const router = registerHandlers({ overlay, setSettings })
 
     // Temporary M0 channel to open the settings window from the renderer.
     // Replaced by an app menu entry in a later milestone.
@@ -107,6 +153,20 @@ if (!app.requestSingleInstanceLock()) {
     })
 
     const window = createMainWindow()
+    overlay.start()
+    tray.refresh()
+
+    onMainWindowClosed(() => {
+      const settings = getSettings()
+      if (
+        settings.assistantMode === 'desktop' &&
+        !settings.desktopOrb.keepAliveOnClose
+      ) {
+        overlay.stop()
+      }
+    })
+
+    app.on('before-quit', () => overlay.markQuitting())
 
     // Replay only once the renderer is listening: the auth result travels back
     // as an `auth:changed` push, and a push sent to a window that has not
@@ -120,7 +180,7 @@ if (!app.requestSingleInstanceLock()) {
     window.webContents.once('did-fail-load', attachDeepLinks)
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
+      if (getMainWindow() === null) {
         createMainWindow()
       }
     })

@@ -18,6 +18,7 @@ import {
   ipcMain,
   nativeImage,
   protocol,
+  safeStorage,
   session,
   shell,
   webContents
@@ -44,7 +45,9 @@ import {
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
 import type { PushChannel, PushPayload } from '../../shared/ipc/events'
 import type { AgentAppState } from '../../shared/types/agentTools'
-import { getSettings, setSettings } from '../settingsStore'
+import type { ScreenPermissionState } from '../../shared/types/overlay'
+import type { Settings, SettingsPatch } from '../../shared/types/settings'
+import { getSettings, setSettings as persistSettings } from '../settingsStore'
 import { getDatabase } from '../db/database'
 import { createLayoutRepo } from '../db/layoutRepo'
 import {
@@ -126,6 +129,17 @@ import {
   restoreMaterialBackup,
   startAgentToolsServer
 } from '../features/agentTools'
+import {
+  createDesktopAuditRepo,
+  createDesktopGrantsRepo,
+  createDesktopRunRegistry,
+  createDesktopSurface,
+  createDesktopTools,
+  createElectronDesktopDeps,
+  type ScreenAccess
+} from '../features/desktopAgent'
+import { createMcpRegistry, testMcpServer } from '../features/mcpRegistry'
+import type { OverlayController } from '../windows/overlayController'
 
 /**
  * What `registerHandlers` hands back to `main/index.ts`.
@@ -137,6 +151,12 @@ import {
 export interface IpcRouter {
   /** Routes a `bandal://` URL. Fire-and-forget; never throws. */
   handleDeepLink(url: string): void
+}
+
+export interface RegisterHandlersDeps {
+  overlay: OverlayController
+  /** Bootstrap wrapper that fans persisted settings changes out to main UI. */
+  setSettings?: (patch: SettingsPatch) => Settings
 }
 
 /**
@@ -201,7 +221,7 @@ const dragIconCache = new Map<string, NativeImage>()
 const QUIT_DRAIN_MS = 150
 
 /** Sends a push event to every open window. */
-function broadcast<K extends PushChannel>(
+export function broadcast<K extends PushChannel>(
   channel: K,
   payload: PushPayload<K>
 ): void {
@@ -210,8 +230,30 @@ function broadcast<K extends PushChannel>(
   }
 }
 
-export function registerHandlers(): IpcRouter {
+function screenPermissionState(access: ScreenAccess): ScreenPermissionState {
+  if (access === 'granted') return 'granted'
+  if (access === 'denied' || access === 'restricted') return 'denied'
+  if (access === 'not-determined') return 'unknown'
+  if (process.platform === 'win32') return 'granted'
+  return 'unsupported'
+}
+
+export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const db = getDatabase()
+  const setSettings = deps.setSettings ?? persistSettings
+  const desktopGrants = createDesktopGrantsRepo(db)
+  const desktopAudit = createDesktopAuditRepo(db)
+  const desktopRun = createDesktopRunRegistry({
+    emit: (payload) => broadcast('desktopAgent:run-state', payload)
+  })
+  const desktopSurface = createDesktopSurface(createElectronDesktopDeps())
+  const mcpRegistry = createMcpRegistry({
+    safeStorage,
+    userDataPath: app.getPath('userData')
+  })
+  deps.overlay.setScreenPermission(
+    screenPermissionState(desktopSurface.access())
+  )
   const coursesRepo = createCoursesRepo({
     db,
     getDataRoot: () => getSettings().dataRoot
@@ -1178,11 +1220,15 @@ export function registerHandlers(): IpcRouter {
   const startToolServer = async (
     courseId: string,
     sessionKey: string,
-    getTurnSeq: () => number
+    getTurnSeq: () => number,
+    surface: 'app' | 'desktop'
   ): Promise<Awaited<ReturnType<typeof startAgentToolsServer>>> =>
     startAgentToolsServer({
       sessionId: sessionKey,
       userDataPath: app.getPath('userData'),
+      ...(surface === 'desktop'
+        ? { userMcpServers: mcpRegistry.resolveEnabled() }
+        : {}),
       deps: {
         courseId,
         // Keyed by conversation, not course: two conversations in one course
@@ -1211,6 +1257,29 @@ export function registerHandlers(): IpcRouter {
           sessionKey,
           () => `${sessionKey}:${getTurnSeq()}`
         ),
+        ...(surface === 'desktop'
+          ? {
+              desktop: createDesktopTools({
+                courseId,
+                conversationId: sessionKey,
+                getTurnId: () => `${sessionKey}:${getTurnSeq()}`,
+                surface: desktopSurface,
+                grants: desktopGrants,
+                audit: desktopAudit,
+                confirm: (input) =>
+                  agentConfirmer.confirm({
+                    ...input,
+                    courseId,
+                    conversationId: sessionKey
+                  }),
+                run: desktopRun,
+                onPermission: (payload) => {
+                  broadcast('desktopAgent:permission', payload)
+                  deps.overlay.setScreenPermission(payload.state)
+                }
+              })
+            }
+          : {}),
         journal: {
           record: (entry) => {
             agentJournal.record(entry)
@@ -1312,7 +1381,11 @@ export function registerHandlers(): IpcRouter {
         console.error('[context] rebuild failed', error)
       }
     })
-    return resolveManager(req.sessionId).open(req.courseId, req.sessionId)
+    return resolveManager(req.sessionId).open(
+      req.courseId,
+      req.sessionId,
+      req.surface ?? 'app'
+    )
   })
   handle('chat:send', (req) =>
     resolveManager(req.sessionId).send(
@@ -1327,8 +1400,63 @@ export function registerHandlers(): IpcRouter {
     return OK
   })
   handle('chat:conversations', (req) => ({
-    conversations: chatRepo.listConversations(req.courseId)
+    conversations: chatRepo.listConversations(
+      req.courseId,
+      req.surface ?? 'app'
+    )
   }))
+
+  // -- desktop overlay -----------------------------------------------------
+  handle('overlay:getState', () => deps.overlay.getState())
+  handle('overlay:setCourse', (req) => deps.overlay.setCourse(req.courseId))
+  handle('overlay:togglePopup', (req) => deps.overlay.togglePopup(req.open))
+  handle('overlay:orbDragBegin', (req) => {
+    deps.overlay.orbDragBegin(req)
+    return OK
+  })
+  handle('overlay:orbDragEnd', () => {
+    deps.overlay.orbDragEnd()
+    return OK
+  })
+  handle('overlay:prompt', (req) => {
+    deps.overlay.prompt(req.prompt)
+    return OK
+  })
+  handle('overlay:openInApp', (req) => {
+    deps.overlay.openInApp(req)
+    return OK
+  })
+
+  // -- user MCP registry ---------------------------------------------------
+  handle('mcp:list', () => ({
+    servers: mcpRegistry.list(),
+    availability: mcpRegistry.availability()
+  }))
+  handle('mcp:save', (req) => {
+    const server = mcpRegistry.save(req)
+    broadcast('mcp:changed', {})
+    return { server }
+  })
+  handle('mcp:delete', (req) => {
+    mcpRegistry.delete(req.id)
+    broadcast('mcp:changed', {})
+    return OK
+  })
+  handle('mcp:test', async (req) => {
+    // Enabled entries retain their secret env/header values. A disabled entry
+    // can still be probed with its public transport fields; the registry
+    // intentionally never exposes its secrets through list().
+    const config =
+      mcpRegistry.resolveEnabled().find((server) => server.id === req.id) ??
+      mcpRegistry.list().find((server) => server.id === req.id)
+    if (config === undefined) {
+      throw new ValidationError('테스트할 MCP 서버를 찾을 수 없습니다.')
+    }
+    const result = await testMcpServer(config)
+    mcpRegistry.recordTest(req.id, result)
+    broadcast('mcp:changed', {})
+    return result
+  })
   handle('chat:deleteConversation', (req) => {
     // Close any warm CLI on either manager before the row disappears.
     sessionManager.close(req.courseId, req.sessionId)

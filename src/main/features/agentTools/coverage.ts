@@ -21,8 +21,10 @@
  * assistant's own plumbing (`chat:*`, `agent:*`, `agentTools:*`,
  * `browserAgent:*`), and app/system surfaces (`settings:*`, `update:*`,
  * `window:*`, `shell:*`, `print:*`, `layout:*`, `media:*`, `context:*`). Those
- * are not the study workspace, and an agent that could sign the student out or
- * read the credential store is a different product.
+ * are not the study workspace. `overlay:*` is desktop-window plumbing and
+ * `mcp:*` manages external tool configuration, so neither prefix belongs in
+ * WORKSPACE_PREFIXES either. An agent that could sign the student out or read
+ * the credential store is a different product.
  */
 
 /** The prefixes this file governs — the student's study workspace. */
