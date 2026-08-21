@@ -7,6 +7,8 @@ import type {
   AgentConfirmRequest
 } from '../../../shared/types/agentTools'
 import type { TaskKind, TaskStatus, UpdateTaskInput } from '../../../shared/types/board'
+import type { CourseLinkKind } from '../../../shared/types/courseLink'
+import type { TabDescriptor } from '../../../shared/tabs'
 import type { BoardBackground, BoardSurface } from '../../../shared/types/whiteboard'
 import { NotFoundError, ValidationError } from '../../db/errors'
 import { resolveInside } from '../../db/validate'
@@ -259,6 +261,22 @@ function nullableStringField(
 ): string | null {
   if (input[key] === null) return null
   return stringField(input, key, { nonEmpty: true })
+}
+
+function stringArrayField(
+  input: Record<string, unknown>,
+  key: string
+): string[] {
+  const value = input[key]
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new ValidationError(`${key} must be a non-empty array`)
+  }
+  return value.map((item, index) => {
+    if (typeof item !== 'string' || item.trim() === '') {
+      throw new ValidationError(`${key}[${index}] must be a non-empty string`)
+    }
+    return item
+  })
 }
 
 function errorText(error: unknown): string {
@@ -1060,6 +1078,213 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
         totalReplacements: prepared.total,
         backup: backup.backupName
       }
+    },
+
+    list_course_links(input) {
+      return deps.courseLinksRepo.list({
+        courseId: stringField(input, 'courseId', { nonEmpty: true })
+      })
+    },
+
+    create_course_link(input) {
+      const context = currentTurn()
+      const courseId = stringField(input, 'courseId', { nonEmpty: true })
+      const link = deps.courseLinksRepo.create({
+        courseId,
+        label: stringField(input, 'label', { nonEmpty: true }),
+        rawUrl: stringField(input, 'rawUrl', { nonEmpty: true }),
+        kind: stringField(input, 'kind', { nonEmpty: true }) as CourseLinkKind,
+        ...(has(input, 'url') ? { url: stringField(input, 'url', { nonEmpty: true }) } : {}),
+        ...(has(input, 'lmsCourseId')
+          ? { lmsCourseId: nullableStringField(input, 'lmsCourseId') }
+          : {})
+      })
+      record(context, courseId, 'create_course_link', 'course', link.id, `바로가기 «${link.label}»`, false)
+      return link
+    },
+
+    update_course_link(input) {
+      const context = currentTurn()
+      const link = deps.courseLinksRepo.update({
+        id: stringField(input, 'id', { nonEmpty: true }),
+        ...(has(input, 'label')
+          ? { label: stringField(input, 'label', { nonEmpty: true }) }
+          : {}),
+        ...(has(input, 'sortOrder')
+          ? { sortOrder: optionalInteger(input, 'sortOrder', 0) as number }
+          : {})
+      })
+      record(context, link.courseId, 'update_course_link', 'course', link.id, `바로가기 «${link.label}»`, false)
+      return link
+    },
+
+    async delete_course_link(input) {
+      const context = currentTurn()
+      const id = stringField(input, 'id', { nonEmpty: true })
+      if (!await approve(
+        context,
+        'delete_course_link',
+        `과목 바로가기 «${id}»을(를) 삭제합니다.`,
+        [id]
+      )) return cancelled('delete_course_link')
+      const result = deps.courseLinksRepo.delete({ id })
+      record(context, context.courseId, 'delete_course_link', 'course', id, `바로가기 «${id}»`, false)
+      return result
+    },
+
+    async move_material(input) {
+      const context = currentTurn()
+      const courseId = stringField(input, 'courseId', { nonEmpty: true })
+      const fromRelPath = stringField(input, 'fromRelPath', { nonEmpty: true })
+      const toDirRelPath = stringField(input, 'toDirRelPath')
+      assertCoursePath(courseId, fromRelPath)
+      assertCoursePath(courseId, toDirRelPath, true)
+      if (!await approve(
+        context,
+        'move_material',
+        `자료 «${fromRelPath}»을(를) «${toDirRelPath || '과목 루트'}»로 옮깁니다.`,
+        [fromRelPath, toDirRelPath || '과목 루트']
+      )) return cancelled('move_material')
+      const result = deps.materialsRepo.move({ courseId, fromRelPath, toDirRelPath })
+      record(context, courseId, 'move_material', 'material', result.relPath, `자료 «${result.relPath}»`, false)
+      return result
+    },
+
+    duplicate_material(input) {
+      const context = currentTurn()
+      const courseId = stringField(input, 'courseId', { nonEmpty: true })
+      const relPath = stringField(input, 'relPath', { nonEmpty: true })
+      assertCoursePath(courseId, relPath)
+      reserve('files', 1)
+      let result
+      try {
+        result = deps.materialsRepo.duplicate({ courseId, relPath })
+      } catch (error) {
+        release('files', 1)
+        throw error
+      }
+      record(context, courseId, 'duplicate_material', 'material', result.relPath, `자료 «${result.relPath}»`, true)
+      return result
+    },
+
+    list_favorites(input) {
+      return deps.favoritesRepo.list(nullableStringField(input, 'courseId'))
+    },
+
+    add_favorite(input) {
+      const context = currentTurn()
+      const courseId = nullableStringField(input, 'courseId')
+      const favorite = deps.favoritesRepo.add({
+        courseId,
+        label: stringField(input, 'label', { nonEmpty: true }),
+        descriptor: inputObject(input['descriptor']) as unknown as TabDescriptor
+      })
+      record(context, courseId ?? context.courseId, 'add_favorite', 'course', favorite.id, `즐겨찾기 «${favorite.label}»`, false)
+      return favorite
+    },
+
+    rename_favorite(input) {
+      const context = currentTurn()
+      const favorite = deps.favoritesRepo.rename({
+        id: stringField(input, 'id', { nonEmpty: true }),
+        label: stringField(input, 'label', { nonEmpty: true })
+      })
+      record(context, favorite.courseId ?? context.courseId, 'rename_favorite', 'course', favorite.id, `즐겨찾기 «${favorite.label}»`, false)
+      return favorite
+    },
+
+    async remove_favorite(input) {
+      const context = currentTurn()
+      const id = stringField(input, 'id', { nonEmpty: true })
+      if (!await approve(
+        context,
+        'remove_favorite',
+        `즐겨찾기 «${id}»을(를) 삭제합니다.`,
+        [id]
+      )) return cancelled('remove_favorite')
+      deps.favoritesRepo.softDelete(id)
+      record(context, context.courseId, 'remove_favorite', 'course', id, `즐겨찾기 «${id}»`, false)
+      return { ok: true as const }
+    },
+
+    search_course(input) {
+      const courseId = stringField(input, 'courseId', { nonEmpty: true })
+      const query = stringField(input, 'query', { nonEmpty: true })
+      const limit = optionalInteger(input, 'limit', 1)
+      return { hits: deps.searchIndex.query(courseId, query, limit) }
+    },
+
+    async remove_shapes(input) {
+      const context = currentTurn()
+      const boardId = stringField(input, 'boardId', { nonEmpty: true })
+      const ids = [...new Set(stringArrayField(input, 'ids'))]
+      const board = deps.canvasRepo.open(boardId).board
+      if (!await approve(
+        context,
+        'remove_shapes',
+        `화이트보드 «${board.title}»에서 도형 ${ids.length}개를 삭제합니다.`,
+        ids
+      )) return cancelled('remove_shapes')
+      deps.canvasRepo.removeShapes({ boardId, ids })
+      for (const id of ids) {
+        record(context, board.courseId, 'remove_shapes', 'shape', `${boardId}\u0000${id}`, `화이트보드 도형 «${id}»`, false)
+      }
+      return { ok: true as const }
+    },
+
+    send_highlight_to_note(input) {
+      const context = currentTurn()
+      const courseId = stringField(input, 'courseId', { nonEmpty: true })
+      const relPath = stringField(input, 'relPath', { nonEmpty: true })
+      const noteRelPath = optionalString(input, 'noteRelPath')
+      assertCoursePath(courseId, relPath)
+      if (noteRelPath !== undefined) assertCoursePath(courseId, noteRelPath)
+      const mayCreate = noteRelPath === undefined
+      if (mayCreate) reserve('files', 1)
+      let result
+      try {
+        result = deps.linkService.sendHighlightToNote({
+          courseId,
+          relPath,
+          page: optionalInteger(input, 'page', 1) as number,
+          quote: stringField(input, 'quote', { nonEmpty: true }),
+          comment: nullableStringField(input, 'comment'),
+          annotationId: stringField(input, 'annotationId', { nonEmpty: true }),
+          ...(noteRelPath !== undefined ? { noteRelPath } : {})
+        })
+      } catch (error) {
+        if (mayCreate) release('files', 1)
+        throw error
+      }
+      if (mayCreate && !result.created) release('files', 1)
+      record(context, courseId, 'send_highlight_to_note', 'note', result.relPath, `필기 «${result.relPath}»`, result.created)
+      return result
+    },
+
+    send_web_clip_to_note(input) {
+      const context = currentTurn()
+      const courseId = stringField(input, 'courseId', { nonEmpty: true })
+      const noteRelPath = optionalString(input, 'noteRelPath')
+      if (noteRelPath !== undefined) assertCoursePath(courseId, noteRelPath)
+      const mayCreate = noteRelPath === undefined
+      if (mayCreate) reserve('files', 1)
+      let result
+      try {
+        result = deps.linkService.sendWebClipToNote({
+          courseId,
+          url: stringField(input, 'url', { nonEmpty: true }),
+          title: stringField(input, 'title'),
+          quote: stringField(input, 'quote', { nonEmpty: true }),
+          comment: nullableStringField(input, 'comment'),
+          ...(noteRelPath !== undefined ? { noteRelPath } : {})
+        })
+      } catch (error) {
+        if (mayCreate) release('files', 1)
+        throw error
+      }
+      if (mayCreate && !result.created) release('files', 1)
+      record(context, courseId, 'send_web_clip_to_note', 'note', result.relPath, `필기 «${result.relPath}»`, result.created)
+      return result
     }
   }
 

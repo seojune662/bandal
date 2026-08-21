@@ -490,6 +490,128 @@ export const AGENT_TOOL_DEFINITIONS = [
       ['courseId', 'relPath', 'replacements']
     ),
     annotations: confirms
+  },
+  {
+    name: 'list_course_links',
+    description: '과목에 저장된 바로가기 목록을 조회합니다.',
+    inputSchema: objectSchema({ courseId }, ['courseId']),
+    annotations: readOnly
+  },
+  {
+    name: 'create_course_link',
+    description: '과목에 새 바로가기를 저장합니다.',
+    inputSchema: objectSchema(
+      {
+        courseId, label: string('바로가기 이름'), rawUrl: string('입력된 원본 URL'),
+        kind: { type: 'string', enum: ['lms-course', 'portal', 'lms', 'library', 'mail', 'registration', 'homepage', 'other'] },
+        url: string('열 때 사용하는 URL'),
+        lmsCourseId: nullableString('강의실의 과목 ID')
+      },
+      ['courseId', 'label', 'rawUrl', 'kind']
+    ),
+    annotations: readOnly
+  },
+  {
+    name: 'update_course_link',
+    description: '저장된 과목 바로가기의 이름이나 순서를 수정합니다.',
+    inputSchema: objectSchema(
+      { id: string('바로가기 ID'), label: string('새 바로가기 이름'),
+        sortOrder: integer('0부터 시작하는 정렬 순서', 0) },
+      ['id']
+    ),
+    annotations: readOnly
+  },
+  {
+    name: 'delete_course_link',
+    description: '확인을 받은 뒤 저장된 과목 바로가기를 삭제합니다.',
+    inputSchema: objectSchema({ id: string('바로가기 ID') }, ['id']),
+    annotations: confirms
+  },
+  {
+    name: 'move_material',
+    description: '확인을 받은 뒤 자료 파일이나 폴더를 다른 폴더로 옮깁니다.',
+    inputSchema: objectSchema(
+      { courseId, fromRelPath: relPath,
+        toDirRelPath: string('대상 폴더의 과목 기준 상대 경로. 루트는 빈 문자열') },
+      ['courseId', 'fromRelPath', 'toDirRelPath']
+    ),
+    annotations: confirms
+  },
+  {
+    name: 'duplicate_material',
+    description: '자료 파일이나 폴더의 사본을 만듭니다.',
+    inputSchema: objectSchema({ courseId, relPath }, ['courseId', 'relPath']),
+    annotations: readOnly
+  },
+  {
+    name: 'list_favorites',
+    description: '과목 또는 앱 전체의 즐겨찾기 목록을 조회합니다.',
+    inputSchema: objectSchema({ courseId: nullableString('과목 ID. 앱 전체 즐겨찾기는 null') }, ['courseId']),
+    annotations: readOnly
+  },
+  {
+    name: 'add_favorite',
+    description: '탭을 과목 또는 앱 전체 즐겨찾기에 추가합니다.',
+    inputSchema: objectSchema(
+      { courseId: nullableString('과목 ID. 앱 전체 즐겨찾기는 null'),
+        label: string('즐겨찾기 이름'), descriptor: { type: 'object', description: '저장할 탭 설명자' } },
+      ['courseId', 'label', 'descriptor']
+    ),
+    annotations: readOnly
+  },
+  {
+    name: 'rename_favorite',
+    description: '즐겨찾기의 이름을 바꿉니다.',
+    inputSchema: objectSchema({ id: string('즐겨찾기 ID'),
+      label: string('새 즐겨찾기 이름') }, ['id', 'label']),
+    annotations: readOnly
+  },
+  {
+    name: 'remove_favorite',
+    description: '확인을 받은 뒤 즐겨찾기를 삭제합니다.',
+    inputSchema: objectSchema({ id: string('즐겨찾기 ID') }, ['id']),
+    annotations: confirms
+  },
+  {
+    name: 'search_course',
+    description: '과목의 필기와 자료 본문을 검색합니다.',
+    inputSchema: objectSchema({ courseId, query: string('검색어'),
+      limit: integer('최대 결과 수') }, ['courseId', 'query']),
+    annotations: readOnly
+  },
+  {
+    name: 'remove_shapes',
+    description: '확인을 받은 뒤 개인 화이트보드의 도형을 삭제합니다.',
+    inputSchema: objectSchema({ boardId,
+      ids: { type: 'array', minItems: 1, items: string('도형 ID') } }, ['boardId', 'ids']),
+    annotations: confirms
+  },
+  {
+    name: 'send_highlight_to_note',
+    description: '자료의 하이라이트와 원문 링크를 Markdown 필기에 보냅니다.',
+    inputSchema: objectSchema(
+      {
+        courseId, relPath, page: integer('원본 PDF의 1부터 시작하는 페이지'),
+        quote: string('하이라이트한 문구'), comment: nullableString('하이라이트에 덧붙일 메모'),
+        annotationId: string('하이라이트 ID'),
+        noteRelPath: string('대상 필기의 과목 기준 상대 경로')
+      },
+      ['courseId', 'relPath', 'page', 'quote', 'comment', 'annotationId']
+    ),
+    annotations: readOnly
+  },
+  {
+    name: 'send_web_clip_to_note',
+    description: '웹 페이지의 인용문과 원문 링크를 Markdown 필기에 보냅니다.',
+    inputSchema: objectSchema(
+      {
+        courseId, url: string('인용한 웹 페이지 URL'), title: string('인용한 웹 페이지 제목'),
+        quote: string('인용한 문구'), comment: nullableString('인용문에 덧붙일 메모'),
+        noteRelPath: string('대상 필기의 과목 기준 상대 경로')
+      },
+      ['courseId', 'url', 'title', 'quote', 'comment']
+    ),
+    annotations: readOnly
   }
 ] as const satisfies readonly Tool[]
 

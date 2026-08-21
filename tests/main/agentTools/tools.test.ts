@@ -4,9 +4,14 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { createBoardRepo } from '../../../src/main/features/board/boardRepo'
 import { createCanvasRepo } from '../../../src/main/features/canvas/canvasRepo'
+import { createCourseGroupsRepo } from '../../../src/main/features/courses/courseGroupsRepo'
+import { createCourseLinksRepo } from '../../../src/main/features/courses/courseLinksRepo'
 import { createCoursesRepo } from '../../../src/main/features/courses/coursesRepo'
+import { createFavoritesRepo } from '../../../src/main/features/favorites'
+import { createLinkService } from '../../../src/main/features/link/linkService'
 import { createMaterialsRepo } from '../../../src/main/features/materials/materialsRepo'
 import { createNotesRepo } from '../../../src/main/features/notes/notesRepo'
+import { createSearchIndex } from '../../../src/main/features/search/searchIndex'
 import {
   AGENT_TURN_LIMITS,
   createAgentTools,
@@ -46,13 +51,28 @@ function makeHarness(): Harness {
   })
   const boardRepo = createBoardRepo(ctx.db)
   const canvasRepo = createCanvasRepo(ctx.db)
+  const courseGroupsRepo = createCourseGroupsRepo(ctx.db)
+  const courseLinksRepo = createCourseLinksRepo(ctx.db)
+  const favoritesRepo = createFavoritesRepo(ctx.db)
+  const searchIndex = createSearchIndex(ctx.db, {
+    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
+  })
+  const linkService = createLinkService({
+    notes: notesRepo,
+    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
+  })
   const actions: AgentJournalEntry[] = []
   let turnSeq = 1
   const deps: AgentToolsDeps = {
     courseId: hostCourse.id,
     getTurnId: () => `turn-${turnSeq}`,
     coursesRepo,
+    courseGroupsRepo,
     materialsRepo,
+    courseLinksRepo,
+    favoritesRepo,
+    searchIndex,
+    linkService,
     notesRepo,
     boardRepo,
     canvasRepo,
@@ -76,6 +96,12 @@ function message(result: CallToolResult): string {
   const block = result.content[0]
   if (block?.type !== 'text') throw new Error('expected a text tool result')
   return block.text
+}
+
+async function callOk<T>(tools: AgentTools, name: string, args: object): Promise<T> {
+  const result = await tools.call(name, args)
+  expect(result.isError).not.toBe(true)
+  return JSON.parse(message(result)) as T
 }
 
 function validRect() {
@@ -129,7 +155,21 @@ describe('agent app tools', () => {
       'delete_course',
       'overwrite_note',
       'edit_sheet',
-      'edit_docx_text'
+      'edit_docx_text',
+      'list_course_links',
+      'create_course_link',
+      'update_course_link',
+      'delete_course_link',
+      'move_material',
+      'duplicate_material',
+      'list_favorites',
+      'add_favorite',
+      'rename_favorite',
+      'remove_favorite',
+      'search_course',
+      'remove_shapes',
+      'send_highlight_to_note',
+      'send_web_clip_to_note'
     ])
   })
 
@@ -489,6 +529,134 @@ describe('agent app tools', () => {
     expect(message(result)).toContain('[not-found]')
     expect(message(result)).toContain('다시 호출하세요')
   })
+
+  test('wraps course-link create, list, update, and delete', async () => {
+    const created = await callOk<{ id: string }>(harness.tools, 'create_course_link', {
+      courseId: harness.courseId,
+      label: '강의실',
+      rawUrl: 'https://lms.example/courses/42',
+      kind: 'lms-course',
+      lmsCourseId: '42'
+    })
+    expect(await callOk<unknown[]>(harness.tools, 'list_course_links', {
+      courseId: harness.courseId
+    })).toHaveLength(1)
+    expect(await callOk<{ label: string }>(harness.tools, 'update_course_link', {
+      id: created.id, label: '새 강의실', sortOrder: 2
+    })).toMatchObject({ label: '새 강의실' })
+    await callOk(harness.tools, 'delete_course_link', { id: created.id })
+    expect(harness.deps.courseLinksRepo.list({ courseId: harness.courseId })).toEqual([])
+  })
+
+  test('moves and duplicates materials inside the course folder', async () => {
+    mkdirSync(join(harness.courseFolder, '2주차'))
+    writeFileSync(join(harness.courseFolder, '강의.md'), '본문')
+    const moved = await callOk<{ relPath: string }>(harness.tools, 'move_material', {
+      courseId: harness.courseId, fromRelPath: '강의.md', toDirRelPath: '2주차'
+    })
+    const copied = await callOk<{ relPath: string }>(harness.tools, 'duplicate_material', {
+      courseId: harness.courseId, relPath: moved.relPath
+    })
+    expect(existsSync(join(harness.courseFolder, moved.relPath))).toBe(true)
+    expect(existsSync(join(harness.courseFolder, copied.relPath))).toBe(true)
+  })
+
+  test('wraps favorite add, list, rename, and remove', async () => {
+    const favorite = await callOk<{ id: string }>(harness.tools, 'add_favorite', {
+      courseId: harness.courseId,
+      label: '필기',
+      descriptor: { kind: 'note', payload: { courseId: harness.courseId, relPath: '필기.md' } }
+    })
+    expect(await callOk<unknown[]>(harness.tools, 'list_favorites', {
+      courseId: harness.courseId
+    })).toHaveLength(1)
+    expect(await callOk<{ label: string }>(harness.tools, 'rename_favorite', {
+      id: favorite.id, label: '중요 필기'
+    })).toMatchObject({ label: '중요 필기' })
+    await callOk(harness.tools, 'remove_favorite', { id: favorite.id })
+    expect(harness.deps.favoritesRepo.list(harness.courseId)).toEqual([])
+  })
+
+  test('searches indexed course text', async () => {
+    writeFileSync(join(harness.courseFolder, '검색.md'), '# 정리\n라그랑주 승수법')
+    const result = await callOk<{ hits: { relPath: string }[] }>(
+      harness.tools, 'search_course',
+      { courseId: harness.courseId, query: '라그랑주', limit: 5 }
+    )
+    expect(result.hits[0]?.relPath).toBe('검색.md')
+  })
+
+  test('removes personal-board shapes', async () => {
+    const board = harness.deps.canvasRepo.createBoard({ courseId: harness.courseId })
+    harness.deps.canvasRepo.putShape({ boardId: board.id, id: 'shape-1', shape: validRect() })
+    await callOk(harness.tools, 'remove_shapes', { boardId: board.id, ids: ['shape-1'] })
+    expect(harness.deps.canvasRepo.open(board.id).shapes).toEqual([])
+  })
+
+  test('sends material highlights and web clips to notes', async () => {
+    writeFileSync(join(harness.courseFolder, '강의.pdf'), '%PDF')
+    const note = harness.deps.notesRepo.create({
+      courseId: harness.courseId, dirRelPath: '', title: '연결 필기'
+    })
+    await callOk(harness.tools, 'send_highlight_to_note', {
+      courseId: harness.courseId, relPath: '강의.pdf', page: 3,
+      quote: '핵심 문장', comment: null, annotationId: 'annotation-1', noteRelPath: note.relPath
+    })
+    await callOk(harness.tools, 'send_web_clip_to_note', {
+      courseId: harness.courseId, url: 'https://example.com/post', title: '참고 글',
+      quote: '웹 인용문', comment: '메모', noteRelPath: note.relPath
+    })
+    const markdown = harness.deps.notesRepo.read(note).markdown
+    expect(markdown).toContain('bandal://material')
+    expect(markdown).toContain('https://example.com/post')
+  })
+
+  test('new confirmed tools make denial a no-op', async () => {
+    const link = harness.deps.courseLinksRepo.create({
+      courseId: harness.courseId, label: '강의실', rawUrl: 'https://lms.example/1',
+      kind: 'lms-course'
+    })
+    writeFileSync(join(harness.courseFolder, '이동.md'), '그대로')
+    mkdirSync(join(harness.courseFolder, '대상'))
+    const favorite = harness.deps.favoritesRepo.add({
+      courseId: harness.courseId, label: '필기',
+      descriptor: { kind: 'note', payload: { courseId: harness.courseId, relPath: '필기.md' } }
+    })
+    const board = harness.deps.canvasRepo.createBoard({ courseId: harness.courseId })
+    harness.deps.canvasRepo.putShape({ boardId: board.id, id: 'shape-1', shape: validRect() })
+    harness.deps.confirm = async () => false
+    const calls: Array<[string, object]> = [
+      ['delete_course_link', { id: link.id }],
+      ['move_material', { courseId: harness.courseId, fromRelPath: '이동.md', toDirRelPath: '대상' }],
+      ['remove_favorite', { id: favorite.id }],
+      ['remove_shapes', { boardId: board.id, ids: ['shape-1'] }]
+    ]
+    for (const [name, args] of calls) {
+      expect(await callOk<{ cancelled: boolean }>(harness.tools, name, args))
+        .toMatchObject({ cancelled: true })
+    }
+    expect(harness.deps.courseLinksRepo.list({ courseId: harness.courseId })).toHaveLength(1)
+    expect(existsSync(join(harness.courseFolder, '이동.md'))).toBe(true)
+    expect(harness.deps.favoritesRepo.list(harness.courseId)).toHaveLength(1)
+    expect(harness.deps.canvasRepo.open(board.id).shapes).toHaveLength(1)
+  })
+
+  test.each([
+    ['move_material', { courseId: 'COURSE', fromRelPath: '../밖.md', toDirRelPath: '' }],
+    ['move_material', { courseId: 'COURSE', fromRelPath: '안.md', toDirRelPath: '/tmp' }],
+    ['duplicate_material', { courseId: 'COURSE', relPath: '../밖.md' }],
+    ['duplicate_material', { courseId: 'COURSE', relPath: '/tmp/밖.md' }],
+    ['send_highlight_to_note', { courseId: 'COURSE', relPath: '../밖.pdf', page: 1, quote: '문구', comment: null, annotationId: 'a' }],
+    ['send_highlight_to_note', { courseId: 'COURSE', relPath: '/tmp/밖.pdf', page: 1, quote: '문구', comment: null, annotationId: 'a' }],
+    ['send_web_clip_to_note', { courseId: 'COURSE', url: 'https://x.test', title: 'x', quote: '문구', comment: null, noteRelPath: '../밖.md' }],
+    ['send_web_clip_to_note', { courseId: 'COURSE', url: 'https://x.test', title: 'x', quote: '문구', comment: null, noteRelPath: '/tmp/밖.md' }]
+  ])('%s rejects course-folder path escapes', async (name, rawArgs) => {
+    const args = { ...rawArgs, courseId: harness.courseId }
+    const result = await harness.tools.call(name, args)
+    expect(result.isError).toBe(true)
+    expect(message(result)).toContain('[path-traversal]')
+  })
+
   describe('browser tools registration', () => {
     test('are absent when the caller supplies none', () => {
       // The optionality is for tests and for any future caller that genuinely
