@@ -25,6 +25,7 @@ import {
   AppearancePanel,
   CoursesPanel,
   GeneralPanel,
+  McpServersPanel,
 } from "./SettingsPanels";
 import { Icon } from "./SettingsIcon";
 import { applyTheme } from "./settingsTheme";
@@ -37,6 +38,7 @@ type CategoryId =
   | "general"
   | "appearance"
   | "ai"
+  | "mcp"
   | "university"
   | "courses"
   | "about";
@@ -115,6 +117,13 @@ export function SettingsApp({
         label: t("settings.category.appearance.label"),
         description: t("settings.category.appearance.description"),
         keywords: t("settings.category.appearance.keywords"),
+      },
+      {
+        id: "mcp",
+        group: "settings",
+        label: t("settings.category.mcp.label"),
+        description: t("settings.category.mcp.description"),
+        keywords: t("settings.category.mcp.keywords"),
       },
       {
         id: "ai",
@@ -426,6 +435,7 @@ export function SettingsApp({
         onSelectCharm={handleCharmSelect}
       />
     ),
+    mcp: <McpServersPanel />,
     ai: (
       <>
         <AiPanel
@@ -541,7 +551,7 @@ export function SettingsApp({
                       }
                       onClick={() => setActiveCategory(category.id)}
                     >
-                      <Icon name={category.id} />
+                      <Icon name={category.id === "mcp" ? "sparkles" : category.id} />
                       <span>{category.label}</span>
                     </button>
                   ))}

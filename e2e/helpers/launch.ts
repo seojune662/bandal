@@ -15,7 +15,10 @@ import type { ElectronApplication, Page } from '@playwright/test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { ONBOARDING_FLOW_VERSION } from '../../src/shared/types/settings'
+import {
+  ONBOARDING_FLOW_VERSION,
+  type Settings
+} from '../../src/shared/types/settings'
 
 const PROJECT_ROOT = resolve(__dirname, '..', '..')
 const MAIN_ENTRY = join(PROJECT_ROOT, 'out', 'main', 'index.js')
@@ -48,7 +51,11 @@ export interface BandalApp {
  * the profile the relaunch is supposed to read.
  */
 export async function launchBandal(
-  options: { reuseProfileDir?: string; keepProfileOnClose?: boolean } = {}
+  options: {
+    reuseProfileDir?: string
+    keepProfileOnClose?: boolean
+    extraSettings?: Partial<Settings>
+  } = {}
 ): Promise<BandalApp> {
   const profileDir =
     options.reuseProfileDir ?? mkdtempSync(join(tmpdir(), 'bandal-e2e-'))
@@ -76,7 +83,8 @@ export async function launchBandal(
           },
           // Tour offer (.tour-offer) is a pointer-intercepting dialog — it
           // pops mid-test and steals clicks. Mark the tour as already seen.
-          tutorial: { seenVersion: 1, activeCourseId: null }
+          tutorial: { seenVersion: 1, activeCourseId: null },
+          ...options.extraSettings
         },
         null,
         2
