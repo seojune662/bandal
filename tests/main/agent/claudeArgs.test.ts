@@ -1,8 +1,13 @@
-import { describe, expect, test } from 'vitest'
+import { EventEmitter } from 'node:events'
+import type { ChildProcess } from 'node:child_process'
+import { PassThrough } from 'node:stream'
+import { describe, expect, test, vi } from 'vitest'
 import {
   buildClaudeArgs,
-  CLAUDE_ALLOWED_TOOLS
+  CLAUDE_ALLOWED_TOOLS,
+  createClaudeCodeAdapter
 } from '../../../src/main/features/agent/claude/ClaudeCodeAdapter'
+import type { BinaryLocator } from '../../../src/main/features/agent/binaryLocator'
 
 /** Reads the value that follows a flag in an argv array. */
 function valueOf(args: readonly string[], flag: string): string | undefined {
@@ -109,5 +114,41 @@ describe('buildClaudeArgs — stream wiring', () => {
     expect(valueOf(args, '--model')).toBe('sonnet')
     expect(valueOf(args, '--resume')).toBe('sess-1')
     expect(valueOf(args, '--append-system-prompt')).toBe('너는 학습 튜터야')
+  })
+})
+
+describe('createClaudeCodeAdapter — MCP environment', () => {
+  test('merges extra MCP env without adding it to argv', async () => {
+    const spawnImpl = vi.fn((_file, _args, _opts) =>
+      Object.assign(new EventEmitter(), {
+        pid: undefined,
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        stdin: new PassThrough()
+      }) as ChildProcess
+    )
+    const locator: BinaryLocator = {
+      locate: async () => ({ path: '/bin/claude', version: '2.1.222' }),
+      availability: async () => ({ installed: true, loggedIn: true }),
+      loginShellPath: async () => '/login/bin',
+      reset: () => undefined
+    }
+    const adapter = createClaudeCodeAdapter({ locator, spawnImpl })
+    const session = await adapter.startSession({
+      courseId: 'course',
+      cwd: '/course',
+      mcpExtraArgs: ['-c', 'ignored-by-claude=true'],
+      mcpExtraEnv: { BANDAL_MCP_DOCS_TOKEN: 'user-secret' }
+    })
+
+    const spawnArgs = spawnImpl.mock.calls[0]?.[1] as string[]
+    const spawnEnv = spawnImpl.mock.calls[0]?.[2]?.env
+    expect(spawnArgs).not.toContain('ignored-by-claude=true')
+    expect(JSON.stringify(spawnArgs)).not.toContain('user-secret')
+    expect(spawnEnv).toMatchObject({
+      PATH: '/login/bin',
+      BANDAL_MCP_DOCS_TOKEN: 'user-secret'
+    })
+    session.dispose()
   })
 })

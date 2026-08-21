@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createTestDb, type TestDb } from '../helpers/testDb'
 import { createCoursesRepo } from '../../../src/main/features/courses'
 import { createChatRepo } from '../../../src/main/features/agent/chatRepo'
 import {
+  buildStudyPrompt,
   createSessionManager,
   type SessionManager
 } from '../../../src/main/features/agent/SessionManager'
@@ -140,6 +141,83 @@ describe('SessionManager', () => {
       .prepare('SELECT COUNT(*) AS n FROM agent_sessions')
       .get() as { n: number }
     expect(count.n).toBe(0)
+  })
+
+  test('passes the requested surface to the tool server and lazy row', async () => {
+    manager.disposeAll()
+    const startToolServer = vi.fn(async () => ({
+      mcpConfigPath: '/tmp/mcp.json',
+      extraAllowedTools: ['mcp__bandal__desktop_screenshot'],
+      extraEnv: { BANDAL_MCP_DOCS_TOKEN: 'secret' },
+      codexOverrides: ['-c', 'mcp_servers.docs.url="https://mcp.test"'],
+      mcpHint: '등록된 외부 도구 서버: docs — 문서 검색',
+      url: 'http://127.0.0.1:1234/mcp',
+      token: 'bandal-token',
+      close: async () => undefined
+    }))
+    manager = createSessionManager({
+      adapter: fake.adapter,
+      repo,
+      getCourse: () => ({ folder: ctx.dir, name: 'Linear Algebra' }),
+      emit: (id, sessionId, event) =>
+        emitted.push({ courseId: id, sessionId, event }),
+      startToolServer
+    })
+
+    await manager.open(courseId, conversationId, 'desktop')
+    await manager.send(courseId, conversationId, '이 화면 설명해줘')
+
+    expect(startToolServer).toHaveBeenCalledWith(
+      courseId,
+      conversationId,
+      expect.any(Function),
+      'desktop'
+    )
+    expect(repo.getSession(conversationId)?.surface).toBe('desktop')
+    expect(fake.startOptions[0]).toMatchObject({
+      extraAllowedTools: ['mcp__bandal__desktop_screenshot'],
+      mcpExtraEnv: { BANDAL_MCP_DOCS_TOKEN: 'secret' },
+      mcpExtraArgs: ['-c', 'mcp_servers.docs.url="https://mcp.test"'],
+      systemPromptAppend: expect.stringContaining(
+        '등록된 외부 도구 서버: docs — 문서 검색'
+      )
+    })
+  })
+
+  test('a persisted row surface wins when open requests another surface', async () => {
+    const persisted = repo.createSession(
+      randomUUID(),
+      courseId,
+      'claude-code',
+      'desktop'
+    )
+    manager.disposeAll()
+    const surfaces: string[] = []
+    manager = createSessionManager({
+      adapter: fake.adapter,
+      repo,
+      getCourse: () => ({ folder: ctx.dir, name: 'Linear Algebra' }),
+      emit: () => undefined,
+      startToolServer: async (_courseId, _sessionId, _getTurnSeq, surface) => {
+        surfaces.push(surface)
+        return {
+          mcpConfigPath: '/tmp/mcp.json',
+          extraAllowedTools: [],
+          extraEnv: {},
+          codexOverrides: [],
+          mcpHint: '',
+          url: 'http://127.0.0.1:1234/mcp',
+          token: 'token',
+          close: async () => undefined
+        }
+      }
+    })
+
+    const opened = await manager.open(courseId, persisted.id, 'app')
+    await manager.send(courseId, persisted.id, 'resume')
+
+    expect(opened.sessionInfo?.surface).toBe('desktop')
+    expect(surfaces).toEqual(['desktop'])
   })
 
   test('send() lazily spawns, persists the user message and forwards it', async () => {
@@ -417,11 +495,58 @@ describe('chatRepo conversations', () => {
     })
   })
 
+  test('filters conversations by surface and defaults to app', () => {
+    const app = repo.createSession(randomUUID(), courseId, 'claude-code')
+    const desktop = repo.createSession(
+      randomUUID(),
+      courseId,
+      'codex',
+      'desktop'
+    )
+    for (const info of [app, desktop]) {
+      repo.appendMessage(courseId, info.id, 'user', 1, [
+        { kind: 'text', payload: { text: info.surface } }
+      ])
+    }
+
+    expect(repo.listConversations(courseId).map(({ id }) => id)).toEqual([
+      app.id
+    ])
+    expect(repo.listConversations(courseId, 'desktop')).toEqual([
+      expect.objectContaining({ id: desktop.id, surface: 'desktop' })
+    ])
+    expect(repo.getSession(desktop.id)?.surface).toBe('desktop')
+  })
+
   test('setTitleIfEmpty never overwrites an existing title', () => {
     const info = repo.createSession(randomUUID(), courseId, 'claude-code')
     repo.setTitleIfEmpty(info.id, 'first message')
     repo.setTitleIfEmpty(info.id, 'second message')
     expect(repo.getSession(info.id)?.title).toBe('first message')
+  })
+})
+
+describe('buildStudyPrompt', () => {
+  test('adds desktop guidance only for desktop conversations', () => {
+    const app = buildStudyPrompt('OS')
+    const desktop = buildStudyPrompt('OS', { surface: 'desktop' })
+
+    expect(app).not.toContain('desktop_screenshot')
+    expect(desktop).toContain('먼저 `desktop_screenshot`을 부른 뒤 답하세요')
+    expect(desktop).toContain('한 턴에 6장까지예요')
+    expect(desktop).toContain('아직 클릭이나 입력은 못 해요')
+    expect(Buffer.byteLength(desktop.slice(app.length), 'utf8'))
+      .toBeLessThanOrEqual(1_200)
+  })
+
+  test('appends a non-empty MCP hint after a blank line', () => {
+    const hint = '등록된 외부 도구 서버: docs — 문서 검색'
+    const prompt = buildStudyPrompt('OS', {
+      surface: 'desktop',
+      mcpHint: `  ${hint}  `
+    })
+
+    expect(prompt).toMatch(new RegExp(`\\n\\n${hint}$`, 'u'))
   })
 })
 

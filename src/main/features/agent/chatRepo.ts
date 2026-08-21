@@ -13,6 +13,7 @@ import type {
   ChatConversationSummary,
   ChatMessage,
   ChatSessionInfo,
+  ChatSurface,
   MessageBlock,
   MessageBlockKind
 } from '../../../shared/types/chat'
@@ -50,10 +51,14 @@ export interface ChatRepo {
   createSession(
     sessionId: string,
     courseId: string,
-    provider: AgentProvider
+    provider: AgentProvider,
+    surface?: ChatSurface
   ): ChatSessionInfo
   /** Conversation list for a course; zero-message rows are excluded. */
-  listConversations(courseId: string): ChatConversationSummary[]
+  listConversations(
+    courseId: string,
+    surface?: ChatSurface
+  ): ChatConversationSummary[]
   /** Sets the title once — later sends never rename the conversation. */
   setTitleIfEmpty(sessionId: string, title: string): void
   softDeleteSession(sessionId: string): void
@@ -80,6 +85,7 @@ export interface ChatRepo {
 interface SessionRow {
   id: string
   course_id: string
+  surface: string
   provider: string
   cli_session_id: string | null
   model: string | null
@@ -109,7 +115,7 @@ function rowToSessionInfo(row: SessionRow): ChatSessionInfo {
   return {
     id: row.id,
     courseId: row.course_id,
-    surface: 'app',
+    surface: row.surface as ChatSurface,
     provider: row.provider as AgentProvider,
     cliSessionId: row.cli_session_id,
     model: row.model,
@@ -187,19 +193,19 @@ export function createChatRepo(db: Database): ChatRepo {
       return row === undefined ? null : rowToSessionInfo(row)
     },
 
-    createSession(sessionId, courseId, provider) {
+    createSession(sessionId, courseId, provider, surface = 'app') {
       const id = requireId(sessionId, 'sessionId')
       const course = requireId(courseId, 'courseId')
       const now = nowIso()
       db.prepare(
         `INSERT INTO agent_sessions
-           (id, course_id, provider, cli_session_id, model, status, last_used_at, created_at, updated_at)
-         VALUES (?, ?, ?, NULL, NULL, 'idle', NULL, ?, ?)`
-      ).run(id, course, provider, now, now)
+           (id, course_id, surface, provider, cli_session_id, model, status, last_used_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NULL, NULL, 'idle', NULL, ?, ?)`
+      ).run(id, course, surface, provider, now, now)
       return {
         id,
         courseId: course,
-        surface: 'app',
+        surface,
         provider,
         cliSessionId: null,
         model: null,
@@ -209,22 +215,23 @@ export function createChatRepo(db: Database): ChatRepo {
       }
     },
 
-    listConversations(courseId) {
+    listConversations(courseId, surface = 'app') {
       // INNER JOIN on messages drops zero-message conversations: a tab that
       // was opened but never used must not clutter the list.
       const rows = db
         .prepare(
-          `SELECT s.id, s.course_id, s.provider, s.title, s.model,
+          `SELECT s.id, s.course_id, s.surface, s.provider, s.title, s.model,
                   s.last_used_at, s.created_at, COUNT(m.id) AS message_count
              FROM agent_sessions s
              JOIN messages m ON m.session_id = s.id AND m.deleted_at IS NULL
-            WHERE s.course_id = ? AND s.deleted_at IS NULL
+            WHERE s.course_id = ? AND s.surface = ? AND s.deleted_at IS NULL
             GROUP BY s.id
             ORDER BY COALESCE(s.last_used_at, s.created_at) DESC`
         )
-        .all(requireId(courseId, 'courseId')) as {
+        .all(requireId(courseId, 'courseId'), surface) as {
         id: string
         course_id: string
+        surface: string
         provider: string
         title: string | null
         model: string | null
@@ -235,7 +242,7 @@ export function createChatRepo(db: Database): ChatRepo {
       return rows.map((row) => ({
         id: row.id,
         courseId: row.course_id,
-        surface: 'app',
+        surface: row.surface as ChatSurface,
         provider: row.provider as AgentProvider,
         title: row.title,
         model: row.model,

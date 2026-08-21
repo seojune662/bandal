@@ -14,8 +14,12 @@ import type {
   AgentSession,
   PermissionResponse
 } from '../../../shared/types/agent-events'
-import type { ChatOpenResult, ChatSessionInfo } from '../../../shared/types/chat'
-import type { ChatAttachment } from '../../../shared/types/chat'
+import type {
+  ChatAttachment,
+  ChatOpenResult,
+  ChatSessionInfo,
+  ChatSurface
+} from '../../../shared/types/chat'
 import { AgentUnavailableError } from './binaryLocator'
 import { deriveConversationTitle } from './chatRepo'
 import type { BlockInput, ChatRepo } from './chatRepo'
@@ -50,10 +54,14 @@ export interface SessionManagerDeps {
      * journal rows and resets its per-turn budgets when this changes, so it
      * must track `repo.nextTurnSeq` — not a counter owned by the caller.
      */
-    getTurnSeq: () => number
+    getTurnSeq: () => number,
+    surface: ChatSurface
   ) => Promise<{
     mcpConfigPath: string
-    allowedTools: readonly string[]
+    extraAllowedTools: readonly string[]
+    extraEnv: Record<string, string>
+    codexOverrides: string[]
+    mcpHint: string
     url: string
     token: string
     close: () => Promise<void>
@@ -70,7 +78,11 @@ export interface SessionManagerDeps {
 }
 
 export interface SessionManager {
-  open(courseId: string, sessionId: string): Promise<ChatOpenResult>
+  open(
+    courseId: string,
+    sessionId: string,
+    surface?: ChatSurface
+  ): Promise<ChatOpenResult>
   send(
     courseId: string,
     sessionId: string,
@@ -100,6 +112,7 @@ interface TurnBlock {
 interface CourseChat {
   courseId: string
   sessionId: string
+  surface: ChatSurface
   /** False until the first send creates the agent_sessions row. */
   persisted: boolean
   info: ChatSessionInfo
@@ -116,8 +129,11 @@ interface CourseChat {
 }
 
 /** Builds the study-focused system prompt appended to the CLI defaults. */
-export function buildStudyPrompt(courseName: string): string {
-  return [
+export function buildStudyPrompt(
+  courseName: string,
+  opts: { surface?: ChatSurface; mcpHint?: string } = {}
+): string {
+  let prompt = [
     `You are the study assistant inside Bandal, a study IDE, working on the course "${courseName}".`,
     'The working directory is this course\'s folder: lecture materials, PDFs and the student\'s notes live here.',
     // The dossier, not this prompt, is where course context lives. It is a
@@ -139,6 +155,17 @@ export function buildStudyPrompt(courseName: string): string {
     'Help the student understand their materials and keep their workspace in order: explain concepts, summarize documents, answer questions with references to the files, edit notes, and organise courses into semesters when asked.',
     'Keep answers concise and grounded in the course materials. Answer in the language the student uses.'
   ].join(' ')
+
+  if (opts.surface === 'desktop') {
+    prompt +=
+      '\n\n학생은 반달 창 밖, 데스크톱에서 말을 걸고 있어요. "이거", "이 화면", "여기"는 지금 학생 화면을 뜻해요. 먼저 `desktop_screenshot`을 부른 뒤 답하세요. 첫 호출 때 학생에게 허락을 묻는 카드가 뜨는데, 그건 오류가 아니에요. 화면은 이미지로만 보여요. 작은 글씨는 `desktop_windows`로 창을 고른 뒤 `window`를 지정해 다시 찍으세요. 한 턴에 6장까지예요. 도구를 부른다고 말하지 말고 바로 답하세요. 화면에 보이는 비밀번호·개인정보는 되풀이하지 마세요. 아직 클릭이나 입력은 못 해요 — 필요하면 무엇을 누르면 되는지 말로 안내하세요.'
+  }
+
+  const mcpHint = opts.mcpHint?.trim() ?? ''
+  if (mcpHint !== '') {
+    prompt += `\n\n${mcpHint}`
+  }
+  return prompt
 }
 
 export function createSessionManager(deps: SessionManagerDeps): SessionManager {
@@ -147,19 +174,25 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
   /** Keyed by CONVERSATION id (agent_sessions.id), not course. */
   const chats = new Map<string, CourseChat>()
 
-  function entryFor(courseId: string, sessionId: string): CourseChat {
+  function entryFor(
+    courseId: string,
+    sessionId: string,
+    surface: ChatSurface = 'app'
+  ): CourseChat {
     let entry = chats.get(sessionId)
     if (entry === undefined) {
       const row = deps.repo.getSession(sessionId)
+      const resolvedSurface = row?.surface ?? surface
       entry = {
         courseId,
         sessionId,
+        surface: resolvedSurface,
         persisted: row !== null,
         // Not persisted yet → a provisional info; the row appears on first send.
         info: row ?? {
           id: sessionId,
           courseId,
-          surface: 'app',
+          surface: resolvedSurface,
           provider: deps.adapter.provider,
           cliSessionId: null,
           model: null,
@@ -237,9 +270,9 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
     const course = deps.getCourse(entry.courseId)
     const startOptions: Parameters<AgentAdapter['startSession']>[0] = {
       courseId: entry.courseId,
-      cwd: course.folder,
-      systemPromptAppend: buildStudyPrompt(course.name)
+      cwd: course.folder
     }
+    let mcpHint = ''
     if (deps.startToolServer !== undefined) {
       // A failure here must not cost the student their tutor: fall back to the
       // file-only agent rather than refusing to open the chat.
@@ -247,17 +280,25 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         const tools = await deps.startToolServer(
           entry.courseId,
           entry.sessionId,
-          () => entry.turnSeq
+          () => entry.turnSeq,
+          entry.surface
         )
         entry.toolServer = tools
         startOptions.mcpConfigPath = tools.mcpConfigPath
-        startOptions.extraAllowedTools = tools.allowedTools
+        startOptions.extraAllowedTools = tools.extraAllowedTools
         startOptions.mcpHttp = { url: tools.url, token: tools.token }
+        startOptions.mcpExtraEnv = tools.extraEnv
+        startOptions.mcpExtraArgs = tools.codexOverrides
+        mcpHint = tools.mcpHint
       } catch (error) {
         console.error('[agent] in-app tools unavailable', error)
         deps.reportToolsUnavailable?.(entry.courseId, entry.sessionId)
       }
     }
+    startOptions.systemPromptAppend = buildStudyPrompt(course.name, {
+      surface: entry.surface,
+      mcpHint
+    })
     if (entry.info.cliSessionId !== null) {
       startOptions.resumeCliSessionId = entry.info.cliSessionId
     }
@@ -455,8 +496,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
   }
 
   return {
-    async open(courseId, sessionId) {
-      const entry = entryFor(courseId, sessionId)
+    async open(courseId, sessionId, surface = 'app') {
+      const entry = entryFor(courseId, sessionId, surface)
       const availability = await deps.adapter.checkAvailability()
       return {
         // Provisional conversations have no rows, so the tail is just empty.
@@ -491,7 +532,12 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       }
       if (!entry.persisted) {
         // First send materializes the conversation row (lazy creation).
-        deps.repo.createSession(sessionId, courseId, deps.adapter.provider)
+        deps.repo.createSession(
+          sessionId,
+          courseId,
+          deps.adapter.provider,
+          entry.surface
+        )
         entry.persisted = true
       }
       const turnSeq = deps.repo.nextTurnSeq(sessionId)

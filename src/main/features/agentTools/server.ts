@@ -15,7 +15,14 @@ import {
   isInitializeRequest,
   ListToolsRequestSchema
 } from '@modelcontextprotocol/sdk/types.js'
+import type { McpServerConfig } from '../../../shared/types/mcp'
 import { resolveInside } from '../../db/validate'
+import {
+  buildClaudeMcpConfig,
+  buildCodexMcpOverrides,
+  claudeAllowRulesFor,
+  promptHintFor
+} from '../mcpRegistry'
 import { createAgentTools, type AgentTools, type AgentToolsDeps } from './tools'
 
 const HOST = '127.0.0.1'
@@ -26,13 +33,20 @@ export interface StartAgentToolsServerOptions {
   sessionId: string
   userDataPath: string
   deps: AgentToolsDeps
+  userMcpServers?: McpServerConfig[]
 }
 
 export interface AgentToolsServerHandle {
   /** Path passed to CLI `--mcp-config`. */
   mcpConfigPath: string
   /** Exact values passed to CLI `--allowedTools`. */
-  allowedTools: readonly string[]
+  extraAllowedTools: readonly string[]
+  /** Secret environment values for user MCP transports. */
+  extraEnv: Record<string, string>
+  /** Codex `-c` overrides for user MCP transports. */
+  codexOverrides: string[]
+  /** Concise, bounded tool summary for the session system prompt. */
+  mcpHint: string
   /** Raw endpoint for CLIs that take MCP config as flags (codex `-c`). */
   url: string
   /** Bearer token for `url` — hand to the child via env, never argv. */
@@ -225,17 +239,16 @@ export async function startAgentToolsServer(
     throw error
   }
 
+  const url = `http://${HOST}:${port}${MCP_PATH}`
+  const userMcpServers = options.userMcpServers ?? []
+  const extraEnv: Record<string, string> = {}
+  const codexOverrides = buildCodexMcpOverrides(userMcpServers, extraEnv)
   const mcpDirectory = resolveInside(options.userDataPath, 'mcp')
   const mcpConfigPath = resolveInside(mcpDirectory, `${sessionId}.json`)
-  const config = {
-    mcpServers: {
-      bandal: {
-        type: 'http',
-        url: `http://${HOST}:${port}${MCP_PATH}`,
-        headers: { Authorization: `Bearer ${token}` }
-      }
-    }
-  }
+  const config = buildClaudeMcpConfig(
+    { url, token },
+    userMcpServers
+  )
 
   try {
     mkdirSync(mcpDirectory, { recursive: true, mode: 0o700 })
@@ -262,8 +275,14 @@ export async function startAgentToolsServer(
 
   return {
     mcpConfigPath,
-    allowedTools: agentTools.names.map((name) => `mcp__bandal__${name}`),
-    url: `http://${HOST}:${port}${MCP_PATH}`,
+    extraAllowedTools: [
+      ...agentTools.names.map((name) => `mcp__bandal__${name}`),
+      ...claudeAllowRulesFor(userMcpServers)
+    ],
+    extraEnv,
+    codexOverrides,
+    mcpHint: promptHintFor(userMcpServers),
+    url,
     token,
     async close() {
       if (closing) return

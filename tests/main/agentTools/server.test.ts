@@ -10,6 +10,7 @@ import {
   startAgentToolsServer,
   type AgentToolsServerHandle
 } from '../../../src/main/features/agentTools/server'
+import type { McpServerConfig } from '../../../src/shared/types/mcp'
 import { createTestDb, type TestDb } from '../helpers/testDb'
 
 describe('agent tools MCP server', () => {
@@ -39,10 +40,24 @@ describe('agent tools MCP server', () => {
     const notesRepo = createNotesRepo({
       getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
     })
+    const userMcpServers: McpServerConfig[] = [
+      {
+        id: 'docs-id',
+        name: 'docs',
+        description: '문서 검색',
+        transport: 'http',
+        url: 'https://mcp.example/docs',
+        headers: { Authorization: 'Bearer user-secret' },
+        enabled: true,
+        createdAt: '2026-08-21T00:00:00.000Z',
+        updatedAt: '2026-08-21T00:00:00.000Z'
+      }
+    ]
     try {
       handle = await startAgentToolsServer({
         sessionId: 'session-1',
         userDataPath,
+        userMcpServers,
         deps: {
           courseId: course.id,
           getTurnId: () => 'turn-1',
@@ -65,13 +80,33 @@ describe('agent tools MCP server', () => {
     expect(handle.mcpConfigPath).toBe(join(userDataPath, 'mcp', 'session-1.json'))
     expect(statSync(handle.mcpConfigPath).mode & 0o777).toBe(0o600)
     const config = JSON.parse(readFileSync(handle.mcpConfigPath, 'utf8')) as {
-      mcpServers: {
+      mcpServers: Record<string, unknown> & {
         bandal: { url: string; headers: { Authorization: string } }
       }
     }
     expect(config.mcpServers.bandal.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/)
     expect(config.mcpServers.bandal.headers.Authorization).toMatch(/^Bearer \S+$/)
-    expect(handle.allowedTools).toContain('mcp__bandal__add_shapes')
+    expect(config.mcpServers.docs).toMatchObject({
+      type: 'http',
+      url: 'https://mcp.example/docs',
+      headers: { Authorization: 'Bearer user-secret' }
+    })
+    expect(handle.extraAllowedTools).toContain('mcp__bandal__add_shapes')
+    expect(handle.extraAllowedTools).toContain('mcp__docs')
+    expect(handle.extraEnv).toEqual({
+      BANDAL_MCP_DOCS_TOKEN: 'user-secret'
+    })
+    expect(handle.codexOverrides).toEqual(
+      expect.arrayContaining([
+        '-c',
+        'mcp_servers.docs.url="https://mcp.example/docs"',
+        'mcp_servers.docs.bearer_token_env_var="BANDAL_MCP_DOCS_TOKEN"'
+      ])
+    )
+    expect(handle.mcpHint).toContain(
+      '등록된 외부 도구 서버: docs — 문서 검색'
+    )
+    expect(JSON.stringify(handle.codexOverrides)).not.toContain('user-secret')
 
     const unauthorized = await fetch(config.mcpServers.bandal.url, {
       method: 'POST',

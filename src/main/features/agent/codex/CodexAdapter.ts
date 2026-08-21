@@ -70,6 +70,8 @@ export interface BuildCodexArgsOptions {
   imagePaths?: readonly string[]
   /** Bandal's in-app MCP server endpoint (token travels via env). */
   mcpUrl?: string
+  /** Pre-built `-c value` pairs for user MCP servers. */
+  mcpExtraArgs?: readonly string[]
 }
 
 export function buildCodexArgs(opts: BuildCodexArgsOptions): string[] {
@@ -96,6 +98,7 @@ export function buildCodexArgs(opts: BuildCodexArgsOptions): string[] {
       `mcp_servers.bandal.bearer_token_env_var=${JSON.stringify(CODEX_MCP_TOKEN_ENV_VAR)}`
     )
   }
+  args.push(...(opts.mcpExtraArgs ?? []))
   if (opts.model !== undefined && opts.model !== '' && opts.model !== 'default') {
     args.push('-m', opts.model)
   }
@@ -117,12 +120,13 @@ export function buildCodexArgs(opts: BuildCodexArgsOptions): string[] {
 function buildChildEnv(
   loginPath: string | null,
   binaryPath: string,
-  mcpToken?: string
+  mcpToken?: string,
+  extraEnv: Record<string, string> = {}
 ): NodeJS.ProcessEnv {
   // The binary's own dir goes first unconditionally: codex is a node shim, so
   // even if the login-shell PATH capture failed, its sibling `node` must be
   // reachable or the spawn dies at the shebang.
-  const env = augmentedPathEnv(binaryPath, loginPath)
+  const env = { ...augmentedPathEnv(binaryPath, loginPath), ...extraEnv }
   // Bandal may itself have been launched from a Codex terminal. A nested turn
   // must receive the child thread id, not inherit its parent's identity.
   delete env['CODEX_THREAD_ID']
@@ -313,6 +317,9 @@ export function createCodexAdapter(
         ...(opts.model === undefined ? {} : { model: opts.model }),
         ...(threadId === null ? {} : { resumeCliSessionId: threadId }),
         ...(opts.mcpHttp === undefined ? {} : { mcpUrl: opts.mcpHttp.url }),
+        ...(opts.mcpExtraArgs === undefined
+          ? {}
+          : { mcpExtraArgs: opts.mcpExtraArgs }),
         imagePaths: materialized.paths
       })
       const stderrRing = createStderrRing()
@@ -323,7 +330,12 @@ export function createCodexAdapter(
       try {
         child = spawnImpl(binaryPath, args, {
           cwd: opts.cwd,
-          env: buildChildEnv(loginPath, binaryPath, opts.mcpHttp?.token),
+          env: buildChildEnv(
+            loginPath,
+            binaryPath,
+            opts.mcpHttp?.token,
+            opts.mcpExtraEnv
+          ),
           // Critical EOF contract — see the file header.
           stdio: ['ignore', 'pipe', 'pipe']
         })

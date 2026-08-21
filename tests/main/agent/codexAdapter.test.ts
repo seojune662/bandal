@@ -35,6 +35,31 @@ describe('buildCodexArgs', () => {
     expect(args).not.toContain('danger-full-access')
     expect(args.slice(-3)).toEqual(['resume', 'thread-1', 'next'])
   })
+
+  test('appends user MCP overrides to the -c sequence before the turn args', () => {
+    const args = buildCodexArgs({
+      cwd: '/course',
+      prompt: 'next',
+      model: 'gpt-5',
+      resumeCliSessionId: 'thread-1',
+      mcpUrl: 'http://127.0.0.1:1234/mcp',
+      mcpExtraArgs: [
+        '-c',
+        'mcp_servers.docs.url="https://mcp.example/docs"'
+      ]
+    })
+
+    expect(args.slice(7, 13)).toEqual([
+      '-c',
+      'mcp_servers.bandal.url="http://127.0.0.1:1234/mcp"',
+      '-c',
+      'mcp_servers.bandal.bearer_token_env_var="BANDAL_MCP_TOKEN"',
+      '-c',
+      'mcp_servers.docs.url="https://mcp.example/docs"'
+    ])
+    expect(args.indexOf('mcp_servers.docs.url="https://mcp.example/docs"'))
+      .toBeLessThan(args.indexOf('-m'))
+  })
 })
 
 describe('createCodexAdapter', () => {
@@ -59,12 +84,27 @@ describe('createCodexAdapter', () => {
     const adapter = createCodexAdapter({ locator, spawnImpl })
     const session = await adapter.startSession({
       courseId: 'course',
-      cwd: '/course'
+      cwd: '/course',
+      mcpExtraArgs: [
+        '-c',
+        'mcp_servers.docs.url="https://mcp.example/docs"'
+      ],
+      mcpExtraEnv: { BANDAL_MCP_DOCS_TOKEN: 'user-secret' }
     })
 
     session.sendMessage('one')
     const firstCall = spawnImpl.mock.calls[0]
     expect(firstCall?.[2]?.stdio).toEqual(['ignore', 'pipe', 'pipe'])
+    expect(firstCall?.[1]).toEqual(
+      expect.arrayContaining([
+        '-c',
+        'mcp_servers.docs.url="https://mcp.example/docs"'
+      ])
+    )
+    expect(firstCall?.[2]?.env).toMatchObject({
+      BANDAL_MCP_DOCS_TOKEN: 'user-secret'
+    })
+    expect(JSON.stringify(firstCall?.[1])).not.toContain('user-secret')
     ;(children[0]?.stdout as PassThrough).write(
       '{"type":"thread.started","thread_id":"thread-1"}\n' +
         '{"type":"turn.started"}\n' +

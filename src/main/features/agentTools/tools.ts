@@ -17,11 +17,15 @@ import type { LinkService } from '../link/linkService'
 import type { MaterialsRepo } from '../materials/materialsRepo'
 import type { NotesRepo } from '../notes/notesRepo'
 import type { SearchIndex } from '../search/searchIndex'
+import type { DesktopToolsPort } from '../desktopAgent/desktopTools'
+import { DESKTOP_TOOL_DEFINITIONS } from '../desktopAgent/schemas'
 import {
   AGENT_TOOL_DEFINITIONS,
   BROWSER_TOOL_DEFINITIONS,
   BROWSER_TOOL_NAMES,
   type BrowserToolName,
+  DESKTOP_TOOL_NAMES,
+  type DesktopToolName,
   AGENT_TOOL_NAMES,
   type AgentToolName
 } from './schemas'
@@ -166,12 +170,18 @@ export interface AgentToolsDeps {
       relPath: string
     ) => Promise<unknown>
   }
+  /** Desktop capture/read tools, supplied only for desktop conversations. */
+  desktop?: DesktopToolsPort
 }
 
 export interface AgentTools {
   readonly definitions: readonly Tool[]
-  /** Includes the browser tools when this session has them. */
-  readonly names: readonly (AgentToolName | BrowserToolName)[]
+  /** Includes optional browser and desktop tools when this session has them. */
+  readonly names: readonly (
+    | AgentToolName
+    | BrowserToolName
+    | DesktopToolName
+  )[]
   call: (name: string, args?: unknown) => Promise<CallToolResult>
 }
 
@@ -438,15 +448,32 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
     Object.assign(handlers, browserHandlers)
   }
 
+  const desktop = deps.desktop
+  if (desktop !== undefined) {
+    const desktopHandlers: Record<
+      DesktopToolName,
+      (input: Record<string, unknown>) => Promise<unknown> | unknown
+    > = {
+      desktop_screenshot: (input) => desktop.desktop_screenshot(input),
+      desktop_windows: (input) => desktop.desktop_windows(input),
+      desktop_frontmost: (input) => desktop.desktop_frontmost(input),
+      desktop_clipboard_read: (input) =>
+        desktop.desktop_clipboard_read(input)
+    }
+    Object.assign(handlers, desktopHandlers)
+  }
+
   return {
-    definitions:
-      browser === undefined
-        ? AGENT_TOOL_DEFINITIONS
-        : [...AGENT_TOOL_DEFINITIONS, ...BROWSER_TOOL_DEFINITIONS],
-    names:
-      browser === undefined
-        ? AGENT_TOOL_NAMES
-        : [...AGENT_TOOL_NAMES, ...BROWSER_TOOL_NAMES],
+    definitions: [
+      ...AGENT_TOOL_DEFINITIONS,
+      ...(browser === undefined ? [] : BROWSER_TOOL_DEFINITIONS),
+      ...(desktop === undefined ? [] : DESKTOP_TOOL_DEFINITIONS)
+    ],
+    names: [
+      ...AGENT_TOOL_NAMES,
+      ...(browser === undefined ? [] : BROWSER_TOOL_NAMES),
+      ...(desktop === undefined ? [] : DESKTOP_TOOL_NAMES)
+    ],
     async call(name, args = {}) {
       const handler = handlers[name as AgentToolName]
       if (handler === undefined) {

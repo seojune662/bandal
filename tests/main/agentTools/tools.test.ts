@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { createBoardRepo } from '../../../src/main/features/board/boardRepo'
 import { createCanvasRepo } from '../../../src/main/features/canvas/canvasRepo'
@@ -19,6 +19,7 @@ import {
   type AgentTools,
   type AgentToolsDeps
 } from '../../../src/main/features/agentTools/tools'
+import { RawToolResult } from '../../../src/main/features/agentTools/toolHandlers/context'
 import { createTestDb, type TestDb } from '../helpers/testDb'
 
 const HOST_COURSE_NAME = '도구 테스트 과목'
@@ -728,6 +729,58 @@ describe('agent app tools', () => {
       expect(
         (await tools.call('lms_new_items', { courseId: '  ' })).isError
       ).toBe(true)
+    })
+  })
+
+  describe('desktop tools registration', () => {
+    test('desktop names are absent without desktop deps', () => {
+      expect(
+        harness.tools.names.some((name) => name.startsWith('desktop_'))
+      ).toBe(false)
+      expect(
+        harness.tools.definitions.some(({ name }) =>
+          name.startsWith('desktop_')
+        )
+      ).toBe(false)
+    })
+
+    test('registers all four tools and preserves RawToolResult', async () => {
+      const raw: CallToolResult = {
+        content: [{ type: 'text', text: 'raw desktop result' }]
+      }
+      const desktopScreenshot = vi.fn(async () => new RawToolResult(raw))
+      const tools = createAgentTools({
+        ...harness.deps,
+        desktop: {
+          desktop_screenshot: desktopScreenshot,
+          desktop_windows: async () => ({ windows: [] }),
+          desktop_frontmost: async () => ({ app: 'Finder' }),
+          desktop_clipboard_read: async () => ({ text: 'copied' })
+        }
+      })
+
+      expect(
+        tools.names.filter((name) => name.startsWith('desktop_'))
+      ).toEqual([
+        'desktop_screenshot',
+        'desktop_windows',
+        'desktop_frontmost',
+        'desktop_clipboard_read'
+      ])
+      expect(
+        tools.definitions
+          .map(({ name }) => name)
+          .filter((name) => name.startsWith('desktop_'))
+      ).toEqual([
+        'desktop_screenshot',
+        'desktop_windows',
+        'desktop_frontmost',
+        'desktop_clipboard_read'
+      ])
+
+      const result = await tools.call('desktop_screenshot', { window: 'w1' })
+      expect(result).toBe(raw)
+      expect(desktopScreenshot).toHaveBeenCalledWith({ window: 'w1' })
     })
   })
 

@@ -149,8 +149,11 @@ export function buildClaudeArgs(opts: {
   return args
 }
 
-function buildChildEnv(loginPath: string | null): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env }
+function buildChildEnv(
+  loginPath: string | null,
+  extraEnv: Record<string, string> = {}
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv }
   // Bandal itself may run inside a Claude Code session — never leak that.
   delete env['CLAUDECODE']
   delete env['CLAUDE_CODE_ENTRYPOINT']
@@ -191,7 +194,7 @@ export function createClaudeCodeAdapter(
     try {
       child = spawnImpl(binary.path, args, {
         cwd: opts.cwd,
-        env: buildChildEnv(loginPath)
+        env: buildChildEnv(loginPath, opts.mcpExtraEnv)
       })
     } catch (error) {
       throw new AgentUnavailableError(
