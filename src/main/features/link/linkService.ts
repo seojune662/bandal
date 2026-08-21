@@ -5,7 +5,7 @@ import type {
   SendWebClipToNoteInput
 } from '../../../shared/types/link'
 import type { NoteContent } from '../../../shared/types/note'
-import { NotFoundError, ValidationError } from '../../db/errors'
+import { ConflictError, NotFoundError, ValidationError } from '../../db/errors'
 import type { NotesRepo } from '../notes'
 import { createMaterialLink, parseMaterialLink } from './materialLink'
 
@@ -208,11 +208,32 @@ export function createLinkService(deps: LinkServiceDeps): LinkService {
         return { relPath: target.note.relPath, created: target.created }
       }
 
-      deps.notes.write({
-        courseId,
-        relPath: target.note.relPath,
-        markdown: appendMarkdown(target.note.markdown, block)
-      })
+      try {
+        deps.notes.write({
+          courseId,
+          relPath: target.note.relPath,
+          markdown: appendMarkdown(target.note.markdown, block),
+          expectedMtime: target.note.mtime
+        })
+      } catch (error) {
+        if (!(error instanceof ConflictError)) throw error
+
+        // One concurrent edit is recoverable: rebase the clip on the latest
+        // note body and make one final optimistic write. A second conflict is
+        // deliberately allowed to propagate to the caller.
+        const latest = deps.notes.read({
+          courseId,
+          relPath: target.note.relPath
+        })
+        if (!latest.markdown.includes(block)) {
+          deps.notes.write({
+            courseId,
+            relPath: latest.relPath,
+            markdown: appendMarkdown(latest.markdown, block),
+            expectedMtime: latest.mtime
+          })
+        }
+      }
       return { relPath: target.note.relPath, created: target.created }
     },
 
@@ -243,4 +264,3 @@ export function createLinkService(deps: LinkServiceDeps): LinkService {
     }
   }
 }
-

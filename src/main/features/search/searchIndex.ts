@@ -24,7 +24,7 @@ import {
   requireId,
   requireInt,
   requireNonEmptyString,
-  resolveInside
+  resolveInsideReal
 } from '../../db/validate'
 
 const SEARCH_TABLE = 'course_content_fts'
@@ -189,7 +189,7 @@ function validateLimit(limit: number | undefined): number {
 
 function isLiveRegularFile(root: string, relPath: string): boolean {
   try {
-    return lstatSync(resolveInside(root, relPath)).isFile()
+    return lstatSync(resolveInsideReal(root, relPath)).isFile()
   } catch {
     return false
   }
@@ -246,7 +246,7 @@ export function createSearchIndex(
     const courseId = requireId(input.courseId, 'courseId')
     const relPath = requireNonEmptyString(input.relPath, 'relPath')
     const root = deps.getCourseFolder(courseId)
-    const absPath = resolveInside(root, relPath)
+    const absPath = resolveInsideReal(root, relPath)
     if (extname(relPath).toLowerCase() !== '.pdf') {
       throw new ValidationError('relPath must point to a PDF')
     }

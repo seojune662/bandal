@@ -6,7 +6,11 @@ import type {
   StudyToolDefinition
 } from '../../../shared/types/study'
 import { ValidationError } from '../../db/errors'
-import { requireId, requireNonEmptyString, resolveInside } from '../../db/validate'
+import {
+  requireId,
+  requireNonEmptyString,
+  resolveInsideReal
+} from '../../db/validate'
 import {
   buildStudyToolPrompt,
   STUDY_TOOLS,
@@ -104,7 +108,7 @@ function resolveTargetLabel(courseFolder: string, relPath: string | null): strin
   if (relPath === null) return '이 과목 전체'
 
   const validRelPath = requireNonEmptyString(relPath, 'relPath')
-  resolveInside(courseFolder, validRelPath)
+  resolveInsideReal(courseFolder, validRelPath)
   return basename(validRelPath)
 }
 
@@ -122,7 +126,7 @@ function reserveDestination(
   for (let suffix = 1; suffix <= 1000; suffix += 1) {
     const fileName = suffix === 1 ? `${title}.md` : `${title}-${suffix}.md`
     const relPath = posix.join(OUTPUT_DIRECTORY, fileName)
-    const absPath = resolveInside(courseFolder, relPath)
+    const absPath = resolveInsideReal(courseFolder, relPath)
     if (!existsSync(absPath) && !reservedPaths.has(absPath)) {
       reservedPaths.add(absPath)
       return { relPath, absPath }

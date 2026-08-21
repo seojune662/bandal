@@ -13,7 +13,8 @@ type DocxState =
 const BLOCKED_ELEMENTS =
   'script, iframe, object, embed, link, meta, base, form, input, button, textarea, select, svg, math'
 const URL_ATTRIBUTES = new Set(['href', 'src', 'xlink:href', 'action', 'formaction'])
-const DANGEROUS_SCHEME = /^(?:javascript|vbscript|file|data):/i
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i
+const ALLOWED_LINK_SCHEME = /^(?:https?|mailto):/i
 const INLINE_IMAGE = /^data:image\/(?:png|jpe?g);base64,/i
 const SUPPORTED_IMAGE_TYPE = /^image\/(?:png|jpe?g)$/i
 const UNSUPPORTED_IMAGE_LABEL = '[이미지: 지원하지 않는 형식]'
@@ -102,6 +103,41 @@ function normalizedUrl(value: string): string {
   return value.replace(/[\u0000-\u0020\u007f-\u009f]/g, '')
 }
 
+export type SanitizedDocxAnchor =
+  | {
+      tagName: 'a'
+      href: string
+      target: '_blank'
+      rel: 'noopener noreferrer'
+      text: string
+    }
+  | { tagName: 'span'; text: string }
+
+/** Allows web/mail links and local document references, never OS app schemes. */
+export function isAllowedDocxHref(href: string): boolean {
+  const normalized = normalizedUrl(href.trim())
+  return (
+    ALLOWED_LINK_SCHEME.test(normalized) ||
+    (!URL_SCHEME.test(normalized) && !normalized.startsWith('//'))
+  )
+}
+
+/** Pure link-policy boundary used by the DOM sanitizer below. */
+export function sanitizeDocxAnchor(
+  href: string,
+  text: string
+): SanitizedDocxAnchor {
+  const trimmedHref = href.trim()
+  if (!isAllowedDocxHref(trimmedHref)) return { tagName: 'span', text }
+  return {
+    tagName: 'a',
+    href: trimmedHref,
+    target: '_blank',
+    rel: 'noopener noreferrer',
+    text
+  }
+}
+
 /** Defensive boundary for HTML produced from an untrusted external document. */
 export function sanitizeDocxHtml(html: string): string {
   const document = new DOMParser().parseFromString(html, 'text/html')
@@ -113,6 +149,20 @@ export function sanitizeDocxHtml(html: string): string {
     )
   document.querySelectorAll(BLOCKED_ELEMENTS).forEach((element) => element.remove())
   document.body.querySelectorAll('*').forEach((element) => {
+    const anchorPolicy =
+      element.tagName === 'A' && element.hasAttribute('href')
+        ? sanitizeDocxAnchor(
+            element.getAttribute('href') ?? '',
+            element.textContent ?? ''
+          )
+        : null
+    if (anchorPolicy?.tagName === 'span') {
+      const replacement = document.createElement('span')
+      replacement.textContent = anchorPolicy.text
+      element.replaceWith(replacement)
+      return
+    }
+
     for (const attribute of [...element.attributes]) {
       const name = attribute.name.toLowerCase()
       const value = attribute.value.trim()
@@ -131,15 +181,16 @@ export function sanitizeDocxHtml(html: string): string {
       if (
         name !== 'src' &&
         URL_ATTRIBUTES.has(name) &&
-        DANGEROUS_SCHEME.test(normalizedUrl(value))
+        !isAllowedDocxHref(value)
       ) {
         element.removeAttribute(attribute.name)
       }
     }
 
-    if (element.tagName === 'A' && element.hasAttribute('href')) {
-      element.setAttribute('target', '_blank')
-      element.setAttribute('rel', 'noopener noreferrer')
+    if (anchorPolicy?.tagName === 'a') {
+      element.setAttribute('href', anchorPolicy.href)
+      element.setAttribute('target', anchorPolicy.target)
+      element.setAttribute('rel', anchorPolicy.rel)
     }
   })
 

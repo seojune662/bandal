@@ -1,13 +1,15 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
+  appendMarkdown,
   createLinkService,
   defaultStudyNoteTitle,
   hasAnnotationLink,
   highlightMarkdown,
   webClipMarkdown
 } from '../../../src/main/features/link'
+import { ConflictError } from '../../../src/main/db/errors'
 import { createNotesRepo, type NotesRepo } from '../../../src/main/features/notes'
 import { createTestDb, type TestDb } from '../helpers/testDb'
 import type {
@@ -192,6 +194,65 @@ describe('web clips', () => {
     expect(markdown.split('해시 충돌은 체이닝으로').length - 1).toBe(1)
   })
 
+  test('retries one mtime conflict and appends to the latest note body', () => {
+    const relPath = '웹클립.md'
+    const abs = join(courseFolder, relPath)
+    writeFileSync(abs, '# 웹클립\n', 'utf8')
+    const originalWrite = notes.write.bind(notes)
+    let attempts = 0
+    const writeSpy = vi.spyOn(notes, 'write').mockImplementation((input) => {
+      attempts += 1
+      if (attempts === 1) {
+        const current = notes.read({ courseId: COURSE_ID, relPath })
+        originalWrite({
+          courseId: COURSE_ID,
+          relPath,
+          markdown: appendMarkdown(current.markdown, '동시에 추가된 편집')
+        })
+        const changedAt = new Date(Date.now() + 5_000)
+        utimesSync(abs, changedAt, changedAt)
+      }
+      return originalWrite(input)
+    })
+
+    service().sendWebClipToNote(clip({ noteRelPath: relPath }))
+
+    const saved = readFileSync(abs, 'utf8')
+    expect(saved).toContain('동시에 추가된 편집')
+    expect(saved).toContain('> 해시 충돌은 체이닝으로 해결할 수 있다.')
+    expect(saved.indexOf('동시에 추가된 편집')).toBeLessThan(
+      saved.indexOf('> 해시 충돌은 체이닝으로 해결할 수 있다.')
+    )
+    expect(writeSpy).toHaveBeenCalledTimes(2)
+    expect(writeSpy.mock.calls[0]?.[0].expectedMtime).toEqual(expect.any(Number))
+    expect(writeSpy.mock.calls[1]?.[0].expectedMtime).toEqual(expect.any(Number))
+  })
+
+  test('propagates a second mtime conflict after the single retry', () => {
+    const relPath = '계속-충돌.md'
+    const abs = join(courseFolder, relPath)
+    writeFileSync(abs, '# 계속 충돌\n', 'utf8')
+    const originalWrite = notes.write.bind(notes)
+    let attempts = 0
+    const writeSpy = vi.spyOn(notes, 'write').mockImplementation((input) => {
+      attempts += 1
+      const current = notes.read({ courseId: COURSE_ID, relPath })
+      originalWrite({
+        courseId: COURSE_ID,
+        relPath,
+        markdown: appendMarkdown(current.markdown, `동시 편집 ${attempts}`)
+      })
+      const changedAt = new Date(Date.now() + attempts * 5_000)
+      utimesSync(abs, changedAt, changedAt)
+      return originalWrite(input)
+    })
+
+    expect(() =>
+      service().sendWebClipToNote(clip({ noteRelPath: relPath }))
+    ).toThrow(ConflictError)
+    expect(writeSpy).toHaveBeenCalledTimes(2)
+  })
+
   test('rejects a non-http url', () => {
     // A hostile page controls the selection API; a file:// or javascript:
     // source must never reach a note.
@@ -204,5 +265,4 @@ describe('web clips', () => {
     expect(() => service().sendWebClipToNote(clip({ quote: '  ' }))).toThrow()
   })
 })
-
 

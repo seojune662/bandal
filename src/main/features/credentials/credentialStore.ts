@@ -10,7 +10,7 @@ import {
   rmSync,
   writeFileSync
 } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type {
   CredentialsAvailability,
   SaveLoginInput,
@@ -139,6 +139,7 @@ function buildCredentialStore(deps: CredentialStoreDeps): CredentialStore {
   const now = deps.now ?? Date.now
   let encryptionAvailable: boolean | undefined
   let cache: StoredLogin[] | undefined
+  let quarantineReason: string | null = null
 
   const canEncrypt = (): boolean => {
     if (encryptionAvailable === undefined) {
@@ -158,6 +159,20 @@ function buildCredentialStore(deps: CredentialStoreDeps): CredentialStore {
     } catch {
       // Best effort. A later load still treats any unreadable file as empty.
     }
+  }
+
+  const quarantine = (): string => {
+    const basePath = `${filePath}.corrupt-${new Date(now()).toISOString()}`
+    let quarantinePath = basePath
+    let suffix = 1
+    while (existsSync(quarantinePath)) {
+      quarantinePath = `${basePath}-${suffix}`
+      suffix += 1
+    }
+    renameSync(filePath, quarantinePath)
+    quarantineReason =
+      `저장된 데이터를 읽지 못해 격리했습니다: ${basename(quarantinePath)}`
+    return quarantinePath
   }
 
   const load = (): StoredLogin[] => {
@@ -181,7 +196,8 @@ function buildCredentialStore(deps: CredentialStoreDeps): CredentialStore {
       )
     } catch {
       cache = []
-      discard()
+      const quarantinePath = quarantine()
+      console.warn(`[credentials] 복호화 실패 — 격리: ${quarantinePath}`)
     }
     return cache
   }
@@ -190,6 +206,7 @@ function buildCredentialStore(deps: CredentialStoreDeps): CredentialStore {
     if (logins.length === 0) {
       discard()
       cache = []
+      quarantineReason = null
       return
     }
 
@@ -210,6 +227,7 @@ function buildCredentialStore(deps: CredentialStoreDeps): CredentialStore {
       renameSync(temporaryPath, filePath)
       chmodSync(filePath, 0o600)
       cache = logins
+      quarantineReason = null
     } catch {
       if (descriptor !== undefined) {
         try {
@@ -229,6 +247,17 @@ function buildCredentialStore(deps: CredentialStoreDeps): CredentialStore {
 
   return {
     availability(): CredentialsAvailability {
+      if (
+        quarantineReason === null &&
+        cache === undefined &&
+        existsSync(filePath) &&
+        canEncrypt()
+      ) {
+        load()
+      }
+      if (quarantineReason !== null) {
+        return { state: 'unavailable', reason: quarantineReason }
+      }
       return canEncrypt()
         ? { state: 'ready' }
         : { state: 'unavailable', reason: ENCRYPTION_UNAVAILABLE_REASON }

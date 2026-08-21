@@ -16,7 +16,7 @@ import {
   unlinkSync
 } from 'node:fs'
 import { basename, join } from 'node:path'
-import { resolveInside } from '../../db/validate'
+import { assertRealInside, resolveInsideReal } from '../../db/validate'
 
 /** 과목 폴더 기준 백업 디렉터리. 숨김이라 자료 스캔에 잡히지 않는다. */
 export const MATERIAL_BACKUP_DIR_SEGMENTS = ['.bandal', 'backups'] as const
@@ -35,7 +35,7 @@ export interface MaterialBackup {
 }
 
 /** 이름의 ISO 타임스탬프 접두사 덕분에 사전순 = 시간순이다. */
-function pruneBackups(dir: string, keep: number): void {
+function pruneBackups(courseFolder: string, dir: string, keep: number): void {
   const names = readdirSync(dir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && !entry.name.startsWith('.'))
     .map((entry) => entry.name)
@@ -43,7 +43,9 @@ function pruneBackups(dir: string, keep: number): void {
   const excess = names.length - keep
   for (const name of names.slice(0, Math.max(0, excess))) {
     try {
-      unlinkSync(join(dir, name))
+      const backupAbs = join(dir, name)
+      assertRealInside(courseFolder, backupAbs)
+      unlinkSync(backupAbs)
     } catch (error) {
       // 지우기 실패는 백업 자체를 막을 이유가 아니다 — 로그만 남긴다.
       console.error(`[agentTools] backup prune failed for "${name}"`, error)
@@ -60,7 +62,12 @@ export function backupMaterial(
   sourceAbs: string,
   keep: number = MATERIAL_BACKUP_KEEP
 ): MaterialBackup {
-  const dir = join(courseFolder, ...MATERIAL_BACKUP_DIR_SEGMENTS)
+  assertRealInside(courseFolder, sourceAbs)
+  const dir = resolveInsideReal(
+    courseFolder,
+    MATERIAL_BACKUP_DIR_SEGMENTS.join('/')
+  )
+  assertRealInside(courseFolder, dir)
   mkdirSync(dir, { recursive: true })
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   const base = basename(sourceAbs)
@@ -70,14 +77,16 @@ export function backupMaterial(
     backupName = `${stamp}-${n}-${base}`
     backupAbs = join(dir, backupName)
   }
+  assertRealInside(courseFolder, sourceAbs)
+  assertRealInside(courseFolder, backupAbs)
   copyFileSync(sourceAbs, backupAbs)
-  pruneBackups(dir, keep)
+  pruneBackups(courseFolder, dir, keep)
   return { backupAbs, backupName }
 }
 
 /**
  * journal 의 targetId 한 칸에 편집 대상과 백업 위치를 함께 싣는다.
- * relPath 는 resolveInside 가 널 바이트를 거부하므로 구분자와 충돌하지
+ * relPath 는 resolveInsideReal 이 널 바이트를 거부하므로 구분자와 충돌하지
  * 않고, 백업 절대 경로에도 널 바이트는 올 수 없다.
  */
 export function materialEditTargetId(
@@ -114,6 +123,9 @@ export function restoreMaterialBackup(input: {
       `백업 파일이 없어 «${input.relPath}» 을(를) 되돌릴 수 없습니다`
     )
   }
-  const targetAbs = resolveInside(input.courseFolder, input.relPath)
+  assertRealInside(input.courseFolder, input.backupAbs)
+  const targetAbs = resolveInsideReal(input.courseFolder, input.relPath)
+  assertRealInside(input.courseFolder, input.backupAbs)
+  assertRealInside(input.courseFolder, targetAbs)
   copyFileSync(input.backupAbs, targetAbs)
 }

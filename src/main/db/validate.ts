@@ -5,7 +5,8 @@
  * reaches SQL or the filesystem.
  */
 
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { existsSync, realpathSync } from 'node:fs'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { PathTraversalError, ValidationError } from './errors'
 
 /** Asserts `value` is a non-empty string (after trim) and returns it. */
@@ -72,6 +73,55 @@ export function resolveInside(
     throw new PathTraversalError(relPath)
   }
   return target
+}
+
+/**
+ * Asserts that the existing filesystem portion of `absPath` resolves inside
+ * `rootDir`. Call this after the lexical `resolveInside` guard.
+ *
+ * The target itself may not exist yet (for example, before a write). In that
+ * case the nearest existing ancestor is canonicalized instead. The root is
+ * canonicalized independently so a course folder that is itself a symlink is
+ * valid, while a symlink below it cannot redirect access outside the course.
+ */
+export function assertRealInside(rootDir: string, absPath: string): string {
+  if (!isAbsolute(absPath)) {
+    throw new ValidationError('absPath must be absolute')
+  }
+
+  let canonicalRoot: string
+  try {
+    canonicalRoot = realpathSync.native(rootDir)
+  } catch {
+    throw new ValidationError('course root must exist and be resolvable')
+  }
+
+  let existingAncestor = absPath
+  while (!existsSync(existingAncestor)) {
+    const parent = dirname(existingAncestor)
+    if (parent === existingAncestor) {
+      throw new ValidationError('path must have a resolvable ancestor')
+    }
+    existingAncestor = parent
+  }
+
+  let canonicalAncestor: string
+  try {
+    canonicalAncestor = realpathSync.native(existingAncestor)
+  } catch {
+    throw new ValidationError('path must have a resolvable ancestor')
+  }
+
+  const rel = relative(canonicalRoot, canonicalAncestor)
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new ValidationError('path resolves outside the course folder')
+  }
+  return absPath
+}
+
+/** Lexically resolves a relative path, then enforces the realpath boundary. */
+export function resolveInsideReal(rootDir: string, relPath: string): string {
+  return assertRealInside(rootDir, resolveInside(rootDir, relPath))
 }
 
 /** Current timestamp in the ISO-8601 format used by every table. */

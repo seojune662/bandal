@@ -4,31 +4,19 @@
  */
 
 import {
-  cpSync,
-  copyFileSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  opendirSync,
-  readFileSync,
-  renameSync,
-  statSync,
-  unlinkSync,
+  cpSync, copyFileSync, existsSync, lstatSync, mkdirSync, opendirSync,
+  readFileSync, renameSync, statSync, unlinkSync,
   writeFileSync
 } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { basename, extname, isAbsolute, join, posix, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
-import type {
-  ImportResult,
-  MaterialFileContent,
-  MaterialKind,
-  MaterialNode,
-  MaterialSearchHit
-} from '../../../shared/types/materials'
+import type { ImportResult, MaterialFileContent, MaterialKind,
+  MaterialNode, MaterialSearchHit } from '../../../shared/types/materials'
 import { ConflictError, NotFoundError, ValidationError } from '../../db/errors'
-import { nowIso, requireId, requireNonEmptyString, resolveInside } from '../../db/validate'
+import { assertRealInside, nowIso, requireId, requireNonEmptyString,
+  resolveInside } from '../../db/validate'
 
 export interface MaterialsRepo {
   tree(courseId: string): MaterialNode[]
@@ -44,31 +32,13 @@ export interface MaterialsRepo {
   /** `dirRelPath` ''/생략 = 과목 폴더 루트. */
   import(courseId: string, paths: string[], dirRelPath?: string): ImportResult
   /** 파일/폴더를 다른 과목-상대 디렉터리로 옮긴다 ('' = 루트). */
-  move(input: {
-    courseId: string
-    fromRelPath: string
-    toDirRelPath: string
-  }): { relPath: string }
+  move(input: { courseId: string; fromRelPath: string; toDirRelPath: string }): { relPath: string }
   readFile(courseId: string, relPath: string): MaterialFileContent
   reveal(courseId: string, relPath: string): { ok: true }
-  rename(input: {
-    courseId: string
-    relPath: string
-    newName: string
-  }): { relPath: string }
-  softDelete(input: {
-    courseId: string
-    relPath: string
-  }): Promise<{ ok: true }>
-  duplicate(input: {
-    courseId: string
-    relPath: string
-  }): { relPath: string }
-  createFolder(input: {
-    courseId: string
-    dirRelPath: string
-    name: string
-  }): { relPath: string }
+  rename(input: { courseId: string; relPath: string; newName: string }): { relPath: string }
+  softDelete(input: { courseId: string; relPath: string }): Promise<{ ok: true }>
+  duplicate(input: { courseId: string; relPath: string }): { relPath: string }
+  createFolder(input: { courseId: string; dirRelPath: string; name: string }): { relPath: string }
   writeFile(input: {
     courseId: string
     dirRelPath: string
@@ -85,10 +55,7 @@ export interface MaterialsRepo {
    * never pass through the main process — but every path guard `writeFile`
    * runs still applies.
    */
-  adoptFile(input: {
-    courseId: string
-    dirRelPath: string
-    fileName: string
+  adoptFile(input: { courseId: string; dirRelPath: string; fileName: string
     /** Absolute path of the staged file. It is consumed (moved). */
     sourcePath: string
   }): { relPath: string }
@@ -377,6 +344,19 @@ function assertFileOrDirectory(absPath: string, relPath: string): 'file' | 'dir'
   throw new ValidationError(`"${relPath}" is not a regular file or directory`)
 }
 
+function resolveCoursePath(
+  folder: string,
+  relPath: string,
+  allowRoot = false
+): string {
+  const abs = resolveInside(
+    folder,
+    relPath,
+    allowRoot ? { allowRoot: true } : {}
+  )
+  return assertRealInside(folder, abs)
+}
+
 export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
   const { db, getCourseFolder, revealItem, trashItem } = deps
   const scanLimits = deps.scanLimits ?? {
@@ -450,7 +430,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
 
   function resolveMaterial(courseId: string, relPath: string): { abs: string; folder: string } {
     const { folder } = requireCourseFolder(courseId)
-    const abs = resolveInside(folder, requireNonEmptyString(relPath, 'relPath'))
+    const abs = resolveCoursePath(folder, requireNonEmptyString(relPath, 'relPath'))
     return { abs, folder }
   }
 
@@ -553,7 +533,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       }
       // '' 또는 생략 = 과목 폴더 루트. 하위 폴더는 존재하는 디렉터리여야 한다.
       const targetDirRel = dirRelPath ?? ''
-      const targetDirAbs = resolveInside(folder, targetDirRel, { allowRoot: true })
+      const targetDirAbs = resolveCoursePath(folder, targetDirRel, true)
       if (!existsSync(targetDirAbs) || !lstatSync(targetDirAbs).isDirectory()) {
         throw new NotFoundError('material directory', targetDirRel)
       }
@@ -573,7 +553,9 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
             throw new ValidationError(`"${source}" is not a regular file`)
           }
           const targetName = unusedTargetName(targetDirAbs, basename(source))
-          copyFileSync(source, join(targetDirAbs, targetName))
+          const targetAbs = join(targetDirAbs, targetName)
+          assertRealInside(folder, targetAbs)
+          copyFileSync(source, targetAbs)
           imported.push(
             targetDirRel === '' ? targetName : posix.join(targetDirRel, targetName)
           )
@@ -595,9 +577,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       if (typeof input.toDirRelPath !== 'string') {
         throw new ValidationError('toDirRelPath must be a string')
       }
-      const destDirAbs = resolveInside(folder, input.toDirRelPath, {
-        allowRoot: true
-      })
+      const destDirAbs = resolveCoursePath(folder, input.toDirRelPath, true)
       if (!existsSync(destDirAbs) || !lstatSync(destDirAbs).isDirectory()) {
         throw new NotFoundError('material directory', input.toDirRelPath)
       }
@@ -608,7 +588,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       const name = posix.basename(input.fromRelPath)
       const parentRelPath = posix.dirname(input.fromRelPath)
       const parentAbs =
-        parentRelPath === '.' ? folder : resolveInside(folder, parentRelPath)
+        parentRelPath === '.' ? folder : resolveCoursePath(folder, parentRelPath)
       // 같은 폴더로의 이동은 no-op — 충돌 개명이 이름만 바꾸는 사고를 막는다.
       if (parentAbs === destDirAbs) {
         return { relPath: input.fromRelPath }
@@ -618,7 +598,9 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         input.toDirRelPath === ''
           ? targetName
           : posix.join(input.toDirRelPath, targetName)
-      const destAbs = resolveInside(folder, relPath)
+      const destAbs = resolveCoursePath(folder, relPath)
+      assertRealInside(folder, sourceAbs)
+      assertRealInside(folder, destAbs)
       renameSync(sourceAbs, destAbs)
       treeCache.delete(requireId(input.courseId, 'courseId'))
       return { relPath }
@@ -663,19 +645,22 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         parentRelPath === '.' ? newName : posix.join(parentRelPath, newName)
       // Validate the destination independently before any existence check or
       // mutation. This remains necessary even though newName is a basename.
-      const destinationAbs = resolveInside(folder, destinationRelPath)
+      const destinationAbs = resolveCoursePath(folder, destinationRelPath)
       if (destinationAbs === sourceAbs) return { relPath: input.relPath }
       if (existsSync(destinationAbs)) {
         throw new ConflictError(`material "${destinationRelPath}" already exists`)
       }
+      assertRealInside(folder, sourceAbs)
+      assertRealInside(folder, destinationAbs)
       renameSync(sourceAbs, destinationAbs)
       treeCache.delete(requireId(input.courseId, 'courseId'))
       return { relPath: destinationRelPath }
     },
 
     async softDelete(input) {
-      const { abs } = resolveMaterial(input.courseId, input.relPath)
+      const { abs, folder } = resolveMaterial(input.courseId, input.relPath)
       assertFileOrDirectory(abs, input.relPath)
+      assertRealInside(folder, abs)
       await trashItem(abs)
       treeCache.delete(requireId(input.courseId, 'courseId'))
       return { ok: true }
@@ -692,13 +677,15 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       const parentAbs =
         parentRelPath === '.'
           ? folder
-          : resolveInside(folder, parentRelPath)
+          : resolveCoursePath(folder, parentRelPath)
       const candidateName = unusedDuplicateName(parentAbs, sourceName)
       const candidateRelPath =
         parentRelPath === '.'
           ? candidateName
           : posix.join(parentRelPath, candidateName)
-      const candidateAbs = resolveInside(folder, candidateRelPath)
+      const candidateAbs = resolveCoursePath(folder, candidateRelPath)
+      assertRealInside(folder, sourceAbs)
+      assertRealInside(folder, candidateAbs)
       if (sourceKind === 'dir') {
         cpSync(sourceAbs, candidateAbs, {
           recursive: true,
@@ -717,17 +704,18 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       if (typeof input.dirRelPath !== 'string') {
         throw new ValidationError('dirRelPath must be a string')
       }
-      const parentAbs = resolveInside(folder, input.dirRelPath, { allowRoot: true })
+      const parentAbs = resolveCoursePath(folder, input.dirRelPath, true)
       if (!existsSync(parentAbs) || !lstatSync(parentAbs).isDirectory()) {
         throw new NotFoundError('material directory', input.dirRelPath)
       }
       const name = requireBasename(input.name, 'name')
       const relPath =
         input.dirRelPath === '' ? name : posix.join(input.dirRelPath, name)
-      const abs = resolveInside(folder, relPath)
+      const abs = resolveCoursePath(folder, relPath)
       if (existsSync(abs)) {
         throw new ConflictError(`material "${relPath}" already exists`)
       }
+      assertRealInside(folder, abs)
       mkdirSync(abs)
       treeCache.delete(requireId(input.courseId, 'courseId'))
       return { relPath }
@@ -738,7 +726,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       if (typeof input.dirRelPath !== 'string') {
         throw new ValidationError('dirRelPath must be a string')
       }
-      const parentAbs = resolveInside(folder, input.dirRelPath, { allowRoot: true })
+      const parentAbs = resolveCoursePath(folder, input.dirRelPath, true)
       if (!existsSync(parentAbs) || !lstatSync(parentAbs).isDirectory()) {
         throw new NotFoundError('material directory', input.dirRelPath)
       }
@@ -748,14 +736,15 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         input.dirRelPath === ''
           ? requestedName
           : posix.join(input.dirRelPath, requestedName)
-      const requestedAbs = resolveInside(folder, requestedRelPath)
+      const requestedAbs = resolveCoursePath(folder, requestedRelPath)
       const fileName = existsSync(requestedAbs)
         ? unusedDuplicateName(parentAbs, requestedName)
         : requestedName
       const relPath =
         input.dirRelPath === '' ? fileName : posix.join(input.dirRelPath, fileName)
-      const abs = resolveInside(folder, relPath)
+      const abs = resolveCoursePath(folder, relPath)
       const bytes = decodeWriteData(input.encoding, input.data)
+      assertRealInside(folder, abs)
       writeFileSync(abs, bytes, { flag: 'wx' })
       treeCache.delete(requireId(input.courseId, 'courseId'))
       return { relPath }
@@ -773,15 +762,13 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       if (!existsSync(sourcePath) || !lstatSync(sourcePath).isFile()) {
         throw new NotFoundError('staged download', sourcePath)
       }
-      const parentAbs = resolveInside(folder, input.dirRelPath, {
-        allowRoot: true
-      })
+      const parentAbs = resolveCoursePath(folder, input.dirRelPath, true)
       if (!existsSync(parentAbs) || !lstatSync(parentAbs).isDirectory()) {
         throw new NotFoundError('material directory', input.dirRelPath)
       }
 
       const requestedName = requireBasename(input.fileName, 'fileName')
-      const requestedAbs = resolveInside(
+      const requestedAbs = resolveCoursePath(
         folder,
         input.dirRelPath === ''
           ? requestedName
@@ -792,14 +779,16 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         : requestedName
       const relPath =
         input.dirRelPath === '' ? fileName : posix.join(input.dirRelPath, fileName)
-      const abs = resolveInside(folder, relPath)
+      const abs = resolveCoursePath(folder, relPath)
 
       try {
+        assertRealInside(folder, abs)
         renameSync(sourcePath, abs)
       } catch (error) {
         // Staging lives in the OS temp dir, which is very often a different
         // volume — rename fails with EXDEV there and a copy is the only move.
         if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error
+        assertRealInside(folder, abs)
         copyFileSync(sourcePath, abs)
         unlinkSync(sourcePath)
       }

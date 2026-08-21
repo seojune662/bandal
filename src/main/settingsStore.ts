@@ -8,7 +8,17 @@
  */
 
 import { app, BrowserWindow } from 'electron'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DEFAULT_SETTINGS } from '../shared/types/settings'
@@ -36,15 +46,61 @@ function defaultsWithPaths(): Settings {
   }
 }
 
+function quarantineSettings(file: string): string {
+  const basePath = `${file}.corrupt-${new Date().toISOString()}`
+  let quarantinePath = basePath
+  let suffix = 1
+  while (existsSync(quarantinePath)) {
+    quarantinePath = `${basePath}-${suffix}`
+    suffix += 1
+  }
+  renameSync(file, quarantinePath)
+  return quarantinePath
+}
+
+function writeSettingsAtomically(file: string, settings: Settings): void {
+  const temporaryPath = `${file}.tmp`
+  let descriptor: number | undefined
+  try {
+    mkdirSync(dirname(file), { recursive: true })
+    descriptor = openSync(temporaryPath, 'w')
+    writeFileSync(descriptor, JSON.stringify(settings, null, 2), 'utf8')
+    fsyncSync(descriptor)
+    closeSync(descriptor)
+    descriptor = undefined
+    renameSync(temporaryPath, file)
+  } catch (error) {
+    if (descriptor !== undefined) {
+      try {
+        closeSync(descriptor)
+      } catch {
+        // Preserve the original persistence failure.
+      }
+    }
+    try {
+      rmSync(temporaryPath, { force: true })
+    } catch {
+      // Preserve the original persistence failure.
+    }
+    throw error
+  }
+}
+
 export function getSettings(): Settings {
   if (cached !== null) {
     return cached
   }
+  const file = settingsPath()
+  if (!existsSync(file)) {
+    cached = defaultsWithPaths()
+    return cached
+  }
   try {
-    const raw: unknown = JSON.parse(readFileSync(settingsPath(), 'utf8'))
+    const raw: unknown = JSON.parse(readFileSync(file, 'utf8'))
     cached = sanitizeSettings(raw, defaultsWithPaths())
   } catch {
-    // Missing or corrupt file → defaults.
+    const quarantinePath = quarantineSettings(file)
+    console.warn(`[settings] 설정 파일 읽기 실패 — 격리: ${quarantinePath}`)
     cached = defaultsWithPaths()
   }
   return cached
@@ -52,15 +108,15 @@ export function getSettings(): Settings {
 
 /** Applies a patch, persists to disk, and broadcasts `settings:changed`. */
 export function setSettings(patch: SettingsPatch): Settings {
-  const next = sanitizeSettings({ ...getSettings(), ...patch }, defaultsWithPaths())
-  cached = next
+  const previous = getSettings()
+  const next = sanitizeSettings({ ...previous, ...patch }, defaultsWithPaths())
   try {
-    const file = settingsPath()
-    mkdirSync(dirname(file), { recursive: true })
-    writeFileSync(file, JSON.stringify(next, null, 2), 'utf8')
+    writeSettingsAtomically(settingsPath(), next)
   } catch (error) {
-    console.error('[settings] failed to persist settings:', error)
+    cached = previous
+    throw error
   }
+  cached = next
   broadcastSettings(next)
   return next
 }

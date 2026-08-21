@@ -1,6 +1,7 @@
 import {
   existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -8,7 +9,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   CREDENTIALS_FILE_NAME,
   createCredentialStore,
@@ -19,6 +20,7 @@ import type { CredentialSafeStorage } from '../../../src/main/features/credentia
 const temporaryDirectories: string[] = []
 
 afterEach(() => {
+  vi.restoreAllMocks()
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -127,23 +129,56 @@ describe('credential encryption boundary', () => {
 })
 
 describe('credential parsing and summaries', () => {
-  test('discards a corrupt/decryption-failed file without throwing', () => {
+  test('quarantines a one-time decryption failure and recovers on the next save', () => {
     const userDataPath = temporaryUserData()
     const path = credentialPath(userDataPath)
-    writeFileSync(path, Buffer.from('corrupt encrypted bytes'))
+    const encryptedBytes = Buffer.from('corrupt encrypted bytes')
+    writeFileSync(path, encryptedBytes)
+    const timestamp = '2026-08-22T03:04:05.000Z'
+    writeFileSync(`${path}.corrupt-${timestamp}`, Buffer.from('older quarantine'))
+    let decryptions = 0
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const store = createCredentialStore({
       userDataPath,
+      now: () => Date.parse(timestamp),
       safeStorage: {
         ...fakeSafeStorage(),
-        decryptString: () => {
-          throw new Error('key changed')
+        decryptString: (encrypted) => {
+          decryptions += 1
+          if (decryptions === 1) {
+            throw new Error('temporary keychain failure with secret detail')
+          }
+          return fakeSafeStorage().decryptString(encrypted)
         }
       }
     })
 
+    const availability = store.availability()
     expect(() => store.list()).not.toThrow()
     expect(store.list()).toEqual([])
     expect(existsSync(path)).toBe(false)
+    const quarantinedName = `${CREDENTIALS_FILE_NAME}.corrupt-${timestamp}-1`
+    const quarantinedPath = join(userDataPath, quarantinedName)
+    expect(readdirSync(userDataPath)).toContain(quarantinedName)
+    expect(readFileSync(quarantinedPath)).toEqual(encryptedBytes)
+    expect(availability).toEqual({
+      state: 'unavailable',
+      reason: `저장된 데이터를 읽지 못해 격리했습니다: ${quarantinedName}`
+    })
+    expect(warning).toHaveBeenCalledWith(
+      `[credentials] 복호화 실패 — 격리: ${quarantinedPath}`
+    )
+    expect(warning.mock.calls.flat().join(' ')).not.toContain('secret detail')
+
+    store.save({
+      origin: 'https://portal.example.edu',
+      username: 'student',
+      password: 'new-secret'
+    })
+
+    expect(existsSync(path)).toBe(true)
+    expect(store.list()).toHaveLength(1)
+    expect(store.availability()).toEqual({ state: 'ready' })
   })
 
   test('list returns summaries without a password field', () => {

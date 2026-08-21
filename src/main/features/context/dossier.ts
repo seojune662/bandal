@@ -1,19 +1,12 @@
-import {
-  closeSync,
-  existsSync,
-  mkdirSync,
-  openSync,
-  readSync,
-  statSync,
-  writeFileSync
-} from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readSync, statSync,
+  writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Database } from 'better-sqlite3'
 import type { ActivityEvent, ActivityKind } from '../../../shared/types/study'
 import type { UpcomingDeadline } from '../../../shared/types/board'
 import type { StudyGap } from '../../../shared/types/search'
 import type { MaterialKind } from '../../../shared/types/materials'
-import { resolveInside } from '../../db/validate'
+import { assertRealInside, resolveInsideReal } from '../../db/validate'
 import {
   MATERIAL_INDEX_STATE_REL_PATH,
   MATERIAL_SCAN_MAX_DEPTH,
@@ -265,7 +258,7 @@ function readMaterialSnapshot(
       for (const relPath of missingDirectories) {
         entries.push({
           relPath,
-          absPath: resolveInside(courseFolder, relPath),
+          absPath: resolveInsideReal(courseFolder, relPath),
           depth: relPath.split('/').length - 1,
           isDirectory: true,
           kind: 'other'
@@ -274,7 +267,7 @@ function readMaterialSnapshot(
       }
       entries.push({
         relPath: row.rel_path,
-        absPath: resolveInside(courseFolder, row.rel_path),
+        absPath: resolveInsideReal(courseFolder, row.rel_path),
         depth,
         isDirectory: false,
         kind: indexedMaterialKind(row.kind)
@@ -771,11 +764,12 @@ export function createContextWriter(deps: ContextWriterDeps): {
 
         const course = deps.getCourse(courseId)
         const materials = readMaterialSnapshot(deps.db, courseId, courseFolder)
-        const bandalDir = join(courseFolder, '.bandal')
+        const bandalDir = resolveInsideReal(courseFolder, '.bandal')
+        assertRealInside(courseFolder, bandalDir)
         mkdirSync(bandalDir, { recursive: true })
         const files: Array<[string, string]> = [
           [
-            join(bandalDir, 'COURSE.md'),
+            resolveInsideReal(courseFolder, '.bandal/COURSE.md'),
             createDossier(
               course.name,
               courseId,
@@ -785,11 +779,12 @@ export function createContextWriter(deps: ContextWriterDeps): {
               deps
             )
           ],
-          [join(bandalDir, 'README.md'), README],
-          [join(bandalDir, '.gitignore'), '*\n']
+          [resolveInsideReal(courseFolder, '.bandal/README.md'), README],
+          [resolveInsideReal(courseFolder, '.bandal/.gitignore'), '*\n']
         ]
         for (const [filePath, contents] of files) {
           try {
+            assertRealInside(courseFolder, filePath)
             writeFileSync(filePath, contents, 'utf8')
           } catch (error) {
             console.warn(`[context] failed to write ${filePath}:`, error)

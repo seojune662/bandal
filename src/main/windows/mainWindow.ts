@@ -6,6 +6,10 @@ import {
 } from '../../shared/theme'
 import { hardenWindowWebviews } from '../features/browser'
 import { getSettings } from '../settingsStore'
+import {
+  externalUrlScheme,
+  normalizeAllowedExternalUrl
+} from './externalUrlPolicy'
 import { createWindowStateStore } from './windowBounds'
 
 let mainWindow: BrowserWindow | null = null
@@ -99,7 +103,15 @@ export function createMainWindow(): BrowserWindow {
 
   // Open target=_blank links in the external browser, never in-app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    const externalUrl = normalizeAllowedExternalUrl(url)
+    if (externalUrl === null) {
+      console.warn(`[window-open] 차단: ${externalUrlScheme(url)}`)
+      return { action: 'deny' }
+    }
+
+    void shell.openExternal(externalUrl).catch((error: unknown) => {
+      console.error(`[window-open] 열기 실패: ${externalUrl}`, error)
+    })
     return { action: 'deny' }
   })
 

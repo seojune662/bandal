@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { BoardBackground, BoardSurface } from '../../../../shared/types/whiteboard'
 import { ValidationError } from '../../../db/errors'
-import { resolveInside } from '../../../db/validate'
+import { resolveInsideReal } from '../../../db/validate'
 import { assertAgentBoardShape } from '../shapeValidation'
 import {
   cancelled,
@@ -114,7 +114,7 @@ export function canvasTools(ctx: ToolContext) {
           }
           ids.add(id)
           const referencedPath = shape.data.clip?.relPath ?? shape.data.image?.relPath
-          if (referencedPath !== undefined) resolveInside(folder, referencedPath)
+          if (referencedPath !== undefined) resolveInsideReal(folder, referencedPath)
           validated.push({ id, shape })
         } catch (error) {
           errors.push(`shapes[${index}]: ${errorText(error)}`)

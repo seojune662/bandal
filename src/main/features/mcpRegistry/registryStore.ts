@@ -14,7 +14,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { extname, isAbsolute, join } from 'node:path'
+import { basename, extname, isAbsolute, join } from 'node:path'
 import type {
   McpAvailability,
   McpServerConfig,
@@ -41,6 +41,8 @@ const ENVELOPE_VERSION = 1
 const MAX_SERVERS = 20
 const ENCRYPTION_UNAVAILABLE_REASON =
   'OS 보안 저장소를 사용할 수 없어 MCP 서버 저장 기능이 비활성화되었습니다.'
+const REMOTE_HTTP_URL_REASON =
+  '원격 MCP 서버는 https:// 주소여야 합니다. http:// 는 내 컴퓨터(localhost)에만 쓸 수 있습니다.'
 
 export interface McpRegistryDeps {
   safeStorage: {
@@ -94,13 +96,31 @@ function parseStringMap(
   return Object.fromEntries(entries) as Record<string, string>
 }
 
-function validHttpUrl(value: string): boolean {
+function parseHttpUrl(value: string): URL | null {
   try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
+    return new URL(value)
   } catch {
-    return false
+    return null
   }
+}
+
+function isLocalHttpHost(hostname: string): boolean {
+  return hostname === 'localhost' ||
+    hostname === '[::1]' ||
+    hostname === '0.0.0.0' ||
+    /^127(?:\.\d{1,3}){3}$/u.test(hostname)
+}
+
+function validStoredHttpUrl(value: string): boolean {
+  const url = parseHttpUrl(value)
+  return url !== null && (url.protocol === 'http:' || url.protocol === 'https:')
+}
+
+function validHttpUrl(value: string): boolean {
+  const url = parseHttpUrl(value)
+  if (url === null) return false
+  return url.protocol === 'https:' ||
+    (url.protocol === 'http:' && isLocalHttpHost(url.hostname))
 }
 
 function parseLastTest(value: unknown): McpServerConfig['lastTest'] {
@@ -157,7 +177,7 @@ function parseServer(value: unknown): McpServerConfig {
     (value['transport'] === 'stdio' &&
       (typeof command !== 'string' || command.trim() === '')) ||
     (value['transport'] === 'http' &&
-      (typeof url !== 'string' || !validHttpUrl(url)))
+      (typeof url !== 'string' || !validStoredHttpUrl(url)))
   ) {
     throw new TypeError('Invalid MCP transport')
   }
@@ -340,7 +360,7 @@ function validateInput(
     }
   } else if (input.transport === 'http') {
     if (typeof input.url !== 'string' || !validHttpUrl(input.url)) {
-      throw new Error('HTTP 서버 URL은 http:// 또는 https:// 주소여야 합니다.')
+      throw new Error(REMOTE_HTTP_URL_REASON)
     }
   } else {
     throw new Error('지원하지 않는 MCP 전송 방식입니다.')
@@ -356,6 +376,7 @@ export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
   const commandExists = deps.commandExists ?? defaultCommandExists
   let encryptionAvailable: boolean | undefined
   let cache: McpServerConfig[] | undefined
+  let quarantineReason: string | null = null
 
   const canEncrypt = (): boolean => {
     if (encryptionAvailable === undefined) {
@@ -377,6 +398,34 @@ export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
     }
   }
 
+  const quarantine = (): string => {
+    const basePath = `${filePath}.corrupt-${now().toISOString()}`
+    let quarantinePath = basePath
+    let suffix = 1
+    while (existsSync(quarantinePath)) {
+      quarantinePath = `${basePath}-${suffix}`
+      suffix += 1
+    }
+    renameSync(filePath, quarantinePath)
+    quarantineReason =
+      `저장된 데이터를 읽지 못해 격리했습니다: ${basename(quarantinePath)}`
+    return quarantinePath
+  }
+
+  const disableRemoteHttp = (
+    servers: McpServerConfig[]
+  ): McpServerConfig[] => servers.map((server) => {
+    if (
+      server.transport !== 'http' ||
+      typeof server.url !== 'string' ||
+      validHttpUrl(server.url)
+    ) {
+      return server
+    }
+    console.warn(`[mcp] 원격 http 서버 비활성화: ${server.name}`)
+    return server.enabled ? { ...server, enabled: false } : server
+  })
+
   const load = (): McpServerConfig[] => {
     if (cache !== undefined) return cache
     // Avoid opening the OS keychain on first launch when there is no file.
@@ -389,12 +438,13 @@ export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
       return cache
     }
     try {
-      cache = parseEnvelope(
+      cache = disableRemoteHttp(parseEnvelope(
         deps.safeStorage.decryptString(readFileSync(filePath))
-      )
+      ))
     } catch {
       cache = []
-      discard()
+      const quarantinePath = quarantine()
+      console.warn(`[mcp] 복호화 실패 — 격리: ${quarantinePath}`)
     }
     return cache
   }
@@ -403,6 +453,7 @@ export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
     if (servers.length === 0) {
       discard()
       cache = []
+      quarantineReason = null
       return
     }
     const envelope: McpRegistryEnvelope = {
@@ -422,6 +473,7 @@ export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
       renameSync(temporaryPath, filePath)
       chmodSync(filePath, 0o600)
       cache = servers
+      quarantineReason = null
     } catch {
       if (descriptor !== undefined) {
         try {
@@ -441,8 +493,16 @@ export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
 
   return {
     availability(): McpAvailability {
+      if (
+        quarantineReason === null &&
+        cache === undefined &&
+        existsSync(filePath) &&
+        canEncrypt()
+      ) {
+        load()
+      }
       return canEncrypt()
-        ? { available: true, reason: null }
+        ? { available: true, reason: quarantineReason }
         : { available: false, reason: ENCRYPTION_UNAVAILABLE_REASON }
     },
 

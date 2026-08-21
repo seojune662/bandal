@@ -4,13 +4,18 @@
  */
 
 import {
+  closeSync,
   existsSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   statSync,
-  writeFileSync
+  unlinkSync,
+  writeSync
 } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { dirname, extname, join } from 'node:path'
 import { posix } from 'node:path'
 import type {
@@ -20,7 +25,13 @@ import type {
   WriteNoteInput
 } from '../../../shared/types/note'
 import { ConflictError, NotFoundError, ValidationError } from '../../db/errors'
-import { requireId, requireNonEmptyString, resolveInside } from '../../db/validate'
+import {
+  assertRealInside,
+  requireId,
+  requireNonEmptyString,
+  resolveInside,
+  resolveInsideReal
+} from '../../db/validate'
 
 export interface NotesRepo {
   read(input: NoteRef): NoteContent
@@ -28,9 +39,9 @@ export interface NotesRepo {
   create(input: CreateNoteInput): NoteRef
   /**
    * 제목과 파일명을 한 트랜잭션으로 맞춘다: 제목을 정리(sanitize)하고,
-   * 충돌은 -2/-3 접미로 풀고, 문서의 첫 H1을 최종 이름으로 고쳐 쓴 뒤
-   * 파일명을 바꾼다. 에디터 제목 수정과 사이드바 이름 변경이 모두 이
-   * 하나를 통해 흐르므로 두 방향이 어긋날 수 없다.
+   * 충돌은 -2/-3 접미로 풀고, 파일명을 바꾼 뒤 문서의 첫 H1을 최종
+   * 이름으로 원자적으로 고쳐 쓴다. H1 저장이 실패하면 파일명을 원래대로
+   * 되돌린다.
    */
   rename(input: { courseId: string; relPath: string; newName: string }): {
     relPath: string
@@ -64,6 +75,55 @@ function assertMarkdownPath(relPath: string): void {
   }
 }
 
+/** Atomically replaces one note without ever truncating the live file. */
+function writeAtomic(abs: string, content: string): void {
+  const temporaryPath = `${abs}.${process.pid}.${randomUUID()}.tmp`
+  const bytes = Buffer.from(content, 'utf8')
+  let descriptor: number | undefined
+
+  try {
+    descriptor = openSync(temporaryPath, 'w', 0o644)
+    let offset = 0
+    if (bytes.length === 0) {
+      writeSync(descriptor, bytes, 0, 0)
+    }
+    while (offset < bytes.length) {
+      const written = writeSync(descriptor, bytes, offset, bytes.length - offset)
+      if (written === 0) {
+        throw new Error(`atomic write made no progress for "${abs}"`)
+      }
+      offset += written
+    }
+    fsyncSync(descriptor)
+    closeSync(descriptor)
+    descriptor = undefined
+    renameSync(temporaryPath, abs)
+  } catch (error) {
+    const cleanupErrors: unknown[] = []
+    if (descriptor !== undefined) {
+      try {
+        closeSync(descriptor)
+      } catch (closeError) {
+        cleanupErrors.push(closeError)
+      }
+    }
+    if (existsSync(temporaryPath)) {
+      try {
+        unlinkSync(temporaryPath)
+      } catch (unlinkError) {
+        cleanupErrors.push(unlinkError)
+      }
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...cleanupErrors],
+        `atomic note write and cleanup failed for "${abs}"`
+      )
+    }
+    throw error
+  }
+}
+
 export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
   const { getCourseFolder } = deps
 
@@ -80,17 +140,20 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
     return folder
   }
 
-  function resolveNote(courseId: string, relPath: string): string {
+  function resolveNote(
+    courseId: string,
+    relPath: string
+  ): { abs: string; folder: string } {
     const id = requireId(courseId, 'courseId')
     const folder = requireFolder(id)
     const rel = requireNonEmptyString(relPath, 'relPath')
     assertMarkdownPath(rel)
-    return resolveInside(folder, rel)
+    return { abs: resolveInsideReal(folder, rel), folder }
   }
 
   return {
     read(input) {
-      const abs = resolveNote(input.courseId, input.relPath)
+      const { abs } = resolveNote(input.courseId, input.relPath)
       if (!existsSync(abs) || !statSync(abs).isFile()) {
         throw new NotFoundError('note', input.relPath)
       }
@@ -100,7 +163,7 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
     },
 
     write(input) {
-      const abs = resolveNote(input.courseId, input.relPath)
+      const { abs, folder } = resolveNote(input.courseId, input.relPath)
       if (typeof input.markdown !== 'string') {
         throw new ValidationError('markdown must be a string')
       }
@@ -112,8 +175,11 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
           )
         }
       }
-      mkdirSync(dirname(abs), { recursive: true })
-      writeFileSync(abs, input.markdown, 'utf8')
+      const parent = dirname(abs)
+      assertRealInside(folder, parent)
+      mkdirSync(parent, { recursive: true })
+      assertRealInside(folder, abs)
+      writeAtomic(abs, input.markdown)
       return { mtime: Math.round(statSync(abs).mtimeMs) }
     },
 
@@ -126,6 +192,7 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
       const dirAbs = resolveInside(folder, input.dirRelPath, { allowRoot: true })
       const title = sanitizeTitle(requireNonEmptyString(input.title, 'title'))
 
+      assertRealInside(folder, dirAbs)
       mkdirSync(dirAbs, { recursive: true })
       let fileName = `${title}.md`
       for (let n = 2; existsSync(join(dirAbs, fileName)); n += 1) {
@@ -134,7 +201,9 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
         }
         fileName = `${title}-${n}.md`
       }
-      writeFileSync(join(dirAbs, fileName), `# ${title}\n`, 'utf8')
+      const abs = join(dirAbs, fileName)
+      assertRealInside(folder, abs)
+      writeAtomic(abs, `# ${title}\n`)
 
       const relPath =
         input.dirRelPath === '' ? fileName : posix.join(input.dirRelPath, fileName)
@@ -142,7 +211,7 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
     },
 
     rename(input) {
-      const abs = resolveNote(input.courseId, input.relPath)
+      const { abs, folder } = resolveNote(input.courseId, input.relPath)
       if (!existsSync(abs)) {
         throw new NotFoundError('note', input.relPath)
       }
@@ -165,8 +234,8 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
       }
       const finalStem = fileName.replace(/\.md$/u, '')
 
-      // 첫 H1 을 최종 이름으로 고쳐 쓴다. H1 이 없으면 맨 위에 만들어
-      // 제목과 파일명이 항상 같은 곳을 가리키게 한다.
+      // 새 파일명에 맞출 H1 내용을 먼저 계산하되, 파일명 변경 전에는
+      // 원본을 건드리지 않는다.
       const original = readFileSync(abs, 'utf8')
       const lines = original.split('\n')
       const headingIndex = lines.findIndex((line) => /^#\s/u.test(line))
@@ -177,13 +246,34 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
       } else {
         updated = `# ${finalStem}\n\n${original}`
       }
-      if (updated !== original) {
-        writeFileSync(abs, updated, 'utf8')
+      const nextAbs = join(dirAbs, fileName)
+      let renamed = false
+      if (nextAbs !== abs) {
+        assertRealInside(folder, abs)
+        assertRealInside(folder, nextAbs)
+        renameSync(abs, nextAbs)
+        renamed = true
       }
 
-      const nextAbs = join(dirAbs, fileName)
-      if (nextAbs !== abs) {
-        renameSync(abs, nextAbs)
+      try {
+        if (updated !== original) {
+          assertRealInside(folder, nextAbs)
+          writeAtomic(nextAbs, updated)
+        }
+      } catch (error) {
+        if (renamed) {
+          try {
+            assertRealInside(folder, nextAbs)
+            assertRealInside(folder, abs)
+            renameSync(nextAbs, abs)
+          } catch (rollbackError) {
+            throw new AggregateError(
+              [error, rollbackError],
+              `failed to update the note heading and restore "${input.relPath}"`
+            )
+          }
+        }
+        throw error
       }
       const dirRel = posix.dirname(input.relPath)
       const relPath =

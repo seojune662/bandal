@@ -13,7 +13,7 @@
  * (전체를 한 번에 인코딩하면 '/'(%2F)가 경로 구분자와 섞여 모호해진다.)
  *
  * 경로 이탈 방어는 이중이다: 여기서 '..'/'.'/구분자 포함 세그먼트를 거르고,
- * 최종적으로 materialsRepo.absolutePathFor(resolveInside) 가 다시 막는다.
+ * 최종적으로 materialsRepo.absolutePathFor(resolveInsideReal) 가 다시 막는다.
  * 모든 실패는 404 로 응답한다 — 렌더러에 경로 존재 여부를 흘리지 않는다.
  *
  * 이 모듈은 electron 을 import 하지 않는다(단위 테스트 용이성). 실제 등록은

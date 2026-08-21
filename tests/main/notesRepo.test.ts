@@ -1,6 +1,14 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createNotesRepo, type NotesRepo } from '../../src/main/features/notes'
 import {
   ConflictError,
@@ -12,12 +20,28 @@ import { createTestDb, type TestDb } from './helpers/testDb'
 
 const COURSE_ID = 'course-1'
 
+const injectedFsFailure = vi.hoisted(() => ({ failNextFsync: false }))
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...actual,
+    fsyncSync: (...args: Parameters<typeof actual.fsyncSync>) => {
+      if (injectedFsFailure.failNextFsync) {
+        injectedFsFailure.failNextFsync = false
+        throw new Error('injected fsync failure')
+      }
+      return actual.fsyncSync(...args)
+    }
+  }
+})
+
 describe('notesRepo', () => {
   let ctx: TestDb
   let repo: NotesRepo
   let courseFolder: string
 
   beforeEach(() => {
+    injectedFsFailure.failNextFsync = false
     ctx = createTestDb()
     courseFolder = join(ctx.dir, 'course')
     mkdirSync(courseFolder, { recursive: true })
@@ -99,6 +123,26 @@ describe('notesRepo', () => {
         repo.rename({ courseId: COURSE_ID, relPath: 'a.md', newName: '///' })
       ).toThrow(ValidationError)
     })
+
+    test('restores the original filename and propagates an H1 write failure', () => {
+      const original = '# 예전 제목\n\n보존할 본문\n'
+      writeFileSync(join(courseFolder, 'old.md'), original, 'utf8')
+      injectedFsFailure.failNextFsync = true
+
+      expect(() =>
+        repo.rename({
+          courseId: COURSE_ID,
+          relPath: 'old.md',
+          newName: '새 제목'
+        })
+      ).toThrow('injected fsync failure')
+
+      expect(readFileSync(join(courseFolder, 'old.md'), 'utf8')).toBe(original)
+      expect(existsSync(join(courseFolder, '새 제목.md'))).toBe(false)
+      expect(readdirSync(courseFolder).filter((name) => name.endsWith('.tmp'))).toEqual(
+        []
+      )
+    })
   })
 
   describe('path-traversal guard', () => {
@@ -124,6 +168,21 @@ describe('notesRepo', () => {
       expect(() =>
         repo.create({ courseId: COURSE_ID, dirRelPath: '../..', title: 'evil' })
       ).toThrow(PathTraversalError)
+    })
+
+    test('rejects a symlink that escapes the course folder', () => {
+      const outside = join(ctx.dir, 'outside-notes')
+      mkdirSync(outside)
+      symlinkSync(outside, join(courseFolder, 'escape'), 'dir')
+
+      expect(() =>
+        repo.write({
+          courseId: COURSE_ID,
+          relPath: 'escape/stolen.md',
+          markdown: 'must stay inside'
+        })
+      ).toThrow('path resolves outside the course folder')
+      expect(existsSync(join(outside, 'stolen.md'))).toBe(false)
     })
   })
 
@@ -156,7 +215,7 @@ describe('notesRepo', () => {
   })
 
   describe('write', () => {
-    test('writes content and returns the new mtime', () => {
+    test('writes content atomically, returns mtime, and leaves no temp file', () => {
       // Act
       const result = repo.write({
         courseId: COURSE_ID,
@@ -167,6 +226,28 @@ describe('notesRepo', () => {
       // Assert
       expect(result.mtime).toBeGreaterThan(0)
       expect(repo.read({ courseId: COURSE_ID, relPath: 'new.md' }).markdown).toBe('hello')
+      expect(readdirSync(courseFolder).filter((name) => name.endsWith('.tmp'))).toEqual(
+        []
+      )
+    })
+
+    test('keeps the original and removes the temp file when fsync fails', () => {
+      const abs = join(courseFolder, 'note.md')
+      writeFileSync(abs, 'original', 'utf8')
+      injectedFsFailure.failNextFsync = true
+
+      expect(() =>
+        repo.write({
+          courseId: COURSE_ID,
+          relPath: 'note.md',
+          markdown: 'replacement'
+        })
+      ).toThrow('injected fsync failure')
+
+      expect(readFileSync(abs, 'utf8')).toBe('original')
+      expect(readdirSync(courseFolder).filter((name) => name.endsWith('.tmp'))).toEqual(
+        []
+      )
     })
 
     test('fails with ConflictError when the file changed since expectedMtime', () => {
@@ -216,6 +297,19 @@ describe('notesRepo', () => {
 
       // Assert
       expect(ref.relPath).toBe('evilname.md')
+    })
+
+    test('does not publish a note or leave a temp file when fsync fails', () => {
+      injectedFsFailure.failNextFsync = true
+
+      expect(() =>
+        repo.create({ courseId: COURSE_ID, dirRelPath: '', title: '실패할 노트' })
+      ).toThrow('injected fsync failure')
+
+      expect(existsSync(join(courseFolder, '실패할 노트.md'))).toBe(false)
+      expect(readdirSync(courseFolder).filter((name) => name.endsWith('.tmp'))).toEqual(
+        []
+      )
     })
   })
 

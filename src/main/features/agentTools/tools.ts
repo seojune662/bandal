@@ -6,7 +6,7 @@ import type {
   AgentConfirmRequest
 } from '../../../shared/types/agentTools'
 import { NotFoundError, ValidationError } from '../../db/errors'
-import { resolveInside } from '../../db/validate'
+import { assertRealInside, resolveInside } from '../../db/validate'
 import type { BoardRepo } from '../board/boardRepo'
 import type { CanvasRepo } from '../canvas/canvasRepo'
 import type { CourseGroupsRepo } from '../courses/courseGroupsRepo'
@@ -280,11 +280,13 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
     relPath: string,
     allowRoot = false
   ): string {
-    return resolveInside(
-      courseFolder(courseId),
+    const root = courseFolder(courseId)
+    const abs = resolveInside(
+      root,
       relPath,
       allowRoot ? { allowRoot: true } : {}
     )
+    return assertRealInside(root, abs)
   }
 
   function assertChildPath(
@@ -292,8 +294,12 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
     dirRelPath: string,
     name: string
   ): void {
-    const parent = assertCoursePath(courseId, dirRelPath, true)
-    resolveInside(parent, name)
+    const root = courseFolder(courseId)
+    const parent = assertRealInside(
+      root,
+      resolveInside(root, dirRelPath, { allowRoot: true })
+    )
+    assertRealInside(root, resolveInside(parent, name))
   }
 
   async function approve(
