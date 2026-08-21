@@ -9,6 +9,7 @@ import {
   type KeyboardEvent
 } from 'react'
 import type { IDockviewPanelProps } from 'dockview'
+import type { IpcRequest } from '../../../../shared/ipc/contract'
 import type { BoardTask, TaskStatus } from '../../../../shared/types/board'
 import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
@@ -62,6 +63,15 @@ interface EditorState {
 
 export interface BoardOverlayProps {
   onClose: () => void
+}
+
+type ReorderUpdate = IpcRequest<'board:reorderTasks'>['updates'][number]
+
+export function reorderCourseTasks(
+  courseId: string,
+  updates: ReorderUpdate[]
+): Promise<BoardTask[]> {
+  return invoke('board:reorderTasks', { courseId, updates })
 }
 
 function errorMessage(error: unknown): string {
@@ -328,6 +338,7 @@ function BoardSurface(): JSX.Element {
   ): Promise<void> => {
     if (isMutating) return
     const plan = planTaskMove(tasks, taskId, targetStatus, beforeTaskId)
+    const draggedCourseId = tasks.find((task) => task.id === taskId)?.courseId
     setDraggedTaskId(null)
     setDropTarget(null)
     setContextMenu(null)
@@ -337,11 +348,20 @@ function BoardSurface(): JSX.Element {
     setError(null)
     setTasks(plan.tasks)
     try {
-      const persisted = new Map<string, BoardTask>()
-      for (const update of plan.updates) {
-        const updated = await invoke('board:updateTask', update)
-        persisted.set(updated.id, updated)
+      let changed: BoardTask[]
+      if (draggedCourseId === null || draggedCourseId === undefined) {
+        changed = []
+        for (const update of plan.updates) {
+          changed.push(await invoke('board:updateTask', update))
+        }
+      } else {
+        // planTaskMove always supplies sortOrder for every changed row.
+        changed = await reorderCourseTasks(
+          draggedCourseId,
+          plan.updates as ReorderUpdate[]
+        )
       }
+      const persisted = new Map(changed.map((task) => [task.id, task]))
       setTasks((current) =>
         current.map((task) => persisted.get(task.id) ?? task)
       )

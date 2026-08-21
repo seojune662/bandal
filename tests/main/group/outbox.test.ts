@@ -32,6 +32,7 @@ function createFakeRepo(queue: PendingGroupMessage[]): {
   const calls: string[] = []
   const repo = {
     claimable: () => queue.filter((row) => row.state === 'pending'),
+    earliestPendingAt: () => null,
     markSending: (localId: string) => {
       calls.push(`sending:${localId}`)
       const row = queue.find((entry) => entry.localId === localId)
@@ -286,5 +287,50 @@ describe('drain', () => {
     await Promise.all([test1.drain(), test1.drain(), test1.drain()])
     expect(send).toHaveBeenCalledTimes(1)
     test1.dispose()
+  })
+
+  test('startup pass arms a future persisted retry and sends when it is due', async () => {
+    let nowMs = Date.parse('2026-08-22T00:00:00.000Z')
+    const dueMs = nowMs + 5_000
+    let pendingRow: PendingGroupMessage | null = pending()
+    let scheduled: { fn: () => void; ms: number } | null = null
+    const send = vi.fn(() =>
+      Promise.resolve({ kind: 'sent', messageId: 'm1', seq: 1 } as SendOutcome)
+    )
+    const repo = {
+      claimable: (at: string) =>
+        pendingRow !== null && Date.parse(at) >= dueMs ? [pendingRow] : [],
+      earliestPendingAt: (after: string) =>
+        pendingRow !== null && Date.parse(after) < dueMs
+          ? new Date(dueMs).toISOString()
+          : null,
+      markSending: () => undefined,
+      markSent: () => {
+        pendingRow = null
+      },
+      markRetry: () => null,
+      markFailed: () => undefined
+    } as unknown as GroupRepo
+    const uploader = createOutboxUploader({
+      repo,
+      send,
+      emit: vi.fn(),
+      canSend: () => true,
+      now: () => nowMs,
+      schedule: (fn, ms) => {
+        scheduled = { fn, ms }
+        return { unref: () => undefined } as unknown as NodeJS.Timeout
+      }
+    })
+
+    await uploader.drain()
+    expect(send).not.toHaveBeenCalled()
+    expect(scheduled).toMatchObject({ ms: 5_000 })
+
+    nowMs = dueMs
+    const wake = scheduled as { fn: () => void; ms: number } | null
+    wake?.fn()
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1))
+    uploader.dispose()
   })
 })

@@ -61,6 +61,8 @@ export interface GroupRealtimeManager {
   setWindowFocused(focused: boolean): void
   /** Auth changed → every channel must be rebuilt with the new JWT. */
   resetAll(): void
+  /** Close every channel without permanently disposing the manager. */
+  closeAll(): void
   disposeAll(): void
 }
 
@@ -233,7 +235,9 @@ export function createGroupRealtimeManager(
 
   async function subscribe(entry: ChannelEntry): Promise<void> {
     const client = deps.getClient()
-    if (client === null || suspended || disposed) return
+    if (client === null || deps.getUserId() === null || suspended || disposed) {
+      return
+    }
     if (entry.channel !== null || entry.subscribing) return
 
     entry.subscribing = true
@@ -272,6 +276,7 @@ export function createGroupRealtimeManager(
     entry.channel = channel
 
     channel.subscribe((status) => {
+      if (entry.channel !== channel) return
       entry.subscribing = false
       if (status === 'SUBSCRIBED') {
         stopPolling(entry)
@@ -367,6 +372,11 @@ export function createGroupRealtimeManager(
       for (const entry of entries.values()) teardown(entry)
       if (disposed || suspended) return
       for (const entry of open) void subscribe(entry)
+    },
+
+    closeAll() {
+      if (disposed) return
+      for (const entry of entries.values()) teardown(entry)
     },
 
     disposeAll() {

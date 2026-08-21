@@ -27,7 +27,7 @@ export interface BrowserFindState {
   focusSeq: number
 }
 import { invoke } from '../../lib/ipc'
-import { settingsSnapshot } from '../../stores/settingsSnapshot'
+import { useCoursesStore } from '../../stores/coursesStore'
 import { getBrowserAnchorRect } from '../workspace/panels/browserAnchor'
 import { MAX_LIVE_GUESTS, pickEvictions, touchOrder } from './guestLru'
 
@@ -200,7 +200,7 @@ function recordVisitFrom(
   void invoke('browser:recordVisit', {
     url,
     title,
-    courseId: settingsSnapshot().lastActiveCourseId
+    courseId: useCoursesStore.getState().selectedCourseId
   }).catch(() => {
     // History is a convenience; never let it surface as an error.
   })

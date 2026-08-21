@@ -400,5 +400,12 @@ export const enUS: Record<MessageKey, string> = {
   'settings.ai.permissions.screen.denied': 'Required',
   'settings.ai.permissions.screen.unknown': 'Unknown',
   'settings.ai.permissions.screen.open': 'Open System Settings',
-  'settings.ai.permissions.screen.restartHint': 'Quit and reopen Bandal after granting access for the change to take effect.'
+  'settings.ai.permissions.screen.restartHint': 'Quit and reopen Bandal after granting access for the change to take effect.',
+  'settings.agentAccess.toolGrants.title': 'AI tool allowance rules',
+  'settings.agentAccess.toolGrants.description': 'These permanent rules apply across the entire course.',
+  'settings.agentAccess.toolGrants.loading': 'Loading allowance rules…',
+  'settings.agentAccess.toolGrants.empty': 'No allowance rules are stored.',
+  'settings.agentAccess.toolGrants.loadFailed': 'Could not load allowance rules.',
+  'settings.agentAccess.toolGrants.createdAt': 'Created {date}',
+  'settings.agentAccess.toolGrants.revoke': 'Revoke'
 }

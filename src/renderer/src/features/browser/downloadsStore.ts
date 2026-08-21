@@ -32,6 +32,7 @@ interface DownloadsState {
 }
 
 let initialized = false
+const downloadFolderNotices = new Set<string>()
 
 export const useDownloads = create<DownloadsState>()((set, get) => ({
   downloads: [],
@@ -64,6 +65,10 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
           .length
       })
 
+      if (update.state === 'completed' || update.state === 'interrupted') {
+        downloadFolderNotices.delete(update.id)
+      }
+
       if (update.state === 'completed' && update.relPath !== null) {
         showToastWithAction(`${update.fileName}을(를) 자료에 저장했어요.`, {
           label: '자료에서 보기',
@@ -84,7 +89,10 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
         )
       } else if (update.state === 'progressing' && update.courseId === null) {
         // Never silently drop it: say where it went instead.
-        showToast(`${update.fileName}은(는) 다운로드 폴더에 저장됩니다.`)
+        if (!downloadFolderNotices.has(update.id)) {
+          downloadFolderNotices.add(update.id)
+          showToast(`${update.fileName}은(는) 다운로드 폴더에 저장됩니다.`)
+        }
       }
     })
   },

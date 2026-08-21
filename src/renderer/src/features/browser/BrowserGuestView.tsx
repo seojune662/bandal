@@ -15,7 +15,7 @@ import {
 } from '../workspace/panels/browserAnchor'
 import { useBrowserGuests, type BrowserNavState } from './browserGuestsStore'
 import { invoke } from '../../lib/ipc'
-import { settingsSnapshot } from '../../stores/settingsSnapshot'
+import { useCoursesStore } from '../../stores/coursesStore'
 import { ABORTED_ERROR_CODE } from './loadError'
 import {
   BrowserContextMenu,
@@ -203,7 +203,7 @@ export function BrowserGuestView({
             pageURL: event.params.pageURL,
             pageTitle:
               useBrowserGuests.getState().nav[tabId]?.title ?? '',
-            courseId: settingsSnapshot().lastActiveCourseId
+            courseId: useCoursesStore.getState().selectedCourseId
           })
         }) as EventListener
       ],

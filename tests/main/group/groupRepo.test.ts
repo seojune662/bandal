@@ -413,6 +413,20 @@ describe('group_outbox', () => {
     expect(after?.lastError).toBe('network')
   })
 
+  test('earliestPendingAt returns the first future persisted retry', () => {
+    const first = repo.enqueue({ groupId: 'remote-1', body: 'first' })
+    const second = repo.enqueue({ groupId: 'remote-1', body: 'second' })
+    repo.markRetry(first.localId, 'network', '2026-08-22T00:00:05.000Z')
+    repo.markRetry(second.localId, 'network', '2026-08-22T00:00:09.000Z')
+
+    expect(repo.earliestPendingAt('2026-08-22T00:00:00.000Z')).toBe(
+      '2026-08-22T00:00:05.000Z'
+    )
+    expect(repo.earliestPendingAt('2026-08-22T00:00:05.000Z')).toBe(
+      '2026-08-22T00:00:09.000Z'
+    )
+  })
+
   test('a failed send survives an app restart', () => {
     // The outbox is a table precisely so the 빨간 느낌표 is still there
     // tomorrow — the same contract KakaoTalk offers.

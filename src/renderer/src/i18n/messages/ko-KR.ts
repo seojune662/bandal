@@ -398,7 +398,14 @@ export const koKR = {
   'settings.ai.permissions.screen.denied': '필요함',
   'settings.ai.permissions.screen.unknown': '미확인',
   'settings.ai.permissions.screen.open': '시스템 설정 열기',
-  'settings.ai.permissions.screen.restartHint': '허용한 뒤에는 반달을 다시 실행해야 적용됩니다.'
+  'settings.ai.permissions.screen.restartHint': '허용한 뒤에는 반달을 다시 실행해야 적용됩니다.',
+  'settings.agentAccess.toolGrants.title': 'AI 도구 허용 규칙',
+  'settings.agentAccess.toolGrants.description': '과목 전체에 적용되는 영구 규칙입니다.',
+  'settings.agentAccess.toolGrants.loading': '허용 규칙을 불러오는 중입니다…',
+  'settings.agentAccess.toolGrants.empty': '허용된 규칙이 없습니다.',
+  'settings.agentAccess.toolGrants.loadFailed': '허용 규칙을 불러오지 못했습니다.',
+  'settings.agentAccess.toolGrants.createdAt': '{date} 생성',
+  'settings.agentAccess.toolGrants.revoke': '취소'
 } as const
 
 export type MessageKey = keyof typeof koKR

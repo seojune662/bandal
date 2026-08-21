@@ -25,6 +25,7 @@ import { createGroupRepo } from './groupRepo'
 import { createGroupService, type GroupService } from './GroupService'
 import { createOutboxUploader } from './OutboxUploader'
 import { createRateGuard } from './rateGuard'
+import { createWhiteboardRepo } from '../whiteboard/whiteboardRepo'
 import {
   createSessionStore,
   destroySessionFile,
@@ -54,6 +55,8 @@ export interface GroupRuntime {
   getClient(): SupabaseClient | null
   /** Remote user id, or null when signed out. */
   getUserId(): string | null
+  /** Subscribe a sibling service to auth transitions. */
+  onAuthChanged(listener: (state: AuthState) => void): () => void
   /** Safe to call unconditionally from `before-quit`. */
   dispose(): void
 }
@@ -63,9 +66,11 @@ export function createGroupRuntime(deps: GroupRuntimeDeps): GroupRuntime {
   let disposeInner: (() => void) | null = null
   let sharedClient: SupabaseClient | null = null
   let currentUserId: (() => string | null) | null = null
+  const authChangeListeners = new Set<(state: AuthState) => void>()
 
   function build(): GroupService {
     const repo = createGroupRepo(deps.db)
+    const whiteboardRepo = createWhiteboardRepo(deps.db)
     const batcher = createGroupEventBatcher({ send: deps.broadcastBatch })
 
     const storage = createSessionStore({
@@ -83,6 +88,7 @@ export function createGroupRuntime(deps: GroupRuntimeDeps): GroupRuntime {
         // means every one of them has to be rebuilt or it silently receives
         // nothing (supabase/README.md §5.3).
         realtime.resetAll()
+        for (const listener of authChangeListeners) listener(state)
       },
       destroySession: () =>
         destroySessionFile(sessionFilePath(app.getPath('userData'))),
@@ -128,6 +134,7 @@ export function createGroupRuntime(deps: GroupRuntimeDeps): GroupRuntime {
 
     const built = createGroupService({
       repo,
+      whiteboardRepo,
       auth,
       realtime,
       outbox,
@@ -166,12 +173,17 @@ export function createGroupRuntime(deps: GroupRuntimeDeps): GroupRuntime {
       if (service === null) service = build()
       return currentUserId?.() ?? null
     },
+    onAuthChanged(listener) {
+      authChangeListeners.add(listener)
+      return () => authChangeListeners.delete(listener)
+    },
     dispose() {
       disposeInner?.()
       disposeInner = null
       service = null
       sharedClient = null
       currentUserId = null
+      authChangeListeners.clear()
     }
   }
 }

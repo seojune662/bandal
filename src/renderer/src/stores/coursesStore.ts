@@ -23,7 +23,7 @@ interface CoursesState {
   pendingCourseId: string | null
   error: string | null
   loadCourses: () => Promise<void>
-  selectCourse: (courseId: string) => void
+  selectCourse: (courseId: string | null) => void
   createGroup: (name: string) => Promise<CourseGroup>
   renameGroup: (groupId: string, name: string) => Promise<CourseGroup>
   /** 그룹만 지운다 — 멤버 과목은 그룹 해제될 뿐 삭제되지 않는다. */
@@ -140,23 +140,23 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
         set((state) => {
           state.courses = courses
           state.groups = groups
-          const selectionStillExists = courses.some(
-            (course) => course.id === state.selectedCourseId
-          )
-          if (!selectionStillExists) {
-            // [R3] 부팅(또는 선택 과목 소멸) 시: 설정이 켜져 있고 기록된
-            // 과목이 아직 살아 있으면 그 과목을, 아니면 첫 과목을 고른다.
-            const remembered =
-              settings !== null &&
-              settings.restoreLastCourse &&
-              settings.lastActiveCourseId !== null &&
-              courses.some((course) => course.id === settings.lastActiveCourseId)
-                ? settings.lastActiveCourseId
-                : null
-            state.selectedCourseId = remembered ?? courses[0]?.id ?? null
-          }
           state.isLoading = false
         })
+        const selectionStillExists = courses.some(
+          (course) => course.id === get().selectedCourseId
+        )
+        if (!selectionStillExists) {
+          // [R3] 부팅(또는 선택 과목 소멸) 시: 설정이 켜져 있고 기록된
+          // 과목이 아직 살아 있으면 그 과목을, 아니면 첫 과목을 고른다.
+          const remembered =
+            settings !== null &&
+            settings.restoreLastCourse &&
+            settings.lastActiveCourseId !== null &&
+            courses.some((course) => course.id === settings.lastActiveCourseId)
+              ? settings.lastActiveCourseId
+              : null
+          get().selectCourse(remembered ?? courses[0]?.id ?? null)
+        }
         // [Gap B] 부팅에서 고른 과목도 영속 — 안 그러면 과목을 한 번도
         // 전환하지 않은 사용자는 lastActiveCourseId 가 영영 비어 있다.
         const bootSelection = get().selectedCourseId
@@ -252,12 +252,17 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
     },
 
     selectCourse: (courseId) => {
-      if (!get().courses.some((course) => course.id === courseId)) return
+      if (
+        courseId !== null &&
+        !get().courses.some((course) => course.id === courseId)
+      ) {
+        return
+      }
       set((state) => {
         state.selectedCourseId = courseId
       })
       // [R3] 다음 부팅의 복원용. 값이 같으면 쓰지 않는다(디바운스 내부 처리).
-      persistLastActiveCourse(courseId)
+      if (courseId !== null) persistLastActiveCourse(courseId)
     },
 
     createCourse: async (input) => {
@@ -269,8 +274,8 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
         set((state) => {
           state.courses.push(created)
           state.courses.sort((a, b) => a.sortOrder - b.sortOrder)
-          state.selectedCourseId = created.id
         })
+        get().selectCourse(created.id)
         return created
       } catch (error) {
         set((state) => {
@@ -315,8 +320,8 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
             state.courses[index] = course
           }
           state.courses.sort((a, b) => a.sortOrder - b.sortOrder)
-          state.selectedCourseId = course.id
         })
+        get().selectCourse(course.id)
         return result
       } catch (error) {
         set((state) => {
@@ -350,8 +355,8 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
           if (result.status === 'duplicate') {
             state.error = '그 폴더는 이미 다른 과목이 쓰고 있어요.'
           }
-          state.selectedCourseId = course.id
         })
+        if (result.status !== 'failed') get().selectCourse(result.course.id)
         return result
       } catch (error) {
         set((state) => {
@@ -400,9 +405,6 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
         set((state) => {
           if (archived) {
             state.courses = state.courses.filter((course) => course.id !== courseId)
-            if (selectedCourseId === courseId) {
-              state.selectedCourseId = nextSelection(courses, courseId)
-            }
           } else {
             const index = state.courses.findIndex((course) => course.id === courseId)
             if (index === -1) state.courses.push(updated)
@@ -411,6 +413,9 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
           }
           state.pendingCourseId = null
         })
+        if (archived && selectedCourseId === courseId) {
+          get().selectCourse(nextSelection(courses, courseId))
+        }
       } catch (error) {
         set((state) => {
           state.pendingCourseId = null
@@ -433,11 +438,11 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
         useWorkspaceStore.getState().discardPendingSave(courseId)
         set((state) => {
           state.courses = state.courses.filter((course) => course.id !== courseId)
-          if (selectedCourseId === courseId) {
-            state.selectedCourseId = nextSelection(courses, courseId)
-          }
           state.pendingCourseId = null
         })
+        if (selectedCourseId === courseId) {
+          get().selectCourse(nextSelection(courses, courseId))
+        }
       } catch (error) {
         set((state) => {
           state.pendingCourseId = null

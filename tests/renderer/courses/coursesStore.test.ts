@@ -1,14 +1,8 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Course } from '../../../src/shared/types/course'
 
 const workspaceMocks = vi.hoisted(() => ({
   discardPendingSave: vi.fn()
-}))
-
-vi.mock('../../../src/renderer/src/lib/ipc', () => ({
-  invoke: vi.fn(),
-  onPush: vi.fn(() => () => {}),
-  openSettingsWindow: vi.fn()
 }))
 
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
@@ -19,10 +13,14 @@ vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   }
 }))
 
-import { invoke } from '../../../src/renderer/src/lib/ipc'
+import {
+  setIpcAdapter,
+  type IpcAdapter
+} from '../../../src/renderer/src/lib/ipc'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
+import { resetSettingsSnapshotForTests } from '../../../src/renderer/src/stores/settingsSnapshot'
 
-const invokeMock = vi.mocked(invoke)
+const invokeMock = vi.fn<(channel: string, req: unknown) => Promise<unknown>>()
 
 function course(
   id: string,
@@ -46,7 +44,13 @@ function course(
 }
 
 beforeEach(() => {
+  vi.useFakeTimers()
   invokeMock.mockReset()
+  setIpcAdapter({
+    invoke: invokeMock,
+    on: vi.fn(() => () => undefined)
+  } as unknown as IpcAdapter)
+  resetSettingsSnapshotForTests()
   workspaceMocks.discardPendingSave.mockReset()
   useCoursesStore.setState({
     courses: [],
@@ -55,6 +59,31 @@ beforeEach(() => {
     isLoading: false,
     pendingCourseId: null,
     error: null
+  })
+})
+
+afterEach(() => {
+  vi.clearAllTimers()
+  vi.useRealTimers()
+  setIpcAdapter(null)
+  resetSettingsSnapshotForTests()
+})
+
+describe('coursesStore selection persistence', () => {
+  test('persists a newly created course through the selectCourse path', async () => {
+    const created = course('c1', 0)
+    invokeMock.mockResolvedValue(created)
+
+    await useCoursesStore.getState().createCourse({
+      name: created.name,
+      color: created.color
+    })
+    await vi.advanceTimersByTimeAsync(800)
+
+    expect(useCoursesStore.getState().selectedCourseId).toBe(created.id)
+    expect(invokeMock).toHaveBeenCalledWith('settings:set', {
+      lastActiveCourseId: created.id
+    })
   })
 })
 

@@ -19,10 +19,15 @@ import {
   useBrowserGuests
 } from '../../../src/renderer/src/features/browser/browserGuestsStore'
 import { MAX_LIVE_GUESTS } from '../../../src/renderer/src/features/browser/guestLru'
+import { invoke } from '../../../src/renderer/src/lib/ipc'
+import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
 
 const store = () => useBrowserGuests.getState()
+const invokeMock = vi.mocked(invoke)
 
 beforeEach(() => {
+  invokeMock.mockClear()
+  useCoursesStore.setState({ selectedCourseId: null })
   resetBrowserGuestsForTests()
 })
 
@@ -171,6 +176,22 @@ describe('nav state + URL restore', () => {
     expect(store().recent['t1']).toEqual([
       { url: 'https://example.com/course', title: 'Course home' }
     ])
+  })
+
+  test('records a visit against the immediately selected course', () => {
+    useCoursesStore.setState({ selectedCourseId: 'course-current' })
+    store().ensureGuest('t1', 'https://example.com')
+
+    store().updateNav('t1', {
+      url: 'https://example.com/course',
+      title: 'Course home'
+    })
+
+    expect(invokeMock).toHaveBeenCalledWith('browser:recordVisit', {
+      url: 'https://example.com/course',
+      title: 'Course home',
+      courseId: 'course-current'
+    })
   })
 })
 

@@ -96,14 +96,20 @@ export function createOutboxUploader(
 
   let draining: Promise<void> | null = null
   let wakeTimer: NodeJS.Timeout | null = null
+  let wakeAt: number | null = null
   let disposed = false
 
   function armWake(delayMs: number): void {
-    if (disposed || wakeTimer !== null) return
+    if (disposed) return
+    const nextWakeAt = now() + Math.max(0, delayMs)
+    if (wakeTimer !== null && wakeAt !== null && wakeAt <= nextWakeAt) return
+    if (wakeTimer !== null) clearTimeout(wakeTimer)
+    wakeAt = nextWakeAt
     wakeTimer = schedule(() => {
       wakeTimer = null
+      wakeAt = null
       void runDrain()
-    }, delayMs)
+    }, Math.max(0, delayMs))
   }
 
   async function sendOne(row: PendingGroupMessage): Promise<number | null> {
@@ -173,13 +179,11 @@ export function createOutboxUploader(
   async function runDrain(): Promise<void> {
     if (disposed || !deps.canSend()) return
 
-    let nextWait: number | null = null
     for (const row of deps.repo.claimable(new Date(now()).toISOString())) {
       if (disposed || !deps.canSend()) break
       try {
         const wait = await sendOne(row)
         if (wait !== null) {
-          nextWait = nextWait === null ? wait : Math.min(nextWait, wait)
           // A transient failure means the network is unhappy; stop hammering
           // the rest of the queue in this pass.
           break
@@ -193,11 +197,17 @@ export function createOutboxUploader(
           error instanceof Error ? error.message : 'unknown',
           new Date(now() + backoffMs(row.attempts)).toISOString()
         )
-        nextWait = backoffMs(row.attempts)
         break
       }
     }
-    if (nextWait !== null) armWake(nextWait)
+    if (disposed || !deps.canSend()) return
+    const current = now()
+    const earliest = deps.repo.earliestPendingAt(
+      new Date(current).toISOString()
+    )
+    if (earliest !== null) {
+      armWake(Math.max(0, Date.parse(earliest) - current))
+    }
   }
 
   function start(): Promise<void> {
@@ -219,6 +229,7 @@ export function createOutboxUploader(
         clearTimeout(wakeTimer)
         wakeTimer = null
       }
+      wakeAt = null
     }
   }
 }

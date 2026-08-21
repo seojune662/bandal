@@ -20,6 +20,7 @@ import { Icon } from '../../app/icons'
 import { Tooltip } from '../../components/Tooltip'
 import { useT } from '../../i18n'
 import { favoriteScopeKey, useFavoritesStore } from '../../stores/favoritesStore'
+import { useCoursesStore } from '../../stores/coursesStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { useBrowserAnchorRect } from '../workspace/panels/browserAnchor'
@@ -36,7 +37,6 @@ import { OPEN_DIAGNOSTICS_EVENT } from './diagnosticsBridge'
 import { DEFAULT_ZOOM_LEVEL, isDefaultZoom, zoomPercent } from './zoom'
 import { useDownloads } from './downloadsStore'
 import { toggleFavorite, useBrowserFavorite } from './browserFavorite'
-import { settingsSnapshot } from '../../stores/settingsSnapshot'
 import { BrowserFindBar } from './BrowserFindBar'
 import { AgentRunBanner } from './AgentRunBanner'
 import {
@@ -592,7 +592,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
     if (!isPanelVisible || navState.url === '') return
     void useDownloads
       .getState()
-      .followPage(navState.url, settingsSnapshot().lastActiveCourseId)
+      .followPage(navState.url, useCoursesStore.getState().selectedCourseId)
       .catch(() => {
         // Falls back to the selected course; nothing to surface.
       })

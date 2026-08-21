@@ -43,6 +43,7 @@ import type { GroupRealtimeManager } from './GroupRealtimeManager'
 import type { GroupRepo } from './groupRepo'
 import type { OutboxUploader, SendOutcome } from './OutboxUploader'
 import type { RateGuard } from './rateGuard'
+import type { WhiteboardRepo } from '../whiteboard/whiteboardRepo'
 import * as rpc from './groupRpc'
 import { asPostgresError, isRateLimited, retryAfterSeconds } from './supabaseClient'
 
@@ -67,6 +68,7 @@ export class RateLimitedError extends Error {
 
 export interface GroupServiceDeps {
   repo: GroupRepo
+  whiteboardRepo: Pick<WhiteboardRepo, 'clearAll'>
   auth: AuthService
   realtime: GroupRealtimeManager
   outbox: OutboxUploader
@@ -311,11 +313,12 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
     },
 
     async signOut() {
-      deps.realtime.disposeAll()
+      deps.realtime.closeAll()
       await deps.auth.signOut()
       // The cache is per-account; leaving it behind would leak one student's
       // group names into the next sign-in on a shared laptop.
       deps.repo.clearAll()
+      deps.whiteboardRepo.clearAll()
       deps.invalidate('membership')
     },
 

@@ -1,8 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type {
-  RealtimeChannel,
-  SupabaseClient
-} from '@supabase/supabase-js'
+import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import type { DrawingData, DrawingKind, DrawingStyle } from '../../../shared/types/drawing'
 import type {
   AddWhiteboardShapeInput,
@@ -18,16 +15,11 @@ import {
   type PendingWhiteboardRemoval,
   type WhiteboardRepo
 } from './whiteboardRepo'
-
 export const BACKOFF_BASE_MS = 1_000
 export const BACKOFF_CAP_MS = 60_000
 const OUTBOX_BATCH_SIZE = 100
 const DEFAULT_BOARD_TITLE = '화이트보드'
-export type SupabaseClientLike = Pick<
-  SupabaseClient,
-  'from' | 'channel' | 'removeChannel'
->
-
+export type SupabaseClientLike = Pick<SupabaseClient, 'from' | 'channel' | 'removeChannel'>
 export type WhiteboardPushEvent =
   | { type: 'shape'; shape: WhiteboardShape }
   | { type: 'remove'; boardId: string; ids: string[] }
@@ -38,13 +30,11 @@ export type WhiteboardPushEvent =
       removedIds: string[]
       syncedAt: string
     }
-
 export interface WhiteboardSyncResult {
   shapes: WhiteboardShape[]
   removedIds: string[]
   syncedAt: string
 }
-
 export interface WhiteboardServiceDeps {
   repo: WhiteboardRepo
   /** null means that Supabase is not configured in this build. */
@@ -54,7 +44,6 @@ export interface WhiteboardServiceDeps {
   now?: () => number
   schedule?: (fn: () => void, ms: number) => NodeJS.Timeout
 }
-
 export interface WhiteboardService {
   open(groupId: string): Promise<OpenWhiteboardResult>
   addShape(input: AddWhiteboardShapeInput): Promise<WhiteboardShape>
@@ -62,41 +51,36 @@ export interface WhiteboardService {
   removeShapes(input: RemoveWhiteboardShapesInput): Promise<{ ok: true }>
   sync(boardId: string, since: string | null): Promise<WhiteboardSyncResult>
   close(groupId: string): { ok: true }
+  /** Rebuilds account-bound channels and clears transient retry state. */
+  resetForAuthChange(): void
   dispose(): void
 }
-
 interface QueryResponse {
   data: unknown
   error: unknown
   status?: number
 }
-
 interface RealtimeEntry {
   groupId: string
   boardId: string
   client: SupabaseClientLike
   channel: RealtimeChannel
 }
-
 class NotProvisionedError extends Error {
   override readonly name = 'NotProvisionedError'
 }
-
 export function backoffMs(attempts: number, base = BACKOFF_BASE_MS): number {
   return Math.min(BACKOFF_CAP_MS, base * 2 ** Math.max(0, attempts))
 }
-
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {}
 }
-
 function str(record: Record<string, unknown>, snake: string, camel: string): string {
   const value = record[snake] ?? record[camel]
   return typeof value === 'string' ? value : ''
 }
-
 function objectValue<T extends object>(
   record: Record<string, unknown>,
   ...keys: string[]
@@ -116,7 +100,6 @@ function objectValue<T extends object>(
     ? (value as T)
     : ({} as T)
 }
-
 function asRemoteBoard(value: unknown): Whiteboard | null {
   const row = asRecord(value)
   const id = str(row, 'id', 'id')
@@ -132,7 +115,6 @@ function asRemoteBoard(value: unknown): Whiteboard | null {
     updatedAt: str(row, 'updated_at', 'updatedAt') || now
   }
 }
-
 function asRemoteShape(value: unknown): WhiteboardShape | null {
   const row = asRecord(value)
   const id = str(row, 'id', 'id')
@@ -153,13 +135,11 @@ function asRemoteShape(value: unknown): WhiteboardShape | null {
       now
   }
 }
-
 function deletedAt(value: unknown): string | null {
   const row = asRecord(value)
   const deleted = row['deleted_at'] ?? row['deletedAt']
   return typeof deleted === 'string' ? deleted : null
 }
-
 function removalPayload(value: unknown): { boardId: string; ids: string[] } | null {
   const row = asRecord(value)
   const boardId = str(row, 'board_id', 'boardId')
@@ -172,15 +152,10 @@ function removalPayload(value: unknown): { boardId: string; ids: string[] } | nu
   if (boardId === '' || ids.length === 0) return null
   return { boardId, ids }
 }
-
 function errorRecord(error: unknown): Record<string, unknown> {
   return asRecord(error)
 }
-
-export function isWhiteboardNotProvisioned(
-  error: unknown,
-  status?: number
-): boolean {
+export function isWhiteboardNotProvisioned(error: unknown, status?: number): boolean {
   const record = errorRecord(error)
   const code = record['code']
   const errorStatus = record['status'] ?? record['statusCode']
@@ -191,7 +166,6 @@ export function isWhiteboardNotProvisioned(
     errorStatus === '404'
   )
 }
-
 function responseOrThrow(response: QueryResponse): unknown {
   if (response.error == null) return response.data
   if (isWhiteboardNotProvisioned(response.error, response.status)) {
@@ -199,11 +173,9 @@ function responseOrThrow(response: QueryResponse): unknown {
   }
   throw response.error
 }
-
 function isDuplicate(error: unknown): boolean {
   return errorRecord(error)['code'] === '23505'
 }
-
 function isPermanentUploadError(error: unknown): boolean {
   const record = errorRecord(error)
   return (
@@ -213,7 +185,6 @@ function isPermanentUploadError(error: unknown): boolean {
     record['message'] === 'whiteboard_not_found'
   )
 }
-
 function uploadRetryMs(error: unknown, attempts: number): number {
   const record = errorRecord(error)
   const hint = Number(record['hint'] ?? '')
@@ -223,7 +194,6 @@ function uploadRetryMs(error: unknown, attempts: number): number {
       : 0
   return Math.max(backoffMs(attempts), rateLimitMs)
 }
-
 function localBoard(groupId: string, createdBy: string): Whiteboard {
   const now = new Date().toISOString()
   return {
@@ -236,9 +206,7 @@ function localBoard(groupId: string, createdBy: string): Whiteboard {
   }
 }
 
-export function createWhiteboardService(
-  deps: WhiteboardServiceDeps
-): WhiteboardService {
+export function createWhiteboardService(deps: WhiteboardServiceDeps): WhiteboardService {
   const now = deps.now ?? (() => Date.now())
   const schedule =
     deps.schedule ??
@@ -247,15 +215,14 @@ export function createWhiteboardService(
       timer.unref?.()
       return timer
     })
-
   const realtime = new Map<string, RealtimeEntry>()
+  const openBoards = new Map<string, string>()
   const provision = new Map<string, 'ready' | 'not-provisioned'>()
   const nextTryAt = new Map<string, number>()
   let draining: Promise<void> | null = null
   let drainRequested = false
   let wakeTimer: NodeJS.Timeout | null = null
   let disposed = false
-
   function cacheBoard(groupId: string): Whiteboard {
     const cached = deps.repo.getBoardByGroup(groupId)
     if (cached !== null) return cached
@@ -263,7 +230,6 @@ export function createWhiteboardService(
     deps.repo.upsertBoard(board)
     return board
   }
-
   async function selectBoard(
     client: SupabaseClientLike,
     groupId: string
@@ -276,7 +242,6 @@ export function createWhiteboardService(
     const data = responseOrThrow(response)
     return data == null ? null : asRemoteBoard(data)
   }
-
   async function ensureRemoteBoard(
     client: SupabaseClientLike,
     groupId: string,
@@ -289,7 +254,6 @@ export function createWhiteboardService(
       provision.set(groupId, 'ready')
       return existing
     }
-
     const response = (await client
       .from('whiteboards')
       .insert({
@@ -299,7 +263,6 @@ export function createWhiteboardService(
       })
       .select('id, group_id, title, created_by, created_at, updated_at')
       .single()) as QueryResponse
-
     try {
       const created = asRemoteBoard(responseOrThrow(response)) ?? cached
       deps.repo.upsertBoard(created)
@@ -320,7 +283,6 @@ export function createWhiteboardService(
       throw error
     }
   }
-
   function armWake(delayMs: number): void {
     if (disposed || wakeTimer !== null) return
     wakeTimer = schedule(() => {
@@ -329,10 +291,7 @@ export function createWhiteboardService(
     }, delayMs)
   }
 
-  function retryDueAt(
-    id: string,
-    attempts: number
-  ): number | undefined {
+  function retryDueAt(id: string, attempts: number): number | undefined {
     const inMemory = nextTryAt.get(id)
     if (inMemory !== undefined) return inMemory
     if (attempts <= 0) return undefined
@@ -342,8 +301,7 @@ export function createWhiteboardService(
   }
 
   async function uploadShape(
-    client: SupabaseClientLike,
-    shape: WhiteboardShape
+    client: SupabaseClientLike, shape: WhiteboardShape
   ): Promise<number | null> {
     const board = deps.repo.getBoardById(shape.boardId)
     if (board === null) {
@@ -399,10 +357,8 @@ export function createWhiteboardService(
       return wait
     }
   }
-
   async function uploadUpdate(
-    client: SupabaseClientLike,
-    shape: WhiteboardShape
+    client: SupabaseClientLike, shape: WhiteboardShape
   ): Promise<number | null> {
     const board = deps.repo.getBoardById(shape.boardId)
     if (board === null) {
@@ -442,10 +398,8 @@ export function createWhiteboardService(
       return wait
     }
   }
-
   async function uploadRemoval(
-    client: SupabaseClientLike,
-    removal: PendingWhiteboardRemoval
+    client: SupabaseClientLike, removal: PendingWhiteboardRemoval
   ): Promise<number | null> {
     try {
       // `.select()` so PostgREST reports WHICH rows changed. Without it an
@@ -499,7 +453,6 @@ export function createWhiteboardService(
   async function drainPass(): Promise<void> {
     const client = deps.getClient()
     if (disposed || client === null || deps.getUserId() === null) return
-
     for (const shape of deps.repo.pending(OUTBOX_BATCH_SIZE)) {
       const dueAt = retryDueAt(shape.id, deps.repo.attempts(shape.id))
       if (dueAt !== undefined && dueAt > now()) {
@@ -521,7 +474,6 @@ export function createWhiteboardService(
         return
       }
     }
-
     for (const removal of deps.repo.pendingRemovals(OUTBOX_BATCH_SIZE)) {
       const dueAt = retryDueAt(removal.id, removal.attempts)
       if (dueAt !== undefined && dueAt > now()) {
@@ -537,7 +489,6 @@ export function createWhiteboardService(
       if (provision.get(removal.groupId) === 'not-provisioned') return
     }
   }
-
   function startDrain(): Promise<void> {
     if (draining !== null) {
       drainRequested = true
@@ -555,10 +506,8 @@ export function createWhiteboardService(
     })
     return draining
   }
-
   async function fetchSync(
-    boardId: string,
-    since: string | null
+    boardId: string, since: string | null
   ): Promise<WhiteboardSyncResult> {
     const startedAt = new Date(now()).toISOString()
     const empty = { shapes: [], removedIds: [], syncedAt: since ?? startedAt }
@@ -566,7 +515,6 @@ export function createWhiteboardService(
     const board = deps.repo.getBoardById(boardId)
     if (client === null || deps.getUserId() === null || board === null) return empty
     if (provision.get(board.groupId) === 'not-provisioned') return empty
-
     try {
       const query = client
         .from('whiteboard_shapes')
@@ -595,7 +543,6 @@ export function createWhiteboardService(
       deps.repo.applyRemote(remoteShapes)
       deps.repo.applyRemoteRemovals(removedIds)
       deps.repo.markBoardSynced(boardId, startedAt)
-
       // Answer from the repo, not from the snapshot we just fetched. The repo
       // holds local tombstones for erases the server has not accepted (or has
       // refused), so the snapshot still lists those shapes as live. Returning
@@ -635,7 +582,6 @@ export function createWhiteboardService(
       return empty
     }
   }
-
   async function reconcile(groupId: string, boardId: string): Promise<void> {
     const client = deps.getClient()
     const userId = deps.getUserId()
@@ -663,7 +609,6 @@ export function createWhiteboardService(
       deps.emit(groupId, { type: 'sync', boardId: board.id, ...result })
     }
   }
-
   function tearDownRealtime(groupId: string): void {
     const entry = realtime.get(groupId)
     if (entry === undefined) return
@@ -693,7 +638,6 @@ export function createWhiteboardService(
     })
     const entry: RealtimeEntry = { groupId, boardId, client, channel }
     realtime.set(groupId, entry)
-
     channel
       .on('broadcast', { event: 'wb_shape' }, ({ payload }) => {
         const shape = asRemoteShape(payload)
@@ -712,6 +656,7 @@ export function createWhiteboardService(
         })
       })
       .subscribe((status) => {
+        if (realtime.get(groupId)?.channel !== channel) return
         if (status === 'SUBSCRIBED') {
           // This also runs after a socket reconnect, providing the required
           // catch-up for broadcasts missed while disconnected.
@@ -725,6 +670,7 @@ export function createWhiteboardService(
   return {
     async open(groupId) {
       let board = cacheBoard(groupId)
+      openBoards.set(groupId, board.id)
       const cachedResult = (): OpenWhiteboardResult => ({
         availability: { state: 'ready' },
         board,
@@ -741,6 +687,7 @@ export function createWhiteboardService(
 
       try {
         board = await ensureRemoteBoard(client, groupId, board)
+        openBoards.set(groupId, board.id)
         ensureRealtime(groupId, board.id)
         void startDrain()
           .then(() => fetchSync(board.id, deps.repo.getBoardSyncedAt(board.id)))
@@ -819,8 +766,25 @@ export function createWhiteboardService(
     },
 
     close(groupId) {
+      openBoards.delete(groupId)
       tearDownRealtime(groupId)
       return { ok: true }
+    },
+
+    resetForAuthChange() {
+      if (disposed) return
+      if (wakeTimer !== null) {
+        clearTimeout(wakeTimer)
+        wakeTimer = null
+      }
+      provision.clear()
+      nextTryAt.clear()
+      drainRequested = false
+      for (const groupId of [...realtime.keys()]) tearDownRealtime(groupId)
+      if (deps.getUserId() === null) return
+      for (const [groupId, boardId] of openBoards) {
+        ensureRealtime(groupId, boardId)
+      }
     },
 
     dispose() {
@@ -830,6 +794,7 @@ export function createWhiteboardService(
         wakeTimer = null
       }
       for (const groupId of [...realtime.keys()]) tearDownRealtime(groupId)
+      openBoards.clear()
     }
   }
 }

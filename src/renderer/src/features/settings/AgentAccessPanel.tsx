@@ -7,7 +7,8 @@
  * permission a student cannot see is a permission they cannot withdraw.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 
 interface Grant {
@@ -27,6 +28,109 @@ interface AuditEntry {
   url: string
   detail: string
   createdAt: string
+}
+
+interface ToolGrantRow {
+  id: string
+  courseId: string
+  courseName: string
+  rule: string
+  createdAt: string
+}
+
+interface ToolGrantsSnapshot {
+  grants: ToolGrantRow[] | null
+  loading: boolean
+  error: boolean
+  busyId: string | null
+}
+
+const INITIAL_TOOL_GRANTS: ToolGrantsSnapshot = {
+  grants: null,
+  loading: false,
+  error: false,
+  busyId: null
+}
+
+let toolGrantsSnapshot = INITIAL_TOOL_GRANTS
+let toolGrantsLoadGeneration = 0
+const toolGrantsListeners = new Set<() => void>()
+
+function publishToolGrants(next: ToolGrantsSnapshot): void {
+  toolGrantsSnapshot = next
+  for (const listener of toolGrantsListeners) listener()
+}
+
+function subscribeToolGrants(listener: () => void): () => void {
+  toolGrantsListeners.add(listener)
+  return () => toolGrantsListeners.delete(listener)
+}
+
+function getToolGrantsSnapshot(): ToolGrantsSnapshot {
+  return toolGrantsSnapshot
+}
+
+export async function loadAgentToolGrants(): Promise<void> {
+  const generation = ++toolGrantsLoadGeneration
+  publishToolGrants({ ...toolGrantsSnapshot, loading: true, error: false })
+  try {
+    const courses = await invoke('courses:list', { includeArchived: true })
+    const grants = (
+      await Promise.all(
+        courses.map(async (course) => {
+          const result = await invoke('chat:grants', { courseId: course.id })
+          return result.grants.map((grant) => ({
+            ...grant,
+            courseId: course.id,
+            courseName: course.name
+          }))
+        })
+      )
+    ).flat()
+    if (generation !== toolGrantsLoadGeneration) return
+    publishToolGrants({ grants, loading: false, error: false, busyId: null })
+  } catch {
+    if (generation !== toolGrantsLoadGeneration) return
+    publishToolGrants({ grants: [], loading: false, error: true, busyId: null })
+  }
+}
+
+export async function revokeAgentToolGrant(id: string): Promise<void> {
+  publishToolGrants({ ...toolGrantsSnapshot, busyId: id, error: false })
+  try {
+    await invoke('chat:revokeGrant', { id })
+    await loadAgentToolGrants()
+  } catch {
+    publishToolGrants({ ...toolGrantsSnapshot, error: true })
+  } finally {
+    publishToolGrants({ ...toolGrantsSnapshot, busyId: null })
+  }
+}
+
+export function resetAgentToolGrantsForTests(): void {
+  toolGrantsLoadGeneration += 1
+  publishToolGrants(INITIAL_TOOL_GRANTS)
+}
+
+export function AgentToolGrantRevokeButton({
+  grantId,
+  disabled,
+  label
+}: {
+  grantId: string
+  disabled: boolean
+  label: string
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      className="settings-site-row__action"
+      disabled={disabled}
+      onClick={() => void revokeAgentToolGrant(grantId)}
+    >
+      {label}
+    </button>
+  )
 }
 
 const CAPABILITY_LABEL: Record<Grant['capability'], string> = {
@@ -50,9 +154,15 @@ function day(iso: string): string {
 }
 
 export function AgentAccessPanel(): JSX.Element {
+  const t = useT()
   const [grants, setGrants] = useState<Grant[] | null>(null)
   const [entries, setEntries] = useState<AuditEntry[]>([])
   const [busy, setBusy] = useState(false)
+  const toolGrantState = useSyncExternalStore(
+    subscribeToolGrants,
+    getToolGrantsSnapshot,
+    getToolGrantsSnapshot
+  )
 
   const load = useCallback(() => {
     void invoke('browserAgent:grants', {})
@@ -64,6 +174,9 @@ export function AgentAccessPanel(): JSX.Element {
   }, [])
 
   useEffect(() => load(), [load])
+  useEffect(() => {
+    void loadAgentToolGrants()
+  }, [])
 
   const revoke = (id: string): void => {
     setBusy(true)
@@ -113,6 +226,44 @@ export function AgentAccessPanel(): JSX.Element {
           <p className="settings-feedback">
             만료·해제된 권한 {past.length}건
           </p>
+        )}
+      </section>
+
+      <section className="settings-card">
+        <div className="settings-card__header">
+          <h2>{t('settings.agentAccess.toolGrants.title')}</h2>
+          <p>{t('settings.agentAccess.toolGrants.description')}</p>
+        </div>
+        {toolGrantState.loading && toolGrantState.grants === null ? (
+          <p className="settings-feedback">
+            {t('settings.agentAccess.toolGrants.loading')}
+          </p>
+        ) : toolGrantState.error ? (
+          <p className="settings-feedback" role="alert">
+            {t('settings.agentAccess.toolGrants.loadFailed')}
+          </p>
+        ) : toolGrantState.grants?.length === 0 ? (
+          <p className="settings-feedback">
+            {t('settings.agentAccess.toolGrants.empty')}
+          </p>
+        ) : (
+          <ul className="settings-site-list">
+            {toolGrantState.grants?.map((grant) => (
+              <li key={grant.id} className="settings-site-row">
+                <span className="settings-site-row__origin">
+                  {grant.courseName} · {grant.rule} ·{' '}
+                  {t('settings.agentAccess.toolGrants.createdAt', {
+                    date: day(grant.createdAt)
+                  })}
+                </span>
+                <AgentToolGrantRevokeButton
+                  grantId={grant.id}
+                  disabled={toolGrantState.busyId !== null}
+                  label={t('settings.agentAccess.toolGrants.revoke')}
+                />
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 

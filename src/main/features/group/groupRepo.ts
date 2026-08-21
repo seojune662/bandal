@@ -211,6 +211,8 @@ export interface GroupRepo {
   pendingFor(groupId: string): PendingGroupMessage[]
   /** Rows eligible to send right now (state pending and backoff elapsed). */
   claimable(now?: string): PendingGroupMessage[]
+  /** Earliest persisted retry strictly after `after`. */
+  earliestPendingAt(after?: string): string | null
   markSending(localId: string): void
   markSent(localId: string): void
   markRetry(localId: string, error: string, nextTryAt: string): PendingGroupMessage | null
@@ -590,6 +592,17 @@ export function createGroupRepo(db: Database): GroupRepo {
         )
         .all(now) as OutboxRow[]
       return rows.map(rowToPending)
+    },
+
+    earliestPendingAt(after = nowIso()) {
+      const row = db
+        .prepare(
+          `SELECT MIN(next_try_at) AS next_try_at
+             FROM group_outbox
+            WHERE state = 'pending' AND next_try_at > ?`
+        )
+        .get(after) as { next_try_at: string | null }
+      return row.next_try_at
     },
 
     markSending(localId) {
