@@ -95,6 +95,7 @@ export function AgentConfirmCard({
   const severity = request.tool === 'browser_access' ? 'quiet' : 'danger'
 
   if (!isPending) {
+    const subject = confirmationSubject(request)
     const responseLabel =
       response && request.tool === 'browser_access'
         ? '허용함'
@@ -103,7 +104,7 @@ export function AgentConfirmCard({
     return (
       <article
         className="chat-agent-confirm"
-        aria-label={`${kindLabel}: ${confirmationSubject(request)} · ${responseLabel}`}
+        aria-label={`${kindLabel}: ${subject} · ${responseLabel}`}
         data-resolved="true"
         data-severity={severity}
       >
@@ -112,9 +113,9 @@ export function AgentConfirmCard({
         </span>
         <span
           className="chat-agent-confirm__subject"
-          title={confirmationSubject(request)}
+          title={subject}
         >
-          {confirmationSubject(request)}
+          {subject}
         </span>
         <span className="chat-agent-confirm__separator" aria-hidden="true">
           ·

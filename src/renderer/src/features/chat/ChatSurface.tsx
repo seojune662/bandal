@@ -308,15 +308,18 @@ export function ChatSurface({
           <EmptyState onPick={handlePickStarter} />
         ) : (
           <>
-            <MessageList
-              messages={state.messages}
-              pendingPermissionId={state.pendingPermissionId}
-              onRespondPermission={session.respondPermission}
-            />
+            {/* Rail first: the grid places children in source order, so this
+                is what puts it in the narrow LEFT column — and it keeps DOM
+                order equal to visual order for keyboard and screen readers. */}
             <AgentApprovalRail
               items={agentToolActivity.items}
               onRespondConfirm={agentToolActivity.respondConfirm}
               onUndoTurn={agentToolActivity.undoTurn}
+            />
+            <MessageList
+              messages={state.messages}
+              pendingPermissionId={state.pendingPermissionId}
+              onRespondPermission={session.respondPermission}
             />
           </>
         )}

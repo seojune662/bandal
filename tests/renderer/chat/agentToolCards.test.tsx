@@ -134,6 +134,18 @@ describe('assistant app-action cards', () => {
     expect(html).toContain('aria-label="승인 요청"')
   })
 
+  test('does not render an empty approval rail', () => {
+    const html = renderToStaticMarkup(
+      <AgentApprovalRail
+        items={[]}
+        onRespondConfirm={() => undefined}
+        onUndoTurn={() => undefined}
+      />
+    )
+
+    expect(html).toBe('')
+  })
+
   test('marks irreversible actions without pretending they can be undone', () => {
     const irreversible = action({
       id: 'action-delete',

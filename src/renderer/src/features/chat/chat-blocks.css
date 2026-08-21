@@ -433,7 +433,10 @@
 }
 
 .chat-agent-confirm__badge[data-approved='true'] {
-  color: var(--status-done);
+  /* NOT --status-done: STYLEGUIDE §3 reserves --status-* for board columns and
+     readiness dots. Approval is the unremarkable outcome anyway — refusal is
+     the one worth colouring. */
+  color: var(--text-secondary);
 }
 
 .chat-agent-confirm__badge[data-approved='false'] {

@@ -442,7 +442,7 @@
 
 .chat-tab[data-variant='popup'] .chat-approval-rail {
   width: 100%;
-  max-width: 44rem;
+  max-width: calc(var(--rail-left-width) * 3 - var(--space-4));
   min-height: 0;
   padding: 0 var(--space-3) var(--space-3);
   margin: 0 auto;
