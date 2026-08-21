@@ -212,6 +212,54 @@ async function renderPng(size) {
   return canvas.toBuffer('image/png')
 }
 
+/**
+ * A tray-sized version of the same half-moon geometry, without the app-icon
+ * tile or sub-pixel details. macOS template images must be black + alpha so
+ * the system can invert them against light and dark menu bars.
+ */
+function traySvg(size, template) {
+  const darkFill = template ? '#000000' : '#16203a'
+  const darkOpacity = template ? 0.16 : 1
+  const markFill = template ? '#000000' : '#f5c97b'
+  const ring = template ? '#000000' : '#f5c97b'
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 64 64">
+  <g transform="rotate(${MOON_TILT} 32 32)">
+    <circle cx="32" cy="32" r="25.5" fill="${darkFill}" fill-opacity="${darkOpacity}"/>
+    <circle cx="32" cy="32" r="25.5" fill="none" stroke="${ring}" stroke-width="3"/>
+    <path d="M 32 6.5 A 25.5 25.5 0 0 1 32 57.5 A 3.8 25.5 0 0 1 32 6.5 Z" fill="${markFill}"/>
+  </g>
+</svg>
+`
+}
+
+async function renderTrayPng(size, template, resolution) {
+  const image = await loadImage(Buffer.from(traySvg(size, template)))
+  const canvas = createCanvas(size, size)
+  const context = canvas.getContext('2d')
+  context.drawImage(image, 0, 0, size, size)
+  return canvas.toBuffer('image/png', { resolution })
+}
+
+async function generateTrayIcons() {
+  // Electron recognizes the @2x sibling automatically. 72/144 DPI keeps the
+  // two files at the scale factors recommended by the Tray documentation.
+  writeFileSync(
+    join(RESOURCES_DIR, 'trayTemplate.png'),
+    await renderTrayPng(16, true, 72)
+  )
+  writeFileSync(
+    join(RESOURCES_DIR, 'trayTemplate@2x.png'),
+    await renderTrayPng(32, true, 144)
+  )
+  writeFileSync(
+    join(RESOURCES_DIR, 'tray.ico'),
+    await pngToIco([
+      await renderTrayPng(16, false, 72),
+      await renderTrayPng(32, false, 144)
+    ])
+  )
+}
+
 /** {file name in the .iconset} → raster size. */
 const ICONSET_ENTRIES = [
   ['icon_16x16.png', 16],
@@ -231,6 +279,14 @@ const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
 
 async function main() {
   mkdirSync(RESOURCES_DIR, { recursive: true })
+  if (process.argv.includes('--tray-only')) {
+    await generateTrayIcons()
+    console.log(
+      'Generated resources/trayTemplate.png, trayTemplate@2x.png, tray.ico'
+    )
+    return
+  }
+
   rmSync(ICONSET_DIR, { recursive: true, force: true })
   mkdirSync(ICONSET_DIR, { recursive: true })
 
@@ -263,6 +319,8 @@ async function main() {
   }
   writeFileSync(join(RESOURCES_DIR, 'icon.ico'), await pngToIco(icoBuffers))
 
+  await generateTrayIcons()
+
   // `iconutil` is macOS-only. On other hosts the .ico and .png are still
   // produced; the committed .icns stays as-is.
   let madeIcns = false
@@ -279,7 +337,7 @@ async function main() {
   rmSync(ICONSET_DIR, { recursive: true, force: true })
 
   console.log(
-    `Generated resources/icon.svg, icon-small.svg, icon.png (512px), icon.ico${
+    `Generated resources/icon.svg, icon-small.svg, icon.png (512px), icon.ico, trayTemplate.png, trayTemplate@2x.png, tray.ico${
       madeIcns ? ', icon.icns' : ' (icon.icns skipped: needs macOS iconutil)'
     }`
   )
