@@ -51,6 +51,16 @@ export interface PageSurfaceDeps {
   requestActivateTab: (tabId: string) => void
   /** Resolves once that tab's guest has registered itself again. */
   awaitTabRegister: (tabId: string, timeoutMs: number) => Promise<boolean>
+  sendKey: (tabId: string, key: string) => Promise<void>
+  history: (
+    tabId: string,
+    action: 'back' | 'forward' | 'reload' | 'stop'
+  ) => Promise<void>
+  tabLifecycle: (
+    tabId: string,
+    action: 'focus' | 'close'
+  ) => Promise<boolean>
+  findInPage: (tabId: string, text: string) => Promise<number>
   generations: GenerationTracker
   /**
    * Commits text over CDP. Optional: without it typing degrades to the DOM
@@ -82,19 +92,18 @@ export function createPageSurface(deps: PageSurfaceDeps): PageSurface {
    * the agent should reason about — not the one that existed a millisecond
    * after the click.
    */
-  async function settled(
+  function currentOutcome(
     tabId: string,
     before: string,
     result: { ok: boolean; problem?: string | null; options?: { value: string; label: string }[] }
-  ): Promise<{
+  ): {
     ok: boolean
     problem: string | null
     options?: { value: string; label: string }[]
     url: string
     title: string
     navigated: boolean
-  }> {
-    await deps.settle(tabId, SETTLE_TIMEOUT_MS)
+  } {
     const guest = deps.resolveGuest(tabId)
     let url = before
     let title = ''
@@ -114,6 +123,15 @@ export function createPageSurface(deps: PageSurfaceDeps): PageSurface {
       title,
       navigated: url !== before
     }
+  }
+
+  async function settled(
+    tabId: string,
+    before: string,
+    result: { ok: boolean; problem?: string | null; options?: { value: string; label: string }[] }
+  ) {
+    await deps.settle(tabId, SETTLE_TIMEOUT_MS)
+    return currentOutcome(tabId, before, result)
   }
 
   return {
@@ -212,6 +230,79 @@ export function createPageSurface(deps: PageSurfaceDeps): PageSurface {
 
       const result = await driver.act(frameIndex, elementIndex, action)
       return settled(tabId, before, result)
+    },
+
+    async scroll(tabId, to) {
+      const driver = driverFor(tabId)
+      if (driver === null) {
+        return currentOutcome(tabId, '', {
+          ok: false,
+          problem: '그 탭을 찾지 못했어요.'
+        })
+      }
+      const before = this.currentUrl(tabId) ?? ''
+      return settled(tabId, before, await driver.scroll(to))
+    },
+
+    async pressKey(tabId, key) {
+      const before = this.currentUrl(tabId)
+      if (before === null) {
+        return currentOutcome(tabId, '', {
+          ok: false,
+          problem: '그 탭을 찾지 못했어요.'
+        })
+      }
+      try {
+        await deps.sendKey(tabId, key)
+        return settled(tabId, before, { ok: true, problem: null })
+      } catch {
+        return currentOutcome(tabId, before, {
+          ok: false,
+          problem: '키를 누르지 못했어요.'
+        })
+      }
+    },
+
+    async hover(tabId, frameIndex, elementIndex) {
+      const driver = driverFor(tabId)
+      if (driver === null) {
+        return currentOutcome(tabId, '', {
+          ok: false,
+          problem: '그 탭을 찾지 못했어요.'
+        })
+      }
+      const before = this.currentUrl(tabId) ?? ''
+      const result = await driver.hover(frameIndex, elementIndex)
+      // Hover opens transient menus but cannot navigate by itself. Waiting for
+      // a navigation settle here makes every menu interaction unnecessarily slow.
+      return currentOutcome(tabId, before, result)
+    },
+
+    async navigateHistory(tabId, action) {
+      const before = this.currentUrl(tabId)
+      if (before === null) {
+        return currentOutcome(tabId, '', {
+          ok: false,
+          problem: '그 탭을 찾지 못했어요.'
+        })
+      }
+      try {
+        await deps.history(tabId, action)
+        return settled(tabId, before, { ok: true, problem: null })
+      } catch {
+        return currentOutcome(tabId, before, {
+          ok: false,
+          problem: '페이지 이동을 실행하지 못했어요.'
+        })
+      }
+    },
+
+    tabLifecycle(tabId, action) {
+      return deps.tabLifecycle(tabId, action)
+    },
+
+    findInPage(tabId, text) {
+      return deps.findInPage(tabId, text)
     },
 
     async handoff(tabId, message) {

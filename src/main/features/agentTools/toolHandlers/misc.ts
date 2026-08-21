@@ -1,4 +1,10 @@
 import type { TabDescriptor } from '../../../../shared/tabs'
+import { ValidationError } from '../../../db/errors'
+import {
+  BROWSER_KEYS,
+  type BrowserKey,
+  type BrowserScrollInput
+} from '../../browserAgent/browserTools'
 import {
   cancelled,
   inputObject,
@@ -10,6 +16,21 @@ import {
   type ToolHandlerMap
 } from './context'
 
+interface BrowserExtensions {
+  browser_scroll: (tabId: string, to: BrowserScrollInput) => Promise<unknown>
+  browser_key: (tabId: string, key: BrowserKey) => Promise<unknown>
+  browser_hover: (tabId: string, ref: string) => Promise<unknown>
+  browser_back: (tabId: string) => Promise<unknown>
+  browser_forward: (tabId: string) => Promise<unknown>
+  browser_reload: (tabId: string) => Promise<unknown>
+  browser_stop: (tabId: string) => Promise<unknown>
+  browser_focus_tab: (tabId: string) => Promise<unknown>
+  browser_close_tab: (tabId: string) => Promise<unknown>
+  browser_find: (tabId: string, text: string) => Promise<unknown>
+}
+
+const SCROLL_DIRECTIONS = ['down', 'up', 'top', 'bottom'] as const
+
 export function miscTools(ctx: ToolContext) {
   const {
     deps,
@@ -20,6 +41,13 @@ export function miscTools(ctx: ToolContext) {
     record,
     assertCoursePath
   } = ctx
+
+  function browser(): BrowserExtensions {
+    if (deps.browser === undefined) {
+      throw new ValidationError('browser tools are unavailable')
+    }
+    return deps.browser as unknown as BrowserExtensions
+  }
 
   return {
     app_state() {
@@ -82,6 +110,53 @@ export function miscTools(ctx: ToolContext) {
       const limit = optionalInteger(input, 'limit', 1)
       return { hits: deps.searchIndex.query(courseId, query, limit) }
     },
+
+    browser_scroll(input) {
+      const tabId = stringField(input, 'tabId', { nonEmpty: true })
+      const to = optionalString(input, 'to')
+      const ref = optionalString(input, 'ref')
+      if ((to === undefined) === (ref === undefined)) {
+        throw new ValidationError('exactly one of to or ref is required')
+      }
+      if (ref !== undefined) {
+        return browser().browser_scroll(tabId, { kind: 'ref', ref })
+      }
+      if (!(SCROLL_DIRECTIONS as readonly string[]).includes(to as string)) {
+        throw new ValidationError('to must be down, up, top, or bottom')
+      }
+      return browser().browser_scroll(tabId, {
+        kind: to as (typeof SCROLL_DIRECTIONS)[number]
+      })
+    },
+
+    browser_key(input) {
+      const key = stringField(input, 'key', { nonEmpty: true })
+      if (!(BROWSER_KEYS as readonly string[]).includes(key)) {
+        throw new ValidationError('unsupported browser key')
+      }
+      return browser().browser_key(
+        stringField(input, 'tabId', { nonEmpty: true }),
+        key as BrowserKey
+      )
+    },
+
+    browser_hover(input) {
+      return browser().browser_hover(
+        stringField(input, 'tabId', { nonEmpty: true }),
+        stringField(input, 'ref', { nonEmpty: true })
+      )
+    },
+
+    browser_back: (input) => browser().browser_back(stringField(input, 'tabId', { nonEmpty: true })),
+    browser_forward: (input) => browser().browser_forward(stringField(input, 'tabId', { nonEmpty: true })),
+    browser_reload: (input) => browser().browser_reload(stringField(input, 'tabId', { nonEmpty: true })),
+    browser_stop: (input) => browser().browser_stop(stringField(input, 'tabId', { nonEmpty: true })),
+    browser_focus_tab: (input) => browser().browser_focus_tab(stringField(input, 'tabId', { nonEmpty: true })),
+    browser_close_tab: (input) => browser().browser_close_tab(stringField(input, 'tabId', { nonEmpty: true })),
+    browser_find: (input) => browser().browser_find(
+      stringField(input, 'tabId', { nonEmpty: true }),
+      stringField(input, 'text', { nonEmpty: true })
+    ),
 
     send_highlight_to_note(input) {
       const context = currentTurn()

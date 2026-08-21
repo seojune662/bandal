@@ -625,165 +625,46 @@ export const AGENT_TOOL_DEFINITIONS = [
  * of the prompt cache, so the saving was near zero and the cost was a whole
  * feature. See registerHandlers.ts `browserToolsFor`.
  */
+const browserTabId = string('탭 id')
+const browserRef = string('browser_snapshot 이 준 요소 참조')
+const tabInput = objectSchema({ tabId: browserTabId }, ['tabId'])
+const refInput = objectSchema({ tabId: browserTabId, ref: browserRef }, ['tabId', 'ref'])
+function browserTool<const Name extends string>(
+  name: Name,
+  description: string,
+  inputSchema: Tool['inputSchema'],
+  annotations: Tool['annotations'] = readOnly
+) {
+  return { name, description, inputSchema, annotations }
+}
+
 export const BROWSER_TOOL_DEFINITIONS = [
-  {
-    name: 'browser_tabs',
-    description:
-      '학생이 지금 반달 브라우저에 열어 둔 탭들을 봅니다. 입력이 없습니다. 각 탭의 tabId·제목·주소를 돌려주며, active 가 true 인 탭이 학생이 보고 있는 탭입니다. "지금 열려 있는 페이지"에 대한 질문은 여기서 시작합니다 — 목록을 보는 데는 권한이 필요 없지만, 그 탭을 실제로 읽으려면 browser_read 나 browser_snapshot 이 학생에게 한 번 물어봅니다.',
-    inputSchema: objectSchema({}, []),
-    annotations: readOnly
-  },
-  {
-    name: 'lms_course_page',
-    description:
-      '과목에 연결된 학교 강의실(LMS) 주소를 확인합니다. 연결이 없으면 null 을 돌려줍니다.',
-    inputSchema: objectSchema({ courseId }, ['courseId']),
-    annotations: readOnly
-  },
-  {
-    name: 'lms_new_items',
-    description:
-      '강의실에서 지난번 확인 이후 새로 올라온 항목만 돌려줍니다. 페이지를 열지 않고 학생이 이미 로그인한 세션으로 조회합니다. kind: announcements | assignments | modules | files.',
-    inputSchema: objectSchema(
-      {
-        courseId,
-        kind: nullableString(
-          '무엇을 볼지. 생략하면 announcements(공지)'
-        )
-      },
-      ['courseId']
-    ),
-    annotations: readOnly
-  },
-  {
-    name: 'lms_list',
-    description:
-      '강의실의 목록 전체를 돌려줍니다(새 항목만이 아니라). kind: files | modules | assignments | announcements. 생략하면 files.',
-    inputSchema: objectSchema(
-      { courseId, kind: nullableString('무엇을 볼지. 생략하면 files(자료)') },
-      ['courseId']
-    ),
-    annotations: readOnly
-  },
-  {
-    name: 'browser_download',
-    description:
-      '강의실의 파일 하나를 과목 폴더로 내려받습니다. 학생이 그 사이트에 "내려받기" 권한을 허용해 둔 경우에만 동작합니다. dirRelPath 는 과목 폴더 기준 상대 경로이며 빈 문자열이면 최상위입니다.',
-    inputSchema: objectSchema(
-      {
-        courseId,
-        url: string('내려받을 파일 주소'),
-        dirRelPath: string('과목 폴더 기준 상대 경로. 최상위는 빈 문자열')
-      },
-      ['courseId', 'url', 'dirRelPath']
-    ),
-    annotations: readOnly
-  },
-  {
-    name: 'browser_open',
-    description:
-      '반달 탭에서 주소를 엽니다. 학생이 그 사이트에 접근을 허용해야 동작하고, 탭은 학생에게 보입니다.',
-    inputSchema: objectSchema({ url: string('열 주소') }, ['url']),
-    annotations: readOnly
-  },
-  {
-    name: 'browser_snapshot',
-    description:
-      '열린 탭에서 누를 수 있는 것들의 목록을 봅니다. 각 줄 맨 앞이 요소 참조(f0:e12@3)이며, 페이지가 바뀌면 이전 참조는 무효가 됩니다.',
-    inputSchema: objectSchema(
-      { tabId: string('탭 id'), maxChars: integer('최대 글자 수. 생략하면 6000') },
-      ['tabId']
-    ),
-    annotations: readOnly
-  },
-  {
-    name: 'browser_read',
-    description: '열린 탭의 본문 텍스트를 읽습니다.',
-    inputSchema: objectSchema(
-      { tabId: string('탭 id'), maxChars: integer('최대 글자 수. 생략하면 8000') },
-      ['tabId']
-    ),
-    annotations: readOnly
-  },
-  {
-    name: 'browser_click',
-    description:
-      '요소를 누릅니다. 제출 버튼은 누르지 않습니다 — 제출은 학생이 직접 합니다.',
-    inputSchema: objectSchema(
-      { tabId: string('탭 id'), ref: string('browser_snapshot 이 준 요소 참조') },
-      ['tabId', 'ref']
-    ),
-    annotations: readOnly
-  },
-  {
-    name: 'browser_type',
-    description:
-      '입력 칸에 글을 넣습니다. 비밀번호 칸에는 절대 입력하지 않습니다.',
-    inputSchema: objectSchema(
-      {
-        tabId: string('탭 id'),
-        ref: string('browser_snapshot 이 준 요소 참조'),
-        text: string('입력할 글')
-      },
-      ['tabId', 'ref', 'text']
-    ),
-    annotations: readOnly
-  },
-  {
-    name: 'browser_select',
-    description: '선택 목록에서 값을 고릅니다.',
-    inputSchema: objectSchema(
-      {
-        tabId: string('탭 id'),
-        ref: string('browser_snapshot 이 준 요소 참조'),
-        value: string('고를 값')
-      },
-      ['tabId', 'ref', 'value']
-    ),
-    annotations: readOnly
-  },
-  {
-    name: 'browser_handoff',
-    description:
-      '학생에게 운전대를 넘깁니다. 로그인·OTP·보안 프로그램·캡차처럼 대신 할 수 없는 곳에서 쓰세요. 실패가 아니라 정상적인 결과입니다.',
-    inputSchema: objectSchema(
-      { tabId: string('탭 id'), message: string('학생에게 보여줄 한 줄') },
-      ['tabId', 'message']
-    ),
-    annotations: readOnly
-  },
-  {
-    name: 'browser_submit',
-    description:
-      '폼을 제출합니다. 되돌릴 수 없는 동작이라 학생에게 매번 묻고, 그 승인은 기억되지 않습니다. 확신이 없으면 browser_handoff 로 넘기세요.',
-    inputSchema: objectSchema(
-      { tabId: string('탭 id'), ref: string('제출 버튼의 요소 참조') },
-      ['tabId', 'ref']
-    ),
-    annotations: readOnly
-  },
-  {
-    name: 'browser_use_saved_login',
-    description:
-      '학생이 저장해 둔 로그인으로 아이디·비밀번호를 채웁니다. 채우기만 하고 제출하지 않습니다. 비밀번호는 돌려받을 수 없습니다.',
-    inputSchema: objectSchema({ tabId: string('탭 id') }, ['tabId']),
-    annotations: readOnly
-  },
-  {
-    name: 'browser_attach_file',
-    description: '과목 폴더의 파일을 파일 선택 칸에 붙입니다.',
-    inputSchema: objectSchema(
-      {
-        tabId: string('탭 id'),
-        ref: string('파일 선택 칸의 요소 참조'),
-        courseId,
-        relPath
-      },
-      ['tabId', 'ref', 'courseId', 'relPath']
-    ),
-    annotations: readOnly
-  }
-] as const
+  browserTool('browser_tabs', '반달 브라우저에 열린 탭의 tabId·제목·주소·활성 상태를 봅니다.', objectSchema({}, [])),
+  browserTool('lms_course_page', '과목에 연결된 학교 강의실 주소를 확인합니다.', objectSchema({ courseId }, ['courseId'])),
+  browserTool('lms_new_items', '강의실에서 지난 확인 이후 새로 올라온 항목을 조회합니다.', objectSchema({ courseId, kind: nullableString('announcements | assignments | modules | files') }, ['courseId'])),
+  browserTool('lms_list', '강의실의 항목 전체를 조회합니다.', objectSchema({ courseId, kind: nullableString('files | modules | assignments | announcements') }, ['courseId'])),
+  browserTool('browser_download', '강의실 파일 하나를 과목 폴더로 내려받습니다.', objectSchema({ courseId, url: string('파일 주소'), dirRelPath: string('과목 폴더 기준 상대 경로') }, ['courseId', 'url', 'dirRelPath'])),
+  browserTool('browser_open', '반달 탭에서 주소를 엽니다.', objectSchema({ url: string('열 주소') }, ['url'])),
+  browserTool('browser_snapshot', '열린 탭의 상호작용 요소와 세대가 붙은 요소 참조를 봅니다.', objectSchema({ tabId: browserTabId, maxChars: integer('최대 글자 수') }, ['tabId'])),
+  browserTool('browser_read', '열린 탭의 본문 텍스트를 읽습니다.', objectSchema({ tabId: browserTabId, maxChars: integer('최대 글자 수') }, ['tabId'])),
+  browserTool('browser_scroll', '페이지를 위·아래·처음·끝 또는 지정한 요소까지 스크롤합니다.', objectSchema({ tabId: browserTabId, to: { type: 'string', enum: ['down', 'up', 'top', 'bottom'] }, ref: browserRef }, ['tabId'])),
+  browserTool('browser_click', '제출 컨트롤이 아닌 요소를 누릅니다.', refInput),
+  browserTool('browser_type', '비밀번호가 아닌 입력 칸에 글을 넣습니다.', objectSchema({ tabId: browserTabId, ref: browserRef, text: string('입력할 글') }, ['tabId', 'ref', 'text'])),
+  browserTool('browser_key', 'Enter·Tab·Escape·방향키를 누릅니다. Enter 는 폼을 제출할 수 있습니다.', objectSchema({ tabId: browserTabId, key: { type: 'string', enum: ['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'] } }, ['tabId', 'key']), confirms),
+  browserTool('browser_select', '선택 목록에서 값을 고릅니다.', objectSchema({ tabId: browserTabId, ref: browserRef, value: string('고를 값') }, ['tabId', 'ref', 'value'])),
+  browserTool('browser_hover', '요소에 마우스를 올립니다.', refInput, mutates),
+  browserTool('browser_back', '탭의 이전 페이지로 이동합니다.', tabInput, mutates),
+  browserTool('browser_forward', '탭의 다음 페이지로 이동합니다.', tabInput, mutates),
+  browserTool('browser_reload', '탭을 새로고침합니다.', tabInput, mutates),
+  browserTool('browser_stop', '탭의 로딩을 멈춥니다.', tabInput, mutates),
+  browserTool('browser_focus_tab', '탭을 활성 탭으로 전환합니다.', tabInput, mutates),
+  browserTool('browser_close_tab', '탭을 닫습니다.', tabInput, confirms),
+  browserTool('browser_find', '페이지에서 글과 일치하는 건수를 셉니다.', objectSchema({ tabId: browserTabId, text: string('찾을 글') }, ['tabId', 'text'])),
+  browserTool('browser_handoff', '학생에게 브라우저 조작을 넘기고 재개를 기다립니다.', objectSchema({ tabId: browserTabId, message: string('학생에게 보여줄 한 줄') }, ['tabId', 'message'])),
+  browserTool('browser_submit', '폼을 제출하며 학생에게 매번 확인받습니다.', refInput),
+  browserTool('browser_use_saved_login', '저장된 아이디·비밀번호를 채우되 제출하지 않습니다.', tabInput),
+  browserTool('browser_attach_file', '과목 폴더의 파일을 파일 선택 칸에 붙입니다.', objectSchema({ tabId: browserTabId, ref: browserRef, courseId, relPath }, ['tabId', 'ref', 'courseId', 'relPath']))
+] as const satisfies readonly Tool[]
 
 export const BROWSER_TOOL_NAMES = BROWSER_TOOL_DEFINITIONS.map(
   (definition) => definition.name

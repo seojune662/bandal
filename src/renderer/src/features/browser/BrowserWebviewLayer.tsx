@@ -19,7 +19,11 @@ import { descriptorFor } from '../workspace/tabIdentity'
 import { useNewTabMenu } from '../workspace/newTabMenuController'
 import { BrowserGuestView } from './BrowserGuestView'
 import { useBrowserGuests } from './browserGuestsStore'
-import { useActivateTabRequests, useAgentTabSync } from './agentTabSync'
+import {
+  useActivateTabRequests,
+  useAgentTabSync,
+  useCloseTabRequests
+} from './agentTabSync'
 import { rememberOpenRequest } from './guestActions'
 import {
   isPointerPassthroughActive,
@@ -210,6 +214,7 @@ export function BrowserWebviewLayer(): JSX.Element {
   useBlockedNotices()
   useAgentTabSync()
   useActivateTabRequests()
+  useCloseTabRequests()
 
   const isPassthrough = isDragActive || isMenuOpen || hasExternalToken
 

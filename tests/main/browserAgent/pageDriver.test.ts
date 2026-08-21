@@ -318,6 +318,37 @@ describe('pageDriver.act', () => {
   })
 })
 
+describe('pageDriver viewport actions', () => {
+  test('scrolls the main frame by a viewport-sized step', async () => {
+    const target = frame({ ok: true, facts: null, problem: null })
+    const driver = createPageDriver({
+      frames: () => [target],
+      currentUrl: () => PAGE.url
+    })
+    expect((await driver.scroll({ kind: 'down' })).ok).toBe(true)
+    const source = (target.executeJavaScript as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as string
+    expect(source).toContain('window.innerHeight * 0.8')
+    expect(source).toContain('window.scrollBy')
+  })
+
+  test('scroll-to-ref and hover use the frame and target ordinal', async () => {
+    const first = frame({ ok: true, facts: null, problem: null })
+    const second = frame({ ok: true, facts: null, problem: null })
+    const driver = createPageDriver({
+      frames: () => [first, second],
+      currentUrl: () => PAGE.url
+    })
+    await driver.scroll({ kind: 'ref', frameIndex: 1, elementIndex: 4 })
+    await driver.hover(1, 4)
+    expect(first.executeJavaScript).not.toHaveBeenCalled()
+    const sources = (second.executeJavaScript as ReturnType<typeof vi.fn>).mock
+      .calls.map((call) => call[0] as string)
+    expect(sources[0]).toContain('scrollIntoView')
+    expect(sources[1]).toContain("'pointerover', 'mouseover', 'mouseenter'")
+  })
+})
+
 describe('verdictFor', () => {
   const link = {
     tag: 'a',
@@ -360,11 +391,14 @@ describe('pageSurface typing path', () => {
           }
         }
       ],
-      requestOpenTab: () => undefined,
-      awaitTabFor: async () => 't1',
+      requestTab: async () => 't1',
       settle: async () => undefined,
       requestActivateTab: () => undefined,
       awaitTabRegister: async () => true,
+      sendKey: async () => undefined,
+      history: async () => undefined,
+      tabLifecycle: async () => true,
+      findInPage: async () => 0,
       generations: { current: () => 1 } as never,
       insertText,
       run: {
@@ -397,11 +431,14 @@ describe('pageSurface typing path', () => {
           }
         }
       ],
-      requestOpenTab: () => undefined,
-      awaitTabFor: async () => 't1',
+      requestTab: async () => 't1',
       settle: async () => undefined,
       requestActivateTab: () => undefined,
       awaitTabRegister: async () => true,
+      sendKey: async () => undefined,
+      history: async () => undefined,
+      tabLifecycle: async () => true,
+      findInPage: async () => 0,
       generations: { current: () => 1 } as never,
       insertText: async () => {
         throw new Error('debugger already attached')

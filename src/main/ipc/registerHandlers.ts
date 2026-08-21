@@ -821,6 +821,82 @@ export function registerHandlers(): IpcRouter {
             }
             contents.on('did-stop-loading', onStop)
           }),
+        /**
+         * A real key press.
+         *
+         * `browser_type` writes a field's value through the native setter and
+         * stops there — no key ever travels. Korean portal search boxes
+         * overwhelmingly submit on Enter, so without this the agent could fill
+         * a box and had no way to run the search.
+         */
+        sendKey: async (tabId, key) => {
+          const guest = guestRegistry.resolve(tabId)
+          if (guest === null) return
+          const contents = guest as unknown as Electron.WebContents
+          contents.sendInputEvent({ type: 'keyDown', keyCode: key })
+          contents.sendInputEvent({ type: 'keyUp', keyCode: key })
+        },
+
+        /** back / forward / reload / stop — the app could already do all four. */
+        history: async (tabId, action) => {
+          const guest = guestRegistry.resolve(tabId)
+          if (guest === null) return
+          const contents = guest as unknown as Electron.WebContents
+          if (action === 'back') contents.navigationHistory.goBack()
+          else if (action === 'forward') contents.navigationHistory.goForward()
+          else if (action === 'reload') contents.reload()
+          else contents.stop()
+        },
+
+        /**
+         * Bringing a tab forward or closing it belongs to the RENDERER — guests
+         * live in its fixed layer and the workspace owns the tab strip.
+         */
+        tabLifecycle: async (tabId, action) => {
+          if (action === 'focus') {
+            broadcast('browser:activate-tab', { tabId })
+            return true
+          }
+          broadcast('browser:close-tab', { tabId })
+          return true
+        },
+
+        findInPage: (tabId, text) =>
+          new Promise<number>((resolve) => {
+            const guest = guestRegistry.resolve(tabId)
+            if (guest === null || text === '') {
+              resolve(0)
+              return
+            }
+            const contents = guest as unknown as Electron.WebContents
+            let done = false
+            const finish = (matches: number): void => {
+              if (done) return
+              done = true
+              clearTimeout(budget)
+              contents.off('found-in-page', onFound)
+              // Otherwise the student is left staring at a highlight the agent
+              // put there and cannot clear.
+              try {
+                contents.stopFindInPage('clearSelection')
+              } catch {
+                // The guest went away mid-search; nothing to clear.
+              }
+              resolve(matches)
+            }
+            const onFound = (
+              _event: unknown,
+              result: { matches?: number }
+            ): void => finish(result.matches ?? 0)
+            const budget = setTimeout(() => finish(0), 3_000)
+            contents.on('found-in-page', onFound)
+            try {
+              contents.findInPage(text)
+            } catch {
+              finish(0)
+            }
+          }),
+
         requestActivateTab: (tabId) => {
           broadcast('browser:activate-tab', { tabId })
         },

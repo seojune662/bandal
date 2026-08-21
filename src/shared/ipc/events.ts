@@ -230,6 +230,8 @@ export interface PushEvents {
    * guest evicted by the LRU — there is nothing to read until it is back.
    */
   'browser:activate-tab': { tabId: string }
+  /** Closes a browser tab the agent is done with. The workspace owns the strip. */
+  'browser:close-tab': { tabId: string }
   /** 파일 ▸ 인쇄… (or ⌘P over a printable tab) was chosen. */
   'ui:print': { }
   /**

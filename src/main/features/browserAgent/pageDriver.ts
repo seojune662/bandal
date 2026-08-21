@@ -67,6 +67,10 @@ export interface ActResult {
   options?: { value: string; label: string }[]
 }
 
+export type ScrollTarget =
+  | { kind: 'down' | 'up' | 'top' | 'bottom' }
+  | { kind: 'ref'; frameIndex: number; elementIndex: number }
+
 interface RawFrameResult {
   url?: unknown
   elements?: unknown
@@ -94,6 +98,29 @@ function toElements(raw: unknown): SnapshotElement[] {
       }
     ]
   })
+}
+
+function toActResult(raw: unknown): ActResult {
+  const row =
+    typeof raw === 'object' && raw !== null
+      ? (raw as Record<string, unknown>)
+      : {}
+  const result: ActResult = {
+    ok: row['ok'] === true,
+    facts: (row['facts'] ?? null) as ElementFacts | null,
+    problem: typeof row['problem'] === 'string' ? row['problem'] : null
+  }
+  if (Array.isArray(row['options'])) {
+    result.options = row['options'].flatMap((option) => {
+      if (typeof option !== 'object' || option === null) return []
+      const item = option as Record<string, unknown>
+      if (typeof item['value'] !== 'string' || typeof item['label'] !== 'string') {
+        return []
+      }
+      return [{ value: item['value'], label: item['label'] }]
+    })
+  }
+  return result
 }
 
 /**
@@ -155,9 +182,7 @@ export function createPageDriver(deps: PageDriverDeps) {
 
     for (const [frameIndex, frame] of frames.entries()) {
       try {
-        const raw = (await runScript(frame, 
-          SNAPSHOT_SOURCE
-        )) as RawFrameResult
+      const raw = (await runScript(frame, SNAPSHOT_SOURCE)) as RawFrameResult
         collected.push({
           frameIndex,
           url: typeof raw?.url === 'string' ? raw.url : '',
@@ -311,28 +336,7 @@ export function createPageDriver(deps: PageDriverDeps) {
     })()`
 
     try {
-      const raw = (await runScript(frame, source)) as {
-        ok?: unknown
-        facts?: unknown
-        problem?: unknown
-        options?: unknown
-      }
-      const result: ActResult = {
-        ok: raw?.ok === true,
-        facts: (raw?.facts ?? null) as ElementFacts | null,
-        problem: typeof raw?.problem === 'string' ? raw.problem : null
-      }
-      if (Array.isArray(raw?.options)) {
-        result.options = raw.options.flatMap((option) => {
-          if (typeof option !== 'object' || option === null) return []
-          const row = option as Record<string, unknown>
-          if (typeof row['value'] !== 'string' || typeof row['label'] !== 'string') {
-            return []
-          }
-          return [{ value: row['value'], label: row['label'] }]
-        })
-      }
-      return result
+      return toActResult(await runScript(frame, source))
     } catch {
       return {
         ok: false,
@@ -353,7 +357,78 @@ export function createPageDriver(deps: PageDriverDeps) {
     return result.facts
   }
 
-  return { snapshot, read, act, factsFor }
+  async function scroll(to: ScrollTarget): Promise<ActResult> {
+    const frameIndex = to.kind === 'ref' ? to.frameIndex : 0
+    const frame = deps.frames()[frameIndex]
+    if (frame === undefined) {
+      return { ok: false, facts: null, problem: '그 프레임을 찾지 못했어요.' }
+    }
+    const payload = JSON.stringify(to)
+    const source = `(() => {
+      const input = ${payload};
+      if (input.kind === 'ref') {
+        ${TARGET_INDEX_SOURCE}
+        const target = __bandalTargets()[input.elementIndex] || null;
+        if (!target) return {
+          ok: false,
+          facts: null,
+          problem: '그 요소를 찾지 못했어요. 페이지가 바뀌었을 수 있어요.'
+        };
+        target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+        return { ok: true, facts: null, problem: null };
+      }
+      const height = Math.max(1, Math.floor(window.innerHeight * 0.8));
+      if (input.kind === 'down') window.scrollBy({ top: height, behavior: 'auto' });
+      else if (input.kind === 'up') window.scrollBy({ top: -height, behavior: 'auto' });
+      else if (input.kind === 'top') window.scrollTo({ top: 0, behavior: 'auto' });
+      else if (input.kind === 'bottom') window.scrollTo({
+        top: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0),
+        behavior: 'auto'
+      });
+      else return { ok: false, facts: null, problem: '지원하지 않는 스크롤이에요.' };
+      return { ok: true, facts: null, problem: null };
+    })()`
+    try {
+      return toActResult(await runScript(frame, source))
+    } catch {
+      return { ok: false, facts: null, problem: '페이지에서 스크롤하지 못했어요.' }
+    }
+  }
+
+  async function hover(
+    frameIndex: number,
+    elementIndex: number
+  ): Promise<ActResult> {
+    const frame = deps.frames()[frameIndex]
+    if (frame === undefined) {
+      return { ok: false, facts: null, problem: '그 프레임을 찾지 못했어요.' }
+    }
+    const source = `(() => {
+      ${TARGET_INDEX_SOURCE}
+      const target = __bandalTargets()[${JSON.stringify(elementIndex)}] || null;
+      if (!target) return {
+        ok: false,
+        facts: null,
+        problem: '그 요소를 찾지 못했어요. 페이지가 바뀌었을 수 있어요.'
+      };
+      for (const type of ['pointerover', 'mouseover', 'mouseenter', 'mousemove']) {
+        const EventClass = type === 'pointerover' && typeof PointerEvent === 'function'
+          ? PointerEvent
+          : MouseEvent;
+        target.dispatchEvent(new EventClass(type, {
+          bubbles: type !== 'mouseenter', cancelable: true, view: window
+        }));
+      }
+      return { ok: true, facts: null, problem: null };
+    })()`
+    try {
+      return toActResult(await runScript(frame, source))
+    } catch {
+      return { ok: false, facts: null, problem: '페이지에서 마우스를 올리지 못했어요.' }
+    }
+  }
+
+  return { snapshot, read, act, factsFor, scroll, hover }
 }
 
 /** Picks the policy check for an action kind. */

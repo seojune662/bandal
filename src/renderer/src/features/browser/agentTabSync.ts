@@ -137,6 +137,25 @@ export function useAgentTabSync(): void {
  * dropped. Focusing the existing panel remounts the guest, which re-registers
  * itself and unblocks the waiting tool call.
  */
+/** Closes a tab the agent opened and is finished with. */
+export function useCloseTabRequests(): void {
+  useEffect(
+    () =>
+      onPush('browser:close-tab', ({ tabId }) => {
+        const workspace = useWorkspaceStore.getState()
+        for (const [panelId, descriptor] of Object.entries(workspace.openTabs)) {
+          if (!isTabDescriptor(descriptor) || descriptor.kind !== 'browser') {
+            continue
+          }
+          if (descriptor.payload.tabId !== tabId) continue
+          workspace.closeTab(panelId)
+          return
+        }
+      }),
+    []
+  )
+}
+
 export function useActivateTabRequests(): void {
   useEffect(
     () =>

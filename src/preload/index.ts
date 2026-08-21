@@ -52,6 +52,7 @@ const PUSH_CHANNELS = [
   'materials:changed',
   'browser:open-url',
   'browser:activate-tab',
+  'browser:close-tab',
   'ui:print',
   'browser:blocked',
   'browser:popup-blocked',

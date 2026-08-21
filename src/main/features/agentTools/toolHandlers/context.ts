@@ -1,6 +1,6 @@
 import type { AgentActionTarget } from '../../../../shared/types/agentTools'
 import { ValidationError } from '../../../db/errors'
-import type { AgentToolName } from '../schemas'
+import type { AgentToolName, BrowserToolName } from '../schemas'
 import type { AgentToolsDeps, LimitKind } from '../tools'
 
 export interface TurnContext {
@@ -12,7 +12,8 @@ export type ToolHandler = (
   input: Record<string, unknown>
 ) => Promise<unknown> | unknown
 
-export type ToolHandlerMap = Record<AgentToolName, ToolHandler>
+export type ToolHandlerMap = Record<AgentToolName, ToolHandler> &
+  Partial<Record<BrowserToolName, ToolHandler>>
 
 export interface ToolContext {
   deps: AgentToolsDeps

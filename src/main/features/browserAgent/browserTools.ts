@@ -1,18 +1,3 @@
-/**
- * The agent's read-only view of a course's LMS.
- *
- * Two tools, and neither opens a page: `course_links` already knows the
- * platform host and the course id, so the answer comes from a JSON endpoint
- * over the session the student logged into by hand. That makes this the
- * lowest-risk rung of the whole agent plan — nothing is clicked, nothing is
- * typed, nothing is written to the web — while answering the question
- * students actually ask every day.
- *
- * Everything still passes the same gate as a navigation would: hard-denied
- * origins are refused, a grant is required, and every call is audited. A read
- * being cheap is not a reason to make it unaccountable.
- */
-
 import type { AgentConfirmScope } from '../../../shared/types/agentTools'
 import type { AuditRepo } from './audit'
 import {
@@ -23,7 +8,7 @@ import {
   type GrantsRepo
 } from './grants'
 import { checkNavigation } from './navigation'
-import { verdictFor } from './pageDriver'
+import { verdictFor, type ScrollTarget } from './pageDriver'
 import { resolveRef } from './refs'
 import { DEFAULT_SNAPSHOT_CHARS } from './snapshot'
 import type { ElementFacts } from './actionPolicy'
@@ -36,87 +21,44 @@ import {
   type LmsTarget
 } from './siteRecipes'
 import type { CourseLinkSpec } from '../../../shared/types/university'
-
-const LIST_KINDS: readonly LmsListKind[] = [
-  'announcements',
-  'assignments',
-  'modules',
-  'files'
-]
-
+const LIST_KINDS: readonly LmsListKind[] = ['announcements', 'assignments', 'modules', 'files']
+const SCROLL_KINDS = ['down', 'up', 'top', 'bottom'] as const
+export const BROWSER_KEYS = ['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'] as const
+export type BrowserKey = (typeof BROWSER_KEYS)[number]
+export type BrowserScrollInput =
+  | { kind: 'down' | 'up' | 'top' | 'bottom' }
+  | { kind: 'ref'; ref: string }
 export interface BrowserToolsDeps {
   courseId: string
-  /** Groups a turn's audit rows, same id the app tools journal under. */
   getRunId: () => string
   grants: GrantsRepo
   audit: AuditRepo
   seen: SeenRepo
-  /** The course's saved LMS links. */
-  courseLinks: (courseId: string) => {
-    url: string
-    lmsCourseId: string | null
-  }[]
-  /** The active school's spec for a URL, so we know the platform. */
+  courseLinks: (courseId: string) => { url: string; lmsCourseId: string | null }[]
   specFor: (url: string) => Pick<CourseLinkSpec, 'platform'> | null
-  /** Browsing-partition fetch — the student's own login. */
   fetch: (url: string) => Promise<Response>
-  /**
-   * Downloads a URL through the browsing session and files it in the course.
-   * Injected rather than reached for directly so this module stays testable
-   * without Electron, and so the caller keeps owning the per-turn budget and
-   * the undo journal.
-   */
   collect?: (input: {
     courseId: string
     url: string
     dirRelPath: string
   }) => Promise<{ relPath: string }>
-  /**
-   * Asks the student. Reuses the app's own confirmer rather than the CLI's
-   * permission flow, for the reason already documented in
-   * `agentTools/confirm.ts`: Codex's `respondPermission` is a no-op, so a
-   * provider permission card would leave that provider unguarded.
-   */
   confirm: (request: {
     courseId: string
     tool: string
     summary: string
     details: string[]
-    /** Offered only for site access; the caller records which one was picked. */
     scopes?: AgentConfirmScope[]
   }) => Promise<AgentConfirmScope | false>
-  /**
-   * The browser tabs the student can see, as published by the renderer.
-   *
-   * Deliberately NOT the guest registry: hidden guests are evicted by the LRU
-   * and only their last URL survives in the renderer store, so a registry
-   * listing would omit tabs that are plainly on screen.
-   */
   openTabs?: () => {
     tabs: { tabId: string; title: string; url: string; asleep: boolean }[]
     activeTabId: string | null
   }
-  /**
-   * Driving a live guest. Absent for conversations that only read the LMS
-   * over the session — which is most of them, and the cheapest thing to be.
-   */
   page?: PageSurface
-  /**
-   * Submitting, attaching a file, and using a saved login. Separate from
-   * `page` because these are the irreversible ones — a conversation that only
-   * reads should not be able to reach them by accident.
-   */
   commit?: CommitSurface
 }
-
 export interface CommitSurface {
-  /** Presses a submit control. Only ever called after an explicit yes. */
   submit: (tabId: string, frameIndex: number, elementIndex: number) => Promise<boolean>
-  /** Fills the saved login for the page's origin. Never returns the secret. */
-  useSavedLogin: (
-    tabId: string
-  ) => Promise<{ filled: boolean; username: string | null }>
-  /** Attaches a course file to a file input. */
+  useSavedLogin: (tabId: string) => Promise<{ filled: boolean; username: string | null }>
   attachFile: (
     tabId: string,
     frameIndex: number,
@@ -125,43 +67,17 @@ export interface CommitSurface {
     relPath: string
   ) => Promise<boolean>
 }
-
-/**
- * Everything the interaction tools need from a live tab, injected so this
- * module stays free of Electron.
- */
 export interface PageSurface {
-  /** Opens (or reuses) a browser tab and returns its id. */
   openTab: (url: string) => Promise<{ tabId: string; url: string }>
-  /**
-   * Brings an existing tab forward so its guest mounts again. Returns false
-   * if it never came back — the LRU may have dropped it for good.
-   */
   wakeTab: (tabId: string) => Promise<boolean>
-  /** Current snapshot generation; bumped by the caller on navigation. */
   generation: (tabId: string) => number
-  snapshot: (
-    tabId: string,
-    maxChars: number
-  ) => Promise<{ url: string; outline: string } | null>
-  read: (
-    tabId: string,
-    maxChars: number
-  ) => Promise<{ url: string; text: string } | null>
+  snapshot: (tabId: string, maxChars: number) => Promise<{ url: string; outline: string } | null>
+  read: (tabId: string, maxChars: number) => Promise<{ url: string; text: string } | null>
   factsFor: (
     tabId: string,
     frameIndex: number,
     elementIndex: number
   ) => Promise<ElementFacts | null>
-  /**
-   * Acts, waits for the page to settle, and says what happened.
-   *
-   * It used to return a bare boolean, so a click that navigated and a click
-   * that did nothing were the same answer — and the next snapshot was taken
-   * against whichever document happened to be committed at that instant,
-   * usually the old one, under a generation that still looked valid. A
-   * confident wrong picture instead of an error.
-   */
   act: (
     tabId: string,
     frameIndex: number,
@@ -172,32 +88,31 @@ export interface PageSurface {
       | { kind: 'select'; value: string }
   ) => Promise<ActOutcome>
   currentUrl: (tabId: string) => string | null
-  /** Suspends the run and asks the student to take over. */
+  scroll: (tabId: string, to: ScrollTarget) => Promise<ActOutcome>
+  pressKey: (tabId: string, key: BrowserKey) => Promise<ActOutcome>
+  hover: (tabId: string, frameIndex: number, elementIndex: number) => Promise<ActOutcome>
+  navigateHistory: (
+    tabId: string,
+    action: 'back' | 'forward' | 'reload' | 'stop'
+  ) => Promise<ActOutcome>
+  tabLifecycle: (tabId: string, action: 'focus' | 'close') => Promise<boolean>
+  findInPage: (tabId: string, text: string) => Promise<number>
   handoff: (tabId: string, message: string) => Promise<'resumed' | 'stopped'>
-  /** Throws if the student pressed 중지. */
   assertLive: () => void
-  /** Updates the strip the student is reading. */
   step: (action: string, url?: string) => void
 }
-
 export interface ActOutcome {
   ok: boolean
-  /** Korean, one line, when `ok` is false. */
   problem: string | null
-  /** What a `<select>` actually offers, so a failed pick can be retried. */
   options?: { value: string; label: string }[]
-  /** The page AFTER settling. */
   url: string
   title: string
-  /** The document changed — every outstanding ref is dead. */
   navigated: boolean
 }
-
 export interface LmsCoursePageResult {
   url: string | null
   platform: string | null
 }
-
 export function createBrowserTools(deps: BrowserToolsDeps) {
   function targetFor(courseId: string): LmsTarget | null {
     for (const link of deps.courseLinks(courseId)) {
@@ -206,21 +121,12 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
     }
     return null
   }
-
-  /**
-   * The tab's current URL, waking the guest if the LRU dropped it.
-   *
-   * A hidden guest beyond MAX_LIVE_GUESTS is destroyed while its tab stays on
-   * screen. Without this, asking about a tab the student can plainly see
-   * answers "그 탭을 찾지 못했어요", which reads as a bug because it is one.
-   */
   async function urlOfTab(page: PageSurface, tabId: string): Promise<string | null> {
     const current = page.currentUrl(tabId)
     if (current !== null) return current
     const woke = await page.wakeTab(tabId)
     return woke ? page.currentUrl(tabId) : null
   }
-
   function audit(
     action: Parameters<AuditRepo['record']>[0]['action'],
     url: string,
@@ -234,21 +140,11 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       detail: redactText(detail)
     })
   }
-
   const CAPABILITY_LABEL: Record<BrowserCapability, string> = {
     read: '읽기',
     interact: '조작',
     download: '내려받기'
   }
-
-  /**
-   * Deny-list, scheme, and the student's grant — and, when only the grant is
-   * missing, the ask that creates one.
-   *
-   * The ask is how a grant comes into existence at all: there is no settings
-   * switch that pre-authorises an origin, because a permission granted away
-   * from the moment it is used is one nobody thinks about.
-   */
   async function gate(
     url: string,
     capability: BrowserCapability
@@ -263,28 +159,19 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       capability,
       heldCapability: held?.capability ?? null
     })
-
     if (verdict.allowed) {
       if (held !== null) deps.grants.touch(held.id)
       return { ok: true }
     }
-
-    // Anything other than a missing grant is categorical — a 수강신청 page is
-    // refused because of what it is, and asking would imply otherwise.
     if (verdict.reason !== 'no-grant') {
       audit('denied', url, `${verdict.reason}: ${verdict.message}`)
       return { ok: false, message: verdict.message }
     }
-
     const origin = normalizeOrigin(url)
     if (origin === null) {
       audit('denied', url, 'malformed origin')
       return { ok: false, message: verdict.message }
     }
-
-    // ONE question, three answers. It used to ask per capability per origin,
-    // so a single task across two sites produced four prompts the student had
-    // no way to tell apart.
     const scope = await deps.confirm({
       courseId: deps.courseId,
       tool: 'browser_access',
@@ -299,13 +186,10 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       audit('denied', url, '학생이 거부함')
       return { ok: false, message: '학생이 접근을 허용하지 않았어요.' }
     }
-
-    // 'once' grants nothing: this call proceeds and the next one asks again.
     if (scope === 'once') {
       audit('grant', origin, '이번 한 번만')
       return { ok: true }
     }
-
     const target = scope === 'course' ? ANY_ORIGIN : origin
     const created = deps.grants.grant({
       courseId: deps.courseId,
@@ -323,7 +207,139 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
     deps.grants.touch(created.id)
     return { ok: true }
   }
-
+  type ToolError = {
+    status: 'error'
+    message: string
+    options?: { value: string; label: string }[]
+  }
+  type GatedTab =
+    | { ok: true; page: PageSurface; url: string }
+    | { ok: false; result: ToolError }
+  async function gatedTab(
+    tabId: string,
+    capability: BrowserCapability,
+    unavailable: string
+  ): Promise<GatedTab> {
+    const page = deps.page
+    if (page === undefined) {
+      return { ok: false, result: { status: 'error', message: unavailable } }
+    }
+    page.assertLive()
+    const listedUrl = deps.openTabs?.().tabs.find((tab) => tab.tabId === tabId)?.url
+    const url = page.currentUrl(tabId) ?? listedUrl ?? null
+    if (url === null) {
+      return {
+        ok: false,
+        result: { status: 'error', message: '그 탭을 찾지 못했어요.' }
+      }
+    }
+    const permitted = await gate(url, capability)
+    if (!permitted.ok) {
+      return {
+        ok: false,
+        result: { status: 'error', message: permitted.message }
+      }
+    }
+    return { ok: true, page, url }
+  }
+  async function refFacts(
+    page: PageSurface,
+    tabId: string,
+    url: string,
+    ref: string,
+    detail: string
+  ): Promise<
+    | { ok: true; frameIndex: number; elementIndex: number; facts: ElementFacts }
+    | { ok: false; result: ToolError }
+  > {
+    const resolved = resolveRef(ref, page.generation(tabId))
+    if (!resolved.ok) {
+      audit('denied', url, `${detail} ref ${resolved.reason}`)
+      return {
+        ok: false,
+        result: { status: 'error', message: resolved.message }
+      }
+    }
+    const facts = await page.factsFor(
+      tabId,
+      resolved.frameIndex,
+      resolved.elementIndex
+    )
+    if (facts === null) {
+      audit('denied', url, `${detail}: 요소 없음`)
+      return {
+        ok: false,
+        result: { status: 'error', message: '그 요소를 찾지 못했어요.' }
+      }
+    }
+    return {
+      ok: true,
+      frameIndex: resolved.frameIndex,
+      elementIndex: resolved.elementIndex,
+      facts
+    }
+  }
+  function actionResult(
+    page: PageSurface,
+    outcome: ActOutcome,
+    detail: string,
+    action: 'navigate' | 'read' = 'navigate'
+  ):
+    | {
+        status: 'ok'
+        url: string
+        title: string
+        navigated: boolean
+        options?: { value: string; label: string }[]
+      }
+    | ToolError {
+    if (!outcome.ok) {
+      audit('denied', outcome.url, `${detail}: ${outcome.problem ?? '실패'}`)
+      return {
+        status: 'error',
+        message: outcome.problem ?? '동작을 실행하지 못했어요.',
+        ...(outcome.options === undefined ? {} : { options: outcome.options })
+      }
+    }
+    audit(action, outcome.url, detail)
+    page.step('페이지를 조작하는 중', outcome.url)
+    return {
+      status: 'ok',
+      url: outcome.url,
+      title: outcome.title,
+      navigated: outcome.navigated,
+      ...(outcome.options === undefined ? {} : { options: outcome.options })
+    }
+  }
+  async function historyTool(
+    tabId: string,
+    action: 'back' | 'forward' | 'reload' | 'stop'
+  ) {
+    const tab = await gatedTab(
+      tabId,
+      'interact',
+      '이 대화에서는 페이지를 이동할 수 없어요.'
+    )
+    if (!tab.ok) return tab.result
+    return actionResult(
+      tab.page,
+      await tab.page.navigateHistory(tabId, action),
+      `history ${action}`
+    )
+  }
+  async function lifecycleTool(tabId: string, action: 'focus' | 'close') {
+    const tab = await gatedTab(
+      tabId,
+      'interact',
+      '이 대화에서는 탭을 다룰 수 없어요.'
+    )
+    if (!tab.ok) return tab.result
+    const ok = await tab.page.tabLifecycle(tabId, action)
+    audit(ok ? 'navigate' : 'denied', tab.url, `tab ${action}`)
+    return ok
+      ? { status: 'ok' as const }
+      : { status: 'error' as const, message: '탭 동작을 실행하지 못했어요.' }
+  }
   return {
     lms_course_page(courseId: string): LmsCoursePageResult {
       const target = targetFor(courseId)
@@ -333,19 +349,10 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         platform: target.platform
       }
     },
-
-    /**
-     * The whole list, not just what is new. `lms_new_items` answers "anything
-     * I have not seen"; this answers "what is there", which is what collecting
-     * this week's handouts needs.
-     */
     async lms_list(
       courseId: string,
       rawKind: string | null
-    ): Promise<
-      | { status: 'ok'; kind: LmsListKind; items: { title: string; at: string | null; url: string }[] }
-      | { status: 'error'; message: string }
-    > {
+    ) {
       const kind: LmsListKind = LIST_KINDS.includes(rawKind as LmsListKind)
         ? (rawKind as LmsListKind)
         : 'files'
@@ -359,7 +366,6 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       }
       const permitted = await gate(target.origin, 'read')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
-
       const result = await fetchLmsList({ fetch: deps.fetch }, target, kind)
       if (result.status !== 'ok') {
         audit('read', target.origin, `${kind}: ${result.message}`)
@@ -376,26 +382,16 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         }))
       }
     },
-
-    /**
-     * Pulls one file into the course folder.
-     *
-     * Needs its own `download` capability: reading a page and taking files off
-     * it are separate decisions, and a read grant must never imply this.
-     */
     async browser_download(
       courseId: string,
       url: string,
       dirRelPath: string
-    ): Promise<
-      { status: 'ok'; relPath: string } | { status: 'error'; message: string }
-    > {
+    ) {
       if (deps.collect === undefined) {
         return { status: 'error', message: '이 대화에서는 내려받을 수 없어요.' }
       }
       const permitted = await gate(url, 'download')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
-
       try {
         const { relPath } = await deps.collect({ courseId, url, dirRelPath })
         audit('download', url, `자료 «${relPath}»`)
@@ -407,27 +403,7 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         return { status: 'error', message }
       }
     },
-
-    /**
-     * The tabs the student has open, so "the page I am looking at" is
-     * addressable at all.
-     *
-     * Listing needs no grant. These are titles and URLs of pages the student
-     * put on their own screen, and refusing to name them would only make the
-     * assistant claim it cannot see a browser that is right there. READING one
-     * still goes through `gate` — enumeration is free, content is not.
-     */
-    browser_tabs(): {
-      status: 'ok'
-      tabs: {
-        tabId: string
-        title: string
-        url: string
-        active: boolean
-        asleep: boolean
-      }[]
-      activeTabId: string | null
-    } {
+    browser_tabs() {
       const source = deps.openTabs
       if (source === undefined) {
         return { status: 'ok', tabs: [], activeTabId: null }
@@ -438,7 +414,6 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         status: 'ok',
         tabs: tabs.map((tab) => ({
           tabId: tab.tabId,
-          // Portal URLs carry student numbers; titles carry names.
           title: redactText(tab.title),
           url: redactUrl(tab.url),
           active: tab.tabId === activeTabId,
@@ -447,12 +422,7 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         activeTabId
       }
     },
-
-    async browser_open(
-      url: string
-    ): Promise<
-      { status: 'ok'; tabId: string; url: string } | { status: 'error'; message: string }
-    > {
+    async browser_open(url: string) {
       const page = deps.page
       if (page === undefined) {
         return { status: 'error', message: '이 대화에서는 페이지를 열 수 없어요.' }
@@ -460,19 +430,15 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       page.assertLive()
       const permitted = await gate(url, 'read')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
-
       const opened = await page.openTab(url)
       audit('navigate', opened.url, '탭에서 열었어요')
       page.step('페이지를 여는 중', opened.url)
       return { status: 'ok', tabId: opened.tabId, url: opened.url }
     },
-
     async browser_snapshot(
       tabId: string,
       maxChars: number | null
-    ): Promise<
-      { status: 'ok'; url: string; outline: string } | { status: 'error'; message: string }
-    > {
+    ) {
       const page = deps.page
       if (page === undefined) {
         return { status: 'error', message: '이 대화에서는 페이지를 볼 수 없어요.' }
@@ -484,7 +450,6 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       }
       const permitted = await gate(url, 'read')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
-
       const result = await page.snapshot(tabId, maxChars ?? DEFAULT_SNAPSHOT_CHARS)
       if (result === null) {
         return { status: 'error', message: '페이지를 살펴보지 못했어요.' }
@@ -493,13 +458,10 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       page.step('페이지를 살펴보는 중', result.url)
       return { status: 'ok', url: result.url, outline: result.outline }
     },
-
     async browser_read(
       tabId: string,
       maxChars: number | null
-    ): Promise<
-      { status: 'ok'; url: string; text: string } | { status: 'error'; message: string }
-    > {
+    ) {
       const page = deps.page
       if (page === undefined) {
         return { status: 'error', message: '이 대화에서는 페이지를 읽을 수 없어요.' }
@@ -511,7 +473,6 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       }
       const permitted = await gate(url, 'read')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
-
       const result = await page.read(tabId, maxChars ?? 8000)
       if (result === null) {
         return { status: 'error', message: '페이지를 읽지 못했어요.' }
@@ -519,12 +480,109 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       audit('read', result.url, `본문 ${result.text.length}자`)
       return { status: 'ok', url: result.url, text: result.text }
     },
-
-    /**
-     * click / type / select. All three share the gate, the ref generation
-     * check and the element policy, because the difference between them is
-     * only what happens after all three have said yes.
-     */
+    async browser_scroll(tabId: string, to: BrowserScrollInput) {
+      const tab = await gatedTab(
+        tabId,
+        'read',
+        '이 대화에서는 페이지를 스크롤할 수 없어요.'
+      )
+      if (!tab.ok) return tab.result
+      if (typeof to !== 'object' || to === null || typeof to.kind !== 'string') {
+        audit('denied', tab.url, 'scroll 입력 오류')
+        return { status: 'error' as const, message: '스크롤 대상을 확인해 주세요.' }
+      }
+      let target: ScrollTarget
+      if (to.kind === 'ref') {
+        const element = await refFacts(tab.page, tabId, tab.url, to.ref, 'scroll')
+        if (!element.ok) return element.result
+        target = {
+          kind: 'ref',
+          frameIndex: element.frameIndex,
+          elementIndex: element.elementIndex
+        }
+      } else if ((SCROLL_KINDS as readonly string[]).includes(to.kind)) {
+        target = { kind: to.kind as (typeof SCROLL_KINDS)[number] }
+      } else {
+        audit('denied', tab.url, `scroll ${to.kind}`)
+        return { status: 'error' as const, message: '지원하지 않는 스크롤이에요.' }
+      }
+      return actionResult(
+        tab.page,
+        await tab.page.scroll(tabId, target),
+        `scroll ${to.kind}`,
+        'read'
+      )
+    },
+    async browser_key(tabId: string, key: string) {
+      const tab = await gatedTab(
+        tabId,
+        'interact',
+        '이 대화에서는 키를 누를 수 없어요.'
+      )
+      if (!tab.ok) return tab.result
+      if (!(BROWSER_KEYS as readonly string[]).includes(key)) {
+        audit('denied', tab.url, `key ${key}`)
+        return { status: 'error' as const, message: '지원하지 않는 키예요.' }
+      }
+      return actionResult(
+        tab.page,
+        await tab.page.pressKey(tabId, key as BrowserKey),
+        `key ${key}`
+      )
+    },
+    async browser_hover(tabId: string, ref: string) {
+      const tab = await gatedTab(
+        tabId,
+        'interact',
+        '이 대화에서는 페이지에 마우스를 올릴 수 없어요.'
+      )
+      if (!tab.ok) return tab.result
+      const element = await refFacts(tab.page, tabId, tab.url, ref, 'hover')
+      if (!element.ok) return element.result
+      return actionResult(
+        tab.page,
+        await tab.page.hover(tabId, element.frameIndex, element.elementIndex),
+        `hover ${element.facts.tag}`
+      )
+    },
+    browser_back(tabId: string) {
+      return historyTool(tabId, 'back')
+    },
+    browser_forward(tabId: string) {
+      return historyTool(tabId, 'forward')
+    },
+    browser_reload(tabId: string) {
+      return historyTool(tabId, 'reload')
+    },
+    browser_stop(tabId: string) {
+      return historyTool(tabId, 'stop')
+    },
+    browser_focus_tab(tabId: string) {
+      return lifecycleTool(tabId, 'focus')
+    },
+    browser_close_tab(tabId: string) {
+      return lifecycleTool(tabId, 'close')
+    },
+    async browser_find(tabId: string, text: string) {
+      const tab = await gatedTab(
+        tabId,
+        'read',
+        '이 대화에서는 페이지에서 찾을 수 없어요.'
+      )
+      if (!tab.ok) return tab.result
+      if (text.trim() === '') {
+        audit('denied', tab.url, 'find 빈 문자열')
+        return { status: 'error' as const, message: '찾을 글을 입력해 주세요.' }
+      }
+      try {
+        const matches = await tab.page.findInPage(tabId, text)
+        audit('read', tab.url, `find ${text}: ${matches}건`)
+        return { status: 'ok' as const, matches }
+      } catch {
+        audit('denied', tab.url, `find ${text}: 실패`)
+        return { status: 'error' as const, message: '페이지에서 찾지 못했어요.' }
+      }
+    },
     async browser_act(
       tabId: string,
       ref: string,
@@ -532,101 +590,36 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         | { kind: 'click' }
         | { kind: 'type'; text: string }
         | { kind: 'select'; value: string }
-    ): Promise<
-      | {
-          status: 'ok'
-          url: string
-          title: string
-          navigated: boolean
-          options?: { value: string; label: string }[]
-        }
-      | {
-          status: 'error'
-          message: string
-          options?: { value: string; label: string }[]
-        }
-    > {
-      const page = deps.page
-      if (page === undefined) {
-        return { status: 'error', message: '이 대화에서는 페이지를 조작할 수 없어요.' }
-      }
-      page.assertLive()
-      const url = page.currentUrl(tabId)
-      if (url === null) {
-        return { status: 'error', message: '그 탭을 찾지 못했어요.' }
-      }
-      // Interacting is its own decision — a read grant never implies it.
-      const permitted = await gate(url, 'interact')
-      if (!permitted.ok) return { status: 'error', message: permitted.message }
-
-      const resolved = resolveRef(ref, page.generation(tabId))
-      if (!resolved.ok) {
-        audit('denied', url, `ref ${resolved.reason}`)
-        return { status: 'error', message: resolved.message }
-      }
-
-      const facts = await page.factsFor(
+    ) {
+      const tab = await gatedTab(
         tabId,
-        resolved.frameIndex,
-        resolved.elementIndex
+        'interact',
+        '이 대화에서는 페이지를 조작할 수 없어요.'
       )
-      if (facts === null) {
-        return { status: 'error', message: '그 요소를 찾지 못했어요.' }
-      }
-      const verdict = verdictFor(action.kind, facts)
+      if (!tab.ok) return tab.result
+      const element = await refFacts(tab.page, tabId, tab.url, ref, action.kind)
+      if (!element.ok) return element.result
+      const verdict = verdictFor(action.kind, element.facts)
       if (!verdict.allowed) {
-        audit('denied', url, `${action.kind}: ${verdict.reason}`)
+        audit('denied', tab.url, `${action.kind}: ${verdict.reason}`)
         return { status: 'error', message: verdict.message }
       }
-
-      const outcome = await page.act(
+      const detail = action.kind === 'type'
+        ? `type ${element.facts.tag}: ${action.text}`
+        : action.kind === 'select'
+          ? `select ${action.value}`
+          : `click ${element.facts.tag} "${element.facts.href ?? ''}"`
+      return actionResult(tab.page, await tab.page.act(
         tabId,
-        resolved.frameIndex,
-        resolved.elementIndex,
+        element.frameIndex,
+        element.elementIndex,
         action
-      )
-      if (!outcome.ok) {
-        // The page's own answer, not a generic failure — "그 값을 고를 수
-        // 없어요" plus the options it does offer is actionable; "동작을
-        // 실행하지 못했어요" is not.
-        return {
-          status: 'error',
-          message: outcome.problem ?? '동작을 실행하지 못했어요.',
-          ...(outcome.options === undefined ? {} : { options: outcome.options })
-        }
-      }
-
-      // Typed text is audited through the same redaction as everything else,
-      // and a password field never reaches here at all (actionPolicy).
-      const detail =
-        action.kind === 'type'
-          ? `type ${facts.tag}: ${action.text}`
-          : action.kind === 'select'
-            ? `select ${action.value}`
-            : `click ${facts.tag} "${facts.href ?? ''}"`
-      audit('navigate', outcome.url, detail)
-      page.step('페이지를 조작하는 중', outcome.url)
-      // The page AFTER settling, and whether the document changed. Without
-      // this the model had no way to learn a click had navigated, so it
-      // snapshotted the old document under a still-valid generation.
-      return {
-        status: 'ok',
-        url: outcome.url,
-        title: outcome.title,
-        navigated: outcome.navigated,
-        ...(outcome.options === undefined ? {} : { options: outcome.options })
-      }
+      ), detail)
     },
-
-    /**
-     * Hands the wheel back. Not a failure — a first-class outcome. SSO, OTP,
-     * nProtect and CAPTCHA are where an agent SHOULD stop, and pretending
-     * otherwise is how it clicks something it should not.
-     */
     async browser_handoff(
       tabId: string,
       message: string
-    ): Promise<{ status: 'resumed' } | { status: 'error'; message: string }> {
+    ) {
       const page = deps.page
       if (page === undefined) {
         return { status: 'error', message: '이 대화에서는 넘길 수 없어요.' }
@@ -637,19 +630,10 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       }
       return { status: 'resumed' }
     },
-
-    /**
-     * Presses submit — and asks, every single time.
-     *
-     * This gate is never rememberable. On the web, submit is the entire set of
-     * irreversible acts: 과제 제출, 게시글, 수강신청, 메시지, 결제. Enumerating
-     * dangerous PAGES is unreliable; enumerating the dangerous VERB is exact.
-     * A grant covers reading and clicking around; it never covers this.
-     */
     async browser_submit(
       tabId: string,
       ref: string
-    ): Promise<{ status: 'ok' } | { status: 'error'; message: string }> {
+    ) {
       const page = deps.page
       const commit = deps.commit
       if (page === undefined || commit === undefined) {
@@ -662,7 +646,6 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       }
       const permitted = await gate(url, 'interact')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
-
       const resolved = resolveRef(ref, page.generation(tabId))
       if (!resolved.ok) {
         audit('denied', url, `submit ref ${resolved.reason}`)
@@ -676,7 +659,6 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       if (facts === null) {
         return { status: 'error', message: '그 요소를 찾지 못했어요.' }
       }
-
       const approved = await deps.confirm({
         courseId: deps.courseId,
         tool: 'browser_submit',
@@ -690,7 +672,6 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         audit('denied', url, 'submit: 학생이 거부함')
         return { status: 'error', message: '학생이 제출을 승인하지 않았어요.' }
       }
-
       const ok = await commit.submit(
         tabId,
         resolved.frameIndex,
@@ -701,20 +682,7 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         ? { status: 'ok' }
         : { status: 'error', message: '제출하지 못했어요.' }
     },
-
-    /**
-     * Signs in with a login the student already saved.
-     *
-     * The agent names an origin and learns only whether it worked. There is no
-     * parameter through which it could ask for the secret and no field in the
-     * result that carries one — Aside ships an agent-scoped password manager;
-     * this ships an agent that structurally cannot read a password.
-     */
-    async browser_use_saved_login(
-      tabId: string
-    ): Promise<
-      { status: 'ok'; filled: boolean } | { status: 'error'; message: string }
-    > {
+    async browser_use_saved_login(tabId: string) {
       const page = deps.page
       const commit = deps.commit
       if (page === undefined || commit === undefined) {
@@ -727,7 +695,6 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       }
       const permitted = await gate(url, 'interact')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
-
       const origin = normalizeOrigin(url) ?? url
       const approved = await deps.confirm({
         courseId: deps.courseId,
@@ -742,21 +709,16 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         audit('denied', url, 'saved-login: 학생이 거부함')
         return { status: 'error', message: '학생이 로그인을 승인하지 않았어요.' }
       }
-
       const result = await commit.useSavedLogin(tabId)
-      // Only the origin and whether it worked. Never the username's value in
-      // a form that could be reconstructed, never the secret.
       audit('navigate', url, result.filled ? 'saved-login 채움' : 'saved-login 없음')
       return { status: 'ok', filled: result.filled }
     },
-
-    /** Attaches a course file to a file input (`DOM.setFileInputFiles`). */
     async browser_attach_file(
       tabId: string,
       ref: string,
       courseId: string,
       relPath: string
-    ): Promise<{ status: 'ok' } | { status: 'error'; message: string }> {
+    ) {
       const page = deps.page
       const commit = deps.commit
       if (page === undefined || commit === undefined) {
@@ -769,7 +731,6 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       }
       const permitted = await gate(url, 'interact')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
-
       const resolved = resolveRef(ref, page.generation(tabId))
       if (!resolved.ok) {
         return { status: 'error', message: resolved.message }
@@ -786,18 +747,13 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         ? { status: 'ok' }
         : { status: 'error', message: '파일을 붙이지 못했어요.' }
     },
-
     async lms_new_items(
       courseId: string,
       rawKind: string | null
-    ): Promise<
-      | { status: 'ok'; kind: LmsListKind; items: { title: string; at: string | null; url: string }[]; firstRun: boolean }
-      | { status: 'error'; message: string }
-    > {
+    ) {
       const kind: LmsListKind = LIST_KINDS.includes(rawKind as LmsListKind)
         ? (rawKind as LmsListKind)
         : 'announcements'
-
       const target = targetFor(courseId)
       if (target === null) {
         return {
@@ -806,31 +762,24 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
             '이 과목에 학교 강의실이 연결돼 있지 않아요. 과목 링크를 먼저 추가해 주세요.'
         }
       }
-
       const permitted = await gate(target.origin, 'read')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
-
       const result = await fetchLmsList({ fetch: deps.fetch }, target, kind)
       if (result.status !== 'ok') {
         audit('read', target.origin, `${kind}: ${result.message}`)
         return { status: 'error', message: result.message }
       }
-
       const listKey = `${target.origin}|${target.lmsCourseId}|${kind}`
       const seenItems = result.items.map((item) => ({
         key: itemKey(item.id, item.title, item.at),
         title: item.title
       }))
-
-      // The first look at a list is not "new" — otherwise the very first
-      // question dumps the whole semester back at the student.
       const firstRun = !deps.seen.has(courseId, listKey)
       if (firstRun) {
         deps.seen.seed({ courseId, listKey, items: seenItems })
         audit('read', target.origin, `${kind}: 처음 확인 (${seenItems.length}건 기록)`)
         return { status: 'ok', kind, items: [], firstRun: true }
       }
-
       const fresh = deps.seen.diffAndRecord({
         courseId,
         listKey,
@@ -840,7 +789,6 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       const items = result.items
         .filter((item) => freshKeys.has(itemKey(item.id, item.title, item.at)))
         .map((item) => ({ title: item.title, at: item.at, url: item.url }))
-
       audit('read', target.origin, `${kind}: 새 항목 ${items.length}건`)
       return { status: 'ok', kind, items, firstRun: false }
     }

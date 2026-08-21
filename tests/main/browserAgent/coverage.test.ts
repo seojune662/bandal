@@ -16,7 +16,10 @@ import {
   BROWSER_CAPABILITIES,
   NOT_FOR_AGENT_BROWSER
 } from '../../../src/main/features/browserAgent/coverage'
-import { BROWSER_TOOL_NAMES } from '../../../src/main/features/agentTools/schemas'
+import {
+  BROWSER_TOOL_DEFINITIONS,
+  BROWSER_TOOL_NAMES
+} from '../../../src/main/features/agentTools/schemas'
 
 describe('agent browser coverage', () => {
   test('every capability is either given to the agent or refused with a reason', () => {
@@ -51,6 +54,29 @@ describe('agent browser coverage', () => {
       )
       .map(([id, tool]) => `${id} → ${tool}`)
     expect(missing).toEqual([])
+  })
+
+  test('browser_key is destructive and exposes only the fixed key set', () => {
+    const definition = BROWSER_TOOL_DEFINITIONS.find(
+      (tool) => tool.name === 'browser_key'
+    )
+    expect(definition?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true
+    })
+    expect(definition?.description).toContain('폼을 제출할 수 있습니다')
+    const properties = definition?.inputSchema.properties as
+      | Record<string, { enum?: string[] }>
+      | undefined
+    expect(properties?.['key']?.enum).toEqual([
+      'Enter',
+      'Tab',
+      'Escape',
+      'ArrowUp',
+      'ArrowDown',
+      'ArrowLeft',
+      'ArrowRight'
+    ])
   })
 
   test('a capability is not both given and refused', () => {
