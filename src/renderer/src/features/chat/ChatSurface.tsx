@@ -15,7 +15,10 @@ import { Composer, type ComposerHandle } from './Composer'
 import { ConversationListMenu } from './ConversationListMenu'
 import { formatCost, MessageList, UsageText } from './MessageList'
 import { useChatSession } from './useChatSession'
-import { AgentToolActivity } from './AgentToolCards'
+import {
+  AgentApprovalRail,
+  hasVisibleAgentToolActivity
+} from './AgentApprovalRail'
 import { useAgentToolActivity } from './agentToolActivityStore'
 import {
   AgentSetupCard,
@@ -78,7 +81,7 @@ export function ChatSurface({
 }: ChatSurfaceProps): JSX.Element {
   const conversationKey = conversationId ?? courseId
   const session = useChatSession(courseId, conversationKey)
-  const agentToolActivity = useAgentToolActivity(courseId)
+  const agentToolActivity = useAgentToolActivity(conversationKey)
   const openTab = useWorkspaceStore((store) => store.openTab)
   const [draft, setDraft] = useState('')
   const composerRef = useRef<ComposerHandle>(null)
@@ -206,8 +209,8 @@ export function ChatSurface({
     )
   }
 
-  const hasAgentToolCards = agentToolActivity.items.some(
-    (item) => item.kind === 'confirmation' || item.actions.length > 0
+  const hasAgentToolCards = hasVisibleAgentToolActivity(
+    agentToolActivity.items
   )
   const isEmpty = state.messages.length === 0 && !hasAgentToolCards
   const defaultModel = models.find((model) => model.isDefault) ?? models[0]
@@ -295,21 +298,27 @@ export function ChatSurface({
           </button>
         </div>
       )}
-      <div ref={scrollRef} className="chat-scroll" onScroll={handleScroll}>
+      <div
+        ref={scrollRef}
+        className="chat-scroll"
+        data-has-approval-rail={hasAgentToolCards || undefined}
+        onScroll={handleScroll}
+      >
         {isEmpty ? (
           <EmptyState onPick={handlePickStarter} />
         ) : (
-          <MessageList
-            messages={state.messages}
-            pendingPermissionId={state.pendingPermissionId}
-            onRespondPermission={session.respondPermission}
-          >
-            <AgentToolActivity
+          <>
+            <MessageList
+              messages={state.messages}
+              pendingPermissionId={state.pendingPermissionId}
+              onRespondPermission={session.respondPermission}
+            />
+            <AgentApprovalRail
               items={agentToolActivity.items}
               onRespondConfirm={agentToolActivity.respondConfirm}
               onUndoTurn={agentToolActivity.undoTurn}
             />
-          </MessageList>
+          </>
         )}
       </div>
       <Composer

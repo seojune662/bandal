@@ -103,10 +103,17 @@ export function useAgentTabSync(): void {
       if (payload === null) return
       const serialized = JSON.stringify(payload)
       if (serialized === lastSent) return
-      lastSent = serialized
-      void invoke('browserAgent:syncTabs', payload).catch(() => {
-        // The agent simply will not see the tabs; nothing to show the student.
-      })
+      try {
+        const request = invoke('browserAgent:syncTabs', payload)
+        // Only after the call is away: marking it sent first means one failure
+        // suppresses that payload forever.
+        lastSent = serialized
+        void request.catch(() => {
+          // The agent will not see the tabs; nothing to show the student.
+        })
+      } catch {
+        // No bridge yet. The next change tries again.
+      }
     }
 
     const schedule = (): void => {

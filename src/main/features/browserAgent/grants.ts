@@ -32,6 +32,9 @@ export interface BrowserGrant {
 /** Long enough to cover a semester's worth of one course, short enough to lapse. */
 export const GRANT_DAYS = 30
 
+/** A grant that covers every site in the course, chosen deliberately. */
+export const ANY_ORIGIN = '*'
+
 /**
  * Exact origin including the port — 인하대 `:8443` and 아주대 `:30443` are real
  * and a grant that ignored them would cover a different service.
@@ -47,15 +50,29 @@ export function normalizeOrigin(url: string): string | null {
 }
 
 /**
- * `interact` and `download` imply `read`: an agent that may click a page may
- * obviously look at it. The reverse never holds.
+ * One approval covers reading, clicking and fetching on that site.
+ *
+ * These used to be three separate askable capabilities, and `read` did not
+ * imply `interact`, so ONE task across two origins produced FOUR prompts
+ * (2 sites × 2 capabilities) — six if it also downloaded. The student was
+ * being asked the same question in slices they had no way to distinguish.
+ *
+ * What the split was protecting is not lost, because it never lived here:
+ *  - `browser_submit` and `browser_use_saved_login` ask EVERY time and are
+ *    never remembered at any scope
+ *  - `actionPolicy.ts` refuses submit controls and password fields
+ *    structurally, before any grant is consulted
+ *  - 수강신청·결제 origins are refused categorically and never asked about
+ *
+ * So the grant means "look at this site and move around in it". Writing to it
+ * is a different question, asked separately, every time.
  */
 export function capabilitySatisfies(
   held: BrowserCapability,
   needed: BrowserCapability
 ): boolean {
-  if (held === needed) return true
-  return needed === 'read' && (held === 'interact' || held === 'download')
+  void needed
+  return held === 'read' || held === 'interact' || held === 'download'
 }
 
 export interface GrantsRepo {
@@ -126,13 +143,23 @@ export function createGrantsRepo(
     find({ courseId, url, capability }) {
       const origin = normalizeOrigin(url)
       if (origin === null) return null
+      // ANY_ORIGIN is the "이 과목 전체" answer. It never reaches a
+      // categorically denied site: checkNavigation refuses those before a
+      // grant is ever consulted.
       const rows = db
         .prepare(
           `SELECT * FROM browser_grants
-             WHERE course_id = ? AND origin = ?
-               AND revoked_at IS NULL AND expires_at > ?`
+             WHERE course_id = ? AND origin IN (?, ?)
+               AND revoked_at IS NULL AND expires_at > ?
+             ORDER BY CASE origin WHEN ? THEN 0 ELSE 1 END`
         )
-        .all(courseId, origin, now().toISOString()) as GrantRow[]
+        .all(
+          courseId,
+          origin,
+          ANY_ORIGIN,
+          now().toISOString(),
+          origin
+        ) as GrantRow[]
       const match = rows.find((row) =>
         capabilitySatisfies(row.capability, capability)
       )
@@ -140,7 +167,7 @@ export function createGrantsRepo(
     },
 
     grant({ courseId, url, capability, days = GRANT_DAYS }) {
-      const origin = normalizeOrigin(url)
+      const origin = url === ANY_ORIGIN ? ANY_ORIGIN : normalizeOrigin(url)
       if (origin === null) return null
       const at = now()
       const expiresAt = new Date(

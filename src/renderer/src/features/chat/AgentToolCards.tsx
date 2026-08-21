@@ -1,8 +1,11 @@
 import type {
   AgentAction,
+  AgentConfirmScope,
   AgentConfirmRequest,
   AgentTurnChanges
 } from '../../../../shared/types/agentTools'
+import { Icon } from '../../app/icons'
+import { BrowserIcon } from '../browser/browserIcons'
 import type {
   AgentToolActivityItem,
   AgentUndoState
@@ -10,6 +13,17 @@ import type {
 
 export function agentConfirmResponseLabel(approved: boolean): string {
   return approved ? '승인함' : '거부함'
+}
+
+export function agentConfirmScopeLabel(scope: AgentConfirmScope): string {
+  switch (scope) {
+    case 'once':
+      return '이번만'
+    case 'site':
+      return '이 사이트'
+    case 'course':
+      return '이 과목 전체'
+  }
 }
 
 export function agentActionUndoLabel(action: AgentAction): string | null {
@@ -43,7 +57,29 @@ export interface AgentConfirmCardProps {
   isResponding?: boolean
   hasResponseError?: boolean
   autoFocusReject?: boolean
-  onRespond: (requestId: string, approved: boolean) => void
+  onRespond: (
+    requestId: string,
+    approved: boolean,
+    scope?: AgentConfirmScope
+  ) => void
+}
+
+function confirmationSubject(request: AgentConfirmRequest): string {
+  if (!request.tool.startsWith('browser_')) {
+    return request.summary
+  }
+
+  const origin = request.summary.match(
+    /^https?:\/\/([^/\s]+?)(?=\s*(?:에서|에)\s)/
+  )?.[1]
+  return origin ?? request.summary
+}
+
+function ConfirmationIcon({ tool }: { tool: string }): JSX.Element {
+  if (tool.startsWith('browser_')) {
+    return <BrowserIcon name="lock" />
+  }
+  return <Icon name={tool.startsWith('delete_') ? 'trash' : 'pencil'} />
 }
 
 export function AgentConfirmCard({
@@ -55,76 +91,114 @@ export function AgentConfirmCard({
   onRespond
 }: AgentConfirmCardProps): JSX.Element {
   const isPending = response === null
+  const kindLabel = confirmKindLabel(request.tool)
+  const severity = request.tool === 'browser_access' ? 'quiet' : 'danger'
+
+  if (!isPending) {
+    const responseLabel =
+      response && request.tool === 'browser_access'
+        ? '허용함'
+        : agentConfirmResponseLabel(response)
+
+    return (
+      <article
+        className="chat-agent-confirm"
+        aria-label={`${kindLabel}: ${confirmationSubject(request)} · ${responseLabel}`}
+        data-resolved="true"
+        data-severity={severity}
+      >
+        <span className="chat-agent-confirm__icon">
+          <ConfirmationIcon tool={request.tool} />
+        </span>
+        <span
+          className="chat-agent-confirm__subject"
+          title={confirmationSubject(request)}
+        >
+          {confirmationSubject(request)}
+        </span>
+        <span className="chat-agent-confirm__separator" aria-hidden="true">
+          ·
+        </span>
+        <span
+          className="chat-agent-confirm__badge"
+          data-approved={response}
+        >
+          {responseLabel}
+        </span>
+      </article>
+    )
+  }
 
   return (
     <article
       className="chat-agent-confirm"
-      aria-label={confirmKindLabel(request.tool)}
-      data-resolved={isPending ? undefined : true}
+      aria-label={kindLabel}
+      data-severity={severity}
     >
       <header className="chat-agent-confirm__header">
+        <span className="chat-agent-confirm__icon">
+          <ConfirmationIcon tool={request.tool} />
+        </span>
         <div className="chat-agent-confirm__heading">
           <span className="chat-agent-confirm__eyebrow">
-            {confirmKindLabel(request.tool)}
+            {kindLabel}
           </span>
-          <h3 className="chat-agent-confirm__summary">{request.summary}</h3>
+          <h3 className="chat-agent-confirm__summary" title={request.summary}>
+            {request.summary}
+          </h3>
         </div>
-        {!isPending && (
-          <span
-            className="chat-agent-confirm__badge"
-            data-approved={response}
-          >
-            {agentConfirmResponseLabel(response)}
-          </span>
-        )}
       </header>
 
       {request.details.length > 0 && (
-        <ul className="chat-agent-confirm__details">
-          {request.details.map((detail, index) => (
-            <li key={`${detail}:${index}`}>{detail}</li>
-          ))}
-        </ul>
+        <p className="chat-agent-confirm__details">
+          {request.details.join(' · ')}
+        </p>
       )}
 
-      <div className="chat-agent-confirm__meta">
-        <span>실행할 도구</span>
-        <code>{request.tool}</code>
+      {isResponding && (
+        <p className="chat-agent-confirm__notice" role="status">
+          응답을 보내는 중…
+        </p>
+      )}
+      {hasResponseError && (
+        <p className="chat-agent-confirm__error" role="alert">
+          응답을 보내지 못했어요. 다시 선택해 주세요.
+        </p>
+      )}
+      <div className="chat-agent-confirm__actions">
+        <button
+          type="button"
+          className="chat-agent-confirm__button chat-agent-confirm__button--reject"
+          autoFocus={autoFocusReject}
+          disabled={isResponding}
+          onClick={() => onRespond(request.requestId, false)}
+        >
+          거절
+        </button>
+        {request.scopes === undefined ? (
+          <button
+            type="button"
+            className="chat-agent-confirm__button chat-agent-confirm__button--approve"
+            disabled={isResponding}
+            onClick={() => onRespond(request.requestId, true)}
+          >
+            승인
+          </button>
+        ) : (
+          request.scopes.map((scope) => (
+            <button
+              key={scope}
+              type="button"
+              className="chat-agent-confirm__button chat-agent-confirm__button--scope"
+              aria-label={`${agentConfirmScopeLabel(scope)} 승인`}
+              disabled={isResponding}
+              onClick={() => onRespond(request.requestId, true, scope)}
+            >
+              {agentConfirmScopeLabel(scope)}
+            </button>
+          ))
+        )}
       </div>
-
-      {isPending && (
-        <>
-          {isResponding && (
-            <p className="chat-agent-confirm__notice" role="status">
-              응답을 보내는 중…
-            </p>
-          )}
-          {hasResponseError && (
-            <p className="chat-agent-confirm__error" role="alert">
-              응답을 보내지 못했어요. 다시 선택해 주세요.
-            </p>
-          )}
-          <div className="chat-agent-confirm__actions">
-            <button
-              type="button"
-              className="chat-agent-confirm__button chat-agent-confirm__button--reject"
-              autoFocus={autoFocusReject}
-              disabled={isResponding}
-              onClick={() => onRespond(request.requestId, false)}
-            >
-              거부
-            </button>
-            <button
-              type="button"
-              className="chat-agent-confirm__button chat-agent-confirm__button--approve"
-              disabled={isResponding}
-              onClick={() => onRespond(request.requestId, true)}
-            >
-              승인
-            </button>
-          </div>
-        </>
-      )}
     </article>
   )
 }
@@ -221,7 +295,11 @@ export function AgentTurnChangesCard({
 
 export interface AgentToolActivityProps {
   items: readonly AgentToolActivityItem[]
-  onRespondConfirm: (requestId: string, approved: boolean) => void
+  onRespondConfirm: (
+    requestId: string,
+    approved: boolean,
+    scope?: AgentConfirmScope
+  ) => void
   onUndoTurn: (turnId: string) => void
 }
 

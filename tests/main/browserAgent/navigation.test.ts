@@ -70,13 +70,16 @@ describe('checkNavigation', () => {
     if (!verdict.allowed) expect(verdict.reason).toBe('no-grant')
   })
 
-  test('read does not imply interact', () => {
+  test('one approval covers interaction too', () => {
+    // Splitting read from interact is what produced four prompts for one
+    // task. Writing to a site is still a separate question — browser_submit
+    // asks every time and is never remembered.
     const verdict = checkNavigation({
       url: 'https://myetl.snu.ac.kr/courses/1',
       capability: 'interact',
       heldCapability: 'read'
     })
-    expect(verdict.allowed).toBe(false)
+    expect(verdict.allowed).toBe(true)
   })
 
   test('interact implies read', () => {

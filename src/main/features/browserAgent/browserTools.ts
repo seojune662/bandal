@@ -16,6 +16,7 @@
 import type { AgentConfirmScope } from '../../../shared/types/agentTools'
 import type { AuditRepo } from './audit'
 import {
+  ANY_ORIGIN,
   GRANT_DAYS,
   normalizeOrigin,
   type BrowserCapability,
@@ -259,29 +260,44 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       return { ok: false, message: verdict.message }
     }
 
-    const approved = await deps.confirm({
+    // ONE question, three answers. It used to ask per capability per origin,
+    // so a single task across two sites produced four prompts the student had
+    // no way to tell apart.
+    const scope = await deps.confirm({
       courseId: deps.courseId,
       tool: 'browser_access',
-      summary: `${origin}에 ${CAPABILITY_LABEL[capability]} 권한을 허용할까요?`,
+      summary: `${origin} 을 읽고 다룰까요?`,
       details: [
-        `이 과목에서만, ${GRANT_DAYS}일 동안 유효합니다.`,
-        '설정 > AI > 에이전트 접근 권한에서 언제든 해제할 수 있습니다.'
-      ]
+        '보기와 누르기, 파일 받기까지 할 수 있어요.',
+        '글을 쓰거나 제출하는 건 그때마다 따로 물어봐요.'
+      ],
+      scopes: ['once', 'site', 'course']
     })
-    if (!approved) {
+    if (scope === false) {
       audit('denied', url, '학생이 거부함')
       return { ok: false, message: '학생이 접근을 허용하지 않았어요.' }
     }
 
+    // 'once' grants nothing: this call proceeds and the next one asks again.
+    if (scope === 'once') {
+      audit('grant', origin, '이번 한 번만')
+      return { ok: true }
+    }
+
+    const target = scope === 'course' ? ANY_ORIGIN : origin
     const created = deps.grants.grant({
       courseId: deps.courseId,
-      url: origin,
+      url: target,
       capability
     })
     if (created === null) {
       return { ok: false, message: verdict.message }
     }
-    audit('grant', origin, `${CAPABILITY_LABEL[capability]} · ${GRANT_DAYS}일`)
+    audit(
+      'grant',
+      origin,
+      `${scope === 'course' ? '이 과목의 모든 사이트' : '이 사이트'} · ${GRANT_DAYS}일`
+    )
     deps.grants.touch(created.id)
     return { ok: true }
   }

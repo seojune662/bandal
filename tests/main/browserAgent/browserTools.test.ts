@@ -227,19 +227,21 @@ describe('browser tools (read-only)', () => {
       if (result.status === 'ok') expect(result.kind).toBe('files')
     })
 
-    test('a read grant does NOT authorise downloading — it asks again', async () => {
-      // Looking at a page and taking files off it are separate decisions.
+    test('one approval already covers fetching — it does not ask twice', async () => {
+      // This used to ask again: read did not imply download, so a single task
+      // could reach six prompts. The student was being asked the same question
+      // in slices they had no way to distinguish.
       grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'read' })
-      const confirm = vi.fn(async () => false)
-      const collect = vi.fn()
+      const confirm = vi.fn(async () => 'site' as const)
+      const collect = vi.fn(async () => ({ relPath: '1.pdf' }))
       const result = await tools({ collect, confirm }).browser_download(
         COURSE,
         `${ORIGIN}/files/1.pdf`,
         ''
       )
-      expect(confirm).toHaveBeenCalledTimes(1)
-      expect(result.status).toBe('error')
-      expect(collect).not.toHaveBeenCalled()
+      expect(confirm).not.toHaveBeenCalled()
+      expect(result.status).toBe('ok')
+      expect(collect).toHaveBeenCalled()
     })
 
     test('a hard-denied origin is never even asked about', async () => {
@@ -345,14 +347,36 @@ describe('browser tools (read-only)', () => {
       }
     }
 
-    test('interacting needs its own grant — read is not enough', async () => {
+    test('one approval already covers clicking — it does not ask twice', async () => {
+      // Was: "interacting needs its own grant". That split is what produced
+      // four prompts for one task. Writing to a site is still a separate
+      // question — see browser_submit below, which is never remembered.
       grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'read' })
       const p = page()
-      const result = await tools({ page: p }).browser_act('t1', 'f0:e0@3', {
-        kind: 'click'
-      })
-      expect(result.status).toBe('error')
-      expect(p.act).not.toHaveBeenCalled()
+      const confirm = vi.fn(async () => 'site' as const)
+      const result = await tools({ page: p, confirm }).browser_act(
+        't1',
+        'f0:e0@3',
+        { kind: 'click' }
+      )
+      expect(confirm).not.toHaveBeenCalled()
+      expect(result.status).toBe('ok')
+      expect(p.act).toHaveBeenCalled()
+    })
+
+    test('a course-wide approval covers a site never named', async () => {
+      // The "이 과목 전체" answer. It still cannot reach a categorically
+      // denied origin — checkNavigation refuses those before any grant.
+      grants.grant({ courseId: COURSE, url: '*', capability: 'interact' })
+      const p = page()
+      const confirm = vi.fn(async () => false)
+      const result = await tools({ page: p, confirm }).browser_act(
+        't1',
+        'f0:e0@3',
+        { kind: 'click' }
+      )
+      expect(confirm).not.toHaveBeenCalled()
+      expect(result.status).toBe('ok')
     })
 
     test('a stale ref is refused rather than clicking something else', async () => {

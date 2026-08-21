@@ -24,17 +24,16 @@ describe('normalizeOrigin', () => {
 })
 
 describe('capabilitySatisfies', () => {
-  test('interact and download imply read, never the reverse', () => {
-    expect(capabilitySatisfies('interact', 'read')).toBe(true)
-    expect(capabilitySatisfies('download', 'read')).toBe(true)
-    expect(capabilitySatisfies('read', 'interact')).toBe(false)
-    expect(capabilitySatisfies('read', 'download')).toBe(false)
-  })
-
-  test('interact does not imply download, nor the reverse', () => {
-    // Clicking a page and pulling files off it are separate decisions.
-    expect(capabilitySatisfies('interact', 'download')).toBe(false)
-    expect(capabilitySatisfies('download', 'interact')).toBe(false)
+  test('one approval covers looking, clicking and fetching', () => {
+    // These were three askable capabilities and read did NOT imply interact,
+    // so one task across two origins produced FOUR prompts the student had no
+    // way to tell apart. The grant now means "look at this site and move
+    // around in it" — a single decision, asked once.
+    for (const held of ['read', 'interact', 'download'] as const) {
+      for (const needed of ['read', 'interact', 'download'] as const) {
+        expect(capabilitySatisfies(held, needed), `${held}→${needed}`).toBe(true)
+      }
+    }
   })
 })
 
@@ -85,7 +84,7 @@ describe('grantsRepo', () => {
     }
   })
 
-  test('a read grant does not authorise interaction', () => {
+  test('one approval authorises interaction on that site', () => {
     repo.grant({
       courseId: 'ds',
       url: 'https://myetl.snu.ac.kr/',
@@ -97,7 +96,47 @@ describe('grantsRepo', () => {
         url: 'https://myetl.snu.ac.kr/',
         capability: 'interact'
       })
+    ).not.toBeNull()
+  })
+
+  test('a course-wide grant covers a site the student never named', () => {
+    repo.grant({ courseId: 'ds', url: '*', capability: 'interact' })
+    expect(
+      repo.find({
+        courseId: 'ds',
+        url: 'https://shine.snu.ac.kr/',
+        capability: 'read'
+      })
+    ).not.toBeNull()
+  })
+
+  test('a course-wide grant does not leak into another course', () => {
+    repo.grant({ courseId: 'ds', url: '*', capability: 'interact' })
+    expect(
+      repo.find({
+        courseId: 'algo',
+        url: 'https://shine.snu.ac.kr/',
+        capability: 'read'
+      })
     ).toBeNull()
+  })
+
+  test('an exact-site grant is preferred over the wildcard', () => {
+    // So 설정 shows the student the specific decision they made, and touching
+    // it stamps the row they would recognise.
+    repo.grant({ courseId: 'ds', url: '*', capability: 'interact' })
+    const exact = repo.grant({
+      courseId: 'ds',
+      url: 'https://myetl.snu.ac.kr/',
+      capability: 'interact'
+    })
+    expect(
+      repo.find({
+        courseId: 'ds',
+        url: 'https://myetl.snu.ac.kr/',
+        capability: 'read'
+      })?.id
+    ).toBe(exact?.id)
   })
 
   test('expires — there is no "forever"', () => {
