@@ -18,6 +18,10 @@ export function OverlayPopupApp(): JSX.Element {
     void invoke('overlay:togglePopup', { open: false }).catch(reportPopupError)
   }, [])
 
+  const openPermissionSettings = useCallback((): void => {
+    void invoke('desktopAgent:openPermissionSettings', {}).catch(reportPopupError)
+  }, [])
+
   const openConversationInApp = useCallback(
     (conversationId: string): void => {
       if (state.courseId === null) return
@@ -61,7 +65,10 @@ export function OverlayPopupApp(): JSX.Element {
           <strong>반달 AI</strong>
         </div>
         <CourseChip courseId={state.courseId} />
-        <ScreenPermissionChip state={state.screenPermission} />
+        <ScreenPermissionChip
+          state={state.screenPermission}
+          onClick={openPermissionSettings}
+        />
         <span className="overlay-popup__header-spacer" />
         <button
           type="button"

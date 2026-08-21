@@ -22,6 +22,7 @@ import type {
   Settings,
   ThemePreference
 } from '../../../../shared/types/settings'
+import type { ScreenPermissionState } from '../../../../shared/types/overlay'
 import { CHARM_OPTIONS, CharmPreview } from '../assistant/charms'
 import { reopenedOnboarding } from '../onboarding/onboardingModel'
 import { Icon } from './SettingsIcon'
@@ -1063,7 +1064,75 @@ function ProviderCard({
 export function DesktopPermissionsSlot(
   _props: { settings: Settings }
 ): JSX.Element | null {
-  return null
+  const t = useT()
+  const isDarwin =
+    typeof window !== 'undefined' && window.bandal.platform === 'darwin'
+  const [screenPermission, setScreenPermission] =
+    useState<ScreenPermissionState>('unknown')
+
+  useEffect(() => {
+    if (!isDarwin) return
+
+    let active = true
+    let receivedPush = false
+    const unsubscribe = onPush('desktopAgent:permission', ({ state }) => {
+      receivedPush = true
+      if (active) setScreenPermission(state)
+    })
+
+    void invoke('desktopAgent:permissionStatus', {}).then(
+      ({ state }) => {
+        if (active && !receivedPush) setScreenPermission(state)
+      },
+      () => undefined
+    )
+
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [isDarwin])
+
+  if (!isDarwin) return null
+
+  const visibleState =
+    screenPermission === 'unsupported' ? 'unknown' : screenPermission
+  const openPermissionSettings = (): void => {
+    void invoke('desktopAgent:openPermissionSettings', {}).catch(() => undefined)
+  }
+
+  return (
+    <div className="setting-row">
+      <div className="setting-row__copy">
+        <div className="setting-row__label-line">
+          <span className="setting-row__label">
+            {t('settings.ai.permissions.screen.label')}
+          </span>
+          <span
+            className={`status-pill${
+              visibleState === 'granted' ? ' status-pill--ready' : ''
+            }`}
+            data-state={visibleState}
+          >
+            <span className="status-pill__dot" />
+            {t(`settings.ai.permissions.screen.${visibleState}`)}
+          </span>
+        </div>
+        {visibleState === 'denied' && (
+          <span className="setting-row__description">
+            {t('settings.ai.permissions.screen.restartHint')}
+          </span>
+        )}
+      </div>
+      <button
+        type="button"
+        className="secondary-button"
+        onClick={openPermissionSettings}
+      >
+        {t('settings.ai.permissions.screen.open')}
+      </button>
+    </div>
+  )
 }
 
 export function AiPanel({

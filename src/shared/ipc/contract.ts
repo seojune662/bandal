@@ -115,7 +115,7 @@ import type {
   PermissionResponse
 } from '../types/agent-events'
 import type { Settings, SettingsPatch } from '../types/settings'
-import type { OverlayState } from '../types/overlay'
+import type { OverlayState, ScreenPermissionState } from '../types/overlay'
 import type {
   McpAvailability,
   McpServerInput,
@@ -525,6 +525,14 @@ export interface IpcContract {
   }
   'overlay:openInApp': {
     req: { courseId: string; conversationId: string | null }
+    res: { ok: true }
+  }
+  'desktopAgent:permissionStatus': {
+    req: Record<string, never>
+    res: { state: ScreenPermissionState; platform: NodeJS.Platform }
+  }
+  'desktopAgent:openPermissionSettings': {
+    req: Record<string, never>
     res: { ok: true }
   }
 
@@ -1423,6 +1431,8 @@ export const IPC_CHANNELS = [
   'overlay:orbDragEnd',
   'overlay:prompt',
   'overlay:openInApp',
+  'desktopAgent:permissionStatus',
+  'desktopAgent:openPermissionSettings',
   'mcp:list',
   'mcp:save',
   'mcp:delete',

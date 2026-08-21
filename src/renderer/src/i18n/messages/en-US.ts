@@ -394,5 +394,11 @@ export const enUS: Record<MessageKey, string> = {
   'settings.mcp.error.test': 'Could not check the connection. Please try again.',
   'settings.mcp.error.delete': 'Could not delete the MCP server. Please try again.',
   'settings.mcp.notice.stdio': 'Bandal runs stdio server commands with the student account permissions used during conversations. Register only servers you installed yourself.',
-  'settings.mcp.notice.codex': 'Only read-only tools may work with the Codex engine.'
+  'settings.mcp.notice.codex': 'Only read-only tools may work with the Codex engine.',
+  'settings.ai.permissions.screen.label': 'Screen recording',
+  'settings.ai.permissions.screen.granted': 'Allowed',
+  'settings.ai.permissions.screen.denied': 'Required',
+  'settings.ai.permissions.screen.unknown': 'Unknown',
+  'settings.ai.permissions.screen.open': 'Open System Settings',
+  'settings.ai.permissions.screen.restartHint': 'Quit and reopen Bandal after granting access for the change to take effect.'
 }

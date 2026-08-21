@@ -1,4 +1,10 @@
-import { app, Menu, Tray, type MenuItemConstructorOptions } from 'electron'
+import {
+  app,
+  Menu,
+  nativeImage,
+  Tray,
+  type MenuItemConstructorOptions
+} from 'electron'
 import { join } from 'node:path'
 import type { Settings, SettingsPatch } from '../../shared/types/settings'
 import { buildTrayMenu, type TrayAction } from './trayMenu'
@@ -10,11 +16,25 @@ export interface TrayDeps {
   quit(): void
 }
 
+export function resolveTrayIconPath(opts: {
+  isPackaged: boolean
+  resourcesPath: string
+  bundleDir: string
+  platform: NodeJS.Platform
+}): string {
+  const name = opts.platform === 'win32' ? 'tray.ico' : 'trayTemplate.png'
+  return opts.isPackaged
+    ? join(opts.resourcesPath, 'tray', name)
+    : join(opts.bundleDir, '../../resources', name)
+}
+
 function trayIconPath(): string {
-  const name = process.platform === 'win32' ? 'tray.ico' : 'trayTemplate.png'
-  return app.isPackaged
-    ? join(process.resourcesPath, 'tray', name)
-    : join(app.getAppPath(), 'resources', name)
+  return resolveTrayIconPath({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    bundleDir: __dirname,
+    platform: process.platform
+  })
 }
 
 export function installTray(deps: TrayDeps): {
@@ -71,7 +91,18 @@ export function installTray(deps: TrayDeps): {
     if (tray === null) {
       // Electron 35 recognizes the adjacent @2x representation from the
       // Template filename on macOS and recommends ICO for Windows trays.
-      tray = new Tray(trayIconPath())
+      try {
+        tray = new Tray(trayIconPath())
+      } catch (error) {
+        console.warn('[tray] failed to load tray icon; using an empty icon:', error)
+        try {
+          tray = new Tray(nativeImage.createEmpty())
+        } catch (fallbackError) {
+          console.warn('[tray] failed to create tray; continuing without it:', fallbackError)
+          tray = null
+          return
+        }
+      }
       tray.setToolTip('반달')
       if (process.platform === 'win32') tray.on('click', deps.openMain)
     }

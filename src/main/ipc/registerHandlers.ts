@@ -1426,6 +1426,18 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     deps.overlay.openInApp(req)
     return OK
   })
+  handle('desktopAgent:permissionStatus', () => ({
+    state: screenPermissionState(desktopSurface.access()),
+    platform: process.platform
+  }))
+  handle('desktopAgent:openPermissionSettings', async () => {
+    if (process.platform === 'darwin') {
+      await shell.openExternal(
+        'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+      )
+    }
+    return OK
+  })
 
   // -- user MCP registry ---------------------------------------------------
   handle('mcp:list', () => ({

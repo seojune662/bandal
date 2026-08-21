@@ -107,7 +107,11 @@ export async function launchBandal(
     env
   })
 
-  const page = await app.firstWindow()
+  const isMainWindow = (candidate: Page): boolean =>
+    candidate.url().includes('index.html')
+  const page =
+    app.windows().find(isMainWindow) ??
+    (await app.waitForEvent('window', { predicate: isMainWindow }))
   await page.waitForLoadState('domcontentloaded')
   // The shell is up once the course rail exists and the theme is applied.
   await expect(page.locator('aside.app-rail--left')).toBeVisible()

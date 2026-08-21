@@ -392,7 +392,13 @@ export const koKR = {
   'settings.mcp.error.test': '연결을 확인하지 못했습니다. 다시 시도하십시오.',
   'settings.mcp.error.delete': 'MCP 서버를 삭제하지 못했습니다. 다시 시도하십시오.',
   'settings.mcp.notice.stdio': 'stdio 서버의 명령은 반달이 대화 중 학생 계정 권한으로 실행합니다. 직접 설치한 서버만 등록하십시오.',
-  'settings.mcp.notice.codex': 'Codex 엔진에서는 읽기 전용 도구만 동작할 수 있습니다.'
+  'settings.mcp.notice.codex': 'Codex 엔진에서는 읽기 전용 도구만 동작할 수 있습니다.',
+  'settings.ai.permissions.screen.label': '화면 기록',
+  'settings.ai.permissions.screen.granted': '허용됨',
+  'settings.ai.permissions.screen.denied': '필요함',
+  'settings.ai.permissions.screen.unknown': '미확인',
+  'settings.ai.permissions.screen.open': '시스템 설정 열기',
+  'settings.ai.permissions.screen.restartHint': '허용한 뒤에는 반달을 다시 실행해야 적용됩니다.'
 } as const
 
 export type MessageKey = keyof typeof koKR

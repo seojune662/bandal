@@ -15,25 +15,22 @@ export function ScreenPermissionChip({
   const label = granted ? '화면 보기 허용됨' : '화면 보기 허용 필요'
   const className = 'overlay-screen-permission'
 
-  if (onClick !== undefined) {
+  if (granted) {
     return (
-      <button
-        type="button"
-        className={className}
-        data-state={granted ? 'granted' : 'needed'}
-        onClick={onClick}
-      >
+      <span className={className} data-state="granted">
         {label}
-      </button>
+      </span>
     )
   }
 
   return (
-    <span
+    <button
+      type="button"
       className={className}
-      data-state={granted ? 'granted' : 'needed'}
+      data-state="needed"
+      onClick={onClick}
     >
       {label}
-    </span>
+    </button>
   )
 }
