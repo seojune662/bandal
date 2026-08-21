@@ -89,6 +89,45 @@
   display: none;
 }
 
+/* Desktop overlay only: keep provider/model controls compact at the popup's
+ * minimum width without changing the in-app popup or tab header. */
+.chat-tab[data-overlay='true'] .chat-header {
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.chat-tab[data-overlay='true'] .chat-header__selectors {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.chat-tab[data-overlay='true'] .chat-provider-select,
+.chat-tab[data-overlay='true'] .chat-model {
+  flex: 1 1 calc(var(--context-menu-width) - var(--space-6));
+  min-width: 0;
+  padding-left: 0;
+  overflow: hidden;
+}
+
+.chat-tab[data-overlay='true'] .chat-provider-select > span,
+.chat-tab[data-overlay='true'] .chat-model__label {
+  display: none;
+}
+
+.chat-tab[data-overlay='true'] .chat-provider-select select,
+.chat-tab[data-overlay='true'] .chat-model__select {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding-inline: var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-tab[data-variant='popup'] {
   font-size: var(--text-sm);
 }

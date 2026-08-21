@@ -184,6 +184,7 @@ export function ChatSurface({
     <div
       className="chat-tab"
       data-variant={variant === 'overlay' ? 'popup' : variant}
+      data-overlay={variant === 'overlay' ? 'true' : undefined}
       data-tour="assistant-panel"
     >
       {children}
@@ -253,6 +254,36 @@ export function ChatSurface({
     .filter((item): item is string => item !== null)
     .join(' · ')
 
+  const selectorControls = (
+    <>
+      <ProviderSelector
+        compact
+        provider={provider}
+        onChange={handleProviderChange}
+        disabled={state.streaming}
+      />
+      <label className="chat-model">
+        <span className="chat-model__label">모델</span>
+        <select
+          className="chat-model__select"
+          aria-label="AI 모델 선택"
+          value={selectedModel}
+          disabled={state.streaming || models.length === 0}
+          onChange={(event) => session.setModel(event.target.value)}
+        >
+          {!includesSelected && selectedModel !== '' && (
+            <option value={selectedModel}>{selectedModel}</option>
+          )}
+          {models.map((model) => (
+            <option key={model.id} value={model.id}>
+              {model.displayName}
+            </option>
+          ))}
+        </select>
+      </label>
+    </>
+  )
+
   return root(
     <>
       <header className="chat-header">
@@ -274,31 +305,11 @@ export function ChatSurface({
             )}
           </div>
         )}
-        <ProviderSelector
-          compact
-          provider={provider}
-          onChange={handleProviderChange}
-          disabled={state.streaming}
-        />
-        <label className="chat-model">
-          <span className="chat-model__label">모델</span>
-          <select
-            className="chat-model__select"
-            aria-label="AI 모델 선택"
-            value={selectedModel}
-            disabled={state.streaming || models.length === 0}
-            onChange={(event) => session.setModel(event.target.value)}
-          >
-            {!includesSelected && selectedModel !== '' && (
-              <option value={selectedModel}>{selectedModel}</option>
-            )}
-            {models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
+        {variant === 'overlay' ? (
+          <div className="chat-header__selectors">{selectorControls}</div>
+        ) : (
+          selectorControls
+        )}
       </header>
       {state.notice !== null && state.notice.code !== 'version-too-old' && (
         <div
