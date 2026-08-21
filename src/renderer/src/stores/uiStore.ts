@@ -4,6 +4,7 @@
  */
 
 import { create } from 'zustand'
+import type { OrbCharmId } from '../../../shared/orbCharm'
 import { SYSTEM_THEME } from '../../../shared/theme'
 import type { PaletteId, ResolvedTheme } from '../../../shared/theme'
 import { DEFAULT_SETTINGS } from '../../../shared/types/settings'
@@ -15,6 +16,8 @@ interface UiState {
   resolvedTheme: ResolvedTheme
   /** The color family layered over `resolvedTheme` (`<html data-palette>`). */
   palette: PaletteId
+  /** Charm hanging off the assistant orb (src/shared/orbCharm.ts). */
+  orbCharm: OrbCharmId
   leftRailOpen: boolean
   rightRailOpen: boolean
   /** [M5] Study-board overlay above the workspace (board tab stays too). */
@@ -27,6 +30,8 @@ interface UiState {
   setThemePreference: (pref: ThemePreference) => Promise<void>
   /** Persist a new color family (round-trips through main). */
   setPalette: (palette: PaletteId) => Promise<void>
+  /** Persist a new orb charm (round-trips through main). */
+  setOrbCharm: (orbCharm: OrbCharmId) => Promise<void>
   toggleLeftRail: () => void
   toggleRightRail: () => void
   toggleBoardOverlay: () => void
@@ -57,6 +62,7 @@ export const useUiStore = create<UiState>()((set, get) => ({
   themePreference: DEFAULT_SETTINGS.theme,
   resolvedTheme: resolve(DEFAULT_SETTINGS.theme),
   palette: DEFAULT_SETTINGS.palette,
+  orbCharm: DEFAULT_SETTINGS.orbCharm,
   leftRailOpen: true,
   rightRailOpen: true,
   isBoardOverlayOpen: false,
@@ -73,7 +79,8 @@ export const useUiStore = create<UiState>()((set, get) => ({
         set({
           themePreference: settings.theme,
           resolvedTheme: resolved,
-          palette: settings.palette
+          palette: settings.palette,
+          orbCharm: settings.orbCharm
         })
 
         onPush('settings:changed', ({ settings: next }) => {
@@ -82,7 +89,8 @@ export const useUiStore = create<UiState>()((set, get) => ({
           set({
             themePreference: next.theme,
             resolvedTheme: nextResolved,
-            palette: next.palette
+            palette: next.palette,
+            orbCharm: next.orbCharm
           })
         })
 
@@ -118,6 +126,11 @@ export const useUiStore = create<UiState>()((set, get) => ({
     applyToDocument(get().resolvedTheme, palette)
     set({ palette })
     await invoke('settings:set', { palette })
+  },
+
+  setOrbCharm: async (orbCharm) => {
+    set({ orbCharm })
+    await invoke('settings:set', { orbCharm })
   },
 
   toggleLeftRail: () => {

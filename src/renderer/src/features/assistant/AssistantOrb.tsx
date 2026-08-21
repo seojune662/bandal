@@ -1,9 +1,12 @@
 import {
+  forwardRef,
   useCallback,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
+  type ForwardedRef,
   type PointerEvent as ReactPointerEvent
 } from 'react'
 import { BandalOrbMark, type BandalOrbState } from './BandalOrbMark'
@@ -69,12 +72,14 @@ function samePoint(left: Point | null, right: Point): boolean {
   return left !== null && left.x === right.x && left.y === right.y
 }
 
-export function AssistantOrb({
-  open,
-  state,
-  onToggle
-}: AssistantOrbProps): JSX.Element {
+function AssistantOrbImpl(
+  { open, state, onToggle }: AssistantOrbProps,
+  forwardedRef: ForwardedRef<HTMLButtonElement>
+): JSX.Element {
   const buttonRef = useRef<HTMLButtonElement>(null)
+  // The charm layer reads the rendered rect through this ref; drag state
+  // stays private to the internal ref.
+  useImperativeHandle(forwardedRef, () => buttonRef.current as HTMLButtonElement)
   const dragRef = useRef<DragState | null>(null)
   const [position, setPosition] = useState<Point | null>(readPosition)
 
@@ -180,3 +185,5 @@ export function AssistantOrb({
     </button>
   )
 }
+
+export const AssistantOrb = forwardRef(AssistantOrbImpl)

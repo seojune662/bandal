@@ -1,0 +1,81 @@
+/* Orb charm overlay. Colours are tokens only; no CSS animation — the rope
+ * engine moves things and sleeps when the orb is still (STYLEGUIDE §5). */
+
+.assistant-charm {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  color: var(--accent);
+  pointer-events: none;
+  shape-rendering: geometricprecision;
+}
+
+.assistant-charm__rope {
+  fill: none;
+  stroke: var(--text-secondary);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.assistant-charm[data-rope='thread'] .assistant-charm__rope {
+  stroke-width: 1px;
+  opacity: 0.55;
+}
+
+.assistant-charm[data-rope='string'] .assistant-charm__rope {
+  stroke-width: 1.5px;
+  opacity: 0.7;
+}
+
+.assistant-charm__chain ellipse {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1.4px;
+  vector-effect: non-scaling-stroke;
+}
+
+.assistant-charm__character {
+  filter: drop-shadow(0 1px 2px oklch(0% 0 0 / 0.25));
+}
+
+/* Lantern: a soft halo fades in while the orb is busy. A one-shot
+ * transition, not a loop — it settles and stays. */
+.assistant-charm [data-part='glow'] {
+  transition: opacity 600ms var(--ease-out);
+}
+
+.assistant-charm[data-state='busy'] [data-part='glow'] {
+  opacity: 0.35;
+}
+
+.assistant-charm[data-state='alert'] [data-part='glow'] {
+  opacity: 0.2;
+}
+
+/* -- settings card preview ---------------------------------------------- */
+
+.charm-preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.62;
+  overflow: hidden;
+  color: var(--accent);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.charm-preview__orb {
+  fill: var(--bg-overlay);
+  stroke: var(--border-strong);
+}
+
+.charm-preview__rope {
+  stroke: var(--text-secondary);
+  stroke-width: 1px;
+  opacity: 0.6;
+  vector-effect: non-scaling-stroke;
+}

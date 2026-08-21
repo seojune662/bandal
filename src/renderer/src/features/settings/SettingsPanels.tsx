@@ -10,6 +10,7 @@ import { LOCALES, setLocale, useLocale, useT } from '../../i18n'
 import type { Locale } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
 import { useUpdateStore } from '../../stores/updateStore'
+import type { OrbCharmId } from '../../../../shared/orbCharm'
 import { SYSTEM_THEME } from '../../../../shared/theme'
 import type { PaletteId, ThemeId } from '../../../../shared/theme'
 import type {
@@ -21,6 +22,7 @@ import type {
   Settings,
   ThemePreference
 } from '../../../../shared/types/settings'
+import { CHARM_OPTIONS, CharmPreview } from '../assistant/charms'
 import { reopenedOnboarding } from '../onboarding/onboardingModel'
 import { Icon } from './SettingsIcon'
 
@@ -436,21 +438,26 @@ function useRovingRadios<T extends string>(
 export function AppearancePanel({
   theme,
   palette,
+  orbCharm,
   saving,
   error,
   onSelect,
-  onSelectPalette
+  onSelectPalette,
+  onSelectCharm
 }: {
   theme: ThemePreference
   palette: PaletteId
+  orbCharm: OrbCharmId
   saving: boolean
   error: string | null
   onSelect: (theme: ThemePreference) => void
   onSelectPalette: (palette: PaletteId) => void
+  onSelectCharm: (orbCharm: OrbCharmId) => void
 }): JSX.Element {
   const t = useT()
   const modes = useRovingRadios(THEME_OPTIONS, theme, onSelect)
   const palettes = useRovingRadios(PALETTE_OPTIONS, palette, onSelectPalette)
+  const charms = useRovingRadios(CHARM_OPTIONS, orbCharm, onSelectCharm)
 
   return (
     <div className="settings-stack">
@@ -549,6 +556,49 @@ export function AppearancePanel({
               ? t('settings.appearance.saving')
               : t('settings.appearance.saved'))}
         </p>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t('settings.appearance.charm.title')}
+        description={t('settings.appearance.charm.description')}
+      >
+        <div
+          className="theme-grid theme-grid--charm"
+          role="radiogroup"
+          aria-label={t('settings.appearance.charm.selectLabel')}
+          onKeyDown={charms.handleKeyDown}
+        >
+          {CHARM_OPTIONS.map((option, index) => {
+            const selected = orbCharm === option
+            return (
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                ref={(node) => {
+                  charms.refs.current[index] = node
+                }}
+                aria-checked={selected}
+                tabIndex={index === charms.selectedIndex ? 0 : -1}
+                className={`theme-choice${selected ? ' theme-choice--selected' : ''}`}
+                onClick={() => onSelectCharm(option)}
+              >
+                <CharmPreview id={option} />
+                <span className="theme-choice__copy">
+                  <span className="theme-choice__label">
+                    {t(`settings.appearance.charm.${option}.label`)}
+                    <span className="theme-choice__check">
+                      {selected && <Icon name="check" size={14} />}
+                    </span>
+                  </span>
+                  <span className="theme-choice__description">
+                    {t(`settings.appearance.charm.${option}.description`)}
+                  </span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </SettingsCard>
     </div>
   )

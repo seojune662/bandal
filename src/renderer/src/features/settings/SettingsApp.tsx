@@ -1,3 +1,5 @@
+import { DEFAULT_ORB_CHARM } from "../../../../shared/orbCharm";
+import type { OrbCharmId } from "../../../../shared/orbCharm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { showToast, ToastHost } from "../../app/toast";
@@ -324,6 +326,14 @@ export function SettingsApp({
     saveAppearance({ theme, palette: nextPalette });
   };
 
+  const handleCharmSelect = (orbCharm: OrbCharmId): void => {
+    if (settings === null || orbCharm === settings.orbCharm) return;
+    // The settings:changed broadcast updates both this panel and the orb.
+    void invoke("settings:set", { orbCharm }).catch(() => {
+      // Failure leaves the previous charm; the radio re-renders from settings.
+    });
+  };
+
   const handleAgentProviderSelect = (nextProvider: AgentProvider): void => {
     if (
       settings === null ||
@@ -408,10 +418,12 @@ export function SettingsApp({
       <AppearancePanel
         theme={theme}
         palette={palette}
+        orbCharm={settings?.orbCharm ?? DEFAULT_ORB_CHARM}
         saving={themeSaving}
         error={themeErrorKey === null ? null : t(themeErrorKey)}
         onSelect={handleThemeSelect}
         onSelectPalette={handlePaletteSelect}
+        onSelectCharm={handleCharmSelect}
       />
     ),
     ai: (

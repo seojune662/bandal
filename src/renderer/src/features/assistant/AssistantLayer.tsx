@@ -3,6 +3,7 @@ import { onPush } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { requestChatPrompt } from '../chat/chatPromptBus'
 import { AssistantOrb } from './AssistantOrb'
+import { CharmLayer } from './charms'
 import { AssistantPopup } from './AssistantPopup'
 import { SelectionOrb } from './SelectionOrb'
 import { useSelectionAnchor, type AnchoredSelection } from './useSelectionAnchor'
@@ -133,6 +134,7 @@ export function AssistantLayer(): JSX.Element {
       : popupConversationIdFor(selectedCourseId)
   const [popupOpen, setPopupOpen] = useState(false)
   const pendingPromptRef = useRef<string | null>(null)
+  const orbRef = useRef<HTMLButtonElement>(null)
   const { selection, clear } = useSelectionAnchor()
   const activity = useAssistantActivity(selectedCourseId, popupOpen)
 
@@ -171,6 +173,7 @@ export function AssistantLayer(): JSX.Element {
 
   return (
     <div className="assistant-layer" data-assistant-layer="true">
+      <CharmLayer orbRef={orbRef} orbState={orbState} />
       <AssistantPopup
         visible={popupOpen}
         conversationId={popupConversationId}
@@ -183,7 +186,12 @@ export function AssistantLayer(): JSX.Element {
           onPick={pickSelection}
         />
       )}
-      <AssistantOrb open={popupOpen} state={orbState} onToggle={togglePopup} />
+      <AssistantOrb
+        ref={orbRef}
+        open={popupOpen}
+        state={orbState}
+        onToggle={togglePopup}
+      />
     </div>
   )
 }

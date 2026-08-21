@@ -91,7 +91,7 @@ describe('sanitizeSettings — desktop orb', () => {
 
 describe('sanitizeSettings — orbCharm', () => {
   test('accepts every registered charm id', () => {
-    for (const id of ['none', 'spider', 'balloon', 'cat', 'chain']) {
+    for (const id of ['none', 'spider', 'balloon', 'cat', 'chain', 'windchime', 'yoyo']) {
       expect(sanitizeSettings({ orbCharm: id }, defaults).orbCharm).toBe(id)
     }
   })

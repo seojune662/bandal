@@ -46,6 +46,10 @@
   box-shadow: var(--shadow-sm);
 }
 
+.theme-grid--charm {
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+}
+
 .theme-grid[aria-busy='true'] .theme-choice {
   cursor: wait;
 }
