@@ -226,7 +226,14 @@ export function broadcast<K extends PushChannel>(
   payload: PushPayload<K>
 ): void {
   for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send(channel, payload)
+    if (win.isDestroyed() || win.webContents.isDestroyed()) continue
+    try {
+      win.webContents.send(channel, payload)
+    } catch (error) {
+      // One closing/broken window must not prevent the remaining windows from
+      // receiving the event or turn a successful mutation into an IPC failure.
+      console.error(`[ipc] ${channel} broadcast failed:`, error)
+    }
   }
 }
 
@@ -344,6 +351,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       // The folder (and therefore the agent cwd) moved — drop everything that
       // was bound to the old path so the next watch/chat attaches to the new one.
       releaseCourseRuntime(req.courseId)
+      return courseListChanged(result)
     }
     return result
   })
@@ -693,6 +701,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return result
   })
   handle('board:updateTask', (req) => boardRepo.update(req))
+  handle('board:reorderTasks', (req) =>
+    boardRepo.reorderTasks(req.courseId, req.updates)
+  )
   handle('calendar:range', (req) => boardRepo.listRange(req))
   handle('calendar:upcoming', (req) => boardRepo.upcoming(req))
   handle('board:deleteTask', (req) => boardRepo.softDelete(req))
@@ -1405,6 +1416,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       req.surface ?? 'app'
     )
   }))
+  handle('chat:grants', (req) => ({
+    grants: chatRepo.listGrantDetails(req.courseId)
+  }))
+  handle('chat:revokeGrant', (req) => {
+    chatRepo.removeGrant(req.id)
+    return OK
+  })
 
   // -- desktop overlay -----------------------------------------------------
   handle('overlay:getState', () => deps.overlay.getState())
@@ -1479,28 +1497,24 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('agentTools:changes', (req) => agentJournal.forTurn(req.turnId))
   handle('agentTools:undo', (req) =>
     agentJournal.undoTurn(req.turnId, {
-      course: ({ targetId }) => {
+      course: async ({ targetId }) => {
         coursesRepo.softDelete({ courseId: targetId })
       },
       // Notes are files, so both go to the OS trash — recoverable, unlike a
       // hard unlink.
-      material: ({ courseId, targetId }) => {
-        void materialsRepo
-          .softDelete({ courseId, relPath: targetId })
-          .catch(() => undefined)
+      material: async ({ courseId, targetId }) => {
+        await materialsRepo.softDelete({ courseId, relPath: targetId })
       },
-      note: ({ courseId, targetId }) => {
-        void materialsRepo
-          .softDelete({ courseId, relPath: targetId })
-          .catch(() => undefined)
+      note: async ({ courseId, targetId }) => {
+        await materialsRepo.softDelete({ courseId, relPath: targetId })
       },
-      task: ({ targetId }) => {
+      task: async ({ targetId }) => {
         boardRepo.softDelete({ id: targetId })
       },
-      board: ({ targetId }) => {
+      board: async ({ targetId }) => {
         canvasRepo.removeBoard(targetId)
       },
-      shape: ({ targetId }) => {
+      shape: async ({ targetId }) => {
         const [boardId, shapeId] = targetId.split('\u0000')
         if (boardId === undefined || shapeId === undefined) return
         canvasRepo.removeShapes({ boardId, ids: [shapeId] })
@@ -1508,7 +1522,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       // 문서 제자리 편집(edit_sheet / edit_docx_text)의 되돌리기 —
       // 편집 직전 백업을 원래 경로 위로 복사한다. 파일이 그 사이
       // 이동/개명됐어도 원래 경로에 복원한다.
-      'material-edit': ({ courseId, targetId }) => {
+      'material-edit': async ({ courseId, targetId }) => {
         const parsed = parseMaterialEditTargetId(targetId)
         if (parsed === null) return
         restoreMaterialBackup({
@@ -1899,6 +1913,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     broadcastBatch: (batch) => broadcast('group:event-batch', batch),
     broadcastInvalidated: (reason) => broadcast('groups:invalidated', { reason })
   })
+  const stopWhiteboardAuthReset = groupRuntime.onAuthChanged(() => {
+    whiteboardService.resetForAuthChange()
+  })
   const groups = (): ReturnType<typeof groupRuntime.service> =>
     groupRuntime.service()
 
@@ -1934,6 +1951,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('group:saveSharedNote', (req) => noteSharing.saveSharedNote(req))
 
   app.on('before-quit', () => {
+    stopWhiteboardAuthReset()
     whiteboardService.dispose()
     groupRuntime.dispose()
   })

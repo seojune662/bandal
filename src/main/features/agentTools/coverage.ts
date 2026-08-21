@@ -73,6 +73,7 @@ export const AGENT_CHANNEL_TOOLS: Readonly<Record<string, string>> = {
   'notes:rename': 'rename_material',
   'board:createTask': 'create_task',
   'board:updateTask': 'update_task',
+  'board:reorderTasks': 'update_task',
   'board:deleteTask': 'delete_task',
   'favorites:add': 'add_favorite',
   'favorites:rename': 'rename_favorite',

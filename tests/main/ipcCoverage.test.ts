@@ -19,6 +19,10 @@ import { IPC_CHANNELS } from '../../src/shared/ipc/contract'
 const CONTRACT_SRC = join(process.cwd(), 'src/shared/ipc/contract.ts')
 const HANDLERS_SRC = join(process.cwd(), 'src/main/ipc/registerHandlers.ts')
 
+function mainRouterSource(): string {
+  return readFileSync(HANDLERS_SRC, 'utf8')
+}
+
 /** Channel keys as literally declared in the IpcContract interface body. */
 function declaredChannels(): string[] {
   const source = readFileSync(CONTRACT_SRC, 'utf8')
@@ -33,7 +37,7 @@ function declaredChannels(): string[] {
 
 /** Channels registered via `handle('...')` in the main process. */
 function handledChannels(): string[] {
-  const source = readFileSync(HANDLERS_SRC, 'utf8')
+  const source = mainRouterSource()
   return [...source.matchAll(/\bhandle\(\s*'([^']+)'/g)].map(
     (match) => match[1] as string
   )
@@ -73,5 +77,76 @@ describe('IPC channel coverage', () => {
     ]) {
       expect(handled).toContain(channel)
     }
+  })
+
+  test('batch 2 handlers delegate to their repositories', () => {
+    const source = mainRouterSource()
+    expect(source).toContain(
+      "handle('board:reorderTasks', (req) =>\n    boardRepo.reorderTasks(req.courseId, req.updates)"
+    )
+    expect(source).toContain(
+      'grants: chatRepo.listGrantDetails(req.courseId)'
+    )
+    expect(source).toContain('chatRepo.removeGrant(req.id)')
+  })
+
+  test('undo awaits recoverable file deletion and returns the journal result', () => {
+    const source = mainRouterSource()
+    const undo = source.slice(
+      source.indexOf("handle('agentTools:undo'"),
+      source.indexOf("handle('agentTools:respondConfirm'")
+    )
+    expect(undo).toMatch(
+      /handle\('agentTools:undo', \(req\) =>\s*agentJournal\.undoTurn\(req\.turnId/
+    )
+    expect(undo).toContain(
+      'await materialsRepo.softDelete({ courseId, relPath: targetId })'
+    )
+    expect(undo.match(/await materialsRepo\.softDelete/g)).toHaveLength(2)
+    expect(undo).not.toContain('.catch(() => undefined)')
+    for (const target of [
+      'course',
+      'material',
+      'note',
+      'task',
+      'board',
+      'shape',
+      "'material-edit'"
+    ]) {
+      expect(undo).toContain(`${target}: async (`)
+    }
+  })
+
+  test('broadcast isolates destroyed windows and individual send failures', () => {
+    const source = mainRouterSource()
+    const body = source.slice(
+      source.indexOf('export function broadcast'),
+      source.indexOf('function screenPermissionState')
+    )
+    expect(body).toContain(
+      'if (win.isDestroyed() || win.webContents.isDestroyed()) continue'
+    )
+    expect(body).toMatch(/try \{[\s\S]*webContents\.send\(channel, payload\)[\s\S]*catch \(error\)/)
+    expect(body).toContain('console.error(`[ipc] ${channel} broadcast failed:`, error)')
+  })
+
+  test('successful course relinks broadcast the shared course change event', () => {
+    const source = mainRouterSource()
+    const relink = source.slice(
+      source.indexOf("handle('courses:relink'"),
+      source.indexOf("handle('courses:rename'")
+    )
+    expect(relink).toContain("if (result.status === 'ok')")
+    expect(relink).toContain('return courseListChanged(result)')
+  })
+
+  test('group auth transitions reset whiteboard realtime state', () => {
+    const source = mainRouterSource()
+    expect(source).toMatch(
+      /groupRuntime\.onAuthChanged\(\(\) => \{\s*whiteboardService\.resetForAuthChange\(\)/
+    )
+    expect(source).toMatch(
+      /app\.on\('before-quit', \(\) => \{\s*stopWhiteboardAuthReset\(\)\s*whiteboardService\.dispose\(\)/
+    )
   })
 })

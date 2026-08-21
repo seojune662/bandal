@@ -68,6 +68,10 @@ describe('agent capability coverage', () => {
     expect(missing).toEqual([])
   })
 
+  test('board reordering is covered by the existing task update tool', () => {
+    expect(AGENT_CHANNEL_TOOLS['board:reorderTasks']).toBe('update_task')
+  })
+
   test('a channel is not both given and refused', () => {
     const both = Object.keys(AGENT_CHANNEL_TOOLS).filter(
       (channel) => NOT_FOR_AGENT[channel] !== undefined
