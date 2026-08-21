@@ -69,25 +69,31 @@ export function OverlayPopupApp(): JSX.Element {
           state={state.screenPermission}
           onClick={openPermissionSettings}
         />
-        <span className="overlay-popup__header-spacer" />
-        <button
-          type="button"
-          className="overlay-popup__open-app"
-          disabled={state.courseId === null}
-          onClick={openInApp}
-        >
-          앱에서 열기
-        </button>
-        <button
-          type="button"
-          className="overlay-popup__close"
-          aria-label="반달 AI 닫기"
-          onClick={closePopup}
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="m4 4 8 8m0-8-8 8" />
-          </svg>
-        </button>
+        <div className="overlay-popup__actions">
+          <button
+            type="button"
+            className="overlay-popup__open-app"
+            aria-label="앱에서 열기"
+            title="앱에서 열기"
+            disabled={state.courseId === null}
+            onClick={openInApp}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M6 3.5H3.5v9h9V10M8.5 3.5h4v4m0-4-6 6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="overlay-popup__close"
+            aria-label="반달 AI 닫기"
+            title="닫기"
+            onClick={closePopup}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="m4 4 8 8m0-8-8 8" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <div className="overlay-popup__body">

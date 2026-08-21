@@ -180,6 +180,20 @@ function desktopSettings(courseId: string | null = 'course-a'): Settings {
 }
 
 describe('createOverlayController', () => {
+  test('returns a stable conversation id per selected course', () => {
+    const subject = setup(desktopSettings('course-a'))
+
+    const first = subject.controller.getState().conversationId
+    const repeated = subject.controller.getState().conversationId
+    expect(first).toEqual(expect.any(String))
+    expect(repeated).toBe(first)
+
+    const other = subject.controller.setCourse('course-b').conversationId
+    expect(other).toEqual(expect.any(String))
+    expect(other).not.toBe(first)
+    expect(subject.controller.setCourse('course-a').conversationId).toBe(first)
+  })
+
   test('starts idempotently and destroys both overlay windows on stop', () => {
     const subject = setup(desktopSettings())
 

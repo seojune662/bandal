@@ -87,6 +87,15 @@ export function createOverlayController(
   const courseId = (): string | null =>
     courseOverride ?? settings.lastActiveCourseId
 
+  const conversationFor = (activeCourseId: string): string => {
+    let conversationId = conversations.get(activeCourseId)
+    if (conversationId === undefined) {
+      conversationId = randomUUID()
+      conversations.set(activeCourseId, conversationId)
+    }
+    return conversationId
+  }
+
   const getState = (): OverlayState => {
     const activeCourseId = courseId()
     return {
@@ -95,7 +104,7 @@ export function createOverlayController(
       conversationId:
         activeCourseId === null
           ? null
-          : (conversations.get(activeCourseId) ?? null),
+          : conversationFor(activeCourseId),
       popupOpen,
       screenPermission
     }
@@ -290,11 +299,7 @@ export function createOverlayController(
   const prompt = (text: string): void => {
     const activeCourseId = courseId()
     if (activeCourseId === null) return
-    let conversationId = conversations.get(activeCourseId)
-    if (conversationId === undefined) {
-      conversationId = randomUUID()
-      conversations.set(activeCourseId, conversationId)
-    }
+    const conversationId = conversationFor(activeCourseId)
     togglePopup(true)
     deps.broadcast('overlay:prompt', { conversationId, prompt: text })
   }
@@ -303,22 +308,20 @@ export function createOverlayController(
     courseId: string
     conversationId: string | null
   }): void => {
+    const mappedConversationId = conversationFor(req.courseId)
+    const conversationId = req.conversationId ?? mappedConversationId
     const existing = deps.getMainWindow()
     if (liveWindow(existing)) {
       existing.show()
       existing.focus()
-      if (req.conversationId !== null) {
-        existing.webContents.send('ui:openChat', {
-          courseId: req.courseId,
-          conversationId: req.conversationId
-        })
-      }
+      existing.webContents.send('ui:openChat', {
+        courseId: req.courseId,
+        conversationId
+      })
       return
     }
 
     const created = deps.createMainWindow()
-    const conversationId = req.conversationId
-    if (conversationId === null) return
     created.webContents.once('did-finish-load', () => {
       if (!created.isDestroyed()) {
         created.webContents.send('ui:openChat', {
