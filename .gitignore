@@ -42,3 +42,6 @@ scratch.md
 
 # electron-vite 가 빌드 중 만들었다 지우는 임시 설정
 electron.vite.config.*.mjs
+
+# Playwright artifacts
+test-results/
