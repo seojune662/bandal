@@ -67,3 +67,45 @@ describe('sanitizeSettings — R3 tab/course fields', () => {
     expect(result.lastActiveCourseId).toBe('abc')
   })
 })
+
+describe('sanitizeSettings — desktop orb', () => {
+  test('falls back from an unknown assistant mode to in-app', () => {
+    expect(sanitizeSettings({ assistantMode: 'unknown' }, defaults).assistantMode)
+      .toBe('in-app')
+  })
+
+  test('falls back from a garbage desktopOrb value to defaults', () => {
+    expect(sanitizeSettings({ desktopOrb: 'garbage' }, defaults).desktopOrb)
+      .toEqual({ keepAliveOnClose: true })
+  })
+
+  test('falls back from a non-boolean keepAliveOnClose to true', () => {
+    expect(
+      sanitizeSettings(
+        { desktopOrb: { keepAliveOnClose: 'yes' } },
+        defaults
+      ).desktopOrb.keepAliveOnClose
+    ).toBe(true)
+  })
+})
+
+describe('sanitizeSettings — orbCharm', () => {
+  test('accepts every registered charm id', () => {
+    for (const id of ['none', 'spider', 'balloon', 'cat', 'chain']) {
+      expect(sanitizeSettings({ orbCharm: id }, defaults).orbCharm).toBe(id)
+    }
+  })
+
+  test.each([['spiderman'], [3], [null], [{}]])(
+    'falls back to the default for %p',
+    (value) => {
+      expect(sanitizeSettings({ orbCharm: value }, defaults).orbCharm).toBe(
+        'none'
+      )
+    }
+  )
+
+  test('missing key (pre-charm settings file) → none', () => {
+    expect(sanitizeSettings({}, defaults).orbCharm).toBe('none')
+  })
+})

@@ -4,11 +4,18 @@
  * settingsStore supplies the environment-dependent defaults.
  */
 
+import { isOrbCharmId } from '../shared/orbCharm'
 import { isPaletteId, isThemeId } from '../shared/theme'
 import { isSearchEngineId } from '../shared/search'
 import { sanitizeUniversitySettings } from '../shared/universities/sanitize'
-import { DEFAULT_ONBOARDING, DEFAULT_TUTORIAL } from '../shared/types/settings'
+import {
+  DEFAULT_DESKTOP_ORB,
+  DEFAULT_ONBOARDING,
+  DEFAULT_TUTORIAL
+} from '../shared/types/settings'
 import type {
+  AssistantMode,
+  DesktopOrbSettings,
   OnboardingState,
   Settings,
   TutorialState
@@ -28,6 +35,23 @@ function isPalette(value: unknown): value is Settings['palette'] {
 /** Only renderer locales shipped by this build are accepted from disk/IPC. */
 function isLocale(value: unknown): value is Settings['locale'] {
   return value === 'ko-KR' || value === 'en-US'
+}
+
+export function isAssistantMode(value: unknown): value is AssistantMode {
+  return value === 'in-app' || value === 'desktop'
+}
+
+export function sanitizeDesktopOrb(raw: unknown): DesktopOrbSettings {
+  if (typeof raw !== 'object' || raw === null) {
+    return { ...DEFAULT_DESKTOP_ORB }
+  }
+  const record = raw as Record<string, unknown>
+  return {
+    keepAliveOnClose:
+      typeof record.keepAliveOnClose === 'boolean'
+        ? record.keepAliveOnClose
+        : DEFAULT_DESKTOP_ORB.keepAliveOnClose
+  }
 }
 
 /** [M6-A] Validates the persisted onboarding record, key by key. */
@@ -91,6 +115,10 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
       record.agentProvider === 'claude-code' || record.agentProvider === 'codex'
         ? record.agentProvider
         : defaults.agentProvider,
+    assistantMode: isAssistantMode(record.assistantMode)
+      ? record.assistantMode
+      : 'in-app',
+    desktopOrb: sanitizeDesktopOrb(record.desktopOrb),
     dataRoot:
       typeof record.dataRoot === 'string' && record.dataRoot.length > 0
         ? record.dataRoot
@@ -111,6 +139,7 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
       typeof record.lastActiveCourseId === 'string' &&
       record.lastActiveCourseId !== ''
         ? record.lastActiveCourseId
-        : null
+        : null,
+    orbCharm: isOrbCharmId(record.orbCharm) ? record.orbCharm : defaults.orbCharm
   }
 }

@@ -1,6 +1,11 @@
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type { AgentActionTarget } from '../../../../shared/types/agentTools'
 import { ValidationError } from '../../../db/errors'
-import type { AgentToolName, BrowserToolName } from '../schemas'
+import type {
+  AgentToolName,
+  BrowserToolName,
+  DesktopToolName
+} from '../schemas'
 import type { AgentToolsDeps, LimitKind } from '../tools'
 
 export interface TurnContext {
@@ -12,8 +17,13 @@ export type ToolHandler = (
   input: Record<string, unknown>
 ) => Promise<unknown> | unknown
 
+export class RawToolResult {
+  constructor(readonly result: CallToolResult) {}
+}
+
 export type ToolHandlerMap = Record<AgentToolName, ToolHandler> &
-  Partial<Record<BrowserToolName, ToolHandler>>
+  Partial<Record<BrowserToolName, ToolHandler>> &
+  Partial<Record<DesktopToolName, ToolHandler>>
 
 export interface ToolContext {
   deps: AgentToolsDeps

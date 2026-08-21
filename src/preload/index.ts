@@ -77,7 +77,15 @@ const PUSH_CHANNELS = [
   'canvas:changed',
   'agentTools:confirm',
   'agentTools:unavailable',
-  'agentTools:changed'
+  'agentTools:changed',
+  // -- desktop overlay ------------------------------------------------------
+  'overlay:state',
+  'overlay:prompt',
+  'ui:openChat',
+  'desktopAgent:run-state',
+  'desktopAgent:permission',
+  // -- user MCP registry ----------------------------------------------------
+  'mcp:changed'
 ] as const satisfies readonly PushChannel[]
 
 type MissingPushChannel = Exclude<PushChannel, (typeof PUSH_CHANNELS)[number]>

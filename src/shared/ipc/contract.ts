@@ -52,7 +52,8 @@ import type {
   AgentModelOption,
   ChatConversationSummary,
   ChatOpenResult,
-  ChatSendInput
+  ChatSendInput,
+  ChatSurface
 } from '../types/chat'
 import type {
   CreateDrawingInput,
@@ -114,6 +115,13 @@ import type {
   PermissionResponse
 } from '../types/agent-events'
 import type { Settings, SettingsPatch } from '../types/settings'
+import type { OverlayState } from '../types/overlay'
+import type {
+  McpAvailability,
+  McpServerInput,
+  McpServerSummary,
+  McpTestResult
+} from '../types/mcp'
 import type { UpdateStatus } from '../types/update'
 import type {
   AuthProvider,
@@ -445,7 +453,7 @@ export interface IpcContract {
   // -- chat -----------------------------------------------------------------
   /** Opens (or resumes) one conversation of a course. */
   'chat:open': {
-    req: { courseId: string; sessionId: string }
+    req: { courseId: string; sessionId: string; surface?: ChatSurface }
     res: ChatOpenResult
   }
   /** Sends a user message; streaming arrives via `chat:event-batch`. */
@@ -479,15 +487,63 @@ export interface IpcContract {
     req: { courseId: string; sessionId: string; model: string }
     res: { ok: true }
   }
-  /** Conversation list for a course (zero-message conversations excluded). */
+  /** Conversation list for a course (zero-message conversations excluded). Defaults to app. */
   'chat:conversations': {
-    req: { courseId: string }
+    req: { courseId: string; surface?: ChatSurface }
     res: { conversations: ChatConversationSummary[] }
   }
   /** Soft-deletes a conversation and closes its warm CLI process, if any. */
   'chat:deleteConversation': {
     req: { courseId: string; sessionId: string }
     res: { ok: true }
+  }
+
+  // -- desktop overlay -----------------------------------------------------
+  'overlay:getState': {
+    req: Record<string, never>
+    res: OverlayState
+  }
+  'overlay:setCourse': {
+    req: { courseId: string }
+    res: OverlayState
+  }
+  'overlay:togglePopup': {
+    req: { open?: boolean }
+    res: { open: boolean }
+  }
+  'overlay:orbDragBegin': {
+    req: { grabX: number; grabY: number }
+    res: { ok: true }
+  }
+  'overlay:orbDragEnd': {
+    req: Record<string, never>
+    res: { ok: true }
+  }
+  'overlay:prompt': {
+    req: { prompt: string }
+    res: { ok: true }
+  }
+  'overlay:openInApp': {
+    req: { courseId: string; conversationId: string | null }
+    res: { ok: true }
+  }
+
+  // -- user MCP registry ---------------------------------------------------
+  'mcp:list': {
+    req: Record<string, never>
+    res: { servers: McpServerSummary[]; availability: McpAvailability }
+  }
+  'mcp:save': {
+    req: McpServerInput
+    res: { server: McpServerSummary }
+  }
+  'mcp:delete': {
+    req: { id: string }
+    res: { ok: true }
+  }
+  'mcp:test': {
+    req: { id: string }
+    res: McpTestResult
   }
 
   // -- agent ----------------------------------------------------------------
@@ -1360,6 +1416,17 @@ export const IPC_CHANNELS = [
   'chat:setModel',
   'chat:conversations',
   'chat:deleteConversation',
+  'overlay:getState',
+  'overlay:setCourse',
+  'overlay:togglePopup',
+  'overlay:orbDragBegin',
+  'overlay:orbDragEnd',
+  'overlay:prompt',
+  'overlay:openInApp',
+  'mcp:list',
+  'mcp:save',
+  'mcp:delete',
+  'mcp:test',
   'agent:availability',
   'agent:models',
   'drawings:listForFile',

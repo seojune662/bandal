@@ -23,6 +23,10 @@ export function agentConfirmScopeLabel(scope: AgentConfirmScope): string {
       return '이 사이트'
     case 'course':
       return '이 과목 전체'
+    case 'conversation':
+      return '이 대화에서는 계속'
+    case 'always':
+      return '30일 동안 묻지 않기'
   }
 }
 

@@ -91,7 +91,12 @@ export interface AgentAppState {
  *  - `course` every site in this course, 30 days — except the hard-denied
  *              ones (수강신청·결제), which are not askable at any scope
  */
-export type AgentConfirmScope = 'once' | 'site' | 'course'
+export type AgentConfirmScope =
+  | 'once'
+  | 'site'
+  | 'course'
+  | 'conversation'
+  | 'always'
 
 export interface AgentConfirmRequest {
   requestId: string

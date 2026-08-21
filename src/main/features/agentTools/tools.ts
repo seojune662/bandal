@@ -32,6 +32,7 @@ import {
   inputObject,
   optionalInteger,
   optionalString,
+  RawToolResult,
   stringField,
   type ToolContext,
   type ToolHandlerMap,
@@ -452,7 +453,8 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
         return failure(name, new ValidationError(`unknown tool "${name}"`))
       }
       try {
-        return success(await handler(inputObject(args)))
+        const result = await handler(inputObject(args))
+        return result instanceof RawToolResult ? result.result : success(result)
       } catch (error) {
         return failure(name, error)
       }

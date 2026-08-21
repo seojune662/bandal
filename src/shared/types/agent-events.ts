@@ -211,6 +211,10 @@ export interface AgentStartSessionOptions {
    * flags (codex `-c mcp_servers.*`) instead of a JSON config file.
    */
   mcpHttp?: { url: string; token: string }
+  /** 사용자 MCP 서버용. 데스크톱 대화에서만 사용한다. */
+  mcpExtraArgs?: string[]
+  /** 사용자 MCP 서버용. 데스크톱 대화에서만 사용한다. */
+  mcpExtraEnv?: Record<string, string>
 }
 
 export type Unsubscribe = () => void

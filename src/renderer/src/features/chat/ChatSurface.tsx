@@ -6,7 +6,10 @@ import {
   type ReactNode
 } from 'react'
 import type { AgentProvider } from '../../../../shared/types/agent-events'
-import type { ChatAttachment } from '../../../../shared/types/chat'
+import type {
+  ChatAttachment,
+  ChatSurface as ChatSurfaceKind
+} from '../../../../shared/types/chat'
 import { Icon } from '../../app/icons'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
@@ -43,7 +46,10 @@ export interface ChatSurfaceProps {
   courseId: string
   /** Conversation id; surfaces without one (popup) fall back to courseId. */
   conversationId?: string
-  variant?: 'tab' | 'popup'
+  variant?: 'tab' | 'popup' | 'overlay'
+  surface?: ChatSurfaceKind
+  onOpenConversation?: (conversationId: string) => void
+  headerExtra?: ReactNode
 }
 
 function EmptyState({
@@ -77,10 +83,13 @@ function EmptyState({
 export function ChatSurface({
   courseId,
   conversationId,
-  variant = 'tab'
+  variant = 'tab',
+  surface = 'app',
+  onOpenConversation,
+  headerExtra
 }: ChatSurfaceProps): JSX.Element {
   const conversationKey = conversationId ?? courseId
-  const session = useChatSession(courseId, conversationKey)
+  const session = useChatSession(courseId, conversationKey, surface)
   const agentToolActivity = useAgentToolActivity(conversationKey)
   const openTab = useWorkspaceStore((store) => store.openTab)
   const [draft, setDraft] = useState('')
@@ -143,6 +152,10 @@ export function ChatSurface({
 
   const handleOpenConversation = useCallback(
     (nextConversationId: string) => {
+      if (onOpenConversation !== undefined) {
+        onOpenConversation(nextConversationId)
+        return
+      }
       openTab(
         descriptorFor('chat', {
           courseId,
@@ -150,7 +163,7 @@ export function ChatSurface({
         })
       )
     },
-    [courseId, openTab]
+    [courseId, onOpenConversation, openTab]
   )
 
   const handleNewConversation = useCallback(() => {
@@ -168,7 +181,11 @@ export function ChatSurface({
   )
 
   const root = (children: ReactNode): JSX.Element => (
-    <div className="chat-tab" data-variant={variant} data-tour="assistant-panel">
+    <div
+      className="chat-tab"
+      data-variant={variant === 'overlay' ? 'popup' : variant}
+      data-tour="assistant-panel"
+    >
       {children}
     </div>
   )
@@ -239,6 +256,7 @@ export function ChatSurface({
   return root(
     <>
       <header className="chat-header">
+        {headerExtra}
         {variant === 'tab' && (
           <ConversationListMenu
             courseId={courseId}

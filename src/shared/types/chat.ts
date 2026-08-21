@@ -7,6 +7,8 @@ import type { AgentAvailability, AgentProvider, Usage } from './agent-events'
 
 export type MessageRole = 'user' | 'assistant'
 
+export type ChatSurface = 'app' | 'desktop'
+
 export type MessageBlockKind = 'text' | 'thinking' | 'tool' | 'permission'
 
 /** One ordered block within a message (text, thinking, tool call, ...). */
@@ -34,6 +36,7 @@ export type AgentSessionStatus = 'idle' | 'running' | 'error' | 'closed'
 export interface ChatSessionInfo {
   id: string
   courseId: string
+  surface: ChatSurface
   provider: AgentProvider
   /** Session id assigned by the CLI, for resuming. */
   cliSessionId: string | null
@@ -52,6 +55,7 @@ export interface ChatSessionInfo {
 export interface ChatConversationSummary {
   id: string
   courseId: string
+  surface: ChatSurface
   provider: AgentProvider
   title: string | null
   model: string | null

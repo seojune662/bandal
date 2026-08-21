@@ -41,7 +41,8 @@ describe('migrations', () => {
       { version: 18, name: 'media-progress' },
       { version: 19, name: 'browser-history' },
       { version: 20, name: 'browser-agent-grants-audit' },
-      { version: 21, name: 'browser-site-permissions' }
+      { version: 21, name: 'browser-site-permissions' },
+      { version: 22, name: 'desktop-surface-and-mcp' }
     ])
   })
 
@@ -211,6 +212,35 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(21)
+    expect(count.n).toBe(22)
+  })
+
+  test('adds desktop conversation surface, grants, and audit (migration 022)', () => {
+    const columns = ctx.db
+      .prepare('PRAGMA table_info(agent_sessions)')
+      .all() as { name: string; notnull: number; dflt_value: string | null }[]
+    expect(columns).toContainEqual(
+      expect.objectContaining({
+        name: 'surface',
+        notnull: 1,
+        dflt_value: "'app'"
+      })
+    )
+
+    const objects = ctx.db
+      .prepare(
+        `SELECT type, name FROM sqlite_master
+         WHERE name IN ('desktop_grants', 'idx_desktop_grants_course',
+                        'desktop_audit', 'idx_desktop_audit_course')`
+      )
+      .all() as { type: string; name: string }[]
+    expect(objects).toEqual(
+      expect.arrayContaining([
+        { type: 'table', name: 'desktop_grants' },
+        { type: 'index', name: 'idx_desktop_grants_course' },
+        { type: 'table', name: 'desktop_audit' },
+        { type: 'index', name: 'idx_desktop_audit_course' }
+      ])
+    )
   })
 })

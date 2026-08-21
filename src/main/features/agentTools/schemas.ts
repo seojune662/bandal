@@ -1,5 +1,14 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
 
+export const DESKTOP_TOOL_NAMES = [
+  'desktop_screenshot',
+  'desktop_windows',
+  'desktop_frontmost',
+  'desktop_clipboard_read'
+] as const
+
+export type DesktopToolName = (typeof DESKTOP_TOOL_NAMES)[number]
+
 const string = (description: string): object => ({ type: 'string', description })
 const boolean = (description: string): object => ({ type: 'boolean', description })
 const integer = (description: string, minimum = 1): object => ({

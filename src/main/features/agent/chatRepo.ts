@@ -109,6 +109,7 @@ function rowToSessionInfo(row: SessionRow): ChatSessionInfo {
   return {
     id: row.id,
     courseId: row.course_id,
+    surface: 'app',
     provider: row.provider as AgentProvider,
     cliSessionId: row.cli_session_id,
     model: row.model,
@@ -198,6 +199,7 @@ export function createChatRepo(db: Database): ChatRepo {
       return {
         id,
         courseId: course,
+        surface: 'app',
         provider,
         cliSessionId: null,
         model: null,
@@ -233,6 +235,7 @@ export function createChatRepo(db: Database): ChatRepo {
       return rows.map((row) => ({
         id: row.id,
         courseId: row.course_id,
+        surface: 'app',
         provider: row.provider as AgentProvider,
         title: row.title,
         model: row.model,

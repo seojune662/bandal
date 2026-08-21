@@ -780,6 +780,51 @@ export const migrations: Migration[] = [
          );`
       )
     }
+  },
+  {
+    version: 22,
+    name: 'desktop-surface-and-mcp',
+    up: (db) => {
+      const columns = new Set(
+        (
+          db.prepare('PRAGMA table_info(agent_sessions)').all() as {
+            name: string
+          }[]
+        ).map((column) => column.name)
+      )
+      if (!columns.has('surface')) {
+        db.exec(
+          `ALTER TABLE agent_sessions ADD COLUMN surface TEXT NOT NULL DEFAULT 'app'`
+        )
+      }
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_agent_sessions_surface
+           ON agent_sessions (surface, course_id, last_used_at DESC)
+           WHERE deleted_at IS NULL;
+         CREATE TABLE IF NOT EXISTS desktop_grants (
+           id TEXT PRIMARY KEY,
+           course_id TEXT NOT NULL,
+           capability TEXT NOT NULL,
+           created_at TEXT NOT NULL,
+           expires_at TEXT NOT NULL,
+           revoked_at TEXT,
+           last_used_at TEXT
+         );
+         CREATE INDEX IF NOT EXISTS idx_desktop_grants_course
+           ON desktop_grants (course_id, capability);
+         CREATE TABLE IF NOT EXISTS desktop_audit (
+           id TEXT PRIMARY KEY,
+           course_id TEXT NOT NULL,
+           conversation_id TEXT NOT NULL,
+           action TEXT NOT NULL,
+           target TEXT NOT NULL,
+           detail TEXT NOT NULL,
+           created_at TEXT NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_desktop_audit_course
+           ON desktop_audit (course_id, created_at DESC);`
+      )
+    }
   }
 ]
 

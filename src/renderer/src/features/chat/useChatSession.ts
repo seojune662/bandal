@@ -6,7 +6,8 @@ import type {
 } from '../../../../shared/types/agent-events'
 import type {
   AgentModelOption,
-  ChatAttachment
+  ChatAttachment,
+  ChatSurface
 } from '../../../../shared/types/chat'
 import type { ChatViewState } from './chatModel'
 import {
@@ -54,7 +55,8 @@ export interface ChatSessionApi {
 
 export function useChatSession(
   courseId: string,
-  conversationId: string
+  conversationId: string,
+  surface: ChatSurface = 'app'
 ): ChatSessionApi {
   const snapshot = useChatSessionStore(
     useCallback(
@@ -64,8 +66,8 @@ export function useChatSession(
   )
 
   useEffect(
-    () => acquireChatSession(courseId, conversationId),
-    [courseId, conversationId]
+    () => acquireChatSession(courseId, conversationId, surface),
+    [courseId, conversationId, surface]
   )
 
   const send = useCallback(

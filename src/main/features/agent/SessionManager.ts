@@ -159,6 +159,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         info: row ?? {
           id: sessionId,
           courseId,
+          surface: 'app',
           provider: deps.adapter.provider,
           cliSessionId: null,
           model: null,

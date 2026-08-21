@@ -10,6 +10,11 @@ import type { AuthState } from '../types/auth'
 import type { GroupsInvalidationReason } from '../types/group'
 import type { GroupEvent } from '../types/group-events'
 import type { UpdateStatus } from '../types/update'
+import type {
+  OverlayPrompt,
+  OverlayState,
+  ScreenPermissionState
+} from '../types/overlay'
 
 /** Ordered batch of streaming agent events for ONE conversation. */
 export interface ChatEventBatch {
@@ -260,6 +265,21 @@ export interface PushEvents {
   'agent:install-progress': AgentInstallProgress
   // -- group whiteboard -----------------------------------------------------
   'whiteboard:changed': WhiteboardChanged
+  // -- desktop overlay ------------------------------------------------------
+  'overlay:state': OverlayState
+  'overlay:prompt': OverlayPrompt
+  'ui:openChat': { courseId: string; conversationId: string }
+  'desktopAgent:run-state': {
+    conversationId: string
+    status: 'idle' | 'capturing' | 'reading'
+    action: string | null
+  }
+  'desktopAgent:permission': {
+    state: ScreenPermissionState
+    message: string | null
+  }
+  // -- user MCP registry ----------------------------------------------------
+  'mcp:changed': Record<string, never>
 }
 
 export type PushChannel = keyof PushEvents

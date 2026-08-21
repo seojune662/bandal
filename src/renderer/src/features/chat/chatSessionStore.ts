@@ -8,7 +8,8 @@ import type {
 } from '../../../../shared/types/agent-events'
 import type {
   AgentModelOption,
-  ChatAttachment
+  ChatAttachment,
+  ChatSurface
 } from '../../../../shared/types/chat'
 import { invoke, onPush, type Unsubscribe } from '../../lib/ipc'
 import {
@@ -174,7 +175,8 @@ function loadModels(
 async function openConversation(
   courseId: string,
   conversationId: string,
-  opts: { discardQueue: boolean }
+  opts: { discardQueue: boolean },
+  surface: ChatSurface = 'app'
 ): Promise<void> {
   const runtime = runtimeFor(courseId, conversationId)
   const version = ++runtime.openVersion
@@ -185,7 +187,8 @@ async function openConversation(
   try {
     const result = await invoke('chat:open', {
       courseId,
-      sessionId: conversationId
+      sessionId: conversationId,
+      surface
     })
     if (version !== runtime.openVersion) {
       return
@@ -253,7 +256,8 @@ function handleBatch(
  */
 export function acquireChatSession(
   courseId: string,
-  conversationId: string
+  conversationId: string,
+  surface: ChatSurface = 'app'
 ): () => void {
   const runtime = runtimeFor(courseId, conversationId)
   runtime.courseId = courseId
@@ -268,7 +272,12 @@ export function acquireChatSession(
     runtime.unsubscribe = onPush('chat:event-batch', (batch) => {
       handleBatch(courseId, conversationId, batch)
     })
-    void openConversation(courseId, conversationId, { discardQueue: false })
+    void openConversation(
+      courseId,
+      conversationId,
+      { discardQueue: false },
+      surface
+    )
   }
 
   let released = false

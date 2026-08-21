@@ -2,6 +2,8 @@
  * App settings persisted by the main process (JSON in userData).
  */
 
+import { DEFAULT_ORB_CHARM } from '../orbCharm'
+import type { OrbCharmId } from '../orbCharm'
 import type { AgentProvider } from './agent-events'
 import { DEFAULT_PALETTE_ID, DEFAULT_THEME_ID } from '../theme'
 import { DEFAULT_SEARCH_ENGINE, type SearchEngineId } from '../search'
@@ -15,6 +17,17 @@ import type { UniversitySettings } from './university'
  * union automatically — there is no theme name spelled out here.
  */
 export type ThemePreference = ThemeId | 'system'
+
+export type AssistantMode = 'in-app' | 'desktop'
+
+/** 데스크톱 오브 동작. 나중에 hotkey 등을 덧붙일 수 있게 객체로 둔다. */
+export interface DesktopOrbSettings {
+  keepAliveOnClose: boolean
+}
+
+export const DEFAULT_DESKTOP_ORB: DesktopOrbSettings = {
+  keepAliveOnClose: true
+}
 
 /**
  * [M6-A] Versioned first-run onboarding state.
@@ -77,6 +90,10 @@ export interface Settings {
   palette: PaletteId
   /** Preferred AI agent provider. */
   agentProvider: AgentProvider
+  /** Where the assistant is presented. */
+  assistantMode: AssistantMode
+  /** Desktop assistant-orb behavior. */
+  desktopOrb: DesktopOrbSettings
   /** Root folder for course data. Defaults to ~/Documents/Bandal. */
   dataRoot: string
   /** UI language (BCP 47). */
@@ -101,12 +118,16 @@ export interface Settings {
    * 자동으로 동기화된다(설정 UI에는 노출하지 않는다). null = 기록 없음.
    */
   lastActiveCourseId: string | null
+  /** 반달 AI 오브에 매달리는 장식 테마(src/shared/orbCharm.ts). 기본 none. */
+  orbCharm: OrbCharmId
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: DEFAULT_THEME_ID,
   palette: DEFAULT_PALETTE_ID,
   agentProvider: 'claude-code',
+  assistantMode: 'in-app',
+  desktopOrb: DEFAULT_DESKTOP_ORB,
   dataRoot: '',
   locale: 'ko-KR',
   onboarding: DEFAULT_ONBOARDING,
@@ -115,7 +136,8 @@ export const DEFAULT_SETTINGS: Settings = {
   openAdjacentTab: false,
   restoreLastCourse: true,
   browserSearchEngine: DEFAULT_SEARCH_ENGINE,
-  lastActiveCourseId: null
+  lastActiveCourseId: null,
+  orbCharm: DEFAULT_ORB_CHARM
 }
 
 export type SettingsPatch = Partial<Settings>
