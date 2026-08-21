@@ -35,7 +35,7 @@ describe('createAgentConfirmer', () => {
 
     confirmer.resolve({ requestId: requests[0]!.requestId, approved: true })
 
-    await expect(result).resolves.toBe(true)
+    await expect(result).resolves.toBe('once')
   })
 
   test('resolves false for a denied request', async () => {
@@ -70,7 +70,7 @@ describe('createAgentConfirmer', () => {
     confirmer.resolve({ requestId: 'unknown', approved: false })
     confirmer.resolve({ requestId: requests[0]!.requestId, approved: true })
 
-    await expect(result).resolves.toBe(true)
+    await expect(result).resolves.toBe('once')
   })
 
   test('ignores duplicate responses after the first one', async () => {
@@ -81,7 +81,7 @@ describe('createAgentConfirmer', () => {
     confirmer.resolve({ requestId, approved: true })
     confirmer.resolve({ requestId, approved: false })
 
-    await expect(result).resolves.toBe(true)
+    await expect(result).resolves.toBe('once')
   })
 
   test('disposeAll denies every pending request', async () => {

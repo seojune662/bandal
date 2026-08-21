@@ -13,6 +13,7 @@
  * being cheap is not a reason to make it unaccountable.
  */
 
+import type { AgentConfirmScope } from '../../../shared/types/agentTools'
 import type { AuditRepo } from './audit'
 import {
   GRANT_DAYS,
@@ -80,7 +81,9 @@ export interface BrowserToolsDeps {
     tool: string
     summary: string
     details: string[]
-  }) => Promise<boolean>
+    /** Offered only for site access; the caller records which one was picked. */
+    scopes?: AgentConfirmScope[]
+  }) => Promise<AgentConfirmScope | false>
   /**
    * The browser tabs the student can see, as published by the renderer.
    *

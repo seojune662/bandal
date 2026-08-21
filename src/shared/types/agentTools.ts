@@ -83,17 +83,39 @@ export interface AgentAppState {
   }[]
 }
 
+/**
+ * How widely an approval applies. Only site-access asks this.
+ *
+ *  - `once`   this call only
+ *  - `site`   this origin, for this course, 30 days
+ *  - `course` every site in this course, 30 days — except the hard-denied
+ *              ones (수강신청·결제), which are not askable at any scope
+ */
+export type AgentConfirmScope = 'once' | 'site' | 'course'
+
 export interface AgentConfirmRequest {
   requestId: string
   courseId: string
+  /**
+   * Which conversation asked.
+   *
+   * Its absence is why approval cards showed up in EVERY past conversation:
+   * the renderer store had nothing but `courseId` to key on, so one card
+   * rendered in every ChatSurface mounted for that course.
+   */
+  conversationId: string
   tool: string
   /** One line describing exactly what will happen, in the student's language. */
   summary: string
   /** Extra detail — the paths or names involved. */
   details: string[]
+  /** Present only when the answer can be remembered at more than one scope. */
+  scopes?: AgentConfirmScope[]
 }
 
 export interface AgentConfirmResponse {
   requestId: string
   approved: boolean
+  /** Which scope the student picked; ignored unless the request offered them. */
+  scope?: AgentConfirmScope
 }

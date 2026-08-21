@@ -98,8 +98,12 @@ export interface AgentToolsDeps {
     | 'open'
     | 'putShape'
   >
+  /**
+   * `conversationId` is supplied by the injection site, which is the only
+   * place that knows it — a tool has no idea which chat it is serving.
+   */
   confirm: (
-    request: Omit<AgentConfirmRequest, 'requestId'>
+    request: Omit<AgentConfirmRequest, 'requestId' | 'conversationId'>
   ) => Promise<boolean>
   journal: {
     record: (entry: AgentJournalEntry) => void

@@ -709,6 +709,7 @@ export function registerHandlers(): IpcRouter {
 
   const browserToolsFor = (
     courseId: string,
+    conversationId: string,
     getRunId: () => string
   ): ReturnType<typeof createBrowserTools> => {
     return createBrowserTools({
@@ -733,7 +734,8 @@ export function registerHandlers(): IpcRouter {
           : { tabs: [], activeTabId: null },
       // The app's own confirmer, not the CLI's permission flow — Codex has no
       // interactive approval at all (agentTools/confirm.ts).
-      confirm: (request) => agentConfirmer.confirm(request),
+      confirm: (request) =>
+        agentConfirmer.confirm({ ...request, conversationId }),
       // A live run drives a VISIBLE tab: the student watches the page move and
       // can stop it. That is the mitigation for every reliability failure mode
       // here, and a hidden guest would be background-throttled anyway.
@@ -1068,9 +1070,12 @@ export function registerHandlers(): IpcRouter {
         notesRepo,
         boardRepo,
         canvasRepo,
-        confirm: (request) => agentConfirmer.confirm(request),
+        confirm: async (request) =>
+          (await agentConfirmer.confirm({ ...request, conversationId: sessionKey })) !==
+          false,
         browser: browserToolsFor(
           courseId,
+          sessionKey,
           () => `${sessionKey}:${getTurnSeq()}`
         ),
         journal: {
