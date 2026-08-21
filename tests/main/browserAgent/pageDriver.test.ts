@@ -32,6 +32,14 @@ const PAGE = {
   ]
 }
 
+const SELECT_FACTS = {
+  tag: 'select',
+  type: null,
+  inNonGetForm: false,
+  href: null,
+  disabled: false
+}
+
 describe('pageDriver.snapshot', () => {
   test('renders the outline with refs at the current generation', async () => {
     const driver = createPageDriver({
@@ -126,7 +134,8 @@ describe('pageDriver.act', () => {
     })
     expect(await driver.act(9, 0, { kind: 'click' })).toEqual({
       ok: false,
-      facts: null
+      facts: null,
+      problem: '그 프레임을 찾지 못했어요.'
     })
     expect(only.executeJavaScript).not.toHaveBeenCalled()
   })
@@ -144,12 +153,167 @@ describe('pageDriver.act', () => {
     expect(source).toContain("dispatchEvent(new Event('input'")
   })
 
+  test('selects by label when the option value is a code', async () => {
+    const options = [{ value: '2026-2', label: '2026학년도 2학기' }]
+    const target = frame({
+      ok: true,
+      facts: SELECT_FACTS,
+      problem: null,
+      options
+    })
+    const driver = createPageDriver({
+      frames: () => [target],
+      currentUrl: () => PAGE.url
+    })
+
+    expect(
+      await driver.act(0, 0, {
+        kind: 'select',
+        value: '2026학년도 2학기'
+      })
+    ).toEqual({ ok: true, facts: SELECT_FACTS, problem: null, options })
+
+    const source = (target.executeJavaScript as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as string
+    expect(source).toContain("(option.textContent || '').trim() === wantedLabel")
+    expect(source).toContain('target.selectedIndex = selectedIndex')
+  })
+
+  test('selects labels whose whitespace is irregular', async () => {
+    const target = frame({
+      ok: true,
+      facts: SELECT_FACTS,
+      problem: null,
+      options: [{ value: '2026-2', label: '2026학년도  2학기' }]
+    })
+    const driver = createPageDriver({
+      frames: () => [target],
+      currentUrl: () => PAGE.url
+    })
+
+    await driver.act(0, 0, {
+      kind: 'select',
+      value: '2026학년도 2학기'
+    })
+    const source = (target.executeJavaScript as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as string
+    expect(source).toContain("wanted.replace(/\\s+/g, '')")
+    expect(source).toContain("(option.textContent || '').replace(/\\s+/g, '')")
+  })
+
+  test('a missing select value fails and returns the available options', async () => {
+    const options = [
+      { value: '2026-1', label: '2026학년도 1학기' },
+      { value: '2026-2', label: '2026학년도 2학기' }
+    ]
+    const target = frame({
+      ok: false,
+      facts: SELECT_FACTS,
+      problem: '그 값을 고를 수 없어요.',
+      options
+    })
+    const driver = createPageDriver({
+      frames: () => [target],
+      currentUrl: () => PAGE.url
+    })
+
+    expect(
+      await driver.act(0, 0, { kind: 'select', value: '없는 학기' })
+    ).toEqual({
+      ok: false,
+      facts: SELECT_FACTS,
+      problem: '그 값을 고를 수 없어요.',
+      options
+    })
+
+    const source = (target.executeJavaScript as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as string
+    expect(source).toContain('selectOptions.slice(0, 200)')
+    expect(source).toContain("trim().slice(0, 100)")
+  })
+
+  test('selecting a non-select element fails', async () => {
+    const facts = { ...SELECT_FACTS, tag: 'input' }
+    const target = frame({
+      ok: false,
+      facts,
+      problem: 'select 요소가 아니에요.'
+    })
+    const driver = createPageDriver({
+      frames: () => [target],
+      currentUrl: () => PAGE.url
+    })
+
+    expect(
+      await driver.act(0, 0, { kind: 'select', value: '2026-2' })
+    ).toEqual({
+      ok: false,
+      facts,
+      problem: 'select 요소가 아니에요.'
+    })
+
+    const source = (target.executeJavaScript as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as string
+    expect(source).toContain("if (target.tagName !== 'SELECT')")
+  })
+
+  test('a successful select dispatches both input and change events', async () => {
+    const target = frame({
+      ok: true,
+      facts: SELECT_FACTS,
+      problem: null,
+      options: []
+    })
+    const driver = createPageDriver({
+      frames: () => [target],
+      currentUrl: () => PAGE.url
+    })
+
+    await driver.act(0, 0, { kind: 'select', value: '2026-2' })
+    const source = (target.executeJavaScript as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as string
+    const selectSource = source.slice(
+      source.indexOf("if (input.action.kind === 'select')")
+    )
+    expect(selectSource).toContain("dispatchEvent(new Event('input'")
+    expect(selectSource).toContain("dispatchEvent(new Event('change'")
+    expect(selectSource.indexOf("new Event('input'")).toBeLessThan(
+      selectSource.indexOf("new Event('change'")
+    )
+  })
+
+  test('type reports a failure when the value is not reflected', async () => {
+    const target = frame({
+      ok: false,
+      facts: { ...SELECT_FACTS, tag: 'input', type: 'text' },
+      problem: '입력이 반영되지 않았어요.'
+    })
+    const driver = createPageDriver({
+      frames: () => [target],
+      currentUrl: () => PAGE.url
+    })
+
+    expect(await driver.act(0, 0, { kind: 'type', text: '해시' })).toEqual({
+      ok: false,
+      facts: { ...SELECT_FACTS, tag: 'input', type: 'text' },
+      problem: '입력이 반영되지 않았어요.'
+    })
+
+    const source = (target.executeJavaScript as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as string
+    expect(source).toContain('if (target.value !== input.action.text)')
+  })
+
   test('a thrown execution is a failure, not a crash', async () => {
     const driver = createPageDriver({
       frames: () => [frame(null, true)],
       currentUrl: () => PAGE.url
     })
-    expect((await driver.act(0, 0, { kind: 'click' })).ok).toBe(false)
+    expect(await driver.act(0, 0, { kind: 'click' })).toEqual({
+      ok: false,
+      facts: null,
+      problem: '페이지에서 실행하지 못했어요.'
+    })
   })
 })
 
@@ -197,6 +361,7 @@ describe('pageSurface typing path', () => {
       ],
       requestOpenTab: () => undefined,
       awaitTabFor: async () => 't1',
+      settle: async () => undefined,
       requestActivateTab: () => undefined,
       awaitTabRegister: async () => true,
       generations: { current: () => 1 } as never,
@@ -209,7 +374,9 @@ describe('pageSurface typing path', () => {
       }
     })
 
-    expect(await surface.act('t1', 0, 0, { kind: 'type', text: '해시' })).toBe(true)
+    expect(
+      (await surface.act('t1', 0, 0, { kind: 'type', text: '해시' })).ok
+    ).toBe(true)
     expect(insertText).toHaveBeenCalledWith('t1', '해시')
   })
 
@@ -231,6 +398,7 @@ describe('pageSurface typing path', () => {
       ],
       requestOpenTab: () => undefined,
       awaitTabFor: async () => 't1',
+      settle: async () => undefined,
       requestActivateTab: () => undefined,
       awaitTabRegister: async () => true,
       generations: { current: () => 1 } as never,
@@ -245,7 +413,9 @@ describe('pageSurface typing path', () => {
       }
     })
 
-    expect(await surface.act('t1', 0, 0, { kind: 'type', text: '해시' })).toBe(true)
+    expect(
+      (await surface.act('t1', 0, 0, { kind: 'type', text: '해시' })).ok
+    ).toBe(true)
     // Focus attempt + the real DOM-tier write.
     expect(calls).toBe(2)
   })

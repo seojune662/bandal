@@ -34,6 +34,7 @@ import {
   READ_SOURCE,
   renderSnapshot,
   SNAPSHOT_SOURCE,
+  TARGET_INDEX_SOURCE,
   type FrameSnapshot,
   type SnapshotElement
 } from './snapshot'
@@ -55,6 +56,15 @@ export interface SnapshotResult {
   outline: string
   /** Kept so an action need not re-read the page to know what it is touching. */
   frames: FrameSnapshot[]
+}
+
+export interface ActResult {
+  ok: boolean
+  facts: ElementFacts | null
+  /** ok === false 일 때, 학생/모델이 읽을 한국어 한 줄. */
+  problem: string | null
+  /** select 를 만졌을 때 그 요소가 실제로 제공하는 값들. */
+  options?: { value: string; label: string }[]
 }
 
 interface RawFrameResult {
@@ -146,26 +156,34 @@ export function createPageDriver(deps: PageDriverDeps) {
   async function act(
     frameIndex: number,
     elementIndex: number,
-    action: { kind: 'click' } | { kind: 'type'; text: string } | { kind: 'select'; value: string }
-  ): Promise<{ ok: boolean; facts: ElementFacts | null }> {
+    action:
+      | { kind: 'click' }
+      | { kind: 'type'; text: string }
+      | { kind: 'select'; value: string }
+  ): Promise<ActResult> {
     const frame = deps.frames()[frameIndex]
-    if (frame === undefined) return { ok: false, facts: null }
+    if (frame === undefined) {
+      return {
+        ok: false,
+        facts: null,
+        problem: '그 프레임을 찾지 못했어요.'
+      }
+    }
 
     const payload = JSON.stringify({ index: elementIndex, action })
     const source = `(() => {
       const input = ${payload};
-      const nodes = document.querySelectorAll('a[href], button, input, select, textarea, h1, h2, h3');
-      let seen = -1;
-      let target = null;
-      for (const node of nodes) {
-        const style = window.getComputedStyle(node);
-        if (style.display === 'none' || style.visibility === 'hidden') continue;
-        const rect = node.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) continue;
-        seen += 1;
-        if (seen === input.index) { target = node; break; }
-      }
-      if (!target) return { ok: false, facts: null };
+      ${TARGET_INDEX_SOURCE}
+      // The SAME enumeration the snapshot used. Three copies of this had
+      // drifted: this one did not filter \`opacity: 0\`, so one faded element
+      // shifted every ordinal and a click landed on the neighbouring row —
+      // reporting success.
+      const target = __bandalTargets()[input.index] || null;
+      if (!target) return {
+        ok: false,
+        facts: null,
+        problem: '그 요소를 찾지 못했어요. 페이지가 바뀌었을 수 있어요.'
+      };
       const tag = target.tagName.toLowerCase();
       const type = (target.getAttribute('type') || '').toLowerCase();
       const form = target.closest('form');
@@ -176,10 +194,10 @@ export function createPageDriver(deps: PageDriverDeps) {
         href: tag === 'a' ? target.getAttribute('href') : null,
         disabled: Boolean(target.disabled)
       };
-      if (input.action.kind === 'facts') return { ok: true, facts: facts };
+      if (input.action.kind === 'facts') return { ok: true, facts: facts, problem: null };
       if (input.action.kind === 'click') {
         target.click();
-        return { ok: true, facts: facts };
+        return { ok: true, facts: facts, problem: null };
       }
       if (input.action.kind === 'type') {
         const setter = Object.getOwnPropertyDescriptor(
@@ -190,27 +208,88 @@ export function createPageDriver(deps: PageDriverDeps) {
         else target.value = input.action.text;
         target.dispatchEvent(new Event('input', { bubbles: true }));
         target.dispatchEvent(new Event('change', { bubbles: true }));
-        return { ok: true, facts: facts };
+        if (target.value !== input.action.text) return {
+          ok: false,
+          facts: facts,
+          problem: '입력이 반영되지 않았어요.'
+        };
+        return { ok: true, facts: facts, problem: null };
       }
       if (input.action.kind === 'select') {
-        target.value = input.action.value;
+        if (target.tagName !== 'SELECT') return {
+          ok: false,
+          facts: facts,
+          problem: 'select 요소가 아니에요.'
+        };
+        const selectOptions = Array.from(target.options);
+        const options = selectOptions.slice(0, 200).map((option) => ({
+          value: option.value,
+          label: (option.textContent || '').trim().slice(0, 100)
+        }));
+        const wanted = input.action.value;
+        let selectedIndex = selectOptions.findIndex((option) => option.value === wanted);
+        if (selectedIndex < 0) {
+          const wantedLabel = wanted.trim();
+          selectedIndex = selectOptions.findIndex(
+            (option) => (option.textContent || '').trim() === wantedLabel
+          );
+        }
+        if (selectedIndex < 0) {
+          const normalizedWanted = wanted.replace(/\\s+/g, '');
+          selectedIndex = selectOptions.findIndex(
+            (option) => (option.textContent || '').replace(/\\s+/g, '') === normalizedWanted
+          );
+        }
+        if (selectedIndex < 0) return {
+          ok: false,
+          facts: facts,
+          problem: '그 값을 고를 수 없어요.',
+          options: options
+        };
+        const intendedValue = selectOptions[selectedIndex].value;
+        target.selectedIndex = selectedIndex;
+        target.dispatchEvent(new Event('input', { bubbles: true }));
         target.dispatchEvent(new Event('change', { bubbles: true }));
-        return { ok: true, facts: facts };
+        if (target.value !== intendedValue) return {
+          ok: false,
+          facts: facts,
+          problem: '값을 바꾸지 못했어요.',
+          options: options
+        };
+        return { ok: true, facts: facts, problem: null, options: options };
       }
-      return { ok: false, facts: facts };
+      return { ok: false, facts: facts, problem: '지원하지 않는 행동이에요.' };
     })()`
 
     try {
       const raw = (await frame.executeJavaScript(source)) as {
         ok?: unknown
         facts?: unknown
+        problem?: unknown
+        options?: unknown
       }
-      return {
+      const result: ActResult = {
         ok: raw?.ok === true,
-        facts: (raw?.facts ?? null) as ElementFacts | null
+        facts: (raw?.facts ?? null) as ElementFacts | null,
+        problem: typeof raw?.problem === 'string' ? raw.problem : null
       }
+      if (Array.isArray(raw?.options)) {
+        result.options = raw.options.flatMap((option) => {
+          if (typeof option !== 'object' || option === null) return []
+          const row = option as Record<string, unknown>
+          if (typeof row['value'] !== 'string' || typeof row['label'] !== 'string') {
+            return []
+          }
+          return [{ value: row['value'], label: row['label'] }]
+        })
+      }
+      return result
     } catch {
-      return { ok: false, facts: null }
+      return {
+        ok: false,
+        facts: null,
+        problem: '페이지에서 실행하지 못했어요.'
+      }
     }
   }
 

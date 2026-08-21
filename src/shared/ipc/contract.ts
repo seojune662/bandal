@@ -672,7 +672,12 @@ export interface IpcContract {
    * every `dom-ready`, so it is self-healing after a crash or a reattach.
    */
   'browserAgent:registerTab': {
-    req: { tabId: string; webContentsId: number }
+    req: {
+      tabId: string
+      webContentsId: number
+      /** Echoed from `browser:open-url` when the agent asked for this tab. */
+      openRequestId?: string
+    }
     res: { ok: true }
   }
   /**

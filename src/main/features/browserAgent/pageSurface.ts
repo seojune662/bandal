@@ -21,6 +21,8 @@ import { RunStopped } from './run'
 
 /** A tab that never registers is a tab the agent cannot use. */
 const OPEN_TIMEOUT_MS = 10_000
+/** Long enough for a portal redirect chain, short enough to not feel stuck. */
+const SETTLE_TIMEOUT_MS = 3_000
 /** Long enough for an OTP, short enough that a forgotten run ends. */
 const HANDOFF_TIMEOUT_MS = 5 * 60 * 1000
 
@@ -28,10 +30,23 @@ export interface PageSurfaceDeps {
   resolveGuest: (tabId: string) => GuestWebContents | null
   /** Frames of a guest, main frame first. */
   framesOf: (guest: GuestWebContents) => DriverFrame[]
-  /** Asks the renderer to open a browser tab at this URL. */
-  requestOpenTab: (url: string) => void
-  /** Resolves with the tabId once the renderer registers a guest for `url`. */
-  awaitTabFor: (url: string, timeoutMs: number) => Promise<string | null>
+  /**
+   * Asks the renderer for a tab and resolves with its id.
+   *
+   * One call, not a request plus a separate wait: the split is what made the
+   * two sides impossible to correlate, so main matched them by URL prefix and
+   * a redirecting portal reported a working tab as a failure.
+   */
+  requestTab: (url: string, timeoutMs: number) => Promise<string | null>
+  /**
+   * Waits for the page to stop moving after an action, bounded.
+   *
+   * There was NO wait anywhere in the agent path. A click is synchronous; the
+   * navigation it triggers is not — so the next snapshot ran against the old
+   * document, and because the generation counter only bumps on the renderer's
+   * `dom-ready` round trip, the stale outline still looked valid.
+   */
+  settle: (tabId: string, timeoutMs: number) => Promise<void>
   /** Asks the renderer to bring an existing tab forward. */
   requestActivateTab: (tabId: string) => void
   /** Resolves once that tab's guest has registered itself again. */
@@ -62,10 +77,48 @@ export function createPageSurface(deps: PageSurfaceDeps): PageSurface {
     })
   }
 
+  /**
+   * Lets the page finish whatever the action started, then reports the state
+   * the agent should reason about — not the one that existed a millisecond
+   * after the click.
+   */
+  async function settled(
+    tabId: string,
+    before: string,
+    result: { ok: boolean; problem?: string | null; options?: { value: string; label: string }[] }
+  ): Promise<{
+    ok: boolean
+    problem: string | null
+    options?: { value: string; label: string }[]
+    url: string
+    title: string
+    navigated: boolean
+  }> {
+    await deps.settle(tabId, SETTLE_TIMEOUT_MS)
+    const guest = deps.resolveGuest(tabId)
+    let url = before
+    let title = ''
+    if (guest !== null) {
+      try {
+        url = guest.getURL()
+        title = guest.getTitle()
+      } catch {
+        // Destroyed mid-settle; `before` is the last thing we knew.
+      }
+    }
+    return {
+      ok: result.ok,
+      problem: result.problem ?? null,
+      ...(result.options === undefined ? {} : { options: result.options }),
+      url,
+      title,
+      navigated: url !== before
+    }
+  }
+
   return {
     async openTab(url) {
-      deps.requestOpenTab(url)
-      const tabId = await deps.awaitTabFor(url, OPEN_TIMEOUT_MS)
+      const tabId = await deps.requestTab(url, OPEN_TIMEOUT_MS)
       if (tabId === null) {
         throw new Error('탭을 여는 데 실패했어요.')
       }
@@ -116,7 +169,16 @@ export function createPageSurface(deps: PageSurfaceDeps): PageSurface {
 
     async act(tabId, frameIndex, elementIndex, action) {
       const driver = driverFor(tabId)
-      if (driver === null) return false
+      if (driver === null) {
+        return {
+          ok: false,
+          problem: '그 탭을 찾지 못했어요.',
+          url: '',
+          title: '',
+          navigated: false
+        }
+      }
+      const before = this.currentUrl(tabId) ?? ''
 
       if (action.kind === 'type' && deps.insertText !== undefined) {
         // The reason CDP exists here. `Input.insertText` commits text the way
@@ -131,17 +193,25 @@ export function createPageSurface(deps: PageSurfaceDeps): PageSurface {
           kind: 'type',
           text: ''
         })
-        if (!focused.ok) return false
+        if (!focused.ok) {
+          return {
+            ok: false,
+            problem: focused.problem ?? '그 요소에 입력하지 못했어요.',
+            url: before,
+            title: '',
+            navigated: false
+          }
+        }
         try {
           await deps.insertText(tabId, action.text)
-          return true
+          return settled(tabId, before, { ok: true, problem: null })
         } catch {
           // Degrade, do not fail.
         }
       }
 
       const result = await driver.act(frameIndex, elementIndex, action)
-      return result.ok
+      return settled(tabId, before, result)
     },
 
     async handoff(tabId, message) {

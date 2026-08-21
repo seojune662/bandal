@@ -20,6 +20,7 @@ import { useNewTabMenu } from '../workspace/newTabMenuController'
 import { BrowserGuestView } from './BrowserGuestView'
 import { useBrowserGuests } from './browserGuestsStore'
 import { useActivateTabRequests, useAgentTabSync } from './agentTabSync'
+import { rememberOpenRequest } from './guestActions'
 import {
   isPointerPassthroughActive,
   onPointerPassthrough
@@ -61,11 +62,16 @@ function useGuestReaper(): void {
 function useOpenUrlForwarding(): void {
   useEffect(
     () =>
-      onPush('browser:open-url', ({ url, background }) => {
+      onPush('browser:open-url', ({ url, background, requestId }) => {
+        const tabId = uuidv4()
+        // Main matched the new tab to the agent's request by URL prefix, which
+        // a redirect breaks. Remember which request this tab belongs to so the
+        // guest can say so when it registers.
+        if (requestId !== undefined) rememberOpenRequest(tabId, requestId)
         useWorkspaceStore
           .getState()
           .openTab(
-            descriptorFor('browser', { tabId: uuidv4(), initialUrl: url }),
+            descriptorFor('browser', { tabId, initialUrl: url }),
             background === true ? { background: true } : undefined
           )
       }),

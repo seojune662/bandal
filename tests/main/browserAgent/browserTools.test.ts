@@ -338,7 +338,13 @@ describe('browser tools (read-only)', () => {
           href: '/f/1.pdf',
           disabled: false
         })),
-        act: vi.fn(async () => true),
+        act: vi.fn(async () => ({
+          ok: true,
+          problem: null,
+          url: `${ORIGIN}/w3`,
+          title: '3주차',
+          navigated: false
+        })),
         currentUrl: () => `${ORIGIN}/w3`,
         handoff: vi.fn(async () => 'resumed' as const),
         assertLive: vi.fn(),
@@ -529,7 +535,13 @@ describe('browser tools (read-only)', () => {
           href: null,
           disabled: false
         })),
-        act: vi.fn(async () => true),
+        act: vi.fn(async () => ({
+          ok: true,
+          problem: null,
+          url: `${ORIGIN}/w3`,
+          title: '3주차',
+          navigated: false
+        })),
         currentUrl: () => `${ORIGIN}/w3`,
         handoff: vi.fn(async () => 'resumed' as const),
         assertLive: vi.fn(),

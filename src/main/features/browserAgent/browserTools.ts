@@ -153,6 +153,15 @@ export interface PageSurface {
     frameIndex: number,
     elementIndex: number
   ) => Promise<ElementFacts | null>
+  /**
+   * Acts, waits for the page to settle, and says what happened.
+   *
+   * It used to return a bare boolean, so a click that navigated and a click
+   * that did nothing were the same answer — and the next snapshot was taken
+   * against whichever document happened to be committed at that instant,
+   * usually the old one, under a generation that still looked valid. A
+   * confident wrong picture instead of an error.
+   */
   act: (
     tabId: string,
     frameIndex: number,
@@ -161,7 +170,7 @@ export interface PageSurface {
       | { kind: 'click' }
       | { kind: 'type'; text: string }
       | { kind: 'select'; value: string }
-  ) => Promise<boolean>
+  ) => Promise<ActOutcome>
   currentUrl: (tabId: string) => string | null
   /** Suspends the run and asks the student to take over. */
   handoff: (tabId: string, message: string) => Promise<'resumed' | 'stopped'>
@@ -169,6 +178,19 @@ export interface PageSurface {
   assertLive: () => void
   /** Updates the strip the student is reading. */
   step: (action: string, url?: string) => void
+}
+
+export interface ActOutcome {
+  ok: boolean
+  /** Korean, one line, when `ok` is false. */
+  problem: string | null
+  /** What a `<select>` actually offers, so a failed pick can be retried. */
+  options?: { value: string; label: string }[]
+  /** The page AFTER settling. */
+  url: string
+  title: string
+  /** The document changed — every outstanding ref is dead. */
+  navigated: boolean
 }
 
 export interface LmsCoursePageResult {
@@ -510,7 +532,20 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         | { kind: 'click' }
         | { kind: 'type'; text: string }
         | { kind: 'select'; value: string }
-    ): Promise<{ status: 'ok' } | { status: 'error'; message: string }> {
+    ): Promise<
+      | {
+          status: 'ok'
+          url: string
+          title: string
+          navigated: boolean
+          options?: { value: string; label: string }[]
+        }
+      | {
+          status: 'error'
+          message: string
+          options?: { value: string; label: string }[]
+        }
+    > {
       const page = deps.page
       if (page === undefined) {
         return { status: 'error', message: '이 대화에서는 페이지를 조작할 수 없어요.' }
@@ -544,13 +579,22 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         return { status: 'error', message: verdict.message }
       }
 
-      const ok = await page.act(
+      const outcome = await page.act(
         tabId,
         resolved.frameIndex,
         resolved.elementIndex,
         action
       )
-      if (!ok) return { status: 'error', message: '동작을 실행하지 못했어요.' }
+      if (!outcome.ok) {
+        // The page's own answer, not a generic failure — "그 값을 고를 수
+        // 없어요" plus the options it does offer is actionable; "동작을
+        // 실행하지 못했어요" is not.
+        return {
+          status: 'error',
+          message: outcome.problem ?? '동작을 실행하지 못했어요.',
+          ...(outcome.options === undefined ? {} : { options: outcome.options })
+        }
+      }
 
       // Typed text is audited through the same redaction as everything else,
       // and a password field never reaches here at all (actionPolicy).
@@ -560,9 +604,18 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
           : action.kind === 'select'
             ? `select ${action.value}`
             : `click ${facts.tag} "${facts.href ?? ''}"`
-      audit('navigate', url, detail)
-      page.step('페이지를 조작하는 중', url)
-      return { status: 'ok' }
+      audit('navigate', outcome.url, detail)
+      page.step('페이지를 조작하는 중', outcome.url)
+      // The page AFTER settling, and whether the document changed. Without
+      // this the model had no way to learn a click had navigated, so it
+      // snapshotted the old document under a still-valid generation.
+      return {
+        status: 'ok',
+        url: outcome.url,
+        title: outcome.title,
+        navigated: outcome.navigated,
+        ...(outcome.options === undefined ? {} : { options: outcome.options })
+      }
     },
 
     /**

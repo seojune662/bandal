@@ -28,6 +28,7 @@ import { resolveInside } from '../db/validate'
 import { matchCourseByUrl } from '../../shared/universities/matchCourseByUrl'
 import { resolveUniversity } from '../../shared/universities'
 import type { LmsPlatform } from '../../shared/types/university'
+import { TARGET_INDEX_SOURCE } from '../features/browserAgent/snapshot'
 import {
   createAuditRepo,
   createBrowserTools,
@@ -706,6 +707,8 @@ export function registerHandlers(): IpcRouter {
   const browserAudit = createAuditRepo(db)
   browserAudit.prune()
   const browserSeen = createSeenRepo(db)
+  /** One beat after a load ends, so the new document has committed. */
+  const SETTLE_QUIET_MS = 150
 
   const browserToolsFor = (
     courseId: string,
@@ -751,21 +754,72 @@ export function registerHandlers(): IpcRouter {
             executeJavaScript: (code: string) => frame.executeJavaScript(code)
           }))
         },
-        requestOpenTab: (url) => {
-          // Opening a page IS the start of a run — from here on the student
-          // has a strip and a 중지 button on the tab being driven.
-          if (browserRuns.forCourse(courseId) === null) {
-            browserRuns.start(courseId, '', '페이지를 여는 중', url)
-          }
-          broadcast('browser:open-url', { url })
-        },
-        awaitTabFor: (url, timeoutMs) =>
+        requestTab: (url, timeoutMs) =>
           new Promise((resolve) => {
-            const pending = { url, resolve }
-            pendingTabOpens.add(pending)
+            const requestId = randomUUID()
+            // Opening a page IS the start of a run — from here on the student
+            // has a strip and a 중지 button on the tab being driven.
+            let runId: string | null =
+              browserRuns.forCourse(courseId)?.runId ?? null
+            if (runId === null) {
+              runId = browserRuns.start(courseId, '', '페이지를 여는 중', url)
+                .runId
+            }
+            pendingTabOpens.set(requestId, { resolve, runId })
+            broadcast('browser:open-url', { url, requestId })
             setTimeout(() => {
-              if (pendingTabOpens.delete(pending)) resolve(null)
+              const pending = pendingTabOpens.get(requestId)
+              if (pending === undefined) return
+              pendingTabOpens.delete(requestId)
+              // The run was started for a tab that never arrived. Ending it
+              // stops a 중지 strip from outliving the attempt, bound to
+              // nothing, for the rest of the session.
+              if (pending.runId !== null) browserRuns.finish(pending.runId)
+              resolve(null)
             }, timeoutMs)
+          }),
+        /**
+         * Resolve once the guest has stopped moving, or the budget runs out.
+         *
+         * A click is synchronous; the navigation it starts is not. Without
+         * this the next snapshot read the OLD document — and since the ref
+         * generation only bumps on the renderer's `dom-ready` round trip, the
+         * stale outline still looked valid. A confident wrong picture.
+         */
+        settle: (tabId, timeoutMs) =>
+          new Promise<void>((resolve) => {
+            const guest = guestRegistry.resolve(tabId)
+            if (guest === null) {
+              resolve()
+              return
+            }
+            const contents = guest as unknown as Electron.WebContents
+            let done = false
+            const finish = (): void => {
+              if (done) return
+              done = true
+              clearTimeout(budget)
+              contents.off('did-stop-loading', onStop)
+              resolve()
+            }
+            // A short beat after the load ends: the new document commits and
+            // its first paint lands just after the event.
+            const onStop = (): void => {
+              setTimeout(finish, SETTLE_QUIET_MS)
+            }
+            const budget = setTimeout(finish, timeoutMs)
+            try {
+              if (!contents.isLoading()) {
+                // Nothing navigated — give the page one beat for a JS-driven
+                // DOM change, then report.
+                setTimeout(finish, SETTLE_QUIET_MS)
+                return
+              }
+            } catch {
+              finish()
+              return
+            }
+            contents.on('did-stop-loading', onStop)
           }),
         requestActivateTab: (tabId) => {
           broadcast('browser:activate-tab', { tabId })
@@ -827,19 +881,14 @@ export function registerHandlers(): IpcRouter {
           const wc = guest as unknown as Electron.WebContents
           const frame = wc.mainFrame.framesInSubtree[frameIndex]
           if (frame === undefined) return false
-          // Located exactly the way the snapshot indexed it.
+          // The SAME enumeration the snapshot indexed with — this was the
+          // third hand-written copy of it, and the copies had drifted.
           const source = `(() => {
-            const nodes = document.querySelectorAll('a[href], button, input, select, textarea, h1, h2, h3');
-            let seen = -1;
-            for (const node of nodes) {
-              const style = window.getComputedStyle(node);
-              if (style.display === 'none' || style.visibility === 'hidden') continue;
-              const rect = node.getBoundingClientRect();
-              if (rect.width <= 0 || rect.height <= 0) continue;
-              seen += 1;
-              if (seen === ${elementIndex}) { node.click(); return true; }
-            }
-            return false;
+            ${TARGET_INDEX_SOURCE}
+            const target = __bandalTargets()[${elementIndex}];
+            if (!target) return false;
+            target.click();
+            return true;
           })()`
           try {
             return (await frame.executeJavaScript(source)) === true
@@ -916,11 +965,20 @@ export function registerHandlers(): IpcRouter {
   })
   const generations = new GenerationTracker()
 
-  /** Resolvers waiting for a tab the agent asked the renderer to open. */
-  const pendingTabOpens = new Set<{
-    url: string
-    resolve: (tabId: string | null) => void
-  }>()
+  /**
+   * Resolvers waiting for a tab the agent asked the renderer to open.
+   *
+   * Keyed by a request id, NOT by URL. Prefix matching could not survive a
+   * host change, so a portal that redirects — 서울대's my.snu → shine.snu —
+   * made `browser_open` report failure about a tab that had opened fine, and
+   * left an orphan run bound to no tab. It also had a hole: a guest that
+   * failed to resolve gave `url === ''`, and `pending.url.startsWith('')` is
+   * always true, so ONE bad registration resolved EVERY outstanding open.
+   */
+  const pendingTabOpens = new Map<
+    string,
+    { resolve: (tabId: string | null) => void; runId: string | null }
+  >()
   /** Resolvers waiting on a student who was handed the wheel. */
   const pendingResumes = new Map<
     string,
@@ -979,19 +1037,14 @@ export function registerHandlers(): IpcRouter {
     guestRegistry.register(req.tabId, req.webContentsId)
     // A fresh attach means a fresh document: every outstanding ref dies.
     generations.invalidate(req.tabId)
-    const guest = guestRegistry.resolve(req.tabId)
-    const url = guest === null ? '' : guest.getURL()
-    for (const pending of [...pendingTabOpens]) {
-      // Match loosely: the guest may already have redirected past the URL we
-      // asked for, which is normal on a portal.
-      if (url.startsWith(pending.url) || pending.url.startsWith(url)) {
-        pendingTabOpens.delete(pending)
+    const openRequestId = req.openRequestId
+    if (openRequestId !== undefined) {
+      const pending = pendingTabOpens.get(openRequestId)
+      if (pending !== undefined) {
+        pendingTabOpens.delete(openRequestId)
         // The strip belongs to the tab that just appeared.
-        for (const state of browserRuns.all()) {
-          if (state.tabId === '') {
-            browserRuns.attachTab(state.runId, req.tabId)
-            break
-          }
+        if (pending.runId !== null) {
+          browserRuns.attachTab(pending.runId, req.tabId)
         }
         pending.resolve(req.tabId)
       }

@@ -20,6 +20,18 @@ const elements = new Map<string, WebviewTag>()
  */
 const tabIdByWebContents = new Map<number, string>()
 
+/**
+ * Which agent request asked for this tab, until its guest registers.
+ *
+ * Consumed once: a later re-registration (every `dom-ready`) must not
+ * re-resolve a request that was already answered.
+ */
+const openRequestByTab = new Map<string, string>()
+
+export function rememberOpenRequest(tabId: string, requestId: string): void {
+  openRequestByTab.set(tabId, requestId)
+}
+
 export function registerGuestElement(tabId: string, element: WebviewTag): void {
   elements.set(tabId, element)
 }
@@ -31,11 +43,16 @@ export function registerGuestWebContents(tabId: string, element: WebviewTag): vo
     tabIdByWebContents.set(webContentsId, tabId)
     // Main only ever sees a WebContents id, so it needs the same mapping to
     // let the agent address a tab. Re-sent per dom-ready: self-healing.
-    void invoke('browserAgent:registerTab', { tabId, webContentsId }).catch(
-      () => {
-        // The agent simply cannot reach this tab; nothing to surface.
-      }
-    )
+    const openRequestId = openRequestByTab.get(tabId)
+    openRequestByTab.delete(tabId)
+    void invoke('browserAgent:registerTab', {
+      tabId,
+      webContentsId,
+      // `exactOptionalPropertyTypes`: the key must be absent, not undefined.
+      ...(openRequestId === undefined ? {} : { openRequestId })
+    }).catch(() => {
+      // The agent simply cannot reach this tab; nothing to surface.
+    })
   } catch {
     // Detached again already — the next dom-ready re-registers it.
   }

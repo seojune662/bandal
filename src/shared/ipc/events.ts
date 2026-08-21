@@ -56,6 +56,17 @@ export interface MaterialsChanged {
 export interface BrowserOpenUrl {
   url: string
   /**
+   * Set when the AGENT asked for this tab.
+   *
+   * Main used to match the new tab to the request by URL prefix, which cannot
+   * survive a host change — 서울대's `my.snu.ac.kr` redirects to
+   * `shine.snu.ac.kr`, so neither string is a prefix of the other, the wait
+   * timed out, and `browser_open` reported "탭을 여는 데 실패했어요" about a
+   * tab that had opened and was working. The agent only found it by chance,
+   * later, through `browser_tabs`.
+   */
+  requestId?: string
+  /**
    * ⌘-click / middle-click. Chrome opens these behind the current tab;
    * yanking focus five times while a student queues up five 공지 links is
    * exactly what the modifier exists to avoid.

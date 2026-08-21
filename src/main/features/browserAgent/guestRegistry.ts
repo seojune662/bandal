@@ -12,6 +12,7 @@ export interface GuestWebContents {
   id: number
   getType: () => string
   getURL: () => string
+  getTitle: () => string
   isDestroyed: () => boolean
   session: { storagePath?: string } | unknown
 }
