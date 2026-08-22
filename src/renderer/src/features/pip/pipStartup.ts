@@ -22,7 +22,7 @@ export async function syncInitialPipState({
   applySeek({
     positionSec: state.positionSec,
     playbackRate: state.playbackRate,
-    play: true
+    play: !state.paused
   })
 }
 

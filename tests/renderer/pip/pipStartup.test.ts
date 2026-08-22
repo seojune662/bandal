@@ -15,7 +15,8 @@ const initialState: PipState = {
     title: '강의'
   },
   positionSec: 1.5,
-  playbackRate: 1.25
+  playbackRate: 1.25,
+  paused: false
 }
 
 describe('PiP startup synchronization', () => {
@@ -30,6 +31,21 @@ describe('PiP startup synchronization', () => {
       positionSec: 1.5,
       playbackRate: 1.25,
       play: true
+    })
+  })
+
+  test('keeps a paused open request paused during bootstrap', async () => {
+    const applySeek = vi.fn()
+
+    await syncInitialPipState({
+      getState: async () => ({ ...initialState, paused: true }),
+      applySeek
+    })
+
+    expect(applySeek).toHaveBeenCalledWith({
+      positionSec: 1.5,
+      playbackRate: 1.25,
+      play: false
     })
   })
 

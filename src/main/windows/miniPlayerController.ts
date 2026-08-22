@@ -113,7 +113,8 @@ export function createMiniPlayerController(
     open: active !== null,
     source: active?.source ?? null,
     positionSec,
-    playbackRate
+    playbackRate,
+    paused
   })
 
   const broadcastState = (): void => {

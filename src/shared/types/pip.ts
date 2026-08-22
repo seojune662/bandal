@@ -14,6 +14,7 @@ export interface PipState {
   source: PipSource | null
   positionSec: number
   playbackRate: number
+  paused: boolean
 }
 
 /** 돌아가기 시 원래 자리로 넘기는 페이로드 */

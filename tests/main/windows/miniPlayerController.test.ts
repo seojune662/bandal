@@ -246,7 +246,8 @@ describe('createMiniPlayerController', () => {
       open: false,
       source: null,
       positionSec: 0,
-      playbackRate: 1
+      playbackRate: 1,
+      paused: true
     })
   })
 
@@ -263,7 +264,8 @@ describe('createMiniPlayerController', () => {
     subject.controller.open({
       source: WEB_SOURCE,
       positionSec: 40,
-      playbackRate: 1.5
+      playbackRate: 1.5,
+      paused: false
     })
 
     expect(first.close).toHaveBeenCalledOnce()
@@ -272,7 +274,8 @@ describe('createMiniPlayerController', () => {
       open: true,
       source: WEB_SOURCE,
       positionSec: 40,
-      playbackRate: 1.5
+      playbackRate: 1.5,
+      paused: false
     })
   })
 
@@ -282,14 +285,17 @@ describe('createMiniPlayerController', () => {
     subject.controller.open({
       source: LOCAL_SOURCE,
       positionSec: 10,
-      playbackRate: 1
+      playbackRate: 1,
+      paused: true
     })
+    expect(subject.controller.getState().paused).toBe(true)
     subject.controller.report({
       positionSec: 81.5,
       playbackRate: 1.75,
       paused: false,
       aspect: 4 / 3
     })
+    expect(subject.controller.getState().paused).toBe(false)
 
     subject.controller.restore()
 
@@ -371,6 +377,7 @@ describe('createMiniPlayerController', () => {
       playbackRate: 2,
       paused: true
     })
+    expect(subject.controller.getState().paused).toBe(true)
 
     window.webContents.emit('did-finish-load')
     expect(subject.broadcast).toHaveBeenCalledWith('pip:seek', {
