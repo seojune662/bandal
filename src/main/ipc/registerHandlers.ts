@@ -1863,7 +1863,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   handle('search:query', (req) => {
     // Notes and text files are cheap to re-read; PDFs arrive from the renderer.
-    searchIndex.refreshTextFiles(req.courseId)
     return { hits: searchIndex.query(req.courseId, req.query, req.limit) }
   })
   handle('search:indexPdfPages', (req) => {

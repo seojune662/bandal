@@ -57,6 +57,17 @@ SOFTWARE.
 
 ---
 
+## SheetJS CE (vendored package)
+
+- Version: 0.20.3
+- Source: <https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz>
+- License: Apache-2.0
+
+The upstream tarball is shipped unmodified at `vendor/xlsx-0.20.3.tgz`; its
+Apache-2.0 license text is included in the archive as `package/LICENSE`.
+
+---
+
 ## Noto Sans KR (bundled font)
 
 - Source: <https://github.com/notofonts/noto-cjk> (`Sans/SubsetOTF/KR/NotoSansKR-Regular.otf`)

@@ -5,6 +5,8 @@ macOS·Windows 설치 파일을 만들고, 새 버전이 나오면 앱이 스스
 관련 파일: `electron-builder.yml`, `.github/workflows/release.yml`,
 `src/main/features/updater/`, `resources/entitlements.mac.plist`.
 
+v0.26.0부터 macOS 12 이상과 Electron 43을 지원한다.
+
 ---
 
 ## 1. 한 줄 요약

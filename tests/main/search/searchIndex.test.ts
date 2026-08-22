@@ -1,10 +1,11 @@
 import {
   mkdirSync,
+  readFileSync,
   unlinkSync,
   writeFileSync
 } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { ValidationError } from '../../../src/main/db/errors'
 import {
   contentSearchKey,
@@ -33,6 +34,20 @@ describe('course content search index', () => {
   afterEach(() => {
     ctx.cleanup()
   })
+
+  function createInstrumentedIndex(): {
+    instrumentedIndex: SearchIndex
+    readTextFile: ReturnType<typeof vi.fn<(path: string) => string>>
+  } {
+    const readTextFile = vi.fn((path: string) => readFileSync(path, 'utf8'))
+    return {
+      instrumentedIndex: createSearchIndex(ctx.db, {
+        getCourseFolder: () => courseFolder,
+        readTextFile
+      }),
+      readTextFile
+    }
+  }
 
   test('uses the trigram tokenizer bundled with better-sqlite3', () => {
     const sql = ctx.db
@@ -68,14 +83,113 @@ describe('course content search index', () => {
     })
   })
 
-  test('refreshes note and text files on every query', () => {
+  test('does not read unchanged text files on the second query', () => {
+    const { instrumentedIndex, readTextFile } = createInstrumentedIndex()
+    writeFileSync(join(courseFolder, 'one.md'), '첫 번째 내용')
+    writeFileSync(join(courseFolder, 'two.txt'), '두 번째 내용')
+
+    expect(instrumentedIndex.query('course-1', '내용')).toHaveLength(2)
+    expect(readTextFile).toHaveBeenCalledTimes(2)
+    readTextFile.mockClear()
+
+    expect(instrumentedIndex.query('course-1', '내용')).toHaveLength(2)
+    expect(readTextFile).not.toHaveBeenCalled()
+  })
+
+  test('reindexes only the text file whose metadata changed', () => {
+    const { instrumentedIndex, readTextFile } = createInstrumentedIndex()
     writeFileSync(join(courseFolder, 'live.md'), '첫 번째 내용')
-    expect(index.query('course-1', '첫 번째')).toHaveLength(1)
+    writeFileSync(join(courseFolder, 'stable.txt'), '계속 유지되는 내용')
+    expect(instrumentedIndex.query('course-1', '내용')).toHaveLength(2)
+    readTextFile.mockClear()
 
-    writeFileSync(join(courseFolder, 'live.md'), '운영체제 교착상태')
+    writeFileSync(join(courseFolder, 'live.md'), '운영체제 교착상태로 변경된 긴 내용')
 
-    expect(index.query('course-1', '첫 번째')).toHaveLength(0)
-    expect(index.query('course-1', '교착상태')[0]?.relPath).toBe('live.md')
+    expect(instrumentedIndex.query('course-1', '교착상태')[0]?.relPath).toBe(
+      'live.md'
+    )
+    expect(readTextFile).toHaveBeenCalledTimes(1)
+    expect(readTextFile).toHaveBeenCalledWith(join(courseFolder, 'live.md'))
+    expect(instrumentedIndex.query('course-1', '첫 번째')).toHaveLength(0)
+  })
+
+  test('removes a deleted text file without rereading unchanged files', () => {
+    const { instrumentedIndex, readTextFile } = createInstrumentedIndex()
+    const deletedPath = join(courseFolder, 'deleted.md')
+    writeFileSync(deletedPath, '삭제될 본문')
+    writeFileSync(join(courseFolder, 'stable.md'), '남아 있는 본문')
+    expect(instrumentedIndex.query('course-1', '본문')).toHaveLength(2)
+    readTextFile.mockClear()
+
+    unlinkSync(deletedPath)
+
+    expect(instrumentedIndex.query('course-1', '삭제될')).toHaveLength(0)
+    expect(readTextFile).not.toHaveBeenCalled()
+    const count = ctx.db
+      .prepare(
+        `SELECT count(*) AS count FROM course_content_fts
+         WHERE course_id = ? AND rel_path = ?`
+      )
+      .get('course-1', 'deleted.md') as { count: number }
+    expect(count.count).toBe(0)
+  })
+
+  test('skips and warns about text files larger than two megabytes', () => {
+    const readTextFile = vi.fn((path: string) => readFileSync(path, 'utf8'))
+    const logger = { warn: vi.fn() }
+    const boundedIndex = createSearchIndex(ctx.db, {
+      getCourseFolder: () => courseFolder,
+      readTextFile,
+      logger
+    })
+    writeFileSync(
+      join(courseFolder, 'oversized.txt'),
+      Buffer.alloc(2 * 1024 * 1024 + 1, 'a')
+    )
+
+    expect(boundedIndex.query('course-1', 'aaa')).toHaveLength(0)
+    expect(readTextFile).not.toHaveBeenCalled()
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('over 2097152 bytes')
+    )
+  })
+
+  test('stops and warns before scanning beyond depth ten', () => {
+    const logger = { warn: vi.fn() }
+    const boundedIndex = createSearchIndex(ctx.db, {
+      getCourseFolder: () => courseFolder,
+      logger
+    })
+    const tooDeep = join(
+      courseFolder,
+      ...Array.from({ length: 11 }, (_, index) => `depth-${index + 1}`)
+    )
+    mkdirSync(tooDeep, { recursive: true })
+    writeFileSync(join(tooDeep, 'hidden.txt'), '깊이 제한 본문')
+
+    expect(boundedIndex.query('course-1', '깊이 제한')).toHaveLength(0)
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('beyond depth 10')
+    )
+  })
+
+  test('stops and warns after scanning five thousand files', () => {
+    const logger = { warn: vi.fn() }
+    const boundedIndex = createSearchIndex(ctx.db, {
+      getCourseFolder: () => courseFolder,
+      logger
+    })
+    for (let index = 0; index <= 5_000; index += 1) {
+      writeFileSync(
+        join(courseFolder, `unsupported-${String(index).padStart(4, '0')}.bin`),
+        ''
+      )
+    }
+
+    expect(boundedIndex.query('course-1', '없는 내용')).toHaveLength(0)
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('stopped after 5000 files')
+    )
   })
 
   test('indexes PDF pages without parsing the PDF in main', () => {

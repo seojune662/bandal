@@ -257,11 +257,12 @@ export function sanitizeGuestWebPreferences(
   // Chromium's built-in PDF viewer. Electron defaults `plugins` to false,
   // which meant a .pdf link downloaded instead of rendering and every
   // <embed type="application/pdf"> came up blank — while Safari and Chrome
-  // both show it. In Electron 35 (Chromium 134) this flag enables PDFium and
-  // nothing else: NPAPI went in Chromium 45, PPAPI/Flash in 88. PDFium itself
-  // runs out-of-process in Chromium's own sandbox, the same posture Chrome
-  // ships. Nothing here touches preload, node integration, webSecurity or the
-  // partition allowlist.
+  // both show it. In Electron 43 (Chromium 150) this flag enables PDFium and
+  // nothing else: NPAPI went in Chromium 45, PPAPI/Flash in 88. Since Electron
+  // 41, PDFs render as out-of-process iframes (OOPIFs), not as separate
+  // WebContents. PDFium remains sandboxed, matching Chrome's posture. Nothing
+  // here touches preload, node integration, webSecurity or the partition
+  // allowlist.
   //
   // It also makes `navigator.pdfViewerEnabled` true and `navigator.plugins`
   // non-empty, which legacy Korean report viewers branch on.

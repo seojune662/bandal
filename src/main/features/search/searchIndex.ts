@@ -11,7 +11,8 @@ import {
   existsSync,
   lstatSync,
   readdirSync,
-  readFileSync
+  readFileSync,
+  statSync
 } from 'node:fs'
 import { extname, join, posix } from 'node:path'
 import type { Database } from 'better-sqlite3'
@@ -32,6 +33,9 @@ const DEFAULT_LIMIT = 30
 const MAX_LIMIT = 100
 const SNIPPET_MAX_CHARS = 160
 const FTS_OVERFETCH_FACTOR = 8
+const MAX_SCANNED_FILES = 5_000
+const MAX_SCAN_DEPTH = 10
+const MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024
 
 const NOTE_EXTENSIONS = new Set(['.md', '.markdown'])
 const TEXT_EXTENSIONS = new Set([
@@ -65,8 +69,25 @@ interface TextDocument {
   body: string
 }
 
+interface TextFileMetadata {
+  mtimeMs: number
+  size: number
+}
+
+interface TextDocumentScan {
+  changed: TextDocument[]
+  removed: string[]
+  metadata: Map<string, TextFileMetadata>
+}
+
+interface SearchIndexDeps {
+  getCourseFolder: (courseId: string) => string
+  readTextFile?: (path: string) => string
+  logger?: Pick<Console, 'warn'>
+}
+
 export interface SearchIndex {
-  /** Re-reads notes/text files for the course. Cheap enough to call on query. */
+  /** Refreshes changed notes/text files for the course. */
   refreshTextFiles(courseId: string): void
   indexPdfPages(input: {
     courseId: string
@@ -89,44 +110,106 @@ function kindForTextFile(name: string): 'note' | 'text' | null {
   return TEXT_EXTENSIONS.has(extension) ? 'text' : null
 }
 
-function scanTextDocuments(root: string): TextDocument[] {
-  if (!existsSync(root)) return []
-  const documents: TextDocument[] = []
+function scanTextDocuments(
+  root: string,
+  previousMetadata: Map<string, TextFileMetadata>,
+  readTextFile: (path: string) => string,
+  logger: Pick<Console, 'warn'>
+): TextDocumentScan {
+  const changed: TextDocument[] = []
+  const removed = new Set<string>()
+  const metadata = new Map(previousMetadata)
+  const visitedTextPaths = new Set<string>()
+  let scannedFiles = 0
+  let fileLimitReached = false
 
-  function walk(absDir: string, relDir: string): void {
+  function walk(absDir: string, relDir: string, depth: number): void {
     let entries
     try {
       entries = readdirSync(absDir, { withFileTypes: true })
-    } catch {
+    } catch (error) {
+      logger.warn(`[search-index] failed to read directory: ${absDir}`, error)
       return
     }
 
     for (const entry of entries) {
+      if (fileLimitReached) return
       if (entry.name.startsWith('.')) continue
       const relPath = relDir === '' ? entry.name : posix.join(relDir, entry.name)
       const absPath = join(absDir, entry.name)
       if (entry.isDirectory()) {
-        walk(absPath, relPath)
+        if (depth >= MAX_SCAN_DEPTH) {
+          logger.warn(
+            `[search-index] skipped directory beyond depth ${MAX_SCAN_DEPTH}: ${relPath}`
+          )
+          continue
+        }
+        walk(absPath, relPath, depth + 1)
         continue
       }
       if (!entry.isFile()) continue
+      if (scannedFiles >= MAX_SCANNED_FILES) {
+        fileLimitReached = true
+        logger.warn(
+          `[search-index] stopped after ${MAX_SCANNED_FILES} files in ${root}`
+        )
+        return
+      }
+      scannedFiles += 1
       const kind = kindForTextFile(entry.name)
       if (kind === null) continue
+      visitedTextPaths.add(relPath)
+
+      let fileMetadata: TextFileMetadata
       try {
-        documents.push({
+        const stats = statSync(absPath)
+        fileMetadata = { mtimeMs: stats.mtimeMs, size: stats.size }
+      } catch (error) {
+        logger.warn(`[search-index] failed to stat text file: ${absPath}`, error)
+        continue
+      }
+
+      const previous = previousMetadata.get(relPath)
+      const isUnchanged =
+        previous?.mtimeMs === fileMetadata.mtimeMs &&
+        previous.size === fileMetadata.size
+      if (isUnchanged) continue
+
+      if (fileMetadata.size > MAX_TEXT_FILE_BYTES) {
+        logger.warn(
+          `[search-index] skipped text file over ${MAX_TEXT_FILE_BYTES} bytes: ${relPath}`
+        )
+        metadata.set(relPath, fileMetadata)
+        removed.add(relPath)
+        continue
+      }
+
+      try {
+        changed.push({
           relPath,
           kind,
-          body: readFileSync(absPath, 'utf8').normalize('NFC')
+          body: readTextFile(absPath).normalize('NFC')
         })
-      } catch {
+        metadata.set(relPath, fileMetadata)
+      } catch (error) {
         // A file may disappear or become unreadable during the scan. Search is
         // a cache refresh, so one bad file must not block the user's query.
+        logger.warn(`[search-index] failed to read text file: ${absPath}`, error)
       }
     }
   }
 
-  walk(root, '')
-  return documents
+  if (existsSync(root)) walk(root, '', 0)
+
+  // A scan cap can leave live paths unvisited, so absence from this scan alone
+  // is not proof of deletion. Verify cached paths before removing their rows.
+  for (const relPath of previousMetadata.keys()) {
+    if (visitedTextPaths.has(relPath) || isLiveRegularFile(root, relPath)) continue
+    metadata.delete(relPath)
+    removed.add(relPath)
+  }
+
+  return { changed, removed: [...removed], metadata }
 }
 
 function quoteFtsPhrase(value: string): string {
@@ -198,14 +281,15 @@ function isLiveRegularFile(root: string, relPath: string): boolean {
 /**
  * Creates a course-body index using FTS5's trigram tokenizer.
  *
- * better-sqlite3 11.10.0 bundles SQLite 3.49.2 (and the Node test alias
- * currently bundles 3.53.2); both include FTS5 trigram support. Shorter than
- * three-character searches use the normalized JS fallback below because a
- * trigram index cannot produce tokens for them.
+ * better-sqlite3 13.0.2 updated its bundled SQLite to 3.53.4; the runtime
+ * dependency and Node test alias now share the 13.x line. SQLite 3.53.4
+ * includes FTS5 trigram support. Shorter than three-character searches use
+ * the normalized JS fallback below because a trigram index cannot produce
+ * tokens for them.
  */
 export function createSearchIndex(
   db: Database,
-  deps: { getCourseFolder: (courseId: string) => string }
+  deps: SearchIndexDeps
 ): SearchIndex {
   db.exec(
     `CREATE VIRTUAL TABLE IF NOT EXISTS ${SEARCH_TABLE} USING fts5(
@@ -222,20 +306,40 @@ export function createSearchIndex(
     `INSERT INTO ${SEARCH_TABLE} (course_id, rel_path, kind, page, body)
      VALUES (?, ?, ?, ?, ?)`
   )
+  const removeTextFile = db.prepare(
+    `DELETE FROM ${SEARCH_TABLE}
+     WHERE course_id = ? AND rel_path = ? AND kind IN ('note', 'text')`
+  )
+  const textFileMetadataByCourse = new Map<
+    string,
+    Map<string, TextFileMetadata>
+  >()
+  const readTextFile =
+    deps.readTextFile ?? ((path: string) => readFileSync(path, 'utf8'))
+  const logger = deps.logger ?? console
 
   function refreshTextFiles(courseId: string): void {
     const id = requireId(courseId, 'courseId')
-    const documents = scanTextDocuments(deps.getCourseFolder(id))
-    const refresh = db.transaction(() => {
-      db.prepare(
-        `DELETE FROM ${SEARCH_TABLE}
-         WHERE course_id = ? AND kind IN ('note', 'text')`
-      ).run(id)
-      for (const document of documents) {
-        insert.run(id, document.relPath, document.kind, null, document.body)
-      }
-    })
-    refresh()
+    const previousMetadata =
+      textFileMetadataByCourse.get(id) ?? new Map<string, TextFileMetadata>()
+    const scan = scanTextDocuments(
+      deps.getCourseFolder(id),
+      previousMetadata,
+      readTextFile,
+      logger
+    )
+
+    if (scan.changed.length > 0 || scan.removed.length > 0) {
+      const refresh = db.transaction(() => {
+        for (const relPath of scan.removed) removeTextFile.run(id, relPath)
+        for (const document of scan.changed) {
+          removeTextFile.run(id, document.relPath)
+          insert.run(id, document.relPath, document.kind, null, document.body)
+        }
+      })
+      refresh()
+    }
+    textFileMetadataByCourse.set(id, scan.metadata)
   }
 
   function indexPdfPages(input: {

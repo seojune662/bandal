@@ -7,12 +7,12 @@
  * Electron's default UA carries two tokens no real Chrome has —
  *
  *   Mozilla/5.0 (…) AppleWebKit/537.36 (KHTML, like Gecko)
- *     bandal/0.1.0 Chrome/134.0.6998.205 Electron/35.7.5 Safari/537.36
+ *     bandal/0.1.0 Chrome/150.0.0.0 Electron/43.4.1 Safari/537.36
  *
  * — so we drop exactly those two and keep everything else byte-for-byte:
  *
  *   Mozilla/5.0 (…) AppleWebKit/537.36 (KHTML, like Gecko)
- *     Chrome/134.0.6998.205 Safari/537.36
+ *     Chrome/150.0.0.0 Safari/537.36
  *
  * Hard rules (docs/university-sites.md §7.1-2):
  *  - **Never remove the `Chrome/<version>` token** — that is the token every

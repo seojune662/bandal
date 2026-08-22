@@ -13,7 +13,7 @@ function macPanelOptions(): {
 } {
   if (process.platform !== 'darwin') return {}
   return {
-    // Electron 35 documents `panel` as the NSPanel-backed type that can float
+    // Electron 43 documents `panel` as the NSPanel-backed type that can float
     // above full-screen apps. BANDAL_OVERLAY_PANEL=0 is the runtime fallback
     // for macOS/window-manager combinations where panel behavior regresses.
     ...(process.env['BANDAL_OVERLAY_PANEL'] === '0'
@@ -27,12 +27,12 @@ function configureOverlayWindow(
   win: BrowserWindow,
   level: 'screen-saver' | 'floating'
 ): void {
-  // Electron 35: screen-saver is above Dock/taskbar; floating is the normal
+  // Electron 43: screen-saver is above Dock/taskbar; floating is the normal
   // always-on-top tier. The orb needs the former, the interactive popup the latter.
   win.setAlwaysOnTop(true, level)
 
   if (process.platform === 'darwin') {
-    // Electron 35 exposes visibleOnFullScreen specifically for showing a
+    // Electron 43 exposes visibleOnFullScreen specifically for showing a
     // window across Spaces, including above another app's full-screen Space.
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     win.excludedFromShownWindowsMenu = true

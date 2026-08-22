@@ -63,7 +63,8 @@ describe('extractMaterialText', () => {
       '성적'
     )
     const file = join(dir, 'syllabus.xlsx')
-    XLSX.writeFile(workbook, file)
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+    writeFileSync(file, buffer)
 
     const text = await extractMaterialText(file, '.xlsx', 20_000)
 

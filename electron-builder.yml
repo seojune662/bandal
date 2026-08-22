@@ -26,19 +26,12 @@ directories:
 files:
   - out/**
   - package.json
-  # better-sqlite3 ships its whole build tree. Only lib/ and the compiled
-  # build/Release/better_sqlite3.node (1.8 MB) are needed at runtime; the
-  # intermediate .o files, the bundled SQLite C amalgamation and the C++
-  # sources add ~20 MB to every download for nothing. `bindings` resolves the
-  # .node through build/Release, so that one path must survive.
+  # better-sqlite3 13 loads a platform-specific Node-API binary from
+  # prebuilds/ through lib/binding.js. Keep those prebuilds here; strip the
+  # source and fallback build trees, then remove other platforms below.
   - '!node_modules/better-sqlite3/deps/**'
   - '!node_modules/better-sqlite3/src/**'
-  - '!node_modules/better-sqlite3/build/Release/obj.target/**'
-  - '!node_modules/better-sqlite3/build/Release/obj/**'
-  - '!node_modules/better-sqlite3/build/Release/test_extension.node'
-  - '!node_modules/better-sqlite3/build/*.mk'
-  - '!node_modules/better-sqlite3/build/**/*.a'
-  - '!node_modules/better-sqlite3/build/deps/**'
+  - '!node_modules/better-sqlite3/build/**'
 
 # The Korean-capable font used to burn text-box markup into exported PDFs.
 # pdf-lib's built-in Helvetica is WinAnsi-only, so without this every Hangul
@@ -54,8 +47,8 @@ extraResources:
     filter:
       - 'tray*'
 
-# better-sqlite3 ships a native .node binding that cannot load from inside
-# the asar archive.
+# better-sqlite3 13 loads its native prebuilds/*.node binding from the
+# filesystem, so native binaries must remain outside the asar archive.
 asarUnpack:
   - '**/*.node'
 
@@ -91,8 +84,12 @@ mac:
       arch:
         - arm64
         - x64
+  files:
+    - '!node_modules/better-sqlite3/prebuilds/linux*'
+    - '!node_modules/better-sqlite3/prebuilds/win32*'
   icon: resources/icon.icns
   category: public.app-category.education
+  minimumSystemVersion: '12.0'
   darkModeSupport: true
   hardenedRuntime: true
   # Signed with the Developer ID Application identity found in the keychain.
@@ -109,6 +106,8 @@ mac:
   notarize: true
   extendInfo:
     CFBundleDisplayName: Bandal
+    NSAudioCaptureUsageDescription: 화면 공유 시 시스템 소리를 함께 전달하기 위해 필요합니다.
+    NSScreenCaptureUsageDescription: 화면을 읽어 질문에 답하기 위해 필요합니다.
   # Applies to the zip target. Version-free so the website can link
   # `releases/latest/download/<name>` and never go stale on a new release.
   artifactName: ${productName}-${arch}-mac.${ext}
@@ -118,6 +117,9 @@ win:
     - target: nsis
       arch:
         - x64
+  files:
+    - '!node_modules/better-sqlite3/prebuilds/darwin*'
+    - '!node_modules/better-sqlite3/prebuilds/linux*'
   icon: resources/icon.ico
   # Unsigned for now — SmartScreen will show "unknown publisher" on first run.
   # To sign later, add either `azureSignOptions:` (Azure Trusted Signing) or
