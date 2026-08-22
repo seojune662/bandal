@@ -49,6 +49,26 @@ describe('brand icon palettes', () => {
     }
   })
 
+  it('separates the dark accent from every pale light-base hemisphere', () => {
+    const swatches = readSwatches(ICON_PALETTES, PALETTES_DIR)
+
+    for (const palette of ICON_PALETTES) {
+      const id = `${palette}-light`
+      const colors = deriveIconColors({
+        bg: swatches.get(`--swatch-${id}-bg`),
+        accent: swatches.get(`--swatch-${id}-accent`),
+        base: 'light'
+      })
+
+      for (const [tier, darkFill] of colors.darkFill.entries()) {
+        expect(
+          contrast(parseColor(colors.accent), parseColor(darkFill)),
+          `${id} darkFill[${tier}]`
+        ).toBeGreaterThanOrEqual(3)
+      }
+    }
+  })
+
   it('pins bandal-dark to the released literal colors', () => {
     expect(BANDAL_DARK_COLORS).toEqual({
       bg: '#09101e',

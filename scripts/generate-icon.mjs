@@ -145,9 +145,24 @@ export function deriveIconColors({ bg, accent, base }) {
         )
       ]
     : [
-        shiftedHex(signal, accentL + 0.08, signal.C * 0.65),
-        shiftedHex(signal, accentL + 0.04, signal.C * 0.78),
-        shiftedHex(signal, accentL, signal.C * 0.86)
+        // On light tiles the unfinished hemisphere is a pale, low-chroma
+        // step down from the tile. Keeping it far from the dark accent makes
+        // the half-moon legible instead of collapsing into a full dark disc.
+        shiftedHex(
+          background,
+          background.L - 0.16,
+          background.C * 0.55
+        ),
+        shiftedHex(
+          background,
+          background.L - 0.14,
+          background.C * 0.45
+        ),
+        shiftedHex(
+          background,
+          background.L - 0.12,
+          background.C * 0.35
+        )
       ]
 
   return {
@@ -173,11 +188,15 @@ export function deriveIconColors({ bg, accent, base }) {
       accentL - (darkBase ? 0.12 : 0.1),
       signal.C + 0.005
     ),
-    craterDark: shiftedHex(signal, accentL - 0.16, signal.C * 0.86),
+    craterDark: shiftedHex(
+      signal,
+      accentL + (darkBase ? -0.16 : 0.12),
+      signal.C * (darkBase ? 0.86 : 0.7)
+    ),
     craterLight: shiftedHex(
       signal,
-      accentL + (darkBase ? -0.04 : 0.06),
-      signal.C * 0.72
+      accentL + (darkBase ? -0.04 : 0.22),
+      signal.C * (darkBase ? 0.72 : 0.45)
     ),
     darkFill,
     star: shiftedHex(
