@@ -1,13 +1,11 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { FormEvent } from 'react'
-import type {
-  McpAvailability, McpServerInput, McpServerSummary, McpTestResult, McpTransport
-} from '../../../../shared/types/mcp'
+import type { McpAvailability, McpServerInput, McpServerSummary, McpTestResult, McpTransport } from '../../../../shared/types/mcp'
 import { MCP_SERVER_NAME_PATTERN } from '../../../../shared/types/mcp'
 import { useT } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
+import { McpQuickAdd } from './McpQuickAdd'
 import './settings-mcp.css'
-
 interface RegistrySnapshot {
   servers: McpServerSummary[]
   availability: McpAvailability | null
@@ -25,7 +23,6 @@ const INITIAL_REGISTRY_SNAPSHOT: RegistrySnapshot = {
 let registrySnapshot = INITIAL_REGISTRY_SNAPSHOT
 let loadGeneration = 0
 const registryListeners = new Set<() => void>()
-
 function publishRegistry(next: RegistrySnapshot): void {
   registrySnapshot = next
   for (const listener of registryListeners) listener()
@@ -74,7 +71,6 @@ function updateTestResult(id: string, result: McpTestResult): void {
   })
 }
 
-/** Loads the registry through the same IPC seam used by the mounted panel. */
 export async function loadMcpServers(): Promise<void> {
   const generation = ++loadGeneration
   publishRegistry({ ...registrySnapshot, loading: true, error: false })
@@ -93,16 +89,12 @@ export async function loadMcpServers(): Promise<void> {
   }
 }
 
-/** Keeps static-render tests isolated without changing production behavior. */
 export function resetMcpServersPanelForTests(): void {
   loadGeneration += 1
   publishRegistry(INITIAL_REGISTRY_SNAPSHOT)
 }
 
-function summaryInput(
-  server: McpServerSummary,
-  enabled: boolean
-): McpServerInput {
+function summaryInput(server: McpServerSummary, enabled: boolean): McpServerInput {
   const input: McpServerInput = {
     id: server.id,
     name: server.name,
@@ -160,11 +152,9 @@ function existingSecretRows(keys: string[]): SecretRow[] {
 }
 
 function revealExisting(rows: SecretRow[]): SecretRow[] {
-  return rows.map((row) =>
-    row.existing && !row.changing
-      ? { ...row, value: '', changing: true }
-      : row
-  )
+  return rows.map((row) => row.existing && !row.changing
+    ? { ...row, value: '', changing: true }
+    : row)
 }
 
 function secretRecord(rows: SecretRow[]): Record<string, string> {
@@ -183,9 +173,7 @@ function SecretFields({
   onChange: (rows: SecretRow[], dirty: boolean) => void
 }): JSX.Element {
   const t = useT()
-  const beginChange = (
-    change: (current: SecretRow[]) => SecretRow[]
-  ): void => {
+  const beginChange = (change: (current: SecretRow[]) => SecretRow[]): void => {
     onChange(change(revealExisting(rows)), true)
   }
   const kindLabel = t(`settings.mcp.form.${kind}`)
@@ -542,6 +530,7 @@ export function McpServersPanel({
   const [editingId, setEditingId] = useState<string | null>(
     initialEditingServerId
   )
+  const [manualOpen, setManualOpen] = useState(initialEditingServerId !== null)
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -597,6 +586,8 @@ export function McpServersPanel({
 
   return (
     <div className="settings-mcp-stack">
+      <McpQuickAdd available={available} onSaved={updateServer} />
+
       <section className="settings-mcp-card">
         <header className="settings-mcp-card-header">
           <div>
@@ -608,11 +599,12 @@ export function McpServersPanel({
             className="settings-mcp-button settings-mcp-button--primary"
             disabled={!available || registry.loading}
             onClick={() => {
+              setManualOpen(true)
               setAdding(true)
               setEditingId(null)
             }}
           >
-            {t('settings.mcp.action.add')}
+            {t('settings.mcp.manual.title')}
           </button>
         </header>
 
@@ -690,6 +682,7 @@ export function McpServersPanel({
                       type="button"
                       className="settings-mcp-button"
                       onClick={() => {
+                        setManualOpen(true)
                         setAdding(false)
                         setEditingId(server.id)
                       }}
@@ -768,20 +761,40 @@ export function McpServersPanel({
         </footer>
       </section>
 
-      {available && (adding || editorServer !== null) && (
-        <McpServerEditor
-          key={editorServer?.id ?? 'new-server'}
-          server={editorServer}
-          onCancel={() => {
+      <details
+        className="settings-mcp-manual"
+        open={manualOpen}
+        onToggle={(event) => {
+          const open = event.currentTarget.open
+          setManualOpen(open)
+          if (open && editingId === null) setAdding(true)
+          if (!open) {
             setAdding(false)
             setEditingId(null)
-          }}
-          onSaved={() => {
-            setAdding(false)
-            setEditingId(null)
-          }}
-        />
-      )}
+          }
+        }}
+      >
+        <summary>
+          <span>{t('settings.mcp.manual.title')}</span>
+          <small>{t('settings.mcp.manual.description')}</small>
+        </summary>
+        {available && (adding || editorServer !== null) && (
+          <McpServerEditor
+            key={editorServer?.id ?? 'new-server'}
+            server={editorServer}
+            onCancel={() => {
+              setAdding(false)
+              setEditingId(null)
+              setManualOpen(false)
+            }}
+            onSaved={() => {
+              setAdding(false)
+              setEditingId(null)
+              setManualOpen(false)
+            }}
+          />
+        )}
+      </details>
     </div>
   )
 }

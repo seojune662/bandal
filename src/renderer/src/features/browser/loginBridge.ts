@@ -10,30 +10,44 @@ import {
 } from './browserGuestsStore'
 import type { WebviewTag } from './webviewTypes'
 
-const CONSOLE_PREFIX = '__bandal_login_form__'
-
+export const LOGIN_REPORT_PREFIX = '__bandal_login_form__'
 
 interface WebviewConsoleMessageEvent extends Event {
   message: string
 }
 
-interface LoginFormReport {
+export interface LoginFormReport {
+  kind: 'form'
   origin: string
   hasLoginForm: boolean
+  usernameFocused: boolean
 }
 
-const REPORTER_SOURCE = `(() => {
-  if (window.top !== window || window.__bandalLoginReporterInstalledV1__ === true) return;
-  Object.defineProperty(window, '__bandalLoginReporterInstalledV1__', {
+export interface LoginSubmitReport {
+  kind: 'submit'
+  origin: string
+}
+
+export type LoginReporterReport = LoginFormReport | LoginSubmitReport
+
+/**
+ * Runs only in the top frame. The console report contains submission metadata
+ * but never field values; main reads the capture global directly before the
+ * navigation can destroy the document.
+ */
+export const REPORTER_SOURCE = `(() => {
+  if (window.top !== window || window.__bandalLoginReporterInstalledV2__ === true) return;
+  Object.defineProperty(window, '__bandalLoginReporterInstalledV2__', {
     value: true, configurable: false, enumerable: false, writable: false
   });
-  const prefix = ${JSON.stringify(CONSOLE_PREFIX)};
+  const prefix = ${JSON.stringify(LOGIN_REPORT_PREFIX)};
   const touchedPasswords = new WeakSet();
   const fields = () => {
     const password = document.querySelector('input[type="password"]');
-    const form = password instanceof HTMLInputElement ? password.form : null;
-    if (!password || !form || password.disabled || password.readOnly) return null;
-    const usernames = Array.from(form.querySelectorAll(
+    if (!(password instanceof HTMLInputElement) || password.disabled || password.readOnly) {
+      return null;
+    }
+    const usernames = Array.from(document.querySelectorAll(
       'input[type="text"], input[type="email"], input[type="tel"], input:not([type])'
     )).filter((input) =>
       input instanceof HTMLInputElement &&
@@ -63,20 +77,57 @@ const REPORTER_SOURCE = `(() => {
   });
   let previous = '';
   let timer = 0;
+  let submitted = false;
+  const send = (payload) => console.log(prefix + JSON.stringify(payload));
   const report = () => {
     timer = 0;
-    const payload = JSON.stringify({
+    const found = fields();
+    const payload = {
+      kind: 'form',
       origin: location.origin,
-      hasLoginForm: fields() !== null
-    });
-    if (payload === previous) return;
-    previous = payload;
-    console.log(prefix + payload);
+      hasLoginForm: found !== null,
+      usernameFocused: found !== null && document.activeElement === found.username
+    };
+    const serialized = JSON.stringify(payload);
+    if (serialized === previous) return;
+    previous = serialized;
+    console.log(prefix + serialized);
   };
   const schedule = () => {
     window.clearTimeout(timer);
     timer = window.setTimeout(report, 80);
   };
+  const reportSubmit = (event) => {
+    if (submitted || !event.isTrusted) return;
+    const found = fields();
+    if (
+      !found ||
+      !touchedPasswords.has(found.password) ||
+      found.username.value.trim() === '' ||
+      found.password.value === ''
+    ) return;
+    submitted = true;
+    send({ kind: 'submit', origin: location.origin });
+  };
+  document.addEventListener('submit', reportSubmit, true);
+  document.addEventListener('keydown', (event) => {
+    if (
+      event.key === 'Enter' &&
+      event.target instanceof HTMLInputElement &&
+      event.target.type === 'password'
+    ) reportSubmit(event);
+  }, true);
+  document.addEventListener('click', (event) => {
+    const target = event.target instanceof Element
+      ? event.target.closest('button, input')
+      : null;
+    const isSubmit =
+      (target instanceof HTMLButtonElement && target.type === 'submit') ||
+      (target instanceof HTMLInputElement && ['submit', 'image'].includes(target.type));
+    if (isSubmit) reportSubmit(event);
+  }, true);
+  document.addEventListener('focusin', schedule, true);
+  document.addEventListener('focusout', schedule, true);
   new MutationObserver(schedule).observe(document.documentElement, {
     childList: true, subtree: true, attributes: true,
     attributeFilter: ['type', 'disabled', 'readonly']
@@ -84,10 +135,37 @@ const REPORTER_SOURCE = `(() => {
   report();
 })();`
 
+interface CaptureModeRequest {
+  origin: string
+  guestWebContentsId: number
+  autoSubmit: false
+  mode: 'stage' | 'commit' | 'discard'
+}
+
+export interface StagedPromptCandidate {
+  origin: string
+  kind: 'save' | 'update'
+  ready: boolean
+  navigated: boolean
+  prompted: boolean
+}
 
 const elements = new Map<string, WebviewTag>()
 const autoFilledOrigins = new Map<string, string>()
 const navigationGenerations = new Map<string, number>()
+const stagedLogins = new Map<string, StagedPromptCandidate>()
+const suppressedSites = new Set<string>()
+const SUPPRESSED_SITE_STORAGE_PREFIX = 'bandal.credentials.suppress.'
+
+const COMMON_SECOND_LEVEL_SUFFIXES = new Set([
+  'ac',
+  'co',
+  'go',
+  'ne',
+  'or',
+  'pe',
+  're'
+])
 
 function httpsOrigin(value: string): string | null {
   try {
@@ -98,27 +176,111 @@ function httpsOrigin(value: string): string | null {
   }
 }
 
-function parseReport(message: string): LoginFormReport | null {
-  if (!message.startsWith(CONSOLE_PREFIX)) return null
+function siteKey(value: string): string | null {
   try {
-    const value: unknown = JSON.parse(message.slice(CONSOLE_PREFIX.length))
-    if (typeof value !== 'object' || value === null) return null
-    const report = value as Record<string, unknown>
-    if (
-      typeof report['origin'] !== 'string' ||
-      typeof report['hasLoginForm'] !== 'boolean'
-    ) {
-      return null
-    }
-    const origin = httpsOrigin(report['origin'])
-    return origin === null
-      ? null
-      : { origin, hasLoginForm: report['hasLoginForm'] }
+    const host = new URL(value).hostname
+    const labels = host.split('.').filter(Boolean)
+    if (labels.length < 2 || /^\d+(?:\.\d+){3}$/.test(host)) return host
+    const suffixLength =
+      labels.at(-1)?.length === 2 &&
+      COMMON_SECOND_LEVEL_SUFFIXES.has(labels.at(-2) ?? '')
+        ? 3
+        : 2
+    return labels.slice(-suffixLength).join('.')
   } catch {
     return null
   }
 }
 
+function suppressionStorage(): Storage | null {
+  try {
+    return typeof window === 'undefined' ? null : window.localStorage
+  } catch {
+    return null
+  }
+}
+
+export function isLoginPromptSuppressed(site: string): boolean {
+  if (suppressedSites.has(site)) return true
+  try {
+    if (
+      suppressionStorage()?.getItem(SUPPRESSED_SITE_STORAGE_PREFIX + site) ===
+      '1'
+    ) {
+      suppressedSites.add(site)
+      return true
+    }
+  } catch {
+    return false
+  }
+  return false
+}
+
+export function suppressLoginPromptForSite(site: string): boolean {
+  suppressedSites.add(site)
+  const storage = suppressionStorage()
+  if (storage === null) return true
+  try {
+    storage.setItem(SUPPRESSED_SITE_STORAGE_PREFIX + site, '1')
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function isSameLoginSite(left: string, right: string): boolean {
+  const leftOrigin = httpsOrigin(left)
+  const rightOrigin = httpsOrigin(right)
+  if (leftOrigin === null || rightOrigin === null) return false
+  return siteKey(leftOrigin) === siteKey(rightOrigin)
+}
+
+export function parseLoginReport(message: string): LoginReporterReport | null {
+  if (!message.startsWith(LOGIN_REPORT_PREFIX)) return null
+  try {
+    const value: unknown = JSON.parse(message.slice(LOGIN_REPORT_PREFIX.length))
+    if (typeof value !== 'object' || value === null) return null
+    const report = value as Record<string, unknown>
+    if (typeof report['origin'] !== 'string') return null
+    const origin = httpsOrigin(report['origin'])
+    if (origin === null) return null
+    if (report['kind'] === 'submit') return { kind: 'submit', origin }
+    if (
+      report['kind'] !== 'form' ||
+      typeof report['hasLoginForm'] !== 'boolean' ||
+      typeof report['usernameFocused'] !== 'boolean'
+    ) {
+      return null
+    }
+    return {
+      kind: 'form',
+      origin,
+      hasLoginForm: report['hasLoginForm'],
+      usernameFocused: report['usernameFocused']
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Mutates `candidate` so a qualifying navigation can surface only once. */
+export function consumeStagedPrompt(
+  candidate: StagedPromptCandidate,
+  currentOrigin: string,
+  hasLoginForm: boolean
+): boolean {
+  if (
+    !candidate.ready ||
+    !candidate.navigated ||
+    candidate.prompted ||
+    hasLoginForm ||
+    !isSameLoginSite(candidate.origin, currentOrigin)
+  ) {
+    return false
+  }
+  candidate.prompted = true
+  return true
+}
 
 function liveOrigin(element: WebviewTag): string | null {
   try {
@@ -132,15 +294,43 @@ function update(tabId: string, patch: Partial<BrowserLoginState>): void {
   useBrowserGuests.getState().updateLogin(tabId, patch)
 }
 
+function guestId(element: WebviewTag): number | null {
+  try {
+    return element.getWebContentsId()
+  } catch {
+    return null
+  }
+}
+
+function captureWithMode(
+  request: CaptureModeRequest
+): Promise<SavedLoginSummary | null> {
+  // A named value may carry the local mode extension while remaining
+  // structurally compatible with the frozen shared request contract.
+  return invoke('credentials:capture', request)
+}
+
+function maybeShowPrompt(tabId: string): void {
+  const staged = stagedLogins.get(tabId)
+  const state = useBrowserGuests.getState().login[tabId]
+  if (
+    staged === undefined ||
+    state === undefined ||
+    state.origin === null ||
+    !consumeStagedPrompt(staged, state.origin, state.hasLoginForm)
+  ) {
+    return
+  }
+  update(tabId, {
+    savePrompt: { origin: staged.origin, kind: staged.kind },
+  })
+}
+
 async function fill(tabId: string, origin: string): Promise<boolean> {
   const element = elements.get(tabId)
   if (element === undefined || liveOrigin(element) !== origin) return false
-  let guestWebContentsId: number
-  try {
-    guestWebContentsId = element.getWebContentsId()
-  } catch {
-    return false
-  }
+  const guestWebContentsId = guestId(element)
+  if (guestWebContentsId === null) return false
 
   try {
     const result = await invoke('credentials:fill', {
@@ -153,7 +343,67 @@ async function fill(tabId: string, origin: string): Promise<boolean> {
   }
 }
 
-async function applyReport(
+async function stageSubmittedLogin(
+  tabId: string,
+  report: LoginSubmitReport
+): Promise<void> {
+  const element = elements.get(tabId)
+  const state = useBrowserGuests.getState().login[tabId]
+  const key = siteKey(report.origin)
+  if (
+    element === undefined ||
+    state === undefined ||
+    liveOrigin(element) !== report.origin ||
+    (key !== null && isLoginPromptSuppressed(key))
+  ) {
+    return
+  }
+  const guestWebContentsId = guestId(element)
+  if (guestWebContentsId === null) return
+
+  const candidate: StagedPromptCandidate = {
+    origin: report.origin,
+    kind: state.savedLogin === null ? 'save' : 'update',
+    ready: false,
+    navigated: false,
+    prompted: false
+  }
+  stagedLogins.set(tabId, candidate)
+  try {
+    const summary = await captureWithMode({
+      origin: report.origin,
+      guestWebContentsId,
+      autoSubmit: false,
+      mode: 'stage'
+    })
+    if (stagedLogins.get(tabId) !== candidate) return
+    if (summary === null) {
+      stagedLogins.delete(tabId)
+      return
+    }
+    if (candidate.kind === 'save') {
+      try {
+        const logins = await invoke('credentials:list', {})
+        if (logins.some((login) => login.origin === summary.origin)) {
+          candidate.kind = 'update'
+        }
+      } catch {
+        // The capture already succeeded; keep the conservative save wording
+        // while surfacing that metadata lookup failed.
+        update(tabId, { message: 'failed' })
+      }
+    }
+    if (stagedLogins.get(tabId) !== candidate) return
+    candidate.origin = summary.origin
+    candidate.ready = true
+    maybeShowPrompt(tabId)
+  } catch {
+    if (stagedLogins.get(tabId) === candidate) stagedLogins.delete(tabId)
+    update(tabId, { message: 'failed' })
+  }
+}
+
+async function applyFormReport(
   tabId: string,
   generation: number,
   report: LoginFormReport
@@ -169,11 +419,16 @@ async function applyReport(
   update(tabId, {
     origin: report.origin,
     hasLoginForm: report.hasLoginForm,
+    usernameFocused: report.usernameFocused,
     savedLogin: null,
     pending: report.hasLoginForm,
     message: null
   })
-  if (!report.hasLoginForm) return
+  if (!report.hasLoginForm) {
+    update(tabId, { pending: false })
+    maybeShowPrompt(tabId)
+    return
+  }
 
   let saved: SavedLoginSummary | undefined
   try {
@@ -199,6 +454,7 @@ async function applyReport(
   }
 }
 
+/** Compatibility path for the old explicit save action. */
 export async function saveLoginForTab(tabId: string): Promise<void> {
   const element = elements.get(tabId)
   const state = useBrowserGuests.getState().login[tabId]
@@ -212,18 +468,11 @@ export async function saveLoginForTab(tabId: string): Promise<void> {
   ) {
     return
   }
-
-  let guestWebContentsId: number
-  try {
-    guestWebContentsId = element.getWebContentsId()
-  } catch {
-    return
-  }
+  const guestWebContentsId = guestId(element)
+  if (guestWebContentsId === null) return
 
   update(tabId, { pending: true, message: null })
   try {
-    // Main reads the typed password out of the page and stores it. This window
-    // names the tab and gets back a summary; it never holds the secret.
     const saved = await invoke('credentials:capture', {
       origin,
       guestWebContentsId,
@@ -236,6 +485,73 @@ export async function saveLoginForTab(tabId: string): Promise<void> {
     update(tabId, { pending: false, savedLogin: saved, message: 'saved' })
   } catch {
     update(tabId, { pending: false, message: 'failed' })
+  }
+}
+
+export async function saveStagedLoginForTab(tabId: string): Promise<void> {
+  const element = elements.get(tabId)
+  const staged = stagedLogins.get(tabId)
+  const current = element === undefined ? null : liveOrigin(element)
+  const guestWebContentsId = element === undefined ? null : guestId(element)
+  if (
+    staged === undefined ||
+    current === null ||
+    guestWebContentsId === null ||
+    !isSameLoginSite(staged.origin, current)
+  ) {
+    return
+  }
+
+  update(tabId, { pending: true, message: null })
+  try {
+    const saved = await captureWithMode({
+      origin: current,
+      guestWebContentsId,
+      autoSubmit: false,
+      mode: 'commit'
+    })
+    if (saved === null) {
+      update(tabId, { pending: false, message: 'failed' })
+      return
+    }
+    stagedLogins.delete(tabId)
+    update(tabId, {
+      pending: false,
+      savePrompt: null,
+      savedLogin: saved.origin === current ? saved : null,
+      message: 'saved'
+    })
+  } catch {
+    update(tabId, { pending: false, message: 'failed' })
+  }
+}
+
+export async function discardStagedLoginForTab(
+  tabId: string,
+  suppressSite: boolean
+): Promise<void> {
+  const element = elements.get(tabId)
+  const staged = stagedLogins.get(tabId)
+  if (staged === undefined) return
+  let message: BrowserLoginState['message'] = null
+  if (suppressSite) {
+    const key = siteKey(staged.origin)
+    if (key !== null && !suppressLoginPromptForSite(key)) message = 'failed'
+  }
+  stagedLogins.delete(tabId)
+  update(tabId, { savePrompt: null, message })
+  const guestWebContentsId = element === undefined ? null : guestId(element)
+  const origin = element === undefined ? null : liveOrigin(element)
+  if (guestWebContentsId === null || origin === null) return
+  try {
+    await captureWithMode({
+      origin,
+      guestWebContentsId,
+      autoSubmit: false,
+      mode: 'discard'
+    })
+  } catch {
+    update(tabId, { message: 'failed' })
   }
 }
 
@@ -274,45 +590,75 @@ export function useWebviewLoginBridge(
     const onConsoleMessage = (rawEvent: Event): void => {
       const event = rawEvent as WebviewConsoleMessageEvent
       if (typeof event.message !== 'string') return
-      const report = parseReport(event.message)
-      if (report !== null) {
-        void applyReport(tabId, navigationGenerations.get(tabId) ?? 0, report)
+      const report = parseLoginReport(event.message)
+      if (report?.kind === 'submit') {
+        void stageSubmittedLogin(tabId, report)
+      } else if (report?.kind === 'form') {
+        void applyFormReport(
+          tabId,
+          navigationGenerations.get(tabId) ?? 0,
+          report
+        )
       }
     }
     const onStartLoading = (): void => {
+      try {
+        if (!webview.isLoadingMainFrame()) return
+      } catch {
+        // Treat an attach race as a main-frame navigation.
+      }
       navigationGenerations.set(
         tabId,
         (navigationGenerations.get(tabId) ?? 0) + 1
       )
-      const previousOrigin = useBrowserGuests.getState().login[tabId]?.origin
-      const nextOrigin = liveOrigin(webview)
-      if (
-        previousOrigin !== null &&
-        previousOrigin !== undefined &&
-        nextOrigin !== previousOrigin
-      ) {
-        autoFilledOrigins.delete(tabId)
-      }
       update(tabId, {
         origin: null,
         hasLoginForm: false,
+        usernameFocused: false,
         savedLogin: null,
+        savePrompt: null,
         pending: false,
         message: null
       })
+    }
+    const onNavigate = (): void => {
+      const current = liveOrigin(webview)
+      const staged = stagedLogins.get(tabId)
+      if (current === null || staged === undefined) return
+      if (!isSameLoginSite(staged.origin, current)) {
+        void discardStagedLoginForTab(tabId, false)
+        return
+      }
+      staged.navigated = true
+      if (autoFilledOrigins.get(tabId) !== current) {
+        autoFilledOrigins.delete(tabId)
+      }
+      maybeShowPrompt(tabId)
     }
 
     webview.addEventListener('dom-ready', inject)
     webview.addEventListener('console-message', onConsoleMessage)
     webview.addEventListener('did-start-loading', onStartLoading)
+    webview.addEventListener('did-navigate', onNavigate)
     inject()
     return () => {
       webview.removeEventListener('dom-ready', inject)
       webview.removeEventListener('console-message', onConsoleMessage)
       webview.removeEventListener('did-start-loading', onStartLoading)
+      webview.removeEventListener('did-navigate', onNavigate)
+      if (stagedLogins.has(tabId)) void discardStagedLoginForTab(tabId, false)
       if (elements.get(tabId) === webview) elements.delete(tabId)
       autoFilledOrigins.delete(tabId)
       navigationGenerations.delete(tabId)
     }
   }, [tabId, webviewRef])
+}
+
+/** Test-only: session prompt preferences and staged metadata are ephemeral. */
+export function resetLoginBridgeForTests(): void {
+  elements.clear()
+  autoFilledOrigins.clear()
+  navigationGenerations.clear()
+  stagedLogins.clear()
+  suppressedSites.clear()
 }

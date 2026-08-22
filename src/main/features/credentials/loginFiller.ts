@@ -12,6 +12,7 @@ export interface LoginGuestWebContents {
   getType(): string
   getURL(): string
   executeJavaScript(code: string, userGesture?: boolean): Promise<unknown>
+  once?(event: 'destroyed', listener: () => void): this
 }
 
 export interface LoginFillerDeps {
@@ -78,10 +79,10 @@ function fillSource(
     }
     const passwordInput = document.querySelector('input[type="password"]');
     const form = passwordInput instanceof HTMLInputElement ? passwordInput.form : null;
-    if (!passwordInput || !form || passwordInput.disabled || passwordInput.readOnly) {
+    if (!passwordInput || passwordInput.disabled || passwordInput.readOnly) {
       return { filled: false, submitted: false };
     }
-    const candidates = Array.from(form.querySelectorAll(
+    const candidates = Array.from(document.querySelectorAll(
       'input[type="text"], input[type="email"], input[type="tel"], input:not([type])'
     ));
     const usernameInput = candidates.filter((input) =>
@@ -103,7 +104,7 @@ function fillSource(
     setValue(usernameInput, ${JSON.stringify(username)});
     setValue(passwordInput, ${JSON.stringify(password)});
     let submitted = false;
-    if (${JSON.stringify(autoSubmit)}) {
+    if (${JSON.stringify(autoSubmit)} && form) {
       try {
         if (typeof form.requestSubmit === 'function') form.requestSubmit();
         else form.submit();

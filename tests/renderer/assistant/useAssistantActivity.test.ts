@@ -8,7 +8,11 @@ import type {
 } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { ChatEventBatch } from '../../../src/shared/ipc/events'
+import type { AgentConfirmRequest } from '../../../src/shared/types/agentTools'
 import { useAssistantActivity } from '../../../src/renderer/src/features/assistant/useAssistantActivity'
+import { useAgentToolActivityStore } from '../../../src/renderer/src/features/chat/agentToolActivityStore'
+import { initialChatViewState } from '../../../src/renderer/src/features/chat/chatModel'
+import { useChatSessionStore } from '../../../src/renderer/src/features/chat/chatSessionStore'
 import {
   setIpcAdapter,
   type IpcAdapter
@@ -125,6 +129,8 @@ function createActivityHarness(): {
 }
 
 afterEach(() => {
+  useAgentToolActivityStore.setState({ conversations: {} })
+  useChatSessionStore.setState({ sessions: {} })
   setIpcAdapter(null)
 })
 
@@ -146,7 +152,11 @@ describe('useAssistantActivity', () => {
     const harness = createActivityHarness()
     try {
       let activity = harness.render()
-      expect(activity).toMatchObject({ busy: false, alert: false })
+      expect(activity).toMatchObject({
+        busy: false,
+        alert: false,
+        needsApproval: false
+      })
 
       push?.({
         courseId: 'course-1',
@@ -169,6 +179,130 @@ describe('useAssistantActivity', () => {
       activity.clearAlert()
       activity = harness.render()
       expect(activity.alert).toBe(false)
+    } finally {
+      harness.unmount()
+    }
+  })
+
+  test('keeps a v1 permission visible while the popup opens and clears it when the turn resolves', () => {
+    let push: ((batch: ChatEventBatch) => void) | null = null
+    setIpcAdapter({
+      invoke: vi.fn(),
+      on: vi.fn((channel, handler) => {
+        if (channel === 'chat:event-batch') {
+          push = handler as (batch: ChatEventBatch) => void
+        }
+        return () => {
+          push = null
+        }
+      })
+    } as unknown as IpcAdapter)
+
+    const harness = createActivityHarness()
+    try {
+      let activity = harness.render()
+      push?.({
+        courseId: 'course-1',
+        sessionId: 'conversation-1',
+        seq: 1,
+        events: [
+          {
+            type: 'permission-request',
+            requestId: 'permission-1',
+            toolName: 'write_file',
+            input: { path: 'notes.md' }
+          }
+        ]
+      })
+
+      activity = harness.render(true)
+      expect(activity.needsApproval).toBe(true)
+
+      const session = {
+        phase: 'ready' as const,
+        provider: 'claude-code' as const,
+        availability: null,
+        openError: null,
+        models: [],
+        title: null,
+        state: {
+          ...initialChatViewState,
+          pendingPermissionId: 'permission-1'
+        }
+      }
+      useChatSessionStore.setState({
+        sessions: { 'conversation-1': session }
+      })
+      useChatSessionStore.setState({
+        sessions: {
+          'conversation-1': {
+            ...session,
+            state: { ...session.state, pendingPermissionId: null }
+          }
+        }
+      })
+      activity = harness.render(true)
+      expect(activity.needsApproval).toBe(false)
+    } finally {
+      harness.unmount()
+    }
+  })
+
+  test('tracks v2 confirmations from the activity store until their response resolves', () => {
+    let pushConfirm: ((request: AgentConfirmRequest) => void) | null = null
+    setIpcAdapter({
+      invoke: vi.fn(),
+      on: vi.fn((channel, handler) => {
+        if (channel === 'agentTools:confirm') {
+          pushConfirm = handler as (request: AgentConfirmRequest) => void
+        }
+        return () => {
+          pushConfirm = null
+        }
+      })
+    } as unknown as IpcAdapter)
+
+    const harness = createActivityHarness()
+    try {
+      harness.render()
+      pushConfirm?.({
+        requestId: 'confirm-1',
+        courseId: 'course-1',
+        conversationId: 'conversation-1',
+        tool: 'delete_course',
+        summary: '과목을 삭제할까요?',
+        details: []
+      })
+
+      let activity = harness.render(true)
+      expect(activity.needsApproval).toBe(true)
+
+      useAgentToolActivityStore.setState((store) => ({
+        conversations: {
+          ...store.conversations,
+          'conversation-1': {
+            items: [
+              {
+                kind: 'confirmation',
+                request: {
+                  requestId: 'confirm-1',
+                  courseId: 'course-1',
+                  conversationId: 'conversation-1',
+                  tool: 'delete_course',
+                  summary: '과목을 삭제할까요?',
+                  details: []
+                },
+                response: false,
+                isResponding: false,
+                hasResponseError: false
+              }
+            ]
+          }
+        }
+      }))
+
+      activity = harness.render(true)
+      expect(activity.needsApproval).toBe(false)
     } finally {
       harness.unmount()
     }

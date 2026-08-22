@@ -53,15 +53,26 @@ class FakeWindow {
   readonly webContents = new FakeWebContents()
   readonly show = vi.fn(() => {
     this.visible = true
+    this.emit('show')
   })
-  readonly focus = vi.fn()
+  readonly showInactive = vi.fn(() => {
+    this.visible = true
+  })
+  readonly focus = vi.fn(() => {
+    this.focused = true
+    this.emit('focus')
+  })
   readonly hide = vi.fn(() => {
     this.visible = false
+    this.focused = false
     this.emit('hide')
   })
   readonly destroy = vi.fn(() => {
     this.destroyed = true
+    this.visible = false
   })
+  readonly setContentProtection = vi.fn()
+  readonly setIgnoreMouseEvents = vi.fn()
   readonly setBounds = vi.fn((bounds: Rectangle) => {
     this.bounds = { ...bounds }
   })
@@ -71,9 +82,12 @@ class FakeWindow {
   private readonly listeners = new Map<string, Array<(event: unknown) => void>>()
   private destroyed = false
   private visible: boolean
+  private focused: boolean
+  private minimized = false
 
-  constructor(private bounds: Rectangle, visible = true) {
+  constructor(private bounds: Rectangle, visible = true, focused = false) {
     this.visible = visible
+    this.focused = focused
   }
 
   on(event: string, listener: (event: unknown) => void): this {
@@ -93,6 +107,25 @@ class FakeWindow {
 
   isVisible(): boolean {
     return this.visible
+  }
+
+  isFocused(): boolean {
+    return this.focused
+  }
+
+  isMinimized(): boolean {
+    return this.minimized
+  }
+
+  blur(): void {
+    this.focused = false
+    this.emit('blur')
+  }
+
+  minimize(): void {
+    this.minimized = true
+    this.focused = false
+    this.emit('minimize')
   }
 
   getBounds(): Rectangle {
@@ -119,7 +152,10 @@ function setup(initial: Settings): {
   let settings = initial
   let settingsListener: ((next: Settings) => void) | null = null
   let mainWindow: FakeWindow | null = null
-  const orb = new FakeWindow({ x: 1136, y: 836, width: 64, height: 64 })
+  const orb = new FakeWindow(
+    { x: 1052, y: 752, width: 240, height: 240 },
+    false
+  )
   const popup = new FakeWindow(
     { x: 736, y: 276, width: 400, height: 560 },
     false
@@ -180,7 +216,7 @@ function desktopSettings(courseId: string | null = 'course-a'): Settings {
 }
 
 describe('createOverlayController', () => {
-  test('returns a stable conversation id per selected course', () => {
+  test('returns a stable conversation id per selected course before start', () => {
     const subject = setup(desktopSettings('course-a'))
 
     const first = subject.controller.getState().conversationId
@@ -206,6 +242,8 @@ describe('createOverlayController', () => {
       [expect.anything(), 'popup']
     ])
     expect(subject.controller.isActive()).toBe(true)
+    expect(subject.controller.getState().desktopVisible).toBe(true)
+    expect(subject.orb.showInactive).toHaveBeenCalledOnce()
 
     expect(subject.controller.togglePopup(true)).toEqual({ open: true })
     expect(subject.popup.show).toHaveBeenCalledOnce()
@@ -255,6 +293,73 @@ describe('createOverlayController', () => {
     subject.changeSettings({ ...desktopSettings(), assistantMode: 'in-app' })
     expect(subject.controller.isActive()).toBe(false)
     expect(subject.controller.getState().mode).toBe('in-app')
+  })
+
+  test('hides the desktop orb while the visible main window is focused and restores it on blur', () => {
+    const subject = setup(desktopSettings())
+    const main = new FakeWindow(
+      { x: 0, y: 0, width: 1280, height: 800 },
+      true,
+      true
+    )
+    subject.setMainWindow(main)
+
+    subject.controller.start()
+    expect(subject.controller.getState().desktopVisible).toBe(false)
+    expect(subject.orb.showInactive).not.toHaveBeenCalled()
+
+    main.blur()
+    expect(subject.orb.showInactive).toHaveBeenCalledOnce()
+    expect(subject.controller.getState().desktopVisible).toBe(true)
+
+    main.focus()
+    expect(subject.orb.hide).toHaveBeenCalledOnce()
+    expect(subject.controller.getState().desktopVisible).toBe(false)
+  })
+
+  test('keeps an open desktop popup when the main window receives focus', () => {
+    const subject = setup(desktopSettings())
+    const main = new FakeWindow(
+      { x: 0, y: 0, width: 1280, height: 800 },
+      true,
+      false
+    )
+    subject.setMainWindow(main)
+    subject.controller.start()
+    subject.controller.togglePopup(true)
+
+    main.focus()
+
+    expect(subject.popup.hide).not.toHaveBeenCalled()
+    expect(subject.popup.isVisible()).toBe(true)
+    expect(subject.controller.getState().popupOpen).toBe(true)
+    expect(subject.controller.getState().desktopVisible).toBe(false)
+  })
+
+  test('switches the orb window between pass-through and interactive hit testing', () => {
+    const subject = setup(desktopSettings())
+    subject.controller.start()
+
+    subject.controller.setOrbHitTest(true)
+    subject.controller.setOrbHitTest(false)
+
+    expect(subject.orb.setIgnoreMouseEvents.mock.calls).toEqual([
+      [false],
+      [true, { forward: true }]
+    ])
+  })
+
+  test('conceals both overlay windows only until capture restoration', () => {
+    const subject = setup(desktopSettings())
+    subject.controller.start()
+
+    const restore = subject.controller.concealForCapture()
+    expect(subject.orb.setContentProtection).toHaveBeenLastCalledWith(true)
+    expect(subject.popup.setContentProtection).toHaveBeenLastCalledWith(true)
+
+    restore()
+    expect(subject.orb.setContentProtection).toHaveBeenLastCalledWith(false)
+    expect(subject.popup.setContentProtection).toHaveBeenLastCalledWith(false)
   })
 
   test('routes openInApp immediately or after a newly created window loads', () => {

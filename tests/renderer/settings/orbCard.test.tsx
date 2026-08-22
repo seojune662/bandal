@@ -56,6 +56,15 @@ function keepAliveSwitch(html: string): string {
 }
 
 describe('AI settings orb card', () => {
+  test('uses real provider marks in selectors and provider cards', () => {
+    const html = renderPanel(DEFAULT_SETTINGS)
+
+    expect(html).toContain('style="width:20px;height:20px" data-provider="claude-code"')
+    expect(html).toContain('style="width:20px;height:20px" data-provider="codex"')
+    expect(html).toContain('style="width:32px;height:32px" data-provider="claude-code"')
+    expect(html).toContain('style="width:32px;height:32px" data-provider="codex"')
+  })
+
   test('disables keep-alive while the orb is inside the app', () => {
     const html = renderPanel({
       ...DEFAULT_SETTINGS,

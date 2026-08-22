@@ -205,6 +205,9 @@
 }
 
 .browser-login-button {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
   max-width: 100%;
   height: var(--control-height);
   padding-inline: var(--space-3);
@@ -235,6 +238,11 @@
   opacity: 0.55;
 }
 
+.browser-login-button > svg {
+  flex: none;
+  font-size: var(--icon-size-sm);
+}
+
 .browser-login-message {
   position: absolute;
   top: calc(100% + var(--space-2));
@@ -259,7 +267,7 @@
   height: calc(var(--space-1) / 2);
   overflow: hidden;
   opacity: 0;
-  transition: opacity var(--dur-base) var(--ease-out);
+  transition: opacity 180ms var(--ease-out);
 }
 
 .browser-progress[data-active] {
@@ -267,7 +275,7 @@
 }
 
 .browser-progress__bar {
-  width: 40%;
+  width: 30%;
   height: 100%;
   background: var(--accent);
   border-radius: var(--radius-pill);
@@ -275,7 +283,7 @@
 }
 
 .browser-progress[data-active] .browser-progress__bar {
-  animation: browser-progress-slide var(--dur-base) var(--ease-out) infinite;
+  animation: browser-progress-slide 1100ms linear infinite;
 }
 
 .browser-external-auth {
@@ -326,6 +334,38 @@
 }
 
 .browser-external-auth__dismiss:focus-visible {
+  outline: calc(var(--space-1) / 2) solid var(--accent);
+  outline-offset: calc(var(--space-1) / -2);
+}
+
+.browser-login-prompt {
+  background: var(--bg-raised);
+}
+
+.browser-login-prompt__action {
+  flex: none;
+  min-height: var(--control-height);
+  padding-inline: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  background: transparent;
+  border: thin solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+}
+
+.browser-login-prompt__action:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.browser-login-prompt__action--primary {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.browser-login-prompt__action:focus-visible {
   outline: calc(var(--space-1) / 2) solid var(--accent);
   outline-offset: calc(var(--space-1) / -2);
 }
@@ -444,7 +484,7 @@
   }
 
   to {
-    transform: translateX(250%);
+    transform: translateX(333%);
   }
 }
 

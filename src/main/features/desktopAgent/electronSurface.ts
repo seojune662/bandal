@@ -19,6 +19,11 @@ import { fitWithin } from './image'
 import { frontmostMac, frontmostWin, type FrontmostApp } from './platformProbes'
 
 const OS_PROBE_TIMEOUT_MS = 3_000
+const CAPTURE_CONCEAL_SETTLE_MS = 60
+
+export interface ElectronDesktopDepsOptions {
+  concealOverlay?: () => () => void
+}
 
 function displayInfo(display: Display, primaryId: number): DisplayInfo {
   return {
@@ -72,11 +77,28 @@ function isOwnWindow(title: string, titles: Set<string>): boolean {
   )
 }
 
-export function createElectronDesktopDeps(): DesktopSurfaceDeps {
+export function createElectronDesktopDeps(
+  opts: ElectronDesktopDepsOptions = {}
+): DesktopSurfaceDeps {
   async function frontmostApp(): Promise<FrontmostApp | null> {
     if (process.platform === 'darwin') return frontmostMac(execProbe)
     if (process.platform === 'win32') return frontmostWin(execProbe)
     return null
+  }
+
+  async function whileOverlayConcealed<T>(
+    capture: () => Promise<T>
+  ): Promise<T> {
+    const restore = opts.concealOverlay?.()
+    if (restore === undefined) return capture()
+    try {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, CAPTURE_CONCEAL_SETTLE_MS)
+      })
+      return await capture()
+    } finally {
+      restore()
+    }
   }
 
   return {
@@ -99,11 +121,13 @@ export function createElectronDesktopDeps(): DesktopSurfaceDeps {
         .find((candidate) => String(candidate.id) === displayId)
       if (display === undefined) return null
 
-      const sources = await desktopCapturer.getSources({
-        types: ['screen'],
-        thumbnailSize: thumbnailSize(display, maxLongEdgePx),
-        fetchWindowIcons: false
-      })
+      const sources = await whileOverlayConcealed(() =>
+        desktopCapturer.getSources({
+          types: ['screen'],
+          thumbnailSize: thumbnailSize(display, maxLongEdgePx),
+          fetchWindowIcons: false
+        })
+      )
       const source = sources.find(
         (candidate) => String(candidate.display_id) === String(display.id)
       )
@@ -112,11 +136,13 @@ export function createElectronDesktopDeps(): DesktopSurfaceDeps {
 
     async captureWindow(windowId, maxLongEdgePx) {
       const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
-      const sources = await desktopCapturer.getSources({
-        types: ['window'],
-        thumbnailSize: thumbnailSize(display, maxLongEdgePx),
-        fetchWindowIcons: false
-      })
+      const sources = await whileOverlayConcealed(() =>
+        desktopCapturer.getSources({
+          types: ['window'],
+          thumbnailSize: thumbnailSize(display, maxLongEdgePx),
+          fetchWindowIcons: false
+        })
+      )
       const source = sources.find((candidate) => candidate.id === windowId)
       return source === undefined ? null : rawCapture(source.thumbnail)
     },

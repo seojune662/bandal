@@ -8,8 +8,9 @@ export const INITIAL_OVERLAY_STATE: OverlayState = {
   courseId: null,
   conversationId: null,
   popupOpen: false,
-  screenPermission: 'unknown'
-}
+  screenPermission: 'unknown',
+  desktopVisible: false
+} as OverlayState
 
 interface OverlayStateStore {
   state: OverlayState

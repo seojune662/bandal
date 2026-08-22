@@ -84,6 +84,8 @@ describe('main login fill origin boundary', () => {
     expect(guest.scripts[0]).toContain('window.top !== window')
     expect(guest.scripts[0]).toContain('location.origin !== "https://portal.example.edu"')
     expect(guest.scripts[0]).not.toContain('console.')
+    expect(guest.scripts[0]).toContain('document.querySelectorAll(')
+    expect(guest.scripts[0]).not.toContain('!passwordInput || !form')
   })
 
   test('passes userGesture and reports submitted only for opted-in login', async () => {

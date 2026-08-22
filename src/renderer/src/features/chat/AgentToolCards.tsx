@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import type {
   AgentAction,
   AgentConfirmScope,
@@ -61,6 +62,7 @@ export interface AgentConfirmCardProps {
   isResponding?: boolean
   hasResponseError?: boolean
   autoFocusReject?: boolean
+  shouldAutoFocusReject?: () => boolean
   onRespond: (
     requestId: string,
     approved: boolean,
@@ -92,11 +94,29 @@ export function AgentConfirmCard({
   isResponding = false,
   hasResponseError = false,
   autoFocusReject = true,
+  shouldAutoFocusReject,
   onRespond
 }: AgentConfirmCardProps): JSX.Element {
   const isPending = response === null
   const kindLabel = confirmKindLabel(request.tool)
   const severity = request.tool === 'browser_access' ? 'quiet' : 'danger'
+  const rejectButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (
+      !isPending ||
+      !autoFocusReject ||
+      shouldAutoFocusReject?.() === false
+    ) {
+      return
+    }
+    rejectButtonRef.current?.focus()
+  }, [
+    request.requestId,
+    isPending,
+    autoFocusReject,
+    shouldAutoFocusReject
+  ])
 
   if (!isPending) {
     const subject = confirmationSubject(request)
@@ -172,9 +192,10 @@ export function AgentConfirmCard({
       )}
       <div className="chat-agent-confirm__actions">
         <button
+          ref={rejectButtonRef}
           type="button"
           className="chat-agent-confirm__button chat-agent-confirm__button--reject"
-          autoFocus={autoFocusReject}
+          data-approval-safe-action="true"
           disabled={isResponding}
           onClick={() => onRespond(request.requestId, false)}
         >
@@ -306,6 +327,7 @@ export interface AgentToolActivityProps {
     scope?: AgentConfirmScope
   ) => void
   onUndoTurn: (turnId: string) => void
+  shouldAutoFocusReject?: () => boolean
 }
 
 function activeConfirmationId(
@@ -323,7 +345,8 @@ function activeConfirmationId(
 export function AgentToolActivity({
   items,
   onRespondConfirm,
-  onUndoTurn
+  onUndoTurn,
+  shouldAutoFocusReject
 }: AgentToolActivityProps): JSX.Element {
   const activeRequestId = activeConfirmationId(items)
 
@@ -338,6 +361,9 @@ export function AgentToolActivity({
             isResponding={item.isResponding}
             hasResponseError={item.hasResponseError}
             autoFocusReject={item.request.requestId === activeRequestId}
+            {...(shouldAutoFocusReject === undefined
+              ? {}
+              : { shouldAutoFocusReject })}
             onRespond={onRespondConfirm}
           />
         ) : (

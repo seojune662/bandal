@@ -1,17 +1,9 @@
-/**
- * 에이전트 접근 권한 — what the agent may reach in the browser, and what it did.
- *
- * `improvement-backlog.md` §5.8's complaint about the existing tool-permission
- * grant is that it is course-wide, permanent, invisible and irrevocable. The
- * browser grants are none of those, and this screen is the reason: a
- * permission a student cannot see is a permission they cannot withdraw.
- */
-
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
-import { useT } from '../../i18n'
+import { useEffect, useSyncExternalStore } from 'react'
+import { useLocale, useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
+import './agent-access.css'
 
-interface Grant {
+export interface AgentBrowserGrant {
   id: string
   courseId: string
   origin: string
@@ -22,12 +14,20 @@ interface Grant {
   lastUsedAt: string | null
 }
 
-interface AuditEntry {
+export interface AgentAuditEntry {
   id: string
   action: string
   url: string
   detail: string
   createdAt: string
+}
+
+interface BrowserAccessSnapshot {
+  grants: AgentBrowserGrant[] | null
+  entries: AgentAuditEntry[] | null
+  loading: boolean
+  error: boolean
+  busyId: string | null
 }
 
 interface ToolGrantRow {
@@ -45,6 +45,14 @@ interface ToolGrantsSnapshot {
   busyId: string | null
 }
 
+const INITIAL_BROWSER_ACCESS: BrowserAccessSnapshot = {
+  grants: null,
+  entries: null,
+  loading: false,
+  error: false,
+  busyId: null
+}
+
 const INITIAL_TOOL_GRANTS: ToolGrantsSnapshot = {
   grants: null,
   loading: false,
@@ -52,13 +60,26 @@ const INITIAL_TOOL_GRANTS: ToolGrantsSnapshot = {
   busyId: null
 }
 
+let browserAccessSnapshot = INITIAL_BROWSER_ACCESS
+let browserAccessLoadGeneration = 0
+const browserAccessListeners = new Set<() => void>()
 let toolGrantsSnapshot = INITIAL_TOOL_GRANTS
 let toolGrantsLoadGeneration = 0
 const toolGrantsListeners = new Set<() => void>()
 
+function publishBrowserAccess(next: BrowserAccessSnapshot): void {
+  browserAccessSnapshot = next
+  for (const listener of browserAccessListeners) listener()
+}
+
 function publishToolGrants(next: ToolGrantsSnapshot): void {
   toolGrantsSnapshot = next
   for (const listener of toolGrantsListeners) listener()
+}
+
+function subscribeBrowserAccess(listener: () => void): () => void {
+  browserAccessListeners.add(listener)
+  return () => browserAccessListeners.delete(listener)
 }
 
 function subscribeToolGrants(listener: () => void): () => void {
@@ -66,8 +87,31 @@ function subscribeToolGrants(listener: () => void): () => void {
   return () => toolGrantsListeners.delete(listener)
 }
 
-function getToolGrantsSnapshot(): ToolGrantsSnapshot {
-  return toolGrantsSnapshot
+export async function loadAgentBrowserAccess(): Promise<void> {
+  const generation = ++browserAccessLoadGeneration
+  publishBrowserAccess({ ...browserAccessSnapshot, loading: true, error: false })
+  try {
+    const [grantResult, auditResult] = await Promise.all([
+      invoke('browserAgent:grants', {}),
+      invoke('browserAgent:auditTail', { courseId: null, limit: 50 })
+    ])
+    if (generation !== browserAccessLoadGeneration) return
+    publishBrowserAccess({
+      grants: grantResult.grants,
+      entries: auditResult.entries,
+      loading: false,
+      error: false,
+      busyId: null
+    })
+  } catch {
+    if (generation !== browserAccessLoadGeneration) return
+    publishBrowserAccess({
+      ...browserAccessSnapshot,
+      loading: false,
+      error: true,
+      busyId: null
+    })
+  }
 }
 
 export async function loadAgentToolGrants(): Promise<void> {
@@ -95,21 +139,36 @@ export async function loadAgentToolGrants(): Promise<void> {
   }
 }
 
+async function revokeBrowserGrant(id: string): Promise<void> {
+  publishBrowserAccess({ ...browserAccessSnapshot, busyId: id, error: false })
+  try {
+    await invoke('browserAgent:revokeGrant', { id })
+    await loadAgentBrowserAccess()
+  } catch {
+    publishBrowserAccess({ ...browserAccessSnapshot, error: true, busyId: null })
+  }
+}
+
 export async function revokeAgentToolGrant(id: string): Promise<void> {
   publishToolGrants({ ...toolGrantsSnapshot, busyId: id, error: false })
   try {
     await invoke('chat:revokeGrant', { id })
     await loadAgentToolGrants()
   } catch {
-    publishToolGrants({ ...toolGrantsSnapshot, error: true })
-  } finally {
-    publishToolGrants({ ...toolGrantsSnapshot, busyId: null })
+    publishToolGrants({ ...toolGrantsSnapshot, error: true, busyId: null })
   }
 }
 
-export function resetAgentToolGrantsForTests(): void {
+export function resetAgentAccessPanelForTests(): void {
+  browserAccessLoadGeneration += 1
   toolGrantsLoadGeneration += 1
+  publishBrowserAccess(INITIAL_BROWSER_ACCESS)
   publishToolGrants(INITIAL_TOOL_GRANTS)
+}
+
+/** Backwards-compatible test seam for the existing tool-grant tests. */
+export function resetAgentToolGrantsForTests(): void {
+  resetAgentAccessPanelForTests()
 }
 
 export function AgentToolGrantRevokeButton({
@@ -133,132 +192,272 @@ export function AgentToolGrantRevokeButton({
   )
 }
 
-const CAPABILITY_LABEL: Record<Grant['capability'], string> = {
-  read: '읽기',
-  interact: '조작',
-  download: '내려받기'
-}
-
-const ACTION_LABEL: Record<string, string> = {
-  navigate: '이동',
-  read: '읽음',
-  snapshot: '살펴봄',
-  download: '내려받음',
-  grant: '허용',
-  revoke: '해제',
-  denied: '거부됨'
-}
-
 function day(iso: string): string {
   return iso.slice(0, 10)
 }
 
+function urlParts(value: string): { host: string; path: string | null } {
+  if (value === '') return { host: '', path: null }
+  try {
+    const url = new URL(value)
+    return { host: url.host, path: url.pathname === '/' ? null : url.pathname }
+  } catch {
+    return { host: value, path: null }
+  }
+}
+
+function EmptyState({ label }: { label: string }): JSX.Element {
+  return (
+    <div className="settings-agent-empty">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="8" />
+        <path d="M8.5 12h7M12 8.5v7" />
+      </svg>
+      <span>{label}</span>
+    </div>
+  )
+}
+
+function AuditIcon({ action }: { action: string }): JSX.Element {
+  const path =
+    action === 'read'
+      ? 'M7 4h8l3 3v13H7z M15 4v4h4 M10 12h5 M10 16h5'
+      : action === 'snapshot'
+        ? 'M4 7h3l1.5-2h7L17 7h3v11H4z M9 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0'
+        : action === 'denied'
+          ? 'M12 3 20 7v5c0 4.5-3.2 7.5-8 9-4.8-1.5-8-4.5-8-9V7z M9 9l6 6 M15 9l-6 6'
+          : 'M5 12h12 M13 8l4 4-4 4'
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d={path} />
+    </svg>
+  )
+}
+
+function auditMessage(
+  entry: AgentAuditEntry,
+  locale: string,
+  t: (key: string, vars?: Record<string, string | number>) => string
+): string {
+  const { host } = urlParts(entry.url)
+  const body = /본문\s+(\d+)자/u.exec(entry.detail)
+  if (entry.action === 'read' && body !== null) {
+    return t('settings.agentAccess.audit.readBody', {
+      host,
+      count: new Intl.NumberFormat(locale).format(Number(body[1]))
+    })
+  }
+  const tabs = /탭\s+(\d+)개/u.exec(entry.detail)
+  if (entry.action === 'snapshot' && tabs !== null) {
+    return t('settings.agentAccess.audit.tabs', { count: Number(tabs[1]) })
+  }
+  const clicked = /^click\s+([^\s]+)/u.exec(entry.detail)
+  if (entry.action === 'navigate' && clicked !== null) {
+    return t('settings.agentAccess.audit.clicked', {
+      host,
+      element: clicked[1] ?? ''
+    })
+  }
+  return t('settings.agentAccess.audit.generic', {
+    host,
+    action: t(`settings.agentAccess.audit.action.${entry.action}`)
+  })
+}
+
+export function AgentSiteGrantGroups({
+  grants,
+  busyId,
+  onRevoke
+}: {
+  grants: AgentBrowserGrant[]
+  busyId: string | null
+  onRevoke: (id: string) => void
+}): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const grouped = new Map<string, AgentBrowserGrant[]>()
+  for (const grant of grants) {
+    const host = urlParts(grant.origin).host
+    grouped.set(host, [...(grouped.get(host) ?? []), grant])
+  }
+
+  return (
+    <div className="settings-agent-hosts">
+      {[...grouped.entries()].map(([host, hostGrants]) => (
+        <article className="settings-agent-host" key={host}>
+          <strong>{host}</strong>
+          <div className="settings-agent-host__chips">
+            {hostGrants.map((grant) => {
+              const expires = new Intl.DateTimeFormat(locale, {
+                month: 'long',
+                day: 'numeric'
+              }).format(new Date(grant.expiresAt))
+              return (
+                <span className="settings-agent-capability" key={grant.id}>
+                  <span>{t(`settings.agentAccess.capability.${grant.capability}`)}</span>
+                  <small>{t('settings.agentAccess.expires', { date: expires })}</small>
+                  <button
+                    type="button"
+                    disabled={busyId !== null}
+                    aria-label={t('settings.agentAccess.revokeGrant', {
+                      host,
+                      capability: t(
+                        `settings.agentAccess.capability.${grant.capability}`
+                      )
+                    })}
+                    onClick={() => onRevoke(grant.id)}
+                  >
+                    ×
+                  </button>
+                </span>
+              )
+            })}
+          </div>
+        </article>
+      ))}
+    </div>
+  )
+}
+
+export function AgentAuditTimeline({
+  entries
+}: {
+  entries: AgentAuditEntry[]
+}): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const groups = new Map<string, AgentAuditEntry[]>()
+  for (const entry of entries) {
+    groups.set(day(entry.createdAt), [
+      ...(groups.get(day(entry.createdAt)) ?? []),
+      entry
+    ])
+  }
+
+  return (
+    <div className="settings-agent-timeline">
+      {[...groups.entries()].map(([date, dateEntries]) => (
+        <section className="settings-agent-timeline__day" key={date}>
+          <h3>
+            {new Intl.DateTimeFormat(locale, {
+              month: 'long',
+              day: 'numeric',
+              weekday: 'short'
+            }).format(new Date(`${date}T00:00:00`))}
+          </h3>
+          <ol>
+            {dateEntries.map((entry) => {
+              const { path } = urlParts(entry.url)
+              return (
+                <li key={entry.id}>
+                  <span className="settings-agent-timeline__icon">
+                    <AuditIcon action={entry.action} />
+                  </span>
+                  <div>
+                    <p>{auditMessage(entry, locale, t)}</p>
+                    {path !== null && (
+                      <span className="settings-agent-timeline__path">{path}</span>
+                    )}
+                  </div>
+                  <time dateTime={entry.createdAt}>
+                    {new Intl.DateTimeFormat(locale, {
+                      timeStyle: 'short'
+                    }).format(new Date(entry.createdAt))}
+                  </time>
+                </li>
+              )
+            })}
+          </ol>
+        </section>
+      ))}
+    </div>
+  )
+}
+
 export function AgentAccessPanel(): JSX.Element {
   const t = useT()
-  const [grants, setGrants] = useState<Grant[] | null>(null)
-  const [entries, setEntries] = useState<AuditEntry[]>([])
-  const [busy, setBusy] = useState(false)
-  const toolGrantState = useSyncExternalStore(
+  const browserState = useSyncExternalStore(
+    subscribeBrowserAccess,
+    () => browserAccessSnapshot,
+    () => browserAccessSnapshot
+  )
+  const toolState = useSyncExternalStore(
     subscribeToolGrants,
-    getToolGrantsSnapshot,
-    getToolGrantsSnapshot
+    () => toolGrantsSnapshot,
+    () => toolGrantsSnapshot
   )
 
-  const load = useCallback(() => {
-    void invoke('browserAgent:grants', {})
-      .then((result) => setGrants(result.grants))
-      .catch(() => setGrants([]))
-    void invoke('browserAgent:auditTail', { courseId: null, limit: 50 })
-      .then((result) => setEntries(result.entries))
-      .catch(() => setEntries([]))
-  }, [])
-
-  useEffect(() => load(), [load])
   useEffect(() => {
+    void loadAgentBrowserAccess()
     void loadAgentToolGrants()
   }, [])
 
-  const revoke = (id: string): void => {
-    setBusy(true)
-    void invoke('browserAgent:revokeGrant', { id })
-      .then(load)
-      .finally(() => setBusy(false))
-  }
-
-  const live = (grants ?? []).filter(
-    (grant) => grant.revokedAt === null && grant.expiresAt > new Date().toISOString()
+  const now = new Date().toISOString()
+  const live = (browserState.grants ?? []).filter(
+    (grant) => grant.revokedAt === null && grant.expiresAt > now
   )
-  const past = (grants ?? []).filter((grant) => !live.includes(grant))
+  const pastCount = (browserState.grants?.length ?? 0) - live.length
 
   return (
     <div className="settings-stack">
-      <section className="settings-card">
+      <section className="settings-card settings-agent-card">
         <div className="settings-card__header">
-          <h2>에이전트 접근 권한</h2>
-          <p>AI가 열어볼 수 있는 학교 사이트입니다. 기한이 지나면 자동으로 사라집니다.</p>
+          <h2>{t('settings.agentAccess.title')}</h2>
+          <p>{t('settings.agentAccess.description')}</p>
         </div>
-        {grants === null ? (
-          <p className="settings-feedback">불러오는 중…</p>
+        {browserState.loading && browserState.grants === null ? (
+          <p className="settings-feedback">{t('settings.agentAccess.loading')}</p>
+        ) : browserState.error && browserState.grants === null ? (
+          <p className="settings-feedback" role="alert">
+            {t('settings.agentAccess.loadFailed')}
+          </p>
         ) : live.length === 0 ? (
-          <p className="settings-feedback">아직 없습니다.</p>
+          <EmptyState label={t('settings.agentAccess.empty')} />
         ) : (
-          <ul className="settings-site-list">
-            {live.map((grant) => (
-              <li key={grant.id} className="settings-site-row">
-                <span className="settings-site-row__origin">
-                  {grant.origin} · {CAPABILITY_LABEL[grant.capability]} ·{' '}
-                  {day(grant.expiresAt)}까지
-                  {grant.lastUsedAt === null ? ' · 사용 전' : ''}
-                </span>
-                <button
-                  type="button"
-                  className="settings-site-row__action"
-                  disabled={busy}
-                  onClick={() => revoke(grant.id)}
-                >
-                  해제
-                </button>
-              </li>
-            ))}
-          </ul>
+          <AgentSiteGrantGroups
+            grants={live}
+            busyId={browserState.busyId}
+            onRevoke={(id) => void revokeBrowserGrant(id)}
+          />
         )}
-        {past.length > 0 && (
-          <p className="settings-feedback">
-            만료·해제된 권한 {past.length}건
+        {pastCount > 0 && (
+          <p className="settings-agent-past">
+            {t('settings.agentAccess.past', { count: pastCount })}
           </p>
         )}
       </section>
 
-      <section className="settings-card">
+      <section className="settings-card settings-agent-card">
         <div className="settings-card__header">
           <h2>{t('settings.agentAccess.toolGrants.title')}</h2>
           <p>{t('settings.agentAccess.toolGrants.description')}</p>
         </div>
-        {toolGrantState.loading && toolGrantState.grants === null ? (
+        {toolState.loading && toolState.grants === null ? (
           <p className="settings-feedback">
             {t('settings.agentAccess.toolGrants.loading')}
           </p>
-        ) : toolGrantState.error ? (
+        ) : toolState.error ? (
           <p className="settings-feedback" role="alert">
             {t('settings.agentAccess.toolGrants.loadFailed')}
           </p>
-        ) : toolGrantState.grants?.length === 0 ? (
-          <p className="settings-feedback">
-            {t('settings.agentAccess.toolGrants.empty')}
-          </p>
+        ) : toolState.grants?.length === 0 ? (
+          <EmptyState label={t('settings.agentAccess.toolGrants.empty')} />
         ) : (
-          <ul className="settings-site-list">
-            {toolGrantState.grants?.map((grant) => (
-              <li key={grant.id} className="settings-site-row">
-                <span className="settings-site-row__origin">
-                  {grant.courseName} · {grant.rule} ·{' '}
-                  {t('settings.agentAccess.toolGrants.createdAt', {
-                    date: day(grant.createdAt)
-                  })}
-                </span>
+          <ul className="settings-agent-tool-list">
+            {toolState.grants?.map((grant) => (
+              <li key={grant.id}>
+                <div>
+                  <strong>{grant.courseName}</strong>
+                  <span>{grant.rule}</span>
+                  <small>
+                    {t('settings.agentAccess.toolGrants.createdAt', {
+                      date: day(grant.createdAt)
+                    })}
+                  </small>
+                </div>
                 <AgentToolGrantRevokeButton
                   grantId={grant.id}
-                  disabled={toolGrantState.busyId !== null}
+                  disabled={toolState.busyId !== null}
                   label={t('settings.agentAccess.toolGrants.revoke')}
                 />
               </li>
@@ -267,25 +466,22 @@ export function AgentAccessPanel(): JSX.Element {
         )}
       </section>
 
-      <section className="settings-card">
+      <section className="settings-card settings-agent-card">
         <div className="settings-card__header">
-          <h2>기록</h2>
-          <p>AI가 브라우저에서 한 일입니다. 페이지 내용은 남기지 않습니다.</p>
+          <h2>{t('settings.agentAccess.audit.title')}</h2>
+          <p>{t('settings.agentAccess.audit.description')}</p>
         </div>
-        {entries.length === 0 ? (
-          <p className="settings-feedback">아직 없습니다.</p>
-        ) : (
-          <ul className="settings-site-list">
-            {entries.map((entry) => (
-              <li key={entry.id} className="settings-site-row">
-                <span className="settings-site-row__origin">
-                  {day(entry.createdAt)} · {ACTION_LABEL[entry.action] ?? entry.action} ·{' '}
-                  {entry.url} · {entry.detail}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        {browserState.loading && browserState.entries === null ? (
+          <p className="settings-feedback">{t('settings.agentAccess.loading')}</p>
+        ) : browserState.error && browserState.entries === null ? (
+          <p className="settings-feedback" role="alert">
+            {t('settings.agentAccess.loadFailed')}
+          </p>
+        ) : browserState.entries?.length === 0 ? (
+          <EmptyState label={t('settings.agentAccess.audit.empty')} />
+        ) : browserState.entries !== null ? (
+          <AgentAuditTimeline entries={browserState.entries} />
+        ) : null}
       </section>
     </div>
   )

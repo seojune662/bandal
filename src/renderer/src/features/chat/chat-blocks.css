@@ -177,6 +177,65 @@
 
 /* -- permission card ---------------------------------------------------------- */
 
+.chat-approval-dock {
+  flex: 0 1 auto;
+  width: 100%;
+  max-height: min(18rem, 42vh);
+  padding: var(--space-3) var(--space-5);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-app);
+  border-top: 1px solid var(--border-subtle);
+  animation: chat-approval-dock-in var(--dur-base) var(--ease-out);
+}
+
+.chat-approval-dock__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+@keyframes chat-approval-dock-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-3));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chat-tab[data-variant='popup'] .chat-approval-dock {
+  padding: var(--space-2) var(--space-3);
+}
+
+.chat-tab[data-variant='popup'] .chat-approval-dock .chat-permission,
+.chat-tab[data-variant='popup'] .chat-approval-dock .chat-agent-confirm {
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.chat-approval-dock .chat-permission__actions,
+.chat-approval-dock .chat-agent-confirm__actions {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.chat-approval-dock .chat-permission__btn,
+.chat-approval-dock .chat-agent-confirm__button {
+  flex: 1 0 max-content;
+  min-width: 0;
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
 .chat-permission {
   display: flex;
   flex-direction: column;

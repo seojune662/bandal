@@ -4,7 +4,7 @@
  * reach the renderer, so every card here is a genuine question.
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { PermissionResponse } from '../../../../../shared/types/agent-events'
 import type { PermissionBlockView } from '../chatModel'
 import { prettyInput, summarizeInput } from '../toolPresentation'
@@ -13,6 +13,8 @@ export interface PermissionDialogProps {
   block: PermissionBlockView
   /** True when this request is the one currently blocking the turn. */
   isActive: boolean
+  autoFocusReject?: boolean
+  shouldAutoFocusReject?: () => boolean
   onRespond: (requestId: string, response: PermissionResponse) => void
 }
 
@@ -29,12 +31,26 @@ function resolvedLabel(behavior: 'allow' | 'deny' | undefined): string {
 export function PermissionDialog({
   block,
   isActive,
+  autoFocusReject = false,
+  shouldAutoFocusReject,
   onRespond
 }: PermissionDialogProps): JSX.Element {
   const [isExpanded, setIsExpanded] = useState(false)
+  const rejectButtonRef = useRef<HTMLButtonElement>(null)
   const isPending = block.behavior === undefined && isActive
   const summary = summarizeInput(block.input)
   const detail = prettyInput(block.input)
+
+  useEffect(() => {
+    if (
+      !isPending ||
+      !autoFocusReject ||
+      shouldAutoFocusReject?.() === false
+    ) {
+      return
+    }
+    rejectButtonRef.current?.focus()
+  }, [block.id, isPending, autoFocusReject, shouldAutoFocusReject])
 
   if (!isPending) {
     return (
@@ -77,6 +93,15 @@ export function PermissionDialog({
       )}
       <div className="chat-permission__actions">
         <button
+          ref={rejectButtonRef}
+          type="button"
+          className="chat-permission__btn chat-permission__btn--deny"
+          data-approval-safe-action="true"
+          onClick={() => onRespond(block.id, { behavior: 'deny' })}
+        >
+          거부
+        </button>
+        <button
           type="button"
           className="chat-permission__btn chat-permission__btn--allow"
           onClick={() => onRespond(block.id, { behavior: 'allow' })}
@@ -91,13 +116,6 @@ export function PermissionDialog({
           }
         >
           항상 허용
-        </button>
-        <button
-          type="button"
-          className="chat-permission__btn chat-permission__btn--deny"
-          onClick={() => onRespond(block.id, { behavior: 'deny' })}
-        >
-          거부
         </button>
       </div>
     </div>

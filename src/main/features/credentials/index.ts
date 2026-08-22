@@ -15,5 +15,9 @@ export type {
   LoginFillRequest,
   LoginGuestWebContents
 } from './loginFiller'
-export { createLoginCapturer } from './loginCapture'
+export {
+  createLoginCapturer,
+  isRelatedLoginOrigin,
+  STAGED_LOGIN_TTL_MS
+} from './loginCapture'
 export type { LoginCaptureRequest } from './loginCapture'

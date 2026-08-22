@@ -39,9 +39,9 @@ function configureOverlayWindow(
   }
 
   try {
-    // Prevent the overlay from appearing in captures taken by screen-reading
-    // features. On Windows Electron maps this to WDA_EXCLUDEFROMCAPTURE.
-    win.setContentProtection(true)
+    // Desktop overlays remain visible in ordinary sharing/recording. Capture
+    // code temporarily enables protection only around its own screenshot.
+    win.setContentProtection(false)
   } catch (error) {
     console.warn('[overlay] content protection is unsupported:', error)
   }
@@ -79,11 +79,9 @@ export function createOrbWindow(opts: {
   })
 
   configureOverlayWindow(win, 'screen-saver')
-  // A non-focusable assistant must never activate the app just because its
-  // renderer finished loading.
-  win.once('ready-to-show', () => {
-    if (!win.isDestroyed()) win.showInactive()
-  })
+  // Transparent charm margins never block the app underneath. The renderer
+  // opts back into mouse handling only over the pill or charm body.
+  win.setIgnoreMouseEvents(true, { forward: true })
   return win
 }
 

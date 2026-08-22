@@ -28,6 +28,10 @@
   padding-top: calc(var(--chrome-height) + var(--space-2));
 }
 
+:root[data-platform='win32'] .settings-app--embedded .settings-sidebar {
+  padding-top: var(--chrome-height);
+}
+
 .settings-titlebar {
   display: flex;
   align-items: center;
@@ -96,6 +100,7 @@
   transition:
     color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out);
+  -webkit-app-region: no-drag;
 }
 
 .back-button:hover {
@@ -117,6 +122,7 @@
   align-items: center;
   margin-bottom: var(--space-4);
   color: var(--text-muted);
+  -webkit-app-region: no-drag;
 }
 
 .settings-search > .icon {
@@ -128,6 +134,7 @@
 
 .settings-search input {
   width: 100%;
+  -webkit-app-region: no-drag;
   height: 36px;
   padding: 0 var(--space-3) 0 34px;
   color: var(--text-primary);

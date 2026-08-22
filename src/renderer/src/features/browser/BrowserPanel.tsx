@@ -51,8 +51,13 @@ import {
   type BrowserShortcut
 } from './browserStartPageModel'
 import { guestActions } from './guestActions'
-import { fillLoginForTab, saveLoginForTab } from './loginBridge'
+import {
+  discardStagedLoginForTab,
+  fillLoginForTab,
+  saveStagedLoginForTab
+} from './loginBridge'
 import { addressDisplayParts, resolveAddressInput } from './urlInput'
+import { scheduleProgressVisibility } from './loadingIndicator'
 import './browser.css'
 
 function browserPayloadFromParams(params: unknown): BrowserTabPayload | null {
@@ -349,6 +354,50 @@ export function BrowserFavoriteButton({
   )
 }
 
+export function BrowserLoginPrompt({
+  kind,
+  onSave,
+  onDecline,
+  onSuppress
+}: {
+  kind: 'save' | 'update'
+  onSave: () => void
+  onDecline: () => void
+  onSuppress: () => void
+}): JSX.Element {
+  return (
+    <div className="browser-external-auth browser-login-prompt" role="status">
+      <BrowserIcon name="key" />
+      <span className="browser-external-auth__message">
+        {kind === 'update'
+          ? '비밀번호를 업데이트할까요?'
+          : '이 사이트 로그인을 저장할까요?'}
+      </span>
+      <button
+        type="button"
+        className="browser-login-prompt__action browser-login-prompt__action--primary"
+        onClick={onSave}
+      >
+        저장
+      </button>
+      <button
+        type="button"
+        className="browser-login-prompt__action"
+        onClick={onDecline}
+      >
+        이번엔 안 함
+      </button>
+      <button
+        type="button"
+        className="browser-login-prompt__action"
+        onClick={onSuppress}
+      >
+        이 사이트는 묻지 않기
+      </button>
+    </div>
+  )
+}
+
 function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
   const login = useBrowserGuests((state) => state.login[tabId])
   const zoomLevel = useBrowserGuests(
@@ -361,6 +410,12 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
   const anyDownloads = useDownloads((state) => state.downloads.length > 0)
   const [downloadsOpen, setDownloadsOpen] = useState(false)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+  const [progressVisible, setProgressVisible] = useState(false)
+
+  useEffect(
+    () => scheduleProgressVisibility(nav.loading, setProgressVisible),
+    [nav.loading]
+  )
 
   // The context menu lives outside this subtree, so it asks by event rather
   // than by threading a callback through four components.
@@ -377,9 +432,7 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
   const favicon = useBrowserGuests((state) => state.favicon[tabId])
   const findState = useBrowserGuests((state) => state.find[tabId])
   const loginTooltip =
-    login?.savedLogin === null
-      ? '직접 입력한 아이디와 비밀번호를 안전하게 저장합니다.'
-      : `${login?.savedLogin.username ?? ''} 계정으로 채웁니다.`
+    `${login?.savedLogin?.username ?? ''} 계정으로 안전하게 채웁니다.`
 
   const goBack = (): void => {
     if (nav.canGoBack) guestActions.back(tabId)
@@ -485,23 +538,22 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
               </button>
             </Tooltip>
           )}
-          {login?.hasLoginForm === true && login.origin !== null && (
+          {login?.hasLoginForm === true &&
+            login.usernameFocused &&
+            login.origin !== null &&
+            login.savedLogin !== null && (
             <div className="browser-login-action">
               <Tooltip label={loginTooltip} placement="bottom">
                 <button
                   type="button"
                   className="browser-login-button"
                   disabled={login.pending}
-                  onClick={() => {
-                    if (login.savedLogin === null) void saveLoginForTab(tabId)
-                    else void fillLoginForTab(tabId)
-                  }}
+                  onClick={() => void fillLoginForTab(tabId)}
                 >
+                  <BrowserIcon name="key" />
                   {login.pending
                     ? '처리 중…'
-                    : login.savedLogin === null
-                      ? '이 사이트 로그인 저장'
-                      : '로그인 채우기'}
+                    : '저장된 로그인 채우기'}
                 </button>
               </Tooltip>
               {login.message !== null && (
@@ -525,7 +577,7 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
       )}
       <div
         className="browser-progress"
-        data-active={nav.loading ? 'true' : undefined}
+        data-active={progressVisible ? 'true' : undefined}
         aria-hidden="true"
       >
         <div className="browser-progress__bar" />
@@ -548,6 +600,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
     tabId !== '' ? state.nav[tabId] : undefined
   )
   const overlay = useBrowserGuests((state) => state.overlay[tabId] ?? null)
+  const login = useBrowserGuests((state) => state.login[tabId])
   const externalAuthNotice = useBrowserGuests(
     (state) => state.externalAuthNotice
   )
@@ -635,6 +688,16 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   return (
     <div className="browser-panel" data-kind="browser">
       <BrowserToolbar tabId={tabId} nav={navState} onNavigate={navigate} />
+      {isPanelVisible &&
+        login?.savePrompt !== null &&
+        login?.savePrompt !== undefined && (
+          <BrowserLoginPrompt
+            kind={login.savePrompt.kind}
+            onSave={() => void saveStagedLoginForTab(tabId)}
+            onDecline={() => void discardStagedLoginForTab(tabId, false)}
+            onSuppress={() => void discardStagedLoginForTab(tabId, true)}
+          />
+        )}
       <BrowserBookmarksBar favorites={favorites} onNavigate={navigate} />
       {isPanelVisible && externalAuthNotice !== null && (
         <div

@@ -10,6 +10,10 @@ import {
   useOverlayCoursesStore
 } from '../../../src/renderer/src/features/overlay/CourseChip'
 import { OverlayPopupApp } from '../../../src/renderer/src/features/overlay/OverlayPopupApp'
+import {
+  isOverlayOrbHit,
+  reportOverlayOrbHitTest
+} from '../../../src/renderer/src/features/overlay/OverlayOrbApp'
 import { ScreenPermissionChip } from '../../../src/renderer/src/features/overlay/ScreenPermissionChip'
 import {
   acquireOverlayState,
@@ -104,6 +108,33 @@ describe('useOverlayState', () => {
     } finally {
       release()
     }
+  })
+})
+
+describe('OverlayOrbApp hit testing', () => {
+  test('treats the orb disk and charm body as interactive', () => {
+    const orb = { left: 92, top: 92, right: 148, bottom: 148, width: 56, height: 56 }
+    const charm = { left: 104, top: 148, right: 136, bottom: 210, width: 32, height: 62 }
+
+    expect(isOverlayOrbHit({ x: 120, y: 120 }, orb, charm)).toBe(true)
+    expect(isOverlayOrbHit({ x: 120, y: 180 }, orb, charm)).toBe(true)
+    expect(isOverlayOrbHit({ x: 20, y: 20 }, orb, charm)).toBe(false)
+  })
+
+  test('reports hit-test transitions through the overlay IPC channel', async () => {
+    const invoke = vi.fn(async () => ({ ok: true }))
+    setIpcAdapter({
+      invoke,
+      on: vi.fn(() => () => undefined)
+    } as unknown as IpcAdapter)
+
+    await reportOverlayOrbHitTest(true)
+    await reportOverlayOrbHitTest(false)
+
+    expect(invoke.mock.calls).toEqual([
+      ['overlay:setOrbHitTest', { hit: true }],
+      ['overlay:setOrbHitTest', { hit: false }]
+    ])
   })
 })
 

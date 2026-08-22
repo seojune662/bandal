@@ -17,7 +17,7 @@ vi.mock('../../../src/renderer/src/i18n', () => {
     'settings.mcp.enabledLabel': '{name} 서버 사용',
     'settings.mcp.status.untested': '미확인',
     'settings.mcp.status.error': '✗ 오류',
-    'settings.mcp.status.tools': '✓ 도구 {count}개',
+    'settings.mcp.status.tools': '도구 {count}개',
     'settings.mcp.action.add': '서버 추가',
     'settings.mcp.action.retry': '다시 불러오기',
     'settings.mcp.action.cancel': '취소',
@@ -29,6 +29,8 @@ vi.mock('../../../src/renderer/src/i18n', () => {
     'settings.mcp.action.delete': '삭제',
     'settings.mcp.action.deleting': '삭제 중…',
     'settings.mcp.action.confirmDelete': '삭제 확인',
+    'settings.mcp.manual.title': '직접 입력',
+    'settings.mcp.manual.description': '상세 연결 정보를 직접 설정합니다.',
     'settings.mcp.form.addTitle': 'MCP 서버 추가',
     'settings.mcp.form.editTitle': 'MCP 서버 편집',
     'settings.mcp.form.description': '연결 정보와 비밀값을 관리합니다.',
@@ -138,6 +140,25 @@ afterEach(() => {
 })
 
 describe('McpServersPanel', () => {
+  test('puts paste import and six recommended presets before manual entry', async () => {
+    installListFake([])
+    await loadMcpServers()
+
+    const html = renderToStaticMarkup(<McpServersPanel />)
+
+    expect(html.match(/class="settings-mcp-preset"/g)).toHaveLength(6)
+    expect(html).toContain('@notionhq/notion-mcp-server')
+    expect(html).toContain('@modelcontextprotocol/server-github')
+    expect(html).toContain('@modelcontextprotocol/server-gdrive')
+    expect(html).toContain('@modelcontextprotocol/server-slack')
+    expect(html).toContain('@modelcontextprotocol/server-filesystem')
+    expect(html).toContain('mcp-server-fetch (Python)')
+    expect(html.indexOf('settings-mcp-import')).toBeLessThan(
+      html.indexOf('settings-mcp-gallery')
+    )
+    expect(html).toContain('<summary><span>직접 입력</span>')
+  })
+
   test('renders an empty registry', async () => {
     installListFake([])
     await loadMcpServers()
@@ -145,7 +166,7 @@ describe('McpServersPanel', () => {
     const html = renderToStaticMarkup(<McpServersPanel />)
 
     expect(html).toContain('등록된 MCP 서버가 없습니다.')
-    expect(html).toContain('>서버 추가</button>')
+    expect(html).toContain('>직접 입력</button>')
   })
 
   test('renders transport badges and the last connection result', async () => {
@@ -158,7 +179,7 @@ describe('McpServersPanel', () => {
     expect(html).toContain('campus-tools')
     expect(html).toContain('>stdio</span>')
     expect(html).toContain('>http</span>')
-    expect(html).toContain('✓ 도구 2개')
+    expect(html).toContain('도구 2개')
     expect(html).toContain('✗ 오류')
   })
 
@@ -183,12 +204,13 @@ describe('McpServersPanel', () => {
     const html = renderToStaticMarkup(
       <McpServersPanel initialEditingServerId="stdio-server" />
     )
+    const editorHtml = html.slice(html.indexOf('<form class="settings-mcp-card'))
 
-    expect(html).toContain('NOTION_TOKEN')
-    expect(html).toContain('••••')
-    expect(html).toContain('>바꾸기</button>')
-    expect(html).not.toContain('type="password"')
-    expect(html).not.toContain('notion-secret-value')
-    expect(html).not.toContain('value="••••"')
+    expect(editorHtml).toContain('NOTION_TOKEN')
+    expect(editorHtml).toContain('••••')
+    expect(editorHtml).toContain('>바꾸기</button>')
+    expect(editorHtml).not.toContain('type="password"')
+    expect(editorHtml).not.toContain('notion-secret-value')
+    expect(editorHtml).not.toContain('value="••••"')
   })
 })

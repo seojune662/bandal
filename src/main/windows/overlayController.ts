@@ -5,8 +5,10 @@ import type { PushChannel, PushPayload } from '../../shared/ipc/events'
 import type { OverlayState } from '../../shared/types/overlay'
 import type { Settings } from '../../shared/types/settings'
 import {
-  clampToArea,
+  clampOrbToArea,
   defaultOrbPosition,
+  LEGACY_ORB_WINDOW_SIZE,
+  normalizeOrbWindowBounds,
   ORB_WINDOW_SIZE,
   orbPositionFromCursor,
   placePopup,
@@ -39,12 +41,14 @@ export interface OverlayControllerDeps {
   userDataPath: string
 }
 
+export type ManagedOverlayState = OverlayState & { desktopVisible: boolean }
+
 export interface OverlayController {
   start(): void
   stop(): void
   isActive(): boolean
-  getState(): OverlayState
-  setCourse(courseId: string): OverlayState
+  getState(): ManagedOverlayState
+  setCourse(courseId: string): ManagedOverlayState
   togglePopup(open?: boolean): { open: boolean }
   orbDragBegin(grab: { grabX: number; grabY: number }): void
   orbDragEnd(): void
@@ -53,6 +57,9 @@ export interface OverlayController {
   markQuitting(): void
   isQuitting(): boolean
   setScreenPermission(state: OverlayState['screenPermission']): void
+  setOrbHitTest(hit: boolean): void
+  syncMainWindowVisibility(): void
+  concealForCapture(): () => void
 }
 
 function liveWindow(win: BrowserWindow | null): win is BrowserWindow {
@@ -69,14 +76,18 @@ export function createOverlayController(
   let popupOpen = false
   let quitting = false
   let screenPermission: OverlayState['screenPermission'] = 'unknown'
+  let desktopVisible = false
+  let captureConcealments = 0
   let dragInterval: NodeJS.Timeout | null = null
   let dragTimeout: NodeJS.Timeout | null = null
   const conversations = new Map<string, string>()
+  const observedMainWindows = new WeakSet<BrowserWindow>()
 
   const orbState = createWindowStateStore({
     file: join(deps.userDataPath, ORB_STATE_FILE),
-    minWidth: ORB_WINDOW_SIZE,
-    minHeight: ORB_WINDOW_SIZE
+    // Keep accepting the legacy 64px state long enough to migrate its centre.
+    minWidth: LEGACY_ORB_WINDOW_SIZE,
+    minHeight: LEGACY_ORB_WINDOW_SIZE
   })
   const popupState = createWindowStateStore({
     file: join(deps.userDataPath, POPUP_STATE_FILE),
@@ -96,7 +107,7 @@ export function createOverlayController(
     return conversationId
   }
 
-  const getState = (): OverlayState => {
+  const getState = (): ManagedOverlayState => {
     const activeCourseId = courseId()
     return {
       mode: settings.assistantMode,
@@ -106,12 +117,65 @@ export function createOverlayController(
           ? null
           : conversationFor(activeCourseId),
       popupOpen,
-      screenPermission
+      screenPermission,
+      desktopVisible
     }
   }
 
   const broadcastState = (): void => {
     deps.broadcast('overlay:state', getState())
+  }
+
+  const mainWindowIsActive = (): boolean => {
+    const main = deps.getMainWindow()
+    return (
+      liveWindow(main) &&
+      main.isVisible() &&
+      !main.isMinimized() &&
+      main.isFocused()
+    )
+  }
+
+  const setDesktopVisible = (visible: boolean): boolean => {
+    const next = visible && settings.assistantMode === 'desktop' && liveWindow(orb)
+    if (liveWindow(orb)) {
+      if (next) {
+        if (!orb.isVisible()) orb.showInactive()
+      } else if (orb.isVisible()) {
+        orb.hide()
+      }
+    }
+    if (desktopVisible === next) return false
+    desktopVisible = next
+    return true
+  }
+
+  const syncMainWindowVisibility = (): void => {
+    const changed = setDesktopVisible(!mainWindowIsActive())
+    if (changed) broadcastState()
+  }
+
+  const observeMainWindow = (main: BrowserWindow | null): void => {
+    if (!liveWindow(main) || observedMainWindows.has(main)) return
+    observedMainWindows.add(main)
+    main.on('focus', syncMainWindowVisibility)
+    main.on('show', syncMainWindowVisibility)
+    main.on('restore', syncMainWindowVisibility)
+    main.on('blur', syncMainWindowVisibility)
+    main.on('minimize', syncMainWindowVisibility)
+    main.on('hide', syncMainWindowVisibility)
+    main.on('closed', syncMainWindowVisibility)
+  }
+
+  const setOverlayContentProtection = (protectedContent: boolean): void => {
+    for (const win of [orb, popup]) {
+      if (!liveWindow(win)) continue
+      try {
+        win.setContentProtection(protectedContent)
+      } catch (error) {
+        console.warn('[overlay] content protection is unsupported:', error)
+      }
+    }
   }
 
   const saveOrbBounds = (): void => {
@@ -160,6 +224,7 @@ export function createOverlayController(
       popup.hide()
       popupOpen = false
     }
+    syncMainWindowVisibility()
     broadcastState()
     return { open: popupOpen }
   }
@@ -192,13 +257,8 @@ export function createOverlayController(
       }
     }
 
-    const fixedSize = {
-      x: saved.x,
-      y: saved.y,
-      width: ORB_WINDOW_SIZE,
-      height: ORB_WINDOW_SIZE
-    }
-    return clampToArea(
+    const fixedSize = normalizeOrbWindowBounds(saved)
+    return clampOrbToArea(
       fixedSize,
       screen.getDisplayMatching(fixedSize).workArea
     )
@@ -237,8 +297,11 @@ export function createOverlayController(
     orbState.track(orbWindow)
     popupState.track(popupWindow)
     attachWindowLifetimes(orbWindow, popupWindow)
+    observeMainWindow(deps.getMainWindow())
+    if (captureConcealments > 0) setOverlayContentProtection(true)
     loadOverlayView(orbWindow, 'orb')
     loadOverlayView(popupWindow, 'popup')
+    syncMainWindowVisibility()
     broadcastState()
   }
 
@@ -251,6 +314,7 @@ export function createOverlayController(
     orbDragEnd()
     if (!liveWindow(orb) && !liveWindow(popup)) {
       popupOpen = false
+      desktopVisible = false
       broadcastState()
       return
     }
@@ -262,12 +326,13 @@ export function createOverlayController(
     orb = null
     popup = null
     popupOpen = false
+    desktopVisible = false
     if (liveWindow(popupWindow)) popupWindow.destroy()
     if (liveWindow(orbWindow)) orbWindow.destroy()
     broadcastState()
   }
 
-  const setCourse = (nextCourseId: string): OverlayState => {
+  const setCourse = (nextCourseId: string): ManagedOverlayState => {
     courseOverride = nextCourseId
     broadcastState()
     return getState()
@@ -312,8 +377,10 @@ export function createOverlayController(
     const conversationId = req.conversationId ?? mappedConversationId
     const existing = deps.getMainWindow()
     if (liveWindow(existing)) {
+      observeMainWindow(existing)
       existing.show()
       existing.focus()
+      syncMainWindowVisibility()
       existing.webContents.send('ui:openChat', {
         courseId: req.courseId,
         conversationId
@@ -322,6 +389,8 @@ export function createOverlayController(
     }
 
     const created = deps.createMainWindow()
+    observeMainWindow(created)
+    syncMainWindowVisibility()
     created.webContents.once('did-finish-load', () => {
       if (!created.isDestroyed()) {
         created.webContents.send('ui:openChat', {
@@ -335,7 +404,7 @@ export function createOverlayController(
   const reclampOrb = (): void => {
     if (!liveWindow(orb)) return
     const current = orb.getBounds()
-    const clamped = clampToArea(
+    const clamped = clampOrbToArea(
       {
         x: current.x,
         y: current.y,
@@ -387,6 +456,26 @@ export function createOverlayController(
     setScreenPermission(state): void {
       screenPermission = state
       broadcastState()
+    },
+    setOrbHitTest(hit): void {
+      if (!liveWindow(orb)) return
+      if (hit) orb.setIgnoreMouseEvents(false)
+      else orb.setIgnoreMouseEvents(true, { forward: true })
+    },
+    syncMainWindowVisibility(): void {
+      observeMainWindow(deps.getMainWindow())
+      syncMainWindowVisibility()
+    },
+    concealForCapture(): () => void {
+      captureConcealments += 1
+      if (captureConcealments === 1) setOverlayContentProtection(true)
+      let restored = false
+      return (): void => {
+        if (restored) return
+        restored = true
+        captureConcealments = Math.max(0, captureConcealments - 1)
+        if (captureConcealments === 0) setOverlayContentProtection(false)
+      }
     }
   }
 }

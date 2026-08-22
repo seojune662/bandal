@@ -421,6 +421,182 @@
   padding: 0 var(--space-5);
 }
 
+.settings-mcp-import__preview {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.settings-mcp-import__preview > strong {
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+}
+
+.settings-mcp-import__preview ul,
+.settings-mcp-import__errors {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-mcp-import__preview li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.settings-mcp-import__preview code {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-mcp-import__errors {
+  padding: var(--space-3) var(--space-4);
+  color: var(--danger);
+  font-size: var(--text-xs);
+  background: var(--danger-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.settings-mcp-import__errors li {
+  list-style: disc inside;
+}
+
+.settings-mcp-import__actions,
+.settings-mcp-preset__action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.settings-mcp-gallery__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: 0 var(--space-5) var(--space-5);
+}
+
+.settings-mcp-preset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.settings-mcp-preset__copy {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.settings-mcp-preset h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.settings-mcp-preset code {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-mcp-preset p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.settings-mcp-preset__fields {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.settings-mcp-preset__fields label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 620;
+}
+
+.settings-mcp-preset__fields input {
+  width: 100%;
+  min-height: var(--button-height);
+  padding: 0 var(--space-3);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 450;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.settings-mcp-preset__action {
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+.settings-mcp-manual {
+  overflow: hidden;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-mcp-manual > summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-5);
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.settings-mcp-manual > summary span {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 680;
+}
+
+.settings-mcp-manual > summary small {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.settings-mcp-manual[open] > summary {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-mcp-manual > .settings-mcp-card {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 @media (max-width: 720px) {
   .settings-mcp-card-header,
   .settings-mcp-confirm {
@@ -442,6 +618,15 @@
 
   .settings-mcp-secret-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-mcp-gallery__grid,
+  .settings-mcp-import__preview li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-mcp-import__preview code {
+    text-align: left;
   }
 
   .settings-mcp-confirm-actions {

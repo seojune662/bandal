@@ -55,7 +55,12 @@ export const MAX_RECENT_VISITS = 6
 export interface BrowserLoginState {
   origin: string | null
   hasLoginForm: boolean
+  usernameFocused: boolean
   savedLogin: SavedLoginSummary | null
+  savePrompt: {
+    origin: string
+    kind: 'save' | 'update'
+  } | null
   pending: boolean
   message: 'saved' | 'filled' | 'needs-input' | 'failed' | null
 }
@@ -129,7 +134,9 @@ export function initialLoginState(): BrowserLoginState {
   return {
     origin: null,
     hasLoginForm: false,
+    usernameFocused: false,
     savedLogin: null,
+    savePrompt: null,
     pending: false,
     message: null
   }

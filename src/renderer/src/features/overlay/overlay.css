@@ -7,24 +7,41 @@
 }
 
 :root[data-overlay-view='orb'] #root {
+  position: relative;
   background: transparent;
 }
 
 .overlay-orb {
+  position: absolute;
+  top: 50%;
+  left: 50%;
   display: grid;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
+  width: var(--empty-mark-size);
+  height: var(--empty-mark-size);
+  padding: var(--space-2);
   color: var(--accent);
-  background: transparent;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-lg);
+  transform: translate(-50%, -50%);
   place-items: center;
   touch-action: none;
   -webkit-app-region: no-drag;
 }
 
-.overlay-orb:active {
-  transform: scale(0.96);
+.overlay-orb .bandal-orb-mark {
+  --bandal-mark-size: 100%;
+}
+
+.overlay-orb:hover .bandal-orb-mark,
+.overlay-orb:focus-visible .bandal-orb-mark {
+  --bandal-phase-duration: 4s;
+  --bandal-axis-duration: 12s;
+}
+
+.overlay-orb:active .bandal-orb-mark {
+  transform: scale(0.94);
 }
 
 :root[data-overlay-view='popup'],

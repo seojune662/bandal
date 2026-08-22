@@ -54,7 +54,8 @@ describe('assistant app-action cards', () => {
     for (const detail of confirmation.details) {
       expect(html).toContain(detail)
     }
-    expect(html).toContain('autofocus=""')
+    expect(html).not.toContain('autofocus')
+    expect(html).toContain('data-approval-safe-action="true"')
     expect(html).not.toContain('항상 허용')
   })
 

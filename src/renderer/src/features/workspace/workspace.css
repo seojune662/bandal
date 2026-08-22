@@ -60,7 +60,7 @@
 }
 
 .bandal-dockview .dv-tabs-and-actions-container {
-  border-bottom: 1px solid var(--border-subtle);
+  box-shadow: inset 0 -1px 0 var(--border-subtle);
   -webkit-app-region: drag;
 }
 
@@ -68,8 +68,15 @@
  * horizontal gestures on the compositor path; the host only converts pure
  * vertical mouse-wheel input. Keep either gesture inside the tab strip. */
 .bandal-dockview .dv-tabs-container.dv-horizontal {
+  overflow-x: auto;
+  overflow-y: hidden;
   overscroll-behavior-inline: contain;
   scroll-behavior: auto;
+  scrollbar-width: none;
+}
+
+.bandal-dockview .dv-tabs-container.dv-horizontal::-webkit-scrollbar {
+  display: none;
 }
 
 /* Keep dockview's native tab DnD and every header control interactive. The

@@ -10,6 +10,7 @@ export type BrowserIconName =
   | 'arrowRight'
   | 'globe'
   | 'lock'
+  | 'key'
   | 'insecure'
   | 'download'
   | 'chevronUp'
@@ -57,6 +58,12 @@ const paths: Record<BrowserIconName, JSX.Element> = {
     <>
       <rect x="5.5" y="10" width="13" height="10" rx="2" />
       <path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10" />
+    </>
+  ),
+  key: (
+    <>
+      <circle cx="8" cy="12" r="4" />
+      <path d="M12 12h8m-3 0v3m-3-3v2" />
     </>
   )
 }

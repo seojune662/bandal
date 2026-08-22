@@ -80,7 +80,8 @@ function runtimeFor(conversationId: string): AgentToolRuntime {
   return runtime
 }
 
-function appendConfirmation(request: AgentConfirmRequest): void {
+/** Records a pushed confirmation once, even when more than one surface listens. */
+export function recordAgentConfirmation(request: AgentConfirmRequest): void {
   updateSnapshot(request.conversationId, (current) => {
     const existingIndex = current.items.findIndex(
       (item) =>
@@ -202,7 +203,7 @@ export function acquireAgentToolActivity(conversationId: string): () => void {
       // appeared in EVERY past conversation of the same course: one card, one
       // course key, every ChatSurface mounted for it.
       if (request.conversationId === conversationId) {
-        appendConfirmation(request)
+        recordAgentConfirmation(request)
       }
     })
     const unsubscribeChanged = onPush('agentTools:changed', (event) => {
@@ -342,7 +343,8 @@ export function useAgentToolActivity(
   const conversationId = conversationKey
   const snapshot = useAgentToolActivityStore(
     useCallback(
-      (store) => store.conversations[conversationId] ?? EMPTY_SNAPSHOT,
+      (store) =>
+        store.conversations[conversationId] ?? snapshotFor(conversationId),
       [conversationId]
     )
   )

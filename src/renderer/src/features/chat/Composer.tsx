@@ -28,7 +28,11 @@ interface MentionRange {
 
 export interface ComposerHandle {
   focus: () => void
+  /** Keeps urgent UI from stealing focus while the student is writing. */
+  isActivelyTyping: () => boolean
 }
+
+const RECENT_TYPING_WINDOW_MS = 1_500
 
 export interface ComposerProps {
   courseId: string
@@ -104,6 +108,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
   ): JSX.Element {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const mentionSequenceRef = useRef(0)
+    const isComposingRef = useRef(false)
+    const lastInputAtRef = useRef(Number.NEGATIVE_INFINITY)
     const [attachments, setAttachments] = useState<ChatAttachment[]>([])
     const [attachmentError, setAttachmentError] = useState<string | null>(null)
     const [mention, setMention] = useState<MentionRange | null>(null)
@@ -112,7 +118,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
     const [isSearching, setIsSearching] = useState(false)
 
     useImperativeHandle(ref, () => ({
-      focus: () => textareaRef.current?.focus()
+      focus: () => textareaRef.current?.focus(),
+      isActivelyTyping: () =>
+        isComposingRef.current ||
+        Date.now() - lastInputAtRef.current <= RECENT_TYPING_WINDOW_MS
     }))
 
     const resize = useCallback(() => {
@@ -379,12 +388,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
             value={value}
             disabled={disabled}
             onChange={(event) => {
+              lastInputAtRef.current = Date.now()
               onChange(event.target.value)
               updateMention(
                 event.target.value,
                 event.target.selectionStart ?? event.target.value.length
               )
               resize()
+            }}
+            onCompositionStart={() => {
+              isComposingRef.current = true
+              lastInputAtRef.current = Date.now()
+            }}
+            onCompositionEnd={() => {
+              isComposingRef.current = false
+              lastInputAtRef.current = Date.now()
             }}
             onSelect={(event) => {
               updateMention(

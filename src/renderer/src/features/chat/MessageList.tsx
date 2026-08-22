@@ -65,6 +65,7 @@ export function UsageText({ usage }: { usage: Usage }): JSX.Element {
 interface BlockRendererProps {
   block: BlockView
   pendingPermissionId: string | null
+  dockedPermissionId: string | null
   onRespondPermission: (requestId: string, response: PermissionResponse) => void
 }
 
@@ -80,6 +81,7 @@ function activePermissionForBlock(
 const BlockRenderer = memo(function BlockRenderer({
   block,
   pendingPermissionId,
+  dockedPermissionId,
   onRespondPermission
 }: BlockRendererProps): JSX.Element | null {
   switch (block.kind) {
@@ -90,6 +92,9 @@ const BlockRenderer = memo(function BlockRenderer({
     case 'tool':
       return <ToolCard block={block} />
     case 'permission':
+      if (block.id === dockedPermissionId) {
+        return null
+      }
       return (
         <PermissionDialog
           block={block}
@@ -101,6 +106,7 @@ const BlockRenderer = memo(function BlockRenderer({
 }, (previous, next) =>
   previous.block === next.block &&
   previous.onRespondPermission === next.onRespondPermission &&
+  previous.dockedPermissionId === next.dockedPermissionId &&
   activePermissionForBlock(previous.block, previous.pendingPermissionId) ===
     activePermissionForBlock(next.block, next.pendingPermissionId)
 )
@@ -165,6 +171,7 @@ const UserMessage = memo(function UserMessage({
 interface AssistantMessageProps {
   message: MessageView
   pendingPermissionId: string | null
+  dockedPermissionId: string | null
   onRespondPermission: (requestId: string, response: PermissionResponse) => void
 }
 
@@ -183,6 +190,7 @@ function activePermissionForMessage(
 const AssistantMessage = memo(function AssistantMessage({
   message,
   pendingPermissionId,
+  dockedPermissionId,
   onRespondPermission
 }: AssistantMessageProps): JSX.Element {
   const stats = message.stats
@@ -199,6 +207,7 @@ const AssistantMessage = memo(function AssistantMessage({
             key={`${block.kind}:${block.id}`}
             block={block}
             pendingPermissionId={pendingPermissionId}
+            dockedPermissionId={dockedPermissionId}
             onRespondPermission={onRespondPermission}
           />
         ))}
@@ -226,6 +235,7 @@ const AssistantMessage = memo(function AssistantMessage({
 }, (previous, next) =>
   areMessageViewsEqual(previous.message, next.message) &&
   previous.onRespondPermission === next.onRespondPermission &&
+  previous.dockedPermissionId === next.dockedPermissionId &&
   activePermissionForMessage(
     previous.message,
     previous.pendingPermissionId
@@ -235,12 +245,14 @@ const AssistantMessage = memo(function AssistantMessage({
 export interface MessageListProps {
   messages: MessageView[]
   pendingPermissionId: string | null
+  dockedPermissionId?: string | null
   onRespondPermission: (requestId: string, response: PermissionResponse) => void
 }
 
 export function MessageList({
   messages,
   pendingPermissionId,
+  dockedPermissionId = null,
   onRespondPermission
 }: MessageListProps): JSX.Element {
   return (
@@ -253,6 +265,7 @@ export function MessageList({
             key={message.id}
             message={message}
             pendingPermissionId={pendingPermissionId}
+            dockedPermissionId={dockedPermissionId}
             onRespondPermission={onRespondPermission}
           />
         )

@@ -5,6 +5,7 @@ import type { Course } from '../../../src/shared/types/course'
 import {
   AgentAccessPanel,
   AgentToolGrantRevokeButton,
+  loadAgentBrowserAccess,
   loadAgentToolGrants,
   resetAgentToolGrantsForTests,
 } from '../../../src/renderer/src/features/settings/AgentAccessPanel'
@@ -80,5 +81,93 @@ describe('AgentAccessPanel tool grants', () => {
     await vi.waitFor(() => {
       expect(invoke).toHaveBeenCalledWith('chat:revokeGrant', { id: 'grant-2' })
     })
+  })
+
+  test('groups live grants by host and renders a human-readable audit timeline', async () => {
+    setIpcAdapter({
+      invoke: vi.fn(async (channel: string) => {
+        if (channel === 'browserAgent:grants') {
+          return {
+            grants: [
+              {
+                id: 'site-read',
+                courseId: 'course-1',
+                origin: 'https://shine.snu.ac.kr',
+                capability: 'read',
+                createdAt: '2026-08-20T00:00:00.000Z',
+                expiresAt: '2099-09-19T00:00:00.000Z',
+                revokedAt: null,
+                lastUsedAt: '2026-08-21T06:12:00.000Z'
+              },
+              {
+                id: 'site-interact',
+                courseId: 'course-1',
+                origin: 'https://shine.snu.ac.kr',
+                capability: 'interact',
+                createdAt: '2026-08-20T00:00:00.000Z',
+                expiresAt: '2099-09-19T00:00:00.000Z',
+                revokedAt: null,
+                lastUsedAt: null
+              },
+              {
+                id: 'portal-read',
+                courseId: 'course-1',
+                origin: 'https://my.snu.ac.kr',
+                capability: 'read',
+                createdAt: '2026-08-20T00:00:00.000Z',
+                expiresAt: '2099-09-19T00:00:00.000Z',
+                revokedAt: null,
+                lastUsedAt: null
+              }
+            ]
+          }
+        }
+        if (channel === 'browserAgent:auditTail') {
+          return {
+            entries: [
+              {
+                id: 'read-entry',
+                courseId: 'course-1',
+                action: 'read',
+                url: 'https://my.snu.ac.kr/courses/1',
+                detail: '본문 4027자',
+                createdAt: '2026-08-21T06:12:00.000Z'
+              },
+              {
+                id: 'tabs-entry',
+                courseId: 'course-1',
+                action: 'snapshot',
+                url: '',
+                detail: '탭 1개를 확인했어요',
+                createdAt: '2026-08-21T06:10:00.000Z'
+              },
+              {
+                id: 'click-entry',
+                courseId: 'course-1',
+                action: 'navigate',
+                url: 'https://shine.snu.ac.kr/course/view',
+                detail: 'click input ""',
+                createdAt: '2026-08-20T04:00:00.000Z'
+              }
+            ]
+          }
+        }
+        throw new Error(`Unexpected IPC channel: ${channel}`)
+      }),
+      on: vi.fn(() => () => undefined)
+    } as unknown as IpcAdapter)
+
+    await loadAgentBrowserAccess()
+    const html = renderToStaticMarkup(<AgentAccessPanel />)
+
+    expect(html.match(/class="settings-agent-host"/g)).toHaveLength(2)
+    expect(html).toContain('<strong>shine.snu.ac.kr</strong>')
+    expect(html).toContain('>읽기</span>')
+    expect(html).toContain('>조작</span>')
+    expect(html).toContain('my.snu.ac.kr 본문을 읽었습니다 (4,027자)')
+    expect(html).toContain('탭 1개를 확인했습니다')
+    expect(html).toContain('shine.snu.ac.kr에서 input을 눌렀습니다')
+    expect(html).toContain('class="settings-agent-timeline__path">/courses/1</span>')
+    expect(html.match(/class="settings-agent-timeline__day"/g)).toHaveLength(2)
   })
 })

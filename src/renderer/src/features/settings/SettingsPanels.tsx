@@ -6,6 +6,7 @@ import type {
   ReactNode
 } from 'react'
 import { BandalMark } from '../../components/BandalMark'
+import { ProviderMark } from '../../components/ProviderMark'
 import { LOCALES, setLocale, useLocale, useT } from '../../i18n'
 import type { Locale } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
@@ -47,8 +48,6 @@ const PALETTE_OPTIONS: readonly PaletteId[] = [
   'lavender',
   'moss'
 ]
-
-const APP_VERSION = '0.1.0'
 
 function SettingsCard({
   title,
@@ -992,12 +991,7 @@ function ProviderCard({
         id={`settings-ai-provider-${provider}`}
         className="integration-card__heading"
       >
-        <div
-          className={`provider-mark provider-mark--${codex ? 'codex' : 'claude'}`}
-          aria-hidden="true"
-        >
-          {codex ? 'X' : 'C'}
-        </div>
+        <ProviderMark provider={provider} size={32} />
         <div className="integration-card__title">
           <h2>{providerName}</h2>
           <p>
@@ -1256,11 +1250,14 @@ export function AiPanel({
                 }`}
                 onClick={() => onProviderSelect(option)}
               >
-                {t(
-                  option === 'codex'
-                    ? 'settings.ai.codex.name'
-                    : 'settings.ai.claude.name'
-                )}
+                <ProviderMark provider={option} size={20} />
+                <span>
+                  {t(
+                    option === 'codex'
+                      ? 'settings.ai.codex.name'
+                      : 'settings.ai.claude.name'
+                  )}
+                </span>
               </button>
             ))}
           </div>
@@ -1532,6 +1529,13 @@ function UpdateCard(): JSX.Element | null {
 
 export function AboutPanel(): JSX.Element {
   const t = useT()
+  const status = useUpdateStore((state) => state.status)
+  const init = useUpdateStore((state) => state.init)
+
+  useEffect(() => {
+    init()
+  }, [init])
+
   return (
     <div className="settings-stack">
       <SettingsCard className="about-card">
@@ -1542,7 +1546,9 @@ export function AboutPanel(): JSX.Element {
           <h2>{t('settings.app.name')}</h2>
           <p>{t('settings.about.description')}</p>
           <span className="version-label">
-            {t('settings.about.version', { version: APP_VERSION })}
+            {t('settings.about.version', {
+              version: status?.currentVersion ?? '—'
+            })}
           </span>
         </div>
       </SettingsCard>

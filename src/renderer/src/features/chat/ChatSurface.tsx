@@ -22,12 +22,18 @@ import {
   AgentApprovalRail,
   hasVisibleAgentToolActivity
 } from './AgentApprovalRail'
-import { useAgentToolActivity } from './agentToolActivityStore'
+import { AgentToolActivity } from './AgentToolCards'
+import {
+  useAgentToolActivity,
+  type AgentToolActivityItem
+} from './agentToolActivityStore'
 import {
   AgentSetupCard,
   GateCard,
   ProviderSelector
 } from './AgentSetupCards'
+import { PermissionDialog } from './blocks/PermissionDialog'
+import type { MessageView, PermissionBlockView } from './chatModel'
 import './chat.css'
 import './chat-blocks.css'
 import './agent-setup.css'
@@ -35,12 +41,61 @@ import './conversation-list.css'
 import { BandalMark } from '../../components/BandalMark'
 
 const SCROLL_PIN_THRESHOLD_PX = 48
+const approvalTitleOwners = new Set<symbol>()
 
 const STARTER_PROMPTS = [
   '이번 주 강의자료를 요약해줘',
   '내 필기에서 빠진 개념이 있는지 봐줘',
   '시험에 나올 만한 핵심 내용을 뽑아줘'
 ]
+
+function pendingPermissionBlock(
+  messages: readonly MessageView[],
+  requestId: string | null
+): PermissionBlockView | null {
+  if (requestId === null) {
+    return null
+  }
+  for (const message of messages) {
+    const block = message.blocks.find(
+      (candidate): candidate is PermissionBlockView =>
+        candidate.kind === 'permission' &&
+        candidate.id === requestId &&
+        candidate.behavior === undefined
+    )
+    if (block !== undefined) {
+      return block
+    }
+  }
+  return null
+}
+
+export function syncApprovalDocumentTitle(
+  owner: symbol,
+  pending: boolean
+): void {
+  if (typeof document === 'undefined') {
+    return
+  }
+  if (pending) {
+    approvalTitleOwners.add(owner)
+  } else {
+    approvalTitleOwners.delete(owner)
+  }
+  if (approvalTitleOwners.size > 0) {
+    if (!document.title.startsWith('● ')) {
+      document.title = `● ${document.title}`
+    }
+    return
+  }
+  document.title = document.title.replace(/^● /, '')
+}
+
+function isPendingConfirmation(
+  item: AgentToolActivityItem
+): boolean {
+  return item.kind === 'confirmation' && item.response === null
+}
 
 export interface ChatSurfaceProps {
   courseId: string
@@ -96,10 +151,29 @@ export function ChatSurface({
   const composerRef = useRef<ComposerHandle>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isPinnedRef = useRef(true)
+  const approvalTitleOwnerRef = useRef(Symbol('chat-approval'))
 
   const { state, phase, provider, availability, models } = session
   const pendingPrompt = useChatPromptStore((store) => store.pending)
   const consumePrompt = useChatPromptStore((store) => store.consume)
+  const pendingPermission = pendingPermissionBlock(
+    state.messages,
+    state.pendingPermissionId
+  )
+  const pendingAgentConfirmations = agentToolActivity.items.filter(
+    isPendingConfirmation
+  )
+  const historicalAgentToolItems = agentToolActivity.items.filter(
+    (item) => !isPendingConfirmation(item)
+  )
+  const hasPendingApprovals =
+    pendingPermission !== null || pendingAgentConfirmations.length > 0
+
+  useEffect(() => {
+    const owner = approvalTitleOwnerRef.current
+    syncApprovalDocumentTitle(owner, hasPendingApprovals)
+    return () => syncApprovalDocumentTitle(owner, false)
+  }, [hasPendingApprovals])
 
   useEffect(() => {
     if (
@@ -149,6 +223,11 @@ export function ChatSurface({
     setDraft(prompt)
     composerRef.current?.focus()
   }, [])
+
+  const shouldAutoFocusApproval = useCallback(
+    () => composerRef.current?.isActivelyTyping() !== true,
+    []
+  )
 
   const handleOpenConversation = useCallback(
     (nextConversationId: string) => {
@@ -228,7 +307,7 @@ export function ChatSurface({
   }
 
   const hasAgentToolCards = hasVisibleAgentToolActivity(
-    agentToolActivity.items
+    historicalAgentToolItems
   )
   const isEmpty = state.messages.length === 0 && !hasAgentToolCards
   const defaultModel = models.find((model) => model.isDefault) ?? models[0]
@@ -341,18 +420,47 @@ export function ChatSurface({
                 is what puts it in the narrow LEFT column — and it keeps DOM
                 order equal to visual order for keyboard and screen readers. */}
             <AgentApprovalRail
-              items={agentToolActivity.items}
+              items={historicalAgentToolItems}
               onRespondConfirm={agentToolActivity.respondConfirm}
               onUndoTurn={agentToolActivity.undoTurn}
             />
             <MessageList
               messages={state.messages}
               pendingPermissionId={state.pendingPermissionId}
+              dockedPermissionId={pendingPermission?.id ?? null}
               onRespondPermission={session.respondPermission}
             />
           </>
         )}
       </div>
+      {hasPendingApprovals && (
+        <div
+          className="chat-approval-dock"
+          role="region"
+          aria-live="polite"
+          aria-label="승인 요청"
+        >
+          <div className="chat-approval-dock__content">
+            {pendingPermission !== null && (
+              <PermissionDialog
+                block={pendingPermission}
+                isActive
+                autoFocusReject={pendingAgentConfirmations.length === 0}
+                shouldAutoFocusReject={shouldAutoFocusApproval}
+                onRespond={session.respondPermission}
+              />
+            )}
+            {pendingAgentConfirmations.length > 0 && (
+              <AgentToolActivity
+                items={pendingAgentConfirmations}
+                onRespondConfirm={agentToolActivity.respondConfirm}
+                onUndoTurn={agentToolActivity.undoTurn}
+                shouldAutoFocusReject={shouldAutoFocusApproval}
+              />
+            )}
+          </div>
+        </div>
+      )}
       <Composer
         ref={composerRef}
         courseId={courseId}

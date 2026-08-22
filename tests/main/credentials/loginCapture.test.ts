@@ -13,7 +13,10 @@
  */
 
 import { describe, expect, test, vi } from 'vitest'
-import { createLoginCapturer } from '../../../src/main/features/credentials'
+import {
+  createLoginCapturer,
+  STAGED_LOGIN_TTL_MS
+} from '../../../src/main/features/credentials'
 import type { LoginGuestWebContents } from '../../../src/main/features/credentials'
 import type { SaveLoginInput } from '../../../src/shared/types/credentials'
 
@@ -177,5 +180,154 @@ describe('saving a login reads the password inside main', () => {
         guestWebContentsId: 7
       })
     ).resolves.toBeNull()
+  })
+})
+
+describe('staging a submitted login', () => {
+  test('expires the main-only staged password after 60 seconds', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-08-22T00:00:00.000Z'))
+      const guest = fakeGuest('https://portal.example.edu/login')
+      const store = {
+        ...fakeStore(),
+        availability: () => ({ state: 'ready' as const }),
+        resolve: vi.fn(() => null)
+      }
+      const capture = createLoginCapturer(store, {
+        fromId: () => guest,
+        now: Date.now
+      })
+
+      await expect(capture({
+        origin: 'https://portal.example.edu',
+        guestWebContentsId: 10,
+        autoSubmit: false,
+        mode: 'stage'
+      })).resolves.toMatchObject({ username: 'student' })
+      expect(store.save).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(STAGED_LOGIN_TTL_MS)
+      await expect(capture({
+        origin: 'https://portal.example.edu',
+        guestWebContentsId: 10,
+        autoSubmit: false,
+        mode: 'commit'
+      })).resolves.toBeNull()
+      expect(store.save).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('does not prompt-stage an unchanged saved password', async () => {
+    const store = {
+      ...fakeStore(),
+      availability: () => ({ state: 'ready' as const }),
+      resolve: vi.fn(() => ({ ...TYPED, autoSubmit: false }))
+    }
+    const capture = createLoginCapturer(store, {
+      fromId: () => fakeGuest('https://portal.example.edu/login')
+    })
+
+    await expect(capture({
+      origin: 'https://portal.example.edu',
+      guestWebContentsId: 11,
+      autoSubmit: false,
+      mode: 'stage'
+    })).resolves.toBeNull()
+    expect(store.save).not.toHaveBeenCalled()
+  })
+
+  test('does not inspect fields when OS-backed encryption is unavailable', async () => {
+    const guest = fakeGuest('https://portal.example.edu/login')
+    const store = {
+      ...fakeStore(),
+      availability: () => ({
+        state: 'unavailable' as const,
+        reason: 'disabled for test'
+      }),
+      resolve: vi.fn(() => null)
+    }
+    const capture = createLoginCapturer(store, { fromId: () => guest })
+
+    await expect(capture({
+      origin: 'https://portal.example.edu',
+      guestWebContentsId: 13,
+      autoSubmit: false,
+      mode: 'stage'
+    })).resolves.toBeNull()
+    expect(guest.scripts).toEqual([])
+    expect(store.save).not.toHaveBeenCalled()
+  })
+
+  test('discards staged data when the guest is destroyed', async () => {
+    let onDestroyed: (() => void) | undefined
+    const guest = {
+      ...fakeGuest('https://portal.example.edu/login'),
+      once: vi.fn((_event: 'destroyed', listener: () => void) => {
+        onDestroyed = listener
+        return guest
+      })
+    }
+    const store = {
+      ...fakeStore(),
+      availability: () => ({ state: 'ready' as const }),
+      resolve: vi.fn(() => null)
+    }
+    const capture = createLoginCapturer(store, { fromId: () => guest })
+
+    await capture({
+      origin: 'https://portal.example.edu',
+      guestWebContentsId: 14,
+      autoSubmit: false,
+      mode: 'stage'
+    })
+    onDestroyed?.()
+    await expect(capture({
+      origin: 'https://portal.example.edu',
+      guestWebContentsId: 14,
+      autoSubmit: false,
+      mode: 'commit'
+    })).resolves.toBeNull()
+    expect(store.save).not.toHaveBeenCalled()
+  })
+
+  test('commits a changed password only after a related-site navigation', async () => {
+    let url = 'https://nsso.snu.ac.kr/login'
+    const guest = fakeGuest(url, TYPED)
+    guest.getURL = () => url
+    const store = {
+      ...fakeStore(),
+      availability: () => ({ state: 'ready' as const }),
+      resolve: vi.fn(() => ({
+        username: 'student',
+        password: 'old-password',
+        autoSubmit: false
+      }))
+    }
+    const capture = createLoginCapturer(store, { fromId: () => guest })
+
+    await expect(capture({
+      origin: 'https://nsso.snu.ac.kr',
+      guestWebContentsId: 12,
+      autoSubmit: false,
+      mode: 'stage'
+    })).resolves.toMatchObject({ origin: 'https://nsso.snu.ac.kr' })
+    expect(store.save).not.toHaveBeenCalled()
+
+    url = 'https://my.snu.ac.kr/home'
+    await expect(capture({
+      origin: 'https://my.snu.ac.kr',
+      guestWebContentsId: 12,
+      autoSubmit: false,
+      mode: 'commit'
+    })).resolves.toMatchObject({ username: 'student' })
+    expect(store.saved).toHaveLength(1)
+    expect(store.saved[0]).toMatchObject({
+      origin: 'https://nsso.snu.ac.kr',
+      password: 'hunter2',
+      autoSubmit: false
+    })
   })
 })

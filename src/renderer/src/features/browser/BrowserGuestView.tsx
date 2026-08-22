@@ -23,6 +23,10 @@ import {
 } from './BrowserContextMenu'
 import { isDefaultZoom } from './zoom'
 import {
+  shouldFinishMainFrameLoading,
+  shouldHandleLoadFailure
+} from './loadingIndicator'
+import {
   registerGuestElement,
   registerGuestWebContents,
   unregisterGuestElement
@@ -133,7 +137,13 @@ export function BrowserGuestView({
           update({ loading: true })
         }
       ],
-      ['did-stop-loading', () => update({ loading: false, ...historyState() })],
+      [
+        'did-stop-loading',
+        () => {
+          if (!shouldFinishMainFrameLoading(element)) return
+          update({ loading: false, ...historyState() })
+        }
+      ],
       [
         'did-navigate',
         ((event: DidNavigateEvent) =>
@@ -153,10 +163,10 @@ export function BrowserGuestView({
       [
         'did-fail-load',
         ((event: DidFailLoadEvent) => {
-          update({ loading: false })
           // Subframe failures (ads, trackers, a dead iframe) must never take
           // over the whole tab — the page around them is fine.
-          if (event.isMainFrame === false) return
+          if (!shouldHandleLoadFailure(event.isMainFrame)) return
+          update({ loading: false })
           if (event.errorCode === ABORTED_ERROR_CODE) return
           useBrowserGuests.getState().setOverlay(tabId, {
             kind: 'error',

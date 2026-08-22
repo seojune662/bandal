@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AssistantMode } from '../../../../shared/types/settings'
-import { invoke, onPush } from '../../lib/ipc'
+import type { OverlayState } from '../../../../shared/types/overlay'
+import { invoke } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { requestChatPrompt } from '../chat/chatPromptBus'
+import {
+  setOverlayState,
+  useOverlayState
+} from '../overlay/useOverlayState'
 import { AssistantOrb } from './AssistantOrb'
 import { CharmLayer } from './charms'
 import { AssistantPopup } from './AssistantPopup'
+import { orbStateForActivity } from './orbActivityState'
 import { SelectionOrb } from './SelectionOrb'
 import { useAssistantActivity } from './useAssistantActivity'
 import { useSelectionAnchor, type AnchoredSelection } from './useSelectionAnchor'
@@ -13,14 +18,12 @@ import type { BandalOrbState } from './BandalOrbMark'
 import './assistant.css'
 
 const MAX_QUOTE_LENGTH = 2000
-const popupConversationIds = new Map<string, string>()
 
-function popupConversationIdFor(courseId: string): string {
-  const existing = popupConversationIds.get(courseId)
-  if (existing !== undefined) return existing
-  const conversationId = crypto.randomUUID()
-  popupConversationIds.set(courseId, conversationId)
-  return conversationId
+export function overlayConversationForCourse(
+  selectedCourseId: string | null,
+  overlay: Pick<OverlayState, 'courseId' | 'conversationId'>
+): string | null {
+  return overlay.courseId === selectedCourseId ? overlay.conversationId : null
 }
 
 function shortenQuote(text: string): string {
@@ -39,32 +42,6 @@ function quotePrompt(selection: AnchoredSelection): string {
     .map((line) => `> ${line}`)
     .join('\n')
   return `${quote}\n>\n> (${source}에서)`
-}
-
-function useAssistantMode(): AssistantMode | null {
-  const [mode, setMode] = useState<AssistantMode | null>(null)
-
-  useEffect(() => {
-    let active = true
-    let receivedPush = false
-    const unsubscribe = onPush('settings:changed', ({ settings }) => {
-      receivedPush = true
-      setMode(settings.assistantMode)
-    })
-    void invoke('settings:get', {})
-      .then((settings) => {
-        if (active && !receivedPush) setMode(settings.assistantMode)
-      })
-      .catch((error: unknown) => {
-        console.error('[Bandal] 어시스턴트 표시 설정을 불러오지 못했습니다.', error)
-      })
-    return () => {
-      active = false
-      unsubscribe()
-    }
-  }, [])
-
-  return mode
 }
 
 interface InAppAssistantProps {
@@ -116,11 +93,7 @@ function InAppAssistant({
     [activity, clearSelection, popupConversationId]
   )
 
-  const orbState: BandalOrbState = activity.busy
-    ? 'busy'
-    : activity.alert
-      ? 'alert'
-      : 'idle'
+  const orbState: BandalOrbState = orbStateForActivity(activity)
 
   return (
     <>
@@ -150,42 +123,41 @@ function InAppAssistant({
 /** Single shell-level entry point for the persistent assistant experience. */
 export function AssistantLayer(): JSX.Element {
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
-  const popupConversationId =
-    selectedCourseId === null
-      ? null
-      : popupConversationIdFor(selectedCourseId)
-  const assistantMode = useAssistantMode()
+  const overlayState = useOverlayState()
+  const popupConversationId = overlayConversationForCourse(
+    selectedCourseId,
+    overlayState
+  )
   const { selection, clear } = useSelectionAnchor()
 
-  const pickDesktopSelection = useCallback(
-    (picked: AnchoredSelection): void => {
-      const prompt = quotePrompt(picked)
-      void invoke('overlay:prompt', { prompt }).catch((error: unknown) => {
-        console.error('[Bandal] 선택한 내용을 데스크톱 대화로 보내지 못했습니다.', error)
+  useEffect(() => {
+    if (
+      selectedCourseId === null ||
+      overlayState.courseId === selectedCourseId
+    ) {
+      return
+    }
+    let active = true
+    void invoke('overlay:setCourse', { courseId: selectedCourseId })
+      .then((state) => {
+        if (active) setOverlayState(state)
       })
-      window.getSelection()?.removeAllRanges()
-      clear()
-    },
-    [clear]
-  )
+      .catch((error: unknown) => {
+        console.error('[Bandal] 어시스턴트 대화를 과목과 맞추지 못했습니다.', error)
+      })
+    return () => {
+      active = false
+    }
+  }, [overlayState.courseId, selectedCourseId])
 
   return (
     <div className="assistant-layer" data-assistant-layer="true">
-      {assistantMode === 'in-app' && (
-        <InAppAssistant
-          selectedCourseId={selectedCourseId}
-          popupConversationId={popupConversationId}
-          selection={selection}
-          clearSelection={clear}
-        />
-      )}
-      {assistantMode === 'desktop' && selection !== null && (
-        <SelectionOrb
-          selection={selection}
-          courseAvailable={selectedCourseId !== null}
-          onPick={pickDesktopSelection}
-        />
-      )}
+      <InAppAssistant
+        selectedCourseId={selectedCourseId}
+        popupConversationId={popupConversationId}
+        selection={selection}
+        clearSelection={clear}
+      />
     </div>
   )
 }
