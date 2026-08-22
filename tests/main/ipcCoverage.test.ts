@@ -148,6 +148,21 @@ describe('IPC channel coverage', () => {
     expect(body).toContain('console.error(`[ipc] ${channel} broadcast failed:`, error)')
   })
 
+  test('PiP reports update the controller and persist local media progress', () => {
+    const source = mainRouterSource()
+    const pip = source.slice(
+      source.indexOf("handle('pip:open'"),
+      source.indexOf('// Export burns markup')
+    )
+    expect(pip).toContain("handle('pip:report', (req) => {")
+    expect(pip).toContain('miniPlayer.report(req)')
+    expect(pip).toContain("if (state.source?.kind === 'local')")
+    expect(pip).toContain('mediaProgressRepo.set({')
+    expect(pip).toContain('durationSec: previous?.durationSec ?? null')
+    expect(pip).toContain("handle('pip:moveBy', (req) => {")
+    expect(pip).toContain('miniPlayer.moveBy(req.dx, req.dy)')
+  })
+
   test('successful course relinks broadcast the shared course change event', () => {
     const source = mainRouterSource()
     const relink = source.slice(

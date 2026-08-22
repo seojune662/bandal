@@ -95,6 +95,9 @@ class FakeWindow {
   readonly show = vi.fn()
   readonly showInactive = vi.fn()
   readonly setAspectRatio = vi.fn()
+  readonly setPosition = vi.fn((x: number, y: number) => {
+    this.bounds = { ...this.bounds, x, y }
+  })
   readonly loadURL = vi.fn(async () => undefined)
   readonly close = vi.fn(() => this.attemptClose())
   readonly destroy = vi.fn(() => {
@@ -334,5 +337,19 @@ describe('createMiniPlayerController', () => {
     const closeEvent = window.attemptClose()
     expect(closeEvent.preventDefault).not.toHaveBeenCalled()
     expect(subject.controller.isAlive()).toBe(false)
+  })
+
+  test('moves the active player by the toolbar drag delta', () => {
+    const window = new FakeWindow()
+    const subject = setup([window])
+    subject.controller.open({
+      source: WEB_SOURCE,
+      positionSec: 0,
+      playbackRate: 1
+    })
+
+    subject.controller.moveBy(12.4, -8.6)
+
+    expect(window.setPosition).toHaveBeenCalledWith(948, 597)
   })
 })

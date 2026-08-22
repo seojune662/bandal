@@ -5,6 +5,8 @@ const electronMocks = vi.hoisted(() => {
     options: Electron.BrowserWindowConstructorOptions
     setAlwaysOnTop: ReturnType<typeof vi.fn>
     setVisibleOnAllWorkspaces: ReturnType<typeof vi.fn>
+    loadFile: ReturnType<typeof vi.fn>
+    loadURL: ReturnType<typeof vi.fn>
     webContents: {
       setWindowOpenHandler: ReturnType<typeof vi.fn>
     }
@@ -18,6 +20,8 @@ const electronMocks = vi.hoisted(() => {
         options,
         setAlwaysOnTop: vi.fn(),
         setVisibleOnAllWorkspaces: vi.fn(),
+        loadFile: vi.fn(async () => undefined),
+        loadURL: vi.fn(async () => undefined),
         webContents: { setWindowOpenHandler: vi.fn() }
       }
       windows.push(win)
@@ -44,7 +48,8 @@ vi.mock('../../../src/main/windows/overlayWindow', () => ({
 
 import {
   createLocalPipWindow,
-  createWebPipWindow
+  createWebPipWindow,
+  loadLocalPipView
 } from '../../../src/main/windows/miniPlayerWindow'
 
 const BOUNDS = { x: 100, y: 200, width: 480, height: 270 }
@@ -102,5 +107,61 @@ describe('mini player window factories', () => {
       created.webContents,
       { openInTab }
     )
+  })
+
+  test('passes the complete local player route to the packaged renderer', () => {
+    const win = createLocalPipWindow({
+      bounds: BOUNDS,
+      preload: '/preload.js',
+      backgroundColor: '#101827'
+    })
+
+    loadLocalPipView(win, {
+      kind: 'local',
+      courseId: 'course 1',
+      relPath: 'week 1/lecture.mp4',
+      title: '첫 강의'
+    })
+
+    expect(electronMocks.windows[0]?.loadFile).toHaveBeenCalledWith(
+      expect.stringMatching(/renderer\/pip\.html$/),
+      {
+        query: {
+          view: 'player',
+          course: 'course 1',
+          rel: 'week 1/lecture.mp4',
+          title: '첫 강의'
+        }
+      }
+    )
+  })
+
+  test('encodes the complete local player route in the development URL', () => {
+    const previousRendererUrl = process.env['ELECTRON_RENDERER_URL']
+    process.env['ELECTRON_RENDERER_URL'] = 'https://renderer.test'
+    try {
+      const win = createLocalPipWindow({
+        bounds: BOUNDS,
+        preload: '/preload.js',
+        backgroundColor: '#101827'
+      })
+
+      loadLocalPipView(win, {
+        kind: 'local',
+        courseId: 'course 1',
+        relPath: 'week 1/lecture.mp4',
+        title: 'First lecture'
+      })
+
+      expect(electronMocks.windows[0]?.loadURL).toHaveBeenCalledWith(
+        'https://renderer.test/pip.html?view=player&course=course+1&rel=week+1%2Flecture.mp4&title=First+lecture'
+      )
+    } finally {
+      if (previousRendererUrl === undefined) {
+        delete process.env['ELECTRON_RENDERER_URL']
+      } else {
+        process.env['ELECTRON_RENDERER_URL'] = previousRendererUrl
+      }
+    }
   })
 })

@@ -1,5 +1,7 @@
 import path, { join } from 'node:path'
-import { app, ipcMain, protocol } from 'electron'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { app, BrowserWindow, ipcMain, nativeTheme, protocol } from 'electron'
 import type { Settings, SettingsPatch } from '../shared/types/settings'
 import { initDatabase, closeDatabase } from './db/database'
 import { createDeepLinkQueue } from './deepLinkQueue'
@@ -11,12 +13,20 @@ import {
   createMainWindow,
   getMainWindow,
   onMainWindowClosed,
+  refreshTitleBarOverlay,
   resolveWindowBackground
 } from './windows/mainWindow'
 import { createOverlayController } from './windows/overlayController'
 import { openSettingsInApp } from './windows/settingsWindow'
 import { installTray } from './windows/tray'
+import { createAppIconApplier } from './windows/appIcon'
+import {
+  createFinderIconApplier,
+  resolveAppBundlePath
+} from './windows/macFinderIcon'
 import { reportFatalStartupError } from './startupError'
+
+const execFileAsync = promisify(execFile)
 
 const settingsChangedListeners = new Set<(settings: Settings) => void>()
 
@@ -129,23 +139,145 @@ if (!app.requestSingleInstanceLock()) {
       windowBackground: resolveWindowBackground,
       userDataPath: app.getPath('userData')
     })
-    const tray = installTray({
-      getSettings,
-      setSettings,
-      openMain: () => {
-        const existing = getMainWindow()
-        const main = existing ?? createMainWindow()
+
+    const openMain = (): void => {
+      const existing = getMainWindow()
+      const main = existing ?? createMainWindow()
+      if (existing !== null) {
         main.show()
         main.focus()
-        if (existing === null) overlay.syncMainWindowVisibility()
-      },
-      quit: () => {
-        overlay.markQuitting()
-        app.quit()
+      } else {
+        overlay.syncMainWindowVisibility()
+      }
+    }
+
+    const openUrlInTab = (url: string): void => {
+      const payload = { url, positionSec: 0, playbackRate: 1 }
+      const existing = getMainWindow()
+      const main = existing ?? createMainWindow()
+      const push = (): void => {
+        if (!main.isDestroyed() && !main.webContents.isDestroyed()) {
+          main.webContents.send('ui:openUrl', payload)
+        }
+      }
+      if (existing === null) {
+        overlay.syncMainWindowVisibility()
+        main.webContents.once('did-finish-load', push)
+      } else {
+        main.show()
+        main.focus()
+        push()
+      }
+    }
+
+    let miniPlayerOpen = false
+    let syncMiniPlayerTray = (): void => undefined
+    const router = registerHandlers({
+      overlay,
+      setSettings,
+      preloadPath: join(__dirname, '../preload/index.js'),
+      userDataPath: app.getPath('userData'),
+      windowBackground: resolveWindowBackground,
+      openInTab: openUrlInTab,
+      onMiniPlayerStateChanged: (open) => {
+        miniPlayerOpen = open
+        syncMiniPlayerTray()
       }
     })
-    onSettingsChanged(() => tray.refresh())
-    const router = registerHandlers({ overlay, setSettings })
+
+    const trayDeps = {
+      getSettings,
+      setSettings,
+      openMain,
+      quit: () => app.quit()
+    }
+    const tray = installTray(trayDeps)
+    let miniPlayerTray: ReturnType<typeof installTray> | null = null
+    let iconVariantDir: string | null = null
+
+    syncMiniPlayerTray = (): void => {
+      const temporaryTrayNeeded =
+        miniPlayerOpen && getSettings().assistantMode === 'in-app'
+      if (!temporaryTrayNeeded) {
+        miniPlayerTray?.destroy()
+        miniPlayerTray = null
+        return
+      }
+      if (miniPlayerTray !== null) return
+
+      miniPlayerTray = installTray({
+        getSettings: () => ({ ...getSettings(), assistantMode: 'desktop' }),
+        setSettings: (patch) =>
+          setSettings(
+            patch.assistantMode === 'in-app'
+              ? { ...patch, assistantMode: 'desktop' }
+              : patch
+          ),
+        openMain,
+        quit: () => app.quit()
+      })
+      if (iconVariantDir !== null) {
+        miniPlayerTray.setIconVariant(iconVariantDir)
+      }
+    }
+
+    const trayIconTarget = {
+      setIconVariant(dir: string): void {
+        iconVariantDir = dir
+        tray.setIconVariant(dir)
+        miniPlayerTray?.setIconVariant(dir)
+      }
+    }
+
+    const appBundlePath = resolveAppBundlePath(app.getPath('exe'))
+    const finder =
+      process.platform === 'darwin' &&
+      app.isPackaged &&
+      appBundlePath !== null
+        ? createFinderIconApplier({
+            appBundlePath,
+            async exec(command, args) {
+              const result = await execFileAsync(command, args, {
+                encoding: 'utf8'
+              })
+              return {
+                code: 0,
+                stdout: result.stdout,
+                stderr: result.stderr
+              }
+            }
+          })
+        : undefined
+    const appIcon = createAppIconApplier({
+      getSettings,
+      prefersDark: () => nativeTheme.shouldUseDarkColors,
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      bundleDir: __dirname,
+      ...(app.dock === undefined ? {} : { dock: app.dock }),
+      windows: () => BrowserWindow.getAllWindows(),
+      tray: trayIconTarget,
+      ...(finder === undefined ? {} : { finder })
+    })
+
+    const refreshAppearance = (): void => {
+      void appIcon.apply()
+      const main = getMainWindow()
+      if (main !== null && !main.isDestroyed()) {
+        refreshTitleBarOverlay(
+          main,
+          getSettings(),
+          nativeTheme.shouldUseDarkColors
+        )
+      }
+    }
+    onSettingsChanged(() => {
+      tray.refresh()
+      syncMiniPlayerTray()
+      refreshAppearance()
+    })
+    nativeTheme.on('updated', refreshAppearance)
 
     // Temporary M0 channel to open the settings window from the renderer.
     // Replaced by an app menu entry in a later milestone.
@@ -157,6 +289,7 @@ if (!app.requestSingleInstanceLock()) {
     const window = createMainWindow()
     overlay.start()
     tray.refresh()
+    refreshAppearance()
 
     onMainWindowClosed(() => {
       const settings = getSettings()
@@ -166,9 +299,29 @@ if (!app.requestSingleInstanceLock()) {
       ) {
         overlay.stop()
       }
+      if (
+        process.platform !== 'darwin' &&
+        !overlay.isActive() &&
+        !router.miniPlayer.isAlive()
+      ) {
+        app.quit()
+      }
     })
 
-    app.on('before-quit', () => overlay.markQuitting())
+    app.on('before-quit', () => {
+      overlay.markQuitting()
+      router.miniPlayer.markQuitting()
+    })
+
+    app.on('window-all-closed', () => {
+      if (
+        process.platform !== 'darwin' &&
+        !overlay.isActive() &&
+        !router.miniPlayer.isAlive()
+      ) {
+        app.quit()
+      }
+    })
 
     // Replay only once the renderer is listening: the auth result travels back
     // as an `auth:changed` push, and a push sent to a window that has not
@@ -191,12 +344,6 @@ if (!app.requestSingleInstanceLock()) {
     // whenReady 체인의 나머지(메뉴 설치, 핸들러 등록, 창 생성)에서 던진 경우.
     // catch가 없으면 unhandled rejection으로 조용히 사라진다.
     reportFatalStartupError('앱 초기화', error)
-  })
-
-  app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-      app.quit()
-    }
   })
 
   app.on('will-quit', () => {

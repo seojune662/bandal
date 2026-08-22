@@ -83,7 +83,12 @@ export function loadLocalPipView(
   win: BrowserWindow,
   source: Extract<PipSource, { kind: 'local' }>
 ): void {
-  const query = { course: source.courseId, rel: source.relPath }
+  const query = {
+    view: 'player',
+    course: source.courseId,
+    rel: source.relPath,
+    title: source.title
+  }
   const rendererUrl = process.env['ELECTRON_RENDERER_URL']
   if (rendererUrl !== undefined) {
     const params = new URLSearchParams(query)

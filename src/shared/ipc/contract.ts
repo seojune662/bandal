@@ -410,7 +410,17 @@ export interface IpcContract {
   }
   /** PiP 렌더러가 현재 재생 상태를 주기적으로 보고한다. */
   'pip:report': {
-    req: { positionSec: number; playbackRate: number; paused: boolean }
+    req: {
+      positionSec: number
+      playbackRate: number
+      paused: boolean
+      aspect?: number
+    }
+    res: { ok: true }
+  }
+  /** 웹 PiP 툴바의 드래그 거리만큼 미니 플레이어를 이동한다. */
+  'pip:moveBy': {
+    req: { dx: number; dy: number }
     res: { ok: true }
   }
 
@@ -1462,6 +1472,7 @@ export const IPC_CHANNELS = [
   'pip:restore',
   'pip:getState',
   'pip:report',
+  'pip:moveBy',
   'notes:read',
   'notes:write',
   'notes:create',

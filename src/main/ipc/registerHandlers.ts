@@ -140,6 +140,10 @@ import {
 } from '../features/desktopAgent'
 import { createMcpRegistry, testMcpServer } from '../features/mcpRegistry'
 import type { OverlayController } from '../windows/overlayController'
+import {
+  createMiniPlayerController,
+  type MiniPlayerController
+} from '../windows/miniPlayerController'
 
 /**
  * What `registerHandlers` hands back to `main/index.ts`.
@@ -151,12 +155,18 @@ import type { OverlayController } from '../windows/overlayController'
 export interface IpcRouter {
   /** Routes a `bandal://` URL. Fire-and-forget; never throws. */
   handleDeepLink(url: string): void
+  miniPlayer: MiniPlayerController
 }
 
 export interface RegisterHandlersDeps {
   overlay: OverlayController
   /** Bootstrap wrapper that fans persisted settings changes out to main UI. */
   setSettings?: (patch: SettingsPatch) => Settings
+  preloadPath: string
+  userDataPath: string
+  windowBackground(): string
+  openInTab(url: string): void
+  onMiniPlayerStateChanged?(open: boolean): void
 }
 
 /**
@@ -543,6 +553,57 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     mediaProgressRepo.get(req.courseId, req.relPath)
   )
   handle('media:setProgress', (req) => mediaProgressRepo.set(req))
+
+  // -- picture-in-picture ---------------------------------------------------
+  const miniPlayer = createMiniPlayerController({
+    preloadPath: deps.preloadPath,
+    userDataPath: deps.userDataPath,
+    windowBackground: deps.windowBackground,
+    broadcast: (channel, payload) => {
+      broadcast(channel, payload)
+      if (channel === 'pip:state') {
+        deps.onMiniPlayerStateChanged?.(
+          (payload as PushPayload<'pip:state'>).open
+        )
+      }
+    },
+    openInTab: deps.openInTab
+  })
+  handle('pip:open', (req) => {
+    miniPlayer.open(req)
+    return OK
+  })
+  handle('pip:close', () => {
+    miniPlayer.close()
+    return OK
+  })
+  handle('pip:restore', () => {
+    miniPlayer.restore()
+    return OK
+  })
+  handle('pip:getState', () => miniPlayer.getState())
+  handle('pip:report', (req) => {
+    miniPlayer.report(req)
+    const state = miniPlayer.getState()
+    if (state.source?.kind === 'local') {
+      const previous = mediaProgressRepo.get(
+        state.source.courseId,
+        state.source.relPath
+      )
+      mediaProgressRepo.set({
+        courseId: state.source.courseId,
+        relPath: state.source.relPath,
+        positionSec: state.positionSec,
+        durationSec: previous?.durationSec ?? null,
+        playbackRate: state.playbackRate
+      })
+    }
+    return OK
+  })
+  handle('pip:moveBy', (req) => {
+    miniPlayer.moveBy(req.dx, req.dy)
+    return OK
+  })
 
   // Export burns markup into a NEW file — the source pdf is never written to.
   const pdfExporter = createPdfExporter({
@@ -2088,6 +2149,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   assertEveryChannelHandled()
 
   return {
+    miniPlayer,
     handleDeepLink(url) {
       // Checked HERE so an unrelated `bandal://` route never constructs the
       // Supabase client — the laziness rule (§1.4-2) survives deep links.

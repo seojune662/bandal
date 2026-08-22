@@ -36,7 +36,6 @@ export interface MiniPlayerReport {
   positionSec: number
   playbackRate: number
   paused: boolean
-  /** Optional until the shared pip:report contract gains the same field. */
   aspect?: number
 }
 
@@ -46,6 +45,7 @@ export interface MiniPlayerController {
   restore(): void
   getState(): PipState
   report(p: MiniPlayerReport): void
+  moveBy(dx: number, dy: number): void
   isAlive(): boolean
   markQuitting(): void
 }
@@ -345,6 +345,23 @@ export function createMiniPlayerController(
     broadcastState()
   }
 
+  const moveBy = (dx: number, dy: number): void => {
+    const player = active
+    if (
+      player === null ||
+      !Number.isFinite(dx) ||
+      !Number.isFinite(dy) ||
+      player.window.isDestroyed()
+    ) {
+      return
+    }
+    const bounds = player.window.getBounds()
+    player.window.setPosition(
+      Math.round(bounds.x + dx),
+      Math.round(bounds.y + dy)
+    )
+  }
+
   const isAlive = (): boolean =>
     active !== null && !active.window.isDestroyed()
 
@@ -359,6 +376,7 @@ export function createMiniPlayerController(
     restore,
     getState,
     report,
+    moveBy,
     isAlive,
     markQuitting
   }
