@@ -168,6 +168,7 @@ export interface RegisterHandlersDeps {
   openMaterial(payload: PushPayload<'ui:openMaterial'>): void
   openUrl(payload: PushPayload<'ui:openUrl'>): void
   openInTab(url: string): void
+  consumePendingOpen(): IpcResponse<'ui:consumePendingOpen'>
   onMiniPlayerStateChanged?(open: boolean): void
 }
 
@@ -555,6 +556,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     mediaProgressRepo.get(req.courseId, req.relPath)
   )
   handle('media:setProgress', (req) => mediaProgressRepo.set(req))
+
+  handle('ui:consumePendingOpen', () => deps.consumePendingOpen())
 
   // -- picture-in-picture ---------------------------------------------------
   const miniPlayer = createMiniPlayerController({

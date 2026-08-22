@@ -2,6 +2,7 @@ import path, { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { app, BrowserWindow, ipcMain, nativeTheme, protocol } from 'electron'
+import type { IpcResponse } from '../shared/ipc/contract'
 import type { PushPayload } from '../shared/ipc/events'
 import type { Settings, SettingsPatch } from '../shared/types/settings'
 import { initDatabase, closeDatabase } from './db/database'
@@ -152,33 +153,42 @@ if (!app.requestSingleInstanceLock()) {
       }
     }
 
-    const pushToMain = <
-      K extends 'ui:openMaterial' | 'ui:openUrl'
-    >(
-      channel: K,
-      payload: PushPayload<K>
-    ): void => {
-      const existing = getMainWindow()
-      const main = existing ?? createMainWindow()
-      const push = (): void => {
-        if (!main.isDestroyed() && !main.webContents.isDestroyed()) {
-          main.webContents.send(channel, payload)
+    type OpenTarget =
+      | {
+          channel: 'ui:openMaterial'
+          payload: PushPayload<'ui:openMaterial'>
         }
-      }
+      | { channel: 'ui:openUrl'; payload: PushPayload<'ui:openUrl'> }
+    type PendingOpen = NonNullable<
+      IpcResponse<'ui:consumePendingOpen'>
+    >
+    let pendingOpen: PendingOpen | null = null
+
+    const pushToMain = (target: OpenTarget): void => {
+      const existing = getMainWindow()
       if (existing === null) {
+        // Like deepLinkQueue, do not send at did-finish-load: React has not
+        // mounted AppShell's onPush listeners yet, so that push is lossy. The
+        // renderer consumes this one-slot handoff after its effects mount.
+        createMainWindow()
+        pendingOpen =
+          target.channel === 'ui:openMaterial'
+            ? { ...(pendingOpen ?? {}), material: target.payload }
+            : { ...(pendingOpen ?? {}), url: target.payload }
         overlay.syncMainWindowVisibility()
-        main.webContents.once('did-finish-load', push)
-      } else {
-        main.show()
-        main.focus()
-        push()
+        return
+      }
+      existing.show()
+      existing.focus()
+      if (!existing.webContents.isDestroyed()) {
+        existing.webContents.send(target.channel, target.payload)
       }
     }
     const openMaterial = (
       payload: PushPayload<'ui:openMaterial'>
-    ): void => pushToMain('ui:openMaterial', payload)
+    ): void => pushToMain({ channel: 'ui:openMaterial', payload })
     const openUrl = (payload: PushPayload<'ui:openUrl'>): void =>
-      pushToMain('ui:openUrl', payload)
+      pushToMain({ channel: 'ui:openUrl', payload })
     const openUrlInTab = (url: string): void => {
       openUrl({ url, positionSec: 0, playbackRate: 1 })
     }
@@ -194,6 +204,11 @@ if (!app.requestSingleInstanceLock()) {
       openMaterial,
       openUrl,
       openInTab: openUrlInTab,
+      consumePendingOpen: () => {
+        const pending = pendingOpen
+        pendingOpen = null
+        return pending
+      },
       onMiniPlayerStateChanged: (open) => {
         miniPlayerOpen = open
         syncMiniPlayerTray()

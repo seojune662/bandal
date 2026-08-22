@@ -390,6 +390,28 @@ export interface IpcContract {
     res: MediaProgress
   }
 
+  // -- renderer handoff -----------------------------------------------------
+  /**
+   * 새 메인 창이 React 구독을 설치하기 전에 요청된 열기 동작을 한 번 가져간다.
+   * 읽은 값은 main에서 즉시 제거된다.
+   */
+  'ui:consumePendingOpen': {
+    req: Record<string, never>
+    res: {
+      material?: {
+        courseId: string
+        relPath: string
+        positionSec: number
+        playbackRate: number
+      }
+      url?: {
+        url: string
+        positionSec: number
+        playbackRate: number
+      }
+    } | null
+  }
+
   // -- picture-in-picture ---------------------------------------------------
   'pip:open': {
     req: PipOpenRequest
@@ -1467,6 +1489,7 @@ export const IPC_CHANNELS = [
   'materials:unwatch',
   'media:getProgress',
   'media:setProgress',
+  'ui:consumePendingOpen',
   'pip:open',
   'pip:close',
   'pip:restore',

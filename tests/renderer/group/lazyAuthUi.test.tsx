@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 const harness = vi.hoisted(() => ({
   effects: [] as Array<() => void | (() => void)>,
   renderTogether: null as null | (() => unknown),
+  bandalInvoke: vi.fn(),
   authInvoke: vi.fn(),
   auth: {
     auth: {
@@ -214,6 +215,8 @@ beforeEach(() => {
   harness.auth.hydrated = false
   harness.auth.initializing = false
   harness.authInvoke.mockReset()
+  harness.bandalInvoke.mockReset()
+  harness.bandalInvoke.mockResolvedValue(null)
   harness.auth.init.mockReset()
   harness.groups.init.mockClear()
   harness.auth.init.mockImplementation(async () => {
@@ -225,7 +228,10 @@ beforeEach(() => {
     // The shell subscribes to `courses:changed` now that the assistant can
     // change the course list on its own. Unrelated to auth, but it runs in the
     // same effect pass, and a missing `on` took the whole render down.
-    bandal: { on: vi.fn(() => () => undefined) },
+    bandal: {
+      invoke: harness.bandalInvoke,
+      on: vi.fn(() => () => undefined)
+    },
     // The shell debounces its app-state publish; a window without timers takes
     // the whole render down.
     setTimeout: vi.fn(() => 0),
@@ -243,6 +249,19 @@ describe('app shell auth restoration', () => {
     for (const effect of harness.effects) effect()
 
     expect(harness.authInvoke).toHaveBeenCalledWith('auth:getState', {})
+  })
+
+  test('consumes a pending open action once the shell effects mount', async () => {
+    walk(AppShell(), () => undefined)
+
+    for (const effect of harness.effects) effect()
+
+    await vi.waitFor(() => {
+      expect(harness.bandalInvoke).toHaveBeenCalledWith(
+        'ui:consumePendingOpen',
+        {}
+      )
+    })
   })
 
   test('restores auth before groups when a saved group tab mounts', async () => {

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { onPush } from '../lib/ipc'
+import type { PushPayload } from '../../../shared/ipc/events'
+import { invoke, onPush } from '../lib/ipc'
 import { AssistantLayer } from '../features/assistant'
 import { BoardOverlay } from '../features/board/BoardPanel'
 import { BrowserWebviewLayer } from '../features/browser/BrowserWebviewLayer'
@@ -55,6 +56,7 @@ export function AppShell(): JSX.Element {
     courseId: string
     relPath: string
   } | null>(null)
+  const consumedPendingOpen = useRef(false)
   const initTheme = useUiStore((state) => state.initTheme)
   const leftRailOpen = useUiStore((state) => state.leftRailOpen)
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
@@ -127,8 +129,8 @@ export function AppShell(): JSX.Element {
     })
   }, [selectCourse])
 
-  useEffect(() => {
-    return onPush('ui:openMaterial', (payload) => {
+  const handleOpenMaterial = useCallback(
+    (payload: PushPayload<'ui:openMaterial'>): void => {
       requestVideoResume(payload.courseId, payload.relPath, {
         positionSec: payload.positionSec,
         playbackRate: payload.playbackRate
@@ -138,11 +140,12 @@ export function AppShell(): JSX.Element {
         relPath: payload.relPath
       })
       selectCourse(payload.courseId)
-    })
-  }, [selectCourse])
+    },
+    [selectCourse]
+  )
 
-  useEffect(() => {
-    return onPush('ui:openUrl', (payload) => {
+  const handleOpenUrl = useCallback(
+    (payload: PushPayload<'ui:openUrl'>): void => {
       const workspace = useWorkspaceStore.getState()
       const browser = useBrowserGuests.getState()
       const normalizedUrl = (() => {
@@ -172,8 +175,35 @@ export function AppShell(): JSX.Element {
       workspace.openTab(
         descriptorFor('browser', { tabId, initialUrl: payload.url })
       )
-    })
-  }, [])
+    },
+    []
+  )
+
+  useEffect(() => {
+    return onPush('ui:openMaterial', handleOpenMaterial)
+  }, [handleOpenMaterial])
+
+  useEffect(() => {
+    return onPush('ui:openUrl', handleOpenUrl)
+  }, [handleOpenUrl])
+
+  useEffect(() => {
+    if (consumedPendingOpen.current) return
+    consumedPendingOpen.current = true
+    // Same replay rule as deepLinkQueue: did-finish-load precedes React's
+    // subscriptions, so a newly-created window pulls the buffered action only
+    // after these onPush effects have mounted. Main clears it on this read.
+    void invoke('ui:consumePendingOpen', {})
+      .then((pending) => {
+        if (pending?.material !== undefined) {
+          handleOpenMaterial(pending.material)
+        }
+        if (pending?.url !== undefined) handleOpenUrl(pending.url)
+      })
+      .catch((error: unknown) => {
+        console.error('[Bandal] 보류된 열기 요청을 가져오지 못했습니다.', error)
+      })
+  }, [handleOpenMaterial, handleOpenUrl])
 
   useEffect(() => {
     if (pendingChat === null) return

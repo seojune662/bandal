@@ -18,6 +18,7 @@ import { IPC_CHANNELS } from '../../src/shared/ipc/contract'
 
 const CONTRACT_SRC = join(process.cwd(), 'src/shared/ipc/contract.ts')
 const HANDLERS_SRC = join(process.cwd(), 'src/main/ipc/registerHandlers.ts')
+const MAIN_INDEX_SRC = join(process.cwd(), 'src/main/index.ts')
 
 function mainRouterSource(): string {
   return readFileSync(HANDLERS_SRC, 'utf8')
@@ -161,6 +162,27 @@ describe('IPC channel coverage', () => {
     expect(pip).toContain('durationSec: previous?.durationSec ?? null')
     expect(pip).toContain("handle('pip:moveBy', (req) => {")
     expect(pip).toContain('miniPlayer.moveBy(req.dx, req.dy)')
+  })
+
+  test('new-window open actions use a one-shot renderer handoff', () => {
+    const handlers = mainRouterSource()
+    expect(handlers).toContain(
+      "handle('ui:consumePendingOpen', () => deps.consumePendingOpen())"
+    )
+
+    const source = readFileSync(MAIN_INDEX_SRC, 'utf8')
+    const handoff = source.slice(
+      source.indexOf('type OpenTarget'),
+      source.indexOf('const trayDeps')
+    )
+    expect(handoff).toContain('let pendingOpen: PendingOpen | null = null')
+    expect(handoff).toMatch(
+      /if \(existing === null\) \{[\s\S]*createMainWindow\(\)[\s\S]*pendingOpen =/
+    )
+    expect(handoff).not.toContain("once('did-finish-load'")
+    expect(handoff).toMatch(
+      /const pending = pendingOpen\s*pendingOpen = null\s*return pending/
+    )
   })
 
   test('successful course relinks broadcast the shared course change event', () => {
