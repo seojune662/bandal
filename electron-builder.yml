@@ -53,8 +53,10 @@ extraResources:
 asarUnpack:
   - '**/*.node'
 
-# Rebuild native deps (better-sqlite3) against the Electron ABI at pack time.
-npmRebuild: true
+# Every native dependency ships Node-API prebuilds, so Electron ABI rebuilding
+# is unnecessary. Before adding a native dependency, verify that it ships
+# compatible prebuilds for every release platform.
+npmRebuild: false
 
 # OAuth callback registration. macOS reads this into CFBundleURLTypes, Windows
 # into the installer's registry keys, so `bandal://auth/callback` reaches the

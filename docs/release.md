@@ -168,18 +168,9 @@ UI 는 두 군데다. 워크스페이스 토스트는 끼어들 가치가 있는
 
 ---
 
-## 7. ⚠ x64 빌드 뒤에는 네이티브 모듈을 되돌려야 한다
+## 7. 네이티브 모듈은 재빌드하지 않는다
 
-`pnpm dist` / `dist:win` / x64 mac 빌드를 돌리면 `@electron/rebuild` 가
-**공유 `node_modules` 의 `better_sqlite3.node` 를 그 아키텍처로 덮어쓴다.**
-arm64 맥에서 x64 빌드를 한 뒤 `pnpm dev` 나 `pnpm e2e` 를 돌리면 창이 안 뜨고
-`ERR_DLOPEN_FAILED … incompatible architecture` 가 뜬다.
-
-```bash
-pnpm postinstall   # arm64 로 되돌린다
-```
-
-빌드 자체는 정상이었다 — 로컬 개발 환경만 깨진 것이다.
+`postinstall` 훅은 없으며, `better-sqlite3`을 포함한 네이티브 의존성은 플랫폼별 Node-API prebuild만 사용하고 로컬 node-gyp/Electron ABI 재빌드는 하지 않는다.
 
 ---
 

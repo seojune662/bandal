@@ -21,7 +21,6 @@
     "test": "vitest run --exclude \"e2e/**\"",
     "e2e": "electron-vite build && playwright test -c e2e",
     "generate-icon": "node scripts/generate-icon.mjs",
-    "postinstall": "electron-builder install-app-deps",
     "dist:mac": "electron-vite build && electron-builder --mac",
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:unsigned": "electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg:arm64 -c.mac.notarize=false -c.mac.identity=null"
@@ -90,6 +89,9 @@
       "@milkdown/transformer": "7.22.0",
       "@milkdown/exception": "7.22.0",
       "electron-builder-squirrel-windows": "26.15.7"
-    }
+    },
+    "neverBuiltDependencies": [
+      "better-sqlite3"
+    ]
   }
 }
