@@ -7,13 +7,15 @@
 }
 
 :root[data-overlay-view='orb'] #root {
+  --overlay-orb-center-y: 120px;
+
   position: relative;
   background: transparent;
 }
 
 .overlay-orb {
   position: absolute;
-  top: 50%;
+  top: var(--overlay-orb-center-y);
   left: 50%;
   display: grid;
   width: var(--empty-mark-size);

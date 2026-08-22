@@ -22,7 +22,10 @@ import { app } from 'electron'
 import electronUpdater from 'electron-updater'
 import type { UpdateStatus } from '../../../shared/types/update'
 import { killAllClaudeProcessesSync } from '../agent'
+import { resolveAppVersion } from './appVersion'
 import { describeError, isNoFeed, isOfflineish } from './errorMessages'
+
+export { resolveAppVersion } from './appVersion'
 
 // electron-updater is CommonJS; the named export is not reachable via ESM
 // destructuring in the electron-vite bundle.
@@ -51,13 +54,15 @@ export interface UpdaterDeps {
   broadcast: (status: UpdateStatus) => void
   /** Injectable for tests. Defaults to `app.isPackaged`. */
   isPackaged?: boolean
-  /** Injectable for tests. Defaults to `app.getVersion()`. */
+  /** Injectable for tests. Defaults to the installed or build app version. */
   currentVersion?: string
 }
 
 export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
-  const currentVersion = deps.currentVersion ?? app.getVersion()
   const isPackaged = deps.isPackaged ?? app.isPackaged
+  const currentVersion =
+    deps.currentVersion ??
+    resolveAppVersion(isPackaged, app.getVersion(), __APP_VERSION__)
 
   let status: UpdateStatus = isPackaged
     ? { phase: 'idle', currentVersion, lastCheckedAt: null }

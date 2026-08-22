@@ -206,12 +206,30 @@ function urlParts(value: string): { host: string; path: string | null } {
   }
 }
 
-function EmptyState({ label }: { label: string }): JSX.Element {
+type EmptyStateIcon = 'shield' | 'checklist' | 'clock'
+
+function EmptyState({
+  label,
+  icon
+}: {
+  label: string
+  icon: EmptyStateIcon
+}): JSX.Element {
   return (
     <div className="settings-agent-empty">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="8" />
-        <path d="M8.5 12h7M12 8.5v7" />
+      <svg viewBox="0 0 24 24" aria-hidden="true" data-empty-icon={icon}>
+        {icon === 'shield' ? (
+          <path d="M12 3 19 6v5c0 4.5-2.8 7.7-7 9-4.2-1.3-7-4.5-7-9V6Z" />
+        ) : icon === 'checklist' ? (
+          <>
+            <path d="m4 7 1.5 1.5L8 6M10 7h10M4 12l1.5 1.5L8 11M10 12h10M4 17l1.5 1.5L8 16M10 17h10" />
+          </>
+        ) : (
+          <>
+            <circle cx="12" cy="12" r="8" />
+            <path d="M12 7v5l3 2" />
+          </>
+        )}
       </svg>
       <span>{label}</span>
     </div>
@@ -412,7 +430,7 @@ export function AgentAccessPanel(): JSX.Element {
             {t('settings.agentAccess.loadFailed')}
           </p>
         ) : live.length === 0 ? (
-          <EmptyState label={t('settings.agentAccess.empty')} />
+          <EmptyState label={t('settings.agentAccess.empty')} icon="shield" />
         ) : (
           <AgentSiteGrantGroups
             grants={live}
@@ -441,7 +459,10 @@ export function AgentAccessPanel(): JSX.Element {
             {t('settings.agentAccess.toolGrants.loadFailed')}
           </p>
         ) : toolState.grants?.length === 0 ? (
-          <EmptyState label={t('settings.agentAccess.toolGrants.empty')} />
+          <EmptyState
+            label={t('settings.agentAccess.toolGrants.empty')}
+            icon="checklist"
+          />
         ) : (
           <ul className="settings-agent-tool-list">
             {toolState.grants?.map((grant) => (
@@ -478,7 +499,10 @@ export function AgentAccessPanel(): JSX.Element {
             {t('settings.agentAccess.loadFailed')}
           </p>
         ) : browserState.entries?.length === 0 ? (
-          <EmptyState label={t('settings.agentAccess.audit.empty')} />
+          <EmptyState
+            label={t('settings.agentAccess.audit.empty')}
+            icon="clock"
+          />
         ) : browserState.entries !== null ? (
           <AgentAuditTimeline entries={browserState.entries} />
         ) : null}

@@ -9,8 +9,10 @@ import {
   defaultOrbPosition,
   LEGACY_ORB_WINDOW_SIZE,
   normalizeOrbWindowBounds,
-  ORB_WINDOW_SIZE,
+  ORB_WINDOW_HEIGHT,
+  ORB_WINDOW_WIDTH,
   orbPositionFromCursor,
+  orbVisualBounds,
   placePopup,
   POPUP_DEFAULT_SIZE,
   POPUP_MIN_SIZE,
@@ -80,8 +82,9 @@ export function createOverlayController(
   let captureConcealments = 0
   let dragInterval: NodeJS.Timeout | null = null
   let dragTimeout: NodeJS.Timeout | null = null
+  let observedMainWindow: BrowserWindow | null = null
+  let mainFocused = false
   const conversations = new Map<string, string>()
-  const observedMainWindows = new WeakSet<BrowserWindow>()
 
   const orbState = createWindowStateStore({
     file: join(deps.userDataPath, ORB_STATE_FILE),
@@ -130,9 +133,10 @@ export function createOverlayController(
     const main = deps.getMainWindow()
     return (
       liveWindow(main) &&
+      main === observedMainWindow &&
       main.isVisible() &&
       !main.isMinimized() &&
-      main.isFocused()
+      mainFocused
     )
   }
 
@@ -156,15 +160,39 @@ export function createOverlayController(
   }
 
   const observeMainWindow = (main: BrowserWindow | null): void => {
-    if (!liveWindow(main) || observedMainWindows.has(main)) return
-    observedMainWindows.add(main)
-    main.on('focus', syncMainWindowVisibility)
-    main.on('show', syncMainWindowVisibility)
-    main.on('restore', syncMainWindowVisibility)
-    main.on('blur', syncMainWindowVisibility)
-    main.on('minimize', syncMainWindowVisibility)
-    main.on('hide', syncMainWindowVisibility)
-    main.on('closed', syncMainWindowVisibility)
+    if (!liveWindow(main)) {
+      if (!liveWindow(observedMainWindow)) observedMainWindow = null
+      mainFocused = false
+      return
+    }
+    if (observedMainWindow === main) return
+
+    observedMainWindow = main
+    mainFocused = main.isFocused()
+    const belongsToCurrentMain = (): boolean => observedMainWindow === main
+    const setFocused = (focused: boolean): void => {
+      if (!belongsToCurrentMain()) return
+      mainFocused = focused
+      syncMainWindowVisibility()
+    }
+    const refreshFocused = (): void => {
+      if (!belongsToCurrentMain()) return
+      if (main.isFocused()) mainFocused = true
+      syncMainWindowVisibility()
+    }
+
+    main.on('focus', () => setFocused(true))
+    main.on('show', refreshFocused)
+    main.on('restore', refreshFocused)
+    main.on('blur', () => setFocused(false))
+    main.on('minimize', () => setFocused(false))
+    main.on('hide', () => setFocused(false))
+    main.on('closed', () => {
+      if (!belongsToCurrentMain()) return
+      mainFocused = false
+      observedMainWindow = null
+      syncMainWindowVisibility()
+    })
   }
 
   const setOverlayContentProtection = (protectedContent: boolean): void => {
@@ -203,7 +231,7 @@ export function createOverlayController(
     const size = popup.getSize()
     const width = size[0]!
     const height = size[1]!
-    const workArea = screen.getDisplayMatching(orbBounds).workArea
+    const workArea = screen.getDisplayMatching(orbVisualBounds(orbBounds)).workArea
     popup.setBounds(placePopup(orbBounds, { width, height }, workArea))
   }
 
@@ -252,15 +280,15 @@ export function createOverlayController(
       const area = screen.getPrimaryDisplay().workArea
       return {
         ...defaultOrbPosition(area),
-        width: ORB_WINDOW_SIZE,
-        height: ORB_WINDOW_SIZE
+        width: ORB_WINDOW_WIDTH,
+        height: ORB_WINDOW_HEIGHT
       }
     }
 
     const fixedSize = normalizeOrbWindowBounds(saved)
     return clampOrbToArea(
       fixedSize,
-      screen.getDisplayMatching(fixedSize).workArea
+      screen.getDisplayMatching(orbVisualBounds(fixedSize)).workArea
     )
   }
 
@@ -278,13 +306,16 @@ export function createOverlayController(
     const popupBounds = placePopup(
       orbBounds,
       popupSize,
-      screen.getDisplayMatching(orbBounds).workArea
+      screen.getDisplayMatching(orbVisualBounds(orbBounds)).workArea
     )
 
     const orbWindow = createOrbWindow({
       position: { x: orbBounds.x, y: orbBounds.y },
       preload: deps.preloadPath
     })
+    // The factory stays square for compatibility; finalize the asymmetric
+    // charm canvas before this hidden window can be shown.
+    orbWindow.setBounds(orbBounds)
     const popupWindow = createPopupWindow({
       bounds: popupBounds,
       preload: deps.preloadPath,
@@ -408,10 +439,10 @@ export function createOverlayController(
       {
         x: current.x,
         y: current.y,
-        width: ORB_WINDOW_SIZE,
-        height: ORB_WINDOW_SIZE
+        width: ORB_WINDOW_WIDTH,
+        height: ORB_WINDOW_HEIGHT
       },
-      screen.getDisplayMatching(current).workArea
+      screen.getDisplayMatching(orbVisualBounds(current)).workArea
     )
     if (clamped.x !== current.x || clamped.y !== current.y) {
       orb.setPosition(clamped.x, clamped.y)

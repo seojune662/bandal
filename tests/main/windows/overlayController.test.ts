@@ -153,7 +153,7 @@ function setup(initial: Settings): {
   let settingsListener: ((next: Settings) => void) | null = null
   let mainWindow: FakeWindow | null = null
   const orb = new FakeWindow(
-    { x: 1052, y: 752, width: 240, height: 240 },
+    { x: 916, y: 536, width: 260, height: 340 },
     false
   )
   const popup = new FakeWindow(
@@ -242,6 +242,12 @@ describe('createOverlayController', () => {
       [expect.anything(), 'popup']
     ])
     expect(subject.controller.isActive()).toBe(true)
+    expect(subject.orb.setBounds).toHaveBeenCalledWith({
+      x: 916,
+      y: 536,
+      width: 260,
+      height: 340
+    })
     expect(subject.controller.getState().desktopVisible).toBe(true)
     expect(subject.orb.showInactive).toHaveBeenCalledOnce()
 
@@ -253,6 +259,41 @@ describe('createOverlayController', () => {
     expect(subject.orb.destroy).toHaveBeenCalledOnce()
     expect(subject.popup.destroy).toHaveBeenCalledOnce()
     expect(subject.controller.isActive()).toBe(false)
+  })
+
+  test('upgrades old orb bounds around the previous visual centre', () => {
+    const subject = setup(desktopSettings())
+    storeMocks.orb.read.mockReturnValue({
+      bounds: { x: 900, y: 700, width: 64, height: 64 },
+      maximized: false
+    })
+
+    subject.controller.start()
+
+    expect(subject.orb.setBounds).toHaveBeenCalledWith({
+      x: 802,
+      y: 560,
+      width: 260,
+      height: 340
+    })
+  })
+
+  test('reclamps the full charm window above the display bottom', () => {
+    const subject = setup(desktopSettings())
+    subject.controller.start()
+    subject.orb.setBounds({ x: 802, y: 700, width: 260, height: 340 })
+    subject.orb.setPosition.mockClear()
+
+    const listener = electronMocks.screen.on.mock.calls.find(
+      ([event]) => event === 'display-metrics-changed'
+    )?.[1] as (() => void) | undefined
+    listener?.()
+
+    expect(subject.orb.setPosition).toHaveBeenCalledWith(802, 560)
+    expect(storeMocks.orb.save).toHaveBeenLastCalledWith({
+      bounds: { x: 802, y: 560, width: 260, height: 340 },
+      maximized: false
+    })
   })
 
   test('reuses one conversation per course and resets a local course override', () => {
@@ -295,25 +336,56 @@ describe('createOverlayController', () => {
     expect(subject.controller.getState().mode).toBe('in-app')
   })
 
-  test('hides the desktop orb while the visible main window is focused and restores it on blur', () => {
+  test('tracks synthetic focus events even while isFocused stays false', () => {
     const subject = setup(desktopSettings())
     const main = new FakeWindow(
       { x: 0, y: 0, width: 1280, height: 800 },
       true,
-      true
+      false
     )
+    vi.spyOn(main, 'isFocused').mockReturnValue(false)
     subject.setMainWindow(main)
 
     subject.controller.start()
-    expect(subject.controller.getState().desktopVisible).toBe(false)
-    expect(subject.orb.showInactive).not.toHaveBeenCalled()
-
-    main.blur()
+    expect(subject.controller.getState().desktopVisible).toBe(true)
     expect(subject.orb.showInactive).toHaveBeenCalledOnce()
+
+    main.emit('focus')
+    expect(subject.orb.hide).toHaveBeenCalledOnce()
+    expect(subject.controller.getState().desktopVisible).toBe(false)
+
+    main.emit('blur')
+    expect(subject.orb.showInactive).toHaveBeenCalledTimes(2)
+    expect(subject.controller.getState().desktopVisible).toBe(true)
+    expect(main.isFocused).toHaveBeenCalled()
+  })
+
+  test('reattaches focus tracking when the main window is replaced', () => {
+    const subject = setup(desktopSettings())
+    const first = new FakeWindow(
+      { x: 0, y: 0, width: 1280, height: 800 },
+      true,
+      false
+    )
+    const replacement = new FakeWindow(
+      { x: 0, y: 0, width: 1280, height: 800 },
+      true,
+      false
+    )
+    vi.spyOn(first, 'isFocused').mockReturnValue(false)
+    vi.spyOn(replacement, 'isFocused').mockReturnValue(false)
+    subject.setMainWindow(first)
+    subject.controller.start()
+    first.emit('focus')
+    expect(subject.controller.getState().desktopVisible).toBe(false)
+
+    subject.setMainWindow(replacement)
+    subject.controller.syncMainWindowVisibility()
     expect(subject.controller.getState().desktopVisible).toBe(true)
 
-    main.focus()
-    expect(subject.orb.hide).toHaveBeenCalledOnce()
+    replacement.emit('focus')
+    expect(subject.controller.getState().desktopVisible).toBe(false)
+    first.emit('blur')
     expect(subject.controller.getState().desktopVisible).toBe(false)
   })
 

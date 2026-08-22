@@ -4,6 +4,11 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { Course } from '../../../src/shared/types/course'
 import type { OverlayState } from '../../../src/shared/types/overlay'
 import {
+  ORB_VISUAL_CENTER_Y,
+  ORB_VISUAL_SIZE,
+  ORB_WINDOW_HEIGHT
+} from '../../../src/main/windows/overlayGeometry'
+import {
   CourseChip,
   loadOverlayCourses,
   selectOverlayCourse,
@@ -15,6 +20,9 @@ import {
   reportOverlayOrbHitTest
 } from '../../../src/renderer/src/features/overlay/OverlayOrbApp'
 import { ScreenPermissionChip } from '../../../src/renderer/src/features/overlay/ScreenPermissionChip'
+import { balloonTheme } from '../../../src/renderer/src/features/assistant/charms/themes/balloon'
+import { chainTheme } from '../../../src/renderer/src/features/assistant/charms/themes/chain'
+import { spiderTheme } from '../../../src/renderer/src/features/assistant/charms/themes/spider'
 import {
   acquireOverlayState,
   INITIAL_OVERLAY_STATE,
@@ -61,6 +69,7 @@ const loadedState: OverlayState = {
   courseId: 'course-1',
   conversationId: 'conversation-1',
   popupOpen: true,
+  desktopVisible: true,
   screenPermission: 'granted'
 }
 
@@ -113,12 +122,53 @@ describe('useOverlayState', () => {
 
 describe('OverlayOrbApp hit testing', () => {
   test('treats the orb disk and charm body as interactive', () => {
-    const orb = { left: 92, top: 92, right: 148, bottom: 148, width: 56, height: 56 }
-    const charm = { left: 104, top: 148, right: 136, bottom: 210, width: 32, height: 62 }
+    const orb = {
+      left: 102,
+      top: 92,
+      right: 158,
+      bottom: 148,
+      width: 56,
+      height: 56
+    }
+    const charm = {
+      left: 114,
+      top: 148,
+      right: 146,
+      bottom: 250,
+      width: 32,
+      height: 102
+    }
 
-    expect(isOverlayOrbHit({ x: 120, y: 120 }, orb, charm)).toBe(true)
-    expect(isOverlayOrbHit({ x: 120, y: 180 }, orb, charm)).toBe(true)
+    expect(isOverlayOrbHit({ x: 130, y: 120 }, orb, charm)).toBe(true)
+    expect(isOverlayOrbHit({ x: 130, y: 220 }, orb, charm)).toBe(true)
     expect(isOverlayOrbHit({ x: 20, y: 20 }, orb, charm)).toBe(false)
+  })
+
+  test('keeps balloon, spider, and chain rest poses inside the asymmetric canvas', () => {
+    const visualTop = ORB_VISUAL_CENTER_Y - ORB_VISUAL_SIZE / 2
+    const visualBottom = ORB_VISUAL_CENTER_Y + ORB_VISUAL_SIZE / 2
+    const abovePivot =
+      visualTop + ORB_VISUAL_SIZE * balloonTheme.attachInsetRatio
+    const belowPivot =
+      visualBottom - ORB_VISUAL_SIZE * spiderTheme.attachInsetRatio
+    const chainPivot =
+      visualBottom - ORB_VISUAL_SIZE * chainTheme.attachInsetRatio
+    const balloonTop =
+      abovePivot -
+      balloonTheme.rope.segments * balloonTheme.rope.segmentLength -
+      39
+    const spiderBottom =
+      belowPivot +
+      spiderTheme.rope.segments * spiderTheme.rope.segmentLength +
+      25
+    const chainBottom =
+      chainPivot +
+      chainTheme.rope.segments * chainTheme.rope.segmentLength +
+      28
+
+    expect(balloonTop).toBeGreaterThanOrEqual(0)
+    expect(spiderBottom).toBeLessThanOrEqual(ORB_WINDOW_HEIGHT)
+    expect(chainBottom).toBeLessThanOrEqual(ORB_WINDOW_HEIGHT)
   })
 
   test('reports hit-test transitions through the overlay IPC channel', async () => {

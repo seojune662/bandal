@@ -34,14 +34,14 @@ describe('createOrbWindow', () => {
     electronMocks.options = null
   })
 
-  test('creates a 240px pass-through canvas with ordinary capture visibility', () => {
+  test('creates the pass-through base window before controller height expansion', () => {
     createOrbWindow({ position: { x: 10, y: 20 }, preload: '/preload.js' })
 
     expect(electronMocks.options).toMatchObject({
       x: 10,
       y: 20,
-      width: 240,
-      height: 240,
+      width: 260,
+      height: 260,
       show: false,
       transparent: true,
       focusable: false

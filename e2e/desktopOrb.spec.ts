@@ -32,17 +32,20 @@ async function visibleWindowCount(app: ElectronApplication): Promise<number> {
   )
 }
 
-async function isPopupVisible(app: ElectronApplication): Promise<boolean> {
-  return app.evaluate(({ BrowserWindow }) => {
-    const popup = BrowserWindow.getAllWindows().find((window) =>
-      window.webContents.getURL().includes('overlay.html?view=popup')
+async function isOverlayVisible(
+  app: ElectronApplication,
+  view: OverlayView
+): Promise<boolean> {
+  return app.evaluate(({ BrowserWindow }, overlayView) => {
+    const overlay = BrowserWindow.getAllWindows().find((window) =>
+      window.webContents.getURL().includes(`overlay.html?view=${overlayView}`)
     )
-    return popup?.isVisible() ?? false
-  })
+    return overlay?.isVisible() ?? false
+  }, view)
 }
 
 test.describe('desktop assistant orb', () => {
-  test('opens the popup and survives the main window closing', async () => {
+  test('switches from the in-app orb to the desktop popup when minimized', async () => {
     const bandal = await launchBandal({
       extraSettings: { assistantMode: 'desktop' }
     })
@@ -68,8 +71,7 @@ test.describe('desktop assistant orb', () => {
       const orbButton = orbPage.locator('button[aria-label]', {
         has: orbPage.locator('.bandal-orb-mark')
       })
-      await expect(orbButton.locator('.bandal-orb-mark')).toBeVisible()
-      await expect(mainPage.locator('.assistant-orb')).toHaveCount(0)
+      const orbMark = orbButton.locator('.bandal-orb-mark')
 
       await expect(
         popupPage.locator(":root[data-overlay-view='popup']")
@@ -81,16 +83,54 @@ test.describe('desktop assistant orb', () => {
         popupPage.getByRole('button', { name: '반달 AI 닫기' })
       ).toBeAttached()
 
-      await expect.poll(() => visibleWindowCount(app)).toBe(2)
+      await app.evaluate(({ BrowserWindow }) => {
+        const main = BrowserWindow.getAllWindows().find((window) =>
+          window.webContents.getURL().includes('index.html')
+        )
+        if (main === undefined) return
+        main.show()
+        main.focus()
+        // Playwright's Electron process may not receive an OS focus event in
+        // CI, so notify the controller after setting the BrowserWindow state.
+        main.emit('focus')
+      })
+      await expect(mainPage.locator('.assistant-orb')).toHaveCount(1)
+      await expect(mainPage.locator('.assistant-orb')).toBeVisible()
+      await expect
+        .poll(() => isOverlayVisible(app, 'orb'))
+        .toBe(false)
+      await expect.poll(() => visibleWindowCount(app)).toBe(1)
+
+      await app.evaluate(({ BrowserWindow }) => {
+        const main = BrowserWindow.getAllWindows().find((window) =>
+          window.webContents.getURL().includes('index.html')
+        )
+        if (main === undefined) return
+        main.minimize()
+        // Headless window managers can omit these native events; emit both so
+        // the controller observes the same transition as a real minimize.
+        main.emit('blur')
+        main.emit('minimize')
+      })
+      await expect.poll(() => isOverlayVisible(app, 'orb')).toBe(true)
+      await expect(orbMark).toBeVisible()
+      await expect
+        .poll(() =>
+          app.evaluate(
+            ({ BrowserWindow }) => BrowserWindow.getAllWindows().length
+          )
+        )
+        .toBe(3)
+
       const visibleBeforeClick = await visibleWindowCount(app)
 
       try {
         await orbButton.click()
         await expect
-          .poll(() => isPopupVisible(app), { timeout: 2_000 })
+          .poll(() => isOverlayVisible(app, 'popup'), { timeout: 2_000 })
           .toBe(true)
       } catch {
-        if (!(await isPopupVisible(app))) {
+        if (!(await isOverlayVisible(app, 'popup'))) {
           // The macOS orb is intentionally non-focusable. Some window-manager
           // combinations do not deliver Playwright's click to an inactive
           // panel, so exercise the same renderer bridge as the button fallback.
@@ -107,17 +147,17 @@ test.describe('desktop assistant orb', () => {
         }
       }
 
-      await expect.poll(() => isPopupVisible(app)).toBe(true)
+      await expect.poll(() => isOverlayVisible(app, 'popup')).toBe(true)
       await expect
         .poll(() => visibleWindowCount(app))
         .toBe(visibleBeforeClick + 1)
-
-      await mainPage.close()
       await expect
-        .poll(() => app.evaluate(({ app }) => app.isReady()))
-        .toBe(true)
-      expect(orbPage.isClosed()).toBe(false)
-      await expect(orbButton.locator('.bandal-orb-mark')).toBeVisible()
+        .poll(() =>
+          app.evaluate(
+            ({ BrowserWindow }) => BrowserWindow.getAllWindows().length
+          )
+        )
+        .toBe(3)
     } finally {
       await bandal.close()
     }

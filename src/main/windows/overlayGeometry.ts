@@ -5,10 +5,16 @@ export interface Rect {
   height: number
 }
 
-/** Transparent desktop window; large enough for every hanging charm. */
-export const ORB_WINDOW_SIZE = 240
+/** Transparent desktop window; asymmetric space keeps both charm directions visible. */
+export const ORB_WINDOW_WIDTH = 260
+export const ORB_WINDOW_HEIGHT = 340
+/** Kept for the window factory, which the controller expands to the final bounds. */
+export const ORB_WINDOW_SIZE = ORB_WINDOW_WIDTH
 /** Visible pill inside the transparent desktop window. */
 export const ORB_VISUAL_SIZE = 56
+export const ORB_VISUAL_CENTER_Y = 120
+/** Matches the in-app orb's `--space-5` default edge gap. */
+export const ORB_DEFAULT_MARGIN = 24
 /** Window size persisted by releases before desktop charms were supported. */
 export const LEGACY_ORB_WINDOW_SIZE = 64
 export const POPUP_DEFAULT_SIZE = { width: 400, height: 560 }
@@ -28,62 +34,71 @@ export function clampToArea(rect: Rect, area: Rect): Rect {
 
 export function orbVisualBounds(
   orbWindow: Rect,
-  visualSize = ORB_VISUAL_SIZE
+  visualSize = ORB_VISUAL_SIZE,
+  visualCenterY = ORB_VISUAL_CENTER_Y
 ): Rect {
   return {
     x: orbWindow.x + (orbWindow.width - visualSize) / 2,
-    y: orbWindow.y + (orbWindow.height - visualSize) / 2,
+    y: orbWindow.y + visualCenterY - visualSize / 2,
     width: visualSize,
     height: visualSize
   }
 }
 
-/** Keeps the visible pill on-screen while allowing transparent margins off-screen. */
+/**
+ * Keeps the visible pill on-screen at the sides/top. The whole window stays
+ * above the display bottom so downward charms cannot disappear off-screen.
+ */
 export function clampOrbToArea(
   orbWindow: Rect,
   area: Rect,
-  visualSize = ORB_VISUAL_SIZE
+  visualSize = ORB_VISUAL_SIZE,
+  visualCenterY = ORB_VISUAL_CENTER_Y
 ): Rect {
-  const visual = orbVisualBounds(orbWindow, visualSize)
+  const visual = orbVisualBounds(orbWindow, visualSize, visualCenterY)
   const clampedVisual = clampToArea(visual, area)
+  const visualClampedY = orbWindow.y + clampedVisual.y - visual.y
   return {
     ...orbWindow,
     x: orbWindow.x + clampedVisual.x - visual.x,
-    y: orbWindow.y + clampedVisual.y - visual.y
+    y: Math.min(visualClampedY, area.y + area.height - orbWindow.height)
   }
 }
 
 /** Preserves the old window's centre when upgrading its transparent canvas. */
 export function normalizeOrbWindowBounds(saved: Rect): Rect {
   if (
-    saved.width === ORB_WINDOW_SIZE &&
-    saved.height === ORB_WINDOW_SIZE
+    saved.width === ORB_WINDOW_WIDTH &&
+    saved.height === ORB_WINDOW_HEIGHT
   ) {
     return { ...saved }
   }
   return {
-    x: saved.x + saved.width / 2 - ORB_WINDOW_SIZE / 2,
-    y: saved.y + saved.height / 2 - ORB_WINDOW_SIZE / 2,
-    width: ORB_WINDOW_SIZE,
-    height: ORB_WINDOW_SIZE
+    x: saved.x + saved.width / 2 - ORB_WINDOW_WIDTH / 2,
+    y: saved.y + saved.height / 2 - ORB_VISUAL_CENTER_Y,
+    width: ORB_WINDOW_WIDTH,
+    height: ORB_WINDOW_HEIGHT
   }
 }
 
 export function defaultOrbPosition(
   area: Rect,
-  windowSize = ORB_WINDOW_SIZE,
-  visualSize = ORB_VISUAL_SIZE
+  windowWidth = ORB_WINDOW_WIDTH,
+  windowHeight = ORB_WINDOW_HEIGHT,
+  visualSize = ORB_VISUAL_SIZE,
+  visualCenterY = ORB_VISUAL_CENTER_Y,
+  margin = ORB_DEFAULT_MARGIN
 ): { x: number; y: number } {
-  const visualInset = (windowSize - visualSize) / 2
   const bounds = clampOrbToArea(
     {
-      x: area.x + area.width - visualSize - visualInset,
-      y: area.y + area.height - visualSize - visualInset,
-      width: windowSize,
-      height: windowSize
+      x: area.x + area.width - windowWidth - margin,
+      y: area.y + area.height - windowHeight - margin,
+      width: windowWidth,
+      height: windowHeight
     },
     area,
-    visualSize
+    visualSize,
+    visualCenterY
   )
   return { x: bounds.x, y: bounds.y }
 }
@@ -92,9 +107,10 @@ export function placePopup(
   orb: Rect,
   popupSize: { width: number; height: number },
   area: Rect,
-  visualSize = ORB_VISUAL_SIZE
+  visualSize = ORB_VISUAL_SIZE,
+  visualCenterY = ORB_VISUAL_CENTER_Y
 ): Rect {
-  const visual = orbVisualBounds(orb, visualSize)
+  const visual = orbVisualBounds(orb, visualSize, visualCenterY)
   const above = visual.y - popupSize.height
   const left = visual.x - popupSize.width
   const below = visual.y + visual.height
@@ -142,18 +158,20 @@ export function orbPositionFromCursor(
   cursor: { x: number; y: number },
   grab: { x: number; y: number },
   areas: Rect[],
-  windowSize = ORB_WINDOW_SIZE,
-  visualSize = ORB_VISUAL_SIZE
+  windowWidth = ORB_WINDOW_WIDTH,
+  windowHeight = ORB_WINDOW_HEIGHT,
+  visualSize = ORB_VISUAL_SIZE,
+  visualCenterY = ORB_VISUAL_CENTER_Y
 ): { x: number; y: number } {
   const raw = {
     x: Math.round(cursor.x - grab.x),
     y: Math.round(cursor.y - grab.y),
-    width: windowSize,
-    height: windowSize
+    width: windowWidth,
+    height: windowHeight
   }
   const area = areaForPoint(cursor, areas)
   if (area === null) return { x: raw.x, y: raw.y }
 
-  const clamped = clampOrbToArea(raw, area, visualSize)
+  const clamped = clampOrbToArea(raw, area, visualSize, visualCenterY)
   return { x: clamped.x, y: clamped.y }
 }

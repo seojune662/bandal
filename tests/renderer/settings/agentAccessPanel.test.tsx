@@ -170,4 +170,25 @@ describe('AgentAccessPanel tool grants', () => {
     expect(html).toContain('class="settings-agent-timeline__path">/courses/1</span>')
     expect(html.match(/class="settings-agent-timeline__day"/g)).toHaveLength(2)
   })
+
+  test('uses neutral purpose-specific icons for all empty states', async () => {
+    setIpcAdapter({
+      invoke: vi.fn(async (channel: string) => {
+        if (channel === 'browserAgent:grants') return { grants: [] }
+        if (channel === 'browserAgent:auditTail') return { entries: [] }
+        if (channel === 'courses:list') return []
+        if (channel === 'chat:grants') return { grants: [] }
+        throw new Error(`Unexpected IPC channel: ${channel}`)
+      }),
+      on: vi.fn(() => () => undefined)
+    } as unknown as IpcAdapter)
+
+    await Promise.all([loadAgentBrowserAccess(), loadAgentToolGrants()])
+    const html = renderToStaticMarkup(<AgentAccessPanel />)
+
+    expect(html).toContain('data-empty-icon="shield"')
+    expect(html).toContain('data-empty-icon="checklist"')
+    expect(html).toContain('data-empty-icon="clock"')
+    expect(html).not.toContain('M8.5 12h7M12 8.5v7')
+  })
 })
