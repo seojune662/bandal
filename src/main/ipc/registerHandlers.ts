@@ -165,6 +165,8 @@ export interface RegisterHandlersDeps {
   preloadPath: string
   userDataPath: string
   windowBackground(): string
+  openMaterial(payload: PushPayload<'ui:openMaterial'>): void
+  openUrl(payload: PushPayload<'ui:openUrl'>): void
   openInTab(url: string): void
   onMiniPlayerStateChanged?(open: boolean): void
 }
@@ -567,6 +569,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         )
       }
     },
+    openMaterial: deps.openMaterial,
+    openUrl: deps.openUrl,
     openInTab: deps.openInTab
   })
   handle('pip:open', (req) => {

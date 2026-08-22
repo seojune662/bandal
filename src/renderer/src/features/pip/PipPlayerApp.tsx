@@ -20,6 +20,10 @@ import {
   type PipReportTrigger,
   type PipSeekCommand
 } from './pipPlayerModel'
+import {
+  playWithMutedFallback,
+  syncInitialPipState
+} from './pipStartup'
 
 export interface PipPlayerAppProps {
   courseId: string
@@ -117,14 +121,17 @@ export function PipPlayerApp({
   const requestPlay = useCallback(async (): Promise<void> => {
     const video = videoRef.current
     if (video === null) return
-    try {
-      await video.play()
+    const result = await playWithMutedFallback(video, () => {
+      dispatch({ type: 'volume', volume: video.volume, muted: true })
+    })
+    if (result !== 'blocked') {
       dispatch({ type: 'play-blocked', blocked: false })
-    } catch {
-      dispatch({ type: 'play-blocked', blocked: true })
-      dispatch({ type: 'playback', paused: true })
-      revealControls()
+      return
     }
+
+    dispatch({ type: 'play-blocked', blocked: true })
+    dispatch({ type: 'playback', paused: true })
+    revealControls()
   }, [revealControls])
 
   const togglePlayback = useCallback((): void => {
@@ -194,13 +201,24 @@ export function PipPlayerApp({
   }, [])
 
   useEffect(() => {
-    const disposeSeek = onPush('pip:seek', applySeekCommand)
+    let disposed = false
+    let receivedSeekPush = false
+    const disposeSeek = onPush('pip:seek', (command) => {
+      receivedSeekPush = true
+      applySeekCommand(command)
+    })
+    void syncInitialPipState({
+      getState: () => invoke('pip:getState', {}),
+      applySeek: applySeekCommand,
+      shouldApply: () => !disposed && !receivedSeekPush
+    }).catch(() => undefined)
     const interval = window.setInterval(() => {
       reportProgress('interval')
     }, PIP_REPORT_INTERVAL_MS)
 
     revealControls()
     return () => {
+      disposed = true
       disposeSeek()
       window.clearInterval(interval)
       if (controlsTimerRef.current !== null) {
@@ -423,7 +441,13 @@ export function PipPlayerApp({
               aria-pressed={state.muted}
               onClick={() => {
                 const video = videoRef.current
-                if (video !== null) video.muted = !video.muted
+                if (video === null) return
+                video.muted = !video.muted
+                dispatch({
+                  type: 'volume',
+                  volume: video.volume,
+                  muted: video.muted
+                })
               }}
             >
               <span aria-hidden="true">

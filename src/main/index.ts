@@ -2,6 +2,7 @@ import path, { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { app, BrowserWindow, ipcMain, nativeTheme, protocol } from 'electron'
+import type { PushPayload } from '../shared/ipc/events'
 import type { Settings, SettingsPatch } from '../shared/types/settings'
 import { initDatabase, closeDatabase } from './db/database'
 import { createDeepLinkQueue } from './deepLinkQueue'
@@ -151,13 +152,17 @@ if (!app.requestSingleInstanceLock()) {
       }
     }
 
-    const openUrlInTab = (url: string): void => {
-      const payload = { url, positionSec: 0, playbackRate: 1 }
+    const pushToMain = <
+      K extends 'ui:openMaterial' | 'ui:openUrl'
+    >(
+      channel: K,
+      payload: PushPayload<K>
+    ): void => {
       const existing = getMainWindow()
       const main = existing ?? createMainWindow()
       const push = (): void => {
         if (!main.isDestroyed() && !main.webContents.isDestroyed()) {
-          main.webContents.send('ui:openUrl', payload)
+          main.webContents.send(channel, payload)
         }
       }
       if (existing === null) {
@@ -169,6 +174,14 @@ if (!app.requestSingleInstanceLock()) {
         push()
       }
     }
+    const openMaterial = (
+      payload: PushPayload<'ui:openMaterial'>
+    ): void => pushToMain('ui:openMaterial', payload)
+    const openUrl = (payload: PushPayload<'ui:openUrl'>): void =>
+      pushToMain('ui:openUrl', payload)
+    const openUrlInTab = (url: string): void => {
+      openUrl({ url, positionSec: 0, playbackRate: 1 })
+    }
 
     let miniPlayerOpen = false
     let syncMiniPlayerTray = (): void => undefined
@@ -178,6 +191,8 @@ if (!app.requestSingleInstanceLock()) {
       preloadPath: join(__dirname, '../preload/index.js'),
       userDataPath: app.getPath('userData'),
       windowBackground: resolveWindowBackground,
+      openMaterial,
+      openUrl,
       openInTab: openUrlInTab,
       onMiniPlayerStateChanged: (open) => {
         miniPlayerOpen = open

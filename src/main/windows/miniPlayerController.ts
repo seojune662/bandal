@@ -28,6 +28,8 @@ export interface MiniPlayerDeps {
   userDataPath: string
   windowBackground(): string
   broadcast<K extends PushChannel>(ch: K, p: PushPayload<K>): void
+  openMaterial(payload: PushPayload<'ui:openMaterial'>): void
+  openUrl(payload: PushPayload<'ui:openUrl'>): void
   openInTab(url: string): void
   now?: () => number
 }
@@ -103,6 +105,7 @@ export function createMiniPlayerController(
   let positionSec = 0
   let playbackRate = 1
   let paused = true
+  let reportedAspect: number | null = null
   let pollTimer: NodeJS.Timeout | null = null
   let quitting = false
 
@@ -127,6 +130,7 @@ export function createMiniPlayerController(
     positionSec = 0
     playbackRate = 1
     paused = true
+    reportedAspect = null
   }
 
   const destroyToolbar = (player: ActivePlayer): void => {
@@ -316,14 +320,14 @@ export function createMiniPlayerController(
       playbackRate
     }
     if (payload.source.kind === 'local') {
-      deps.broadcast('ui:openMaterial', {
+      deps.openMaterial({
         courseId: payload.source.courseId,
         relPath: payload.source.relPath,
         positionSec: payload.positionSec,
         playbackRate: payload.playbackRate
       })
     } else {
-      deps.broadcast('ui:openUrl', {
+      deps.openUrl({
         url: payload.source.url,
         positionSec: payload.positionSec,
         playbackRate: payload.playbackRate
@@ -339,8 +343,25 @@ export function createMiniPlayerController(
     playbackRate = finitePlaybackRate(reportPayload.playbackRate, playbackRate)
     paused = reportPayload.paused
     const aspect = reportPayload.aspect
-    if (aspect !== undefined && Number.isFinite(aspect) && aspect > 0) {
+    if (
+      aspect !== undefined &&
+      Number.isFinite(aspect) &&
+      aspect > 0 &&
+      aspect !== reportedAspect
+    ) {
+      reportedAspect = aspect
       player.window.setAspectRatio(aspect)
+      const current = player.window.getBounds()
+      const target = {
+        ...current,
+        height: Math.round(current.width / aspect)
+      }
+      const workArea = screen.getDisplayMatching(target).workArea
+      const clamped = clampToArea(target, workArea)
+      player.window.setSize(clamped.width, clamped.height)
+      if (clamped.x !== current.x || clamped.y !== current.y) {
+        player.window.setPosition(clamped.x, clamped.y)
+      }
     }
     broadcastState()
   }

@@ -6,6 +6,9 @@ const electronMocks = vi.hoisted(() => ({
   screen: {
     getPrimaryDisplay: vi.fn(() => ({
       workArea: { x: 0, y: 0, width: 1440, height: 900 }
+    })),
+    getDisplayMatching: vi.fn(() => ({
+      workArea: { x: 0, y: 0, width: 1440, height: 900 }
     }))
   }
 }))
@@ -95,6 +98,9 @@ class FakeWindow {
   readonly show = vi.fn()
   readonly showInactive = vi.fn()
   readonly setAspectRatio = vi.fn()
+  readonly setSize = vi.fn((width: number, height: number) => {
+    this.bounds = { ...this.bounds, width, height }
+  })
   readonly setPosition = vi.fn((x: number, y: number) => {
     this.bounds = { ...this.bounds, x, y }
   })
@@ -176,9 +182,13 @@ const WEB_SOURCE = {
 function setup(localWindows: FakeWindow[] = [new FakeWindow()]): {
   controller: ReturnType<typeof createMiniPlayerController>
   broadcast: ReturnType<typeof vi.fn>
+  openMaterial: ReturnType<typeof vi.fn>
+  openUrl: ReturnType<typeof vi.fn>
   toolbar: FakeWindow
 } {
   const broadcast = vi.fn()
+  const openMaterial = vi.fn()
+  const openUrl = vi.fn()
   const toolbar = new FakeWindow()
   const queue = [...localWindows]
   const nextWindow = (): BrowserWindow =>
@@ -196,11 +206,15 @@ function setup(localWindows: FakeWindow[] = [new FakeWindow()]): {
     userDataPath: '/user-data',
     windowBackground: () => '#111827',
     broadcast,
+    openMaterial,
+    openUrl,
     openInTab: vi.fn()
   }
   return {
     controller: createMiniPlayerController(deps),
     broadcast,
+    openMaterial,
+    openUrl,
     toolbar
   }
 }
@@ -279,14 +293,46 @@ describe('createMiniPlayerController', () => {
 
     subject.controller.restore()
 
-    expect(subject.broadcast).toHaveBeenCalledWith('ui:openMaterial', {
+    expect(subject.openMaterial).toHaveBeenCalledWith({
       courseId: 'course-a',
       relPath: 'week 1/lecture.mp4',
       positionSec: 81.5,
       playbackRate: 1.75
     })
+    expect(subject.openMaterial.mock.invocationCallOrder[0]).toBeLessThan(
+      window.close.mock.invocationCallOrder[0]!
+    )
     expect(window.setAspectRatio).toHaveBeenLastCalledWith(4 / 3)
+    expect(window.setSize).toHaveBeenLastCalledWith(480, 360)
+    expect(window.setPosition).toHaveBeenLastCalledWith(936, 540)
     expect(window.close).toHaveBeenCalledOnce()
+  })
+
+  test('resizes to the first reported aspect and only repeats when it changes', () => {
+    const window = new FakeWindow()
+    const subject = setup([window])
+    subject.controller.open({
+      source: LOCAL_SOURCE,
+      positionSec: 0,
+      playbackRate: 1
+    })
+
+    const report = {
+      positionSec: 1,
+      playbackRate: 1,
+      paused: false,
+      aspect: 960 / 500
+    }
+    subject.controller.report(report)
+    subject.controller.report({ ...report, positionSec: 2 })
+
+    expect(window.setAspectRatio).toHaveBeenLastCalledWith(960 / 500)
+    expect(window.setSize).toHaveBeenCalledOnce()
+    expect(window.setSize).toHaveBeenLastCalledWith(480, 250)
+
+    subject.controller.report({ ...report, aspect: 2 })
+    expect(window.setSize).toHaveBeenCalledTimes(2)
+    expect(window.setSize).toHaveBeenLastCalledWith(480, 240)
   })
 
   test('uses the latest web poll for restore and appends a YouTube t query', async () => {
@@ -308,7 +354,7 @@ describe('createMiniPlayerController', () => {
     await vi.advanceTimersByTimeAsync(3_000)
     subject.controller.restore()
 
-    expect(subject.broadcast).toHaveBeenCalledWith('ui:openUrl', {
+    expect(subject.openUrl).toHaveBeenCalledWith({
       url: WEB_SOURCE.url,
       positionSec: 92.25,
       playbackRate: 1.25
