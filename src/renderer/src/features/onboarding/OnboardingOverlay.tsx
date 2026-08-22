@@ -29,6 +29,7 @@ import { useAgentPreflight } from './useAgentPreflight'
 import '../courses/courses.css'
 import './onboarding.css'
 import { BandalMark } from '../../components/BandalMark'
+import { useFocusTrap } from '../../components/useFocusTrap'
 
 const STEP_TITLES: readonly string[] = [
   '반달과 만나기',
@@ -342,18 +343,12 @@ export function OnboardingOverlay(): JSX.Element {
   )
   const dismiss = useOnboardingStore((state) => state.dismiss)
   const titleId = useId()
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useFocusTrap(dialogRef, { active: true, onEscape: dismiss })
 
   // Webview guests must not eat the pointer while the overlay is up.
   useEffect(() => acquirePointerPassthrough(), [])
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      // An inner surface (e.g. ⌘P overlay) that consumed this Escape wins.
-      if (event.key === 'Escape' && !event.defaultPrevented) dismiss()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [dismiss])
 
   const isLast = step === ONBOARDING_STEP_COUNT - 1
 
@@ -373,6 +368,7 @@ export function OnboardingOverlay(): JSX.Element {
   return (
     <div className="onboarding-overlay" role="presentation">
       <div
+        ref={dialogRef}
         className="onboarding-card"
         role="dialog"
         aria-modal="true"

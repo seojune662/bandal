@@ -62,6 +62,10 @@ import {
   registerOpenNoteSession,
   retargetOpenNoteSession
 } from './noteSessionRegistry'
+import {
+  synchronizeNoteRename,
+  type NoteRenameSynchronization
+} from './noteRenameSync'
 import { NoteToolbar } from './NoteToolbar'
 import { QuizPreview } from './QuizPreview'
 import { splitQuizMarkdown } from './quizMarkdown'
@@ -398,6 +402,12 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
     timerRef.current = null
   }, [])
 
+  const cancelEditBroadcast = useCallback((): void => {
+    if (broadcastTimerRef.current === null) return
+    clearTimeout(broadcastTimerRef.current)
+    broadcastTimerRef.current = null
+  }, [])
+
   const setStatusIfMounted = useCallback(
     (nextStatus: SaveStatus, detail: string | null = null): void => {
       if (!aliveRef.current) return
@@ -408,10 +418,48 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   )
 
   const retargetNote = useCallback(
-    (nextRelPath: string, mtime?: number): void => {
+    (
+      nextRelPath: string,
+      mtime?: number,
+      rename?: NoteRenameSynchronization
+    ): void => {
       const previousRelPath = noteRef.current.relPath
       noteRef.current = { ...noteRef.current, relPath: nextRelPath }
       if (mtime !== undefined) mtimeRef.current = mtime
+      if (rename !== undefined) {
+        clearTimer()
+        cancelEditBroadcast()
+        const synchronized = synchronizeNoteRename(
+          currentMarkdownRef.current,
+          rename.sourceMarkdown,
+          {
+            relPath: nextRelPath,
+            mtime: mtime ?? mtimeRef.current ?? 0,
+            title: rename.title,
+            markdown: rename.markdown
+          }
+        )
+        currentMarkdownRef.current = synchronized.currentMarkdown
+        persistedMarkdownRef.current = synchronized.persistedMarkdown
+        syncedTitleRef.current = synchronized.syncedTitle
+        conflictRef.current = false
+        pendingEditorMarkdownRef.current = null
+        if (aliveRef.current) {
+          revisionRef.current += 1
+          setEditorSeed({
+            markdown: synchronized.currentMarkdown,
+            revision: revisionRef.current
+          })
+          setPresentedMarkdown(synchronized.currentMarkdown)
+          setViewMode(
+            splitQuizMarkdown(synchronized.currentMarkdown) === null
+              ? 'edit'
+              : 'quiz'
+          )
+          setStatusIfMounted(synchronized.dirty ? 'dirty' : 'saved')
+          if (synchronized.dirty) scheduleRef.current()
+        }
+      }
       if (!aliveRef.current || previousRelPath === nextRelPath) return
       setCurrentRelPath(nextRelPath)
       // Every session on the file is retargeted (H1 rename included), so each
@@ -424,7 +472,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
       })
       panelApi.setTitle(noteStem(nextRelPath))
     },
-    [panelApi]
+    [cancelEditBroadcast, clearTimer, panelApi, setStatusIfMounted]
   )
 
   const syncTitleToFileName = useCallback(
@@ -446,21 +494,19 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
         ...ref,
         newName: title
       })
+      const rename = {
+        sourceMarkdown: markdown,
+        title: renamed.title,
+        markdown: renamed.markdown
+      }
       // Retargets EVERY session on the file — each panel (this one included)
       // refreshes its own dockview descriptor and title via retargetNote.
-      if (!retargetOpenNoteSession(ref, renamed.relPath, renamed.mtime)) {
-        retargetNote(renamed.relPath, renamed.mtime)
+      if (!retargetOpenNoteSession(ref, renamed.relPath, renamed.mtime, rename)) {
+        retargetNote(renamed.relPath, renamed.mtime, rename)
       }
-      syncedTitleRef.current = title
     },
     [retargetNote]
   )
-
-  const cancelEditBroadcast = useCallback((): void => {
-    if (broadcastTimerRef.current === null) return
-    clearTimeout(broadcastTimerRef.current)
-    broadcastTimerRef.current = null
-  }, [])
 
   /** Debounced live mirror of local typing into the file's other panels. */
   const scheduleEditBroadcast = useCallback((): void => {
@@ -547,7 +593,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
             return { status: 'error', detail } as const
           }
 
-          if (currentMarkdownRef.current === markdown) {
+          if (currentMarkdownRef.current === persistedMarkdownRef.current) {
             setStatusIfMounted('saved')
           } else {
             setStatusIfMounted('dirty')

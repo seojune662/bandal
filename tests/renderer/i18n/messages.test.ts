@@ -38,6 +38,15 @@ describe('i18n messages', () => {
     expect(translate('en-US', 'settings.category.general.label')).toBe('General')
   })
 
+  test('describes the current locale scope in both languages', () => {
+    expect(translate('ko-KR', 'settings.general.locale.scope')).toBe(
+      '현재는 설정 화면에만 적용됩니다.'
+    )
+    expect(translate('en-US', 'settings.general.locale.scope')).toBe(
+      'Currently, this applies only to the Settings screen.'
+    )
+  })
+
   test('falls back to Korean when the active locale is missing a key', () => {
     const key = 'settings.window.title'
     const mutableEnglish = enUS as Record<string, string>

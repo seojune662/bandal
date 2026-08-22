@@ -19,8 +19,7 @@ import {
   useEffect,
   useRef,
   useState,
-  type ClipboardEvent,
-  type KeyboardEvent
+  type ClipboardEvent
 } from 'react'
 import type { JoinGroupResult } from '../../../../shared/types/group'
 import {
@@ -29,6 +28,7 @@ import {
   toInviteCodeInput
 } from '../../../../shared/group/inviteCode'
 import { Icon } from '../../app/icons'
+import { useFocusTrap } from '../../components/useFocusTrap'
 
 type Status =
   | { kind: 'idle' }
@@ -69,7 +69,14 @@ export function JoinCodeOverlay({
   const [code, setCode] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const inputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
   const submittedRef = useRef<string | null>(null)
+
+  useFocusTrap(dialogRef, {
+    active: open,
+    initialFocus: inputRef,
+    onEscape: onClose
+  })
 
   const submit = useCallback(
     async (candidate: string) => {
@@ -107,7 +114,6 @@ export function JoinCodeOverlay({
       submittedRef.current = null
       return
     }
-    inputRef.current?.focus()
     let cancelled = false
     void navigator.clipboard
       .readText()
@@ -145,22 +151,13 @@ export function JoinCodeOverlay({
     [handleChange]
   )
 
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        onClose()
-      }
-    },
-    [onClose]
-  )
-
   if (!open) return null
 
   const boxes = Array.from({ length: INVITE_CODE_LENGTH }, (_, index) => index)
 
   return (
     <div
+      ref={dialogRef}
       className="group-join-backdrop"
       role="dialog"
       aria-modal="true"
@@ -220,7 +217,6 @@ export function JoinCodeOverlay({
             disabled={status.kind === 'submitting'}
             onChange={(event) => handleChange(event.target.value)}
             onPaste={handlePaste}
-            onKeyDown={handleKeyDown}
           />
         </div>
 

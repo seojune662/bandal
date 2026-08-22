@@ -143,11 +143,10 @@ class PageScriptTimeout extends Error {
   }
 }
 
-function runScript(
-  frame: DriverFrame,
-  code: string,
+export function runGuestScript<T>(
+  exec: () => Promise<T>,
   timeoutMs: number = PAGE_SCRIPT_TIMEOUT_MS
-): Promise<unknown> {
+): Promise<T> {
   return new Promise((resolve, reject) => {
     let settled = false
     const timer = setTimeout(() => {
@@ -155,7 +154,16 @@ function runScript(
       settled = true
       reject(new PageScriptTimeout())
     }, timeoutMs)
-    frame.executeJavaScript(code).then(
+    let pending: Promise<T>
+    try {
+      pending = exec()
+    } catch (error) {
+      settled = true
+      clearTimeout(timer)
+      reject(error instanceof Error ? error : new Error(String(error)))
+      return
+    }
+    pending.then(
       (value) => {
         if (settled) return
         settled = true
@@ -182,7 +190,9 @@ export function createPageDriver(deps: PageDriverDeps) {
 
     for (const [frameIndex, frame] of frames.entries()) {
       try {
-      const raw = (await runScript(frame, SNAPSHOT_SOURCE)) as RawFrameResult
+        const raw = (await runGuestScript(() =>
+          frame.executeJavaScript(SNAPSHOT_SOURCE)
+        )) as RawFrameResult
         collected.push({
           frameIndex,
           url: typeof raw?.url === 'string' ? raw.url : '',
@@ -205,7 +215,7 @@ export function createPageDriver(deps: PageDriverDeps) {
     const [main] = deps.frames()
     if (main === undefined) return { url: deps.currentUrl(), text: '' }
     try {
-      const raw = (await runScript(main, READ_SOURCE)) as {
+      const raw = (await runGuestScript(() => main.executeJavaScript(READ_SOURCE))) as {
         url?: unknown
         text?: unknown
       }
@@ -336,7 +346,7 @@ export function createPageDriver(deps: PageDriverDeps) {
     })()`
 
     try {
-      return toActResult(await runScript(frame, source))
+      return toActResult(await runGuestScript(() => frame.executeJavaScript(source)))
     } catch {
       return {
         ok: false,
@@ -389,7 +399,7 @@ export function createPageDriver(deps: PageDriverDeps) {
       return { ok: true, facts: null, problem: null };
     })()`
     try {
-      return toActResult(await runScript(frame, source))
+      return toActResult(await runGuestScript(() => frame.executeJavaScript(source)))
     } catch {
       return { ok: false, facts: null, problem: '페이지에서 스크롤하지 못했어요.' }
     }
@@ -422,7 +432,7 @@ export function createPageDriver(deps: PageDriverDeps) {
       return { ok: true, facts: null, problem: null };
     })()`
     try {
-      return toActResult(await runScript(frame, source))
+      return toActResult(await runGuestScript(() => frame.executeJavaScript(source)))
     } catch {
       return { ok: false, facts: null, problem: '페이지에서 마우스를 올리지 못했어요.' }
     }

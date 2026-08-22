@@ -47,6 +47,7 @@ vi.mock('react', async (importOriginal) => {
       harness.effects.push(effect)
     },
     useMemo: <T,>(factory: () => T): T => factory(),
+    useRef: <T,>(initial: T): { current: T } => ({ current: initial }),
     useState: <T,>(initial: T | (() => T)): [T, () => void] => [
       typeof initial === 'function' ? (initial as () => T)() : initial,
       () => undefined

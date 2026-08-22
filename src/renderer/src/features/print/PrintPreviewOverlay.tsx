@@ -14,12 +14,13 @@
  * double mount then re-reads).
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Document, Page } from 'react-pdf'
 import { invoke } from '../../lib/ipc'
 import { showToast } from '../../app/toast'
 import { Icon } from '../../app/icons'
+import { useFocusTrap } from '../../components/useFocusTrap'
 import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
 import { useCoursesStore } from '../../stores/coursesStore'
 import '../pdf/pdfWorker'
@@ -43,8 +44,11 @@ export function PrintPreviewOverlay(): JSX.Element | null {
   const courseId = useCoursesStore((state) => state.selectedCourseId)
   const [pageCount, setPageCount] = useState(0)
   const [busy, setBusy] = useState(false)
+  const dialogRef = useRef<HTMLDivElement>(null)
 
   const open = target !== null
+
+  useFocusTrap(dialogRef, { active: open, onEscape: close })
 
   // Guests live in a fixed layer of their own and would otherwise eat every
   // click aimed at this dialog. Released unconditionally — a token left held
@@ -54,15 +58,6 @@ export function PrintPreviewOverlay(): JSX.Element | null {
     const release = acquirePointerPassthrough()
     return () => release()
   }, [open])
-
-  useEffect(() => {
-    if (!open) return undefined
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') close()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [close, open])
 
   const base64 = phase.status === 'ready' ? phase.base64 : null
 
@@ -117,6 +112,7 @@ export function PrintPreviewOverlay(): JSX.Element | null {
 
   return createPortal(
     <div
+      ref={dialogRef}
       className="print-preview-backdrop"
       role="dialog"
       aria-modal="true"

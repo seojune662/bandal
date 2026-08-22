@@ -90,6 +90,20 @@ function visibleWithoutObserver(element: Element): boolean {
   )
 }
 
+export function observeImageVisibility(
+  element: Element,
+  onVisible: (visible: boolean) => void
+): () => void {
+  if (visibleWithoutObserver(element)) onVisible(true)
+  if (typeof IntersectionObserver === 'undefined') return () => undefined
+
+  const observer = new IntersectionObserver((entries) => {
+    onVisible(entries.some((entry) => entry.isIntersecting))
+  })
+  observer.observe(element)
+  return () => observer.disconnect()
+}
+
 export function ImageShape({
   shape,
   box,
@@ -108,15 +122,7 @@ export function ImageShape({
   useEffect(() => {
     const element = objectRef.current
     if (element === null) return
-    if (typeof IntersectionObserver === 'undefined') {
-      setVisible(visibleWithoutObserver(element))
-      return
-    }
-    const observer = new IntersectionObserver((entries) => {
-      setVisible(entries.some((entry) => entry.isIntersecting))
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
+    return observeImageVisibility(element, setVisible)
   }, [])
 
   useEffect(() => {

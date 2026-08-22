@@ -26,6 +26,7 @@ import {
 } from '../../../../shared/group/nickname'
 import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
 import { useAuthStore } from '../../stores/authStore'
+import { useFocusTrap } from '../../components/useFocusTrap'
 import '../onboarding/onboarding.css'
 import './nickname.css'
 
@@ -37,14 +38,14 @@ export function NicknameGate(): JSX.Element {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
   const inputId = useId()
   const titleId = useId()
 
+  useFocusTrap(dialogRef, { active: true, initialFocus: inputRef })
+
   // Webview guests must not eat the pointer while an overlay is up.
   useEffect(() => acquirePointerPassthrough(), [])
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
 
   const trimmed = value.trim()
   const ready = isValidNickname(trimmed) && !pending
@@ -77,6 +78,7 @@ export function NicknameGate(): JSX.Element {
   return (
     <div className="onboarding-overlay" role="presentation">
       <div
+        ref={dialogRef}
         className="onboarding-card nickname-card"
         role="dialog"
         aria-modal="true"

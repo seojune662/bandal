@@ -9,9 +9,10 @@
  */
 
 import { existsSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import type { CellValue } from 'exceljs'
 import { NotFoundError, ValidationError } from '../../db/errors'
+import { writeFileAtomic } from '../../lib/atomicWrite'
 
 /** 한 호출이 메인 프로세스를 오래 잡지 못하게 편집 개수를 제한한다. */
 export const MAX_SHEET_EDITS = 200
@@ -189,7 +190,8 @@ export async function applySheetEdits(input: {
   for (const row of input.request.appendRows) {
     worksheet.addRow(row.map(toCellValue))
   }
-  await workbook.xlsx.writeFile(input.absPath)
+  const buffer = await workbook.xlsx.writeBuffer()
+  writeFileAtomic(input.absPath, Buffer.from(buffer))
   return {
     sheet: worksheet.name,
     edited: input.request.edits.length,
@@ -337,7 +339,7 @@ export async function prepareDocxTextEdit(input: {
         type: 'nodebuffer',
         compression: 'DEFLATE'
       })
-      await writeFile(input.absPath, buffer)
+      writeFileAtomic(input.absPath, buffer)
     }
   }
 }

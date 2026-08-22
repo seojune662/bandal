@@ -323,6 +323,32 @@ function BrowserBookmarksBar({
   )
 }
 
+export function BrowserFavoriteButton({
+  starred,
+  onToggle
+}: {
+  starred: boolean
+  onToggle: () => void
+}): JSX.Element {
+  const ariaLabel = starred ? '즐겨찾기에서 제거' : '즐겨찾기에 추가'
+  return (
+    <Tooltip
+      label={starred ? '즐겨찾기에서 빼기' : '즐겨찾기에 추가 (⌘D)'}
+      placement="bottom"
+    >
+      <button
+        type="button"
+        className="browser-nav-button"
+        aria-label={ariaLabel}
+        aria-pressed={starred}
+        onClick={onToggle}
+      >
+        <BrowserIcon name={starred ? 'starFilled' : 'star'} />
+      </button>
+    </Tooltip>
+  )
+}
+
 function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
   const login = useBrowserGuests((state) => state.login[tabId])
   const zoomLevel = useBrowserGuests(
@@ -409,19 +435,10 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
         />
 
         <div className="browser-toolbar__actions">
-          <Tooltip
-            label={starred === null ? '즐겨찾기에 추가 (⌘D)' : '즐겨찾기에서 빼기'}
-            placement="bottom"
-          >
-            <button
-              type="button"
-              className="browser-nav-button"
-              aria-pressed={starred !== null}
-              onClick={() => toggleFavorite(tabId, nav)}
-            >
-              <BrowserIcon name={starred === null ? 'star' : 'starFilled'} />
-            </button>
-          </Tooltip>
+          <BrowserFavoriteButton
+            starred={starred !== null}
+            onToggle={() => toggleFavorite(tabId, nav)}
+          />
           {(activeDownloads > 0 || anyDownloads) && (
             <Tooltip
               label={

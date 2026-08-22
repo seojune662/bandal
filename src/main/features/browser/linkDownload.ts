@@ -9,10 +9,8 @@
 
 import { session } from 'electron'
 import { ValidationError } from '../../db/errors'
+import { MAX_WRITE_BYTES } from '../materials/materialsRepo'
 import { BROWSING_PARTITION } from './webviewPolicy'
-
-/** 수업 자료 기준 넉넉한 상한 — 폭주하는 응답에서 메모리를 지킨다. */
-const DOWNLOAD_MAX_BYTES = 200 * 1024 * 1024
 
 export const FALLBACK_FILE_NAME = '다운로드'
 
@@ -100,12 +98,12 @@ export async function fetchLinkForMaterials(
   }
 
   const declared = Number(response.headers.get('content-length') ?? '0')
-  if (Number.isFinite(declared) && declared > DOWNLOAD_MAX_BYTES) {
-    throw new ValidationError('파일이 너무 큽니다 (200MB 제한)')
+  if (Number.isFinite(declared) && declared > MAX_WRITE_BYTES) {
+    throw new ValidationError('파일이 너무 큽니다 (50MB 제한)')
   }
   const body = Buffer.from(await response.arrayBuffer())
-  if (body.byteLength > DOWNLOAD_MAX_BYTES) {
-    throw new ValidationError('파일이 너무 큽니다 (200MB 제한)')
+  if (body.byteLength > MAX_WRITE_BYTES) {
+    throw new ValidationError('파일이 너무 큽니다 (50MB 제한)')
   }
 
   return {

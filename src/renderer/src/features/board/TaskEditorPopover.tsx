@@ -50,7 +50,9 @@ export function TaskEditorPopover({
   const [dueDate, setDueDate] = useState(() =>
     task.dueAt === null ? '' : localDateKey(task.dueAt)
   )
-  const [dueTime, setDueTime] = useState(() => localTimeInput(task.dueAt))
+  const [dueTime, setDueTime] = useState(() =>
+    localTimeInput(task.allDay ? null : task.dueAt)
+  )
   const [hasTime, setHasTime] = useState(task.dueAt !== null && !task.allDay)
   const [courseId, setCourseId] = useState(task.courseId ?? '')
   const [isSaving, setIsSaving] = useState(false)

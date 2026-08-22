@@ -21,6 +21,7 @@ import { create } from 'zustand'
 import type { DockviewApi } from 'dockview'
 import { isTabDescriptor } from '../../../shared/tabs'
 import type { TabDescriptor } from '../../../shared/tabs'
+import { showToast } from '../app/toast'
 import { invoke } from '../lib/ipc'
 import { settingsSnapshot } from './settingsSnapshot'
 import { tabPanelId, tabTitle } from '../features/workspace/tabIdentity'
@@ -91,6 +92,14 @@ interface WorkspaceState {
 interface PendingSave {
   courseId: string
   layout: unknown
+  exhausted: boolean
+}
+
+interface ActiveSave {
+  save: PendingSave
+  failures: number
+  inFlight: boolean
+  retryTimer: ReturnType<typeof setTimeout> | null
 }
 
 // Imperative, non-reactive internals.
@@ -111,8 +120,13 @@ function rememberClosed(params: unknown): void {
 let switchSerial = 0
 let suppressLayoutEvents = false
 let lastStructuralKey = ''
-let pendingSave: PendingSave | null = null
+let pendingSaves: PendingSave[] = []
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+let activeSave: ActiveSave | null = null
+let flushAfterActiveSave = false
+
+const LAYOUT_SAVE_RETRY_LIMIT = 3
+const LAYOUT_SAVE_RETRY_BASE_MS = 250
 
 function sameTabs(
   a: Record<string, TabDescriptor>,
@@ -125,15 +139,6 @@ function sameTabs(
   )
 }
 
-function sendSave(save: PendingSave): void {
-  void invoke('layout:save', {
-    courseId: save.courseId,
-    layout: save.layout
-  }).catch((error: unknown) => {
-    console.error('[Bandal] 레이아웃을 저장하지 못했습니다.', error)
-  })
-}
-
 function clearSaveTimer(): void {
   if (saveTimer !== null) {
     clearTimeout(saveTimer)
@@ -142,16 +147,102 @@ function clearSaveTimer(): void {
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
+  const saveIsPending = (save: PendingSave): boolean =>
+    pendingSaves.includes(save)
+
+  const nextPendingSave = (): PendingSave | null =>
+    pendingSaves.find((save) => !save.exhausted) ?? null
+
+  const finishActiveSave = (job: ActiveSave): void => {
+    if (activeSave !== job) return
+    if (job.retryTimer !== null) clearTimeout(job.retryTimer)
+    activeSave = null
+    if (!flushAfterActiveSave) return
+    flushAfterActiveSave = false
+    flush()
+  }
+
+  const attemptSave = (job: ActiveSave): void => {
+    if (activeSave !== job) return
+    if (!saveIsPending(job.save)) {
+      finishActiveSave(job)
+      return
+    }
+    job.retryTimer = null
+    job.inFlight = true
+    void invoke('layout:save', {
+      courseId: job.save.courseId,
+      layout: job.save.layout
+    }).then(
+      () => {
+        if (activeSave !== job) return
+        job.inFlight = false
+        // A newer snapshot for the same course may have replaced this exact
+        // object while IPC was in flight. Only the ACKed snapshot is removed.
+        pendingSaves = pendingSaves.filter((save) => save !== job.save)
+        finishActiveSave(job)
+      },
+      (error: unknown) => {
+        if (activeSave !== job) return
+        job.inFlight = false
+        // Deleted courses and superseded snapshots no longer need a retry.
+        if (!saveIsPending(job.save)) {
+          finishActiveSave(job)
+          return
+        }
+        job.failures += 1
+        if (job.failures <= LAYOUT_SAVE_RETRY_LIMIT) {
+          const retryDelay =
+            LAYOUT_SAVE_RETRY_BASE_MS * 2 ** (job.failures - 1)
+          job.retryTimer = setTimeout(() => attemptSave(job), retryDelay)
+          return
+        }
+        job.save.exhausted = true
+        console.error('[Bandal] 레이아웃을 저장하지 못했습니다.', error)
+        showToast('작업 공간을 저장하지 못했어요', 'danger')
+        finishActiveSave(job)
+      }
+    )
+  }
+
   const flush = (): void => {
     clearSaveTimer()
-    if (pendingSave === null) return
-    const save = pendingSave
-    pendingSave = null
-    sendSave(save)
+    if (activeSave !== null) {
+      flushAfterActiveSave = pendingSaves.some(
+        (save) => !save.exhausted && save !== activeSave?.save
+      )
+      // beforeunload/course-switch flushes remain immediate even if a failed
+      // background save was waiting in its retry backoff.
+      if (!activeSave.inFlight && activeSave.retryTimer !== null) {
+        clearTimeout(activeSave.retryTimer)
+        activeSave.retryTimer = null
+        attemptSave(activeSave)
+      }
+      return
+    }
+    const save = nextPendingSave()
+    if (save === null) return
+    const job: ActiveSave = {
+      save,
+      failures: 0,
+      inFlight: false,
+      retryTimer: null
+    }
+    activeSave = job
+    attemptSave(job)
+  }
+
+  const replacePendingSave = (courseId: string, layout: unknown): void => {
+    pendingSaves = pendingSaves.filter((save) => save.courseId !== courseId)
+    pendingSaves.push({
+      courseId,
+      layout,
+      exhausted: false
+    })
   }
 
   const scheduleSave = (courseId: string, layout: unknown): void => {
-    pendingSave = { courseId, layout }
+    replacePendingSave(courseId, layout)
     clearSaveTimer()
     saveTimer = setTimeout(flush, LAYOUT_SAVE_DEBOUNCE_MS)
   }
@@ -396,7 +487,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         // but always park the snapshot so flush (beforeunload / course switch)
         // carries the latest active tab — otherwise quitting after only
         // switching tabs restores the wrong active tab.
-        pendingSave = { courseId: activeCourseId, layout }
+        replacePendingSave(activeCourseId, layout)
         return
       }
       lastStructuralKey = key
@@ -408,9 +499,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     discardPendingSave: (courseId) => {
-      if (pendingSave !== null && pendingSave.courseId === courseId) {
+      const previousLength = pendingSaves.length
+      pendingSaves = pendingSaves.filter((save) => save.courseId !== courseId)
+      if (pendingSaves.length !== previousLength && pendingSaves.length === 0) {
         clearSaveTimer()
-        pendingSave = null
       }
     }
   }
@@ -419,11 +511,16 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 /** Test-only: reset the store's imperative internals and state. */
 export function resetWorkspaceStoreForTests(): void {
   clearSaveTimer()
+  if (activeSave?.retryTimer !== null && activeSave?.retryTimer !== undefined) {
+    clearTimeout(activeSave.retryTimer)
+  }
   api = null
   switchSerial = 0
   suppressLayoutEvents = false
   lastStructuralKey = ''
-  pendingSave = null
+  pendingSaves = []
+  activeSave = null
+  flushAfterActiveSave = false
   useWorkspaceStore.setState({
     activeCourseId: null,
     hydration: 'idle',

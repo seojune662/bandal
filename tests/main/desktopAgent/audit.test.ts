@@ -81,4 +81,31 @@ describe('desktop audit repo', () => {
     expect(entry?.target).not.toContain('202612345')
     expect(entry?.detail).not.toContain('202612345')
   })
+
+  test('prunes entries older than 90 days and keeps the cutoff boundary', () => {
+    const at = new Date('2026-08-21T00:00:00.000Z')
+    const day = 24 * 60 * 60 * 1000
+    clock = new Date(at.getTime() - 91 * day)
+    repo.record({
+      courseId: 'course-a',
+      conversationId: 'expired',
+      action: 'screenshot',
+      target: 'display-1',
+      detail: '91일 전'
+    })
+    clock = new Date(at.getTime() - 90 * day)
+    repo.record({
+      courseId: 'course-a',
+      conversationId: 'boundary',
+      action: 'windows',
+      target: 'display-1',
+      detail: '정확히 90일 전'
+    })
+
+    repo.prune(at)
+
+    expect(repo.recent('course-a').map((entry) => entry.conversationId)).toEqual([
+      'boundary'
+    ])
+  })
 })

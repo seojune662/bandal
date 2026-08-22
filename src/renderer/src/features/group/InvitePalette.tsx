@@ -24,6 +24,7 @@ import type {
 } from '../../../../shared/types/group'
 import { invoke } from '../../lib/ipc'
 import { Icon } from '../../app/icons'
+import { useFocusTrap } from '../../components/useFocusTrap'
 import { GroupAvatar } from './GroupAvatar'
 import { InviteCodePanel } from './InviteCodePanel'
 
@@ -76,6 +77,13 @@ export function InvitePalette({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useFocusTrap(dialogRef, {
+    active: open,
+    initialFocus: inputRef,
+    onEscape: onClose
+  })
 
   useEffect(() => {
     if (!open) {
@@ -84,7 +92,6 @@ export function InvitePalette({
       setError(null)
       return
     }
-    inputRef.current?.focus()
     // Local cache, so this resolves immediately and works offline.
     void invoke('friends:list', {})
       .then((friends) => setRecent(friends.map(fromFriend)))
@@ -150,6 +157,7 @@ export function InvitePalette({
 
   return (
     <div
+      ref={dialogRef}
       className="group-palette-backdrop"
       role="dialog"
       aria-modal="true"
@@ -176,7 +184,6 @@ export function InvitePalette({
             disabled={busy}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Escape') onClose()
               if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
                 const first = candidates[0]
                 if (first !== undefined) void invite(first.nickname)

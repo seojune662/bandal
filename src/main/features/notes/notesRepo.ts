@@ -3,19 +3,7 @@
  * DB is not involved. Every relPath goes through the path-traversal guard.
  */
 
-import {
-  closeSync,
-  existsSync,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  statSync,
-  unlinkSync,
-  writeSync
-} from 'node:fs'
-import { randomUUID } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync } from 'node:fs'
 import { dirname, extname, join } from 'node:path'
 import { posix } from 'node:path'
 import type {
@@ -32,6 +20,7 @@ import {
   resolveInside,
   resolveInsideReal
 } from '../../db/validate'
+import { writeFileAtomic } from '../../lib/atomicWrite'
 
 export interface NotesRepo {
   read(input: NoteRef): NoteContent
@@ -46,6 +35,8 @@ export interface NotesRepo {
   rename(input: { courseId: string; relPath: string; newName: string }): {
     relPath: string
     mtime: number
+    title: string
+    markdown: string
   }
 }
 
@@ -75,53 +66,9 @@ function assertMarkdownPath(relPath: string): void {
   }
 }
 
-/** Atomically replaces one note without ever truncating the live file. */
-function writeAtomic(abs: string, content: string): void {
-  const temporaryPath = `${abs}.${process.pid}.${randomUUID()}.tmp`
-  const bytes = Buffer.from(content, 'utf8')
-  let descriptor: number | undefined
-
-  try {
-    descriptor = openSync(temporaryPath, 'w', 0o644)
-    let offset = 0
-    if (bytes.length === 0) {
-      writeSync(descriptor, bytes, 0, 0)
-    }
-    while (offset < bytes.length) {
-      const written = writeSync(descriptor, bytes, offset, bytes.length - offset)
-      if (written === 0) {
-        throw new Error(`atomic write made no progress for "${abs}"`)
-      }
-      offset += written
-    }
-    fsyncSync(descriptor)
-    closeSync(descriptor)
-    descriptor = undefined
-    renameSync(temporaryPath, abs)
-  } catch (error) {
-    const cleanupErrors: unknown[] = []
-    if (descriptor !== undefined) {
-      try {
-        closeSync(descriptor)
-      } catch (closeError) {
-        cleanupErrors.push(closeError)
-      }
-    }
-    if (existsSync(temporaryPath)) {
-      try {
-        unlinkSync(temporaryPath)
-      } catch (unlinkError) {
-        cleanupErrors.push(unlinkError)
-      }
-    }
-    if (cleanupErrors.length > 0) {
-      throw new AggregateError(
-        [error, ...cleanupErrors],
-        `atomic note write and cleanup failed for "${abs}"`
-      )
-    }
-    throw error
-  }
+/** IPC keeps a number token, but preserves the filesystem's sub-ms precision. */
+function mtimeToken(abs: string): number {
+  return Number(statSync(abs, { bigint: true }).mtimeNs) / 1e6
 }
 
 export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
@@ -158,7 +105,7 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
         throw new NotFoundError('note', input.relPath)
       }
       const markdown = readFileSync(abs, 'utf8')
-      const mtime = Math.round(statSync(abs).mtimeMs)
+      const mtime = mtimeToken(abs)
       return { courseId: input.courseId, relPath: input.relPath, markdown, mtime }
     },
 
@@ -168,7 +115,7 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
         throw new ValidationError('markdown must be a string')
       }
       if (input.expectedMtime !== undefined && existsSync(abs)) {
-        const currentMtime = Math.round(statSync(abs).mtimeMs)
+        const currentMtime = mtimeToken(abs)
         if (currentMtime !== input.expectedMtime) {
           throw new ConflictError(
             `"${input.relPath}" changed on disk (expected mtime ${input.expectedMtime}, found ${currentMtime})`
@@ -179,8 +126,8 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
       assertRealInside(folder, parent)
       mkdirSync(parent, { recursive: true })
       assertRealInside(folder, abs)
-      writeAtomic(abs, input.markdown)
-      return { mtime: Math.round(statSync(abs).mtimeMs) }
+      writeFileAtomic(abs, input.markdown)
+      return { mtime: mtimeToken(abs) }
     },
 
     create(input) {
@@ -203,7 +150,7 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
       }
       const abs = join(dirAbs, fileName)
       assertRealInside(folder, abs)
-      writeAtomic(abs, `# ${title}\n`)
+      writeFileAtomic(abs, `# ${title}\n`)
 
       const relPath =
         input.dirRelPath === '' ? fileName : posix.join(input.dirRelPath, fileName)
@@ -258,7 +205,7 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
       try {
         if (updated !== original) {
           assertRealInside(folder, nextAbs)
-          writeAtomic(nextAbs, updated)
+          writeFileAtomic(nextAbs, updated)
         }
       } catch (error) {
         if (renamed) {
@@ -278,7 +225,12 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
       const dirRel = posix.dirname(input.relPath)
       const relPath =
         dirRel === '.' ? fileName : posix.join(dirRel, fileName)
-      return { relPath, mtime: Math.round(statSync(nextAbs).mtimeMs) }
+      return {
+        relPath,
+        mtime: mtimeToken(nextAbs),
+        title: finalStem,
+        markdown: updated
+      }
     }
   }
 }

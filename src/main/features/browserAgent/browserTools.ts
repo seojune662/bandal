@@ -8,7 +8,7 @@ import {
   type GrantsRepo
 } from './grants'
 import { checkNavigation } from './navigation'
-import { verdictFor, type ScrollTarget } from './pageDriver'
+import { runGuestScript, verdictFor, type ScrollTarget } from './pageDriver'
 import { resolveRef } from './refs'
 import { DEFAULT_SNAPSHOT_CHARS } from './snapshot'
 import type { ElementFacts } from './actionPolicy'
@@ -672,10 +672,8 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         audit('denied', url, 'submit: 학생이 거부함')
         return { status: 'error', message: '학생이 제출을 승인하지 않았어요.' }
       }
-      const ok = await commit.submit(
-        tabId,
-        resolved.frameIndex,
-        resolved.elementIndex
+      const ok = await runGuestScript(() =>
+        commit.submit(tabId, resolved.frameIndex, resolved.elementIndex)
       )
       audit('navigate', url, ok ? 'submit 실행' : 'submit 실패')
       return ok

@@ -14,6 +14,7 @@ import { openMaterialInCourse } from '../features/workspace/openMaterial'
 import { acquirePointerPassthrough } from '../features/browser/webviewPassthrough'
 import { invoke } from '../lib/ipc'
 import { useCoursesStore } from '../stores/coursesStore'
+import { useFocusTrap } from '../components/useFocusTrap'
 import { useQuickSearch } from './shortcuts'
 import { Icon, type IconName } from './icons'
 import './quick-search.css'
@@ -50,7 +51,14 @@ export function QuickFileSearch(): JSX.Element | null {
   const [isSearching, setIsSearching] = useState(false)
   const [highlighted, setHighlighted] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
   const sequenceRef = useRef(0)
+
+  useFocusTrap(dialogRef, {
+    active: isOpen,
+    initialFocus: inputRef,
+    onEscape: close
+  })
 
   // Reset on every open; keep guests from eating the pointer while up.
   useEffect(() => {
@@ -59,19 +67,8 @@ export function QuickFileSearch(): JSX.Element | null {
     setHits([])
     setHighlighted(0)
     const release = acquirePointerPassthrough()
-    const frame = window.requestAnimationFrame(() => inputRef.current?.focus())
-    // Esc closes even when focus left the input (backdrop, result buttons).
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && !event.defaultPrevented) {
-        event.preventDefault()
-        close()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
     return () => {
       release()
-      window.cancelAnimationFrame(frame)
-      window.removeEventListener('keydown', onKeyDown)
     }
   }, [isOpen, close])
 
@@ -125,6 +122,7 @@ export function QuickFileSearch(): JSX.Element | null {
       }}
     >
       <div
+        ref={dialogRef}
         className="quick-search"
         role="dialog"
         aria-modal="true"
@@ -147,10 +145,7 @@ export function QuickFileSearch(): JSX.Element | null {
             }}
             onKeyDown={(event) => {
               if (event.nativeEvent.isComposing) return
-              if (event.key === 'Escape') {
-                event.preventDefault()
-                close()
-              } else if (event.key === 'ArrowDown') {
+              if (event.key === 'ArrowDown') {
                 event.preventDefault()
                 setHighlighted((index) => Math.min(index + 1, hits.length - 1))
               } else if (event.key === 'ArrowUp') {

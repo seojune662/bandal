@@ -7,6 +7,7 @@ import {
   useState
 } from 'react'
 import type { CSSProperties, RefObject } from 'react'
+import { useFocusTrap } from '../../../components/useFocusTrap'
 import { acquirePointerPassthrough } from '../../browser/webviewPassthrough'
 import { TOUR_STEP_COUNT, TOUR_STEPS } from './tourScript'
 import { useTourAnchor } from './useTourAnchor'
@@ -231,6 +232,8 @@ function StepCard({
   const style: CSSProperties | undefined =
     position === null ? undefined : { top: position.top, left: position.left }
 
+  useFocusTrap(cardRef, { active: true, onEscape: skip })
+
   return (
     <div
       ref={cardRef}
@@ -313,7 +316,6 @@ function ActiveTourOverlay({
 }): JSX.Element {
   const stepIndex = useTourStore((state) => state.stepIndex)
   const next = useTourStore((state) => state.next)
-  const skip = useTourStore((state) => state.skip)
   const step = TOUR_STEPS[stepIndex] ?? TOUR_STEPS[0]
   const cardRef = useRef<HTMLDivElement>(null)
   const [cardSize, setCardSize] = useState<CardSize>({ width: 352, height: 240 })
@@ -344,17 +346,6 @@ function ActiveTourOverlay({
     window.addEventListener('resize', updateLayout)
     return () => window.removeEventListener('resize', updateLayout)
   }, [])
-
-  useEffect(() => {
-    if (status !== 'running') return
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape' || event.defaultPrevented) return
-      event.preventDefault()
-      skip()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [skip, status])
 
   useEffect(() => {
     if (status !== 'running' || cardRef.current === null) return

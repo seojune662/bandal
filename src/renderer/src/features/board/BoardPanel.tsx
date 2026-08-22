@@ -13,6 +13,7 @@ import type { IpcRequest } from '../../../../shared/ipc/contract'
 import type { BoardTask, TaskStatus } from '../../../../shared/types/board'
 import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
+import { useFocusTrap } from '../../components/useFocusTrap'
 import { invoke } from '../../lib/ipc'
 import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
 import { useCoursesStore } from '../../stores/coursesStore'
@@ -28,10 +29,9 @@ import {
 } from './boardLogic'
 import { TaskEditorPopover, type TaskEditorDraft } from './TaskEditorPopover'
 import { BoardQuickAdd, type BoardQuickAddDraft } from './BoardQuickAdd'
-import { dueAtForLocalInput } from '../calendar/calendarDate'
+import { dueAtForLocalInput, localDateValue, localDayIso } from '../calendar/calendarDate'
 import './board.css'
 import './boardPopovers.css'
-
 const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: '할 일',
   'in-progress': '진행 중',
@@ -79,7 +79,7 @@ function errorMessage(error: unknown): string {
 }
 
 function formatDueDate(dueAt: string): string {
-  const date = new Date(dueAt)
+  const date = localDateValue(dueAt)
   const now = new Date()
   const includeYear = date.getFullYear() !== now.getFullYear()
   return new Intl.DateTimeFormat('ko-KR', {
@@ -129,8 +129,9 @@ function TaskCard({
   onDragStart,
   onDragEnd
 }: TaskCardProps): JSX.Element {
-  const deadlineState = dueState(task.dueAt, now, task.allDay)
-  const deadlineLabel = dueDayLabel(task.dueAt, now)
+  const localDayDueAt = localDayIso(task.dueAt)
+  const deadlineState = dueState(task.allDay ? localDayDueAt : task.dueAt, now, task.allDay)
+  const deadlineLabel = dueDayLabel(localDayDueAt, now)
   const open = (element: HTMLElement): void => {
     if (!dragging) onOpen(element.getBoundingClientRect())
   }
@@ -753,22 +754,20 @@ export function BoardPanel(props: IDockviewPanelProps): JSX.Element {
 
 /** Reuses the same board surface as a workspace-level overlay. */
 export function BoardOverlay({ onClose }: BoardOverlayProps): JSX.Element {
-  // [M5] While the overlay is up, webview guests must not eat the pointer
-  // stream (the overlay floats above the browser layer).
-  useEffect(() => acquirePointerPassthrough(), [])
+  const dialogRef = useRef<HTMLDivElement>(null)
 
-  // Escape closes the overlay — unless an inner popover (task editor /
-  // context menu) is open; its own Escape handler consumes that press.
-  useEffect(() => {
-    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
-      if (event.key !== 'Escape') return
+  useFocusTrap(dialogRef, {
+    active: true,
+    onEscape: () => {
       const hasInnerPopover =
         document.querySelector('.board-editor, .board-context-menu') !== null
       if (!hasInnerPopover) onClose()
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  })
+
+  // [M5] While the overlay is up, webview guests must not eat the pointer
+  // stream (the overlay floats above the browser layer).
+  useEffect(() => acquirePointerPassthrough(), [])
 
   return (
     <div className="board-overlay" role="presentation">
@@ -778,7 +777,12 @@ export function BoardOverlay({ onClose }: BoardOverlayProps): JSX.Element {
         aria-label="학업 보드 닫기"
         onClick={onClose}
       />
-      <div className="board-overlay__surface" role="dialog" aria-modal="true">
+      <div
+        ref={dialogRef}
+        className="board-overlay__surface"
+        role="dialog"
+        aria-modal="true"
+      >
         <button
           type="button"
           className="board-overlay__close board-icon-button"

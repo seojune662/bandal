@@ -6,7 +6,7 @@
  * first-class arbitrary absolute path and nothing assumes the data root.
  */
 
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, rmdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
@@ -232,24 +232,41 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
 
       const slug = uniqueSlug(slugify(name), { avoidDir: dataRoot })
       const folderPath = join(dataRoot, slug)
+      const createdFolder = !existsSync(folderPath)
       mkdirSync(folderPath, { recursive: true })
 
       const now = nowIso()
-      return insertCourse({
-        id: randomUUID(),
-        name,
-        slug,
-        color,
-        folderPath,
-        source: 'managed',
-        missing: false,
-        archived: false,
-        // 새 과목은 그룹 없이 시작한다 (INSERT의 group_id 기본값 NULL과 일치).
-        groupId: null,
-        sortOrder: nextSortOrder(),
-        createdAt: now,
-        updatedAt: now
-      })
+      try {
+        return insertCourse({
+          id: randomUUID(),
+          name,
+          slug,
+          color,
+          folderPath,
+          source: 'managed',
+          missing: false,
+          archived: false,
+          // 새 과목은 그룹 없이 시작한다 (INSERT의 group_id 기본값 NULL과 일치).
+          groupId: null,
+          sortOrder: nextSortOrder(),
+          createdAt: now,
+          updatedAt: now
+        })
+      } catch (error) {
+        if (createdFolder) {
+          try {
+            if (existsSync(folderPath) && readdirSync(folderPath).length === 0) {
+              rmdirSync(folderPath)
+            }
+          } catch (cleanupError) {
+            throw new AggregateError(
+              [error, cleanupError],
+              `failed to insert course and clean up "${folderPath}"`
+            )
+          }
+        }
+        throw error
+      }
     },
 
     addFromFolder(input) {

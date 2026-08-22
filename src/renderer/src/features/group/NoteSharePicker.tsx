@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
+import { useFocusTrap } from '../../components/useFocusTrap'
 
 export interface NoteShareOption {
   relPath: string
@@ -49,7 +50,10 @@ export function NoteSharePicker({
   const [loading, setLoading] = useState(false)
   const [sharingPath, setSharingPath] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
   const notes = useMemo(() => markdownNotes(tree), [tree])
+
+  useFocusTrap(dialogRef, { active: open, onEscape: onClose })
 
   useEffect(() => {
     if (!open) {
@@ -99,6 +103,7 @@ export function NoteSharePicker({
 
   return (
     <div
+      ref={dialogRef}
       className="group-palette-backdrop"
       role="dialog"
       aria-modal="true"

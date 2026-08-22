@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef } from 'react'
+import { useId, useRef } from 'react'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
+import { useFocusTrap } from '../../components/useFocusTrap'
 
 interface MaterialDeleteDialogProps {
   target: MaterialNode | null
@@ -8,23 +9,6 @@ interface MaterialDeleteDialogProps {
   error: string | null
   onClose: () => void
   onConfirm: () => Promise<void>
-}
-
-function trapFocus(event: KeyboardEvent, dialog: HTMLElement | null): void {
-  if (event.key !== 'Tab' || dialog === null) return
-  const items = Array.from(
-    dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)')
-  )
-  if (items.length === 0) return
-  const first = items[0]
-  const last = items.at(-1)
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault()
-    last?.focus()
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault()
-    first?.focus()
-  }
 }
 
 export function MaterialDeleteDialog({
@@ -38,21 +22,10 @@ export function MaterialDeleteDialog({
   const descriptionId = useId()
   const dialogRef = useRef<HTMLElement>(null)
 
-  useEffect(() => {
-    if (target === null) return
-    const frame = window.requestAnimationFrame(() => {
-      dialogRef.current?.querySelector<HTMLElement>('button')?.focus()
-    })
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && !pending) onClose()
-      trapFocus(event, dialogRef.current)
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      window.cancelAnimationFrame(frame)
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [onClose, pending, target])
+  useFocusTrap(dialogRef, {
+    active: target !== null,
+    onEscape: pending ? undefined : onClose
+  })
 
   if (target === null) return null
 

@@ -23,6 +23,36 @@ const KIND_LABELS: Record<TaskKind, string> = {
   class: '수업'
 }
 
+export function subscribeToToday(
+  onToday: (today: Date) => void
+): () => void {
+  let timeout: ReturnType<typeof globalThis.setTimeout> | null = null
+
+  const schedule = (): void => {
+    const now = new Date()
+    const nextMidnight = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1
+    )
+    timeout = globalThis.setTimeout(() => {
+      onToday(new Date())
+      schedule()
+    }, nextMidnight.getTime() - now.getTime())
+  }
+
+  schedule()
+  return () => {
+    if (timeout !== null) globalThis.clearTimeout(timeout)
+  }
+}
+
+export function useToday(): Date {
+  const [today, setToday] = useState(() => new Date())
+  useEffect(() => subscribeToToday(setToday), [])
+  return today
+}
+
 export interface CalendarViewProps {
   courses: readonly Course[]
   /** undefined = all courses, null = global entries. */
@@ -216,7 +246,7 @@ export function CalendarView({
   onTasksChanged,
   refreshKey = 0
 }: CalendarViewProps): JSX.Element {
-  const today = useMemo(() => new Date(), [])
+  const today = useToday()
   const [cursor, setCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
   const [selectedKey, setSelectedKey] = useState(() => localDateKey(today))
   const [tasks, setTasks] = useState<BoardTask[]>([])

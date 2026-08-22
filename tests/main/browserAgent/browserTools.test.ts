@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createAuditRepo } from '../../../src/main/features/browserAgent/audit'
 import { createBrowserTools } from '../../../src/main/features/browserAgent/browserTools'
+import { PAGE_SCRIPT_TIMEOUT_MS } from '../../../src/main/features/browserAgent/pageDriver'
 import { createGrantsRepo } from '../../../src/main/features/browserAgent/grants'
 import { createSeenRepo } from '../../../src/main/features/browserAgent/seenRepo'
 import { createTestDb, type TestDb } from '../helpers/testDb'
@@ -618,6 +619,22 @@ describe('browser tools (read-only)', () => {
       expect(result.status).toBe('error')
       expect(c.submit).not.toHaveBeenCalled()
       expect(audit.tail(COURSE)[0]?.detail).toContain('거부')
+    })
+    test('submit rejects instead of hanging when the commit script never settles', async () => {
+      vi.useFakeTimers()
+      try {
+        grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+        const pending = tools({
+          page: page(),
+          commit: commit({ submit: () => new Promise(() => undefined) }),
+          confirm: async () => true
+        }).browser_submit('t1', 'f0:e0@3')
+        const rejection = expect(pending).rejects.toThrow('페이지가 응답하지 않아요')
+        await vi.advanceTimersByTimeAsync(PAGE_SCRIPT_TIMEOUT_MS)
+        await rejection
+      } finally {
+        vi.useRealTimers()
+      }
     })
     test('a stale ref is refused before the student is even asked', async () => {
       grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })

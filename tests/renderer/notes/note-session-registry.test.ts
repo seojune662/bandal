@@ -143,11 +143,29 @@ describe('retargetOpenNoteSession', () => {
     const offB = registerOpenNoteSession(fileRef, b.session)
     const offOther = registerOpenNoteSession(otherRef, other.session)
 
-    const moved = retargetOpenNoteSession(fileRef, 'notes/renamed.md', 7)
+    const rename = {
+      sourceMarkdown: '# requested',
+      title: 'renamed-2',
+      markdown: '# renamed-2'
+    }
+    const moved = retargetOpenNoteSession(
+      fileRef,
+      'notes/renamed.md',
+      7,
+      rename
+    )
 
     expect(moved).toBe(true)
-    expect(a.session.retarget).toHaveBeenCalledWith('notes/renamed.md', 7)
-    expect(b.session.retarget).toHaveBeenCalledWith('notes/renamed.md', 7)
+    expect(a.session.retarget).toHaveBeenCalledWith(
+      'notes/renamed.md',
+      7,
+      rename
+    )
+    expect(b.session.retarget).toHaveBeenCalledWith(
+      'notes/renamed.md',
+      7,
+      rename
+    )
     expect(other.session.retarget).not.toHaveBeenCalled()
     // Follow-up lookups see the sessions under the NEW path.
     expect(

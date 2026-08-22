@@ -4,7 +4,9 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync
 } from 'node:fs'
 import { join } from 'node:path'
@@ -67,6 +69,8 @@ describe('notesRepo', () => {
       })
 
       expect(result.relPath).toBe('해시 테이블 정리.md')
+      expect(result.title).toBe('해시 테이블 정리')
+      expect(result.markdown).toBe('# 해시 테이블 정리\n\n본문은 그대로.\n')
       const renamed = repo.read({ courseId: COURSE_ID, relPath: result.relPath })
       expect(renamed.markdown).toBe('# 해시 테이블 정리\n\n본문은 그대로.\n')
       expect(existsSync(join(courseFolder, 'old.md'))).toBe(false)
@@ -83,6 +87,8 @@ describe('notesRepo', () => {
       })
 
       expect(result.relPath).toBe('정리-2.md')
+      expect(result.title).toBe('정리-2')
+      expect(result.markdown).toBe('# 정리-2\n')
       expect(
         repo.read({ courseId: COURSE_ID, relPath: '정리-2.md' }).markdown
       ).toBe('# 정리-2\n')
@@ -263,6 +269,36 @@ describe('notesRepo', () => {
           expectedMtime: 12345
         })
       ).toThrow(ConflictError)
+    })
+
+    test('uses the exact fractional-millisecond mtime token for reads and conflicts', () => {
+      const abs = join(courseFolder, 'precise.md')
+      writeFileSync(abs, 'v1', 'utf8')
+      const seconds = 1_700_000_000.123456
+      utimesSync(abs, seconds, seconds)
+      const exact = Number(statSync(abs, { bigint: true }).mtimeNs) / 1e6
+
+      expect(Number.isInteger(exact)).toBe(false)
+      expect(repo.read({ courseId: COURSE_ID, relPath: 'precise.md' }).mtime).toBe(exact)
+      expect(() =>
+        repo.write({
+          courseId: COURSE_ID,
+          relPath: 'precise.md',
+          markdown: 'must not replace',
+          expectedMtime: Math.round(exact)
+        })
+      ).toThrow(ConflictError)
+      expect(readFileSync(abs, 'utf8')).toBe('v1')
+
+      const result = repo.write({
+        courseId: COURSE_ID,
+        relPath: 'precise.md',
+        markdown: 'v2',
+        expectedMtime: exact
+      })
+      expect(result.mtime).toBe(
+        Number(statSync(abs, { bigint: true }).mtimeNs) / 1e6
+      )
     })
   })
 

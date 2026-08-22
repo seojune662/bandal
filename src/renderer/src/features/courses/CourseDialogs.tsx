@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Icon } from '../../app/icons'
+import { useFocusTrap } from '../../components/useFocusTrap'
 import {
   COURSE_COLORS,
   courseColorLabel,
@@ -40,24 +41,6 @@ function messageFrom(error: unknown): string {
   return error instanceof Error ? error.message : '저장하지 못했습니다.'
 }
 
-function keepFocusInside(event: KeyboardEvent, container: HTMLElement | null): void {
-  if (event.key !== 'Tab' || container === null) return
-  const focusable = Array.from(
-    container.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])')
-  )
-  const first = focusable[0]
-  const last = focusable[focusable.length - 1]
-  if (first === undefined || last === undefined) return
-
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault()
-    last.focus()
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault()
-    first.focus()
-  }
-}
-
 export function CourseFormDialog({
   open,
   mode,
@@ -78,25 +61,19 @@ export function CourseFormDialog({
   const inputId = useId()
   const showsColor = mode !== 'rename'
 
+  useFocusTrap(dialogRef, {
+    active: open,
+    initialFocus: inputRef,
+    onEscape: pending ? undefined : onClose
+  })
+
   useEffect(() => {
     if (!open) return
     setName(initialName)
     setColor(initialColor)
     setError(null)
     setPending(false)
-    const frame = window.requestAnimationFrame(() => inputRef.current?.focus())
-    return () => window.cancelAnimationFrame(frame)
   }, [initialColor, initialName, open])
-
-  useEffect(() => {
-    if (!open) return
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && !pending) onClose()
-      keepFocusInside(event, dialogRef.current)
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, open, pending])
 
   if (!open) return null
 
@@ -251,21 +228,10 @@ export function ArchiveCourseDialog({
   const titleId = useId()
   const dialogRef = useRef<HTMLElement>(null)
 
-  useEffect(() => {
-    if (courseName === null) return
-    const frame = window.requestAnimationFrame(() => {
-      dialogRef.current?.querySelector<HTMLElement>('button')?.focus()
-    })
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && !pending) onClose()
-      keepFocusInside(event, dialogRef.current)
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      window.cancelAnimationFrame(frame)
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [courseName, onClose, pending])
+  useFocusTrap(dialogRef, {
+    active: courseName !== null,
+    onEscape: pending ? undefined : onClose
+  })
 
   if (courseName === null) return null
 
@@ -337,21 +303,10 @@ export function DeleteCourseDialog({
   const titleId = useId()
   const dialogRef = useRef<HTMLElement>(null)
 
-  useEffect(() => {
-    if (courseName === null) return
-    const frame = window.requestAnimationFrame(() => {
-      dialogRef.current?.querySelector<HTMLElement>('button')?.focus()
-    })
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && !pending) onClose()
-      keepFocusInside(event, dialogRef.current)
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      window.cancelAnimationFrame(frame)
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [courseName, onClose, pending])
+  useFocusTrap(dialogRef, {
+    active: courseName !== null,
+    onEscape: pending ? undefined : onClose
+  })
 
   if (courseName === null) return null
 

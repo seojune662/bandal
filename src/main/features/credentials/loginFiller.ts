@@ -1,6 +1,7 @@
 import type { FillLoginResult } from '../../../shared/types/credentials'
 import type { CredentialStore } from './credentialStore'
 import { normalizeCredentialOrigin } from './credentialStore'
+import { runGuestScript } from '../browserAgent/pageDriver'
 
 export interface LoginFillRequest {
   origin: string
@@ -152,14 +153,16 @@ export function createLoginFiller(
     // and the source itself repeats the origin/top-frame checks.
     if (currentOrigin(guest) !== requestedOrigin) return failed()
     try {
-      const result = await guest.executeJavaScript(
-        fillSource(
-          requestedOrigin,
-          login.username,
-          login.password,
+      const result = await runGuestScript(() =>
+        guest.executeJavaScript(
+          fillSource(
+            requestedOrigin,
+            login.username,
+            login.password,
+            login.autoSubmit
+          ),
           login.autoSubmit
-        ),
-        login.autoSubmit
+        )
       )
       return parseResult(result)
     } catch {

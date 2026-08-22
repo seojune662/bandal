@@ -8,6 +8,11 @@ vi.mock('../../../src/renderer/src/lib/ipc', () => ({
   openSettingsWindow: vi.fn()
 }))
 
+vi.mock('../../../src/renderer/src/app/toast', () => ({
+  showToast: vi.fn()
+}))
+
+import { showToast } from '../../../src/renderer/src/app/toast'
 import { invoke } from '../../../src/renderer/src/lib/ipc'
 import {
   resetWorkspaceStoreForTests,
@@ -19,6 +24,7 @@ import {
 } from '../../../src/renderer/src/features/workspace/tabIdentity'
 
 const invokeMock = vi.mocked(invoke)
+const showToastMock = vi.mocked(showToast)
 
 // -- fake dockview api --------------------------------------------------------
 
@@ -152,6 +158,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   resetWorkspaceStoreForTests()
   invokeMock.mockReset()
+  showToastMock.mockReset()
   invokeMock.mockImplementation((channel: string) => {
     if (channel === 'layout:get') return Promise.resolve({ layout: null })
     return Promise.resolve({ ok: true })
@@ -372,6 +379,65 @@ describe('debounced structural saves', () => {
     const saves = savesFor('c1')
     expect(saves).toHaveLength(1)
     expect(saves[0]).toEqual(singleLeafLayout([pdfB]))
+  })
+
+  test('keeps a save pending until its IPC ACK resolves', async () => {
+    const dock = await readyWithLayout()
+    let resolveSave: (() => void) | undefined
+    invokeMock.mockImplementation((channel: string) => {
+      if (channel === 'layout:save') {
+        return new Promise((resolve) => {
+          resolveSave = () => resolve({ ok: true })
+        })
+      }
+      return Promise.resolve({ layout: null })
+    })
+    dock.json = singleLeafLayout([pdfA, pdfB])
+    useWorkspaceStore.getState().notifyLayoutChanged()
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(savesFor('c1')).toHaveLength(1)
+    useWorkspaceStore.getState().flushPendingSave()
+    expect(savesFor('c1')).toHaveLength(1)
+
+    resolveSave?.()
+    await settle()
+    useWorkspaceStore.getState().flushPendingSave()
+    expect(savesFor('c1')).toHaveLength(1)
+  })
+
+  test('retries a failed save three times with exponential backoff then toasts once', async () => {
+    const dock = await readyWithLayout()
+    const saveError = new Error('disk full')
+    invokeMock.mockImplementation((channel: string) => {
+      if (channel === 'layout:save') return Promise.reject(saveError)
+      return Promise.resolve({ layout: null })
+    })
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    dock.json = singleLeafLayout([pdfA, pdfB])
+    useWorkspaceStore.getState().notifyLayoutChanged()
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(savesFor('c1')).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(249)
+    expect(savesFor('c1')).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(savesFor('c1')).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(savesFor('c1')).toHaveLength(3)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(savesFor('c1')).toHaveLength(4)
+    expect(consoleError).toHaveBeenCalledTimes(1)
+    expect(showToastMock).toHaveBeenCalledOnce()
+    expect(showToastMock).toHaveBeenCalledWith(
+      '작업 공간을 저장하지 못했어요',
+      'danger'
+    )
+
+    useWorkspaceStore.getState().flushPendingSave()
+    await vi.runOnlyPendingTimersAsync()
+    expect(savesFor('c1')).toHaveLength(4)
+    consoleError.mockRestore()
   })
 
   test('pure focus changes (decorative churn) never trigger a save', async () => {

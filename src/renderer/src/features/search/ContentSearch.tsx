@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
 import type { SearchHit, SearchHitKind } from '../../../../shared/types/search'
 import { Icon, type IconName } from '../../app/icons'
+import { useFocusTrap } from '../../components/useFocusTrap'
 import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
 import { invoke } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
@@ -76,7 +77,14 @@ export function ContentSearch(): JSX.Element | null {
   const [hasError, setHasError] = useState(false)
   const [highlighted, setHighlighted] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
   const sequenceRef = useRef(0)
+
+  useFocusTrap(dialogRef, {
+    active: isOpen,
+    initialFocus: inputRef,
+    onEscape: close
+  })
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -107,19 +115,9 @@ export function ContentSearch(): JSX.Element | null {
     setHasError(false)
     setIsSearching(false)
     const release = acquirePointerPassthrough()
-    const frame = window.requestAnimationFrame(() => inputRef.current?.focus())
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && !event.defaultPrevented) {
-        event.preventDefault()
-        close()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
     return () => {
       sequenceRef.current += 1
       release()
-      window.cancelAnimationFrame(frame)
-      window.removeEventListener('keydown', onKeyDown)
     }
   }, [isOpen, close])
 
@@ -181,6 +179,7 @@ export function ContentSearch(): JSX.Element | null {
       }}
     >
       <div
+        ref={dialogRef}
         className="content-search"
         role="dialog"
         aria-modal="true"
@@ -205,10 +204,7 @@ export function ContentSearch(): JSX.Element | null {
             }}
             onKeyDown={(event) => {
               if (event.nativeEvent.isComposing) return
-              if (event.key === 'Escape') {
-                event.preventDefault()
-                close()
-              } else if (event.key === 'ArrowDown') {
+              if (event.key === 'ArrowDown') {
                 event.preventDefault()
                 setHighlighted((index) =>
                   Math.min(index + 1, Math.max(hits.length - 1, 0))

@@ -4,6 +4,7 @@ import type {
   LoginGuestWebContents,
   ResolvedLogin
 } from '../../../src/main/features/credentials'
+import { PAGE_SCRIPT_TIMEOUT_MS } from '../../../src/main/features/browserAgent/pageDriver'
 
 function fakeStore(login: ResolvedLogin | null = {
   username: 'student',
@@ -115,6 +116,28 @@ describe('main login fill origin boundary', () => {
       origin: 'https://portal.example.edu',
       guestWebContentsId: 7
     })).resolves.toEqual({ filled: false, submitted: false })
+  })
+
+  test('returns not-filled instead of hanging when the guest script times out', async () => {
+    vi.useFakeTimers()
+    try {
+      const guest = fakeGuest('https://portal.example.edu')
+      guest.executeJavaScript = () => new Promise(() => undefined)
+      const fill = createLoginFiller(fakeStore(), { fromId: () => guest })
+
+      const pending = fill({
+        origin: 'https://portal.example.edu',
+        guestWebContentsId: 7
+      })
+      const result = expect(pending).resolves.toEqual({
+        filled: false,
+        submitted: false
+      })
+      await vi.advanceTimersByTimeAsync(PAGE_SCRIPT_TIMEOUT_MS)
+      await result
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   test('quietly returns not-filled when guest inspection or secret resolution fails', async () => {

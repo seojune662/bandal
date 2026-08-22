@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 import {
   createPageDriver,
+  runGuestScript,
   verdictFor,
   PAGE_SCRIPT_TIMEOUT_MS,
   type DriverFrame
@@ -460,6 +461,18 @@ describe('pageSurface typing path', () => {
 })
 
 describe('a page that never answers', () => {
+  test('runGuestScript rejects with a clear timeout error', async () => {
+    vi.useFakeTimers()
+    try {
+      const pending = runGuestScript(() => new Promise<never>(() => undefined), 25)
+      const rejection = expect(pending).rejects.toThrow('페이지가 응답하지 않아요')
+      await vi.advanceTimersByTimeAsync(25)
+      await rejection
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   test('rejects instead of hanging forever', async () => {
     // A guest showing a native alert() blocks its renderer, so
     // executeJavaScript never settles. With no timeout, every later tool call

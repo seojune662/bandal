@@ -31,7 +31,11 @@ export interface DesktopAuditRepo {
     detail: string
   }): void
   recent(courseId: string, limit?: number): DesktopAuditEntry[]
+  prune(at?: Date): void
 }
+
+/** A student reviewing desktop activity wants weeks, not years. */
+export const AUDIT_RETENTION_DAYS = 90
 
 interface AuditRow {
   id: string
@@ -86,6 +90,13 @@ export function createDesktopAuditRepo(
         )
         .all(courseId, Math.max(0, Math.floor(limit))) as AuditRow[]
       return rows.map(toEntry)
+    },
+
+    prune(at = new Date()) {
+      const cutoff = new Date(
+        at.getTime() - AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000
+      ).toISOString()
+      db.prepare('DELETE FROM desktop_audit WHERE created_at < ?').run(cutoff)
     }
   }
 }

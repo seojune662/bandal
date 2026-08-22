@@ -72,6 +72,60 @@ describe('coursesRepo', () => {
       // Act / Assert
       expect(() => repo.create({ name: '   ', color: '#000' })).toThrow(ValidationError)
     })
+
+    test('removes the newly-created empty folder when the course insert fails', () => {
+      ctx.db.exec(`
+        CREATE TRIGGER fail_course_insert
+        BEFORE INSERT ON courses
+        BEGIN
+          SELECT RAISE(ABORT, 'injected course insert failure');
+        END
+      `)
+
+      expect(() => repo.create({ name: 'Algorithms', color: '#111' })).toThrow(
+        'injected course insert failure'
+      )
+      expect(existsSync(join(dataRoot, 'algorithms'))).toBe(false)
+    })
+
+    test('preserves an existing course folder when a suffixed insert fails', () => {
+      const existing = join(dataRoot, 'algorithms')
+      mkdirSync(existing, { recursive: true })
+      writeFileSync(join(existing, 'keep.txt'), 'keep', 'utf8')
+      ctx.db.exec(`
+        CREATE TRIGGER fail_course_insert
+        BEFORE INSERT ON courses
+        BEGIN
+          SELECT RAISE(ABORT, 'injected course insert failure');
+        END
+      `)
+
+      expect(() => repo.create({ name: 'Algorithms', color: '#111' })).toThrow(
+        'injected course insert failure'
+      )
+      expect(existsSync(join(existing, 'keep.txt'))).toBe(true)
+      expect(existsSync(join(dataRoot, 'algorithms-2'))).toBe(false)
+    })
+
+    test('does not remove a newly-created folder if it gained content before failure', () => {
+      const folderPath = join(dataRoot, 'algorithms')
+      ctx.db.function('populate_failed_course_folder', () => {
+        writeFileSync(join(folderPath, 'concurrent.txt'), 'keep', 'utf8')
+      })
+      ctx.db.exec(`
+        CREATE TRIGGER fail_course_insert
+        BEFORE INSERT ON courses
+        BEGIN
+          SELECT populate_failed_course_folder();
+          SELECT RAISE(ABORT, 'injected course insert failure');
+        END
+      `)
+
+      expect(() => repo.create({ name: 'Algorithms', color: '#111' })).toThrow(
+        'injected course insert failure'
+      )
+      expect(existsSync(join(folderPath, 'concurrent.txt'))).toBe(true)
+    })
   })
 
   describe('addFromFolder', () => {

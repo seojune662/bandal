@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import {
   calendarMonthGrid,
   dueAtForLocalInput,
@@ -19,6 +19,24 @@ describe('local calendar dates', () => {
     expect(localDateKey(dueAt)).toBe('2026-08-08')
     expect(new Date(dueAt).getHours()).toBe(23)
     expect(new Date(dueAt).getMinutes()).toBe(59)
+  })
+
+  test('round-trips an all-day key without consulting Date or a timezone', () => {
+    const dateConstructor = vi.spyOn(globalThis, 'Date')
+    try {
+      const dueAt = dueAtForLocalInput('2026-08-08', '23:59', true)
+
+      expect(dueAt).toBe('2026-08-08')
+      expect(localDateKey(dueAt)).toBe('2026-08-08')
+      expect(dateConstructor).not.toHaveBeenCalled()
+    } finally {
+      dateConstructor.mockRestore()
+    }
+  })
+
+  test('interprets an all-day key as local midnight for date readers', () => {
+    expect(localCalendarDayDifference('2026-08-09', '2026-08-08')).toBe(1)
+    expect(localDateKey('2026-08-08')).toBe('2026-08-08')
   })
 
   test('counts the midnight boundary just before and after it', () => {
@@ -66,7 +84,7 @@ describe('local calendar dates', () => {
       notes: '',
       status: 'todo',
       kind: 'exam',
-      dueAt: new Date(2026, 7, 8).toISOString(),
+      dueAt: '2026-08-08',
       allDay: true,
       sortOrder: 0,
       createdAt: '2026-08-01T00:00:00.000Z',

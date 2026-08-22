@@ -102,7 +102,7 @@ const TEXT_EXTENSIONS = new Set([
 /** Files larger than this are refused by readFile (base64 over IPC). */
 const MAX_READ_BYTES = 64 * 1024 * 1024
 /** Clipboard payloads are copied over IPC, so cap their decoded size. */
-const MAX_WRITE_BYTES = 50 * 1024 * 1024
+export const MAX_WRITE_BYTES = 50 * 1024 * 1024
 
 /**
  * Twelve nested folders covers ordinary course layouts while bounding hostile

@@ -227,6 +227,9 @@ export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.E
             <span className="setting-row__description">
               {t('settings.general.language.help')}
             </span>
+            <span className="setting-row__description">
+              {t('settings.general.locale.scope')}
+            </span>
           </div>
           <select
             className="language-select"
