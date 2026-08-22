@@ -77,6 +77,7 @@ import type {
   StudyToolDefinition
 } from '../types/study'
 import type { MediaProgress } from '../types/mediaProgress'
+import type { PipOpenRequest, PipState } from '../types/pip'
 import type { SearchHit } from '../types/search'
 import type {
   MaterialBacklinks,
@@ -387,6 +388,30 @@ export interface IpcContract {
       playbackRate: number
     }
     res: MediaProgress
+  }
+
+  // -- picture-in-picture ---------------------------------------------------
+  'pip:open': {
+    req: PipOpenRequest
+    res: { ok: true }
+  }
+  'pip:close': {
+    req: Record<string, never>
+    res: { ok: true }
+  }
+  /** 미니 플레이어에서 원래 앱 자리로 돌아간다. */
+  'pip:restore': {
+    req: Record<string, never>
+    res: { ok: true }
+  }
+  'pip:getState': {
+    req: Record<string, never>
+    res: PipState
+  }
+  /** PiP 렌더러가 현재 재생 상태를 주기적으로 보고한다. */
+  'pip:report': {
+    req: { positionSec: number; playbackRate: number; paused: boolean }
+    res: { ok: true }
   }
 
   // -- notes ----------------------------------------------------------------
@@ -1432,6 +1457,11 @@ export const IPC_CHANNELS = [
   'materials:unwatch',
   'media:getProgress',
   'media:setProgress',
+  'pip:open',
+  'pip:close',
+  'pip:restore',
+  'pip:getState',
+  'pip:report',
   'notes:read',
   'notes:write',
   'notes:create',

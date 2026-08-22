@@ -47,6 +47,8 @@ extraResources:
     to: tray
     filter:
       - 'tray*'
+  - from: resources/icons
+    to: icons
 
 # better-sqlite3 13 loads its native prebuilds/*.node binding from the
 # filesystem, so native binaries must remain outside the asar archive.

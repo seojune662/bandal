@@ -21,85 +21,20 @@
  *   e.g. node scripts/check-contrast.mjs ink:dark moss:sepia
  */
 import { readFileSync, readdirSync } from 'node:fs'
-import { dirname, join, basename, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  composite,
+  contrast,
+  parseColor,
+  readSwatches,
+  resolvePair,
+  toHex
+} from './lib/color.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const THEMES_DIR = join(ROOT, 'src/renderer/src/styles/themes')
 const PALETTES_DIR = join(ROOT, 'src/renderer/src/styles/palettes')
-
-/* ---------- color math ---------- */
-
-function oklchToLinearRgb(L, C, hDeg) {
-  const h = (hDeg * Math.PI) / 180
-  const a = C * Math.cos(h)
-  const b = C * Math.sin(h)
-  const l_ = L + 0.3963377774 * a + 0.2158037573 * b
-  const m_ = L - 0.1055613458 * a - 0.0638541728 * b
-  const s_ = L - 0.0894841775 * a - 1.291485548 * b
-  const l = l_ ** 3
-  const m = m_ ** 3
-  const s = s_ ** 3
-  return [
-    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s
-  ]
-}
-
-const encode = (c) =>
-  c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055
-const decode = (c) =>
-  c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
-
-/** -> { rgb: [0..1 gamma-encoded], alpha, gamut: boolean } */
-function parseColor(value) {
-  const v = value.trim()
-  const hex = /^#([0-9a-f]{6})$/i.exec(v)
-  if (hex) {
-    const n = parseInt(hex[1], 16)
-    return {
-      rgb: [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((x) => x / 255),
-      alpha: 1,
-      inGamut: true
-    }
-  }
-  const m = /^oklch\(\s*([\d.]+)%\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)$/.exec(v)
-  if (!m) return null
-  const lin = oklchToLinearRgb(Number(m[1]) / 100, Number(m[2]), Number(m[3]))
-  const inGamut = lin.every((c) => c >= -0.0005 && c <= 1.0005)
-  const rgb = lin.map((c) => encode(Math.min(1, Math.max(0, c))))
-  return { rgb, alpha: m[4] === undefined ? 1 : Number(m[4]), inGamut }
-}
-
-/** Source-over composite of `fg` (may be translucent) onto opaque `bg`. */
-function composite(fg, bg) {
-  return {
-    rgb: fg.rgb.map((c, i) => c * fg.alpha + bg.rgb[i] * (1 - fg.alpha)),
-    alpha: 1,
-    inGamut: fg.inGamut && bg.inGamut
-  }
-}
-
-function luminance(color) {
-  const [r, g, b] = color.rgb.map(decode)
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b
-}
-
-function contrast(a, b) {
-  const la = luminance(a)
-  const lb = luminance(b)
-  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
-}
-
-function toHex(color) {
-  return (
-    '#' +
-    color.rgb
-      .map((c) => Math.round(Math.min(1, Math.max(0, c)) * 255).toString(16).padStart(2, '0'))
-      .join('')
-  )
-}
 
 /* ---------- registries ---------- */
 
@@ -143,67 +78,9 @@ for (const f of readdirSync(THEMES_DIR).filter(
   }
 }
 
+const COLOR_SOURCE = { modeFiles: MODE_FILES, palettesDir: PALETTES_DIR }
+
 /* ---------- theme + palette parsing ---------- */
-
-/** Every `--token: value;` inside one selector's block. */
-function blockTokens(css, selectorRe) {
-  const tokens = new Map()
-  for (const block of css.matchAll(selectorRe)) {
-    for (const m of block[1].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) {
-      tokens.set(m[1], m[2].trim())
-    }
-  }
-  return tokens
-}
-
-const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-/** The mode layer: `:root[data-theme='<id>'] { … }`. */
-function readMode(id) {
-  const file = MODE_FILES.get(id)
-  if (file === undefined) return null
-  const css = readFileSync(file, 'utf8')
-  return blockTokens(
-    css,
-    new RegExp(`:root\\[data-theme='${esc(id)}'\\]\\s*\\{([\\s\\S]*?)\\n\\}`, 'g')
-  )
-}
-
-/** The palette layer: `:root[data-palette='<p>'][data-theme='<m>'] { … }`. */
-function readPaletteOverride(palette, mode) {
-  const file = join(PALETTES_DIR, `${palette}.css`)
-  const css = readFileSync(file, 'utf8')
-  return blockTokens(
-    css,
-    new RegExp(
-      `:root\\[data-palette='${esc(palette)}'\\]\\[data-theme='${esc(mode)}'\\]\\s*\\{([\\s\\S]*?)\\n\\}`,
-      'g'
-    )
-  )
-}
-
-/** What the browser ends up with: mode tokens, then the palette's overrides. */
-function resolvePair(palette, mode) {
-  const base = readMode(mode)
-  if (base === null) return null
-  const merged = new Map(base)
-  for (const [k, v] of readPaletteOverride(palette, mode)) merged.set(k, v)
-  return merged
-}
-
-/** The picker's swatch table, read from every palette file's bare `:root`. */
-function readSwatches() {
-  const swatches = new Map()
-  for (const palette of PALETTE_IDS) {
-    const css = readFileSync(join(PALETTES_DIR, `${palette}.css`), 'utf8')
-    for (const m of css.matchAll(
-      /(--swatch-[a-z-]+)\s*:\s*([^;]+);/gi
-    )) {
-      swatches.set(m[1], m[2].trim())
-    }
-  }
-  return swatches
-}
 
 const PAPER = parseColor('#ffffff') // PDF page canvas — always paper white
 
@@ -229,7 +106,7 @@ const NON_TEXT = 3.0
 const AAA = 7.0
 
 function report(palette, mode) {
-  const tokens = resolvePair(palette, mode)
+  const tokens = resolvePair(palette, mode, COLOR_SOURCE)
   const name = `${palette} × ${mode}`
   const rows = []
 
@@ -346,7 +223,7 @@ function report(palette, mode) {
  */
 function checkRegistry(pairs) {
   console.log('\n=== registry <-> css sync ===')
-  const swatches = readSwatches()
+  const swatches = readSwatches(PALETTE_IDS, PALETTES_DIR)
   const SWATCH_MIRRORS = [
     ['bg', '--bg-app'],
     ['surface', '--bg-surface'],
@@ -356,7 +233,7 @@ function checkRegistry(pairs) {
   let bad = 0
 
   for (const { palette, mode } of pairs) {
-    const tokens = resolvePair(palette, mode)
+    const tokens = resolvePair(palette, mode, COLOR_SOURCE)
     if (tokens === null || tokens.size === 0) {
       console.log(`FAIL ${palette} × ${mode}: no resolved token block`)
       bad++

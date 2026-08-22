@@ -1,4 +1,12 @@
 import { useId } from 'react'
+import {
+  MARK_CX as CX,
+  MARK_CY as CY,
+  MARK_RADIUS as R,
+  MOON_TILT as TILT,
+  TERMINATOR_BULGE,
+  litHalfPath
+} from '../../../shared/brandMark'
 
 /**
  * The 반달 mark — a lit spherical half held inside its complete, shadowed rim.
@@ -6,20 +14,10 @@ import { useId } from 'react'
  * bows 15% of the radius into the unlit side.
  */
 
-const CX = 12
-const CY = 12
-const R = 9
-const TILT = -14
-const TERMINATOR_BULGE = 0.15
 const TERMINATOR_RX = R * TERMINATOR_BULGE
 
 /** Lit hemisphere, closed by the curved terminator rather than a diameter. */
-const LIT_HALF = [
-  `M ${CX} ${CY - R}`,
-  `A ${R} ${R} 0 0 1 ${CX} ${CY + R}`,
-  `A ${TERMINATOR_RX} ${R} 0 0 1 ${CX} ${CY - R}`,
-  'Z'
-].join(' ')
+const LIT_HALF = litHalfPath(CX, CY, R, TILT, TERMINATOR_BULGE)
 
 const LIT_LIMB = `M ${CX} ${CY - R} A ${R} ${R} 0 0 1 ${CX} ${CY + R}`
 const TERMINATOR = `M ${CX} ${CY + R} A ${TERMINATOR_RX} ${R} 0 0 1 ${CX} ${CY - R}`

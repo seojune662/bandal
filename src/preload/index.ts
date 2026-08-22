@@ -50,6 +50,11 @@ export interface BandalBridge {
 const PUSH_CHANNELS = [
   'chat:event-batch',
   'materials:changed',
+  // -- picture-in-picture ---------------------------------------------------
+  'pip:state',
+  'pip:seek',
+  'ui:openMaterial',
+  'ui:openUrl',
   'browser:open-url',
   'browser:activate-tab',
   'browser:close-tab',

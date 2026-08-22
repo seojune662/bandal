@@ -10,6 +10,7 @@ import type { AuthState } from '../types/auth'
 import type { GroupsInvalidationReason } from '../types/group'
 import type { GroupEvent } from '../types/group-events'
 import type { UpdateStatus } from '../types/update'
+import type { PipState } from '../types/pip'
 import type {
   OverlayPrompt,
   OverlayState,
@@ -208,6 +209,24 @@ export interface PushEvents {
    */
   'agentTools:unavailable': { courseId: string; sessionId: string }
   'materials:changed': MaterialsChanged
+  // -- picture-in-picture ---------------------------------------------------
+  'pip:state': PipState
+  'pip:seek': {
+    positionSec: number
+    playbackRate: number
+    play: boolean
+  }
+  'ui:openMaterial': {
+    courseId: string
+    relPath: string
+    positionSec: number
+    playbackRate: number
+  }
+  'ui:openUrl': {
+    url: string
+    positionSec: number
+    playbackRate: number
+  }
   'browser:open-url': BrowserOpenUrl
   /**
    * Something the browser refused, so it can be seen instead of guessed at.
