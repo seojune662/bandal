@@ -22,7 +22,7 @@ export interface BoardTask {
   notes: string
   status: TaskStatus
   kind: TaskKind
-  /** ISO datetime, null when the task has no due date. */
+  /** `allDay`가 true면 시간대 무관 `YYYY-MM-DD`, false면 ISO instant. */
   dueAt: string | null
   /** True when `dueAt` marks a whole day rather than a moment. */
   allDay: boolean

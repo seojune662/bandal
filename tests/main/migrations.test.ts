@@ -42,7 +42,8 @@ describe('migrations', () => {
       { version: 19, name: 'browser-history' },
       { version: 20, name: 'browser-agent-grants-audit' },
       { version: 21, name: 'browser-site-permissions' },
-      { version: 22, name: 'desktop-surface-and-mcp' }
+      { version: 22, name: 'desktop-surface-and-mcp' },
+      { version: 23, name: 'all-day-due-date' }
     ])
   })
 
@@ -212,7 +213,7 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(22)
+    expect(count.n).toBe(23)
   })
 
   test('adds desktop conversation surface, grants, and audit (migration 022)', () => {
@@ -242,5 +243,35 @@ describe('migrations', () => {
         { type: 'index', name: 'idx_desktop_audit_course' }
       ])
     )
+  })
+
+  test('converts legacy all-day instants to local date keys (migration 023)', () => {
+    const now = '2026-08-22T00:00:00.000Z'
+    const localDue = new Date(2026, 8, 1, 0, 30)
+    const insert = ctx.db.prepare(
+      `INSERT INTO board_tasks
+         (id, title, notes, status, kind, due_at, all_day, sort_order,
+          created_at, updated_at)
+       VALUES (?, ?, '', 'todo', 'task', ?, ?, 0, ?, ?)`
+    )
+    insert.run('all-day-instant', 'All day', localDue.toISOString(), 1, now, now)
+    insert.run('timed-instant', 'Timed', localDue.toISOString(), 0, now, now)
+    insert.run('date-key', 'Already migrated', '2026-09-02', 1, now, now)
+    ctx.db.prepare('DELETE FROM migrations WHERE version = 23').run()
+
+    runMigrations(ctx.db)
+
+    const rows = ctx.db
+      .prepare(
+        `SELECT id, due_at FROM board_tasks
+          WHERE id IN ('all-day-instant', 'timed-instant', 'date-key')
+          ORDER BY id`
+      )
+      .all() as { id: string; due_at: string }[]
+    expect(rows).toEqual([
+      { id: 'all-day-instant', due_at: '2026-09-01' },
+      { id: 'date-key', due_at: '2026-09-02' },
+      { id: 'timed-instant', due_at: localDue.toISOString() }
+    ])
   })
 })

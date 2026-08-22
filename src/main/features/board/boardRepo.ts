@@ -59,6 +59,8 @@ interface TaskRow {
 
 const STATUSES: readonly TaskStatus[] = ['todo', 'in-progress', 'done']
 const KINDS: readonly TaskKind[] = ['task', 'assignment', 'exam', 'class']
+const LOCAL_DATE_KEY = /^\d{4}-\d{2}-\d{2}$/u
+const ISO_INSTANT = /T.*(?:Z|[+-]\d{2}:?\d{2})$/u
 
 function assertStatus(value: unknown): TaskStatus {
   if (!STATUSES.includes(value as TaskStatus)) {
@@ -85,20 +87,60 @@ function assertAllDay(value: unknown): boolean {
   return value
 }
 
-function assertDueAt(value: unknown): string | null {
+function localDateKey(date: Date): string {
+  const year = String(date.getFullYear()).padStart(4, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function dateKeyToLocalInstant(value: string): string {
+  const year = Number(value.slice(0, 4))
+  const month = Number(value.slice(5, 7))
+  const day = Number(value.slice(8, 10))
+  return new Date(year, month - 1, day).toISOString()
+}
+
+function isIsoInstant(value: string): boolean {
+  return ISO_INSTANT.test(value) && !Number.isNaN(Date.parse(value))
+}
+
+function normalizeDueAt(value: unknown, allDay: boolean): string | null {
   if (value === null || value === undefined) {
     return null
   }
-  if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) {
-    throw new ValidationError('dueAt must be an ISO datetime string or null')
+  if (typeof value !== 'string') {
+    throw new ValidationError('dueAt must be YYYY-MM-DD, an ISO instant, or null')
   }
-  return new Date(value).toISOString()
+  if (allDay && LOCAL_DATE_KEY.test(value)) {
+    return value
+  }
+  if (!isIsoInstant(value)) {
+    throw new ValidationError(
+      allDay
+        ? 'dueAt must be YYYY-MM-DD, an ISO instant, or null when allDay is true'
+        : 'dueAt must be an ISO instant or null when allDay is false'
+    )
+  }
+  const instant = new Date(value)
+  return allDay ? localDateKey(instant) : instant.toISOString()
 }
 
 function requireIso(value: unknown, name: string): string {
-  const result = assertDueAt(value)
+  const result = normalizeDueAt(value, false)
   if (result === null) throw new ValidationError(`${name} must be an ISO datetime string`)
   return result
+}
+
+function taskDueDate(task: BoardTask): Date {
+  const dueAt = task.dueAt as string
+  if (task.allDay && LOCAL_DATE_KEY.test(dueAt)) {
+    const year = Number(dueAt.slice(0, 4))
+    const month = Number(dueAt.slice(5, 7))
+    const day = Number(dueAt.slice(8, 10))
+    return new Date(year, month - 1, day)
+  }
+  return new Date(dueAt)
 }
 
 function rowToTask(row: TaskRow): BoardTask {
@@ -232,10 +274,15 @@ export function createBoardRepo(db: Database): BoardRepo {
       const clauses = [
         'deleted_at IS NULL',
         'due_at IS NOT NULL',
-        'due_at >= ?',
-        'due_at < ?'
+        `((all_day = 1 AND due_at >= ? AND due_at < ?)
+          OR (all_day != 1 AND due_at >= ? AND due_at < ?))`
       ]
-      const params = [from, to]
+      const params = [
+        localDateKey(new Date(from)),
+        localDateKey(new Date(to)),
+        from,
+        to
+      ]
       if (input.courseId === null) {
         clauses.push('course_id IS NULL')
       } else if (input.courseId !== undefined) {
@@ -256,13 +303,15 @@ export function createBoardRepo(db: Database): BoardRepo {
       const withinDays = requireInt(input.withinDays ?? 14, 'withinDays', 0)
       const limit = requireInt(input.limit ?? 5, 'limit', 1)
       const now = new Date()
+      const endExclusive = localDayEndExclusive(now, withinDays)
       const clauses = [
         't.deleted_at IS NULL',
         "t.status != 'done'",
         't.due_at IS NOT NULL',
-        't.due_at < ?'
+        `((t.all_day = 1 AND t.due_at < ?)
+          OR (t.all_day != 1 AND t.due_at < ?))`
       ]
-      const params = [localDayEndExclusive(now, withinDays).toISOString()]
+      const params = [localDateKey(endExclusive), endExclusive.toISOString()]
       if (input.courseId === null) {
         clauses.push('t.course_id IS NULL')
       } else if (input.courseId !== undefined) {
@@ -283,7 +332,7 @@ export function createBoardRepo(db: Database): BoardRepo {
       return rows
         .map((row) => {
           const task = rowToTask(row)
-          const due = new Date(task.dueAt as string)
+          const due = taskDueDate(task)
           const daysLeft = localCalendarDayDifference(due, now)
           const overdue = task.allDay ? daysLeft < 0 : due.getTime() < now.getTime()
           return { task, courseName: row.course_name, daysLeft, overdue, due }
@@ -315,8 +364,8 @@ export function createBoardRepo(db: Database): BoardRepo {
       if (typeof notes !== 'string') {
         throw new ValidationError('notes must be a string')
       }
-      const dueAt = assertDueAt(input.dueAt)
       const allDay = input.allDay === undefined ? false : assertAllDay(input.allDay)
+      const dueAt = normalizeDueAt(input.dueAt, allDay)
 
       const now = nowIso()
       const task: BoardTask = {
@@ -364,9 +413,12 @@ export function createBoardRepo(db: Database): BoardRepo {
       }
       const status = input.status === undefined ? (row.status as TaskStatus) : assertStatus(input.status)
       const kind = input.kind === undefined ? (row.kind as TaskKind) : assertKind(input.kind)
-      const dueAt = input.dueAt === undefined ? row.due_at : assertDueAt(input.dueAt)
       const allDay =
         input.allDay === undefined ? row.all_day === 1 : assertAllDay(input.allDay)
+      const dueAt =
+        input.dueAt === undefined && !allDay && row.due_at !== null && LOCAL_DATE_KEY.test(row.due_at)
+          ? dateKeyToLocalInstant(row.due_at)
+          : normalizeDueAt(input.dueAt === undefined ? row.due_at : input.dueAt, allDay)
 
       let courseId: string | null
       if (input.courseId === undefined) {

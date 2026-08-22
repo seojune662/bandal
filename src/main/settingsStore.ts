@@ -9,21 +9,16 @@
 
 import { app, BrowserWindow } from 'electron'
 import {
-  closeSync,
   existsSync,
-  fsyncSync,
   mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync
+  readFileSync
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DEFAULT_SETTINGS } from '../shared/types/settings'
 import type { Settings, SettingsPatch } from '../shared/types/settings'
 import { sanitizeSettings } from './settingsSanitize'
+import { quarantineFile, writeFileAtomic } from './lib/atomicWrite'
 
 const SETTINGS_FILE = 'settings.json'
 
@@ -46,44 +41,9 @@ function defaultsWithPaths(): Settings {
   }
 }
 
-function quarantineSettings(file: string): string {
-  const basePath = `${file}.corrupt-${new Date().toISOString()}`
-  let quarantinePath = basePath
-  let suffix = 1
-  while (existsSync(quarantinePath)) {
-    quarantinePath = `${basePath}-${suffix}`
-    suffix += 1
-  }
-  renameSync(file, quarantinePath)
-  return quarantinePath
-}
-
 function writeSettingsAtomically(file: string, settings: Settings): void {
-  const temporaryPath = `${file}.tmp`
-  let descriptor: number | undefined
-  try {
-    mkdirSync(dirname(file), { recursive: true })
-    descriptor = openSync(temporaryPath, 'w')
-    writeFileSync(descriptor, JSON.stringify(settings, null, 2), 'utf8')
-    fsyncSync(descriptor)
-    closeSync(descriptor)
-    descriptor = undefined
-    renameSync(temporaryPath, file)
-  } catch (error) {
-    if (descriptor !== undefined) {
-      try {
-        closeSync(descriptor)
-      } catch {
-        // Preserve the original persistence failure.
-      }
-    }
-    try {
-      rmSync(temporaryPath, { force: true })
-    } catch {
-      // Preserve the original persistence failure.
-    }
-    throw error
-  }
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileAtomic(file, JSON.stringify(settings, null, 2))
 }
 
 export function getSettings(): Settings {
@@ -99,8 +59,10 @@ export function getSettings(): Settings {
     const raw: unknown = JSON.parse(readFileSync(file, 'utf8'))
     cached = sanitizeSettings(raw, defaultsWithPaths())
   } catch {
-    const quarantinePath = quarantineSettings(file)
-    console.warn(`[settings] 설정 파일 읽기 실패 — 격리: ${quarantinePath}`)
+    const quarantinePath = quarantineFile(file)
+    if (quarantinePath !== null) {
+      console.warn(`[settings] 설정 파일 읽기 실패 — 격리: ${quarantinePath}`)
+    }
     cached = defaultsWithPaths()
   }
   return cached

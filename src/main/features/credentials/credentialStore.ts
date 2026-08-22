@@ -1,14 +1,9 @@
 import {
   chmodSync,
-  closeSync,
   existsSync,
-  fsyncSync,
   mkdirSync,
-  openSync,
   readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync
+  rmSync
 } from 'node:fs'
 import { basename, join } from 'node:path'
 import type {
@@ -16,6 +11,7 @@ import type {
   SaveLoginInput,
   SavedLoginSummary
 } from '../../../shared/types/credentials'
+import { quarantineFile, writeFileAtomic } from '../../lib/atomicWrite'
 
 export const CREDENTIALS_FILE_NAME = 'saved-logins.enc'
 
@@ -135,7 +131,6 @@ function summary(login: StoredLogin): SavedLoginSummary {
 
 function buildCredentialStore(deps: CredentialStoreDeps): CredentialStore {
   const filePath = join(deps.userDataPath, CREDENTIALS_FILE_NAME)
-  const temporaryPath = `${filePath}.tmp`
   const now = deps.now ?? Date.now
   let encryptionAvailable: boolean | undefined
   let cache: StoredLogin[] | undefined
@@ -155,21 +150,14 @@ function buildCredentialStore(deps: CredentialStoreDeps): CredentialStore {
   const discard = (): void => {
     try {
       rmSync(filePath, { force: true })
-      rmSync(temporaryPath, { force: true })
+      rmSync(`${filePath}.tmp`, { force: true })
     } catch {
       // Best effort. A later load still treats any unreadable file as empty.
     }
   }
 
   const quarantine = (): string => {
-    const basePath = `${filePath}.corrupt-${new Date(now()).toISOString()}`
-    let quarantinePath = basePath
-    let suffix = 1
-    while (existsSync(quarantinePath)) {
-      quarantinePath = `${basePath}-${suffix}`
-      suffix += 1
-    }
-    renameSync(filePath, quarantinePath)
+    const quarantinePath = quarantineFile(filePath, new Date(now())) ?? filePath
     quarantineReason =
       `저장된 데이터를 읽지 못해 격리했습니다: ${basename(quarantinePath)}`
     return quarantinePath
@@ -215,32 +203,14 @@ function buildCredentialStore(deps: CredentialStoreDeps): CredentialStore {
       version: ENVELOPE_VERSION,
       logins
     }
-    let descriptor: number | undefined
     try {
       const encrypted = deps.safeStorage.encryptString(JSON.stringify(envelope))
       mkdirSync(deps.userDataPath, { recursive: true, mode: 0o700 })
-      descriptor = openSync(temporaryPath, 'w', 0o600)
-      writeFileSync(descriptor, encrypted)
-      fsyncSync(descriptor)
-      closeSync(descriptor)
-      descriptor = undefined
-      renameSync(temporaryPath, filePath)
+      writeFileAtomic(filePath, encrypted, { mode: 0o600 })
       chmodSync(filePath, 0o600)
       cache = logins
       quarantineReason = null
     } catch {
-      if (descriptor !== undefined) {
-        try {
-          closeSync(descriptor)
-        } catch {
-          // The original write failure is deliberately replaced below.
-        }
-      }
-      try {
-        rmSync(temporaryPath, { force: true })
-      } catch {
-        // Do not replace a previous good encrypted file with a partial write.
-      }
       throw new Error('Saved login could not be persisted')
     }
   }

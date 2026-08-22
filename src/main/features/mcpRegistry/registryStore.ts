@@ -2,16 +2,11 @@ import { randomUUID } from 'node:crypto'
 import {
   accessSync,
   chmodSync,
-  closeSync,
   constants,
   existsSync,
-  fsyncSync,
   mkdirSync,
-  openSync,
   readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync
+  rmSync
 } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { basename, extname, isAbsolute, join } from 'node:path'
@@ -33,6 +28,7 @@ import {
   splitPath,
   stripShellBanner
 } from '../agent/platform'
+import { quarantineFile, writeFileAtomic } from '../../lib/atomicWrite'
 
 export const MCP_REGISTRY_FILE_NAME = 'mcp-servers.enc'
 
@@ -371,7 +367,6 @@ function validateInput(
 
 export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
   const filePath = join(deps.userDataPath, MCP_REGISTRY_FILE_NAME)
-  const temporaryPath = `${filePath}.tmp`
   const now = deps.now ?? (() => new Date())
   const commandExists = deps.commandExists ?? defaultCommandExists
   let encryptionAvailable: boolean | undefined
@@ -392,21 +387,14 @@ export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
   const discard = (): void => {
     try {
       rmSync(filePath, { force: true })
-      rmSync(temporaryPath, { force: true })
+      rmSync(`${filePath}.tmp`, { force: true })
     } catch {
       // A later load also treats an unreadable registry as empty.
     }
   }
 
   const quarantine = (): string => {
-    const basePath = `${filePath}.corrupt-${now().toISOString()}`
-    let quarantinePath = basePath
-    let suffix = 1
-    while (existsSync(quarantinePath)) {
-      quarantinePath = `${basePath}-${suffix}`
-      suffix += 1
-    }
-    renameSync(filePath, quarantinePath)
+    const quarantinePath = quarantineFile(filePath, now()) ?? filePath
     quarantineReason =
       `저장된 데이터를 읽지 못해 격리했습니다: ${basename(quarantinePath)}`
     return quarantinePath
@@ -461,32 +449,14 @@ export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
       version: ENVELOPE_VERSION,
       servers
     }
-    let descriptor: number | undefined
     try {
       const encrypted = deps.safeStorage.encryptString(JSON.stringify(envelope))
       mkdirSync(deps.userDataPath, { recursive: true, mode: 0o700 })
-      descriptor = openSync(temporaryPath, 'w', 0o600)
-      writeFileSync(descriptor, encrypted)
-      fsyncSync(descriptor)
-      closeSync(descriptor)
-      descriptor = undefined
-      renameSync(temporaryPath, filePath)
+      writeFileAtomic(filePath, encrypted, { mode: 0o600 })
       chmodSync(filePath, 0o600)
       cache = servers
       quarantineReason = null
     } catch {
-      if (descriptor !== undefined) {
-        try {
-          closeSync(descriptor)
-        } catch {
-          // Keep the original persistence failure.
-        }
-      }
-      try {
-        rmSync(temporaryPath, { force: true })
-      } catch {
-        // Never replace a previous good registry with a partial write.
-      }
       throw new Error('MCP 서버 설정을 안전하게 저장하지 못했습니다.')
     }
   }

@@ -410,7 +410,7 @@ export interface IpcContract {
    */
   'notes:rename': {
     req: { courseId: string; relPath: string; newName: string }
-    res: { relPath: string; mtime: number }
+    res: { relPath: string; mtime: number; title: string; markdown: string }
   }
 
   // -- annotations ----------------------------------------------------------

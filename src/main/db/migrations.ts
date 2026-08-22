@@ -825,6 +825,36 @@ export const migrations: Migration[] = [
            ON desktop_audit (course_id, created_at DESC);`
       )
     }
+  },
+  {
+    version: 23,
+    name: 'all-day-due-date',
+    up: (db) => {
+      const migrateRows = db.transaction(() => {
+        const rows = db
+          .prepare(
+            `SELECT id, due_at
+               FROM board_tasks
+              WHERE all_day = 1 AND due_at LIKE '%T%'`
+          )
+          .all() as { id: string; due_at: string }[]
+        const update = db.prepare(
+          'UPDATE board_tasks SET due_at = ? WHERE id = ?'
+        )
+
+        for (const row of rows) {
+          const instant = new Date(row.due_at)
+          if (Number.isNaN(instant.getTime())) {
+            throw new TypeError(`Invalid all-day due_at for board task ${row.id}`)
+          }
+          const year = String(instant.getFullYear()).padStart(4, '0')
+          const month = String(instant.getMonth() + 1).padStart(2, '0')
+          const day = String(instant.getDate()).padStart(2, '0')
+          update.run(`${year}-${month}-${day}`, row.id)
+        }
+      })
+      migrateRows()
+    }
   }
 ]
 

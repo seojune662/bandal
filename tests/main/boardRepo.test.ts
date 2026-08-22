@@ -49,22 +49,40 @@ describe('boardRepo', () => {
     })
 
     test('defaults kind and allDay and persists explicit calendar fields', () => {
+      const localExamDue = new Date(2026, 8, 1)
       const regular = repo.create({ courseId, title: 'regular' })
       const exam = repo.create({
         courseId,
         title: 'midterm',
         kind: 'exam',
         allDay: true,
-        dueAt: '2026-09-01T00:00:00+09:00'
+        dueAt: localExamDue.toISOString()
       })
 
       expect(regular.kind).toBe('task')
       expect(regular.allDay).toBe(false)
       expect(exam.kind).toBe('exam')
       expect(exam.allDay).toBe(true)
-      expect(exam.dueAt).toBe('2026-08-31T15:00:00.000Z')
+      expect(exam.dueAt).toBe('2026-09-01')
       expect(repo.list({ courseId, includeDone: true }).find((task) => task.id === exam.id))
         .toMatchObject({ kind: 'exam', allDay: true })
+    })
+
+    test('accepts an all-day date key and rejects it for a timed task', () => {
+      const allDay = repo.create({
+        courseId,
+        title: 'festival',
+        allDay: true,
+        dueAt: '2026-09-02'
+      })
+
+      expect(allDay.dueAt).toBe('2026-09-02')
+      expect(() => repo.create({
+        courseId,
+        title: 'timed',
+        allDay: false,
+        dueAt: '2026-09-02'
+      })).toThrow(ValidationError)
     })
 
     test('rejects an empty title and an unknown course', () => {
@@ -144,12 +162,21 @@ describe('boardRepo', () => {
     })
 
     test('updates kind and allDay without touching sort order', () => {
-      const task = repo.create({ courseId, title: 'quiz' })
+      const localDue = new Date(2026, 8, 3, 15)
+      const task = repo.create({
+        courseId,
+        title: 'quiz',
+        dueAt: localDue.toISOString()
+      })
 
       const updated = repo.update({ id: task.id, kind: 'exam', allDay: true })
 
       expect(updated).toMatchObject({ kind: 'exam', allDay: true })
+      expect(updated.dueAt).toBe('2026-09-03')
       expect(updated.sortOrder).toBe(task.sortOrder)
+
+      const timedAgain = repo.update({ id: task.id, allDay: false })
+      expect(timedAgain.dueAt).toBe(new Date(2026, 8, 3).toISOString())
     })
 
     test('moving to another course keeps the id and appends to that column', () => {

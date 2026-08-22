@@ -7,6 +7,10 @@
   "license": "MIT",
   "private": true,
   "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=22 <23",
+    "pnpm": "9.15.4"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
