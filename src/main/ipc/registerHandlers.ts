@@ -759,6 +759,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const browserGrants = createGrantsRepo(db)
   const browserAudit = createAuditRepo(db)
   browserAudit.prune()
+  desktopAudit.prune()
   const browserSeen = createSeenRepo(db)
   /** One beat after a load ends, so the new document has committed. */
   const SETTLE_QUIET_MS = 150

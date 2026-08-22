@@ -90,6 +90,24 @@ describe('IPC channel coverage', () => {
     expect(source).toContain('chatRepo.removeGrant(req.id)')
   })
 
+  test('startup prunes both browser and desktop audit histories', () => {
+    const source = mainRouterSource()
+    expect(source).toMatch(
+      /browserAudit\.prune\(\)\s*desktopAudit\.prune\(\)/
+    )
+  })
+
+  test('notes rename returns the repository response without narrowing it', () => {
+    const source = mainRouterSource()
+    const rename = source.slice(
+      source.indexOf("handle('notes:rename'"),
+      source.indexOf("handle('notes:create'")
+    )
+    expect(rename).toMatch(
+      /const result = notesRepo\.rename\(req\)[\s\S]*return result/
+    )
+  })
+
   test('undo awaits recoverable file deletion and returns the journal result', () => {
     const source = mainRouterSource()
     const undo = source.slice(
