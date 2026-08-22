@@ -540,6 +540,10 @@ export interface IpcContract {
     req: Record<string, never>
     res: { ok: true }
   }
+  'overlay:setOrbHitTest': {
+    req: { hit: boolean }
+    res: { ok: true }
+  }
   'overlay:prompt': {
     req: { prompt: string }
     res: { ok: true }
@@ -1456,6 +1460,7 @@ export const IPC_CHANNELS = [
   'overlay:togglePopup',
   'overlay:orbDragBegin',
   'overlay:orbDragEnd',
+  'overlay:setOrbHitTest',
   'overlay:prompt',
   'overlay:openInApp',
   'desktopAgent:permissionStatus',

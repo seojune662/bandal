@@ -133,9 +133,11 @@ if (!app.requestSingleInstanceLock()) {
       getSettings,
       setSettings,
       openMain: () => {
-        const main = getMainWindow() ?? createMainWindow()
+        const existing = getMainWindow()
+        const main = existing ?? createMainWindow()
         main.show()
         main.focus()
+        if (existing === null) overlay.syncMainWindowVisibility()
       },
       quit: () => {
         overlay.markQuitting()
@@ -182,6 +184,7 @@ if (!app.requestSingleInstanceLock()) {
     app.on('activate', () => {
       if (getMainWindow() === null) {
         createMainWindow()
+        overlay.syncMainWindowVisibility()
       }
     })
   }).catch((error: unknown) => {

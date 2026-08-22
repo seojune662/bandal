@@ -253,7 +253,11 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const desktopRun = createDesktopRunRegistry({
     emit: (payload) => broadcast('desktopAgent:run-state', payload)
   })
-  const desktopSurface = createDesktopSurface(createElectronDesktopDeps())
+  const desktopSurface = createDesktopSurface(
+    createElectronDesktopDeps({
+      concealOverlay: () => deps.overlay.concealForCapture()
+    })
+  )
   const mcpRegistry = createMcpRegistry({
     safeStorage,
     userDataPath: app.getPath('userData')
@@ -1435,6 +1439,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   handle('overlay:orbDragEnd', () => {
     deps.overlay.orbDragEnd()
+    return OK
+  })
+  handle('overlay:setOrbHitTest', (req) => {
+    deps.overlay.setOrbHitTest(req.hit)
     return OK
   })
   handle('overlay:prompt', (req) => {

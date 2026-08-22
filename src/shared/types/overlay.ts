@@ -13,6 +13,7 @@ export interface OverlayState {
   courseId: string | null
   conversationId: string | null
   popupOpen: boolean
+  desktopVisible: boolean
   screenPermission: ScreenPermissionState
 }
 
