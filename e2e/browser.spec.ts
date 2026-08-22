@@ -6,7 +6,7 @@
 import { expect, test } from '@playwright/test'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Page } from '@playwright/test'
+import type { ElectronApplication, Page } from '@playwright/test'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 import { startFileServer, type FileServer } from './helpers/fileServer'
 
@@ -35,6 +35,90 @@ async function openBrowserTab(page: Page, url: string): Promise<void> {
   await expect(page.locator('.browser-toolbar').last()).toBeVisible({
     timeout: 15_000
   })
+}
+
+/**
+ * Playwright sends keyboard input to the host renderer, not a focused
+ * <webview> guest. Put focus in browser chrome explicitly before exercising a
+ * host shortcut so the test does not depend on whichever process last loaded.
+ */
+async function focusBrowserChrome(page: Page): Promise<void> {
+  const address = page.locator('.browser-address input').last()
+  await address.click()
+  await expect(address).toBeFocused()
+}
+
+/**
+ * There is no browser zoom invoke channel, and Electron's stock View menu
+ * zooms the host window rather than the active guest. Drive the actual
+ * main-to-renderer shortcut path that `before-input-event` uses instead.
+ */
+async function dispatchBrowserShortcut(
+  app: ElectronApplication,
+  url: string,
+  action: 'zoom-in' | 'zoom-out' | 'zoom-reset'
+): Promise<void> {
+  const dispatched = await app.evaluate(
+    ({ webContents }, request) => {
+      const normalizedUrl = new URL(request.url).href
+      const guest = webContents
+        .getAllWebContents()
+        .filter(
+          (contents) =>
+            !contents.isDestroyed() &&
+            contents.getType() === 'webview' &&
+            contents.getURL() === normalizedUrl
+        )
+        .sort((left, right) => right.id - left.id)[0]
+      const host = guest?.hostWebContents
+      if (
+        guest === undefined ||
+        host === undefined ||
+        host === null ||
+        host.isDestroyed()
+      ) {
+        return false
+      }
+      host.send('shortcut:passthrough', {
+        action: request.action,
+        webContentsId: guest.id
+      })
+      return true
+    },
+    { url, action }
+  )
+  expect(dispatched).toBe(true)
+}
+
+/** Wait until findInPage can address the committed guest document. */
+async function waitForBrowserGuest(
+  app: ElectronApplication,
+  url: string
+): Promise<void> {
+  await expect
+    .poll(async () =>
+      app.evaluate(async ({ webContents }, targetUrl) => {
+        const normalizedUrl = new URL(targetUrl).href
+        const guest = webContents
+          .getAllWebContents()
+          .filter(
+            (contents) =>
+              !contents.isDestroyed() &&
+              contents.getType() === 'webview' &&
+              contents.getURL() === normalizedUrl
+          )
+          .sort((left, right) => right.id - left.id)[0]
+        if (guest === undefined) return false
+        try {
+          return await guest.executeJavaScript(
+            'document.readyState === "complete"'
+          )
+        } catch {
+          return false
+        }
+      }, url)
+    )
+    .toBe(true)
 }
 
 test.describe('browser restart', () => {
@@ -126,21 +210,32 @@ test.describe('browser', () => {
   })
 
   test('⌘+ zooms the page and ⌘0 puts it back', async () => {
-    const { page } = bandal
-    await openBrowserTab(page, 'https://example.invalid')
+    const { app, page } = bandal
+    const url = 'https://example.invalid'
+    await openBrowserTab(page, url)
+    await expect(page.locator('.browser-error').last()).toBeVisible({
+      timeout: 20_000
+    })
     const pill = page.locator('.browser-zoom-pill')
 
     // Quiet by default: nothing is shown at 100%.
     await expect(pill).toHaveCount(0)
 
-    await page.keyboard.press('Meta+Equal')
+    await dispatchBrowserShortcut(app, url, 'zoom-in')
     await expect(pill).toHaveText('110%')
-    await page.keyboard.press('Meta+Equal')
+    await dispatchBrowserShortcut(app, url, 'zoom-in')
     await expect(pill).toHaveText('125%')
-    await page.keyboard.press('Meta+Minus')
+    await dispatchBrowserShortcut(app, url, 'zoom-out')
     await expect(pill).toHaveText('110%')
 
-    await page.keyboard.press('Meta+Digit0')
+    await dispatchBrowserShortcut(app, url, 'zoom-reset')
+    await expect(pill).toHaveCount(0)
+
+    // Keep one real keyboard check, with focus proven to be in host chrome.
+    await focusBrowserChrome(page)
+    await page.keyboard.press('Meta+Equal')
+    await expect(pill).toHaveText('110%')
+    await pill.click()
     await expect(pill).toHaveCount(0)
   })
 
@@ -161,11 +256,14 @@ test.describe('browser', () => {
       }
     })
     try {
-      const { page } = bandal
-      await openBrowserTab(page, `${server.origin}/page`)
+      const { app, page } = bandal
+      const url = `${server.origin}/page`
+      await openBrowserTab(page, url)
+      await waitForBrowserGuest(app, url)
 
       const bar = page.locator('.browser-find')
       await expect(bar).toHaveCount(0)
+      await focusBrowserChrome(page)
       await page.keyboard.press('Meta+KeyF')
       await expect(bar).toBeVisible()
       await expect(bar.locator('.browser-find__input')).toBeFocused()
@@ -214,7 +312,7 @@ test.describe('browser', () => {
     }
   })
 
-  test('⌘D stars the page and it shows up in the bookmarks bar', async () => {
+  test('the star button bookmarks the page and host-focused ⌘D toggles it', async () => {
     const server: FileServer = await startFileServer({
       '/lms': {
         fileName: 'l.html',
@@ -232,14 +330,31 @@ test.describe('browser', () => {
 
       // The bar renders nothing until the course has a browser favorite.
       await expect(page.locator('.browser-bookmarks')).toHaveCount(0)
-      await page.keyboard.press('Meta+KeyD')
+      const toolbar = page.locator('.browser-toolbar').last()
+      const addFavorite = toolbar.getByRole('button', {
+        name: '즐겨찾기에 추가'
+      })
+      await addFavorite.click()
 
       const bookmark = page.locator('.browser-bookmark', {
         hasText: '학사정보시스템'
       })
       await expect(bookmark).toBeVisible({ timeout: 10_000 })
+      const removeFavorite = toolbar.getByRole('button', {
+        name: '즐겨찾기에서 제거'
+      })
+      await expect(removeFavorite).toBeVisible()
 
-      // Pressing it again takes the page back out.
+      // The same accessible control deterministically takes the page back out.
+      await removeFavorite.click()
+      await expect(bookmark).toHaveCount(0)
+
+      // Playwright cannot inject a chord into the guest's before-input-event,
+      // but the shortcut must still work while focus is in host browser chrome.
+      await focusBrowserChrome(page)
+      await page.keyboard.press('Meta+KeyD')
+      await expect(bookmark).toBeVisible({ timeout: 10_000 })
+      await focusBrowserChrome(page)
       await page.keyboard.press('Meta+KeyD')
       await expect(bookmark).toHaveCount(0)
     } finally {

@@ -39,18 +39,20 @@ test.describe('cold launch', () => {
       }
     })
     await createCourse(page, '고체역학')
-    await page.waitForTimeout(1200)
+
+    // The signed-out card is the stable post-create DOM state. Waiting for it
+    // replaces a clock delay and verifies the real entry point students see.
+    const together = page.getByRole('region', { name: '함께하기' })
+    await expect(together).toContainText('친구들과 같이 하려면 로그인해요')
+    await expect(
+      together.getByRole('button', { name: '로그인', exact: true })
+    ).toBeVisible()
 
     // Every one of these would open the keychain on a signed-in machine.
     const calls = await page.evaluate(
       () => (window as unknown as { __authCalls: number }).__authCalls
     )
     expect(calls).toBe(0)
-
-    // And the way back in is still offered, without claiming to be signed out.
-    await expect(
-      page.getByRole('button', { name: '함께하기 시작하기' })
-    ).toBeVisible()
   })
 
   test('a new browser tab opens with chrome, named as one', async () => {
