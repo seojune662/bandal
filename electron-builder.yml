@@ -27,11 +27,12 @@ files:
   - out/**
   - package.json
   # better-sqlite3 13 loads a platform-specific Node-API binary from
-  # prebuilds/ through lib/binding.js. Keep those prebuilds here; strip the
-  # source and fallback build trees, then remove other platforms below.
+  # prebuilds/ through lib/binding.js. Keep the small darwin and win32 sets for
+  # both release platforms; strip Linux prebuilds and source/fallback trees.
   - '!node_modules/better-sqlite3/deps/**'
   - '!node_modules/better-sqlite3/src/**'
   - '!node_modules/better-sqlite3/build/**'
+  - '!node_modules/better-sqlite3/prebuilds/linux*'
 
 # The Korean-capable font used to burn text-box markup into exported PDFs.
 # pdf-lib's built-in Helvetica is WinAnsi-only, so without this every Hangul
@@ -84,9 +85,6 @@ mac:
       arch:
         - arm64
         - x64
-  files:
-    - '!node_modules/better-sqlite3/prebuilds/linux*'
-    - '!node_modules/better-sqlite3/prebuilds/win32*'
   icon: resources/icon.icns
   category: public.app-category.education
   minimumSystemVersion: '12.0'
@@ -117,9 +115,6 @@ win:
     - target: nsis
       arch:
         - x64
-  files:
-    - '!node_modules/better-sqlite3/prebuilds/darwin*'
-    - '!node_modules/better-sqlite3/prebuilds/linux*'
   icon: resources/icon.ico
   # Unsigned for now — SmartScreen will show "unknown publisher" on first run.
   # To sign later, add either `azureSignOptions:` (Azure Trusted Signing) or
