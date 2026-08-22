@@ -9,7 +9,11 @@ import {
   playbackRateForVideoRestore,
   positionForVideoRestore,
   registerVideoProgressFlushTriggers,
+  resumeProgress,
+  isProgressSuspended,
+  suspendProgress,
   VIDEO_PROGRESS_INTERVAL_MS,
+  videoProgressKey,
   type VideoProgressSnapshot
 } from '../../../src/renderer/src/features/file/lib/videoProgress'
 
@@ -98,6 +102,17 @@ describe('video progress session memory', () => {
       'course\u0000c.mp4',
       'course\u0000a.mp4'
     ])
+  })
+})
+
+describe('video progress handoff', () => {
+  test('suspends and resumes persistence by material key', () => {
+    const key = videoProgressKey('course', 'week/lecture.mp4')
+
+    suspendProgress(key)
+    expect(isProgressSuspended(key)).toBe(true)
+    resumeProgress(key)
+    expect(isProgressSuspended(key)).toBe(false)
   })
 })
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 import { onPush } from '../lib/ipc'
 import { AssistantLayer } from '../features/assistant'
 import { BoardOverlay } from '../features/board/BoardPanel'
@@ -25,6 +26,9 @@ import { useUiStore } from '../stores/uiStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useDownloads } from '../features/browser/downloadsStore'
 import { useAgentRuns } from '../features/browser/AgentRunBanner'
+import { useBrowserGuests } from '../features/browser/browserGuestsStore'
+import { requestWebVideoResume } from '../features/browser/videoBridge'
+import { requestVideoResume } from '../features/file/lib/videoProgress'
 import { useUniversityStore } from '../stores/universityStore'
 import { QuickFileSearch } from './QuickFileSearch'
 import { useGlobalShortcuts } from './shortcuts'
@@ -46,6 +50,10 @@ export function AppShell(): JSX.Element {
   const [pendingChat, setPendingChat] = useState<{
     courseId: string
     conversationId: string
+  } | null>(null)
+  const [pendingMaterial, setPendingMaterial] = useState<{
+    courseId: string
+    relPath: string
   } | null>(null)
   const initTheme = useUiStore((state) => state.initTheme)
   const leftRailOpen = useUiStore((state) => state.leftRailOpen)
@@ -120,6 +128,54 @@ export function AppShell(): JSX.Element {
   }, [selectCourse])
 
   useEffect(() => {
+    return onPush('ui:openMaterial', (payload) => {
+      requestVideoResume(payload.courseId, payload.relPath, {
+        positionSec: payload.positionSec,
+        playbackRate: payload.playbackRate
+      })
+      setPendingMaterial({
+        courseId: payload.courseId,
+        relPath: payload.relPath
+      })
+      selectCourse(payload.courseId)
+    })
+  }, [selectCourse])
+
+  useEffect(() => {
+    return onPush('ui:openUrl', (payload) => {
+      const workspace = useWorkspaceStore.getState()
+      const browser = useBrowserGuests.getState()
+      const normalizedUrl = (() => {
+        try {
+          return new URL(payload.url).href
+        } catch {
+          return payload.url
+        }
+      })()
+      const existing = Object.values(workspace.openTabs).find((descriptor) => {
+        if (descriptor.kind !== 'browser') return false
+        const currentUrl =
+          browser.nav[descriptor.payload.tabId]?.url ??
+          descriptor.payload.initialUrl
+        try {
+          return new URL(currentUrl).href === normalizedUrl
+        } catch {
+          return currentUrl === normalizedUrl
+        }
+      })
+      const tabId =
+        existing?.kind === 'browser' ? existing.payload.tabId : uuidv4()
+      requestWebVideoResume(tabId, {
+        positionSec: payload.positionSec,
+        playbackRate: payload.playbackRate
+      })
+      workspace.openTab(
+        descriptorFor('browser', { tabId, initialUrl: payload.url })
+      )
+    })
+  }, [])
+
+  useEffect(() => {
     if (pendingChat === null) return
     if (selectedCourseId !== pendingChat.courseId) {
       if (courses.some((course) => course.id === pendingChat.courseId)) {
@@ -150,6 +206,42 @@ export function AppShell(): JSX.Element {
     courses,
     openTab,
     pendingChat,
+    selectCourse,
+    selectedCourseId,
+    workspaceHydration
+  ])
+
+  useEffect(() => {
+    if (pendingMaterial === null) return
+    if (selectedCourseId !== pendingMaterial.courseId) {
+      if (courses.some((course) => course.id === pendingMaterial.courseId)) {
+        selectCourse(pendingMaterial.courseId)
+      }
+      return
+    }
+    if (
+      activeWorkspaceCourseId !== pendingMaterial.courseId ||
+      workspaceHydration !== 'ready'
+    ) {
+      return
+    }
+    openTab(
+      descriptorFor('file', {
+        courseId: pendingMaterial.courseId,
+        relPath: pendingMaterial.relPath
+      })
+    )
+    setPendingMaterial((current) =>
+      current?.courseId === pendingMaterial.courseId &&
+      current.relPath === pendingMaterial.relPath
+        ? null
+        : current
+    )
+  }, [
+    activeWorkspaceCourseId,
+    courses,
+    openTab,
+    pendingMaterial,
     selectCourse,
     selectedCourseId,
     workspaceHydration

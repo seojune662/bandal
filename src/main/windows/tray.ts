@@ -40,8 +40,10 @@ function trayIconPath(): string {
 export function installTray(deps: TrayDeps): {
   refresh(): void
   destroy(): void
+  setIconVariant(dir: string): void
 } {
   let tray: Tray | null = null
+  let iconVariantDir: string | null = null
 
   const runAction = (action: TrayAction): void => {
     switch (action) {
@@ -82,6 +84,24 @@ export function installTray(deps: TrayDeps): {
     tray = null
   }
 
+  function setIconVariant(dir: string): void {
+    iconVariantDir = dir
+    if (tray === null) return
+
+    try {
+      const image = nativeImage.createFromPath(
+        join(dir, process.platform === 'win32' ? 'tray.ico' : 'trayTemplate.png')
+      )
+      if (process.platform !== 'win32') image.setTemplateImage(true)
+      tray.setImage(image)
+    } catch (error) {
+      console.warn(
+        '[tray] failed to update tray icon; keeping the current icon:',
+        error
+      )
+    }
+  }
+
   function sync(settings = deps.getSettings()): void {
     if (settings.assistantMode !== 'desktop') {
       destroy()
@@ -105,10 +125,11 @@ export function installTray(deps: TrayDeps): {
       }
       tray.setToolTip('반달')
       if (process.platform === 'win32') tray.on('click', deps.openMain)
+      if (iconVariantDir !== null) setIconVariant(iconVariantDir)
     }
     tray.setContextMenu(Menu.buildFromTemplate(menuTemplate(settings)))
   }
 
   sync()
-  return { refresh: sync, destroy }
+  return { refresh: sync, destroy, setIconVariant }
 }

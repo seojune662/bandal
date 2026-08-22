@@ -26,6 +26,7 @@ import { usePrintStore } from '../print/printStore'
 import { acquirePointerPassthrough } from './webviewPassthrough'
 import { resolveAddressInput } from './urlInput'
 import { v4 as uuidv4 } from 'uuid'
+import { openWebVideoInPip } from './videoBridge'
 
 export interface BrowserContextMenuState {
   /** Host-viewport coordinates, already offset. */
@@ -43,6 +44,8 @@ export interface BrowserContextMenuState {
   guestY: number
   /** Page title, for the clip's source line. */
   pageTitle: string
+  /** Reporter saw a page video, even if the pointer is elsewhere. */
+  hasPlayingVideo: boolean
   /** Course a clip would be filed under; null = no course selected. */
   courseId: string | null
 }
@@ -53,6 +56,7 @@ export type ContextMenuItemId =
   | 'save-link'
   | 'copy-image'
   | 'save-image'
+  | 'pip-video'
   | 'copy-selection'
   | 'cut-selection'
   | 'paste'
@@ -75,7 +79,7 @@ export function contextMenuItems(
   state: Pick<
     BrowserContextMenuState,
     'linkURL' | 'srcURL' | 'mediaType' | 'selectionText' | 'isEditable'
-  > & { courseId: string | null }
+  > & { courseId: string | null; hasPlayingVideo?: boolean }
 ): ContextMenuItemId[] {
   const items: ContextMenuItemId[] = []
   if (state.linkURL !== '') {
@@ -83,6 +87,9 @@ export function contextMenuItems(
   }
   if (state.mediaType === 'image' && state.srcURL !== '') {
     items.push('copy-image', 'save-image')
+  }
+  if (state.mediaType === 'video' || state.hasPlayingVideo === true) {
+    items.push('pip-video')
   }
   // Korean students paste 학번 into portal fields constantly, and this menu
   // used to offer them 새로고침 · 페이지 주소 복사 · 검사 — nothing usable.
@@ -179,6 +186,17 @@ export function BrowserContextMenu({
     'save-image': {
       label: '이미지를 자료로 저장',
       run: () => guestActions.download(tabId, state.srcURL)
+    },
+    'pip-video': {
+      label: '영상을 작은 창으로',
+      run: () => {
+        void openWebVideoInPip(tabId, {
+          url: state.pageURL,
+          title: state.pageTitle
+        }).catch(() => {
+          showToast('작은 창을 열지 못했어요.', 'danger')
+        })
+      }
     },
     'copy-selection': {
       label: '복사',

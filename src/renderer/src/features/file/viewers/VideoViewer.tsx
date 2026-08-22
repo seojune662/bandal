@@ -1,17 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { showToast } from '../../../app/toast'
-import { invoke } from '../../../lib/ipc'
+import { invoke, onPush } from '../../../lib/ipc'
+import { BrowserIcon } from '../../browser/browserIcons'
 import { mediaUrlFor } from '../../materials/mediaUrl'
 import {
   createVideoSaveTiming,
+  isProgressSuspended,
+  onVideoResume,
   planVideoDebouncedSave,
   planVideoTimeUpdate,
   playbackRateForVideoRestore,
   positionForVideoRestore,
   registerVideoProgressFlushTriggers,
+  resumeProgress,
+  suspendProgress,
+  takeVideoResume,
   VIDEO_PLAYBACK_RATES,
+  videoProgressKey,
   videoProgressMemory,
   type VideoPlaybackRate,
+  type VideoResumeRequest,
   type VideoProgressSnapshot
 } from '../lib/videoProgress'
 
@@ -40,12 +48,31 @@ function snapshotForVideo(video: HTMLVideoElement): VideoProgressSnapshot {
   }
 }
 
+export function VideoHandoffOverlay({
+  visible
+}: {
+  visible: boolean
+}): JSX.Element | null {
+  if (!visible) return null
+  return (
+    <div
+      className="file-video__handoff"
+      role="status"
+      data-handed-off="true"
+    >
+      <BrowserIcon name="pip" />
+      <span>작은 창에서 재생 중</span>
+    </div>
+  )
+}
+
 export function VideoViewer({
   courseId,
   relPath
 }: VideoViewerProps): JSX.Element {
   const [status, setStatus] = useState<VideoStatus>('loading')
   const [revealing, setRevealing] = useState(false)
+  const [handedOff, setHandedOff] = useState(false)
   const [playbackRate, setPlaybackRate] = useState<VideoPlaybackRate>(1)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const aliveRef = useRef(true)
@@ -57,6 +84,7 @@ export function VideoViewer({
   const timingRef = useRef(createVideoSaveTiming())
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const src = mediaUrlFor(courseId, relPath)
+  const progressKey = videoProgressKey(courseId, relPath)
 
   const clearSaveTimer = useCallback((): void => {
     if (saveTimerRef.current === null) return
@@ -76,7 +104,7 @@ export function VideoViewer({
 
   const flushProgress = useCallback((): void => {
     clearSaveTimer()
-    if (!progressReadyRef.current) return
+    if (!progressReadyRef.current || isProgressSuspended(progressKey)) return
 
     const nowMs = Date.now()
     timingRef.current = {
@@ -93,7 +121,7 @@ export function VideoViewer({
       relPath,
       ...progress
     }).catch(() => undefined)
-  }, [clearSaveTimer, courseId, relPath, rememberProgress])
+  }, [clearSaveTimer, courseId, progressKey, relPath, rememberProgress])
 
   const scheduleProgressFlush = useCallback(
     (dueAtMs: number): void => {
@@ -107,12 +135,50 @@ export function VideoViewer({
   )
 
   const scheduleDebouncedProgressFlush = useCallback((): void => {
+    if (isProgressSuspended(progressKey)) return
     const timing = planVideoDebouncedSave(timingRef.current, Date.now())
     timingRef.current = timing
     if (timing.ipcDueAtMs !== null) {
       scheduleProgressFlush(timing.ipcDueAtMs)
     }
-  }, [scheduleProgressFlush])
+  }, [progressKey, scheduleProgressFlush])
+
+  const applyResume = useCallback(
+    (video: HTMLVideoElement, request: VideoResumeRequest): void => {
+      const duration = Number.isFinite(video.duration) ? video.duration : null
+      const position = Number.isFinite(request.positionSec)
+        ? Math.max(
+            0,
+            duration === null
+              ? request.positionSec
+              : Math.min(request.positionSec, duration)
+          )
+        : 0
+      const rate = playbackRateForVideoRestore(request.playbackRate)
+
+      resumeProgress(progressKey)
+      clearSaveTimer()
+      setHandedOff(false)
+      video.playbackRate = rate
+      video.currentTime = position
+      setPlaybackRate(rate)
+      const resumedProgress: VideoProgressSnapshot = {
+        positionSec: position,
+        durationSec: duration,
+        playbackRate: rate
+      }
+      latestProgressRef.current = resumedProgress
+      videoProgressMemory.set(courseId, relPath, resumedProgress)
+      timingRef.current = {
+        lastMemoryWriteAtMs: Date.now(),
+        ipcDueAtMs: null
+      }
+      progressReadyRef.current = true
+      setStatus('ready')
+      void video.play().catch(() => undefined)
+    },
+    [clearSaveTimer, courseId, progressKey, relPath]
+  )
 
   const restoreProgress = useCallback(
     async (video: HTMLVideoElement): Promise<void> => {
@@ -134,6 +200,12 @@ export function VideoViewer({
         videoRef.current !== video ||
         video.error !== null
       ) {
+        return
+      }
+
+      const resumeRequest = takeVideoResume(progressKey)
+      if (resumeRequest !== null) {
+        applyResume(video, resumeRequest)
         return
       }
 
@@ -168,12 +240,12 @@ export function VideoViewer({
       progressReadyRef.current = true
       setStatus('ready')
     },
-    [courseId, relPath]
+    [applyResume, courseId, progressKey, relPath]
   )
 
   const handleTimeUpdate = useCallback(
     (video: HTMLVideoElement): void => {
-      if (!progressReadyRef.current) return
+      if (!progressReadyRef.current || isProgressSuspended(progressKey)) return
 
       const progress = snapshotForVideo(video)
       latestProgressRef.current = progress
@@ -186,7 +258,7 @@ export function VideoViewer({
         scheduleProgressFlush(plan.timing.ipcDueAtMs)
       }
     },
-    [courseId, relPath, scheduleProgressFlush]
+    [courseId, progressKey, relPath, scheduleProgressFlush]
   )
 
   const handleRateChange = useCallback(
@@ -244,15 +316,72 @@ export function VideoViewer({
       dispose()
       flushProgress()
       clearSaveTimer()
+      resumeProgress(progressKey)
       aliveRef.current = false
     }
-  }, [clearSaveTimer, flushProgress])
+  }, [clearSaveTimer, flushProgress, progressKey])
+
+  useEffect(
+    () =>
+      onVideoResume(progressKey, () => {
+        const video = videoRef.current
+        if (video === null || !progressReadyRef.current) return
+        const request = takeVideoResume(progressKey)
+        if (request !== null) applyResume(video, request)
+      }),
+    [applyResume, progressKey]
+  )
+
+  useEffect(
+    () =>
+      onPush('pip:state', (state) => {
+        if (state.open) return
+        resumeProgress(progressKey)
+        setHandedOff(false)
+      }),
+    [progressKey]
+  )
+
+  const openPip = useCallback((): void => {
+    const video = videoRef.current
+    if (video === null || status !== 'ready' || handedOff) return
+    const paused = video.paused
+    const positionSec = Number.isFinite(video.currentTime)
+      ? Math.max(0, video.currentTime)
+      : 0
+    const rate =
+      Number.isFinite(video.playbackRate) && video.playbackRate > 0
+        ? video.playbackRate
+        : 1
+
+    suspendProgress(progressKey)
+    clearSaveTimer()
+    setHandedOff(true)
+    video.pause()
+    void invoke('pip:open', {
+      source: {
+        kind: 'local',
+        courseId,
+        relPath,
+        title: videoName(relPath)
+      },
+      positionSec,
+      playbackRate: rate,
+      paused
+    }).catch(() => {
+      resumeProgress(progressKey)
+      setHandedOff(false)
+      if (!paused) void video.play().catch(() => undefined)
+      showToast('작은 창을 열지 못했어요.', 'danger')
+    })
+  }, [clearSaveTimer, courseId, handedOff, progressKey, relPath, status])
 
   return (
     <div
       className="file-video"
       role="region"
       aria-label={`${videoName(relPath)} 동영상`}
+      data-handed-off={handedOff ? 'true' : undefined}
     >
       <video
         ref={videoRef}
@@ -260,8 +389,8 @@ export function VideoViewer({
         controls
         src={src}
         preload="metadata"
-        aria-hidden={status === 'ready' ? undefined : true}
-        tabIndex={status === 'ready' ? 0 : -1}
+        aria-hidden={status === 'ready' && !handedOff ? undefined : true}
+        tabIndex={status === 'ready' && !handedOff ? 0 : -1}
         data-visible={status === 'ready' || undefined}
         onLoadedMetadata={(event) => {
           void restoreProgress(event.currentTarget)
@@ -303,8 +432,17 @@ export function VideoViewer({
         }}
       />
 
-      {status === 'ready' && (
-        <div className="file-video__rate-control">
+      {status === 'ready' && !handedOff && (
+        <div className="file-video__toolbar">
+          <button
+            type="button"
+            className="file-video__pip"
+            aria-label="작은 창으로 보기"
+            onClick={openPip}
+          >
+            <BrowserIcon name="pip" />
+            <span>PiP</span>
+          </button>
           <select
             className="file-video__rate"
             aria-label="재생 속도"
@@ -326,6 +464,8 @@ export function VideoViewer({
           </select>
         </div>
       )}
+
+      <VideoHandoffOverlay visible={handedOff} />
 
       {status === 'loading' && (
         <div className="file-status file-video__status" role="status">

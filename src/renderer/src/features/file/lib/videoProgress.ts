@@ -33,6 +33,11 @@ export interface VideoTimeUpdatePlan {
   writeMemory: boolean
 }
 
+export interface VideoResumeRequest {
+  positionSec: number
+  playbackRate: number
+}
+
 interface VideoFlushTriggers {
   windowTarget: EventTarget
   documentTarget: EventTarget
@@ -40,8 +45,53 @@ interface VideoFlushTriggers {
   flush: () => void
 }
 
-const keyFor = (courseId: string, relPath: string): string =>
+export const videoProgressKey = (courseId: string, relPath: string): string =>
   `${courseId}\u0000${relPath}`
+
+const suspendedProgress = new Set<string>()
+const pendingResumes = new Map<string, VideoResumeRequest>()
+const resumeListeners = new Map<string, Set<() => void>>()
+
+/** PiP가 파일을 소유하는 동안 원래 탭의 저장을 멈춘다. */
+export function suspendProgress(key: string): void {
+  suspendedProgress.add(key)
+}
+
+export function resumeProgress(key: string): void {
+  suspendedProgress.delete(key)
+}
+
+export function isProgressSuspended(key: string): boolean {
+  return suspendedProgress.has(key)
+}
+
+/** PiP에서 돌아온 위치를 열린 뷰어나 다음에 열릴 뷰어에 한 번 전달한다. */
+export function requestVideoResume(
+  courseId: string,
+  relPath: string,
+  request: VideoResumeRequest
+): void {
+  const key = videoProgressKey(courseId, relPath)
+  pendingResumes.set(key, request)
+  resumeProgress(key)
+  for (const listener of resumeListeners.get(key) ?? []) listener()
+}
+
+export function takeVideoResume(key: string): VideoResumeRequest | null {
+  const request = pendingResumes.get(key) ?? null
+  pendingResumes.delete(key)
+  return request
+}
+
+export function onVideoResume(key: string, listener: () => void): () => void {
+  const listeners = resumeListeners.get(key) ?? new Set<() => void>()
+  listeners.add(listener)
+  resumeListeners.set(key, listeners)
+  return () => {
+    listeners.delete(listener)
+    if (listeners.size === 0) resumeListeners.delete(key)
+  }
+}
 
 /** Creates an isolated session LRU. Exported so its eviction behavior is testable. */
 export function createVideoProgressMemory(
@@ -51,7 +101,7 @@ export function createVideoProgressMemory(
 
   return {
     get(courseId, relPath) {
-      const key = keyFor(courseId, relPath)
+      const key = videoProgressKey(courseId, relPath)
       const progress = entries.get(key)
       if (progress === undefined) return null
       entries.delete(key)
@@ -59,7 +109,7 @@ export function createVideoProgressMemory(
       return progress
     },
     set(courseId, relPath, progress) {
-      const key = keyFor(courseId, relPath)
+      const key = videoProgressKey(courseId, relPath)
       entries.delete(key)
       entries.set(key, progress)
       while (entries.size > capacity) {

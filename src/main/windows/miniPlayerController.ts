@@ -1,0 +1,365 @@
+import { screen, type BrowserWindow } from 'electron'
+import { join } from 'node:path'
+import type { PushChannel, PushPayload } from '../../shared/ipc/events'
+import type {
+  PipOpenRequest,
+  PipRestorePayload,
+  PipSource,
+  PipState
+} from '../../shared/types/pip'
+import { clampToArea, type Rect } from './overlayGeometry'
+import {
+  createLocalPipWindow,
+  createWebPipWindow,
+  loadLocalPipView,
+  MINI_PLAYER_DEFAULT_SIZE,
+  MINI_PLAYER_MIN_SIZE
+} from './miniPlayerWindow'
+import { createMiniPlayerToolbar } from './miniPlayerToolbar'
+import { createWindowStateStore } from './windowBounds'
+
+const STATE_FILE = 'mini-player-state.json'
+const DEFAULT_MARGIN = 24
+const WEB_POSITION_POLL_MS = 3_000
+const DEFAULT_ASPECT = 16 / 9
+
+export interface MiniPlayerDeps {
+  preloadPath: string
+  userDataPath: string
+  windowBackground(): string
+  broadcast<K extends PushChannel>(ch: K, p: PushPayload<K>): void
+  openInTab(url: string): void
+  now?: () => number
+}
+
+export interface MiniPlayerReport {
+  positionSec: number
+  playbackRate: number
+  paused: boolean
+  /** Optional until the shared pip:report contract gains the same field. */
+  aspect?: number
+}
+
+export interface MiniPlayerController {
+  open(req: PipOpenRequest): void
+  close(): void
+  restore(): void
+  getState(): PipState
+  report(p: MiniPlayerReport): void
+  isAlive(): boolean
+  markQuitting(): void
+}
+
+interface ActivePlayer {
+  window: BrowserWindow
+  toolbar: BrowserWindow | null
+  source: PipSource
+  allowClose: boolean
+}
+
+function finiteNonNegative(value: number, fallback: number): number {
+  return Number.isFinite(value) && value >= 0 ? value : fallback
+}
+
+function finitePlaybackRate(value: number, fallback: number): number {
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+function youtubeStartUrl(url: string, positionSec: number): string {
+  try {
+    const parsed = new URL(url)
+    const host = parsed.hostname.toLowerCase()
+    const youtube =
+      host === 'youtube.com' ||
+      host.endsWith('.youtube.com') ||
+      host === 'youtu.be' ||
+      host.endsWith('.youtu.be')
+    if (!youtube) return url
+    parsed.searchParams.set('t', String(Math.floor(positionSec)))
+    return parsed.toString()
+  } catch {
+    return url
+  }
+}
+
+/** Electron-free URL helper kept public for the controller's boundary tests. */
+export function withYoutubeStartTime(
+  url: string,
+  positionSec: number
+): string {
+  return youtubeStartUrl(url, finiteNonNegative(positionSec, 0))
+}
+
+export function createMiniPlayerController(
+  deps: MiniPlayerDeps
+): MiniPlayerController {
+  const boundsStore = createWindowStateStore({
+    file: join(deps.userDataPath, STATE_FILE),
+    minWidth: MINI_PLAYER_MIN_SIZE.width,
+    minHeight: MINI_PLAYER_MIN_SIZE.height
+  })
+
+  let active: ActivePlayer | null = null
+  let positionSec = 0
+  let playbackRate = 1
+  let paused = true
+  let pollTimer: NodeJS.Timeout | null = null
+  let quitting = false
+
+  const getState = (): PipState => ({
+    open: active !== null,
+    source: active?.source ?? null,
+    positionSec,
+    playbackRate
+  })
+
+  const broadcastState = (): void => {
+    deps.broadcast('pip:state', getState())
+  }
+
+  const stopPolling = (): void => {
+    if (pollTimer === null) return
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+
+  const resetClosedState = (): void => {
+    positionSec = 0
+    playbackRate = 1
+    paused = true
+  }
+
+  const destroyToolbar = (player: ActivePlayer): void => {
+    const toolbar = player.toolbar
+    player.toolbar = null
+    if (toolbar !== null && !toolbar.isDestroyed()) toolbar.destroy()
+  }
+
+  const finishUnexpectedClose = (player: ActivePlayer): void => {
+    if (active !== player) return
+    stopPolling()
+    destroyToolbar(player)
+    active = null
+    resetClosedState()
+    broadcastState()
+  }
+
+  const closePlayer = (player: ActivePlayer): void => {
+    player.allowClose = true
+    if (active === player) {
+      stopPolling()
+      destroyToolbar(player)
+      active = null
+      resetClosedState()
+      broadcastState()
+    }
+    if (!player.window.isDestroyed()) player.window.close()
+  }
+
+  const initialBounds = (): Rect => {
+    const saved = boundsStore.read().bounds
+    if (saved !== null) return saved
+    const area = screen.getPrimaryDisplay().workArea
+    return clampToArea(
+      {
+        x:
+          area.x +
+          area.width -
+          MINI_PLAYER_DEFAULT_SIZE.width -
+          DEFAULT_MARGIN,
+        y:
+          area.y +
+          area.height -
+          MINI_PLAYER_DEFAULT_SIZE.height -
+          DEFAULT_MARGIN,
+        ...MINI_PLAYER_DEFAULT_SIZE
+      },
+      area
+    )
+  }
+
+  const sendInitialLocalSeek = (player: ActivePlayer): void => {
+    player.window.webContents.once('did-finish-load', () => {
+      if (active !== player || player.window.webContents.isDestroyed()) return
+      deps.broadcast('pip:seek', {
+        positionSec,
+        playbackRate,
+        play: !paused
+      })
+    })
+  }
+
+  const initializeWebVideo = (player: ActivePlayer): void => {
+    const script = `(() => {
+      const video = document.querySelector('video')
+      if (!(video instanceof HTMLVideoElement)) return false
+      video.currentTime = ${JSON.stringify(positionSec)}
+      video.playbackRate = ${JSON.stringify(playbackRate)}
+      if (${JSON.stringify(paused)}) video.pause()
+      else void video.play()
+      return true
+    })()`
+    try {
+      void player.window.webContents.executeJavaScript(script, true).catch(() => {
+        // Some sites replace their player during load. The polling loop still
+        // captures a later video, and a navigation will run this hook again.
+      })
+    } catch {
+      // The window may have been destroyed between did-finish-load and here.
+    }
+  }
+
+  const pollWebPosition = (player: ActivePlayer): void => {
+    if (active !== player || player.window.isDestroyed()) return
+    try {
+      void player.window.webContents
+        .executeJavaScript(
+          `(() => {
+            const video = document.querySelector('video')
+            return video instanceof HTMLVideoElement ? video.currentTime : null
+          })()`
+        )
+        .then((value: unknown) => {
+          if (active !== player) return
+          if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+            return
+          }
+          positionSec = value
+          broadcastState()
+        })
+        .catch(() => undefined)
+    } catch {
+      // A close racing the interval is expected and requires no recovery.
+    }
+  }
+
+  const startWebPlaybackTracking = (player: ActivePlayer): void => {
+    player.window.webContents.on('did-finish-load', () => {
+      if (active !== player) return
+      initializeWebVideo(player)
+      stopPolling()
+      pollTimer = setInterval(
+        () => pollWebPosition(player),
+        WEB_POSITION_POLL_MS
+      )
+    })
+  }
+
+  const showWhenReady = (player: ActivePlayer): void => {
+    player.window.once('ready-to-show', () => {
+      if (active !== player || player.window.isDestroyed()) return
+      player.window.show()
+      const toolbar = player.toolbar
+      if (toolbar !== null && !toolbar.isDestroyed()) toolbar.showInactive()
+    })
+  }
+
+  const open = (request: PipOpenRequest): void => {
+    if (active !== null) closePlayer(active)
+
+    positionSec = finiteNonNegative(request.positionSec, 0)
+    playbackRate = finitePlaybackRate(request.playbackRate, 1)
+    paused = request.paused ?? false
+
+    const bounds = initialBounds()
+    const window =
+      request.source.kind === 'local'
+        ? createLocalPipWindow({
+            bounds,
+            preload: deps.preloadPath,
+            backgroundColor: deps.windowBackground()
+          })
+        : createWebPipWindow({ bounds, openInTab: deps.openInTab })
+    const player: ActivePlayer = {
+      window,
+      toolbar: null,
+      source: request.source,
+      allowClose: quitting
+    }
+    active = player
+
+    window.on('close', (event) => {
+      if (!player.allowClose && !quitting) event.preventDefault()
+    })
+    window.on('closed', () => finishUnexpectedClose(player))
+    boundsStore.track(window)
+    window.setAspectRatio(DEFAULT_ASPECT)
+    showWhenReady(player)
+
+    if (request.source.kind === 'local') {
+      sendInitialLocalSeek(player)
+      loadLocalPipView(window, request.source)
+    } else {
+      player.toolbar = createMiniPlayerToolbar({
+        pipWindow: window,
+        preload: deps.preloadPath
+      })
+      startWebPlaybackTracking(player)
+      void window.loadURL(
+        withYoutubeStartTime(request.source.url, positionSec)
+      )
+    }
+
+    broadcastState()
+  }
+
+  const close = (): void => {
+    if (active !== null) closePlayer(active)
+  }
+
+  const restore = (): void => {
+    const player = active
+    if (player === null) return
+    const payload: PipRestorePayload = {
+      source: player.source,
+      positionSec,
+      playbackRate
+    }
+    if (payload.source.kind === 'local') {
+      deps.broadcast('ui:openMaterial', {
+        courseId: payload.source.courseId,
+        relPath: payload.source.relPath,
+        positionSec: payload.positionSec,
+        playbackRate: payload.playbackRate
+      })
+    } else {
+      deps.broadcast('ui:openUrl', {
+        url: payload.source.url,
+        positionSec: payload.positionSec,
+        playbackRate: payload.playbackRate
+      })
+    }
+    closePlayer(player)
+  }
+
+  const report = (reportPayload: MiniPlayerReport): void => {
+    const player = active
+    if (player === null || player.source.kind !== 'local') return
+    positionSec = finiteNonNegative(reportPayload.positionSec, positionSec)
+    playbackRate = finitePlaybackRate(reportPayload.playbackRate, playbackRate)
+    paused = reportPayload.paused
+    const aspect = reportPayload.aspect
+    if (aspect !== undefined && Number.isFinite(aspect) && aspect > 0) {
+      player.window.setAspectRatio(aspect)
+    }
+    broadcastState()
+  }
+
+  const isAlive = (): boolean =>
+    active !== null && !active.window.isDestroyed()
+
+  const markQuitting = (): void => {
+    quitting = true
+    if (active !== null) active.allowClose = true
+  }
+
+  return {
+    open,
+    close,
+    restore,
+    getState,
+    report,
+    isAlive,
+    markQuitting
+  }
+}

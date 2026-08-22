@@ -187,7 +187,7 @@ function noteBlocked(
 }
 
 /** The hardened preferences every real popup window gets. */
-function popupWebPreferences(): Electron.WebPreferences {
+export function popupWebPreferences(): Electron.WebPreferences {
   return {
     partition: BROWSING_PARTITION,
     nodeIntegration: false,
@@ -322,50 +322,65 @@ async function chooseCertificate(
   return list[response - 1] ?? null
 }
 
+const navigationHosts = new WeakMap<WebContents, WebContents>()
+const backgroundTabOpens = new WeakSet<WebContents>()
+
+function navigationHost(webContents: WebContents): WebContents {
+  const registered = navigationHosts.get(webContents)
+  if (registered !== undefined) return registered
+  return BrowserWindow.fromWebContents(webContents)?.webContents ?? webContents
+}
+
+function handOffExternalAuth(webContents: WebContents, url: string): void {
+  void shell.openExternal(url)
+  const host = navigationHost(webContents)
+  if (!host.isDestroyed()) {
+    const payload: BrowserOpenUrl = { url }
+    host.send('browser:external-auth', payload)
+  }
+}
+
 /**
- * Per-guest policies, attached the moment a webview's WebContents exists —
- * waiting for renderer-side registration would race early redirects.
+ * Navigation, popup and browser-native prompt policies shared by webviews and
+ * standalone site windows. Keeping this independent from a webview host lets
+ * the mini player use the exact same main-frame and window.open guards.
  */
-function attachGuestPolicies(host: WebContents, guest: WebContents): void {
+export function attachNavigationPolicies(
+  webContents: WebContents,
+  opts: { openInTab: (url: string) => void }
+): void {
   // Google-blocked login origins never load in a guest — hand them to the
   // system browser and tell the renderer so the tab can explain why.
-  const handOffExternalAuth = (url: string): void => {
-    void shell.openExternal(url)
-    if (!host.isDestroyed()) {
-      const payload: BrowserOpenUrl = { url }
-      host.send('browser:external-auth', payload)
-    }
-  }
-
   const navigationGuard = (event: ElectronEvent, url: string): void => {
     if (isBlockedEmbeddedAuthUrl(url)) {
       event.preventDefault()
-      handOffExternalAuth(url)
+      handOffExternalAuth(webContents, url)
       return
     }
     if (isNavigationAllowed(url)) return
     event.preventDefault()
     // `will-navigate` is main-frame only, so a subframe or ad cannot reach
     // this — the dialog is only ever offered for a top-level attempt.
-    void offerExternalScheme(host, guest, url)
+    void offerExternalScheme(navigationHost(webContents), webContents, url)
   }
-  guest.on('will-navigate', navigationGuard)
-  guest.on('will-redirect', navigationGuard)
+  webContents.on('will-navigate', navigationGuard)
+  webContents.on('will-redirect', navigationGuard)
 
-  guest.setWindowOpenHandler((details) => {
+  webContents.setWindowOpenHandler((details) => {
     const decision = decidePopup({
-      openerUrl: guest.getURL(),
+      openerUrl: webContents.getURL(),
       targetUrl: details.url
     })
 
     if (decision.kind === 'external') {
-      handOffExternalAuth(details.url)
+      handOffExternalAuth(webContents, details.url)
       return { action: 'deny' }
     }
 
     if (decision.kind === 'window') {
-      const admission = popupLimiter.admit(guest.id)
+      const admission = popupLimiter.admit(webContents.id)
       if (!admission.ok) {
+        const host = navigationHost(webContents)
         noteBlocked(host, 'popup', details.url, admission.reason)
         if (!host.isDestroyed()) {
           host.send('browser:popup-blocked', {
@@ -389,60 +404,27 @@ function attachGuestPolicies(host: WebContents, guest: WebContents): void {
     }
 
     if (decision.kind === 'tab') {
-      if (!host.isDestroyed()) {
-        const payload: BrowserOpenUrl = {
-          url: decision.url,
-          background: details.disposition === 'background-tab'
-        }
-        host.send('browser:open-url', payload)
+      const background = details.disposition === 'background-tab'
+      if (background) backgroundTabOpens.add(webContents)
+      try {
+        opts.openInTab(decision.url)
+      } finally {
+        if (background) backgroundTabOpens.delete(webContents)
       }
       return { action: 'deny' }
     }
 
     if (decision.kind === 'scheme') {
-      void offerExternalScheme(host, guest, details.url)
+      void offerExternalScheme(
+        navigationHost(webContents),
+        webContents,
+        details.url
+      )
       return { action: 'deny' }
     }
 
-    noteBlocked(host, 'popup', details.url, 'not-allowed')
+    noteBlocked(navigationHost(webContents), 'popup', details.url, 'not-allowed')
     return { action: 'deny' }
-  })
-
-  // A popup we allowed is still a window that can navigate. Without this the
-  // popup exception would be a hole: the child could walk to file:// or a
-  // custom scheme, which is exactly what `will-navigate` exists to stop.
-  guest.on('did-create-window', (window) => {
-    const child = window.webContents
-    window.once('closed', () => popupLimiter.release(guest.id))
-    const guard = (event: { preventDefault: () => void }, url: string): void => {
-      if (isBlockedEmbeddedAuthUrl(url)) {
-        event.preventDefault()
-        handOffExternalAuth(url)
-        return
-      }
-      if (isNavigationAllowed(url)) return
-      event.preventDefault()
-      void offerExternalScheme(host, child, url)
-    }
-    child.on('will-navigate', guard)
-    child.on('will-redirect', guard)
-    // A popup may not open further popups; one level is enough.
-    child.setWindowOpenHandler((details) => {
-      const decision = decidePopup({
-        openerUrl: child.getURL(),
-        targetUrl: details.url
-      })
-      if (decision.kind === 'external') {
-        handOffExternalAuth(details.url)
-        return { action: 'deny' }
-      }
-      if (decision.kind === 'tab' && !host.isDestroyed()) {
-        host.send('browser:open-url', { url: decision.url } as BrowserOpenUrl)
-        return { action: 'deny' }
-      }
-      noteBlocked(host, 'popup', details.url, 'nested')
-      return { action: 'deny' }
-    })
   })
 
   /**
@@ -460,17 +442,17 @@ function attachGuestPolicies(host: WebContents, guest: WebContents): void {
    * ~/NPKI are not TLS client certs and never reach here — those are driven by
    * a native helper over a custom scheme (externalScheme.ts).
    */
-  guest.on('select-client-certificate', (event, url, list, callback) => {
+  webContents.on('select-client-certificate', (event, url, list, callback) => {
     event.preventDefault()
     if (list.length === 0) return
     if (list.length === 1) {
       // Still worth confirming: this is an identity being asserted.
-      void confirmCertificate(host, url, list[0]).then((ok) => {
+      void confirmCertificate(navigationHost(webContents), url, list[0]).then((ok) => {
         if (ok && list[0] !== undefined) callback(list[0])
       })
       return
     }
-    void chooseCertificate(host, url, list).then((chosen) => {
+    void chooseCertificate(navigationHost(webContents), url, list).then((chosen) => {
       if (chosen !== null) callback(chosen)
     })
   })
@@ -478,7 +460,7 @@ function attachGuestPolicies(host: WebContents, guest: WebContents): void {
   // HTTP Basic / Digest / NTLM / Negotiate. With NO listener Electron
   // CANCELS the request — which is why 도서관 프록시 and older 학사 시스템
   // rendered a blank rect with no prompt and no way in.
-  guest.on('login', (event, _details, authInfo, callback) => {
+  webContents.on('login', (event, _details, authInfo, callback) => {
     event.preventDefault()
     void resolveAuthPrompt(
       {
@@ -495,7 +477,10 @@ function attachGuestPolicies(host: WebContents, guest: WebContents): void {
     })
   })
 
-  guest.once('destroyed', () => popupLimiter.forget(guest.id))
+  webContents.once('destroyed', () => {
+    popupLimiter.forget(webContents.id)
+    navigationHosts.delete(webContents)
+  })
 
   /**
    * `beforeunload`.
@@ -505,7 +490,8 @@ function attachGuestPolicies(host: WebContents, guest: WebContents): void {
    * 성적입력 page that sets `onbeforeunload` made every link and every ⌘R do
    * nothing at all. The page looked frozen and nothing was logged.
    */
-  guest.on('will-prevent-unload', (event) => {
+  webContents.on('will-prevent-unload', (event) => {
+    const host = navigationHost(webContents)
     const owner = BrowserWindow.fromWebContents(host)
     const options: Electron.MessageBoxSyncOptions = {
       type: 'question',
@@ -523,6 +509,51 @@ function attachGuestPolicies(host: WebContents, guest: WebContents): void {
     // preventDefault here means "let the navigation proceed" — it cancels the
     // page's cancellation.
     if (choice === 1) event.preventDefault()
+  })
+}
+
+/**
+ * Policies that only make sense for an embedded webview: replay app/browser
+ * shortcuts in its host and harden real popup children created by that guest.
+ */
+export function attachGuestInput(host: WebContents, guest: WebContents): void {
+  navigationHosts.set(guest, host)
+
+  // A popup we allowed is still a window that can navigate. Without this the
+  // popup exception would be a hole: the child could walk to file:// or a
+  // custom scheme, which is exactly what `will-navigate` exists to stop.
+  guest.on('did-create-window', (window) => {
+    const child = window.webContents
+    window.once('closed', () => popupLimiter.release(guest.id))
+    const guard = (event: { preventDefault: () => void }, url: string): void => {
+      if (isBlockedEmbeddedAuthUrl(url)) {
+        event.preventDefault()
+        handOffExternalAuth(guest, url)
+        return
+      }
+      if (isNavigationAllowed(url)) return
+      event.preventDefault()
+      void offerExternalScheme(host, child, url)
+    }
+    child.on('will-navigate', guard)
+    child.on('will-redirect', guard)
+    // A popup may not open further popups; one level is enough.
+    child.setWindowOpenHandler((details) => {
+      const decision = decidePopup({
+        openerUrl: child.getURL(),
+        targetUrl: details.url
+      })
+      if (decision.kind === 'external') {
+        handOffExternalAuth(guest, details.url)
+        return { action: 'deny' }
+      }
+      if (decision.kind === 'tab' && !host.isDestroyed()) {
+        host.send('browser:open-url', { url: decision.url } as BrowserOpenUrl)
+        return { action: 'deny' }
+      }
+      noteBlocked(host, 'popup', details.url, 'nested')
+      return { action: 'deny' }
+    })
   })
 
   // [M6-A] ⌘T/⌘W keep working while the guest has keyboard focus: intercept
@@ -558,6 +589,15 @@ export function hardenWindowWebviews(win: BrowserWindow): void {
   })
 
   host.on('did-attach-webview', (_event, guest) => {
-    attachGuestPolicies(host, guest)
+    const openInTab = (url: string): void => {
+      if (host.isDestroyed()) return
+      const payload: BrowserOpenUrl = {
+        url,
+        background: backgroundTabOpens.has(guest)
+      }
+      host.send('browser:open-url', payload)
+    }
+    attachNavigationPolicies(guest, { openInTab })
+    attachGuestInput(host, guest)
   })
 }

@@ -15,6 +15,7 @@ export type BrowserIconName =
   | 'download'
   | 'chevronUp'
   | 'chevronDown'
+  | 'pip'
   | 'star'
   | 'starFilled'
 
@@ -37,6 +38,12 @@ const paths: Record<BrowserIconName, JSX.Element> = {
   chevronDown: <path d="m6 9.5 6 6 6-6" />,
   download: (
     <path d="M12 3.5v11m0 0 4.5-4.5M12 14.5 7.5 10M4.5 17v2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2" />
+  ),
+  pip: (
+    <>
+      <rect x="3.5" y="5" width="17" height="14" rx="2" />
+      <rect x="11.5" y="11" width="6" height="5" rx="1" />
+    </>
   ),
   arrowRight: <path d="M5 12h14m-6-6 6 6-6 6" />,
   globe: (

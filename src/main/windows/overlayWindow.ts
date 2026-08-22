@@ -7,7 +7,7 @@ import {
   POPUP_MIN_SIZE
 } from './overlayGeometry'
 
-function macPanelOptions(): {
+export function macPanelOptions(): {
   type?: 'panel'
   hiddenInMissionControl?: boolean
 } {

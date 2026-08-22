@@ -34,6 +34,10 @@ import {
 import { useWebviewSelectionBridge } from './selectionBridge'
 import { useWebviewLoginBridge } from './loginBridge'
 import { useWebviewDiagnosticsBridge } from './diagnosticsBridge'
+import {
+  useWebviewVideoBridge,
+  videoReportForTab
+} from './videoBridge'
 import type {
   PageFaviconUpdatedEvent,
   ContextMenuEvent,
@@ -79,6 +83,7 @@ export function BrowserGuestView({
   useWebviewSelectionBridge(webviewRef)
   useWebviewLoginBridge(tabId, webviewRef)
   useWebviewDiagnosticsBridge(tabId, webviewRef)
+  useWebviewVideoBridge(tabId, webviewRef)
 
   useEffect(
     () =>
@@ -213,6 +218,8 @@ export function BrowserGuestView({
             pageURL: event.params.pageURL,
             pageTitle:
               useBrowserGuests.getState().nav[tabId]?.title ?? '',
+            hasPlayingVideo:
+              videoReportForTab(tabId)?.hasPlayingVideo === true,
             courseId: useCoursesStore.getState().selectedCourseId
           })
         }) as EventListener

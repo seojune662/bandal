@@ -64,6 +64,15 @@ describe('contextMenuItems', () => {
     }
   })
 
+  test('offers PiP on a video or when the page reporter found one', () => {
+    expect(contextMenuItems({ ...EMPTY, mediaType: 'video' })).toContain(
+      'pip-video'
+    )
+    expect(
+      contextMenuItems({ ...EMPTY, hasPlayingVideo: true })
+    ).toContain('pip-video')
+  })
+
   test('a selection adds copy / search / clip', () => {
     const items = contextMenuItems({ ...EMPTY, selectionText: '해시 충돌' })
     expect(items).toContain('copy-selection')

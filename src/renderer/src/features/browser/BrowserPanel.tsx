@@ -17,6 +17,7 @@ import {
 import type { IDockviewPanelProps } from 'dockview'
 import type { BrowserTabPayload } from '../../../../shared/tabs'
 import { Icon } from '../../app/icons'
+import { showToast } from '../../app/toast'
 import { Tooltip } from '../../components/Tooltip'
 import { useT } from '../../i18n'
 import { favoriteScopeKey, useFavoritesStore } from '../../stores/favoritesStore'
@@ -58,6 +59,7 @@ import {
 } from './loginBridge'
 import { addressDisplayParts, resolveAddressInput } from './urlInput'
 import { scheduleProgressVisibility } from './loadingIndicator'
+import { openWebVideoInPip, useWebVideoReport } from './videoBridge'
 import './browser.css'
 
 function browserPayloadFromParams(params: unknown): BrowserTabPayload | null {
@@ -354,6 +356,27 @@ export function BrowserFavoriteButton({
   )
 }
 
+export function BrowserPipChip({
+  hasPlayingVideo,
+  onOpen
+}: {
+  hasPlayingVideo: boolean
+  onOpen: () => void
+}): JSX.Element | null {
+  if (!hasPlayingVideo) return null
+  return (
+    <button
+      type="button"
+      className="browser-login-button"
+      aria-label="작은 창으로 보기"
+      onClick={onOpen}
+    >
+      <BrowserIcon name="pip" />
+      PiP
+    </button>
+  )
+}
+
 export function BrowserLoginPrompt({
   kind,
   onSave,
@@ -399,6 +422,7 @@ export function BrowserLoginPrompt({
 }
 
 function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
+  const video = useWebVideoReport(tabId)
   const login = useBrowserGuests((state) => state.login[tabId])
   const zoomLevel = useBrowserGuests(
     (state) => state.zoom[tabId] ?? DEFAULT_ZOOM_LEVEL
@@ -488,6 +512,17 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
         />
 
         <div className="browser-toolbar__actions">
+          <BrowserPipChip
+            hasPlayingVideo={video?.hasPlayingVideo === true}
+            onOpen={() => {
+              void openWebVideoInPip(tabId, {
+                url: nav.url,
+                title: nav.title
+              }).catch(() => {
+                showToast('작은 창을 열지 못했어요.', 'danger')
+              })
+            }}
+          />
           <BrowserFavoriteButton
             starred={starred !== null}
             onToggle={() => toggleFavorite(tabId, nav)}

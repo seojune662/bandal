@@ -4,6 +4,7 @@ import {
   resolveWindowBackground as resolveThemeWindowBackground,
   resolveWindowSymbolColor
 } from '../../shared/theme'
+import type { Settings } from '../../shared/types/settings'
 import { hardenWindowWebviews } from '../features/browser'
 import { getSettings } from '../settingsStore'
 import {
@@ -26,6 +27,29 @@ export function resolveWindowBackground(): string {
     palette,
     nativeTheme.shouldUseDarkColors
   )
+}
+
+function resolveTitleBarOverlayColors(
+  settings: Pick<Settings, 'theme' | 'palette'>,
+  prefersDark: boolean
+): { color: string; symbolColor: string } {
+  return {
+    color: resolveThemeWindowBackground(
+      settings.theme,
+      settings.palette,
+      prefersDark
+    ),
+    symbolColor: resolveWindowSymbolColor(settings.theme, prefersDark)
+  }
+}
+
+export function refreshTitleBarOverlay(
+  win: BrowserWindow,
+  settings: Pick<Settings, 'theme' | 'palette'>,
+  prefersDark: boolean
+): void {
+  if (process.platform !== 'win32') return
+  win.setTitleBarOverlay(resolveTitleBarOverlayColors(settings, prefersDark))
 }
 
 /** Subscribes to the main window lifetime without taking ownership of it. */
@@ -63,9 +87,8 @@ export function createMainWindow(): BrowserWindow {
     ...(process.platform === 'win32'
       ? {
           titleBarOverlay: {
-            color: resolveWindowBackground(),
-            symbolColor: resolveWindowSymbolColor(
-              getSettings().theme,
+            ...resolveTitleBarOverlayColors(
+              getSettings(),
               nativeTheme.shouldUseDarkColors
             ),
             // Matches --chrome-height (2.75rem) so the caption buttons align

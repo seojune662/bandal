@@ -3,7 +3,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test, vi } from 'vitest'
 import {
   BrowserFavoriteButton,
-  BrowserLoginPrompt
+  BrowserLoginPrompt,
+  BrowserPipChip
 } from '../../../src/renderer/src/features/browser/BrowserPanel'
 
 describe('BrowserPanel accessibility', () => {
@@ -38,5 +39,20 @@ describe('saved login prompt', () => {
     expect(html).toContain('저장')
     expect(html).toContain('이번엔 안 함')
     expect(html).toContain('이 사이트는 묻지 않기')
+  })
+})
+
+describe('browser PiP chip', () => {
+  test('appears only when the guest reports a video', () => {
+    const visible = renderToStaticMarkup(
+      <BrowserPipChip hasPlayingVideo onOpen={vi.fn()} />
+    )
+    const hidden = renderToStaticMarkup(
+      <BrowserPipChip hasPlayingVideo={false} onOpen={vi.fn()} />
+    )
+
+    expect(visible).toContain('aria-label="작은 창으로 보기"')
+    expect(visible).toContain('PiP')
+    expect(hidden).toBe('')
   })
 })
