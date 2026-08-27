@@ -105,7 +105,11 @@ import {
   createLoginFiller
 } from '../features/credentials'
 import { createActivityRepo, createContextWriter } from '../features/context'
-import { createStudyRunner } from '../features/study'
+import {
+  createPackRunner,
+  createPackRunGuard,
+  createPackStore
+} from '../features/workflowPacks'
 import {
   createWhiteboardRepo,
   createWhiteboardService
@@ -843,6 +847,11 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const agentConfirmer = createAgentConfirmer({
     emit: (request) => broadcast('agentTools:confirm', request)
   })
+  const packStore = createPackStore({ userDataPath: deps.userDataPath })
+  // One guard is shared by every MCP server and the pack runner. Creating a
+  // guard per conversation would make the runner arm an instance no tool can
+  // see, silently defeating a pack's declared tool allowlist.
+  const packRunGuard = createPackRunGuard()
   // -- the agent's view of the browser and the course's LMS ----------------
   // Registered for EVERY session. This used to be gated on the course having a
   // classroom linked, to save the ~1k tokens the schemas cost per turn — but
@@ -1377,6 +1386,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         notesRepo,
         boardRepo,
         canvasRepo,
+        packRunGuard,
         confirm: async (request) =>
           (await agentConfirmer.confirm({ ...request, conversationId: sessionKey })) !==
           false,
@@ -1710,7 +1720,25 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // The recipes run through the course's normal agent session and write their
   // answer into the course folder, so a result is editable, survives the
   // session, and becomes context for later questions.
-  const studyRunner = createStudyRunner({
+  const workflowSessionIds = new Map<string, string>()
+  const workflowSessionIdFor = (courseId: string): string => {
+    const active = workflowSessionIds.get(courseId)
+    if (active !== undefined) return active
+    const sessionId = chatRepo.listConversations(courseId)[0]?.id ?? randomUUID()
+    workflowSessionIds.set(courseId, sessionId)
+    return sessionId
+  }
+  const releaseWorkflowSession = (
+    courseId: string,
+    sessionId: string
+  ): void => {
+    if (workflowSessionIds.get(courseId) === sessionId) {
+      workflowSessionIds.delete(courseId)
+    }
+  }
+  const packRunner = createPackRunner({
+    store: packStore,
+    runGuard: packRunGuard,
     getCourse: (courseId) => ({
       name: coursesRepo.getById(courseId).name,
       folder: coursesRepo.getFolder(courseId)
@@ -1719,16 +1747,83 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       // Study tools ride the course's newest conversation so their answer
       // lands where the student is already talking; a course with no
       // conversations yet gets a fresh one.
-      const latest = chatRepo.listConversations(courseId)[0]
-      const sessionId = latest?.id ?? randomUUID()
-      await resolveManager(sessionId).send(courseId, sessionId, prompt)
+      const sessionId = workflowSessionIdFor(courseId)
+      try {
+        await resolveManager(sessionId).send(courseId, sessionId, prompt)
+      } finally {
+        releaseWorkflowSession(courseId, sessionId)
+      }
+    },
+    confirm: async (request) => {
+      const sessionId = workflowSessionIdFor(request.courseId)
+      try {
+        const result = await agentConfirmer.confirm({
+          ...request,
+          conversationId: sessionId
+        })
+        if (result === false) {
+          releaseWorkflowSession(request.courseId, sessionId)
+        }
+        return result
+      } catch (error) {
+        releaseWorkflowSession(request.courseId, sessionId)
+        throw error
+      }
     },
     recordActivity: (courseId, summary, relPath) => {
       note(courseId, 'study-tool-run', summary, relPath)
-    }
+    },
+    getPlanningContext: (courseId) => ({
+      asOf: new Date().toISOString(),
+      upcomingDeadlines: boardRepo
+        .upcoming({ courseId, withinDays: 30, limit: 8 })
+        .flatMap(({ task, daysLeft }) =>
+          task.dueAt === null
+            ? []
+            : [{ title: task.title, dueAt: task.dueAt, daysLeft }]
+        ),
+      studyGaps: insights.gaps(courseId)
+    })
   })
-  handle('study:tools', () => ({ tools: studyRunner.tools() }))
-  handle('study:run', (req) => studyRunner.run(req))
+
+  handle('packs:list', () => ({ packs: packStore.list() }))
+  handle('packs:importText', (req) => packStore.importText(req.json))
+  handle('packs:remove', (req) => {
+    packStore.remove(req.id)
+    return OK
+  })
+  handle('packs:setEnabled', (req) => {
+    packStore.setEnabled(req.id, req.enabled)
+    return OK
+  })
+  handle('study:tools', () => ({
+    tools: packStore.list().map(({ pack, source, enabled }) => ({
+      id: pack.id,
+      label: pack.name,
+      description: pack.description,
+      worksOnCourse: pack.worksOn.includes('course'),
+      source,
+      enabled,
+      usesWeb: pack.usesWeb,
+      outputs: { ...pack.outputs },
+      ...(pack.followUp === undefined
+        ? {}
+        : { followUp: { ...pack.followUp } })
+    }))
+  }))
+  handle('study:run', (req) =>
+    packRunner.run({
+      courseId: req.courseId,
+      packId: req.tool,
+      ...(req.relPath === null ? {} : { targetRelPath: req.relPath }),
+      ...(req.selection === undefined
+        ? {}
+        : { selectionText: req.selection }),
+      ...(req.followUpOf === undefined
+        ? {}
+        : { followUpOf: req.followUpOf })
+    })
+  )
 
   handle('agent:installCommand', (req) => agentInstaller.commandFor(req.provider))
   handle('agent:install', (req) => agentInstaller.install(req.provider))

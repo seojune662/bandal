@@ -151,6 +151,24 @@ import type {
   ReportTargetType
 } from '../types/group'
 
+/** Pack metadata projected into the existing study-tool menu. */
+export interface WorkflowPackToolDefinition
+  extends Omit<StudyToolDefinition, 'id'> {
+  /** Built-ins keep their stable ids; installed packs use `custom:*` ids. */
+  id: string
+  source: WorkflowPackSummary['source']
+  enabled: boolean
+  usesWeb: boolean
+  outputs: WorkflowPack['outputs']
+  followUp?: NonNullable<WorkflowPack['followUp']>
+}
+
+/** The legacy study channel is also the execution entry point for user packs. */
+export type RunWorkflowPackStudyInput = Omit<RunStudyToolInput, 'tool'> & {
+  tool: string
+  followUpOf?: string
+}
+
 export interface IpcContract {
   // -- courses --------------------------------------------------------------
   'courses:list': {
@@ -916,7 +934,7 @@ export interface IpcContract {
   }
   'study:tools': {
     req: Record<string, never>
-    res: { tools: StudyToolDefinition[] }
+    res: { tools: WorkflowPackToolDefinition[] }
   }
   /**
    * Runs a study recipe through the course's agent session. The answer is
@@ -924,7 +942,7 @@ export interface IpcContract {
    * it is editable, survives the session and feeds later questions.
    */
   'study:run': {
-    req: RunStudyToolInput
+    req: RunWorkflowPackStudyInput
     res: RunStudyToolResult
   }
   'packs:list': {

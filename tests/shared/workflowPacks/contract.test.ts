@@ -44,4 +44,35 @@ describe('workflow pack IPC contract', () => {
     expect(removeRequest.id).toBe('custom:one')
     expect(enabledRequest.enabled).toBe(false)
   })
+
+  test('allows installed packs and follow-up runs through the study channels', () => {
+    const request: IpcRequest<'study:run'> = {
+      courseId: 'course-1',
+      tool: 'custom:vocab-chain',
+      relPath: '영어 학습/기사/다음 기사.md',
+      followUpOf: 'custom:vocab-chain'
+    }
+    const response: IpcResponse<'study:tools'> = {
+      tools: [
+        {
+          id: 'custom:vocab-chain',
+          label: '나의 단어 사슬',
+          description: '기사에서 어려운 단어를 모아요.',
+          worksOnCourse: false,
+          source: 'user',
+          enabled: true,
+          usesWeb: true,
+          outputs: { dir: '영어 학습', primary: '단어 사슬 리포트' },
+          followUp: {
+            label: '이 기사로 이어가기',
+            recipe: '다음 회차를 진행하라.'
+          }
+        }
+      ]
+    }
+
+    expect(request.followUpOf).toBe(request.tool)
+    expect(response.tools[0]?.source).toBe('user')
+    expect(response.tools[0]?.followUp?.label).toBe('이 기사로 이어가기')
+  })
 })
