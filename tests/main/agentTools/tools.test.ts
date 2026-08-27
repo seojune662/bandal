@@ -135,6 +135,8 @@ describe('agent app tools', () => {
       'set_course_group',
       'archive_course',
       'list_materials',
+      'link_materials',
+      'list_links',
       'list_boards',
       'read_material',
       'list_tasks',

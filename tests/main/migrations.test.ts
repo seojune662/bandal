@@ -43,7 +43,8 @@ describe('migrations', () => {
       { version: 20, name: 'browser-agent-grants-audit' },
       { version: 21, name: 'browser-site-permissions' },
       { version: 22, name: 'desktop-surface-and-mcp' },
-      { version: 23, name: 'all-day-due-date' }
+      { version: 23, name: 'all-day-due-date' },
+      { version: 24, name: 'material-links' }
     ])
   })
 
@@ -213,7 +214,7 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(23)
+    expect(count.n).toBe(24)
   })
 
   test('adds desktop conversation surface, grants, and audit (migration 022)', () => {
@@ -273,5 +274,50 @@ describe('migrations', () => {
       { id: 'date-key', due_at: '2026-09-02' },
       { id: 'timed-instant', due_at: localDue.toISOString() }
     ])
+  })
+
+  test('creates material_links and its course lookup index (migration 024)', () => {
+    const columns = ctx.db
+      .prepare('PRAGMA table_info(material_links)')
+      .all() as {
+        name: string
+        type: string
+        notnull: number
+        dflt_value: string | null
+        pk: number
+      }[]
+
+    expect(columns).toEqual([
+      expect.objectContaining({ name: 'id', type: 'TEXT', pk: 1 }),
+      expect.objectContaining({ name: 'course_id', type: 'TEXT', notnull: 1 }),
+      expect.objectContaining({ name: 'source_json', type: 'TEXT', notnull: 1 }),
+      expect.objectContaining({ name: 'target_json', type: 'TEXT', notnull: 1 }),
+      expect.objectContaining({
+        name: 'label',
+        type: 'TEXT',
+        notnull: 1,
+        dflt_value: "''"
+      }),
+      expect.objectContaining({ name: 'created_at', type: 'TEXT', notnull: 1 })
+    ])
+
+    const index = ctx.db
+      .prepare(
+        `SELECT name FROM sqlite_master
+          WHERE type = 'index' AND name = 'idx_material_links_course'`
+      )
+      .get() as { name: string } | undefined
+    expect(index).toEqual({ name: 'idx_material_links_course' })
+
+    ctx.db
+      .prepare(
+        `INSERT INTO material_links
+           (id, course_id, source_json, target_json, created_at)
+         VALUES ('link-1', 'course-1', '{}', '{}', '2026-08-27T00:00:00.000Z')`
+      )
+      .run()
+    expect(
+      ctx.db.prepare('SELECT label FROM material_links WHERE id = ?').get('link-1')
+    ).toEqual({ label: '' })
   })
 })

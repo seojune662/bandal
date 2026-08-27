@@ -21,6 +21,8 @@ export type UndoResult = {
 export interface UndoHandlers {
   course(input: UndoTarget): Promise<void>
   material(input: UndoTarget): Promise<void>
+  /** 링크 도구 핸들러가 연결될 때까지 선택적인 되돌리기 포트다. */
+  link?(input: UndoTarget): Promise<void>
   note(input: UndoTarget): Promise<void>
   task(input: UndoTarget): Promise<void>
   board(input: UndoTarget): Promise<void>
@@ -127,7 +129,11 @@ export function createAgentJournal(db: Database): AgentJournal {
       for (const row of rows) {
         const action = rowToAction(row)
         try {
-          await undoers[action.targetKind]({
+          const undo = undoers[action.targetKind]
+          if (undo === undefined) {
+            throw new Error(`no undo handler registered for ${action.targetKind}`)
+          }
+          await undo({
             courseId: action.courseId,
             targetId: action.targetId
           })

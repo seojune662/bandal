@@ -855,6 +855,24 @@ export const migrations: Migration[] = [
       })
       migrateRows()
     }
+  },
+  {
+    version: 24,
+    name: 'material-links',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS material_links (
+           id          TEXT PRIMARY KEY,
+           course_id   TEXT NOT NULL,
+           source_json TEXT NOT NULL,
+           target_json TEXT NOT NULL,
+           label       TEXT NOT NULL DEFAULT '',
+           created_at  TEXT NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_material_links_course
+           ON material_links (course_id);`
+      )
+    }
   }
 ]
 

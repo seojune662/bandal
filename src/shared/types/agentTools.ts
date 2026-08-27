@@ -11,6 +11,7 @@
 export type AgentActionTarget =
   | 'course'
   | 'material'
+  | 'link'
   | 'note'
   | 'task'
   | 'board'

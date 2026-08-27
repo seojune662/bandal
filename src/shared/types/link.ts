@@ -1,3 +1,5 @@
+import type { TabDescriptor } from '../tabs'
+
 /**
  * Deep links between a note and the material it is about.
  *
@@ -9,6 +11,16 @@
  *   [3쪽 “해시 충돌…”](bandal://material?path=Chap1.pdf&page=3)
  */
 export const BANDAL_LINK_SCHEME = 'bandal:'
+
+/** A persisted relationship between any two tabs in one course. */
+export interface MaterialLinkRecord {
+  id: string
+  courseId: string
+  source: TabDescriptor
+  target: TabDescriptor
+  label: string
+  createdAt: string
+}
 
 export interface MaterialLink {
   /** Course-relative path. */

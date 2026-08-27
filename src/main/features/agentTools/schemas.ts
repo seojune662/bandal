@@ -207,6 +207,26 @@ export const AGENT_TOOL_DEFINITIONS = [
     annotations: readOnly
   },
   {
+    name: 'link_materials',
+    description: '두 자료를 서로 연결해요',
+    inputSchema: objectSchema(
+      {
+        courseId,
+        fromRelPath: string('출발 자료의 과목 기준 상대 경로'),
+        toRelPath: string('도착 자료의 과목 기준 상대 경로'),
+        label: string('선택적인 연결 이름')
+      },
+      ['courseId', 'fromRelPath', 'toRelPath']
+    ),
+    annotations: creates
+  },
+  {
+    name: 'list_links',
+    description: '자료에 연결된 다른 자료를 조회합니다.',
+    inputSchema: objectSchema({ courseId, relPath }, ['courseId', 'relPath']),
+    annotations: readOnly
+  },
+  {
     name: 'list_boards',
     description: '과목의 개인 화이트보드 목록을 조회합니다.',
     inputSchema: objectSchema({ courseId }, ['courseId']),
@@ -681,7 +701,16 @@ export const BROWSER_TOOL_NAMES = BROWSER_TOOL_DEFINITIONS.map(
 
 export type BrowserToolName = (typeof BROWSER_TOOL_DEFINITIONS)[number]['name']
 
-export type AgentToolName = (typeof AGENT_TOOL_DEFINITIONS)[number]['name']
+export type AgentToolDefinitionName =
+  (typeof AGENT_TOOL_DEFINITIONS)[number]['name']
+
+/** 스키마만 먼저 공개됐고 실행 핸들러는 다음 작업에서 연결된다. */
+type PendingAgentToolName = 'link_materials' | 'list_links'
+
+export type AgentToolName = Exclude<
+  AgentToolDefinitionName,
+  PendingAgentToolName
+>
 
 export const AGENT_TOOL_NAMES = AGENT_TOOL_DEFINITIONS.map(
   (tool) => tool.name

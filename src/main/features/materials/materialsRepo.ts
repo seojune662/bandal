@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import type { ImportResult, MaterialFileContent, MaterialKind,
   MaterialNode, MaterialSearchHit } from '../../../shared/types/materials'
+import { materialKindForPath } from '../../../shared/materialKind'
 import { ConflictError, NotFoundError, ValidationError } from '../../db/errors'
 import { assertRealInside, nowIso, requireId, requireNonEmptyString,
   resolveInside } from '../../db/validate'
@@ -90,11 +91,6 @@ export function searchKey(value: string): string {
   return value.normalize('NFC').toLowerCase()
 }
 
-const IMAGE_EXTENSIONS = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.avif', '.heic'
-])
-// bandal-media:// 스트리밍으로 재생 가능한 컨테이너만. (mediaProtocol.ts)
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.webm'])
 const TEXT_EXTENSIONS = new Set([
   '.md', '.markdown', '.txt', '.csv', '.tsv', '.json', '.yml', '.yaml',
   '.xml', '.html', '.css', '.js', '.ts', '.tex', '.log', '.srt', '.vtt'
@@ -138,12 +134,7 @@ interface MaterialWalk {
 }
 
 export function kindForFile(fileName: string): MaterialKind {
-  const ext = extname(fileName).toLowerCase()
-  if (ext === '.pdf') return 'pdf'
-  if (ext === '.md' || ext === '.markdown') return 'note'
-  if (IMAGE_EXTENSIONS.has(ext)) return 'image'
-  if (VIDEO_EXTENSIONS.has(ext)) return 'video'
-  return 'other'
+  return materialKindForPath(fileName)
 }
 
 function isHidden(name: string): boolean {

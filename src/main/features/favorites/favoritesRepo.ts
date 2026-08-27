@@ -5,16 +5,15 @@
 
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
-import type { TabDescriptor } from '../../../shared/tabs'
 import type {
   CreateFavoriteInput,
   Favorite,
   RenameFavoriteInput,
   ReorderFavoritesInput
 } from '../../../shared/types/favorite'
-import { isTabDescriptor } from '../../../shared/tabs'
 import { NotFoundError, ValidationError } from '../../db/errors'
 import { nowIso, requireId, requireNonEmptyString } from '../../db/validate'
+import { parseDescriptor, serializeDescriptor } from './descriptorJson'
 
 export interface FavoritesRepo {
   list(courseId: string | null): Favorite[]
@@ -42,37 +41,10 @@ function requireLabel(value: unknown): string {
   return requireNonEmptyString(value, 'label').trim()
 }
 
-/**
- * Validate both sides of the JSON boundary. The second validation matters for
- * unusual objects with custom toJSON methods, and the catch turns cycles into
- * a stable data-layer validation error.
- */
-function serializeDescriptor(value: unknown): {
-  json: string
-  descriptor: TabDescriptor
-} {
-  if (!isTabDescriptor(value)) {
-    throw new ValidationError('descriptor must be a valid TabDescriptor')
-  }
-
-  try {
-    const json = JSON.stringify(value)
-    const parsed: unknown = JSON.parse(json)
-    if (!isTabDescriptor(parsed)) {
-      throw new ValidationError('descriptor must remain valid after JSON serialization')
-    }
-    return { json, descriptor: parsed }
-  } catch (error) {
-    if (error instanceof ValidationError) throw error
-    throw new ValidationError('descriptor must be JSON-serializable')
-  }
-}
-
 /** Corrupt legacy/manual rows are ignored by list instead of breaking the rail. */
 function rowToFavorite(row: FavoriteRow): Favorite | null {
   try {
-    const descriptor: unknown = JSON.parse(row.descriptor_json)
-    if (!isTabDescriptor(descriptor)) return null
+    const descriptor = parseDescriptor(row.descriptor_json)
     return {
       id: row.id,
       courseId: row.course_id,

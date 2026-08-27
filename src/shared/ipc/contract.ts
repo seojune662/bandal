@@ -81,10 +81,12 @@ import type { PipOpenRequest, PipState } from '../types/pip'
 import type { SearchHit } from '../types/search'
 import type {
   MaterialBacklinks,
+  MaterialLinkRecord,
   SendHighlightToNoteInput,
   SendWebClipToNoteInput,
   SendHighlightToNoteResult
 } from '../types/link'
+import type { TabDescriptor } from '../tabs'
 import type {
   AgentConfirmResponse,
   AgentTurnChanges
@@ -1111,6 +1113,26 @@ export interface IpcContract {
   }
 
   // -- note ↔ material links --------------------------------------------------
+  'links:create': {
+    req: {
+      courseId: string
+      source: TabDescriptor
+      target: TabDescriptor
+      label?: string
+    }
+    res: MaterialLinkRecord
+  }
+  'links:remove': {
+    req: { courseId: string; id: string }
+    res: { ok: true }
+  }
+  'links:listFor': {
+    req: { courseId: string; relPath: string }
+    res: {
+      outgoing: MaterialLinkRecord[]
+      incoming: MaterialLinkRecord[]
+    }
+  }
   /**
    * Appends a highlight to a note as a quote plus a `bandal://` link back to
    * the exact page. The note stays plain markdown.
@@ -1650,6 +1672,9 @@ export const IPC_CHANNELS = [
   'search:indexPdfPages',
   'whiteboard:updateShape',
   'whiteboard:close',
+  'links:create',
+  'links:remove',
+  'links:listFor',
   'links:forMaterial',
   'link:sendHighlightToNote',
   'link:sendWebClipToNote',
