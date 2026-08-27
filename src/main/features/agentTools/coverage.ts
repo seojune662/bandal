@@ -91,6 +91,18 @@ export const AGENT_CHANNEL_TOOLS: Readonly<Record<string, string>> = {
 }
 
 /**
+ * App tools that can mutate the study workspace.
+ *
+ * Workflow-pack runs derive their runtime allowlist gate from this set so the
+ * security boundary stays coupled to the capability coverage map above. A
+ * newly mapped mutation therefore becomes restricted automatically instead
+ * of relying on a second hand-maintained list.
+ */
+export const AGENT_MUTATING_TOOL_NAMES: ReadonlySet<string> = new Set(
+  Object.values(AGENT_CHANNEL_TOOLS)
+)
+
+/**
  * Channels the agent deliberately cannot reach, and why.
  *
  * A reason is required. "We did not get to it" is not one — that is the state

@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import type {
-  RunStudyToolInput,
-  StudyToolDefinition
-} from '../../../../shared/types/study'
+import type { StudyToolId } from '../../../../shared/types/study'
 import { showToast } from '../../app/toast'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import {
   isStudyToolEnabled,
   studyToolDisabledReason
 } from './studyToolAvailability'
-import { StudyToolIcon } from './StudyToolIcons'
-import { useStudyToolsStore } from './studyToolsStore'
+import { StudyToolIcon, StudyToolsIcon } from './StudyToolIcons'
+import {
+  type PackStudyToolDefinition,
+  type RunPackStudyToolInput,
+  useStudyToolsStore
+} from './studyToolsStore'
 import './study.css'
 
 const TREE_REFRESH_DELAY_MS = 800
@@ -18,6 +19,50 @@ const TREE_REFRESH_DELAY_MS = 800
 interface MenuPosition {
   left: number
   top: number
+}
+
+const BUILTIN_TOOL_IDS: readonly StudyToolId[] = [
+  'summary',
+  'quiz',
+  'flashcards',
+  'mindmap',
+  'structured-notes',
+  'exam-predictions',
+  'explain'
+]
+
+function isBuiltinToolId(id: string): id is StudyToolId {
+  return BUILTIN_TOOL_IDS.includes(id as StudyToolId)
+}
+
+function outputDirectory(tool: PackStudyToolDefinition): string | null {
+  return tool.outputs?.dir ?? tool.outputDir ?? tool.outputsDir ?? null
+}
+
+function followUpLabel(tool: PackStudyToolDefinition): string | null {
+  return tool.followUp?.label ?? tool.followUpLabel ?? null
+}
+
+export function isPackFollowUpAvailable(
+  tool: PackStudyToolDefinition,
+  relPath: string | null
+): boolean {
+  if (relPath === null || tool.enabled === false || followUpLabel(tool) === null) {
+    return false
+  }
+  const directory = outputDirectory(tool)
+    ?.replace(/^\.\//, '')
+    .replace(/\/+$/, '')
+  const target = relPath.replace(/^\.\//, '')
+  return (
+    directory !== undefined &&
+    directory.length > 0 &&
+    target.startsWith(`${directory}/`)
+  )
+}
+
+function ToolIcon({ id }: { id: string }): JSX.Element {
+  return isBuiltinToolId(id) ? <StudyToolIcon tool={id} /> : <StudyToolsIcon />
 }
 
 export interface StudyToolMenuProps {
@@ -28,6 +73,8 @@ export interface StudyToolMenuProps {
   x: number
   y: number
   onClose: () => void
+  /** Stable snapshot override used by non-interactive renderers and tests. */
+  toolsOverride?: readonly PackStudyToolDefinition[]
 }
 
 function enabledMenuItems(menu: HTMLElement): HTMLButtonElement[] {
@@ -48,10 +95,11 @@ function statusMessage(
 }
 
 export function StudyToolMenu(props: StudyToolMenuProps): JSX.Element {
-  const { courseId, relPath, selection, x, y, onClose } = props
+  const { courseId, relPath, selection, x, y, onClose, toolsOverride } = props
   const menuRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<MenuPosition>({ left: x, top: y })
-  const tools = useStudyToolsStore((state) => state.tools)
+  const storedTools = useStudyToolsStore((state) => state.tools)
+  const tools = toolsOverride ?? storedTools
   const hasLoaded = useStudyToolsStore((state) => state.hasLoaded)
   const isLoading = useStudyToolsStore((state) => state.isLoading)
   const error = useStudyToolsStore((state) => state.error)
@@ -146,12 +194,13 @@ export function StudyToolMenu(props: StudyToolMenuProps): JSX.Element {
     items[next]?.focus()
   }
 
-  const runTool = (tool: StudyToolDefinition): void => {
-    const input: RunStudyToolInput = {
+  const runTool = (tool: PackStudyToolDefinition, followUp = false): void => {
+    const input: RunPackStudyToolInput = {
       courseId,
       tool: tool.id,
       relPath,
-      ...(selection === undefined ? {} : { selection })
+      ...(selection === undefined ? {} : { selection }),
+      ...(followUp ? { followUpOf: tool.id } : {})
     }
 
     void run(input)
@@ -171,6 +220,65 @@ export function StudyToolMenu(props: StudyToolMenuProps): JSX.Element {
 
   const emptyMessage =
     tools.length === 0 ? statusMessage(isLoading, hasLoaded, error) : null
+  const builtinTools = tools.filter((tool) => tool.source !== 'user')
+  const userTools = tools.filter((tool) => tool.source === 'user')
+
+  const renderTool = (
+    tool: PackStudyToolDefinition,
+    followUp: boolean
+  ): JSX.Element => {
+    const targetEnabled = followUp || isStudyToolEnabled(tool, relPath)
+    const isRunning = (running[tool.id] ?? 0) > 0
+    const disabled = !targetEnabled || isRunning
+    const reason = targetEnabled
+      ? isRunning
+        ? '이미 만들고 있어요.'
+        : null
+      : studyToolDisabledReason(tool, relPath)
+    const label = followUp ? (followUpLabel(tool) ?? tool.label) : tool.label
+    const description = followUp
+      ? '이 팩의 후속 레시피를 실행해요.'
+      : tool.description
+
+    return (
+      <span
+        key={`${tool.id}:${followUp ? 'follow-up' : 'primary'}`}
+        className="study-tool-menu__item"
+        title={reason ?? undefined}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          disabled={disabled}
+          aria-label={reason === null ? label : `${label}: ${reason}`}
+          onClick={() => runTool(tool, followUp)}
+        >
+          <ToolIcon id={tool.id} />
+          <span className="study-tool-menu__copy">
+            <strong>
+              <span className="study-tool-menu__label">{label}</span>
+              {tool.usesWeb === true && (
+                <span
+                  className="study-tool-menu__web-dot"
+                  aria-label="웹 검색 사용"
+                  title="웹 검색 사용"
+                />
+              )}
+            </strong>
+            <small>{reason ?? description}</small>
+          </span>
+        </button>
+      </span>
+    )
+  }
+
+  const renderGroup = (group: PackStudyToolDefinition[]): JSX.Element[] =>
+    group.flatMap((tool) => [
+      renderTool(tool, false),
+      ...(isPackFollowUpAvailable(tool, relPath)
+        ? [renderTool(tool, true)]
+        : [])
+    ])
 
   return (
     <div
@@ -184,38 +292,13 @@ export function StudyToolMenu(props: StudyToolMenuProps): JSX.Element {
       onPointerDown={(event) => event.stopPropagation()}
     >
       <div className="study-tool-menu__heading">AI 학습 도구</div>
-      {tools.map((tool) => {
-        const targetEnabled = isStudyToolEnabled(tool, relPath)
-        const isRunning = (running[tool.id] ?? 0) > 0
-        const disabled = !targetEnabled || isRunning
-        const reason = targetEnabled
-          ? isRunning
-            ? '이미 만들고 있어요.'
-            : null
-          : studyToolDisabledReason(tool, relPath)
-
-        return (
-          <span
-            key={tool.id}
-            className="study-tool-menu__item"
-            title={reason ?? undefined}
-          >
-            <button
-              type="button"
-              role="menuitem"
-              disabled={disabled}
-              aria-label={reason === null ? tool.label : `${tool.label}: ${reason}`}
-              onClick={() => runTool(tool)}
-            >
-              <StudyToolIcon tool={tool.id} />
-              <span className="study-tool-menu__copy">
-                <strong>{tool.label}</strong>
-                <small>{reason ?? tool.description}</small>
-              </span>
-            </button>
-          </span>
-        )
-      })}
+      {renderGroup(builtinTools)}
+      {userTools.length > 0 && (
+        <div className="study-tool-menu__heading study-tool-menu__heading--separator">
+          설치한 팩
+        </div>
+      )}
+      {renderGroup(userTools)}
       {emptyMessage !== null && (
         <p className="study-tool-menu__empty" role="status">
           {emptyMessage}

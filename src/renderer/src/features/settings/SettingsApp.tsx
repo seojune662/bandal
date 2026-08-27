@@ -26,6 +26,7 @@ import {
   CoursesPanel,
   GeneralPanel,
   McpServersPanel,
+  PacksPanel,
 } from "./SettingsPanels";
 import { Icon } from "./SettingsIcon";
 import { applyTheme } from "./settingsTheme";
@@ -39,6 +40,7 @@ type CategoryId =
   | "appearance"
   | "ai"
   | "mcp"
+  | "packs"
   | "university"
   | "courses"
   | "about";
@@ -124,6 +126,13 @@ export function SettingsApp({
         label: t("settings.category.mcp.label"),
         description: t("settings.category.mcp.description"),
         keywords: t("settings.category.mcp.keywords"),
+      },
+      {
+        id: "packs",
+        group: "settings",
+        label: t("settings.category.packs.label"),
+        description: t("settings.category.packs.description"),
+        keywords: t("settings.category.packs.keywords"),
       },
       {
         id: "ai",
@@ -436,6 +445,7 @@ export function SettingsApp({
       />
     ),
     mcp: <McpServersPanel />,
+    packs: <PacksPanel />,
     ai: (
       <>
         <AiPanel
@@ -551,7 +561,13 @@ export function SettingsApp({
                       }
                       onClick={() => setActiveCategory(category.id)}
                     >
-                      <Icon name={category.id === "mcp" ? "sparkles" : category.id} />
+                      <Icon
+                        name={
+                          category.id === "mcp" || category.id === "packs"
+                            ? "sparkles"
+                            : category.id
+                        }
+                      />
                       <span>{category.label}</span>
                     </button>
                   ))}

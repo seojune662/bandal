@@ -20,6 +20,8 @@ import type { NotesRepo } from '../notes/notesRepo'
 import type { SearchIndex } from '../search/searchIndex'
 import type { DesktopToolsPort } from '../desktopAgent/desktopTools'
 import { DESKTOP_TOOL_DEFINITIONS } from '../desktopAgent/schemas'
+import type { PackRunGuard } from '../workflowPacks/runGuard'
+import { AGENT_MUTATING_TOOL_NAMES } from './coverage'
 import {
   AGENT_TOOL_DEFINITIONS,
   BROWSER_TOOL_DEFINITIONS,
@@ -175,6 +177,8 @@ export interface AgentToolsDeps {
   }
   /** Desktop capture/read tools, supplied only for desktop conversations. */
   desktop?: DesktopToolsPort
+  /** Active workflow-pack allowlist for this course's shared agent session. */
+  packRunGuard?: Pick<PackRunGuard, 'restrictionFor'>
 }
 
 export interface AgentTools {
@@ -485,6 +489,28 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
       ...(desktop === undefined ? [] : DESKTOP_TOOL_NAMES)
     ],
     async call(name, args = {}) {
+      const restriction = deps.packRunGuard?.restrictionFor(deps.courseId)
+      const isPackRestricted =
+        AGENT_MUTATING_TOOL_NAMES.has(name) ||
+        name.startsWith('browser_') ||
+        name.startsWith('desktop_')
+      // The guard is intentionally course-scoped rather than conversation-
+      // scoped. A manual turn started concurrently in the same course can
+      // inherit this restriction until the pack's ask promise settles (or the
+      // 15-minute backstop expires).
+      if (
+        restriction !== undefined &&
+        restriction !== null &&
+        isPackRestricted &&
+        !restriction.has(name)
+      ) {
+        return failure(
+          name,
+          new Error(
+            `이 실행은 팩이 선언한 도구만 쓸 수 있어요: ${name} 은 선언되지 않았어요`
+          )
+        )
+      }
       const handler = handlers[name as AgentToolName]
       if (handler === undefined) {
         return failure(name, new ValidationError(`unknown tool "${name}"`))

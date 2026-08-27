@@ -1,23 +1,49 @@
 import { create } from 'zustand'
 import type {
   RunStudyToolInput,
-  RunStudyToolResult,
-  StudyToolDefinition,
-  StudyToolId
+  RunStudyToolResult
 } from '../../../../shared/types/study'
+import type {
+  WorkflowPackFollowUp,
+  WorkflowPackOutputs
+} from '../../../../shared/types/workflowPack'
 import { invoke } from '../../lib/ipc'
 
-type RunningStudyTools = Partial<Record<StudyToolId, number>>
+/** Renderer bridge for the pack-derived study tool response. */
+export interface PackStudyToolDefinition {
+  id: string
+  label: string
+  description: string
+  worksOnCourse: boolean
+  source?: 'builtin' | 'user'
+  enabled?: boolean
+  usesWeb?: boolean
+  outputs?: WorkflowPackOutputs
+  outputDir?: string
+  outputsDir?: string
+  followUp?: WorkflowPackFollowUp
+  followUpLabel?: string
+}
+
+export interface RunPackStudyToolInput {
+  courseId: string
+  tool: string
+  relPath: string | null
+  selection?: string
+  followUpOf?: string
+}
+
+type RunningStudyTools = Partial<Record<string, number>>
 
 interface StudyToolsState {
-  tools: StudyToolDefinition[]
+  tools: PackStudyToolDefinition[]
   hasLoaded: boolean
   isLoading: boolean
   error: string | null
   running: RunningStudyTools
   runError: string | null
   loadTools: () => Promise<void>
-  run: (input: RunStudyToolInput) => Promise<RunStudyToolResult>
+  run: (input: RunPackStudyToolInput) => Promise<RunStudyToolResult>
 }
 
 let toolsRequest: Promise<void> | null = null
@@ -68,7 +94,16 @@ export const useStudyToolsStore = create<StudyToolsState>()((set, get) => ({
     }))
 
     try {
-      return await invoke('study:run', input)
+      const request: RunStudyToolInput = {
+        courseId: input.courseId,
+        tool: input.tool as RunStudyToolInput['tool'],
+        relPath: input.relPath,
+        ...(input.selection === undefined ? {} : { selection: input.selection })
+      }
+      if (input.followUpOf !== undefined) {
+        Object.assign(request, { followUpOf: input.followUpOf })
+      }
+      return await invoke('study:run', request)
     } catch (error) {
       set({
         runError: errorMessage(error, 'AI 학습 자료를 만들지 못했어요.')
