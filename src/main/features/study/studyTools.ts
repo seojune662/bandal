@@ -4,6 +4,7 @@ import type {
   StudyToolId
 } from '../../../shared/types/study'
 import type { StudyGap } from '../../../shared/types/search'
+import { BUILTIN_STUDY_PACKS } from '../../../shared/workflowPacks/builtins'
 
 export interface StudyPlanningDeadline {
   title: string
@@ -19,109 +20,17 @@ export interface StudyPlanningContext {
   studyGaps?: readonly StudyGap[]
 }
 
-export const STUDY_TOOLS: readonly StudyToolDefinition[] = [
-  {
-    id: 'summary',
-    label: '요약',
-    description: '핵심 개념과 자료의 구조, 놓치기 쉬운 부분을 요약합니다.',
-    worksOnCourse: true
-  },
-  {
-    id: 'quiz',
-    label: '퀴즈',
-    description: '객관식과 단답형 문제를 만들고 정답과 해설을 분리합니다.',
-    worksOnCourse: true
-  },
-  {
-    id: 'flashcards',
-    label: '플래시카드',
-    description: '복습에 바로 쓸 수 있는 앞면·뒷면 플래시카드 표를 만듭니다.',
-    worksOnCourse: true
-  },
-  {
-    id: 'mindmap',
-    label: '마인드맵',
-    description: '개념 사이의 관계를 Mermaid 마인드맵으로 정리합니다.',
-    worksOnCourse: true
-  },
-  {
-    id: 'structured-notes',
-    label: '구조화 노트',
-    description: '강의자료를 제목과 하위 항목이 분명한 계층형 노트로 바꿉니다.',
-    worksOnCourse: true
-  },
-  {
-    id: 'exam-predictions',
-    label: '시험 예상 문제',
-    description: '출제 가능성이 높은 문제와 그 근거, 답안 포인트를 제안합니다.',
-    worksOnCourse: true
-  },
-  {
-    id: 'explain',
-    label: '개념 설명',
-    description: '특정 자료나 선택한 부분의 개념을 단계적으로 풀어 설명합니다.',
-    worksOnCourse: false
-  }
-]
+export const STUDY_TOOLS: readonly StudyToolDefinition[] =
+  BUILTIN_STUDY_PACKS.map((pack) => ({
+    id: pack.id,
+    label: pack.outputs.primary,
+    description: pack.description,
+    worksOnCourse: pack.worksOn.includes('course')
+  }))
 
-const RECIPES: Record<StudyToolId, string> = {
-  summary: [
-    '자료를 시험 복습에 유용한 요약 노트로 재구성하라.',
-    '- 먼저 자료 전체의 흐름과 구조를 짧게 보여 줘라.',
-    '- 핵심 개념마다 정의, 역할, 개념 간 관계를 정리하라.',
-    '- 공식이나 절차가 있다면 각 기호와 단계의 의미를 설명하라.',
-    '- 학생이 지나치기 쉬운 예외, 조건, 비교 포인트를 별도 섹션으로 모아라.',
-    '- 마지막에 빠른 복습용 핵심 문장을 5~10개로 정리하라.'
-  ].join('\n'),
-  quiz: [
-    '자료의 핵심 내용을 스스로 점검할 수 있는 퀴즈를 만들어라.',
-    '- 객관식과 단답형을 모두 포함하고, 단순 암기와 이해·적용 문제를 섞어라.',
-    '- 객관식에는 서로 그럴듯하지만 명확히 구분되는 선택지를 제공하라.',
-    '- 문제 영역에는 답을 암시하는 표현을 넣지 마라.',
-    '- 학생이 먼저 풀 수 있도록 모든 문제를 앞부분에 배치하라.',
-    '- 문서 하단에 `정답과 해설` 섹션을 따로 만들고, 문제 번호별 정답, 근거, 오답 포인트를 설명하라.'
-  ].join('\n'),
-  flashcards: [
-    '자료를 반복 학습용 플래시카드로 변환하라.',
-    '- 마크다운 표의 열을 `번호 | 앞면 | 뒷면 | 출처`로 구성하라.',
-    '- 앞면에는 한 번에 하나의 개념을 묻는 질문이나 용어를 두고, 뒷면에는 간결하지만 충분한 답을 써라.',
-    '- 정의, 공식, 비교, 과정, 예외를 균형 있게 포함하라.',
-    '- 문맥 없이도 이해할 수 있게 약어와 기호를 필요한 만큼 풀어 써라.',
-    '- 같은 사실을 표현만 바꿔 중복 카드로 만들지 마라.'
-  ].join('\n'),
-  mindmap: [
-    '자료의 전체 구조와 개념 관계를 한눈에 볼 수 있는 마인드맵을 만들어라.',
-    '- 렌더 가능한 `mermaid` 언어의 `mindmap` 코드 블록을 문서의 중심 결과물로 넣어라.',
-    '- 하나의 중심 주제 아래 대주제, 핵심 개념, 세부 근거를 계층적으로 배치하라.',
-    '- 노드 문구는 짧게 쓰되 개념 간 포함·대조·인과 관계가 드러나게 구성하라.',
-    '- Mermaid 문법을 깨뜨릴 수 있는 불필요한 특수문자와 긴 문장을 피하라.',
-    '- 코드 블록 뒤에 주요 연결 관계를 설명하는 짧은 해설을 덧붙여라.'
-  ].join('\n'),
-  'structured-notes': [
-    '강의자료를 원래 흐름을 보존한 계층적 학습 노트로 재구성하라.',
-    '- 제목, 대단원, 소단원, 핵심 항목의 계층이 분명한 마크다운 헤딩을 사용하라.',
-    '- 각 단원에 핵심 주장, 정의, 근거·예시, 공식·절차, 주의점을 알맞게 배치하라.',
-    '- 흩어진 설명이 같은 개념을 다루면 한곳에 모으되 원래 출처를 잃지 마라.',
-    '- 표가 비교나 분류를 더 명확하게 만드는 경우 마크다운 표를 사용하라.',
-    '- 마지막에 용어 목록과 단원 간 연결 관계를 정리하라.'
-  ].join('\n'),
-  'exam-predictions': [
-    '자료에 근거해 출제 가능성이 높은 시험 예상 문제를 만들어라.',
-    '- 각 문제에 문제 유형, 예상 난이도, 출제 가능성을 함께 표시하라.',
-    '- 반복 강조, 학습목표, 핵심 정의, 비교 가능한 개념, 계산·적용 가능성을 출제 근거로 제시하라.',
-    '- 객관식, 단답형, 서술형, 계산·적용형 중 자료에 맞는 유형을 고르게 사용하라.',
-    '- 각 문제 바로 아래가 아니라 문서 하단의 `모범 답안과 채점 포인트` 섹션에 답을 모아라.',
-    '- 실제 출제를 확정적으로 예언하지 말고 자료에서 판단할 수 있는 가능성과 근거만 써라.'
-  ].join('\n'),
-  explain: [
-    '대상 자료의 개념을 처음 배우는 학생도 따라올 수 있도록 단계적으로 설명하라.',
-    '- 선택한 텍스트가 제공되면 그 부분을 최우선 대상으로 삼고 주변 문맥과 연결해 설명하라.',
-    '- 먼저 한 문단 직관, 다음으로 정확한 정의와 원리, 이어서 예시나 비유 순서로 풀어라.',
-    '- 수식이나 코드가 있으면 기호와 각 단계를 생략하지 말고 설명하라.',
-    '- 자주 생기는 오해와 틀리기 쉬운 추론을 바로잡아라.',
-    '- 마지막에 이해 확인 질문 3개와 짧은 답을 제공하라.'
-  ].join('\n')
-}
+const RECIPES = Object.fromEntries(
+  BUILTIN_STUDY_PACKS.map((pack) => [pack.id, pack.recipe])
+) as Record<StudyToolId, string>
 
 function compactContextLine(value: string, maxLength: number): string {
   return Array.from(value.replace(/\s+/g, ' ').trim())

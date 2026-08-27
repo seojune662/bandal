@@ -4,6 +4,7 @@ import {
   buildStudyToolPrompt,
   STUDY_TOOLS
 } from '../../../src/main/features/study/studyTools'
+import { BUILTIN_STUDY_PACKS } from '../../../src/shared/workflowPacks/builtins'
 
 const COURSE_ID = 'course-1'
 
@@ -41,11 +42,25 @@ describe('studyTools', () => {
       })
 
       expect(prompt).toContain(EXPECTED_RECIPE_MARKERS[tool.id])
+      expect(prompt).toContain(
+        BUILTIN_STUDY_PACKS.find((pack) => pack.id === tool.id)?.recipe ?? ''
+      )
       expect(prompt).toContain('Write 도구로 저장')
       expect(prompt).toContain('자료에서 확인할 수 없음')
       expect(prompt).toContain('자료명과 페이지')
       expect(prompt).toContain('한국어로 작성')
     }
+  })
+
+  test('derives the legacy definitions from built-in workflow packs', () => {
+    expect(STUDY_TOOLS).toEqual(
+      BUILTIN_STUDY_PACKS.map((pack) => ({
+        id: pack.id,
+        label: pack.outputs.primary,
+        description: pack.description,
+        worksOnCourse: pack.worksOn.includes('course')
+      }))
+    )
   })
 
   test('focuses explanation on the selected text', () => {

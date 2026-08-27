@@ -76,6 +76,10 @@ import type {
   RunStudyToolResult,
   StudyToolDefinition
 } from '../types/study'
+import type {
+  WorkflowPack,
+  WorkflowPackSummary
+} from '../types/workflowPack'
 import type { MediaProgress } from '../types/mediaProgress'
 import type { PipOpenRequest, PipState } from '../types/pip'
 import type { SearchHit } from '../types/search'
@@ -923,6 +927,22 @@ export interface IpcContract {
     req: RunStudyToolInput
     res: RunStudyToolResult
   }
+  'packs:list': {
+    req: {}
+    res: { packs: WorkflowPackSummary[] }
+  }
+  'packs:importText': {
+    req: { json: string }
+    res: { pack: WorkflowPack; warnings: string[] }
+  }
+  'packs:remove': {
+    req: { id: string }
+    res: { ok: true }
+  }
+  'packs:setEnabled': {
+    req: { id: string; enabled: boolean }
+    res: { ok: true }
+  }
 
   // -- group whiteboard ------------------------------------------------------
   /** Opens (or lazily creates) the group's board and returns every live shape. */
@@ -1652,6 +1672,10 @@ export const IPC_CHANNELS = [
   'context:rebuild',
   'study:tools',
   'study:run',
+  'packs:list',
+  'packs:importText',
+  'packs:remove',
+  'packs:setEnabled',
   'whiteboard:open',
   'whiteboard:addShape',
   'whiteboard:removeShapes',
