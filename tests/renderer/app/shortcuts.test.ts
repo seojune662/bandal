@@ -7,9 +7,15 @@ vi.mock('../../../src/renderer/src/lib/ipc', () => ({
 }))
 
 import {
+  ADD_COURSE_SHORTCUT_EVENT,
+  FEEDBACK_EVENT,
+  IMPORT_MATERIALS_SHORTCUT_EVENT,
   resolveShortcut,
+  runShortcutAction,
+  SHORTCUT_HELP_EVENT,
   type ShortcutInput
 } from '../../../src/renderer/src/app/shortcuts'
+import { resolveKeymap } from '../../../src/shared/keymap'
 
 function input(overrides: Partial<ShortcutInput>): ShortcutInput {
   return {
@@ -111,6 +117,64 @@ describe('resolveShortcut — chords', () => {
       type: 'close-tab'
     })
   })
+
+  test('uses overrides instead of the hardcoded default chord', () => {
+    const custom = resolveKeymap({ 'new-tab': 'mod+alt+k' })
+
+    expect(
+      resolveShortcut(input({ key: 't', metaKey: true }), custom)
+    ).toBeNull()
+    expect(
+      resolveShortcut(
+        input({ key: 'k', metaKey: true, altKey: true }),
+        custom
+      )
+    ).toEqual({ type: 'new-tab' })
+  })
+
+  test('resolves the new app actions from the shared defaults', () => {
+    expect(
+      resolveShortcut(input({ key: 'b', metaKey: true }))
+    ).toEqual({ type: 'toggle-left-rail' })
+    expect(
+      resolveShortcut(
+        input({ key: 'b', metaKey: true, altKey: true })
+      )
+    ).toEqual({ type: 'toggle-right-rail' })
+    expect(
+      resolveShortcut(
+        input({ key: '/', metaKey: true })
+      )
+    ).toEqual({ type: 'shortcut-help' })
+    expect(
+      resolveShortcut(
+        input({ key: 'd', metaKey: true, shiftKey: true })
+      )
+    ).toEqual({ type: 'toggle-board' })
+    expect(
+      resolveShortcut(
+        input({ key: 'n', metaKey: true, shiftKey: true })
+      )
+    ).toEqual({ type: 'add-course' })
+    expect(
+      resolveShortcut(
+        input({ key: 'i', metaKey: true, shiftKey: true })
+      )
+    ).toEqual({ type: 'import-materials' })
+    expect(
+      resolveShortcut(
+        input({ key: 'p', metaKey: true, shiftKey: true })
+      )
+    ).toEqual({ type: 'open-pip' })
+
+    const withFeedback = resolveKeymap({ 'send-feedback': 'mod+alt+f' })
+    expect(
+      resolveShortcut(
+        input({ key: 'f', metaKey: true, altKey: true }),
+        withFeedback
+      )
+    ).toEqual({ type: 'send-feedback' })
+  })
 })
 
 describe('resolveShortcut — guards', () => {
@@ -169,8 +233,59 @@ describe('resolveShortcut — guards', () => {
     expect(inGuest(',')).toBeNull()
   })
 
+  test('derives guest allowance from shortcut specs', () => {
+    expect(
+      resolveShortcut(
+        input({
+          key: 'm',
+          metaKey: true,
+          shiftKey: true,
+          targetIsWebview: true
+        })
+      )
+    ).toEqual({ type: 'new-markdown' })
+    expect(
+      resolveShortcut(
+        input({
+          key: 'b',
+          metaKey: true,
+          targetIsWebview: true
+        })
+      )
+    ).toBeNull()
+  })
+
   test('unrelated keys resolve to nothing', () => {
     expect(resolveShortcut(input({ key: 'k', metaKey: true }))).toBeNull()
     expect(resolveShortcut(input({ key: 'Enter', metaKey: true }))).toBeNull()
+  })
+})
+
+describe('runShortcutAction — event entry points', () => {
+  test.each([
+    ['add-course', ADD_COURSE_SHORTCUT_EVENT],
+    ['import-materials', IMPORT_MATERIALS_SHORTCUT_EVENT],
+    ['shortcut-help', SHORTCUT_HELP_EVENT],
+    ['send-feedback', FEEDBACK_EVENT]
+  ] as const)('dispatches %s through %s', (type, eventName) => {
+    const dispatchEvent = vi.fn()
+    vi.stubGlobal('window', { dispatchEvent })
+    vi.stubGlobal(
+      'CustomEvent',
+      class {
+        readonly type: string
+
+        constructor(name: string) {
+          this.type = name
+        }
+      }
+    )
+    try {
+      runShortcutAction({ type })
+      expect(dispatchEvent).toHaveBeenCalledOnce()
+      expect(dispatchEvent.mock.calls[0]?.[0]).toMatchObject({ type: eventName })
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

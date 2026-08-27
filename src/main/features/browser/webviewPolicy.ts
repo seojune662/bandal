@@ -13,6 +13,12 @@
  */
 
 import { classifyExternalScheme } from './externalScheme'
+import {
+  chordFromKeyboardEvent,
+  SHORTCUT_SPECS,
+  type ShortcutActionId
+} from '../../../shared/keymap'
+import type { ShortcutPassthrough } from '../../../shared/ipc/events'
 
 /** The only session embedded browser guests may attach to. */
 export const BROWSING_PARTITION = 'persist:browsing'
@@ -86,95 +92,76 @@ export function isBlockedEmbeddedAuthUrl(url: string): boolean {
  *  - browser chrome (⌘R/⌘L/zoom), which every browser takes from the page too
  *
  * Everything else is intentionally dead inside a guest: the page owns its own
- * keymap. `alt` always disqualifies; `shift` only combines with ⌘R.
+ * keymap. Chord matching itself comes exclusively from the resolved keymap.
  */
-export type PassthroughAction =
-  | 'new-tab'
-  | 'close-tab'
-  | 'activate-last-tab'
-  | 'activate-tab-1'
-  | 'activate-tab-2'
-  | 'activate-tab-3'
-  | 'activate-tab-4'
-  | 'activate-tab-5'
-  | 'activate-tab-6'
-  | 'activate-tab-7'
-  | 'activate-tab-8'
-  | 'browser-back'
-  | 'browser-forward'
-  | 'reload'
-  | 'reload-hard'
-  | 'focus-address'
-  | 'find'
-  | 'bookmark'
-  | 'reopen-tab'
-  | 'prev-tab'
-  | 'next-tab'
-  | 'zoom-in'
-  | 'zoom-out'
-  | 'zoom-reset'
+export type PassthroughAction = ShortcutPassthrough['action']
 
-export function passthroughShortcut(input: {
-  type: string
-  key: string
-  meta: boolean
-  control: boolean
-  alt: boolean
-  shift: boolean
-}): PassthroughAction | null {
-  if (input.type !== 'keyDown') return null
-  if (!(input.meta || input.control) || input.alt) return null
-  const key = input.key.toLowerCase()
-  if (input.shift) {
-    // Shifted chords we take from the page: reload-hard, reopen-tab and tab
-    // cycling — all browser conventions. ⌘⇧B (new browser tab) and ⌘⇧M stay
-    // with the page.
-    if (key === 'r') return 'reload-hard'
-    if (key === 't') return 'reopen-tab'
-    if (key === '[') return 'prev-tab'
-    if (key === ']') return 'next-tab'
-    return null
+const GUEST_ALLOWED: ReadonlySet<ShortcutActionId> = new Set(
+  SHORTCUT_SPECS.filter((spec) => spec.guestAllowed).map((spec) => spec.id)
+)
+
+function passthroughActionFor(
+  action: ShortcutActionId
+): PassthroughAction | null {
+  if (action.startsWith('activate-tab-')) {
+    return action as PassthroughAction
   }
-  switch (key) {
-    case 't':
-      return 'new-tab'
-    case 'w':
-      return 'close-tab'
-    case '1':
-    case '2':
-    case '3':
-    case '4':
-    case '5':
-    case '6':
-    case '7':
-    case '8':
-      // Tab switching is tab lifetime, not page content. Click into a page
-      // and press ⌘2 and nothing used to happen.
-      return `activate-tab-${key}` as PassthroughAction
-    case '9':
-      return 'activate-last-tab'
-    case '[':
-      return 'browser-back'
-    case ']':
-      return 'browser-forward'
-    case 'r':
+  switch (action) {
+    case 'new-tab':
+    case 'close-tab':
+    case 'activate-last-tab':
+    case 'browser-back':
+    case 'browser-forward':
+    case 'reopen-tab':
+      return action
+    case 'browser-reload':
       return 'reload'
-    case 'l':
+    case 'browser-reload-hard':
+      return 'reload-hard'
+    case 'browser-focus-address':
       return 'focus-address'
-    case 'f':
+    case 'browser-find':
       return 'find'
-    case 'd':
+    case 'browser-bookmark':
       return 'bookmark'
-    case '=':
-    case '+':
+    case 'cycle-tab-prev':
+      return 'prev-tab'
+    case 'cycle-tab-next':
+      return 'next-tab'
+    case 'browser-zoom-in':
       return 'zoom-in'
-    case '-':
+    case 'browser-zoom-out':
       return 'zoom-out'
-    case '0':
+    case 'browser-zoom-reset':
       return 'zoom-reset'
     default:
       return null
   }
+}
+
+export function passthroughShortcut(
+  input: {
+    type: string
+    key: string
+    meta: boolean
+    control: boolean
+    alt: boolean
+    shift: boolean
+  },
+  keymap: ReadonlyMap<string, ShortcutActionId>
+): PassthroughAction | null {
+  if (input.type !== 'keyDown') return null
+  const chord = chordFromKeyboardEvent({
+    key: input.key,
+    metaKey: input.meta,
+    ctrlKey: input.control,
+    altKey: input.alt,
+    shiftKey: input.shift
+  })
+  if (chord === null) return null
+  const action = keymap.get(chord)
+  if (action === undefined || !GUEST_ALLOWED.has(action)) return null
+  return passthroughActionFor(action)
 }
 
 /**

@@ -13,6 +13,7 @@ import {
   popupWindowSize,
   sanitizeGuestWebPreferences
 } from '../../../src/main/features/browser/webviewPolicy'
+import { resolveKeymap } from '../../../src/shared/keymap'
 
 describe('isBlockedEmbeddedAuthUrl (Google embedded-login handoff)', () => {
   test('matches Google account sign-in origins', () => {
@@ -142,55 +143,56 @@ describe('passthroughShortcut (chords a focused guest would otherwise eat)', () 
     shift: false,
     ...over
   })
+  const defaultKeymap = resolveKeymap({})
+  const shortcut = (
+    over: Partial<Parameters<typeof passthroughShortcut>[0]> = {},
+    keymap = defaultKeymap
+  ) => passthroughShortcut(chord(over), keymap)
 
   test('passes ⌘T and ⌘W through', () => {
-    expect(passthroughShortcut(chord({ key: 't' }))).toBe('new-tab')
-    expect(passthroughShortcut(chord({ key: 'w' }))).toBe('close-tab')
+    expect(shortcut({ key: 't' })).toBe('new-tab')
+    expect(shortcut({ key: 'w' })).toBe('close-tab')
   })
 
   test('accepts ctrl as well as meta, and is case-insensitive', () => {
-    expect(passthroughShortcut(chord({ meta: false, control: true }))).toBe('new-tab')
-    expect(passthroughShortcut(chord({ key: 'T' }))).toBe('new-tab')
+    expect(shortcut({ meta: false, control: true })).toBe('new-tab')
+    expect(shortcut({ key: 'T' })).toBe('new-tab')
   })
 
   test('only fires on keyDown', () => {
-    expect(passthroughShortcut(chord({ type: 'keyUp' }))).toBeNull()
-    expect(passthroughShortcut(chord({ type: 'char' }))).toBeNull()
+    expect(shortcut({ type: 'keyUp' })).toBeNull()
+    expect(shortcut({ type: 'char' })).toBeNull()
   })
 
   test('passes browser-chrome chords through as well', () => {
-    expect(passthroughShortcut(chord({ key: 'r' }))).toBe('reload')
-    expect(passthroughShortcut(chord({ key: 'l' }))).toBe('focus-address')
-    expect(passthroughShortcut(chord({ key: '=' }))).toBe('zoom-in')
-    expect(passthroughShortcut(chord({ key: '-' }))).toBe('zoom-out')
-    expect(passthroughShortcut(chord({ key: '0' }))).toBe('zoom-reset')
-    expect(passthroughShortcut(chord({ key: '9' }))).toBe('activate-last-tab')
+    expect(shortcut({ key: 'r' })).toBe('reload')
+    expect(shortcut({ key: 'l' })).toBe('focus-address')
+    expect(shortcut({ key: '=' })).toBe('zoom-in')
+    expect(shortcut({ key: '-' })).toBe('zoom-out')
+    expect(shortcut({ key: '0' })).toBe('zoom-reset')
+    expect(shortcut({ key: '9' })).toBe('activate-last-tab')
     // ⌘F belongs to the browser, not the page — Chrome steals it too.
-    expect(passthroughShortcut(chord({ key: 'f' }))).toBe('find')
-    expect(passthroughShortcut(chord({ key: 'd' }))).toBe('bookmark')
+    expect(shortcut({ key: 'f' })).toBe('find')
+    expect(shortcut({ key: 'd' })).toBe('bookmark')
   })
 
-  test('alt always disqualifies', () => {
-    expect(passthroughShortcut(chord({ alt: true }))).toBeNull()
-    expect(passthroughShortcut(chord({ meta: false, control: false }))).toBeNull()
+  test('requires an exact resolved chord', () => {
+    expect(shortcut({ alt: true })).toBeNull()
+    expect(shortcut({ meta: false, control: false })).toBeNull()
   })
 
   test('takes the shifted browser conventions from the page', () => {
-    expect(passthroughShortcut(chord({ key: 'r', shift: true }))).toBe(
-      'reload-hard'
-    )
-    expect(passthroughShortcut(chord({ key: 't', shift: true }))).toBe(
-      'reopen-tab'
-    )
-    expect(passthroughShortcut(chord({ key: '[', shift: true }))).toBe('prev-tab')
-    expect(passthroughShortcut(chord({ key: ']', shift: true }))).toBe('next-tab')
+    expect(shortcut({ key: 'r', shift: true })).toBe('reload-hard')
+    expect(shortcut({ key: 't', shift: true })).toBe('reopen-tab')
+    expect(shortcut({ key: '[', shift: true })).toBe('prev-tab')
+    expect(shortcut({ key: ']', shift: true })).toBe('next-tab')
   })
 
   test('leaves the app-only shifted chords with the page', () => {
     // ⌘⇧B (new browser tab) / ⌘⇧M (new note) are ours but would be startling
     // to fire from inside a page.
     for (const key of ['b', 'm', 'w']) {
-      expect(passthroughShortcut(chord({ key, shift: true })), key).toBeNull()
+      expect(shortcut({ key, shift: true }), key).toBeNull()
     }
   })
 
@@ -199,18 +201,29 @@ describe('passthroughShortcut (chords a focused guest would otherwise eat)', () 
     // Chrome switches tabs on ⌘1..8 wherever focus is — tab switching is tab
     // lifetime, not page content. Click into a page, press ⌘2, and nothing
     // used to happen.
-    expect(passthroughShortcut(chord({ key: '1' }))).toBe('activate-tab-1')
-    expect(passthroughShortcut(chord({ key: '8' }))).toBe('activate-tab-8')
-    expect(passthroughShortcut(chord({ key: '[' }))).toBe('browser-back')
-    expect(passthroughShortcut(chord({ key: ']' }))).toBe('browser-forward')
+    expect(shortcut({ key: '1' })).toBe('activate-tab-1')
+    expect(shortcut({ key: '8' })).toBe('activate-tab-8')
+    expect(shortcut({ key: '[' })).toBe('browser-back')
+    expect(shortcut({ key: ']' })).toBe('browser-forward')
   })
 
   test('leaves the genuinely app-only chords to the page', () => {
     // ⌘, opens settings; ⌘P belongs to the 파일 menu item, which macOS
     // resolves before the event ever reaches a guest.
     for (const key of ['p', ',']) {
-      expect(passthroughShortcut(chord({ key })), key).toBeNull()
+      expect(shortcut({ key }), key).toBeNull()
     }
+  })
+
+  test('follows custom chords and stops intercepting displaced defaults', () => {
+    const custom = resolveKeymap({
+      'new-tab': 'mod+alt+n',
+      'browser-reload': 'mod+shift+y'
+    })
+
+    expect(shortcut({ key: 't' }, custom)).toBeNull()
+    expect(shortcut({ key: 'n', alt: true }, custom)).toBe('new-tab')
+    expect(shortcut({ key: 'y', shift: true }, custom)).toBe('reload')
   })
 })
 

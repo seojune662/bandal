@@ -6,6 +6,9 @@ const electronMocks = vi.hoisted(() => ({
   showMessageBox: vi.fn(async () => ({ response: 0 })),
   showMessageBoxSync: vi.fn(() => 0)
 }))
+const settingsMocks = vi.hoisted(() => ({
+  keybindings: {} as Record<string, string | null>
+}))
 
 vi.mock('electron', () => ({
   app: {
@@ -28,7 +31,14 @@ vi.mock('electron', () => ({
   }
 }))
 
-import { attachNavigationPolicies } from '../../../src/main/features/browser/hardenWebviews'
+vi.mock('../../../src/main/settingsStore', () => ({
+  getSettings: () => ({ keybindings: settingsMocks.keybindings })
+}))
+
+import {
+  attachGuestInput,
+  attachNavigationPolicies
+} from '../../../src/main/features/browser/hardenWebviews'
 
 type Listener = (...args: any[]) => void
 
@@ -65,7 +75,10 @@ class FakeWebContents {
 }
 
 describe('attachNavigationPolicies', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    settingsMocks.keybindings = {}
+  })
 
   test('guards navigation on a standalone WebContents', () => {
     const webContents = new FakeWebContents()
@@ -97,5 +110,60 @@ describe('attachNavigationPolicies', () => {
 
     expect(result).toEqual({ action: 'deny' })
     expect(openInTab).toHaveBeenCalledWith('https://video.example.net/watch/42')
+  })
+})
+
+describe('attachGuestInput', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    settingsMocks.keybindings = {}
+  })
+
+  test('resolves the latest settings keymap for every guest keydown', () => {
+    const host = new FakeWebContents()
+    const guest = new FakeWebContents()
+    attachGuestInput(
+      host as unknown as Electron.WebContents,
+      guest as unknown as Electron.WebContents
+    )
+
+    settingsMocks.keybindings = { 'new-tab': 'mod+alt+n' }
+    const firstEvent = { preventDefault: vi.fn() }
+    guest.emit('before-input-event', firstEvent, {
+      type: 'keyDown',
+      key: 'n',
+      meta: true,
+      control: false,
+      alt: true,
+      shift: false
+    })
+    expect(firstEvent.preventDefault).toHaveBeenCalledOnce()
+    expect(host.send).toHaveBeenLastCalledWith('shortcut:passthrough', {
+      action: 'new-tab',
+      webContentsId: guest.id
+    })
+
+    settingsMocks.keybindings = { 'new-tab': 'mod+shift+k' }
+    const staleEvent = { preventDefault: vi.fn() }
+    guest.emit('before-input-event', staleEvent, {
+      type: 'keyDown',
+      key: 'n',
+      meta: true,
+      control: false,
+      alt: true,
+      shift: false
+    })
+    expect(staleEvent.preventDefault).not.toHaveBeenCalled()
+
+    const nextEvent = { preventDefault: vi.fn() }
+    guest.emit('before-input-event', nextEvent, {
+      type: 'keyDown',
+      key: 'k',
+      meta: true,
+      control: false,
+      alt: false,
+      shift: true
+    })
+    expect(nextEvent.preventDefault).toHaveBeenCalledOnce()
   })
 })

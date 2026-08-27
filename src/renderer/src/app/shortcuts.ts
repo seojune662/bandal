@@ -1,39 +1,29 @@
-/**
- * [M6-A] Global keyboard shortcuts.
- *
- *   ⌘T      새 탭 메뉴 (workspace의 openNewTabMenu)
- *   ⇧⌘M     새 마크다운 (과목 폴더에 .md 생성 후 탭으로 열기)
- *   ⇧⌘B     새 브라우저 탭
- *   ⌘W      활성 탭 닫기 — 탭이 없으면 no-op (창은 절대 닫지 않는다;
- *           기본 메뉴의 ⌘W(Close Window)는 src/main/menu.ts가 ⇧⌘W로 옮겨
- *           이 chord가 렌더러까지 내려온다)
- *   ⌘P      빠른 파일 검색 (선택된 과목의 materials:search 옴니박스)
- *   ⌘,      설정 화면 (메뉴 액셀러레이터가 먼저 먹지만, 여기도 폴백으로 처리)
- *   ⌘1..9   n번째 탭 활성화
- *
- * Guard rules (all encoded in the pure `resolveShortcut`, unit-tested):
- *  - IME-safe: composing keydowns (isComposing / keyCode 229) never match.
- *  - Chord must be exactly meta-or-ctrl — alt/shift disqualify.
- *  - While a <webview> guest has focus, only ⌘T/⌘W act. (In practice the
- *    guest owns the keyboard, so those two arrive via the main process
- *    `shortcut:passthrough` push — see hardenWebviews; the target guard here
- *    is defense in depth for the host-side <webview> element.)
- *  - Editable targets (inputs, Milkdown) keep working: these are modifier
- *    chords, not text input, so they stay active there.
- */
+/** Global keyboard shortcuts resolved from the shared, customizable keymap. */
 
 import { useEffect } from 'react'
 import { create } from 'zustand'
+import {
+  chordFromKeyboardEvent,
+  resolveKeymap,
+  SHORTCUT_SPECS,
+  type ShortcutActionId
+} from '../../../shared/keymap'
 import { onPush } from '../lib/ipc'
 import { openNewTabMenu } from '../features/workspace/newTabMenuController'
 import { createBrowserTab, createMarkdownTab } from './tabCommands'
 import { tabIdForWebContents } from '../features/browser/guestActions'
+import { viewerKindFor } from '../features/file/fileFormats'
 import { tabPanelId } from '../features/workspace/tabIdentity'
 import type { ShortcutPassthrough } from '../../../shared/ipc/events'
 import { guestActions } from '../features/browser/guestActions'
 import { useBrowserGuests } from '../features/browser/browserGuestsStore'
 import { toggleFavorite } from '../features/browser/browserFavorite'
 import { DEFAULT_ZOOM_LEVEL, zoomIn, zoomOut } from '../features/browser/zoom'
+import { mediaUrlFor } from '../features/materials/mediaUrl'
+import {
+  ensureSettingsLoaded,
+  settingsSnapshot
+} from '../stores/settingsSnapshot'
 import { useUiStore } from '../stores/uiStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 
@@ -59,6 +49,14 @@ export type ShortcutAction =
   | { type: 'reopen-tab' }
   | { type: 'cycle-tab'; delta: number }
   | { type: 'browser-zoom'; direction: 'in' | 'out' | 'reset' }
+  | { type: 'toggle-left-rail' }
+  | { type: 'toggle-right-rail' }
+  | { type: 'toggle-board' }
+  | { type: 'add-course' }
+  | { type: 'import-materials' }
+  | { type: 'open-pip' }
+  | { type: 'shortcut-help' }
+  | { type: 'send-feedback' }
 
 export interface ShortcutInput {
   key: string
@@ -72,102 +70,77 @@ export interface ShortcutInput {
   targetIsWebview: boolean
 }
 
-const GUEST_ALLOWED: ReadonlySet<ShortcutAction['type']> = new Set([
-  'new-tab',
-  'close-tab',
-  'new-markdown',
-  'new-browser-tab',
-  'activate-last-tab',
-  'activate-tab',
-  'browser-back',
-  'browser-forward',
-  'browser-reload',
-  'browser-focus-address',
-  'browser-find',
-  'browser-bookmark',
-  'reopen-tab',
-  'cycle-tab',
-  'browser-zoom'
-])
+const GUEST_ALLOWED: ReadonlySet<ShortcutActionId> = new Set(
+  SHORTCUT_SPECS.filter((spec) => spec.guestAllowed).map((spec) => spec.id)
+)
 
-/** ⇧-chords, kept apart because the plain resolver rejects shift outright. */
-function shiftActionForKey(key: string): ShortcutAction | null {
-  switch (key) {
-    case 'm':
-      return { type: 'new-markdown' }
-    case 'b':
-      return { type: 'new-browser-tab' }
-    case 'r':
-      return { type: 'browser-reload', ignoreCache: true }
-    case 't':
-      return { type: 'reopen-tab' }
-    case '[':
-      return { type: 'cycle-tab', delta: -1 }
-    case ']':
-      return { type: 'cycle-tab', delta: 1 }
-    default:
-      return null
+let currentKeymap = resolveKeymap(settingsSnapshot().keybindings)
+
+function actionForId(id: ShortcutActionId): ShortcutAction | null {
+  if (id.startsWith('activate-tab-')) {
+    return { type: 'activate-tab', index: Number(id.slice(-1)) - 1 }
   }
-}
-
-function actionForKey(key: string): ShortcutAction | null {
-  switch (key) {
-    case 't':
-      return { type: 'new-tab' }
-    case 'w':
-      return { type: 'close-tab' }
-    case 'p':
-      return { type: 'quick-search' }
-    case ',':
-      return { type: 'settings' }
-    case 'r':
+  switch (id) {
+    case 'new-tab':
+    case 'new-markdown':
+    case 'new-browser-tab':
+    case 'close-tab':
+    case 'quick-search':
+    case 'settings':
+    case 'activate-last-tab':
+    case 'browser-back':
+    case 'browser-forward':
+    case 'browser-focus-address':
+    case 'browser-find':
+    case 'browser-bookmark':
+    case 'reopen-tab':
+    case 'toggle-left-rail':
+    case 'toggle-right-rail':
+    case 'toggle-board':
+    case 'add-course':
+    case 'import-materials':
+    case 'open-pip':
+    case 'shortcut-help':
+    case 'send-feedback':
+      return { type: id }
+    case 'browser-reload':
       return { type: 'browser-reload', ignoreCache: false }
-    case 'l':
-      return { type: 'browser-focus-address' }
-    case 'f':
-      return { type: 'browser-find' }
-    case 'd':
-      return { type: 'browser-bookmark' }
-    case '=':
-    case '+':
+    case 'browser-reload-hard':
+      return { type: 'browser-reload', ignoreCache: true }
+    case 'cycle-tab-prev':
+      return { type: 'cycle-tab', delta: -1 }
+    case 'cycle-tab-next':
+      return { type: 'cycle-tab', delta: 1 }
+    case 'browser-zoom-in':
       return { type: 'browser-zoom', direction: 'in' }
-    case '-':
+    case 'browser-zoom-out':
       return { type: 'browser-zoom', direction: 'out' }
-    case '0':
+    case 'browser-zoom-reset':
       return { type: 'browser-zoom', direction: 'reset' }
-    case '[':
-      return { type: 'browser-back' }
-    case ']':
-      return { type: 'browser-forward' }
-    default: {
-      // ⌘9 is "last tab" in every browser, not the ninth one.
-      if (key === '9') return { type: 'activate-last-tab' }
-      if (/^[1-8]$/.test(key)) {
-        return { type: 'activate-tab', index: Number(key) - 1 }
-      }
+    case 'whiteboard-select':
+    case 'whiteboard-pen':
+    case 'whiteboard-highlighter':
+    case 'whiteboard-eraser':
+    case 'whiteboard-text':
+    case 'whiteboard-rectangle':
+    case 'whiteboard-ellipse':
       return null
-    }
   }
+  return null
 }
 
 /** Maps a keydown to a shortcut action, or null when guards reject it. */
-export function resolveShortcut(input: ShortcutInput): ShortcutAction | null {
+export function resolveShortcut(
+  input: ShortcutInput,
+  keymap: ReadonlyMap<string, ShortcutActionId> = currentKeymap
+): ShortcutAction | null {
   if (input.isComposing) return null
-  if (!(input.metaKey || input.ctrlKey)) return null
-  if (input.altKey) return null
-
-  if (input.shiftKey) {
-    const shifted = shiftActionForKey(input.key.toLowerCase())
-    if (shifted === null) return null
-    return input.targetIsWebview && !GUEST_ALLOWED.has(shifted.type)
-      ? null
-      : shifted
-  }
-
-  const action = actionForKey(input.key.toLowerCase())
-  if (action === null) return null
-  if (input.targetIsWebview && !GUEST_ALLOWED.has(action.type)) return null
-  return action
+  const chord = chordFromKeyboardEvent(input)
+  if (chord === null) return null
+  const actionId = keymap.get(chord)
+  if (actionId === undefined) return null
+  if (input.targetIsWebview && !GUEST_ALLOWED.has(actionId)) return null
+  return actionForId(actionId)
 }
 
 // -- quick-search open/close state (⌘P overlay) -------------------------------
@@ -194,7 +167,34 @@ export const useQuickSearch = create<QuickSearchState>()((set) => ({
  * NOT make its panel active, so 'close-tab' has to name the tab explicitly —
  * otherwise ⌘W in a split closes whichever panel dockview thinks is active.
  */
-function runShortcutAction(
+export const ADD_COURSE_SHORTCUT_EVENT = 'bandal:open-add-course'
+export const IMPORT_MATERIALS_SHORTCUT_EVENT = 'bandal:import-materials'
+export const SHORTCUT_HELP_EVENT = 'bandal:open-shortcut-help'
+export const FEEDBACK_EVENT = 'bandal:open-feedback'
+
+function openActiveVideoPip(): void {
+  const descriptor = useWorkspaceStore.getState().activeTabDescriptor()
+  if (
+    descriptor?.kind !== 'file' ||
+    viewerKindFor(descriptor.payload.relPath) !== 'video'
+  ) {
+    return
+  }
+
+  const source = mediaUrlFor(
+    descriptor.payload.courseId,
+    descriptor.payload.relPath
+  )
+  const video = [...document.querySelectorAll<HTMLVideoElement>(
+    '.file-video__media'
+  )].find((candidate) => candidate.getAttribute('src') === source)
+  video
+    ?.closest('.file-video')
+    ?.querySelector<HTMLButtonElement>('.file-video__pip:not(:disabled)')
+    ?.click()
+}
+
+export function runShortcutAction(
   action: ShortcutAction,
   originTabId?: string
 ): void {
@@ -292,7 +292,32 @@ function runShortcutAction(
             : zoomOut(current)
       store.setZoom(target, next)
       guestActions.setZoom(target, next)
+      return
     }
+    case 'toggle-left-rail':
+      useUiStore.getState().toggleLeftRail()
+      return
+    case 'toggle-right-rail':
+      useUiStore.getState().toggleRightRail()
+      return
+    case 'toggle-board':
+      useUiStore.getState().toggleBoardOverlay()
+      return
+    case 'add-course':
+      window.dispatchEvent(new CustomEvent(ADD_COURSE_SHORTCUT_EVENT))
+      return
+    case 'import-materials':
+      window.dispatchEvent(new CustomEvent(IMPORT_MATERIALS_SHORTCUT_EVENT))
+      return
+    case 'open-pip':
+      openActiveVideoPip()
+      return
+    case 'shortcut-help':
+      window.dispatchEvent(new CustomEvent(SHORTCUT_HELP_EVENT))
+      return
+    case 'send-feedback':
+      window.dispatchEvent(new CustomEvent(FEEDBACK_EVENT))
+      return
   }
 }
 
@@ -365,6 +390,54 @@ function isWebviewTarget(target: EventTarget | null): boolean {
 /** Registers the window keydown listener + the guest passthrough push. */
 export function useGlobalShortcuts(): void {
   useEffect(() => {
+    let active = true
+    const pendingFrames = new Set<number>()
+    const clickButton = (selector: string): boolean => {
+      const button = document.querySelector<HTMLButtonElement>(selector)
+      if (button === null || button.disabled) return false
+      button.click()
+      return true
+    }
+    const clickOnNextFrame = (selector: string): void => {
+      const frame = window.requestAnimationFrame(() => {
+        pendingFrames.delete(frame)
+        clickButton(selector)
+      })
+      pendingFrames.add(frame)
+    }
+    const onAddCourse = (): void => {
+      const selector = '[aria-label="과목 추가"][aria-haspopup="menu"]'
+      if (clickButton(selector)) return
+      const ui = useUiStore.getState()
+      if (!ui.leftRailOpen) ui.toggleLeftRail()
+      clickOnNextFrame(selector)
+    }
+    const onImportMaterials = (): void => {
+      if (useWorkspaceStore.getState().activeCourseId === null) return
+      const selector = 'button[data-tour="materials-import"]'
+      if (clickButton(selector)) return
+      const ui = useUiStore.getState()
+      if (!ui.rightRailOpen) ui.toggleRightRail()
+      clickOnNextFrame(selector)
+    }
+    window.addEventListener(ADD_COURSE_SHORTCUT_EVENT, onAddCourse)
+    window.addEventListener(IMPORT_MATERIALS_SHORTCUT_EVENT, onImportMaterials)
+
+    void ensureSettingsLoaded()
+      .then((settings) => {
+        if (active) currentKeymap = resolveKeymap(settings.keybindings)
+      })
+      .catch((error: unknown) => {
+        console.error('[Bandal] 단축키 설정을 불러오지 못했습니다.', error)
+      })
+
+    const unsubscribeSettings = onPush(
+      'settings:changed',
+      ({ settings }) => {
+        currentKeymap = resolveKeymap(settings.keybindings)
+      }
+    )
+
     const onKeyDown = (event: KeyboardEvent): void => {
       const action = resolveShortcut({
         key: event.key,
@@ -395,7 +468,15 @@ export function useGlobalShortcuts(): void {
     )
 
     return () => {
+      active = false
+      for (const frame of pendingFrames) window.cancelAnimationFrame(frame)
+      window.removeEventListener(ADD_COURSE_SHORTCUT_EVENT, onAddCourse)
+      window.removeEventListener(
+        IMPORT_MATERIALS_SHORTCUT_EVENT,
+        onImportMaterials
+      )
       window.removeEventListener('keydown', onKeyDown)
+      unsubscribeSettings()
       unsubscribe()
     }
   }, [])

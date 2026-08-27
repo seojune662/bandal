@@ -7,6 +7,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
+import {
+  formatChord,
+  parseChord,
+  resolveKeymap,
+  type ShortcutActionId
+} from '../../../../shared/keymap'
 import type { Course } from '../../../../shared/types/course'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
@@ -15,11 +21,15 @@ import { showToast } from '../../app/toast'
 import { useFavoritesStore } from '../../stores/favoritesStore'
 import { useGroupsStore } from '../../stores/groupsStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
+import {
+  ensureSettingsLoaded,
+  settingsSnapshot
+} from '../../stores/settingsSnapshot'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useNewTabMenu } from './newTabMenuController'
 import { descriptorFor, looksLikeUrl, normalizeUrl } from './tabIdentity'
 import { TabKindIcon } from './workspaceIcons'
-import { invoke } from '../../lib/ipc'
+import { invoke, onPush } from '../../lib/ipc'
 
 const MAX_PDF_ITEMS = 8
 
@@ -52,6 +62,19 @@ function labelForUrl(url: string): string {
   }
 }
 
+export function shortcutLabel(
+  keymap: ReadonlyMap<string, ShortcutActionId>,
+  action: ShortcutActionId,
+  platform: string
+): string | undefined {
+  for (const [value, mappedAction] of keymap) {
+    if (mappedAction !== action) continue
+    const chord = parseChord(value)
+    return chord === null ? undefined : formatChord(chord, platform)
+  }
+  return undefined
+}
+
 export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
   const anchor = useNewTabMenu((state) => state.anchor)
   const close = useNewTabMenu((state) => state.close)
@@ -67,6 +90,9 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
   const [linkLabel, setLinkLabel] = useState('')
   const [linkError, setLinkError] = useState<string | null>(null)
   const [isSavingLink, setSavingLink] = useState(false)
+  const [keymap, setKeymap] = useState(() =>
+    resolveKeymap(settingsSnapshot().keybindings)
+  )
   const menuRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const linkUrlRef = useRef<HTMLInputElement>(null)
@@ -78,6 +104,24 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
   useEffect(() => {
     if (isAddingLink) linkUrlRef.current?.focus()
   }, [isAddingLink])
+
+  useEffect(() => {
+    let active = true
+    void ensureSettingsLoaded()
+      .then((settings) => {
+        if (active) setKeymap(resolveKeymap(settings.keybindings))
+      })
+      .catch((error: unknown) => {
+        console.error('[Bandal] 단축키 라벨을 불러오지 못했습니다.', error)
+      })
+    const unsubscribe = onPush('settings:changed', ({ settings }) => {
+      setKeymap(resolveKeymap(settings.keybindings))
+    })
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [])
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent): void => {
@@ -96,6 +140,18 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
     setLinkError(null)
     setAddingLink(true)
   }
+
+  const platform = window.bandal?.platform ?? 'unknown'
+  const newMarkdownShortcut = shortcutLabel(
+    keymap,
+    'new-markdown',
+    platform
+  )
+  const newBrowserShortcut = shortcutLabel(
+    keymap,
+    'new-browser-tab',
+    platform
+  )
 
   const items = useMemo<MenuItem[]>(() => {
     const trimmed = query.trim()
@@ -125,7 +181,9 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         id: 'new-note',
         label: '새 마크다운',
         ...(titled ? { hint: `"${trimmed}"` } : {}),
-        shortcut: '⇧⌘M',
+        ...(newMarkdownShortcut === undefined
+          ? {}
+          : { shortcut: newMarkdownShortcut }),
         icon: <TabKindIcon kind="note" />,
         run: () => createMarkdownTab(titled ? trimmed : undefined)
       })
@@ -134,7 +192,9 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
       result.push({
         id: 'new-browser',
         label: '새 브라우저 탭',
-        shortcut: '⇧⌘B',
+        ...(newBrowserShortcut === undefined
+          ? {}
+          : { shortcut: newBrowserShortcut }),
         icon: <TabKindIcon kind="browser" />,
         run: () => {
           createBrowserTab()
@@ -239,7 +299,16 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
       }
     }
     return result
-  }, [query, tree, groups, course.id, course.name, openTab])
+  }, [
+    query,
+    tree,
+    groups,
+    course.id,
+    course.name,
+    openTab,
+    newMarkdownShortcut,
+    newBrowserShortcut
+  ])
 
   const linkItem: MenuItem = {
     id: 'add-link',

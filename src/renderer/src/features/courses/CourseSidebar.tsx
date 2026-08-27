@@ -12,6 +12,7 @@ import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { SidebarAccountEntry } from '../account/SidebarAccountEntry'
 import { TogetherFooter } from '../group/TogetherFooter'
+import { HelpHub } from '../help/HelpHub'
 import { UniversityShortcuts } from '../university/UniversityShortcuts'
 import { TabKindIcon } from '../workspace/workspaceIcons'
 import {
@@ -818,6 +819,7 @@ export function CourseSidebar(): JSX.Element {
             <Icon name="settings" />
             <span>설정</span>
           </button>
+          <HelpHub />
         </nav>
       </footer>
 

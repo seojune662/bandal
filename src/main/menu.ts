@@ -12,9 +12,54 @@
 
 import { app, BrowserWindow, Menu } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
+import {
+  parseChord,
+  printChord,
+  resolveKeymap,
+  type ShortcutActionId
+} from '../shared/keymap'
 import { openSettingsInApp } from './windows/settingsWindow'
 
 const PRINT_MENU_ITEM_ID = 'print'
+let printMenuEnabled = false
+
+function chordForAction(
+  keymap: ReadonlyMap<string, ShortcutActionId>,
+  action: ShortcutActionId
+): string | null {
+  for (const [chord, mappedAction] of keymap) {
+    if (mappedAction === action) return chord
+  }
+  return null
+}
+
+/** Converts a platform-neutral shared chord into Electron accelerator syntax. */
+export function electronAcceleratorForChord(
+  value: string | null
+): string | undefined {
+  if (value === null) return undefined
+  const chord = parseChord(value)
+  if (chord === null) return undefined
+  const namedKeys: Readonly<Record<string, string>> = {
+    arrowdown: 'Down',
+    arrowleft: 'Left',
+    arrowright: 'Right',
+    arrowup: 'Up',
+    escape: 'Esc',
+    pagedown: 'PageDown',
+    pageup: 'PageUp',
+    space: 'Space'
+  }
+  const key =
+    namedKeys[chord.key] ??
+    (chord.key.length === 1 ? chord.key.toUpperCase() : chord.key)
+  return [
+    chord.mod ? 'CmdOrCtrl' : null,
+    chord.alt ? 'Alt' : null,
+    chord.shift ? 'Shift' : null,
+    key
+  ].filter((part): part is string => part !== null).join('+')
+}
 
 function requestPrint(): void {
   const target =
@@ -36,13 +81,20 @@ function requestPrint(): void {
  * tab change would drop open submenus and re-register every accelerator.
  */
 export function setPrintMenuEnabled(enabled: boolean): void {
+  printMenuEnabled = enabled
   const item = Menu.getApplicationMenu()?.getMenuItemById(PRINT_MENU_ITEM_ID)
   if (item === null || item === undefined) return
   item.enabled = enabled
 }
 
-export function installApplicationMenu(): void {
+export function installApplicationMenu(
+  keymap: ReadonlyMap<string, ShortcutActionId> = resolveKeymap({})
+): void {
   const isMac = process.platform === 'darwin'
+  const settingsAccelerator = electronAcceleratorForChord(
+    chordForAction(keymap, 'settings')
+  )
+  const printAccelerator = electronAcceleratorForChord(printChord(keymap))
 
   const template: MenuItemConstructorOptions[] = [
     ...(isMac
@@ -54,7 +106,9 @@ export function installApplicationMenu(): void {
               { type: 'separator' },
               {
                 label: '설정…',
-                accelerator: 'CmdOrCtrl+,',
+                ...(settingsAccelerator === undefined
+                  ? {}
+                  : { accelerator: settingsAccelerator }),
                 click: () => {
                   openSettingsInApp()
                 }
@@ -80,8 +134,10 @@ export function installApplicationMenu(): void {
         {
           id: PRINT_MENU_ITEM_ID,
           label: '인쇄…',
-          accelerator: 'CmdOrCtrl+P',
-          enabled: false,
+          ...(printAccelerator === undefined
+            ? {}
+            : { accelerator: printAccelerator }),
+          enabled: printMenuEnabled,
           click: requestPrint
         },
         { type: 'separator' },

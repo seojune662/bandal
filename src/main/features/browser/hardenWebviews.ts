@@ -12,6 +12,7 @@ import type {
   BrowserOpenUrl,
   ShortcutPassthrough
 } from '../../../shared/ipc/events'
+import { resolveKeymap } from '../../../shared/keymap'
 import {
   BROWSING_PARTITION,
   decidePopup,
@@ -34,6 +35,7 @@ import {
 import { createPopupLimiter } from './popupLimiter'
 import { browsingUserAgent } from './userAgent'
 import { createBrowserSessionStore } from './sessionStore'
+import { getSettings } from '../../settingsStore'
 
 let browsingSessionHardened = false
 
@@ -559,7 +561,10 @@ export function attachGuestInput(host: WebContents, guest: WebContents): void {
   // [M6-A] ⌘T/⌘W keep working while the guest has keyboard focus: intercept
   // them before the guest page sees the chord and replay them in the host.
   guest.on('before-input-event', (event, input) => {
-    const action = passthroughShortcut(input)
+    const action = passthroughShortcut(
+      input,
+      resolveKeymap(getSettings().keybindings)
+    )
     if (action !== null && !host.isDestroyed()) {
       event.preventDefault()
       const payload: ShortcutPassthrough = { action, webContentsId: guest.id }
