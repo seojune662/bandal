@@ -43,6 +43,7 @@ import {
   type TurnContext
 } from './toolHandlers/context'
 import { courseTools } from './toolHandlers/courses'
+import { linkTools } from './toolHandlers/links'
 import { materialTools } from './toolHandlers/materials'
 import { miscTools } from './toolHandlers/misc'
 import { noteTools } from './toolHandlers/notes'
@@ -340,6 +341,7 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
   const handlers: ToolHandlerMap = {
     ...courseTools(context),
     ...materialTools(context),
+    ...linkTools(context),
     ...noteTools(context),
     ...boardTools(context),
     ...canvasTools(context),

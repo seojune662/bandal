@@ -2,6 +2,8 @@ import {
   BANDAL_LINK_SCHEME,
   type MaterialLink
 } from '../../../../shared/types/link'
+import { materialKindForPath } from '../../../../shared/materialKind'
+import type { MaterialKind } from '../../../../shared/types/materials'
 import { requestPdfPageJump } from '../search/searchNavigation'
 import { openMaterialInCourse } from '../workspace/openMaterial'
 
@@ -26,7 +28,11 @@ export type NoteLinkResolution =
   | { kind: 'material'; link: MaterialLink }
 
 export interface MaterialLinkNavigationDeps {
-  openMaterial: (courseId: string, relPath: string) => void
+  openMaterial: (
+    courseId: string,
+    kind: MaterialKind,
+    relPath: string
+  ) => void
   jumpToPage: (page: number) => void
   jumpToAnnotation: (detail: Omit<PdfAnnotationJumpDetail, 'handled'>) => void
 }
@@ -111,8 +117,7 @@ export function requestPdfAnnotationJump(
 }
 
 const DEFAULT_NAVIGATION_DEPS: MaterialLinkNavigationDeps = {
-  openMaterial: (courseId, relPath) =>
-    openMaterialInCourse(courseId, 'pdf', relPath),
+  openMaterial: openMaterialInCourse,
   jumpToPage: requestPdfPageJump,
   jumpToAnnotation: requestPdfAnnotationJump
 }
@@ -123,9 +128,14 @@ export function openMaterialLink(
   link: MaterialLink,
   deps: MaterialLinkNavigationDeps = DEFAULT_NAVIGATION_DEPS
 ): void {
-  deps.openMaterial(courseId, link.relPath)
-  if (link.page !== null) deps.jumpToPage(link.page)
-  if (link.page !== null && link.annotationId !== undefined) {
+  const kind = materialKindForPath(link.relPath)
+  deps.openMaterial(courseId, kind, link.relPath)
+  if (kind === 'pdf' && link.page !== null) deps.jumpToPage(link.page)
+  if (
+    kind === 'pdf' &&
+    link.page !== null &&
+    link.annotationId !== undefined
+  ) {
     deps.jumpToAnnotation({
       courseId,
       relPath: link.relPath,
@@ -134,4 +144,3 @@ export function openMaterialLink(
     })
   }
 }
-

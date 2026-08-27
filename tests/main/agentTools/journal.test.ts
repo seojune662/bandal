@@ -24,6 +24,7 @@ function undoHandlers(overrides: Partial<UndoHandlers> = {}): UndoHandlers {
   return {
     course: overrides.course ?? noop,
     material: overrides.material ?? noop,
+    link: overrides.link ?? noop,
     note: overrides.note ?? noop,
     task: overrides.task ?? noop,
     board: overrides.board ?? noop,
@@ -172,6 +173,27 @@ describe('createAgentJournal', () => {
       results: [{ actionId: action?.id, ok: true }]
     })
     expect(seen).toEqual(['sheet.xlsx\u0000/backups/sheet.xlsx'])
+  })
+
+  test('awaits link removal through the link undo handler', async () => {
+    record({
+      turnId: 'turn-1',
+      targetId: 'link-1',
+      targetKind: 'link'
+    })
+    const remove = vi.fn(async (_input: UndoTarget) => undefined)
+
+    const [action] = journal.forTurn('turn-1').actions
+    expect(
+      await journal.undoTurn('turn-1', undoHandlers({ link: remove }))
+    ).toEqual({
+      undone: 1,
+      results: [{ actionId: action?.id, ok: true }]
+    })
+    expect(remove).toHaveBeenCalledWith({
+      courseId: COURSE_ID,
+      targetId: 'link-1'
+    })
   })
 
   test('does not touch actions from another turn', async () => {

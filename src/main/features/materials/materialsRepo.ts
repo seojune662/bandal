@@ -72,6 +72,7 @@ export interface MaterialsRepoDeps {
   trashItem: (absPath: string) => Promise<void>
   /** Production uses the exported defaults; tests may lower them. */
   scanLimits?: MaterialsScanLimits
+  onPathChanged?: (change: { courseId: string; fromRelPath: string; toRelPath: string; isDirectory: boolean }) => void
 }
 
 export interface MaterialsScanLimits {
@@ -361,6 +362,11 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
   // 실제 스캔이 일어날 때만 함께 일어난다.
   const treeCache = new Map<string, MaterialNode[]>()
 
+  function notifyPathChanged(courseId: string, fromRelPath: string, toRelPath: string, isDirectory: boolean): void {
+    try { deps.onPathChanged?.({ courseId, fromRelPath, toRelPath, isDirectory }) }
+    catch (error) { console.warn(`[materials] path-change hook failed for "${fromRelPath}" -> "${toRelPath}"`, error) }
+  }
+
   function requireCourseFolder(courseId: string): { id: string; folder: string } {
     const id = requireId(courseId, 'courseId')
     const folder = getCourseFolder(id)
@@ -564,7 +570,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         input.courseId,
         input.fromRelPath
       )
-      assertFileOrDirectory(sourceAbs, input.fromRelPath)
+      const sourceKind = assertFileOrDirectory(sourceAbs, input.fromRelPath)
       if (typeof input.toDirRelPath !== 'string') {
         throw new ValidationError('toDirRelPath must be a string')
       }
@@ -593,7 +599,9 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       assertRealInside(folder, sourceAbs)
       assertRealInside(folder, destAbs)
       renameSync(sourceAbs, destAbs)
-      treeCache.delete(requireId(input.courseId, 'courseId'))
+      const courseId = requireId(input.courseId, 'courseId')
+      treeCache.delete(courseId)
+      notifyPathChanged(courseId, input.fromRelPath, relPath, sourceKind === 'dir')
       return { relPath }
     },
 
@@ -629,7 +637,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         input.courseId,
         input.relPath
       )
-      assertFileOrDirectory(sourceAbs, input.relPath)
+      const sourceKind = assertFileOrDirectory(sourceAbs, input.relPath)
       const newName = requireBasename(input.newName, 'newName')
       const parentRelPath = posix.dirname(input.relPath)
       const destinationRelPath =
@@ -644,7 +652,9 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       assertRealInside(folder, sourceAbs)
       assertRealInside(folder, destinationAbs)
       renameSync(sourceAbs, destinationAbs)
-      treeCache.delete(requireId(input.courseId, 'courseId'))
+      const courseId = requireId(input.courseId, 'courseId')
+      treeCache.delete(courseId)
+      notifyPathChanged(courseId, input.relPath, destinationRelPath, sourceKind === 'dir')
       return { relPath: destinationRelPath }
     },
 

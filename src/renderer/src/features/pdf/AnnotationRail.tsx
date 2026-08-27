@@ -5,19 +5,16 @@
  * get a subtle badge with an explanatory tooltip.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Icon } from '../../app/icons'
-import { invoke } from '../../lib/ipc'
-import { useWorkspaceStore } from '../../stores/workspaceStore'
-import { descriptorFor } from '../workspace/tabIdentity'
 import { TabKindIcon } from '../workspace/workspaceIcons'
+import { MaterialConnectionsSection } from '../links/MaterialConnectionsSection'
 import type { Annotation } from '../../../../shared/types/annotation'
-import type {
-  MaterialBacklink,
-  MaterialBacklinks
-} from '../../../../shared/types/link'
 
-const EMPTY_BACKLINKS: MaterialBacklinks = { notes: [], boards: [] }
+export {
+  backlinkPageLabel,
+  MaterialBacklinksSection
+} from '../links/MaterialConnectionsSection'
 
 export interface AnnotationRailProps {
   /** Required for backlink loading; optional until PdfTab wiring lands. */
@@ -32,12 +29,6 @@ export interface AnnotationRailProps {
   /** [M5] "AI에게 물어보기" — prefill the course chat with this highlight. */
   onAskAi: (annotation: Annotation) => void
   onClose: () => void
-}
-
-interface MaterialBacklinksSectionProps {
-  backlinks: MaterialBacklinks
-  onOpenNote: (backlink: MaterialBacklink) => void
-  onOpenBoard: (backlink: MaterialBacklink) => void
 }
 
 interface PageGroup {
@@ -119,108 +110,6 @@ function RailItem({
   )
 }
 
-export function backlinkPageLabel(page: number | null): string | null {
-  return page === null ? null : `${page}쪽`
-}
-
-function BacklinkList({
-  kind,
-  label,
-  items,
-  onOpen
-}: {
-  kind: 'note' | 'whiteboard'
-  label: string
-  items: MaterialBacklink[]
-  onOpen: (backlink: MaterialBacklink) => void
-}): JSX.Element | null {
-  if (items.length === 0) return null
-
-  return (
-    <div className="pdf-rail__backlink-group">
-      <h4 className="pdf-rail__backlink-kind">{label}</h4>
-      <ul className="pdf-rail__backlink-list">
-        {items.map((backlink, index) => {
-          const pageLabel = backlinkPageLabel(backlink.page)
-          return (
-            <li key={`${backlink.ref}:${backlink.page ?? 'all'}:${index}`}>
-              <button
-                type="button"
-                className="pdf-rail__backlink"
-                onClick={() => onOpen(backlink)}
-              >
-                <TabKindIcon
-                  kind={kind}
-                  className="pdf-rail__backlink-icon"
-                  aria-hidden="true"
-                />
-                <span className="pdf-rail__backlink-label">
-                  {backlink.label}
-                </span>
-                {pageLabel !== null && (
-                  <span className="pdf-rail__backlink-page">{pageLabel}</span>
-                )}
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-    </div>
-  )
-}
-
-export function MaterialBacklinksSection({
-  backlinks,
-  onOpenNote,
-  onOpenBoard
-}: MaterialBacklinksSectionProps): JSX.Element | null {
-  if (backlinks.notes.length + backlinks.boards.length === 0) return null
-
-  return (
-    <section className="pdf-rail__backlinks" aria-label="이 자료를 인용한 곳">
-      <h3 className="pdf-rail__backlinks-title">이 자료를 인용한 곳</h3>
-      <BacklinkList
-        kind="note"
-        label="필기"
-        items={backlinks.notes}
-        onOpen={onOpenNote}
-      />
-      <BacklinkList
-        kind="whiteboard"
-        label="화이트보드"
-        items={backlinks.boards}
-        onOpen={onOpenBoard}
-      />
-    </section>
-  )
-}
-
-function useMaterialBacklinks(
-  courseId: string | undefined,
-  relPath: string | undefined
-): MaterialBacklinks {
-  const [backlinks, setBacklinks] = useState<MaterialBacklinks>(EMPTY_BACKLINKS)
-
-  useEffect(() => {
-    if (courseId === undefined || relPath === undefined) return
-    let cancelled = false
-
-    invoke('links:forMaterial', { courseId, relPath })
-      .then((next) => {
-        if (!cancelled) setBacklinks(next)
-      })
-      .catch(() => {
-        if (!cancelled) setBacklinks(EMPTY_BACKLINKS)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [courseId, relPath])
-
-  return backlinks
-}
-
 export function AnnotationRail({
   courseId,
   relPath,
@@ -232,25 +121,6 @@ export function AnnotationRail({
   onAskAi,
   onClose
 }: AnnotationRailProps): JSX.Element {
-  const backlinks = useMaterialBacklinks(courseId, relPath)
-  const openNote = useCallback(
-    (backlink: MaterialBacklink): void => {
-      if (courseId === undefined) return
-      useWorkspaceStore.getState().openTab(
-        descriptorFor('note', { courseId, relPath: backlink.ref })
-      )
-    },
-    [courseId]
-  )
-  const openBoard = useCallback(
-    (backlink: MaterialBacklink): void => {
-      if (courseId === undefined) return
-      useWorkspaceStore.getState().openTab(
-        descriptorFor('whiteboard', { courseId, boardId: backlink.ref })
-      )
-    },
-    [courseId]
-  )
   const groups = useMemo(() => groupByPage(annotations), [annotations])
 
   return (
@@ -273,11 +143,9 @@ export function AnnotationRail({
       {error !== null && <p className="pdf-rail__error">{error}</p>}
 
       <div className="pdf-rail__scroll">
-        <MaterialBacklinksSection
-          backlinks={backlinks}
-          onOpenNote={openNote}
-          onOpenBoard={openBoard}
-        />
+        {courseId !== undefined && relPath !== undefined && (
+          <MaterialConnectionsSection courseId={courseId} relPath={relPath} />
+        )}
         {groups.length === 0 ? (
           <div className="pdf-rail__empty">
             <span className="pdf-rail__empty-mark" aria-hidden="true">

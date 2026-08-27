@@ -26,8 +26,15 @@ interface MaterialsContextMenuProps extends MaterialsContextMenuState {
   onCopyAbsolutePath: () => void
   onCopyRelativePath: () => void
   onReveal: () => void
+  onConnect: () => void
   onRename: () => void
   onDelete: () => void
+}
+
+export function canConnectMaterial(
+  target: MaterialNode | null
+): target is MaterialNode & { kind: Exclude<MaterialNode['kind'], 'dir'> } {
+  return target !== null && target.kind !== 'dir'
 }
 
 function menuItems(menu: HTMLElement): HTMLButtonElement[] {
@@ -50,6 +57,7 @@ export function MaterialsContextMenu({
   onCopyAbsolutePath,
   onCopyRelativePath,
   onReveal,
+  onConnect,
   onRename,
   onDelete
 }: MaterialsContextMenuProps): JSX.Element {
@@ -59,7 +67,7 @@ export function MaterialsContextMenu({
   const activeCourseId = useMaterialsStore((state) => state.activeCourseId)
   const addFavorite = useFavoritesStore((state) => state.add)
   const favoriteDescriptor =
-    target !== null && target.kind !== 'dir' && activeCourseId !== null
+    canConnectMaterial(target) && activeCourseId !== null
       ? materialDescriptor(activeCourseId, target.relPath)
       : null
 
@@ -157,6 +165,14 @@ export function MaterialsContextMenu({
           <Icon name="plus" />{t('materials.favorite.add')}
         </button>
       )}
+      <button
+        type="button"
+        role="menuitem"
+        disabled={!canConnectMaterial(target)}
+        onClick={onConnect}
+      >
+        <Icon name="link" />{t('links.menu.connect')}
+      </button>
       <button
         type="button"
         role="menuitem"

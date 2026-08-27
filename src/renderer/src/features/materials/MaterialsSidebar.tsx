@@ -10,6 +10,7 @@ import { useMaterialsStore } from '../../stores/materialsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { normalizeCourseColor } from '../courses/courseColors'
 import { CourseGroupsSection } from '../group/CourseGroupsSection'
+import { LinkPickerDialog } from '../links/LinkPickerDialog'
 import {
   flushOpenNoteSession,
   openNotePanelId,
@@ -181,6 +182,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const [contextMenu, setContextMenu] = useState<MaterialsContextMenuState | null>(
     null
   )
+  const [linkTarget, setLinkTarget] = useState<MaterialNode | null>(null)
   const [editing, setEditing] = useState<EditingState | null>(null)
   const [selectedRelPath, setSelectedRelPath] = useState<string | null>(null)
   const [pasteFocused, setPasteFocused] = useState(false)
@@ -229,6 +231,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   useEffect(() => {
     setQuery('')
     setContextMenu(null)
+    setLinkTarget(null)
     setEditing(null)
     setSelectedRelPath(null)
     setDropActive(false)
@@ -1043,6 +1046,12 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           onReveal={() => {
             if (contextMenu.target !== null) void reveal(contextMenu.target)
           }}
+          onConnect={() => {
+            const target = contextMenu.target
+            if (target === null || target.kind === 'dir') return
+            setLinkTarget(target)
+            setContextMenu(null)
+          }}
           onRename={() => {
             if (contextMenu.target !== null) beginRename(contextMenu.target)
           }}
@@ -1052,6 +1061,14 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
             setDeleteTarget(contextMenu.target)
             setContextMenu(null)
           }}
+        />
+      )}
+
+      {course !== null && !course.missing && linkTarget !== null && (
+        <LinkPickerDialog
+          courseId={course.id}
+          sourceRelPath={linkTarget.relPath}
+          onClose={() => setLinkTarget(null)}
         />
       )}
 

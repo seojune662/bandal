@@ -43,6 +43,7 @@ export interface NotesRepo {
 export interface NotesRepoDeps {
   /** Absolute course folder for a live course id (throws otherwise). */
   getCourseFolder: (courseId: string) => string
+  onPathChanged?: (change: { courseId: string; fromRelPath: string; toRelPath: string; isDirectory: false }) => void
 }
 
 /** Strips path separators and other filesystem-hostile chars from a title. */
@@ -73,6 +74,17 @@ function mtimeToken(abs: string): number {
 
 export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
   const { getCourseFolder } = deps
+
+  function notifyPathChanged(courseId: string, fromRelPath: string, toRelPath: string): boolean {
+    if (deps.onPathChanged === undefined) return false
+    try {
+      deps.onPathChanged({ courseId, fromRelPath, toRelPath, isDirectory: false })
+      return true
+    } catch (error) {
+      console.warn(`[notes] path-change hook failed for "${fromRelPath}" -> "${toRelPath}"`, error)
+      return false
+    }
+  }
 
   /**
    * The course folder is an arbitrary path that may be gone (moved, deleted,
@@ -225,11 +237,20 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
       const dirRel = posix.dirname(input.relPath)
       const relPath =
         dirRel === '.' ? fileName : posix.join(dirRel, fileName)
+      const hookCompleted = renamed && notifyPathChanged(
+        requireId(input.courseId, 'courseId'),
+        input.relPath,
+        relPath
+      )
+      // A successful repoint hook may atomically rewrite links in this same
+      // note. Return the bytes now on disk so the renderer cannot immediately
+      // save the pre-repoint body back over them.
+      const finalMarkdown = hookCompleted ? readFileSync(nextAbs, 'utf8') : updated
       return {
         relPath,
         mtime: mtimeToken(nextAbs),
         title: finalStem,
-        markdown: updated
+        markdown: finalMarkdown
       }
     }
   }

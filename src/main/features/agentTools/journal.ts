@@ -21,8 +21,7 @@ export type UndoResult = {
 export interface UndoHandlers {
   course(input: UndoTarget): Promise<void>
   material(input: UndoTarget): Promise<void>
-  /** 링크 도구 핸들러가 연결될 때까지 선택적인 되돌리기 포트다. */
-  link?(input: UndoTarget): Promise<void>
+  link(input: UndoTarget): Promise<void>
   note(input: UndoTarget): Promise<void>
   task(input: UndoTarget): Promise<void>
   board(input: UndoTarget): Promise<void>

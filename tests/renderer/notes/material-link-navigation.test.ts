@@ -54,6 +54,7 @@ describe('note material link navigation', () => {
 
     expect(deps.openMaterial).toHaveBeenCalledWith(
       'course-1',
+      'pdf',
       '자료/Chap 1.pdf'
     )
     expect(deps.jumpToPage).toHaveBeenCalledWith(5)
@@ -74,9 +75,34 @@ describe('note material link navigation', () => {
 
     openMaterialLink('course-1', { relPath: '자료.pdf', page: null }, deps)
 
-    expect(deps.openMaterial).toHaveBeenCalledWith('course-1', '자료.pdf')
+    expect(deps.openMaterial).toHaveBeenCalledWith(
+      'course-1',
+      'pdf',
+      '자료.pdf'
+    )
+    expect(deps.jumpToPage).not.toHaveBeenCalled()
+    expect(deps.jumpToAnnotation).not.toHaveBeenCalled()
+  })
+
+  test('derives a markdown target as a note and ignores PDF jump metadata', () => {
+    const deps: MaterialLinkNavigationDeps = {
+      openMaterial: vi.fn(),
+      jumpToPage: vi.fn(),
+      jumpToAnnotation: vi.fn()
+    }
+
+    openMaterialLink(
+      'course-1',
+      { relPath: '필기/중간고사.md', page: 3, annotationId: 'legacy-id' },
+      deps
+    )
+
+    expect(deps.openMaterial).toHaveBeenCalledWith(
+      'course-1',
+      'note',
+      '필기/중간고사.md'
+    )
     expect(deps.jumpToPage).not.toHaveBeenCalled()
     expect(deps.jumpToAnnotation).not.toHaveBeenCalled()
   })
 })
-

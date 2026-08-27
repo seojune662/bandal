@@ -88,6 +88,7 @@ function undoHandlersFor(harness: Harness): UndoHandlers {
   return {
     course: noop,
     material: noop,
+    link: noop,
     note: noop,
     task: noop,
     board: noop,

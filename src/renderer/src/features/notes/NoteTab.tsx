@@ -27,6 +27,8 @@ import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor, isTabDescriptor } from '../workspace/tabIdentity'
+import { MaterialConnectionsSection } from '../links/MaterialConnectionsSection'
+import { requestMaterialConnectionsRefresh } from '../links/useMaterialConnections'
 import { nativeHistoryGuard } from './nativeHistoryGuard'
 import { openMaterialLink, resolveNoteLink } from './materialLinkNavigation'
 import {
@@ -354,6 +356,7 @@ function NoteEditorWorkspace({
 }
 
 function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Element {
+  const t = useT()
   const [editorSeed, setEditorSeed] = useState<EditorSeed | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [status, setStatus] = useState<SaveStatus>('saved')
@@ -585,6 +588,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
             markdown,
             result.mtime
           )
+          requestMaterialConnectionsRefresh(ref.courseId)
           try {
             await syncTitleToFileName(markdown)
           } catch (error) {
@@ -1096,6 +1100,13 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
           )}
         </div>
       )}
+      <details className="note-material-connections">
+        <summary>{t('links.note.toggle')}</summary>
+        <MaterialConnectionsSection
+          courseId={courseId}
+          relPath={currentRelPath}
+        />
+      </details>
     </div>
   )
 }
