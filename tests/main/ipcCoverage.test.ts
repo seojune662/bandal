@@ -204,4 +204,40 @@ describe('IPC channel coverage', () => {
       /app\.on\('before-quit', \(\) => \{\s*stopWhiteboardAuthReset\(\)\s*whiteboardService\.dispose\(\)/
     )
   })
+
+  test('feedback uses the lazy group client and runtime app metadata', () => {
+    const source = mainRouterSource()
+    const feedbackStart = source.indexOf(
+      'const feedback = createFeedbackService'
+    )
+    const feedback = source.slice(
+      feedbackStart,
+      source.indexOf('assertEveryChannelHandled()', feedbackStart)
+    )
+    expect(feedback).toContain('getClient: () => groupRuntime.getClient()')
+    expect(feedback).toContain('rateGuard: createFeedbackRateGuard()')
+    expect(feedback).toContain('appVersion: resolveAppVersion(')
+    expect(feedback).toContain('platform: process.platform')
+    expect(feedback).toContain('getPalette: () => getSettings().palette')
+    expect(feedback).toContain(
+      "handle('feedback:send', (req) => feedback.send(req))"
+    )
+  })
+
+  test('application menu follows keybindings and only rebuilds when they change', () => {
+    const source = readFileSync(MAIN_INDEX_SRC, 'utf8')
+    expect(source).toContain(
+      'installApplicationMenu(resolveKeymap(initialSettings.keybindings))'
+    )
+    const settingsListener = source.slice(
+      source.indexOf('onSettingsChanged((settings) => {'),
+      source.indexOf("nativeTheme.on('updated'")
+    )
+    expect(settingsListener).toContain(
+      'const nextMenuKeybindings = JSON.stringify(settings.keybindings)'
+    )
+    expect(settingsListener).toMatch(
+      /if \(nextMenuKeybindings !== menuKeybindings\) \{[\s\S]*installApplicationMenu\(resolveKeymap\(settings\.keybindings\)\)/
+    )
+  })
 })

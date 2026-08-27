@@ -120,7 +120,11 @@ import {
   createGroupRuntime
 } from '../features/group'
 import { isAuthCallbackUrl } from '../features/group/authCallbackUrl'
-import { createUpdaterRuntime } from '../features/updater'
+import {
+  createFeedbackRateGuard,
+  createFeedbackService
+} from '../features/feedback/feedbackService'
+import { createUpdaterRuntime, resolveAppVersion } from '../features/updater'
 import {
   createAgentConfirmer,
   createAgentJournal,
@@ -2152,6 +2156,22 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('update:check', () => updater.check())
   handle('update:download', () => updater.download())
   handle('update:install', () => ({ ok: updater.install() }))
+
+  // -- feedback -------------------------------------------------------------
+  // Uses the group runtime's lazy client so boot stays offline and feedback
+  // remains available before sign-in when the Supabase project is configured.
+  const feedback = createFeedbackService({
+    getClient: () => groupRuntime.getClient(),
+    rateGuard: createFeedbackRateGuard(),
+    appVersion: resolveAppVersion(
+      app.isPackaged,
+      app.getVersion(),
+      __APP_VERSION__
+    ),
+    platform: process.platform,
+    getPalette: () => getSettings().palette
+  })
+  handle('feedback:send', (req) => feedback.send(req))
 
   assertEveryChannelHandled()
 

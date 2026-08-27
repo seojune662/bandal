@@ -4,6 +4,7 @@ import { promisify } from 'node:util'
 import { app, BrowserWindow, ipcMain, nativeTheme, protocol } from 'electron'
 import type { IpcResponse } from '../shared/ipc/contract'
 import type { PushPayload } from '../shared/ipc/events'
+import { resolveKeymap } from '../shared/keymap'
 import type { Settings, SettingsPatch } from '../shared/types/settings'
 import { initDatabase, closeDatabase } from './db/database'
 import { createDeepLinkQueue } from './deepLinkQueue'
@@ -120,7 +121,11 @@ if (!app.requestSingleInstanceLock()) {
     app.setAppUserModelId('com.bandal.app')
 
     // [M6-A] Custom menu: keeps ⌘W free for "close tab" in the renderer.
-    installApplicationMenu()
+    // Rebuild only when accelerator settings change; rebuilding for unrelated
+    // settings would drop an open submenu and re-register every accelerator.
+    const initialSettings = getSettings()
+    let menuKeybindings = JSON.stringify(initialSettings.keybindings)
+    installApplicationMenu(resolveKeymap(initialSettings.keybindings))
 
     // DB 초기화 실패는 치명적이다 — 여기서 던지면 아래 createMainWindow()가
     // 실행되지 않아 "창 없는 앱"이 된다. 반드시 사용자에게 보이게 만든다.
@@ -302,7 +307,12 @@ if (!app.requestSingleInstanceLock()) {
         )
       }
     }
-    onSettingsChanged(() => {
+    onSettingsChanged((settings) => {
+      const nextMenuKeybindings = JSON.stringify(settings.keybindings)
+      if (nextMenuKeybindings !== menuKeybindings) {
+        menuKeybindings = nextMenuKeybindings
+        installApplicationMenu(resolveKeymap(settings.keybindings))
+      }
       tray.refresh()
       syncMiniPlayerTray()
       refreshAppearance()
