@@ -115,6 +115,8 @@ import { createSearchIndex } from '../features/search'
 import { createInsights } from '../features/insights'
 import { createLinkService } from '../features/link'
 import { createLinkIndex } from '../features/links'
+import { createMaterialLinksRepo } from '../features/links/materialLinksRepo'
+import { repointMaterialPath } from '../features/links/renameRepoint'
 import {
   createGroupNoteSharingService,
   createGroupRuntime
@@ -286,18 +288,37 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     db,
     getDataRoot: () => getSettings().dataRoot
   })
+  const onMaterialPathChanged = (change: {
+    courseId: string
+    fromRelPath: string
+    toRelPath: string
+    isDirectory: boolean
+  }): void => {
+    repointMaterialPath({
+      ...change,
+      db,
+      courseFolder: coursesRepo.getFolder(change.courseId)
+    })
+    // Notes bypass materialsRepo, and a rewritten backlink can change more
+    // than the renamed path. Invalidate before telling renderers to re-read.
+    materialsRepo.invalidateTree(change.courseId)
+    broadcast('materials:changed', { courseId: change.courseId })
+  }
   const materialsRepo = createMaterialsRepo({
     db,
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
     revealItem: (absPath) => shell.showItemInFolder(absPath),
     // Trash, never unlink: these are the student's lecture materials and a
     // mis-click must stay recoverable.
-    trashItem: (absPath) => shell.trashItem(absPath)
+    trashItem: (absPath) => shell.trashItem(absPath),
+    onPathChanged: onMaterialPathChanged
   })
   const notesRepo = createNotesRepo({
-    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
+    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
+    onPathChanged: onMaterialPathChanged
   })
   const courseLinksRepo = createCourseLinksRepo(db)
+  const materialLinksRepo = createMaterialLinksRepo(db)
   const annotationsRepo = createAnnotationsRepo(db)
   const boardRepo = createBoardRepo(db)
   const layoutRepo = createLayoutRepo(db)
@@ -422,6 +443,24 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('courseLinks:create', (req) => courseLinksRepo.create(req))
   handle('courseLinks:update', (req) => courseLinksRepo.update(req))
   handle('courseLinks:delete', (req) => courseLinksRepo.delete(req))
+
+  // -- authored material links ---------------------------------------------
+  handle('links:create', (req) => {
+    const result = materialLinksRepo.create({
+      ...req,
+      label: req.label ?? ''
+    })
+    broadcast('materials:changed', { courseId: req.courseId })
+    return result
+  })
+  handle('links:remove', (req) => {
+    const result = materialLinksRepo.remove(req.courseId, req.id)
+    broadcast('materials:changed', { courseId: req.courseId })
+    return result
+  })
+  handle('links:listFor', (req) =>
+    materialLinksRepo.listFor(req.courseId, req.relPath)
+  )
 
   // -- shell ----------------------------------------------------------------
   // Re-validated here rather than trusted from the renderer: this is the one
@@ -1334,6 +1373,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         linkService,
         appState: () => appStateSnapshot(),
         materialsRepo,
+        materialLinksRepo,
         notesRepo,
         boardRepo,
         canvasRepo,
@@ -1585,6 +1625,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       // hard unlink.
       material: async ({ courseId, targetId }) => {
         await materialsRepo.softDelete({ courseId, relPath: targetId })
+      },
+      link: async ({ courseId, targetId }) => {
+        materialLinksRepo.remove(courseId, targetId)
+        broadcast('materials:changed', { courseId })
       },
       note: async ({ courseId, targetId }) => {
         await materialsRepo.softDelete({ courseId, relPath: targetId })

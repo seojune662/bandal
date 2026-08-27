@@ -14,6 +14,7 @@ import type { CourseLinksRepo } from '../courses/courseLinksRepo'
 import type { CoursesRepo } from '../courses/coursesRepo'
 import type { FavoritesRepo } from '../favorites'
 import type { LinkService } from '../link/linkService'
+import type { MaterialLinksRepo } from '../links/materialLinksRepo'
 import type { MaterialsRepo } from '../materials/materialsRepo'
 import type { NotesRepo } from '../notes/notesRepo'
 import type { SearchIndex } from '../search/searchIndex'
@@ -100,6 +101,7 @@ export interface AgentToolsDeps {
     | 'move'
     | 'duplicate'
   >
+  materialLinksRepo: Pick<MaterialLinksRepo, 'create' | 'listFor'>
   /**
    * The course's saved classroom links.
    *

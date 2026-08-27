@@ -80,6 +80,34 @@ describe('IPC channel coverage', () => {
     }
   })
 
+  test('material links are wired through IPC, agent tools, undo, and repoint hooks', () => {
+    const source = mainRouterSource()
+    expect(source).toContain('const materialLinksRepo = createMaterialLinksRepo(db)')
+    for (const channel of ['links:create', 'links:remove', 'links:listFor']) {
+      expect(handledChannels()).toContain(channel)
+    }
+
+    const links = source.slice(
+      source.indexOf("handle('links:create'"),
+      source.indexOf('// -- shell')
+    )
+    expect(links.match(/broadcast\('materials:changed'/g)).toHaveLength(2)
+
+    const tools = source.slice(
+      source.indexOf('const startToolServer'),
+      source.indexOf('const sessionManager')
+    )
+    expect(tools).toContain('materialLinksRepo,')
+
+    const pathHook = source.slice(
+      source.indexOf('const onMaterialPathChanged'),
+      source.indexOf('const courseLinksRepo')
+    )
+    expect(pathHook).toContain('repointMaterialPath({')
+    expect(pathHook.match(/onPathChanged: onMaterialPathChanged/g)).toHaveLength(2)
+    expect(pathHook).toContain("broadcast('materials:changed', { courseId: change.courseId })")
+  })
+
   test('batch 2 handlers delegate to their repositories', () => {
     const source = mainRouterSource()
     expect(source).toContain(
@@ -126,6 +154,7 @@ describe('IPC channel coverage', () => {
     for (const target of [
       'course',
       'material',
+      'link',
       'note',
       'task',
       'board',

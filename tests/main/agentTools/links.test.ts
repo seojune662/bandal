@@ -47,10 +47,9 @@ function makeHarness(): Harness {
     courseId: COURSE_ID,
     getTurnId: () => 'turn-links',
     coursesRepo: { getFolder: () => folder },
+    materialLinksRepo: repo,
     journal: { record: (entry: AgentJournalEntry) => actions.push(entry) }
   } as unknown as AgentToolsDeps
-  // registerHandlers의 통합 워커가 같은 포트를 실제 세션 의존성에 연결한다.
-  Object.assign(deps, { materialLinksRepo: repo })
 
   return {
     ctx,

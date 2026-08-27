@@ -704,13 +704,7 @@ export type BrowserToolName = (typeof BROWSER_TOOL_DEFINITIONS)[number]['name']
 export type AgentToolDefinitionName =
   (typeof AGENT_TOOL_DEFINITIONS)[number]['name']
 
-/** 스키마만 먼저 공개됐고 실행 핸들러는 다음 작업에서 연결된다. */
-type PendingAgentToolName = 'link_materials' | 'list_links'
-
-export type AgentToolName = Exclude<
-  AgentToolDefinitionName,
-  PendingAgentToolName
->
+export type AgentToolName = AgentToolDefinitionName
 
 export const AGENT_TOOL_NAMES = AGENT_TOOL_DEFINITIONS.map(
   (tool) => tool.name

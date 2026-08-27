@@ -2,9 +2,7 @@ import { existsSync, statSync } from 'node:fs'
 import type { TabDescriptor } from '../../../../shared/tabs'
 import type { MaterialLinkRecord } from '../../../../shared/types/link'
 import { materialKindForPath } from '../../../../shared/materialKind'
-import { NotFoundError, ValidationError } from '../../../db/errors'
-import type { MaterialLinksRepo } from '../../links/materialLinksRepo'
-import type { AgentToolName } from '../schemas'
+import { NotFoundError } from '../../../db/errors'
 import {
   optionalString,
   stringField,
@@ -15,24 +13,11 @@ import {
 type LinkToolName = 'link_materials' | 'list_links'
 type LinkToolHandlers = Record<LinkToolName, ToolHandler>
 
-interface LinkToolsDeps {
-  materialLinksRepo: Pick<MaterialLinksRepo, 'create' | 'listFor'>
-}
-
 interface ConciseMaterialLink {
   id: string
   fromRelPath: string | null
   toRelPath: string | null
   label: string
-}
-
-function linksRepo(ctx: ToolContext): LinkToolsDeps['materialLinksRepo'] {
-  const repo = (ctx.deps as typeof ctx.deps & Partial<LinkToolsDeps>)
-    .materialLinksRepo
-  if (repo === undefined) {
-    throw new ValidationError('material links repository is unavailable')
-  }
-  return repo
 }
 
 function descriptorForMaterial(
@@ -95,7 +80,7 @@ export function linkTools(ctx: ToolContext): LinkToolHandlers {
 
       assertMaterialFile(ctx, courseId, fromRelPath)
       assertMaterialFile(ctx, courseId, toRelPath)
-      const record = linksRepo(ctx).create({
+      const record = ctx.deps.materialLinksRepo.create({
         courseId,
         source: descriptorForMaterial(courseId, fromRelPath),
         target: descriptorForMaterial(courseId, toRelPath),
@@ -104,7 +89,7 @@ export function linkTools(ctx: ToolContext): LinkToolHandlers {
       ctx.record(
         turn,
         courseId,
-        'link_materials' as AgentToolName,
+        'link_materials',
         'link',
         record.id,
         `자료 연결 «${fromRelPath} → ${toRelPath}»`,
@@ -117,7 +102,7 @@ export function linkTools(ctx: ToolContext): LinkToolHandlers {
       const courseId = stringField(input, 'courseId', { nonEmpty: true })
       const relPath = stringField(input, 'relPath', { nonEmpty: true })
       assertMaterialFile(ctx, courseId, relPath)
-      const result = linksRepo(ctx).listFor(courseId, relPath)
+      const result = ctx.deps.materialLinksRepo.listFor(courseId, relPath)
       return {
         outgoing: result.outgoing.map(concise),
         incoming: result.incoming.map(concise)
