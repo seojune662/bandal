@@ -7,19 +7,26 @@
 import { isOrbCharmId } from '../shared/orbCharm'
 import { isPaletteId, isThemeId } from '../shared/theme'
 import { isSearchEngineId } from '../shared/search'
+import { parseChord, SHORTCUT_SPECS } from '../shared/keymap'
 import { sanitizeUniversitySettings } from '../shared/universities/sanitize'
 import {
   DEFAULT_DESKTOP_ORB,
+  DEFAULT_MILESTONES,
   DEFAULT_ONBOARDING,
   DEFAULT_TUTORIAL
 } from '../shared/types/settings'
 import type {
   AssistantMode,
   DesktopOrbSettings,
+  Milestones,
   OnboardingState,
   Settings,
   TutorialState
 } from '../shared/types/settings'
+
+const CUSTOMIZABLE_SHORTCUT_IDS: ReadonlySet<string> = new Set(
+  SHORTCUT_SPECS.filter((spec) => spec.customizable).map((spec) => spec.id)
+)
 
 /** Any registered theme id, or `system`. Unknown ids fall back to the default
  * (a settings.json written by a newer build must not brick an older one). */
@@ -96,6 +103,33 @@ export function sanitizeTutorial(raw: unknown): TutorialState {
   }
 }
 
+export function sanitizeKeybindings(
+  raw: unknown
+): Record<string, string | null> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
+  const sanitized: Record<string, string | null> = {}
+  for (const [id, value] of Object.entries(raw)) {
+    if (!CUSTOMIZABLE_SHORTCUT_IDS.has(id)) continue
+    if (value === null) {
+      sanitized[id] = null
+    } else if (typeof value === 'string' && parseChord(value) !== null) {
+      sanitized[id] = value
+    }
+  }
+  return sanitized
+}
+
+export function sanitizeMilestones(raw: unknown): Milestones {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return { ...DEFAULT_MILESTONES }
+  }
+  const record = raw as Record<string, unknown>
+  return {
+    pipUsedAt:
+      typeof record.pipUsedAt === 'string' ? record.pipUsedAt : null
+  }
+}
+
 /**
  * Validates unknown JSON into Settings, falling back to `defaults` per key.
  * `defaults` carries the environment-dependent values (dataRoot).
@@ -126,6 +160,8 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
     locale: isLocale(record.locale) ? record.locale : defaults.locale,
     onboarding: sanitizeOnboarding(record.onboarding),
     tutorial: sanitizeTutorial(record.tutorial),
+    keybindings: sanitizeKeybindings(record.keybindings),
+    milestones: sanitizeMilestones(record.milestones),
     university: sanitizeUniversitySettings(record.university),
     openAdjacentTab:
       typeof record.openAdjacentTab === 'boolean'

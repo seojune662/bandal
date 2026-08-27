@@ -80,6 +80,15 @@ export const DEFAULT_TUTORIAL: TutorialState = {
   activeCourseId: null
 }
 
+export interface Milestones {
+  /** First successful use of picture-in-picture, as an ISO timestamp. */
+  pipUsedAt: string | null
+}
+
+export const DEFAULT_MILESTONES: Milestones = {
+  pipUsedAt: null
+}
+
 export interface Settings {
   theme: ThemePreference
   /**
@@ -102,6 +111,10 @@ export interface Settings {
   onboarding: OnboardingState
   /** [R3] Guided-tour progress and crash-safety marker. */
   tutorial: TutorialState
+  /** User overrides keyed by src/shared/keymap.ts action id. null = unbound. */
+  keybindings: Record<string, string | null>
+  /** One-time product milestones. */
+  milestones: Milestones
   /** [M8] Chosen school + the user layer over its preset shortcuts. */
   university: UniversitySettings
   /**
@@ -132,6 +145,8 @@ export const DEFAULT_SETTINGS: Settings = {
   locale: 'ko-KR',
   onboarding: DEFAULT_ONBOARDING,
   tutorial: DEFAULT_TUTORIAL,
+  keybindings: {},
+  milestones: DEFAULT_MILESTONES,
   university: DEFAULT_UNIVERSITY_SETTINGS,
   openAdjacentTab: false,
   restoreLastCourse: true,

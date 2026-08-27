@@ -1433,6 +1433,16 @@ export interface IpcContract {
     req: Record<string, never>
     res: { ok: boolean }
   }
+  'feedback:send': {
+    req: {
+      kind: 'bug' | 'friction' | 'feature'
+      body: string
+      includeAppInfo: boolean
+    }
+    res:
+      | { ok: true }
+      | { ok: false; reason: 'rate-limited' | 'unavailable' }
+  }
 }
 
 export type IpcChannel = keyof IpcContract
@@ -1614,6 +1624,7 @@ export const IPC_CHANNELS = [
   'update:check',
   'update:download',
   'update:install',
+  'feedback:send',
   'activity:record',
   'activity:recent',
   'context:rebuild',

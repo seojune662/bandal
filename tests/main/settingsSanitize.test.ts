@@ -109,3 +109,53 @@ describe('sanitizeSettings — orbCharm', () => {
     expect(sanitizeSettings({}, defaults).orbCharm).toBe('none')
   })
 })
+
+describe('sanitizeSettings — keybindings and milestones', () => {
+  test('keeps valid customizable chords and explicit null unbindings', () => {
+    const result = sanitizeSettings(
+      {
+        keybindings: {
+          'new-tab': 'mod+shift+n',
+          'send-feedback': null
+        }
+      },
+      defaults
+    )
+    expect(result.keybindings).toEqual({
+      'new-tab': 'mod+shift+n',
+      'send-feedback': null
+    })
+  })
+
+  test('drops invalid entries individually without discarding valid siblings', () => {
+    const result = sanitizeSettings(
+      {
+        keybindings: {
+          'new-tab': 'mod+alt+t',
+          'not-an-action': 'mod+x',
+          'whiteboard-pen': 'mod+p',
+          settings: 'mod+shift'
+        }
+      },
+      defaults
+    )
+    expect(result.keybindings).toEqual({ 'new-tab': 'mod+alt+t' })
+  })
+
+  test('uses an empty keymap for missing and non-object records', () => {
+    expect(sanitizeSettings({}, defaults).keybindings).toEqual({})
+    expect(sanitizeSettings({ keybindings: [] }, defaults).keybindings).toEqual({})
+  })
+
+  test('keeps a milestone timestamp and defaults invalid values to null', () => {
+    expect(
+      sanitizeSettings(
+        { milestones: { pipUsedAt: '2026-08-27T12:00:00.000Z' } },
+        defaults
+      ).milestones
+    ).toEqual({ pipUsedAt: '2026-08-27T12:00:00.000Z' })
+    expect(
+      sanitizeSettings({ milestones: { pipUsedAt: 27 } }, defaults).milestones
+    ).toEqual({ pipUsedAt: null })
+  })
+})
