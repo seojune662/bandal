@@ -30,6 +30,7 @@ import { descriptorFor, isTabDescriptor } from '../workspace/tabIdentity'
 import { MaterialConnectionsSection } from '../links/MaterialConnectionsSection'
 import { requestMaterialConnectionsRefresh } from '../links/useMaterialConnections'
 import { nativeHistoryGuard } from './nativeHistoryGuard'
+import { createMentionMenuPlugin } from './mentionMenuPlugin'
 import { openMaterialLink, resolveNoteLink } from './materialLinkNavigation'
 import {
   createNoteConflictCopy,
@@ -180,18 +181,23 @@ export function isNoteConflict(error: unknown): boolean {
 
 function MilkdownNoteEditor({
   courseId,
+  relPath,
   initialMarkdown,
   onMarkdownChange,
   onFormatStateChange,
   onZoomStep
 }: {
   courseId: string
+  relPath: string
   initialMarkdown: string
   onMarkdownChange: (markdown: string) => void
   onFormatStateChange: (state: NoteFormatState) => void
   onZoomStep: (direction: -1 | 1) => void
 }): JSX.Element {
   const t = useT()
+  // rename 이 에디터를 재생성하지 않도록 relPath 는 ref 로만 플러그인에 전달.
+  const relPathRef = useRef(relPath)
+  relPathRef.current = relPath
   const [editorPlugins, setEditorPlugins] = useState<
     readonly (MilkdownPlugin | MilkdownPlugin[])[] | null
   >(null)
@@ -257,6 +263,10 @@ function MilkdownNoteEditor({
           context.update(prosePluginsCtx, (plugins) => [
             ...plugins,
             createNoteImagePlugin(courseId),
+            createMentionMenuPlugin({
+              courseId,
+              getSelfRelPath: () => relPathRef.current
+            }),
             // Keeps the native Edit-menu ⌘Z from editing around ProseMirror.
             nativeHistoryGuard(),
             createNoteZoomShortcutPlugin((direction) =>
@@ -319,6 +329,7 @@ function MilkdownNoteEditor({
 
 function NoteEditorWorkspace({
   courseId,
+  relPath,
   initialMarkdown,
   onMarkdownChange,
   fontScale,
@@ -326,6 +337,7 @@ function NoteEditorWorkspace({
   onZoomStep
 }: {
   courseId: string
+  relPath: string
   initialMarkdown: string
   onMarkdownChange: (markdown: string) => void
   fontScale: NoteFontScale
@@ -346,6 +358,7 @@ function NoteEditorWorkspace({
       />
       <MilkdownNoteEditor
         courseId={courseId}
+        relPath={relPath}
         initialMarkdown={initialMarkdown}
         onMarkdownChange={onMarkdownChange}
         onFormatStateChange={setFormatState}
@@ -1090,6 +1103,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
             <MilkdownProvider key={editorSeed.revision}>
               <NoteEditorWorkspace
                 courseId={courseId}
+                relPath={currentRelPath}
                 initialMarkdown={editorSeed.markdown}
                 onMarkdownChange={handleMarkdownChange}
                 fontScale={fontScale}

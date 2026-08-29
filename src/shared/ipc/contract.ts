@@ -1172,6 +1172,18 @@ export interface IpcContract {
     }
   }
   /**
+   * Like `links:listFor`, but addressed by TabDescriptor so pathless tabs
+   * (browser) can find their own links too. Path-backed kinds fall back to
+   * the relPath comparison; browser tabs match by canonical descriptor JSON.
+   */
+  'links:listForDescriptor': {
+    req: { courseId: string; descriptor: TabDescriptor }
+    res: {
+      outgoing: MaterialLinkRecord[]
+      incoming: MaterialLinkRecord[]
+    }
+  }
+  /**
    * Appends a highlight to a note as a quote plus a `bandal://` link back to
    * the exact page. The note stays plain markdown.
    */
@@ -1717,6 +1729,7 @@ export const IPC_CHANNELS = [
   'links:create',
   'links:remove',
   'links:listFor',
+  'links:listForDescriptor',
   'links:forMaterial',
   'link:sendHighlightToNote',
   'link:sendWebClipToNote',

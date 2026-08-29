@@ -39,7 +39,7 @@ describe('createMaterialLinksRepo', () => {
     ctx.cleanup()
   })
 
-  test('serializes descriptors and returns the existing row for a duplicate pair', () => {
+  test('serializes descriptors and returns the existing row for a same-label duplicate', () => {
     const source = descriptor('pdf', 'slides/week-1.pdf')
     const target = descriptor('note', 'notes/week-1.md')
 
@@ -53,7 +53,7 @@ describe('createMaterialLinksRepo', () => {
       courseId: COURSE_ID,
       source,
       target,
-      label: '바뀐 이름'
+      label: '복습'
     })
 
     expect(duplicate).toEqual(first)
@@ -63,6 +63,64 @@ describe('createMaterialLinksRepo', () => {
     expect(
       ctx.db.prepare('SELECT COUNT(*) AS count FROM material_links').get()
     ).toEqual({ count: 1 })
+  })
+
+  test('the same pair with a different label is a new link, not a duplicate', () => {
+    const source = descriptor('pdf', 'slides/week-1.pdf')
+    const target = descriptor('note', 'notes/week-1.md')
+
+    const plain = repo.create({ courseId: COURSE_ID, source, target, label: '' })
+    const sequence = repo.create({
+      courseId: COURSE_ID,
+      source,
+      target,
+      label: 'next'
+    })
+
+    expect(sequence.id).not.toBe(plain.id)
+    expect(sequence.label).toBe('next')
+    expect(
+      ctx.db.prepare('SELECT COUNT(*) AS count FROM material_links').get()
+    ).toEqual({ count: 2 })
+  })
+
+  test('listForDescriptor falls back to relPath matching for path-backed kinds', () => {
+    const created = repo.create({
+      courseId: COURSE_ID,
+      source: descriptor('pdf', '자료/강의.PDF'.normalize('NFD')),
+      target: descriptor('note', '필기/요약.md'),
+      label: 'next'
+    })
+
+    const result = repo.listForDescriptor(
+      COURSE_ID,
+      descriptor('pdf', '자료/강의.pdf')
+    )
+    expect(result.outgoing).toEqual([created])
+    expect(result.incoming).toEqual([])
+  })
+
+  test('listForDescriptor matches pathless descriptors by canonical JSON', () => {
+    const browser: TabDescriptor = {
+      kind: 'browser',
+      payload: { tabId: 'tab-1', initialUrl: 'https://example.org' }
+    }
+    const created = repo.create({
+      courseId: COURSE_ID,
+      source: browser,
+      target: descriptor('note', 'notes/web.md'),
+      label: 'next'
+    })
+
+    const result = repo.listForDescriptor(COURSE_ID, browser)
+    expect(result.outgoing).toEqual([created])
+    expect(result.incoming).toEqual([])
+
+    const other = repo.listForDescriptor(COURSE_ID, {
+      kind: 'browser',
+      payload: { tabId: 'tab-2', initialUrl: 'https://example.org' }
+    })
+    expect(other).toEqual({ outgoing: [], incoming: [] })
   })
 
   test('rejects a self-link without inserting a row', () => {

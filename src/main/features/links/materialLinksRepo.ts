@@ -25,6 +25,10 @@ export interface MaterialLinksRepo {
   create(input: CreateMaterialLinkInput): MaterialLinkRecord
   remove(courseId: string, id: string): { ok: true }
   listFor(courseId: string, relPath: string): MaterialLinksForPath
+  listForDescriptor(
+    courseId: string,
+    descriptor: TabDescriptor
+  ): MaterialLinksForPath
 }
 
 interface MaterialLinkRow {
@@ -83,9 +87,11 @@ export function createMaterialLinksRepo(db: Database): MaterialLinksRepo {
   const selectCourse = db.prepare(
     'SELECT id FROM courses WHERE id = ? AND deleted_at IS NULL'
   )
+  // Same pair may carry different labels (a plain link and a 'next' sequence
+  // link coexist), so a duplicate is only a duplicate within the same label.
   const selectDuplicate = db.prepare(
     `SELECT * FROM material_links
-      WHERE course_id = ? AND source_json = ? AND target_json = ?
+      WHERE course_id = ? AND source_json = ? AND target_json = ? AND label = ?
       ORDER BY created_at ASC, rowid ASC
       LIMIT 1`
   )
@@ -109,6 +115,25 @@ export function createMaterialLinksRepo(db: Database): MaterialLinksRepo {
     }
   }
 
+  function listFor(rawCourseId: string, rawRelPath: string): MaterialLinksForPath {
+    const courseId = requireId(rawCourseId, 'courseId')
+    const relPath = requireNonEmptyString(rawRelPath, 'relPath')
+    const requestedKey = pathKey(relPath)
+    const rows = selectForCourse.all(courseId) as MaterialLinkRow[]
+    const records = rows.map(rowToRecord)
+
+    return {
+      outgoing: records.filter((record) => {
+        const sourcePath = descriptorRelPath(record.source)
+        return sourcePath !== null && pathKey(sourcePath) === requestedKey
+      }),
+      incoming: records.filter((record) => {
+        const targetPath = descriptorRelPath(record.target)
+        return targetPath !== null && pathKey(targetPath) === requestedKey
+      })
+    }
+  }
+
   return {
     create(input) {
       const courseId = requireId(input.courseId, 'courseId')
@@ -124,7 +149,8 @@ export function createMaterialLinksRepo(db: Database): MaterialLinksRepo {
       const duplicate = selectDuplicate.get(
         courseId,
         source.json,
-        target.json
+        target.json,
+        label
       ) as MaterialLinkRow | undefined
       if (duplicate !== undefined) return rowToRecord(duplicate)
 
@@ -155,23 +181,25 @@ export function createMaterialLinksRepo(db: Database): MaterialLinksRepo {
       return { ok: true }
     },
 
-    listFor(rawCourseId, rawRelPath) {
-      const courseId = requireId(rawCourseId, 'courseId')
-      const relPath = requireNonEmptyString(rawRelPath, 'relPath')
-      const requestedKey = pathKey(relPath)
-      const rows = selectForCourse.all(courseId) as MaterialLinkRow[]
-      const records = rows.map(rowToRecord)
+    listForDescriptor(rawCourseId, descriptor) {
+      // Path-backed kinds match by relPath (tolerant of NFC/case drift);
+      // pathless kinds (browser tabs, …) match by canonical descriptor JSON.
+      const relPath = descriptorRelPath(descriptor)
+      if (relPath !== null) return listFor(rawCourseId, relPath)
 
+      const courseId = requireId(rawCourseId, 'courseId')
+      const { json } = serializeDescriptor(descriptor)
+      const rows = selectForCourse.all(courseId) as MaterialLinkRow[]
       return {
-        outgoing: records.filter((record) => {
-          const sourcePath = descriptorRelPath(record.source)
-          return sourcePath !== null && pathKey(sourcePath) === requestedKey
-        }),
-        incoming: records.filter((record) => {
-          const targetPath = descriptorRelPath(record.target)
-          return targetPath !== null && pathKey(targetPath) === requestedKey
-        })
+        outgoing: rows
+          .filter((row) => row.source_json === json)
+          .map(rowToRecord),
+        incoming: rows
+          .filter((row) => row.target_json === json)
+          .map(rowToRecord)
       }
-    }
+    },
+
+    listFor
   }
 }

@@ -8,6 +8,7 @@ import { Icon, type IconName } from '../../app/icons'
 import { startMaterialDrag as startNativeMaterialDrag } from '../../lib/ipc'
 import { openMaterialInWorkspace } from '../workspace/openMaterial'
 import { isFileDrag } from './importDrop'
+import { beginMaterialFileDrag } from './materialFileDrag'
 import {
   MATERIAL_MOVE_MIME,
   canAcceptMaterialMove,
@@ -79,6 +80,13 @@ function startMaterialDragEvent(
   // 이동"으로 판별하므로 폴더 간 이동도 그대로 동작한다.
   // 화이트보드/PDF는 네이티브 Files 드롭에서 과목 내부 이미지를 판별한다.
   if (node.kind !== 'dir') {
+    // 탭 가장자리 드롭존(자료 연결)이 이 드래그의 정체를 알 수 있도록,
+    // 네이티브 승격 전에 모듈 상태에 기록한다.
+    beginMaterialFileDrag({
+      courseId,
+      relPath: node.relPath,
+      kind: node.kind
+    })
     event.preventDefault()
     startNativeMaterialDrag(courseId, node.relPath)
     return

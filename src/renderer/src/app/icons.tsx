@@ -2,6 +2,7 @@ import type { SVGProps } from 'react'
 
 export type IconName =
   | 'archive'
+  | 'chevronLeft'
   | 'chevronRight'
   | 'file'
   | 'fileImage'
@@ -55,6 +56,7 @@ const paths: Record<IconName, JSX.Element> = {
       <path d="M3 4h18v3.5H3zM9 12h6" />
     </>
   ),
+  chevronLeft: <path d="m15 18-6-6 6-6" />,
   chevronRight: <path d="m9 18 6-6-6-6" />,
   file: (
     <>

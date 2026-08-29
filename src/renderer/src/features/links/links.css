@@ -373,3 +373,107 @@
     transform: translateY(0);
   }
 }
+
+/* -- 순서 연결(이전/다음) — 탭 래퍼 레이어 ---------------------------------- */
+
+.material-sequence-host {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+.material-sequence-host__content {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 연결된 자료로 오가는 상단 바 — 링크가 있을 때만 렌더된다. */
+.sequence-nav {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+  min-height: calc(var(--control-height) + var(--space-1));
+  padding-inline: var(--space-2);
+  background: var(--bg-app);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sequence-nav__spacer {
+  flex: 1;
+}
+
+.sequence-nav__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 45%;
+  min-height: var(--control-height);
+  padding-inline: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+.sequence-nav__link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sequence-nav__link svg {
+  flex: 0 0 auto;
+  font-size: var(--icon-size-sm);
+}
+
+.sequence-nav__link:hover,
+.sequence-nav__link:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+  border-color: var(--border-subtle);
+}
+
+/* 자료 드래그 중 탭 좌/우 가장자리에 뜨는 드롭존 — body 포탈 + fixed.
+   webview 게스트 레이어(z-index 10) 위를 덮어야 하므로 z-index 30. */
+.sequence-drop-strip {
+  position: fixed;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: var(--accent-muted);
+  border: 1px dashed var(--accent);
+  opacity: 0.75;
+  transition: opacity var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.sequence-drop-strip--prev {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-left: 0;
+}
+
+.sequence-drop-strip--next {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  border-right: 0;
+}
+
+.sequence-drop-strip[data-active] {
+  background: var(--accent);
+  opacity: 1;
+}
+
+.sequence-drop-strip__hint {
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  writing-mode: vertical-rl;
+  letter-spacing: var(--tracking-wide);
+  pointer-events: none;
+}
+
+.sequence-drop-strip[data-active] .sequence-drop-strip__hint {
+  color: var(--on-accent);
+}

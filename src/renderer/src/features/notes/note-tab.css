@@ -575,6 +575,14 @@
   padding: var(--space-3);
 }
 
+/* @ 멘션 변형 — 설명 자리에 파일 경로가 들어간다. */
+.note-mention-menu .note-slash-menu__description {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .note-editor-shell,
 .note-editor-shell > [data-milkdown-root],
 .note-editor-shell .milkdown {

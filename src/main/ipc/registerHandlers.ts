@@ -58,6 +58,7 @@ import {
   normalizeFolderPath
 } from '../features/courses'
 import { normalizeHttpUrl } from '../../shared/universities/courseLink'
+import { isTabDescriptor } from '../../shared/tabs'
 import { ValidationError } from '../db/errors'
 import { PRINT_PDF_MAX_BYTES, printPdfBytes } from '../features/print'
 import { setPrintMenuEnabled } from '../menu'
@@ -465,6 +466,12 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('links:listFor', (req) =>
     materialLinksRepo.listFor(req.courseId, req.relPath)
   )
+  handle('links:listForDescriptor', (req) => {
+    if (!isTabDescriptor(req.descriptor)) {
+      throw new ValidationError('descriptor must be a TabDescriptor')
+    }
+    return materialLinksRepo.listForDescriptor(req.courseId, req.descriptor)
+  })
 
   // -- shell ----------------------------------------------------------------
   // Re-validated here rather than trusted from the renderer: this is the one

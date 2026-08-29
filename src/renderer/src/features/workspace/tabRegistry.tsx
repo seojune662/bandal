@@ -28,6 +28,7 @@ import ImageTab from '../image/ImageTab'
 import FileTab from '../file/FileTab'
 import GroupChatTab from '../group/GroupChatTab'
 import CanvasTab from '../canvas/CanvasTab'
+import { withMaterialSequence } from '../links/MaterialSequenceWrapper'
 
 export interface TabRegistryEntry {
   component: FunctionComponent<IDockviewPanelProps>
@@ -86,10 +87,17 @@ export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
   }
 }
 
-/** Component map in the shape DockviewReact wants (keyed by TabKind). */
+/**
+ * Component map in the shape DockviewReact wants (keyed by TabKind).
+ * Every panel is wrapped with the material-sequence layer (edge drop zones
+ * during a material drag + prev/next nav bar when links exist).
+ */
 export const dockviewComponents: Record<
   string,
   FunctionComponent<IDockviewPanelProps>
 > = Object.fromEntries(
-  Object.entries(tabRegistry).map(([kind, entry]) => [kind, entry.component])
+  Object.entries(tabRegistry).map(([kind, entry]) => [
+    kind,
+    withMaterialSequence(entry.component)
+  ])
 )
