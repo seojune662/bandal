@@ -406,7 +406,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
               spellCheck={false}
               aria-invalid={linkError !== null}
               value={linkUrl}
-              placeholder="https://youtube.com"
+              placeholder="주소 입력"
               onChange={(event) => {
                 setLinkUrl(event.target.value)
                 setLinkError(null)
@@ -419,7 +419,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
               type="text"
               aria-invalid={linkError !== null}
               value={linkLabel}
-              placeholder="예: YouTube"
+              placeholder="이름 (선택)"
               onChange={(event) => {
                 setLinkLabel(event.target.value)
                 setLinkError(null)

@@ -10,9 +10,9 @@
  * the student is expecting a follow-up question anyway, having just clicked
  * 로그인 ten seconds ago.
  *
- * The escape hatch is 로그아웃, deliberately not "나중에": there is no other
- * surface that sets a nickname, so a skip button would promise something the
- * app cannot deliver.
+ * The escape hatch is 로그아웃, deliberately not "나중에": a nickname is required
+ * before any 함께하기 feature works. Later renames happen in Settings › 계정
+ * (behind a confirmation, since the freed name becomes claimable).
  *
  * Visually it is an onboarding step (same overlay, card, eyebrow/title/desc
  * ladder) because it *is* one — a fifth step that only some accounts see.
@@ -107,7 +107,7 @@ export function NicknameGate(): JSX.Element {
                 id={inputId}
                 className="text-field nickname-field__input"
                 value={value}
-                placeholder="예: 서준"
+                placeholder="닉네임 입력"
                 autoComplete="off"
                 autoCorrect="off"
                 spellCheck={false}

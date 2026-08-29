@@ -8,6 +8,7 @@ import {
   SHORTCUT_HELP_EVENT
 } from '../../app/shortcuts'
 import { showToast } from '../../app/toast'
+import { Tooltip } from '../../components/Tooltip'
 import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
@@ -22,7 +23,7 @@ import { useMilestones, type MilestoneId } from './milestonesStore'
 import './help.css'
 
 interface MenuPosition {
-  right: number
+  left: number
   top: number
 }
 
@@ -253,25 +254,27 @@ export function HelpHub(): JSX.Element {
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="rail-nav__item"
-        aria-haspopup="menu"
-        aria-expanded={menu !== null}
-        onClick={(event) => {
-          if (menu !== null) {
-            closeMenu()
-            return
-          }
-          const rect = event.currentTarget.getBoundingClientRect()
-          setMenu({ right: rect.right, top: rect.top })
-          void refreshMilestones(selectedCourseId)
-        }}
-      >
-        <Icon name="help" />
-        <span>{t('help.menu.button')}</span>
-      </button>
+      <Tooltip label={t('help.menu.button')} placement="top">
+        <button
+          ref={triggerRef}
+          type="button"
+          className="rail-nav__item"
+          aria-haspopup="menu"
+          aria-expanded={menu !== null}
+          aria-label={t('help.menu.button')}
+          onClick={(event) => {
+            if (menu !== null) {
+              closeMenu()
+              return
+            }
+            const rect = event.currentTarget.getBoundingClientRect()
+            setMenu({ left: rect.left, top: rect.top })
+            void refreshMilestones(selectedCourseId)
+          }}
+        >
+          <Icon name="help" />
+        </button>
+      </Tooltip>
 
       {menu !== null && (
         <div
@@ -279,7 +282,7 @@ export function HelpHub(): JSX.Element {
           className="context-menu help-menu"
           role="menu"
           aria-label={t('help.menu.label')}
-          style={{ left: menu.right, top: menu.top }}
+          style={{ left: menu.left, top: menu.top }}
         >
           <button
             type="button"

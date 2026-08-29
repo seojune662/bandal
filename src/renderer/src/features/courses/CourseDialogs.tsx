@@ -150,7 +150,7 @@ export function CourseFormDialog({
             id={inputId}
             className="text-field"
             value={name}
-            placeholder="예: 자료구조"
+            placeholder="과목 이름"
             autoComplete="off"
             aria-describedby={error === null ? undefined : errorId}
             aria-invalid={error !== null}

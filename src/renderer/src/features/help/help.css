@@ -1,7 +1,7 @@
 .help-menu {
   width: calc(var(--context-menu-width) + var(--space-7));
-  transform: translate(-100%, -100%);
-  transform-origin: bottom right;
+  transform: translateY(-100%);
+  transform-origin: bottom left;
 }
 
 .help-menu button {

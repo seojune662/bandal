@@ -109,7 +109,7 @@ export function CourseGroupNameDialog({
             id={inputId}
             className="text-field"
             value={name}
-            placeholder="예: 2026년 1학기"
+            placeholder="그룹 이름"
             autoComplete="off"
             aria-describedby={error === null ? undefined : errorId}
             aria-invalid={error !== null}

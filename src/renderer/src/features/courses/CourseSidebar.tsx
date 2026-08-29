@@ -798,28 +798,35 @@ export function CourseSidebar(): JSX.Element {
       <TogetherFooter />
 
       <footer className="rail-footer">
-        <SidebarAccountEntry />
         <nav className="rail-nav" aria-label="앱 메뉴">
-          <button
-            type="button"
-            className="rail-nav__item"
-            data-active={isBoardOverlayOpen || undefined}
-            aria-pressed={isBoardOverlayOpen}
-            title={isBoardOverlayOpen ? '학업 보드 닫기' : '학업 보드 열기'}
-            onClick={toggleBoardOverlay}
-          >
-            <TabKindIcon kind="board" />
-            <span>보드</span>
-          </button>
-          <button
-            type="button"
-            className="rail-nav__item"
-            onClick={openSettings}
-          >
-            <Icon name="settings" />
-            <span>설정</span>
-          </button>
+          <SidebarAccountEntry />
+          <Tooltip label="설정" placement="top">
+            <button
+              type="button"
+              className="rail-nav__item"
+              aria-label="설정"
+              onClick={openSettings}
+            >
+              <Icon name="settings" />
+            </button>
+          </Tooltip>
           <HelpHub />
+          <span className="rail-nav__spacer" aria-hidden="true" />
+          <Tooltip
+            label={isBoardOverlayOpen ? '학업 보드 닫기' : '학업 보드 열기'}
+            placement="top"
+          >
+            <button
+              type="button"
+              className="rail-nav__item"
+              data-active={isBoardOverlayOpen || undefined}
+              aria-pressed={isBoardOverlayOpen}
+              aria-label={isBoardOverlayOpen ? '학업 보드 닫기' : '학업 보드 열기'}
+              onClick={toggleBoardOverlay}
+            >
+              <TabKindIcon kind="board" />
+            </button>
+          </Tooltip>
         </nav>
       </footer>
 

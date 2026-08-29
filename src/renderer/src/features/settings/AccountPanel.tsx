@@ -26,6 +26,7 @@ export function AccountPanel(): JSX.Element {
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [nickname, setNickname] = useState('')
+  const [confirmingNickname, setConfirmingNickname] = useState(false)
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const mountedRef = useRef(true)
@@ -68,6 +69,7 @@ export function AccountPanel(): JSX.Element {
 
   useEffect(() => {
     setNickname(profile?.nickname ?? '')
+    setConfirmingNickname(false)
   }, [profile?.nickname])
 
   const runMutation = async (
@@ -125,6 +127,16 @@ export function AccountPanel(): JSX.Element {
   const trimmedNickname = nickname.trim()
   const nicknameChanged = trimmedNickname !== (profile.nickname ?? '')
 
+  const saveNickname = (): void => {
+    setConfirmingNickname(false)
+    void runMutation(
+      'nickname',
+      () => invoke('auth:setNickname', { nickname: trimmedNickname }),
+      t('settings.account.nickname.saved'),
+      t('settings.account.nickname.saveFailed')
+    )
+  }
+
   const submitNickname = (event: React.FormEvent): void => {
     event.preventDefault()
     if (!isValidNickname(trimmedNickname)) {
@@ -136,12 +148,13 @@ export function AccountPanel(): JSX.Element {
       return
     }
     if (!nicknameChanged) return
-    void runMutation(
-      'nickname',
-      () => invoke('auth:setNickname', { nickname: trimmedNickname }),
-      t('settings.account.nickname.saved'),
-      t('settings.account.nickname.saveFailed')
-    )
+    // A rename orphans the old name: invites are addressed by nickname, and
+    // the freed name becomes claimable by anyone. First-time setup skips this.
+    if (profile.nickname !== null) {
+      setConfirmingNickname(true)
+      return
+    }
+    saveNickname()
   }
 
   const setAvatar = (patch: { color?: string; emoji?: string }): void => {
@@ -192,6 +205,7 @@ export function AccountPanel(): JSX.Element {
               aria-describedby={`${nicknameId}-rule`}
               onChange={(event) => {
                 setNickname(event.target.value)
+                setConfirmingNickname(false)
                 if (feedback?.tone === 'error') setFeedback(null)
               }}
             />
@@ -212,6 +226,34 @@ export function AccountPanel(): JSX.Element {
           <p id={`${nicknameId}-rule`} className="account-field-help">
             {t('settings.account.nickname.rule')}
           </p>
+
+          {confirmingNickname && (
+            <div
+              className="account-nickname-confirm"
+              role="alertdialog"
+              aria-label={t('settings.account.nickname.confirm.title')}
+            >
+              <p>{t('settings.account.nickname.confirm.message')}</p>
+              <div className="account-nickname-confirm__actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={pending !== null}
+                  onClick={() => setConfirmingNickname(false)}
+                >
+                  {t('settings.account.nickname.confirm.cancel')}
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button account-nickname-confirm__accept"
+                  disabled={pending !== null}
+                  onClick={saveNickname}
+                >
+                  {t('settings.account.nickname.confirm.change')}
+                </button>
+              </div>
+            </div>
+          )}
         </form>
       </section>
 

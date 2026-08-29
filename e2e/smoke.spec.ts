@@ -130,9 +130,10 @@ test.describe('smoke', () => {
 
   test('opens the study board from the left rail bottom nav', async () => {
     const { page } = bandal
-    const boardNav = page.locator('aside.app-rail--left .rail-nav__item', {
-      hasText: '보드'
-    })
+    // The bottom nav is icon-only; the label lives in aria-label/tooltip.
+    const boardNav = page.locator(
+      'aside.app-rail--left .rail-nav__item[aria-label^="학업 보드"]'
+    )
 
     // [M7] The board entry point moved out of the titlebar into the rail.
     await expect(page.locator('.app-titlebar').getByText('보드')).toHaveCount(0)

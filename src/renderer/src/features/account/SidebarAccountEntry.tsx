@@ -1,41 +1,31 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import {
-  isValidNickname,
-  NICKNAME_MAX_LENGTH,
-  NICKNAME_RULE_TEXT
-} from '../../../../shared/group/nickname'
-import { Icon } from '../../app/icons'
+import { Tooltip } from '../../components/Tooltip'
+import { useT } from '../../i18n'
 import { useAuthStore } from '../../stores/authStore'
+import { useUiStore } from '../../stores/uiStore'
 import { GroupIcon } from '../group/groupIcons'
 import { AccountAvatar } from './AccountAvatar'
 
+/**
+ * Nickname editing intentionally lives in Settings only — the nickname is the
+ * identifier friends invite by, so changing it deserves the settings surface
+ * with its confirmation step, not a quick inline field.
+ */
 export function SidebarAccountEntry(): JSX.Element | null {
+  const t = useT()
   const auth = useAuthStore((state) => state.auth)
-  const setNickname = useAuthStore((state) => state.setNickname)
   const signOut = useAuthStore((state) => state.signOut)
   const [open, setOpen] = useState(false)
-  const [nickname, setNicknameDraft] = useState('')
-  const [pending, setPending] = useState<'nickname' | 'sign-out' | null>(null)
-  const [error, setError] = useState<{
-    target: 'nickname' | 'sign-out'
-    message: string
-  } | null>(null)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
   const popoverId = useId()
-  const nicknameId = useId()
   const profile = auth.phase === 'signed-in' ? auth.profile : null
 
   useEffect(() => {
     if (!open) return
-    setNicknameDraft(profile?.nickname ?? '')
     setError(null)
-    inputRef.current?.focus()
-  }, [open, profile?.nickname])
-
-  useEffect(() => {
-    if (!open) return
 
     const closeOnPointerDown = (event: PointerEvent): void => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
@@ -61,71 +51,54 @@ export function SidebarAccountEntry(): JSX.Element | null {
   if (profile === null) return null
 
   const displayName = profile.nickname ?? '닉네임 설정 전'
-  const trimmedNickname = nickname.trim()
-  const nicknameChanged = trimmedNickname !== (profile.nickname ?? '')
 
-  const saveNickname = async (event: React.FormEvent): Promise<void> => {
-    event.preventDefault()
-    if (!isValidNickname(trimmedNickname)) {
-      setError({ target: 'nickname', message: NICKNAME_RULE_TEXT })
-      inputRef.current?.focus()
-      return
-    }
-    if (!nicknameChanged || pending !== null) return
-
-    setPending('nickname')
-    setError(null)
-    try {
-      await setNickname(trimmedNickname)
-    } catch (saveError) {
-      setError({
-        target: 'nickname',
-        message:
-          saveError instanceof Error
-            ? saveError.message
-            : '닉네임을 저장하지 못했어요. 다시 시도해요.'
+  const openAccountSettings = (): void => {
+    setOpen(false)
+    useUiStore.getState().openSettings()
+    const categoryLabel = t('settings.category.account.label')
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const category = [
+          ...document.querySelectorAll<HTMLButtonElement>('.settings-nav__item')
+        ].find((button) => button.textContent?.trim() === categoryLabel)
+        category?.click()
       })
-      inputRef.current?.focus()
-    } finally {
-      setPending(null)
-    }
+    })
   }
 
   const handleSignOut = async (): Promise<void> => {
-    if (pending !== null) return
-    setPending('sign-out')
+    if (pending) return
+    setPending(true)
     setError(null)
     try {
       await signOut()
     } catch {
-      setError({
-        target: 'sign-out',
-        message: '로그아웃하지 못했어요. 다시 시도해요.'
-      })
-      setPending(null)
+      setError('로그아웃하지 못했어요. 다시 시도해요.')
+      setPending(false)
     }
   }
 
   return (
     <div className="sidebar-account" ref={rootRef}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="sidebar-account__trigger"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? popoverId : undefined}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <AccountAvatar
-          color={profile.avatarColor}
-          emoji={profile.avatarEmoji}
-          nickname={displayName}
-          size="sm"
-        />
-        <span className="sidebar-account__name">{displayName}</span>
-        <Icon name="chevronRight" className="sidebar-account__chevron" />
-      </button>
+      <Tooltip label={displayName} placement="top">
+        <button
+          ref={triggerRef}
+          type="button"
+          className="rail-nav__item sidebar-account__trigger"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={open ? popoverId : undefined}
+          aria-label={`계정: ${displayName}`}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <AccountAvatar
+            color={profile.avatarColor}
+            emoji={profile.avatarEmoji}
+            nickname={displayName}
+            size="sm"
+          />
+        </button>
+      </Tooltip>
 
       {open && (
         <div
@@ -149,57 +122,28 @@ export function SidebarAccountEntry(): JSX.Element | null {
             </div>
           </div>
 
-          <form
-            className="sidebar-account__form"
-            onSubmit={(event) => void saveNickname(event)}
+          <button
+            type="button"
+            className="sidebar-account__manage"
+            onClick={openAccountSettings}
           >
-            <label htmlFor={nicknameId}>닉네임</label>
-            <div className="sidebar-account__field-row">
-              <input
-                ref={inputRef}
-                id={nicknameId}
-                value={nickname}
-                maxLength={NICKNAME_MAX_LENGTH}
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-                disabled={pending !== null}
-                aria-invalid={error?.target === 'nickname'}
-                aria-describedby={
-                  error?.target === 'nickname' ? `${nicknameId}-error` : undefined
-                }
-                onChange={(event) => {
-                  setNicknameDraft(event.target.value)
-                  if (error?.target === 'nickname') setError(null)
-                }}
-              />
-              <button
-                type="submit"
-                disabled={
-                  pending !== null ||
-                  !nicknameChanged ||
-                  !isValidNickname(trimmedNickname)
-                }
-              >
-                {pending === 'nickname' ? '저장 중…' : '저장'}
-              </button>
-            </div>
-          </form>
+            설정에서 프로필 변경
+          </button>
 
           {error !== null && (
-            <p id={`${nicknameId}-error`} className="sidebar-account__error" role="alert">
-              {error.message}
+            <p className="sidebar-account__error" role="alert">
+              {error}
             </p>
           )}
 
           <button
             type="button"
             className="sidebar-account__sign-out"
-            disabled={pending !== null}
+            disabled={pending}
             onClick={() => void handleSignOut()}
           >
             <GroupIcon name="logOut" />
-            {pending === 'sign-out' ? '로그아웃 중…' : '로그아웃'}
+            {pending ? '로그아웃 중…' : '로그아웃'}
           </button>
         </div>
       )}

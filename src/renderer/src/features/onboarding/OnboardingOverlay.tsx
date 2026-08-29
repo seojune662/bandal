@@ -187,7 +187,7 @@ function CourseStep(): JSX.Element {
           id={inputId}
           className="text-field"
           value={name}
-          placeholder="예: 자료구조"
+          placeholder="과목 이름"
           autoComplete="off"
           disabled={pending}
           aria-invalid={error !== null}

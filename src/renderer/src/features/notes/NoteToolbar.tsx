@@ -401,7 +401,7 @@ export function NoteToolbar({
               inputMode="url"
               autoFocus
               value={linkHref}
-              placeholder="https://example.com"
+              placeholder="주소 입력"
               onChange={(event) => setLinkHref(event.target.value)}
             />
             <button type="submit" disabled={linkHref.trim().length === 0}>

@@ -297,7 +297,7 @@ export function FavoritesSection({
             type="text"
             inputMode="url"
             autoComplete="url"
-            placeholder="https://example.com"
+            placeholder="주소 입력"
             value={linkUrl}
             disabled={isSavingLink}
             onChange={(event) => setLinkUrl(event.target.value)}

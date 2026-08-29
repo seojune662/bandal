@@ -98,6 +98,35 @@
   font-size: var(--text-xs);
 }
 
+/* Rename consequence warning — the old name frees up for anyone to claim. */
+.account-nickname-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--danger-muted);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+}
+
+.account-nickname-confirm p {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.account-nickname-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.account-nickname-confirm__accept {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 .account-avatar-picker {
   display: flex;
   flex-direction: column;

@@ -72,7 +72,7 @@ export function UniversityPicker({
         id={searchId}
         type="search"
         className="university-field university-picker__search"
-        placeholder="학교 이름으로 찾기 (예: 서울대, KAIST)"
+        placeholder="학교 이름으로 찾기"
         value={query}
         autoComplete="off"
         disabled={busy}
@@ -135,7 +135,7 @@ export function UniversityPicker({
             id={nameId}
             className="university-field"
             value={customNameDraft}
-            placeholder="예: 한밭대학교"
+            placeholder="학교 이름 입력"
             autoComplete="off"
             disabled={busy}
             onChange={(event) => setCustomNameDraft(event.target.value)}
