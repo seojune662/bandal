@@ -38,6 +38,22 @@ export function requestMaterialConnectionsRefresh(courseId: string): void {
   )
 }
 
+/** 위 이벤트의 구독 — 반환값으로 해제한다. */
+export function subscribeMaterialConnectionsRefresh(
+  courseId: string,
+  listener: () => void
+): () => void {
+  const handle = (event: Event): void => {
+    if (!(event instanceof CustomEvent)) return
+    const detail = event.detail as Partial<MaterialConnectionsRefreshDetail>
+    if (detail.courseId === courseId) listener()
+  }
+  window.addEventListener(MATERIAL_CONNECTIONS_REFRESH_EVENT, handle)
+  return () => {
+    window.removeEventListener(MATERIAL_CONNECTIONS_REFRESH_EVENT, handle)
+  }
+}
+
 export function useMaterialConnections(
   courseId: string,
   relPath: string

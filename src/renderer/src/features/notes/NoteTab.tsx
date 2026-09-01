@@ -27,7 +27,6 @@ import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor, isTabDescriptor } from '../workspace/tabIdentity'
-import { MaterialConnectionsSection } from '../links/MaterialConnectionsSection'
 import { requestMaterialConnectionsRefresh } from '../links/useMaterialConnections'
 import { nativeHistoryGuard } from './nativeHistoryGuard'
 import { createMentionMenuPlugin } from './mentionMenuPlugin'
@@ -1114,13 +1113,6 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
           )}
         </div>
       )}
-      <details className="note-material-connections">
-        <summary>{t('links.note.toggle')}</summary>
-        <MaterialConnectionsSection
-          courseId={courseId}
-          relPath={currentRelPath}
-        />
-      </details>
     </div>
   )
 }

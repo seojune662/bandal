@@ -328,7 +328,6 @@ export const koKR = {
   'materials.favorite.addFailed': '즐겨찾기를 추가하지 못했어요.',
 
   'links.menu.connect': '자료 연결…',
-  'links.note.toggle': '연결',
   'links.citations.title': '이 자료를 인용한 곳',
   'links.citations.notes': '필기',
   'links.citations.boards': '화이트보드',

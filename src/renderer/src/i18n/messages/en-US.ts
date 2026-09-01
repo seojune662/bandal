@@ -330,7 +330,6 @@ export const enUS: Record<MessageKey, string> = {
   'materials.favorite.addFailed': 'Could not add the favorite.',
 
   'links.menu.connect': 'Connect material…',
-  'links.note.toggle': 'Connections',
   'links.citations.title': 'Places citing this material',
   'links.citations.notes': 'Notes',
   'links.citations.boards': 'Whiteboards',

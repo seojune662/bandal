@@ -8,7 +8,6 @@
 import { useMemo } from 'react'
 import { Icon } from '../../app/icons'
 import { TabKindIcon } from '../workspace/workspaceIcons'
-import { MaterialConnectionsSection } from '../links/MaterialConnectionsSection'
 import type { Annotation } from '../../../../shared/types/annotation'
 
 export {
@@ -16,11 +15,9 @@ export {
   MaterialBacklinksSection
 } from '../links/MaterialConnectionsSection'
 
+// 연결/인용 목록은 탭 상단 공통 연결 칩(MaterialSequenceWrapper)으로
+// 이동했다 — 레일은 하이라이트만 담당한다.
 export interface AnnotationRailProps {
-  /** Required for backlink loading; optional until PdfTab wiring lands. */
-  courseId?: string
-  /** Required for backlink loading; optional until PdfTab wiring lands. */
-  relPath?: string
   annotations: Annotation[]
   staleIds: Set<string>
   activeId: string | null
@@ -111,8 +108,6 @@ function RailItem({
 }
 
 export function AnnotationRail({
-  courseId,
-  relPath,
   annotations,
   staleIds,
   activeId,
@@ -143,9 +138,6 @@ export function AnnotationRail({
       {error !== null && <p className="pdf-rail__error">{error}</p>}
 
       <div className="pdf-rail__scroll">
-        {courseId !== undefined && relPath !== undefined && (
-          <MaterialConnectionsSection courseId={courseId} relPath={relPath} />
-        )}
         {groups.length === 0 ? (
           <div className="pdf-rail__empty">
             <span className="pdf-rail__empty-mark" aria-hidden="true">

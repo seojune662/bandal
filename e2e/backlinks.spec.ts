@@ -102,27 +102,29 @@ test.describe('backlinks', () => {
     expect(result.boards[0].page).toBe(5)
   })
 
-  test('the rail shows the citations to the student', async () => {
+  test('the connections chip shows the citations to the student', async () => {
     const { page } = bandal
     await page.locator('.material-row', { hasText: '3주차 강의' }).click()
     await expect(page.locator('.pdf-page').first()).toBeVisible({ timeout: 30_000 })
 
-    // Open the annotation rail, then look for the group by its visible label.
-    await page.getByRole('button', { name: '하이라이트 목록 토글' }).click()
-    await expect(page.locator('.pdf-rail').first())
-      .toBeVisible({ timeout: 10_000 })
+    // 연결/인용 UI 는 탭 상단 공통 연결 칩(MaterialSequenceWrapper)으로
+    // 이동했다 — 어떤 자료 종류를 열어도 같은 자리에서 보인다.
+    const chip = page.locator('.sequence-nav__chip')
+    await expect(chip).toBeVisible({ timeout: 15_000 })
+    await chip.click()
 
-
-    const group = page.getByText('이 자료를 인용한 곳', { exact: false })
-    await expect(group).toBeVisible({ timeout: 15_000 })
+    const panel = page.locator('.sequence-connections-panel')
+    await expect(panel).toBeVisible()
+    await expect(
+      panel.getByText('이 자료를 인용한 곳', { exact: false })
+    ).toBeVisible({ timeout: 15_000 })
     // Both citation kinds, with the page they point at — a label-less icon row
     // would be unfindable, which this app has already been burned by.
-    const rail = page.locator('.pdf-rail')
     await expect(
-      rail.getByRole('button', { name: '고체역학 학습노트.md 2쪽' })
+      panel.getByRole('button', { name: '고체역학 학습노트.md 2쪽' })
     ).toBeVisible()
     await expect(
-      rail.getByRole('button', { name: '화이트보드 1 5쪽' })
+      panel.getByRole('button', { name: '화이트보드 1 5쪽' })
     ).toBeVisible()
   })
 })

@@ -54,8 +54,11 @@ test('edge drop links materials in sequence and the nav bar navigates', async ()
     const nextStrip = page.locator('.sequence-drop-strip--next')
     await expect(nextStrip).toBeVisible()
     await expect(page.locator('.sequence-drop-strip--prev')).toBeVisible()
+    // 센서는 투명 — 포인터가 들어오기 전에는 드롭 박스가 보이지 않는다.
+    await expect(nextStrip).not.toHaveAttribute('data-active', 'true')
 
-    // 오른쪽 가장자리에 드롭 → "현재 탭의 다음 = 드래그한 자료".
+    // 가장자리 진입 시 반투명 드롭 박스가 나타나고, 드롭하면
+    // "현재 탭의 다음 = 드래그한 자료"로 연결된다.
     await nextStrip.evaluate((strip) => {
       const dataTransfer = new DataTransfer()
       const bounds = strip.getBoundingClientRect()
@@ -66,8 +69,20 @@ test('edge drop links materials in sequence and the nav bar navigates', async ()
         clientY: bounds.top + bounds.height / 2,
         dataTransfer
       }
+      strip.dispatchEvent(new DragEvent('dragenter', eventInit))
       strip.dispatchEvent(new DragEvent('dragover', eventInit))
-      strip.dispatchEvent(new DragEvent('drop', eventInit))
+    })
+    await expect(nextStrip).toHaveAttribute('data-active', 'true')
+    await nextStrip.evaluate((strip) => {
+      const dataTransfer = new DataTransfer()
+      const bounds = strip.getBoundingClientRect()
+      strip.dispatchEvent(new DragEvent('drop', {
+        bubbles: true,
+        cancelable: true,
+        clientX: bounds.left + bounds.width / 2,
+        clientY: bounds.top + bounds.height / 2,
+        dataTransfer
+      }))
     })
 
     // 드롭존은 드래그 종료와 함께 사라진다.
