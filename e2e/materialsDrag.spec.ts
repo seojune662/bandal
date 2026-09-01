@@ -93,11 +93,11 @@ test('promotes image rows to native drag and keeps PDF image insertion', async (
     }, { mime: BANDAL_IMAGE_MIME, imageName: IMAGE_NAME })
 
     await expect(page.locator('.ink-layer__image-group')).toHaveCount(1)
-    await expect(page.locator('.ink-layer__image')).toHaveAttribute(
-      'data-state',
-      'ready',
-      { timeout: 20_000 }
-    )
+    // ready 이미지는 이제 foreignObject <img> 가 아니라 SVG <image> 다 —
+    // box 와 픽셀 단위로 일치시키는 v0.32.0 수정의 결과.
+    await expect(page.locator('.ink-layer__image-el')).toBeVisible({
+      timeout: 20_000
+    })
   } finally {
     await bandal.close()
   }
