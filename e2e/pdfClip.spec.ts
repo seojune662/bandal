@@ -63,13 +63,11 @@ test.describe('pdf clip to whiteboard', () => {
       timeout: 15_000
     })
     // And the page is actually drawn, not the "원본을 찾을 수 없어요" fallback.
-    // pdf.js was being handed a data: URL, which the app's CSP refuses to
-    // fetch, so every clip failed this way.
-    await expect(page.locator('.ink-layer__clip')).toHaveAttribute(
-      'data-state',
-      'ready',
-      { timeout: 20_000 }
-    )
+    // ready 클립은 이제 foreignObject 가 아니라 SVG <image> 로 렌더된다
+    // (v0.33.0 — 핸들과 픽셀 단위 일치를 위한 ImageShape 패턴).
+    await expect(
+      page.locator('.ink-layer__clip-group .ink-layer__image-el')
+    ).toBeVisible({ timeout: 20_000 })
   })
 
   test('sending a second page does not hide it under the first', async () => {

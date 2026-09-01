@@ -168,6 +168,15 @@ export function createMediaProtocolHandler(
     const contentType = mediaContentTypeFor(parsed.relPath)
     const range = parseRangeHeader(request.headers.get('range'), size)
 
+    // corsEnabled 스킴에는 CORS 가 적용된다 — pdf.js 의 fetch(range)가
+    // 렌더러 오리진에서 오므로 ACAO 와 range 관련 헤더 노출이 필요하다.
+    // 읽기 전용 + 경로 이탈 이중 방어 스킴이라 '*' 로 충분하다.
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Expose-Headers':
+        'Accept-Ranges, Content-Range, Content-Length'
+    }
+
     if (range === null) {
       const stream = Readable.toWeb(
         createReadStream(abs)
@@ -175,6 +184,7 @@ export function createMediaProtocolHandler(
       return new Response(stream, {
         status: 200,
         headers: {
+          ...corsHeaders,
           'Content-Type': contentType,
           'Content-Length': String(size),
           'Accept-Ranges': 'bytes'
@@ -188,6 +198,7 @@ export function createMediaProtocolHandler(
     return new Response(stream, {
       status: 206,
       headers: {
+        ...corsHeaders,
         'Content-Type': contentType,
         'Content-Length': String(range.end - range.start + 1),
         'Content-Range': `bytes ${range.start}-${range.end}/${size}`,

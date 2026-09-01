@@ -520,6 +520,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         return
       }
       const abs = materialsRepo.absolutePathFor(record.courseId, record.relPath)
+      // e2e 가드: 합성 dragstart 로 발동된 startDrag 는 macOS 에서 중첩
+      // 런루프에 걸려 앱 종료(close)를 영영 막을 수 있다 — 테스트에서는
+      // 드래그 상태 기록(renderer 쪽)만으로 충분하다.
+      if (process.env['BANDAL_DISABLE_NATIVE_DRAG'] === '1') return
       // 동기 호출이 핵심 — await/then 을 거치면 드래그 제스처가 죽는다.
       const ext = extname(abs).toLowerCase()
       const icon = dragIconCache.get(ext) ?? FALLBACK_DRAG_ICON

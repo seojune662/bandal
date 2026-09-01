@@ -62,6 +62,9 @@ protocol.registerSchemesAsPrivileged([
       standard: true,
       secure: true,
       supportFetchAPI: true,
+      // pdf.js 가 fetch 로 range 요청한다 — corsEnabled 없이는 렌더러
+      // 오리진에서의 cross-origin fetch 가 CORS 로 조용히 죽는다.
+      corsEnabled: true,
       stream: true
     }
   }
