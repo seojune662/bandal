@@ -791,3 +791,13 @@
   color: var(--accent);
   animation: chat-pulse 1.8s ease-in-out infinite;
 }
+
+/* 팝업 컴포저: 사용자 투명도의 절반만 반영해 입력 가독을 지킨다.
+   알파 변수가 없는 overlay/탭에서는 fallback 1 = 기존 불투명 유지. */
+.chat-tab[data-variant='popup'] .chat-composer {
+  background: color-mix(
+    in srgb,
+    var(--bg-surface) calc((0.5 + var(--assistant-popup-alpha, 1) * 0.5) * 100%),
+    transparent
+  );
+}

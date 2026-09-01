@@ -128,12 +128,40 @@
   touch-action: none;
 }
 
-/* 투명도 슬라이더 — 평소엔 표시만 남기고, 헤더에 올리면 조작부가 나타난다. */
+/* 제공자/모델 셀렉터가 포탈되는 헤더 슬롯 — 헤더 2줄을 1줄로 합친 자리. */
+.assistant-popup__controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  margin-left: auto;
+}
+
+.assistant-popup__controls .chat-model,
+.assistant-popup__controls .chat-provider-select {
+  background: transparent;
+  border: 0;
+}
+
+.assistant-popup__controls .chat-model__label {
+  display: none;
+}
+
+.assistant-popup__controls select {
+  max-width: 9rem;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  background: transparent;
+  border: 0;
+}
+
+/* 투명도 슬라이더 — 상시 표시 (숨겨두면 "작동 안 함"으로 읽힌다). */
 .assistant-popup__opacity {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  margin-left: auto;
   color: var(--text-muted);
 }
 
@@ -147,17 +175,8 @@
 }
 
 .assistant-popup__opacity input[type='range'] {
-  width: 0;
-  opacity: 0;
-  accent-color: var(--accent);
-  transition: width var(--dur-fast) var(--ease-out),
-    opacity var(--dur-fast) var(--ease-out);
-}
-
-.assistant-popup__header:hover .assistant-popup__opacity input[type='range'],
-.assistant-popup__opacity input[type='range']:focus-visible {
   width: 4.5rem;
-  opacity: 1;
+  accent-color: var(--accent);
 }
 
 .assistant-popup__header:active {

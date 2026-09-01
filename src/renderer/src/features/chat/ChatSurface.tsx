@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode
 } from 'react'
+import { createPortal } from 'react-dom'
 import type { AgentProvider } from '../../../../shared/types/agent-events'
 import type {
   ChatAttachment,
@@ -13,7 +14,11 @@ import type {
 import { Icon } from '../../app/icons'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
-import { useChatPromptStore } from './chatPromptBus'
+import {
+  formatQuoteBlock,
+  useChatPromptStore,
+  type ChatQuote
+} from './chatPromptBus'
 import { Composer, type ComposerHandle } from './Composer'
 import { ConversationListMenu } from './ConversationListMenu'
 import { formatCost, MessageList, UsageText } from './MessageList'
@@ -105,6 +110,11 @@ export interface ChatSurfaceProps {
   surface?: ChatSurfaceKind
   onOpenConversation?: (conversationId: string) => void
   headerExtra?: ReactNode
+  /**
+   * 인앱 오브 팝업의 헤더 슬롯 — 있으면 제공자/모델 셀렉터를 그 DOM 으로
+   * 포탈하고 자체 .chat-header 를 렌더하지 않는다(헤더 1줄 통합).
+   */
+  headerControlsHost?: HTMLElement | null
 }
 
 function EmptyState({
@@ -135,19 +145,38 @@ function EmptyState({
   )
 }
 
+/** 담을 수 있는 인용 칩 수 — 초과 시 오래된 것부터 밀려난다. */
+const MAX_PENDING_QUOTES = 5
+
+/**
+ * 전송 본문 합성: 인용 블록들 + 빈 줄 + 사용자가 친 텍스트.
+ * 칩은 UI 표현일 뿐이고 세션에는 지금까지와 같은 마크다운이 간다.
+ */
+export function composeOutgoingText(
+  draft: string,
+  quotes: readonly ChatQuote[]
+): string {
+  const trimmed = draft.trim()
+  if (quotes.length === 0) return trimmed
+  const blocks = quotes.map(formatQuoteBlock).join('\n\n')
+  return trimmed === '' ? blocks : `${blocks}\n\n${trimmed}`
+}
+
 export function ChatSurface({
   courseId,
   conversationId,
   variant = 'tab',
   surface = 'app',
   onOpenConversation,
-  headerExtra
+  headerExtra,
+  headerControlsHost
 }: ChatSurfaceProps): JSX.Element {
   const conversationKey = conversationId ?? courseId
   const session = useChatSession(courseId, conversationKey, surface)
   const agentToolActivity = useAgentToolActivity(conversationKey)
   const openTab = useWorkspaceStore((store) => store.openTab)
   const [draft, setDraft] = useState('')
+  const [pendingQuotes, setPendingQuotes] = useState<ChatQuote[]>([])
   const composerRef = useRef<ComposerHandle>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isPinnedRef = useRef(true)
@@ -182,11 +211,16 @@ export function ChatSurface({
     ) {
       return
     }
-    const prompt = consumePrompt(conversationKey)
-    if (prompt !== null) {
-      setDraft(prompt)
-      composerRef.current?.focus()
+    const payload = consumePrompt(conversationKey)
+    if (payload === null) return
+    if (payload.text !== undefined) setDraft(payload.text)
+    if (payload.quote !== undefined) {
+      const quote = payload.quote
+      setPendingQuotes((current) =>
+        [...current, quote].slice(-MAX_PENDING_QUOTES)
+      )
     }
+    composerRef.current?.focus()
   }, [pendingPrompt, consumePrompt, conversationKey])
 
   useEffect(() => {
@@ -208,16 +242,23 @@ export function ChatSurface({
 
   const handleSend = useCallback(
     (attachments: ChatAttachment[]) => {
-      const text = draft.trim()
+      const text = composeOutgoingText(draft, pendingQuotes)
       if (text === '' && attachments.length === 0) {
         return
       }
       setDraft('')
+      setPendingQuotes([])
       isPinnedRef.current = true
       session.send(text, attachments)
     },
-    [draft, session.send]
+    [draft, pendingQuotes, session.send]
   )
+
+  const removeQuote = useCallback((index: number) => {
+    setPendingQuotes((current) =>
+      current.filter((_, position) => position !== index)
+    )
+  }, [])
 
   const handlePickStarter = useCallback((prompt: string) => {
     setDraft(prompt)
@@ -363,33 +404,42 @@ export function ChatSurface({
     </>
   )
 
+  // 인앱 오브 팝업은 자체 헤더가 있다 — 셀렉터를 그 헤더 슬롯으로 포탈해
+  // 헤더 2줄(반달 AI + 제공자/모델)을 1줄로 합친다.
+  const portalsHeaderControls =
+    variant === 'popup' && headerControlsHost != null
+
   return root(
     <>
-      <header className="chat-header">
-        {headerExtra}
-        {variant === 'tab' && (
-          <ConversationListMenu
-            courseId={courseId}
-            currentConversationId={conversationKey}
-            onNewConversation={handleNewConversation}
-            onOpenConversation={handleOpenConversation}
-          />
-        )}
-        {hasSessionUsage && (
-          <div className="chat-session-usage" title={sessionUsageTitle}>
-            <span className="chat-session-usage__label">오늘 이 대화:</span>
-            <UsageText usage={state.sessionUsage} />
-            {state.sessionCostUsd > 0 && (
-              <span>· {formatCost(state.sessionCostUsd)}</span>
-            )}
-          </div>
-        )}
-        {variant === 'overlay' ? (
-          <div className="chat-header__selectors">{selectorControls}</div>
-        ) : (
-          selectorControls
-        )}
-      </header>
+      {portalsHeaderControls
+        ? createPortal(selectorControls, headerControlsHost)
+        : (
+        <header className="chat-header">
+          {headerExtra}
+          {variant === 'tab' && (
+            <ConversationListMenu
+              courseId={courseId}
+              currentConversationId={conversationKey}
+              onNewConversation={handleNewConversation}
+              onOpenConversation={handleOpenConversation}
+            />
+          )}
+          {hasSessionUsage && (
+            <div className="chat-session-usage" title={sessionUsageTitle}>
+              <span className="chat-session-usage__label">오늘 이 대화:</span>
+              <UsageText usage={state.sessionUsage} />
+              {state.sessionCostUsd > 0 && (
+                <span>· {formatCost(state.sessionCostUsd)}</span>
+              )}
+            </div>
+          )}
+          {variant === 'overlay' ? (
+            <div className="chat-header__selectors">{selectorControls}</div>
+          ) : (
+            selectorControls
+          )}
+        </header>
+          )}
       {state.notice !== null && state.notice.code !== 'version-too-old' && (
         <div
           className="chat-banner chat-banner--error"
@@ -465,6 +515,8 @@ export function ChatSurface({
         ref={composerRef}
         courseId={courseId}
         value={draft}
+        quotes={pendingQuotes}
+        onRemoveQuote={removeQuote}
         onChange={setDraft}
         onSend={handleSend}
         onCancel={session.cancel}

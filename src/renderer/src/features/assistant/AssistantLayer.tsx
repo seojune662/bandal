@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { OverlayState } from '../../../../shared/types/overlay'
 import { invoke } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
-import { requestChatPrompt } from '../chat/chatPromptBus'
+import {
+  requestChatPrompt,
+  type ChatPromptPayload
+} from '../chat/chatPromptBus'
 import {
   setOverlayState,
   useOverlayState
@@ -34,14 +37,14 @@ function shortenQuote(text: string): string {
   return `${text.slice(0, headLength)}…${text.slice(-tailLength)}`
 }
 
-function quotePrompt(selection: AnchoredSelection): string {
-  const text = shortenQuote(selection.text.trim())
-  const source = shortenQuote(selection.source.replace(/\s+/g, ' ').trim())
-  const quote = text
-    .split(/\r?\n/)
-    .map((line) => `> ${line}`)
-    .join('\n')
-  return `${quote}\n>\n> (${source}에서)`
+/** 선택을 composer 위 인용 칩 페이로드로 — 포맷팅은 전송 시점에 한다. */
+function quotePayload(selection: AnchoredSelection): ChatPromptPayload {
+  return {
+    quote: {
+      text: shortenQuote(selection.text.trim()),
+      source: shortenQuote(selection.source.replace(/\s+/g, ' ').trim())
+    }
+  }
 }
 
 interface InAppAssistantProps {
@@ -58,7 +61,7 @@ function InAppAssistant({
   clearSelection
 }: InAppAssistantProps): JSX.Element {
   const [popupOpen, setPopupOpen] = useState(false)
-  const pendingPromptRef = useRef<string | null>(null)
+  const pendingPromptRef = useRef<ChatPromptPayload | null>(null)
   const orbRef = useRef<HTMLButtonElement>(null)
   const activity = useAssistantActivity({
     courseId: selectedCourseId,
@@ -84,9 +87,9 @@ function InAppAssistant({
     (picked: AnchoredSelection): void => {
       setPopupOpen(true)
       activity.clearAlert()
-      const prompt = quotePrompt(picked)
-      if (popupConversationId === null) pendingPromptRef.current = prompt
-      else requestChatPrompt(popupConversationId, prompt)
+      const payload = quotePayload(picked)
+      if (popupConversationId === null) pendingPromptRef.current = payload
+      else requestChatPrompt(popupConversationId, payload)
       window.getSelection()?.removeAllRanges()
       clearSelection()
     },

@@ -791,3 +791,17 @@
   border-left: 2px solid var(--border-strong);
   white-space: pre-wrap;
 }
+
+/* 인앱 오브 팝업: 배경을 팝업 셸에 맡긴다 — .assistant-popup 의 알파/블러가
+   실제로 비치게. overlay 창(data-overlay)은 자체 body 배경이 받친다. */
+.chat-tab[data-variant='popup'] {
+  background: transparent;
+}
+
+.chat-tab[data-variant='popup'] .chat-header {
+  background: transparent;
+}
+
+.chat-tab[data-variant='popup'] .chat-empty {
+  padding: var(--space-4);
+}

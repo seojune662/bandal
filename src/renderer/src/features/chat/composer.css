@@ -103,3 +103,61 @@
   gap: var(--space-1);
   padding: 0 var(--space-3) var(--space-3);
 }
+
+/* 인용 칩 — PDF 선택을 composer 위에 얹는 PASTED 스타일 카드. */
+.chat-quote-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.chat-quote-chip {
+  position: relative;
+  max-width: 16rem;
+  padding: var(--space-2) var(--space-5) var(--space-2) var(--space-3);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.chat-quote-chip__label {
+  display: block;
+  overflow: hidden;
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-quote-chip__preview {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.chat-quote-chip__remove {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  display: grid;
+  place-items: center;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1;
+  border-radius: var(--radius-pill);
+}
+
+.chat-quote-chip__remove:hover,
+.chat-quote-chip__remove:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-overlay);
+}

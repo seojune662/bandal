@@ -142,6 +142,8 @@ export function AssistantPopup({
   const resizeRef = useRef<ResizeGesture | null>(null)
   const [geometry, setGeometry] = useState<PopupGeometry | null>(readGeometry)
   const [popupAlpha, setPopupAlpha] = useState<number>(readPopupAlpha)
+  // 제공자/모델 셀렉터가 포탈될 헤더 슬롯 — 콜백 ref 라 마운트 시 리렌더.
+  const [controlsHost, setControlsHost] = useState<HTMLElement | null>(null)
   geometryRef.current = geometry
 
   const updateGeometry = useCallback((next: PopupGeometry): void => {
@@ -313,6 +315,12 @@ export function AssistantPopup({
           <span>반달 AI</span>
         </span>
         <span
+          className="assistant-popup__controls"
+          ref={setControlsHost}
+          // 셀렉터 조작이 헤더 드래그(창 이동)로 새지 않게.
+          onPointerDown={(event) => event.stopPropagation()}
+        />
+        <span
           className="assistant-popup__opacity"
           // 헤더 드래그(창 이동)와 분리 — 슬라이더 조작이 이동으로 새지 않게.
           onPointerDown={(event) => event.stopPropagation()}
@@ -332,7 +340,7 @@ export function AssistantPopup({
             step={5}
             value={Math.round(popupAlpha * 100)}
             aria-label="채팅창 투명도"
-            title="채팅창 투명도"
+            title={`채팅창 투명도 ${Math.round(popupAlpha * 100)}%`}
             onChange={(event) => {
               const next = clampPopupAlpha(Number(event.target.value) / 100)
               setPopupAlpha(next)
@@ -363,6 +371,7 @@ export function AssistantPopup({
             courseId={selectedCourseId}
             conversationId={conversationId}
             variant="popup"
+            headerControlsHost={controlsHost}
           />
         )}
       </div>

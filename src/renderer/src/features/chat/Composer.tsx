@@ -9,8 +9,12 @@ import {
   type KeyboardEvent
 } from 'react'
 import type { ChatAttachment } from '../../../../shared/types/chat'
-import type { MaterialSearchHit } from '../../../../shared/types/materials'
+import type {
+  MaterialNode,
+  MaterialSearchHit
+} from '../../../../shared/types/materials'
 import { invoke } from '../../lib/ipc'
+import type { ChatQuote } from './chatPromptBus'
 import type { LimitInfo } from './chatModel'
 import './composer.css'
 
@@ -18,7 +22,30 @@ const MAX_TEXTAREA_HEIGHT_PX = 200
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_IMAGE_COUNT = 5
 const MENTION_DEBOUNCE_MS = 160
-const MAX_MENTION_RESULTS = 8
+const MAX_MENTION_RESULTS = 20
+
+/** `@`만 쳤을 때 보여줄 전체 목록 — materials:tree 를 hit 형태로 평탄화. */
+export function mentionHitsFromTree(
+  nodes: readonly MaterialNode[]
+): MaterialSearchHit[] {
+  const hits: MaterialSearchHit[] = []
+  const walk = (entries: readonly MaterialNode[]): void => {
+    for (const node of entries) {
+      if (node.kind === 'dir') {
+        walk(node.children ?? [])
+      } else {
+        hits.push({
+          relPath: node.relPath,
+          name: node.name,
+          kind: node.kind,
+          score: 0
+        })
+      }
+    }
+  }
+  walk(nodes)
+  return hits.sort((a, b) => a.relPath.localeCompare(b.relPath, 'ko'))
+}
 
 interface MentionRange {
   start: number
@@ -37,6 +64,9 @@ const RECENT_TYPING_WINDOW_MS = 1_500
 export interface ComposerProps {
   courseId: string
   value: string
+  /** composer 위에 뜨는 인용 칩들 — 전송 시 부모가 본문과 합성한다. */
+  quotes?: readonly ChatQuote[]
+  onRemoveQuote?: (index: number) => void
   onChange: (value: string) => void
   onSend: (attachments: ChatAttachment[]) => void
   onCancel: () => void
@@ -96,6 +126,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
     {
       courseId,
       value,
+      quotes = [],
+      onRemoveQuote,
       onChange,
       onSend,
       onCancel,
@@ -150,8 +182,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
       }
       const query = mention.query.trim()
       if (query === '') {
-        setMentionHits([])
-        setIsSearching(false)
+        // `@`만 쳐도 과목 전체 파일이 바로 뜬다 — 노트 멘션과 같은 UX.
+        // materials:tree 는 main 이 캐시하므로 열릴 때마다 불러도 싸다.
+        setIsSearching(true)
+        void invoke('materials:tree', { courseId })
+          .then((tree) => {
+            if (sequence !== mentionSequenceRef.current) return
+            setMentionHits(mentionHitsFromTree(tree).slice(0, MAX_MENTION_RESULTS))
+            setMentionIndex(0)
+          })
+          .catch(() => {
+            if (sequence === mentionSequenceRef.current) setMentionHits([])
+          })
+          .finally(() => {
+            if (sequence === mentionSequenceRef.current) setIsSearching(false)
+          })
         return
       }
       setIsSearching(true)
@@ -203,7 +248,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
       if (
         isStreaming ||
         disabled ||
-        (value.trim() === '' && attachments.length === 0)
+        (value.trim() === '' && attachments.length === 0 && quotes.length === 0)
       ) {
         return
       }
@@ -212,7 +257,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
       setAttachmentError(null)
       setMention(null)
       window.requestAnimationFrame(resize)
-    }, [attachments, disabled, isStreaming, onSend, resize, value])
+    }, [attachments, disabled, isStreaming, onSend, quotes.length, resize, value])
 
     const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
       if (event.nativeEvent.isComposing) {
@@ -305,7 +350,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
     const canSend =
       !isStreaming &&
       !disabled &&
-      (value.trim() !== '' || attachments.length > 0)
+      (value.trim() !== '' || attachments.length > 0 || quotes.length > 0)
     const resetTime = formatResetTime(limit?.resetsAt)
     const clampedMentionIndex = Math.min(
       mentionIndex,
@@ -322,6 +367,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
                 ? `${resetTime}에 다시 이용할 수 있어요.`
                 : limit.message}
             </span>
+          </div>
+        )}
+        {quotes.length > 0 && (
+          <div className="chat-quote-chips" aria-label="인용 첨부">
+            {quotes.map((quote, index) => (
+              <div key={`${quote.source}:${index}`} className="chat-quote-chip">
+                <span className="chat-quote-chip__label">
+                  인용 · {quote.source}
+                </span>
+                <span className="chat-quote-chip__preview">{quote.text}</span>
+                <button
+                  type="button"
+                  className="chat-quote-chip__remove"
+                  aria-label={`인용 ${index + 1} 제거`}
+                  onClick={() => onRemoveQuote?.(index)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
           </div>
         )}
         {attachments.length > 0 && (
@@ -354,12 +419,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
         <div className="chat-composer" data-streaming={isStreaming || undefined}>
           {mention !== null && (
             <div className="chat-mention" role="listbox" aria-label="과목 파일">
-              {mention.query.trim() === '' ? (
-                <p className="chat-mention__status">파일 이름을 입력하세요.</p>
-              ) : isSearching && mentionHits.length === 0 ? (
+              {isSearching && mentionHits.length === 0 ? (
                 <p className="chat-mention__status">찾는 중…</p>
               ) : mentionHits.length === 0 ? (
-                <p className="chat-mention__status">일치하는 파일이 없어요.</p>
+                <p className="chat-mention__status">
+                  {mention.query.trim() === ''
+                    ? '이 과목에 아직 파일이 없어요.'
+                    : '일치하는 파일이 없어요.'}
+                </p>
               ) : (
                 mentionHits.map((hit, index) => (
                   <button
