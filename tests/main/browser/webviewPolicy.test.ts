@@ -5,6 +5,7 @@ import {
   decidePopup,
   isAllowedAttach,
   isBlockedEmbeddedAuthUrl,
+  isLikelyAuthPopupUrl,
   isNavigationAllowed,
   isOpenerScopedPopupTarget,
   isSameSiteAcademicPopup,
@@ -335,10 +336,21 @@ describe('decidePopup', () => {
     })
   })
 
-  test('a same-university target keeps the SSO window path', () => {
+  test('a same-university AUTH target keeps the SSO window path', () => {
     expect(
       decide('https://portal.inha.ac.kr:8443/sso', 'https://portal.inha.ac.kr/')
     ).toEqual({ kind: 'window', scope: 'sso' })
+    expect(
+      decide('https://sso.inha.ac.kr/login', 'https://portal.inha.ac.kr/')
+    ).toEqual({ kind: 'window', scope: 'sso' })
+  })
+
+  test('a same-university NON-auth popup opens as a Bandal tab', () => {
+    // my.snu 마이페이지처럼 메뉴 내비게이션 팝업 — opener 가 필요 없고,
+    // 맨 창으로 뜨면 사용자에겐 고장으로 보인다.
+    expect(
+      decide('https://my.snu.ac.kr/p/ST/', 'https://my.snu.ac.kr/portal')
+    ).toEqual({ kind: 'tab', url: 'https://my.snu.ac.kr/p/ST/' })
   })
 
   test('an ordinary web target still becomes a Bandal tab', () => {
@@ -420,5 +432,33 @@ describe('sanitizeGuestWebPreferences — the PDF viewer', () => {
     expect(prefs['sandbox']).toBe(true)
     expect(prefs['contextIsolation']).toBe(true)
     expect(prefs['webSecurity']).toBe(true)
+  })
+})
+
+describe('isLikelyAuthPopupUrl', () => {
+  test('recognizes auth-shaped hosts and paths', () => {
+    for (const url of [
+      'https://sso.inha.ac.kr/',
+      'https://nid.snu.ac.kr/oauth2/authorize',
+      'https://portal.ajou.ac.kr/login.do',
+      'https://cas.sejong.ac.kr/serviceLogin',
+      'https://portal.khu.ac.kr/member/signin'
+    ]) {
+      expect(isLikelyAuthPopupUrl(url), url).toBe(true)
+    }
+  })
+
+  test('plain portal pages are not auth', () => {
+    for (const url of [
+      'https://my.snu.ac.kr/p/ST/',
+      'https://portal.inha.ac.kr/notice/12',
+      'https://etl.snu.ac.kr/courses'
+    ]) {
+      expect(isLikelyAuthPopupUrl(url), url).toBe(false)
+    }
+  })
+
+  test('junk is not auth', () => {
+    expect(isLikelyAuthPopupUrl('not a url')).toBe(false)
   })
 })

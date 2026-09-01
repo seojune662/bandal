@@ -206,6 +206,11 @@ export function academicSite(url: string): string | null {
  *
  * Note the port is NOT part of the comparison here on purpose — 인하대's IdP
  * is `:8443` and its portal is `:443`, and they are the same institution.
+ *
+ * 같은 대학이라도 실제로 REAL WINDOW 가 되는 건 인증성 대상뿐이다 — 아래
+ * `isLikelyAuthPopupUrl` 참조. my.snu 마이페이지처럼 메뉴 내비게이션을
+ * window.open 으로 여는 포털은 반달 탭(주소창·뒤로가기 있는 일반 브라우저
+ * 모습)으로 간다.
  */
 export function isSameSiteAcademicPopup(
   openerUrl: string,
@@ -289,6 +294,46 @@ export function isOpenerScopedPopupTarget(url: string): boolean {
   return url.startsWith('blob:https://') || url.startsWith('blob:http://')
 }
 
+/**
+ * 같은 대학 팝업 중 `window.opener` 보존이 실제로 필요한 인증성 대상.
+ *
+ * SSO 팝업은 로그인 완료 후 `opener.postMessage` 로 보고하므로 탭으로 보내면
+ * 영영 기다린다. 반면 마이페이지·메뉴 내비게이션 팝업은 opener 가 필요 없고,
+ * 맨 창(주소창도 뒤로가기도 없는)으로 뜨는 것이 사용자에겐 고장으로 보인다.
+ *
+ * 판정은 호스트 라벨·경로 세그먼트의 토큰 포함 검사다. 오탐('authors' 등)의
+ * 비용 방향이 안전하다 — 창으로 열릴 뿐, 로그인은 절대 깨지지 않는다.
+ */
+const AUTH_POPUP_TOKENS = [
+  'sso',
+  'login',
+  'signin',
+  'logon',
+  'auth',
+  'oauth',
+  'idp',
+  'cas',
+  'nid',
+  'passni',
+  'pki',
+  'cert'
+] as const
+
+export function isLikelyAuthPopupUrl(url: string): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false
+  }
+  const hostLabels = parsed.hostname.toLowerCase().split('.')
+  const pathSegments = parsed.pathname.toLowerCase().split('/')
+  const parts = [...hostLabels, ...pathSegments]
+  return parts.some((part) =>
+    AUTH_POPUP_TOKENS.some((token) => part.includes(token))
+  )
+}
+
 export type PopupDecision =
   /** Hand to the system browser; the embedded view is refused by the site. */
   | { kind: 'external' }
@@ -312,7 +357,12 @@ export function decidePopup(input: {
   if (isBlockedEmbeddedAuthUrl(targetUrl)) return { kind: 'external' }
   if (isOpenerScopedPopupTarget(targetUrl)) return { kind: 'window', scope: 'opener' }
   if (isSameSiteAcademicPopup(openerUrl, targetUrl)) {
-    return { kind: 'window', scope: 'sso' }
+    // 인증성 대상만 진짜 창(opener 보존) — 나머지 같은 대학 팝업은
+    // 일반 브라우저처럼 반달 탭으로 연다.
+    if (isLikelyAuthPopupUrl(targetUrl)) {
+      return { kind: 'window', scope: 'sso' }
+    }
+    return { kind: 'tab', url: targetUrl }
   }
   const forwardUrl = popupForwardUrl(targetUrl)
   if (forwardUrl !== null) return { kind: 'tab', url: forwardUrl }
