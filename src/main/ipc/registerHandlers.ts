@@ -472,6 +472,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     }
     return materialLinksRepo.listForDescriptor(req.courseId, req.descriptor)
   })
+  handle('links:graph', (req) => ({
+    links: materialLinksRepo.listAll(req.courseId),
+    backlinks: linkIndex.allForCourse(req.courseId)
+  }))
 
   // -- shell ----------------------------------------------------------------
   // Re-validated here rather than trusted from the renderer: this is the one

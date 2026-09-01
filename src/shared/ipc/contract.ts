@@ -84,6 +84,7 @@ import type { MediaProgress } from '../types/mediaProgress'
 import type { PipOpenRequest, PipState } from '../types/pip'
 import type { SearchHit } from '../types/search'
 import type {
+  MaterialBacklinkGroup,
   MaterialBacklinks,
   MaterialLinkRecord,
   SendHighlightToNoteInput,
@@ -1196,6 +1197,18 @@ export interface IpcContract {
     req: { courseId: string; relPath: string }
     res: MaterialBacklinks
   }
+  /**
+   * Everything the link graph needs in one round trip: all manual links plus
+   * all citations, grouped by cited material. The backlink half rescans the
+   * whole course — call on demand (open/refresh), never on materials:changed.
+   */
+  'links:graph': {
+    req: { courseId: string }
+    res: {
+      links: MaterialLinkRecord[]
+      backlinks: MaterialBacklinkGroup[]
+    }
+  }
   'link:sendHighlightToNote': {
     req: SendHighlightToNoteInput
     res: SendHighlightToNoteResult
@@ -1731,6 +1744,7 @@ export const IPC_CHANNELS = [
   'links:listFor',
   'links:listForDescriptor',
   'links:forMaterial',
+  'links:graph',
   'link:sendHighlightToNote',
   'link:sendWebClipToNote',
   'group:shareNote',

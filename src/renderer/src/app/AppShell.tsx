@@ -4,6 +4,7 @@ import type { PushPayload } from '../../../shared/ipc/events'
 import { invoke, onPush } from '../lib/ipc'
 import { AssistantLayer } from '../features/assistant'
 import { BoardOverlay } from '../features/board/BoardPanel'
+import { LinkGraphOverlay } from '../features/links/graph/LinkGraphOverlay'
 import { BrowserWebviewLayer } from '../features/browser/BrowserWebviewLayer'
 import { PrintPreviewOverlay } from '../features/print/PrintPreviewOverlay'
 import { usePrintRequests } from '../features/print/usePrintRequests'
@@ -64,6 +65,8 @@ export function AppShell(): JSX.Element {
   // (CourseSidebar) — this shell only owns the overlay itself.
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
   const closeBoardOverlay = useUiStore((state) => state.closeBoardOverlay)
+  const isLinkGraphOpen = useUiStore((state) => state.isLinkGraphOpen)
+  const closeLinkGraph = useUiStore((state) => state.closeLinkGraph)
   const isSettingsOpen = useUiStore((state) => state.isSettingsOpen)
   const openSettings = useUiStore((state) => state.openSettings)
   const closeSettings = useUiStore((state) => state.closeSettings)
@@ -326,6 +329,12 @@ export function AppShell(): JSX.Element {
       <BrowserWebviewLayer />
       <PrintPreviewOverlay />
       {isBoardOverlayOpen && <BoardOverlay onClose={closeBoardOverlay} />}
+      {isLinkGraphOpen && selectedCourse !== null && (
+        <LinkGraphOverlay
+          courseId={selectedCourse.id}
+          onClose={closeLinkGraph}
+        />
+      )}
       <QuickFileSearch />
       {/* One modal at a time: first-run onboarding outranks the nickname step,
           which waits for the wizard to close. */}

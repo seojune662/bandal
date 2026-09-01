@@ -20,7 +20,7 @@ import { AGENT_TOOL_NAMES } from '../../../src/main/features/agentTools/schemas'
 
 /** Reads do not change anything, so they need no agent counterpart. */
 const READ_VERBS =
-  /^(list|get|read|search|tree|tail|upcoming|resolve|current|find|range|forMaterial|recent)/i
+  /^(list|get|read|search|tree|tail|upcoming|resolve|current|find|range|forMaterial|recent|graph)/i
 
 function workspaceMutations(): string[] {
   return (IPC_CHANNELS as readonly string[]).filter((channel) => {

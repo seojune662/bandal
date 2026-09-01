@@ -29,6 +29,8 @@ export interface MaterialLinksRepo {
     courseId: string,
     descriptor: TabDescriptor
   ): MaterialLinksForPath
+  /** 과목의 수동 링크 전체 — 그래프 뷰용. */
+  listAll(courseId: string): MaterialLinkRecord[]
 }
 
 interface MaterialLinkRow {
@@ -200,6 +202,12 @@ export function createMaterialLinksRepo(db: Database): MaterialLinksRepo {
       }
     },
 
-    listFor
+    listFor,
+
+    listAll(rawCourseId) {
+      const courseId = requireId(rawCourseId, 'courseId')
+      const rows = selectForCourse.all(courseId) as MaterialLinkRow[]
+      return rows.map(rowToRecord)
+    }
   }
 }

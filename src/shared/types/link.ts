@@ -93,3 +93,17 @@ export interface MaterialBacklinks {
   notes: MaterialBacklink[]
   boards: MaterialBacklink[]
 }
+
+/** A backlink with the payload retained by the derived cache. */
+export interface DetailedMaterialBacklink extends MaterialBacklink {
+  /** Annotation id for a note, clip label for a whiteboard, or an empty string. */
+  detail: string
+}
+
+/** All sources for one material, grouped for dossier/insights/graph consumers. */
+export interface MaterialBacklinkGroup {
+  /** Actual course-relative filesystem spelling, not its normalized match key. */
+  relPath: string
+  notes: DetailedMaterialBacklink[]
+  boards: DetailedMaterialBacklink[]
+}

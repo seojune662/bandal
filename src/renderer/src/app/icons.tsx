@@ -11,6 +11,7 @@ export type IconName =
   | 'folder'
   | 'folderOpen'
   | 'folderPlus'
+  | 'graph'
   | 'help'
   | 'layoutLeft'
   | 'layoutRight'
@@ -89,6 +90,14 @@ const paths: Record<IconName, JSX.Element> = {
     <>
       <path d="M3.5 6.5h6l2-2h3l2 2h4v12.5h-17z" />
       <path d="M12 9.5v6M9 12.5h6" />
+    </>
+  ),
+  graph: (
+    <>
+      <circle cx="6" cy="6" r="2.6" />
+      <circle cx="18" cy="9.5" r="2.6" />
+      <circle cx="10.5" cy="18" r="2.6" />
+      <path d="M8.5 6.8 15.5 8.9M6.9 8.4l2.7 7.2M16.2 11.5l-4 4.6" />
     </>
   ),
   help: (

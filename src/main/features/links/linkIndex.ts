@@ -10,7 +10,9 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { extname, join, posix } from 'node:path'
 import type { Database } from 'better-sqlite3'
 import type {
+  DetailedMaterialBacklink,
   MaterialBacklink,
+  MaterialBacklinkGroup,
   MaterialBacklinks
 } from '../../../shared/types/link'
 import { requireId, requireNonEmptyString } from '../../db/validate'
@@ -33,19 +35,11 @@ export interface LinkIndexDeps {
   getCourseFolder: (courseId: string) => string
 }
 
-/** A backlink with the payload retained by the derived cache. */
-export interface DetailedMaterialBacklink extends MaterialBacklink {
-  /** Annotation id for a note, clip label for a whiteboard, or an empty string. */
-  detail: string
-}
-
-/** All sources for one material, grouped for dossier/insights consumers. */
-export interface MaterialBacklinkGroup {
-  /** Actual course-relative filesystem spelling, not its normalized match key. */
-  relPath: string
-  notes: DetailedMaterialBacklink[]
-  boards: DetailedMaterialBacklink[]
-}
+// 타입은 그래프 뷰(renderer)와 공유하기 위해 shared/types/link.ts 로 이동했다.
+export type {
+  DetailedMaterialBacklink,
+  MaterialBacklinkGroup
+} from '../../../shared/types/link'
 
 export interface LinkIndex {
   /** Rescans the course, then returns everything that cites this material. */

@@ -126,6 +126,8 @@ export function CourseSidebar(): JSX.Element {
 
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
   const toggleBoardOverlay = useUiStore((state) => state.toggleBoardOverlay)
+  const isLinkGraphOpen = useUiStore((state) => state.isLinkGraphOpen)
+  const toggleLinkGraph = useUiStore((state) => state.toggleLinkGraph)
   const toggleLeftRail = useUiStore((state) => state.toggleLeftRail)
   const openSettings = useUiStore((state) => state.openSettings)
 
@@ -812,6 +814,28 @@ export function CourseSidebar(): JSX.Element {
           </Tooltip>
           <HelpHub />
           <span className="rail-nav__spacer" aria-hidden="true" />
+          <Tooltip
+            label={
+              selectedCourseId === null
+                ? '연결 그래프 (과목을 먼저 선택)'
+                : isLinkGraphOpen
+                  ? '연결 그래프 닫기'
+                  : '연결 그래프'
+            }
+            placement="top"
+          >
+            <button
+              type="button"
+              className="rail-nav__item"
+              data-active={isLinkGraphOpen || undefined}
+              aria-pressed={isLinkGraphOpen}
+              aria-label="연결 그래프"
+              disabled={selectedCourseId === null}
+              onClick={toggleLinkGraph}
+            >
+              <Icon name="graph" />
+            </button>
+          </Tooltip>
           <Tooltip
             label={isBoardOverlayOpen ? '학업 보드 닫기' : '학업 보드 열기'}
             placement="top"

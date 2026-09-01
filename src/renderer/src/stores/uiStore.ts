@@ -22,6 +22,8 @@ interface UiState {
   rightRailOpen: boolean
   /** [M5] Study-board overlay above the workspace (board tab stays too). */
   isBoardOverlayOpen: boolean
+  /** 과목 연결 그래프 오버레이. */
+  isLinkGraphOpen: boolean
   /** Full-window in-app settings overlay (replaces the settings window). */
   isSettingsOpen: boolean
   /** Load persisted settings and subscribe to changes. Call once at boot. */
@@ -36,6 +38,8 @@ interface UiState {
   toggleRightRail: () => void
   toggleBoardOverlay: () => void
   closeBoardOverlay: () => void
+  toggleLinkGraph: () => void
+  closeLinkGraph: () => void
   openSettings: () => void
   closeSettings: () => void
 }
@@ -66,7 +70,11 @@ export const useUiStore = create<UiState>()((set, get) => ({
   leftRailOpen: true,
   rightRailOpen: true,
   isBoardOverlayOpen: false,
+  isLinkGraphOpen: false,
   isSettingsOpen: false,
+  toggleLinkGraph: () =>
+    set((state) => ({ isLinkGraphOpen: !state.isLinkGraphOpen })),
+  closeLinkGraph: () => set({ isLinkGraphOpen: false }),
   openSettings: () => set({ isSettingsOpen: true }),
   closeSettings: () => set({ isSettingsOpen: false }),
 
