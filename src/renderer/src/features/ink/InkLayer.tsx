@@ -223,6 +223,12 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   const previousShapeIds = useRef(new Set(shapes.map((shape) => shape.id)))
   // Escape 는 확정이 아니라 취소다 — blur 핸들러가 이 플래그로 분기한다.
   const cancelEditRef = useRef(false)
+  // 재배치 클릭 도중의 blur 를 무시하는 가드. PDF 표면은 pointerdown 에서
+  // 페이지 섹션이 focus 를 가져가 textarea 가 동기적으로 blur 되는데, 그때
+  // finishNewTextBox 가 setNewTextBox(null) 을 뒤늦게 큐에 넣어 방금 옮긴
+  // 박스를 지워 버린다.
+  const repositionGuardRef = useRef(false)
+  const newTextAreaRef = useRef<HTMLTextAreaElement>(null)
   const [gesture, setGestureState] = useState<Gesture | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -400,7 +406,17 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     setNewTextBox(box)
   }, [aspect, clampToBounds])
 
+  // 재배치로 박스가 옮겨지면(포커스를 뺏겼을 수 있으니) 되찾아 오고,
+  // 그때서야 blur 가드를 내린다 — 클릭의 pointerdown/mousedown 은 별개의
+  // 네이티브 태스크라 타이머로는 그 사이 blur 를 못 막는다.
+  useEffect(() => {
+    if (newTextBox === null) return
+    newTextAreaRef.current?.focus()
+    repositionGuardRef.current = false
+  }, [newTextBox])
+
   const finishNewTextBox = useCallback((box: DrawingBox): void => {
+    if (repositionGuardRef.current) return
     setNewTextBox(null)
     if (cancelEditRef.current) {
       cancelEditRef.current = false
@@ -422,14 +438,9 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       return
     }
     if (!surfaceReady || !hasMeasuredBounds(event.currentTarget)) return
-    // 편집 중 바깥 클릭은 "확정"이지 새 박스 생성이 아니다 — textarea 의
-    // blur 가 확정을 처리하므로 여기서는 아무것도 시작하지 않는다.
-    if (
-      activeTool === 'text' &&
-      (newTextBox !== null || editingId !== null)
-    ) {
-      return
-    }
+    // 기존 박스 편집 중 바깥 클릭은 "확정"이지 새 박스 생성이 아니다 —
+    // textarea 의 blur 가 확정을 처리하므로 여기서는 아무것도 시작하지 않는다.
+    if (activeTool === 'text' && editingId !== null) return
     const point = normalizedPoint(
       event.currentTarget,
       event.clientX,
@@ -441,6 +452,23 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       // Without this, the pointer event's default focus move runs after
       // autoFocus and immediately blurs/discards the empty local draft.
       event.preventDefault()
+      // placeholder 가 이미 열려 있어도 클릭을 삼키지 않는다: 내용이 있으면
+      // 그 자리에 확정하고, 어느 쪽이든 새 클릭 지점으로 박스를 옮긴다 —
+      // 안 그러면 위치를 다시 고르는 클릭 절반이 "확정"으로만 소비돼
+      // 박스가 마우스를 안 따라오는 것처럼 보인다.
+      if (newTextBox !== null && textDraft.trim().length > 0) {
+        const shape = createTextBoxShape(
+          newTextBox,
+          textDraft,
+          drawingStyle('text', width, opacity, color)
+        )
+        if (shape !== null) onCreate(shape)
+      }
+      if (newTextBox !== null) {
+        // 이 클릭이 일으키는 blur(표면 focus 핸들러·mousedown 기본 동작)가
+        // 재배치를 되돌리지 못하게 — 재포커스 effect 가 가드를 내린다.
+        repositionGuardRef.current = true
+      }
       startTextBox(point)
       return
     }
@@ -464,8 +492,9 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     } else if (activeTool === 'eraser') {
       setGesture(eraseAt({ kind: 'erase', pointerId: event.pointerId, ids: new Set() }, point))
     }
-  }, [activeTool, clampToBounds, editingId, eraseAt,
-    newTextBox, setGesture, startTextBox, surfaceReady])
+  }, [activeTool, clampToBounds, color, editingId, eraseAt, newTextBox,
+    onCreate, opacity, setGesture, startTextBox, surfaceReady, textDraft,
+    width])
 
   const handlePointerMove = useCallback((event: ReactPointerEvent<SVGSVGElement>): void => {
     if (gestureRef.current === null) return
@@ -937,6 +966,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         >
           <textarea
             autoFocus
+            ref={newTextAreaRef}
             className="ink-layer__textbox is-editing"
             data-color={color}
             value={textDraft}

@@ -87,11 +87,20 @@ export function resizeDrawingBox(
   ) {
     const horizontalDelta = movesWest ? -dx : dx
     const verticalDelta = movesNorth ? -dy : dy
-    // dx 는 폭 정규화, dy 는 높이 정규화라 단위가 다르다 — 화면 픽셀로
-    // 환산(dyPx = dy·W·aspect)해 지배축을 고른다.
-    const requestedScale = Math.abs(dx) >= Math.abs(dy) * aspect
-      ? (box.width + horizontalDelta) / box.width
-      : (box.height + verticalDelta) / box.height
+    // 연속 스케일: 앵커(반대 코너)→잡은 코너 벡터에 드래그 델타를 사영한다.
+    // 예전의 지배축 선택(|dx| ≥ |dy|·aspect)은 판정이 화면 픽셀 기준인데
+    // 스케일은 박스 자체 크기 대비라, 가로세로 비가 극단인 박스(텍스트박스)
+    // 에서 45° 드래그가 경계를 넘나들 때마다 크기가 수 배씩 튀었다.
+    // 사영은 연속이고, 델타가 대각선과 평행하면 지배축 방식과 같다.
+    // (dx 는 폭 정규화, dy 는 높이 정규화 — aspect 를 곱해 픽셀 비로 맞춘다.)
+    const diagonalX = box.width
+    const diagonalY = box.height * aspect
+    const diagonalLengthSq = diagonalX * diagonalX + diagonalY * diagonalY
+    const requestedScale = diagonalLengthSq > 0
+      ? 1 +
+        (diagonalX * horizontalDelta + diagonalY * verticalDelta * aspect) /
+        diagonalLengthSq
+      : 1
     const minimumScale = Math.max(
       MIN_BOX_WIDTH / box.width,
       MIN_BOX_HEIGHT / box.height

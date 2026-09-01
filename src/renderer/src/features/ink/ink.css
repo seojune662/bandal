@@ -13,8 +13,17 @@
   mix-blend-mode: multiply;
 }
 
+/* hidden 필수: 내부 HTML 은 스케일 전 레이아웃이 수백 "페이지 폭" 크기라,
+   visible 이면 그 유령 영역이 페이지 전체의 클릭을 가로챈다(재배치 클릭·
+   새 박스 생성이 전부 막히던 원인). 스케일 후 내용은 박스에 정확히 맞아
+   시각적으로 잘리는 것은 없다. */
 .ink-layer__textbox-object {
-  overflow: visible;
+  overflow: hidden;
+}
+
+/* 표시용 텍스트는 클릭을 받지 않는다 — 히트는 foreignObject 박스가 담당. */
+div.ink-layer__textbox {
+  pointer-events: none;
 }
 
 .ink-layer__textbox[data-color] {

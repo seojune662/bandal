@@ -47,11 +47,14 @@ test.describe('whiteboard', () => {
     await page.keyboard.type('중간고사 범위')
     await expect(draft).toHaveValue('중간고사 범위')
 
-    // Clicking away commits it rather than throwing it out.
+    // Clicking away commits it — and opens a fresh placeholder at the click
+    // (GoodNotes 방식: 클릭이 "확정"으로만 소비되지 않는다).
     await page.mouse.click(bounds!.x + 600, bounds!.y + 480)
     await expect(
       page.locator('.ink-layer__textbox', { hasText: '중간고사 범위' })
     ).toBeVisible()
+    await expect(page.getByRole('textbox', { name: '텍스트 입력' })).toBeVisible()
+    await page.keyboard.press('Escape')
   })
 
   test('an empty box is discarded instead of leaving an invisible shape behind', async () => {

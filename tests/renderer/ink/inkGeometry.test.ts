@@ -172,12 +172,12 @@ describe('inkGeometry', () => {
   })
 
   test.each([
-    ['nw', 0.1, 0.02, 0.3, 0.3, 0.3, 0.15],
-    ['ne', 0.1, 0.02, 0.2, 0.2, 0.5, 0.25],
-    ['sw', -0.1, 0.02, 0.1, 0.25, 0.5, 0.25],
-    ['se', 0.1, 0.02, 0.2, 0.25, 0.5, 0.25]
+    ['nw', 0.1, 0.02, 0.288, 0.294, 0.312, 0.156],
+    ['ne', 0.1, 0.02, 0.2, 0.214, 0.472, 0.236],
+    ['sw', -0.1, 0.02, 0.112, 0.25, 0.488, 0.244],
+    ['se', 0.1, 0.02, 0.2, 0.25, 0.488, 0.244]
   ] as const)(
-    'locks image aspect from the %s handle using the dominant axis',
+    'locks image aspect from the %s handle via diagonal projection',
     (handle, dx, dy, x, y, width, height) => {
       const original = { x: 0.2, y: 0.25, width: 0.4, height: 0.2 }
       const resized = resizeDrawingBox(original, dx, dy, true, handle, true)
@@ -192,13 +192,26 @@ describe('inkGeometry', () => {
     }
   )
 
-  test('uses vertical movement when it is the dominant image resize axis', () => {
+  test('blends vertical-leaning drags instead of snapping to one axis', () => {
     const original = { x: 0.2, y: 0.25, width: 0.4, height: 0.2 }
     const resized = resizeDrawingBox(original, 0.01, 0.1, true, 'se', true)
 
-    expect(resized.width).toBeCloseTo(0.6)
-    expect(resized.height).toBeCloseTo(0.3)
+    // 사영 스케일 1 + (0.4·0.01 + 0.2·0.1)/0.2 = 1.12.
+    expect(resized.width).toBeCloseTo(0.448)
+    expect(resized.height).toBeCloseTo(0.224)
     expect(resized.width / resized.height).toBeCloseTo(2)
+  })
+
+  test('a locked resize is continuous across the old dominant-axis boundary', () => {
+    // 납작한 텍스트박스 + 45° 화면 드래그가 정확히 예전 지배축 경계였다 —
+    // 경계 양쪽의 거의 같은 델타가 프레임마다 수 배씩 튀던 회귀 시나리오.
+    const squat = { x: 0.3, y: 0.3, width: 0.26, height: 0.107 }
+    const aspect = 0.75
+    const below = resizeDrawingBox(squat, 0.1, 0.133, true, 'se', true, aspect)
+    const above = resizeDrawingBox(squat, 0.1, 0.134, true, 'se', true, aspect)
+
+    expect(Math.abs(above.width - below.width)).toBeLessThan(0.005)
+    expect(Math.abs(above.height - below.height)).toBeLessThan(0.005)
   })
 
   test.each(['nw', 'ne', 'sw', 'se'] as const)(
@@ -238,16 +251,18 @@ describe('resizeDrawingBox — 경계·최소 크기 충돌·aspect 지배축', 
     expect(resized.y).toBeGreaterThanOrEqual(0)
   })
 
-  test('the surface aspect converts dy into pixels for the dominant-axis choice', () => {
+  test('the surface aspect weights dy in the projection', () => {
     const original = { x: 0.2, y: 0.25, width: 0.4, height: 0.2 }
-    // dx 0.05 > dy 0.04 (정규화값)지만 aspect √2 를 곱하면 세로가 지배한다.
+    // 세로로 긴 표면(√2)에서는 같은 dy 도 화면 픽셀로 더 길다 — 사영에
+    // aspect 가 반영돼 결과가 달라져야 한다.
     const withAspect = resizeDrawingBox(
-      original, 0.05, 0.04, true, 'se', true, Math.SQRT2
+      original, 0.05, 0.1, true, 'se', true, Math.SQRT2
     )
-    const withoutAspect = resizeDrawingBox(original, 0.05, 0.04, true, 'se', true)
+    const withoutAspect = resizeDrawingBox(original, 0.05, 0.1, true, 'se', true)
 
-    expect(withAspect.height).toBeCloseTo(0.24)
-    expect(withoutAspect.width).toBeCloseTo(0.45)
+    expect(withAspect.width).toBeCloseTo(0.5)
+    expect(withAspect.height).toBeCloseTo(0.25)
+    expect(withoutAspect.width).toBeCloseTo(0.48)
     expect(withAspect.width).not.toBeCloseTo(withoutAspect.width)
   })
 
