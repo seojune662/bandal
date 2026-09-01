@@ -32,12 +32,13 @@ import type { RenderClip } from './ClipShape'
 import { isEditableTarget } from './domTarget'
 import { foreignObjectContentStyle } from './foreignObjectScale'
 import { ReferencedShape } from './ReferencedShape'
-import { ResizeHandles } from './ResizeHandles'
+import { ResizeHandles, TEXTBOX_HANDLES } from './ResizeHandles'
+import { TextFormatBar } from './TextFormatBar'
 import {
   TEXT_BASE_FONT_RATIO,
   defaultTextBoxSize,
   grownTextBoxHeight,
-  scaledFontScale
+  healedTextBox
 } from './textBoxLayout'
 import './ink.css'
 
@@ -128,11 +129,11 @@ const SELECTABLE_KINDS: ReadonlySet<DrawingKind> = new Set([
   'line',
   'arrow'
 ])
-/** 코너 리사이즈에서 박스 비율을 잠그는 셰이프. */
+/** 코너 리사이즈에서 박스 비율을 잠그는 셰이프. 텍스트박스는 자유
+ * 리사이즈 + 줄바꿈 재배치라 여기 속하지 않는다. */
 const ASPECT_LOCKED_KINDS: ReadonlySet<DrawingKind> = new Set([
   'image',
-  'clip',
-  'textbox'
+  'clip'
 ])
 
 function isFinitePositive(value: number): boolean {
@@ -229,11 +230,15 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   // 박스를 지워 버린다.
   const repositionGuardRef = useRef(false)
   const newTextAreaRef = useRef<HTMLTextAreaElement>(null)
+  // 서식 바 — 바깥클릭 해제/blur 판단에서 "안쪽"으로 취급해야 한다.
+  const formatBarRef = useRef<HTMLDivElement>(null)
   const [gesture, setGestureState] = useState<Gesture | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [newTextBox, setNewTextBox] = useState<DrawingBox | null>(null)
   const [textDraft, setTextDraft] = useState('')
+  /** 새 draft 박스의 서식 — 커밋 전에도 서식 바로 편집할 수 있게 로컬 보관. */
+  const [draftStyle, setDraftStyle] = useState<DrawingStyle | null>(null)
   /** 편집 중 타이핑으로 자란 기존 박스의 로컬 프리뷰(확정 시 저장). */
   const [editingBoxOverride, setEditingBoxOverride] =
     useState<DrawingBox | null>(null)
@@ -264,6 +269,22 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     },
     [aspect, onRefineBox]
   )
+
+  // 손상 텍스트박스 자가 치유: 예전 리사이즈 버그가 커밋한 거대/이탈
+  // 박스는 그 영역의 클릭을 전부 흡수한다 — 표면 안으로 무음 보정
+  // (undo 미기록, onRefineBox 채널). 경계 클램프가 없는 표면은 제외.
+  useEffect(() => {
+    if (onRefineBox === undefined || !clampToBounds) return
+    const active = gestureRef.current
+    for (const shape of shapes) {
+      if (shape.kind !== 'textbox' || shape.data.box === undefined) continue
+      if (active !== null && 'shape' in active && active.shape.id === shape.id) {
+        continue
+      }
+      const healed = healedTextBox(shape.data.box)
+      if (healed !== null) onRefineBox(shape.id, healed)
+    }
+  }, [clampToBounds, onRefineBox, shapes])
 
   const pointFromSample = useCallback((sample: PointerSample): DrawingPoint | null => {
     const svg = svgRef.current
@@ -364,12 +385,14 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
 
   // 바깥 클릭 = 선택 해제. PDF 에서는 svg 루트가 pointer-events:none 이라
   // 루트 클릭 핸들러가 못 받으므로 document 캡처로 처리한다.
+  // 서식 바는 svg 밖의 형제 HTML 이지만 "안쪽"이다 — 해제하면 안 된다.
   useEffect(() => {
     if (selectedId === null) return
     const onPointerDown = (event: PointerEvent): void => {
       const svg = svgRef.current
       const target = event.target
       if (svg === null || !(target instanceof Node)) return
+      if (formatBarRef.current?.contains(target) === true) return
       if (!svg.contains(target) || target === svg) setSelectedId(null)
     }
     document.addEventListener('pointerdown', onPointerDown, true)
@@ -403,8 +426,12 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     }
     setEditingId(null)
     setTextDraft('')
+    // 서식은 draft 가 열려 있는 동안 유지 — 재배치 클릭이 초기화하지 않는다.
+    setDraftStyle((current) =>
+      current ?? drawingStyle('text', width, opacity, color)
+    )
     setNewTextBox(box)
-  }, [aspect, clampToBounds])
+  }, [aspect, clampToBounds, color, opacity, width])
 
   // 재배치로 박스가 옮겨지면(포커스를 뺏겼을 수 있으니) 되찾아 오고,
   // 그때서야 blur 가드를 내린다 — 클릭의 pointerdown/mousedown 은 별개의
@@ -418,6 +445,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   const finishNewTextBox = useCallback((box: DrawingBox): void => {
     if (repositionGuardRef.current) return
     setNewTextBox(null)
+    setDraftStyle(null)
     if (cancelEditRef.current) {
       cancelEditRef.current = false
       setTextDraft('')
@@ -426,10 +454,10 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     const shape = createTextBoxShape(
       box,
       textDraft,
-      drawingStyle('text', width, opacity, color)
+      draftStyle ?? drawingStyle('text', width, opacity, color)
     )
     if (shape !== null) onCreate(shape)
-  }, [color, onCreate, opacity, textDraft, width])
+  }, [color, draftStyle, onCreate, opacity, textDraft, width])
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<SVGSVGElement>): void => {
     if (event.button !== 0) return
@@ -460,9 +488,10 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         const shape = createTextBoxShape(
           newTextBox,
           textDraft,
-          drawingStyle('text', width, opacity, color)
+          draftStyle ?? drawingStyle('text', width, opacity, color)
         )
         if (shape !== null) onCreate(shape)
+        setDraftStyle(null)
       }
       if (newTextBox !== null) {
         // 이 클릭이 일으키는 blur(표면 focus 핸들러·mousedown 기본 동작)가
@@ -569,6 +598,17 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
           Math.abs(completed.box.height - original.height) < 0.0005
         )
       ) {
+        // text 툴에서 무변위 클릭 = 즉시 편집 (더블클릭 불필요 — 워드/키노트
+        // 관례). select 툴은 선택만 유지.
+        if (
+          completed.kind === 'move' &&
+          completed.shape.kind === 'textbox' &&
+          activeTool === 'text'
+        ) {
+          setEditingId(completed.shape.id)
+          setTextDraft(completed.shape.data.text ?? '')
+          setEditingBoxOverride(null)
+        }
         return
       }
       const nextData: DrawingShape['data'] = {
@@ -589,23 +629,28 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
           y: point.y + dy
         }))
       }
-      const patch: Partial<Pick<DrawingShape, 'data' | 'style'>> = {
-        data: nextData
-      }
-      // 텍스트박스 코너 리사이즈 = 박스와 글자가 같이 스케일 (GoodNotes 관례).
+      // 텍스트박스 리사이즈 = 줄바꿈 재배치(글자 크기 불변). 좁힌 폭에 내용이
+      // 안 들어가면 높이를 내용에 맞춰 키운다 — 타이핑 자동 성장과 같은 규칙.
       if (completed.kind === 'resize' && completed.shape.kind === 'textbox') {
-        patch.style = {
-          ...completed.shape.style,
-          fontScale: scaledFontScale(
-            completed.shape.style.fontScale,
-            original,
-            completed.box
+        const content = svgRef.current?.querySelector<HTMLElement>(
+          `[data-textbox-id="${completed.shape.id}"]`
+        )
+        if (content !== null && content !== undefined) {
+          const grown = grownTextBoxHeight(
+            content.scrollHeight,
+            completed.box,
+            baseWidthPx,
+            aspect
           )
+          if (grown !== null) {
+            nextData.box = { ...completed.box, height: grown }
+          }
         }
       }
-      onUpdate(completed.shape.id, patch)
+      onUpdate(completed.shape.id, { data: nextData })
     }
-  }, [aspect, color, onCreate, onRemove, onUpdate, opacity, surfaceReady, width])
+  }, [activeTool, aspect, baseWidthPx, color, onCreate, onRemove, onUpdate,
+    opacity, surfaceReady, width])
 
   const handlePointerUp = useCallback((event: ReactPointerEvent<SVGSVGElement>): void => {
     pendingSample.current = {
@@ -714,15 +759,15 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
 
   const textBoxContentStyle = useCallback((
     box: DrawingBox,
-    shapeStyle: DrawingStyle,
-    fontFactor = 1
+    shapeStyle: DrawingStyle
   ): CSSProperties => {
     const fontScale =
       isFinitePositive(shapeStyle.fontScale ?? 1) ? (shapeStyle.fontScale ?? 1) : 1
-    const fontSize = baseWidthPx * TEXT_BASE_FONT_RATIO * fontScale * fontFactor
+    const fontSize = baseWidthPx * TEXT_BASE_FONT_RATIO * fontScale
+    const weight = shapeStyle.bold === true ? { fontWeight: 700 } : {}
     const scaled = foreignObjectContentStyle(box, baseWidthPx, aspect)
-    if (scaled === null) return { fontSize, opacity: shapeStyle.opacity }
-    return { ...scaled, fontSize, opacity: shapeStyle.opacity }
+    if (scaled === null) return { fontSize, opacity: shapeStyle.opacity, ...weight }
+    return { ...scaled, fontSize, opacity: shapeStyle.opacity, ...weight }
   }, [aspect, baseWidthPx])
 
   const editKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -738,6 +783,41 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   const style = drawingStyle(activeTool, width, opacity, color)
   const rootClassName = className === undefined ? 'ink-layer' : `ink-layer ${className}`
 
+  // 서식 바 대상: 새 draft > 편집 중 > 선택된 텍스트박스. 제스처 중엔 숨김.
+  const formatTarget = ((): {
+    box: DrawingBox
+    style: DrawingStyle
+    onChange: (patch: Partial<DrawingStyle>) => void
+  } | null => {
+    if (!interactive || !surfaceReady || gesture !== null) return null
+    if (newTextBox !== null && isRenderableBox(newTextBox)) {
+      const current = draftStyle ?? drawingStyle('text', width, opacity, color)
+      return {
+        box: newTextBox,
+        style: current,
+        onChange: (patch) => setDraftStyle({ ...current, ...patch })
+      }
+    }
+    const targetId = editingId ?? selectedId
+    if (targetId === null) return null
+    if (editingId === null && activeTool !== 'select' && activeTool !== 'text') {
+      return null
+    }
+    const shape = shapes.find(
+      (entry) => entry.id === targetId && entry.kind === 'textbox'
+    )
+    if (shape === undefined || !isRenderableBox(shape.data.box)) return null
+    const anchor = editingId !== null && editingBoxOverride !== null
+      ? editingBoxOverride
+      : shape.data.box
+    return {
+      box: anchor,
+      style: shape.style,
+      onChange: (patch) =>
+        onUpdate(shape.id, { style: { ...shape.style, ...patch } })
+    }
+  })()
+
   const selectionFrame = (box: DrawingBox): JSX.Element => (
     <rect
       className="ink-layer__selection-frame"
@@ -750,6 +830,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   )
 
   return (
+    <>
     <svg
       ref={svgRef}
       className={rootClassName}
@@ -884,20 +965,9 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         const editedBox = isEditing && editingBoxOverride !== null
           ? editingBoxOverride
           : box
-        // 리사이즈 중에는 커밋과 같은 배율로 글자를 라이브 프리뷰한다.
-        const resizeFactor =
-          gesture !== null &&
-          gesture.kind === 'resize' &&
-          gesture.shape.id === shape.id &&
-          shape.data.box !== undefined &&
-          shape.data.box.width > 0
-            ? gesture.box.width / shape.data.box.width
-            : 1
-        const contentStyle = textBoxContentStyle(
-          editedBox,
-          shape.style,
-          resizeFactor
-        )
+        // 리사이즈 중 글자 크기는 고정 — editedBox 가 제스처 박스라 줄바꿈이
+        // 라이브로 재배치된다.
+        const contentStyle = textBoxContentStyle(editedBox, shape.style)
         const textSelected =
           selectedId === shape.id &&
           (activeTool === 'select' || activeTool === 'text')
@@ -937,6 +1007,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
                 <div
                   className="ink-layer__textbox"
                   data-color={shape.style.color}
+                  data-textbox-id={shape.id}
                   style={contentStyle}
                 >
                   {shape.data.text}
@@ -950,6 +1021,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
                 box={editedBox}
                 aspect={aspect}
                 fill={markColor}
+                handles={TEXTBOX_HANDLES}
                 onPointerDown={(event, handle) =>
                   beginManipulation(event, shape, 'resize', handle)}
               />
@@ -968,13 +1040,13 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
             autoFocus
             ref={newTextAreaRef}
             className="ink-layer__textbox is-editing"
-            data-color={color}
+            data-color={draftStyle?.color ?? color}
             value={textDraft}
             aria-label="텍스트 입력"
             placeholder="텍스트를 입력하세요"
             style={textBoxContentStyle(
               newTextBox,
-              drawingStyle('text', width, opacity, color)
+              draftStyle ?? drawingStyle('text', width, opacity, color)
             )}
             onPointerDown={(event) => event.stopPropagation()}
             onChange={(event) => {
@@ -1029,5 +1101,16 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         )
       })()}
     </svg>
+    {formatTarget !== null && (
+      <TextFormatBar
+        box={formatTarget.box}
+        aspect={aspect}
+        baseWidthPx={baseWidthPx}
+        style={formatTarget.style}
+        onChange={formatTarget.onChange}
+        barRef={formatBarRef}
+      />
+    )}
+    </>
   )
 }

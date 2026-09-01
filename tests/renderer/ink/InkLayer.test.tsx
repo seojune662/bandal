@@ -18,8 +18,15 @@ import {
 } from '../../../src/renderer/src/features/ink/imageTransfer'
 import {
   resizeHandleBoxes,
-  ResizeHandles
+  ResizeHandles,
+  TEXTBOX_HANDLES
 } from '../../../src/renderer/src/features/ink/ResizeHandles'
+import {
+  nearestFontScaleIndex,
+  steppedFontScale,
+  TEXT_FONT_SCALE_STEPS,
+  TextFormatBar
+} from '../../../src/renderer/src/features/ink/TextFormatBar'
 import {
   setIpcAdapter,
   type IpcAdapter
@@ -265,5 +272,62 @@ describe('InkLayer image shapes', () => {
     expect(readBandalImageDragData({
       getData: () => JSON.stringify({ relPath: '../escape.png', label: 'escape.png' })
     })).toBeNull()
+  })
+})
+
+describe('textbox reflow handles and formatting', () => {
+  test('TEXTBOX_HANDLES adds e/w midpoints to the four corners', () => {
+    const boxes = resizeHandleBoxes(box, 0.75, TEXTBOX_HANDLES)
+    expect(boxes.map((entry) => entry.handle)).toEqual([
+      'nw', 'ne', 'sw', 'se', 'e', 'w'
+    ])
+    const east = boxes.find((entry) => entry.handle === 'e')!
+    expect(east.x + east.width / 2).toBeCloseTo(box.x + box.width)
+    expect(east.y + east.height / 2).toBeCloseTo(box.y + box.height / 2)
+    const west = boxes.find((entry) => entry.handle === 'w')!
+    expect(west.x + west.width / 2).toBeCloseTo(box.x)
+  })
+
+  test('the default handle set stays corner-only (image/clip regression)', () => {
+    expect(resizeHandleBoxes(box, 0.75)).toHaveLength(4)
+  })
+
+  test('a bold textbox renders its text at weight 700', () => {
+    const html = renderLayer([
+      savedShape({
+        id: 'bold-1',
+        kind: 'textbox',
+        data: { box, text: '굵은 글씨' },
+        style: { ...style, bold: true }
+      })
+    ])
+    expect(html).toContain('font-weight:700')
+  })
+
+  test('TextFormatBar renders stepper, bold toggle and all seven swatches', () => {
+    const html = renderToStaticMarkup(
+      <TextFormatBar
+        box={box}
+        aspect={0.75}
+        baseWidthPx={800}
+        style={{ ...style, bold: true }}
+        onChange={vi.fn()}
+        barRef={React.createRef()}
+      />
+    )
+    expect(html).toContain('aria-label="텍스트 서식"')
+    expect(html).toContain('aria-label="글자 크게"')
+    expect(html).toContain('100%')
+    expect((html.match(/ink-layer__format-swatch/g) ?? []).length).toBe(7)
+    expect(html).toContain('aria-label="굵게"')
+    expect(html).toMatch(/aria-label="굵게"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*aria-label="굵게"/)
+  })
+
+  test('the font stepper snaps legacy scales to the ladder and clamps its ends', () => {
+    expect(TEXT_FONT_SCALE_STEPS[nearestFontScaleIndex(1.37)]).toBe(1.25)
+    expect(steppedFontScale(1, 1)).toBe(1.25)
+    expect(steppedFontScale(4, 1)).toBe(4)
+    expect(steppedFontScale(0.5, -1)).toBe(0.5)
+    expect(steppedFontScale(undefined, 1)).toBe(1.25)
   })
 })

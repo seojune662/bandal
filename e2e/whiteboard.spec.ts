@@ -71,4 +71,22 @@ test.describe('whiteboard', () => {
     // clutters the board, so it must never be stored.
     await expect(page.locator('.ink-layer__textbox')).toHaveCount(before)
   })
+
+  test('the format bar recolors a committed whiteboard textbox', async () => {
+    const { page } = bandal
+    const committed = page.locator('.ink-layer__textbox-object', {
+      hasText: '중간고사 범위'
+    })
+    await expect(committed).toBeVisible()
+    const body = (await committed.boundingBox())!
+    // text 툴 단일 클릭 = 편집 → 서식 바가 뜬다.
+    await page.mouse.click(body.x + body.width / 2, body.y + body.height / 2)
+    const bar = page.locator('.ink-layer__format-bar')
+    await expect(bar).toBeVisible()
+    await bar.getByRole('button', { name: '파랑' }).click()
+    await expect(
+      committed.locator('.ink-layer__textbox')
+    ).toHaveAttribute('data-color', 'blue')
+    await page.keyboard.press('Escape')
+  })
 })

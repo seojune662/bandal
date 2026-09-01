@@ -5,10 +5,10 @@ import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 
 /**
  * PDF 텍스트박스 회귀:
- *  - placeholder 가 열린 채 다른 곳을 클릭하면 박스가 클릭 지점으로 따라온다
- *    (예전엔 클릭이 "확정"으로만 소비돼 절반이 사라졌다).
- *  - 내용이 있는 placeholder 는 그 자리에 확정되고 새 박스가 클릭 지점에 열린다.
- *  - 코너 리사이즈가 45° 드래그에서 연속적으로 커진다 (지배축 플립 점프 회귀).
+ *  - placeholder 가 열린 채 다른 곳을 클릭하면 박스가 클릭 지점으로 따라온다.
+ *  - 리사이즈 = 줄바꿈 재배치 (글자 크기 불변, 폭을 좁히면 높이가 자란다).
+ *  - 서식 바로 굵기·색상·글자 크기를 편집한다 (편집 중 포커스 유지 포함).
+ *  - 예전 버그가 남긴 페이지 밖 거대 박스는 로드시 자가 치유된다.
  */
 test.describe('pdf textbox', () => {
   let bandal: BandalApp
@@ -85,41 +85,173 @@ test.describe('pdf textbox', () => {
     await page.keyboard.press('Escape')
   })
 
-  test('corner resize grows continuously on a 45° drag', async () => {
+  test('narrowing the box reflows text at a fixed font size', async () => {
     const { page } = bandal
-    const box = page.locator('.ink-layer__textbox-object', {
+    const layer = page.locator('.pdf-page[data-pdf-page="1"] .pdf-drawing-layer')
+    const rect = (await layer.boundingBox())!
+
+    // 리플로우가 보이려면 여러 단어짜리 텍스트가 필요하다.
+    await page.mouse.click(rect.x + rect.width * 0.15, rect.y + rect.height * 0.32)
+    const textarea = page.locator('.ink-layer__textbox.is-editing')
+    await expect(textarea).toBeVisible()
+    await page.keyboard.type('reflow test with quite a few words inside the box')
+    await page.keyboard.press('Meta+Enter')
+
+    const boxObject = page.locator('.ink-layer__textbox-object', {
+      hasText: 'reflow test'
+    })
+    await expect(boxObject).toBeVisible()
+    const inner = boxObject.locator('.ink-layer__textbox')
+    // 커밋 직후 pending→실제 셰이프 교체로 노드가 갈리는 동안 detached 노드를
+    // 읽으면 computed style 이 "" 로 나온다 — 값이 잡힐 때까지 기다린다.
+    let fontBefore = ''
+    await expect
+      .poll(async () => {
+        fontBefore = await inner.evaluate(
+          (element) => getComputedStyle(element).fontSize
+        )
+        return fontBefore
+      })
+      .toMatch(/px$/)
+    const before = (await boxObject.boundingBox())!
+
+    // select 툴로 박스를 잡고 w 핸들을 안쪽으로 끌어 폭을 좁힌다.
+    await page.locator('.pdf-tool-rail__button[aria-label="선택"]').click()
+    await page.mouse.click(before.x + before.width / 2, before.y + before.height / 2)
+    const westHandle = page.locator(
+      '.ink-layer__textbox-resize[data-resize-handle="w"]'
+    )
+    await expect(westHandle).toBeVisible()
+    const grip = (await westHandle.boundingBox())!
+    const gripX = grip.x + grip.width / 2
+    const gripY = grip.y + grip.height / 2
+    await page.mouse.move(gripX, gripY)
+    await page.mouse.down()
+    await page.mouse.move(gripX + 40, gripY, { steps: 4 })
+    await page.mouse.move(gripX + 80, gripY, { steps: 4 })
+    await page.mouse.up()
+    await page.waitForTimeout(400)
+
+    const after = (await boxObject.boundingBox())!
+    let fontAfter = ''
+    await expect
+      .poll(async () => {
+        fontAfter = await inner.evaluate(
+          (element) => getComputedStyle(element).fontSize
+        )
+        return fontAfter
+      })
+      .toMatch(/px$/)
+    expect(after.width).toBeLessThan(before.width - 40)
+    // 줄바꿈 재배치 — 글자 크기는 그대로, 내용이 안 들어가면 높이가 자란다.
+    expect(fontAfter).toBe(fontBefore)
+    expect(after.height).toBeGreaterThan(before.height)
+    // 오른쪽 모서리는 고정된 채 왼쪽만 움직였다.
+    expect(Math.abs(after.x + after.width - (before.x + before.width)))
+      .toBeLessThan(8)
+  })
+
+  test('the format bar edits bold, color and font size of the selection', async () => {
+    const { page } = bandal
+    const boxObject = page.locator('.ink-layer__textbox-object', {
+      hasText: 'reflow test'
+    })
+    const inner = boxObject.locator('.ink-layer__textbox')
+    const body = (await boxObject.boundingBox())!
+    await page.mouse.click(body.x + body.width / 2, body.y + body.height / 2)
+
+    const bar = page.locator('.ink-layer__format-bar')
+    await expect(bar).toBeVisible()
+
+    await bar.getByRole('button', { name: '굵게' }).click()
+    await expect
+      .poll(() => inner.evaluate((element) => getComputedStyle(element).fontWeight))
+      .toBe('700')
+
+    await bar.getByRole('button', { name: '빨강' }).click()
+    await expect(inner).toHaveAttribute('data-color', 'red')
+
+    let fontBefore = 0
+    await expect
+      .poll(async () => {
+        fontBefore = parseFloat(
+          await inner.evaluate((element) => getComputedStyle(element).fontSize)
+        )
+        return fontBefore
+      })
+      .toBeGreaterThan(0)
+    await bar.getByRole('button', { name: '글자 크게' }).click()
+    await expect
+      .poll(async () => parseFloat(
+        await inner.evaluate((element) => getComputedStyle(element).fontSize)
+      ))
+      .toBeGreaterThan(fontBefore)
+  })
+
+  test('clicking the bar while editing keeps the textarea focused', async () => {
+    const { page } = bandal
+    await page.locator('.pdf-tool-rail__button[aria-label="텍스트"]').click()
+    const boxObject = page.locator('.ink-layer__textbox-object', {
       hasText: 'committed here'
     })
-    await expect(box).toBeVisible()
-    // 몸통 클릭으로 선택 → se 핸들 드래그.
-    const body = (await box.boundingBox())!
+    // text 툴에서는 단일 클릭으로 바로 편집에 들어간다.
+    const body = (await boxObject.boundingBox())!
     await page.mouse.click(body.x + body.width / 2, body.y + body.height / 2)
-    const handle = page.locator(
-      '.ink-layer__textbox-resize[data-resize-handle="se"]'
-    )
-    await expect(handle).toBeVisible()
-    const grip = (await handle.boundingBox())!
-    const startX = grip.x + grip.width / 2
-    const startY = grip.y + grip.height / 2
+    const textarea = page.locator('.ink-layer__textbox.is-editing')
+    await expect(textarea).toBeVisible()
 
-    await page.mouse.move(startX, startY)
-    await page.mouse.down()
-    const widths: number[] = []
-    for (let step = 1; step <= 8; step += 1) {
-      await page.mouse.move(startX + step * 10, startY + step * 10)
-      await page.waitForTimeout(50)
-      widths.push((await box.boundingBox())!.width)
-    }
-    await page.mouse.up()
+    const bar = page.locator('.ink-layer__format-bar')
+    await expect(bar).toBeVisible()
+    await bar.getByRole('button', { name: '굵게' }).click()
+    // 바 클릭이 blur(=확정)를 일으키지 않아 계속 타이핑할 수 있다.
+    await expect(textarea).toBeVisible()
+    await page.keyboard.type(' more')
+    await expect(textarea).toHaveValue(/more/)
+    await page.keyboard.press('Escape')
+  })
 
-    // 예전 지배축 플립은 프레임 사이에 폭이 수십 % 씩 튀었다 — 연속이면
-    // 스텝당 증가가 완만하고 단조에 가깝다.
-    for (let index = 1; index < widths.length; index += 1) {
-      const delta = widths[index]! - widths[index - 1]!
-      expect(delta, `widths: ${widths.map((w) => w.toFixed(0)).join(', ')}`)
-        .toBeGreaterThan(-2)
-      expect(delta).toBeLessThan(body.width)
-    }
-    expect(widths.at(-1)!).toBeGreaterThan(widths[0]!)
+  test('a page-covering legacy textbox opens for editing instead of eating clicks', async () => {
+    const { page } = bandal
+    // 예전 리사이즈 점프가 경계 클램프를 거쳐 남기던 형태 — 검증을 통과하는
+    // "유효한" 페이지 전체 크기 박스. 이 위의 클릭이 죽으면 텍스트 도구가
+    // 고장난 것처럼 보인다.
+    await page.evaluate(async () => {
+      const bridge = (window as unknown as {
+        bandal: { invoke: (channel: string, req: unknown) => Promise<unknown> }
+      }).bandal
+      const courses = (await bridge.invoke('courses:list', {})) as Array<{ id: string }>
+      await bridge.invoke('drawings:create', {
+        courseId: courses[0]!.id,
+        relPath: 'slides.pdf',
+        page: 1,
+        kind: 'textbox',
+        data: {
+          box: { x: 0.02, y: 0.02, width: 0.96, height: 0.9 },
+          text: 'legacy giant'
+        },
+        style: { color: 'ink', width: 0.006, opacity: 1, fontScale: 1 }
+      })
+    })
+    // 리로드로 새 드로잉을 로드한다 (열린 탭은 타표면 생성을 감시하지 않는다).
+    await page.reload()
+    await page.locator('[data-material-path="slides.pdf"]').click()
+    await expect(page.locator('.pdf-page').first()).toBeVisible({ timeout: 30_000 })
+    await page.locator('.pdf-tool-rail__button[aria-label="텍스트"]').click()
+    await expect(
+      page.locator('.pdf-page[data-pdf-page="1"] .pdf-drawing-layer')
+    ).not.toHaveClass(/is-loading/)
+    await page.waitForTimeout(400)
+
+    const giant = page.locator('.ink-layer__textbox-object', {
+      hasText: 'legacy giant'
+    })
+    await expect(giant).toBeVisible()
+    const body = (await giant.boundingBox())!
+    // text 툴 단일 클릭 = 그 박스의 편집으로 열린다 (클릭이 죽지 않는다).
+    await page.mouse.click(body.x + body.width * 0.7, body.y + body.height * 0.6)
+    const textarea = page.locator('.ink-layer__textbox.is-editing')
+    await expect(textarea).toBeVisible()
+    await expect(textarea).toHaveValue(/legacy giant/)
+    await page.keyboard.press('Escape')
   })
 })

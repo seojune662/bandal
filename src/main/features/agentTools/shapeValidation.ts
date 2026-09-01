@@ -209,6 +209,12 @@ function assertStyle(value: unknown): DrawingStyle {
   if (style.fontScale !== undefined) {
     result.fontScale = assertPositive(style.fontScale, 'style.fontScale', 10)
   }
+  if (style.bold !== undefined) {
+    if (typeof style.bold !== 'boolean') {
+      throw new ValidationError('style.bold must be a boolean')
+    }
+    result.bold = style.bold
+  }
   return result
 }
 

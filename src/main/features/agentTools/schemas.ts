@@ -95,7 +95,8 @@ const shapeSchema = {
         },
         width: { type: 'number', exclusiveMinimum: 0, maximum: 1 },
         opacity: { type: 'number', minimum: 0, maximum: 1 },
-        fontScale: { type: 'number', exclusiveMinimum: 0, maximum: 10 }
+        fontScale: { type: 'number', exclusiveMinimum: 0, maximum: 10 },
+        bold: { type: 'boolean' }
       },
       ['color', 'width', 'opacity']
     )

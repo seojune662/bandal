@@ -3,7 +3,7 @@ import {
   TEXT_BASE_FONT_RATIO,
   defaultTextBoxSize,
   grownTextBoxHeight,
-  scaledFontScale
+  healedTextBox
 } from '../../../src/renderer/src/features/ink/textBoxLayout'
 
 describe('defaultTextBoxSize', () => {
@@ -29,23 +29,32 @@ describe('defaultTextBoxSize', () => {
   })
 })
 
-describe('scaledFontScale', () => {
-  const box = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
-
-  test('scales the font by the box width ratio', () => {
-    expect(scaledFontScale(1, box, { ...box, width: 0.6 })).toBeCloseTo(2)
-    expect(scaledFontScale(2, box, { ...box, width: 0.15 })).toBeCloseTo(1)
+describe('healedTextBox (손상 박스 자가 치유)', () => {
+  test('leaves an in-bounds box alone', () => {
+    expect(healedTextBox({ x: 0.1, y: 0.2, width: 0.3, height: 0.1 })).toBeNull()
   })
 
-  test('treats a missing scale as 1', () => {
-    expect(scaledFontScale(undefined, box, { ...box, width: 0.6 })).toBeCloseTo(2)
+  test('shrinks a box wider than the page and pulls it inside', () => {
+    // 예전 리사이즈 점프가 커밋하던 형태 — 페이지 절반 이상을 덮어
+    // 그 영역의 클릭을 전부 흡수하던 박스.
+    const healed = healedTextBox({ x: -0.2, y: 0.3, width: 1.4, height: 0.4 })
+    expect(healed).not.toBeNull()
+    expect(healed!.width).toBeLessThanOrEqual(1)
+    expect(healed!.x).toBeGreaterThanOrEqual(0)
+    expect(healed!.x + healed!.width).toBeLessThanOrEqual(1)
   })
 
-  test('clamps extreme results and rejects degenerate boxes', () => {
-    expect(scaledFontScale(1, { ...box, width: 0 }, box)).toBe(1)
+  test('pulls an off-page box back to the edge', () => {
+    const healed = healedTextBox({ x: 0.9, y: 1.2, width: 0.3, height: 0.2 })
+    expect(healed).toEqual({ x: 0.7, y: 0.8, width: 0.3, height: 0.2 })
+  })
+
+  test('ignores tiny drift and degenerate boxes (no heal loop)', () => {
     expect(
-      scaledFontScale(19, box, { ...box, width: box.width * 10 })
-    ).toBeLessThanOrEqual(20)
+      healedTextBox({ x: 1 - 0.3 + 0.0005, y: 0, width: 0.3, height: 0.1 })
+    ).toBeNull()
+    expect(healedTextBox({ x: 0, y: 0, width: 0, height: 0.1 })).toBeNull()
+    expect(healedTextBox({ x: Number.NaN, y: 0, width: 0.3, height: 0.1 })).toBeNull()
   })
 })
 

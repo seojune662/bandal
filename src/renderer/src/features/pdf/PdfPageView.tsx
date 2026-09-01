@@ -76,6 +76,7 @@ export interface PdfPageViewProps {
   onHoverChange: (id: string | null) => void
   onDrawingCreate: (input: CreateDrawingInput) => Promise<Drawing | null>
   onDrawingUpdate: (input: UpdateDrawingInput) => Promise<Drawing | null>
+  onDrawingRefine: (input: UpdateDrawingInput) => Promise<Drawing | null>
   onDrawingRemove: (ids: string[]) => Promise<boolean>
 }
 
@@ -153,6 +154,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
     onHoverChange,
     onDrawingCreate,
     onDrawingUpdate,
+    onDrawingRefine,
     onDrawingRemove
   } = props
 
@@ -413,6 +415,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
             interactive={drawingsInteractive}
             create={onDrawingCreate}
             update={onDrawingUpdate}
+            refine={onDrawingRefine}
             remove={onDrawingRemove}
           />
         </>

@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react'
 import type {
   CreateDrawingInput,
   Drawing,
+  DrawingBox,
   DrawingShape,
   UpdateDrawingInput
 } from '../../../../../shared/types/drawing'
@@ -21,6 +22,8 @@ interface DrawingLayerProps {
   interactive: boolean
   create: (input: CreateDrawingInput) => Promise<Drawing | null>
   update: (input: UpdateDrawingInput) => Promise<Drawing | null>
+  /** 무음 보정 — 손상 텍스트박스 힐링 채널 (undo 미기록). */
+  refine: (input: UpdateDrawingInput) => Promise<Drawing | null>
   remove: (ids: string[]) => Promise<boolean>
 }
 
@@ -39,6 +42,7 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
     interactive,
     create,
     update,
+    refine,
     remove
   } = props
   const activeTool = usePdfToolStore((state) => state.activeTool)
@@ -62,6 +66,12 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
     ...patch
   }), [update])
 
+  const handleRefineBox = useCallback((id: string, box: DrawingBox) => {
+    const shape = drawings.find((drawing) => drawing.id === id)
+    if (shape === undefined) return
+    void refine({ id, data: { ...shape.data, box } })
+  }, [drawings, refine])
+
   return (
     <InkLayer
       courseId={courseId}
@@ -71,6 +81,7 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
       tool={tool}
       onCreate={handleCreate}
       onUpdate={handleUpdate}
+      onRefineBox={handleRefineBox}
       onRemove={remove}
       clampToBounds
       interactive={interactive}

@@ -302,6 +302,7 @@ function drawTextbox(
 ): void {
   const bounds = boxOnPage(box, width, height)
   if (bounds === null) return
+  // style.bold 는 번들 폰트가 Regular 뿐이라 아직 보통 굵기로 내보낸다.
   const fontSize = Math.min(
     72,
     Math.max(6, width * 0.026 * (shape.style.fontScale ?? 1))

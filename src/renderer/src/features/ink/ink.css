@@ -172,6 +172,97 @@ textarea.ink-layer__textbox::placeholder {
   pointer-events: auto;
 }
 
+/* text/select 툴에서 hover 로 박스 범위를 드러낸다 — 투명한 텍스트박스가
+   어디를 차지하는지 보여야 "클릭이 왜 안 먹는지"가 보인다. */
+.ink-layer__textbox-object:hover .ink-layer__textbox:not(.is-editing) {
+  border-color: var(--border-strong);
+  border-style: dashed;
+}
+
+/* 선택/편집 중 텍스트박스 위에 뜨는 서식 바 (svg 의 형제 HTML). */
+.ink-layer__format-bar {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  padding: var(--space-1);
+  pointer-events: auto;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.ink-layer__format-button {
+  display: grid;
+  place-items: center;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  padding-inline: var(--space-1);
+  font-size: var(--text-sm);
+  line-height: 1;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.ink-layer__format-button:hover,
+.ink-layer__format-button:focus-visible {
+  color: var(--accent);
+  background: var(--bg-raised);
+}
+
+.ink-layer__format-button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.ink-layer__format-bold {
+  font-weight: 700;
+}
+
+.ink-layer__format-scale {
+  min-width: 2.4rem;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ink-layer__format-divider {
+  align-self: stretch;
+  width: 1px;
+  background: var(--border-subtle);
+}
+
+.ink-layer__format-swatch {
+  --drawing-current-color: var(--drawing-color-ink);
+
+  width: var(--space-3);
+  height: var(--space-3);
+  background: var(--drawing-current-color);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.ink-layer__format-swatch[data-color='red'] { --drawing-current-color: var(--drawing-color-red); }
+.ink-layer__format-swatch[data-color='orange'] { --drawing-current-color: var(--drawing-color-orange); }
+.ink-layer__format-swatch[data-color='yellow'] { --drawing-current-color: var(--drawing-color-yellow); }
+.ink-layer__format-swatch[data-color='green'] { --drawing-current-color: var(--drawing-color-green); }
+.ink-layer__format-swatch[data-color='blue'] { --drawing-current-color: var(--drawing-color-blue); }
+.ink-layer__format-swatch[data-color='violet'] { --drawing-current-color: var(--drawing-color-violet); }
+
+.ink-layer__format-swatch:hover,
+.ink-layer__format-swatch:focus-visible {
+  transform: scale(1.18);
+}
+
+.ink-layer__format-swatch[aria-pressed='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
 /* select 툴로 잡은 셰이프의 공용 선택 외곽선. */
 .ink-layer__selection-frame {
   fill: none;
@@ -243,4 +334,14 @@ textarea.ink-layer__textbox::placeholder {
 .ink-layer__image-resize[data-resize-handle='ne'],
 .ink-layer__image-resize[data-resize-handle='sw'] {
   cursor: nesw-resize;
+}
+
+.ink-layer__textbox-resize[data-resize-handle='e'],
+.ink-layer__textbox-resize[data-resize-handle='w'] {
+  cursor: ew-resize;
+}
+
+.ink-layer__textbox-resize[data-resize-handle='n'],
+.ink-layer__textbox-resize[data-resize-handle='s'] {
+  cursor: ns-resize;
 }

@@ -55,6 +55,7 @@ function renderBoxShape(
         fill={color}
         opacity={shape.style.opacity}
         fontSize={0.045 * (shape.style.fontScale ?? 1)}
+        fontWeight={shape.style.bold === true ? 700 : 400}
       >
         {text.slice(0, 24)}
       </text>

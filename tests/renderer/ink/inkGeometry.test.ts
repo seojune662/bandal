@@ -266,6 +266,43 @@ describe('resizeDrawingBox — 경계·최소 크기 충돌·aspect 지배축', 
     expect(withAspect.width).not.toBeCloseTo(withoutAspect.width)
   })
 
+  test('the e handle changes width only (reflow resize)', () => {
+    const original = { x: 0.2, y: 0.25, width: 0.4, height: 0.2 }
+    const resized = resizeDrawingBox(original, 0.1, 0.3, true, 'e')
+
+    expect(resized.width).toBeCloseTo(0.5)
+    expect(resized.height).toBeCloseTo(0.2)
+    expect(resized.x).toBeCloseTo(0.2)
+    expect(resized.y).toBeCloseTo(0.25)
+  })
+
+  test('the w handle moves x and keeps the right edge fixed', () => {
+    const original = { x: 0.2, y: 0.25, width: 0.4, height: 0.2 }
+    const resized = resizeDrawingBox(original, 0.1, -0.3, true, 'w')
+
+    expect(resized.x).toBeCloseTo(0.3)
+    expect(resized.width).toBeCloseTo(0.3)
+    expect(resized.x + resized.width).toBeCloseTo(0.6)
+    expect(resized.height).toBeCloseTo(0.2)
+    expect(resized.y).toBeCloseTo(0.25)
+  })
+
+  test('edge handles respect the minimum width and the page bound', () => {
+    const original = { x: 0.2, y: 0.25, width: 0.4, height: 0.2 }
+    expect(resizeDrawingBox(original, -0.9, 0, true, 'e').width).toBeCloseTo(0.03)
+    const grown = resizeDrawingBox(original, 0.9, 0, true, 'e')
+    expect(grown.x + grown.width).toBeLessThanOrEqual(1 + 1e-9)
+  })
+
+  test('lockAspectRatio with an edge handle still changes one axis only', () => {
+    // 텍스트박스는 잠금이 아니지만, 방어적으로 엣지+잠금은 축별 분기로 흘러야
+    // 한다 — 균일 스케일은 엣지 핸들을 표현할 수 없다.
+    const original = { x: 0.2, y: 0.25, width: 0.4, height: 0.2 }
+    const resized = resizeDrawingBox(original, 0.1, 0, true, 'e', true)
+    expect(resized.height).toBeCloseTo(0.2)
+    expect(resized.width).toBeCloseTo(0.5)
+  })
+
   test('moveDrawingBox never returns a negative origin for oversized boxes', () => {
     const oversized = { x: 0, y: 0, width: 1.2, height: 0.5 }
     const moved = moveDrawingBox(oversized, 0.3, 0.2)

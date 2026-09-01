@@ -682,6 +682,7 @@ function PdfViewer({
                       drawingsInteractive={interactive}
                       onDrawingCreate={drawingsApi.create}
                       onDrawingUpdate={drawingsApi.update}
+                      onDrawingRefine={drawingsApi.refine}
                       onDrawingRemove={drawingsApi.remove}
                     />
                   )

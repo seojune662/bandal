@@ -33,21 +33,34 @@ export function defaultTextBoxSize(aspect: number): {
   }
 }
 
+/** 힐링에서 유의미한 변화로 치는 최소 차이 — 무한 보정 루프 방지. */
+const HEAL_TOLERANCE = 0.001
+
 /**
- * 코너 리사이즈로 박스가 스케일된 만큼 글자도 따라 스케일한다
- * (GoodNotes 관례 — 박스와 글자가 한 몸).
+ * 표면([0,1]²)을 벗어난 텍스트박스를 안으로 되돌린 박스를 준다.
+ * 예전 리사이즈 점프 버그가 페이지 절반을 덮는 거대/이탈 박스를 커밋해
+ * 그 영역의 클릭을 전부 흡수하던 손상 데이터의 자가 치유 경로다.
+ * 이미 정상이면 null (호출부는 무음 보정만 하면 된다).
  */
-export function scaledFontScale(
-  oldScale: number | undefined,
-  oldBox: DrawingBox,
-  newBox: DrawingBox
-): number {
-  const base = finitePositive(oldScale ?? 1) ? (oldScale ?? 1) : 1
-  if (!finitePositive(oldBox.width) || !finitePositive(newBox.width)) {
-    return base
+export function healedTextBox(box: DrawingBox): DrawingBox | null {
+  if (
+    !Number.isFinite(box.x) ||
+    !Number.isFinite(box.y) ||
+    !finitePositive(box.width) ||
+    !finitePositive(box.height)
+  ) {
+    return null
   }
-  const next = (base * newBox.width) / oldBox.width
-  return finitePositive(next) ? Math.min(20, Math.max(0.05, next)) : base
+  const width = Math.min(1, box.width)
+  const height = Math.min(1, box.height)
+  const x = Math.max(0, Math.min(1 - width, box.x))
+  const y = Math.max(0, Math.min(1 - height, box.y))
+  const changed =
+    Math.abs(x - box.x) > HEAL_TOLERANCE ||
+    Math.abs(y - box.y) > HEAL_TOLERANCE ||
+    Math.abs(width - box.width) > HEAL_TOLERANCE ||
+    Math.abs(height - box.height) > HEAL_TOLERANCE
+  return changed ? { ...box, x, y, width, height } : null
 }
 
 /**

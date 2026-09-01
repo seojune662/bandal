@@ -125,6 +125,8 @@ export interface DrawingStyle {
   opacity: number
   /** textbox only — multiplier on the base note font size. */
   fontScale?: number
+  /** textbox only — bold text. */
+  bold?: boolean
 }
 
 /**

@@ -13,7 +13,7 @@ const STROKE_COORD_SCALE = 1000
 const MIN_BOX_WIDTH = 0.03
 const MIN_BOX_HEIGHT = 0.025
 
-export type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se'
+export type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w'
 
 export function drawingColorVariable(color: DrawingColor): string {
   return `var(--drawing-color-${color})`
@@ -75,11 +75,16 @@ export function resizeDrawingBox(
 ): DrawingBox {
   const right = box.x + box.width
   const bottom = box.y + box.height
-  const movesWest = handle === 'nw' || handle === 'sw'
-  const movesNorth = handle === 'nw' || handle === 'ne'
+  const movesWest = handle === 'nw' || handle === 'sw' || handle === 'w'
+  const movesNorth = handle === 'nw' || handle === 'ne' || handle === 'n'
+  // 엣지 핸들은 한 축만 만진다 — 리플로우 리사이즈의 핵심.
+  const affectsX = handle !== 'n' && handle !== 's'
+  const affectsY = handle !== 'e' && handle !== 'w'
 
   if (
     lockAspectRatio &&
+    affectsX &&
+    affectsY &&
     Number.isFinite(box.width) &&
     Number.isFinite(box.height) &&
     box.width > 0 &&
@@ -135,25 +140,29 @@ export function resizeDrawingBox(
     }
   }
 
-  const x = movesWest
+  const x = movesWest && affectsX
     ? Math.min(right - MIN_BOX_WIDTH, clampToBounds ? Math.max(0, box.x + dx) : box.x + dx)
     : box.x
-  const y = movesNorth
+  const y = movesNorth && affectsY
     ? Math.min(bottom - MIN_BOX_HEIGHT, clampToBounds ? Math.max(0, box.y + dy) : box.y + dy)
     : box.y
-  const width = movesWest
-    ? right - x
-    : Math.max(MIN_BOX_WIDTH, box.width + dx)
-  const height = movesNorth
-    ? bottom - y
-    : Math.max(MIN_BOX_HEIGHT, box.height + dy)
+  const width = !affectsX
+    ? box.width
+    : movesWest
+      ? right - x
+      : Math.max(MIN_BOX_WIDTH, box.width + dx)
+  const height = !affectsY
+    ? box.height
+    : movesNorth
+      ? bottom - y
+      : Math.max(MIN_BOX_HEIGHT, box.height + dy)
 
   return {
     ...box,
     x,
     y,
-    width: clampToBounds && !movesWest ? Math.min(1 - box.x, width) : width,
-    height: clampToBounds && !movesNorth ? Math.min(1 - box.y, height) : height
+    width: clampToBounds && affectsX && !movesWest ? Math.min(1 - box.x, width) : width,
+    height: clampToBounds && affectsY && !movesNorth ? Math.min(1 - box.y, height) : height
   }
 }
 

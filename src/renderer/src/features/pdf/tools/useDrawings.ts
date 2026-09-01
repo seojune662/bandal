@@ -22,6 +22,8 @@ export interface DrawingsApi {
   error: string | null
   create(input: CreateDrawingInput): Promise<Drawing | null>
   update(input: UpdateDrawingInput): Promise<Drawing | null>
+  /** 무음 보정(손상 박스 힐링) — undo 히스토리에 기록하지 않는다. */
+  refine(input: UpdateDrawingInput): Promise<Drawing | null>
   remove(ids: string[]): Promise<boolean>
   undo(): Promise<void>
   redo(): Promise<void>
@@ -206,6 +208,10 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
     (input: UpdateDrawingInput) => updateInternal(input, true),
     [updateInternal]
   )
+  const refine = useCallback(
+    (input: UpdateDrawingInput) => updateInternal(input, false),
+    [updateInternal]
+  )
   const remove = useCallback(async (ids: string[]): Promise<boolean> =>
     (await removeInternal(ids, true)).ok,
   [removeInternal])
@@ -299,6 +305,7 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
     error,
     create,
     update,
+    refine,
     remove,
     undo,
     redo
