@@ -19,6 +19,32 @@ import {
 } from './popupGeometry'
 
 const STORAGE_KEY = 'bandal:assistant-popup-geometry:v1'
+const OPACITY_STORAGE_KEY = 'bandal:assistant-popup-opacity:v1'
+/** 이 밑으로 내리면 텍스트까지 안 보인다 — 배경이 "비치는" 최저선. */
+const MIN_POPUP_ALPHA = 0.4
+
+function clampPopupAlpha(value: number): number {
+  if (!Number.isFinite(value)) return 1
+  return Math.min(1, Math.max(MIN_POPUP_ALPHA, value))
+}
+
+function readPopupAlpha(): number {
+  try {
+    const raw = localStorage.getItem(OPACITY_STORAGE_KEY)
+    if (raw === null) return 1
+    return clampPopupAlpha(Number.parseFloat(raw))
+  } catch {
+    return 1
+  }
+}
+
+function persistPopupAlpha(alpha: number): void {
+  try {
+    localStorage.setItem(OPACITY_STORAGE_KEY, String(alpha))
+  } catch {
+    // 저장이 안 돼도 이번 세션의 투명도는 유지된다.
+  }
+}
 
 interface PointerGesture {
   pointerId: number
@@ -115,6 +141,7 @@ export function AssistantPopup({
   const moveRef = useRef<PointerGesture | null>(null)
   const resizeRef = useRef<ResizeGesture | null>(null)
   const [geometry, setGeometry] = useState<PopupGeometry | null>(readGeometry)
+  const [popupAlpha, setPopupAlpha] = useState<number>(readPopupAlpha)
   geometryRef.current = geometry
 
   const updateGeometry = useCallback((next: PopupGeometry): void => {
@@ -249,9 +276,11 @@ export function AssistantPopup({
     if (geometryRef.current !== null) persistGeometry(geometryRef.current)
   }
 
-  const style: CSSProperties | undefined =
-    geometry === null
-      ? undefined
+  const style: CSSProperties = {
+    // 표시 전환용 opacity(페이드 인)와 별개로 배경 알파만 조절한다.
+    ['--assistant-popup-alpha' as string]: popupAlpha,
+    ...(geometry === null
+      ? {}
       : {
           left: geometry.x,
           top: geometry.y,
@@ -259,7 +288,8 @@ export function AssistantPopup({
           bottom: 'auto',
           width: geometry.width,
           height: geometry.height
-        }
+        })
+  }
 
   return (
     <section
@@ -281,6 +311,34 @@ export function AssistantPopup({
         <span className="assistant-popup__identity">
           <BandalOrbMark />
           <span>반달 AI</span>
+        </span>
+        <span
+          className="assistant-popup__opacity"
+          // 헤더 드래그(창 이동)와 분리 — 슬라이더 조작이 이동으로 새지 않게.
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <svg
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+            className="assistant-popup__opacity-mark"
+          >
+            <circle cx="8" cy="8" r="6" />
+            <path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor" stroke="none" />
+          </svg>
+          <input
+            type="range"
+            min={MIN_POPUP_ALPHA * 100}
+            max={100}
+            step={5}
+            value={Math.round(popupAlpha * 100)}
+            aria-label="채팅창 투명도"
+            title="채팅창 투명도"
+            onChange={(event) => {
+              const next = clampPopupAlpha(Number(event.target.value) / 100)
+              setPopupAlpha(next)
+              persistPopupAlpha(next)
+            }}
+          />
         </span>
         <button
           type="button"

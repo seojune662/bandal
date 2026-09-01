@@ -87,7 +87,15 @@
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
-  background: var(--bg-overlay);
+  /* 사용자 투명도 — 표시 전환용 opacity 와 별개로 배경만 비친다. 텍스트는
+     각 표면의 전경색 그대로라 반투명이어도 읽힌다. */
+  --assistant-popup-alpha: 1;
+  background: color-mix(
+    in srgb,
+    var(--bg-overlay) calc(var(--assistant-popup-alpha) * 100%),
+    transparent
+  );
+  backdrop-filter: blur(14px) saturate(1.05);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
@@ -110,10 +118,46 @@
   min-height: var(--chrome-height);
   padding: var(--space-2) var(--space-3);
   user-select: none;
-  background: var(--bg-surface);
+  background: color-mix(
+    in srgb,
+    var(--bg-surface) calc(var(--assistant-popup-alpha) * 100%),
+    transparent
+  );
   border-bottom: 1px solid var(--border-subtle);
   cursor: grab;
   touch-action: none;
+}
+
+/* 투명도 슬라이더 — 평소엔 표시만 남기고, 헤더에 올리면 조작부가 나타난다. */
+.assistant-popup__opacity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+.assistant-popup__opacity-mark {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  flex: none;
+}
+
+.assistant-popup__opacity input[type='range'] {
+  width: 0;
+  opacity: 0;
+  accent-color: var(--accent);
+  transition: width var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+
+.assistant-popup__header:hover .assistant-popup__opacity input[type='range'],
+.assistant-popup__opacity input[type='range']:focus-visible {
+  width: 4.5rem;
+  opacity: 1;
 }
 
 .assistant-popup__header:active {
@@ -163,7 +207,11 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg-app);
+  background: color-mix(
+    in srgb,
+    var(--bg-app) calc(var(--assistant-popup-alpha) * 100%),
+    transparent
+  );
   user-select: text;
 }
 
