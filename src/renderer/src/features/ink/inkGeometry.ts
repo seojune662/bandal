@@ -56,8 +56,10 @@ export function moveDrawingBox(
   const y = box.y + dy
   return {
     ...box,
-    x: clampToBounds ? Math.min(1 - box.width, Math.max(0, x)) : x,
-    y: clampToBounds ? Math.min(1 - box.height, Math.max(0, y)) : y
+    // Math.max 를 바깥에 — box 가 페이지보다 크면(1-width < 0) 안쪽 min 이
+    // 음수를 내는데, 그때도 원점 밖으로 튀지 않아야 한다.
+    x: clampToBounds ? Math.max(0, Math.min(1 - box.width, x)) : x,
+    y: clampToBounds ? Math.max(0, Math.min(1 - box.height, y)) : y
   }
 }
 
@@ -67,7 +69,9 @@ export function resizeDrawingBox(
   dy: number,
   clampToBounds = true,
   handle: ResizeHandle = 'se',
-  lockAspectRatio = false
+  lockAspectRatio = false,
+  /** 표면의 세로/가로 비 — dx(폭 기준)와 dy(높이 기준)를 픽셀로 맞춰 비교. */
+  aspect = 1
 ): DrawingBox {
   const right = box.x + box.width
   const bottom = box.y + box.height
@@ -83,7 +87,9 @@ export function resizeDrawingBox(
   ) {
     const horizontalDelta = movesWest ? -dx : dx
     const verticalDelta = movesNorth ? -dy : dy
-    const requestedScale = Math.abs(dx) >= Math.abs(dy)
+    // dx 는 폭 정규화, dy 는 높이 정규화라 단위가 다르다 — 화면 픽셀로
+    // 환산(dyPx = dy·W·aspect)해 지배축을 고른다.
+    const requestedScale = Math.abs(dx) >= Math.abs(dy) * aspect
       ? (box.width + horizontalDelta) / box.width
       : (box.height + verticalDelta) / box.height
     const minimumScale = Math.max(
@@ -96,19 +102,27 @@ export function resizeDrawingBox(
           (movesNorth ? bottom : 1 - box.y) / box.height
         )
       : Number.POSITIVE_INFINITY
+    // 최소 크기와 페이지 경계가 충돌하면(가늘고 긴 이미지) 경계가 이긴다 —
+    // 최소 크기가 이기면 box 가 [0,1] 밖으로 자라 잘림/좌표 튐이 된다.
+    const floorScale = Math.min(minimumScale, maximumScale)
     const scale = Math.max(
-      minimumScale,
-      Math.min(Math.max(minimumScale, maximumScale), requestedScale)
+      floorScale,
+      Math.min(maximumScale, requestedScale)
     )
     const width = box.width * scale
     const height = box.height * scale
+    const x = movesWest ? right - width : box.x
+    const y = movesNorth ? bottom - height : box.y
 
+    if (!clampToBounds) return { ...box, x, y, width, height }
+    const clampedWidth = Math.min(1, width)
+    const clampedHeight = Math.min(1, height)
     return {
       ...box,
-      x: movesWest ? right - width : box.x,
-      y: movesNorth ? bottom - height : box.y,
-      width,
-      height
+      x: Math.max(0, Math.min(1 - clampedWidth, x)),
+      y: Math.max(0, Math.min(1 - clampedHeight, y)),
+      width: clampedWidth,
+      height: clampedHeight
     }
   }
 

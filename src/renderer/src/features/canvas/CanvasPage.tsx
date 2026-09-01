@@ -42,6 +42,7 @@ interface CanvasPageProps {
   onCreate: InkLayerProps['onCreate']
   onUpdate: InkLayerProps['onUpdate']
   onRemove: InkLayerProps['onRemove']
+  onRefineBox: InkLayerProps['onRefineBox']
   onDropClip: (
     source: DrawingClipSource,
     point: { x: number; y: number },
@@ -67,8 +68,9 @@ function usePageSize(ref: RefObject<HTMLDivElement>): PageSize {
         ? current
         : { width, height })
     }
-    const bounds = element.getBoundingClientRect()
-    update(bounds.width, bounds.height)
+    // ResizeObserver 의 contentRect(content-box)와 같은 기준으로 초기 측정 —
+    // getBoundingClientRect(border-box)를 쓰면 첫 프레임만 2px 어긋난다.
+    update(element.clientWidth, element.clientHeight)
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0]
       if (entry !== undefined) {
@@ -94,6 +96,7 @@ export function CanvasPage({
   onCreate,
   onUpdate,
   onRemove,
+  onRefineBox,
   onDropClip,
   onDropImage,
   onActivate,
@@ -142,10 +145,15 @@ export function CanvasPage({
     const surface = surfaceRef.current
     if (surface === null) return null
     const bounds = surface.getBoundingClientRect()
-    if (bounds.width <= 0 || bounds.height <= 0) return null
+    // 셰이프 좌표계는 SVG(content box) 기준이라 border 를 빼고 정규화한다.
+    const width = surface.clientWidth
+    const height = surface.clientHeight
+    if (width <= 0 || height <= 0) return null
+    const left = bounds.left + surface.clientLeft
+    const top = bounds.top + surface.clientTop
     return {
-      x: Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)),
-      y: Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height))
+      x: Math.min(1, Math.max(0, (event.clientX - left) / width)),
+      y: Math.min(1, Math.max(0, (event.clientY - top) / height))
     }
   }
 
@@ -189,6 +197,7 @@ export function CanvasPage({
           onCreate={onCreate}
           onUpdate={onUpdate}
           onRemove={onRemove}
+          onRefineBox={onRefineBox}
           clampToBounds={true}
           deferTextCreation
           ariaLabel={`${boardTitle} ${pageNumber}페이지 캔버스`}

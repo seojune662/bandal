@@ -214,3 +214,48 @@ describe('inkGeometry', () => {
     }
   )
 })
+
+describe('resizeDrawingBox — 경계·최소 크기 충돌·aspect 지배축', () => {
+  test('locked resize never grows past the page bounds', () => {
+    const original = { x: 0.7, y: 0.8, width: 0.29, height: 0.19 }
+    const resized = resizeDrawingBox(original, 0.5, 0.5, true, 'se', true)
+
+    expect(resized.x + resized.width).toBeLessThanOrEqual(1)
+    expect(resized.y + resized.height).toBeLessThanOrEqual(1)
+    expect(resized.x).toBeGreaterThanOrEqual(0)
+    expect(resized.y).toBeGreaterThanOrEqual(0)
+  })
+
+  test('the bounds win when the minimum size cannot fit (thin banner in a corner)', () => {
+    // width 0.4 는 남은 공간 0.02 를 넘고, height 0.01 은 최소 높이(0.025)보다
+    // 작아 minimumScale > maximumScale 이 된다 — 경계가 이겨야 한다.
+    const original = { x: 0.98, y: 0.98, width: 0.4, height: 0.01 }
+    const resized = resizeDrawingBox(original, 0.5, 0.5, true, 'se', true)
+
+    expect(resized.x + resized.width).toBeLessThanOrEqual(1 + 1e-9)
+    expect(resized.y + resized.height).toBeLessThanOrEqual(1 + 1e-9)
+    expect(resized.x).toBeGreaterThanOrEqual(0)
+    expect(resized.y).toBeGreaterThanOrEqual(0)
+  })
+
+  test('the surface aspect converts dy into pixels for the dominant-axis choice', () => {
+    const original = { x: 0.2, y: 0.25, width: 0.4, height: 0.2 }
+    // dx 0.05 > dy 0.04 (정규화값)지만 aspect √2 를 곱하면 세로가 지배한다.
+    const withAspect = resizeDrawingBox(
+      original, 0.05, 0.04, true, 'se', true, Math.SQRT2
+    )
+    const withoutAspect = resizeDrawingBox(original, 0.05, 0.04, true, 'se', true)
+
+    expect(withAspect.height).toBeCloseTo(0.24)
+    expect(withoutAspect.width).toBeCloseTo(0.45)
+    expect(withAspect.width).not.toBeCloseTo(withoutAspect.width)
+  })
+
+  test('moveDrawingBox never returns a negative origin for oversized boxes', () => {
+    const oversized = { x: 0, y: 0, width: 1.2, height: 0.5 }
+    const moved = moveDrawingBox(oversized, 0.3, 0.2)
+
+    expect(moved.x).toBeGreaterThanOrEqual(0)
+    expect(moved.y).toBeGreaterThanOrEqual(0)
+  })
+})

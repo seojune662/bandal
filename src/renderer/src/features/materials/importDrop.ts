@@ -10,6 +10,7 @@ import { showToast } from '../../app/toast'
 import { invoke, pathForFile } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
+import { getMaterialFileDrag } from './materialFileDrag'
 
 /** True when the drag payload contains OS files (vs. in-app HTML5 dnd). */
 export function isFileDrag(dataTransfer: DataTransfer | null): boolean {
@@ -56,15 +57,50 @@ export async function importMaterialPaths(
   }
 }
 
-/** 과목 폴더 안의 절대 경로를 posix relPath 로 바꾼다. 밖이면 null. */
+/**
+ * 과목 폴더 안의 절대 경로를 posix relPath 로 바꾼다. 밖이면 null.
+ *
+ * 반드시 NFC 로 정규화해 비교한다: macOS 디스크 경로는 NFD 인데 드롭된
+ * 경로는 NFC 로 올 수 있고, 정규형이 갈리면 과목 안 파일을 "밖"으로
+ * 오판해 이동(no-op) 대신 가져오기(복사 + "이름 (2)" 개명)로 새 버린다.
+ */
 export function relPathInsideCourse(
   absPath: string,
   courseFolder: string
 ): string | null {
-  const normalized = absPath.replace(/\\/gu, '/')
-  const folder = courseFolder.replace(/\\/gu, '/').replace(/\/+$/u, '')
+  const normalized = absPath.replace(/\\/gu, '/').normalize('NFC')
+  const folder = courseFolder
+    .replace(/\\/gu, '/')
+    .replace(/\/+$/u, '')
+    .normalize('NFC')
   if (!normalized.startsWith(`${folder}/`)) return null
   return normalized.slice(folder.length + 1)
+}
+
+/**
+ * 이 드롭이 "이 사이드바에서 방금 끌기 시작한 그 자료"인지 판별한다.
+ * 끌었다가 마음을 바꿔 사이드바에 도로 놓는 제스처는 이동/가져오기가 아니라
+ * 취소다. files 가 비어 있으면(합성 이벤트) 모듈 드래그 상태를 신뢰한다.
+ */
+export function isSelfMaterialDrop(
+  courseId: string,
+  files: readonly File[]
+): boolean {
+  const drag = getMaterialFileDrag()
+  if (drag === null || drag.courseId !== courseId) return false
+  if (files.length === 0) return true
+
+  const courseFolder = useCoursesStore
+    .getState()
+    .courses.find((course) => course.id === courseId)?.folderPath
+  if (courseFolder === undefined) return false
+  const first = files[0]
+  if (first === undefined) return false
+  const rel = relPathInsideCourse(pathForFile(first), courseFolder)
+  return (
+    rel !== null &&
+    rel.toLowerCase() === drag.relPath.normalize('NFC').toLowerCase()
+  )
 }
 
 export async function importDroppedFiles(

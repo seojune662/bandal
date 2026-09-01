@@ -143,6 +143,12 @@ export function TogetherFooter(): JSX.Element | null {
 
   if (auth.phase === 'unconfigured') return null
 
+  // 로그인 상태에서 초대도 미지정 그룹도 없으면 렌더할 내용이 없다 —
+  // 빈 섹션은 border-top+패딩만 남겨 하단 메뉴 위에 이중 선을 그린다.
+  if (signedIn && pendingInvites.length === 0 && unassignedGroups.length === 0) {
+    return null
+  }
+
   return (
     <section className="together-footer" aria-label="함께하기">
       {!signedIn ? (

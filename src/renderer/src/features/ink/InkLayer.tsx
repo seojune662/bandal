@@ -26,6 +26,7 @@ import {
   type ResizeHandle,
   strokePath
 } from './inkGeometry'
+import { healedImageBox } from './imagePlacement'
 import type { InkTool, InkToolState } from './inkToolStore'
 import type { RenderClip } from './ClipShape'
 import { foreignObjectContentStyle } from './foreignObjectScale'
@@ -53,6 +54,11 @@ export interface InkLayerProps {
   /** Surface-owned PDF renderer; omitted on PDF markup and group boards. */
   renderClip?: RenderClip
   onOpenClip?: (source: DrawingClipSource) => void
+  /**
+   * 이미지 원본 비율이 확정됐는데 box 비율이 어긋난 셰이프를 표면이 조용히
+   * 보정(undo 미기록)할 수 있게 한다. 미배선 표면은 레터박스 폴백으로 렌더.
+   */
+  onRefineBox?: ((id: string, box: DrawingBox) => void) | undefined
 }
 
 type ShapeTool = 'rect' | 'ellipse' | 'arrow' | 'line'
@@ -205,7 +211,8 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     className,
     courseId,
     renderClip,
-    onOpenClip
+    onOpenClip,
+    onRefineBox
   } = props
   const { activeTool, color, width, opacity } = tool
   const svgRef = useRef<SVGSVGElement>(null)
@@ -227,6 +234,25 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     gestureRef.current = next
     setGestureState(next)
   }, [])
+
+  const handleNaturalAspect = useCallback(
+    (shape: DrawingShape, naturalAspect: number): void => {
+      if (onRefineBox === undefined) return
+      const active = gestureRef.current
+      if (
+        active !== null &&
+        (active.kind === 'move' || active.kind === 'resize') &&
+        active.shape.id === shape.id
+      ) {
+        return
+      }
+      const box = shape.data.box
+      if (box === undefined) return
+      const healed = healedImageBox(box, aspect, naturalAspect)
+      if (healed !== null) onRefineBox(shape.id, healed)
+    },
+    [aspect, onRefineBox]
+  )
 
   const pointFromSample = useCallback((sample: PointerSample): DrawingPoint | null => {
     const svg = svgRef.current
@@ -283,11 +309,12 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
             dy,
             clampToBounds,
             current.handle,
-            current.shape.kind === 'image'
+            current.shape.kind === 'image',
+            aspect
           )
       setGesture({ ...current, box })
     }
-  }, [clampToBounds, eraseAt, pointFromSample, setGesture])
+  }, [aspect, clampToBounds, eraseAt, pointFromSample, setGesture])
 
   const flushPointerFrame = useCallback((): void => {
     if (pointerFrame.current !== null) cancelAnimationFrame(pointerFrame.current)
@@ -674,6 +701,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
               renderClip={renderClip}
               onOpenClip={onOpenClip}
               onBeginManipulation={beginManipulation}
+              onNaturalAspect={handleNaturalAspect}
             />
           )
         }

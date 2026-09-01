@@ -19,6 +19,7 @@ interface ReferencedShapeProps {
     kind: 'move' | 'resize',
     handle?: ResizeHandle
   ) => void
+  onNaturalAspect?: ((shape: DrawingShape, naturalAspect: number) => void) | undefined
 }
 
 export function ReferencedShape(props: ReferencedShapeProps): JSX.Element | null {
@@ -31,7 +32,8 @@ export function ReferencedShape(props: ReferencedShapeProps): JSX.Element | null
     selected,
     renderClip,
     onOpenClip,
-    onBeginManipulation
+    onBeginManipulation,
+    onNaturalAspect
   } = props
   return shape.kind === 'clip' ? (
     <ClipShape
@@ -53,6 +55,7 @@ export function ReferencedShape(props: ReferencedShapeProps): JSX.Element | null
       courseId={courseId}
       selected={selected}
       onBeginManipulation={onBeginManipulation}
+      onNaturalAspect={onNaturalAspect}
     />
   )
 }

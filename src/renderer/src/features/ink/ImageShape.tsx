@@ -12,6 +12,7 @@ import type {
 import { invoke } from '../../lib/ipc'
 import { imageDataUrl } from '../image/imageSource'
 import { foreignObjectContentStyle } from './foreignObjectScale'
+import { dataUrlImageAspect } from './imagePlacement'
 import type { ResizeHandle } from './inkGeometry'
 import { ResizeHandles } from './ResizeHandles'
 
@@ -29,6 +30,11 @@ interface ImageShapeProps {
     kind: 'move' | 'resize',
     handle?: ResizeHandle
   ) => void
+  /**
+   * 원본 세로/가로 비가 확정되면 1회 알린다 — 소유 표면이 `?? 1` 폴백으로
+   * 굳은 box 를 조용히 치유(healedImageBox)하는 데 쓴다. 미배선이면 no-op.
+   */
+  onNaturalAspect?: ((shape: DrawingShape, naturalAspect: number) => void) | undefined
 }
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error'
@@ -111,16 +117,21 @@ export function ImageShape({
   baseWidthPx,
   courseId,
   selected,
-  onBeginManipulation
+  onBeginManipulation,
+  onNaturalAspect
 }: ImageShapeProps): JSX.Element | null {
   const source = shape.data.image
-  const objectRef = useRef<SVGForeignObjectElement>(null)
+  const groupRef = useRef<SVGGElement>(null)
   const [visible, setVisible] = useState(false)
   const [loadState, setLoadState] = useState<LoadState>('idle')
   const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [naturalAspect, setNaturalAspect] = useState<number | null>(null)
+  const announcedAspectFor = useRef<string | null>(null)
+  const onNaturalAspectRef = useRef(onNaturalAspect)
+  onNaturalAspectRef.current = onNaturalAspect
 
   useEffect(() => {
-    const element = objectRef.current
+    const element = groupRef.current
     if (element === null) return
     return observeImageVisibility(element, setVisible)
   }, [])
@@ -135,26 +146,91 @@ export function ImageShape({
     let cancelled = false
     setLoadState('loading')
     setImageUrl(null)
-    void loadDrawingImage(courseId, source).then((url) => {
-      if (cancelled) return
-      setImageUrl(url)
-      setLoadState(url === null ? 'error' : 'loading')
-    })
+    setNaturalAspect(null)
+    void loadDrawingImage(courseId, source)
+      .then(async (url) => {
+        if (url === null) return { url: null, ratio: null }
+        // 디코드 검증 겸 원본 비율 취득 — SVG <image> 는 onLoad 가 없다.
+        return { url, ratio: await dataUrlImageAspect(url) }
+      })
+      .then(({ url, ratio }) => {
+        if (cancelled) return
+        if (url === null || ratio === null) {
+          setImageUrl(null)
+          setLoadState('error')
+          return
+        }
+        setImageUrl(url)
+        setNaturalAspect(ratio)
+        setLoadState('ready')
+        if (announcedAspectFor.current !== source.relPath) {
+          announcedAspectFor.current = source.relPath
+          onNaturalAspectRef.current?.(shape, ratio)
+        }
+      })
     return () => {
       cancelled = true
     }
+    // shape 정체성은 relPath 로 충분 — shape 객체 참조로 재로드하지 않는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId, source?.relPath, visible])
 
   if (source === undefined) return null
   const failed = loadState === 'error'
+  const ready = loadState === 'ready' && imageUrl !== null
+
+  // box 화면 비율이 원본과 맞으면 "none"으로 box 를 정확히 채워 핸들과
+  // 픽셀 단위로 일치시킨다. 안 맞으면(미치유 레거시·healing 미배선 표면)
+  // 기존 object-fit: contain 과 같은 레터박스(meet)로 찌그러짐을 막는다.
+  const boxScreenAspect = box.width > 0 ? (box.height * aspect) / box.width : 0
+  const ratioMatches =
+    naturalAspect !== null &&
+    naturalAspect > 0 &&
+    Math.abs(boxScreenAspect - naturalAspect) / naturalAspect <= 0.01
+
+  if (ready) {
+    return (
+      <g ref={groupRef} className="ink-layer__image-group">
+        <image
+          className="ink-layer__image-el"
+          href={imageUrl}
+          x={box.x}
+          y={box.y}
+          width={box.width}
+          height={box.height}
+          opacity={shape.style.opacity}
+          preserveAspectRatio={ratioMatches ? 'none' : 'xMidYMid meet'}
+          aria-label={source.label}
+          onPointerDown={(event) => onBeginManipulation(event, shape, 'move')}
+        />
+        <rect
+          className="ink-layer__image-frame"
+          x={box.x}
+          y={box.y}
+          width={box.width}
+          height={box.height}
+          vectorEffect="non-scaling-stroke"
+        />
+        {selected && (
+          <ResizeHandles
+            className="ink-layer__image-resize"
+            box={box}
+            aspect={aspect}
+            onPointerDown={(event, handle) =>
+              onBeginManipulation(event, shape, 'resize', handle)}
+          />
+        )}
+      </g>
+    )
+  }
+
   const contentStyle = foreignObjectContentStyle(box, baseWidthPx, aspect)
   // Never render CSS pixels directly into the normalized SVG viewBox.
   if (contentStyle === null) return null
 
   return (
-    <g className="ink-layer__image-group">
+    <g ref={groupRef} className="ink-layer__image-group">
       <foreignObject
-        ref={objectRef}
         {...box}
         className="ink-layer__image-object"
         style={{ opacity: shape.style.opacity, overflow: 'hidden' }}
@@ -166,25 +242,12 @@ export function ImageShape({
           data-state={loadState}
           aria-label={`${source.label}${failed ? ', 원본을 찾을 수 없어요' : ''}`}
         >
-          {imageUrl !== null ? (
-            <img
-              src={imageUrl}
-              alt={source.label}
-              draggable={false}
-              onLoad={() => setLoadState('ready')}
-              onError={() => {
-                setImageUrl(null)
-                setLoadState('error')
-              }}
-            />
-          ) : (
-            <div className="ink-layer__image-placeholder">
-              <strong>{source.label}</strong>
-              <span>
-                {failed ? '원본을 찾을 수 없어요' : '이미지를 불러오는 중…'}
-              </span>
-            </div>
-          )}
+          <div className="ink-layer__image-placeholder">
+            <strong>{source.label}</strong>
+            <span>
+              {failed ? '원본을 찾을 수 없어요' : '이미지를 불러오는 중…'}
+            </span>
+          </div>
         </div>
       </foreignObject>
       {selected && (

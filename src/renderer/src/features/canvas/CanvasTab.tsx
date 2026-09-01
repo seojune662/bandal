@@ -678,6 +678,16 @@ function CanvasSession({
                   onCreate={(shape) => { addInternal(shape, pageNumber, true) }}
                   onUpdate={(id, patch) => { updateInternal(id, patch, true) }}
                   onRemove={(ids) => { removeInternal(ids, true) }}
+                  onRefineBox={(id, box) => {
+                    // placeClip 정밀화와 같은 조용한 보정 — undo 미기록.
+                    const current = shapesRef.current.find(
+                      (shape) => shape.id === id
+                    )
+                    if (current === undefined) return
+                    updateInternal(id, {
+                      data: { ...current.data, box }
+                    }, false)
+                  }}
                   courseId={board.courseId}
                   onDropClip={placeClip}
                   onDropImage={placeImage}

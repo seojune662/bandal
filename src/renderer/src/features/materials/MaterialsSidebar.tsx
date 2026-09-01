@@ -35,7 +35,8 @@ import {
   unusedFolderName
 } from './materialPaths'
 import { isEditablePasteTarget } from './clipboardPaste'
-import { importDroppedFiles, isFileDrag } from './importDrop'
+import { importDroppedFiles, isFileDrag, isSelfMaterialDrop } from './importDrop'
+import { clearMaterialFileDrag } from './materialFileDrag'
 import { MaterialsIcon } from './materialIcons'
 import {
   MATERIAL_MOVE_MIME,
@@ -737,6 +738,12 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         if (canAcceptMaterialMove(types)) return
         if (isFileDrag(event.dataTransfer)) {
           event.preventDefault()
+          // 이 사이드바에서 시작한 자료 드래그가 (폴더 행이 아닌) 사이드바로
+          // 되돌아온 경우 = 드래그 취소 의도. 루트로 이동시키지 않는다.
+          if (isSelfMaterialDrop(course.id, [...event.dataTransfer.files])) {
+            clearMaterialFileDrag()
+            return
+          }
           importFiles([...event.dataTransfer.files])
           return
         }

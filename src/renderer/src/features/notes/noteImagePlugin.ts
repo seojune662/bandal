@@ -6,8 +6,10 @@ import type {
   NodeView,
   NodeViewConstructor
 } from '@milkdown/prose/view'
+import type { DrawingImageSource } from '../../../../shared/types/drawing'
 import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
+import { imageSourceFromFileDrop } from '../materials/imageDrag'
 import { mediaUrlFor } from '../materials/mediaUrl'
 
 const ASSETS_DIRECTORY = 'assets'
@@ -242,9 +244,29 @@ export async function insertNoteImageFiles(
   }
 }
 
-function noteAssetRelPath(source: string): string | null {
+/** 과목 안 이미지를 복사 없이 그대로 가리키는 image 노드를 삽입한다. */
+function insertExistingCourseImage(
+  view: EditorView,
+  source: DrawingImageSource,
+  insertAt: number
+): void {
+  const imageType = view.state.schema.nodes['image']
+  if (imageType === undefined) return
+  const alt = source.label.replace(/\.[^.]+$/u, '')
+  const node = imageType.create({ src: source.relPath, alt, title: '' })
+  view.dispatch(view.state.tr.insert(insertAt, node).scrollIntoView())
+  view.focus()
+}
+
+/**
+ * Any scheme-less relative source is a course-relative path — `assets/...`
+ * saved by this plugin, or an existing material dropped from the sidebar.
+ */
+function noteLocalRelPath(source: string): string | null {
   const normalized = source.replace(/^\.\//u, '')
-  if (!normalized.startsWith(`${ASSETS_DIRECTORY}/`)) return null
+  if (normalized.length === 0) return null
+  if (/^[a-z][a-z0-9+.-]*:/iu.test(normalized)) return null
+  if (normalized.startsWith('/')) return null
   try {
     // remark-stringify escapes spaces as %20. Decode that portable Markdown
     // URL before mediaUrlFor encodes each filesystem path segment.
@@ -255,7 +277,7 @@ function noteAssetRelPath(source: string): string | null {
 }
 
 export function noteImageSource(courseId: string, source: string): string {
-  const relPath = noteAssetRelPath(source)
+  const relPath = noteLocalRelPath(source)
   return relPath === null ? source : mediaUrlFor(courseId, relPath)
 }
 
@@ -274,7 +296,7 @@ export function createNoteImageView(courseId: string): NodeViewConstructor {
       image.alt = alt
       if (title.length > 0) image.title = title
       else image.removeAttribute('title')
-      const relPath = noteAssetRelPath(source)
+      const relPath = noteLocalRelPath(source)
       if (relPath !== null) {
         image.dataset.materialRelPath = relPath
       } else {
@@ -342,6 +364,19 @@ export function createNoteImagePlugin(
           top: event.clientY
         })?.pos
         const insertAt = position ?? view.state.selection.from
+
+        // 사이드바에서 끌어온 과목 안 이미지는 assets/ 로 복사하지 않고
+        // 기존 relPath 를 그대로 참조한다 — 드롭할 때마다 사본이 늘어나는
+        // 것을 막는다. 과목 밖(Finder) 이미지만 저장 흐름을 탄다.
+        const existing =
+          event.dataTransfer === null
+            ? null
+            : imageSourceFromFileDrop(courseId, event.dataTransfer)
+        if (existing !== null) {
+          insertExistingCourseImage(view, existing, insertAt)
+          return true
+        }
+
         void insertNoteImageFiles(view, courseId, files, {
           from: insertAt,
           to: insertAt
