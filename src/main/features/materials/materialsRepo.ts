@@ -612,8 +612,9 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       }
       const size = statSync(abs).size
       if (size > MAX_READ_BYTES) {
+        const sizeMb = Math.round(size / (1024 * 1024))
         throw new ValidationError(
-          `"${relPath}" is too large to read over IPC (${size} bytes)`
+          `"${relPath}" 파일이 너무 커서 열 수 없어요 (${sizeMb}MB — 최대 64MB)`
         )
       }
       const ext = extname(abs).toLowerCase()

@@ -165,6 +165,7 @@ describe('rename path repointing', () => {
       annotations: 1,
       pdf_drawings: 1,
       media_progress: 1,
+      pdf_view_state: 0,
       favorites: 2,
       material_links: 1
     })

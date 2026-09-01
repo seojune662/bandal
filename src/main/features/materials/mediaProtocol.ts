@@ -1,7 +1,7 @@
 /**
  * `bandal-media://` 스트리밍 프로토콜.
  *
- * 동영상(그리고 앞으로는 큰 이미지)은 materials:readFile 의 base64-over-IPC
+ * 동영상·PDF(그리고 앞으로는 큰 이미지)는 materials:readFile 의 base64-over-IPC
  * 경로로는 감당이 안 된다 — 64MB 상한에 걸리고, 걸리지 않아도 전체를 메모리에
  * 올린다. 이 프로토콜은 Range 요청을 지원하는 스트리밍 응답으로 파일을 내려,
  * <video> 가 임의 위치 탐색(seek)을 할 수 있게 한다.
@@ -33,6 +33,8 @@ const MEDIA_CONTENT_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',
   '.m4v': 'video/mp4',
   '.webm': 'video/webm',
+  // pdf.js 가 Range 요청으로 페이지 단위 lazy 로드한다 — 64MB IPC 캡 우회.
+  '.pdf': 'application/pdf',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',

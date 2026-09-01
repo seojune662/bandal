@@ -70,6 +70,7 @@ import {
   MEDIA_SCHEME
 } from '../features/materials'
 import { DRAG_ICON_PNG_BASE64 } from './dragIcon'
+import { createPdfViewStateRepo } from '../features/pdf/pdfViewStateRepo'
 import { createNotesRepo } from '../features/notes'
 import { createAnnotationsRepo } from '../features/annotations'
 import { createDrawingsRepo, createPdfExporter } from '../features/pdf'
@@ -610,10 +611,15 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
 
   // -- media progress (M18: 영상 이어보기) ----------------------------------
   const mediaProgressRepo = createMediaProgressRepo(db)
+  const pdfViewStateRepo = createPdfViewStateRepo(db)
   handle('media:getProgress', (req) =>
     mediaProgressRepo.get(req.courseId, req.relPath)
   )
   handle('media:setProgress', (req) => mediaProgressRepo.set(req))
+  handle('pdf:getViewState', (req) =>
+    pdfViewStateRepo.get(req.courseId, req.relPath)
+  )
+  handle('pdf:setViewState', (req) => pdfViewStateRepo.set(req))
 
   handle('ui:consumePendingOpen', () => deps.consumePendingOpen())
 

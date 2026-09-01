@@ -1,6 +1,6 @@
 import { pdfjs } from 'react-pdf'
 import type { DrawingBox, DrawingClipSource } from '../../../../shared/types/drawing'
-import { invoke } from '../../lib/ipc'
+import { mediaUrlFor } from '../materials/mediaUrl'
 import type { RenderClip } from '../ink'
 import './pdfWorker'
 
@@ -26,31 +26,18 @@ function touchPageCache(
   }
 }
 
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index)
-  }
-  return bytes
-}
-
 async function renderPdfPage(
   courseId: string,
   source: DrawingClipSource
 ): Promise<RenderedPage | null> {
   try {
-    const content = await invoke('materials:readFile', {
-      courseId,
-      relPath: source.relPath
+    // bandal-media:// URL — CSP connect-src 가 이 스킴을 허용하므로 pdf.js 가
+    // 직접 range fetch 한다. base64-over-IPC 시절의 64MB 캡·전체 상주 없음.
+    const loadingTask = pdfjs.getDocument({
+      url: mediaUrlFor(courseId, source.relPath),
+      disableStream: true,
+      disableAutoFetch: true
     })
-    if (content.encoding !== 'base64') return null
-    // Bytes, not a data: URL. `getDocument` would *fetch* a URL, and the app's
-    // CSP `connect-src` refuses `data:` — which made every clip fall back to
-    // "원본을 찾을 수 없어요". (react-pdf avoids this by decoding data URLs
-    // itself before handing them to pdf.js.) A fresh array each call is fine:
-    // pdf.js detaches it into the worker and we never reuse it.
-    const loadingTask = pdfjs.getDocument({ data: base64ToBytes(content.data) })
     const document = await loadingTask.promise
     try {
       if (source.page > document.numPages) return null

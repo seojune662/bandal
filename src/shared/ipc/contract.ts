@@ -81,6 +81,7 @@ import type {
   WorkflowPackSummary
 } from '../types/workflowPack'
 import type { MediaProgress } from '../types/mediaProgress'
+import type { PdfViewState } from '../types/pdfViewState'
 import type { PipOpenRequest, PipState } from '../types/pip'
 import type { SearchHit } from '../types/search'
 import type {
@@ -413,6 +414,15 @@ export interface IpcContract {
       playbackRate: number
     }
     res: MediaProgress
+  }
+  /** 마지막 열람 페이지/줌 — 로컬 SQLite. 재시작 후 그 자리에서 다시 연다. */
+  'pdf:getViewState': {
+    req: { courseId: string; relPath: string }
+    res: PdfViewState | null
+  }
+  'pdf:setViewState': {
+    req: { courseId: string; relPath: string; page: number; zoom: number }
+    res: PdfViewState
   }
 
   // -- renderer handoff -----------------------------------------------------
@@ -1584,6 +1594,8 @@ export const IPC_CHANNELS = [
   'materials:unwatch',
   'media:getProgress',
   'media:setProgress',
+  'pdf:getViewState',
+  'pdf:setViewState',
   'ui:consumePendingOpen',
   'pip:open',
   'pip:close',

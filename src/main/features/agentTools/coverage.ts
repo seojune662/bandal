@@ -126,6 +126,8 @@ export const NOT_FOR_AGENT: Readonly<Record<string, string>> = {
   'materials:watch': '파일 감시자 수명. 렌더러가 패널을 열고 닫으며 관리한다.',
   'materials:unwatch': '파일 감시자를 떼는 짝. 위와 같은 이유로 렌더러 소관이다.',
   'activity:record': '텔레메트리. 에이전트가 자기 활동을 위조할 자리가 아니다.',
+  'pdf:setViewState':
+    '학생이 보던 페이지의 기록. 에이전트가 학생의 시점을 바꿔칠 자리가 아니다.',
   'whiteboard:open': '공유 화이트보드 세션 수명. 렌더러가 관리한다.',
   'whiteboard:close': '공유 세션을 닫는 짝. 위와 같은 이유로 렌더러 소관이다.',
   'whiteboard:sync': '실시간 동기화 배관.',

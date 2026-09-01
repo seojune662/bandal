@@ -873,6 +873,25 @@ export const migrations: Migration[] = [
            ON material_links (course_id);`
       )
     }
+  },
+  {
+    // 마지막으로 보던 페이지/줌 — 재시작 후에도 그 자리에서 다시 연다.
+    // 파생 뷰 상태라 소프트 삭제 없음(행 손실 = 위치만 잃음). media_progress
+    // 와 같은 결.
+    version: 25,
+    name: 'pdf-view-state',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS pdf_view_state (
+           course_id  TEXT NOT NULL,
+           rel_path   TEXT NOT NULL,
+           page       INTEGER NOT NULL,
+           zoom       REAL NOT NULL DEFAULT 1,
+           updated_at TEXT NOT NULL,
+           PRIMARY KEY (course_id, rel_path)
+         )`
+      )
+    }
   }
 ]
 

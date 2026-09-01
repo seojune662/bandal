@@ -91,6 +91,8 @@ describe('mediaContentTypeFor', () => {
     expect(mediaContentTypeFor('a.m4v')).toBe('video/mp4')
     expect(mediaContentTypeFor('a.webm')).toBe('video/webm')
     expect(mediaContentTypeFor('figure.png')).toBe('image/png')
+    // pdf.js 가 Range 로 lazy 로드하는 경로 — 64MB IPC 캡 우회의 전제.
+    expect(mediaContentTypeFor('강의자료.PDF')).toBe('application/pdf')
     expect(mediaContentTypeFor('archive.zip')).toBe('application/octet-stream')
   })
 })

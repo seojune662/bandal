@@ -17,7 +17,9 @@ const APP_VERSION_DEFINE = {
 }
 
 const RENDERER_CONNECT_SRC_TOKEN = '__BANDAL_RENDERER_CONNECT_SOURCES__'
-const PRODUCTION_RENDERER_CONNECT_SOURCES = "'self'"
+// bandal-media: — pdf.js 의 range fetch 가 connect-src 를 탄다. 읽기 전용 +
+// 경로 이탈 이중 방어 + 실패 전부 404 인 스킴이라 허용 표면 증가는 무시 가능.
+const PRODUCTION_RENDERER_CONNECT_SOURCES = "'self' bandal-media:"
 const DEVELOPMENT_RENDERER_CONNECT_SOURCES =
   `${PRODUCTION_RENDERER_CONNECT_SOURCES} ws://localhost:* ws://127.0.0.1:*`
 

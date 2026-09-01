@@ -27,7 +27,7 @@ import './pdf.css'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { useHasBeenShown } from '../workspace/useHasBeenShown'
 import { usePanelActive } from '../workspace/usePanelActive'
-import { usePdfDocument } from './usePdfDocument'
+import { mediaUrlFor } from '../materials/mediaUrl'
 import { useAnnotations } from './useAnnotations'
 import { usePageTexts, useStaleAnnotationIds } from './usePageTexts'
 import { useVisiblePages } from './useVisiblePages'
@@ -70,6 +70,15 @@ import { useWhiteboardClipDelivery } from './useWhiteboardClipDelivery'
 const ZOOM_MIN = 0.4
 const ZOOM_MAX = 4
 const ZOOM_STEP = 1.15
+/**
+ * 반드시 모듈 레벨 상수 — react-pdf 는 options 참조가 바뀌면 문서를
+ * 재로드한다. lazy 모드(range fetch)로 대형 PDF 도 첫 페이지 청크만 읽는다.
+ */
+const PDF_DOCUMENT_OPTIONS = {
+  disableStream: true,
+  disableAutoFetch: true,
+  rangeChunkSize: 1048576
+}
 const WHEEL_ZOOM_STEP = 1.05
 /** A4 portrait height/width — placeholder ratio before first measure. */
 const DEFAULT_PAGE_ASPECT = Math.SQRT2
@@ -130,7 +139,13 @@ function PdfViewer({
   relPath: string
   interactive: boolean
 }): JSX.Element {
-  const doc = usePdfDocument(courseId, relPath)
+  // 문서 소스는 bandal-media:// URL — pdf.js 가 Range 요청으로 필요한
+  // 페이지만 가져온다. base64-over-IPC 시절의 64MB 캡·메모리 상주가 없다.
+  const fileSource = useMemo(
+    () => ({ url: mediaUrlFor(courseId, relPath) }),
+    [courseId, relPath]
+  )
+  const [loadError, setLoadError] = useState<string | null>(null)
   const annotationsApi = useAnnotations(courseId, relPath)
   const { annotations, byPage } = annotationsApi
   const drawingsApi = useDrawings(courseId, relPath)
@@ -174,6 +189,7 @@ function PdfViewer({
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
   const restoreRef = useRef<{ done: boolean }>({ done: false })
+  const jumpToPageRef = useRef<(page: number) => void>(() => {})
   const pendingCenterRef = useRef<number | null>(null)
   const flashTimer = useRef<number | null>(null)
   const scrollFrame = useRef<number | null>(null)
@@ -267,7 +283,15 @@ function PdfViewer({
       scrollHeight: scroller.scrollHeight,
       zoom: zoomRef.current
     })
-  }, [courseId, relPath])
+    // 재시작 대비 — 마지막 페이지/줌을 로컬 SQLite 에도 남긴다(피기백,
+    // 같은 디바운스). 실패는 조용히: 위치 기록은 사용자 콘텐츠가 아니다.
+    void invoke('pdf:setViewState', {
+      courseId,
+      relPath,
+      page: pageAtViewportCenter(),
+      zoom: zoomRef.current
+    }).catch(() => {})
+  }, [courseId, pageAtViewportCenter, relPath])
 
   const handleScroll = useCallback((): void => {
     if (scrollFrame.current === null) {
@@ -296,14 +320,28 @@ function PdfViewer({
     if (scroller === null) return
     restoreRef.current.done = true
     const entry = pdfScrollMemory.get(courseId, relPath)
-    if (entry === null || entry.scrollHeight <= 0) return
-    requestAnimationFrame(() => {
-      const target = scrollerRef.current
-      if (target === null) return
-      target.scrollTop =
-        entry.scrollTop * (target.scrollHeight / entry.scrollHeight)
-      setCurrentPage(pageAtViewportCenter())
-    })
+    if (entry !== null && entry.scrollHeight > 0) {
+      requestAnimationFrame(() => {
+        const target = scrollerRef.current
+        if (target === null) return
+        target.scrollTop =
+          entry.scrollTop * (target.scrollHeight / entry.scrollHeight)
+        setCurrentPage(pageAtViewportCenter())
+      })
+      return
+    }
+    // 세션 메모리가 없다 = 재시작 후 첫 열람 — 로컬 DB의 마지막 페이지로.
+    void invoke('pdf:getViewState', { courseId, relPath })
+      .then((saved) => {
+        if (saved === null || saved.page <= 1) return
+        if (Number.isFinite(saved.zoom) && saved.zoom > 0 && saved.zoom !== 1) {
+          setZoom(saved.zoom)
+        }
+        requestAnimationFrame(() => {
+          jumpToPageRef.current(saved.page)
+        })
+      })
+      .catch(() => {})
   }, [numPages, containerWidth, courseId, relPath, pageAtViewportCenter])
 
   // -- selection → mini toolbar ---------------------------------------------
@@ -474,6 +512,8 @@ function PdfViewer({
     },
     [elementFor, numPages]
   )
+  // 복원 effect(정의 위쪽)가 최신 jumpToPage 를 부를 수 있게 ref 로 노출.
+  jumpToPageRef.current = jumpToPage
 
   // A note link can activate an existing panel or mount a fresh one. The
   // sender retries this event until annotations and page boxes are ready;
@@ -546,8 +586,8 @@ function PdfViewer({
     setNumPages(pdf.numPages)
   }, [])
 
-  if (doc.status === 'error') {
-    return <ErrorPanel message={doc.message} />
+  if (loadError !== null) {
+    return <ErrorPanel message={loadError} />
   }
 
   const zoomPercent = Math.round(zoom * 100)
@@ -586,16 +626,21 @@ function PdfViewer({
           onScroll={handleScroll}
         >
           <div ref={contentRef} className="pdf-content">
-            {doc.status === 'loading' ? (
-              <LoadingSkeleton />
-            ) : (
+            {(
               <Document
-                file={doc.dataUrl}
+                file={fileSource}
+                options={PDF_DOCUMENT_OPTIONS}
                 loading={<LoadingSkeleton />}
                 error={
                   <ErrorPanel message="PDF 파일을 해석하지 못했어요. 파일이 손상되었을 수 있어요." />
                 }
                 onLoadSuccess={handleDocumentLoad}
+                onLoadError={(error) => {
+                  console.error('[Bandal] PDF를 불러오지 못했습니다.', error)
+                  setLoadError(
+                    'PDF를 열 수 없어요. 파일이 삭제·이동되었거나 손상되었을 수 있어요.'
+                  )
+                }}
                 externalLinkTarget="_blank"
               >
                 {Array.from({ length: numPages }, (_, index) => {

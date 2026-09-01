@@ -9,9 +9,10 @@
  * that is usually what they actually wanted.
  *
  * Rendered with the pdf.js viewer the app already ships for course materials,
- * from a data URL — see usePdfDocument.ts for why a data URL rather than the
- * byte array (pdf.js detaches transferred ArrayBuffers, which StrictMode's
- * double mount then re-reads).
+ * from a data URL rather than a byte array — pdf.js detaches transferred
+ * ArrayBuffers, which StrictMode's double mount then re-reads. (자료 PDF 는
+ * bandal-media:// URL 스트리밍으로 옮겨갔지만, 인쇄 미리보기는 main 이 만든
+ * 인메모리 바이트라 여전히 data URL 이 맞다.)
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'

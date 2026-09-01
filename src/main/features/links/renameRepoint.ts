@@ -11,7 +11,12 @@ import {
 import { writeFileAtomic } from '../../lib/atomicWrite'
 import { createMaterialLink, parseMaterialLink } from '../link/materialLink'
 
-const PATH_TABLES = ['annotations', 'pdf_drawings', 'media_progress'] as const
+const PATH_TABLES = [
+  'annotations',
+  'pdf_drawings',
+  'media_progress',
+  'pdf_view_state'
+] as const
 const UPDATED_TABLES = [...PATH_TABLES, 'favorites', 'material_links'] as const
 
 type UpdatedTable = (typeof UPDATED_TABLES)[number]

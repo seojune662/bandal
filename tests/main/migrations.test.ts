@@ -44,7 +44,8 @@ describe('migrations', () => {
       { version: 21, name: 'browser-site-permissions' },
       { version: 22, name: 'desktop-surface-and-mcp' },
       { version: 23, name: 'all-day-due-date' },
-      { version: 24, name: 'material-links' }
+      { version: 24, name: 'material-links' },
+      { version: 25, name: 'pdf-view-state' }
     ])
   })
 
@@ -214,7 +215,7 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(24)
+    expect(count.n).toBe(25)
   })
 
   test('adds desktop conversation surface, grants, and audit (migration 022)', () => {
