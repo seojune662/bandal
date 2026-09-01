@@ -232,3 +232,62 @@ test.describe('workspace tabs', () => {
     expectSteadyForwardScroll(vertical)
   })
 })
+
+test.describe('pdf scroll preservation', () => {
+  test('keeps the scroll position when switching tabs and coming back', async () => {
+    const bandal = await launchBandal()
+    try {
+      const { page } = bandal
+      await createCourse(page, '항공역학')
+      const folders = readdirSync(bandal.dataRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+      const courseDir = join(bandal.dataRoot, folders[0]!)
+
+      // 다페이지 PDF — 스크롤이 의미 있으려면 페이지가 여럿이어야 한다.
+      const { PDFDocument, StandardFonts } = await import('pdf-lib')
+      const pdf = await PDFDocument.create()
+      const font = await pdf.embedFont(StandardFonts.Helvetica)
+      for (let index = 1; index <= 8; index += 1) {
+        pdf.addPage([595, 842]).drawText(`Page ${index}`, {
+          x: 64,
+          y: 720,
+          size: 28,
+          font
+        })
+      }
+      writeFileSync(join(courseDir, 'long.pdf'), await pdf.save())
+
+      await page.getByRole('button', { name: '자료 새로고침' }).click()
+      await page.locator('[data-material-path="long.pdf"]').click()
+      const scroller = page.locator('.pdf-scroller')
+      await expect(page.locator('.pdf-page').first()).toBeVisible({
+        timeout: 30_000
+      })
+
+      await scroller.evaluate((element) => {
+        element.scrollTop = 1200
+      })
+      await page.waitForTimeout(400)
+      const before = await scroller.evaluate((element) => element.scrollTop)
+      expect(before).toBeGreaterThan(0)
+
+      // 같은 그룹에서 다른 탭으로 갔다가 돌아온다 — dockview 의
+      // onlyWhenVisible 렌더러가 DOM 을 떼며 scrollTop 을 0으로 리셋하던
+      // 회귀 시나리오 (PdfTab 은 setRenderer('always')로 방어).
+      await openNewTabMenu(page)
+      await page.getByRole('dialog', { name: '새 탭 열기' })
+        .getByRole('button', { name: /학업 보드|보드/ })
+        .first()
+        .click()
+      await page.waitForTimeout(300)
+      await page.locator('.dv-tab', { hasText: 'long.pdf' }).click()
+
+      await expect
+        .poll(() => scroller.evaluate((element) => element.scrollTop))
+        .toBeGreaterThan(before - 50)
+    } finally {
+      await bandal.close()
+    }
+  })
+})

@@ -36,7 +36,11 @@ import {
 } from './materialPaths'
 import { isEditablePasteTarget } from './clipboardPaste'
 import { importDroppedFiles, isFileDrag, isSelfMaterialDrop } from './importDrop'
-import { clearMaterialFileDrag } from './materialFileDrag'
+import {
+  clearMaterialFileDrag,
+  getMaterialFileDrag,
+  subscribeMaterialFileDrag
+} from './materialFileDrag'
 import { MaterialsIcon } from './materialIcons'
 import {
   MATERIAL_MOVE_MIME,
@@ -248,6 +252,22 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     }
     void loadTree(course.id)
   }, [clear, clearSearch, course?.id, course?.folderPath, course?.missing, loadTree])
+
+  // 네이티브 파일 드래그는 dragend 가 없다 — 드래그 상태가 걷히는 순간
+  // (어디에 놓였든/취소든) 드롭 하이라이트와 행 활성을 확실히 원복하는 안전망.
+  useEffect(() => {
+    let wasDragging = getMaterialFileDrag() !== null
+    return subscribeMaterialFileDrag(() => {
+      const dragging = getMaterialFileDrag() !== null
+      if (wasDragging && !dragging) {
+        setDropActive(false)
+        setDropTargetDirRelPath(null)
+        setUrlDropTargetDirRelPath(null)
+        setSelectedRelPath(null)
+      }
+      wasDragging = dragging
+    })
+  }, [])
 
   // [M5] Live tree: watch the course folder, refresh silently on pushes.
   // A 연결 끊김 course has no folder to watch.
@@ -692,6 +712,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         }
         setDropActive(false)
         setDropTargetDirRelPath(null)
+        setUrlDropTargetDirRelPath(null)
       }}
       onDragEnter={(event) => {
         if (
@@ -739,9 +760,17 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         if (isFileDrag(event.dataTransfer)) {
           event.preventDefault()
           // 이 사이드바에서 시작한 자료 드래그가 (폴더 행이 아닌) 사이드바로
-          // 되돌아온 경우 = 드래그 취소 의도. 루트로 이동시키지 않는다.
+          // 되돌아온 경우 = 드래그 취소 의도. 루트로 이동시키지 않고,
+          // 드롭 하이라이트·행 활성까지 전부 원상 복구한다.
           if (isSelfMaterialDrop(course.id, [...event.dataTransfer.files])) {
             clearMaterialFileDrag()
+            setDropActive(false)
+            setDropTargetDirRelPath(null)
+            setUrlDropTargetDirRelPath(null)
+            setSelectedRelPath(null)
+            if (document.activeElement instanceof HTMLElement) {
+              document.activeElement.blur()
+            }
             return
           }
           importFiles([...event.dataTransfer.files])

@@ -109,7 +109,17 @@
 }
 
 .link-graph__node[data-openable] {
-  cursor: pointer;
+  cursor: grab;
+}
+
+.link-graph__node[data-openable]:active {
+  cursor: grabbing;
+}
+
+/* 드래그로 배치한(고정된) 노드 — 약한 링으로 표시. */
+.link-graph__node[data-pinned] circle,
+.link-graph__node[data-pinned] rect {
+  stroke-width: 2.5;
 }
 
 .link-graph__node[data-dimmed] {

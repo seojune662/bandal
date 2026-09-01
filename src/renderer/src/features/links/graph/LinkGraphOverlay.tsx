@@ -25,7 +25,11 @@ import {
   type GraphNode,
   type LinkGraph
 } from './linkGraphModel'
-import { layoutGraph } from './linkGraphLayout'
+import {
+  createSimulation,
+  hashString,
+  type GraphSimulation
+} from './linkGraphSim'
 import './linkGraph.css'
 
 const CANVAS_WIDTH = 1200
@@ -58,6 +62,18 @@ export function LinkGraphOverlay({
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [view, setView] = useState<ViewBox>({ x: 0, y: 0, scale: 1 })
   const panRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
+  // 라이브 시뮬 — 열릴 때 alpha=1 에서 감쇠하며 정착하는 애니메이션.
+  const simRef = useRef<GraphSimulation | null>(null)
+  const alphaRef = useRef(0)
+  const timeRef = useRef(0)
+  const dragRef = useRef<{
+    id: string
+    pointerId: number
+    startX: number
+    startY: number
+    moved: boolean
+  } | null>(null)
+  const [, setFrame] = useState(0)
 
   useFocusTrap(dialogRef, { active: true, onEscape: onClose })
   // 오버레이가 브라우저 레이어 위에 뜨는 동안 webview 가 포인터를 먹지 않게.
@@ -84,20 +100,72 @@ export function LinkGraphOverlay({
     void load()
   }, [load])
 
-  const positions = useMemo(
-    () =>
-      graph === null
-        ? null
-        : layoutGraph(graph.nodes, graph.edges, {
-            width: CANVAS_WIDTH,
-            height: CANVAS_HEIGHT
-          }),
-    [graph]
-  )
+  // 그래프가 바뀌면 시뮬을 새로 만들고 재가열한다.
+  useEffect(() => {
+    if (graph === null) {
+      simRef.current = null
+      return
+    }
+    simRef.current = createSimulation(graph.nodes, graph.edges, {
+      width: CANVAS_WIDTH,
+      height: CANVAS_HEIGHT
+    })
+    alphaRef.current = 1
+  }, [graph])
+
+  // rAF 루프: 정착 애니메이션 + 미세 부유. 오버레이는 모달이라 열려 있는
+  // 동안만 돈다.
+  useEffect(() => {
+    if (graph === null) return
+    let frameId = 0
+    const loop = (time: number): void => {
+      timeRef.current = time
+      const sim = simRef.current
+      if (sim !== null && alphaRef.current > 0.003) {
+        sim.tick(alphaRef.current)
+        alphaRef.current *= 0.97
+      }
+      setFrame((count) => count + 1)
+      frameId = requestAnimationFrame(loop)
+    }
+    frameId = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(frameId)
+  }, [graph])
+
+  const positions = simRef.current?.positions ?? null
   const degrees = useMemo(
     () => (graph === null ? null : nodeDegrees(graph)),
     [graph]
   )
+
+  /** 클라이언트 좌표 → 캔버스 좌표 (현재 viewBox 반영). */
+  const canvasPointFromClient = useCallback(
+    (clientX: number, clientY: number): { x: number; y: number } | null => {
+      const svg = svgRef.current
+      if (svg === null) return null
+      const bounds = svg.getBoundingClientRect()
+      if (bounds.width <= 0 || bounds.height <= 0) return null
+      return {
+        x: view.x + ((clientX - bounds.left) / bounds.width) *
+          (CANVAS_WIDTH / view.scale),
+        y: view.y + ((clientY - bounds.top) / bounds.height) *
+          (CANVAS_HEIGHT / view.scale)
+      }
+    },
+    [view]
+  )
+
+  /** 옵시디언식 숨쉬는 부유 — 해시 위상으로 노드마다 다르게. */
+  const floatOffset = (id: string): { dx: number; dy: number } => {
+    const drag = dragRef.current
+    if (drag !== null && drag.id === id) return { dx: 0, dy: 0 }
+    const t = timeRef.current / 1000
+    const phase = (hashString(id) % 628) / 100
+    return {
+      dx: Math.sin(t * 0.7 + phase) * 1.6,
+      dy: Math.cos(t * 0.55 + phase * 1.31) * 1.6
+    }
+  }
 
   const openNode = useCallback(
     (node: GraphNode): void => {
@@ -258,6 +326,8 @@ export function LinkGraphOverlay({
                 const from = positions.get(edge.sourceId)
                 const to = positions.get(edge.targetId)
                 if (from === undefined || to === undefined) return null
+                const fromFloat = floatOffset(edge.sourceId)
+                const toFloat = floatOffset(edge.targetId)
                 const dimmed =
                   hoveredNeighbors !== null &&
                   !(
@@ -270,10 +340,10 @@ export function LinkGraphOverlay({
                     className="link-graph__edge"
                     data-kind={edge.kind}
                     data-dimmed={dimmed || undefined}
-                    x1={from.x}
-                    y1={from.y}
-                    x2={to.x}
-                    y2={to.y}
+                    x1={from.x + fromFloat.dx}
+                    y1={from.y + fromFloat.dy}
+                    x2={to.x + toFloat.dx}
+                    y2={to.y + toFloat.dy}
                     markerEnd={
                       edge.kind === 'sequence'
                         ? 'url(#link-graph-arrow)'
@@ -285,8 +355,10 @@ export function LinkGraphOverlay({
             {positions !== null &&
               degrees !== null &&
               graph.nodes.map((node) => {
-                const point = positions.get(node.id)
-                if (point === undefined) return null
+                const base = positions.get(node.id)
+                if (base === undefined) return null
+                const float = floatOffset(node.id)
+                const point = { x: base.x + float.dx, y: base.y + float.dy }
                 const dimmed =
                   hoveredNeighbors !== null && !hoveredNeighbors.has(node.id)
                 const radius = Math.min(
@@ -303,12 +375,64 @@ export function LinkGraphOverlay({
                     data-kind={node.kind}
                     data-dimmed={dimmed || undefined}
                     data-openable={openable || undefined}
+                    data-pinned={simRef.current?.isPinned(node.id) || undefined}
                     onMouseEnter={() => setHoveredId(node.id)}
                     onMouseLeave={() =>
                       setHoveredId((current) =>
                         current === node.id ? null : current
                       )}
-                    onClick={() => openNode(node)}
+                    onPointerDown={(event) => {
+                      // 배경 팬과 분리 — 노드는 드래그(재배치) 또는 클릭(열기).
+                      event.stopPropagation()
+                      event.currentTarget.setPointerCapture(event.pointerId)
+                      dragRef.current = {
+                        id: node.id,
+                        pointerId: event.pointerId,
+                        startX: event.clientX,
+                        startY: event.clientY,
+                        moved: false
+                      }
+                    }}
+                    onPointerMove={(event) => {
+                      const drag = dragRef.current
+                      if (
+                        drag === null ||
+                        drag.id !== node.id ||
+                        drag.pointerId !== event.pointerId
+                      ) {
+                        return
+                      }
+                      if (
+                        !drag.moved &&
+                        Math.hypot(
+                          event.clientX - drag.startX,
+                          event.clientY - drag.startY
+                        ) < 4
+                      ) {
+                        return
+                      }
+                      drag.moved = true
+                      const target = canvasPointFromClient(
+                        event.clientX,
+                        event.clientY
+                      )
+                      if (target === null) return
+                      simRef.current?.pin(node.id, target.x, target.y)
+                      // 이웃이 스프링으로 따라오도록 재가열.
+                      alphaRef.current = Math.max(alphaRef.current, 0.3)
+                    }}
+                    onPointerUp={(event) => {
+                      const drag = dragRef.current
+                      if (drag === null || drag.pointerId !== event.pointerId) {
+                        return
+                      }
+                      dragRef.current = null
+                      // 4px 미만 = 클릭 — 자료 열기. 드래그였다면 그 자리에 고정.
+                      if (!drag.moved) openNode(node)
+                    }}
+                    onPointerCancel={() => {
+                      dragRef.current = null
+                    }}
                   >
                     {node.kind === 'board' ? (
                       <rect
