@@ -49,3 +49,41 @@ describe('Bandal PDF clip transfer', () => {
     expect(result).not.toHaveProperty('pixels')
   })
 })
+
+describe('clip pageAspect round trip', () => {
+  test('serializes and restores pageAspect', () => {
+    const store = new Map<string, string>()
+    const writer = {
+      effectAllowed: '' as string,
+      setData: (mime: string, value: string) => store.set(mime, value)
+    }
+    writeBandalClipDragData(writer, {
+      relPath: '강의.pdf',
+      page: 3,
+      pageAspect: 0.5625,
+      label: '강의.pdf · 3쪽'
+    })
+    const reader = { getData: (mime: string) => store.get(mime) ?? '' }
+    const restored = readBandalClipDragData(reader)
+    expect(restored?.pageAspect).toBeCloseTo(0.5625)
+  })
+
+  test('accepts legacy payloads without pageAspect', () => {
+    const raw = JSON.stringify({ relPath: '강의.pdf', page: 1, label: '강의.pdf' })
+    const reader = { getData: () => raw }
+    const restored = readBandalClipDragData(reader)
+    expect(restored).not.toBeNull()
+    expect(restored?.pageAspect).toBeUndefined()
+  })
+
+  test('rejects a non-positive pageAspect', () => {
+    const raw = JSON.stringify({
+      relPath: '강의.pdf',
+      page: 1,
+      pageAspect: -1,
+      label: '강의.pdf'
+    })
+    const reader = { getData: () => raw }
+    expect(readBandalClipDragData(reader)).toBeNull()
+  })
+})

@@ -167,8 +167,25 @@
   height: 100%;
 }
 
+/* select 툴: 레이어 루트는 통과시키고(밑의 textLayer 로 텍스트 선택),
+   셰이프 요소들만 이벤트를 받는다 — 빈 곳=하이라이트, 셰이프 위=조작. */
 .pdf-tab[data-tool='select'] .pdf-drawing-layer {
   pointer-events: none;
+}
+
+.pdf-tab[data-tool='select'] .pdf-drawing-layer :is(
+  .ink-layer__mark--selectable,
+  .ink-layer__image-el,
+  .ink-layer__image-object,
+  .ink-layer__clip-object,
+  .ink-layer__textbox-object,
+  .ink-layer__selection-frame,
+  .ink-layer__image-resize,
+  .ink-layer__clip-resize,
+  .ink-layer__shape-resize,
+  .ink-layer__textbox-resize
+) {
+  pointer-events: auto;
 }
 
 .pdf-tab:not([data-tool='select']) .pdf-drawing-layer {

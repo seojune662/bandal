@@ -17,6 +17,8 @@ interface DrawingLayerProps {
   aspect: number
   drawings: Drawing[]
   loading: boolean
+  /** 패널 활성 여부 — 키보드 삭제가 활성 탭에만 반응하게. */
+  interactive: boolean
   create: (input: CreateDrawingInput) => Promise<Drawing | null>
   update: (input: UpdateDrawingInput) => Promise<Drawing | null>
   remove: (ids: string[]) => Promise<boolean>
@@ -34,6 +36,7 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
     aspect,
     drawings,
     loading,
+    interactive,
     create,
     update,
     remove
@@ -70,6 +73,7 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
       onUpdate={handleUpdate}
       onRemove={remove}
       clampToBounds
+      interactive={interactive}
       ariaLabel={`${page} 페이지 필기 레이어`}
       className={loading ? 'pdf-drawing-layer is-loading' : 'pdf-drawing-layer'}
     />

@@ -61,6 +61,8 @@ export interface PdfPageViewProps {
   annotations: Annotation[]
   drawings: Drawing[]
   drawingsLoading: boolean
+  /** 패널 활성 여부 — 키보드 삭제가 활성 탭에만 반응하게. */
+  drawingsInteractive: boolean
   courseId: string
   relPath: string
   staleIds: Set<string>
@@ -142,6 +144,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
     annotations,
     drawings,
     drawingsLoading,
+    drawingsInteractive,
     courseId,
     relPath,
     registerRef,
@@ -318,6 +321,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
   const clipSource: DrawingClipSource = {
     relPath,
     page: pageNumber,
+    pageAspect: aspect,
     label: pdfClipLabel(relPath, pageNumber, false)
   }
 
@@ -406,6 +410,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
             aspect={aspect}
             drawings={drawings}
             loading={drawingsLoading}
+            interactive={drawingsInteractive}
             create={onDrawingCreate}
             update={onDrawingUpdate}
             remove={onDrawingRemove}

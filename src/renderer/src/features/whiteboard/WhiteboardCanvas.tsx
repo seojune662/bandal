@@ -123,7 +123,7 @@ export function WhiteboardCanvas({
             onUpdate={onUpdate}
             onRemove={onRemove}
             clampToBounds={true}
-            deferTextCreation
+            interactive={controlsEnabled}
             ariaLabel="공유 화이트보드 캔버스"
             className="whiteboard__ink-layer"
           />

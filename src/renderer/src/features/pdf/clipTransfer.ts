@@ -44,7 +44,11 @@ export function isDrawingClipSource(value: unknown): value is DrawingClipSource 
     (source['page'] as number) > 0 &&
     typeof source['label'] === 'string' &&
     source['label'].length > 0 &&
-    (source['crop'] === undefined || isCrop(source['crop']))
+    (source['crop'] === undefined || isCrop(source['crop'])) &&
+    (source['pageAspect'] === undefined ||
+      (typeof source['pageAspect'] === 'number' &&
+        Number.isFinite(source['pageAspect']) &&
+        source['pageAspect'] > 0))
   )
 }
 
@@ -57,6 +61,9 @@ export function writeBandalClipDragData(
     relPath: source.relPath,
     page: source.page,
     ...(source.crop === undefined ? {} : { crop: source.crop }),
+    ...(source.pageAspect === undefined
+      ? {}
+      : { pageAspect: source.pageAspect }),
     label: source.label
   }))
 }
@@ -80,6 +87,9 @@ export function readBandalClipDragData(
           height: parsed.crop.height
         }
       }),
+      ...(parsed.pageAspect === undefined
+        ? {}
+        : { pageAspect: parsed.pageAspect }),
       label: parsed.label
     }
   } catch {

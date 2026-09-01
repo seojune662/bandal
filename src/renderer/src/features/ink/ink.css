@@ -163,6 +163,19 @@ textarea.ink-layer__textbox::placeholder {
   pointer-events: auto;
 }
 
+/* select 툴로 잡은 셰이프의 공용 선택 외곽선. */
+.ink-layer__selection-frame {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+.ink-layer__mark--selectable {
+  cursor: move;
+}
+
 .ink-layer__image-frame {
   fill: none;
   stroke: var(--border-strong);

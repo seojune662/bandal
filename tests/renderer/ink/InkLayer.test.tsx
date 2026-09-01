@@ -50,7 +50,6 @@ function renderLayer(shapes: DrawingShape[]): string {
       onCreate={vi.fn()}
       onUpdate={vi.fn()}
       onRemove={vi.fn()}
-      deferTextCreation
       ariaLabel="테스트 캔버스"
     />
   )

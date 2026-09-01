@@ -29,9 +29,16 @@ import {
 import { healedImageBox } from './imagePlacement'
 import type { InkTool, InkToolState } from './inkToolStore'
 import type { RenderClip } from './ClipShape'
+import { isEditableTarget } from './domTarget'
 import { foreignObjectContentStyle } from './foreignObjectScale'
 import { ReferencedShape } from './ReferencedShape'
 import { ResizeHandles } from './ResizeHandles'
+import {
+  TEXT_BASE_FONT_RATIO,
+  defaultTextBoxSize,
+  grownTextBoxHeight,
+  scaledFontScale
+} from './textBoxLayout'
 import './ink.css'
 
 export interface InkLayerProps {
@@ -46,7 +53,6 @@ export interface InkLayerProps {
   ) => void
   onRemove: (ids: string[]) => void
   clampToBounds?: boolean
-  deferTextCreation?: boolean
   ariaLabel: string
   className?: string
   /** Course that owns image paths. Required only when image shapes are present. */
@@ -59,6 +65,12 @@ export interface InkLayerProps {
    * 보정(undo 미기록)할 수 있게 한다. 미배선 표면은 레터박스 폴백으로 렌더.
    */
   onRefineBox?: ((id: string, box: DrawingBox) => void) | undefined
+  /**
+   * 이 레이어가 지금 사용자 입력의 주인인지(패널 활성). false 면 선택을
+   * 해제하고 키보드 삭제도 받지 않는다 — 열린 탭 여러 개가 Backspace 를
+   * 동시에 먹는 사고 방지.
+   */
+  interactive?: boolean
 }
 
 type ShapeTool = 'rect' | 'ellipse' | 'arrow' | 'line'
@@ -105,15 +117,24 @@ interface PointerSample {
   pressure: number
 }
 
-interface PendingTextBox {
-  existingIds: Set<string>
-  box: DrawingBox
-}
-
 const SHAPE_TOOLS: readonly ShapeTool[] = ['rect', 'ellipse', 'arrow', 'line']
-const TEXT_BOX_WIDTH = 0.26
-const TEXT_BOX_HEIGHT = 0.08
-const TEXT_BASE_FONT_RATIO = 0.026
+/** select 툴로 잡을 수 있는 셰이프 — 잉크 스트로크는 지우개 전용으로 남긴다. */
+const SELECTABLE_KINDS: ReadonlySet<DrawingKind> = new Set([
+  'textbox',
+  'image',
+  'clip',
+  'rect',
+  'ellipse',
+  'line',
+  'arrow'
+])
+/** 코너 리사이즈에서 박스 비율을 잠그는 셰이프. */
+const ASPECT_LOCKED_KINDS: ReadonlySet<DrawingKind> = new Set([
+  'image',
+  'clip',
+  'textbox'
+])
+
 function isFinitePositive(value: number): boolean {
   return Number.isFinite(value) && value > 0
 }
@@ -176,26 +197,6 @@ function boxForShape(shape: DrawingShape, gesture: Gesture | null): DrawingBox |
   return shape.data.box
 }
 
-function sameBox(left: DrawingBox | undefined, right: DrawingBox): boolean {
-  return left !== undefined &&
-    left.x === right.x &&
-    left.y === right.y &&
-    left.width === right.width &&
-    left.height === right.height
-}
-
-function isDrawingShape(value: unknown): value is DrawingShape {
-  if (typeof value !== 'object' || value === null) return false
-  return 'id' in value && typeof value.id === 'string' &&
-    'createdAt' in value && typeof value.createdAt === 'string' &&
-    'updatedAt' in value && typeof value.updatedAt === 'string'
-}
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return typeof value === 'object' && value !== null &&
-    'then' in value && typeof value.then === 'function'
-}
-
 export function InkLayer(props: InkLayerProps): JSX.Element {
   const {
     aspect,
@@ -206,26 +207,30 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     onUpdate,
     onRemove,
     clampToBounds = true,
-    deferTextCreation = false,
     ariaLabel,
     className,
     courseId,
     renderClip,
     onOpenClip,
-    onRefineBox
+    onRefineBox,
+    interactive = true
   } = props
   const { activeTool, color, width, opacity } = tool
   const svgRef = useRef<SVGSVGElement>(null)
   const gestureRef = useRef<Gesture | null>(null)
   const pendingSample = useRef<PointerSample | null>(null)
   const pointerFrame = useRef<number | null>(null)
-  const pendingTextBox = useRef<PendingTextBox | null>(null)
   const previousShapeIds = useRef(new Set(shapes.map((shape) => shape.id)))
+  // Escape 는 확정이 아니라 취소다 — blur 핸들러가 이 플래그로 분기한다.
+  const cancelEditRef = useRef(false)
   const [gesture, setGestureState] = useState<Gesture | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [newTextBox, setNewTextBox] = useState<DrawingBox | null>(null)
   const [textDraft, setTextDraft] = useState('')
+  /** 편집 중 타이핑으로 자란 기존 박스의 로컬 프리뷰(확정 시 저장). */
+  const [editingBoxOverride, setEditingBoxOverride] =
+    useState<DrawingBox | null>(null)
   const surfaceReady = isFinitePositive(aspect) &&
     isFinitePositive(baseWidthPx) &&
     Number.isFinite(baseWidthPx * aspect)
@@ -309,7 +314,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
             dy,
             clampToBounds,
             current.handle,
-            current.shape.kind === 'image',
+            ASPECT_LOCKED_KINDS.has(current.shape.kind),
             aspect
           )
       setGesture({ ...current, box })
@@ -333,8 +338,13 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     setEditingId(null)
     setSelectedId(null)
     setNewTextBox(null)
-    pendingTextBox.current = null
+    setEditingBoxOverride(null)
   }, [activeTool, setGesture])
+
+  // 패널이 비활성이 되면 선택도 내려놓는다 — 키보드 삭제 대상에서 제외.
+  useEffect(() => {
+    if (!interactive) setSelectedId(null)
+  }, [interactive])
 
   useEffect(() => {
     const priorIds = previousShapeIds.current
@@ -346,64 +356,57 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     if (addedImage !== undefined) setSelectedId(addedImage.id)
   }, [activeTool, shapes])
 
+  // 바깥 클릭 = 선택 해제. PDF 에서는 svg 루트가 pointer-events:none 이라
+  // 루트 클릭 핸들러가 못 받으므로 document 캡처로 처리한다.
   useEffect(() => {
-    const pending = pendingTextBox.current
-    if (pending === null) return
-    const created = shapes.find((shape) =>
-      !pending.existingIds.has(shape.id) &&
-      shape.kind === 'textbox' &&
-      sameBox(shape.data.box, pending.box)
-    )
-    if (created === undefined) return
-    pendingTextBox.current = null
-    setEditingId(created.id)
-    setTextDraft(created.data.text ?? '')
-  }, [shapes])
+    if (selectedId === null) return
+    const onPointerDown = (event: PointerEvent): void => {
+      const svg = svgRef.current
+      const target = event.target
+      if (svg === null || !(target instanceof Node)) return
+      if (!svg.contains(target) || target === svg) setSelectedId(null)
+    }
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => document.removeEventListener('pointerdown', onPointerDown, true)
+  }, [selectedId])
 
-  const focusCreatedTextBox = useCallback((created: unknown): void => {
-    if (!isDrawingShape(created)) return
-    pendingTextBox.current = null
-    setEditingId(created.id)
-    setTextDraft(created.data.text ?? '')
-  }, [])
+  // Backspace/Delete = 선택 셰이프 삭제 (undo 는 onRemove 경로가 기록).
+  useEffect(() => {
+    if (!interactive || selectedId === null) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Backspace' && event.key !== 'Delete') return
+      if (isEditableTarget(event.target)) return
+      if (editingId !== null || newTextBox !== null) return
+      if (gestureRef.current !== null) return
+      event.preventDefault()
+      onRemove([selectedId])
+      setSelectedId(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [editingId, interactive, newTextBox, onRemove, selectedId])
 
   const startTextBox = useCallback((point: DrawingPoint): void => {
     setSelectedId(null)
+    const size = defaultTextBoxSize(aspect)
     const box: DrawingBox = {
-      x: clampToBounds ? Math.min(point.x, 1 - TEXT_BOX_WIDTH) : point.x,
-      y: clampToBounds ? Math.min(point.y, 1 - TEXT_BOX_HEIGHT) : point.y,
-      width: TEXT_BOX_WIDTH,
-      height: TEXT_BOX_HEIGHT
+      x: clampToBounds ? Math.min(point.x, 1 - size.width) : point.x,
+      y: clampToBounds ? Math.min(point.y, 1 - size.height) : point.y,
+      width: size.width,
+      height: size.height
     }
-    if (deferTextCreation) {
-      pendingTextBox.current = null
-      setEditingId(null)
-      setTextDraft('')
-      setNewTextBox(box)
-      return
-    }
-    pendingTextBox.current = {
-      existingIds: new Set(shapes.map((shape) => shape.id)),
-      box
-    }
-    const result: unknown = onCreate({
-      kind: 'textbox',
-      data: { box, text: '' },
-      style: drawingStyle('text', width, opacity, color)
-    })
-    if (isPromiseLike(result)) {
-      pendingTextBox.current = null
-      void Promise.resolve(result).then(focusCreatedTextBox, () => {
-        pendingTextBox.current = null
-      })
-    } else {
-      focusCreatedTextBox(result)
-    }
-  }, [clampToBounds, color, deferTextCreation, focusCreatedTextBox,
-    onCreate, opacity, shapes, width])
+    setEditingId(null)
+    setTextDraft('')
+    setNewTextBox(box)
+  }, [aspect, clampToBounds])
 
   const finishNewTextBox = useCallback((box: DrawingBox): void => {
     setNewTextBox(null)
+    if (cancelEditRef.current) {
+      cancelEditRef.current = false
+      setTextDraft('')
+      return
+    }
     const shape = createTextBoxShape(
       box,
       textDraft,
@@ -419,8 +422,10 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       return
     }
     if (!surfaceReady || !hasMeasuredBounds(event.currentTarget)) return
+    // 편집 중 바깥 클릭은 "확정"이지 새 박스 생성이 아니다 — textarea 의
+    // blur 가 확정을 처리하므로 여기서는 아무것도 시작하지 않는다.
     if (
-      deferTextCreation && activeTool === 'text' &&
+      activeTool === 'text' &&
       (newTextBox !== null || editingId !== null)
     ) {
       return
@@ -459,7 +464,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     } else if (activeTool === 'eraser') {
       setGesture(eraseAt({ kind: 'erase', pointerId: event.pointerId, ids: new Set() }, point))
     }
-  }, [activeTool, clampToBounds, deferTextCreation, editingId, eraseAt,
+  }, [activeTool, clampToBounds, editingId, eraseAt,
     newTextBox, setGesture, startTextBox, surfaceReady])
 
   const handlePointerMove = useCallback((event: ReactPointerEvent<SVGSVGElement>): void => {
@@ -527,17 +532,49 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     } else {
       const original = completed.shape.data.box
       if (
-        original !== undefined &&
-        Math.abs(completed.box.x - original.x) < 0.0005 &&
-        Math.abs(completed.box.y - original.y) < 0.0005 &&
-        Math.abs(completed.box.width - original.width) < 0.0005 &&
-        Math.abs(completed.box.height - original.height) < 0.0005
+        original === undefined ||
+        (
+          Math.abs(completed.box.x - original.x) < 0.0005 &&
+          Math.abs(completed.box.y - original.y) < 0.0005 &&
+          Math.abs(completed.box.width - original.width) < 0.0005 &&
+          Math.abs(completed.box.height - original.height) < 0.0005
+        )
       ) {
         return
       }
-      onUpdate(completed.shape.id, {
-        data: { ...completed.shape.data, box: completed.box }
-      })
+      const nextData: DrawingShape['data'] = {
+        ...completed.shape.data,
+        box: completed.box
+      }
+      // 선/화살표의 실좌표는 points 다 — box 만 옮기면 그림이 안 따라온다.
+      if (
+        completed.kind === 'move' &&
+        (completed.shape.kind === 'line' || completed.shape.kind === 'arrow') &&
+        completed.shape.data.points !== undefined
+      ) {
+        const dx = completed.box.x - original.x
+        const dy = completed.box.y - original.y
+        nextData.points = completed.shape.data.points.map((point) => ({
+          ...point,
+          x: point.x + dx,
+          y: point.y + dy
+        }))
+      }
+      const patch: Partial<Pick<DrawingShape, 'data' | 'style'>> = {
+        data: nextData
+      }
+      // 텍스트박스 코너 리사이즈 = 박스와 글자가 같이 스케일 (GoodNotes 관례).
+      if (completed.kind === 'resize' && completed.shape.kind === 'textbox') {
+        patch.style = {
+          ...completed.shape.style,
+          fontScale: scaledFontScale(
+            completed.shape.style.fontScale,
+            original,
+            completed.box
+          )
+        }
+      }
+      onUpdate(completed.shape.id, patch)
     }
   }, [aspect, color, onCreate, onRemove, onUpdate, opacity, surfaceReady, width])
 
@@ -570,9 +607,13 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     kind: 'move' | 'resize',
     handle: ResizeHandle = 'se'
   ): void => {
+    // select 툴 = 범용 조작(선/화살표는 이동만), text 툴 = 텍스트박스만.
     const canManipulate =
-      (shape.kind === 'textbox' && activeTool === 'text') ||
-      ((shape.kind === 'clip' || shape.kind === 'image') && activeTool === 'select')
+      (activeTool === 'select' &&
+        SELECTABLE_KINDS.has(shape.kind) &&
+        (kind === 'move' ||
+          (shape.kind !== 'line' && shape.kind !== 'arrow'))) ||
+      (activeTool === 'text' && shape.kind === 'textbox')
     if (
       !canManipulate ||
       !surfaceReady ||
@@ -600,35 +641,84 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   }, [activeTool, clampToBounds, editingId, setGesture, surfaceReady])
 
   const startEditing = useCallback((shape: DrawingShape): void => {
-    if (activeTool !== 'text') return
+    if (activeTool !== 'text' && activeTool !== 'select') return
     setEditingId(shape.id)
     setTextDraft(shape.data.text ?? '')
+    setEditingBoxOverride(null)
   }, [activeTool])
 
   const finishEditing = useCallback((shape: DrawingShape): void => {
+    const cancelled = cancelEditRef.current
+    cancelEditRef.current = false
+    const grownBox = editingBoxOverride
     setEditingId(null)
+    setEditingBoxOverride(null)
+    if (cancelled) return
     if (textDraft.trim().length === 0) {
       onRemove([shape.id])
-    } else if (textDraft !== (shape.data.text ?? '')) {
-      onUpdate(shape.id, { data: { ...shape.data, text: textDraft } })
+      return
     }
-  }, [onRemove, onUpdate, textDraft])
+    const textChanged = textDraft !== (shape.data.text ?? '')
+    const boxChanged = grownBox !== null
+    if (!textChanged && !boxChanged) return
+    onUpdate(shape.id, {
+      data: {
+        ...shape.data,
+        ...(boxChanged ? { box: grownBox } : {}),
+        text: textDraft
+      }
+    })
+  }, [editingBoxOverride, onRemove, onUpdate, textDraft])
+
+  /** 타이핑으로 내용이 넘치면 박스 높이를 따라 키운다 (로컬 프리뷰). */
+  const growEditingBox = useCallback((
+    scrollHeightPx: number,
+    box: DrawingBox,
+    target: 'new' | 'existing'
+  ): void => {
+    const grown = grownTextBoxHeight(scrollHeightPx, box, baseWidthPx, aspect)
+    if (grown === null) return
+    const next = { ...box, height: grown }
+    if (target === 'new') setNewTextBox(next)
+    else setEditingBoxOverride(next)
+  }, [aspect, baseWidthPx])
 
   const textBoxContentStyle = useCallback((
     box: DrawingBox,
-    shapeStyle: DrawingStyle
+    shapeStyle: DrawingStyle,
+    fontFactor = 1
   ): CSSProperties => {
-    const fontSize = baseWidthPx * TEXT_BASE_FONT_RATIO * (
+    const fontScale =
       isFinitePositive(shapeStyle.fontScale ?? 1) ? (shapeStyle.fontScale ?? 1) : 1
-    )
+    const fontSize = baseWidthPx * TEXT_BASE_FONT_RATIO * fontScale * fontFactor
     const scaled = foreignObjectContentStyle(box, baseWidthPx, aspect)
     if (scaled === null) return { fontSize, opacity: shapeStyle.opacity }
     return { ...scaled, fontSize, opacity: shapeStyle.opacity }
   }, [aspect, baseWidthPx])
 
+  const editKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (event.key === 'Escape') {
+      cancelEditRef.current = true
+      event.currentTarget.blur()
+    } else if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+      event.currentTarget.blur()
+    }
+  }
+
   const erasedIds = gesture?.kind === 'erase' ? gesture.ids : new Set<string>()
   const style = drawingStyle(activeTool, width, opacity, color)
   const rootClassName = className === undefined ? 'ink-layer' : `ink-layer ${className}`
+
+  const selectionFrame = (box: DrawingBox): JSX.Element => (
+    <rect
+      className="ink-layer__selection-frame"
+      x={box.x}
+      y={box.y}
+      width={box.width}
+      height={box.height}
+      vectorEffect="non-scaling-stroke"
+    />
+  )
 
   return (
     <svg
@@ -646,6 +736,13 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       {shapes.filter((shape) => !erasedIds.has(shape.id)).map((shape) => {
         if (!surfaceReady) return null
         const markColor = drawingColorVariable(shape.style.color)
+        const isSelected = selectedId === shape.id && activeTool === 'select'
+        const selectProps = activeTool === 'select' && SELECTABLE_KINDS.has(shape.kind)
+          ? {
+              onPointerDown: (event: ReactPointerEvent<Element>) =>
+                beginManipulation(event, shape, 'move')
+            }
+          : {}
         if (shape.kind === 'ink' || shape.kind === 'highlighter') {
           const path = strokePath(
             shape.data.points ?? [],
@@ -668,10 +765,38 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         }
         const box = boxForShape(shape, gesture)
         if (shape.kind === 'rect' && isRenderableBox(box)) {
-          return <rect key={shape.id} className="ink-layer__mark" {...box} fill="none" stroke={markColor} strokeWidth={shape.style.width} opacity={shape.style.opacity} />
+          return (
+            <g key={shape.id}>
+              <rect className="ink-layer__mark ink-layer__mark--selectable" {...box} fill="none" stroke={markColor} strokeWidth={shape.style.width} opacity={shape.style.opacity} {...selectProps} />
+              {isSelected && selectionFrame(box)}
+              {isSelected && (
+                <ResizeHandles
+                  className="ink-layer__shape-resize"
+                  box={box}
+                  aspect={aspect}
+                  onPointerDown={(event, handle) =>
+                    beginManipulation(event, shape, 'resize', handle)}
+                />
+              )}
+            </g>
+          )
         }
         if (shape.kind === 'ellipse' && isRenderableBox(box)) {
-          return <ellipse key={shape.id} className="ink-layer__mark" cx={box.x + box.width / 2} cy={box.y + box.height / 2} rx={box.width / 2} ry={box.height / 2} fill="none" stroke={markColor} strokeWidth={shape.style.width} opacity={shape.style.opacity} />
+          return (
+            <g key={shape.id}>
+              <ellipse className="ink-layer__mark ink-layer__mark--selectable" cx={box.x + box.width / 2} cy={box.y + box.height / 2} rx={box.width / 2} ry={box.height / 2} fill="none" stroke={markColor} strokeWidth={shape.style.width} opacity={shape.style.opacity} {...selectProps} />
+              {isSelected && selectionFrame(box)}
+              {isSelected && (
+                <ResizeHandles
+                  className="ink-layer__shape-resize"
+                  box={box}
+                  aspect={aspect}
+                  onPointerDown={(event, handle) =>
+                    beginManipulation(event, shape, 'resize', handle)}
+                />
+              )}
+            </g>
+          )
         }
         if (shape.kind === 'line' || shape.kind === 'arrow') {
           const endpoints = lineEndpoints(shape)
@@ -681,10 +806,29 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
           ) {
             return null
           }
+          // 이동 프리뷰: 제스처 box 오프셋을 좌표에 반영한다.
+          const original = shape.data.box
+          const offsetX = box !== undefined && original !== undefined
+            ? box.x - original.x
+            : 0
+          const offsetY = box !== undefined && original !== undefined
+            ? box.y - original.y
+            : 0
+          const from = {
+            ...endpoints[0],
+            x: endpoints[0].x + offsetX,
+            y: endpoints[0].y + offsetY
+          }
+          const to = {
+            ...endpoints[1],
+            x: endpoints[1].x + offsetX,
+            y: endpoints[1].y + offsetY
+          }
           return (
-            <g key={shape.id} className="ink-layer__mark" stroke={markColor} strokeWidth={shape.style.width} opacity={shape.style.opacity} strokeLinecap="round" strokeLinejoin="round" fill="none">
-              <line x1={endpoints[0].x} y1={endpoints[0].y} x2={endpoints[1].x} y2={endpoints[1].y} />
-              {shape.kind === 'arrow' && <polyline points={arrowHeadPoints(endpoints[0], endpoints[1], shape.style.width, aspect)} />}
+            <g key={shape.id} className="ink-layer__mark ink-layer__mark--selectable" stroke={markColor} strokeWidth={shape.style.width} opacity={shape.style.opacity} strokeLinecap="round" strokeLinejoin="round" fill="none" {...selectProps}>
+              <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} />
+              {shape.kind === 'arrow' && <polyline points={arrowHeadPoints(from, to, shape.style.width, aspect)} />}
+              {isSelected && isRenderableBox(box) && selectionFrame(box)}
             </g>
           )
         }
@@ -697,7 +841,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
               aspect={aspect}
               baseWidthPx={baseWidthPx}
               courseId={courseId}
-              selected={activeTool === 'select' && selectedId === shape.id}
+              selected={isSelected}
               renderClip={renderClip}
               onOpenClip={onOpenClip}
               onBeginManipulation={beginManipulation}
@@ -708,11 +852,30 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         if (shape.kind !== 'textbox' || !isRenderableBox(box)) return null
         const isEditing = editingId === shape.id
         if (!isEditing && (shape.data.text ?? '').trim().length === 0) return null
-        const contentStyle = textBoxContentStyle(box, shape.style)
+        const editedBox = isEditing && editingBoxOverride !== null
+          ? editingBoxOverride
+          : box
+        // 리사이즈 중에는 커밋과 같은 배율로 글자를 라이브 프리뷰한다.
+        const resizeFactor =
+          gesture !== null &&
+          gesture.kind === 'resize' &&
+          gesture.shape.id === shape.id &&
+          shape.data.box !== undefined &&
+          shape.data.box.width > 0
+            ? gesture.box.width / shape.data.box.width
+            : 1
+        const contentStyle = textBoxContentStyle(
+          editedBox,
+          shape.style,
+          resizeFactor
+        )
+        const textSelected =
+          selectedId === shape.id &&
+          (activeTool === 'select' || activeTool === 'text')
         return (
           <g key={shape.id} className="ink-layer__textbox-group">
             <foreignObject
-              {...box}
+              {...editedBox}
               className="ink-layer__textbox-object"
               onPointerDown={(event) => beginManipulation(event, shape, 'move')}
               onDoubleClick={(event) => {
@@ -730,16 +893,16 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
                   placeholder="텍스트를 입력하세요"
                   style={contentStyle}
                   onPointerDown={(event) => event.stopPropagation()}
-                  onChange={(event) => setTextDraft(event.target.value)}
-                  onBlur={() => finishEditing(shape)}
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === 'Escape' ||
-                      ((event.metaKey || event.ctrlKey) && event.key === 'Enter')
-                    ) {
-                      event.currentTarget.blur()
-                    }
+                  onChange={(event) => {
+                    setTextDraft(event.target.value)
+                    growEditingBox(
+                      event.target.scrollHeight,
+                      editedBox,
+                      'existing'
+                    )
                   }}
+                  onBlur={() => finishEditing(shape)}
+                  onKeyDown={editKeyDown}
                 />
               ) : (
                 <div
@@ -751,10 +914,11 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
                 </div>
               )}
             </foreignObject>
-            {activeTool === 'text' && selectedId === shape.id && !isEditing && (
+            {textSelected && !isEditing && selectionFrame(editedBox)}
+            {textSelected && !isEditing && (
               <ResizeHandles
                 className="ink-layer__textbox-resize"
-                box={box}
+                box={editedBox}
                 aspect={aspect}
                 fill={markColor}
                 onPointerDown={(event, handle) =>
@@ -783,16 +947,12 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
               drawingStyle('text', width, opacity, color)
             )}
             onPointerDown={(event) => event.stopPropagation()}
-            onChange={(event) => setTextDraft(event.target.value)}
-            onBlur={() => finishNewTextBox(newTextBox)}
-            onKeyDown={(event) => {
-              if (
-                event.key === 'Escape' ||
-                ((event.metaKey || event.ctrlKey) && event.key === 'Enter')
-              ) {
-                event.currentTarget.blur()
-              }
+            onChange={(event) => {
+              setTextDraft(event.target.value)
+              growEditingBox(event.target.scrollHeight, newTextBox, 'new')
             }}
+            onBlur={() => finishNewTextBox(newTextBox)}
+            onKeyDown={editKeyDown}
           />
         </foreignObject>
       )}

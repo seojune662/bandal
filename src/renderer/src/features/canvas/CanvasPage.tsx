@@ -43,6 +43,8 @@ interface CanvasPageProps {
   onUpdate: InkLayerProps['onUpdate']
   onRemove: InkLayerProps['onRemove']
   onRefineBox: InkLayerProps['onRefineBox']
+  /** 패널 활성 여부 — 키보드 삭제가 활성 탭에만 반응하게. */
+  interactive: boolean
   onDropClip: (
     source: DrawingClipSource,
     point: { x: number; y: number },
@@ -97,6 +99,7 @@ export function CanvasPage({
   onUpdate,
   onRemove,
   onRefineBox,
+  interactive,
   onDropClip,
   onDropImage,
   onActivate,
@@ -199,7 +202,7 @@ export function CanvasPage({
           onRemove={onRemove}
           onRefineBox={onRefineBox}
           clampToBounds={true}
-          deferTextCreation
+          interactive={interactive}
           ariaLabel={`${boardTitle} ${pageNumber}페이지 캔버스`}
           className="canvas-tab__ink-layer"
           renderClip={renderClip}

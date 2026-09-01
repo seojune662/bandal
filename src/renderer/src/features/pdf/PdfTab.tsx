@@ -26,6 +26,7 @@ import 'react-pdf/dist/Page/TextLayer.css'
 import './pdf.css'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { useHasBeenShown } from '../workspace/useHasBeenShown'
+import { usePanelActive } from '../workspace/usePanelActive'
 import { usePdfDocument } from './usePdfDocument'
 import { useAnnotations } from './useAnnotations'
 import { usePageTexts, useStaleAnnotationIds } from './usePageTexts'
@@ -122,10 +123,12 @@ function ErrorPanel({ message }: { message: string }): JSX.Element {
 
 function PdfViewer({
   courseId,
-  relPath
+  relPath,
+  interactive
 }: {
   courseId: string
   relPath: string
+  interactive: boolean
 }): JSX.Element {
   const doc = usePdfDocument(courseId, relPath)
   const annotationsApi = useAnnotations(courseId, relPath)
@@ -631,6 +634,7 @@ function PdfViewer({
                       onAspect={handleAspect}
                       onAnnotationClick={handleAnnotationClick}
                       onHoverChange={setHoveredId}
+                      drawingsInteractive={interactive}
                       onDrawingCreate={drawingsApi.create}
                       onDrawingUpdate={drawingsApi.update}
                       onDrawingRemove={drawingsApi.remove}
@@ -647,6 +651,8 @@ function PdfViewer({
                   relPath,
                   page: pendingSelection.page,
                   crop: rectsBoundingBox(pendingSelection.rects),
+                  pageAspect:
+                    pageAspects.get(pendingSelection.page) ?? defaultAspect,
                   label: pdfClipLabel(relPath, pendingSelection.page, true)
                 }}
                 onPick={(color) => void createHighlight(color)}
@@ -713,6 +719,16 @@ function PdfViewer({
 /** Dockview panel entry — same props contract as PlaceholderPanel. */
 export default function PdfTab(props: IDockviewPanelProps): JSX.Element {
   const hasBeenShown = useHasBeenShown(props.api)
+  const panelActive = usePanelActive(props.api)
+
+  // dockview 기본 렌더러('onlyWhenVisible')는 비활성 패널의 DOM 을 떼어내고,
+  // 분리된 스크롤 컨테이너는 브라우저가 scrollTop 을 0으로 리셋한다 — 탭을
+  // 오가면 1페이지로 돌아오던 원인. 'always' 로 DOM 을 유지해 스크롤·줌·
+  // 검색 상태를 통째로 보존한다.
+  useEffect(() => {
+    props.api.setRenderer('always')
+  }, [props.api])
+
   const descriptor = descriptorFromParams(props.params)
   if (descriptor === null || descriptor.kind !== 'pdf') {
     return <div className="workspace-panel" data-kind="unknown" />
@@ -731,6 +747,7 @@ export default function PdfTab(props: IDockviewPanelProps): JSX.Element {
         key={`${courseId}:${relPath}`}
         courseId={courseId}
         relPath={relPath}
+        interactive={panelActive}
       />
     </div>
   )

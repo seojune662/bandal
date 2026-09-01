@@ -92,6 +92,11 @@ export interface DrawingClipSource {
   page: number
   /** Region of that page, normalized 0..1. Omit for the whole page. */
   crop?: DrawingBox
+  /**
+   * 원본 페이지의 height/width. 첫 배치의 종횡비 추정에 쓴다 — 없으면
+   * A4 세로(√2) 가정으로 폴백하던 옛 동작(슬라이드 PDF 왜곡의 원인).
+   */
+  pageAspect?: number
   /** Shown when the source cannot be rendered (file moved, not shared yet). */
   label: string
 }

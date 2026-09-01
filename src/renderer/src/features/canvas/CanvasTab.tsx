@@ -26,6 +26,7 @@ import { Icon } from '../../app/icons'
 import { invoke } from '../../lib/ipc'
 import {
   dataUrlImageAspect,
+  healedImageBox,
   imageBoxAtPoint,
   instanceSurfaceKey,
   loadDrawingImage,
@@ -65,7 +66,14 @@ function sameDrawingBox(left: DrawingBox | undefined, right: DrawingBox): boolea
 }
 
 function provisionalClipAspect(source: DrawingClipSource): number {
-  const pageAspect = Math.SQRT2
+  // 신버전 클립은 원본 페이지 비율을 들고 온다 — 없으면(구 페이로드/저장분)
+  // A4 세로 가정 폴백. 이 가정이 슬라이드 PDF 를 세로로 늘이던 원인이었다.
+  const pageAspect =
+    source.pageAspect !== undefined &&
+    Number.isFinite(source.pageAspect) &&
+    source.pageAspect > 0
+      ? source.pageAspect
+      : Math.SQRT2
   const crop = source.crop
   return crop === undefined
     ? pageAspect
@@ -525,18 +533,20 @@ function CanvasSession({
     }, page, true)
 
     // The placeholder lands immediately. Once the visible clip renderer has
-    // the real crop, refine only an untouched provisional box to its exact ratio.
+    // the real crop, refine only an untouched provisional box to its exact
+    // ratio. 재중심화(clipBoxAtDrop 재계산) 대신 healedImageBox 방식 —
+    // 폭·자리 유지, 높이만 보정이라 화면에서 "점프"하지 않는다.
+    // pageAspect 가 전달된 신버전 클립은 사실상 항상 no-op.
     void renderClip(source).then((dataUrl) =>
       dataUrl === null ? null : readImageAspect(dataUrl)
     ).then((clipAspect) => {
       if (clipAspect === null) return
       const current = shapesRef.current.find((shape) => shape.id === created.id)
       if (current === undefined || !sameDrawingBox(current.data.box, initialBox)) return
+      const healed = healedImageBox(initialBox, DEFAULT_PAGE_ASPECT, clipAspect)
+      if (healed === null) return
       updateInternal(created.id, {
-        data: {
-          ...current.data,
-          box: clipBoxAtDrop(point, DEFAULT_PAGE_ASPECT, clipAspect)
-        }
+        data: { ...current.data, box: healed }
       }, false)
     }).catch(() => {})
   }, [addInternal, color, renderClip, updateInternal, width])
@@ -678,6 +688,7 @@ function CanvasSession({
                   onCreate={(shape) => { addInternal(shape, pageNumber, true) }}
                   onUpdate={(id, patch) => { updateInternal(id, patch, true) }}
                   onRemove={(ids) => { removeInternal(ids, true) }}
+                  interactive={panelActive}
                   onRefineBox={(id, box) => {
                     // placeClip 정밀화와 같은 조용한 보정 — undo 미기록.
                     const current = shapesRef.current.find(

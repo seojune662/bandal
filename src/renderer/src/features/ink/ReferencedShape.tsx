@@ -45,6 +45,7 @@ export function ReferencedShape(props: ReferencedShapeProps): JSX.Element | null
       renderClip={renderClip}
       onOpenClip={onOpenClip}
       onBeginManipulation={onBeginManipulation}
+      onNaturalAspect={onNaturalAspect}
     />
   ) : (
     <ImageShape
