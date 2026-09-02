@@ -37,11 +37,6 @@ export interface ChatSessionSnapshot {
   title: string | null
 }
 
-/** Result of setChatProvider: an in-use conversation cannot switch provider. */
-export interface SetChatProviderResult {
-  needsNewConversation: boolean
-}
-
 interface ChatSessionStoreState {
   /** Keyed by CONVERSATION id, not course — one course holds many. */
   sessions: Record<string, ChatSessionSnapshot>
@@ -401,26 +396,17 @@ export function setChatModel(
 }
 
 /**
- * Saves the preferred provider. A conversation with no messages yet is simply
- * reopened in place under the new provider; one that already has history
- * cannot switch (its CLI transcript belongs to the old provider), so the
- * caller gets `{ needsNewConversation: true }` and decides what to do.
+ * Saves the preferred provider and switches THIS conversation to it in place
+ * (same id, same tab). Main clears the old CLI's resume record and persists a
+ * system notice; the next send replays the prior transcript into the new
+ * CLI's first prompt. The conversation is then reopened so the notice, the
+ * provider's availability and its model list all come from the new provider.
  */
-export function setChatProvider(
+export async function setChatProvider(
   courseId: string,
   conversationId: string,
   provider: AgentProvider
-): SetChatProviderResult {
-  const hasMessages = snapshotFor(conversationId).state.messages.length > 0
-  if (hasMessages) {
-    // Still persist the preference: the NEW conversation the caller opens
-    // next is what follows settings' agentProvider.
-    void invoke('settings:set', { agentProvider: provider }).catch(() => {
-      // The caller surfaces provider problems on the next open.
-    })
-    return { needsNewConversation: true }
-  }
-
+): Promise<void> {
   const runtime = runtimeFor(courseId, conversationId)
   runtime.modelsProvider = null
   updateSnapshot(conversationId, (current) => ({
@@ -431,29 +417,27 @@ export function setChatProvider(
     openError: null,
     models: []
   }))
-  void invoke('settings:set', { agentProvider: provider })
-    .then(async () => {
-      try {
-        await invoke('chat:close', { courseId, sessionId: conversationId })
-      } catch {
-        // The provider setting is authoritative. An older main process may not
-        // have a live session to close, so continue with a fresh open.
-      }
-      if (snapshotFor(conversationId).provider === provider) {
-        await openConversation(courseId, conversationId, { discardQueue: true })
-      }
+  try {
+    await invoke('settings:set', { agentProvider: provider })
+    await invoke('chat:setProvider', {
+      courseId,
+      sessionId: conversationId,
+      provider
     })
-    .catch((error: unknown) => {
-      if (snapshotFor(conversationId).provider !== provider) {
-        return
-      }
-      updateSnapshot(conversationId, (current) => ({
-        ...current,
-        phase: 'error',
-        openError: errorMessage(error)
-      }))
-    })
-  return { needsNewConversation: false }
+    if (snapshotFor(conversationId).provider === provider) {
+      await openConversation(courseId, conversationId, { discardQueue: true })
+    }
+  } catch (error: unknown) {
+    // A newer switch already owns the snapshot — leave its state alone.
+    if (snapshotFor(conversationId).provider !== provider) {
+      return
+    }
+    updateSnapshot(conversationId, (current) => ({
+      ...current,
+      phase: 'error',
+      openError: errorMessage(error)
+    }))
+  }
 }
 
 export function selectChatSession(conversationId: string): ChatSessionSnapshot {

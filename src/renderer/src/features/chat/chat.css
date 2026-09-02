@@ -505,6 +505,17 @@
   }
 }
 
+.chat-system-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: center;
+}
+
 .chat-msg--user {
   display: flex;
   justify-content: flex-end;

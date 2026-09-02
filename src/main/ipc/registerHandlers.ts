@@ -87,7 +87,9 @@ import {
   createLoginLauncher,
   killAllCodexProcessesSync,
   getAgentModels,
-  killAllClaudeProcessesSync
+  killAllClaudeProcessesSync,
+  serializeTranscript,
+  CARRYOVER_HISTORY_LIMIT
 } from '../features/agent'
 import {
   attachDownloadHandler,
@@ -1726,6 +1728,31 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('chat:setModel', (req) => {
     resolveManager(req.sessionId).setModel(req.courseId, req.sessionId, req.model)
     return OK
+  })
+  handle('chat:setProvider', (req) => {
+    const row = chatRepo.getSession(req.sessionId)
+    if (row?.status === 'running') {
+      throw new Error('답변이 끝난 뒤에 바꿀 수 있어요.')
+    }
+    // Both managers: the old one would keep an orphaned CLI process, and the
+    // new one must hydrate its entry from the updated row on the next send.
+    sessionManager.close(req.courseId, req.sessionId)
+    codexSessionManager.close(req.courseId, req.sessionId)
+    eventBatcher.flush(req.sessionId)
+    if (row === null || row.provider === req.provider) {
+      return { sessionInfo: row, carried: null }
+    }
+    const { text: _text, ...carried } = serializeTranscript(
+      chatRepo.historyTail(req.sessionId, CARRYOVER_HISTORY_LIMIT)
+    )
+    const sessionInfo = chatRepo.switchProvider(req.sessionId, req.provider)
+    chatRepo.appendNotice(req.courseId, req.sessionId, {
+      kind: 'provider-switch',
+      from: row.provider,
+      to: req.provider,
+      carried
+    })
+    return { sessionInfo, carried }
   })
 
   // -- agent (M4-H) ---------------------------------------------------------

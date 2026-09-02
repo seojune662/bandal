@@ -24,6 +24,11 @@ import { AgentUnavailableError } from './binaryLocator'
 import { deriveConversationTitle } from './chatRepo'
 import type { BlockInput, ChatRepo } from './chatRepo'
 import type { ClaudeCodeSession } from './claude/ClaudeCodeAdapter'
+import {
+  buildCarryoverPrompt,
+  CARRYOVER_HISTORY_LIMIT,
+  serializeTranscript
+} from './transcriptCarryover'
 
 export const IDLE_REAP_MS = 10 * 60 * 1000
 export const MAX_WARM_SESSIONS = 3
@@ -514,6 +519,9 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         clearTimeout(entry.idleTimer)
         entry.idleTimer = null
       }
+      // Captured BEFORE ensureSession: a warm process has already seen every
+      // prior turn, only a fresh spawn may need the transcript replayed.
+      const isFreshSpawn = entry.session === null && entry.sessionPromise === null
       let session: AgentSession
       try {
         session = await ensureSession(entry)
@@ -530,6 +538,17 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         })
         throw error
       }
+      // Derived trigger, no flag column: a persisted conversation whose new
+      // process has no CLI session id to resume means that CLI never saw the
+      // transcript — the provider was switched (switchProvider nulls the id)
+      // or the previous spawn died before `session-started`. Prime its first
+      // prompt with the prior history; the persisted text and title stay raw.
+      const priming =
+        isFreshSpawn && entry.persisted && entry.info.cliSessionId === null
+          ? serializeTranscript(
+              deps.repo.historyTail(sessionId, CARRYOVER_HISTORY_LIMIT)
+            )
+          : null
       if (!entry.persisted) {
         // First send materializes the conversation row (lazy creation).
         deps.repo.createSession(
@@ -559,7 +578,12 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       }
       entry.info = { ...entry.info, status: 'running' }
       deps.repo.setStatus(entry.info.id, 'running')
-      session.sendMessage(content, attachments)
+      session.sendMessage(
+        priming !== null && priming.text !== ''
+          ? buildCarryoverPrompt(priming, content)
+          : content,
+        attachments
+      )
       return { turnSeq }
     },
 

@@ -298,6 +298,83 @@ describe('SessionManager', () => {
     expect(fake.startOptions[1]!.resumeCliSessionId).toBe('cli-abc')
   })
 
+  test('the very first send is never primed with a transcript', async () => {
+    await manager.send(courseId, conversationId, 'hello')
+    expect(fake.sessions[0]!.sentMessages).toEqual(['hello'])
+  })
+
+  test('a fresh spawn without a CLI session id primes the wire text, persisted text stays raw', async () => {
+    await manager.send(courseId, conversationId, 'first question')
+    fake.sessions[0]!.emit({ type: 'text-final', blockId: 'b1', text: 'first answer' })
+    fake.sessions[0]!.emit({ type: 'turn-complete', stopReason: 'success' })
+    // No session-started ever arrived (e.g. the provider was just switched and
+    // the resume record was cleared), then the process went away.
+    manager.close(courseId, conversationId)
+
+    await manager.send(courseId, conversationId, 'second question')
+
+    const wire = fake.sessions[1]!.sentMessages[0]!
+    expect(wire.startsWith('<이전_대화 messages="2" truncated="false">')).toBe(true)
+    expect(wire).toContain('학생: first question')
+    expect(wire).toContain('AI: first answer')
+    expect(wire.endsWith('\n\nsecond question')).toBe(true)
+    expect(fake.startOptions[1]!.resumeCliSessionId).toBeUndefined()
+
+    const history = repo.historyTail(conversationId)
+    const lastUser = history.filter((m) => m.role === 'user').at(-1)!
+    expect(lastUser.blocks[0]!.payload).toEqual({ text: 'second question' })
+    const title = (
+      ctx.db.prepare('SELECT title FROM agent_sessions WHERE id = ?').get(conversationId) as {
+        title: string
+      }
+    ).title
+    expect(title).toBe('first question')
+  })
+
+  test('after session-started a respawn resumes and is not primed', async () => {
+    await manager.send(courseId, conversationId, 'hi')
+    fake.sessions[0]!.emit({
+      type: 'session-started',
+      sessionId: 'cli-abc',
+      model: 'claude-haiku',
+      provider: 'claude-code'
+    })
+    manager.close(courseId, conversationId)
+
+    await manager.send(courseId, conversationId, 'again')
+
+    expect(fake.sessions[1]!.sentMessages).toEqual(['again'])
+  })
+
+  test('a warm process is never primed even before session-started', async () => {
+    await manager.send(courseId, conversationId, 'one')
+    fake.sessions[0]!.emit({ type: 'turn-complete', stopReason: 'success' })
+
+    await manager.send(courseId, conversationId, 'two')
+
+    expect(fake.sessions).toHaveLength(1)
+    expect(fake.sessions[0]!.sentMessages).toEqual(['one', 'two'])
+  })
+
+  test('setModel never primes', async () => {
+    manager.setModel(courseId, conversationId, 'claude-opus')
+    await manager.send(courseId, conversationId, 'first')
+    expect(fake.sessions[0]!.sentMessages).toEqual(['first'])
+    fake.sessions[0]!.emit({
+      type: 'session-started',
+      sessionId: 'cli-abc',
+      model: 'claude-opus',
+      provider: 'claude-code'
+    })
+    fake.sessions[0]!.emit({ type: 'turn-complete', stopReason: 'success' })
+
+    manager.setModel(courseId, conversationId, 'claude-haiku')
+    await manager.send(courseId, conversationId, 'second')
+
+    expect(fake.sessions[1]!.sentMessages).toEqual(['second'])
+    expect(fake.startOptions[1]!.resumeCliSessionId).toBe('cli-abc')
+  })
+
   test('turn-complete commits the assistant turn atomically', async () => {
     await manager.send(courseId, conversationId, 'question')
     const session = fake.sessions[0]!

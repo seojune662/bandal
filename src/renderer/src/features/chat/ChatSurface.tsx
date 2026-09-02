@@ -292,12 +292,9 @@ export function ChatSurface({
 
   const handleProviderChange = useCallback(
     (nextProvider: AgentProvider) => {
-      const result = session.setProvider(nextProvider)
-      if (result.needsNewConversation) {
-        handleNewConversation()
-      }
+      session.setProvider(nextProvider)
     },
-    [handleNewConversation, session.setProvider]
+    [session.setProvider]
   )
 
   const root = (children: ReactNode): JSX.Element => (

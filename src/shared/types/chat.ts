@@ -9,7 +9,12 @@ export type MessageRole = 'user' | 'assistant'
 
 export type ChatSurface = 'app' | 'desktop'
 
-export type MessageBlockKind = 'text' | 'thinking' | 'tool' | 'permission'
+export type MessageBlockKind =
+  | 'text'
+  | 'thinking'
+  | 'tool'
+  | 'permission'
+  | 'notice'
 
 /** One ordered block within a message (text, thinking, tool call, ...). */
 export interface MessageBlock {
@@ -19,6 +24,25 @@ export interface MessageBlock {
   kind: MessageBlockKind
   /** Kind-specific payload, persisted as JSON. */
   payload: unknown
+}
+
+/** How much of the prior transcript was handed to a freshly switched provider. */
+export interface CarryoverStats {
+  messages: number
+  chars: number
+  truncated: boolean
+}
+
+/**
+ * Payload of a `notice` block: a system line persisted in the thread when the
+ * provider changed mid-conversation (the new CLI got the prior transcript
+ * prepended to its first prompt).
+ */
+export interface ProviderSwitchNotice {
+  kind: 'provider-switch'
+  from: AgentProvider
+  to: AgentProvider
+  carried: CarryoverStats
 }
 
 export interface ChatMessage {

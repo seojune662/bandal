@@ -50,9 +50,11 @@ import type {
 } from '../types/courseLink'
 import type {
   AgentModelOption,
+  CarryoverStats,
   ChatConversationSummary,
   ChatOpenResult,
   ChatSendInput,
+  ChatSessionInfo,
   ChatSurface
 } from '../types/chat'
 import type {
@@ -597,6 +599,17 @@ export interface IpcContract {
   'chat:setModel': {
     req: { courseId: string; sessionId: string; model: string }
     res: { ok: true }
+  }
+  /**
+   * Switches a conversation's provider IN PLACE (same id, same tab). Both
+   * managers drop their warm process; the row's CLI resume record is cleared
+   * so the next send replays the prior transcript into the new CLI's first
+   * prompt, and a `notice` block is persisted. `carried` is null when the
+   * provider did not change. Refused while a turn is running.
+   */
+  'chat:setProvider': {
+    req: { courseId: string; sessionId: string; provider: AgentProvider }
+    res: { sessionInfo: ChatSessionInfo | null; carried: CarryoverStats | null }
   }
   /** Conversation list for a course (zero-message conversations excluded). Defaults to app. */
   'chat:conversations': {
@@ -1631,6 +1644,7 @@ export const IPC_CHANNELS = [
   'chat:respondPermission',
   'chat:close',
   'chat:setModel',
+  'chat:setProvider',
   'chat:conversations',
   'chat:deleteConversation',
   'chat:grants',

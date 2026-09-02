@@ -43,6 +43,14 @@ export { getAgentModels } from './agentModels'
 export { createEventBatcher, type EventBatcher } from './eventBatcher'
 export { createChatRepo, type ChatRepo } from './chatRepo'
 export {
+  buildCarryoverPrompt,
+  serializeTranscript,
+  CARRYOVER_HISTORY_LIMIT,
+  CARRYOVER_MAX_CHARS,
+  CARRYOVER_MAX_MESSAGES,
+  type CarryoverTranscript
+} from './transcriptCarryover'
+export {
   createSessionManager,
   buildStudyPrompt,
   type SessionManager

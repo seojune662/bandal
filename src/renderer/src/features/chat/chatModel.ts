@@ -22,7 +22,8 @@ import type {
 import type {
   ChatAttachment,
   ChatMessage,
-  MessageBlock
+  MessageBlock,
+  ProviderSwitchNotice
 } from '../../../../shared/types/chat'
 
 // -- view types ---------------------------------------------------------------
@@ -66,11 +67,19 @@ export interface PermissionBlockView {
   behavior?: 'allow' | 'deny'
 }
 
+/** A persisted system line (provider switched mid-conversation). */
+export interface NoticeBlockView {
+  kind: 'notice'
+  id: string
+  notice: ProviderSwitchNotice
+}
+
 export type BlockView =
   | TextBlockView
   | ThinkingBlockView
   | ToolBlockView
   | PermissionBlockView
+  | NoticeBlockView
 
 export interface TurnStats {
   durationMs?: number
@@ -704,7 +713,43 @@ function persistedBlockToView(
       interrupted
     }
   }
+  if (block.kind === 'notice') {
+    const notice = asProviderSwitchNotice(payload)
+    return {
+      view: notice === null ? null : { kind: 'notice', id: block.id, notice },
+      interrupted: false
+    }
+  }
   return { view: null, interrupted: false }
+}
+
+function isProvider(value: unknown): value is ProviderSwitchNotice['from'] {
+  return value === 'claude-code' || value === 'codex'
+}
+
+/** Unknown notice kinds are dropped rather than rendered as garbage. */
+function asProviderSwitchNotice(
+  payload: Record<string, unknown>
+): ProviderSwitchNotice | null {
+  if (payload['kind'] !== 'provider-switch') {
+    return null
+  }
+  const from = payload['from']
+  const to = payload['to']
+  const carried = asRecord(payload['carried'])
+  if (!isProvider(from) || !isProvider(to)) {
+    return null
+  }
+  return {
+    kind: 'provider-switch',
+    from,
+    to,
+    carried: {
+      messages: typeof carried['messages'] === 'number' ? carried['messages'] : 0,
+      chars: typeof carried['chars'] === 'number' ? carried['chars'] : 0,
+      truncated: carried['truncated'] === true
+    }
+  }
 }
 
 export function hydrateFromHistory(

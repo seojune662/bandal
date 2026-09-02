@@ -9,7 +9,8 @@ import type {
   PermissionResponse,
   Usage
 } from '../../../../shared/types/agent-events'
-import type { BlockView, MessageView } from './chatModel'
+import type { BlockView, MessageView, NoticeBlockView } from './chatModel'
+import { providerLabel } from './AgentSetupCards'
 import { PermissionDialog } from './blocks/PermissionDialog'
 import { TextBlock } from './blocks/TextBlock'
 import { ThinkingBlock } from './blocks/ThinkingBlock'
@@ -85,6 +86,10 @@ const BlockRenderer = memo(function BlockRenderer({
   onRespondPermission
 }: BlockRendererProps): JSX.Element | null {
   switch (block.kind) {
+    case 'notice':
+      // Notice-only messages are rendered by SystemNotice; a stray notice
+      // block inside a normal turn has no bubble form.
+      return null
     case 'text':
       return <TextBlock block={block} />
     case 'thinking':
@@ -133,6 +138,30 @@ export function areMessageViewsEqual(
     previous.stats?.durationMs === next.stats?.durationMs &&
     previous.stats?.costUsd === next.stats?.costUsd &&
     previous.stats?.usage === next.stats?.usage
+  )
+}
+
+function isNoticeMessage(message: MessageView): boolean {
+  return (
+    message.blocks.length > 0 &&
+    message.blocks.every((block) => block.kind === 'notice')
+  )
+}
+
+function SystemNotice({ message }: { message: MessageView }): JSX.Element {
+  return (
+    <div className="chat-system-notice" role="status">
+      {message.blocks.map((block) => {
+        const { notice } = block as NoticeBlockView
+        return (
+          <span key={block.id}>
+            {providerLabel(notice.to)}로 이어갑니다 · 이전 대화{' '}
+            {notice.carried.messages}개 메시지 전달
+            {notice.carried.truncated ? ' (일부 생략)' : ''}
+          </span>
+        )
+      })}
+    </div>
   )
 }
 
@@ -258,7 +287,9 @@ export function MessageList({
   return (
     <div className="chat-thread" role="log" aria-label="AI 튜터 대화">
       {messages.map((message) =>
-        message.role === 'user' ? (
+        isNoticeMessage(message) ? (
+          <SystemNotice key={message.id} message={message} />
+        ) : message.role === 'user' ? (
           <UserMessage key={message.id} message={message} />
         ) : (
           <AssistantMessage

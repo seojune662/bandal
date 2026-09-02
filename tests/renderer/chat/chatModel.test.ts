@@ -15,6 +15,7 @@ import {
   initialChatViewState,
   markSendFailed,
   type ChatViewState,
+  type NoticeBlockView,
   type PermissionBlockView,
   type TextBlockView,
   type ThinkingBlockView,
@@ -578,5 +579,53 @@ describe('full synthetic turn (M4-H fixture shape)', () => {
     expect(assistant.streaming).toBe(false)
     expect(state.streaming).toBe(false)
     expect(state.model).toBe('claude-sonnet-4-5')
+  })
+})
+
+describe('hydrateFromHistory notices', () => {
+  function persisted(kind: ChatMessage['blocks'][number]['kind'], payload: unknown): ChatMessage {
+    return {
+      id: 'm1',
+      courseId: 'c',
+      sessionId: 's',
+      role: 'assistant',
+      turnSeq: 3,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      blocks: [{ id: 'n1', messageId: 'm1', ord: 0, kind, payload }]
+    }
+  }
+
+  test('a provider-switch notice hydrates as a NoticeBlockView', () => {
+    const state = hydrateFromHistory(
+      [
+        persisted('notice', {
+          kind: 'provider-switch',
+          from: 'claude-code',
+          to: 'codex',
+          carried: { messages: 4, chars: 120, truncated: true }
+        })
+      ],
+      null
+    )
+    const block = lastMessage(state).blocks[0] as NoticeBlockView
+    expect(block).toEqual({
+      kind: 'notice',
+      id: 'n1',
+      notice: {
+        kind: 'provider-switch',
+        from: 'claude-code',
+        to: 'codex',
+        carried: { messages: 4, chars: 120, truncated: true }
+      }
+    })
+    expect(lastMessage(state).interrupted).toBe(false)
+  })
+
+  test('an unknown notice kind is dropped', () => {
+    const state = hydrateFromHistory(
+      [persisted('notice', { kind: 'something-else', to: 'codex' })],
+      null
+    )
+    expect(lastMessage(state).blocks).toEqual([])
   })
 })

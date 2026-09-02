@@ -21,11 +21,9 @@ import {
   setChatProvider,
   setChatModel,
   useChatSessionStore,
-  type SetChatProviderResult
 } from './chatSessionStore'
 
 export type { ChatPhase } from './chatSessionStore'
-export type { SetChatProviderResult } from './chatSessionStore'
 
 export interface ChatSessionApi {
   state: ChatViewState
@@ -46,11 +44,10 @@ export interface ChatSessionApi {
   dismissNotice: () => void
   setModel: (model: string) => void
   /**
-   * Switches provider. `{ needsNewConversation: true }` means this
-   * conversation already has history and cannot switch — the caller opens a
-   * new conversation instead (the preference itself is already saved).
+   * Switches provider in place: the conversation keeps its id and history;
+   * the new CLI gets the prior transcript on its next turn.
    */
-  setProvider: (provider: AgentProvider) => SetChatProviderResult
+  setProvider: (provider: AgentProvider) => void
 }
 
 export function useChatSession(
@@ -99,8 +96,9 @@ export function useChatSession(
     [courseId, conversationId]
   )
   const setProvider = useCallback(
-    (provider: AgentProvider) =>
-      setChatProvider(courseId, conversationId, provider),
+    (provider: AgentProvider) => {
+      void setChatProvider(courseId, conversationId, provider)
+    },
     [courseId, conversationId]
   )
 

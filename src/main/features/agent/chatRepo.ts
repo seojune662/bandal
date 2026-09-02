@@ -15,7 +15,8 @@ import type {
   ChatSessionInfo,
   ChatSurface,
   MessageBlock,
-  MessageBlockKind
+  MessageBlockKind,
+  ProviderSwitchNotice
 } from '../../../shared/types/chat'
 import { nowIso, requireId, requireNonEmptyString } from '../../db/validate'
 
@@ -72,6 +73,18 @@ export interface ChatRepo {
   recordSessionStart(sessionId: string, record: SessionStartRecord): void
   /** Pins a model without touching the resumable CLI session id. */
   setModel(sessionId: string, model: string): void
+  /**
+   * Re-routes a conversation to another provider in place. The CLI resume
+   * record (session id, model, transcript, launch config) belongs to the old
+   * provider and is cleared; title, surface and messages stay.
+   */
+  switchProvider(sessionId: string, provider: AgentProvider): ChatSessionInfo | null
+  /** Persists a system notice as its own assistant turn (single notice block). */
+  appendNotice(
+    courseId: string,
+    sessionId: string,
+    payload: ProviderSwitchNotice
+  ): ChatMessage
   setStatus(sessionId: string, status: AgentSessionStatus): void
   nextTurnSeq(sessionId: string): number
   appendMessage(
@@ -300,6 +313,28 @@ export function createChatRepo(db: Database): ChatRepo {
         requireNonEmptyString(model, 'model').trim(),
         nowIso(),
         requireId(sessionId, 'sessionId')
+      )
+    },
+
+    switchProvider(sessionId, provider) {
+      const id = requireId(sessionId, 'sessionId')
+      db.prepare(
+        `UPDATE agent_sessions
+         SET provider = ?, cli_session_id = NULL, model = NULL,
+             transcript_path = NULL, launch_config_json = NULL,
+             status = 'idle', updated_at = ?
+         WHERE id = ? AND deleted_at IS NULL`
+      ).run(provider, nowIso(), id)
+      return this.getSession(id)
+    },
+
+    appendNotice(courseId, sessionId, payload) {
+      return this.appendMessage(
+        courseId,
+        sessionId,
+        'assistant',
+        this.nextTurnSeq(sessionId),
+        [{ kind: 'notice', payload }]
       )
     },
 
