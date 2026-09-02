@@ -98,6 +98,8 @@ export interface MaterialBacklinks {
 export interface DetailedMaterialBacklink extends MaterialBacklink {
   /** Annotation id for a note, clip label for a whiteboard, or an empty string. */
   detail: string
+  /** How the note referenced the target; absent means `bandal://` (material). */
+  linkKind?: 'material' | 'wikilink'
 }
 
 /** All sources for one material, grouped for dossier/insights/graph consumers. */

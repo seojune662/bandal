@@ -20,6 +20,7 @@ import {
   plugins as gfmPlugins,
   schema as gfmSchema
 } from '@milkdown/preset-gfm'
+import { NOTE_MARKDOWN_EXTENSIONS } from './noteMarkdownExtensions'
 
 export interface MarkdownCodec {
   parse: (markdown: string) => ProseNode
@@ -52,6 +53,7 @@ export async function createMarkdownCodec(): Promise<MarkdownCodec> {
     config(() => undefined),
     ...commonmarkSchema,
     ...gfmSchema,
+    ...NOTE_MARKDOWN_EXTENSIONS,
     ...remarkPlugins
   ]
 
