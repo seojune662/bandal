@@ -21,6 +21,8 @@ import { useAgentPreflight } from '../features/onboarding/useAgentPreflight'
 import { SettingsApp } from '../features/settings/SettingsApp'
 import { useUpdateNotifications } from '../features/updates/useUpdateNotifications'
 import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
+import { RailResizer } from './RailResizer'
+import { applyStoredRailWidths } from './railWidth'
 import { descriptorFor } from '../features/workspace/tabIdentity'
 import { selectNeedsNickname, useAuthStore } from '../stores/authStore'
 import { useCoursesStore } from '../stores/coursesStore'
@@ -302,6 +304,11 @@ export function AppShell(): JSX.Element {
     }
   }, [])
 
+  // 저장된 사이드바 폭 복원 (없으면 tokens.css 기본값 그대로).
+  useEffect(() => {
+    applyStoredRailWidths()
+  }, [])
+
   return (
     <div
       className="app-shell"
@@ -318,6 +325,7 @@ export function AppShell(): JSX.Element {
           WorkspaceHost also owns `+` (after the last tab) and the right
           rail toggle. */}
       {leftRailOpen && <CourseSidebar />}
+      {leftRailOpen && <RailResizer side="left" />}
 
       <main className="app-workspace" aria-label="작업 공간">
         <PreflightBanners suppressed={isOnboardingVisible} />
@@ -325,6 +333,7 @@ export function AppShell(): JSX.Element {
       </main>
 
       {rightRailOpen && <MaterialsSidebar course={selectedCourse} />}
+      {rightRailOpen && <RailResizer side="right" />}
 
       <BrowserWebviewLayer />
       <PrintPreviewOverlay />

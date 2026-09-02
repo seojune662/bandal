@@ -7,7 +7,10 @@ import { isTabDescriptor } from '../workspace/tabIdentity'
 import { useHasBeenShown } from '../workspace/useHasBeenShown'
 import { viewerKindFor, type FileViewerKind } from './fileFormats'
 import { DocxViewer } from './viewers/DocxViewer'
+import { HwpViewer } from './viewers/HwpViewer'
+import { PreviewFallback } from './viewers/PreviewFallback'
 import { SheetViewer } from './viewers/SheetViewer'
+import { SlidesViewer } from './viewers/SlidesViewer'
 import { TextViewer } from './viewers/TextViewer'
 import { VideoViewer } from './viewers/VideoViewer'
 import './file-tab.css'
@@ -92,6 +95,42 @@ function LoadedFile({
   switch (viewerKind) {
     case 'video':
       return <VideoViewer courseId={courseId} relPath={relPath} />
+    case 'preview':
+      return <PreviewFallback courseId={courseId} relPath={relPath} />
+    case 'slides':
+      if (content.encoding !== 'base64') {
+        return (
+          <FileError
+            courseId={courseId}
+            relPath={relPath}
+            message="프레젠테이션 데이터를 읽을 수 없습니다."
+          />
+        )
+      }
+      return (
+        <SlidesViewer
+          base64={content.data}
+          fileName={name}
+          onError={handleError}
+        />
+      )
+    case 'hwp':
+      if (content.encoding !== 'base64') {
+        return (
+          <FileError
+            courseId={courseId}
+            relPath={relPath}
+            message="한글 문서 데이터를 읽을 수 없습니다."
+          />
+        )
+      }
+      return (
+        <HwpViewer
+          base64={content.data}
+          fileName={name}
+          onError={handleError}
+        />
+      )
     case 'docx':
       if (content.encoding !== 'base64') {
         return (
@@ -159,8 +198,9 @@ function FileLoader({
       }
     }
 
-    // 동영상은 bandal-media:// 프로토콜로 스트리밍하므로 IPC로 읽지 않는다.
-    if (viewerKind === 'video') {
+    // 동영상은 bandal-media:// 스트리밍, preview 는 OS 로 넘기므로
+    // 둘 다 IPC로 읽지 않는다.
+    if (viewerKind === 'video' || viewerKind === 'preview') {
       return () => {
         cancelled = true
       }
@@ -186,6 +226,9 @@ function FileLoader({
 
   if (viewerKindFor(relPath) === 'video') {
     return <VideoViewer courseId={courseId} relPath={relPath} />
+  }
+  if (viewerKindFor(relPath) === 'preview') {
+    return <PreviewFallback courseId={courseId} relPath={relPath} />
   }
   if (state.status === 'loading') {
     return (

@@ -335,6 +335,14 @@ export interface IpcContract {
     req: { courseId: string; relPath: string }
     res: { ok: true }
   }
+  /**
+   * macOS Quick Look(그 외 OS 는 기본 앱)으로 파일 미리보기 — 앱이
+   * 렌더링하지 못하는 형식(.ppt 등)용.
+   */
+  'materials:preview': {
+    req: { courseId: string; relPath: string }
+    res: { ok: true }
+  }
   /** Reads a material file; binary files come back base64-encoded. */
   'materials:readFile': {
     req: { courseId: string; relPath: string }
@@ -1583,6 +1591,7 @@ export const IPC_CHANNELS = [
   'materials:import',
   'materials:move',
   'materials:reveal',
+  'materials:preview',
   'materials:readFile',
   'materials:watch',
   'materials:rename',

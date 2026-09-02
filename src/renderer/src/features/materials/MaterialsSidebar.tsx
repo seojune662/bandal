@@ -34,6 +34,7 @@ import {
   targetDirectory,
   unusedFolderName
 } from './materialPaths'
+import { isEditableTarget } from '../ink/domTarget'
 import { isEditablePasteTarget } from './clipboardPaste'
 import { importDroppedFiles, isFileDrag, isSelfMaterialDrop } from './importDrop'
 import {
@@ -654,6 +655,14 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       data-paste-ready={pasteReady || undefined}
       data-pasting={isPasting || undefined}
       onPaste={onPaste}
+      onKeyDown={(event) => {
+        // Delete/Backspace = 선택 자료 삭제 (확인 다이얼로그 경유 — 휴지통행).
+        if (event.key !== 'Delete' && event.key !== 'Backspace') return
+        if (isEditableTarget(event.target)) return
+        if (selectedNode === null || deleteTarget !== null) return
+        event.preventDefault()
+        setDeleteTarget(selectedNode)
+      }}
       onFocusCapture={(event) => {
         setPasteFocused(!isEditablePasteTarget(event.target))
       }}

@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { accessSync, constants as fsConstants, writeFileSync } from 'node:fs'
-import { extname, join } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import {
   app,
   BrowserWindow,
@@ -501,6 +501,18 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // 이동 후 트리 갱신은 폴더 watcher 가 materials:changed 로 밀어준다.
   handle('materials:move', (req) => materialsRepo.move(req))
   handle('materials:reveal', (req) => materialsRepo.reveal(req.courseId, req.relPath))
+  handle('materials:preview', (req) => {
+    // 앱이 렌더링하지 못하는 형식(.ppt 등) — macOS 는 Quick Look, 그 외는
+    // 기본 앱. 경로 가드는 absolutePathFor(assertRealInside)가 담당한다.
+    const abs = materialsRepo.absolutePathFor(req.courseId, req.relPath)
+    if (process.platform === 'darwin') {
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+      win?.previewFile(abs, basename(abs))
+    } else {
+      void shell.openPath(abs)
+    }
+    return OK
+  })
   handle('materials:readFile', (req) => materialsRepo.readFile(req.courseId, req.relPath))
   handle('materials:writeFile', (req) => materialsRepo.writeFile(req))
   handle('materials:rename', (req) => materialsRepo.rename(req))

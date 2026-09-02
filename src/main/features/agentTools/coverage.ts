@@ -119,6 +119,7 @@ export const NOT_FOR_AGENT: Readonly<Record<string, string>> = {
   'courses:relink':
     '끊긴 과목을 다른 폴더에 다시 붙이는 일. 잘못 붙이면 남의 과목 자료를 그 과목 것으로 만든다.',
   'materials:reveal': 'Finder 를 여는 일. 앱 밖의 동작이다.',
+  'materials:preview': 'OS 미리보기(Quick Look)를 여는 일. 앱 밖의 동작이다.',
   'links:remove':
     '링크 해제는 학생이 화면에서 한 번 누르면 되고, 에이전트가 자료 그래프를 지울 이유가 없다.',
 

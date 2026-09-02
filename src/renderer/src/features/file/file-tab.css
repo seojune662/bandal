@@ -2,7 +2,9 @@
 .file-docx,
 .file-sheet,
 .file-text,
-.file-video {
+.file-video,
+.file-slides,
+.file-hwp {
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -448,4 +450,171 @@
     align-items: stretch;
     flex-direction: column;
   }
+}
+
+/* -- slides (pptx) --------------------------------------------------------- */
+
+.file-slides {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-app);
+}
+
+.file-slides__header,
+.file-hwp__header {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.file-slides__header strong,
+.file-hwp__header strong {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-slides__header span,
+.file-hwp__notice {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.file-slides__column {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-5);
+  align-items: center;
+  min-height: 0;
+  padding: var(--space-5);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.file-slides__page {
+  width: min(100%, 960px);
+}
+
+/* 슬라이드는 원본이 흰 배경을 가정한다 — 테마와 무관하게 흰 카드. */
+.file-slides__slide {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  color: #1f1f1f;
+  background: #fff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.file-slides__shape {
+  position: absolute;
+  overflow: hidden;
+  line-height: 1.25;
+}
+
+.file-slides__shape--flow {
+  position: static;
+  padding: var(--space-2);
+}
+
+.file-slides__shape img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.file-slides__shape--placeholder {
+  display: grid;
+  place-items: center;
+  font-size: var(--text-xs);
+  color: #8a8a8a;
+  background: #f4f2ee;
+  border: 1px dashed #c9c4ba;
+  border-radius: 4px;
+}
+
+.file-slides__paragraph {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.file-slides__table {
+  width: 100%;
+  height: 100%;
+  font-size: 0.8em;
+  border-collapse: collapse;
+}
+
+.file-slides__table td {
+  padding: 2px 6px;
+  vertical-align: top;
+  border: 1px solid #c9c4ba;
+}
+
+.file-slides__overflow {
+  padding: var(--space-3);
+  margin-top: var(--space-2);
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.file-slides__badge {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  font-size: 11px;
+  color: #b0aca3;
+  user-select: none;
+}
+
+/* -- hwp / hwpx ------------------------------------------------------------ */
+
+.file-hwp {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-app);
+}
+
+.file-hwp__document {
+  box-sizing: border-box;
+  flex: 1;
+  width: min(52rem, calc(100% - var(--space-6) * 2));
+  min-height: 0;
+  margin: var(--space-5) auto;
+  padding: var(--space-7);
+  overflow: auto;
+  font-size: 11pt;
+  line-height: 1.6;
+  color: #1f1f1f;
+  overflow-wrap: anywhere;
+  background: #fffdf9;
+  border: 1px solid #d8d3ca;
+  border-radius: 2px;
+  box-shadow: var(--shadow-md);
+  user-select: text;
+}
+
+.file-hwp__document p {
+  margin: 0 0 var(--space-2);
+  white-space: pre-wrap;
+}
+
+/* -- preview fallback (.ppt 등) -------------------------------------------- */
+
+.file-preview__actions {
+  display: flex;
+  gap: var(--space-2);
 }
