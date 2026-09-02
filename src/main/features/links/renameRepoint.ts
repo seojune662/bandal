@@ -9,6 +9,13 @@ import {
   resolveInside
 } from '../../db/validate'
 import { writeFileAtomic } from '../../lib/atomicWrite'
+import {
+  WIKILINK_RE,
+  formatWikilink,
+  parseWikilink,
+  wikilinkKey,
+  wikilinkStem
+} from '../../../shared/wikilink'
 import { createMaterialLink, parseMaterialLink } from '../link/materialLink'
 
 const PATH_TABLES = [
@@ -100,6 +107,62 @@ function repointedPath(
 
 function materialUrlPattern(): RegExp {
   return /bandal:\/\/material\/?\?[^\s)>]+/g
+}
+
+function basenameOf(relPath: string): string {
+  return relPath.split('/').at(-1) ?? relPath
+}
+
+function extensionOf(relPath: string): string {
+  const name = basenameOf(relPath)
+  const dot = name.lastIndexOf('.')
+  return dot <= 0 ? '' : name.slice(dot)
+}
+
+function stripNoteExtension(value: string): string {
+  return value.replace(/\.(?:md|markdown)$/iu, '')
+}
+
+/**
+ * The new target for a wikilink, written in the SAME form the student used:
+ * a bare name stays a bare name, a path stays a path, and an omitted
+ * extension stays omitted (`[[Chap1]]` → `[[Chapter 1]]`, never
+ * `[[Chapter 1.md]]`). Null when the link does not point at the renamed file.
+ */
+export function repointedWikilinkTarget(
+  target: string,
+  fromRelPath: string,
+  toRelPath: string,
+  isDirectory: boolean
+): string | null {
+  const key = wikilinkKey(target)
+  const isPathForm = target.includes('/')
+
+  if (isDirectory) {
+    if (!isPathForm) return null
+    const next = repointedPath(target, fromRelPath, toRelPath, true)
+    return next === null ? null : next
+  }
+
+  const fromExtension = extensionOf(fromRelPath).toLowerCase()
+  const wroteExtension =
+    fromExtension.length > 0 &&
+    target.normalize('NFC').trim().toLowerCase().endsWith(fromExtension)
+  const withWrittenExtension = (next: string): string =>
+    wroteExtension ? next : stripNoteExtension(next)
+
+  if (isPathForm) {
+    if (key !== wikilinkKey(fromRelPath)) return null
+    return withWrittenExtension(toRelPath)
+  }
+  const matchesBasename =
+    key === wikilinkKey(basenameOf(fromRelPath)) ||
+    key === wikilinkKey(wikilinkStem(fromRelPath))
+  if (!matchesBasename) return null
+  const toBasename = basenameOf(toRelPath)
+  // A bare `[[Chap1]]` for `Chap1.pdf` was written as the stem: keep it so.
+  const wroteStem = !wroteExtension && key === wikilinkKey(wikilinkStem(fromRelPath))
+  return wroteStem ? wikilinkStem(toBasename) : withWrittenExtension(toBasename)
 }
 
 function tableExists(db: Database, table: string): boolean {
@@ -354,6 +417,18 @@ function rewriteCandidateNotes(
         if (relPathNext === null) return href
         changed = true
         return createMaterialLink({ ...parsed, relPath: relPathNext })
+      }).replace(WIKILINK_RE, (text) => {
+        const parsed = parseWikilink(text)
+        if (parsed === null) return text
+        const targetNext = repointedWikilinkTarget(
+          parsed.target,
+          input.fromRelPath,
+          input.toRelPath,
+          input.isDirectory
+        )
+        if (targetNext === null || targetNext === parsed.target) return text
+        changed = true
+        return formatWikilink({ ...parsed, target: targetNext })
       })
       if (!changed) continue
       writeFileAtomic(absPath, rewritten, { mode })

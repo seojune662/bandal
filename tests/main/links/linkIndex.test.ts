@@ -215,6 +215,98 @@ describe('linkIndex', () => {
     expect(index.allForCourse(COURSE_ID)).toEqual([])
   })
 
+  test('a [[wikilink]] yields a backlink to the note it resolves to', () => {
+    writeFileSync(join(courseFolder, 'Chap1.md'), '# Chap1\n')
+    writeFileSync(join(courseFolder, 'Chap1.pdf'), 'pdf')
+    writeFileSync(
+      join(courseFolder, '정리.md'),
+      '[[Chap1]] 과 [[chap1|별칭]] 그리고 [[Chap1.pdf#3장]]\n'
+    )
+
+    expect(index.forMaterial(COURSE_ID, 'Chap1.md')).toEqual({
+      notes: [
+        { ref: '정리.md', label: '정리.md', page: null },
+        { ref: '정리.md', label: '정리.md', page: null }
+      ],
+      boards: []
+    })
+    expect(index.forMaterial(COURSE_ID, 'Chap1.pdf').notes).toEqual([
+      { ref: '정리.md', label: '정리.md', page: null }
+    ])
+    const groups = index.allForCourse(COURSE_ID)
+    expect(groups.find((group) => group.relPath === 'Chap1.md')?.notes).toEqual([
+      { ref: '정리.md', label: '정리.md', page: null, detail: '', linkKind: 'wikilink' },
+      { ref: '정리.md', label: '정리.md', page: null, detail: '', linkKind: 'wikilink' }
+    ])
+    expect(
+      ctx.db
+        .prepare(
+          `SELECT link_kind FROM content_links WHERE course_id = ? ORDER BY link_kind`
+        )
+        .all(COURSE_ID)
+    ).toEqual([
+      { link_kind: 'wikilink' },
+      { link_kind: 'wikilink' },
+      { link_kind: 'wikilink' }
+    ])
+  })
+
+  test('a [[wikilink]] falls back to a .pdf and matches NFD spellings', () => {
+    const nfdName = '강의 1.pdf'.normalize('NFD')
+    writeFileSync(join(courseFolder, nfdName), 'pdf')
+    writeFileSync(
+      join(courseFolder, 'note.md'),
+      `[[${'강의 1'.normalize('NFC')}]]\n`
+    )
+
+    expect(index.forMaterial(COURSE_ID, nfdName).notes).toEqual([
+      { ref: 'note.md', label: 'note.md', page: null }
+    ])
+  })
+
+  test('an unresolved [[wikilink]] is skipped like a stale bandal link', () => {
+    writeFileSync(join(courseFolder, 'note.md'), '[[없는 노트]]\n')
+
+    expect(index.allForCourse(COURSE_ID)).toEqual([])
+  })
+
+  test('bandal:// backlinks keep their shape (no linkKind) next to wikilinks', () => {
+    writeFileSync(join(courseFolder, 'target.pdf'), 'pdf')
+    writeFileSync(
+      join(courseFolder, 'note.md'),
+      '[출처](bandal://material?path=target.pdf&page=2) [[target.pdf]]\n'
+    )
+
+    expect(index.allForCourse(COURSE_ID)[0]?.notes).toEqual([
+      { ref: 'note.md', label: 'note.md', page: null, detail: '', linkKind: 'wikilink' },
+      { ref: 'note.md', label: 'note.md', page: 2, detail: '' }
+    ])
+  })
+
+  test('an existing content_links table without link_kind is recreated', () => {
+    ctx.db.exec('DROP TABLE content_links')
+    ctx.db.exec(
+      `CREATE TABLE content_links (
+         course_id TEXT NOT NULL, source_kind TEXT NOT NULL,
+         source_ref TEXT NOT NULL, source_label TEXT NOT NULL,
+         target_path TEXT NOT NULL, target_page INTEGER, detail TEXT
+       )`
+    )
+    ctx.db.prepare(
+      `INSERT INTO content_links VALUES (?, 'note', 'ghost.md', 'ghost.md', 'x.pdf', NULL, '')`
+    ).run(COURSE_ID)
+
+    const rebuilt = createLinkIndex({ db: ctx.db, getCourseFolder: () => courseFolder })
+
+    const columns = (ctx.db.pragma('table_info(content_links)') as { name: string }[])
+      .map((column) => column.name)
+    expect(columns).toContain('link_kind')
+    expect(
+      ctx.db.prepare('SELECT count(*) AS count FROM content_links').get()
+    ).toEqual({ count: 0 })
+    expect(rebuilt.allForCourse(COURSE_ID)).toEqual([])
+  })
+
   test('does not scan generated markdown inside .bandal', () => {
     writeFileSync(join(courseFolder, 'target.pdf'), 'pdf')
     mkdirSync(join(courseFolder, '.bandal'))

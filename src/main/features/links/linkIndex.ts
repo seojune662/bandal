@@ -16,10 +16,21 @@ import type {
   MaterialBacklinks
 } from '../../../shared/types/link'
 import { requireId, requireNonEmptyString } from '../../db/validate'
+import {
+  WIKILINK_RE,
+  createWikilinkResolver,
+  parseWikilink
+} from '../../../shared/wikilink'
 import { parseMaterialLink } from '../link/materialLink'
 
 const LINK_TABLE = 'content_links'
 const NOTE_EXTENSIONS = new Set(['.md', '.markdown'])
+/**
+ * Derived cache: an older table without this column is dropped and rebuilt
+ * on startup (`createLinkIndex`) instead of migrated — one rescan is the
+ * whole cost.
+ */
+const LINK_KIND_COLUMN = 'link_kind'
 
 /**
  * Kept in sync with `features/link/linkService.ts` because that module does
@@ -49,6 +60,7 @@ export interface LinkIndex {
 }
 
 type SourceKind = 'note' | 'whiteboard'
+type LinkKind = NonNullable<DetailedMaterialBacklink['linkKind']>
 
 interface CourseFile {
   relPath: string
@@ -67,6 +79,7 @@ interface PendingLink {
   targetPath: string
   targetPage: number | null
   detail: string
+  linkKind: LinkKind
 }
 
 interface LinkRow {
@@ -76,6 +89,7 @@ interface LinkRow {
   target_path: string
   target_page: number | null
   detail: string | null
+  link_kind: string | null
 }
 
 interface ClipPayload {
@@ -140,6 +154,8 @@ function actualTargetPath(
 
 function linksFromNotes(scan: CourseScan): PendingLink[] {
   const links: PendingLink[] = []
+  // One stem/path map per scan so every `[[…]]` resolves in O(1).
+  const wikilinks = createWikilinkResolver(scan.files)
   for (const file of scan.files) {
     if (!NOTE_EXTENSIONS.has(extname(file.relPath).toLowerCase())) continue
 
@@ -164,7 +180,26 @@ function linksFromNotes(scan: CourseScan): PendingLink[] {
         sourceLabel: posix.basename(file.relPath),
         targetPath,
         targetPage: parsed.page,
-        detail: parsed.annotationId ?? ''
+        detail: parsed.annotationId ?? '',
+        linkKind: 'material'
+      })
+    }
+
+    for (const match of markdown.matchAll(WIKILINK_RE)) {
+      const parsed = parseWikilink(match[0])
+      if (parsed === null) continue
+      const targetPath = wikilinks.resolve(parsed.target)
+      // An unresolved wikilink is a note-to-be, not an edge — same as a
+      // stale bandal:// link.
+      if (targetPath === null) continue
+      links.push({
+        sourceKind: 'note',
+        sourceRef: file.relPath,
+        sourceLabel: posix.basename(file.relPath),
+        targetPath,
+        targetPage: null,
+        detail: '',
+        linkKind: 'wikilink'
       })
     }
   }
@@ -227,7 +262,8 @@ function linksFromWhiteboards(
       sourceLabel: row.title,
       targetPath,
       targetPage: clip.page,
-      detail: clip.label
+      detail: clip.label,
+      linkKind: 'material'
     })
   }
   return links
@@ -242,14 +278,29 @@ function backlinkFromRow(row: LinkRow): MaterialBacklink {
 }
 
 function detailedBacklinkFromRow(row: LinkRow): DetailedMaterialBacklink {
-  return {
+  const backlink: DetailedMaterialBacklink = {
     ...backlinkFromRow(row),
     detail: row.detail ?? ''
   }
+  // Absent means `bandal://` so pre-wikilink consumers keep their shape.
+  return row.link_kind === 'wikilink'
+    ? { ...backlink, linkKind: 'wikilink' }
+    : backlink
 }
 
-export function createLinkIndex(deps: LinkIndexDeps): LinkIndex {
-  deps.db.exec(
+function hasColumn(db: Database, table: string, column: string): boolean {
+  const columns = db.pragma(`table_info(${table})`) as { name: string }[]
+  return columns.some((entry) => entry.name === column)
+}
+
+function ensureLinkTable(db: Database): void {
+  const exists = db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(LINK_TABLE) !== undefined
+  if (exists && !hasColumn(db, LINK_TABLE, LINK_KIND_COLUMN)) {
+    db.exec(`DROP TABLE ${LINK_TABLE}`)
+  }
+  db.exec(
     `CREATE TABLE IF NOT EXISTS ${LINK_TABLE} (
        course_id    TEXT NOT NULL,
        source_kind  TEXT NOT NULL CHECK (source_kind IN ('note', 'whiteboard')),
@@ -257,17 +308,22 @@ export function createLinkIndex(deps: LinkIndexDeps): LinkIndex {
        source_label TEXT NOT NULL,
        target_path  TEXT NOT NULL,
        target_page  INTEGER,
-       detail       TEXT
+       detail       TEXT,
+       ${LINK_KIND_COLUMN} TEXT NOT NULL DEFAULT 'material'
      );
      CREATE INDEX IF NOT EXISTS idx_content_links_material
        ON ${LINK_TABLE} (course_id, target_path);`
   )
+}
+
+export function createLinkIndex(deps: LinkIndexDeps): LinkIndex {
+  ensureLinkTable(deps.db)
 
   const insert = deps.db.prepare(
     `INSERT INTO ${LINK_TABLE}
        (course_id, source_kind, source_ref, source_label,
-        target_path, target_page, detail)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+        target_path, target_page, detail, ${LINK_KIND_COLUMN})
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   )
 
   function refreshCourse(courseIdInput: string): CourseScan {
@@ -291,7 +347,8 @@ export function createLinkIndex(deps: LinkIndexDeps): LinkIndex {
           link.sourceLabel,
           link.targetPath,
           link.targetPage,
-          link.detail
+          link.detail,
+          link.linkKind
         )
       }
     })
@@ -310,7 +367,7 @@ export function createLinkIndex(deps: LinkIndexDeps): LinkIndex {
       const rows = deps.db
         .prepare(
           `SELECT source_kind, source_ref, source_label,
-                  target_path, target_page, detail
+                  target_path, target_page, detail, ${LINK_KIND_COLUMN}
              FROM ${LINK_TABLE}
             WHERE course_id = ? AND target_path = ?
             ORDER BY source_kind ASC, source_label ASC,
@@ -332,7 +389,7 @@ export function createLinkIndex(deps: LinkIndexDeps): LinkIndex {
       const rows = deps.db
         .prepare(
           `SELECT source_kind, source_ref, source_label,
-                  target_path, target_page, detail
+                  target_path, target_page, detail, ${LINK_KIND_COLUMN}
              FROM ${LINK_TABLE}
             WHERE course_id = ?
             ORDER BY target_path ASC, source_kind ASC, source_label ASC,

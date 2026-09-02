@@ -13,6 +13,7 @@ import { createLinkIndex, type LinkIndex } from '../../../src/main/features/link
 import {
   collectRepointNoteCandidates,
   repointMaterialPath,
+  repointedWikilinkTarget,
   type RepointMaterialPathResult
 } from '../../../src/main/features/links/renameRepoint'
 import { createMaterialsRepo } from '../../../src/main/features/materials'
@@ -299,6 +300,77 @@ describe('rename path repointing', () => {
     expect(result.markdown).toContain(materialHref('new.md'))
     expect(parseMaterialLink(materialHref('new.md'))?.relPath).toBe('new.md')
     expect(readFileSync(join(courseFolder, 'new.md'), 'utf8')).toBe(result.markdown)
+  })
+
+  test('renaming a note rewrites its [[wikilinks]] in the form they were written', () => {
+    writeFileSync(join(courseFolder, 'Chap1.md'), '# Chap1\n')
+    writeFileSync(join(courseFolder, 'Chap10.md'), '# Chap10\n')
+    writeFileSync(
+      join(courseFolder, 'study.md'),
+      '[[Chap1|alias]] [[chap1#요약]] [[Chap1.md]] [[Chap10]] ![[Chap1]]\n'
+    )
+    index.forMaterial(COURSE_ID, 'Chap1.md')
+
+    renameSync(join(courseFolder, 'Chap1.md'), join(courseFolder, 'Chapter 1.md'))
+    const result = repointMaterialPath({
+      db: ctx.db,
+      courseFolder,
+      courseId: COURSE_ID,
+      fromRelPath: 'Chap1.md',
+      toRelPath: 'Chapter 1.md',
+      isDirectory: false
+    })
+
+    expect(result.rewrittenNotes).toEqual(['study.md'])
+    expect(readFileSync(join(courseFolder, 'study.md'), 'utf8')).toBe(
+      '[[Chapter 1|alias]] [[Chapter 1#요약]] [[Chapter 1.md]] [[Chap10]] ![[Chapter 1]]\n'
+    )
+    expect(index.forMaterial(COURSE_ID, 'Chapter 1.md').notes).toHaveLength(4)
+  })
+
+  test('a folder move rewrites path-form wikilinks and leaves bare names alone', () => {
+    mkdirSync(join(courseFolder, 'unit'))
+    mkdirSync(join(courseFolder, 'archive'))
+    writeFileSync(join(courseFolder, 'unit', 'paper.pdf'), 'pdf')
+    writeFileSync(
+      join(courseFolder, 'note.md'),
+      '[[unit/paper.pdf]] [[paper.pdf]]\n'
+    )
+    index.forMaterial(COURSE_ID, 'unit/paper.pdf')
+
+    renameSync(join(courseFolder, 'unit'), join(courseFolder, 'archive', 'unit'))
+    repointMaterialPath({
+      db: ctx.db,
+      courseFolder,
+      courseId: COURSE_ID,
+      fromRelPath: 'unit',
+      toRelPath: 'archive/unit',
+      isDirectory: true
+    })
+
+    expect(readFileSync(join(courseFolder, 'note.md'), 'utf8')).toBe(
+      '[[archive/unit/paper.pdf]] [[paper.pdf]]\n'
+    )
+  })
+
+  test('repointedWikilinkTarget keeps the written form', () => {
+    expect(repointedWikilinkTarget('Chap1', 'Chap1.md', 'Chapter 1.md', false)).toBe(
+      'Chapter 1'
+    )
+    expect(repointedWikilinkTarget('Chap1.md', 'Chap1.md', 'Chapter 1.md', false)).toBe(
+      'Chapter 1.md'
+    )
+    expect(repointedWikilinkTarget('Chap1', 'Chap1.pdf', 'Chapter 1.pdf', false)).toBe(
+      'Chapter 1'
+    )
+    expect(repointedWikilinkTarget('Chap1.pdf', 'Chap1.pdf', 'Chapter 1.pdf', false)).toBe(
+      'Chapter 1.pdf'
+    )
+    expect(repointedWikilinkTarget('notes/Chap1', 'notes/Chap1.md', 'a/Ch.md', false)).toBe(
+      'a/Ch'
+    )
+    expect(repointedWikilinkTarget('Chap10', 'Chap1.md', 'Chapter 1.md', false)).toBeNull()
+    expect(repointedWikilinkTarget('Chap1', 'unit', 'archive/unit', true)).toBeNull()
   })
 
   test('one read-only note fails without stopping the remaining rewrites', () => {

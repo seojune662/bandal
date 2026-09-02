@@ -14,8 +14,10 @@
  */
 
 import type { MilkdownPlugin } from '@milkdown/ctx'
+import { calloutMarkdown } from './callout'
+import { wikilinkMarkdown } from './wikilink'
 
 export const NOTE_MARKDOWN_EXTENSIONS: MilkdownPlugin[] = [
-  // ...calloutMarkdown  (features/notes/callout)
-  // ...wikilinkMarkdown (features/notes/wikilink)
+  ...calloutMarkdown,
+  ...wikilinkMarkdown
 ]

@@ -57,9 +57,68 @@ describe('note markdown round trip', () => {
       'links',
       'Read [Milkdown](https://milkdown.dev "Milkdown") and <https://example.com>.\n',
       ['[Milkdown](https://milkdown.dev "Milkdown")', '<https://example.com>']
+    ],
+    [
+      'callout with a title',
+      '> [!note] 제목\n> 본문\n',
+      ['> [!note] 제목\n> 본문']
+    ],
+    [
+      'collapsed callout',
+      '> [!tip]-\n> folded\n',
+      ['> [!tip]-\n> folded']
+    ],
+    [
+      'uppercase callout with a list',
+      '> [!WARNING] Caps\n> - list\n',
+      ['> [!WARNING] Caps\n> * list']
+    ],
+    [
+      'ordinary quote nested in a callout',
+      '> [!quote] 바깥\n> > 안쪽 인용\n',
+      ['> [!quote] 바깥\n> > 안쪽 인용']
+    ],
+    [
+      'ordinary blockquote',
+      '> 일반 인용은 그대로입니다.\n',
+      ['> 일반 인용은 그대로입니다.']
+    ],
+    [
+      'wikilinks',
+      '본문 [[강의 1]] 과 [[강의 1|별칭]] 그리고 [[강의 1#요약]] 및 ![[그림.png]]\n',
+      ['[[강의 1]]', '[[강의 1|별칭]]', '[[강의 1#요약]]', '![[그림.png]]']
+    ],
+    [
+      'wikilinks with a path target and both heading and alias',
+      '[[notes/Chap1.md#요약|1장]] 참고\n',
+      ['[[notes/Chap1.md#요약|1장]]']
     ]
   ])('%s stays stable after editing and reopening', (_name, markdown, fragments) => {
     expectStable(markdown, fragments)
+  })
+
+  test('wikilink text inside a normal link label is left untouched', () => {
+    const markdown = '[[[x]] 라벨](https://example.com) 과 `[[코드]]`\n'
+    const normalized = codec.normalize(markdown)
+    // The label keeps its literal brackets (escaped, as before) and no
+    // wikilink node is produced for either the link label or the code span.
+    expect(normalized).toContain('](https://example.com)')
+    expect(normalized).toContain('`[[코드]]`')
+    expect(normalized).not.toContain('[[x]] 라벨](')
+    expectStable(markdown, ['](https://example.com)', '`[[코드]]`'])
+  })
+
+  test('wikilinks do not become escaped brackets after a save', () => {
+    // Without a dedicated node, mdast-util-to-markdown writes `\\[\\[강의]]`
+    // and the link is gone on the next open.
+    expect(codec.normalize('[[강의]]\n')).toBe('[[강의]]\n')
+  })
+
+  test('documented limitation: an escaped \\[[x]] is promoted on the next round trip', () => {
+    // `\\[` unescapes to a literal `[` before the remark transform runs, so
+    // the text `[[x]]` matches and comes back as a real wikilink. Accepted:
+    // there is no unescaped form a student would want to keep as text.
+    expect(codec.normalize('\\[[x]]\n')).toBe('[[x]]\n')
   })
 
   test('a realistic mixed lecture note stays stable', () => {

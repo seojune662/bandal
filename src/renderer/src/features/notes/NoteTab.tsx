@@ -79,6 +79,7 @@ import {
   type NoteFontScale
 } from './noteZoom'
 import { taskListItemView } from './taskListView'
+import { createWikilinkPickerPlugin, wikilinkContextCtx } from './wikilink'
 import './note-tab.css'
 
 const SAVE_DELAY_MS = 800
@@ -249,6 +250,10 @@ function MilkdownNoteEditor({
             'aria-label': '마크다운 필기 편집기',
             'aria-multiline': 'true'
           })
+          context.set(wikilinkContextCtx.key, {
+            courseId,
+            getSelfRelPath: () => relPathRef.current
+          })
           context.update(nodeViewCtx, (views) => [
             ...views.filter(
               ([name]) => name !== 'list_item' && name !== 'image'
@@ -263,6 +268,10 @@ function MilkdownNoteEditor({
             ...plugins,
             createNoteImagePlugin(courseId),
             createMentionMenuPlugin({
+              courseId,
+              getSelfRelPath: () => relPathRef.current
+            }),
+            createWikilinkPickerPlugin({
               courseId,
               getSelfRelPath: () => relPathRef.current
             }),
