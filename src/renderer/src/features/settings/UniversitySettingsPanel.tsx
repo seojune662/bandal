@@ -78,6 +78,13 @@ export function UniversitySettingsPanel(): JSX.Element {
   const clearSelection = useUniversityStore((state) => state.clearSelection)
   const setServiceHidden = useUniversityStore((state) => state.setServiceHidden)
   const setOpenExternally = useUniversityStore((state) => state.setOpenExternally)
+  const moveService = useUniversityStore((state) => state.moveService)
+  const setServiceSecondary = useUniversityStore(
+    (state) => state.setServiceSecondary
+  )
+  const resetServiceLayout = useUniversityStore(
+    (state) => state.resetServiceLayout
+  )
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -93,6 +100,18 @@ export function UniversitySettingsPanel(): JSX.Element {
   const hiddenPresets = (university?.services ?? []).filter((service) =>
     hiddenIds.includes(service.id)
   )
+  const serviceGroups = [
+    {
+      id: 'primary',
+      label: t('settings.university.group.primary'),
+      services: services.filter((service) => !service.secondary)
+    },
+    {
+      id: 'secondary',
+      label: t('settings.university.group.secondary'),
+      services: services.filter((service) => service.secondary)
+    }
+  ] as const
 
   return (
     <div className="settings-stack">
@@ -149,57 +168,152 @@ export function UniversitySettingsPanel(): JSX.Element {
           </div>
 
           <div className="university-service-table">
-            {services.map((service) => {
-              const badge = verificationBadge(t, service.verification)
-              const label = serviceName(service, locale)
-              return (
-                <div className="setting-row" key={service.id}>
-                  <div className="setting-row__copy">
-                    <div className="setting-row__label-line">
-                      <span className="setting-row__label">{label}</span>
-                      <span className="badge">
-                        {serviceKindLabel(t, service.kind)}
-                      </span>
-                      {badge !== null && <span className="badge">{badge}</span>}
+            {serviceGroups.map((group) => (
+              <section
+                className="university-service-group"
+                aria-labelledby={`university-service-group-${group.id}`}
+                key={group.id}
+              >
+                <h3
+                  className="university-service-group__heading"
+                  id={`university-service-group-${group.id}`}
+                >
+                  <span>{group.label}</span>
+                  <span className="count-badge">
+                    {new Intl.NumberFormat(locale).format(group.services.length)}
+                  </span>
+                </h3>
+
+                {group.services.map((service, index) => {
+                  const badge = verificationBadge(t, service.verification)
+                  const label = serviceName(service, locale)
+                  const moveUpLabel = t('settings.university.moveUp', {
+                    name: label
+                  })
+                  const moveDownLabel = t('settings.university.moveDown', {
+                    name: label
+                  })
+                  return (
+                    <div className="setting-row" key={service.id}>
+                      <div className="setting-row__copy">
+                        <div className="setting-row__label-line">
+                          <span className="setting-row__label">{label}</span>
+                          <span className="badge">
+                            {serviceKindLabel(t, service.kind)}
+                          </span>
+                          {badge !== null && (
+                            <span className="badge">{badge}</span>
+                          )}
+                        </div>
+                        <span className="setting-row__description">
+                          {service.opensExternally
+                            ? externalReasonMessage(t, service.externalReason)
+                            : locale === 'ko-KR'
+                              ? (service.note ?? service.url)
+                              : service.url}
+                        </span>
+                      </div>
+                      <div className="university-service-table__actions">
+                        <div
+                          className="university-service-table__move"
+                          role="group"
+                          aria-label={t('settings.university.reorder', {
+                            name: label
+                          })}
+                        >
+                          <button
+                            type="button"
+                            className="secondary-button university-service-table__move-button"
+                            aria-label={moveUpLabel}
+                            title={moveUpLabel}
+                            disabled={busy || index === 0}
+                            onClick={() =>
+                              run(() => moveService(service.id, -1))
+                            }
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button university-service-table__move-button"
+                            aria-label={moveDownLabel}
+                            title={moveDownLabel}
+                            disabled={
+                              busy || index === group.services.length - 1
+                            }
+                            onClick={() =>
+                              run(() => moveService(service.id, 1))
+                            }
+                          >
+                            ↓
+                          </button>
+                        </div>
+                        <div className="university-service-table__toggle-control">
+                          <span>
+                            {t('settings.university.openExternalLabel')}
+                          </span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={service.opensExternally}
+                            aria-label={t(
+                              'settings.university.openExternal',
+                              { name: label }
+                            )}
+                            className={`toggle${service.opensExternally ? ' toggle--checked' : ''}`}
+                            disabled={busy}
+                            onClick={() =>
+                              run(() =>
+                                setOpenExternally(
+                                  service.id,
+                                  !service.opensExternally
+                                )
+                              )
+                            }
+                          >
+                            <span className="toggle__thumb" />
+                          </button>
+                        </div>
+                        <div className="university-service-table__toggle-control">
+                          <span>{t('settings.university.moreLabel')}</span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={service.secondary}
+                            aria-label={t(
+                              'settings.university.secondaryToggle',
+                              { name: label }
+                            )}
+                            className={`toggle${service.secondary ? ' toggle--checked' : ''}`}
+                            disabled={busy}
+                            onClick={() =>
+                              run(() =>
+                                setServiceSecondary(
+                                  service.id,
+                                  !service.secondary
+                                )
+                              )
+                            }
+                          >
+                            <span className="toggle__thumb" />
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          disabled={busy}
+                          onClick={() =>
+                            run(() => setServiceHidden(service.id, true))
+                          }
+                        >
+                          {t('settings.university.hide')}
+                        </button>
+                      </div>
                     </div>
-                    <span className="setting-row__description">
-                      {service.opensExternally
-                        ? externalReasonMessage(t, service.externalReason)
-                        : locale === 'ko-KR'
-                          ? (service.note ?? service.url)
-                          : service.url}
-                    </span>
-                  </div>
-                  <div className="university-service-table__actions">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={service.opensExternally}
-                      aria-label={t('settings.university.openExternal', {
-                        name: label
-                      })}
-                      className={`toggle${service.opensExternally ? ' toggle--checked' : ''}`}
-                      disabled={busy}
-                      onClick={() =>
-                        run(() =>
-                          setOpenExternally(service.id, !service.opensExternally)
-                        )
-                      }
-                    >
-                      <span className="toggle__thumb" />
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      disabled={busy}
-                      onClick={() => run(() => setServiceHidden(service.id, true))}
-                    >
-                      {t('settings.university.hide')}
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
+                  )
+                })}
+              </section>
+            ))}
           </div>
 
           {hiddenPresets.length > 0 && (
@@ -237,6 +351,27 @@ export function UniversitySettingsPanel(): JSX.Element {
               </div>
             </div>
           )}
+
+          <div className="settings-card__footer-row">
+            <div className="setting-row">
+              <div className="setting-row__copy">
+                <span className="setting-row__label">
+                  {t('settings.university.resetLayout')}
+                </span>
+                <span className="setting-row__description">
+                  {t('settings.university.resetLayoutHelp')}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={busy}
+                onClick={() => run(() => resetServiceLayout())}
+              >
+                {t('settings.university.resetLayout')}
+              </button>
+            </div>
+          </div>
         </section>
       )}
 
