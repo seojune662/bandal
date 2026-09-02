@@ -12,6 +12,7 @@ import { Plugin, PluginKey } from '@milkdown/prose/state'
 import type { EditorView } from '@milkdown/prose/view'
 import { Decoration, DecorationSet } from '@milkdown/prose/view'
 import { $prose, callCommand } from '@milkdown/utils'
+import { wrapInCalloutCommand } from './callout'
 import { toggleTaskListItems } from './noteFormatting'
 
 export type SlashMenuCommand =
@@ -22,6 +23,7 @@ export type SlashMenuCommand =
   | 'ordered-list'
   | 'task-list'
   | 'blockquote'
+  | 'callout'
   | 'link'
   | 'image'
   | 'code-block'
@@ -82,6 +84,12 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     label: '인용',
     description: '인용 블록',
     keywords: ['quote', 'blockquote']
+  },
+  {
+    command: 'callout',
+    label: '콜아웃',
+    description: '접을 수 있는 강조 메모',
+    keywords: ['callout', 'admonition', 'note', 'tip', 'warning', '콜아웃', '메모']
   },
   {
     command: 'link',
@@ -379,6 +387,8 @@ function runSlashCommand(
     }
     case 'blockquote':
       return callCommand(wrapInBlockquoteCommand.key)(context)
+    case 'callout':
+      return callCommand(wrapInCalloutCommand.key, 'note')(context)
     case 'link':
     case 'image':
       view.dom.dispatchEvent(
