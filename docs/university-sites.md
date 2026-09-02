@@ -773,6 +773,8 @@ export interface UniversitySettings {
   openExternallyOverrides: Readonly<Record<string, boolean>>
   /** Sidebar order: service ids, most-used first. Missing ids fall back to preset order. */
   serviceOrder: readonly string[]
+  /** Per-service 더보기 tier override: true = 더보기 뒤로, false = 항상 보임. */
+  secondaryOverrides: Readonly<Record<string, boolean>>
 }
 ```
 
@@ -1010,3 +1012,22 @@ CREATE INDEX idx_course_links_course ON course_links(course_id, sort_order);
 우클릭 → **검사**로 DevTools 를 연다. 릴리즈 빌드에서도 열린다 — 깨진 한국
 포털은 실제 로그인이 있는 실제 기기에서만 재현되기 때문이다. 콘솔에
 `Cannot read properties of null` 이 보이면 거의 확실히 팝업 문제다.
+
+## 공통 서비스 (모든 학교에 붙는 링크)
+
+학교별 프리셋과 별개로, **모든 학교의 사이드바에 함께 나오는 링크**는
+`src/shared/universities/common.ts` 의 `COMMON_SERVICES` 에 둔다. id 는
+`common.` 네임스페이스를 쓰고(학교 id 아래가 아님), 다른 서비스 id 와
+마찬가지로 절대 바꾸지 않는다 — 숨김 목록·정렬·더보기 오버라이드가 문자열로
+참조한다. `resolveServices` 가 프리셋 → 공통 → 사용자 추가 순으로 합친 뒤
+`serviceOrder` 로 재정렬한다.
+
+| id | 표시명 | URL | kind | 임베디드 | 확인 |
+|----|--------|-----|------|----------|------|
+| `common.everytime` | 에브리타임 | `https://everytime.kr/` | `community` | ✅ 앱 안에서 | partial (2026-09-02) |
+
+**2026-09-02 확인:** `curl -sI https://everytime.kr/` → `HTTP/2 403`
+(`server: nginx`, `x-powered-by: Express`, 리다이렉트 없음). 서버가 bare
+HEAD 요청을 거절하는 것이라 URL 자체의 유효성은 확인됐지만 "깨끗하게 200"
+은 아니어서 `verification: 'partial'` 로 둔다. 로그인 후 학교 게시판·시간표가
+실제로 뜨는지는 실계정 검증 대상(§7.4).

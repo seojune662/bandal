@@ -52,6 +52,13 @@ const KIND_PATHS: Record<ServiceKind, JSX.Element> = {
       <path d="M3.5 12h17M12 3.5c2.2 2.4 3.3 5.3 3.3 8.5s-1.1 6.1-3.3 8.5c-2.2-2.4-3.3-5.3-3.3-8.5S9.8 5.9 12 3.5" />
     </>
   ),
+  community: (
+    // Two overlapping speech bubbles — the back one only draws its visible edge.
+    <>
+      <path d="M3.5 5.5h10A1.5 1.5 0 0 1 15 7v5a1.5 1.5 0 0 1-1.5 1.5H8l-3.5 3v-3h-1A1.5 1.5 0 0 1 2 12V7a1.5 1.5 0 0 1 1.5-1.5z" />
+      <path d="M15 9.5h4.5A1.5 1.5 0 0 1 21 11v5a1.5 1.5 0 0 1-1.5 1.5h-1v3l-3.5-3H10A1.5 1.5 0 0 1 8.5 16v-2.5" />
+    </>
+  ),
   other: (
     <>
       <circle cx="12" cy="12" r="8.5" />

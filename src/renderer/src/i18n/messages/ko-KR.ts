@@ -304,6 +304,7 @@ export const koKR = {
   'settings.university.kind.library': '도서관',
   'settings.university.kind.mail': '메일',
   'settings.university.kind.homepage': '홈페이지',
+  'settings.university.kind.community': '커뮤니티',
   'settings.university.kind.other': '그 밖에',
 
   'settings.university.picker.searchLabel': '학교 검색',

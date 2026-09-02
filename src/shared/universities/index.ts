@@ -17,11 +17,20 @@ import type {
   UniversityService,
   UniversitySettings
 } from '../types/university'
+import { COMMON_SERVICES } from './common'
+import { applyServiceOrder } from './order'
 import { REGIONAL_UNIVERSITIES } from './regional'
 import { SEOUL_PRIVATE_UNIVERSITIES } from './seoulPrivate'
 import { SNU, VERIFIED_AT } from './snu'
 
 export { VERIFIED_AT as CATALOG_VERIFIED_AT }
+export { COMMON_SERVICES } from './common'
+export {
+  applyServiceOrder,
+  moveServiceBefore,
+  moveServiceBy,
+  moveServiceToEnd
+} from './order'
 export * from './courseLink'
 export {
   blackboardCourseLink,
@@ -89,40 +98,72 @@ export function searchUniversities(query: string): readonly University[] {
 export interface ResolvedService extends UniversityService {
   /** Final embedded-vs-external decision (override beats the preset). */
   opensExternally: boolean
+  /** Final 더보기 tier (override beats the preset). */
+  secondary: boolean
   /** True for entries the user added themselves. */
   isCustom: boolean
 }
 
+type ServiceOverrides = Pick<
+  UniversitySettings,
+  'openExternallyOverrides' | 'secondaryOverrides'
+>
+
 function applyOverride(
   service: UniversityService,
-  overrides: Readonly<Record<string, boolean>>,
+  overrides: ServiceOverrides,
   isCustom: boolean
 ): ResolvedService {
-  const override = overrides[service.id]
   return {
     ...service,
-    opensExternally: override ?? service.opensExternally ?? false,
+    opensExternally:
+      overrides.openExternallyOverrides[service.id] ??
+      service.opensExternally ??
+      false,
+    secondary: overrides.secondaryOverrides[service.id] ?? service.secondary ?? false,
     isCustom
   }
 }
 
 /**
- * The sidebar's list: preset services first (catalog order), then the user's
- * own, minus anything hidden, with per-service external overrides applied.
+ * The sidebar's list: preset services (catalog order), then the common
+ * services every school shares, then the user's own — re-sorted by the
+ * user's `serviceOrder`, minus anything hidden, with per-service external
+ * and 더보기-tier overrides applied.
  */
 export function resolveServices(
   university: University | null,
   settings: UniversitySettings | null | undefined
 ): readonly ResolvedService[] {
   const hidden = new Set(settings?.hiddenServiceIds ?? [])
-  const overrides = settings?.openExternallyOverrides ?? {}
+  const overrides: ServiceOverrides = {
+    openExternallyOverrides: settings?.openExternallyOverrides ?? {},
+    secondaryOverrides: settings?.secondaryOverrides ?? {}
+  }
   const presets = (university?.services ?? []).map((service) =>
+    applyOverride(service, overrides, false)
+  )
+  const common = COMMON_SERVICES.map((service) =>
     applyOverride(service, overrides, false)
   )
   const custom = (settings?.customServices ?? []).map((service) =>
     applyOverride(service, overrides, true)
   )
-  return [...presets, ...custom].filter((service) => !hidden.has(service.id))
+  return applyServiceOrder(
+    [...presets, ...common, ...custom],
+    settings?.serviceOrder ?? []
+  ).filter((service) => !hidden.has(service.id))
+}
+
+/** Splits a resolved list into the always-visible and the 더보기 tier, in order. */
+export function serviceTierIds(services: readonly ResolvedService[]): {
+  primary: string[]
+  secondary: string[]
+} {
+  return {
+    primary: services.filter((service) => !service.secondary).map((s) => s.id),
+    secondary: services.filter((service) => service.secondary).map((s) => s.id)
+  }
 }
 
 const KIND_LABELS: Readonly<Record<ServiceKind, string>> = {
@@ -132,6 +173,7 @@ const KIND_LABELS: Readonly<Record<ServiceKind, string>> = {
   library: '도서관',
   mail: '메일',
   homepage: '홈페이지',
+  community: '커뮤니티',
   other: '그 밖에'
 }
 

@@ -129,6 +129,25 @@ function sanitizeOverrides(raw: unknown): Record<string, boolean> {
   return Object.fromEntries(entries)
 }
 
+/** Nobody has 200 shortcuts; anything past that is a runaway write. */
+const MAX_SERVICE_ORDER = 200
+
+/** Trimmed, non-empty, deduplicated string ids — first occurrence wins. */
+function sanitizeServiceOrder(raw: unknown): readonly string[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const ids: string[] = []
+  for (const item of raw) {
+    if (ids.length >= MAX_SERVICE_ORDER) break
+    if (typeof item !== 'string') continue
+    const id = item.trim()
+    if (id.length === 0 || seen.has(id)) continue
+    seen.add(id)
+    ids.push(id)
+  }
+  return ids
+}
+
 export function sanitizeUniversitySettings(raw: unknown): UniversitySettings {
   if (!isRecord(raw)) return { ...DEFAULT_UNIVERSITY_SETTINGS }
   return {
@@ -140,6 +159,8 @@ export function sanitizeUniversitySettings(raw: unknown): UniversitySettings {
           .map(sanitizeService)
           .filter((service): service is UniversityService => service !== null)
       : [],
-    openExternallyOverrides: sanitizeOverrides(raw['openExternallyOverrides'])
+    openExternallyOverrides: sanitizeOverrides(raw['openExternallyOverrides']),
+    serviceOrder: sanitizeServiceOrder(raw['serviceOrder']),
+    secondaryOverrides: sanitizeOverrides(raw['secondaryOverrides'])
   }
 }

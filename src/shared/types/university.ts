@@ -19,6 +19,7 @@ export type ServiceKind =
   | 'mail' // 웹메일
   | 'registration' // 수강신청
   | 'homepage' // 학교 홈페이지
+  | 'community' // 에브리타임 같은 캠퍼스 커뮤니티
   | 'other' // 비교과, 증명발급, 식단 …
 
 export const SERVICE_KINDS: readonly ServiceKind[] = [
@@ -28,6 +29,7 @@ export const SERVICE_KINDS: readonly ServiceKind[] = [
   'library',
   'mail',
   'homepage',
+  'community',
   'other'
 ]
 
@@ -123,6 +125,17 @@ export interface UniversitySettings {
   customServices: readonly UniversityService[]
   /** Per-service override of the embedded/external decision. */
   openExternallyOverrides: Readonly<Record<string, boolean>>
+  /**
+   * Full sidebar order by service id (presets, common and custom alike).
+   * Unknown ids are ignored; ids not listed here follow, in catalog order.
+   * Empty = catalog order.
+   */
+  serviceOrder: readonly string[]
+  /**
+   * Per-service override of the 더보기 tier: true = behind 더보기,
+   * false = always visible. Mirrors `openExternallyOverrides`.
+   */
+  secondaryOverrides: Readonly<Record<string, boolean>>
 }
 
 export const DEFAULT_UNIVERSITY_SETTINGS: UniversitySettings = {
@@ -130,7 +143,9 @@ export const DEFAULT_UNIVERSITY_SETTINGS: UniversitySettings = {
   customUniversity: null,
   hiddenServiceIds: [],
   customServices: [],
-  openExternallyOverrides: {}
+  openExternallyOverrides: {},
+  serviceOrder: [],
+  secondaryOverrides: {}
 }
 
 /** What the 직접 추가 flow collects — only the name is required. */

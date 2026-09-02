@@ -33,6 +33,41 @@ describe('sanitizeUniversitySettings', () => {
     expect(result.openExternallyOverrides).toEqual({ 'snu.mail': false })
   })
 
+  test('serviceOrder keeps trimmed, unique strings only', () => {
+    const result = sanitizeUniversitySettings({
+      serviceOrder: ['snu.mail', ' common.everytime ', 7, null, 'snu.mail', '', '   ']
+    })
+    expect(result.serviceOrder).toEqual(['snu.mail', 'common.everytime'])
+  })
+
+  test('serviceOrder is capped at 200 entries', () => {
+    const raw = Array.from({ length: 250 }, (_, index) => `svc.${index}`)
+    expect(sanitizeUniversitySettings({ serviceOrder: raw }).serviceOrder).toHaveLength(
+      200
+    )
+  })
+
+  test('a non-array serviceOrder falls back to empty', () => {
+    expect(sanitizeUniversitySettings({ serviceOrder: 'snu.mail' }).serviceOrder).toEqual(
+      []
+    )
+  })
+
+  test('secondaryOverrides keeps booleans only', () => {
+    const result = sanitizeUniversitySettings({
+      secondaryOverrides: { 'snu.food': false, 'snu.portal': true, 'snu.mail': 'yes' }
+    })
+    expect(result.secondaryOverrides).toEqual({ 'snu.food': false, 'snu.portal': true })
+    expect(sanitizeUniversitySettings({ secondaryOverrides: [] }).secondaryOverrides)
+      .toEqual({})
+  })
+
+  test('a settings file from before the layout fields gets the new defaults', () => {
+    const result = sanitizeUniversitySettings({ universityId: 'snu' })
+    expect(result.serviceOrder).toEqual([])
+    expect(result.secondaryOverrides).toEqual({})
+  })
+
   test('drops a custom school with no name and keeps a valid one', () => {
     expect(
       sanitizeUniversitySettings({ customUniversity: { id: 'custom:1' } })
@@ -58,6 +93,17 @@ describe('sanitizeService', () => {
     // Unknown kind/verification fall back to the most conservative values.
     expect(service?.kind).toBe('other')
     expect(service?.verification).toBe('unverified')
+  })
+
+  test('accepts the community kind', () => {
+    expect(
+      sanitizeService({
+        id: 'x.board',
+        kind: 'community',
+        label: '커뮤니티',
+        url: 'https://board.x.ac.kr/'
+      })?.kind
+    ).toBe('community')
   })
 
   test('rejects a service whose URL is not http(s)', () => {

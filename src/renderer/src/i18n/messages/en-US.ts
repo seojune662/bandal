@@ -306,6 +306,7 @@ export const enUS: Record<MessageKey, string> = {
   'settings.university.kind.library': 'Library',
   'settings.university.kind.mail': 'Mail',
   'settings.university.kind.homepage': 'Homepage',
+  'settings.university.kind.community': 'Community',
   'settings.university.kind.other': 'Other',
 
   'settings.university.picker.searchLabel': 'Search universities',

@@ -16,6 +16,7 @@ import {
   CATALOG_VERIFIED_AT,
   CUSTOM_UNIVERSITY_PREFIX,
   inferCourseLinkSpec,
+  moveServiceBy,
   resolveServices,
   resolveUniversity,
   type ResolvedService
@@ -45,6 +46,14 @@ interface UniversityStore {
   clearSelection: () => Promise<void>
   setServiceHidden: (serviceId: string, hidden: boolean) => Promise<void>
   setOpenExternally: (serviceId: string, external: boolean) => Promise<void>
+  /** Persists the complete sidebar order (drag & drop hands over every id). */
+  reorderServices: (ids: readonly string[]) => Promise<void>
+  /** Nudges one service up (-1) or down (+1) within the full list, hidden included. */
+  moveService: (id: string, delta: -1 | 1) => Promise<void>
+  /** true = tuck behind 더보기, false = always visible. */
+  setServiceSecondary: (id: string, secondary: boolean) => Promise<void>
+  /** Back to catalog order and preset tiers; hidden/external tweaks survive. */
+  resetServiceLayout: () => Promise<void>
 }
 
 let initialized = false
@@ -162,6 +171,35 @@ export const useUniversityStore = create<UniversityStore>()((set, get) => {
           [serviceId]: external
         }
       })
+    },
+
+    reorderServices: async (ids) => {
+      const current = get().settings
+      await persist({ ...current, serviceOrder: [...ids] })
+    },
+
+    moveService: async (id, delta) => {
+      const current = get().settings
+      // Move within the *full* list (hidden entries keep their slot) so a
+      // service unhidden later lands where the user last left it.
+      const fullOrder = resolveServices(get().university, {
+        ...current,
+        hiddenServiceIds: []
+      }).map((service) => service.id)
+      await persist({ ...current, serviceOrder: moveServiceBy(fullOrder, id, delta) })
+    },
+
+    setServiceSecondary: async (id, secondary) => {
+      const current = get().settings
+      await persist({
+        ...current,
+        secondaryOverrides: { ...current.secondaryOverrides, [id]: secondary }
+      })
+    },
+
+    resetServiceLayout: async () => {
+      const current = get().settings
+      await persist({ ...current, serviceOrder: [], secondaryOverrides: {} })
     }
   }
 })

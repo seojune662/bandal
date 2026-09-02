@@ -10,10 +10,12 @@
 import { describe, expect, test } from 'vitest'
 import {
   CATALOG_VERIFIED_AT,
+  COMMON_SERVICES,
   findUniversity,
   resolveServices,
   resolveUniversity,
   searchUniversities,
+  serviceTierIds,
   UNIVERSITIES
 } from '../../../src/shared/universities'
 import { normalizeHttpUrl } from '../../../src/shared/universities/courseLink'
@@ -95,6 +97,33 @@ describe('catalog shape', () => {
       expect(kinds, `${university.id} has no homepage`).toContain('homepage')
       expect(kinds, `${university.id} has no lms`).toContain('lms')
     }
+  })
+})
+
+describe('common services', () => {
+  test('ids live in the common. namespace and never collide with a preset', () => {
+    const presetIds = new Set(ALL_SERVICES.map((entry) => entry.service.id))
+    const ids = COMMON_SERVICES.map((service) => service.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    for (const id of ids) {
+      expect(id.startsWith('common.'), `${id} is not in the common. namespace`).toBe(true)
+      expect(presetIds.has(id), `${id} collides with a preset`).toBe(false)
+    }
+  })
+
+  test('every common service has an https URL and a short label', () => {
+    for (const service of COMMON_SERVICES) {
+      expect(service.url.startsWith('https://'), service.id).toBe(true)
+      expect(normalizeHttpUrl(service.url), `bad URL on ${service.id}`).not.toBeNull()
+      expect(service.label.length, `${service.id} label too long`).toBeLessThanOrEqual(12)
+    }
+  })
+
+  test('에브리타임 ships as a primary, embedded community link', () => {
+    const everytime = COMMON_SERVICES.find((service) => service.id === 'common.everytime')
+    expect(everytime?.kind).toBe('community')
+    expect(everytime?.secondary).toBeUndefined()
+    expect(everytime?.opensExternally).toBeUndefined()
   })
 })
 
@@ -312,5 +341,71 @@ describe('resolveUniversity / resolveServices', () => {
     expect(last?.id).toBe('snu.custom.lab')
     expect(last?.isCustom).toBe(true)
     expect(services.filter((service) => service.isCustom)).toHaveLength(1)
+  })
+
+  test('common services sit after presets and before custom, non-secondary', () => {
+    const snu = findUniversity('snu')
+    const presetCount = snu?.services.length ?? 0
+    const services = resolveServices(snu, {
+      ...DEFAULT_UNIVERSITY_SETTINGS,
+      universityId: 'snu',
+      customServices: [
+        {
+          id: 'snu.custom.lab',
+          kind: 'other',
+          label: '연구실',
+          url: 'https://lab.snu.ac.kr/',
+          verification: 'unverified'
+        }
+      ]
+    })
+
+    const everytime = services[presetCount]
+    expect(everytime?.id).toBe('common.everytime')
+    expect(everytime?.secondary).toBe(false)
+    expect(everytime?.isCustom).toBe(false)
+    expect(everytime?.opensExternally).toBe(false)
+    expect(services[presetCount + 1]?.id).toBe('snu.custom.lab')
+  })
+
+  test('resolved services carry the preset tier when nothing overrides it', () => {
+    const services = resolveServices(findUniversity('snu'), {
+      ...DEFAULT_UNIVERSITY_SETTINGS,
+      universityId: 'snu'
+    })
+    expect(services.find((s) => s.id === 'snu.portal')?.secondary).toBe(false)
+    expect(services.find((s) => s.id === 'snu.food')?.secondary).toBe(true)
+  })
+
+  test('secondaryOverrides promote and demote across the 더보기 line', () => {
+    const services = resolveServices(findUniversity('snu'), {
+      ...DEFAULT_UNIVERSITY_SETTINGS,
+      universityId: 'snu',
+      secondaryOverrides: { 'snu.food': false, 'snu.portal': true }
+    })
+
+    expect(services.find((s) => s.id === 'snu.food')?.secondary).toBe(false)
+    expect(services.find((s) => s.id === 'snu.portal')?.secondary).toBe(true)
+
+    const tiers = serviceTierIds(services)
+    expect(tiers.primary).toContain('snu.food')
+    expect(tiers.primary).not.toContain('snu.portal')
+    expect(tiers.secondary).toContain('snu.portal')
+    expect(tiers.primary.length + tiers.secondary.length).toBe(services.length)
+  })
+
+  test('serviceOrder reorders the list and hidden ids still drop out', () => {
+    const services = resolveServices(findUniversity('snu'), {
+      ...DEFAULT_UNIVERSITY_SETTINGS,
+      universityId: 'snu',
+      serviceOrder: ['common.everytime', 'snu.food', 'snu.mail', 'does.not.exist'],
+      hiddenServiceIds: ['snu.food']
+    })
+
+    const ids = services.map((service) => service.id)
+    expect(ids.slice(0, 2)).toEqual(['common.everytime', 'snu.mail'])
+    expect(ids).not.toContain('snu.food')
+    expect(ids).not.toContain('does.not.exist')
+    expect(ids[2]).toBe('snu.portal')
   })
 })
