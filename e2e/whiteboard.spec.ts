@@ -81,7 +81,7 @@ test.describe('whiteboard', () => {
     const body = (await committed.boundingBox())!
     // text 툴 단일 클릭 = 편집 → 서식 바가 뜬다.
     await page.mouse.click(body.x + body.width / 2, body.y + body.height / 2)
-    const bar = page.locator('.ink-layer__format-bar')
+    const bar = page.locator('.ink-format-row')
     await expect(bar).toBeVisible()
     await bar.getByRole('button', { name: '파랑' }).click()
     await expect(

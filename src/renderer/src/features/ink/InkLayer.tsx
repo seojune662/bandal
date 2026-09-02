@@ -1,9 +1,12 @@
 import {
   useCallback,
   useEffect,
+  useId,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type FocusEvent as ReactFocusEvent,
   type PointerEvent as ReactPointerEvent
 } from 'react'
 import type {
@@ -14,6 +17,12 @@ import type {
   DrawingShape,
   DrawingStyle
 } from '../../../../shared/types/drawing'
+import {
+  TEXT_BOX_BORDER_EM,
+  TEXT_BOX_PADDING_EM,
+  TEXT_LINE_HEIGHT,
+  textBoxFontPx
+} from '../../../../shared/textBoxMetrics'
 import {
   arrowHeadPoints,
   drawingColorVariable,
@@ -33,12 +42,17 @@ import { isEditableTarget } from './domTarget'
 import { foreignObjectContentStyle } from './foreignObjectScale'
 import { ReferencedShape } from './ReferencedShape'
 import { ResizeHandles, TEXTBOX_HANDLES } from './ResizeHandles'
-import { TextFormatBar } from './TextFormatBar'
 import {
-  TEXT_BASE_FONT_RATIO,
-  defaultTextBoxSize,
+  mergeTextStyle,
+  TEXT_FORMAT_ROW_ATTR,
+  isInsideTextFormatRow,
+  useTextFormatStore,
+  type TextFormatMode
+} from './textFormatStore'
+import {
   grownTextBoxHeight,
-  healedTextBox
+  healedTextBox,
+  textBoxAtClick
 } from './textBoxLayout'
 import './ink.css'
 
@@ -100,6 +114,10 @@ type Gesture =
       pointerId: number
       shape: DrawingShape
       start: DrawingPoint
+      /** 화면 px 원점 — 클릭/드래그 판정은 정규화 좌표가 아니라 px 로. */
+      originClient: ClientPoint
+      /** 클릭 허용 오차를 넘어 실제로 움직였는지. */
+      moved: boolean
       box: DrawingBox
     }
   | {
@@ -107,9 +125,16 @@ type Gesture =
       pointerId: number
       shape: DrawingShape
       start: DrawingPoint
+      originClient: ClientPoint
+      moved: boolean
       box: DrawingBox
       handle: ResizeHandle
     }
+
+interface ClientPoint {
+  x: number
+  y: number
+}
 
 interface PointerSample {
   pointerId: number
@@ -119,6 +144,8 @@ interface PointerSample {
 }
 
 const SHAPE_TOOLS: readonly ShapeTool[] = ['rect', 'ellipse', 'arrow', 'line']
+/** 이 거리(화면 px) 안의 pointerdown→up 은 드래그가 아니라 클릭이다. */
+const CLICK_TOLERANCE_PX = 3
 /** select 툴로 잡을 수 있는 셰이프 — 잉크 스트로크는 지우개 전용으로 남긴다. */
 const SELECTABLE_KINDS: ReadonlySet<DrawingKind> = new Set([
   'textbox',
@@ -187,6 +214,13 @@ function drawingStyle(
   return { color, width, opacity }
 }
 
+/** Cmd/Ctrl + 키 → 토글할 서식 필드 (워드/키노트 관례). */
+const FORMAT_SHORTCUTS: Readonly<Record<string, 'bold' | 'italic' | 'underline'>> = {
+  b: 'bold',
+  i: 'italic',
+  u: 'underline'
+}
+
 function boxForShape(shape: DrawingShape, gesture: Gesture | null): DrawingBox | undefined {
   if (
     gesture !== null &&
@@ -230,8 +264,16 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   // 박스를 지워 버린다.
   const repositionGuardRef = useRef(false)
   const newTextAreaRef = useRef<HTMLTextAreaElement>(null)
-  // 서식 바 — 바깥클릭 해제/blur 판단에서 "안쪽"으로 취급해야 한다.
-  const formatBarRef = useRef<HTMLDivElement>(null)
+  /** 서식 행(툴바)에 공개하는 대상의 소유자 키 — 페이지마다 레이어가 하나씩. */
+  const ownerId = useId()
+  // 서식 apply 가 낡은 클로저로 최신 필드를 덮어쓰지 않게 항상 최신을 읽는다.
+  const shapesRef = useRef(shapes)
+  shapesRef.current = shapes
+  const onUpdateRef = useRef(onUpdate)
+  onUpdateRef.current = onUpdate
+  // 같은 셰이프 버전을 두 번 치유하지 않는다 — 줌(baseWidthPx) 변화나 렌더
+  // 반복이 onRefineBox 를 다시 부르는 일을 막는다.
+  const healedVersions = useRef(new Set<string>())
   const [gesture, setGestureState] = useState<Gesture | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -278,15 +320,22 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     const active = gestureRef.current
     for (const shape of shapes) {
       if (shape.kind !== 'textbox' || shape.data.box === undefined) continue
+      if (shape.id === editingId) continue
       if (active !== null && 'shape' in active && active.shape.id === shape.id) {
         continue
       }
+      const version = `${shape.id}:${shape.updatedAt}`
+      if (healedVersions.current.has(version)) continue
+      healedVersions.current.add(version)
       const healed = healedTextBox(shape.data.box)
       if (healed !== null) onRefineBox(shape.id, healed)
     }
-  }, [clampToBounds, onRefineBox, shapes])
+  }, [clampToBounds, editingId, onRefineBox, shapes])
 
-  const pointFromSample = useCallback((sample: PointerSample): DrawingPoint | null => {
+  const pointFromSample = useCallback((
+    sample: PointerSample,
+    clamp: boolean
+  ): DrawingPoint | null => {
     const svg = svgRef.current
     return svg === null || !surfaceReady || !hasMeasuredBounds(svg)
       ? null
@@ -295,9 +344,9 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         sample.clientX,
         sample.clientY,
         sample.pressure,
-        clampToBounds
+        clamp
       )
-  }, [clampToBounds, surfaceReady])
+  }, [surfaceReady])
 
   const eraseAt = useCallback((
     current: Extract<Gesture, { kind: 'erase' }>,
@@ -313,7 +362,10 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   const processSample = useCallback((sample: PointerSample): void => {
     const current = gestureRef.current
     if (current === null || current.pointerId !== sample.pointerId) return
-    const point = pointFromSample(sample)
+    // 이동/리사이즈는 클램프 없이 — 포인터가 페이지를 벗어나도 델타가
+    // 포화되지 않는다(결과 박스는 move/resizeDrawingBox 가 클램프).
+    const isManipulation = current.kind === 'move' || current.kind === 'resize'
+    const point = pointFromSample(sample, clampToBounds && !isManipulation)
     if (point === null) return
     if (current.kind === 'stroke') {
       const previous = current.points[current.points.length - 1]
@@ -329,10 +381,18 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     } else if (current.kind === 'erase') {
       setGesture(eraseAt(current, point))
     } else {
-      const dx = point.x - current.start.x
-      const dy = point.y - current.start.y
       const original = current.shape.data.box
       if (original === undefined) return
+      const travelledPx = Math.hypot(
+        sample.clientX - current.originClient.x,
+        sample.clientY - current.originClient.y
+      )
+      if (travelledPx < CLICK_TOLERANCE_PX) {
+        setGesture({ ...current, box: original, moved: false })
+        return
+      }
+      const dx = point.x - current.start.x
+      const dy = point.y - current.start.y
       const box = current.kind === 'move'
         ? moveDrawingBox(original, dx, dy, clampToBounds)
         : resizeDrawingBox(
@@ -344,7 +404,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
             ASPECT_LOCKED_KINDS.has(current.shape.kind),
             aspect
           )
-      setGesture({ ...current, box })
+      setGesture({ ...current, box, moved: true })
     }
   }, [aspect, clampToBounds, eraseAt, pointFromSample, setGesture])
 
@@ -392,7 +452,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       const svg = svgRef.current
       const target = event.target
       if (svg === null || !(target instanceof Node)) return
-      if (formatBarRef.current?.contains(target) === true) return
+      if (isInsideTextFormatRow(target)) return
       if (!svg.contains(target) || target === svg) setSelectedId(null)
     }
     document.addEventListener('pointerdown', onPointerDown, true)
@@ -417,13 +477,14 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
 
   const startTextBox = useCallback((point: DrawingPoint): void => {
     setSelectedId(null)
-    const size = defaultTextBoxSize(aspect)
-    const box: DrawingBox = {
-      x: clampToBounds ? Math.min(point.x, 1 - size.width) : point.x,
-      y: clampToBounds ? Math.min(point.y, 1 - size.height) : point.y,
-      width: size.width,
-      height: size.height
-    }
+    // 첫 줄의 캐럿 중심이 클릭 지점에 오도록 — draft 의 글자 크기를 따른다.
+    const box = textBoxAtClick(
+      point,
+      aspect,
+      baseWidthPx,
+      draftStyle?.fontScale,
+      clampToBounds
+    )
     setEditingId(null)
     setTextDraft('')
     // 서식은 draft 가 열려 있는 동안 유지 — 재배치 클릭이 초기화하지 않는다.
@@ -431,7 +492,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       current ?? drawingStyle('text', width, opacity, color)
     )
     setNewTextBox(box)
-  }, [aspect, clampToBounds, color, opacity, width])
+  }, [aspect, baseWidthPx, clampToBounds, color, draftStyle, opacity, width])
 
   // 재배치로 박스가 옮겨지면(포커스를 뺏겼을 수 있으니) 되찾아 오고,
   // 그때서야 blur 가드를 내린다 — 클릭의 pointerdown/mousedown 은 별개의
@@ -589,15 +650,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       if (completed.ids.size > 0) onRemove([...completed.ids])
     } else {
       const original = completed.shape.data.box
-      if (
-        original === undefined ||
-        (
-          Math.abs(completed.box.x - original.x) < 0.0005 &&
-          Math.abs(completed.box.y - original.y) < 0.0005 &&
-          Math.abs(completed.box.width - original.width) < 0.0005 &&
-          Math.abs(completed.box.height - original.height) < 0.0005
-        )
-      ) {
+      if (original === undefined || !completed.moved) {
         // text 툴에서 무변위 클릭 = 즉시 편집 (더블클릭 불필요 — 워드/키노트
         // 관례). select 툴은 선택만 유지.
         if (
@@ -702,17 +755,26 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     const svg = svgRef.current
     if (svg === null) return
     svg.setPointerCapture(event.pointerId)
+    // 시작점도 클램프 없이 — 샘플과 같은 좌표계여야 델타가 정확하다.
     const start = normalizedPoint(
       svg,
       event.clientX,
       event.clientY,
       event.pressure,
-      clampToBounds
+      false
     )
+    const base = {
+      pointerId: event.pointerId,
+      shape,
+      start,
+      originClient: { x: event.clientX, y: event.clientY },
+      moved: false,
+      box: shape.data.box
+    }
     setGesture(kind === 'resize'
-      ? { kind, pointerId: event.pointerId, shape, start, box: shape.data.box, handle }
-      : { kind, pointerId: event.pointerId, shape, start, box: shape.data.box })
-  }, [activeTool, clampToBounds, editingId, setGesture, surfaceReady])
+      ? { kind, ...base, handle }
+      : { kind, ...base })
+  }, [activeTool, editingId, setGesture, surfaceReady])
 
   const startEditing = useCallback((shape: DrawingShape): void => {
     if (activeTool !== 'text' && activeTool !== 'select') return
@@ -761,62 +823,146 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     box: DrawingBox,
     shapeStyle: DrawingStyle
   ): CSSProperties => {
-    const fontScale =
-      isFinitePositive(shapeStyle.fontScale ?? 1) ? (shapeStyle.fontScale ?? 1) : 1
-    const fontSize = baseWidthPx * TEXT_BASE_FONT_RATIO * fontScale
-    const weight = shapeStyle.bold === true ? { fontWeight: 700 } : {}
+    const fontSize = textBoxFontPx(baseWidthPx, shapeStyle.fontScale)
+    const decorations = [
+      ...(shapeStyle.underline === true ? ['underline'] : []),
+      ...(shapeStyle.strike === true ? ['line-through'] : [])
+    ]
+    const typography: CSSProperties = {
+      fontSize,
+      opacity: shapeStyle.opacity,
+      fontWeight: shapeStyle.bold === true ? 700 : 400,
+      fontStyle: shapeStyle.italic === true ? 'italic' : 'normal',
+      textDecoration: decorations.length > 0 ? decorations.join(' ') : 'none',
+      textAlign: shapeStyle.align ?? 'left',
+      lineHeight: TEXT_LINE_HEIGHT,
+      padding: `${TEXT_BOX_PADDING_EM}em`,
+      borderWidth: `${TEXT_BOX_BORDER_EM}em`
+    }
     const scaled = foreignObjectContentStyle(box, baseWidthPx, aspect)
-    if (scaled === null) return { fontSize, opacity: shapeStyle.opacity, ...weight }
-    return { ...scaled, fontSize, opacity: shapeStyle.opacity, ...weight }
+    return scaled === null ? typography : { ...scaled, ...typography }
   }, [aspect, baseWidthPx])
+
+  /**
+   * 서식 행의 컨트롤이 포커스를 가져가 textarea 가 blur 되면(버튼은
+   * mousedown 에서 preventDefault 하므로 사실상 range 입력만) 확정/취소를
+   * 미룬다. 포커스가 행을 떠날 때 textarea 로 되돌려, 편집이 계속되고
+   * 다음 바깥 클릭이 정상적으로 확정한다 — 편집 상태가 고아가 되지 않는다.
+   */
+  const deferBlurToFormatRow = (
+    event: ReactFocusEvent<HTMLTextAreaElement>
+  ): boolean => {
+    const next = event.relatedTarget ?? document.activeElement
+    if (!isInsideTextFormatRow(next) || !(next instanceof Element)) return false
+    const row = next.closest(`[${TEXT_FORMAT_ROW_ATTR}]`)
+    if (!(row instanceof HTMLElement)) return false
+    const textarea = event.currentTarget
+    const onFocusOut = (leave: FocusEvent): void => {
+      if (isInsideTextFormatRow(leave.relatedTarget)) return
+      row.removeEventListener('focusout', onFocusOut)
+      if (textarea.isConnected) textarea.focus()
+    }
+    row.addEventListener('focusout', onFocusOut)
+    return true
+  }
 
   const editKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (event.key === 'Escape') {
       cancelEditRef.current = true
       event.currentTarget.blur()
-    } else if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-      event.currentTarget.blur()
+      return
     }
+    if (!event.metaKey && !event.ctrlKey) return
+    if (event.key === 'Enter') {
+      event.currentTarget.blur()
+      return
+    }
+    const field = FORMAT_SHORTCUTS[event.key.toLowerCase()]
+    if (field === undefined) return
+    event.preventDefault()
+    const target = useTextFormatStore.getState().target
+    if (target === null || target.ownerId !== ownerId) return
+    target.apply({ [field]: target.style[field] !== true })
   }
 
   const erasedIds = gesture?.kind === 'erase' ? gesture.ids : new Set<string>()
   const style = drawingStyle(activeTool, width, opacity, color)
   const rootClassName = className === undefined ? 'ink-layer' : `ink-layer ${className}`
 
-  // 서식 바 대상: 새 draft > 편집 중 > 선택된 텍스트박스. 제스처 중엔 숨김.
-  const formatTarget = ((): {
-    box: DrawingBox
-    style: DrawingStyle
-    onChange: (patch: Partial<DrawingStyle>) => void
-  } | null => {
-    if (!interactive || !surfaceReady || gesture !== null) return null
-    if (newTextBox !== null && isRenderableBox(newTextBox)) {
-      const current = draftStyle ?? drawingStyle('text', width, opacity, color)
-      return {
-        box: newTextBox,
-        style: current,
-        onChange: (patch) => setDraftStyle({ ...current, ...patch })
+  // 서식 행 대상: 새 draft > 편집 중 > 선택된 텍스트박스(select/text 툴).
+  // 제스처 중에도 유지한다 — 숨겼다 보였다 하면 툴바가 깜빡인다.
+  const draftFallbackStyle = useMemo(
+    () => drawingStyle('text', width, opacity, color),
+    [color, opacity, width]
+  )
+  const draftOpen = newTextBox !== null
+  const formatShapeId = editingId ??
+    (activeTool === 'select' || activeTool === 'text' ? selectedId : null)
+  const formatShape = draftOpen || formatShapeId === null
+    ? undefined
+    : shapes.find(
+        (entry) => entry.id === formatShapeId && entry.kind === 'textbox'
+      )
+  const formatMode: TextFormatMode | null = !interactive
+    ? null
+    : draftOpen
+      ? 'draft'
+      : formatShape === undefined
+        ? null
+        : editingId === formatShape.id ? 'editing' : 'selected'
+  const formatStyle = formatMode === 'draft'
+    ? (draftStyle ?? draftFallbackStyle)
+    : formatShape?.style
+  const formatTargetId = formatShape?.id ?? null
+  // 셀렉터로 구독 — target 이 바뀔 때마다 모든 페이지가 재렌더되지 않게.
+  const publishFormat = useTextFormatStore((store) => store.publish)
+  const clearFormat = useTextFormatStore((store) => store.clear)
+
+  useEffect(() => {
+    if (formatMode === null || formatStyle === undefined) {
+      clearFormat(ownerId)
+      return
+    }
+    if (formatMode === 'draft') {
+      publishFormat({
+        ownerId,
+        mode: 'draft',
+        style: formatStyle,
+        apply: (patch) =>
+          setDraftStyle((current) =>
+            mergeTextStyle(current ?? draftFallbackStyle, patch)
+          )
+      })
+      return
+    }
+    if (formatTargetId === null) {
+      clearFormat(ownerId)
+      return
+    }
+    publishFormat({
+      ownerId,
+      mode: formatMode,
+      style: formatStyle,
+      apply: (patch) => {
+        const latest = shapesRef.current.find((entry) => entry.id === formatTargetId)
+        if (latest === undefined) return
+        onUpdateRef.current(latest.id, {
+          style: mergeTextStyle(latest.style, patch)
+        })
       }
-    }
-    const targetId = editingId ?? selectedId
-    if (targetId === null) return null
-    if (editingId === null && activeTool !== 'select' && activeTool !== 'text') {
-      return null
-    }
-    const shape = shapes.find(
-      (entry) => entry.id === targetId && entry.kind === 'textbox'
-    )
-    if (shape === undefined || !isRenderableBox(shape.data.box)) return null
-    const anchor = editingId !== null && editingBoxOverride !== null
-      ? editingBoxOverride
-      : shape.data.box
-    return {
-      box: anchor,
-      style: shape.style,
-      onChange: (patch) =>
-        onUpdate(shape.id, { style: { ...shape.style, ...patch } })
-    }
-  })()
+    })
+  }, [
+    clearFormat,
+    draftFallbackStyle,
+    formatMode,
+    formatStyle,
+    formatTargetId,
+    ownerId,
+    publishFormat
+  ])
+
+  // 언마운트(탭 닫힘·페이지 가상화)에서 내 대상만 지운다.
+  useEffect(() => () => clearFormat(ownerId), [clearFormat, ownerId])
 
   const selectionFrame = (box: DrawingBox): JSX.Element => (
     <rect
@@ -830,7 +976,6 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   )
 
   return (
-    <>
     <svg
       ref={svgRef}
       className={rootClassName}
@@ -884,6 +1029,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
                   className="ink-layer__shape-resize"
                   box={box}
                   aspect={aspect}
+                  baseWidthPx={baseWidthPx}
                   onPointerDown={(event, handle) =>
                     beginManipulation(event, shape, 'resize', handle)}
                 />
@@ -901,6 +1047,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
                   className="ink-layer__shape-resize"
                   box={box}
                   aspect={aspect}
+                  baseWidthPx={baseWidthPx}
                   onPointerDown={(event, handle) =>
                     beginManipulation(event, shape, 'resize', handle)}
                 />
@@ -987,6 +1134,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
                   autoFocus
                   className="ink-layer__textbox is-editing"
                   data-color={shape.style.color}
+                  data-fill={shape.style.fill}
                   value={textDraft}
                   aria-label="텍스트 입력"
                   placeholder="텍스트를 입력하세요"
@@ -1000,13 +1148,17 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
                       'existing'
                     )
                   }}
-                  onBlur={() => finishEditing(shape)}
+                  onBlur={(event) => {
+                    if (deferBlurToFormatRow(event)) return
+                    finishEditing(shape)
+                  }}
                   onKeyDown={editKeyDown}
                 />
               ) : (
                 <div
                   className="ink-layer__textbox"
                   data-color={shape.style.color}
+                  data-fill={shape.style.fill}
                   data-textbox-id={shape.id}
                   style={contentStyle}
                 >
@@ -1020,6 +1172,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
                 className="ink-layer__textbox-resize"
                 box={editedBox}
                 aspect={aspect}
+                baseWidthPx={baseWidthPx}
                 fill={markColor}
                 handles={TEXTBOX_HANDLES}
                 onPointerDown={(event, handle) =>
@@ -1041,6 +1194,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
             ref={newTextAreaRef}
             className="ink-layer__textbox is-editing"
             data-color={draftStyle?.color ?? color}
+            data-fill={draftStyle?.fill}
             value={textDraft}
             aria-label="텍스트 입력"
             placeholder="텍스트를 입력하세요"
@@ -1053,7 +1207,10 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
               setTextDraft(event.target.value)
               growEditingBox(event.target.scrollHeight, newTextBox, 'new')
             }}
-            onBlur={() => finishNewTextBox(newTextBox)}
+            onBlur={(event) => {
+              if (deferBlurToFormatRow(event)) return
+              finishNewTextBox(newTextBox)
+            }}
             onKeyDown={editKeyDown}
           />
         </foreignObject>
@@ -1101,16 +1258,5 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         )
       })()}
     </svg>
-    {formatTarget !== null && (
-      <TextFormatBar
-        box={formatTarget.box}
-        aspect={aspect}
-        baseWidthPx={baseWidthPx}
-        style={formatTarget.style}
-        onChange={formatTarget.onChange}
-        barRef={formatBarRef}
-      />
-    )}
-    </>
   )
 }

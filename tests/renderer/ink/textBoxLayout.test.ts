@@ -1,9 +1,16 @@
 import { describe, expect, test } from 'vitest'
 import {
   TEXT_BASE_FONT_RATIO,
+  TEXT_BOX_BORDER_EM,
+  TEXT_BOX_PADDING_EM,
+  TEXT_LINE_HEIGHT,
+  textBoxFontPx
+} from '../../../src/shared/textBoxMetrics'
+import {
   defaultTextBoxSize,
   grownTextBoxHeight,
-  healedTextBox
+  healedTextBox,
+  textBoxAtClick
 } from '../../../src/renderer/src/features/ink/textBoxLayout'
 
 describe('defaultTextBoxSize', () => {
@@ -26,6 +33,82 @@ describe('defaultTextBoxSize', () => {
     const size = defaultTextBoxSize(0)
     expect(Number.isFinite(size.height)).toBe(true)
     expect(size.height).toBeGreaterThan(0)
+  })
+})
+
+describe('textBoxAtClick', () => {
+  const aspect = 0.75
+  const baseWidthPx = 800
+  const fontScale = 1
+
+  test('keeps the click inside the box and anchors it to the first-line center', () => {
+    const point = { x: 0.42, y: 0.38, p: 0.5 }
+    const placed = textBoxAtClick(
+      point,
+      aspect,
+      baseWidthPx,
+      fontScale,
+      true
+    )
+
+    expect(point.x).toBeGreaterThanOrEqual(placed.x)
+    expect(point.x).toBeLessThanOrEqual(placed.x + placed.width)
+    expect(point.y).toBeGreaterThanOrEqual(placed.y)
+    expect(point.y).toBeLessThanOrEqual(placed.y + placed.height)
+
+    const fontPx = textBoxFontPx(baseWidthPx, fontScale)
+    const insetPx = fontPx * (TEXT_BOX_PADDING_EM + TEXT_BOX_BORDER_EM)
+    const firstLineCenter = placed.y +
+      (insetPx + fontPx * TEXT_LINE_HEIGHT / 2) / (baseWidthPx * aspect)
+    const onePixelNormalized = 1 / (baseWidthPx * aspect)
+    expect(Math.abs(firstLineCenter - point.y)).toBeLessThanOrEqual(
+      onePixelNormalized
+    )
+  })
+
+  test('shrinks at the right edge without sliding the x anchor left', () => {
+    const point = { x: 0.95, y: 0.4, p: 0.5 }
+    const fontPx = textBoxFontPx(baseWidthPx, fontScale)
+    const insetPx = fontPx * (TEXT_BOX_PADDING_EM + TEXT_BOX_BORDER_EM)
+    const expectedX = point.x - insetPx / baseWidthPx
+    const placed = textBoxAtClick(
+      point,
+      aspect,
+      baseWidthPx,
+      fontScale,
+      true
+    )
+
+    expect(placed.x).toBeCloseTo(expectedX)
+    expect(placed.width).toBeCloseTo(1 - expectedX)
+    expect(placed.width).toBeLessThan(0.26)
+    expect(point.x).toBeLessThanOrEqual(placed.x + placed.width)
+  })
+
+  test('floors a click beyond the top-left to zero when clamped', () => {
+    const placed = textBoxAtClick(
+      { x: -0.1, y: -0.1, p: 0.5 },
+      aspect,
+      baseWidthPx,
+      fontScale,
+      true
+    )
+
+    expect(placed.x).toBe(0)
+    expect(placed.y).toBe(0)
+  })
+
+  test('allows a negative origin when bounds clamping is disabled', () => {
+    const placed = textBoxAtClick(
+      { x: 0, y: 0, p: 0.5 },
+      aspect,
+      baseWidthPx,
+      fontScale,
+      false
+    )
+
+    expect(placed.x).toBeLessThan(0)
+    expect(placed.y).toBeLessThan(0)
   })
 })
 

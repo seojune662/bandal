@@ -130,6 +130,25 @@ describe('inkGeometry', () => {
     expect(resized.height).toBeCloseTo(0.6)
   })
 
+  test('clamps a move derived from off-surface pointer samples into the page', () => {
+    const surface = {
+      getBoundingClientRect: () => ({ left: 100, top: 200, width: 400, height: 200 })
+    } as SVGSVGElement
+    const pointerStart = normalizedPoint(surface, 220, 260, 0.5, false)
+    const pointerOutside = normalizedPoint(surface, -300, 700, 0.5, false)
+    const original = { x: 0.2, y: 0.25, width: 0.3, height: 0.2 }
+    const moved = moveDrawingBox(
+      original,
+      pointerOutside.x - pointerStart.x,
+      pointerOutside.y - pointerStart.y
+    )
+
+    expect(moved.x).toBeGreaterThanOrEqual(0)
+    expect(moved.y).toBeGreaterThanOrEqual(0)
+    expect(moved.x + moved.width).toBeLessThanOrEqual(1)
+    expect(moved.y + moved.height).toBeLessThanOrEqual(1)
+  })
+
   test.each([
     ['nw', 0.25, 0.3, 0.35, 0.2],
     ['ne', 0.2, 0.3, 0.45, 0.2],

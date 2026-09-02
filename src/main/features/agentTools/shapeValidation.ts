@@ -6,23 +6,21 @@ import type {
   DrawingImageSource,
   DrawingKind,
   DrawingPoint,
-  DrawingStyle
+  DrawingStyle,
+  TextAlign
 } from '../../../shared/types/drawing'
-import { DRAWING_KINDS } from '../../../shared/types/drawing'
+import {
+  DRAWING_COLORS,
+  DRAWING_KINDS,
+  TEXT_ALIGNS
+} from '../../../shared/types/drawing'
 import type { PutPersonalShapeInput } from '../../../shared/types/whiteboard'
 import { ValidationError } from '../../db/errors'
 
 type BoardShapeInput = PutPersonalShapeInput['shape']
 
-const DRAWING_COLORS: readonly DrawingColor[] = [
-  'ink',
-  'red',
-  'orange',
-  'yellow',
-  'green',
-  'blue',
-  'violet'
-]
+/** textbox-only boolean switches; absent stays absent, anything non-boolean is rejected. */
+const TEXT_FLAG_FIELDS = ['bold', 'italic', 'underline', 'strike'] as const
 
 function assertUnit(value: unknown, field: string): number {
   if (
@@ -209,11 +207,25 @@ function assertStyle(value: unknown): DrawingStyle {
   if (style.fontScale !== undefined) {
     result.fontScale = assertPositive(style.fontScale, 'style.fontScale', 10)
   }
-  if (style.bold !== undefined) {
-    if (typeof style.bold !== 'boolean') {
-      throw new ValidationError('style.bold must be a boolean')
+  for (const field of TEXT_FLAG_FIELDS) {
+    const flag = style[field]
+    if (flag === undefined) continue
+    if (typeof flag !== 'boolean') {
+      throw new ValidationError(`style.${field} must be a boolean`)
     }
-    result.bold = style.bold
+    result[field] = flag
+  }
+  if (style.align !== undefined) {
+    if (!TEXT_ALIGNS.includes(style.align as TextAlign)) {
+      throw new ValidationError(`style.align must be one of ${TEXT_ALIGNS.join(', ')}`)
+    }
+    result.align = style.align
+  }
+  if (style.fill !== undefined) {
+    if (!DRAWING_COLORS.includes(style.fill as DrawingColor)) {
+      throw new ValidationError(`style.fill must be one of ${DRAWING_COLORS.join(', ')}`)
+    }
+    result.fill = style.fill
   }
   return result
 }

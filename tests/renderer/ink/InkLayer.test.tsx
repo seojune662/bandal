@@ -1,7 +1,15 @@
-import React from 'react'
+// @vitest-environment jsdom
+
+import React, { act } from 'react'
+import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { DrawingShape } from '../../../src/shared/types/drawing'
+import {
+  nearestFontScaleIndex,
+  steppedFontScale,
+  TEXT_FONT_SCALE_STEPS
+} from '../../../src/shared/textBoxMetrics'
 import {
   createTextBoxShape,
   InkLayer
@@ -18,19 +26,18 @@ import {
 } from '../../../src/renderer/src/features/ink/imageTransfer'
 import {
   resizeHandleBoxes,
+  resizeHandleSize,
   ResizeHandles,
   TEXTBOX_HANDLES
 } from '../../../src/renderer/src/features/ink/ResizeHandles'
-import {
-  nearestFontScaleIndex,
-  steppedFontScale,
-  TEXT_FONT_SCALE_STEPS,
-  TextFormatBar
-} from '../../../src/renderer/src/features/ink/TextFormatBar'
+import { useTextFormatStore } from '../../../src/renderer/src/features/ink/textFormatStore'
 import {
   setIpcAdapter,
   type IpcAdapter
 } from '../../../src/renderer/src/lib/ipc'
+
+;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
+  .IS_REACT_ACT_ENVIRONMENT = true
 
 const box = { x: 0.2, y: 0.3, width: 0.26, height: 0.08 }
 const style = { color: 'ink' as const, width: 0.006, opacity: 1, fontScale: 1 }
@@ -114,6 +121,121 @@ describe('InkLayer textbox drafts', () => {
 
     expect(html).toContain('transform:scale(')
   })
+
+  test('renders italic, combined decorations, alignment and fill metadata', () => {
+    const html = renderLayer([
+      savedShape({
+        kind: 'textbox',
+        data: { box, text: '서식 있는 메모' },
+        style: {
+          ...style,
+          italic: true,
+          underline: true,
+          strike: true,
+          align: 'center',
+          fill: 'red'
+        }
+      })
+    ])
+
+    expect(html).toContain('font-style:italic')
+    expect(html).toContain('text-decoration:underline line-through')
+    expect(html).toContain('text-align:center')
+    expect(html).toContain('data-fill="red"')
+  })
+})
+
+describe('InkLayer text format target', () => {
+  beforeEach(() => {
+    useTextFormatStore.setState({ target: null })
+    document.body.replaceChildren()
+  })
+
+  test('publishes a selected textbox and clears it when selection is removed', () => {
+    const textbox = savedShape({
+      id: 'format-target',
+      kind: 'textbox',
+      data: { box, text: '선택할 메모' },
+      style: { ...style, italic: true }
+    })
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+
+    act(() => {
+      root.render(
+        <InkLayer
+          aspect={0.75}
+          baseWidthPx={800}
+          shapes={[textbox]}
+          tool={{ activeTool: 'select', color: 'ink', width: 0.006, opacity: 1 }}
+          onCreate={vi.fn()}
+          onUpdate={vi.fn()}
+          onRemove={vi.fn()}
+          ariaLabel="스토어 연동 캔버스"
+        />
+      )
+    })
+
+    const svg = container.querySelector<SVGSVGElement>('svg.ink-layer')!
+    Object.defineProperties(svg, {
+      getBoundingClientRect: {
+        value: () => ({
+          x: 0,
+          y: 0,
+          left: 0,
+          top: 0,
+          right: 800,
+          bottom: 600,
+          width: 800,
+          height: 600,
+          toJSON: () => ({})
+        })
+      },
+      setPointerCapture: { value: vi.fn() },
+      hasPointerCapture: { value: vi.fn(() => true) },
+      releasePointerCapture: { value: vi.fn() }
+    })
+    const pointer = (type: string): MouseEvent => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 240,
+        clientY: 210
+      })
+      Object.defineProperties(event, {
+        pointerId: { value: 1 },
+        pressure: { value: 0.5 }
+      })
+      return event
+    }
+
+    const object = container.querySelector<SVGForeignObjectElement>(
+      '.ink-layer__textbox-object'
+    )!
+    act(() => {
+      object.dispatchEvent(pointer('pointerdown'))
+      svg.dispatchEvent(pointer('pointerup'))
+    })
+    const published = useTextFormatStore.getState().target
+
+    act(() => {
+      svg.dispatchEvent(pointer('pointerdown'))
+    })
+    const cleared = useTextFormatStore.getState().target
+
+    act(() => root.unmount())
+    container.remove()
+
+    expect(published).toMatchObject({
+      mode: 'selected',
+      style: textbox.style
+    })
+    expect(published?.ownerId).toEqual(expect.any(String))
+    expect(published?.apply).toEqual(expect.any(Function))
+    expect(cleared).toBeNull()
+  })
 })
 
 describe('InkLayer resize handles', () => {
@@ -160,7 +282,12 @@ describe('InkLayer resize handles', () => {
       se: [clipBox.x + clipBox.width, clipBox.y + clipBox.height]
     } as const
 
-    for (const handleBox of resizeHandleBoxes(clipBox, aspect)) {
+    for (const handleBox of resizeHandleBoxes(
+      clipBox,
+      aspect,
+      ['nw', 'ne', 'sw', 'se'],
+      resizeHandleSize(surfaceRect.width)
+    )) {
       const element = {
         getBoundingClientRect: () => {
           const left = surfaceRect.left + handleBox.x * surfaceRect.width
@@ -171,9 +298,12 @@ describe('InkLayer resize handles', () => {
         }
       } as SVGRectElement
       const screen = element.getBoundingClientRect()
-      const [cornerX, cornerY] = corners[handleBox.handle]
+      const [cornerX, cornerY] = corners[
+        handleBox.handle as keyof typeof corners
+      ]
 
-      expect(screen.width).toBeCloseTo(screen.height)
+      expect(screen.width).toBeCloseTo(10)
+      expect(screen.height).toBeCloseTo(10)
       expect(screen.left + screen.width / 2).toBeCloseTo(
         surfaceRect.left + cornerX * surfaceRect.width
       )
@@ -304,26 +434,7 @@ describe('textbox reflow handles and formatting', () => {
     expect(html).toContain('font-weight:700')
   })
 
-  test('TextFormatBar renders stepper, bold toggle and all seven swatches', () => {
-    const html = renderToStaticMarkup(
-      <TextFormatBar
-        box={box}
-        aspect={0.75}
-        baseWidthPx={800}
-        style={{ ...style, bold: true }}
-        onChange={vi.fn()}
-        barRef={React.createRef()}
-      />
-    )
-    expect(html).toContain('aria-label="텍스트 서식"')
-    expect(html).toContain('aria-label="글자 크게"')
-    expect(html).toContain('100%')
-    expect((html.match(/ink-layer__format-swatch/g) ?? []).length).toBe(7)
-    expect(html).toContain('aria-label="굵게"')
-    expect(html).toMatch(/aria-label="굵게"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*aria-label="굵게"/)
-  })
-
-  test('the font stepper snaps legacy scales to the ladder and clamps its ends', () => {
+  test('the shared font ladder snaps legacy scales and clamps its ends', () => {
     expect(TEXT_FONT_SCALE_STEPS[nearestFontScaleIndex(1.37)]).toBe(1.25)
     expect(steppedFontScale(1, 1)).toBe(1.25)
     expect(steppedFontScale(4, 1)).toBe(4)

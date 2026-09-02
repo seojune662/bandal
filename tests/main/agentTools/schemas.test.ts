@@ -7,6 +7,28 @@ function definition(name: string) {
   return found
 }
 
+describe('add_shapes agent tool schema', () => {
+  test('accepts the textbox text-style keys with closed enums', () => {
+    const shapes = definition('add_shapes').inputSchema.properties?.shapes as {
+      items: { properties: { style: { properties: Record<string, object>; additionalProperties: boolean } } }
+    }
+    const style = shapes.items.properties.style
+
+    expect(style.additionalProperties).toBe(false)
+    expect(style.properties).toMatchObject({
+      bold: { type: 'boolean' },
+      italic: { type: 'boolean' },
+      underline: { type: 'boolean' },
+      strike: { type: 'boolean' },
+      align: { type: 'string', enum: ['left', 'center', 'right'] },
+      fill: {
+        type: 'string',
+        enum: ['ink', 'red', 'orange', 'yellow', 'green', 'blue', 'violet']
+      }
+    })
+  })
+})
+
 describe('material link agent tool schemas', () => {
   test('defines link_materials as a creation with an optional label', () => {
     expect(definition('link_materials')).toMatchObject({

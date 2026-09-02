@@ -54,19 +54,52 @@ div.ink-layer__textbox {
   --drawing-current-color: var(--drawing-color-violet);
 }
 
+/* 패딩·테두리는 em — px 고정이면 줌마다 측정 높이가 달라져 grow-only 규칙이
+   박스 높이를 단조 증식시킨다. 값은 textBoxMetrics 와 같아야 하며 인라인
+   style 이 덮어쓴다(여기 값은 폴백). */
 .ink-layer__textbox {
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  padding: var(--space-1);
+  padding: 0.3em;
   overflow: hidden;
   font-family: var(--font-sans);
   line-height: 1.35;
   color: var(--drawing-current-color);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  background: transparent;
-  border: 1px solid transparent;
+  background: var(--textbox-fill, transparent);
+  border: 0.06em solid transparent;
+}
+
+/* style.fill — 글자색과 독립인 배경 틴트(알파 = TEXT_FILL_OPACITY). 변수로
+   두어 편집 중(.is-editing)에도 같은 틴트가 보인다. */
+.ink-layer__textbox[data-fill='ink'] {
+  --textbox-fill: color-mix(in oklch, var(--drawing-color-ink) 18%, transparent);
+}
+
+.ink-layer__textbox[data-fill='red'] {
+  --textbox-fill: color-mix(in oklch, var(--drawing-color-red) 18%, transparent);
+}
+
+.ink-layer__textbox[data-fill='orange'] {
+  --textbox-fill: color-mix(in oklch, var(--drawing-color-orange) 18%, transparent);
+}
+
+.ink-layer__textbox[data-fill='yellow'] {
+  --textbox-fill: color-mix(in oklch, var(--drawing-color-yellow) 18%, transparent);
+}
+
+.ink-layer__textbox[data-fill='green'] {
+  --textbox-fill: color-mix(in oklch, var(--drawing-color-green) 18%, transparent);
+}
+
+.ink-layer__textbox[data-fill='blue'] {
+  --textbox-fill: color-mix(in oklch, var(--drawing-color-blue) 18%, transparent);
+}
+
+.ink-layer__textbox[data-fill='violet'] {
+  --textbox-fill: color-mix(in oklch, var(--drawing-color-violet) 18%, transparent);
 }
 
 textarea.ink-layer__textbox {
@@ -81,14 +114,14 @@ textarea.ink-layer__textbox::placeholder {
 }
 
 .ink-layer__textbox.is-editing {
-  background: var(--bg-overlay);
+  background: var(--textbox-fill, var(--bg-overlay));
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-muted);
 }
 
 .ink-layer__textbox-resize {
   stroke: var(--bg-surface);
-  stroke-width: 0.002;
+  stroke-width: 1;
 }
 
 .ink-layer__clip-object {
@@ -147,7 +180,7 @@ textarea.ink-layer__textbox::placeholder {
 .ink-layer__clip-resize {
   fill: var(--accent);
   stroke: var(--bg-surface);
-  stroke-width: 0.002;
+  stroke-width: 1;
 }
 
 .ink-layer__image-object {
@@ -177,90 +210,6 @@ textarea.ink-layer__textbox::placeholder {
 .ink-layer__textbox-object:hover .ink-layer__textbox:not(.is-editing) {
   border-color: var(--border-strong);
   border-style: dashed;
-}
-
-/* 선택/편집 중 텍스트박스 위에 뜨는 서식 바 (svg 의 형제 HTML). */
-.ink-layer__format-bar {
-  position: absolute;
-  z-index: 4;
-  display: flex;
-  gap: var(--space-1);
-  align-items: center;
-  padding: var(--space-1);
-  pointer-events: auto;
-  background: var(--bg-overlay);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
-}
-
-.ink-layer__format-button {
-  display: grid;
-  place-items: center;
-  min-width: 1.6rem;
-  height: 1.6rem;
-  padding-inline: var(--space-1);
-  font-size: var(--text-sm);
-  line-height: 1;
-  color: var(--text-secondary);
-  border-radius: var(--radius-sm);
-}
-
-.ink-layer__format-button:hover,
-.ink-layer__format-button:focus-visible {
-  color: var(--accent);
-  background: var(--bg-raised);
-}
-
-.ink-layer__format-button[aria-pressed='true'] {
-  color: var(--accent);
-  background: var(--accent-muted);
-}
-
-.ink-layer__format-bold {
-  font-weight: 700;
-}
-
-.ink-layer__format-scale {
-  min-width: 2.4rem;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  text-align: center;
-  white-space: nowrap;
-}
-
-.ink-layer__format-divider {
-  align-self: stretch;
-  width: 1px;
-  background: var(--border-subtle);
-}
-
-.ink-layer__format-swatch {
-  --drawing-current-color: var(--drawing-color-ink);
-
-  width: var(--space-3);
-  height: var(--space-3);
-  background: var(--drawing-current-color);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  transition: transform var(--dur-fast) var(--ease-out);
-}
-
-.ink-layer__format-swatch[data-color='red'] { --drawing-current-color: var(--drawing-color-red); }
-.ink-layer__format-swatch[data-color='orange'] { --drawing-current-color: var(--drawing-color-orange); }
-.ink-layer__format-swatch[data-color='yellow'] { --drawing-current-color: var(--drawing-color-yellow); }
-.ink-layer__format-swatch[data-color='green'] { --drawing-current-color: var(--drawing-color-green); }
-.ink-layer__format-swatch[data-color='blue'] { --drawing-current-color: var(--drawing-color-blue); }
-.ink-layer__format-swatch[data-color='violet'] { --drawing-current-color: var(--drawing-color-violet); }
-
-.ink-layer__format-swatch:hover,
-.ink-layer__format-swatch:focus-visible {
-  transform: scale(1.18);
-}
-
-.ink-layer__format-swatch[aria-pressed='true'] {
-  outline: 2px solid var(--accent);
-  outline-offset: 0;
 }
 
 /* select 툴로 잡은 셰이프의 공용 선택 외곽선. */
@@ -315,7 +264,7 @@ textarea.ink-layer__textbox::placeholder {
 .ink-layer__image-resize {
   fill: var(--accent);
   stroke: var(--bg-surface);
-  stroke-width: 0.002;
+  stroke-width: 1;
 }
 
 .ink-layer__textbox-resize[data-resize-handle='nw'],

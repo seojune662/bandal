@@ -33,6 +33,7 @@ import {
   useInkToolStore,
   type InkHistoryAction
 } from '../ink'
+import { TextFormatRow } from '../ink/TextFormatRow'
 import { requestPdfPageNavigation } from '../pdf/pdfPageNavigation'
 import { CLIP_DELIVERY_EVENT, takeClipDeliveries } from './clipDelivery'
 import { createPdfClipRenderer } from '../pdf/renderClip'
@@ -657,6 +658,7 @@ function CanvasSession({
         onAddPage={() => { void addPage() }}
         onExportPdf={() => { void exportBoardPdf() }}
       />
+      <TextFormatRow visible={activeTool === 'text'} />
 
       {statusMessage !== null && (
         <p className="canvas-tab__status" role="status">{statusMessage}</p>

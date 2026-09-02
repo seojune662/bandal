@@ -7,6 +7,7 @@ import {
 import type { DrawingShape } from '../../../../shared/types/drawing'
 import type { WhiteboardAvailability } from '../../../../shared/types/whiteboard'
 import { InkLayer, useInkToolStore } from '../ink'
+import { TextFormatRow } from '../ink/TextFormatRow'
 import { WhiteboardToolRail } from './WhiteboardToolRail'
 
 export type DrawableWhiteboardAvailability = Extract<
@@ -109,6 +110,7 @@ export function WhiteboardCanvas({
         onUndo={onUndo}
         onRedo={onRedo}
       />
+      <TextFormatRow visible={activeTool === 'text'} />
       {statusMessage !== null && (
         <p className="whiteboard__status" role="status">{statusMessage}</p>
       )}

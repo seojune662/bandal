@@ -7,8 +7,15 @@
  * 안 됐다 — 화면 높이가 표면 비율과 무관하게 일정하도록 계산한다.
  */
 
-import type { DrawingBox } from '../../../../shared/types/drawing'
-import { TEXT_BASE_FONT_RATIO } from '../../../../shared/textBoxMetrics'
+import type { DrawingBox, DrawingPoint } from '../../../../shared/types/drawing'
+import {
+  TEXT_BASE_FONT_RATIO,
+  TEXT_BOX_BORDER_EM,
+  TEXT_BOX_PADDING_EM,
+  TEXT_LINE_HEIGHT,
+  textBoxFontPx
+} from '../../../../shared/textBoxMetrics'
+import { MIN_BOX_WIDTH } from './inkGeometry'
 
 export { TEXT_BASE_FONT_RATIO }
 
@@ -32,6 +39,39 @@ export function defaultTextBoxSize(aspect: number): {
     width: TEXT_BOX_WIDTH,
     height: Math.min(1, screenHeightRatio / safeAspect)
   }
+}
+
+/**
+ * 클릭 지점에 첫 줄의 캐럿 중심이 오도록 배치한 새 텍스트박스.
+ *
+ * 박스 원점을 클릭에 두면 패딩+테두리만큼 글자가 오른쪽·아래로 밀려
+ * "클릭한 곳보다 아래에 글자가 생긴다"고 느껴진다. 인셋과 첫 줄 높이의
+ * 절반을 되돌려 놓는다. `clampToBounds` 면 왼쪽으로 미끄러지는 대신
+ * 폭을 줄여 표면 안에 머문다(오른쪽 끝 클릭이 박스를 되튀기지 않게).
+ */
+export function textBoxAtClick(
+  point: DrawingPoint,
+  aspect: number,
+  baseWidthPx: number,
+  fontScale: number | undefined,
+  clampToBounds: boolean
+): DrawingBox {
+  const size = defaultTextBoxSize(aspect)
+  const safeAspect = finitePositive(aspect) ? aspect : 1
+  const safeWidthPx = finitePositive(baseWidthPx) ? baseWidthPx : 1
+  const fontPx = textBoxFontPx(safeWidthPx, fontScale)
+  const insetPx = fontPx * (TEXT_BOX_PADDING_EM + TEXT_BOX_BORDER_EM)
+  const rawX = point.x - insetPx / safeWidthPx
+  const rawY = point.y -
+    (insetPx + (fontPx * TEXT_LINE_HEIGHT) / 2) / (safeWidthPx * safeAspect)
+  if (!clampToBounds) {
+    return { x: rawX, y: rawY, width: size.width, height: size.height }
+  }
+  const x = Math.max(0, rawX)
+  const width = Math.max(MIN_BOX_WIDTH, Math.min(TEXT_BOX_WIDTH, 1 - x))
+  const height = size.height
+  const y = Math.max(0, Math.min(rawY, 1 - height))
+  return { x, y, width, height }
 }
 
 /** 힐링에서 유의미한 변화로 치는 최소 차이 — 무한 보정 루프 방지. */

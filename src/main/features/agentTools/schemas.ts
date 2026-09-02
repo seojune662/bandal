@@ -1,4 +1,5 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
+import { DRAWING_COLORS, TEXT_ALIGNS } from '../../../shared/types/drawing'
 
 export const DESKTOP_TOOL_NAMES = [
   'desktop_screenshot',
@@ -96,7 +97,20 @@ const shapeSchema = {
         width: { type: 'number', exclusiveMinimum: 0, maximum: 1 },
         opacity: { type: 'number', minimum: 0, maximum: 1 },
         fontScale: { type: 'number', exclusiveMinimum: 0, maximum: 10 },
-        bold: { type: 'boolean' }
+        bold: { type: 'boolean' },
+        italic: { type: 'boolean' },
+        underline: { type: 'boolean' },
+        strike: { type: 'boolean' },
+        align: {
+          type: 'string',
+          enum: [...TEXT_ALIGNS],
+          description: 'textbox 전용 가로 정렬. 생략하면 left'
+        },
+        fill: {
+          type: 'string',
+          enum: [...DRAWING_COLORS],
+          description: 'textbox 전용 배경 색. 생략하면 투명'
+        }
       },
       ['color', 'width', 'opacity']
     )

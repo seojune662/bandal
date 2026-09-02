@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createDrawingsRepo, type DrawingsRepo } from '../../../src/main/features/pdf'
 import { createCoursesRepo } from '../../../src/main/features/courses'
 import { NotFoundError, ValidationError } from '../../../src/main/db/errors'
-import type { CreateDrawingInput } from '../../../src/shared/types/drawing'
+import type { CreateDrawingInput, DrawingStyle } from '../../../src/shared/types/drawing'
 import { createTestDb, type TestDb } from '../helpers/testDb'
 
 describe('drawingsRepo', () => {
@@ -57,6 +57,65 @@ describe('drawingsRepo', () => {
     })
 
     expect(repo.listForFile(courseId, created.relPath)[0]).toEqual(created)
+  })
+
+  test('round-trips bold, italic, underline, strike, align and fill on a textbox', () => {
+    const style: DrawingStyle = {
+      color: 'ink',
+      width: 0.002,
+      opacity: 1,
+      fontScale: 1.5,
+      bold: true,
+      italic: true,
+      underline: true,
+      strike: false,
+      align: 'center',
+      fill: 'yellow'
+    }
+
+    const created = repo.create({
+      ...validInput(),
+      kind: 'textbox',
+      data: { box: { x: 0.1, y: 0.2, width: 0.45, height: 0.16 }, text: '서식' },
+      style
+    })
+    const updated = repo.update({
+      id: created.id,
+      style: { ...style, italic: false, align: 'right', fill: 'blue' }
+    })
+
+    expect(created.style).toEqual(style)
+    expect(repo.listForFile(courseId, created.relPath)[0]?.style).toEqual({
+      ...style,
+      italic: false,
+      align: 'right',
+      fill: 'blue'
+    })
+    expect(updated.style).toEqual({ ...style, italic: false, align: 'right', fill: 'blue' })
+  })
+
+  test('keeps absent text-style fields absent instead of defaulting them', () => {
+    const created = repo.create(validInput())
+
+    expect(created.style).toEqual({ color: 'blue', width: 0.006, opacity: 0.92 })
+    expect(Object.keys(created.style)).not.toContain('align')
+    expect(Object.keys(created.style)).not.toContain('fill')
+  })
+
+  test.each([
+    ['align', 'justify'],
+    ['align', 0],
+    ['fill', 'pink'],
+    ['fill', '#ffff00'],
+    ['italic', 'yes'],
+    ['underline', 1],
+    ['strike', 'true'],
+    ['bold', null]
+  ])('rejects style.%s = %j', (field, value) => {
+    const style = { ...validInput().style, [field]: value } as unknown as DrawingStyle
+
+    expect(() => repo.create({ ...validInput(), style })).toThrow(ValidationError)
+    expect(() => repo.create({ ...validInput(), style })).toThrow(`style.${field}`)
   })
 
   test('updates geometry and style without changing file identity', () => {

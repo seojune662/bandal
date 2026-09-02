@@ -7,7 +7,8 @@ import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
  * PDF 텍스트박스 회귀:
  *  - placeholder 가 열린 채 다른 곳을 클릭하면 박스가 클릭 지점으로 따라온다.
  *  - 리사이즈 = 줄바꿈 재배치 (글자 크기 불변, 폭을 좁히면 높이가 자란다).
- *  - 서식 바로 굵기·색상·글자 크기를 편집한다 (편집 중 포커스 유지 포함).
+ *  - 툴바 서식 행으로 글자와 배경 서식을 편집한다 (편집 중 포커스 유지 포함).
+ *  - 줌은 정규화 기하/updatedAt 을 바꾸지 않고, 1px 지터는 클릭으로 친다.
  *  - 예전 버그가 남긴 페이지 밖 거대 박스는 로드시 자가 치유된다.
  */
 test.describe('pdf textbox', () => {
@@ -54,22 +55,37 @@ test.describe('pdf textbox', () => {
       rect.y + rect.height * fy
     ]
     const textarea = page.locator('.ink-layer__textbox.is-editing')
+    const expectAnchoredAt = async (
+      clickX: number,
+      clickY: number,
+      bounds: { x: number; y: number; width: number; height: number }
+    ): Promise<void> => {
+      const fontPx = await textarea.evaluate((element) =>
+        parseFloat(getComputedStyle(element).fontSize)
+      )
+      expect(clickX).toBeGreaterThanOrEqual(bounds.x)
+      expect(clickX).toBeLessThanOrEqual(bounds.x + bounds.width)
+      expect(clickY).toBeGreaterThanOrEqual(bounds.y)
+      expect(clickY).toBeLessThanOrEqual(bounds.y + bounds.height)
+      expect(clickX - bounds.x).toBeGreaterThanOrEqual(0)
+      expect(clickX - bounds.x).toBeLessThan(12)
+      expect(clickY - bounds.y).toBeGreaterThanOrEqual(0)
+      expect(clickY - bounds.y).toBeLessThan(fontPx * 1.35 + 8)
+    }
 
     // 첫 클릭: placeholder 가 클릭 지점에 열린다.
     const [ax, ay] = at(0.2, 0.2)
     await page.mouse.click(ax, ay)
     await expect(textarea).toBeVisible()
     const first = (await textarea.boundingBox())!
-    expect(Math.abs(first.x - ax)).toBeLessThan(8)
-    expect(Math.abs(first.y - ay)).toBeLessThan(8)
+    await expectAnchoredAt(ax, ay, first)
 
     // 빈 채로 다른 곳 클릭: 사라지는 게 아니라 그 지점으로 이동한다.
     const [bx, by] = at(0.55, 0.5)
     await page.mouse.click(bx, by)
     await expect(textarea).toBeVisible()
     const moved = (await textarea.boundingBox())!
-    expect(Math.abs(moved.x - bx)).toBeLessThan(8)
-    expect(Math.abs(moved.y - by)).toBeLessThan(8)
+    await expectAnchoredAt(bx, by, moved)
 
     // 내용을 넣고 또 다른 곳 클릭: 지금 박스는 확정, 새 placeholder 가 열린다.
     await page.keyboard.type('committed here')
@@ -80,8 +96,7 @@ test.describe('pdf textbox', () => {
     ).toBeVisible()
     await expect(textarea).toBeVisible()
     const third = (await textarea.boundingBox())!
-    expect(Math.abs(third.x - cx)).toBeLessThan(8)
-    expect(Math.abs(third.y - cy)).toBeLessThan(8)
+    await expectAnchoredAt(cx, cy, third)
     await page.keyboard.press('Escape')
   })
 
@@ -151,7 +166,7 @@ test.describe('pdf textbox', () => {
       .toBeLessThan(8)
   })
 
-  test('the format bar edits bold, color and font size of the selection', async () => {
+  test('the format row edits text and background styles of the selection', async () => {
     const { page } = bandal
     const boxObject = page.locator('.ink-layer__textbox-object', {
       hasText: 'reflow test'
@@ -160,7 +175,7 @@ test.describe('pdf textbox', () => {
     const body = (await boxObject.boundingBox())!
     await page.mouse.click(body.x + body.width / 2, body.y + body.height / 2)
 
-    const bar = page.locator('.ink-layer__format-bar')
+    const bar = page.locator('.ink-format-row')
     await expect(bar).toBeVisible()
 
     await bar.getByRole('button', { name: '굵게' }).click()
@@ -168,8 +183,29 @@ test.describe('pdf textbox', () => {
       .poll(() => inner.evaluate((element) => getComputedStyle(element).fontWeight))
       .toBe('700')
 
-    await bar.getByRole('button', { name: '빨강' }).click()
+    await bar.getByRole('button', { name: '빨강', exact: true }).click()
     await expect(inner).toHaveAttribute('data-color', 'red')
+
+    await bar.getByRole('button', { name: '기울임' }).click()
+    await expect
+      .poll(() => inner.evaluate((element) => getComputedStyle(element).fontStyle))
+      .toBe('italic')
+
+    await bar.getByRole('button', { name: '가운데 정렬' }).click()
+    await expect
+      .poll(() => inner.evaluate((element) => getComputedStyle(element).textAlign))
+      .toBe('center')
+
+    await bar.getByRole('button', { name: '배경 빨강', exact: true }).click()
+    await expect(inner).toHaveAttribute('data-fill', 'red')
+    await expect
+      .poll(async () => {
+        const background = await inner.evaluate(
+          (element) => getComputedStyle(element).backgroundColor
+        )
+        return background !== '' && background !== 'rgba(0, 0, 0, 0)'
+      })
+      .toBe(true)
 
     let fontBefore = 0
     await expect
@@ -188,7 +224,7 @@ test.describe('pdf textbox', () => {
       .toBeGreaterThan(fontBefore)
   })
 
-  test('clicking the bar while editing keeps the textarea focused', async () => {
+  test('clicking the format row while editing keeps the textarea focused', async () => {
     const { page } = bandal
     await page.locator('.pdf-tool-rail__button[aria-label="텍스트"]').click()
     const boxObject = page.locator('.ink-layer__textbox-object', {
@@ -200,13 +236,128 @@ test.describe('pdf textbox', () => {
     const textarea = page.locator('.ink-layer__textbox.is-editing')
     await expect(textarea).toBeVisible()
 
-    const bar = page.locator('.ink-layer__format-bar')
+    const bar = page.locator('.ink-format-row')
     await expect(bar).toBeVisible()
     await bar.getByRole('button', { name: '굵게' }).click()
     // 바 클릭이 blur(=확정)를 일으키지 않아 계속 타이핑할 수 있다.
     await expect(textarea).toBeVisible()
     await page.keyboard.type(' more')
     await expect(textarea).toHaveValue(/more/)
+    await page.keyboard.press('Escape')
+  })
+
+  test('zooming in and back preserves normalized geometry and updatedAt', async () => {
+    const { page } = bandal
+    await page.locator('.pdf-tool-rail__button[aria-label="텍스트"]').click()
+    const surface = page.locator(
+      '.pdf-page[data-pdf-page="1"] .pdf-drawing-layer'
+    )
+    const surfaceBox = (await surface.boundingBox())!
+    await page.mouse.click(
+      surfaceBox.x + surfaceBox.width * 0.72,
+      surfaceBox.y + surfaceBox.height * 0.24
+    )
+    const textarea = page.locator('.ink-layer__textbox.is-editing')
+    await expect(textarea).toBeVisible()
+    await page.keyboard.type('zoom invariant')
+    await page.keyboard.press('Meta+Enter')
+
+    const boxObject = page.locator('.ink-layer__textbox-object', {
+      hasText: 'zoom invariant'
+    })
+    await expect(boxObject).toBeVisible()
+
+    const relativeGeometry = async (): Promise<{
+      x: number
+      y: number
+      width: number
+      height: number
+      surfaceWidth: number
+      surfaceHeight: number
+    }> => {
+      const pageBounds = (await surface.boundingBox())!
+      const shapeBounds = (await boxObject.boundingBox())!
+      return {
+        x: (shapeBounds.x - pageBounds.x) / pageBounds.width,
+        y: (shapeBounds.y - pageBounds.y) / pageBounds.height,
+        width: shapeBounds.width / pageBounds.width,
+        height: shapeBounds.height / pageBounds.height,
+        surfaceWidth: pageBounds.width,
+        surfaceHeight: pageBounds.height
+      }
+    }
+    const readStoredShape = async (): Promise<{
+      id: string
+      updatedAt: string
+    } | null> => page.evaluate(async (text) => {
+      const bridge = (window as unknown as {
+        bandal: { invoke: (channel: string, req: unknown) => Promise<unknown> }
+      }).bandal
+      const courses = (await bridge.invoke('courses:list', {})) as Array<{ id: string }>
+      const drawings = (await bridge.invoke('drawings:listForFile', {
+        courseId: courses[0]!.id,
+        relPath: 'slides.pdf'
+      })) as Array<{
+        id: string
+        updatedAt: string
+        data: { text?: string }
+      }>
+      const shape = drawings.find((drawing) => drawing.data.text === text)
+      return shape === undefined
+        ? null
+        : { id: shape.id, updatedAt: shape.updatedAt }
+    }, 'zoom invariant')
+
+    let storedBefore = await readStoredShape()
+    await expect
+      .poll(async () => {
+        storedBefore = await readStoredShape()
+        return storedBefore
+      })
+      .not.toBeNull()
+    if (storedBefore === null) throw new Error('zoom invariant drawing was not saved')
+    const before = await relativeGeometry()
+
+    const toolbar = page.getByRole('toolbar', { name: 'PDF 뷰어 도구' })
+    const zoomValue = toolbar.getByRole('button', { name: /현재 배율/ })
+    const originalZoomLabel = await zoomValue.getAttribute('aria-label')
+    await toolbar.getByRole('button', { name: '확대' }).click()
+    await toolbar.getByRole('button', { name: '확대' }).click()
+    await toolbar.getByRole('button', { name: '축소' }).click()
+    await toolbar.getByRole('button', { name: '축소' }).click()
+    await expect(zoomValue).toHaveAttribute('aria-label', originalZoomLabel!)
+
+    const after = await relativeGeometry()
+    expect(Math.abs(after.x - before.x) * before.surfaceWidth).toBeLessThanOrEqual(1)
+    expect(Math.abs(after.y - before.y) * before.surfaceHeight).toBeLessThanOrEqual(1)
+    expect(Math.abs(after.width - before.width) * before.surfaceWidth)
+      .toBeLessThanOrEqual(1)
+    expect(Math.abs(after.height - before.height) * before.surfaceHeight)
+      .toBeLessThanOrEqual(1)
+
+    await expect
+      .poll(async () => (await readStoredShape())?.updatedAt)
+      .toBe(storedBefore.updatedAt)
+  })
+
+  test('a one-pixel text-box jitter is treated as an edit click', async () => {
+    const { page } = bandal
+    await page.locator('.pdf-tool-rail__button[aria-label="텍스트"]').click()
+    const boxObject = page.locator('.ink-layer__textbox-object', {
+      hasText: 'zoom invariant'
+    })
+    const body = (await boxObject.boundingBox())!
+    const x = body.x + body.width / 2
+    const y = body.y + body.height / 2
+
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x + 1, y + 1)
+    await page.mouse.up()
+
+    const textarea = page.locator('.ink-layer__textbox.is-editing')
+    await expect(textarea).toBeVisible()
+    await expect(textarea).toHaveValue('zoom invariant')
     await page.keyboard.press('Escape')
   })
 

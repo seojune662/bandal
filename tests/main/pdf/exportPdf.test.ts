@@ -1,18 +1,66 @@
 import { copyFileSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { PDFDocument } from 'pdf-lib'
-import { createPdfExporter } from '../../../src/main/features/pdf'
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
+import { PDFDict, PDFDocument, PDFName } from 'pdf-lib'
+import { createPdfExporter, type TextboxFontFile } from '../../../src/main/features/pdf'
 import { ValidationError } from '../../../src/main/db/errors'
 import type { Annotation } from '../../../src/shared/types/annotation'
-import type { Drawing } from '../../../src/shared/types/drawing'
+import type { Drawing, DrawingStyle } from '../../../src/shared/types/drawing'
 import { createTestDb, type TestDb } from '../helpers/testDb'
+
+const timestamp = '2026-01-01T00:00:00.000Z'
+const fontsDir = join(process.cwd(), 'resources', 'fonts')
+const bundledFont = (file: TextboxFontFile): string => join(fontsDir, file)
+
+function textbox(
+  id: string,
+  text: string,
+  style: Partial<DrawingStyle>,
+  box = { x: 0.1, y: 0.1, width: 0.6, height: 0.12 }
+): Drawing {
+  return {
+    id,
+    courseId: 'course-1',
+    relPath: 'slides/source.pdf',
+    page: 1,
+    kind: 'textbox',
+    data: { box, text },
+    style: { color: 'ink', width: 0.002, opacity: 1, fontScale: 1, ...style },
+    createdAt: timestamp,
+    updatedAt: timestamp
+  }
+}
+
+async function pdfText(path: string): Promise<string> {
+  const document = await getDocument({ data: new Uint8Array(readFileSync(path)) }).promise
+  try {
+    const content = await (await document.getPage(1)).getTextContent()
+    return content.items.map((item) => ('str' in item ? item.str : '')).join('')
+  } finally {
+    await document.destroy()
+  }
+}
+
+/** `BaseFont` names in the file — pdf-lib packs font dicts into object streams, so raw bytes cannot be grepped. */
+async function embeddedFontNames(bytes: Buffer): Promise<string[]> {
+  const document = await PDFDocument.load(bytes)
+  return document.context.enumerateIndirectObjects().flatMap(([, object]) => {
+    if (!(object instanceof PDFDict)) return []
+    const baseFont = object.get(PDFName.of('BaseFont'))
+    return baseFont instanceof PDFName ? [baseFont.decodeText()] : []
+  })
+}
+
+function hasFace(names: readonly string[], face: string): boolean {
+  return names.some((name) => name.startsWith(face))
+}
 
 describe('createPdfExporter', () => {
   let ctx: TestDb
   let sourcePath: string
   let sourceBytes: Buffer
-  const fontPath = join(process.cwd(), 'resources', 'fonts', 'NotoSansKR-Regular.otf')
+  const fontPath = bundledFont('NotoSansKR-Regular.otf')
 
   beforeEach(async () => {
     ctx = createTestDb()
@@ -137,7 +185,7 @@ describe('createPdfExporter', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const exporter = createPdfExporter({
       getCourseFolder: () => ctx.dir,
-      listDrawings: () => drawings,
+      listDrawings: () => [...drawings, textbox('bold-fallback', 'bold', { bold: true })],
       listAnnotations: () => [],
       resolveFontPath: () => join(ctx.dir, 'missing-font.otf')
     })
@@ -151,31 +199,80 @@ describe('createPdfExporter', () => {
     const outputBytes = readFileSync(outputPath)
     expect(outputBytes.subarray(0, 5).toString()).toBe('%PDF-')
     expect((await PDFDocument.load(outputBytes)).getPageCount()).toBe(1)
+    const names = await embeddedFontNames(outputBytes)
+    expect(hasFace(names, 'Helvetica-Bold')).toBe(true)
+    expect(hasFace(names, 'NotoSansKR')).toBe(false)
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('falling back to Helvetica'),
       expect.anything()
     )
   })
 
-  test('resolves and reads the Korean font only once per exporter', async () => {
-    const timestamp = '2026-01-01T00:00:00.000Z'
-    const drawings: Drawing[] = [{
-      id: 'cached-font-text',
-      courseId: 'course-1',
-      relPath: 'slides/source.pdf',
-      page: 1,
-      kind: 'textbox',
-      data: {
-        box: { x: 0.1, y: 0.1, width: 0.5, height: 0.2 },
-        text: '캐시된 글꼴'
-      },
-      style: { color: 'ink', width: 0.002, opacity: 1, fontScale: 1 },
-      createdAt: timestamp,
-      updatedAt: timestamp
-    }]
+  test('falls back to Regular weight when only the Bold face is missing', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const exporter = createPdfExporter({
+      getCourseFolder: () => ctx.dir,
+      listDrawings: () => [textbox('bold-only', '굵은 글', { bold: true })],
+      listAnnotations: () => [],
+      resolveFontPath: (file) =>
+        file === 'NotoSansKR-Bold.otf' ? join(ctx.dir, 'missing-bold.otf') : fontPath
+    })
+    const outputPath = join(ctx.dir, 'regular-weight.pdf')
+
+    await exporter.exportAnnotated(
+      { courseId: 'course-1', relPath: 'slides/source.pdf' },
+      outputPath
+    )
+
+    const names = await embeddedFontNames(readFileSync(outputPath))
+    expect(hasFace(names, 'NotoSansKR-Bold')).toBe(false)
+    expect(hasFace(names, 'NotoSansKR-Regular')).toBe(true)
+    expect(await pdfText(outputPath)).toContain('굵은 글')
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('Regular weight'),
+      expect.anything()
+    )
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('Helvetica'),
+      expect.anything()
+    )
+  })
+
+  test('renders italic, aligned, filled, underlined and struck text as searchable Korean', async () => {
+    const drawings: Drawing[] = [
+      textbox('italic', '기울임 italic', { italic: true, color: 'blue' }),
+      textbox('center', '가운데 정렬', { align: 'center' }, { x: 0.1, y: 0.25, width: 0.6, height: 0.12 }),
+      textbox('right', '오른쪽 정렬', { align: 'right' }, { x: 0.1, y: 0.4, width: 0.6, height: 0.12 }),
+      textbox('fill', '배경 채움', { fill: 'yellow' }, { x: 0.1, y: 0.55, width: 0.6, height: 0.12 }),
+      textbox('underline', '밑줄 취소선', { underline: true, strike: true }, { x: 0.1, y: 0.7, width: 0.6, height: 0.12 }),
+      textbox('everything', '전부 다', {
+        bold: true, italic: true, underline: true, strike: true, align: 'center', fill: 'red', fontScale: 2
+      }, { x: 0.1, y: 0.85, width: 0.8, height: 0.12 })
+    ]
+    const exporter = createPdfExporter({
+      getCourseFolder: () => ctx.dir,
+      listDrawings: () => drawings,
+      listAnnotations: () => [],
+      resolveFontPath: bundledFont
+    })
+    const outputPath = join(ctx.dir, 'styled.pdf')
+
+    await exporter.exportAnnotated(
+      { courseId: 'course-1', relPath: 'slides/source.pdf' },
+      outputPath
+    )
+
+    const text = await pdfText(outputPath)
+    for (const drawing of drawings) expect(text).toContain(drawing.data.text)
+    expect(text).not.toContain('?')
+    expect((await PDFDocument.load(readFileSync(outputPath))).getPageCount()).toBe(1)
+  })
+
+  test('resolves and reads the Regular face only once per exporter, never Bold without a bold box', async () => {
+    const drawings = [textbox('cached-font-text', '캐시된 글꼴', {})]
     const cachedFontPath = join(ctx.dir, 'cached-font.otf')
     copyFileSync(fontPath, cachedFontPath)
-    const resolveFontPath = vi.fn(() => cachedFontPath)
+    const resolveFontPath = vi.fn((_file: TextboxFontFile) => cachedFontPath)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const exporter = createPdfExporter({
       getCourseFolder: () => ctx.dir,
@@ -195,7 +292,56 @@ describe('createPdfExporter', () => {
     )
 
     expect(resolveFontPath).toHaveBeenCalledTimes(1)
+    expect(resolveFontPath).toHaveBeenCalledWith('NotoSansKR-Regular.otf')
     expect(warn).not.toHaveBeenCalled()
+  })
+
+  test('loads the Bold face once, and only when a bold textbox exists', async () => {
+    const resolveFontPath = vi.fn(bundledFont)
+    const exporter = createPdfExporter({
+      getCourseFolder: () => ctx.dir,
+      listDrawings: () => [
+        textbox('regular', '보통 글', {}),
+        textbox('bold', '굵은 글', { bold: true }, { x: 0.1, y: 0.3, width: 0.6, height: 0.12 })
+      ],
+      listAnnotations: () => [],
+      resolveFontPath
+    })
+    const firstPath = join(ctx.dir, 'bold-1.pdf')
+
+    await exporter.exportAnnotated({ courseId: 'course-1', relPath: 'slides/source.pdf' }, firstPath)
+    await exporter.exportAnnotated(
+      { courseId: 'course-1', relPath: 'slides/source.pdf' },
+      join(ctx.dir, 'bold-2.pdf')
+    )
+
+    expect(resolveFontPath).toHaveBeenCalledTimes(2)
+    expect(resolveFontPath).toHaveBeenCalledWith('NotoSansKR-Regular.otf')
+    expect(resolveFontPath).toHaveBeenCalledWith('NotoSansKR-Bold.otf')
+    const names = await embeddedFontNames(readFileSync(firstPath))
+    expect(hasFace(names, 'NotoSansKR-Bold')).toBe(true)
+    expect(hasFace(names, 'NotoSansKR-Regular')).toBe(true)
+    expect(await pdfText(firstPath)).toContain('굵은 글')
+  })
+
+  test('embeds only the faces that place glyphs, so a bold-only or blank box cannot crash the subsetter', async () => {
+    const exporter = createPdfExporter({
+      getCourseFolder: () => ctx.dir,
+      listDrawings: () => [
+        textbox('bold-only', '굵은 글만', { bold: true }),
+        textbox('blank', ' \n\t', { fill: 'green' }, { x: 0.1, y: 0.3, width: 0.6, height: 0.12 })
+      ],
+      listAnnotations: () => [],
+      resolveFontPath: bundledFont
+    })
+    const outputPath = join(ctx.dir, 'bold-only.pdf')
+
+    await exporter.exportAnnotated({ courseId: 'course-1', relPath: 'slides/source.pdf' }, outputPath)
+
+    const names = await embeddedFontNames(readFileSync(outputPath))
+    expect(hasFace(names, 'NotoSansKR-Bold')).toBe(true)
+    expect(hasFace(names, 'NotoSansKR-Regular')).toBe(false)
+    expect(await pdfText(outputPath)).toContain('굵은 글만')
   })
 
   test('refuses to overwrite the original path', async () => {

@@ -32,6 +32,7 @@ import { useAnnotations } from './useAnnotations'
 import { usePageTexts, useStaleAnnotationIds } from './usePageTexts'
 import { useVisiblePages } from './useVisiblePages'
 import { PdfToolbar } from './PdfToolbar'
+import { TextFormatRow } from '../ink/TextFormatRow'
 import { PdfPageView } from './PdfPageView'
 import { PdfPreviewPanel } from './PdfPreviewPanel'
 import { AnnotationRail } from './AnnotationRail'
@@ -66,7 +67,6 @@ import {
   type PdfPageNavigationTarget
 } from './pdfPageNavigation'
 import { useWhiteboardClipDelivery } from './useWhiteboardClipDelivery'
-
 const ZOOM_MIN = 0.4
 const ZOOM_MAX = 4
 const ZOOM_STEP = 1.15
@@ -87,7 +87,6 @@ const MIN_PAGE_WIDTH_PX = 180
 const FLASH_DURATION_MS = 1600
 const SCROLL_SAVE_DEBOUNCE_MS = 250
 const JUMP_TOP_OFFSET_PX = 88
-
 const EMPTY_ANNOTATIONS: Annotation[] = []
 const EMPTY_DRAWINGS: Drawing[] = []
 
@@ -611,6 +610,7 @@ function PdfViewer({
         onTogglePreview={() => setIsPreviewOpen((open) => !open)}
         onToggleRail={() => setIsRailOpen((open) => !open)}
       />
+      <TextFormatRow visible={activeTool === 'text'} />
       <div className="pdf-tab__main">
         {isPreviewOpen && (
           <PdfPreviewPanel

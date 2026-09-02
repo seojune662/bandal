@@ -264,6 +264,39 @@ describe('agent app tools', () => {
     })
   })
 
+  describe('add_shapes text styling', () => {
+    test('stores bold, italic, underline, strike, align and fill on a textbox', async () => {
+      const board = harness.deps.canvasRepo.createBoard({
+        courseId: harness.courseId,
+        title: '서식'
+      })
+      const style = {
+        color: 'ink',
+        width: 0.01,
+        opacity: 1,
+        fontScale: 1.25,
+        bold: true,
+        italic: true,
+        underline: true,
+        strike: true,
+        align: 'center',
+        fill: 'yellow'
+      }
+
+      const result = await harness.tools.call('add_shapes', {
+        boardId: board.id,
+        shapes: [{
+          kind: 'textbox',
+          data: { box: { x: 0.1, y: 0.1, width: 0.4, height: 0.2 }, text: '서식 있는 글' },
+          style
+        }]
+      })
+
+      expect(result.isError).not.toBe(true)
+      expect(harness.deps.canvasRepo.open(board.id).shapes[0]?.style).toEqual(style)
+    })
+  })
+
   describe('add_shapes geometry validation', () => {
     test.each([
       {
@@ -273,6 +306,33 @@ describe('agent app tools', () => {
           data: { box: { x: 0.9, y: 0.1, width: 0.2, height: 0.2 } }
         },
         reason: 'stay inside the normalized page'
+      },
+      {
+        label: 'an unknown text alignment',
+        shape: {
+          kind: 'textbox',
+          data: { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, text: '정렬' },
+          style: { color: 'ink', width: 0.01, opacity: 1, align: 'justify' }
+        },
+        reason: 'style.align must be one of'
+      },
+      {
+        label: 'a fill outside the palette',
+        shape: {
+          kind: 'textbox',
+          data: { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, text: '배경' },
+          style: { color: 'ink', width: 0.01, opacity: 1, fill: '#ffff00' }
+        },
+        reason: 'style.fill must be one of'
+      },
+      {
+        label: 'a non-boolean italic flag',
+        shape: {
+          kind: 'textbox',
+          data: { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, text: '기울임' },
+          style: { color: 'ink', width: 0.01, opacity: 1, italic: 'yes' }
+        },
+        reason: 'style.italic must be a boolean'
       },
       {
         label: 'an empty stroke',

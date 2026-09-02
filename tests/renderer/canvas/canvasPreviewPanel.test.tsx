@@ -1,13 +1,19 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test, vi } from 'vitest'
+import type { DrawingStyle } from '../../../src/shared/types/drawing'
 import type { PersonalBoardShape } from '../../../src/shared/types/whiteboard'
 import {
   CANVAS_PREVIEW_SHAPE_LIMIT,
   CanvasPreviewPanel
 } from '../../../src/renderer/src/features/canvas/CanvasPreviewPanel'
 
-function textbox(id: string, page: number, text: string): PersonalBoardShape {
+function textbox(
+  id: string,
+  page: number,
+  text: string,
+  style: Partial<DrawingStyle> = {}
+): PersonalBoardShape {
   return {
     id,
     page,
@@ -16,7 +22,13 @@ function textbox(id: string, page: number, text: string): PersonalBoardShape {
       box: { x: 0.1, y: 0.1, width: 0.4, height: 0.1 },
       text
     },
-    style: { color: 'ink', width: 0.004, opacity: 1, fontScale: 1 },
+    style: {
+      color: 'ink',
+      width: 0.004,
+      opacity: 1,
+      fontScale: 1,
+      ...style
+    },
     createdAt: '2026-08-10T00:00:00.000Z',
     updatedAt: '2026-08-10T00:00:00.000Z'
   }
@@ -57,5 +69,27 @@ describe('whiteboard preview panel', () => {
 
     expect(html).not.toContain('도형 0')
     expect(html).toContain(`도형 ${CANVAS_PREVIEW_SHAPE_LIMIT}`)
+  })
+
+  test('previews textbox italic, center alignment and background fill', () => {
+    const html = renderToStaticMarkup(
+      <CanvasPreviewPanel
+        pageCount={1}
+        currentPage={1}
+        background="blank"
+        shapes={[
+          textbox('formatted-text', 1, '서식 미리보기', {
+            italic: true,
+            align: 'center',
+            fill: 'red'
+          })
+        ]}
+        onJump={vi.fn()}
+      />
+    )
+
+    expect(html).toContain('font-style="italic"')
+    expect(html).toContain('text-anchor="middle"')
+    expect(html).toContain('fill="var(--drawing-color-red)"')
   })
 })

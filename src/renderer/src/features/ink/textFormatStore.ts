@@ -22,13 +22,36 @@ import type { DrawingStyle } from '../../../../shared/types/drawing'
 
 export type TextFormatMode = 'draft' | 'editing' | 'selected'
 
+/**
+ * A style change. `undefined` REMOVES the field (e.g. `{ fill: undefined }`
+ * clears the background) — `Partial<DrawingStyle>` alone cannot express that
+ * under `exactOptionalPropertyTypes`, and a stored `fill: undefined` would be
+ * dropped by the validators anyway. Merge with `mergeTextStyle`.
+ */
+export type TextStylePatch = {
+  [K in keyof DrawingStyle]?: DrawingStyle[K] | undefined
+}
+
+/** `{ ...base, ...patch }` with `undefined` patch values deleting the key. */
+export function mergeTextStyle(
+  base: DrawingStyle,
+  patch: TextStylePatch
+): DrawingStyle {
+  const next: Record<string, unknown> = { ...base }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) delete next[key]
+    else next[key] = value
+  }
+  return next as unknown as DrawingStyle
+}
+
 export interface TextFormatTarget {
   /** The publishing `InkLayer` instance (React `useId`). */
   ownerId: string
   mode: TextFormatMode
   style: DrawingStyle
   /** Draft → local draft style; committed shape → `onUpdate(id, { style })`. */
-  apply: (patch: Partial<DrawingStyle>) => void
+  apply: (patch: TextStylePatch) => void
 }
 
 export interface TextFormatStore {

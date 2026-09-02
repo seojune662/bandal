@@ -2,7 +2,10 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { DrawingBox } from '../../../../shared/types/drawing'
 import type { ResizeHandle } from './inkGeometry'
 
+/** 표면 폭을 모를 때의 정규화 핸들 크기(구 동작). */
 const HANDLE_SIZE = 0.016
+/** 표면 폭을 알면 줌과 무관하게 화면 픽셀로 고정한다. */
+const HANDLE_PX = 10
 
 const HANDLE_CORNERS: readonly ResizeHandle[] = ['nw', 'ne', 'sw', 'se']
 
@@ -33,14 +36,25 @@ function handleCenter(
   }
 }
 
+/** 줌 불변 핸들 크기: 픽셀 고정이 가능하면 그쪽, 아니면 정규화 상수. */
+export function resizeHandleSize(baseWidthPx?: number): number {
+  return baseWidthPx !== undefined && Number.isFinite(baseWidthPx) && baseWidthPx > 0
+    ? HANDLE_PX / baseWidthPx
+    : HANDLE_SIZE
+}
+
 export function resizeHandleBoxes(
   box: DrawingBox,
   aspect: number,
-  handles: readonly ResizeHandle[] = HANDLE_CORNERS
+  handles: readonly ResizeHandle[] = HANDLE_CORNERS,
+  sizeNormalized: number = HANDLE_SIZE
 ): ResizeHandleBox[] {
   if (!Number.isFinite(aspect) || aspect <= 0) return []
-  const screenSquareHeight = HANDLE_SIZE / aspect
-  const halfWidth = HANDLE_SIZE / 2
+  const size = Number.isFinite(sizeNormalized) && sizeNormalized > 0
+    ? sizeNormalized
+    : HANDLE_SIZE
+  const screenSquareHeight = size / aspect
+  const halfWidth = size / 2
   const halfHeight = screenSquareHeight / 2
 
   return handles.map((handle) => {
@@ -49,7 +63,7 @@ export function resizeHandleBoxes(
       handle,
       x: center.x - halfWidth,
       y: center.y - halfHeight,
-      width: HANDLE_SIZE,
+      width: size,
       height: screenSquareHeight
     }
   })
@@ -59,6 +73,8 @@ interface ResizeHandlesProps {
   box: DrawingBox
   aspect: number
   className: string
+  /** 알면 핸들이 화면 픽셀 크기로 고정된다(줌 불변). */
+  baseWidthPx?: number
   fill?: string
   handles?: readonly ResizeHandle[]
   onPointerDown: (
@@ -71,19 +87,27 @@ export function ResizeHandles({
   box,
   aspect,
   className,
+  baseWidthPx,
   fill,
   handles = HANDLE_CORNERS,
   onPointerDown
 }: ResizeHandlesProps): JSX.Element {
+  const boxes = resizeHandleBoxes(
+    box,
+    aspect,
+    handles,
+    resizeHandleSize(baseWidthPx)
+  )
   return (
     <>
-      {resizeHandleBoxes(box, aspect, handles).map(({ handle, ...handleBox }) => (
+      {boxes.map(({ handle, ...handleBox }) => (
         <rect
           key={handle}
           className={className}
           data-resize-handle={handle}
           {...handleBox}
           fill={fill}
+          vectorEffect="non-scaling-stroke"
           onPointerDown={(event) => onPointerDown(event, handle)}
         />
       ))}

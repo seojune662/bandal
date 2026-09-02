@@ -10,8 +10,8 @@ import type {
 type Point2 = readonly [number, number]
 
 const STROKE_COORD_SCALE = 1000
-const MIN_BOX_WIDTH = 0.03
-const MIN_BOX_HEIGHT = 0.025
+export const MIN_BOX_WIDTH = 0.03
+export const MIN_BOX_HEIGHT = 0.025
 
 export type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w'
 

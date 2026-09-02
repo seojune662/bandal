@@ -3,6 +3,7 @@ import type {
   DrawingBox,
   DrawingShape
 } from '../../../../shared/types/drawing'
+import { TEXT_FILL_OPACITY } from '../../../../shared/textBoxMetrics'
 import type {
   BoardBackground,
   PersonalBoardShape
@@ -47,18 +48,39 @@ function renderBoxShape(
   if (shape.kind === 'textbox') {
     const text = (shape.data.text ?? '').trim()
     if (text.length === 0) return null
+    const align = shape.style.align ?? 'left'
+    const x = align === 'left'
+      ? box.x
+      : align === 'center'
+        ? box.x + box.width / 2
+        : box.x + box.width
+    const textDecoration = [
+      shape.style.underline === true ? 'underline' : '',
+      shape.style.strike === true ? 'line-through' : ''
+    ].filter(Boolean).join(' ') || undefined
     return (
-      <text
-        key={shape.id}
-        x={box.x}
-        y={box.y + Math.min(box.height, 0.055)}
-        fill={color}
-        opacity={shape.style.opacity}
-        fontSize={0.045 * (shape.style.fontScale ?? 1)}
-        fontWeight={shape.style.bold === true ? 700 : 400}
-      >
-        {text.slice(0, 24)}
-      </text>
+      <g key={shape.id}>
+        {shape.style.fill !== undefined && (
+          <rect
+            {...box}
+            fill={drawingColorVariable(shape.style.fill)}
+            opacity={TEXT_FILL_OPACITY}
+          />
+        )}
+        <text
+          x={x}
+          y={box.y + Math.min(box.height, 0.055)}
+          fill={color}
+          opacity={shape.style.opacity}
+          fontSize={0.045 * (shape.style.fontScale ?? 1)}
+          fontWeight={shape.style.bold === true ? 700 : 400}
+          fontStyle={shape.style.italic === true ? 'italic' : 'normal'}
+          textAnchor={align === 'left' ? 'start' : align === 'center' ? 'middle' : 'end'}
+          textDecoration={textDecoration}
+        >
+          {text.slice(0, 24)}
+        </text>
+      </g>
     )
   }
   if (shape.kind === 'clip' || shape.kind === 'image') {

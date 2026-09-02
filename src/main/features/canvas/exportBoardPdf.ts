@@ -9,16 +9,28 @@ import {
   LineCapStyle,
   PageSizes,
   PDFDocument,
+  degrees,
   rgb,
   type Color,
   type PDFFont,
   type PDFPage
 } from 'pdf-lib'
+import {
+  TEXT_BOX_PADDING_EM,
+  TEXT_EXPORT_FONT_PT,
+  TEXT_FILL_OPACITY,
+  TEXT_ITALIC_SKEW_DEG,
+  TEXT_LINE_HEIGHT,
+  TEXT_UNDERLINE_THICKNESS_EM,
+  textBoxFontPx
+} from '../../../shared/textBoxMetrics'
 import type {
   DrawingBox,
   DrawingColor,
   DrawingPoint,
-  DrawingShape
+  DrawingShape,
+  DrawingStyle,
+  TextAlign
 } from '../../../shared/types/drawing'
 import type {
   BoardBackground,
@@ -28,8 +40,14 @@ import type {
 import { NotFoundError, ValidationError } from '../../db/errors'
 import { requireId } from '../../db/validate'
 
-const TEXTBOX_FONT_FILE = 'NotoSansKR-Regular.otf'
+/** Bundled Noto Sans KR faces (see electron-builder.yml `extraResources`). */
+export type TextboxFontFile = 'NotoSansKR-Regular.otf' | 'NotoSansKR-Bold.otf'
+
 const RULE_SPACING = 28
+/** Underline sits below the baseline, strikethrough above it, both in em. */
+const TEXT_UNDERLINE_OFFSET_EM = -0.1
+const TEXT_STRIKE_OFFSET_EM = 0.3
+const TEXT_ALIGN_FACTORS: Record<TextAlign, number> = { left: 0, center: 0.5, right: 1 }
 
 const LIGHT_COLORS: Record<DrawingColor, Color> = {
   ink: rgb(0.08, 0.09, 0.12),
@@ -60,11 +78,51 @@ interface BoardPalette {
 
 interface ScalableFontkitPath extends FontkitPath {
   scale(x: number, y: number): ScalableFontkitPath
+  /** Affine map x' = m0·x + m2·y + m4, y' = m1·x + m3·y + m5; returns a new path. */
+  transform(
+    m0: number,
+    m1: number,
+    m2: number,
+    m3: number,
+    m4: number,
+    m5: number
+  ): ScalableFontkitPath
 }
 
 interface TextboxFont {
   embedded: PDFFont
   outlines: FontkitFont
+}
+
+/**
+ * Faces embedded for this document. A face is embedded ONLY when some box will
+ * place a glyph with it: fontkit's CFF subsetter throws (asynchronously, past
+ * every try/catch) on a subset that holds nothing but `.notdef`.
+ */
+interface TextboxFonts {
+  regular: TextboxFont | null
+  bold: TextboxFont | null
+}
+
+type TextboxFace = 'regular' | 'bold'
+
+interface TextLineRun {
+  x: number
+  y: number
+  width: number
+  fontSize: number
+  color: Color
+  opacity: number
+}
+
+interface GlyphPen {
+  x: number
+  y: number
+  fontSize: number
+  color: Color
+  opacity: number
+  /** tan(italic angle); 0 for upright text. */
+  shear: number
 }
 
 const BOARD_PALETTES: Record<BoardSurface, BoardPalette> = {
@@ -82,6 +140,20 @@ const BOARD_PALETTES: Record<BoardSurface, BoardPalette> = {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+/** Whether drawing this text places at least one glyph (whitespace alone does not). */
+function hasGlyphs(text: string | undefined): boolean {
+  return text !== undefined && /\S/u.test(text)
+}
+
+function faceOf(style: DrawingStyle): TextboxFace {
+  return style.bold === true ? 'bold' : 'regular'
+}
+
+/** Bold boxes fall back to the Regular face when Bold could not be embedded. */
+function fontFor(fonts: TextboxFonts, style: DrawingStyle): TextboxFont | null {
+  return faceOf(style) === 'bold' ? fonts.bold ?? fonts.regular : fonts.regular
 }
 
 function pdfPoint(
@@ -291,79 +363,139 @@ function wrapLine(font: PDFFont, text: string, size: number, maxWidth: number): 
   return lines
 }
 
+/**
+ * Visible layer: glyph outlines from the exact embedded face. `drawSvgPath`
+ * ignores pdf-lib's skew options, so the italic slant is applied to the
+ * outline itself (x' = x + tan·y in glyph space) before the SVG y-flip.
+ */
+function drawGlyphOutlines(page: PDFPage, outlines: FontkitFont, line: string, pen: GlyphPen): void {
+  const run = outlines.layout(line)
+  const scale = pen.fontSize / outlines.unitsPerEm
+  let penX = pen.x
+  let penY = pen.y
+  for (let glyphIndex = 0; glyphIndex < run.glyphs.length; glyphIndex += 1) {
+    const glyph = run.glyphs[glyphIndex]
+    const position = run.positions[glyphIndex]
+    if (glyph === undefined || position === undefined) continue
+    const path = glyph.path as ScalableFontkitPath
+    const svgPath = path.transform(1, 0, pen.shear, 1, 0, 0).scale(1, -1).toSVG()
+    if (svgPath.length > 0) {
+      page.drawSvgPath(svgPath, {
+        x: penX + position.xOffset * scale,
+        y: penY + position.yOffset * scale,
+        scale,
+        color: pen.color,
+        opacity: pen.opacity
+      })
+    }
+    penX += position.xAdvance * scale
+    penY += position.yAdvance * scale
+  }
+}
+
+/** Underline / strikethrough rules spanning exactly the drawn line. */
+function drawTextDecorations(page: PDFPage, style: DrawingStyle, run: TextLineRun): void {
+  if (run.width <= 0) return
+  const offsets: number[] = []
+  if (style.underline === true) offsets.push(run.fontSize * TEXT_UNDERLINE_OFFSET_EM)
+  if (style.strike === true) offsets.push(run.fontSize * TEXT_STRIKE_OFFSET_EM)
+  for (const offset of offsets) {
+    page.drawLine({
+      start: { x: run.x, y: run.y + offset },
+      end: { x: run.x + run.width, y: run.y + offset },
+      thickness: run.fontSize * TEXT_UNDERLINE_THICKNESS_EM,
+      color: run.color,
+      opacity: run.opacity
+    })
+  }
+}
+
 function drawTextbox(
   page: PDFPage,
   shape: DrawingShape,
   box: DrawingBox,
-  font: TextboxFont,
+  fonts: TextboxFonts,
   palette: BoardPalette,
   width: number,
   height: number
 ): void {
   const bounds = boxOnPage(box, width, height)
   if (bounds === null) return
-  // style.bold 는 번들 폰트가 Regular 뿐이라 아직 보통 굵기로 내보낸다.
-  const fontSize = Math.min(
-    72,
-    Math.max(6, width * 0.026 * (shape.style.fontScale ?? 1))
+  const style = shape.style
+  // Same metrics module as the on-screen layer, so the export wraps and
+  // spaces lines exactly where the student saw them.
+  const fontSize = clamp(
+    textBoxFontPx(width, style.fontScale),
+    TEXT_EXPORT_FONT_PT.min,
+    TEXT_EXPORT_FONT_PT.max
   )
-  const lineHeight = fontSize * 1.25
-  const maxWidth = Math.max(bounds.width, fontSize)
+  const lineHeight = fontSize * TEXT_LINE_HEIGHT
+  const inset = fontSize * TEXT_BOX_PADDING_EM
+  const maxWidth = Math.max(bounds.width - 2 * inset, fontSize)
+  const color = palette.marks[style.color]
+  const opacity = clamp(style.opacity, 0, 1)
+
+  if (style.fill !== undefined) {
+    page.drawRectangle({
+      ...bounds,
+      color: palette.marks[style.fill],
+      opacity: TEXT_FILL_OPACITY
+    })
+  }
+
+  const font = fontFor(fonts, style)
+  if (font === null || !hasGlyphs(shape.data.text)) return
   const lines = (shape.data.text ?? '')
     .split(/\r?\n/u)
     .flatMap((line) => wrapLine(font.embedded, line, fontSize, maxWidth))
   const top = bounds.y + bounds.height
+  // Baseline of the first line: padding, then the half-leading above the
+  // glyphs, then the ascent — the same place CSS puts it at line-height 1.35.
+  const ascent = font.embedded.heightAtSize(fontSize, { descender: false })
+  // CSS half-leading uses the font's own content height (ascent + descent),
+  // not 1em — Noto KR is 1.448em tall, so the leading is slightly negative.
+  const contentHeight = font.embedded.heightAtSize(fontSize)
+  const halfLeading = (fontSize * TEXT_LINE_HEIGHT - contentHeight) / 2
+  const firstBaseline = top - inset - halfLeading - ascent
+  const alignFactor = TEXT_ALIGN_FACTORS[style.align ?? 'left']
+  // No italic Korean face is bundled, so italic is a synthetic slant. In
+  // pdf-lib's naming `ySkew` is the matrix `c` term (x' = x + tan·y), which is
+  // the italic shear; `xSkew` would tilt the baseline instead.
+  const italic = style.italic === true
+  const skew = italic ? { ySkew: degrees(TEXT_ITALIC_SKEW_DEG) } : {}
+  const shear = italic ? Math.tan((TEXT_ITALIC_SKEW_DEG * Math.PI) / 180) : 0
+
   for (let index = 0; index < lines.length; index += 1) {
-    const y = top - fontSize - index * lineHeight
+    const y = firstBaseline - index * lineHeight
     if (y < bounds.y) break
     const line = lines[index] ?? ''
-    const color = palette.marks[shape.style.color]
-    const opacity = clamp(shape.style.opacity, 0, 1)
+    const lineWidth = font.embedded.widthOfTextAtSize(line, fontSize)
+    const x = bounds.x + inset + Math.max(0, maxWidth - lineWidth) * alignFactor
     // Keep a real subset-font text object for search/copy and its ToUnicode
     // map. Noto Sans KR is CFF-flavoured; some PDF engines mis-render its
     // subset charstrings, so the visible layer uses outlines from that exact
     // same font instead of ever falling back to '?' glyphs.
     page.drawText(line, {
-      x: bounds.x,
+      x,
       y,
       size: fontSize,
       font: font.embedded,
       color,
       opacity: 0,
-      maxWidth
+      ...skew
     })
-    const run = font.outlines.layout(line)
-    const scale = fontSize / font.outlines.unitsPerEm
-    let penX = bounds.x
-    let penY = y
-    for (let glyphIndex = 0; glyphIndex < run.glyphs.length; glyphIndex += 1) {
-      const glyph = run.glyphs[glyphIndex]
-      const position = run.positions[glyphIndex]
-      if (glyph === undefined || position === undefined) continue
-      const path = glyph.path as ScalableFontkitPath
-      const svgPath = path.scale(1, -1).toSVG()
-      if (svgPath.length > 0) {
-        page.drawSvgPath(svgPath, {
-          x: penX + position.xOffset * scale,
-          y: penY + position.yOffset * scale,
-          scale,
-          color,
-          opacity
-        })
-      }
-      penX += position.xAdvance * scale
-      penY += position.yAdvance * scale
-    }
+    drawGlyphOutlines(page, font.outlines, line, { x, y, fontSize, color, opacity, shear })
+    drawTextDecorations(page, style, { x, y, width: lineWidth, fontSize, color, opacity })
   }
 }
 
-function resolveDefaultFontPath(): string {
+function resolveDefaultFontPath(file: TextboxFontFile): string {
   // Keep Electron out of plain-Node tests until this default is actually used.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { app } = require('electron') as typeof import('electron')
   return app.isPackaged
-    ? join(process.resourcesPath, 'fonts', TEXTBOX_FONT_FILE)
-    : join(app.getAppPath(), 'resources', 'fonts', TEXTBOX_FONT_FILE)
+    ? join(process.resourcesPath, 'fonts', file)
+    : join(app.getAppPath(), 'resources', 'fonts', file)
 }
 
 function safeFileStem(title: string): string {
@@ -389,7 +521,8 @@ function isOccupiedTargetError(error: unknown): boolean {
 export interface BoardPdfExporterDeps {
   openBoard: (boardId: string) => OpenPersonalBoardResult
   getCourseFolder: (courseId: string) => string
-  resolveFontPath?: () => string
+  /** Absolute path of a bundled face. Called at most once per face per exporter. */
+  resolveFontPath?: (file: TextboxFontFile) => string
 }
 
 export interface BoardPdfExporter {
@@ -397,13 +530,53 @@ export interface BoardPdfExporter {
 }
 
 export function createBoardPdfExporter(deps: BoardPdfExporterDeps): BoardPdfExporter {
-  let fontBytesPromise: Promise<Uint8Array> | null = null
+  const fontBytes = new Map<TextboxFontFile, Promise<Uint8Array>>()
 
-  function loadFontBytes(): Promise<Uint8Array> {
-    fontBytesPromise ??= Promise.resolve().then(() =>
-      readFile((deps.resolveFontPath ?? resolveDefaultFontPath)())
+  /** Each face is resolved and read once per exporter; Bold only on demand. */
+  function loadFontBytes(file: TextboxFontFile): Promise<Uint8Array> {
+    const cached = fontBytes.get(file)
+    if (cached !== undefined) return cached
+    const promise = Promise.resolve().then(() =>
+      readFile((deps.resolveFontPath ?? resolveDefaultFontPath)(file))
     )
-    return fontBytesPromise
+    fontBytes.set(file, promise)
+    return promise
+  }
+
+  async function embedFace(pdf: PDFDocument, file: TextboxFontFile): Promise<TextboxFont> {
+    const bytes = await loadFontBytes(file)
+    return {
+      embedded: await pdf.embedFont(bytes, { subset: true }),
+      outlines: fontkit.create(bytes)
+    }
+  }
+
+  /** A missing Bold face only costs weight, so it degrades to Regular. */
+  async function tryEmbedBold(pdf: PDFDocument): Promise<TextboxFont | null> {
+    try {
+      return await embedFace(pdf, 'NotoSansKR-Bold.otf')
+    } catch (error) {
+      console.warn(
+        '[canvas] NotoSansKR-Bold.otf could not be loaded; bold text will export in Regular weight.',
+        error
+      )
+      return null
+    }
+  }
+
+  async function embedTextboxFonts(pdf: PDFDocument, textboxes: DrawingShape[]): Promise<TextboxFonts> {
+    pdf.registerFontkit(fontkit)
+    const wanted = new Set<TextboxFace>(
+      textboxes.filter((shape) => hasGlyphs(shape.data.text)).map((shape) => faceOf(shape.style))
+    )
+    const bold = wanted.has('bold') ? await tryEmbedBold(pdf) : null
+    // Bold boxes whose face failed draw with Regular, so Regular is needed then too.
+    const needsRegular = wanted.has('regular') || (wanted.has('bold') && bold === null)
+    // Deliberately no Helvetica fallback for the Regular face: exporting
+    // readable Korean or failing loudly is safer than silently replacing a
+    // student's text.
+    const regular = needsRegular ? await embedFace(pdf, 'NotoSansKR-Regular.otf') : null
+    return { regular, bold }
   }
 
   return {
@@ -425,18 +598,8 @@ export function createBoardPdfExporter(deps: BoardPdfExporterDeps): BoardPdfExpo
       pdf.setCreator('Bandal')
       const palette = BOARD_PALETTES[board.surface]
 
-      const hasTextbox = shapes.some((shape) => shape.kind === 'textbox')
-      let font: TextboxFont | null = null
-      if (hasTextbox) {
-        const fontBytes = await loadFontBytes()
-        pdf.registerFontkit(fontkit)
-        // Deliberately no Helvetica fallback: exporting readable Korean or
-        // failing loudly is safer than silently replacing a student's text.
-        font = {
-          embedded: await pdf.embedFont(fontBytes, { subset: true }),
-          outlines: fontkit.create(fontBytes)
-        }
-      }
+      const textboxes = shapes.filter((shape) => shape.kind === 'textbox')
+      const fonts = textboxes.length > 0 ? await embedTextboxFonts(pdf, textboxes) : null
 
       let skippedClips = 0
       for (let pageNumber = 1; pageNumber <= board.pageCount; pageNumber += 1) {
@@ -456,8 +619,8 @@ export function createBoardPdfExporter(deps: BoardPdfExporterDeps): BoardPdfExpo
             }
           } else if (shape.kind === 'line' || shape.kind === 'arrow') {
             drawStraightLine(page, shape, palette, width, height)
-          } else if (font !== null && shape.data.box !== undefined) {
-            drawTextbox(page, shape, shape.data.box, font, palette, width, height)
+          } else if (fonts !== null && shape.data.box !== undefined) {
+            drawTextbox(page, shape, shape.data.box, fonts, palette, width, height)
           }
         }
       }

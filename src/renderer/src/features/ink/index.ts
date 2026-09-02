@@ -9,6 +9,20 @@ export * from './imageTransfer'
 export * from './imagePlacement'
 export * from './inkGeometry'
 export {
+  defaultTextBoxSize,
+  grownTextBoxHeight,
+  healedTextBox,
+  textBoxAtClick,
+  TEXT_BOX_WIDTH
+} from './textBoxLayout'
+export {
+  ResizeHandles,
+  resizeHandleBoxes,
+  resizeHandleSize,
+  TEXTBOX_HANDLES,
+  type ResizeHandleBox
+} from './ResizeHandles'
+export {
   drawingFileKey,
   instanceSurfaceKey,
   useInkToolStore,
@@ -20,9 +34,11 @@ export {
 } from './inkToolStore'
 export {
   isInsideTextFormatRow,
+  mergeTextStyle,
   TEXT_FORMAT_ROW_ATTR,
   useTextFormatStore,
   type TextFormatMode,
   type TextFormatStore,
-  type TextFormatTarget
+  type TextFormatTarget,
+  type TextStylePatch
 } from './textFormatStore'
