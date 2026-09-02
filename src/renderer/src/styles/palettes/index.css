@@ -17,6 +17,8 @@
  */
 
 @import './bandal.css';    /* id: bandal   — 반달 (identity; no overrides) */
+@import './catppuccin.css'; /* id: catppuccin — 카푸치노 */
 @import './ink.css';       /* id: ink      — 흑묵 */
 @import './lavender.css';  /* id: lavender — 라벤더 */
+@import './minimal.css';   /* id: minimal  — 미니멀 */
 @import './moss.css';      /* id: moss     — 이끼 */

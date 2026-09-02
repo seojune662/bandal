@@ -149,8 +149,6 @@ UI 배경이 아니라 흰 종이 위에서 검증한다.
 | `moss` | 이끼 | 세이지 — 눈이 가장 덜 조절하는 색 | 다크 · 라이트 · 자정 |
 | `catppuccin` | 카푸치노 | 모브 — 코코아·라테 표면의 부드러운 신호 | 다크 · 라이트 · 자정 |
 | `minimal` | 미니멀 | 저채도 블루 — 무채색 chrome의 유일한 신호 | 다크 · 라이트 · 자정 |
-| `catppuccin` | 카푸치노 | Catppuccin Mocha/Latte 의 모브 — 옵시디언에서 넘어온 눈 | 다크 · 라이트 · 자정 |
-| `minimal` | 미니멀 | 절제된 청회색 — 무채 표면 위의 유일한 색 | 다크 · 라이트 · 자정 |
 
 계열을 추가하는 법: `styles/palettes/<id>.css` 한 파일(모드별 오버라이드 +
 피커용 `--swatch-<id>-<mode>-*` 24개), `palettes/index.css`에 `@import` 한 줄,

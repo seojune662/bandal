@@ -165,7 +165,7 @@ describe('palette registry', () => {
     expect(isPaletteId('minimal')).toBe(true)
     expect(getPalette('catppuccin').windowBackground).toEqual({
       dark: '#181825',
-      light: '#dce0e8',
+      light: '#e5e9ef',
       midnight: '#000000'
     })
     expect(getPalette('minimal').windowBackground).toEqual({

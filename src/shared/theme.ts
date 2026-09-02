@@ -118,7 +118,7 @@ export const PALETTES: readonly PaletteDefinition[] = [
     description: '카푸치노 모카와 라테. 옵시디언에서 쓰던 색을 그대로 가져옵니다.',
     windowBackground: {
       dark: '#181825',
-      light: '#dce0e8',
+      light: '#e5e9ef',
       midnight: '#000000'
     }
   },

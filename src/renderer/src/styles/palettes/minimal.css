@@ -1,0 +1,135 @@
+/* 미니멀 (id: minimal) — neutral planes with a restrained blue signal.
+ *
+ * Point of view: hue leaves the chrome almost completely. Elevation comes
+ * from measured gray steps, borders and spacing, while a low-chroma blue is
+ * reserved for the current action. The quiet shell lets document colors and
+ * course identities carry the visual information.
+ *
+ * Inspired by kepano's Minimal for Obsidian; these values are Bandal's own
+ * OKLCH mapping rather than copied theme CSS. Minimal is MIT licensed:
+ * https://github.com/kepano/obsidian-minimal
+ *
+ * Tinted modes re-cut surfaces, text, borders and chrome depth. Flat modes
+ * keep their mode-owned surface ladder and change only the accent axis.
+ * Run `node scripts/check-contrast.mjs minimal` after any edit here.
+ */
+
+:root {
+  --swatch-minimal-dark-bg: oklch(20% 0 0);
+  --swatch-minimal-dark-surface: oklch(23.5% 0 0);
+  --swatch-minimal-dark-text: oklch(94% 0 0);
+  --swatch-minimal-dark-accent: oklch(78% 0.05 235);
+
+  --swatch-minimal-light-bg: oklch(97% 0 0);
+  --swatch-minimal-light-surface: oklch(99% 0 0);
+  --swatch-minimal-light-text: oklch(22% 0 0);
+  --swatch-minimal-light-accent: oklch(48% 0.07 240);
+
+  --swatch-minimal-midnight-bg: oklch(0% 0 0);
+  --swatch-minimal-midnight-surface: oklch(15% 0 0);
+  --swatch-minimal-midnight-text: oklch(88% 0 0);
+  --swatch-minimal-midnight-accent: oklch(74% 0.05 235);
+
+  --swatch-minimal-sepia-bg: oklch(92.5% 0.028 82);
+  --swatch-minimal-sepia-surface: oklch(95.5% 0.022 84);
+  --swatch-minimal-sepia-text: oklch(28% 0.03 58);
+  --swatch-minimal-sepia-accent: oklch(42% 0.06 240);
+
+  --swatch-minimal-high-contrast-bg: oklch(100% 0 0);
+  --swatch-minimal-high-contrast-surface: oklch(95% 0 0);
+  --swatch-minimal-high-contrast-text: oklch(0% 0 0);
+  --swatch-minimal-high-contrast-accent: oklch(36% 0.08 240);
+
+  --swatch-minimal-graphite-bg: oklch(28% 0 0);
+  --swatch-minimal-graphite-surface: oklch(33% 0 0);
+  --swatch-minimal-graphite-text: oklch(95% 0 0);
+  --swatch-minimal-graphite-accent: oklch(78% 0.05 235);
+}
+
+/* --- tinted modes ------------------------------------------------------- */
+
+:root[data-palette='minimal'][data-theme='dark'] {
+  --bg-app: oklch(20% 0 0);             /* #161616 */
+  --bg-surface: oklch(23.5% 0 0);
+  --bg-raised: oklch(28% 0 0);
+  --bg-overlay: oklch(26% 0 0 / 0.92);
+
+  --text-primary: oklch(94% 0 0);
+  --text-secondary: oklch(76% 0 0);
+  --text-muted: oklch(66% 0 0);
+
+  --accent: oklch(78% 0.05 235);
+  --accent-muted: oklch(78% 0.05 235 / 0.16);
+  --on-accent: oklch(20% 0 0);
+  --on-danger: oklch(20% 0 0);
+  --backdrop: oklch(5% 0 0 / 0.68);
+
+  --border-subtle: oklch(100% 0 0 / 0.08);
+  --border-strong: oklch(100% 0 0 / 0.18);
+
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.5);
+  --shadow-md: 0 4px 12px oklch(0% 0 0 / 0.45);
+  --shadow-lg: 0 12px 32px oklch(0% 0 0 / 0.55);
+}
+
+:root[data-palette='minimal'][data-theme='light'] {
+  --bg-app: oklch(97% 0 0);             /* #f5f5f5 */
+  --bg-surface: oklch(99% 0 0);
+  --bg-raised: oklch(100% 0 0);
+  --bg-overlay: oklch(100% 0 0 / 0.94);
+
+  --text-primary: oklch(22% 0 0);
+  --text-secondary: oklch(44% 0 0);
+  --text-muted: oklch(52% 0 0);
+
+  --accent: oklch(48% 0.07 240);
+  --accent-muted: oklch(48% 0.07 240 / 0.14);
+  --on-accent: oklch(100% 0 0);
+  --on-danger: oklch(100% 0 0);
+  --backdrop: oklch(20% 0 0 / 0.38);
+
+  --border-subtle: oklch(20% 0 0 / 0.12);
+  --border-strong: oklch(20% 0 0 / 0.26);
+
+  --shadow-sm: 0 1px 2px oklch(20% 0 0 / 0.1);
+  --shadow-md: 0 4px 12px oklch(20% 0 0 / 0.12);
+  --shadow-lg: 0 12px 32px oklch(20% 0 0 / 0.16);
+}
+
+:root[data-palette='minimal'][data-theme='midnight'] {
+  --bg-app: oklch(0% 0 0);
+  --bg-surface: oklch(15% 0 0);
+  --bg-raised: oklch(20% 0 0);
+  --bg-overlay: oklch(17% 0 0 / 0.96);
+
+  --text-primary: oklch(88% 0 0);
+  --text-secondary: oklch(72% 0 0);
+  --text-muted: oklch(62% 0 0);
+
+  --accent: oklch(74% 0.05 235);
+  --accent-muted: oklch(74% 0.05 235 / 0.16);
+  --on-accent: oklch(0% 0 0);
+
+  --border-subtle: oklch(100% 0 0 / 0.13);
+  --border-strong: oklch(100% 0 0 / 0.28);
+}
+
+/* --- flat modes: accent only -------------------------------------------- */
+
+:root[data-palette='minimal'][data-theme='sepia'] {
+  --accent: oklch(42% 0.06 240);
+  --accent-muted: oklch(42% 0.06 240 / 0.16);
+  --on-accent: oklch(100% 0 0);
+}
+
+:root[data-palette='minimal'][data-theme='high-contrast'] {
+  --accent: oklch(36% 0.08 240);
+  --accent-muted: oklch(36% 0.08 240 / 0.16);
+  --on-accent: oklch(100% 0 0);
+}
+
+:root[data-palette='minimal'][data-theme='graphite'] {
+  --accent: oklch(78% 0.05 235);
+  --accent-muted: oklch(78% 0.05 235 / 0.16);
+  --on-accent: oklch(20% 0 0);
+}

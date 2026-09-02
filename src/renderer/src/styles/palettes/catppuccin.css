@@ -1,0 +1,135 @@
+/* 카푸치노 (id: catppuccin) — cocoa surfaces with one mauve signal.
+ *
+ * Point of view: the shell borrows Catppuccin's Mocha depth in dark rooms
+ * and Latte's cool paper in daylight, then keeps mauve as the only chrome
+ * signal. The result is softer than 반달's navy-and-gold contrast without
+ * turning course, annotation or status colors into part of the palette.
+ *
+ * Color values are mapped from the Catppuccin palette; no theme CSS is
+ * copied. Catppuccin is MIT licensed:
+ * https://github.com/catppuccin/palette
+ *
+ * Tinted modes re-cut surfaces, text, borders and chrome depth. Flat modes
+ * keep their mode-owned surface ladder and change only the accent axis.
+ * Run `node scripts/check-contrast.mjs catppuccin` after any edit here.
+ */
+
+:root {
+  --swatch-catppuccin-dark-bg: #181825;
+  --swatch-catppuccin-dark-surface: #1e1e2e;
+  --swatch-catppuccin-dark-text: #cdd6f4;
+  --swatch-catppuccin-dark-accent: #cba6f7;
+
+  --swatch-catppuccin-light-bg: #e5e9ef;
+  --swatch-catppuccin-light-surface: #e6e9ef;
+  --swatch-catppuccin-light-text: #4c4f69;
+  --swatch-catppuccin-light-accent: #7229d6;
+
+  --swatch-catppuccin-midnight-bg: #000000;
+  --swatch-catppuccin-midnight-surface: #11111b;
+  --swatch-catppuccin-midnight-text: #bac2de;
+  --swatch-catppuccin-midnight-accent: #cba6f7;
+
+  --swatch-catppuccin-sepia-bg: oklch(92.5% 0.028 82);
+  --swatch-catppuccin-sepia-surface: oklch(95.5% 0.022 84);
+  --swatch-catppuccin-sepia-text: oklch(28% 0.03 58);
+  --swatch-catppuccin-sepia-accent: #7229d6;
+
+  --swatch-catppuccin-high-contrast-bg: oklch(100% 0 0);
+  --swatch-catppuccin-high-contrast-surface: oklch(95% 0 0);
+  --swatch-catppuccin-high-contrast-text: oklch(0% 0 0);
+  --swatch-catppuccin-high-contrast-accent: oklch(40% 0.2 300);
+
+  --swatch-catppuccin-graphite-bg: oklch(28% 0 0);
+  --swatch-catppuccin-graphite-surface: oklch(33% 0 0);
+  --swatch-catppuccin-graphite-text: oklch(95% 0 0);
+  --swatch-catppuccin-graphite-accent: #cba6f7;
+}
+
+/* --- tinted modes ------------------------------------------------------- */
+
+:root[data-palette='catppuccin'][data-theme='dark'] {
+  --bg-app: #181825;
+  --bg-surface: #1e1e2e;
+  --bg-raised: #313244;
+  --bg-overlay: oklch(32.40219% 0.031885 281.9784 / 0.92);
+
+  --text-primary: #cdd6f4;
+  --text-secondary: #bac2de;
+  --text-muted: #a6adc8;
+
+  --accent: #cba6f7;
+  --accent-muted: oklch(78.71462% 0.11867 304.7693 / 0.16);
+  --on-accent: #11111b;
+  --on-danger: #11111b;
+  --backdrop: oklch(18.27825% 0.020375 284.2039 / 0.7);
+
+  --border-subtle: oklch(87.86601% 0.042552 272.2767 / 0.08);
+  --border-strong: oklch(87.86601% 0.042552 272.2767 / 0.18);
+
+  --shadow-sm: 0 1px 2px oklch(18.27825% 0.020375 284.2039 / 0.5);
+  --shadow-md: 0 4px 12px oklch(18.27825% 0.020375 284.2039 / 0.45);
+  --shadow-lg: 0 12px 32px oklch(18.27825% 0.020375 284.2039 / 0.55);
+}
+
+:root[data-palette='catppuccin'][data-theme='light'] {
+  --bg-app: #e5e9ef;
+  --bg-surface: #e6e9ef;
+  --bg-raised: #eff1f5;
+  --bg-overlay: oklch(95.77609% 0.005767 264.5321 / 0.94);
+
+  --text-primary: #4c4f69;
+  --text-secondary: #54576f;
+  --text-muted: #5c5f77;
+
+  --accent: #7229d6;
+  --accent-muted: oklch(49.41344% 0.237684 295.0173 / 0.14);
+  --on-accent: #ffffff;
+  --on-danger: #ffffff;
+  --backdrop: oklch(43.54696% 0.043008 279.325 / 0.38);
+
+  --border-subtle: oklch(43.54696% 0.043008 279.325 / 0.12);
+  --border-strong: oklch(43.54696% 0.043008 279.325 / 0.26);
+
+  --shadow-sm: 0 1px 2px oklch(43.54696% 0.043008 279.325 / 0.1);
+  --shadow-md: 0 4px 12px oklch(43.54696% 0.043008 279.325 / 0.12);
+  --shadow-lg: 0 12px 32px oklch(43.54696% 0.043008 279.325 / 0.16);
+}
+
+:root[data-palette='catppuccin'][data-theme='midnight'] {
+  --bg-app: #000000;
+  --bg-surface: #11111b;
+  --bg-raised: #181825;
+  --bg-overlay: oklch(21.55216% 0.025417 284.0647 / 0.96);
+
+  --text-primary: #bac2de;
+  --text-secondary: #a6adc8;
+  --text-muted: #9399b2;
+
+  --accent: #cba6f7;
+  --accent-muted: oklch(78.71462% 0.11867 304.7693 / 0.16);
+  --on-accent: #000000;
+
+  --border-subtle: oklch(87.86601% 0.042552 272.2767 / 0.13);
+  --border-strong: oklch(87.86601% 0.042552 272.2767 / 0.28);
+}
+
+/* --- flat modes: accent only -------------------------------------------- */
+
+:root[data-palette='catppuccin'][data-theme='sepia'] {
+  --accent: #7229d6;
+  --accent-muted: oklch(49.41344% 0.237684 295.0173 / 0.16);
+  --on-accent: #ffffff;
+}
+
+:root[data-palette='catppuccin'][data-theme='high-contrast'] {
+  --accent: oklch(40% 0.2 300);
+  --accent-muted: oklch(40% 0.2 300 / 0.16);
+  --on-accent: #ffffff;
+}
+
+:root[data-palette='catppuccin'][data-theme='graphite'] {
+  --accent: #cba6f7;
+  --accent-muted: oklch(78.71462% 0.11867 304.7693 / 0.16);
+  --on-accent: oklch(28% 0 0);
+}
