@@ -8,10 +8,11 @@
  */
 
 import type { DrawingBox } from '../../../../shared/types/drawing'
+import { TEXT_BASE_FONT_RATIO } from '../../../../shared/textBoxMetrics'
+
+export { TEXT_BASE_FONT_RATIO }
 
 export const TEXT_BOX_WIDTH = 0.26
-/** 폭 대비 기본 폰트 비율 — fontSize = baseWidthPx · ratio · fontScale. */
-export const TEXT_BASE_FONT_RATIO = 0.026
 /** 기본 박스에 담을 줄 수(줄높이 1.4 가정) + 패딩 여유. */
 const DEFAULT_LINES = 2.2
 const LINE_HEIGHT = 1.4

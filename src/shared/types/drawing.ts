@@ -69,6 +69,27 @@ export type DrawingColor =
   | 'blue'
   | 'violet'
 
+/** Runtime witness for `DrawingColor` — validators and pickers iterate this. */
+export const DRAWING_COLORS = [
+  'ink',
+  'red',
+  'orange',
+  'yellow',
+  'green',
+  'blue',
+  'violet'
+] as const satisfies readonly DrawingColor[]
+
+type MissingDrawingColor = Exclude<DrawingColor, (typeof DRAWING_COLORS)[number]>
+const _allDrawingColorsListed: MissingDrawingColor extends never ? true : never =
+  true
+void _allDrawingColorsListed
+
+/** textbox only — horizontal alignment of the text inside its box. */
+export type TextAlign = 'left' | 'center' | 'right'
+
+export const TEXT_ALIGNS = ['left', 'center', 'right'] as const satisfies readonly TextAlign[]
+
 export interface DrawingPoint {
   x: number
   y: number
@@ -127,6 +148,16 @@ export interface DrawingStyle {
   fontScale?: number
   /** textbox only — bold text. */
   bold?: boolean
+  /** textbox only — italic text (exported as a synthetic skew). */
+  italic?: boolean
+  /** textbox only — underline. */
+  underline?: boolean
+  /** textbox only — strikethrough. */
+  strike?: boolean
+  /** textbox only — horizontal alignment; absent = left. */
+  align?: TextAlign
+  /** textbox only — background tint behind the text; absent = transparent. */
+  fill?: DrawingColor
 }
 
 /**

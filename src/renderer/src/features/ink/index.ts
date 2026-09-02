@@ -18,3 +18,11 @@ export {
   type InkToolState,
   type InkToolStore
 } from './inkToolStore'
+export {
+  isInsideTextFormatRow,
+  TEXT_FORMAT_ROW_ATTR,
+  useTextFormatStore,
+  type TextFormatMode,
+  type TextFormatStore,
+  type TextFormatTarget
+} from './textFormatStore'
