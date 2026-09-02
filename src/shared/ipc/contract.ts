@@ -134,6 +134,7 @@ import type {
   McpTestResult
 } from '../types/mcp'
 import type { UpdateStatus } from '../types/update'
+import type { PluginLogEntry, PluginSummary } from '../types/plugin'
 import type {
   AuthProvider,
   AuthSignInResult,
@@ -672,6 +673,35 @@ export interface IpcContract {
   'desktopAgent:openPermissionSettings': {
     req: Record<string, never>
     res: { ok: true }
+  }
+
+  // -- extensions (real plugins, `src/main/features/plugins`) ---------------
+  /** Installed extensions with their state; renderer mirrors via `plugins:changed`. */
+  'plugins:list': { req: Record<string, never>; res: { plugins: PluginSummary[] } }
+  /** Native folder picker for `plugins:installFromFolder`. */
+  'plugins:pickFolder': { req: Record<string, never>; res: { path: string | null } }
+  /** Validates and copies a plugin folder into userData; installed disabled + needs approval. */
+  'plugins:installFromFolder': {
+    req: { path: string }
+    res: { plugin: PluginSummary; warnings: string[] }
+  }
+  'plugins:uninstall': { req: { id: string }; res: { ok: true } }
+  /** Enabling an unapproved plugin returns it in `needs-approval` instead. */
+  'plugins:setEnabled': {
+    req: { id: string; enabled: boolean }
+    res: { plugin: PluginSummary }
+  }
+  /** Records the manifest's current permissions (and hash) as approved. */
+  'plugins:approve': { req: { id: string }; res: { plugin: PluginSummary } }
+  'plugins:reload': { req: { id: string }; res: { plugin: PluginSummary } }
+  'plugins:runCommand': {
+    req: { pluginId: string; commandId: string }
+    res: { ok: true }
+  }
+  /** Ring buffer of recent plugin log lines (denials included); null = all plugins. */
+  'plugins:logs': {
+    req: { id: string | null }
+    res: { entries: PluginLogEntry[] }
   }
 
   // -- user MCP registry ---------------------------------------------------
@@ -1659,6 +1689,15 @@ export const IPC_CHANNELS = [
   'overlay:openInApp',
   'desktopAgent:permissionStatus',
   'desktopAgent:openPermissionSettings',
+  'plugins:list',
+  'plugins:pickFolder',
+  'plugins:installFromFolder',
+  'plugins:uninstall',
+  'plugins:setEnabled',
+  'plugins:approve',
+  'plugins:reload',
+  'plugins:runCommand',
+  'plugins:logs',
   'mcp:list',
   'mcp:save',
   'mcp:delete',

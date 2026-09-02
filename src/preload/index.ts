@@ -90,7 +90,11 @@ const PUSH_CHANNELS = [
   'desktopAgent:run-state',
   'desktopAgent:permission',
   // -- user MCP registry ----------------------------------------------------
-  'mcp:changed'
+  'mcp:changed',
+  // -- extensions -----------------------------------------------------------
+  'plugins:changed',
+  'plugins:notice',
+  'plugins:openPanel'
 ] as const satisfies readonly PushChannel[]
 
 type MissingPushChannel = Exclude<PushChannel, (typeof PUSH_CHANNELS)[number]>

@@ -11,6 +11,7 @@ import type { GroupsInvalidationReason } from '../types/group'
 import type { GroupEvent } from '../types/group-events'
 import type { UpdateStatus } from '../types/update'
 import type { PipState } from '../types/pip'
+import type { PluginSummary } from '../types/plugin'
 import type {
   OverlayPrompt,
   OverlayState,
@@ -299,6 +300,17 @@ export interface PushEvents {
   }
   // -- user MCP registry ----------------------------------------------------
   'mcp:changed': Record<string, never>
+  // -- extensions -----------------------------------------------------------
+  'plugins:changed': { plugins: PluginSummary[] }
+  /** `bandal.notices.show` from a plugin; renderer prefixes the plugin name. */
+  'plugins:notice': {
+    pluginId: string
+    pluginName: string
+    message: string
+    tone: 'info' | 'danger'
+  }
+  /** `bandal.panel.open` — renderer opens the `plugin-panel` tab. */
+  'plugins:openPanel': { pluginId: string; panelId: string }
 }
 
 export type PushChannel = keyof PushEvents

@@ -18,6 +18,7 @@ export type TabKind =
   | 'whiteboard'
   | 'image'
   | 'file'
+  | 'plugin-panel'
 
 export interface PdfTabPayload {
   courseId: string
@@ -115,6 +116,7 @@ export interface TabPayloadMap {
   whiteboard: WhiteboardTabPayload
   image: ImageTabPayload
   file: FileTabPayload
+  'plugin-panel': PluginPanelTabPayload
 }
 
 /**
@@ -125,6 +127,16 @@ export interface TabPayloadMap {
 export interface FileTabPayload {
   courseId: string
   relPath: string
+}
+
+/**
+ * A panel contributed by an installed extension, rendered in a sandboxed
+ * `<webview>` on `bandal-plugin://<pluginId>/ui/…`. Survives layout restore
+ * even when the plugin is gone — the tab then shows a placeholder.
+ */
+export interface PluginPanelTabPayload {
+  pluginId: string
+  panelId: string
 }
 
 /** Discriminated tab descriptor: { kind, payload } pairs, serializable. */
@@ -159,7 +171,8 @@ export const TAB_KINDS = [
   'group-chat',
   'whiteboard',
   'image',
-  'file'
+  'file',
+  'plugin-panel'
 ] as const satisfies readonly TabKind[]
 
 type MissingTabKind = Exclude<TabKind, (typeof TAB_KINDS)[number]>
@@ -214,6 +227,11 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
       return (
         isNonEmptyString(payload['courseId']) &&
         isNonEmptyString(payload['relPath'])
+      )
+    case 'plugin-panel':
+      return (
+        isNonEmptyString(payload['pluginId']) &&
+        isNonEmptyString(payload['panelId'])
       )
     case 'group-chat': {
       const courseId = payload['courseId']
