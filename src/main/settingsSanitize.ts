@@ -13,7 +13,10 @@ import {
   DEFAULT_DESKTOP_ORB,
   DEFAULT_MILESTONES,
   DEFAULT_ONBOARDING,
-  DEFAULT_TUTORIAL
+  DEFAULT_TUTORIAL,
+  isDensity,
+  isEditorFont,
+  isFontScale
 } from '../shared/types/settings'
 import type {
   AssistantMode,
@@ -142,6 +145,15 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
   return {
     theme: isTheme(record.theme) ? record.theme : defaults.theme,
     palette: isPalette(record.palette) ? record.palette : defaults.palette,
+    // Only the registered steps: an arbitrary multiplier from disk (1.05, '1',
+    // NaN) would produce a font-size the picker cannot show as selected.
+    fontScale: isFontScale(record.fontScale)
+      ? record.fontScale
+      : defaults.fontScale,
+    editorFont: isEditorFont(record.editorFont)
+      ? record.editorFont
+      : defaults.editorFont,
+    density: isDensity(record.density) ? record.density : defaults.density,
     browserSearchEngine: isSearchEngineId(record.browserSearchEngine)
       ? record.browserSearchEngine
       : defaults.browserSearchEngine,

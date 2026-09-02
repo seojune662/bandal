@@ -14,6 +14,12 @@ body,
   height: 100%;
 }
 
+/* 글자 크기: the only place the root font-size is set. Every rem token in
+ * tokens.css follows the multiplier, so this behaves like browser zoom. */
+html {
+  font-size: calc(100% * var(--font-scale));
+}
+
 body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
@@ -54,6 +60,18 @@ input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
+}
+
+/* 필기 글꼴: swaps the note editor's body family only (the chrome stays
+ * Pretendard). `.note-tab .milkdown .editor` sets --font-sans itself in
+ * note-tab.css, so the override must land on that same element. Code blocks
+ * keep --font-mono through their own, more specific rules. */
+:root[data-editor-font='serif'] .note-tab .milkdown .editor {
+  font-family: var(--font-serif);
+}
+
+:root[data-editor-font='mono'] .note-tab .milkdown .editor {
+  font-family: var(--font-mono);
 }
 
 button:disabled,

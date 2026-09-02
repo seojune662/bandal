@@ -48,7 +48,13 @@ export type ThemeBase = 'dark' | 'light'
  * The color family layered over a mode. `bandal` is the baseline written
  * directly into `themes/*.css`; the rest live in `styles/palettes/<id>.css`.
  */
-export type PaletteId = 'bandal' | 'ink' | 'lavender' | 'moss'
+export type PaletteId =
+  | 'bandal'
+  | 'ink'
+  | 'lavender'
+  | 'moss'
+  | 'catppuccin'
+  | 'minimal'
 
 export interface PaletteDefinition {
   id: PaletteId
@@ -103,6 +109,26 @@ export const PALETTES: readonly PaletteDefinition[] = [
     windowBackground: {
       dark: '#0a110d',
       light: '#f2f6f1',
+      midnight: '#000000'
+    }
+  },
+  {
+    id: 'catppuccin',
+    name: '카푸치노',
+    description: '카푸치노 모카와 라테. 옵시디언에서 쓰던 색을 그대로 가져옵니다.',
+    windowBackground: {
+      dark: '#181825',
+      light: '#dce0e8',
+      midnight: '#000000'
+    }
+  },
+  {
+    id: 'minimal',
+    name: '미니멀',
+    description: '무채색 표면에 절제된 청회색 액센트. 화면이 가장 조용해집니다.',
+    windowBackground: {
+      dark: '#161616',
+      light: '#f5f5f5',
       midnight: '#000000'
     }
   }

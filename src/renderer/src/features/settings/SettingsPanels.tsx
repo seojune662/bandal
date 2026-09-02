@@ -12,14 +12,22 @@ import type { Locale } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
 import { useUpdateStore } from '../../stores/updateStore'
 import type { OrbCharmId } from '../../../../shared/orbCharm'
-import { SYSTEM_THEME } from '../../../../shared/theme'
+import { PALETTES, SYSTEM_THEME } from '../../../../shared/theme'
 import type { PaletteId, ThemeId } from '../../../../shared/theme'
 import type {
   AgentAvailability,
   AgentProvider
 } from '../../../../shared/types/agent-events'
 import type { Course } from '../../../../shared/types/course'
+import {
+  DENSITIES,
+  EDITOR_FONTS,
+  FONT_SCALES
+} from '../../../../shared/types/settings'
 import type {
+  Density,
+  EditorFont,
+  FontScale,
   Settings,
   ThemePreference
 } from '../../../../shared/types/settings'
@@ -42,13 +50,13 @@ const THEME_OPTIONS: readonly ThemePreference[] = [
   'system'
 ]
 
-/** Picker order for the *palette* axis — mirrors PALETTES in shared/theme.ts. */
-const PALETTE_OPTIONS: readonly PaletteId[] = [
-  'bandal',
-  'ink',
-  'lavender',
-  'moss'
-]
+/** Picker order for the *palette* axis — the registry order (shared/theme.ts). */
+const PALETTE_OPTIONS: readonly PaletteId[] = PALETTES.map((palette) => palette.id)
+
+/** 90 / 100 / 110 / 120 — the segmented control's labels. */
+function fontScaleLabel(scale: FontScale): string {
+  return `${Math.round(scale * 100)}%`
+}
 
 function SettingsCard({
   title,
@@ -383,11 +391,26 @@ function ThemePreview({
   )
 }
 
+/** Three rows of chrome at the option's rhythm — the gap IS the preview. */
+function DensityPreview({ density }: { density: Density }): JSX.Element {
+  return (
+    <div
+      className={`density-preview density-preview--${density}`}
+      aria-hidden="true"
+    >
+      <span className="density-preview__row density-preview__row--chrome" />
+      <span className="density-preview__row" />
+      <span className="density-preview__row" />
+      <span className="density-preview__row density-preview__row--short" />
+    </div>
+  )
+}
+
 /**
- * Roving-tabindex keyboard model shared by both appearance radiogroups:
+ * Roving-tabindex keyboard model shared by every appearance radiogroup:
  * arrows move *and* select (the preview is the feedback), Home/End jump.
  */
-function useRovingRadios<T extends string>(
+function useRovingRadios<T extends string | number>(
   options: readonly T[],
   value: T,
   onSelect: (next: T) => void
@@ -444,25 +467,40 @@ function useRovingRadios<T extends string>(
 export function AppearancePanel({
   theme,
   palette,
+  fontScale,
+  editorFont,
+  density,
   orbCharm,
   saving,
   error,
   onSelect,
   onSelectPalette,
+  onSelectFontScale,
+  onSelectEditorFont,
+  onSelectDensity,
   onSelectCharm
 }: {
   theme: ThemePreference
   palette: PaletteId
+  fontScale: FontScale
+  editorFont: EditorFont
+  density: Density
   orbCharm: OrbCharmId
   saving: boolean
   error: string | null
   onSelect: (theme: ThemePreference) => void
   onSelectPalette: (palette: PaletteId) => void
+  onSelectFontScale: (fontScale: FontScale) => void
+  onSelectEditorFont: (editorFont: EditorFont) => void
+  onSelectDensity: (density: Density) => void
   onSelectCharm: (orbCharm: OrbCharmId) => void
 }): JSX.Element {
   const t = useT()
   const modes = useRovingRadios(THEME_OPTIONS, theme, onSelect)
   const palettes = useRovingRadios(PALETTE_OPTIONS, palette, onSelectPalette)
+  const scales = useRovingRadios(FONT_SCALES, fontScale, onSelectFontScale)
+  const fonts = useRovingRadios(EDITOR_FONTS, editorFont, onSelectEditorFont)
+  const densities = useRovingRadios(DENSITIES, density, onSelectDensity)
   const charms = useRovingRadios(CHARM_OPTIONS, orbCharm, onSelectCharm)
 
   return (
@@ -562,6 +600,136 @@ export function AppearancePanel({
               ? t('settings.appearance.saving')
               : t('settings.appearance.saved'))}
         </p>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t('settings.appearance.font.scale.title')}
+        description={t('settings.appearance.font.scale.description')}
+      >
+        <div
+          className="segmented"
+          role="radiogroup"
+          aria-label={t('settings.appearance.font.scale.selectLabel')}
+          aria-busy={saving}
+          onKeyDown={scales.handleKeyDown}
+        >
+          {FONT_SCALES.map((option, index) => {
+            const selected = fontScale === option
+            return (
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                ref={(node) => {
+                  scales.refs.current[index] = node
+                }}
+                aria-checked={selected}
+                tabIndex={index === scales.selectedIndex ? 0 : -1}
+                className={`segmented__option${selected ? ' segmented__option--selected' : ''}`}
+                style={{ '--segment-scale': option } as CSSProperties}
+                onClick={() => onSelectFontScale(option)}
+              >
+                <span className="segmented__glyph" aria-hidden="true">
+                  가
+                </span>
+                <span className="segmented__label">{fontScaleLabel(option)}</span>
+              </button>
+            )
+          })}
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t('settings.appearance.font.family.title')}
+        description={t('settings.appearance.font.family.description')}
+      >
+        <div
+          className="theme-grid theme-grid--font"
+          role="radiogroup"
+          aria-label={t('settings.appearance.font.family.selectLabel')}
+          aria-busy={saving}
+          onKeyDown={fonts.handleKeyDown}
+        >
+          {EDITOR_FONTS.map((option, index) => {
+            const selected = editorFont === option
+            return (
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                ref={(node) => {
+                  fonts.refs.current[index] = node
+                }}
+                aria-checked={selected}
+                tabIndex={index === fonts.selectedIndex ? 0 : -1}
+                className={`theme-choice${selected ? ' theme-choice--selected' : ''}`}
+                onClick={() => onSelectEditorFont(option)}
+              >
+                <span
+                  className={`font-sample font-sample--${option}`}
+                  aria-hidden="true"
+                >
+                  {t('settings.appearance.font.family.sample')}
+                </span>
+                <span className="theme-choice__copy">
+                  <span className="theme-choice__label">
+                    {t(`settings.appearance.font.family.${option}.label`)}
+                    <span className="theme-choice__check">
+                      {selected && <Icon name="check" size={14} />}
+                    </span>
+                  </span>
+                  <span className="theme-choice__description">
+                    {t(`settings.appearance.font.family.${option}.description`)}
+                  </span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t('settings.appearance.density.title')}
+        description={t('settings.appearance.density.description')}
+      >
+        <div
+          className="theme-grid theme-grid--density"
+          role="radiogroup"
+          aria-label={t('settings.appearance.density.selectLabel')}
+          aria-busy={saving}
+          onKeyDown={densities.handleKeyDown}
+        >
+          {DENSITIES.map((option, index) => {
+            const selected = density === option
+            return (
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                ref={(node) => {
+                  densities.refs.current[index] = node
+                }}
+                aria-checked={selected}
+                tabIndex={index === densities.selectedIndex ? 0 : -1}
+                className={`theme-choice${selected ? ' theme-choice--selected' : ''}`}
+                onClick={() => onSelectDensity(option)}
+              >
+                <DensityPreview density={option} />
+                <span className="theme-choice__copy">
+                  <span className="theme-choice__label">
+                    {t(`settings.appearance.density.${option}.label`)}
+                    <span className="theme-choice__check">
+                      {selected && <Icon name="check" size={14} />}
+                    </span>
+                  </span>
+                  <span className="theme-choice__description">
+                    {t(`settings.appearance.density.${option}.description`)}
+                  </span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </SettingsCard>
 
       <SettingsCard

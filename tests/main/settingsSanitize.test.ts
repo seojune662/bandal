@@ -110,6 +110,45 @@ describe('sanitizeSettings — orbCharm', () => {
   })
 })
 
+describe('sanitizeSettings — appearance knobs', () => {
+  test('accepts every registered font scale step', () => {
+    for (const scale of [0.9, 1, 1.1, 1.2]) {
+      expect(sanitizeSettings({ fontScale: scale }, defaults).fontScale).toBe(scale)
+    }
+  })
+
+  test.each([[1.05], ['1'], [Number.NaN], [0], [null], [undefined]])(
+    'falls back to 1 for a font scale of %p',
+    (value) => {
+      expect(sanitizeSettings({ fontScale: value }, defaults).fontScale).toBe(1)
+    }
+  )
+
+  test('accepts the three editor fonts and falls back from anything else', () => {
+    for (const font of ['sans', 'serif', 'mono']) {
+      expect(sanitizeSettings({ editorFont: font }, defaults).editorFont).toBe(font)
+    }
+    expect(sanitizeSettings({ editorFont: 'comic' }, defaults).editorFont).toBe('sans')
+    expect(sanitizeSettings({ editorFont: 3 }, defaults).editorFont).toBe('sans')
+  })
+
+  test('accepts both densities and falls back from anything else', () => {
+    expect(sanitizeSettings({ density: 'compact' }, defaults).density).toBe('compact')
+    expect(sanitizeSettings({ density: 'comfortable' }, defaults).density).toBe(
+      'comfortable'
+    )
+    expect(sanitizeSettings({ density: 'cozy' }, defaults).density).toBe('comfortable')
+    expect(sanitizeSettings({ density: null }, defaults).density).toBe('comfortable')
+  })
+
+  test('missing keys (pre-v0.36 settings file) → defaults', () => {
+    const result = sanitizeSettings({ theme: 'dark' }, defaults)
+    expect(result.fontScale).toBe(1)
+    expect(result.editorFont).toBe('sans')
+    expect(result.density).toBe('comfortable')
+  })
+})
+
 describe('sanitizeSettings — keybindings and milestones', () => {
   test('keeps valid customizable chords and explicit null unbindings', () => {
     const result = sanitizeSettings(

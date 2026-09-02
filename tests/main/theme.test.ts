@@ -158,6 +158,23 @@ describe('palette registry', () => {
     expect(isPaletteId(undefined)).toBe(false)
   })
 
+  it('registers the v0.36 families', () => {
+    // 카푸치노 (Catppuccin Mocha/Latte) and 미니멀 ship together; the picker
+    // derives its cards from PALETTES, so presence here is presence in the UI.
+    expect(isPaletteId('catppuccin')).toBe(true)
+    expect(isPaletteId('minimal')).toBe(true)
+    expect(getPalette('catppuccin').windowBackground).toEqual({
+      dark: '#181825',
+      light: '#dce0e8',
+      midnight: '#000000'
+    })
+    expect(getPalette('minimal').windowBackground).toEqual({
+      dark: '#161616',
+      light: '#f5f5f5',
+      midnight: '#000000'
+    })
+  })
+
   it('gives every palette a Korean name and a usage line', () => {
     for (const palette of PALETTES) {
       expect(palette.name, palette.id).toMatch(/[가-힣]/)

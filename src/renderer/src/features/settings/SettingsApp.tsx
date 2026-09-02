@@ -11,10 +11,19 @@ import type {
   AgentProvider,
 } from "../../../../shared/types/agent-events";
 import type { Course } from "../../../../shared/types/course";
+import {
+  isSameAppearance,
+  pickAppearance,
+} from "../../../../shared/appearance";
+import type { AppearanceSettings } from "../../../../shared/appearance";
 import type { PaletteId } from "../../../../shared/theme";
-import type {
-  Settings,
-  ThemePreference,
+import {
+  DEFAULT_SETTINGS,
+  type Density,
+  type EditorFont,
+  type FontScale,
+  type Settings,
+  type ThemePreference,
 } from "../../../../shared/types/settings";
 import { AccountPanel } from "./AccountPanel";
 import { AgentAccessPanel } from "./AgentAccessPanel";
@@ -73,8 +82,9 @@ export function SettingsApp({
   const [activeCategory, setActiveCategory] = useState<CategoryId>("general");
   const [query, setQuery] = useState("");
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [theme, setTheme] = useState<ThemePreference>("dark");
-  const [palette, setPalette] = useState<PaletteId>("bandal");
+  const [appearance, setAppearance] = useState<AppearanceSettings>(() =>
+    pickAppearance(DEFAULT_SETTINGS),
+  );
   const [themeSaving, setThemeSaving] = useState(false);
   const [themeErrorKey, setThemeErrorKey] = useState<string | null>(null);
   const [availability, setAvailability] = useState<
@@ -230,18 +240,16 @@ export function SettingsApp({
     mountedRef.current = true;
     const unsubscribe = onPush("settings:changed", ({ settings: next }) => {
       setSettings(next);
-      setTheme(next.theme);
-      setPalette(next.palette);
-      if (!embedded) applyTheme(next.theme, next.palette);
+      setAppearance(pickAppearance(next));
+      if (!embedded) applyTheme(next);
     });
 
     void invoke("settings:get", {})
       .then((result) => {
         if (!mountedRef.current) return;
         setSettings(result);
-        setTheme(result.theme);
-        setPalette(result.palette);
-        if (!embedded) applyTheme(result.theme, result.palette);
+        setAppearance(pickAppearance(result));
+        if (!embedded) applyTheme(result);
       })
       .catch(() => {
         if (mountedRef.current) {
@@ -290,45 +298,39 @@ export function SettingsApp({
     if (embedded) return;
     const media = window.matchMedia("(prefers-color-scheme: light)");
     const handleChange = (): void => {
-      if (theme === "system") applyTheme("system", palette);
+      if (appearance.theme === "system") applyTheme(appearance);
     };
     media.addEventListener("change", handleChange);
     return () => media.removeEventListener("change", handleChange);
-  }, [embedded, palette, theme]);
+  }, [embedded, appearance]);
 
   /**
-   * Both appearance axes save the same way: paint optimistically, persist,
-   * then reconcile with whatever main actually stored (and roll the pair back
-   * together on failure — a half-applied appearance is worse than neither).
+   * Every appearance axis saves the same way: paint optimistically, persist
+   * the patch, then reconcile with whatever main actually stored (and roll
+   * the whole set back on failure — a half-applied appearance is worse than
+   * neither).
    */
-  const saveAppearance = (next: {
-    theme: ThemePreference;
-    palette: PaletteId;
-  }): void => {
+  const saveAppearance = (patch: Partial<AppearanceSettings>): void => {
     if (themeSaving) return;
-    const previous = { theme, palette };
-    if (next.theme === previous.theme && next.palette === previous.palette) {
-      return;
-    }
-    setTheme(next.theme);
-    setPalette(next.palette);
-    if (!embedded) applyTheme(next.theme, next.palette);
+    const previous = appearance;
+    const next = { ...previous, ...patch };
+    if (isSameAppearance(next, previous)) return;
+    setAppearance(next);
+    if (!embedded) applyTheme(next);
     setThemeSaving(true);
     setThemeErrorKey(null);
 
-    void invoke("settings:set", next)
+    void invoke("settings:set", patch)
       .then((nextSettings) => {
         if (!mountedRef.current) return;
         setSettings(nextSettings);
-        setTheme(nextSettings.theme);
-        setPalette(nextSettings.palette);
-        if (!embedded) applyTheme(nextSettings.theme, nextSettings.palette);
+        setAppearance(pickAppearance(nextSettings));
+        if (!embedded) applyTheme(nextSettings);
       })
       .catch(() => {
         if (!mountedRef.current) return;
-        setTheme(previous.theme);
-        setPalette(previous.palette);
-        if (!embedded) applyTheme(previous.theme, previous.palette);
+        setAppearance(previous);
+        if (!embedded) applyTheme(previous);
         setThemeErrorKey("settings.appearance.saveFailed");
       })
       .finally(() => {
@@ -336,12 +338,24 @@ export function SettingsApp({
       });
   };
 
-  const handleThemeSelect = (nextTheme: ThemePreference): void => {
-    saveAppearance({ theme: nextTheme, palette });
+  const handleThemeSelect = (theme: ThemePreference): void => {
+    saveAppearance({ theme });
   };
 
-  const handlePaletteSelect = (nextPalette: PaletteId): void => {
-    saveAppearance({ theme, palette: nextPalette });
+  const handlePaletteSelect = (palette: PaletteId): void => {
+    saveAppearance({ palette });
+  };
+
+  const handleFontScaleSelect = (fontScale: FontScale): void => {
+    saveAppearance({ fontScale });
+  };
+
+  const handleEditorFontSelect = (editorFont: EditorFont): void => {
+    saveAppearance({ editorFont });
+  };
+
+  const handleDensitySelect = (density: Density): void => {
+    saveAppearance({ density });
   };
 
   const handleCharmSelect = (orbCharm: OrbCharmId): void => {
@@ -434,13 +448,19 @@ export function SettingsApp({
     ),
     appearance: (
       <AppearancePanel
-        theme={theme}
-        palette={palette}
+        theme={appearance.theme}
+        palette={appearance.palette}
+        fontScale={appearance.fontScale}
+        editorFont={appearance.editorFont}
+        density={appearance.density}
         orbCharm={settings?.orbCharm ?? DEFAULT_ORB_CHARM}
         saving={themeSaving}
         error={themeErrorKey === null ? null : t(themeErrorKey)}
         onSelect={handleThemeSelect}
         onSelectPalette={handlePaletteSelect}
+        onSelectFontScale={handleFontScaleSelect}
+        onSelectEditorFont={handleEditorFontSelect}
+        onSelectDensity={handleDensitySelect}
         onSelectCharm={handleCharmSelect}
       />
     ),

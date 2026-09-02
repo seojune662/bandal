@@ -80,6 +80,37 @@ export const DEFAULT_TUTORIAL: TutorialState = {
   activeCourseId: null
 }
 
+/**
+ * Appearance knobs beyond theme × palette. All three are pure CSS switches
+ * (src/shared/appearance.ts): `fontScale` multiplies the root font-size so
+ * every rem token follows, `editorFont` swaps the note editor's family only
+ * (chrome stays Pretendard), `density` tightens the spacing/radius/chrome
+ * tokens.
+ */
+export const FONT_SCALES = [0.9, 1, 1.1, 1.2] as const
+export type FontScale = (typeof FONT_SCALES)[number]
+export const DEFAULT_FONT_SCALE: FontScale = 1
+
+export function isFontScale(value: unknown): value is FontScale {
+  return FONT_SCALES.some((scale) => scale === value)
+}
+
+export const EDITOR_FONTS = ['sans', 'serif', 'mono'] as const
+export type EditorFont = (typeof EDITOR_FONTS)[number]
+export const DEFAULT_EDITOR_FONT: EditorFont = 'sans'
+
+export function isEditorFont(value: unknown): value is EditorFont {
+  return EDITOR_FONTS.some((font) => font === value)
+}
+
+export const DENSITIES = ['comfortable', 'compact'] as const
+export type Density = (typeof DENSITIES)[number]
+export const DEFAULT_DENSITY: Density = 'comfortable'
+
+export function isDensity(value: unknown): value is Density {
+  return DENSITIES.some((density) => density === value)
+}
+
 export interface Milestones {
   /** First successful use of picture-in-picture, as an ISO timestamp. */
   pipUsedAt: string | null
@@ -97,6 +128,12 @@ export interface Settings {
    * written before v0.15, which sanitize to the 반달 default.
    */
   palette: PaletteId
+  /** Root font-size multiplier (settings > 화면 > 글자 크기). */
+  fontScale: FontScale
+  /** Note editor body family; the chrome never follows it. */
+  editorFont: EditorFont
+  /** Spacing/radius/chrome tightness. */
+  density: Density
   /** Preferred AI agent provider. */
   agentProvider: AgentProvider
   /** Where the assistant is presented. */
@@ -138,6 +175,9 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   theme: DEFAULT_THEME_ID,
   palette: DEFAULT_PALETTE_ID,
+  fontScale: DEFAULT_FONT_SCALE,
+  editorFont: DEFAULT_EDITOR_FONT,
+  density: DEFAULT_DENSITY,
   agentProvider: 'claude-code',
   assistantMode: 'in-app',
   desktopOrb: DEFAULT_DESKTOP_ORB,

@@ -60,6 +60,14 @@
   --font-mono:
     ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
     'Liberation Mono', monospace;
+  /* Note editor only (설정 > 화면 > 필기 글꼴); the chrome never uses it. */
+  --font-serif:
+    'Noto Serif KR', 'Apple SD Gothic Neo', Georgia, 'Times New Roman', serif;
+
+  /* Root font-size multiplier (설정 > 화면 > 글자 크기). Set on <html> by
+   * src/shared/appearance.ts; base.css multiplies `html { font-size }` by it so
+   * every rem token above and below scales like browser zoom. */
+  --font-scale: 1;
 
   --text-xs: 0.6875rem;
   --text-sm: 0.8125rem;
@@ -95,4 +103,20 @@
   --dur-fast: 120ms;
   --dur-base: 200ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Density (설정 > 화면 > 밀도). `compact` re-cuts only the scale tokens that
+ * set the rhythm — radii, the two mid spacing steps, and the chrome/control
+ * heights — so every surface tightens together without per-component rules.
+ * Set on <html> by src/shared/appearance.ts. */
+:root[data-density='compact'] {
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --space-3: 0.5rem;
+  --space-4: 0.75rem;
+  --control-height: 1.75rem;
+  --button-height: 2rem;
+  --chrome-height: 2.5rem;
+  --rail-left-width: 13rem;
 }

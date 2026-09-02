@@ -4,6 +4,8 @@
  */
 
 import { create } from 'zustand'
+import { applyAppearanceKnobs, pickAppearance } from '../../../shared/appearance'
+import type { AppearanceSettings } from '../../../shared/appearance'
 import type { OrbCharmId } from '../../../shared/orbCharm'
 import { SYSTEM_THEME } from '../../../shared/theme'
 import type { PaletteId, ResolvedTheme } from '../../../shared/theme'
@@ -57,9 +59,21 @@ function resolve(pref: ThemePreference): ResolvedTheme {
   return pref
 }
 
-function applyToDocument(theme: ResolvedTheme, palette: PaletteId): void {
-  document.documentElement.dataset['theme'] = theme
-  document.documentElement.dataset['palette'] = palette
+/** The last appearance painted, so a single-axis change can re-apply the rest. */
+let currentAppearance: AppearanceSettings = pickAppearance(DEFAULT_SETTINGS)
+
+/**
+ * Paints every appearance axis on `<html>`: `data-theme` (resolved mode),
+ * `data-palette`, and the three knobs (src/shared/appearance.ts).
+ */
+function applyToDocument(appearance: AppearanceSettings): ResolvedTheme {
+  currentAppearance = pickAppearance(appearance)
+  const resolved = resolve(appearance.theme)
+  const root = document.documentElement
+  root.dataset['theme'] = resolved
+  root.dataset['palette'] = appearance.palette
+  applyAppearanceKnobs(root, appearance)
+  return resolved
 }
 
 export const useUiStore = create<UiState>()((set, get) => ({
@@ -82,8 +96,7 @@ export const useUiStore = create<UiState>()((set, get) => ({
     if (themeInitialization === null) {
       themeInitialization = (async () => {
         const settings = await invoke('settings:get', {})
-        const resolved = resolve(settings.theme)
-        applyToDocument(resolved, settings.palette)
+        const resolved = applyToDocument(settings)
         set({
           themePreference: settings.theme,
           resolvedTheme: resolved,
@@ -92,8 +105,7 @@ export const useUiStore = create<UiState>()((set, get) => ({
         })
 
         onPush('settings:changed', ({ settings: next }) => {
-          const nextResolved = resolve(next.theme)
-          applyToDocument(nextResolved, next.palette)
+          const nextResolved = applyToDocument(next)
           set({
             themePreference: next.theme,
             resolvedTheme: nextResolved,
@@ -106,8 +118,7 @@ export const useUiStore = create<UiState>()((set, get) => ({
           .matchMedia('(prefers-color-scheme: light)')
           .addEventListener('change', () => {
             if (get().themePreference === 'system') {
-              const nextResolved = resolve('system')
-              applyToDocument(nextResolved, get().palette)
+              const nextResolved = applyToDocument(currentAppearance)
               set({ resolvedTheme: nextResolved })
             }
           })
@@ -124,14 +135,13 @@ export const useUiStore = create<UiState>()((set, get) => ({
 
   setThemePreference: async (pref) => {
     // Optimistic apply; the settings:changed broadcast confirms it.
-    const resolved = resolve(pref)
-    applyToDocument(resolved, get().palette)
+    const resolved = applyToDocument({ ...currentAppearance, theme: pref })
     set({ themePreference: pref, resolvedTheme: resolved })
     await invoke('settings:set', { theme: pref })
   },
 
   setPalette: async (palette) => {
-    applyToDocument(get().resolvedTheme, palette)
+    applyToDocument({ ...currentAppearance, palette })
     set({ palette })
     await invoke('settings:set', { palette })
   },
