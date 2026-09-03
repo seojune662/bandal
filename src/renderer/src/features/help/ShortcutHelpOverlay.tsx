@@ -200,7 +200,6 @@ export function ShortcutHelpOverlay({
       >
         <header className="help-panel__header">
           <div>
-            <p className="help-panel__eyebrow">SHORTCUTS</p>
             <h2 id="help-shortcuts-title">{t('help.shortcuts.title')}</h2>
           </div>
           <button

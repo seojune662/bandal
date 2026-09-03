@@ -126,7 +126,7 @@
 
 .rail-heading h2 {
   font-size: var(--text-base);
-  font-weight: 650;
+  font-weight: var(--weight-title);
   letter-spacing: var(--tracking-tight);
   color: var(--text-primary);
 }
@@ -134,7 +134,7 @@
 .eyebrow {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--weight-label);
   letter-spacing: var(--tracking-wide);
   color: var(--text-muted);
 }
@@ -281,7 +281,7 @@
 .rail-error button {
   flex: 0 0 auto;
   padding: var(--space-1);
-  font-weight: 650;
+  font-weight: var(--weight-label);
   border-radius: var(--radius-sm);
 }
 
@@ -316,7 +316,7 @@
 
 .empty-state__text {
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--weight-body);
   color: var(--text-secondary);
 }
 
@@ -380,7 +380,7 @@
   gap: var(--space-2);
   padding-inline: var(--space-3);
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--weight-label);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
 }
@@ -497,7 +497,7 @@ div.toast {
 .toast__action {
   flex: none;
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-label);
   color: var(--accent);
   background: none;
   border: 0;

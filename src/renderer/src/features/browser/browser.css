@@ -214,7 +214,7 @@
   overflow: hidden;
   color: var(--accent);
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: var(--weight-label);
   text-overflow: ellipsis;
   white-space: nowrap;
   background: var(--accent-muted);
@@ -348,7 +348,7 @@
   padding-inline: var(--space-3);
   color: var(--text-secondary);
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--weight-label);
   background: transparent;
   border: thin solid var(--border-subtle);
   border-radius: var(--radius-pill);
@@ -425,7 +425,7 @@
   height: var(--icon-size);
   color: var(--course-blue);
   font-size: var(--text-xs);
-  font-weight: 750;
+  font-weight: var(--weight-label);
   background: var(--bg-raised);
   border: thin solid currentcolor;
   border-radius: var(--radius-pill);
@@ -531,7 +531,7 @@
 .browser-error__title {
   margin: var(--space-2) 0 0;
   font-size: var(--text-lg);
-  font-weight: 600;
+  font-weight: var(--weight-title);
   color: var(--text-primary);
 }
 
@@ -967,7 +967,7 @@
 
 .browser-diagnostics__head h2 {
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--weight-title);
   color: var(--text-primary);
 }
 

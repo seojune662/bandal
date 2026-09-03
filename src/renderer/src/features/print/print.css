@@ -41,7 +41,7 @@
 
 .print-preview__title {
   font-size: var(--text-lg);
-  font-weight: 600;
+  font-weight: var(--weight-title);
   color: var(--text-primary);
 }
 

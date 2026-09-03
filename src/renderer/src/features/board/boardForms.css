@@ -6,7 +6,7 @@
 .board-kind-picker legend {
   margin-bottom: var(--space-2);
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--weight-label);
   color: var(--text-secondary);
 }
 
@@ -41,7 +41,7 @@
   padding-inline: var(--space-1);
   overflow: hidden;
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--weight-label);
   color: var(--text-muted);
   border-radius: var(--radius-sm);
   text-overflow: ellipsis;
@@ -104,7 +104,7 @@
 }
 
 .board-field small {
-  font-weight: 450;
+  font-weight: var(--weight-label);
   color: var(--text-muted);
 }
 

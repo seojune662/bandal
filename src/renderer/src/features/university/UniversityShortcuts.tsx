@@ -446,7 +446,6 @@ export function UniversityShortcuts(): JSX.Element | null {
       >
         <Icon name="chevronRight" className="university-section__chevron" />
         <span className="university-section__heading-copy">
-          <span className="eyebrow">CAMPUS</span>
           <span className="university-section__name">{university.nameKo}</span>
         </span>
       </button>

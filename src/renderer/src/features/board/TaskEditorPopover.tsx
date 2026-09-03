@@ -137,7 +137,6 @@ export function TaskEditorPopover({
       <form onSubmit={(event) => void submit(event)}>
         <header className="board-editor__header">
           <div>
-            <p className="board-eyebrow">TASK DETAILS</p>
             <h3 id="board-editor-heading">태스크 편집</h3>
           </div>
           <button

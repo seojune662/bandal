@@ -34,7 +34,7 @@
   height: var(--control-height);
   padding: 0 var(--space-4);
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--weight-label);
   color: var(--text-secondary);
   border-radius: var(--radius-pill);
 }
@@ -107,7 +107,7 @@
   min-width: var(--icon-size-sm);
   padding: 0 var(--space-1);
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--weight-label);
   color: var(--accent);
   text-align: center;
   background: var(--bg-app);
@@ -134,7 +134,7 @@
 
 .together-footer__label {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--weight-label);
   color: var(--text-muted);
   letter-spacing: var(--tracking-wide);
 }

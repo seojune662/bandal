@@ -229,7 +229,6 @@ export function LinkGraphOverlay({
       >
         <header className="link-graph-overlay__head">
           <div>
-            <p className="eyebrow">GRAPH</p>
             <h2>{t('links.graph.title')}</h2>
           </div>
           <div className="link-graph-overlay__actions">

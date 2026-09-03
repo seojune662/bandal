@@ -103,14 +103,6 @@
   letter-spacing: var(--tracking-tight);
 }
 
-.help-panel__eyebrow {
-  margin-bottom: var(--space-1);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: var(--tracking-wide);
-}
-
 .help-panel__close {
   display: grid;
   flex: 0 0 auto;
@@ -146,7 +138,7 @@
 
 .help-panel__error button {
   flex: 0 0 auto;
-  font-weight: 650;
+  font-weight: var(--weight-label);
 }
 
 .help-panel__empty {

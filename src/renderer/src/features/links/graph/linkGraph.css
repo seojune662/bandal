@@ -41,7 +41,7 @@
 
 .link-graph-overlay__head h2 {
   font-size: var(--text-base);
-  font-weight: 650;
+  font-weight: var(--weight-title);
   letter-spacing: var(--tracking-tight);
 }
 

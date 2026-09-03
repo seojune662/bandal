@@ -75,12 +75,10 @@ export function ProviderSelector({
 }
 
 export function GateCard({
-  eyebrow,
   title,
   children,
   onRefresh
 }: {
-  eyebrow: string
   title: string
   children: ReactNode
   onRefresh?: () => void
@@ -89,7 +87,6 @@ export function GateCard({
     <div className="chat-gate">
       <div className="chat-gate__card">
         <BandalMark size={36} className="chat-gate__moon" />
-        <p className="chat-gate__eyebrow">{eyebrow}</p>
         <h2 className="chat-gate__title">{title}</h2>
         {children}
         {onRefresh !== undefined && (
@@ -326,7 +323,7 @@ export function AgentSetupCard({
         : '로그인 창 열기'
 
   return (
-    <GateCard eyebrow="SETUP" title={title}>
+    <GateCard title={title}>
       <ProviderSelector
         provider={provider}
         onChange={onProviderChange}

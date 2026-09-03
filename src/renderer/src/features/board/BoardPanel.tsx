@@ -443,7 +443,6 @@ function BoardSurface(): JSX.Element {
     >
       <header className="board-toolbar">
         <div className="board-toolbar__title">
-          <p className="board-eyebrow">{view === 'board' ? 'STUDY BOARD' : 'ACADEMIC CALENDAR'}</p>
           <h2>{view === 'board' ? '과제와 시험' : '달력과 마감'}</h2>
         </div>
         <div className="board-view-switch" role="group" aria-label="학업 보드 화면">

@@ -205,7 +205,6 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
       <ExpandLeftRail />
       <ToggleRightRail />
       <BandalMark size={56} className="workspace-watermark__moon" />
-      <p className="eyebrow">CURRENT COURSE</p>
       <h1>{course.name}</h1>
       <button
         type="button"

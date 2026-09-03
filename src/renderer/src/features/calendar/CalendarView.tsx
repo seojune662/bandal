@@ -506,7 +506,6 @@ export function CalendarView({
       <aside className="calendar-agenda" aria-label={`${fullDateTitle(selectedKey)} 일정`}>
         <header className="calendar-agenda__header">
           <div>
-            <p className="board-eyebrow">SELECTED DAY</p>
             <h3>{fullDateTitle(selectedKey)}</h3>
           </div>
           {!adding && editingTask === null && (

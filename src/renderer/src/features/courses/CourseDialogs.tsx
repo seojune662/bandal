@@ -113,7 +113,6 @@ export function CourseFormDialog({
       >
         <header className="course-dialog__header">
           <div>
-            <p className="eyebrow">COURSE</p>
             <h2 id={titleId}>{TITLES[mode]}</h2>
           </div>
           <button

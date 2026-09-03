@@ -133,7 +133,7 @@
 
 .content-search__name {
   overflow: hidden;
-  font-weight: 650;
+  font-weight: var(--weight-label);
   color: var(--text-primary);
   text-overflow: ellipsis;
   white-space: nowrap;

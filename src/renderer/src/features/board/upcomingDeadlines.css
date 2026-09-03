@@ -34,5 +34,5 @@
   flex: 0 0 auto;
   margin-left: auto;
   font-family: var(--font-mono);
-  font-weight: 650;
+  font-weight: var(--weight-label);
 }

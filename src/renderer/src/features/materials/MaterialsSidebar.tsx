@@ -794,7 +794,6 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     >
       <div className="rail-heading materials-heading">
         <div className="materials-heading__text">
-          <p className="eyebrow">MATERIALS</p>
           <h2>자료</h2>
           {course !== null && (
             <span className="materials-heading__course">

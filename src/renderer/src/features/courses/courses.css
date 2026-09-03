@@ -33,7 +33,7 @@
   min-width: 0;
   overflow: hidden;
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--weight-label);
   letter-spacing: var(--tracking-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -132,7 +132,7 @@
 .course-group-row__name {
   overflow: hidden;
   font-size: var(--text-sm);
-  font-weight: 650;
+  font-weight: var(--weight-label);
   letter-spacing: var(--tracking-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -142,7 +142,7 @@
   padding-inline-end: var(--space-1);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: var(--weight-label);
   color: var(--text-muted);
 }
 
@@ -344,7 +344,7 @@
 .course-row__name {
   overflow: hidden;
   font-size: var(--text-sm);
-  font-weight: 550;
+  font-weight: var(--weight-label);
   letter-spacing: var(--tracking-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -414,7 +414,7 @@
   gap: var(--space-2);
   padding-inline: var(--space-1);
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: var(--weight-title);
   color: var(--text-secondary);
 }
 
@@ -451,7 +451,7 @@
   margin-top: var(--space-1);
   padding-inline: var(--space-1);
   font-size: var(--text-xs);
-  font-weight: 450;
+  font-weight: var(--weight-label);
   color: var(--text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -466,7 +466,7 @@
 
 .favorite-link-form label {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--weight-label);
   color: var(--text-secondary);
 }
 
@@ -972,7 +972,7 @@
 
 .course-dialog h2 {
   font-size: var(--text-lg);
-  font-weight: 650;
+  font-weight: var(--weight-title);
   letter-spacing: var(--tracking-tight);
 }
 
@@ -980,7 +980,7 @@
   display: block;
   margin-bottom: var(--space-2);
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: var(--weight-label);
   color: var(--text-secondary);
 }
 

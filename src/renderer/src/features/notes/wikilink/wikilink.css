@@ -43,7 +43,7 @@
   padding: 0 0.35em;
   color: var(--text-secondary);
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: var(--weight-label);
   letter-spacing: var(--tracking-wide);
   text-decoration: none;
   text-transform: uppercase;

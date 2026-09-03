@@ -76,7 +76,7 @@
 }
 
 .ink-format-row__button--bold {
-  font-weight: 700;
+  font-weight: var(--weight-title);
 }
 
 .ink-format-row__button--italic {

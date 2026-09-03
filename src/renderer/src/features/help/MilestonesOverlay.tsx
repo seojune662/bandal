@@ -54,7 +54,6 @@ export function MilestonesOverlay({
       >
         <header className="help-panel__header">
           <div>
-            <p className="help-panel__eyebrow">MILESTONES</p>
             <h2 id="help-milestones-title">{t('help.milestones.title')}</h2>
           </div>
           <button

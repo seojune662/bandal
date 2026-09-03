@@ -333,7 +333,7 @@
 }
 
 .note-format-button--strong {
-  font-weight: 700;
+  font-weight: var(--weight-title);
 }
 
 .note-format-button--emphasis {
@@ -562,7 +562,7 @@
 
 .note-slash-menu__label {
   font-size: var(--text-sm);
-  font-weight: 650;
+  font-weight: var(--weight-label);
 }
 
 .note-slash-menu__description,
@@ -612,7 +612,7 @@
   padding: var(--space-3) var(--space-4);
   color: var(--danger);
   font-size: var(--text-sm);
-  font-weight: 650;
+  font-weight: var(--weight-label);
   background: var(--danger-muted);
   border-bottom: thin solid var(--danger);
 }
@@ -657,7 +657,7 @@
 .note-tab .milkdown h5,
 .note-tab .milkdown h6 {
   color: var(--text-primary);
-  font-weight: 700;
+  font-weight: var(--weight-title);
   line-height: 1.3;
   letter-spacing: var(--tracking-tight);
 }
@@ -691,7 +691,7 @@
 }
 
 .note-tab .milkdown strong {
-  font-weight: 700;
+  font-weight: var(--weight-title);
 }
 
 .note-tab .milkdown a {
@@ -872,7 +872,7 @@
 
 .note-tab .milkdown .token.bold,
 .note-tab .milkdown .token.important {
-  font-weight: 700;
+  font-weight: var(--weight-title);
 }
 
 .note-tab .milkdown .token.italic {
@@ -898,7 +898,7 @@
 }
 
 .note-tab .milkdown th {
-  font-weight: 650;
+  font-weight: var(--weight-label);
   color: var(--text-primary);
   background: var(--accent-muted);
 }

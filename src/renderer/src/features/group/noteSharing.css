@@ -14,14 +14,14 @@
 
 .group-note-card__eyebrow {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--weight-label);
   color: var(--accent);
   letter-spacing: var(--tracking-wide);
 }
 
 .group-note-card__title {
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: var(--weight-title);
   color: var(--text-primary);
   overflow-wrap: anywhere;
 }
@@ -43,7 +43,7 @@
   height: var(--control-height);
   padding: 0 var(--space-3);
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--weight-label);
   color: var(--accent);
   background: var(--accent-muted);
   border: 0;
@@ -86,7 +86,7 @@
 
 .group-note-picker__head h2 {
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: var(--weight-title);
   color: var(--text-primary);
 }
 

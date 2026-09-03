@@ -48,7 +48,6 @@ function IntroStep(): JSX.Element {
         <span className="onboarding-phase onboarding-phase--half" />
         <span className="onboarding-phase onboarding-phase--full" />
       </div>
-      <p className="onboarding-eyebrow">WELCOME</p>
       <h2 className="onboarding-title">반달에 오신 걸 환영해요</h2>
       <ul className="onboarding-points">
         <li>
@@ -90,7 +89,6 @@ function SchoolStep(): JSX.Element {
 
   return (
     <div className="onboarding-step">
-      <p className="onboarding-eyebrow">CAMPUS</p>
       <h2 className="onboarding-title">어느 학교에 다니고 있나요?</h2>
       <p className="onboarding-desc">
         학교를 고르면 학사 포털·강의실·도서관 바로가기가 왼쪽에 떠요. 로그인은
@@ -137,7 +135,6 @@ function CourseStep(): JSX.Element {
     const first = courses[0]
     return (
       <div className="onboarding-step">
-        <p className="onboarding-eyebrow">COURSE</p>
         <h2 className="onboarding-title">과목이 준비됐어요</h2>
         <p className="onboarding-desc">
           {courses.length === 1 && first !== undefined
@@ -173,7 +170,6 @@ function CourseStep(): JSX.Element {
 
   return (
     <div className="onboarding-step">
-      <p className="onboarding-eyebrow">COURSE</p>
       <h2 className="onboarding-title">첫 과목을 만들어볼까요?</h2>
       <p className="onboarding-desc">
         과목 하나가 곧 작업 공간 하나예요. 이번 학기 수업 하나로 시작해보세요.
@@ -266,7 +262,6 @@ function AiStep(): JSX.Element {
 
   return (
     <div className="onboarding-step">
-      <p className="onboarding-eyebrow">AI TUTOR</p>
       <h2 className="onboarding-title">
         {ready ? 'AI 튜터가 준비됐어요' : 'AI 튜터를 연결해요'}
       </h2>

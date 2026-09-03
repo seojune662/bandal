@@ -257,7 +257,7 @@
 }
 
 .file-docx__document th {
-  font-weight: 700;
+  font-weight: var(--weight-label);
   background: #f2f2f2;
 }
 
@@ -361,7 +361,7 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  font-weight: 650;
+  font-weight: var(--weight-label);
   color: var(--text-secondary);
   text-align: center;
   background: var(--bg-raised);
@@ -386,7 +386,7 @@
   width: 3.5rem;
   min-width: 3.5rem;
   max-width: 3.5rem;
-  font-weight: 500;
+  font-weight: var(--weight-label);
   color: var(--text-secondary);
   text-align: right;
   background: var(--bg-raised);

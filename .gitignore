@@ -45,3 +45,6 @@ electron.vite.config.*.mjs
 
 # Playwright artifacts
 test-results/
+
+# 디자인 리뷰용 단계별 캡처 (BANDAL_SHOT_STAGE=... 로 언제든 재생성)
+design-shots/

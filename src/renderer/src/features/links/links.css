@@ -17,7 +17,7 @@
 .material-connections__title {
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 650;
+  font-weight: var(--weight-title);
   letter-spacing: var(--tracking-tight);
 }
 
@@ -30,7 +30,7 @@
 .material-connections .pdf-rail__backlink-kind {
   color: var(--text-muted);
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--weight-label);
 }
 
 .material-connections .pdf-rail__backlink-list,
@@ -472,7 +472,7 @@
   max-width: 100%;
   color: var(--accent);
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: var(--weight-body);
   text-align: center;
   word-break: keep-all;
   opacity: 0;
@@ -493,7 +493,7 @@
   padding-inline: var(--space-2);
   color: var(--text-secondary);
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: var(--weight-label);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-pill);
 }

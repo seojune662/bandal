@@ -661,7 +661,6 @@ export function CourseSidebar(): JSX.Element {
 
       <div className="rail-heading">
         <div>
-          <p className="eyebrow">LIBRARY</p>
           <h2>과목</h2>
         </div>
         <Tooltip label="과목 추가" placement="bottom">

@@ -67,7 +67,7 @@
   min-width: calc(var(--space-4) + var(--space-1));
   padding: 0 var(--space-1);
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--weight-label);
   color: var(--on-accent);
   text-align: center;
   background: var(--accent);

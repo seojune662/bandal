@@ -89,7 +89,6 @@ export function NicknameGate(): JSX.Element {
             className="onboarding-step nickname-form"
             onSubmit={(event) => void submit(event)}
           >
-            <p className="onboarding-eyebrow">NICKNAME</p>
             <h2 id={titleId} className="onboarding-title">
               뭐라고 불러드릴까요?
             </h2>

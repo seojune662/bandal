@@ -69,6 +69,19 @@
    * every rem token above and below scales like browser zoom. */
   --font-scale: 1;
 
+  /* Weight roles. Three, and only three — the app previously carried 14 ad-hoc
+   * numbers (450…750) that encoded no role: `.course-dialog h2` and
+   * `.field-label` were both 650, and chat body prose was 700, so everything
+   * read as emphasized and nothing stood out. Pick by ROLE, never by number:
+   *   body  — running prose, descriptions, hints, empty-state copy
+   *   label — the default: controls, list rows, chips, table headers, meta
+   *   title — headings, and semantic bold (`strong`, `**md**`, the B button)
+   * `node scripts/check-typography.mjs` fails on a raw numeric weight, on a
+   * fourth role, or on semantic bold drifting off --weight-title. */
+  --weight-body: 400;
+  --weight-label: 550;
+  --weight-title: 700;
+
   --text-xs: 0.6875rem;
   --text-sm: 0.8125rem;
   --text-base: 0.9375rem;

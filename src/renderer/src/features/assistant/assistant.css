@@ -189,7 +189,7 @@
   align-items: center;
   min-width: 0;
   font-size: var(--text-sm);
-  font-weight: 700;
+  font-weight: var(--weight-label);
   letter-spacing: var(--tracking-tight);
 }
 

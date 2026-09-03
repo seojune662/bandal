@@ -86,7 +86,6 @@ export function CourseGroupNameDialog({
       >
         <header className="course-dialog__header">
           <div>
-            <p className="eyebrow">COURSE GROUP</p>
             <h2 id={titleId}>{title}</h2>
           </div>
           <button

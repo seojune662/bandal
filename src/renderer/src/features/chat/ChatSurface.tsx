@@ -319,7 +319,6 @@ export function ChatSurface({
   if (phase === 'error') {
     return root(
       <GateCard
-        eyebrow="ERROR"
         title="채팅을 열지 못했어요"
         onRefresh={session.refresh}
       >

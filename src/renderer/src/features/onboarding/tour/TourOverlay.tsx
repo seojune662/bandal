@@ -182,7 +182,6 @@ function TourOffer(): JSX.Element {
 
   return (
     <aside className="tour-offer" role="dialog" aria-labelledby={titleId}>
-      <p className="tour-eyebrow">NEW TOUR</p>
       <h2 id={titleId} className="tour-offer__title">
         새로워진 둘러보기가 준비됐어요
       </h2>
