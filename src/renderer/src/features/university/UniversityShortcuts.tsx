@@ -257,7 +257,7 @@ export function UniversityShortcuts(): JSX.Element | null {
         <button
           type="button"
           className="university-section__pick"
-          onClick={openSettings}
+          onClick={() => openSettings("university")}
         >
           학교 고르기
         </button>

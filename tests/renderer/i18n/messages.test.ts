@@ -27,8 +27,8 @@ describe('i18n messages', () => {
     expect(translate('ko-KR', 'settings.tagline')).toBe(
       '내 리듬대로 공부해요.'
     )
-    expect(translate('ko-KR', 'settings.group.settings')).toBe('설정')
-    expect(translate('ko-KR', 'settings.group.workspace')).toBe('학습 공간')
+    expect(translate('ko-KR', 'settings.group.setup')).toBe('설정')
+    expect(translate('ko-KR', 'settings.group.interface')).toBe('인터페이스')
     expect(translate('ko-KR', 'settings.group.info')).toBe('정보')
     expect(translate('ko-KR', 'settings.category.general.label')).toBe('일반')
     expect(translate('ko-KR', 'settings.category.appearance.label')).toBe('화면')

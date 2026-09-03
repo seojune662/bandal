@@ -23,6 +23,7 @@ import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 import { favoriteScopeKey, useFavoritesStore } from '../../stores/favoritesStore'
 import { useCoursesStore } from '../../stores/coursesStore'
+import { settingsSnapshot } from '../../stores/settingsSnapshot'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { useBrowserAnchorRect } from '../workspace/panels/browserAnchor'
@@ -36,7 +37,7 @@ import { BrowserCrashPage, BrowserErrorPage } from './BrowserErrorPage'
 import { BrowserDownloadsPanel } from './BrowserDownloadsPanel'
 import { BrowserDiagnosticsPanel } from './BrowserDiagnosticsPanel'
 import { OPEN_DIAGNOSTICS_EVENT } from './diagnosticsBridge'
-import { DEFAULT_ZOOM_LEVEL, isDefaultZoom, zoomPercent } from './zoom'
+import { isDefaultZoom, zoomPercent } from './zoom'
 import { useDownloads } from './downloadsStore'
 import { toggleFavorite, useBrowserFavorite } from './browserFavorite'
 import { BrowserFindBar } from './BrowserFindBar'
@@ -436,7 +437,8 @@ function BrowserToolbar({
   const video = useWebVideoReport(tabId)
   const login = useBrowserGuests((state) => state.login[tabId])
   const zoomLevel = useBrowserGuests(
-    (state) => state.zoom[tabId] ?? DEFAULT_ZOOM_LEVEL
+    (state) =>
+      state.zoom[tabId] ?? settingsSnapshot().browser.defaultZoomLevel
   )
   const addressFocusSeq = useBrowserGuests(
     (state) => state.addressFocusSeq[tabId] ?? 0
@@ -587,14 +589,19 @@ function BrowserToolbar({
               onClose={() => setDiagnosticsOpen(false)}
             />
           )}
-          {!isDefaultZoom(zoomLevel) && (
+          {!isDefaultZoom(
+            zoomLevel,
+            settingsSnapshot().browser.defaultZoomLevel
+          ) && (
             <Tooltip label="기본 크기로 (⌘0)" placement="bottom">
               <button
                 type="button"
                 className="browser-zoom-pill"
                 onClick={() => {
-                  useBrowserGuests.getState().setZoom(tabId, DEFAULT_ZOOM_LEVEL)
-                  guestActions.setZoom(tabId, DEFAULT_ZOOM_LEVEL)
+                  const defaultZoomLevel =
+                    settingsSnapshot().browser.defaultZoomLevel
+                  useBrowserGuests.getState().setZoom(tabId, defaultZoomLevel)
+                  guestActions.setZoom(tabId, defaultZoomLevel)
                 }}
               >
                 {zoomPercent(zoomLevel)}%

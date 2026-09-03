@@ -132,4 +132,23 @@ describe('settings store recovery', () => {
     expect(existsSync(`${file}.tmp`)).toBe(false)
     expect(send).toHaveBeenCalledWith('settings:changed', { settings: saved })
   })
+
+  test('reset preserves setup and progress fields while restoring preferences', async () => {
+    temporaryUserData()
+    const { getSettings, resetSettings, setSettings } = await loadSettingsStore()
+    setSettings({
+      theme: 'light',
+      locale: 'en-US',
+      lastActiveCourseId: 'course-1',
+      onboarding: { flowVersion: 2, closedAt: '2026-09-01T00:00:00.000Z', lastCompletedStep: 3 }
+    })
+
+    const reset = resetSettings()
+
+    expect(reset.theme).toBe(DEFAULT_SETTINGS.theme)
+    expect(reset.locale).toBe('en-US')
+    expect(reset.lastActiveCourseId).toBe('course-1')
+    expect(reset.onboarding.closedAt).toBe('2026-09-01T00:00:00.000Z')
+    expect(getSettings()).toEqual(reset)
+  })
 })

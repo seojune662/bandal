@@ -19,6 +19,7 @@ import {
   type ShortcutActionId
 } from '../../../shared/keymap'
 import type { ShortcutPassthrough } from '../../../shared/ipc/events'
+import type { ShortcutPriority } from '../../../shared/types/settings'
 
 /** Normal browsing persists; private browsing lives only for this app run. */
 export const BROWSING_PARTITION = 'persist:browsing'
@@ -104,6 +105,18 @@ const GUEST_ALLOWED: ReadonlySet<ShortcutActionId> = new Set(
   SHORTCUT_SPECS.filter((spec) => spec.guestAllowed).map((spec) => spec.id)
 )
 
+function isTabLifetimeAction(action: ShortcutActionId): boolean {
+  return (
+    action === 'new-tab' ||
+    action === 'close-tab' ||
+    action === 'activate-last-tab' ||
+    action === 'reopen-tab' ||
+    action === 'cycle-tab-prev' ||
+    action === 'cycle-tab-next' ||
+    action.startsWith('activate-tab-')
+  )
+}
+
 function passthroughActionFor(
   action: ShortcutActionId
 ): PassthroughAction | null {
@@ -152,7 +165,8 @@ export function passthroughShortcut(
     alt: boolean
     shift: boolean
   },
-  keymap: ReadonlyMap<string, ShortcutActionId>
+  keymap: ReadonlyMap<string, ShortcutActionId>,
+  priority: ShortcutPriority = 'bandal'
 ): PassthroughAction | null {
   if (input.type !== 'keyDown') return null
   const chord = chordFromKeyboardEvent({
@@ -165,6 +179,7 @@ export function passthroughShortcut(
   if (chord === null) return null
   const action = keymap.get(chord)
   if (action === undefined || !GUEST_ALLOWED.has(action)) return null
+  if (priority === 'site' && !isTabLifetimeAction(action)) return null
   return passthroughActionFor(action)
 }
 

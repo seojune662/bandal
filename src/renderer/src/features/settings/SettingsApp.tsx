@@ -3,9 +3,15 @@ import type { OrbCharmId } from "../../../../shared/orbCharm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { showToast, ToastHost } from "../../app/toast";
+import {
+  ADD_COURSE_SHORTCUT_EVENT,
+  IMPORT_MATERIALS_SHORTCUT_EVENT,
+} from "../../app/shortcuts";
 import { BandalMark } from "../../components/BandalMark";
 import { useLocale, useT } from "../../i18n";
 import { invoke, onPush } from "../../lib/ipc";
+import { useCoursesStore } from "../../stores/coursesStore";
+import { useUiStore } from "../../stores/uiStore";
 import type {
   AgentAvailability,
   AgentProvider,
@@ -18,6 +24,13 @@ import {
 import type { AppearanceSettings } from "../../../../shared/appearance";
 import type { PaletteId } from "../../../../shared/theme";
 import {
+  isSettingsCategoryId,
+  SETTINGS_CATEGORIES,
+  SETTINGS_GROUPS,
+  type SettingsCategoryId,
+  type SettingsGroupId,
+} from "../../../../shared/settingsCategories";
+import {
   DEFAULT_SETTINGS,
   type Density,
   type EditorFont,
@@ -26,8 +39,9 @@ import {
   type ThemePreference,
 } from "../../../../shared/types/settings";
 import { AccountPanel } from "./AccountPanel";
-import { AgentAccessPanel } from "./AgentAccessPanel";
-import { BrowsingDataPanel } from "./BrowsingDataPanel";
+import { AdvancedPanel } from "./advanced/AdvancedPanel";
+import { ExperimentalPanel } from "./advanced/ExperimentalPanel";
+import { BrowserSettingsPanel } from "./browser/BrowserSettingsPanel";
 import {
   AboutPanel,
   AiPanel,
@@ -37,36 +51,36 @@ import {
   McpServersPanel,
 } from "./SettingsPanels";
 import { PluginsCategoryPanel } from "./PluginsCategoryPanel";
+import { NotificationsPanel } from "./notifications/NotificationsPanel";
+import { ShortcutsPanel } from "./shortcuts/ShortcutsPanel";
 import { Icon } from "./SettingsIcon";
+import { searchSettings } from "./settingsSearchIndex";
 import { applyTheme } from "./settingsTheme";
 import { UniversitySettingsPanel } from "./UniversitySettingsPanel";
+import {
+  HELP_FOCUS_TARGET_EVENT,
+  milestoneDestination,
+} from "../help/HelpHub";
+import { MilestonesOverlay } from "../help/MilestonesOverlay";
+import { ProgressRing } from "../help/ProgressRing";
+import { useMilestones, type MilestoneId } from "../help/milestonesStore";
+import { useTourStore } from "../onboarding/tour/tourStore";
+import "../help/help.css";
 import "./settings-app.css";
 import "./settings-panels.css";
 
-type CategoryId =
-  | "account"
-  | "general"
-  | "appearance"
-  | "ai"
-  | "mcp"
-  | "packs"
-  | "university"
-  | "courses"
-  | "about";
-
-type CategoryGroup = "settings" | "workspace" | "info";
-
 interface Category {
-  id: CategoryId;
-  group: CategoryGroup;
+  id: SettingsCategoryId;
+  group: SettingsGroupId;
   label: string;
   description: string;
-  keywords: string;
 }
 
 interface SettingsAppProps {
   embedded?: boolean;
   onClose?: () => void;
+  /** Category to open on; unknown/null falls back to General. */
+  initialCategory?: string | null;
 }
 
 const AGENT_PROVIDERS: readonly AgentProvider[] = ["claude-code", "codex"];
@@ -76,11 +90,15 @@ type ProviderState<T> = Record<AgentProvider, T>;
 export function SettingsApp({
   embedded = false,
   onClose,
+  initialCategory = null,
 }: SettingsAppProps = {}): JSX.Element {
   const t = useT();
   const locale = useLocale();
-  const [activeCategory, setActiveCategory] = useState<CategoryId>("general");
+  const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(() =>
+    isSettingsCategoryId(initialCategory) ? initialCategory : "general",
+  );
   const [query, setQuery] = useState("");
+  const [milestonesOpen, setMilestonesOpen] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [appearance, setAppearance] = useState<AppearanceSettings>(() =>
     pickAppearance(DEFAULT_SETTINGS),
@@ -106,73 +124,19 @@ export function SettingsApp({
   const [includeArchived, setIncludeArchived] = useState(false);
   const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const selectedCourseId = useCoursesStore((state) => state.selectedCourseId);
+  const milestoneProgress = useMilestones((state) => state.progress);
+  const refreshMilestones = useMilestones((state) => state.refresh);
 
   const categories = useMemo<readonly Category[]>(
-    () => [
-      {
-        id: "account",
-        group: "settings",
-        label: t("settings.category.account.label"),
-        description: t("settings.category.account.description"),
-        keywords: t("settings.category.account.keywords"),
-      },
-      {
-        id: "general",
-        group: "settings",
-        label: t("settings.category.general.label"),
-        description: t("settings.category.general.description"),
-        keywords: t("settings.category.general.keywords"),
-      },
-      {
-        id: "appearance",
-        group: "settings",
-        label: t("settings.category.appearance.label"),
-        description: t("settings.category.appearance.description"),
-        keywords: t("settings.category.appearance.keywords"),
-      },
-      {
-        id: "mcp",
-        group: "settings",
-        label: t("settings.category.mcp.label"),
-        description: t("settings.category.mcp.description"),
-        keywords: t("settings.category.mcp.keywords"),
-      },
-      {
-        id: "packs",
-        group: "settings",
-        label: t("settings.category.packs.label"),
-        description: t("settings.category.packs.description"),
-        keywords: t("settings.category.packs.keywords"),
-      },
-      {
-        id: "ai",
-        group: "workspace",
-        label: t("settings.category.ai.label"),
-        description: t("settings.category.ai.description"),
-        keywords: t("settings.category.ai.keywords"),
-      },
-      {
-        id: "university",
-        group: "workspace",
-        label: t("settings.category.university.label"),
-        description: t("settings.category.university.description"),
-        keywords: t("settings.category.university.keywords"),
-      },
-      {
-        id: "courses",
-        group: "workspace",
-        label: t("settings.category.courses.label"),
-        description: t("settings.category.courses.description"),
-        keywords: t("settings.category.courses.keywords"),
-      },
-      {
-        id: "about",
-        group: "info",
-        label: t("settings.category.about.label"),
-        description: t("settings.category.about.description"),
-        keywords: t("settings.category.about.keywords"),
-      },
-    ],
+    () =>
+      SETTINGS_CATEGORIES.map(({ id, group }) => ({
+        id,
+        group,
+        label: t(`settings.category.${id}.label`),
+        description: t(`settings.category.${id}.description`),
+      })),
     [t],
   );
 
@@ -180,15 +144,18 @@ export function SettingsApp({
     categories.find((category) => category.id === activeCategory) ??
     categories[0]!;
 
-  const filteredCategories = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase();
-    if (normalized.length === 0) return categories;
-    return categories.filter((category) =>
-      `${category.label} ${category.description} ${category.keywords}`
-        .toLocaleLowerCase()
-        .includes(normalized),
-    );
-  }, [categories, query]);
+  const searchResults = useMemo(
+    () => searchSettings(query, locale),
+    [locale, query],
+  );
+  const matchesByCategory = useMemo(
+    () => new Map(searchResults.map((result) => [result.category, result.matches])),
+    [searchResults],
+  );
+  const filteredCategories = useMemo(
+    () => categories.filter((category) => matchesByCategory.has(category.id)),
+    [categories, matchesByCategory],
+  );
 
   const loadAvailability = useCallback((target?: AgentProvider): void => {
     const providers = target === undefined ? AGENT_PROVIDERS : [target];
@@ -293,6 +260,10 @@ export function SettingsApp({
     document.documentElement.lang = locale;
     document.title = `${t("settings.app.name")} — ${t("settings.window.title")}`;
   }, [embedded, locale, t]);
+
+  useEffect(() => {
+    void refreshMilestones(selectedCourseId);
+  }, [refreshMilestones, selectedCourseId]);
 
   useEffect(() => {
     if (embedded) return;
@@ -438,14 +409,44 @@ export function SettingsApp({
     }
   };
 
+  const runMilestoneAction = (id: MilestoneId): void => {
+    setMilestonesOpen(false);
+    const destination = milestoneDestination(id);
+    if (destination === "settings-university" || destination === "settings-ai") {
+      setActiveCategory(
+        destination === "settings-university" ? "university" : "ai",
+      );
+      return;
+    }
+
+    if (embedded) onClose?.();
+    else window.close();
+    if (destination === "course") {
+      window.dispatchEvent(new CustomEvent(ADD_COURSE_SHORTCUT_EVENT));
+    } else if (destination === "materials") {
+      const ui = useUiStore.getState();
+      if (!ui.rightRailOpen) ui.toggleRightRail();
+      window.requestAnimationFrame(() => {
+        window.dispatchEvent(new CustomEvent(IMPORT_MATERIALS_SHORTCUT_EVENT));
+      });
+    } else if (destination === "tour") {
+      void useTourStore.getState().start();
+    } else if (destination === "pip") {
+      document
+        .querySelector<HTMLButtonElement>(".file-video__pip:not(:disabled)")
+        ?.click();
+    } else {
+      window.dispatchEvent(
+        new CustomEvent(HELP_FOCUS_TARGET_EVENT, {
+          detail: { target: destination },
+        }),
+      );
+    }
+  };
+
   const panel = {
     account: <AccountPanel />,
-    general: (
-      <>
-        <GeneralPanel settings={settings} />
-        <BrowsingDataPanel settings={settings} />
-      </>
-    ),
+    general: <GeneralPanel settings={settings} />,
     appearance: (
       <AppearancePanel
         theme={appearance.theme}
@@ -454,6 +455,7 @@ export function SettingsApp({
         editorFont={appearance.editorFont}
         density={appearance.density}
         orbCharm={settings?.orbCharm ?? DEFAULT_ORB_CHARM}
+        charmsEnabled={settings?.experimental.orbCharms ?? true}
         saving={themeSaving}
         error={themeErrorKey === null ? null : t(themeErrorKey)}
         onSelect={handleThemeSelect}
@@ -467,29 +469,29 @@ export function SettingsApp({
     mcp: <McpServersPanel />,
     packs: <PluginsCategoryPanel />,
     ai: (
-      <>
-        <AiPanel
-          settings={settings}
-          provider={settings?.agentProvider ?? "claude-code"}
-          providerReady={settings !== null}
-          providerSaving={agentProviderSaving}
-          providerFeedback={
-            agentProviderFeedbackKey === null
-              ? null
-              : t(agentProviderFeedbackKey)
-          }
-          providerFeedbackError={
-            agentProviderFeedbackKey === "settings.ai.engine.saveFailed"
-          }
-          availability={availability}
-          loading={availabilityLoading}
-          error={availabilityError}
-          onProviderSelect={handleAgentProviderSelect}
-          onRetry={loadAvailability}
-        />
-        <AgentAccessPanel />
-      </>
+      <AiPanel
+        settings={settings}
+        provider={settings?.agentProvider ?? "claude-code"}
+        providerReady={settings !== null}
+        providerSaving={agentProviderSaving}
+        providerFeedback={
+          agentProviderFeedbackKey === null ? null : t(agentProviderFeedbackKey)
+        }
+        providerFeedbackError={
+          agentProviderFeedbackKey === "settings.ai.engine.saveFailed"
+        }
+        availability={availability}
+        loading={availabilityLoading}
+        error={availabilityError}
+        onProviderSelect={handleAgentProviderSelect}
+        onRetry={loadAvailability}
+      />
     ),
+    browser: <BrowserSettingsPanel settings={settings} />,
+    notifications: <NotificationsPanel settings={settings} />,
+    shortcuts: <ShortcutsPanel settings={settings} />,
+    advanced: <AdvancedPanel settings={settings} />,
+    experimental: <ExperimentalPanel settings={settings} />,
     university: <UniversitySettingsPanel />,
     courses: (
       <CoursesPanel
@@ -504,12 +506,18 @@ export function SettingsApp({
       />
     ),
     about: <AboutPanel />,
-  } satisfies Record<CategoryId, ReactNode>;
-
-  const groups: readonly CategoryGroup[] = ["settings", "workspace", "info"];
+  } satisfies Record<SettingsCategoryId, ReactNode>;
 
   return (
-    <div className={`settings-app${embedded ? " settings-app--embedded" : ""}`}>
+    <div
+      className={`settings-app${embedded ? " settings-app--embedded" : ""}`}
+      onKeyDown={(event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+          event.preventDefault();
+          searchInputRef.current?.focus();
+        }
+      }}
+    >
       {!embedded && (
         <header className="settings-titlebar titlebar-drag">
           <div className="settings-titlebar__brand">
@@ -546,6 +554,7 @@ export function SettingsApp({
             </span>
             <Icon name="search" size={16} />
             <input
+              ref={searchInputRef}
               type="search"
               value={query}
               placeholder={t("settings.search.placeholder")}
@@ -554,10 +563,41 @@ export function SettingsApp({
                 if (event.key === "Escape") setQuery("");
               }}
             />
+            {query.length === 0 && (
+              <span className="settings-search__kbd" aria-hidden="true">
+                <kbd>{window.bandal?.platform === "darwin" ? "⌘" : "Ctrl"}</kbd>
+                <kbd>F</kbd>
+              </span>
+            )}
           </label>
 
+          <button
+            type="button"
+            className="settings-checklist"
+            onClick={() => {
+              setMilestonesOpen(true);
+              void refreshMilestones(selectedCourseId);
+            }}
+          >
+            <Icon name="checklist" />
+            <span>{t("settings.checklist.label")}</span>
+            <span className="settings-checklist__status">
+              {milestoneProgress >= 100 ? (
+                <span role="img" aria-label={t("settings.checklist.complete")}>
+                  <Icon name="check" />
+                </span>
+              ) : (
+                <ProgressRing
+                  compact
+                  progress={milestoneProgress}
+                  label={t("help.milestones.progress")}
+                />
+              )}
+            </span>
+          </button>
+
           <nav className="settings-nav">
-            {groups.map((group) => {
+            {SETTINGS_GROUPS.map((group) => {
               const groupCategories = filteredCategories.filter(
                 (category) => category.group === group,
               );
@@ -567,30 +607,35 @@ export function SettingsApp({
                   <span className="settings-nav__group-label">
                     {t(`settings.group.${group}`)}
                   </span>
-                  {groupCategories.map((category) => (
-                    <button
-                      key={category.id}
-                      type="button"
-                      className={`settings-nav__item${
-                        activeCategory === category.id
-                          ? " settings-nav__item--active"
-                          : ""
-                      }`}
-                      aria-current={
-                        activeCategory === category.id ? "page" : undefined
-                      }
-                      onClick={() => setActiveCategory(category.id)}
-                    >
-                      <Icon
-                        name={
-                          category.id === "mcp" || category.id === "packs"
-                            ? "sparkles"
-                            : category.id
+                  {groupCategories.map((category) => {
+                    const matches = matchesByCategory.get(category.id) ?? [];
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                        data-category={category.id}
+                        className={`settings-nav__item${
+                          activeCategory === category.id
+                            ? " settings-nav__item--active"
+                            : ""
+                        }`}
+                        aria-current={
+                          activeCategory === category.id ? "page" : undefined
                         }
-                      />
-                      <span>{category.label}</span>
-                    </button>
-                  ))}
+                        onClick={() => setActiveCategory(category.id)}
+                      >
+                        <Icon name={category.id} />
+                        <span className="settings-nav__copy">
+                          <span>{category.label}</span>
+                          {query.trim().length > 0 && matches.length > 0 && (
+                            <span className="settings-nav__hits">
+                              {matches.slice(0, 3).join(" · ")}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               );
             })}
@@ -623,6 +668,12 @@ export function SettingsApp({
           </div>
         </main>
       </div>
+      <MilestonesOverlay
+        open={milestonesOpen}
+        selectedCourseId={selectedCourseId}
+        onClose={() => setMilestonesOpen(false)}
+        onTry={runMilestoneAction}
+      />
       <ToastHost />
     </div>
   );

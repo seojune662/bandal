@@ -31,6 +31,7 @@ export type BrowserScrollInput =
 export interface BrowserToolsDeps {
   courseId: string
   getRunId: () => string
+  getAgentUse?: () => boolean
   grants: GrantsRepo
   audit: AuditRepo
   seen: SeenRepo
@@ -335,7 +336,7 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       ? { status: 'ok' as const }
       : { status: 'error' as const, message: '탭 동작을 실행하지 못했어요.' }
   }
-  return {
+  const tools = {
     lms_course_page(courseId: string): LmsCoursePageResult {
       const target = targetFor(courseId)
       if (target === null) return { url: null, platform: null }
@@ -786,4 +787,14 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       return { status: 'ok', kind, items, firstRun: false }
     }
   }
+  return new Proxy(tools, {
+    get(target, key) {
+      const value: unknown = Reflect.get(target, key)
+      if (typeof key !== 'string' || !key.startsWith('browser_')) return value
+      if (typeof value !== 'function') return value
+      return (...args: unknown[]) => deps.getAgentUse?.() === false
+        ? { status: 'error', message: '브라우저 에이전트 사용이 설정에서 꺼져 있어요' }
+        : Reflect.apply(value, target, args)
+    }
+  })
 }

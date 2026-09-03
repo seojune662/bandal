@@ -1,0 +1,9 @@
+.settings-browser__dimmed {
+  opacity: 0.5;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.settings-browser__segmented {
+  flex: 0 0 auto;
+  margin: 0;
+}

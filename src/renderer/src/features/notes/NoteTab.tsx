@@ -23,6 +23,7 @@ import {
   type MouseEvent as ReactMouseEvent
 } from 'react'
 import type { NoteContent, NoteRef } from '../../../../shared/types/note'
+import { openHttpLink } from '../../app/openHttpLink'
 import { showToast } from '../../app/toast'
 import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
@@ -181,12 +182,10 @@ function handleNoteLinkClick(
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return
     event.preventDefault()
-    useWorkspaceStore.getState().openTab(
-      descriptorFor('browser', {
-        tabId: crypto.randomUUID(),
-        initialUrl: url.toString()
-      })
-    )
+    openHttpLink(url.toString(), {
+      shift: event.shiftKey,
+      mod: window.bandal?.platform === 'darwin' ? event.metaKey : event.ctrlKey
+    })
     return
   }
   event.preventDefault()

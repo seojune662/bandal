@@ -568,9 +568,11 @@ export function attachGuestInput(
   // [M6-A] ⌘T/⌘W keep working while the guest has keyboard focus: intercept
   // them before the guest page sees the chord and replay them in the host.
   guest.on('before-input-event', (event, input) => {
+    const settings = getSettings()
     const action = passthroughShortcut(
       input,
-      resolveKeymap(getSettings().keybindings)
+      resolveKeymap(settings.keybindings),
+      settings.shortcutPriority
     )
     if (action !== null && !host.isDestroyed()) {
       event.preventDefault()

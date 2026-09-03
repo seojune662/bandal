@@ -3,6 +3,7 @@
  * applies it on <html>, and owns the two shell rail visibility flags.
  */
 
+import type { SettingsCategoryId } from '../../../shared/settingsCategories'
 import { create } from 'zustand'
 import { applyAppearanceKnobs, pickAppearance } from '../../../shared/appearance'
 import type { AppearanceSettings } from '../../../shared/appearance'
@@ -28,6 +29,8 @@ interface UiState {
   isLinkGraphOpen: boolean
   /** Full-window in-app settings overlay (replaces the settings window). */
   isSettingsOpen: boolean
+  /** Category the overlay should open on; null = whatever it showed last. */
+  settingsCategory: SettingsCategoryId | null
   /** Load persisted settings and subscribe to changes. Call once at boot. */
   initTheme: () => Promise<void>
   /** Persist a new preference (round-trips through main). */
@@ -42,7 +45,7 @@ interface UiState {
   closeBoardOverlay: () => void
   toggleLinkGraph: () => void
   closeLinkGraph: () => void
-  openSettings: () => void
+  openSettings: (category?: SettingsCategoryId) => void
   closeSettings: () => void
 }
 
@@ -86,10 +89,12 @@ export const useUiStore = create<UiState>()((set, get) => ({
   isBoardOverlayOpen: false,
   isLinkGraphOpen: false,
   isSettingsOpen: false,
+  settingsCategory: null,
   toggleLinkGraph: () =>
     set((state) => ({ isLinkGraphOpen: !state.isLinkGraphOpen })),
   closeLinkGraph: () => set({ isLinkGraphOpen: false }),
-  openSettings: () => set({ isSettingsOpen: true }),
+  openSettings: (category) =>
+    set({ isSettingsOpen: true, settingsCategory: category ?? null }),
   closeSettings: () => set({ isSettingsOpen: false }),
 
   initTheme: async () => {

@@ -198,3 +198,71 @@ describe('sanitizeSettings — keybindings and milestones', () => {
     ).toEqual({ pipUsedAt: null })
   })
 })
+
+describe('sanitizeSettings — v0.37 notifications / browser / shortcutPriority / experimental', () => {
+  test('missing blocks take the defaults', () => {
+    const result = sanitizeSettings({}, defaults)
+    expect(result.notifications).toEqual(DEFAULT_SETTINGS.notifications)
+    expect(result.browser).toEqual(DEFAULT_SETTINGS.browser)
+    expect(result.shortcutPriority).toBe('bandal')
+    expect(result.experimental).toEqual(DEFAULT_SETTINGS.experimental)
+  })
+
+  test('deadline lead days are deduped, filtered to 1/3/7 and sorted descending', () => {
+    const result = sanitizeSettings(
+      { notifications: { deadlineLeadDays: [1, 7, 2, 'x', 7, 1] } },
+      defaults
+    )
+    expect(result.notifications.deadlineLeadDays).toEqual([7, 1])
+  })
+
+  test('sent ledger keeps only <taskId>:<lead> → ISO entries', () => {
+    const result = sanitizeSettings(
+      {
+        notifications: {
+          sent: {
+            'task-1:3': '2026-09-04T00:00:00.000Z',
+            'task-1:5': '2026-09-04T00:00:00.000Z',
+            'task-2:1': 'not-a-date',
+            'no-colon': '2026-09-04T00:00:00.000Z'
+          }
+        }
+      },
+      defaults
+    )
+    expect(Object.keys(result.notifications.sent)).toEqual(['task-1:3'])
+  })
+
+  test('home page accepts absolute http(s) only and falls back to the new-tab page', () => {
+    expect(sanitizeSettings({ browser: { homePage: 'https://example.com/a' } }, defaults).browser.homePage)
+      .toBe('https://example.com/a')
+    expect(sanitizeSettings({ browser: { homePage: 'javascript:alert(1)' } }, defaults).browser.homePage)
+      .toBe('')
+    expect(sanitizeSettings({ browser: { homePage: 'example.com' } }, defaults).browser.homePage)
+      .toBe('')
+  })
+
+  test('default zoom must be one of the shared zoom stops', () => {
+    expect(sanitizeSettings({ browser: { defaultZoomLevel: 1.22 } }, defaults).browser.defaultZoomLevel).toBe(1.22)
+    expect(sanitizeSettings({ browser: { defaultZoomLevel: 1.3 } }, defaults).browser.defaultZoomLevel).toBe(0)
+  })
+
+  test('link routing and shortcut priority reject unknown values', () => {
+    const result = sanitizeSettings(
+      { browser: { linkRouting: 'popup' }, shortcutPriority: 'page' },
+      defaults
+    )
+    expect(result.browser.linkRouting).toBe('in-app')
+    expect(result.shortcutPriority).toBe('bandal')
+    expect(sanitizeSettings({ shortcutPriority: 'site' }, defaults).shortcutPriority).toBe('site')
+  })
+
+  test('experimental drops graduated flags and fills missing ones', () => {
+    const result = sanitizeSettings(
+      { experimental: { extensionRuntime: false, retiredFlag: true } },
+      defaults
+    )
+    expect(result.experimental).toEqual({ extensionRuntime: false, orbCharms: true })
+    expect('retiredFlag' in result.experimental).toBe(false)
+  })
+})

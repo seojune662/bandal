@@ -121,6 +121,19 @@ describe('download handler', () => {
     expect(last?.courseId).toBe('course-1')
   })
 
+  test('calls the completion hook after reporting success', () => {
+    const onCompleted = vi.fn(() => {
+      expect(updates.at(-1)?.state).toBe('completed')
+    })
+    const item = new FakeItem('3주차.pdf')
+    handler({ onCompleted })(item as never, 7)
+    item.writeBytes()
+
+    item.fire('done', 'completed')
+
+    expect(onCompleted).toHaveBeenCalledWith('3주차.pdf')
+  })
+
   test('cleans up staging whatever the outcome', () => {
     const item = new FakeItem('x.pdf')
     handler()(item as never, 1)

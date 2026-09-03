@@ -83,6 +83,23 @@ export function setSettings(patch: SettingsPatch): Settings {
   return next
 }
 
+/** Resets preferences while retaining setup, data-location, and progress state. */
+export function resetSettings(
+  write: (patch: SettingsPatch) => Settings = setSettings
+): Settings {
+  const current = getSettings()
+  return write({
+    ...DEFAULT_SETTINGS,
+    dataRoot: current.dataRoot,
+    locale: current.locale,
+    onboarding: current.onboarding,
+    tutorial: current.tutorial,
+    university: current.university,
+    milestones: current.milestones,
+    lastActiveCourseId: current.lastActiveCourseId
+  })
+}
+
 function broadcastSettings(settings: Settings): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) {
