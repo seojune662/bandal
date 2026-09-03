@@ -600,6 +600,22 @@ describe('materialsRepo', () => {
       expect(readFileSync(join(courseFolder, 'capture.png'), 'utf8')).toBe('original')
     })
 
+    test('optionally creates an app-managed destination directory', () => {
+      expect(
+        repo.writeFile({
+          courseId,
+          dirRelPath: 'images',
+          createDirIfMissing: true,
+          fileName: 'clipboard.png',
+          encoding: 'base64',
+          data: Buffer.from('image-bytes').toString('base64')
+        })
+      ).toEqual({ relPath: 'images/clipboard.png' })
+      expect(readFileSync(join(courseFolder, 'images', 'clipboard.png')).toString()).toBe(
+        'image-bytes'
+      )
+    })
+
     test('rejects traversal and non-basename file names before writing', () => {
       expect(() =>
         repo.writeFile({

@@ -4,7 +4,7 @@ import type {
   Drawing,
   UpdateDrawingInput
 } from '../../../../../shared/types/drawing'
-import { invoke } from '../../../lib/ipc'
+import { invoke, onPush } from '../../../lib/ipc'
 import {
   drawingFileKey,
   usePdfToolStore,
@@ -66,6 +66,7 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
   const [historyBusy, setHistoryBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const drawingsRef = useRef<Drawing[]>([])
+  const loadGenerationRef = useRef(0)
 
   const canUndo = usePdfToolStore((state) =>
     (state.histories[fileKey]?.undo.length ?? 0) > 0
@@ -80,29 +81,39 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
     setDrawings(sorted)
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    drawingsRef.current = []
-    setDrawings([])
-    setLoading(true)
-    invoke('drawings:listForFile', { courseId, relPath })
+  const load = useCallback((initial: boolean): void => {
+    const generation = ++loadGenerationRef.current
+    if (initial) {
+      drawingsRef.current = []
+      setDrawings([])
+      setLoading(true)
+    }
+    void invoke('drawings:listForFile', { courseId, relPath })
       .then((list) => {
-        if (!cancelled) {
+        if (loadGenerationRef.current === generation) {
           replace(list)
           setError(null)
           setLoading(false)
         }
       })
       .catch((cause: unknown) => {
-        if (!cancelled) {
+        if (loadGenerationRef.current === generation) {
           setError(errorMessage(cause))
           setLoading(false)
         }
       })
-    return () => {
-      cancelled = true
-    }
   }, [courseId, relPath, replace])
+
+  useEffect(() => {
+    load(true)
+    return () => {
+      loadGenerationRef.current += 1
+    }
+  }, [load])
+
+  useEffect(() => onPush('materials:changed', ({ courseId: changedCourseId }) => {
+    if (changedCourseId === courseId) load(false)
+  }), [courseId, load])
 
   const createInternal = useCallback(async (
     input: CreateDrawingInput,

@@ -45,6 +45,8 @@ import {
 import { imageDataUrl } from '../image/imageSource'
 import { pdfClipLabel, writeBandalClipDragData } from './clipTransfer'
 
+const PDF_PASTED_IMAGE_DIRECTORY = 'images'
+
 export interface PdfPageViewProps {
   pageNumber: number
   /** Rendered CSS width of the page in px. */
@@ -264,7 +266,8 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
         const base64 = await fileToBase64(file)
         const result = await invoke('materials:writeFile', {
           courseId,
-          dirRelPath: '',
+          dirRelPath: PDF_PASTED_IMAGE_DIRECTORY,
+          createDirIfMissing: true,
           fileName: pastedImageFileName(file, timestamp),
           encoding: 'base64',
           data: base64
