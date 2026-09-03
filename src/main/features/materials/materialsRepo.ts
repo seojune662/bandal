@@ -43,6 +43,7 @@ export interface MaterialsRepo {
   writeFile(input: {
     courseId: string
     dirRelPath: string
+    createDirIfMissing?: boolean
     fileName: string
     encoding: 'utf8' | 'base64'
     data: string
@@ -728,7 +729,16 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       if (typeof input.dirRelPath !== 'string') {
         throw new ValidationError('dirRelPath must be a string')
       }
+      if (
+        input.createDirIfMissing !== undefined &&
+        typeof input.createDirIfMissing !== 'boolean'
+      ) {
+        throw new ValidationError('createDirIfMissing must be a boolean')
+      }
       const parentAbs = resolveCoursePath(folder, input.dirRelPath, true)
+      if (!existsSync(parentAbs) && input.createDirIfMissing === true) {
+        mkdirSync(parentAbs, { recursive: true })
+      }
       if (!existsSync(parentAbs) || !lstatSync(parentAbs).isDirectory()) {
         throw new NotFoundError('material directory', input.dirRelPath)
       }

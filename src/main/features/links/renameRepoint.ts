@@ -68,6 +68,11 @@ interface RelPathRow {
   rel_path: string
 }
 
+interface DrawingDataRow {
+  id: string
+  data_json: string
+}
+
 interface JsonRecord {
   [key: string]: unknown
 }
@@ -389,6 +394,52 @@ function updateRelPathTables(
   }
 }
 
+/**
+ * Images placed on PDFs keep their course-relative material path inside
+ * pdf_drawings.data_json. Updating only pdf_drawings.rel_path retargets the
+ * PDF that owns the drawing, but leaves the image source pointing at the old
+ * filename. Rewrite that nested reference in the same transaction as every
+ * other rename repair so reopening (or refreshing) the PDF cannot lose it.
+ */
+function rewritePdfDrawingImageSources(
+  db: Database,
+  courseId: string,
+  fromRelPath: string,
+  toRelPath: string,
+  isDirectory: boolean
+): number {
+  if (!tableExists(db, 'pdf_drawings')) return 0
+  const rows = db
+    .prepare(
+      `SELECT id, data_json
+         FROM pdf_drawings
+        WHERE course_id = ? AND kind = 'image'`
+    )
+    .all(courseId) as DrawingDataRow[]
+  const update = db.prepare(
+    'UPDATE pdf_drawings SET data_json = ?, updated_at = ? WHERE id = ?'
+  )
+  let count = 0
+  for (const row of rows) {
+    try {
+      const data: unknown = JSON.parse(row.data_json)
+      if (!isRecord(data)) throw new ValidationError('data_json must be an object')
+      const image = data['image']
+      if (!isRecord(image)) continue
+      const relPath = image['relPath']
+      if (typeof relPath !== 'string' || relPath.length === 0) continue
+      const next = repointedPath(relPath, fromRelPath, toRelPath, isDirectory)
+      if (next === null) continue
+      image['relPath'] = next
+      image['label'] = basenameOf(next)
+      count += update.run(JSON.stringify(data), new Date().toISOString(), row.id).changes
+    } catch (error) {
+      warning('pdf_drawings', row.id, error)
+    }
+  }
+  return count
+}
+
 function rewriteCandidateNotes(
   input: RepointMaterialPathInput,
   candidates: readonly string[]
@@ -469,6 +520,13 @@ export function repointMaterialPath(
       toRelPath,
       input.isDirectory,
       updatedRows
+    )
+    updatedRows.pdf_drawings += rewritePdfDrawingImageSources(
+      input.db,
+      courseId,
+      fromRelPath,
+      toRelPath,
+      input.isDirectory
     )
     updatedRows.favorites = rewriteFavorites(
       input.db,

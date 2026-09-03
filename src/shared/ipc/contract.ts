@@ -393,6 +393,8 @@ export interface IpcContract {
     req: {
       courseId: string
       dirRelPath: string
+      /** Creates dirRelPath when absent; intended for app-managed buckets. */
+      createDirIfMissing?: boolean
       fileName: string
       encoding: 'utf8' | 'base64'
       data: string

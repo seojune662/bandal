@@ -122,6 +122,15 @@ describe('rename path repointing', () => {
       .get(COURSE_ID) as { rel_path: string }).rel_path
   }
 
+  function drawingImageSource(id: string): { relPath: string; label: string } {
+    const row = ctx.db
+      .prepare('SELECT data_json FROM pdf_drawings WHERE id = ?')
+      .get(id) as { data_json: string }
+    return (JSON.parse(row.data_json) as {
+      image: { relPath: string; label: string }
+    }).image
+  }
+
   function favoriteJson(id: string): string {
     return (ctx.db
       .prepare('SELECT descriptor_json FROM favorites WHERE id = ?')
@@ -230,6 +239,46 @@ describe('rename path repointing', () => {
     expect(index.forMaterial(COURSE_ID, 'archive/unit%_/self.md').notes[0]?.ref).toBe(
       'archive/unit%_/self.md'
     )
+  })
+
+  test('renaming a placed image keeps the PDF drawing source alive', () => {
+    writeFileSync(join(courseFolder, 'lecture.pdf'), 'pdf')
+    writeFileSync(join(courseFolder, 'diagram.jpg'), 'image')
+    ctx.db.prepare(
+      `INSERT INTO pdf_drawings
+         (id, course_id, rel_path, page, kind, data_json, style_json,
+          created_at, updated_at)
+       VALUES ('image-drawing', ?, 'lecture.pdf', 1, 'image', ?, '{}', ?, ?)`
+    ).run(
+      COURSE_ID,
+      JSON.stringify({
+        box: { x: 0.1, y: 0.1, width: 0.3, height: 0.2 },
+        image: { relPath: 'diagram.jpg', label: 'diagram.jpg' }
+      }),
+      NOW,
+      NOW
+    )
+    const materials = createMaterialsRepo({
+      db: ctx.db,
+      getCourseFolder: () => courseFolder,
+      revealItem: () => undefined,
+      trashItem: async () => undefined,
+      onPathChanged: (change) => {
+        repointMaterialPath({ ...change, db: ctx.db, courseFolder })
+      }
+    })
+
+    expect(materials.rename({
+      courseId: COURSE_ID,
+      relPath: 'diagram.jpg',
+      newName: 'system-diagram.jpg'
+    })).toEqual({ relPath: 'system-diagram.jpg' })
+
+    expect(drawingImageSource('image-drawing')).toEqual({
+      relPath: 'system-diagram.jpg',
+      label: 'system-diagram.jpg'
+    })
+    expect(existsSync(join(courseFolder, 'system-diagram.jpg'))).toBe(true)
   })
 
   test('NFC folder matching repairs NFD-prefixed SQL, JSON, and href spellings', () => {
