@@ -232,3 +232,36 @@ export function tabsFromLayout(layout: unknown): Record<string, TabDescriptor> {
   }
   return tabs
 }
+
+/**
+ * Remove private browser panels before a layout crosses the renderer/process
+ * boundary. The live layout remains untouched, so private tabs can return
+ * when the student switches back to a course during the same app run.
+ */
+export function persistentLayout(layout: unknown): unknown {
+  if (!isRecord(layout) || !isRecord(layout['panels']) || !isRecord(layout['grid'])) {
+    return layout
+  }
+  const panels: Record<string, unknown> = {}
+  const keep = new Set<string>()
+  for (const [panelId, state] of Object.entries(layout['panels'])) {
+    const params = isRecord(state) ? state['params'] : undefined
+    const descriptor = isRecord(params) ? params['descriptor'] : undefined
+    if (
+      isTabDescriptor(descriptor) &&
+      descriptor.kind === 'browser' &&
+      descriptor.payload.isPrivate === true
+    ) {
+      continue
+    }
+    panels[panelId] = state
+    keep.add(panelId)
+  }
+  const root = pruneNode(layout['grid']['root'], keep)
+  if (root === null) return {}
+  return {
+    ...layout,
+    grid: { ...layout['grid'], root },
+    panels
+  }
+}

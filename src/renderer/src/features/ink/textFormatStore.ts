@@ -52,6 +52,8 @@ export interface TextFormatTarget {
   style: DrawingStyle
   /** Draft → local draft style; committed shape → `onUpdate(id, { style })`. */
   apply: (patch: TextStylePatch) => void
+  /** Editing only: applies character-level fields to the current selection. */
+  applyInline?: (patch: TextStylePatch) => void
 }
 
 export interface TextFormatStore {

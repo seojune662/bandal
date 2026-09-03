@@ -19,11 +19,15 @@
    시각적으로 잘리는 것은 없다. */
 .ink-layer__textbox-object {
   overflow: hidden;
+  /* foreignObject itself has no SVG paint, so `auto`/visiblePainted lets a
+     click fall through to the PDF text layer when its display child is inert. */
+  pointer-events: all;
 }
 
-/* 표시용 텍스트는 클릭을 받지 않는다 — 히트는 foreignObject 박스가 담당. */
+/* 표시용 텍스트도 박스의 히트 영역이다. foreignObject 는 스스로 칠해진
+   도형이 아니라서 자식까지 투과시키면 클릭이 뒤의 PDF 글자로 빠진다. */
 div.ink-layer__textbox {
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .ink-layer__textbox[data-color] {
@@ -107,6 +111,54 @@ textarea.ink-layer__textbox {
   outline: none;
   resize: none;
   user-select: text;
+}
+
+.ink-layer__textbox-editor {
+  min-width: 0;
+  cursor: text;
+  user-select: text;
+}
+
+.ink-layer__textbox-editor-content {
+  min-height: 1.35em;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ink-layer__textbox-editor-content:empty::before,
+.ink-layer__textbox-editor-content:has(> br.ProseMirror-trailingBreak:only-child)::before {
+  color: var(--text-muted);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.ink-layer__textbox-editor-content [data-text-color='ink'] {
+  color: var(--drawing-color-ink);
+}
+
+.ink-layer__textbox-editor-content [data-text-color='red'] {
+  color: var(--drawing-color-red);
+}
+
+.ink-layer__textbox-editor-content [data-text-color='orange'] {
+  color: var(--drawing-color-orange);
+}
+
+.ink-layer__textbox-editor-content [data-text-color='yellow'] {
+  color: var(--drawing-color-yellow);
+}
+
+.ink-layer__textbox-editor-content [data-text-color='green'] {
+  color: var(--drawing-color-green);
+}
+
+.ink-layer__textbox-editor-content [data-text-color='blue'] {
+  color: var(--drawing-color-blue);
+}
+
+.ink-layer__textbox-editor-content [data-text-color='violet'] {
+  color: var(--drawing-color-violet);
 }
 
 textarea.ink-layer__textbox::placeholder {

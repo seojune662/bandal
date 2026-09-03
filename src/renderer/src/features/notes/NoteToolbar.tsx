@@ -31,7 +31,9 @@ import {
 import { callCommand } from '@milkdown/utils'
 import { showToast } from '../../app/toast'
 import { useT } from '../../i18n'
+import { invoke } from '../../lib/ipc'
 import { insertNoteImageFiles } from './noteImagePlugin'
+import { openMaterialLink } from './materialLinkNavigation'
 import type { NoteFormatState } from './noteFormatting'
 import { toggleTaskListItems } from './noteFormatting'
 import {
@@ -82,6 +84,7 @@ function FormatButton({
 
 export interface NoteToolbarProps {
   courseId: string
+  relPath: string
   formatState: NoteFormatState
   fontScale: NoteFontScale
   onFontScaleChange: (scale: NoteFontScale) => void
@@ -89,6 +92,7 @@ export interface NoteToolbarProps {
 
 export function NoteToolbar({
   courseId,
+  relPath,
   formatState,
   fontScale,
   onFontScaleChange
@@ -174,6 +178,37 @@ export function NoteToolbar({
         setLinkOpen(true)
       } else if (action === 'image') {
         imageInputRef.current?.click()
+      } else if (action === 'page') {
+        const slashEditor = editor
+        void (async () => {
+          try {
+            const slash = relPath.lastIndexOf('/')
+            const dirRelPath = slash === -1 ? '' : relPath.slice(0, slash)
+            const created = await invoke('notes:create', {
+              courseId,
+              dirRelPath,
+              title: '새 페이지'
+            })
+            slashEditor.action((context) => {
+              const view = context.get(editorViewCtx)
+              const wikilink = view.state.schema.nodes['wikilink']
+              if (wikilink === undefined) return
+              const fileName = created.relPath.split('/').at(-1) ?? created.relPath
+              const target = fileName.replace(/\.(?:md|markdown)$/iu, '')
+              const node = wikilink.create({
+                target,
+                heading: null,
+                alias: null,
+                embed: false
+              })
+              view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView())
+            })
+            openMaterialLink(courseId, { relPath: created.relPath, page: null })
+          } catch (error) {
+            console.error('[Bandal] 새 페이지를 만들지 못했습니다.', error)
+            showToast('새 페이지를 만들지 못했습니다.', 'danger')
+          }
+        })()
       }
     }
     editor.action((context) => {
@@ -189,7 +224,7 @@ export function NoteToolbar({
         handleSlashAction
       )
     }
-  }, [getEditor, loading])
+  }, [courseId, getEditor, loading, relPath])
 
   const toggleTaskList = (): void => {
     run(

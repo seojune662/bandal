@@ -5,6 +5,7 @@ import {
   tabPanelId
 } from '../../../src/renderer/src/features/workspace/tabIdentity'
 import {
+  persistentLayout,
   structuralKey,
   tabsFromLayout,
   validateLayout
@@ -296,5 +297,49 @@ describe('tabsFromLayout', () => {
 
     expect(tabsFromLayout(doc)).toEqual({ [idA]: pdfA, [idNote]: note })
     expect(tabsFromLayout(null)).toEqual({})
+  })
+})
+
+describe('persistentLayout', () => {
+  const normalBrowser = descriptorFor('browser', {
+    tabId: 'normal-browser',
+    initialUrl: 'https://bandal.io'
+  })
+  const privateBrowser = descriptorFor('browser', {
+    tabId: 'private-browser',
+    initialUrl: 'https://accounts.google.com',
+    isPrivate: true
+  })
+  const normalId = tabPanelId(normalBrowser)
+  const privateId = tabPanelId(privateBrowser)
+
+  test('removes only private browser panels and repairs the active view', () => {
+    const doc = layoutDoc(
+      leaf('g1', [normalId, privateId], privateId),
+      {
+        [normalId]: panelState(normalBrowser),
+        [privateId]: panelState(privateBrowser)
+      },
+      'g1'
+    )
+
+    const persisted = persistentLayout(doc) as ReturnType<typeof layoutDoc>
+    const panels = persisted['panels'] as Record<string, unknown>
+    const root = (persisted['grid'] as {
+      root: { data: { views: string[]; activeView?: string } }
+    }).root
+
+    expect(Object.keys(panels)).toEqual([normalId])
+    expect(root.data.views).toEqual([normalId])
+    expect(root.data.activeView).toBe(normalId)
+    expect((doc['panels'] as Record<string, unknown>)[privateId]).toBeDefined()
+  })
+
+  test('persists an empty workspace when every open tab is private', () => {
+    const doc = layoutDoc(leaf('g1', [privateId], privateId), {
+      [privateId]: panelState(privateBrowser)
+    })
+
+    expect(persistentLayout(doc)).toEqual({})
   })
 })

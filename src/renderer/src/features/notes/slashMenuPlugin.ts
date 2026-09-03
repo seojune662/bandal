@@ -24,6 +24,7 @@ export type SlashMenuCommand =
   | 'task-list'
   | 'blockquote'
   | 'callout'
+  | 'page'
   | 'link'
   | 'image'
   | 'code-block'
@@ -38,6 +39,7 @@ export interface SlashMenuItem {
 }
 
 export type NoteSlashToolbarAction = 'link' | 'image'
+  | 'page'
 
 export const NOTE_SLASH_TOOLBAR_ACTION_EVENT =
   'bandal:note-slash-toolbar-action'
@@ -90,6 +92,12 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     label: '콜아웃',
     description: '접을 수 있는 강조 메모',
     keywords: ['callout', 'admonition', 'note', 'tip', 'warning', '콜아웃', '메모']
+  },
+  {
+    command: 'page',
+    label: '새 페이지',
+    description: '이 노트 안에 하위 페이지 만들기',
+    keywords: ['page', 'new', 'note', '페이지', '노트']
   },
   {
     command: 'link',
@@ -391,6 +399,7 @@ function runSlashCommand(
       return callCommand(wrapInCalloutCommand.key, 'note')(context)
     case 'link':
     case 'image':
+    case 'page':
       view.dom.dispatchEvent(
         new CustomEvent<NoteSlashToolbarAction>(
           NOTE_SLASH_TOOLBAR_ACTION_EVENT,

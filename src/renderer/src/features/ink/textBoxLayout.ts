@@ -54,12 +54,14 @@ export function textBoxAtClick(
   aspect: number,
   baseWidthPx: number,
   fontScale: number | undefined,
-  clampToBounds: boolean
+  clampToBounds: boolean,
+  fontSizePt?: number,
+  surfaceWidthPt = 595.28
 ): DrawingBox {
   const size = defaultTextBoxSize(aspect)
   const safeAspect = finitePositive(aspect) ? aspect : 1
   const safeWidthPx = finitePositive(baseWidthPx) ? baseWidthPx : 1
-  const fontPx = textBoxFontPx(safeWidthPx, fontScale)
+  const fontPx = textBoxFontPx(safeWidthPx, fontScale, fontSizePt, surfaceWidthPt)
   const insetPx = fontPx * (TEXT_BOX_PADDING_EM + TEXT_BOX_BORDER_EM)
   const rawX = point.x - insetPx / safeWidthPx
   const rawY = point.y -
@@ -125,4 +127,21 @@ export function grownTextBoxHeight(
   const neededHeight = scrollHeightPx / (baseWidthPx * aspect)
   if (neededHeight <= box.height) return null
   return Math.min(neededHeight, Math.max(0, 1 - box.y))
+}
+
+/** Exact content-fit height. Unlike the legacy grow-only helper this shrinks. */
+export function fittedTextBoxHeight(
+  scrollHeightPx: number,
+  box: DrawingBox,
+  baseWidthPx: number,
+  aspect: number
+): number | null {
+  if (!finitePositive(scrollHeightPx) || !finitePositive(baseWidthPx) || !finitePositive(aspect)) {
+    return null
+  }
+  const needed = Math.min(
+    scrollHeightPx / (baseWidthPx * aspect),
+    Math.max(0, 1 - box.y)
+  )
+  return Math.abs(needed - box.height) < 0.0001 ? null : needed
 }

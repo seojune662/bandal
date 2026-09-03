@@ -284,13 +284,13 @@ describe('isSameSiteAcademicPopup (SSO exception)', () => {
     }
   })
 
-  test('never allows embedded Google auth as a popup', () => {
+  test('recognises same-site Google auth so an app-owned SSO window can keep opener', () => {
     expect(
       isSameSiteAcademicPopup(
         'https://accounts.google.com/x',
         'https://accounts.google.com/signin'
       )
-    ).toBe(false)
+    ).toBe(true)
   })
 })
 
@@ -360,9 +360,10 @@ describe('decidePopup', () => {
     })
   })
 
-  test('embedded-blocked auth goes to the system browser', () => {
+  test('Google auth is tried in an app-owned SSO window first', () => {
     expect(decide('https://accounts.google.com/v3/signin')).toEqual({
-      kind: 'external'
+      kind: 'window',
+      scope: 'sso'
     })
   })
 

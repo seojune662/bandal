@@ -19,6 +19,7 @@ import { createPortal } from 'react-dom'
 import { invoke } from '../../lib/ipc'
 import { showToast } from '../../app/toast'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
+import { useBrowserGuests } from './browserGuestsStore'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { guestActions } from './guestActions'
 import { openDiagnostics } from './diagnosticsBridge'
@@ -160,9 +161,16 @@ export function BrowserContextMenu({
   }, [])
 
   const openTab = (url: string): void => {
+    const isPrivate = useBrowserGuests.getState().liveGuests.some(
+      (guest) => guest.tabId === tabId && guest.isPrivate
+    )
     useWorkspaceStore
       .getState()
-      .openTab(descriptorFor('browser', { tabId: uuidv4(), initialUrl: url }))
+      .openTab(descriptorFor('browser', {
+        tabId: uuidv4(),
+        initialUrl: url,
+        ...(isPrivate ? { isPrivate: true } : {})
+      }))
   }
 
   const trimmed = state.selectionText.trim().slice(0, 40)

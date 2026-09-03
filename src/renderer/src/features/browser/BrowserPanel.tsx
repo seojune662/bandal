@@ -20,6 +20,7 @@ import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
 import { Tooltip } from '../../components/Tooltip'
 import { useT } from '../../i18n'
+import { invoke } from '../../lib/ipc'
 import { favoriteScopeKey, useFavoritesStore } from '../../stores/favoritesStore'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
@@ -81,6 +82,8 @@ interface ToolbarProps {
   tabId: string
   nav: BrowserNavState
   onNavigate: (url: string) => void
+  isPrivate: boolean
+  onTogglePrivate: () => void
 }
 
 function usePanelVisible(api: IDockviewPanelProps['api']): boolean {
@@ -134,7 +137,8 @@ function BrowserAddressInput({
   value,
   onNavigate,
   focusSeq,
-  favicon
+  favicon,
+  isPrivate
 }: {
   value: string
   onNavigate: (url: string) => void
@@ -142,12 +146,13 @@ function BrowserAddressInput({
   focusSeq: number
   /** data: URL, or undefined to fall back to the generic globe. */
   favicon: string | undefined
+  isPrivate: boolean
 }): JSX.Element {
   const [draft, setDraft] = useState<string | null>(null)
   const [focused, setFocused] = useState(false)
   const [highlighted, setHighlighted] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
-  const suggestions = useAddressSuggestions(draft)
+  const suggestions = useAddressSuggestions(draft, !isPrivate)
 
   useEffect(() => {
     if (focusSeq === 0) return
@@ -421,7 +426,13 @@ export function BrowserLoginPrompt({
   )
 }
 
-function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
+function BrowserToolbar({
+  tabId,
+  nav,
+  onNavigate,
+  isPrivate,
+  onTogglePrivate
+}: ToolbarProps): JSX.Element {
   const video = useWebVideoReport(tabId)
   const login = useBrowserGuests((state) => state.login[tabId])
   const zoomLevel = useBrowserGuests(
@@ -509,9 +520,24 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
           onNavigate={onNavigate}
           focusSeq={addressFocusSeq}
           favicon={favicon}
+          isPrivate={isPrivate}
         />
 
         <div className="browser-toolbar__actions">
+          <Tooltip
+            label={isPrivate ? '시크릿 모드 끄기' : '이 탭을 시크릿 모드로 전환'}
+            placement="bottom"
+          >
+            <button
+              type="button"
+              className="browser-nav-button browser-private-button"
+              aria-label={isPrivate ? '시크릿 모드 끄기' : '시크릿 모드 켜기'}
+              aria-pressed={isPrivate}
+              onClick={onTogglePrivate}
+            >
+              <BrowserIcon name="private" />
+            </button>
+          </Tooltip>
           <BrowserPipChip
             hasPlayingVideo={video?.hasPlayingVideo === true}
             onOpen={() => {
@@ -523,10 +549,12 @@ function BrowserToolbar({ tabId, nav, onNavigate }: ToolbarProps): JSX.Element {
               })
             }}
           />
-          <BrowserFavoriteButton
-            starred={starred !== null}
-            onToggle={() => toggleFavorite(tabId, nav)}
-          />
+          {!isPrivate && (
+            <BrowserFavoriteButton
+              starred={starred !== null}
+              onToggle={() => toggleFavorite(tabId, nav)}
+            />
+          )}
           {(activeDownloads > 0 || anyDownloads) && (
             <Tooltip
               label={
@@ -625,6 +653,8 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   const payload = browserPayloadFromParams(props.params)
   const tabId = payload?.tabId ?? ''
   const initialUrl = payload?.initialUrl ?? ''
+  const initialPrivate = payload?.isPrivate === true
+  const [isPrivate, setPrivate] = useState(initialPrivate)
 
   const anchorRef = useRef<HTMLDivElement>(null)
   useBrowserAnchorRect(tabId, anchorRef)
@@ -636,9 +666,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   )
   const overlay = useBrowserGuests((state) => state.overlay[tabId] ?? null)
   const login = useBrowserGuests((state) => state.login[tabId])
-  const externalAuthNotice = useBrowserGuests(
-    (state) => state.externalAuthNotice
-  )
+  const authFallback = useBrowserGuests((state) => state.authFallback[tabId])
   const navState = nav ?? initialNavState(initialUrl)
   const favorites = useBrowserFavoriteShortcuts()
 
@@ -649,20 +677,39 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
       if (state.liveGuests.some((guest) => guest.tabId === tabId)) {
         guestActions.navigate(tabId, url)
       } else {
-        state.ensureGuest(tabId, url)
+        state.ensureGuest(tabId, url, isPrivate)
       }
       // A fresh address dismisses whatever the last load left on screen.
       state.setOverlay(tabId, null)
     },
-    [tabId]
+    [isPrivate, tabId]
   )
 
   // Every browser tab loads its URL in a guest, including the default new tab.
   useEffect(() => {
     if (tabId !== '') {
-      useBrowserGuests.getState().ensureGuest(tabId, initialUrl)
+      useBrowserGuests.getState().ensureGuest(tabId, initialUrl, isPrivate)
     }
-  }, [tabId, initialUrl])
+  }, [isPrivate, tabId, initialUrl])
+
+  const togglePrivate = useCallback((): void => {
+    if (tabId === '') return
+    const next = !isPrivate
+    const url = navState.url || initialUrl
+    setPrivate(next)
+    props.api.updateParameters({
+      descriptor: {
+        kind: 'browser',
+        payload: {
+          tabId,
+          initialUrl: url,
+          ...(next ? { isPrivate: true } : {})
+        }
+      }
+    })
+    useBrowserGuests.getState().ensureGuest(tabId, url, next)
+    useWorkspaceStore.getState().notifyLayoutChanged()
+  }, [initialUrl, isPrivate, navState.url, props.api, tabId])
 
   // Reflect the page title into the dockview tab.
   const { api } = props
@@ -710,20 +757,35 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
     api.updateParameters({
       descriptor: {
         kind: 'browser',
-        payload: { tabId, initialUrl: navState.url }
+        payload: {
+          tabId,
+          initialUrl: navState.url,
+          ...(isPrivate ? { isPrivate: true } : {})
+        }
       }
     })
     useWorkspaceStore.getState().notifyLayoutChanged()
-  }, [api, initialUrl, navState.url, tabId])
+  }, [api, initialUrl, isPrivate, navState.url, tabId])
 
   if (payload === null) {
     return <div className="workspace-panel" data-kind="unknown" />
   }
 
   return (
-    <div className="browser-panel" data-kind="browser">
-      <BrowserToolbar tabId={tabId} nav={navState} onNavigate={navigate} />
+    <div
+      className="browser-panel"
+      data-kind="browser"
+      data-private={isPrivate ? 'true' : undefined}
+    >
+      <BrowserToolbar
+        tabId={tabId}
+        nav={navState}
+        onNavigate={navigate}
+        isPrivate={isPrivate}
+        onTogglePrivate={togglePrivate}
+      />
       {isPanelVisible &&
+        !isPrivate &&
         login?.savePrompt !== null &&
         login?.savePrompt !== undefined && (
           <BrowserLoginPrompt
@@ -734,23 +796,31 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
           />
         )}
       <BrowserBookmarksBar favorites={favorites} onNavigate={navigate} />
-      {isPanelVisible && externalAuthNotice !== null && (
+      {isPanelVisible && authFallback !== undefined && (
         <div
-          key={externalAuthNotice.id}
           className="browser-external-auth"
           role="status"
           aria-live="polite"
         >
           <BrowserIcon name="globe" />
           <span className="browser-external-auth__message">
-            {t('browser.externalAuth.message')}
+            {t('browser.authFallback.message')}
           </span>
           <button
             type="button"
+            className="browser-login-prompt__action browser-login-prompt__action--primary"
+            onClick={() => {
+              void invoke('shell:openExternal', { url: authFallback })
+            }}
+          >
+            {t('browser.authFallback.action')}
+          </button>
+          <button
+            type="button"
             className="browser-external-auth__dismiss"
-            aria-label={t('browser.externalAuth.dismiss')}
+            aria-label={t('browser.authFallback.dismiss')}
             onClick={() =>
-              useBrowserGuests.getState().dismissExternalAuthNotice()
+              useBrowserGuests.getState().setAuthFallback(tabId, null)
             }
           >
             <Icon name="x" />

@@ -324,6 +324,32 @@ describe('createPdfExporter', () => {
     expect(await pdfText(firstPath)).toContain('굵은 글')
   })
 
+  test('exports inline rich runs with both required faces and searchable text', async () => {
+    const mixed = textbox('mixed', '보통 굵게 다시', { fontSizePt: 14 })
+    mixed.data.textRuns = [{
+      from: 3,
+      to: 5,
+      style: { bold: true, color: 'red', fontSizePt: 24, underline: true }
+    }]
+    const exporter = createPdfExporter({
+      getCourseFolder: () => ctx.dir,
+      listDrawings: () => [mixed],
+      listAnnotations: () => [],
+      resolveFontPath: bundledFont
+    })
+    const outputPath = join(ctx.dir, 'inline-rich.pdf')
+
+    await exporter.exportAnnotated(
+      { courseId: 'course-1', relPath: 'slides/source.pdf' },
+      outputPath
+    )
+
+    const names = await embeddedFontNames(readFileSync(outputPath))
+    expect(hasFace(names, 'NotoSansKR-Regular')).toBe(true)
+    expect(hasFace(names, 'NotoSansKR-Bold')).toBe(true)
+    expect((await pdfText(outputPath)).replace(/\s+/gu, '')).toContain('보통굵게다시')
+  })
+
   test('embeds only the faces that place glyphs, so a bold-only or blank box cannot crash the subsetter', async () => {
     const exporter = createPdfExporter({
       getCourseFolder: () => ctx.dir,

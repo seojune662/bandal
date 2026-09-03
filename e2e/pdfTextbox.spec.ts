@@ -278,15 +278,20 @@ test.describe('pdf textbox', () => {
         return fontBefore
       })
       .toBeGreaterThan(0)
+    const heightBefore = (await boxObject.boundingBox())!.height
     await bar.getByRole('button', { name: '글자 크게' }).click()
     await expect
       .poll(async () => parseFloat(
         await inner.evaluate((element) => getComputedStyle(element).fontSize)
       ))
       .toBeGreaterThan(fontBefore)
+    await expect
+      .poll(async () => (await boxObject.boundingBox())?.height ?? 0)
+      .toBeGreaterThan(heightBefore)
+    await expectSameBounds(boxObject, inner)
   })
 
-  test('clicking the format row while editing keeps the textarea focused', async () => {
+  test('clicking the format row while editing keeps the rich editor focused', async () => {
     const { page } = bandal
     await page.locator('.pdf-tool-rail__button[aria-label="텍스트"]').click()
     const boxObject = page.locator('.ink-layer__textbox-object', {
@@ -304,8 +309,63 @@ test.describe('pdf textbox', () => {
     // 바 클릭이 blur(=확정)를 일으키지 않아 계속 타이핑할 수 있다.
     await expect(textarea).toBeVisible()
     await page.keyboard.type(' more')
-    await expect(textarea).toHaveValue(/more/)
+    await expect(textarea).toContainText('more')
     await page.keyboard.press('Escape')
+  })
+
+  test('formats only the selected text and supports Command plus point sizing', async () => {
+    const { page } = bandal
+    const boxObject = page.locator('.ink-layer__textbox-object', {
+      hasText: 'committed here'
+    })
+    const body = (await boxObject.boundingBox())!
+    await page.mouse.click(body.x + body.width / 2, body.y + body.height / 2)
+
+    const editor = page.locator('.ink-layer__textbox-editor-content')
+    await expect(editor).toBeVisible()
+    await editor.evaluate((element) => {
+      const textNode = element.firstChild
+      if (textNode === null) throw new Error('textbox has no text node')
+      const range = document.createRange()
+      range.setStart(textNode, 0)
+      range.setEnd(textNode, 'committed'.length)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+
+    await page.keyboard.down('Meta')
+    await page.keyboard.press('=')
+    await page.keyboard.up('Meta')
+    const bar = page.locator('.ink-format-row')
+    await bar.getByRole('button', { name: '빨강', exact: true }).click()
+
+    await expect(editor.locator('[data-font-size-pt="16"]')).toHaveText('committed')
+    await expect(editor.locator('[data-text-color="red"]')).toHaveText('committed')
+    await expect(editor).toContainText('committed here')
+    await page.keyboard.press('Meta+Enter')
+
+    await expect.poll(async () => page.evaluate(async () => {
+      const bridge = (window as unknown as {
+        bandal: { invoke: (channel: string, req: unknown) => Promise<unknown> }
+      }).bandal
+      const courses = (await bridge.invoke('courses:list', {})) as Array<{ id: string }>
+      const drawings = (await bridge.invoke('drawings:listForFile', {
+        courseId: courses[0]!.id,
+        relPath: 'slides.pdf'
+      })) as Array<{
+        data: {
+          text?: string
+          textRuns?: Array<{ from: number; to: number; style: Record<string, unknown> }>
+        }
+      }>
+      return drawings.find((drawing) => drawing.data.text === 'committed here')?.data.textRuns
+    })).toEqual([{
+      from: 0,
+      to: 9,
+      style: { color: 'red', fontSizePt: 16 }
+    }])
   })
 
   test('zooming in and back preserves normalized geometry and updatedAt', async () => {
@@ -337,16 +397,32 @@ test.describe('pdf textbox', () => {
       surfaceWidth: number
       surfaceHeight: number
     }> => {
-      const pageBounds = (await surface.boundingBox())!
-      const shapeBounds = (await boxObject.boundingBox())!
-      return {
-        x: (shapeBounds.x - pageBounds.x) / pageBounds.width,
-        y: (shapeBounds.y - pageBounds.y) / pageBounds.height,
-        width: shapeBounds.width / pageBounds.width,
-        height: shapeBounds.height / pageBounds.height,
-        surfaceWidth: pageBounds.width,
-        surfaceHeight: pageBounds.height
-      }
+      let geometry: {
+        x: number
+        y: number
+        width: number
+        height: number
+        surfaceWidth: number
+        surfaceHeight: number
+      } | null = null
+      // Zoom rebuilds the virtualized page. Avoid sampling the one frame in
+      // which the old node is detached and the replacement has not mounted.
+      await expect.poll(async () => {
+        const pageBounds = await surface.boundingBox()
+        const shapeBounds = await boxObject.boundingBox()
+        if (pageBounds === null || shapeBounds === null) return false
+        geometry = {
+          x: (shapeBounds.x - pageBounds.x) / pageBounds.width,
+          y: (shapeBounds.y - pageBounds.y) / pageBounds.height,
+          width: shapeBounds.width / pageBounds.width,
+          height: shapeBounds.height / pageBounds.height,
+          surfaceWidth: pageBounds.width,
+          surfaceHeight: pageBounds.height
+        }
+        return true
+      }).toBe(true)
+      if (geometry === null) throw new Error('textbox geometry did not settle')
+      return geometry
     }
     const readStoredShape = async (): Promise<{
       id: string
@@ -419,7 +495,7 @@ test.describe('pdf textbox', () => {
 
     const textarea = page.locator('.ink-layer__textbox.is-editing')
     await expect(textarea).toBeVisible()
-    await expect(textarea).toHaveValue('zoom invariant')
+    await expect(textarea).toContainText('zoom invariant')
     await page.keyboard.press('Escape')
   })
 
@@ -464,7 +540,7 @@ test.describe('pdf textbox', () => {
     await page.mouse.click(body.x + body.width * 0.7, body.y + body.height * 0.6)
     const textarea = page.locator('.ink-layer__textbox.is-editing')
     await expect(textarea).toBeVisible()
-    await expect(textarea).toHaveValue(/legacy giant/)
+    await expect(textarea).toContainText('legacy giant')
     await page.keyboard.press('Escape')
   })
 })

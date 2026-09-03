@@ -52,7 +52,7 @@ async function renderPdfPage(
       canvas.height = Math.max(1, Math.round(viewport.height))
       const context = canvas.getContext('2d', { alpha: false })
       if (context === null) return null
-      await page.render({ canvasContext: context, viewport }).promise
+      await page.render({ canvas, canvasContext: context, viewport }).promise
       return { canvas }
     } finally {
       await document.destroy()

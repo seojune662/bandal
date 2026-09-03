@@ -175,6 +175,9 @@ describe('note slash menu and zoom contracts', () => {
     expect(filterSlashMenuItems('todo').map((item) => item.command)).toEqual([
       'task-list'
     ])
+    expect(filterSlashMenuItems('page').map((item) => item.command)).toEqual([
+      'page'
+    ])
   })
 
   test('opens only from an empty paragraph and tracks the typed filter', () => {

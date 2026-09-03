@@ -10,7 +10,7 @@
  *    external overlay (webviewPassthrough tokens) are active
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { onPush } from '../../lib/ipc'
 import { showToast } from '../../app/toast'
@@ -24,14 +24,12 @@ import {
   useAgentTabSync,
   useCloseTabRequests
 } from './agentTabSync'
-import { rememberOpenRequest } from './guestActions'
+import { rememberOpenRequest, tabIdForWebContents } from './guestActions'
 import {
   isPointerPassthroughActive,
   onPointerPassthrough
 } from './webviewPassthrough'
 import './browser.css'
-
-const EXTERNAL_AUTH_NOTICE_MS = 6000
 
 /** Release guests whose tab is no longer open (closeTab / course switch). */
 function useGuestReaper(): void {
@@ -66,7 +64,7 @@ function useGuestReaper(): void {
 function useOpenUrlForwarding(): void {
   useEffect(
     () =>
-      onPush('browser:open-url', ({ url, background, requestId }) => {
+      onPush('browser:open-url', ({ url, background, requestId, isPrivate }) => {
         const tabId = uuidv4()
         // Main matched the new tab to the agent's request by URL prefix, which
         // a redirect breaks. Remember which request this tab belongs to so the
@@ -75,7 +73,11 @@ function useOpenUrlForwarding(): void {
         useWorkspaceStore
           .getState()
           .openTab(
-            descriptorFor('browser', { tabId, initialUrl: url }),
+            descriptorFor('browser', {
+              tabId,
+              initialUrl: url,
+              ...(isPrivate === true ? { isPrivate: true } : {})
+            }),
             background === true ? { background: true } : undefined
           )
       }),
@@ -83,31 +85,18 @@ function useOpenUrlForwarding(): void {
   )
 }
 
-/** Explain when main moves a guest auth flow to the default browser. */
-function useExternalAuthNotice(): void {
-  const dismissTimer = useRef<number | null>(null)
-
-  useEffect(() => {
-    const unsubscribe = onPush('browser:external-auth', ({ url }) => {
-      const state = useBrowserGuests.getState()
-      state.showExternalAuthNotice(url)
-
-      if (dismissTimer.current !== null) {
-        window.clearTimeout(dismissTimer.current)
+/** A popup loaded in-app first and then proved that it refuses embedding. */
+function useAuthFallbackForwarding(): void {
+  useEffect(
+    () => onPush('browser:external-auth', ({ url, webContentsId }) => {
+      if (webContentsId === undefined) return
+      const tabId = tabIdForWebContents(webContentsId)
+      if (tabId !== null) {
+        useBrowserGuests.getState().setAuthFallback(tabId, url)
       }
-      dismissTimer.current = window.setTimeout(() => {
-        useBrowserGuests.getState().dismissExternalAuthNotice()
-        dismissTimer.current = null
-      }, EXTERNAL_AUTH_NOTICE_MS)
-    })
-
-    return () => {
-      unsubscribe()
-      if (dismissTimer.current !== null) {
-        window.clearTimeout(dismissTimer.current)
-      }
-    }
-  }, [])
+    }),
+    []
+  )
 }
 
 /**
@@ -210,7 +199,7 @@ export function BrowserWebviewLayer(): JSX.Element {
   useEffect(() => onPointerPassthrough(setExternalToken), [])
   useGuestReaper()
   useOpenUrlForwarding()
-  useExternalAuthNotice()
+  useAuthFallbackForwarding()
   useBlockedNotices()
   useAgentTabSync()
   useActivateTabRequests()
@@ -224,7 +213,12 @@ export function BrowserWebviewLayer(): JSX.Element {
       data-passthrough={isPassthrough ? 'true' : undefined}
     >
       {liveGuests.map((guest) => (
-        <BrowserGuestView key={guest.tabId} tabId={guest.tabId} src={guest.src} />
+        <BrowserGuestView
+          key={`${guest.tabId}:${guest.isPrivate ? 'private' : 'normal'}`}
+          tabId={guest.tabId}
+          src={guest.src}
+          isPrivate={guest.isPrivate}
+        />
       ))}
     </div>
   )

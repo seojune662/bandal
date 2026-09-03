@@ -178,6 +178,8 @@ function PdfViewer({
   const [isRailOpen, setIsRailOpen] = useState(false)
   const [pendingSelection, setPendingSelection] =
     useState<PendingSelection | null>(null)
+  const [textSelectionActive, setTextSelectionActive] = useState(false)
+  const textSelectionActiveRef = useRef(false)
   const [editPopover, setEditPopover] = useState<EditPopoverState | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [flashId, setFlashId] = useState<string | null>(null)
@@ -470,19 +472,57 @@ function PdfViewer({
     })
   }, [])
 
-  // Document-level: selection drags often end outside the scroller.
+  // Document-level: selection drags often end outside the scroller. While a
+  // drag owns the text layer, drawing objects become inert so crossing a box
+  // cannot break Chromium's range extension.
   useEffect(() => {
-    const handleMouseUp = (event: MouseEvent): void => {
+    let frame: number | null = null
+    const scheduleCapture = (): void => {
+      if (frame !== null) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        frame = null
+        captureSelection()
+      })
+    }
+    const handlePointerDown = (event: PointerEvent): void => {
+      const target = event.target
+      const content = contentRef.current
+      if (
+        activeTool !== 'select' ||
+        content === null ||
+        !(target instanceof Element) ||
+        !content.contains(target) ||
+        target.closest('.textLayer') === null
+      ) return
+      textSelectionActiveRef.current = true
+      setTextSelectionActive(true)
+    }
+    const finishSelection = (event: Event): void => {
       const target = event.target
       if (target instanceof Element && target.closest('.pdf-popover') !== null) {
         return
       }
-      // Let the browser finalize the selection first.
-      window.setTimeout(captureSelection, 0)
+      textSelectionActiveRef.current = false
+      setTextSelectionActive(false)
+      scheduleCapture()
     }
-    document.addEventListener('mouseup', handleMouseUp)
-    return () => document.removeEventListener('mouseup', handleMouseUp)
-  }, [captureSelection])
+    const handleSelectionChange = (): void => {
+      if (!textSelectionActiveRef.current) scheduleCapture()
+    }
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    document.addEventListener('pointerup', finishSelection, true)
+    document.addEventListener('pointercancel', finishSelection, true)
+    document.addEventListener('mouseup', finishSelection, true)
+    document.addEventListener('selectionchange', handleSelectionChange)
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame)
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+      document.removeEventListener('pointerup', finishSelection, true)
+      document.removeEventListener('pointercancel', finishSelection, true)
+      document.removeEventListener('mouseup', finishSelection, true)
+      document.removeEventListener('selectionchange', handleSelectionChange)
+    }
+  }, [activeTool, captureSelection])
 
   const flash = useCallback((id: string): void => {
     if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
@@ -693,7 +733,11 @@ function PdfViewer({
   const zoomPercent = Math.round(zoom * 100)
 
   return (
-    <div className="pdf-tab" data-tool={activeTool}>
+    <div
+      className="pdf-tab"
+      data-tool={activeTool}
+      data-text-selecting={textSelectionActive ? 'true' : undefined}
+    >
       <PdfToolbar
         currentPage={currentPage}
         numPages={numPages}

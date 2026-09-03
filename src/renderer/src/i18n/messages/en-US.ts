@@ -424,6 +424,9 @@ export const enUS: Record<MessageKey, string> = {
   'browser.externalAuth.message':
     'Google sign-in continues in your default browser. Return to this window after signing in.',
   'browser.externalAuth.dismiss': 'Dismiss notice',
+  'browser.authFallback.message': 'This sign-in provider refused the in-app browser.',
+  'browser.authFallback.action': 'Continue in default browser',
+  'browser.authFallback.dismiss': 'Dismiss sign-in fallback',
 
   'settings.category.mcp.label': 'External tools (MCP)',
   'settings.category.mcp.description': 'Register tool servers for desktop conversations.',

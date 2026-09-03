@@ -31,6 +31,7 @@ import {
 } from '../features/workspace/tabDuplication'
 import {
   LAYOUT_SAVE_DEBOUNCE_MS,
+  persistentLayout,
   structuralKey,
   tabsFromLayout,
   validateLayout
@@ -111,10 +112,13 @@ let api: DockviewApi | null = null
  */
 const CLOSED_TAB_LIMIT = 10
 let closedTabs: TabDescriptor[] = []
+/** Full, unfiltered layouts for course switching inside this renderer run. */
+const runtimeLayouts = new Map<string, unknown>()
 
 function rememberClosed(params: unknown): void {
   const descriptor = (params as { descriptor?: unknown } | undefined)?.descriptor
   if (!isTabDescriptor(descriptor)) return
+  if (descriptor.kind === 'browser' && descriptor.payload.isPrivate === true) return
   closedTabs = [...closedTabs, descriptor].slice(-CLOSED_TAB_LIMIT)
 }
 let switchSerial = 0
@@ -135,7 +139,8 @@ function sameTabs(
   const aKeys = Object.keys(a)
   const bKeys = Object.keys(b)
   return (
-    aKeys.length === bKeys.length && aKeys.every((key) => b[key] !== undefined)
+    aKeys.length === bKeys.length &&
+    aKeys.every((key) => JSON.stringify(a[key]) === JSON.stringify(b[key]))
   )
 }
 
@@ -261,11 +266,13 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     if (api === null) return // attachApi re-runs hydration once ready
     set({ hydration: 'loading' })
 
-    let raw: unknown = null
-    try {
-      raw = (await invoke('layout:get', { courseId })).layout
-    } catch (error) {
-      console.error('[Bandal] 레이아웃을 불러오지 못했습니다.', error)
+    let raw: unknown = runtimeLayouts.get(courseId) ?? null
+    if (raw === null) {
+      try {
+        raw = (await invoke('layout:get', { courseId })).layout
+      } catch (error) {
+        console.error('[Bandal] 레이아웃을 불러오지 못했습니다.', error)
+      }
     }
     // A newer switch won the race — drop this hydration entirely.
     if (serial !== switchSerial || api === null) return
@@ -290,13 +297,14 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     }
 
     const live = api.toJSON()
+    runtimeLayouts.set(courseId, live)
     lastStructuralKey = structuralKey(live)
     set({ openTabs: tabsFromLayout(live), hydration: 'ready' })
 
     // Persist the cleaned document when validation dropped anything, so the
     // next hydration starts from a healthy file.
     if (validated !== null && validated.droppedPanelIds.length > 0) {
-      scheduleSave(courseId, live)
+      scheduleSave(courseId, persistentLayout(live))
     }
   }
 
@@ -325,6 +333,12 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     setActiveCourse: (courseId) => {
       if (get().activeCourseId === courseId) return
       const serial = ++switchSerial
+      const outgoingCourseId = get().activeCourseId
+      if (api !== null && outgoingCourseId !== null && get().hydration === 'ready') {
+        const live = api.toJSON()
+        runtimeLayouts.set(outgoingCourseId, live)
+        replacePendingSave(outgoingCourseId, persistentLayout(live))
+      }
       // A tab closed in the previous course must not reopen into this one.
       closedTabs = []
       flush() // persist the outgoing course's layout before swapping
@@ -478,6 +492,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       if (activeCourseId === null || hydration !== 'ready') return
 
       const layout = api.toJSON()
+      runtimeLayouts.set(activeCourseId, layout)
       const tabs = tabsFromLayout(layout)
       if (!sameTabs(openTabs, tabs)) set({ openTabs: tabs })
 
@@ -487,11 +502,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         // but always park the snapshot so flush (beforeunload / course switch)
         // carries the latest active tab — otherwise quitting after only
         // switching tabs restores the wrong active tab.
-        replacePendingSave(activeCourseId, layout)
+        replacePendingSave(activeCourseId, persistentLayout(layout))
         return
       }
       lastStructuralKey = key
-      scheduleSave(activeCourseId, layout)
+      scheduleSave(activeCourseId, persistentLayout(layout))
     },
 
     flushPendingSave: () => {
@@ -519,6 +534,7 @@ export function resetWorkspaceStoreForTests(): void {
   suppressLayoutEvents = false
   lastStructuralKey = ''
   pendingSaves = []
+  runtimeLayouts.clear()
   activeSave = null
   flushAfterActiveSave = false
   useWorkspaceStore.setState({

@@ -28,7 +28,14 @@ export const TEXT_ITALIC_SKEW_DEG = 12
 /** Underline / strikethrough stroke, in em. */
 export const TEXT_UNDERLINE_THICKNESS_EM = 0.06
 /** Export clamps the font size to what pdf-lib renders legibly. */
-export const TEXT_EXPORT_FONT_PT = { min: 6, max: 72 } as const
+export const TEXT_EXPORT_FONT_PT = { min: 6, max: 96 } as const
+
+/** New text boxes use real typographic points. */
+export const TEXT_DEFAULT_FONT_PT = 14
+export const TEXT_FONT_PT_LIMITS = { min: 6, max: 96 } as const
+export const TEXT_FONT_PT_STEPS: readonly number[] = [
+  6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72, 96
+]
 
 /** Stepper ladder — a legacy arbitrary fontScale snaps to the nearest step first. */
 export const TEXT_FONT_SCALE_STEPS: readonly number[] =
@@ -67,8 +74,41 @@ export function steppedFontScale(
 /** Font size in surface units (px on screen, pt on export) for a text box. */
 export function textBoxFontPx(
   surfaceWidthPx: number,
-  fontScale: number | undefined
+  fontScale: number | undefined,
+  fontSizePt?: number,
+  surfaceWidthPt = 595.28
 ): number {
+  if (
+    fontSizePt !== undefined &&
+    Number.isFinite(fontSizePt) &&
+    fontSizePt > 0 &&
+    Number.isFinite(surfaceWidthPt) &&
+    surfaceWidthPt > 0
+  ) {
+    return surfaceWidthPx * fontSizePt / surfaceWidthPt
+  }
   const scale = finitePositive(fontScale) ? fontScale : 1
   return surfaceWidthPx * TEXT_BASE_FONT_RATIO * scale
+}
+
+export function clampFontPt(value: number): number {
+  return Math.min(TEXT_FONT_PT_LIMITS.max, Math.max(TEXT_FONT_PT_LIMITS.min, value))
+}
+
+export function nearestFontPtIndex(value: number | undefined): number {
+  const point = finitePositive(value) ? value : TEXT_DEFAULT_FONT_PT
+  let best = 0
+  for (let index = 1; index < TEXT_FONT_PT_STEPS.length; index += 1) {
+    if (
+      Math.abs(TEXT_FONT_PT_STEPS[index]! - point) <
+      Math.abs(TEXT_FONT_PT_STEPS[best]! - point)
+    ) best = index
+  }
+  return best
+}
+
+export function steppedFontPt(value: number | undefined, direction: 1 | -1): number {
+  const index = nearestFontPtIndex(value)
+  const next = Math.min(TEXT_FONT_PT_STEPS.length - 1, Math.max(0, index + direction))
+  return TEXT_FONT_PT_STEPS[next]!
 }

@@ -437,7 +437,7 @@ export function CourseSidebar(): JSX.Element {
   const renderCourse = (course: Course, dragEnabled: boolean): JSX.Element => {
     const selected = course.id === selectedCourseId
     const pending = course.id === pendingCourseId
-    const expanded = selected && !collapsedCourseIds.has(course.id)
+    const expanded = !collapsedCourseIds.has(course.id)
     const menuOpen = contextMenu?.course.id === course.id
     const dropBefore =
       dropTarget?.kind === 'before' && dropTarget.courseId === course.id
@@ -533,7 +533,6 @@ export function CourseSidebar(): JSX.Element {
             aria-expanded={expanded}
             disabled={pending}
             onClick={() => {
-              if (!selected) selectCourse(course.id)
               setCourseExpanded(course.id, !expanded)
             }}
           >

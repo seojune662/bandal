@@ -51,10 +51,12 @@ import type {
 
 /** The only partition main-side hardening allows guests to attach with. */
 const BROWSING_PARTITION = 'persist:browsing'
+const PRIVATE_BROWSING_PARTITION = 'bandal-private'
 
 interface BrowserGuestViewProps {
   tabId: string
   src: string
+  isPrivate: boolean
 }
 
 function guestStyle(rect: AnchorRect | null): CSSProperties {
@@ -69,7 +71,8 @@ function guestStyle(rect: AnchorRect | null): CSSProperties {
 
 export function BrowserGuestView({
   tabId,
-  src
+  src,
+  isPrivate
 }: BrowserGuestViewProps): JSX.Element {
   const webviewRef = useRef<WebviewTag | null>(null)
   const [rect, setRect] = useState<AnchorRect | null>(() =>
@@ -81,7 +84,7 @@ export function BrowserGuestView({
     (state) => (state.overlay[tabId] ?? null) !== null
   )
   useWebviewSelectionBridge(webviewRef)
-  useWebviewLoginBridge(tabId, webviewRef)
+  useWebviewLoginBridge(tabId, webviewRef, !isPrivate)
   useWebviewDiagnosticsBridge(tabId, webviewRef)
   useWebviewVideoBridge(tabId, webviewRef)
 
@@ -180,6 +183,36 @@ export function BrowserGuestView({
             url: event.validatedURL
           })
         }) as EventListener
+      ],
+      [
+        'did-finish-load',
+        () => {
+          let url = ''
+          try {
+            url = element.getURL()
+          } catch {
+            return
+          }
+          let host = ''
+          try {
+            host = new URL(url).hostname
+          } catch {
+            return
+          }
+          if (host !== 'accounts.google.com' && host !== 'accounts.youtube.com') {
+            useBrowserGuests.getState().setAuthFallback(tabId, null)
+            return
+          }
+          void element.executeJavaScript(`(() => {
+            const text = (document.body?.innerText || '').slice(0, 20000);
+            return /disallowed[_ -]?useragent|browser or app may not be secure|couldn't sign you in|브라우저 또는 앱이 안전하지 않을 수|지원되지 않는 브라우저/i.test(text);
+          })()`).then((blocked) => {
+            useBrowserGuests.getState().setAuthFallback(
+              tabId,
+              blocked === true ? url : null
+            )
+          }).catch(() => undefined)
+        }
       ],
       [
         // Not a nav concern: this is where the guest's WebContents id first
@@ -295,7 +328,7 @@ export function BrowserGuestView({
           webviewRef.current = element as WebviewTag | null
         }}
         src={src}
-        partition={BROWSING_PARTITION}
+        partition={isPrivate ? PRIVATE_BROWSING_PARTITION : BROWSING_PARTITION}
         // Without this attribute Chromium drops window.open/target=_blank
         // INSIDE the guest — main's setWindowOpenHandler never even fires
         // (it still denies native windows and forwards URLs as Bandal tabs).

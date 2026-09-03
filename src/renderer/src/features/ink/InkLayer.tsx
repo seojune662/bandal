@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -15,14 +16,17 @@ import type {
   DrawingKind,
   DrawingPoint,
   DrawingShape,
-  DrawingStyle
+  DrawingStyle,
+  DrawingTextRun
 } from '../../../../shared/types/drawing'
 import {
   TEXT_BOX_BORDER_EM,
+  TEXT_DEFAULT_FONT_PT,
   TEXT_BOX_PADDING_EM,
   TEXT_LINE_HEIGHT,
   textBoxFontPx
 } from '../../../../shared/textBoxMetrics'
+import { normalizeTextRuns } from '../../../../shared/textRuns'
 import {
   arrowHeadPoints,
   drawingColorVariable,
@@ -42,6 +46,7 @@ import { isEditableTarget } from './domTarget'
 import { foreignObjectLayout } from './foreignObjectScale'
 import { ReferencedShape } from './ReferencedShape'
 import { ResizeHandles, TEXTBOX_HANDLES } from './ResizeHandles'
+import { TextBoxEditor, type TextBoxEditorHandle } from './TextBoxEditor'
 import {
   mergeTextStyle,
   TEXT_FORMAT_ROW_ATTR,
@@ -51,6 +56,7 @@ import {
 } from './textFormatStore'
 import {
   grownTextBoxHeight,
+  fittedTextBoxHeight,
   healedTextBox,
   textBoxAtClick
 } from './textBoxLayout'
@@ -59,6 +65,8 @@ import './ink.css'
 export interface InkLayerProps {
   aspect: number
   baseWidthPx: number
+  /** Logical surface width in PDF points; A4 for board surfaces. */
+  surfaceWidthPt?: number
   shapes: readonly DrawingShape[]
   tool: InkToolState
   onCreate: (shape: Omit<DrawingShape, 'id' | 'createdAt' | 'updatedAt'>) => void
@@ -194,11 +202,21 @@ function hasMeasuredBounds(element: SVGSVGElement): boolean {
 export function createTextBoxShape(
   box: DrawingBox,
   text: string,
-  style: DrawingStyle
+  style: DrawingStyle,
+  textRuns: readonly DrawingTextRun[] = []
 ): Omit<DrawingShape, 'id' | 'createdAt' | 'updatedAt'> | null {
+  const normalizedRuns = normalizeTextRuns(text, textRuns)
   return text.trim().length === 0 || !isRenderableBox(box)
     ? null
-    : { kind: 'textbox', data: { box, text }, style }
+    : {
+        kind: 'textbox',
+        data: {
+          box,
+          text,
+          ...(normalizedRuns.length > 0 ? { textRuns: normalizedRuns } : {})
+        },
+        style
+      }
 }
 
 function drawingStyle(
@@ -210,15 +228,53 @@ function drawingStyle(
   if (tool === 'highlighter') {
     return { color, width: Math.max(width * 4, 0.014), opacity: Math.min(opacity, 0.34) }
   }
-  if (tool === 'text') return { color, width, opacity, fontScale: 1 }
+  if (tool === 'text') return { color, width, opacity, fontSizePt: TEXT_DEFAULT_FONT_PT }
   return { color, width, opacity }
 }
 
-/** Cmd/Ctrl + 키 → 토글할 서식 필드 (워드/키노트 관례). */
-const FORMAT_SHORTCUTS: Readonly<Record<string, 'bold' | 'italic' | 'underline'>> = {
-  b: 'bold',
-  i: 'italic',
-  u: 'underline'
+function renderTextRuns(
+  text: string,
+  sourceRuns: readonly DrawingTextRun[] | undefined,
+  baseWidthPx: number,
+  surfaceWidthPt: number
+): Array<string | JSX.Element> {
+  const runs = normalizeTextRuns(text, sourceRuns)
+  if (runs.length === 0) return [text]
+  const content: Array<string | JSX.Element> = []
+  let offset = 0
+  for (const [index, run] of runs.entries()) {
+    if (run.from > offset) content.push(text.slice(offset, run.from))
+    const decorations = [
+      ...(run.style.underline === true ? ['underline'] : []),
+      ...(run.style.strike === true ? ['line-through'] : [])
+    ]
+    const inlineStyle: CSSProperties = {
+      ...(run.style.color === undefined
+        ? {}
+        : { color: drawingColorVariable(run.style.color) }),
+      ...(run.style.fontSizePt === undefined
+        ? {}
+        : {
+            fontSize: textBoxFontPx(
+              baseWidthPx,
+              undefined,
+              run.style.fontSizePt,
+              surfaceWidthPt
+            )
+          }),
+      ...(run.style.bold === true ? { fontWeight: 700 } : {}),
+      ...(run.style.italic === true ? { fontStyle: 'italic' } : {}),
+      ...(decorations.length > 0 ? { textDecoration: decorations.join(' ') } : {})
+    }
+    content.push(
+      <span key={`${run.from}:${run.to}:${index}`} style={inlineStyle}>
+        {text.slice(run.from, run.to)}
+      </span>
+    )
+    offset = run.to
+  }
+  if (offset < text.length) content.push(text.slice(offset))
+  return content
 }
 
 function boxForShape(shape: DrawingShape, gesture: Gesture | null): DrawingBox | undefined {
@@ -248,7 +304,8 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     renderClip,
     onOpenClip,
     onRefineBox,
-    interactive = true
+    interactive = true,
+    surfaceWidthPt = 595.28
   } = props
   const { activeTool, color, width, opacity } = tool
   const svgRef = useRef<SVGSVGElement>(null)
@@ -263,7 +320,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   // finishNewTextBox 가 setNewTextBox(null) 을 뒤늦게 큐에 넣어 방금 옮긴
   // 박스를 지워 버린다.
   const repositionGuardRef = useRef(false)
-  const newTextAreaRef = useRef<HTMLTextAreaElement>(null)
+  const textEditorRef = useRef<TextBoxEditorHandle>(null)
   /** 서식 행(툴바)에 공개하는 대상의 소유자 키 — 페이지마다 레이어가 하나씩. */
   const ownerId = useId()
   // 서식 apply 가 낡은 클로저로 최신 필드를 덮어쓰지 않게 항상 최신을 읽는다.
@@ -271,6 +328,10 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   shapesRef.current = shapes
   const onUpdateRef = useRef(onUpdate)
   onUpdateRef.current = onUpdate
+  // A selected (not currently edited) textbox has no editor to report its
+  // intrinsic height. Queue exactly those boxes whose typography changed and
+  // measure their rendered rich-text DOM after React applies the new style.
+  const pendingTextFitIds = useRef(new Set<string>())
   // 같은 셰이프 버전을 두 번 치유하지 않는다 — 줌(baseWidthPx) 변화나 렌더
   // 반복이 onRefineBox 를 다시 부르는 일을 막는다.
   const healedVersions = useRef(new Set<string>())
@@ -279,6 +340,20 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [newTextBox, setNewTextBox] = useState<DrawingBox | null>(null)
   const [textDraft, setTextDraft] = useState('')
+  const [textRunsDraft, setTextRunsDraft] = useState<DrawingTextRun[]>([])
+  const [draftEditorSession, setDraftEditorSession] = useState(0)
+  const textDraftRef = useRef('')
+  const textRunsDraftRef = useRef<DrawingTextRun[]>([])
+  const updateTextDraft = useCallback((
+    text: string,
+    runs: DrawingTextRun[]
+  ): void => {
+    textDraftRef.current = text
+    textRunsDraftRef.current = runs
+    setTextDraft(text)
+    setTextRunsDraft(runs)
+  }, [])
+  const [inlineFormatStyle, setInlineFormatStyle] = useState<DrawingStyle | null>(null)
   /** 새 draft 박스의 서식 — 커밋 전에도 서식 바로 편집할 수 있게 로컬 보관. */
   const [draftStyle, setDraftStyle] = useState<DrawingStyle | null>(null)
   /** 편집 중 타이핑으로 자란 기존 박스의 로컬 프리뷰(확정 시 저장). */
@@ -420,13 +495,18 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     if (pointerFrame.current !== null) cancelAnimationFrame(pointerFrame.current)
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setGesture(null)
     setEditingId(null)
-    setSelectedId(null)
+    // Selection remains meaningful while moving between the two object tools.
+    // Clearing it on every text → select transition raced the first click on
+    // the object and made that click appear to do nothing.
+    if (activeTool !== 'select' && activeTool !== 'text') setSelectedId(null)
     setNewTextBox(null)
     setEditingBoxOverride(null)
-  }, [activeTool, setGesture])
+    updateTextDraft('', [])
+    setInlineFormatStyle(null)
+  }, [activeTool, setGesture, updateTextDraft])
 
   // 패널이 비활성이 되면 선택도 내려놓는다 — 키보드 삭제 대상에서 제외.
   useEffect(() => {
@@ -483,23 +563,31 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       aspect,
       baseWidthPx,
       draftStyle?.fontScale,
-      clampToBounds
+      clampToBounds,
+      draftStyle?.fontSizePt,
+      surfaceWidthPt
     )
     setEditingId(null)
-    setTextDraft('')
+    updateTextDraft('', [])
+    // TextBoxEditor intentionally owns its ProseMirror document after mount.
+    // A relocated/new draft therefore needs a fresh instance; otherwise the
+    // just-committed text remains visible in the next placeholder.
+    setDraftEditorSession((session) => session + 1)
+    setInlineFormatStyle(null)
     // 서식은 draft 가 열려 있는 동안 유지 — 재배치 클릭이 초기화하지 않는다.
     setDraftStyle((current) =>
       current ?? drawingStyle('text', width, opacity, color)
     )
     setNewTextBox(box)
-  }, [aspect, baseWidthPx, clampToBounds, color, draftStyle, opacity, width])
+  }, [aspect, baseWidthPx, clampToBounds, color, draftStyle, opacity,
+    surfaceWidthPt, updateTextDraft, width])
 
   // 재배치로 박스가 옮겨지면(포커스를 뺏겼을 수 있으니) 되찾아 오고,
   // 그때서야 blur 가드를 내린다 — 클릭의 pointerdown/mousedown 은 별개의
   // 네이티브 태스크라 타이머로는 그 사이 blur 를 못 막는다.
   useEffect(() => {
     if (newTextBox === null) return
-    newTextAreaRef.current?.focus()
+    textEditorRef.current?.focus()
     repositionGuardRef.current = false
   }, [newTextBox])
 
@@ -507,18 +595,20 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     if (repositionGuardRef.current) return
     setNewTextBox(null)
     setDraftStyle(null)
+    setInlineFormatStyle(null)
     if (cancelEditRef.current) {
       cancelEditRef.current = false
-      setTextDraft('')
+      updateTextDraft('', [])
       return
     }
     const shape = createTextBoxShape(
       box,
-      textDraft,
-      draftStyle ?? drawingStyle('text', width, opacity, color)
+      textDraftRef.current,
+      draftStyle ?? drawingStyle('text', width, opacity, color),
+      textRunsDraftRef.current
     )
     if (shape !== null) onCreate(shape)
-  }, [color, draftStyle, onCreate, opacity, textDraft, width])
+  }, [color, draftStyle, onCreate, opacity, updateTextDraft, width])
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<SVGSVGElement>): void => {
     if (event.button !== 0) return
@@ -545,11 +635,12 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       // 그 자리에 확정하고, 어느 쪽이든 새 클릭 지점으로 박스를 옮긴다 —
       // 안 그러면 위치를 다시 고르는 클릭 절반이 "확정"으로만 소비돼
       // 박스가 마우스를 안 따라오는 것처럼 보인다.
-      if (newTextBox !== null && textDraft.trim().length > 0) {
+      if (newTextBox !== null && textDraftRef.current.trim().length > 0) {
         const shape = createTextBoxShape(
           newTextBox,
-          textDraft,
-          draftStyle ?? drawingStyle('text', width, opacity, color)
+          textDraftRef.current,
+          draftStyle ?? drawingStyle('text', width, opacity, color),
+          textRunsDraftRef.current
         )
         if (shape !== null) onCreate(shape)
         setDraftStyle(null)
@@ -583,8 +674,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       setGesture(eraseAt({ kind: 'erase', pointerId: event.pointerId, ids: new Set() }, point))
     }
   }, [activeTool, clampToBounds, color, editingId, eraseAt, newTextBox,
-    onCreate, opacity, setGesture, startTextBox, surfaceReady, textDraft,
-    width])
+    onCreate, opacity, setGesture, startTextBox, surfaceReady, width])
 
   const handlePointerMove = useCallback((event: ReactPointerEvent<SVGSVGElement>): void => {
     if (gestureRef.current === null) return
@@ -659,7 +749,11 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
           activeTool === 'text'
         ) {
           setEditingId(completed.shape.id)
-          setTextDraft(completed.shape.data.text ?? '')
+          updateTextDraft(
+            completed.shape.data.text ?? '',
+            completed.shape.data.textRuns ?? []
+          )
+          setInlineFormatStyle(completed.shape.style)
           setEditingBoxOverride(null)
         }
         return
@@ -703,7 +797,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       onUpdate(completed.shape.id, { data: nextData })
     }
   }, [activeTool, aspect, baseWidthPx, color, onCreate, onRemove, onUpdate,
-    opacity, surfaceReady, width])
+    opacity, surfaceReady, updateTextDraft, width])
 
   const handlePointerUp = useCallback((event: ReactPointerEvent<SVGSVGElement>): void => {
     pendingSample.current = {
@@ -779,9 +873,10 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   const startEditing = useCallback((shape: DrawingShape): void => {
     if (activeTool !== 'text' && activeTool !== 'select') return
     setEditingId(shape.id)
-    setTextDraft(shape.data.text ?? '')
+    updateTextDraft(shape.data.text ?? '', shape.data.textRuns ?? [])
+    setInlineFormatStyle(shape.style)
     setEditingBoxOverride(null)
-  }, [activeTool])
+  }, [activeTool, updateTextDraft])
 
   const finishEditing = useCallback((shape: DrawingShape): void => {
     const cancelled = cancelEditRef.current
@@ -789,22 +884,29 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     const grownBox = editingBoxOverride
     setEditingId(null)
     setEditingBoxOverride(null)
+    setInlineFormatStyle(null)
     if (cancelled) return
-    if (textDraft.trim().length === 0) {
+    const latestText = textDraftRef.current
+    const latestRuns = textRunsDraftRef.current
+    if (latestText.trim().length === 0) {
       onRemove([shape.id])
       return
     }
-    const textChanged = textDraft !== (shape.data.text ?? '')
+    const textChanged = latestText !== (shape.data.text ?? '')
+    const runs = normalizeTextRuns(latestText, latestRuns)
+    const runsChanged = JSON.stringify(runs) !==
+      JSON.stringify(normalizeTextRuns(shape.data.text ?? '', shape.data.textRuns))
     const boxChanged = grownBox !== null
-    if (!textChanged && !boxChanged) return
-    onUpdate(shape.id, {
-      data: {
-        ...shape.data,
-        ...(boxChanged ? { box: grownBox } : {}),
-        text: textDraft
-      }
-    })
-  }, [editingBoxOverride, onRemove, onUpdate, textDraft])
+    if (!textChanged && !runsChanged && !boxChanged) return
+    const nextData: DrawingShape['data'] = {
+      ...shape.data,
+      ...(boxChanged ? { box: grownBox } : {}),
+      text: latestText
+    }
+    if (runs.length > 0) nextData.textRuns = runs
+    else delete nextData.textRuns
+    onUpdate(shape.id, { data: nextData })
+  }, [editingBoxOverride, onRemove, onUpdate])
 
   /** 타이핑으로 내용이 넘치면 박스 높이를 따라 키운다 (로컬 프리뷰). */
   const growEditingBox = useCallback((
@@ -812,9 +914,9 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     box: DrawingBox,
     target: 'new' | 'existing'
   ): void => {
-    const grown = grownTextBoxHeight(scrollHeightPx, box, baseWidthPx, aspect)
-    if (grown === null) return
-    const next = { ...box, height: grown }
+    const fitted = fittedTextBoxHeight(scrollHeightPx, box, baseWidthPx, aspect)
+    if (fitted === null) return
+    const next = { ...box, height: fitted }
     if (target === 'new') setNewTextBox(next)
     else setEditingBoxOverride(next)
   }, [aspect, baseWidthPx])
@@ -823,7 +925,12 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     shapeStyle: DrawingStyle,
     contentStyle: CSSProperties
   ): CSSProperties => {
-    const fontSize = textBoxFontPx(baseWidthPx, shapeStyle.fontScale)
+    const fontSize = textBoxFontPx(
+      baseWidthPx,
+      shapeStyle.fontScale,
+      shapeStyle.fontSizePt,
+      surfaceWidthPt
+    )
     const decorations = [
       ...(shapeStyle.underline === true ? ['underline'] : []),
       ...(shapeStyle.strike === true ? ['line-through'] : [])
@@ -840,7 +947,30 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       borderWidth: `${TEXT_BOX_BORDER_EM}em`
     }
     return { ...contentStyle, ...typography }
-  }, [baseWidthPx])
+  }, [baseWidthPx, surfaceWidthPt])
+
+  useLayoutEffect(() => {
+    if (pendingTextFitIds.current.size === 0 || svgRef.current === null) return
+    const candidates = svgRef.current.querySelectorAll<HTMLElement>(
+      '.ink-layer__textbox[data-textbox-id]'
+    )
+    for (const id of [...pendingTextFitIds.current]) {
+      const element = [...candidates].find((candidate) => candidate.dataset.textboxId === id)
+      const shape = shapes.find((candidate) => candidate.id === id)
+      const box = shape?.data.box
+      if (element === undefined || shape === undefined || box === undefined) continue
+      const previousHeight = element.style.height
+      element.style.height = 'auto'
+      const contentHeight = element.getBoundingClientRect().height
+      element.style.height = previousHeight
+      pendingTextFitIds.current.delete(id)
+      const fitted = fittedTextBoxHeight(contentHeight, box, baseWidthPx, aspect)
+      if (fitted === null) continue
+      onUpdateRef.current(id, {
+        data: { ...shape.data, box: { ...box, height: fitted } }
+      })
+    }
+  }, [aspect, baseWidthPx, shapes])
 
   /**
    * 서식 행의 컨트롤이 포커스를 가져가 textarea 가 blur 되면(버튼은
@@ -849,39 +979,20 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
    * 다음 바깥 클릭이 정상적으로 확정한다 — 편집 상태가 고아가 되지 않는다.
    */
   const deferBlurToFormatRow = (
-    event: ReactFocusEvent<HTMLTextAreaElement>
+    event: Pick<ReactFocusEvent<HTMLElement>, 'relatedTarget' | 'currentTarget'>
   ): boolean => {
     const next = event.relatedTarget ?? document.activeElement
     if (!isInsideTextFormatRow(next) || !(next instanceof Element)) return false
     const row = next.closest(`[${TEXT_FORMAT_ROW_ATTR}]`)
     if (!(row instanceof HTMLElement)) return false
-    const textarea = event.currentTarget
+    const editor = event.currentTarget
     const onFocusOut = (leave: FocusEvent): void => {
       if (isInsideTextFormatRow(leave.relatedTarget)) return
       row.removeEventListener('focusout', onFocusOut)
-      if (textarea.isConnected) textarea.focus()
+      if (editor.isConnected) editor.focus()
     }
     row.addEventListener('focusout', onFocusOut)
     return true
-  }
-
-  const editKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key === 'Escape') {
-      cancelEditRef.current = true
-      event.currentTarget.blur()
-      return
-    }
-    if (!event.metaKey && !event.ctrlKey) return
-    if (event.key === 'Enter') {
-      event.currentTarget.blur()
-      return
-    }
-    const field = FORMAT_SHORTCUTS[event.key.toLowerCase()]
-    if (field === undefined) return
-    event.preventDefault()
-    const target = useTextFormatStore.getState().target
-    if (target === null || target.ownerId !== ownerId) return
-    target.apply({ [field]: target.style[field] !== true })
   }
 
   const erasedIds = gesture?.kind === 'erase' ? gesture.ids : new Set<string>()
@@ -910,8 +1021,10 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         ? null
         : editingId === formatShape.id ? 'editing' : 'selected'
   const formatStyle = formatMode === 'draft'
-    ? (draftStyle ?? draftFallbackStyle)
-    : formatShape?.style
+    ? (inlineFormatStyle ?? draftStyle ?? draftFallbackStyle)
+    : formatMode === 'editing'
+      ? (inlineFormatStyle ?? formatShape?.style)
+      : formatShape?.style
   const formatTargetId = formatShape?.id ?? null
   // 셀렉터로 구독 — target 이 바뀔 때마다 모든 페이지가 재렌더되지 않게.
   const publishFormat = useTextFormatStore((store) => store.publish)
@@ -930,7 +1043,8 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         apply: (patch) =>
           setDraftStyle((current) =>
             mergeTextStyle(current ?? draftFallbackStyle, patch)
-          )
+          ),
+        applyInline: (patch) => textEditorRef.current?.apply(patch)
       })
       return
     }
@@ -945,10 +1059,22 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       apply: (patch) => {
         const latest = shapesRef.current.find((entry) => entry.id === formatTargetId)
         if (latest === undefined) return
+        if (
+          'fontScale' in patch ||
+          'fontSizePt' in patch ||
+          'bold' in patch ||
+          'italic' in patch
+        ) {
+          pendingTextFitIds.current.add(latest.id)
+        }
         onUpdateRef.current(latest.id, {
           style: mergeTextStyle(latest.style, patch)
         })
-      }
+      },
+      ...(formatMode === 'editing'
+        ? { applyInline: (patch: Parameters<TextBoxEditorHandle['apply']>[0]) =>
+            textEditorRef.current?.apply(patch) }
+        : {})
     })
   }, [
     clearFormat,
@@ -1134,29 +1260,32 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
               }}
             >
               {isEditing ? (
-                <textarea
+                <TextBoxEditor
                   autoFocus
-                  className="ink-layer__textbox is-editing"
-                  data-color={shape.style.color}
-                  data-fill={shape.style.fill}
-                  value={textDraft}
-                  aria-label="텍스트 입력"
-                  placeholder="텍스트를 입력하세요"
-                  style={contentStyle}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onChange={(event) => {
-                    setTextDraft(event.target.value)
+                  ref={textEditorRef}
+                  text={textDraft}
+                  runs={textRunsDraft}
+                  baseStyle={shape.style}
+                  baseWidthPx={baseWidthPx}
+                  surfaceWidthPt={surfaceWidthPt}
+                  contentStyle={contentStyle}
+                  color={shape.style.color}
+                  {...(shape.style.fill === undefined ? {} : { fill: shape.style.fill })}
+                  onChange={(nextText, nextRuns, scrollHeight) => {
+                    updateTextDraft(nextText, nextRuns)
                     growEditingBox(
-                      event.target.scrollHeight,
+                      scrollHeight,
                       editedBox,
                       'existing'
                     )
                   }}
+                  onSelectionStyleChange={setInlineFormatStyle}
                   onBlur={(event) => {
                     if (deferBlurToFormatRow(event)) return
                     finishEditing(shape)
                   }}
-                  onKeyDown={editKeyDown}
+                  onCancel={() => { cancelEditRef.current = true }}
+                  onCommit={() => undefined}
                 />
               ) : (
                 <div
@@ -1166,10 +1295,30 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
                   data-textbox-id={shape.id}
                   style={contentStyle}
                 >
-                  {shape.data.text}
+                  {renderTextRuns(
+                    shape.data.text ?? '',
+                    shape.data.textRuns,
+                    baseWidthPx,
+                    surfaceWidthPt
+                  )}
                 </div>
               )}
             </foreignObject>
+            {!isEditing && (
+              <rect
+                className="ink-layer__textbox-hit-target ink-layer__mark--selectable"
+                x={editedBox.x}
+                y={editedBox.y}
+                width={editedBox.width}
+                height={editedBox.height}
+                fill="transparent"
+                onPointerDown={(event) => beginManipulation(event, shape, 'move')}
+                onDoubleClick={(event) => {
+                  event.stopPropagation()
+                  startEditing(shape)
+                }}
+              />
+            )}
             {textSelected && !isEditing && selectionFrame(editedBox)}
             {textSelected && !isEditing && (
               <ResizeHandles
@@ -1196,29 +1345,32 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
             className="ink-layer__textbox-object"
             onPointerDown={(event) => event.stopPropagation()}
           >
-            <textarea
+            <TextBoxEditor
+              key={draftEditorSession}
               autoFocus
-              ref={newTextAreaRef}
-              className="ink-layer__textbox is-editing"
-              data-color={draftStyle?.color ?? color}
-              data-fill={draftStyle?.fill}
-              value={textDraft}
-              aria-label="텍스트 입력"
-              placeholder="텍스트를 입력하세요"
-              style={textBoxContentStyle(
+              ref={textEditorRef}
+              text={textDraft}
+              runs={textRunsDraft}
+              baseStyle={draftStyle ?? drawingStyle('text', width, opacity, color)}
+              baseWidthPx={baseWidthPx}
+              surfaceWidthPt={surfaceWidthPt}
+              contentStyle={textBoxContentStyle(
                 draftStyle ?? drawingStyle('text', width, opacity, color),
                 foreignLayout.contentStyle
               )}
-              onPointerDown={(event) => event.stopPropagation()}
-              onChange={(event) => {
-                setTextDraft(event.target.value)
-                growEditingBox(event.target.scrollHeight, newTextBox, 'new')
+              color={draftStyle?.color ?? color}
+              {...(draftStyle?.fill === undefined ? {} : { fill: draftStyle.fill })}
+              onChange={(nextText, nextRuns, scrollHeight) => {
+                updateTextDraft(nextText, nextRuns)
+                growEditingBox(scrollHeight, newTextBox, 'new')
               }}
+              onSelectionStyleChange={setInlineFormatStyle}
               onBlur={(event) => {
                 if (deferBlurToFormatRow(event)) return
                 finishNewTextBox(newTextBox)
               }}
-              onKeyDown={editKeyDown}
+              onCancel={() => { cancelEditRef.current = true }}
+              onCommit={() => undefined}
             />
           </foreignObject>
         )

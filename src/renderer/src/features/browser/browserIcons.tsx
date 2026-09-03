@@ -18,12 +18,19 @@ export type BrowserIconName =
   | 'pip'
   | 'star'
   | 'starFilled'
+  | 'private'
 
 interface BrowserIconProps extends SVGProps<SVGSVGElement> {
   name: BrowserIconName
 }
 
 const paths: Record<BrowserIconName, JSX.Element> = {
+  private: (
+    <>
+      <path d="M4 10.5h16l-1.6 7H5.6Z" />
+      <path d="m8 10.5 1.4-4h5.2l1.4 4M8.2 17.5a2 2 0 1 0 0 .1M15.8 17.5a2 2 0 1 0 0 .1" />
+    </>
+  ),
   arrowLeft: <path d="M19 12H5m6-6-6 6 6 6" />,
   star: (
     <path d="m12 3.8 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8Z" />

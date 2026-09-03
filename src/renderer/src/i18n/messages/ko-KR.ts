@@ -422,6 +422,9 @@ export const koKR = {
   'browser.externalAuth.message':
     '구글 로그인은 기본 브라우저에서 진행돼요. 로그인 후 이 창으로 돌아오세요.',
   'browser.externalAuth.dismiss': '안내 닫기',
+  'browser.authFallback.message': '이 로그인 서비스가 앱 내 브라우저를 거부했습니다.',
+  'browser.authFallback.action': '기본 브라우저에서 계속',
+  'browser.authFallback.dismiss': '대체 로그인 안내 닫기',
 
   'settings.category.mcp.label': '외부 도구(MCP)',
   'settings.category.mcp.description': '데스크톱 대화에서 쓸 도구 서버를 등록합니다.',

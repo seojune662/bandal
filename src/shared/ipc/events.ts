@@ -62,6 +62,10 @@ export interface MaterialsChanged {
  */
 export interface BrowserOpenUrl {
   url: string
+  /** Popups and links inherit the opener tab's browsing session. */
+  isPrivate?: boolean
+  /** Originating guest, when the event must be routed back to its tab. */
+  webContentsId?: number
   /**
    * Set when the AGENT asked for this tab.
    *
@@ -259,10 +263,7 @@ export interface PushEvents {
   'browser:close-tab': { tabId: string }
   /** 파일 ▸ 인쇄… (or ⌘P over a printable tab) was chosen. */
   'ui:print': { }
-  /**
-   * A guest tried to reach a login origin Google blocks inside embedded
-   * webviews; main opened it in the system browser — show the user why.
-   */
+  /** An in-app authentication page explicitly reported an embedded refusal. */
   'browser:external-auth': BrowserOpenUrl
   'settings:changed': SettingsChanged
   /** Open the in-app settings overlay (app menu ⌘, or legacy callers). */

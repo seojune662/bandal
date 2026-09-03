@@ -13,6 +13,7 @@ import {
   memo,
   useCallback,
   useRef,
+  useState,
   type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent
 } from 'react'
@@ -159,6 +160,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
   } = props
 
   const wrapperRef = useRef<HTMLElement | null>(null)
+  const [pageWidthPt, setPageWidthPt] = useState(595.28)
   const hoverFrame = useRef<number | null>(null)
   const insertionPointRef = useRef({ x: 0.5, y: 0.5 })
   const drawingsRef = useRef(drawings)
@@ -337,7 +339,11 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
       style={{ width, height, outline: 'none' }}
       onPointerDown={(event) => {
         if (!(event.target instanceof Element)) return
-        if (event.target.closest('button, input, textarea, [contenteditable="true"]') === null) {
+        if (
+          event.target.closest(
+            'button, input, textarea, [contenteditable="true"], .textLayer'
+          ) === null
+        ) {
           event.currentTarget.focus({ preventScroll: true })
         }
       }}
@@ -384,7 +390,11 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
             loading={<div className="pdf-page__placeholder" style={{ height }} />}
             error={<div className="pdf-page__placeholder" style={{ height }} />}
             onLoadSuccess={(page) => {
-              if (page.width > 0) onAspect(pageNumber, page.height / page.width)
+              const viewport = page.getViewport({ scale: 1 })
+              if (viewport.width > 0) {
+                setPageWidthPt(viewport.width)
+                onAspect(pageNumber, viewport.height / viewport.width)
+              }
             }}
           />
           <div className="pdf-highlight-layer" aria-hidden="true">
@@ -409,6 +419,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
             relPath={relPath}
             page={pageNumber}
             pageWidth={width}
+            pageWidthPt={pageWidthPt}
             aspect={aspect}
             drawings={drawings}
             loading={drawingsLoading}

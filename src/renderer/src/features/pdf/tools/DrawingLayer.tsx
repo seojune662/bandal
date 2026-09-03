@@ -15,6 +15,8 @@ interface DrawingLayerProps {
   relPath: string
   page: number
   pageWidth: number
+  /** Unscaled width from pdf.js, in PDF points. */
+  pageWidthPt: number
   aspect: number
   drawings: Drawing[]
   loading: boolean
@@ -36,6 +38,7 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
     relPath,
     page,
     pageWidth,
+    pageWidthPt,
     aspect,
     drawings,
     loading,
@@ -77,6 +80,7 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
       courseId={courseId}
       aspect={aspect}
       baseWidthPx={pageWidth}
+      surfaceWidthPt={pageWidthPt}
       shapes={drawings}
       tool={tool}
       onCreate={handleCreate}

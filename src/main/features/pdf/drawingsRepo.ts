@@ -11,9 +11,11 @@ import type {
   DrawingKind,
   DrawingPoint,
   DrawingStyle,
+  DrawingTextRun,
   TextAlign,
   UpdateDrawingInput
 } from '../../../shared/types/drawing'
+import { normalizeTextRuns } from '../../../shared/textRuns'
 import {
   DRAWING_COLORS,
   DRAWING_KINDS as ALL_DRAWING_KINDS,
@@ -112,6 +114,58 @@ function assertKind(value: unknown): DrawingKind {
   return value as DrawingKind
 }
 
+function assertTextRuns(text: string, value: unknown): DrawingTextRun[] {
+  if (!Array.isArray(value)) {
+    throw new ValidationError('data.textRuns needs textbox text and an array')
+  }
+  const runs = value.map((raw, index) => {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new ValidationError(`data.textRuns[${index}] must be an object`)
+    }
+    const run = raw as DrawingTextRun
+    if (
+      !Number.isInteger(run.from) ||
+      !Number.isInteger(run.to) ||
+      run.from < 0 ||
+      run.to <= run.from ||
+      run.to > text.length
+    ) {
+      throw new ValidationError(`data.textRuns[${index}] has an invalid range`)
+    }
+    if (run.style === null || typeof run.style !== 'object' || Array.isArray(run.style)) {
+      throw new ValidationError(`data.textRuns[${index}].style must be an object`)
+    }
+    const style: DrawingTextRun['style'] = {}
+    if (run.style.color !== undefined) {
+      if (!DRAWING_COLORS.includes(run.style.color)) {
+        throw new ValidationError(`data.textRuns[${index}].style.color is invalid`)
+      }
+      style.color = run.style.color
+    }
+    if (run.style.fontSizePt !== undefined) {
+      style.fontSizePt = assertPositive(
+        run.style.fontSizePt,
+        `data.textRuns[${index}].style.fontSizePt`,
+        96
+      )
+    }
+    for (const field of TEXT_FLAG_FIELDS) {
+      const flag = run.style[field]
+      if (flag === undefined) continue
+      if (typeof flag !== 'boolean') {
+        throw new ValidationError(`data.textRuns[${index}].style.${field} must be boolean`)
+      }
+      style[field] = flag
+    }
+    return { from: run.from, to: run.to, style }
+  })
+  const normalized = normalizeTextRuns(text, runs)
+  if (normalized.length !== runs.length) {
+    throw new ValidationError('data.textRuns must be ordered, non-overlapping ranges')
+  }
+  return normalized
+}
+
 function assertData(value: unknown, kind: DrawingKind): DrawingData {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new ValidationError('data must be an object')
@@ -124,6 +178,13 @@ function assertData(value: unknown, kind: DrawingKind): DrawingData {
   const text = candidate.text
   if (text !== undefined && typeof text !== 'string') {
     throw new ValidationError('data.text must be a string')
+  }
+  let textRuns: DrawingTextRun[] | undefined
+  if (candidate.textRuns !== undefined) {
+    if (text === undefined) {
+      throw new ValidationError('data.textRuns needs textbox text and an array')
+    }
+    textRuns = assertTextRuns(text, candidate.textRuns)
   }
 
   if ((kind === 'ink' || kind === 'highlighter') && (points?.length ?? 0) === 0) {
@@ -163,6 +224,7 @@ function assertData(value: unknown, kind: DrawingKind): DrawingData {
   if (points !== undefined) result.points = points
   if (box !== undefined) result.box = box
   if (text !== undefined) result.text = text
+  if (textRuns !== undefined && textRuns.length > 0) result.textRuns = textRuns
   if (image !== undefined) result.image = { relPath: image.relPath, label: image.label }
   return result
 }
@@ -182,6 +244,9 @@ function assertStyle(value: unknown): DrawingStyle {
   }
   if (style.fontScale !== undefined) {
     result.fontScale = assertPositive(style.fontScale, 'style.fontScale', 10)
+  }
+  if (style.fontSizePt !== undefined) {
+    result.fontSizePt = assertPositive(style.fontSizePt, 'style.fontSizePt', 96)
   }
   for (const field of TEXT_FLAG_FIELDS) {
     const flag = style[field]

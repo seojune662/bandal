@@ -36,6 +36,15 @@
   background: var(--bg-app);
 }
 
+.browser-panel[data-private] .browser-chrome {
+  background: color-mix(in oklch, var(--bg-surface) 84%, var(--accent-muted));
+}
+
+.browser-private-button[aria-pressed='true'] {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
 .browser-chrome {
   position: relative;
   flex: none;

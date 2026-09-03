@@ -45,7 +45,7 @@ test.describe('whiteboard', () => {
     await expect(draft).toBeFocused()
 
     await page.keyboard.type('중간고사 범위')
-    await expect(draft).toHaveValue('중간고사 범위')
+    await expect(draft).toHaveText('중간고사 범위')
 
     // Clicking away commits it — and opens a fresh placeholder at the click
     // (GoodNotes 방식: 클릭이 "확정"으로만 소비되지 않는다).
@@ -83,10 +83,10 @@ test.describe('whiteboard', () => {
     await page.mouse.click(body.x + body.width / 2, body.y + body.height / 2)
     const bar = page.locator('.ink-format-row')
     await expect(bar).toBeVisible()
-    await bar.getByRole('button', { name: '파랑' }).click()
+    await bar.getByRole('button', { name: '파랑', exact: true }).click()
     await expect(
-      committed.locator('.ink-layer__textbox')
-    ).toHaveAttribute('data-color', 'blue')
+      committed.locator('[data-text-color="blue"]')
+    ).toHaveText('중간고사 범위')
     await page.keyboard.press('Escape')
   })
 })

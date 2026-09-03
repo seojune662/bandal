@@ -37,6 +37,36 @@
   outline-offset: 1px;
 }
 
+/* A standalone wikilink is a Notion-style page block; inline links stay chips. */
+.note-tab .milkdown p:has(> .note-wikilink:only-child) {
+  margin-block: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-raised);
+  border: thin solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.note-tab .milkdown p:has(> .note-wikilink:only-child):hover {
+  background: var(--accent-muted);
+  border-color: var(--accent);
+}
+
+.note-tab .milkdown p:has(> .note-wikilink:only-child) > .note-wikilink {
+  display: block;
+  color: var(--text-primary);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.note-tab .milkdown p:has(> .note-wikilink:only-child) > .note-wikilink::before {
+  margin-inline-end: var(--space-2);
+  color: var(--accent);
+  content: '↗';
+}
+
 /* v1 renders `![[…]]` as a chip with a small badge instead of inlining it. */
 .note-wikilink__embed {
   margin-inline-end: 0.35em;

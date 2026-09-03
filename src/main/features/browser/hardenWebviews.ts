@@ -15,6 +15,7 @@ import type {
 import { resolveKeymap } from '../../../shared/keymap'
 import {
   BROWSING_PARTITION,
+  PRIVATE_BROWSING_PARTITION,
   decidePopup,
   isAllowedAttach,
   isBlockedEmbeddedAuthUrl,
@@ -41,7 +42,7 @@ import {
   preparePluginPanelWebview
 } from '../plugins/pluginPanels'
 
-let browsingSessionHardened = false
+const hardenedBrowsingSessions = new Set<string>()
 
 /**
  * Harden the shared `persist:browsing` session (idempotent):
@@ -81,7 +82,8 @@ function originOf(url: string): string | null {
  */
 async function askSitePermission(
   origin: string,
-  permission: string
+  permission: string,
+  remember: boolean
 ): Promise<boolean> {
   const owner = BrowserWindow.getFocusedWindow()
   const options: Electron.MessageBoxOptions = {
@@ -98,19 +100,21 @@ async function askSitePermission(
       ? await dialog.showMessageBox(options)
       : await dialog.showMessageBox(owner, options)
   const granted = response === 1
-  sitePermissions?.remember(origin, permission, granted ? 'granted' : 'denied')
+  if (remember) {
+    sitePermissions?.remember(origin, permission, granted ? 'granted' : 'denied')
+  }
   return granted
 }
 
-function hardenBrowsingSession(): void {
-  if (browsingSessionHardened) return
-  browsingSessionHardened = true
+function hardenBrowsingSession(partition: string): void {
+  if (hardenedBrowsingSessions.has(partition)) return
+  hardenedBrowsingSessions.add(partition)
 
-  const browsingSession = session.fromPartition(BROWSING_PARTITION)
-  const sessionStore = createBrowserSessionStore()
+  const browsingSession = session.fromPartition(partition)
+  const persistent = partition === BROWSING_PARTITION
   // The persist: partition lets Chromium retain persistent cookies itself.
   // Flush cookies and DOM storage on graceful quit without changing expiry.
-  sessionStore.startFlushOnQuit()
+  if (persistent) createBrowserSessionStore().startFlushOnQuit()
   browsingSession.setUserAgent(
     browsingUserAgent(browsingSession.getUserAgent(), app.getName())
   )
@@ -135,7 +139,7 @@ function hardenBrowsingSession(): void {
         callback(remembered === 'granted')
         return
       }
-      void askSitePermission(origin, permission).then(callback)
+      void askSitePermission(origin, permission, persistent).then(callback)
     }
   )
   // SYNCHRONOUS — it cannot prompt. It answers from what the student already
@@ -158,7 +162,7 @@ function hardenBrowsingSession(): void {
   // Granting display-capture is necessary but NOT sufficient: without this,
   // getDisplayMedia() still rejects and the prompt the student just answered
   // means nothing.
-  installDisplayMediaHandler()
+  installDisplayMediaHandler(partition)
   // Filtered: an unfiltered handler routes EVERY subresource of every page
   // through a main-process callback, and a 학사 포털 issues 300+ per load.
   browsingSession.webRequest.onBeforeRequest(
@@ -193,9 +197,11 @@ function noteBlocked(
 }
 
 /** The hardened preferences every real popup window gets. */
-export function popupWebPreferences(): Electron.WebPreferences {
+export function popupWebPreferences(
+  partition = BROWSING_PARTITION
+): Electron.WebPreferences {
   return {
-    partition: BROWSING_PARTITION,
+    partition,
     nodeIntegration: false,
     nodeIntegrationInWorker: false,
     contextIsolation: true,
@@ -329,21 +335,13 @@ async function chooseCertificate(
 }
 
 const navigationHosts = new WeakMap<WebContents, WebContents>()
+const navigationPartitions = new WeakMap<WebContents, string>()
 const backgroundTabOpens = new WeakSet<WebContents>()
 
 function navigationHost(webContents: WebContents): WebContents {
   const registered = navigationHosts.get(webContents)
   if (registered !== undefined) return registered
   return BrowserWindow.fromWebContents(webContents)?.webContents ?? webContents
-}
-
-function handOffExternalAuth(webContents: WebContents, url: string): void {
-  void shell.openExternal(url)
-  const host = navigationHost(webContents)
-  if (!host.isDestroyed()) {
-    const payload: BrowserOpenUrl = { url }
-    host.send('browser:external-auth', payload)
-  }
 }
 
 /**
@@ -353,16 +351,9 @@ function handOffExternalAuth(webContents: WebContents, url: string): void {
  */
 export function attachNavigationPolicies(
   webContents: WebContents,
-  opts: { openInTab: (url: string) => void }
+  opts: { openInTab: (url: string) => void; partition?: string }
 ): void {
-  // Google-blocked login origins never load in a guest — hand them to the
-  // system browser and tell the renderer so the tab can explain why.
   const navigationGuard = (event: ElectronEvent, url: string): void => {
-    if (isBlockedEmbeddedAuthUrl(url)) {
-      event.preventDefault()
-      handOffExternalAuth(webContents, url)
-      return
-    }
     if (isNavigationAllowed(url)) return
     event.preventDefault()
     // `will-navigate` is main-frame only, so a subframe or ad cannot reach
@@ -377,11 +368,6 @@ export function attachNavigationPolicies(
       openerUrl: webContents.getURL(),
       targetUrl: details.url
     })
-
-    if (decision.kind === 'external') {
-      handOffExternalAuth(webContents, details.url)
-      return { action: 'deny' }
-    }
 
     if (decision.kind === 'window') {
       const admission = popupLimiter.admit(webContents.id)
@@ -404,7 +390,9 @@ export function attachNavigationPolicies(
           height: size.height,
           // No app chrome on it: this is the site's own window, not ours.
           autoHideMenuBar: true,
-          webPreferences: popupWebPreferences()
+          webPreferences: popupWebPreferences(
+            opts.partition ?? navigationPartitions.get(webContents) ?? BROWSING_PARTITION
+          )
         }
       }
     }
@@ -486,6 +474,7 @@ export function attachNavigationPolicies(
   webContents.once('destroyed', () => {
     popupLimiter.forget(webContents.id)
     navigationHosts.delete(webContents)
+    navigationPartitions.delete(webContents)
   })
 
   /**
@@ -522,8 +511,13 @@ export function attachNavigationPolicies(
  * Policies that only make sense for an embedded webview: replay app/browser
  * shortcuts in its host and harden real popup children created by that guest.
  */
-export function attachGuestInput(host: WebContents, guest: WebContents): void {
+export function attachGuestInput(
+  host: WebContents,
+  guest: WebContents,
+  partition = BROWSING_PARTITION
+): void {
   navigationHosts.set(guest, host)
+  navigationPartitions.set(guest, partition)
 
   // A popup we allowed is still a window that can navigate. Without this the
   // popup exception would be a hole: the child could walk to file:// or a
@@ -532,29 +526,38 @@ export function attachGuestInput(host: WebContents, guest: WebContents): void {
     const child = window.webContents
     window.once('closed', () => popupLimiter.release(guest.id))
     const guard = (event: { preventDefault: () => void }, url: string): void => {
-      if (isBlockedEmbeddedAuthUrl(url)) {
-        event.preventDefault()
-        handOffExternalAuth(guest, url)
-        return
-      }
       if (isNavigationAllowed(url)) return
       event.preventDefault()
       void offerExternalScheme(host, child, url)
     }
     child.on('will-navigate', guard)
     child.on('will-redirect', guard)
+    child.on('did-finish-load', () => {
+      const url = child.getURL()
+      if (!isBlockedEmbeddedAuthUrl(url)) return
+      void child.executeJavaScript(`(() => {
+        const text = (document.body?.innerText || '').slice(0, 20000);
+        return /disallowed[_ -]?useragent|browser or app may not be secure|couldn't sign you in|브라우저 또는 앱이 안전하지 않을 수|지원되지 않는 브라우저/i.test(text);
+      })()`).then((blocked) => {
+        if (blocked !== true || host.isDestroyed()) return
+        host.send('browser:external-auth', {
+          url,
+          webContentsId: guest.id,
+          ...(partition === PRIVATE_BROWSING_PARTITION ? { isPrivate: true } : {})
+        } satisfies BrowserOpenUrl)
+      }).catch(() => undefined)
+    })
     // A popup may not open further popups; one level is enough.
     child.setWindowOpenHandler((details) => {
       const decision = decidePopup({
         openerUrl: child.getURL(),
         targetUrl: details.url
       })
-      if (decision.kind === 'external') {
-        handOffExternalAuth(guest, details.url)
-        return { action: 'deny' }
-      }
       if (decision.kind === 'tab' && !host.isDestroyed()) {
-        host.send('browser:open-url', { url: decision.url } as BrowserOpenUrl)
+        host.send('browser:open-url', {
+          url: decision.url,
+          ...(partition === PRIVATE_BROWSING_PARTITION ? { isPrivate: true } : {})
+        } as BrowserOpenUrl)
         return { action: 'deny' }
       }
       noteBlocked(host, 'popup', details.url, 'nested')
@@ -584,7 +587,8 @@ export function attachGuestInput(host: WebContents, guest: WebContents): void {
  *  - `did-attach-webview` installs the navigation + popup policies
  */
 export function hardenWindowWebviews(win: BrowserWindow): void {
-  hardenBrowsingSession()
+  hardenBrowsingSession(BROWSING_PARTITION)
+  hardenBrowsingSession(PRIVATE_BROWSING_PARTITION)
 
   const host = win.webContents
   host.on('will-attach-webview', (event, webPreferences, params) => {
@@ -602,20 +606,27 @@ export function hardenWindowWebviews(win: BrowserWindow): void {
     }
     // The <webview> preload attribute arrives via params — strip it too.
     delete (params as Record<string, unknown>)['preload']
-    sanitizeGuestWebPreferences(webPreferences as Record<string, unknown>)
+    sanitizeGuestWebPreferences(
+      webPreferences as Record<string, unknown>,
+      typeof params.partition === 'string' ? params.partition : BROWSING_PARTITION
+    )
   })
 
   host.on('did-attach-webview', (_event, guest) => {
     if (attachPluginPanelGuest(guest)) return
+    const partition = guest.session === session.fromPartition(PRIVATE_BROWSING_PARTITION)
+      ? PRIVATE_BROWSING_PARTITION
+      : BROWSING_PARTITION
     const openInTab = (url: string): void => {
       if (host.isDestroyed()) return
       const payload: BrowserOpenUrl = {
         url,
-        background: backgroundTabOpens.has(guest)
+        background: backgroundTabOpens.has(guest),
+        ...(partition === PRIVATE_BROWSING_PARTITION ? { isPrivate: true } : {})
       }
       host.send('browser:open-url', payload)
     }
-    attachNavigationPolicies(guest, { openInTab })
-    attachGuestInput(host, guest)
+    attachNavigationPolicies(guest, { openInTab, partition })
+    attachGuestInput(host, guest, partition)
   })
 }

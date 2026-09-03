@@ -40,7 +40,10 @@ interface HistoryHit {
   host: string
 }
 
-export function useAddressSuggestions(draft: string | null): AddressSuggestion[] {
+export function useAddressSuggestions(
+  draft: string | null,
+  includeHistory = true
+): AddressSuggestion[] {
   const [history, setHistory] = useState<HistoryHit[]>([])
   const courseId = useWorkspaceStore((state) => state.activeCourseId)
   const favorites = useFavoritesStore(
@@ -50,7 +53,7 @@ export function useAddressSuggestions(draft: string | null): AddressSuggestion[]
   const services = useUniversityStore((state) => state.services)
 
   useEffect(() => {
-    if (draft === null || draft.trim() === '') {
+    if (!includeHistory || draft === null || draft.trim() === '') {
       setHistory([])
       return
     }
@@ -68,7 +71,7 @@ export function useAddressSuggestions(draft: string | null): AddressSuggestion[]
       cancelled = true
       clearTimeout(timer)
     }
-  }, [draft])
+  }, [draft, includeHistory])
 
   if (draft === null) return []
 

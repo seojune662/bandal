@@ -127,10 +127,31 @@ export interface DrawingData {
   box?: DrawingBox
   /** textbox only. */
   text?: string
+  /**
+   * Textbox-only inline formatting. Ranges use JavaScript string offsets and
+   * contain overrides of the box-level style. Missing means the whole string
+   * uses `DrawingStyle`, which keeps every pre-v0.37 drawing compatible.
+   */
+  textRuns?: DrawingTextRun[]
   /** clip only. */
   clip?: DrawingClipSource
   /** image only — course-relative path of the picture to draw in `box`. */
   image?: DrawingImageSource
+}
+
+export interface DrawingInlineStyle {
+  color?: DrawingColor
+  fontSizePt?: number
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  strike?: boolean
+}
+
+export interface DrawingTextRun {
+  from: number
+  to: number
+  style: DrawingInlineStyle
 }
 
 export interface DrawingImageSource {
@@ -146,6 +167,8 @@ export interface DrawingStyle {
   opacity: number
   /** textbox only — multiplier on the base note font size. */
   fontScale?: number
+  /** textbox only — physical point size for new/rich text boxes. */
+  fontSizePt?: number
   /** textbox only — bold text. */
   bold?: boolean
   /** textbox only — italic text (exported as a synthetic skew). */

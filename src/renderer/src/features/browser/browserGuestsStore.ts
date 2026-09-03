@@ -35,6 +35,7 @@ export interface LiveGuest {
   tabId: string
   /** URL the <webview> element is created with; never changes afterwards. */
   src: string
+  isPrivate: boolean
 }
 
 export interface BrowserNavState {
@@ -65,18 +66,11 @@ export interface BrowserLoginState {
   message: 'saved' | 'filled' | 'needs-input' | 'failed' | null
 }
 
-export interface BrowserExternalAuthNotice {
-  id: number
-  url: string
-}
-
 interface BrowserGuestsState {
   /** Live guests in LRU order (oldest first). */
   liveGuests: LiveGuest[]
   nav: Record<string, BrowserNavState>
   login: Record<string, BrowserLoginState>
-  /** Host-window notice that an auth URL moved to the default browser. */
-  externalAuthNotice: BrowserExternalAuthNotice | null
   /** Recent pages live only for the lifetime of their browser tab. */
   recent: Record<string, BrowserVisit[]>
   /**
@@ -100,8 +94,11 @@ interface BrowserGuestsState {
   find: Record<string, BrowserFindState | undefined>
   /** Favicon as a data URL, per tab. Absent = show the generic globe. */
   favicon: Record<string, string | undefined>
+  /** Embedded auth failure URL; shown as an explicit external fallback. */
+  authFallback: Record<string, string | undefined>
   setFavicon: (tabId: string, dataUrl: string | null) => void
-  ensureGuest: (tabId: string, initialUrl: string) => void
+  setAuthFallback: (tabId: string, url: string | null) => void
+  ensureGuest: (tabId: string, initialUrl: string, isPrivate?: boolean) => void
   requestAddressFocus: (tabId: string) => void
   openFind: (tabId: string) => void
   closeFind: (tabId: string) => void
@@ -116,8 +113,6 @@ interface BrowserGuestsState {
   removeGuest: (tabId: string) => void
   updateNav: (tabId: string, patch: Partial<BrowserNavState>) => void
   updateLogin: (tabId: string, patch: Partial<BrowserLoginState>) => void
-  showExternalAuthNotice: (url: string) => void
-  dismissExternalAuthNotice: () => void
 }
 
 export function initialNavState(url: string): BrowserNavState {
@@ -144,7 +139,6 @@ export function initialLoginState(): BrowserLoginState {
 
 /** Last committed URL per tab — survives eviction/destruction for restore. */
 const lastKnownUrls = new Map<string, string>()
-let nextExternalAuthNoticeId = 0
 
 function visitLabel(url: string, title: string): string {
   const trimmedTitle = title.trim()
@@ -196,9 +190,13 @@ function withoutKeys<T>(
  * useless in the omnibox.
  */
 function recordVisitFrom(
+  tabId: string,
   current: BrowserNavState,
   patch: Partial<BrowserNavState>
 ): void {
+  if (useBrowserGuests.getState().liveGuests.some(
+    (guest) => guest.tabId === tabId && guest.isPrivate
+  )) return
   const url = patch.url ?? current.url
   const title = patch.title ?? current.title
   if (url === '' || title === '') return
@@ -217,22 +215,35 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
   liveGuests: [],
   nav: {},
   login: {},
-  externalAuthNotice: null,
   recent: {},
   overlay: {},
   zoom: {},
   addressFocusSeq: {},
   find: {},
   favicon: {},
+  authFallback: {},
 
-  ensureGuest: (tabId, initialUrl) => {
-    const { liveGuests, nav, login, recent } = get()
-    if (liveGuests.some((guest) => guest.tabId === tabId)) {
+  setAuthFallback: (tabId, url) => {
+    const current = get().authFallback
+    set({
+      authFallback: url === null
+        ? withoutKeys(current, [tabId])
+        : { ...current, [tabId]: url }
+    })
+  },
+
+  ensureGuest: (tabId, initialUrl, isPrivate = false) => {
+    const { liveGuests, nav, login, recent, authFallback } = get()
+    const currentGuest = liveGuests.find((guest) => guest.tabId === tabId)
+    if (currentGuest !== undefined && currentGuest.isPrivate === isPrivate) {
       get().touchGuest(tabId)
       return
     }
     const src = lastKnownUrls.get(tabId) ?? initialUrl
-    const grown = [...liveGuests, { tabId, src }]
+    const grown = [
+      ...liveGuests.filter((guest) => guest.tabId !== tabId),
+      { tabId, src, isPrivate }
+    ]
     const evicted = pickEvictions(
       grown.map((guest) => guest.tabId),
       MAX_LIVE_GUESTS,
@@ -249,7 +260,11 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
         ...withoutKeys(login, evicted),
         [tabId]: initialLoginState()
       },
-      recent: { ...recent, [tabId]: recent[tabId] ?? [] }
+      recent: {
+        ...recent,
+        [tabId]: isPrivate ? [] : (recent[tabId] ?? [])
+      },
+      authFallback: withoutKeys(authFallback, [tabId])
     })
   },
 
@@ -345,6 +360,9 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
 
   removeGuest: (tabId) => {
     const { liveGuests, nav, login, recent, overlay, zoom } = get()
+    if (liveGuests.some((guest) => guest.tabId === tabId && guest.isPrivate)) {
+      lastKnownUrls.delete(tabId)
+    }
     set({
       liveGuests: liveGuests.filter((guest) => guest.tabId !== tabId),
       nav: withoutKeys(nav, [tabId]),
@@ -354,7 +372,8 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
       zoom: withoutKeys(zoom, [tabId]),
       addressFocusSeq: withoutKeys(get().addressFocusSeq, [tabId]),
       find: withoutKeys(get().find, [tabId]),
-      favicon: withoutKeys(get().favicon, [tabId])
+      favicon: withoutKeys(get().favicon, [tabId]),
+      authFallback: withoutKeys(get().authFallback, [tabId])
     })
   },
 
@@ -362,17 +381,20 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
     const { nav, recent } = get()
     const current = nav[tabId]
     if (current === undefined) return
-    recordVisitFrom(current, patch)
+    const isPrivate = get().liveGuests.some(
+      (guest) => guest.tabId === tabId && guest.isPrivate
+    )
+    recordVisitFrom(tabId, current, patch)
     const next = { ...current, ...patch }
     if (typeof patch.url === 'string' && patch.url.length > 0) {
       lastKnownUrls.set(tabId, patch.url)
     }
 
-    let nextRecent = recent[tabId] ?? []
-    if (typeof patch.url === 'string' && patch.url.length > 0) {
+    let nextRecent = isPrivate ? [] : (recent[tabId] ?? [])
+    if (!isPrivate && typeof patch.url === 'string' && patch.url.length > 0) {
       // A title from the prior page is stale until page-title-updated arrives.
       nextRecent = rememberVisit(nextRecent, patch.url, patch.title ?? '')
-    } else if (typeof patch.title === 'string' && current.url.length > 0) {
+    } else if (!isPrivate && typeof patch.title === 'string' && current.url.length > 0) {
       nextRecent = rememberVisit(nextRecent, current.url, patch.title)
     }
 
@@ -389,31 +411,21 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
     set({ login: { ...login, [tabId]: { ...current, ...patch } } })
   },
 
-  showExternalAuthNotice: (url) => {
-    set({
-      externalAuthNotice: { id: ++nextExternalAuthNoticeId, url }
-    })
-  },
-
-  dismissExternalAuthNotice: () => {
-    set({ externalAuthNotice: null })
-  }
 }))
 
 /** Test-only: reset the store and the session URL-restore map. */
 export function resetBrowserGuestsForTests(): void {
   lastKnownUrls.clear()
-  nextExternalAuthNoticeId = 0
   useBrowserGuests.setState({
     liveGuests: [],
     nav: {},
     login: {},
-    externalAuthNotice: null,
     recent: {},
     overlay: {},
     zoom: {},
     addressFocusSeq: {},
     find: {},
-    favicon: {}
+    favicon: {},
+    authFallback: {}
   })
 }

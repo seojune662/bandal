@@ -118,7 +118,9 @@ describe('TextFormatRow', () => {
     expect(toolbar?.querySelectorAll(
       'button.ink-format-row__fill[data-color]'
     )).toHaveLength(8)
-    expect(toolbar?.querySelector('.ink-format-row__scale')?.textContent).toBe('100%')
+    expect(toolbar?.querySelector<HTMLInputElement>(
+      'input[aria-label="글자 크기(포인트)"]'
+    )?.value).toBe('14')
     expect(toolbar?.querySelector('[aria-label="굵게"]')?.getAttribute('aria-pressed'))
       .toBe('true')
     expect(toolbar?.querySelector('[aria-label="기울임"]')?.getAttribute('aria-pressed'))
@@ -145,7 +147,10 @@ describe('TextFormatRow', () => {
     expect(apply).toHaveBeenNthCalledWith(1, { bold: true })
     expect(apply).toHaveBeenNthCalledWith(2, { align: 'center' })
     expect(apply).toHaveBeenNthCalledWith(3, { fill: 'red' })
-    expect(apply).toHaveBeenNthCalledWith(4, { fontScale: 1.25 })
+    expect(apply).toHaveBeenNthCalledWith(4, {
+      fontScale: undefined,
+      fontSizePt: 16
+    })
     expect(apply).toHaveBeenNthCalledWith(5, { fill: undefined })
 
     for (const button of container.querySelectorAll('button')) {

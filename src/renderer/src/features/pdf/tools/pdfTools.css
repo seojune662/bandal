@@ -188,6 +188,17 @@
   pointer-events: auto;
 }
 
+.pdf-tab[data-tool='select'] .pdf-drawing-layer .ink-layer__textbox-hit-target {
+  pointer-events: all;
+}
+
+/* Once a native text selection starts, crossing an existing drawing must not
+   hand the pointer stream to that object midway through the range. */
+.pdf-tab[data-text-selecting] .pdf-drawing-layer,
+.pdf-tab[data-text-selecting] .pdf-drawing-layer * {
+  pointer-events: none !important;
+}
+
 .pdf-tab:not([data-tool='select']) .pdf-drawing-layer {
   pointer-events: auto;
 }

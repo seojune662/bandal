@@ -5,6 +5,7 @@ import {
 } from '../../../../shared/types/credentials'
 import { invoke } from '../../lib/ipc'
 import {
+  initialLoginState,
   useBrowserGuests,
   type BrowserLoginState
 } from './browserGuestsStore'
@@ -572,9 +573,14 @@ export async function fillLoginForTab(tabId: string): Promise<void> {
 
 export function useWebviewLoginBridge(
   tabId: string,
-  webviewRef: RefObject<WebviewTag | null>
+  webviewRef: RefObject<WebviewTag | null>,
+  enabled = true
 ): void {
   useEffect(() => {
+    if (!enabled) {
+      update(tabId, initialLoginState())
+      return
+    }
     const webview = webviewRef.current
     if (webview === null) return
     elements.set(tabId, webview)
@@ -651,7 +657,7 @@ export function useWebviewLoginBridge(
       autoFilledOrigins.delete(tabId)
       navigationGenerations.delete(tabId)
     }
-  }, [tabId, webviewRef])
+  }, [enabled, tabId, webviewRef])
 }
 
 /** Test-only: session prompt preferences and staged metadata are ephemeral. */

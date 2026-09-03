@@ -9,9 +9,10 @@ import {
   type TextAlign
 } from '../../../../shared/types/drawing'
 import {
-  TEXT_FONT_SCALE_STEPS,
-  nearestFontScaleIndex,
-  steppedFontScale
+  TEXT_DEFAULT_FONT_PT,
+  TEXT_FONT_PT_LIMITS,
+  clampFontPt,
+  steppedFontPt
 } from '../../../../shared/textBoxMetrics'
 import {
   TEXT_FORMAT_ROW_ATTR,
@@ -51,6 +52,12 @@ function applyAtEvent(patch: TextStylePatch): void {
   useTextFormatStore.getState().target?.apply(patch)
 }
 
+function applyInlineAtEvent(patch: TextStylePatch): void {
+  const target = useTextFormatStore.getState().target
+  if (target === null) return
+  ;(target.applyInline ?? target.apply)(patch)
+}
+
 function clearFillAtEvent(): void {
   // `undefined` deletes the key — see `TextStylePatch`.
   applyAtEvent({ fill: undefined })
@@ -59,15 +66,25 @@ function clearFillAtEvent(): void {
 function toggleAtEvent(key: BooleanTextStyle): void {
   const currentTarget = useTextFormatStore.getState().target
   if (currentTarget === null) return
-  currentTarget.apply({ [key]: currentTarget.style[key] !== true })
+  ;(currentTarget.applyInline ?? currentTarget.apply)({
+    [key]: currentTarget.style[key] !== true
+  })
 }
 
 function stepAtEvent(direction: 1 | -1): void {
   const currentTarget = useTextFormatStore.getState().target
   if (currentTarget === null) return
-  currentTarget.apply({
-    fontScale: steppedFontScale(currentTarget.style.fontScale, direction)
+  const current = currentTarget.style.fontSizePt ??
+    (currentTarget.style.fontScale ?? 1) * TEXT_DEFAULT_FONT_PT
+  ;(currentTarget.applyInline ?? currentTarget.apply)({
+    fontScale: undefined,
+    fontSizePt: steppedFontPt(current, direction)
   })
+}
+
+function setPointAtEvent(value: number): void {
+  if (!Number.isFinite(value)) return
+  applyInlineAtEvent({ fontScale: undefined, fontSizePt: clampFontPt(value) })
 }
 
 function AlignIcon({ align }: { align: TextAlign }): JSX.Element {
@@ -115,8 +132,9 @@ export function TextFormatRow({
 
   const style = target?.style
   const disabled = target === null
-  const scaleIndex = nearestFontScaleIndex(style?.fontScale)
-  const scalePercent = Math.round(TEXT_FONT_SCALE_STEPS[scaleIndex]! * 100)
+  const pointSize = Math.round(
+    style?.fontSizePt ?? (style?.fontScale ?? 1) * TEXT_DEFAULT_FONT_PT
+  )
   const alignment = style?.align ?? 'left'
 
   return (
@@ -130,26 +148,40 @@ export function TextFormatRow({
         className="ink-format-row__group"
         role="group"
         aria-label="글자 크기"
-        {...PRESERVE_EDITING_HANDLERS}
       >
         <button
           type="button"
           className="ink-format-row__button"
           aria-label="글자 작게"
           title="글자 작게"
-          disabled={disabled || scaleIndex === 0}
+          disabled={disabled || pointSize <= TEXT_FONT_PT_LIMITS.min}
           {...PRESERVE_EDITING_HANDLERS}
           onClick={() => stepAtEvent(-1)}
         >
           −
         </button>
-        <span className="ink-format-row__scale">{scalePercent}%</span>
+        <label className="ink-format-row__point">
+          <span className="sr-only">글자 크기(포인트)</span>
+          <input
+            type="number"
+            min={TEXT_FONT_PT_LIMITS.min}
+            max={TEXT_FONT_PT_LIMITS.max}
+            value={pointSize}
+            disabled={disabled}
+            aria-label="글자 크기(포인트)"
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onChange={(event) => setPointAtEvent(event.currentTarget.valueAsNumber)}
+            onBlur={(event) => setPointAtEvent(event.currentTarget.valueAsNumber)}
+          />
+          <span aria-hidden="true">P</span>
+        </label>
         <button
           type="button"
           className="ink-format-row__button"
           aria-label="글자 크게"
           title="글자 크게"
-          disabled={disabled || scaleIndex === TEXT_FONT_SCALE_STEPS.length - 1}
+          disabled={disabled || pointSize >= TEXT_FONT_PT_LIMITS.max}
           {...PRESERVE_EDITING_HANDLERS}
           onClick={() => stepAtEvent(1)}
         >
@@ -161,7 +193,6 @@ export function TextFormatRow({
         className="ink-format-row__group"
         role="group"
         aria-label="글자 꾸미기"
-        {...PRESERVE_EDITING_HANDLERS}
       >
         <button
           type="button"
@@ -217,7 +248,6 @@ export function TextFormatRow({
         className="ink-format-row__group ink-format-row__align"
         role="group"
         aria-label="글자 정렬"
-        {...PRESERVE_EDITING_HANDLERS}
       >
         {TEXT_ALIGNS.map((align) => {
           const label = align === 'left'
@@ -247,7 +277,6 @@ export function TextFormatRow({
         className="ink-format-row__group"
         role="group"
         aria-label="글자색"
-        {...PRESERVE_EDITING_HANDLERS}
       >
         {DRAWING_COLORS.map((color) => (
           <button
@@ -260,7 +289,7 @@ export function TextFormatRow({
             aria-pressed={style?.color === color}
             disabled={disabled}
             {...PRESERVE_EDITING_HANDLERS}
-            onClick={() => applyAtEvent({ color })}
+            onClick={() => applyInlineAtEvent({ color })}
           />
         ))}
       </div>
@@ -269,7 +298,6 @@ export function TextFormatRow({
         className="ink-format-row__group"
         role="group"
         aria-label="글자 배경"
-        {...PRESERVE_EDITING_HANDLERS}
       >
         <button
           type="button"

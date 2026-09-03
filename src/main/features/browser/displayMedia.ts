@@ -13,7 +13,6 @@
  */
 
 import { desktopCapturer, dialog, BrowserWindow, session } from 'electron'
-import { BROWSING_PARTITION } from './webviewPolicy'
 
 /** Big enough to recognise a window, small enough to build quickly. */
 const THUMBNAIL = { width: 320, height: 180 }
@@ -71,14 +70,14 @@ async function chooseSource(
   return sources[response - 1] ?? null
 }
 
-let installed = false
+const installed = new Set<string>()
 
 /** Installs the handler on the browsing session. Idempotent. */
-export function installDisplayMediaHandler(): void {
-  if (installed) return
-  installed = true
+export function installDisplayMediaHandler(partition: string): void {
+  if (installed.has(partition)) return
+  installed.add(partition)
   session
-    .fromPartition(BROWSING_PARTITION)
+    .fromPartition(partition)
     .setDisplayMediaRequestHandler(
       (_request, callback) => {
         void (async () => {

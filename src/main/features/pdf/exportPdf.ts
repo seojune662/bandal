@@ -20,7 +20,6 @@ import {
   TEXT_EXPORT_FONT_PT,
   TEXT_FILL_OPACITY,
   TEXT_ITALIC_SKEW_DEG,
-  TEXT_LINE_HEIGHT,
   TEXT_UNDERLINE_THICKNESS_EM,
   textBoxFontPx
 } from '../../../shared/textBoxMetrics'
@@ -36,6 +35,11 @@ import type {
 } from '../../../shared/types/drawing'
 import { ValidationError } from '../../db/errors'
 import { requireId, requireNonEmptyString, resolveInside } from '../../db/validate'
+import {
+  layoutTextboxLines,
+  usedTextboxFaces,
+  type TextboxFace
+} from '../textboxPdfLayout'
 
 /** Bundled Noto Sans KR faces (see electron-builder.yml `extraResources`). */
 export type TextboxFontFile = 'NotoSansKR-Regular.otf' | 'NotoSansKR-Bold.otf'
@@ -55,8 +59,6 @@ interface TextboxFonts {
   bold: PDFFont | null
 }
 
-type TextboxFace = 'regular' | 'bold'
-
 interface TextLineRun {
   x: number
   y: number
@@ -73,15 +75,6 @@ function clamp(value: number, min: number, max: number): number {
 /** Whether drawing this text places at least one glyph (whitespace alone does not). */
 function hasGlyphs(text: string | undefined): boolean {
   return text !== undefined && /\S/u.test(text)
-}
-
-function faceOf(style: DrawingStyle): TextboxFace {
-  return style.bold === true ? 'bold' : 'regular'
-}
-
-/** Bold boxes fall back to the Regular face when Bold could not be embedded. */
-function fontFor(fonts: TextboxFonts, style: DrawingStyle): PDFFont | null {
-  return faceOf(style) === 'bold' ? fonts.bold ?? fonts.regular : fonts.regular
 }
 
 const DRAWING_COLORS: Record<DrawingColor, Color> = {
@@ -219,35 +212,6 @@ function drawStraightLine(page: PDFPage, drawing: Drawing, width: number, height
   }
 }
 
-function winAnsiText(font: PDFFont, text: string): string {
-  return [...text].map((character) => {
-    if (character === '\n' || character === '\r' || character === '\t') return character
-    try {
-      font.encodeText(character)
-      return character
-    } catch {
-      return '?'
-    }
-  }).join('')
-}
-
-function wrapLine(font: PDFFont, text: string, size: number, maxWidth: number): string[] {
-  if (text.length === 0) return ['']
-  const lines: string[] = []
-  let current = ''
-  for (const character of text) {
-    const candidate = current + character
-    if (current.length > 0 && font.widthOfTextAtSize(candidate, size) > maxWidth) {
-      lines.push(current)
-      current = character
-    } else {
-      current = candidate
-    }
-  }
-  lines.push(current)
-  return lines
-}
-
 /** Underline / strikethrough rules spanning exactly the drawn line. */
 function drawTextDecorations(page: PDFPage, style: DrawingStyle, run: TextLineRun): void {
   if (run.width <= 0) return
@@ -277,11 +241,10 @@ function drawTextbox(
   // Same metrics module as the on-screen layer, so the export wraps and
   // spaces lines exactly where the student saw them.
   const fontSize = clamp(
-    textBoxFontPx(width, style.fontScale),
+    textBoxFontPx(width, style.fontScale, style.fontSizePt, width),
     TEXT_EXPORT_FONT_PT.min,
     TEXT_EXPORT_FONT_PT.max
   )
-  const lineHeight = fontSize * TEXT_LINE_HEIGHT
   const inset = fontSize * TEXT_BOX_PADDING_EM
   const left = box.x * width
   const boxWidth = box.width * width
@@ -289,7 +252,6 @@ function drawTextbox(
   const bottom = height - (box.y + box.height) * height
   const top = bottom + boxHeight
   const maxWidth = Math.max(boxWidth - 2 * inset, fontSize)
-  const color = DRAWING_COLORS[style.color]
   const opacity = style.opacity
 
   if (style.fill !== undefined) {
@@ -303,32 +265,52 @@ function drawTextbox(
     })
   }
 
-  const font = fontFor(fonts, style)
-  if (font === null || !hasGlyphs(drawing.data.text)) return
-  const text = winAnsiText(font, drawing.data.text ?? '')
-  const lines = text.split(/\r?\n/u).flatMap((line) => wrapLine(font, line, fontSize, maxWidth))
-  // Baseline of the first line: padding, then the half-leading above the
-  // glyphs, then the ascent — the same place CSS puts it at line-height 1.35.
-  const ascent = font.heightAtSize(fontSize, { descender: false })
-  // CSS half-leading uses the font's own content height (ascent + descent),
-  // not 1em — Noto KR is 1.448em tall, so the leading is slightly negative.
-  const contentHeight = font.heightAtSize(fontSize)
-  const halfLeading = (fontSize * TEXT_LINE_HEIGHT - contentHeight) / 2
-  const firstBaseline = top - inset - halfLeading - ascent
+  if (!hasGlyphs(drawing.data.text)) return
+  const lines = layoutTextboxLines({
+    text: drawing.data.text ?? '',
+    textRuns: drawing.data.textRuns,
+    style,
+    fonts: {
+      regular: fonts.regular === null ? null : { metrics: fonts.regular, value: fonts.regular },
+      bold: fonts.bold === null ? null : { metrics: fonts.bold, value: fonts.bold }
+    },
+    surfaceWidthPt: width,
+    maxWidth
+  })
   const alignFactor = TEXT_ALIGN_FACTORS[style.align ?? 'left']
-  // No italic Korean face is bundled, so italic is a synthetic slant. In
-  // pdf-lib's naming `ySkew` is the matrix `c` term (x' = x + tan·y), which is
-  // the italic shear; `xSkew` would tilt the baseline instead.
-  const skew = style.italic === true ? { ySkew: degrees(TEXT_ITALIC_SKEW_DEG) } : {}
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const y = firstBaseline - index * lineHeight
+  let lineTop = top - inset
+  for (const line of lines) {
+    // CSS centers each face's content inside the tallest inline line box.
+    const halfLeading = (line.lineHeight - line.contentHeight) / 2
+    const y = lineTop - halfLeading - line.ascent
     if (y < bottom) break
-    const line = lines[index] ?? ''
-    const lineWidth = font.widthOfTextAtSize(line, fontSize)
-    const x = left + inset + Math.max(0, maxWidth - lineWidth) * alignFactor
-    page.drawText(line, { x, y, size: fontSize, font, color, opacity, ...skew })
-    drawTextDecorations(page, style, { x, y, width: lineWidth, fontSize, color, opacity })
+    let x = left + inset + Math.max(0, maxWidth - line.width) * alignFactor
+    for (const run of line.runs) {
+      const runColor = DRAWING_COLORS[run.style.color]
+      // No italic Korean face is bundled, so italic is a synthetic slant.
+      const skew = run.style.italic === true
+        ? { ySkew: degrees(TEXT_ITALIC_SKEW_DEG) }
+        : {}
+      page.drawText(run.text, {
+        x,
+        y,
+        size: run.fontSize,
+        font: run.font,
+        color: runColor,
+        opacity,
+        ...skew
+      })
+      drawTextDecorations(page, run.style, {
+        x,
+        y,
+        width: run.width,
+        fontSize: run.fontSize,
+        color: runColor,
+        opacity
+      })
+      x += run.width
+    }
+    lineTop -= line.lineHeight
   }
 }
 
@@ -403,9 +385,14 @@ export function createPdfExporter(deps: PdfExporterDeps): {
 
   async function embedTextboxFonts(pdf: PDFDocument, textboxes: Drawing[]): Promise<TextboxFonts> {
     pdf.registerFontkit(fontkit)
-    const wanted = new Set<TextboxFace>(
-      textboxes.filter((drawing) => hasGlyphs(drawing.data.text)).map((drawing) => faceOf(drawing.style))
-    )
+    const wanted = new Set<TextboxFace>()
+    for (const drawing of textboxes) {
+      for (const face of usedTextboxFaces(
+        drawing.data.text,
+        drawing.style,
+        drawing.data.textRuns
+      )) wanted.add(face)
+    }
     const bold = wanted.has('bold')
       ? await tryEmbedFace(pdf, 'NotoSansKR-Bold.otf', 'bold text will export in Regular weight.')
       : null

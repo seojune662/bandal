@@ -20,8 +20,13 @@ import {
 } from '../../../shared/keymap'
 import type { ShortcutPassthrough } from '../../../shared/ipc/events'
 
-/** The only session embedded browser guests may attach to. */
+/** Normal browsing persists; private browsing lives only for this app run. */
 export const BROWSING_PARTITION = 'persist:browsing'
+export const PRIVATE_BROWSING_PARTITION = 'bandal-private'
+export const BROWSING_PARTITIONS = [
+  BROWSING_PARTITION,
+  PRIVATE_BROWSING_PARTITION
+] as const
 
 function isHttpUrl(url: string): boolean {
   try {
@@ -43,7 +48,7 @@ export function isAllowedAttach(params: {
 }): boolean {
   const src = typeof params.src === 'string' ? params.src : ''
   const partition = typeof params.partition === 'string' ? params.partition : ''
-  if (partition !== BROWSING_PARTITION) return false
+  if (!(BROWSING_PARTITIONS as readonly string[]).includes(partition)) return false
   return src === 'about:blank' || isHttpUrl(src)
 }
 
@@ -66,11 +71,10 @@ export function popupForwardUrl(url: string): string | null {
 }
 
 /**
- * [§6.1 university-sites] Google refuses sign-in from embedded webviews
- * (`disallowed_useragent`, enforced since 2023). Letting the guest reach
- * accounts.google.com only shows the "안전하지 않을 수 있습니다" wall — and our
- * popup-deny routing severs `window.opener`, so popup-based OAuth could never
- * complete anyway. These URLs must be handed off to the system browser.
+ * Google authentication host. Bandal now tries these flows in an app-owned,
+ * opener-preserving window first. This classifier is also used to inspect the
+ * loaded page for Google's explicit unsupported-browser response; only that
+ * detected refusal exposes an opt-in system-browser fallback.
  */
 export function isBlockedEmbeddedAuthUrl(url: string): boolean {
   try {
@@ -220,7 +224,6 @@ export function isSameSiteAcademicPopup(
   const target = academicSite(targetUrl)
   if (opener === null || target === null) return false
   if (!isNavigationAllowed(targetUrl)) return false
-  if (isBlockedEmbeddedAuthUrl(targetUrl)) return false
   return opener === target
 }
 
@@ -230,7 +233,8 @@ export function isSameSiteAcademicPopup(
  * `webPreferences` object it hands us.
  */
 export function sanitizeGuestWebPreferences(
-  webPreferences: Record<string, unknown>
+  webPreferences: Record<string, unknown>,
+  partition = BROWSING_PARTITION
 ): void {
   // A guest must never inherit any preload bridge (either key variant).
   delete webPreferences['preload']
@@ -245,7 +249,7 @@ export function sanitizeGuestWebPreferences(
   webPreferences['experimentalFeatures'] = false
   webPreferences['enableBlinkFeatures'] = ''
   webPreferences['webviewTag'] = false
-  webPreferences['partition'] = BROWSING_PARTITION
+  webPreferences['partition'] = partition
   // Chromium's built-in PDF viewer. Electron defaults `plugins` to false,
   // which meant a .pdf link downloaded instead of rendering and every
   // <embed type="application/pdf"> came up blank — while Safari and Chrome
@@ -335,8 +339,6 @@ export function isLikelyAuthPopupUrl(url: string): boolean {
 }
 
 export type PopupDecision =
-  /** Hand to the system browser; the embedded view is refused by the site. */
-  | { kind: 'external' }
   /** A real popup window. */
   | { kind: 'window'; scope: 'opener' | 'sso' }
   /** Open as a Bandal tab; `window.opener` is severed. */
@@ -354,7 +356,10 @@ export function decidePopup(input: {
   targetUrl: string
 }): PopupDecision {
   const { openerUrl, targetUrl } = input
-  if (isBlockedEmbeddedAuthUrl(targetUrl)) return { kind: 'external' }
+  // Google may still reject Electron after loading, but opening it in an
+  // app-owned SSO window preserves window.opener and gives the flow a chance.
+  // A detected refusal gets an explicit external-browser fallback in the tab.
+  if (isBlockedEmbeddedAuthUrl(targetUrl)) return { kind: 'window', scope: 'sso' }
   if (isOpenerScopedPopupTarget(targetUrl)) return { kind: 'window', scope: 'opener' }
   if (isSameSiteAcademicPopup(openerUrl, targetUrl)) {
     // 인증성 대상만 진짜 창(opener 보존) — 나머지 같은 대학 팝업은

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CHANGELOG_URL, WEBSITE_URL } from '../../../../shared/appLinks'
+import { CHANGELOG_URL, DOCS_URL } from '../../../../shared/appLinks'
 import { formatChord, parseChord, SHORTCUT_SPECS } from '../../../../shared/keymap'
 import { Icon } from '../../app/icons'
 import {
@@ -9,11 +9,12 @@ import {
 } from '../../app/shortcuts'
 import { showToast } from '../../app/toast'
 import { Tooltip } from '../../components/Tooltip'
-import { useT } from '../../i18n'
-import { invoke } from '../../lib/ipc'
+import { useLocale, useT } from '../../i18n'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useUpdateStore } from '../../stores/updateStore'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
+import { descriptorFor } from '../workspace/tabIdentity'
 import { useTourStore } from '../onboarding/tour/tourStore'
 import { FeedbackDialog, OPEN_FEEDBACK_EVENT } from './FeedbackDialog'
 import { MilestonesOverlay } from './MilestonesOverlay'
@@ -123,6 +124,7 @@ function defaultShortcutLabel(platform: string): string {
 
 export function HelpHub(): JSX.Element {
   const t = useT()
+  const locale = useLocale()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
@@ -186,12 +188,16 @@ export function HelpHub(): JSX.Element {
     }
   }, [closeMenu])
 
-  const openExternal = (url: string): void => {
+  const openHelpPage = (url: string): void => {
     closeMenu()
-    void invoke('shell:openExternal', { url }).catch((error: unknown) => {
-      console.error('[Bandal] 도움말 링크를 열지 못했습니다.', error)
-      showToast(t('help.linkFailed'), 'danger')
-    })
+    const target = new URL(url)
+    if (locale === 'ko-KR') target.pathname = `/ko${target.pathname}`
+    useWorkspaceStore.getState().openTab(
+      descriptorFor('browser', {
+        tabId: crypto.randomUUID(),
+        initialUrl: target.toString()
+      })
+    )
   }
 
   const runMilestoneAction = (id: MilestoneId): void => {
@@ -323,13 +329,13 @@ export function HelpHub(): JSX.Element {
             </span>
           </button>
           <span className="context-menu__separator" role="separator" />
-          <button type="button" role="menuitem" onClick={() => openExternal(WEBSITE_URL)}>
+          <button type="button" role="menuitem" onClick={() => openHelpPage(DOCS_URL)}>
             {t('help.menu.docs')} <span className="help-menu__external">↗</span>
           </button>
           <button
             type="button"
             role="menuitem"
-            onClick={() => openExternal(CHANGELOG_URL)}
+            onClick={() => openHelpPage(CHANGELOG_URL)}
           >
             {t('help.menu.changelog')}{' '}
             <span className="help-menu__external">↗</span>

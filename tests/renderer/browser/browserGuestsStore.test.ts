@@ -14,6 +14,7 @@ vi.mock('../../../src/renderer/src/lib/ipc', () => ({
 }))
 
 import {
+  initialNavState,
   MAX_RECENT_VISITS,
   resetBrowserGuestsForTests,
   useBrowserGuests
@@ -36,7 +37,7 @@ describe('ensureGuest', () => {
     store().ensureGuest('t1', 'https://example.com')
 
     expect(store().liveGuests).toEqual([
-      { tabId: 't1', src: 'https://example.com' }
+      { tabId: 't1', src: 'https://example.com', isPrivate: false }
     ])
     expect(store().nav['t1']).toMatchObject({
       url: 'https://example.com',
@@ -66,6 +67,19 @@ describe('ensureGuest', () => {
     expect(ids).toContain('fresh')
     expect(store().nav['t0']).toBeUndefined()
   })
+
+  test('recreates just that tab when switching between normal and private mode', () => {
+    store().ensureGuest('t1', 'https://example.com')
+    store().updateNav('t1', { url: 'https://example.com/account' })
+    store().ensureGuest('t1', 'https://example.com/account', true)
+
+    expect(store().liveGuests).toEqual([{
+      tabId: 't1',
+      src: 'https://example.com/account',
+      isPrivate: true
+    }])
+    expect(store().nav['t1']).toEqual(initialNavState('https://example.com/account'))
+  })
 })
 
 describe('anchor overlay (host DOM shown instead of the guest)', () => {
@@ -88,7 +102,7 @@ describe('anchor overlay (host DOM shown instead of the guest)', () => {
     store().setOverlay('t1', failure)
 
     expect(store().liveGuests).toEqual([
-      { tabId: 't1', src: 'https://example.invalid' }
+      { tabId: 't1', src: 'https://example.invalid', isPrivate: false }
     ])
     expect(store().overlay['t1']).toEqual(failure)
   })
@@ -192,6 +206,31 @@ describe('nav state + URL restore', () => {
       title: 'Course home',
       courseId: 'course-current'
     })
+  })
+
+  test('does not retain or report history for a private tab', () => {
+    store().ensureGuest('private', 'https://private.example', true)
+
+    store().updateNav('private', {
+      url: 'https://private.example/secret',
+      title: 'Secret'
+    })
+
+    expect(store().recent['private']).toEqual([])
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      'browser:recordVisit',
+      expect.anything()
+    )
+  })
+
+  test('forgets a private tab URL when the tab is closed', () => {
+    store().ensureGuest('private', 'https://private.example', true)
+    store().updateNav('private', { url: 'https://private.example/secret' })
+    store().removeGuest('private')
+
+    store().ensureGuest('private', 'https://fresh.example', true)
+
+    expect(store().nav['private']?.url).toBe('https://fresh.example')
   })
 })
 

@@ -300,6 +300,38 @@ describe('createBoardPdfExporter', () => {
     expect(hasFace(boldNames, 'NotoSansKR-Regular')).toBe(false)
   })
 
+  test('exports inline rich runs with independent point size, color and weight', async () => {
+    const board = repo.createBoard({ courseId: 'course-1', title: '부분 서식' })
+    const mixed = styledTextbox(
+      'mixed',
+      '보통 굵게 다시',
+      { fontSizePt: 14 },
+      { x: 0.1, y: 0.1, width: 0.7, height: 0.16 }
+    )
+    mixed.data.textRuns = [{
+      from: 3,
+      to: 5,
+      style: { bold: true, color: 'red', fontSizePt: 24, strike: true }
+    }]
+    repo.putShape({
+      boardId: board.id,
+      id: mixed.id,
+      shape: { kind: mixed.kind, data: mixed.data, style: mixed.style }
+    })
+    const exporter = createBoardPdfExporter({
+      openBoard: (boardId) => repo.open(boardId),
+      getCourseFolder: () => ctx.dir,
+      resolveFontPath: bundledFont
+    })
+
+    const result = await exporter.exportBoard(board.id)
+    const outputPath = join(ctx.dir, result.relPath)
+    const names = await embeddedFontNames(readFileSync(outputPath))
+    expect(hasFace(names, 'NotoSansKR-Regular')).toBe(true)
+    expect(hasFace(names, 'NotoSansKR-Bold')).toBe(true)
+    expect((await pdfText(outputPath)).replace(/\s+/gu, '')).toContain('보통굵게다시')
+  })
+
   test('exports a board whose only textbox is blank without embedding any face', async () => {
     const board = repo.createBoard({ courseId: 'course-1', title: '빈 글상자' })
     repo.putShape({

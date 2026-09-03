@@ -49,6 +49,8 @@ export interface BrowserTabPayload {
   /** Stable id linking this tab to its main-process WebContentsView. */
   tabId: string
   initialUrl: string
+  /** Non-persistent browsing session for this tab. */
+  isPrivate?: boolean
 }
 
 export interface ChatTabPayload {
@@ -144,9 +146,6 @@ export type TabDescriptor = {
   [K in TabKind]: { kind: K; payload: TabPayloadMap[K] }
 }[TabKind]
 
-/** Stable panel id helper input — how tabs are identified inside dockview. */
-export type TabId = string
-
 // -- structural validation -----------------------------------------------
 //
 // Lives here rather than in the renderer because BOTH processes validate
@@ -207,7 +206,8 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
     case 'browser':
       return (
         isNonEmptyString(payload['tabId']) &&
-        typeof payload['initialUrl'] === 'string'
+        typeof payload['initialUrl'] === 'string' &&
+        (payload['isPrivate'] === undefined || typeof payload['isPrivate'] === 'boolean')
       )
     case 'chat':
       return (

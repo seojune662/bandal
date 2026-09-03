@@ -119,7 +119,8 @@ export function TabContextMenu({
     if (descriptor.kind === 'browser') {
       const duplicateDescriptor = descriptorFor('browser', {
         tabId: uuidv4(),
-        initialUrl: currentBrowserUrl(descriptor) ?? descriptor.payload.initialUrl
+        initialUrl: currentBrowserUrl(descriptor) ?? descriptor.payload.initialUrl,
+        ...(descriptor.payload.isPrivate === true ? { isPrivate: true } : {})
       })
       containerApi.addPanel({
         id: tabPanelId(duplicateDescriptor),
@@ -150,7 +151,8 @@ export function TabContextMenu({
     if (descriptor.kind === 'browser') {
       const duplicateDescriptor = descriptorFor('browser', {
         tabId: uuidv4(),
-        initialUrl: currentBrowserUrl(descriptor) ?? descriptor.payload.initialUrl
+        initialUrl: currentBrowserUrl(descriptor) ?? descriptor.payload.initialUrl,
+        ...(descriptor.payload.isPrivate === true ? { isPrivate: true } : {})
       })
       containerApi.addPanel({
         id: tabPanelId(duplicateDescriptor),

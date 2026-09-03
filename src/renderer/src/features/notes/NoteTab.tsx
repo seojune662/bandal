@@ -2,6 +2,7 @@ import {
   Editor,
   EditorStatus,
   defaultValueCtx,
+  editorViewCtx,
   nodeViewCtx,
   prosePluginsCtx,
   rootAttrsCtx,
@@ -9,7 +10,7 @@ import {
   serializerCtx
 } from '@milkdown/core'
 import type { MilkdownPlugin } from '@milkdown/ctx'
-import { Plugin } from '@milkdown/prose/state'
+import { Plugin, TextSelection } from '@milkdown/prose/state'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react'
 import type { IDockviewPanelProps } from 'dockview'
 import {
@@ -128,6 +129,33 @@ function normalizedTitleStem(title: string): string {
     .trim()
 }
 
+/** Put a newly opened note straight into its body, below the generated H1. */
+function focusNoteBody(editor: Editor): void {
+  editor.action((context) => {
+    const view = context.get(editorViewCtx)
+    let transaction = view.state.tr
+    const first = transaction.doc.firstChild
+    if (
+      first?.type.name === 'heading' &&
+      first.attrs['level'] === 1 &&
+      transaction.doc.childCount === 1
+    ) {
+      const paragraph = view.state.schema.nodes.paragraph
+      if (paragraph !== undefined) {
+        transaction = transaction.insert(transaction.doc.content.size, paragraph.create())
+      }
+    }
+    const bodyPosition = first?.type.name === 'heading'
+      ? Math.min(transaction.doc.content.size, first.nodeSize + 1)
+      : 1
+    transaction = transaction.setSelection(
+      TextSelection.near(transaction.doc.resolve(bodyPosition), 1)
+    )
+    view.dispatch(transaction.scrollIntoView())
+    view.focus()
+  })
+}
+
 function noteStem(relPath: string): string {
   const fileName = relPath.split('/').at(-1) ?? relPath
   return fileName.replace(/\.md$/iu, '')
@@ -241,6 +269,7 @@ function MilkdownNoteEditor({
             status === EditorStatus.Created
           ) {
             setEditorInitialization('ready')
+            requestAnimationFrame(() => focusNoteBody(editor))
           }
         })
         .config((context) => {
@@ -360,6 +389,7 @@ function NoteEditorWorkspace({
     <div className="note-editor-scroll">
       <NoteToolbar
         courseId={courseId}
+        relPath={relPath}
         formatState={formatState}
         fontScale={fontScale}
         onFontScaleChange={onFontScaleChange}
