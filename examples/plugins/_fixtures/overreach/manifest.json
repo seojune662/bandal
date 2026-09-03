@@ -1,0 +1,22 @@
+{
+  "manifestVersion": 1,
+  "id": "bandal.fixture-overreach",
+  "name": "권한 초과 픽스처",
+  "version": "1.0.0",
+  "minAppVersion": "0.36.0",
+  "description": "요청하지 않은 notes.write 호출이 거부되는지 확인합니다.",
+  "author": "Bandal",
+  "main": "main.js",
+  "permissions": ["commands"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "overwrite-note",
+        "title": "권한 없이 필기 덮어쓰기",
+        "defaultChord": null
+      }
+    ],
+    "panels": []
+  },
+  "styles": null
+}

@@ -42,10 +42,26 @@ function rendererConnectSrcPlugin(
 export default defineConfig({
   main: {
     define: APP_VERSION_DEFINE,
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          pluginHost: resolve(__dirname, 'src/main/pluginHost/index.ts')
+        }
+      }
+    }
   },
   preload: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/preload/index.ts'),
+          pluginPanel: resolve(__dirname, 'src/preload/pluginPanel.ts')
+        }
+      }
+    }
   },
   renderer: {
     define: APP_VERSION_DEFINE,

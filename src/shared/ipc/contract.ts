@@ -16,7 +16,8 @@ import type {
   CreateCourseInput,
   PickedFolder,
   RelinkCourseInput,
-  RenameCourseInput
+  RenameCourseInput,
+  SetCourseColorInput
 } from '../types/course'
 import type {
   ImportResult,
@@ -211,6 +212,10 @@ export interface IpcContract {
   }
   'courses:rename': {
     req: RenameCourseInput
+    res: Course
+  }
+  'courses:setColor': {
+    req: SetCourseColorInput
     res: Course
   }
   'courses:archive': {
@@ -1616,6 +1621,7 @@ export const IPC_CHANNELS = [
   'courses:addFromFolder',
   'courses:relink',
   'courses:rename',
+  'courses:setColor',
   'courses:archive',
   'courses:delete',
   'courses:purge',

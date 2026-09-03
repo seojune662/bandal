@@ -19,18 +19,31 @@ export interface VisiblePagesApi {
   elementFor(page: number): HTMLElement | null
   /** Page whose box covers the vertical middle of the scroller viewport. */
   pageAtViewportCenter(): number
+  /** Stable semantic position at the viewport center (page + offset in page). */
+  captureViewportAnchor(): PdfViewportAnchor | null
+  /** Restores a semantic position after page boxes have been reflowed. */
+  restoreViewportAnchor(anchor: PdfViewportAnchor): boolean
   /** Marks cached page offsets stale after zoom or another layout change. */
   invalidatePageOffsets(): void
 }
 
 export interface PageViewport {
-  readonly scrollTop: number
+  scrollTop: number
   readonly clientHeight: number
   getBoundingClientRect(): { top: number }
 }
 
 export interface PageBoxElement {
   getBoundingClientRect(): { top: number; height: number }
+}
+
+/**
+ * A pixel-independent reading position. `pageOffset` is the viewport center's
+ * vertical position inside the page (0 = top, 1 = bottom).
+ */
+export interface PdfViewportAnchor {
+  page: number
+  pageOffset: number
 }
 
 interface PageCenter {
@@ -78,6 +91,42 @@ export class PageCenterCache {
     return target - before.center <= after.center - target
       ? before.page
       : after.page
+  }
+
+  captureViewportAnchor(
+    scroller: PageViewport,
+    elements: ReadonlyMap<number, PageBoxElement>
+  ): PdfViewportAnchor | null {
+    if (scroller.clientHeight <= 0) return null
+    const page = this.pageAtViewportCenter(scroller, elements)
+    const element = elements.get(page)
+    if (element === undefined) return null
+    const scrollerTop = scroller.getBoundingClientRect().top
+    const box = element.getBoundingClientRect()
+    if (box.height <= 0) return null
+    const center = scrollerTop + scroller.clientHeight / 2
+    return {
+      page,
+      pageOffset: Math.min(1, Math.max(0, (center - box.top) / box.height))
+    }
+  }
+
+  restoreViewportAnchor(
+    scroller: PageViewport,
+    elements: ReadonlyMap<number, PageBoxElement>,
+    anchor: PdfViewportAnchor
+  ): boolean {
+    if (scroller.clientHeight <= 0) return false
+    const element = elements.get(anchor.page)
+    if (element === undefined) return false
+    const scrollerTop = scroller.getBoundingClientRect().top
+    const box = element.getBoundingClientRect()
+    if (box.height <= 0) return false
+    const pageOffset = Math.min(1, Math.max(0, anchor.pageOffset))
+    const anchoredPoint = box.top + box.height * pageOffset
+    const viewportCenter = scrollerTop + scroller.clientHeight / 2
+    scroller.scrollTop += anchoredPoint - viewportCenter
+    return true
   }
 
   private measure(
@@ -190,6 +239,29 @@ export function useVisiblePages(
     )
   }, [scrollerRef])
 
+  const captureViewportAnchor = useCallback((): PdfViewportAnchor | null => {
+    const scroller = scrollerRef.current
+    if (scroller === null) return null
+    return pageCenterCacheRef.current.captureViewportAnchor(
+      scroller,
+      elementsRef.current
+    )
+  }, [scrollerRef])
+
+  const restoreViewportAnchor = useCallback(
+    (anchor: PdfViewportAnchor): boolean => {
+      const scroller = scrollerRef.current
+      if (scroller === null) return false
+      pageCenterCacheRef.current.invalidate()
+      return pageCenterCacheRef.current.restoreViewportAnchor(
+        scroller,
+        elementsRef.current,
+        anchor
+      )
+    },
+    [scrollerRef]
+  )
+
   const invalidatePageOffsets = useCallback((): void => {
     pageCenterCacheRef.current.invalidate()
   }, [])
@@ -199,6 +271,8 @@ export function useVisiblePages(
     registerPage,
     elementFor,
     pageAtViewportCenter,
+    captureViewportAnchor,
+    restoreViewportAnchor,
     invalidatePageOffsets
   }
 }

@@ -26,6 +26,8 @@ import {
 } from '../stores/settingsSnapshot'
 import { useUiStore } from '../stores/uiStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
+import { chordMap as pluginChordMap, usePluginsStore } from '../stores/pluginsStore'
+import { runPluginCommand } from '../features/plugins/pluginCommands'
 
 // -- pure resolver ------------------------------------------------------------
 
@@ -57,6 +59,7 @@ export type ShortcutAction =
   | { type: 'open-pip' }
   | { type: 'shortcut-help' }
   | { type: 'send-feedback' }
+  | { type: 'plugin-command'; pluginId: string; commandId: string }
 
 export interface ShortcutInput {
   key: string
@@ -138,9 +141,22 @@ export function resolveShortcut(
   const chord = chordFromKeyboardEvent(input)
   if (chord === null) return null
   const actionId = keymap.get(chord)
-  if (actionId === undefined) return null
-  if (input.targetIsWebview && !GUEST_ALLOWED.has(actionId)) return null
-  return actionForId(actionId)
+  if (actionId !== undefined) {
+    if (input.targetIsWebview && !GUEST_ALLOWED.has(actionId)) return null
+    return actionForId(actionId)
+  }
+  // The shared keymap intentionally knows only built-in actions today.
+  // Extension chords are a renderer-owned second tier, so built-ins always
+  // win a collision and plugin commands never run from an embedded guest.
+  if (input.targetIsWebview) return null
+  const pluginCommand = pluginChordMap(usePluginsStore.getState()).get(chord)
+  return pluginCommand === undefined
+    ? null
+    : {
+        type: 'plugin-command',
+        pluginId: pluginCommand.pluginId,
+        commandId: pluginCommand.command.id
+      }
 }
 
 // -- quick-search open/close state (⌘P overlay) -------------------------------
@@ -317,6 +333,11 @@ export function runShortcutAction(
       return
     case 'send-feedback':
       window.dispatchEvent(new CustomEvent(FEEDBACK_EVENT))
+      return
+    case 'plugin-command':
+      void runPluginCommand(action.pluginId, action.commandId).catch(
+        () => undefined
+      )
       return
   }
 }

@@ -36,7 +36,8 @@ import { requestVideoResume } from '../features/file/lib/videoProgress'
 import { useUniversityStore } from '../stores/universityStore'
 import { QuickFileSearch } from './QuickFileSearch'
 import { useGlobalShortcuts } from './shortcuts'
-import { ToastHost } from './toast'
+import { showToast, ToastHost } from './toast'
+import { usePluginsStore } from '../stores/pluginsStore'
 import './app-shell.css'
 
 export function AppShell(): JSX.Element {
@@ -100,6 +101,9 @@ export function AppShell(): JSX.Element {
     void useUniversityStore.getState().init()
     useDownloads.getState().init()
     useAgentRuns.getState().init()
+    void usePluginsStore.getState().refresh().catch((error: unknown) => {
+      console.error('[Bandal] 플러그인 목록을 불러오지 못했습니다.', error)
+    })
   }, [initTheme, loadCourses])
 
   // Browser downloads are filed under the selected course. Main only sees the
@@ -191,6 +195,25 @@ export function AppShell(): JSX.Element {
   useEffect(() => {
     return onPush('ui:openUrl', handleOpenUrl)
   }, [handleOpenUrl])
+
+  useEffect(() => {
+    const stopNotice = onPush(
+      'plugins:notice',
+      ({ pluginName, message, tone }) => {
+        showToast(`${pluginName}: ${message}`, tone)
+      }
+    )
+    const stopOpenPanel = onPush(
+      'plugins:openPanel',
+      ({ pluginId, panelId }) => {
+        openTab(descriptorFor('plugin-panel', { pluginId, panelId }))
+      }
+    )
+    return () => {
+      stopNotice()
+      stopOpenPanel()
+    }
+  }, [openTab])
 
   useEffect(() => {
     if (consumedPendingOpen.current) return

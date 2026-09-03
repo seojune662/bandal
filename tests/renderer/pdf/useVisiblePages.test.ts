@@ -69,4 +69,62 @@ describe('PageCenterCache', () => {
     cache.invalidate()
     expect(cache.pageAtViewportCenter(scroller, elements)).toBe(3)
   })
+
+  test('restores the same position inside a page after every page reflows', () => {
+    let scale = 1
+    const scroller = {
+      scrollTop: 1_020,
+      clientHeight: 200,
+      getBoundingClientRect: () => ({ top: 40 })
+    } satisfies PageViewport
+    const pageBox = (page: number): PageBoxElement => ({
+      getBoundingClientRect: () => ({
+        top: 40 + 20 + (page - 1) * (800 * scale + 20) - scroller.scrollTop,
+        height: 800 * scale
+      })
+    })
+    const elements = new Map<number, PageBoxElement>([
+      [1, pageBox(1)],
+      [2, pageBox(2)],
+      [3, pageBox(3)]
+    ])
+    const cache = new PageCenterCache()
+
+    const anchor = cache.captureViewportAnchor(scroller, elements)
+    expect(anchor).toEqual({ page: 2, pageOffset: 0.35 })
+
+    // A sidebar closes: fit-width pages grow by 50%, but the browser keeps
+    // the old numeric scrollTop until we restore the semantic anchor.
+    scale = 1.5
+    cache.invalidate()
+    expect(cache.restoreViewportAnchor(scroller, elements, anchor!)).toBe(true)
+    expect(scroller.scrollTop).toBe(1_560)
+
+    cache.invalidate()
+    expect(cache.captureViewportAnchor(scroller, elements)).toEqual({
+      page: 2,
+      pageOffset: 0.35
+    })
+  })
+
+  test('does not capture or overwrite position while a panel is hidden', () => {
+    const scroller = {
+      scrollTop: 900,
+      clientHeight: 0,
+      getBoundingClientRect: () => ({ top: 0 })
+    } satisfies PageViewport
+    const elements = new Map<number, PageBoxElement>([
+      [2, { getBoundingClientRect: () => ({ top: 0, height: 0 }) }]
+    ])
+    const cache = new PageCenterCache()
+
+    expect(cache.captureViewportAnchor(scroller, elements)).toBeNull()
+    expect(
+      cache.restoreViewportAnchor(scroller, elements, {
+        page: 2,
+        pageOffset: 0.5
+      })
+    ).toBe(false)
+    expect(scroller.scrollTop).toBe(900)
+  })
 })

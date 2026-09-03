@@ -35,8 +35,8 @@ import {
   CoursesPanel,
   GeneralPanel,
   McpServersPanel,
-  PacksPanel,
 } from "./SettingsPanels";
+import { PluginsCategoryPanel } from "./PluginsCategoryPanel";
 import { Icon } from "./SettingsIcon";
 import { applyTheme } from "./settingsTheme";
 import { UniversitySettingsPanel } from "./UniversitySettingsPanel";
@@ -465,7 +465,7 @@ export function SettingsApp({
       />
     ),
     mcp: <McpServersPanel />,
-    packs: <PacksPanel />,
+    packs: <PluginsCategoryPanel />,
     ai: (
       <>
         <AiPanel

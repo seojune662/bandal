@@ -195,7 +195,7 @@
 .course-row {
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) var(--icon-button-size);
   align-items: center;
   width: 100%;
   min-height: var(--button-height);
@@ -265,7 +265,8 @@
 }
 
 .course-row__toggle:focus-visible,
-.course-row__select:focus-visible {
+.course-row__select:focus-visible,
+.course-row__menu-button:focus-visible {
   outline: calc(var(--space-1) / 2) solid var(--accent);
   outline-offset: calc(var(--space-1) / -2);
 }
@@ -349,19 +350,28 @@
   white-space: nowrap;
 }
 
-.course-row__hint {
+.course-row__menu-button {
+  display: grid;
+  place-items: center;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  font-size: var(--text-sm);
   color: var(--text-muted);
+  border-radius: var(--radius-sm);
   opacity: 0;
-  transform: translateX(calc(var(--space-1) * -1));
-  transition:
-    opacity var(--dur-fast) var(--ease-out),
-    transform var(--dur-fast) var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 
-.course-row:hover .course-row__hint,
-.course-row:focus-within .course-row__hint {
+.course-row:hover .course-row__menu-button,
+.course-row:focus-within .course-row__menu-button,
+.course-row__menu-button[aria-expanded='true'] {
   opacity: 1;
-  transform: translateX(0);
+}
+
+.course-row__menu-button:hover,
+.course-row__menu-button:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-overlay);
 }
 
 /* [M7] The course folder is gone from disk — 연결 끊김. */
@@ -810,6 +820,15 @@
   transform-origin: top right;
 }
 
+.context-menu[data-placement='top'][data-align='end'] {
+  transform: translate(-100%, -100%);
+  transform-origin: bottom right;
+}
+
+.context-menu--course {
+  width: calc(var(--context-menu-width) + var(--space-8));
+}
+
 .context-menu__label {
   overflow: hidden;
   padding: var(--space-1) var(--space-2) var(--space-2);
@@ -817,6 +836,53 @@
   color: var(--text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.context-menu__color-group {
+  padding: var(--space-1) var(--space-2) var(--space-2);
+}
+
+.context-menu__color-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.context-menu__color-palette {
+  display: grid;
+  grid-template-columns: repeat(6, var(--color-swatch-size));
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.context-menu .context-menu__color-swatch {
+  display: grid;
+  place-items: center;
+  width: var(--color-swatch-size);
+  min-height: var(--color-swatch-size);
+  height: var(--color-swatch-size);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+}
+
+.context-menu .context-menu__color-swatch[data-selected] {
+  border-color: var(--course-color);
+}
+
+.context-menu .context-menu__color-swatch > span {
+  width: calc(var(--color-swatch-size) - var(--space-3));
+  height: calc(var(--color-swatch-size) - var(--space-3));
+  background: var(--course-color);
+  border-radius: var(--radius-pill);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.context-menu .context-menu__color-swatch:hover > span,
+.context-menu .context-menu__color-swatch:focus-visible > span,
+.context-menu .context-menu__color-swatch[data-selected] > span {
+  transform: scale(1.08);
 }
 
 .context-menu button {

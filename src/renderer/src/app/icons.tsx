@@ -18,6 +18,7 @@ export type IconName =
   | 'link'
   | 'pencil'
   | 'plus'
+  | 'puzzle'
   | 'refresh'
   | 'search'
   | 'settings'
@@ -131,6 +132,9 @@ const paths: Record<IconName, JSX.Element> = {
     </>
   ),
   plus: <path d="M12 5v14M5 12h14" />,
+  puzzle: (
+    <path d="M4 4h6v3a2 2 0 1 0 4 0V4h6v6h-3a2 2 0 1 0 0 4h3v6h-6v-3a2 2 0 1 0-4 0v3H4v-6h3a2 2 0 1 0 0-4H4z" />
+  ),
   refresh: (
     <>
       <path d="M20 7v5h-5" />

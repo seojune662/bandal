@@ -234,7 +234,7 @@ test.describe('workspace tabs', () => {
 })
 
 test.describe('pdf scroll preservation', () => {
-  test('keeps the scroll position when switching tabs and coming back', async () => {
+  test('keeps the reading page across tab switches and sidebar reflows', async () => {
     const bandal = await launchBandal()
     try {
       const { page } = bandal
@@ -272,6 +272,8 @@ test.describe('pdf scroll preservation', () => {
       await page.waitForTimeout(400)
       const before = await scroller.evaluate((element) => element.scrollTop)
       expect(before).toBeGreaterThan(0)
+      const pageInput = page.getByRole('textbox', { name: '페이지 이동' })
+      const pageBeforeTabSwitch = await pageInput.inputValue()
 
       // 같은 그룹에서 다른 탭으로 갔다가 돌아온다 — dockview 의
       // onlyWhenVisible 렌더러가 DOM 을 떼며 scrollTop 을 0으로 리셋하던
@@ -285,6 +287,81 @@ test.describe('pdf scroll preservation', () => {
       await expect
         .poll(() => scroller.evaluate((element) => element.scrollTop))
         .toBeGreaterThan(before - 50)
+      await expect(pageInput).toHaveValue(pageBeforeTabSwitch)
+
+      // A width change used to keep the same pixel scrollTop while making
+      // every fit-width page taller/shorter. That silently moved the viewport
+      // from (for example) page 6 to page 4. Assert the semantic page and the
+      // position within it, in both directions and for both outer sidebars.
+      await pageInput.fill('6')
+      await pageInput.press('Enter')
+      await expect(pageInput).toHaveValue('6')
+
+      const pageOffset = async (): Promise<number> =>
+        scroller.evaluate((element) => {
+          const pageBox = element.querySelector<HTMLElement>('[data-pdf-page="6"]')
+          if (pageBox === null) return -1
+          const scrollerBox = element.getBoundingClientRect()
+          const box = pageBox.getBoundingClientRect()
+          return (scrollerBox.top + element.clientHeight / 2 - box.top) / box.height
+        })
+      const anchorBeforeResize = await pageOffset()
+      expect(anchorBeforeResize).toBeGreaterThan(0)
+      expect(anchorBeforeResize).toBeLessThan(1)
+
+      const expectPageSixPreserved = async (): Promise<void> => {
+        await expect(pageInput).toHaveValue('6')
+        await expect
+          .poll(pageOffset)
+          .toBeGreaterThan(anchorBeforeResize - 0.02)
+        await expect
+          .poll(pageOffset)
+          .toBeLessThan(anchorBeforeResize + 0.02)
+      }
+
+      await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
+      await expect(page.locator('aside.app-rail--left')).toBeHidden()
+      await expectPageSixPreserved()
+
+      await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
+      await expect(page.locator('aside.app-rail--left')).toBeVisible()
+      await expectPageSixPreserved()
+
+      await page.getByRole('button', { name: '자료 사이드바 접기' }).click()
+      await expect(page.locator('aside.app-rail--right')).toBeHidden()
+      await expectPageSixPreserved()
+
+      await page.getByRole('button', { name: '자료 사이드바 펼치기' }).click()
+      await expect(page.locator('aside.app-rail--right')).toBeVisible()
+      await expectPageSixPreserved()
+
+      // The PDF's own preview/highlight rails resize the exact same scroller.
+      // Keep these in the regression path so a future internal rail cannot
+      // reintroduce the pixel-scrollTop bug independently of the app rails.
+      const previewToggle = page.getByRole('button', { name: '미리보기' })
+      await previewToggle.click()
+      await expect(page.locator('.pdf-preview')).toBeVisible()
+      await expectPageSixPreserved()
+      await previewToggle.click()
+      await expect(page.locator('.pdf-preview')).toBeHidden()
+      await expectPageSixPreserved()
+
+      const highlightToggle = page.getByRole('button', {
+        name: '하이라이트 목록 토글'
+      })
+      await highlightToggle.click()
+      await expect(page.locator('.pdf-rail')).toBeVisible()
+      await expectPageSixPreserved()
+      await highlightToggle.click()
+      await expect(page.locator('.pdf-rail')).toBeHidden()
+      await expectPageSixPreserved()
+
+      const scrollbarWidth = await scroller.evaluate((element) =>
+        Number.parseFloat(
+          getComputedStyle(element, '::-webkit-scrollbar').width
+        )
+      )
+      expect(scrollbarWidth).toBeGreaterThanOrEqual(12)
     } finally {
       await bandal.close()
     }

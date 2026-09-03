@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>단어 수</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">현재 과목</p>
+          <h1 id="course-name">단어 수</h1>
+        </div>
+        <button id="refresh" type="button">새로고침</button>
+      </header>
+
+      <p id="empty" class="empty">명령을 실행하거나 새로고침을 누르세요.</p>
+      <table id="results" hidden>
+        <thead>
+          <tr>
+            <th scope="col">필기</th>
+            <th scope="col">단어</th>
+            <th scope="col">글자</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">합계</th>
+            <td id="total-words">0</td>
+            <td id="total-characters">0</td>
+          </tr>
+        </tfoot>
+      </table>
+    </main>
+    <script src="panel.js"></script>
+  </body>
+</html>

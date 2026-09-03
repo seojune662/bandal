@@ -153,6 +153,17 @@ import {
   type ScreenAccess
 } from '../features/desktopAgent'
 import { createMcpRegistry, testMcpServer } from '../features/mcpRegistry'
+import { isMethodAllowed } from '../../shared/plugins/permissions'
+import { createPluginApi } from '../features/plugins/pluginApi'
+import { createPluginDataStore } from '../features/plugins/pluginDataStore'
+import { createPluginLog } from '../features/plugins/pluginLog'
+import {
+  configurePluginPanels,
+  postPluginPanelMessage
+} from '../features/plugins/pluginPanels'
+import { createPluginRateLimiter } from '../features/plugins/rateLimit'
+import { createPluginRuntime } from '../features/plugins/pluginRuntime'
+import { createPluginStore } from '../features/plugins/pluginStore'
 import type { OverlayController } from '../windows/overlayController'
 import {
   createMiniPlayerController,
@@ -177,6 +188,7 @@ export interface RegisterHandlersDeps {
   /** Bootstrap wrapper that fans persisted settings changes out to main UI. */
   setSettings?: (patch: SettingsPatch) => Settings
   preloadPath: string
+  pluginPanelPreloadPath: string
   userDataPath: string
   windowBackground(): string
   openMaterial(payload: PushPayload<'ui:openMaterial'>): void
@@ -330,6 +342,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const annotationsRepo = createAnnotationsRepo(db)
   const boardRepo = createBoardRepo(db)
   const layoutRepo = createLayoutRepo(db)
+  // Plugin event producers are registered before the runtime is constructed.
+  // Keeping this indirection local avoids moving the long-established course
+  // and note handlers merely to satisfy initialization order.
+  let emitPluginEvent: (
+    name: 'note:saved' | 'course:changed',
+    payload: unknown
+  ) => void = () => undefined
 
   const materialsWatcher = createMaterialsWatcher({
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
@@ -373,6 +392,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
    */
   function courseListChanged<T>(result: T): T {
     broadcast('courses:changed', {})
+    emitPluginEvent('course:changed', {})
     return result
   }
   handle('courses:create', (req) => courseListChanged(coursesRepo.create(req)))
@@ -406,6 +426,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return result
   })
   handle('courses:rename', (req) => courseListChanged(coursesRepo.rename(req)))
+  handle('courses:setColor', (req) =>
+    courseListChanged(coursesRepo.setColor(req))
+  )
   handle('courses:archive', (req) => {
     const course = coursesRepo.archive(req)
     if (req.archived) releaseCourseRuntime(req.courseId)
@@ -584,18 +607,30 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     const result = notesRepo.write(req)
     materialsRepo.invalidateTree(req.courseId)
     note(req.courseId, 'note-edited', `필기를 수정했습니다: ${req.relPath}`, req.relPath)
+    emitPluginEvent('note:saved', {
+      courseId: req.courseId,
+      relPath: req.relPath
+    })
     return result
   })
   handle('notes:rename', (req) => {
     const result = notesRepo.rename(req)
     materialsRepo.invalidateTree(req.courseId)
     broadcast('materials:changed', { courseId: req.courseId })
+    emitPluginEvent('note:saved', {
+      courseId: req.courseId,
+      relPath: result.relPath
+    })
     return result
   })
   handle('notes:create', (req) => {
     const result = notesRepo.create(req)
     materialsRepo.invalidateTree(req.courseId)
     note(req.courseId, 'note-created', `필기를 만들었습니다: ${result.relPath}`, result.relPath)
+    emitPluginEvent('note:saved', {
+      courseId: req.courseId,
+      relPath: result.relPath
+    })
     return result
   })
 
@@ -1343,9 +1378,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
   handle('agent:syncWorkspace', (req) => {
+    const previousCourseId = workspaceSnapshot.selectedCourseId
     workspaceSnapshot = {
       selectedCourseId: req.selectedCourseId,
       tabs: req.tabs.map((tab) => ({ ...tab }))
+    }
+    if (previousCourseId !== req.selectedCourseId) {
+      emitPluginEvent('course:changed', { courseId: req.selectedCourseId })
     }
     return OK
   })
@@ -2140,6 +2179,164 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     searchIndex.indexPdfPages(req)
     return OK
   })
+
+  // -- third-party plugins -------------------------------------------------
+  const pluginStore = createPluginStore({ userDataDir: deps.userDataPath })
+  const pluginData = createPluginDataStore({ userDataDir: deps.userDataPath })
+  const pluginLog = createPluginLog()
+  const pluginLimiter = createPluginRateLimiter()
+  const pluginChanged = (): void => {
+    broadcast('plugins:changed', { plugins: pluginStore.list() })
+  }
+  const pluginApi = createPluginApi({
+    courses: coursesRepo,
+    notes: notesRepo,
+    materials: materialsRepo,
+    data: pluginData,
+    currentCourseId: () => workspaceSnapshot.selectedCourseId,
+    onNoteSaved: (courseId, relPath) => {
+      emitPluginEvent('note:saved', { courseId, relPath })
+      broadcast('materials:changed', { courseId })
+    },
+    showNotice: (pluginId, message, tone) => {
+      const pluginName =
+        pluginStore.get(pluginId)?.manifest.name ?? pluginId
+      broadcast('plugins:notice', { pluginId, pluginName, message, tone })
+    },
+    openPanel: (pluginId, panelId) => {
+      broadcast('plugins:openPanel', { pluginId, panelId })
+    },
+    postPanel: postPluginPanelMessage,
+    panelExists: (pluginId, panelId) =>
+      pluginStore
+        .manifestFor(pluginId)
+        ?.contributes.panels.some((panel) => panel.id === panelId) ?? false,
+    networkAllowed: (pluginId, url) => {
+      const plugin = pluginStore.get(pluginId)
+      return (
+        plugin?.approvedPermissions !== null &&
+        plugin?.approvedPermissions !== undefined &&
+        isMethodAllowed(plugin.approvedPermissions, 'net.fetch', url)
+      )
+    }
+  })
+  const pluginRuntime = createPluginRuntime({
+    store: pluginStore,
+    api: pluginApi,
+    limiter: pluginLimiter,
+    log: pluginLog,
+    hostEntry: join(__dirname, 'pluginHost.js'),
+    appVersion: resolveAppVersion(
+      app.isPackaged,
+      app.getVersion(),
+      __APP_VERSION__
+    ),
+    changed: pluginChanged
+  })
+  emitPluginEvent = (name, payload) => pluginRuntime.sendEvent(name, payload)
+  const stopPluginPanels = configurePluginPanels({
+    store: pluginStore,
+    preloadPath: deps.pluginPanelPreloadPath,
+    onPanelMessage: (pluginId, panelId, payload) => {
+      pluginRuntime.sendPanelMessage(pluginId, panelId, payload)
+    },
+    log: (pluginId, message) => {
+      pluginLog.push({ pluginId, level: 'denied', message })
+    }
+  })
+
+  void pluginRuntime.syncEnabled().catch((error: unknown) => {
+    console.error('[plugins] enabled-plugin startup failed', error)
+  })
+
+  app.on('before-quit', () => {
+    stopPluginPanels()
+    pluginRuntime.dispose()
+  })
+
+  handle('plugins:list', () => ({ plugins: pluginStore.list() }))
+  handle('plugins:pickFolder', async () => {
+    const parent =
+      BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const options: Electron.OpenDialogOptions = {
+      title: '플러그인 폴더 선택',
+      buttonLabel: '이 폴더 설치',
+      properties: ['openDirectory']
+    }
+    const result =
+      parent === undefined
+        ? await dialog.showOpenDialog(options)
+        : await dialog.showOpenDialog(parent, options)
+    return { path: result.canceled ? null : (result.filePaths[0] ?? null) }
+  })
+  handle('plugins:installFromFolder', async (req) => {
+    const installed = await pluginStore.installFromFolder(req.path)
+    // A re-install replaces files underneath a possibly active old instance.
+    // Stop that instance even though the new registry entry is disabled.
+    pluginRuntime.unload(installed.plugin.manifest.id)
+    pluginChanged()
+    return installed
+  })
+  handle('plugins:uninstall', async (req) => {
+    pluginRuntime.unload(req.id)
+    await pluginStore.uninstall(req.id)
+    pluginData.remove(req.id)
+    pluginLimiter.reset(req.id)
+    pluginChanged()
+    return OK
+  })
+  handle('plugins:setEnabled', async (req) => {
+    let plugin = pluginStore.setEnabled(req.id, req.enabled)
+    if (!req.enabled) {
+      pluginRuntime.unload(req.id)
+      pluginChanged()
+      return { plugin }
+    }
+    pluginChanged()
+    if (plugin.state === 'needs-approval') return { plugin }
+    try {
+      plugin = await pluginRuntime.load(req.id)
+    } catch (error) {
+      pluginLog.push({
+        pluginId: req.id,
+        level: 'error',
+        message: `activation failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      })
+      plugin = pluginStore.get(req.id) ?? plugin
+    }
+    return { plugin }
+  })
+  handle('plugins:approve', (req) => {
+    const plugin = pluginStore.approve(req.id)
+    pluginChanged()
+    return { plugin }
+  })
+  handle('plugins:reload', async (req) => {
+    let plugin = pluginStore.get(req.id)
+    if (plugin === null) throw new ValidationError(`unknown plugin "${req.id}"`)
+    try {
+      plugin = await pluginRuntime.reload(req.id)
+    } catch (error) {
+      pluginLog.push({
+        pluginId: req.id,
+        level: 'error',
+        message: `reload failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      })
+      plugin = pluginStore.get(req.id) ?? plugin
+    }
+    return { plugin }
+  })
+  handle('plugins:runCommand', async (req) => {
+    await pluginRuntime.runCommand(req.pluginId, req.commandId)
+    return OK
+  })
+  handle('plugins:logs', (req) => ({
+    entries: pluginLog.list(req.id)
+  }))
 
 
   // -- settings (real implementation, settingsStore-owned) ------------------

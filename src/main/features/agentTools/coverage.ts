@@ -118,6 +118,8 @@ export const NOT_FOR_AGENT: Readonly<Record<string, string>> = {
     '폴더 선택 창의 결과를 받는 짝. pickFolder 없이는 의미가 없다.',
   'courses:relink':
     '끊긴 과목을 다른 폴더에 다시 붙이는 일. 잘못 붙이면 남의 과목 자료를 그 과목 것으로 만든다.',
+  'courses:setColor':
+    '과목 색상은 학생의 시각적 취향이므로 사이드바에서 직접 고른다.',
   'materials:reveal': 'Finder 를 여는 일. 앱 밖의 동작이다.',
   'materials:preview': 'OS 미리보기(Quick Look)를 여는 일. 앱 밖의 동작이다.',
   'links:remove':

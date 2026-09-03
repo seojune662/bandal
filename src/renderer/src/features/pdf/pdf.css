@@ -187,6 +187,35 @@
   overflow: auto;
   background: var(--bg-app);
   overscroll-behavior: contain;
+  /* The global 8px scrollbar leaves almost no painted thumb after its 4px
+     transparent border. A PDF is long-form navigation, so give its primary
+     scrollbar a full-size, easy-to-grab target. */
+  scrollbar-width: auto;
+  scrollbar-color: var(--border-strong) var(--bg-surface);
+}
+
+.pdf-scroller::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+.pdf-scroller::-webkit-scrollbar-track,
+.pdf-scroller::-webkit-scrollbar-corner {
+  background: var(--bg-surface);
+}
+
+.pdf-scroller::-webkit-scrollbar-thumb {
+  min-height: var(--control-height);
+  background: var(--border-strong);
+  border: 3px solid var(--bg-surface);
+  border-radius: var(--radius-pill);
+  background-clip: padding-box;
+}
+
+.pdf-scroller::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+  border: 3px solid var(--bg-surface);
+  background-clip: padding-box;
 }
 
 .pdf-content {

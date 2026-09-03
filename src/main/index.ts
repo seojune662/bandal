@@ -28,6 +28,7 @@ import {
   resolveAppBundlePath
 } from './windows/macFinderIcon'
 import { reportFatalStartupError } from './startupError'
+import { PLUGIN_SCHEME } from './features/plugins/pluginProtocol'
 
 const execFileAsync = promisify(execFile)
 
@@ -66,6 +67,14 @@ protocol.registerSchemesAsPrivileged([
       // 오리진에서의 cross-origin fetch 가 CORS 로 조용히 죽는다.
       corsEnabled: true,
       stream: true
+    }
+  },
+  {
+    scheme: PLUGIN_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true
     }
   }
 ])
@@ -207,6 +216,7 @@ if (!app.requestSingleInstanceLock()) {
       overlay,
       setSettings,
       preloadPath: join(__dirname, '../preload/index.js'),
+      pluginPanelPreloadPath: join(__dirname, '../preload/pluginPanel.js'),
       userDataPath: app.getPath('userData'),
       windowBackground: resolveWindowBackground,
       openMaterial,

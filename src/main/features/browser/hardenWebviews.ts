@@ -36,6 +36,10 @@ import { createPopupLimiter } from './popupLimiter'
 import { browsingUserAgent } from './userAgent'
 import { createBrowserSessionStore } from './sessionStore'
 import { getSettings } from '../../settingsStore'
+import {
+  attachPluginPanelGuest,
+  preparePluginPanelWebview
+} from '../plugins/pluginPanels'
 
 let browsingSessionHardened = false
 
@@ -584,6 +588,14 @@ export function hardenWindowWebviews(win: BrowserWindow): void {
 
   const host = win.webContents
   host.on('will-attach-webview', (event, webPreferences, params) => {
+    if (
+      preparePluginPanelWebview(
+        params,
+        webPreferences as Record<string, unknown>
+      )
+    ) {
+      return
+    }
     if (!isAllowedAttach(params)) {
       event.preventDefault()
       return
@@ -594,6 +606,7 @@ export function hardenWindowWebviews(win: BrowserWindow): void {
   })
 
   host.on('did-attach-webview', (_event, guest) => {
+    if (attachPluginPanelGuest(guest)) return
     const openInTab = (url: string): void => {
       if (host.isDestroyed()) return
       const payload: BrowserOpenUrl = {

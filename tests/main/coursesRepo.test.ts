@@ -545,6 +545,27 @@ describe('coursesRepo', () => {
     })
   })
 
+  describe('setColor', () => {
+    test('changes the color without changing the course identity', () => {
+      const course = repo.create({ name: 'Databases', color: 'green' })
+
+      const updated = repo.setColor({ courseId: course.id, color: 'violet' })
+
+      expect(updated.color).toBe('violet')
+      expect(updated.name).toBe(course.name)
+      expect(updated.slug).toBe(course.slug)
+      expect(repo.getById(course.id).color).toBe('violet')
+    })
+
+    test('rejects a blank color', () => {
+      const course = repo.create({ name: 'Databases', color: 'green' })
+
+      expect(() => repo.setColor({ courseId: course.id, color: '   ' })).toThrow(
+        ValidationError
+      )
+    })
+  })
+
   describe('softDelete', () => {
     test('leaves the folder on disk untouched', () => {
       // Arrange

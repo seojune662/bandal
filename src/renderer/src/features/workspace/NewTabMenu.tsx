@@ -5,7 +5,7 @@
  * results only; the default list leaves material browsing to the right rail.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import {
   formatChord,
@@ -30,6 +30,14 @@ import { useNewTabMenu } from './newTabMenuController'
 import { descriptorFor, looksLikeUrl, normalizeUrl } from './tabIdentity'
 import { TabKindIcon } from './workspaceIcons'
 import { invoke, onPush } from '../../lib/ipc'
+import { useT } from '../../i18n'
+import {
+  chordMap as pluginChordMap,
+  commandsById as pluginCommandsById,
+  panelsById as pluginPanelsById,
+  usePluginsStore
+} from '../../stores/pluginsStore'
+import { openPluginPanel, runPluginCommand } from '../plugins/pluginCommands'
 
 const MAX_PDF_ITEMS = 8
 
@@ -40,6 +48,7 @@ interface MenuItem {
   shortcut?: string
   icon: JSX.Element
   keepOpen?: boolean
+  section?: 'plugins'
   run: () => void | Promise<void>
 }
 
@@ -76,6 +85,7 @@ export function shortcutLabel(
 }
 
 export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
+  const t = useT()
   const anchor = useNewTabMenu((state) => state.anchor)
   const close = useNewTabMenu((state) => state.close)
   const openTab = useWorkspaceStore((state) => state.openTab)
@@ -83,6 +93,8 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
   // [P2-D] Empty array when signed out or unconfigured, so the group entries
   // simply do not exist rather than appearing disabled.
   const groups = useGroupsStore((state) => state.groups)
+  const plugins = usePluginsStore((state) => state.plugins)
+  const refreshPlugins = usePluginsStore((state) => state.refresh)
   const [query, setQuery] = useState('')
   const [highlighted, setHighlighted] = useState(0)
   const [isAddingLink, setAddingLink] = useState(false)
@@ -100,6 +112,10 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
+
+  useEffect(() => {
+    void refreshPlugins().catch(() => undefined)
+  }, [refreshPlugins])
 
   useEffect(() => {
     if (isAddingLink) linkUrlRef.current?.focus()
@@ -152,6 +168,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
     'new-browser-tab',
     platform
   )
+  const pluginChords = pluginChordMap({ plugins })
 
   const items = useMemo<MenuItem[]>(() => {
     const trimmed = query.trim()
@@ -279,6 +296,47 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
       })
     }
 
+    const activePanelItems = [...pluginPanelsById({ plugins }).values()].filter(
+      (item) => item.plugin.enabled && item.plugin.state === 'active'
+    )
+    for (const item of activePanelItems) {
+      if (!matches(item.panel.title, item.pluginName, '플러그인')) continue
+      result.push({
+        id: item.panelKey,
+        label: item.panel.title,
+        hint: item.pluginName,
+        section: 'plugins',
+        icon: <TabKindIcon kind="plugin-panel" />,
+        run: () => openPluginPanel(item.pluginId, item.panel.id)
+      })
+    }
+
+    const activeCommandItems = [
+      ...pluginCommandsById({ plugins }).values()
+    ].filter((item) => item.plugin.enabled && item.plugin.state === 'active')
+    for (const item of activeCommandItems) {
+      if (!matches(item.command.title, item.pluginName, '플러그인')) continue
+      const binding = [...pluginChords].find(
+        ([, command]) => command.actionId === item.actionId
+      )?.[0]
+      const parsed = binding === undefined ? null : parseChord(binding)
+      result.push({
+        id: item.actionId,
+        label: item.command.title,
+        hint: item.pluginName,
+        ...(parsed === null
+          ? {}
+          : { shortcut: formatChord(parsed, platform) }),
+        section: 'plugins',
+        icon: <Icon name="puzzle" />,
+        run: () => {
+          void runPluginCommand(item.pluginId, item.command.id).catch(
+            () => undefined
+          )
+        }
+      })
+    }
+
     if (trimmed.length > 0) {
       const pdfs: MaterialNode[] = []
       collectPdfs(tree, pdfs)
@@ -307,7 +365,10 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
     course.name,
     openTab,
     newMarkdownShortcut,
-    newBrowserShortcut
+    newBrowserShortcut,
+    plugins,
+    pluginChords,
+    platform
   ])
 
   const linkItem: MenuItem = {
@@ -322,6 +383,9 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
   const clampedHighlight = Math.min(
     highlighted,
     Math.max(allItems.length - 1, 0)
+  )
+  const firstPluginIndex = items.findIndex(
+    (item) => item.section === 'plugins'
   )
 
   const activate = (item: MenuItem | undefined): void => {
@@ -489,27 +553,37 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
               <li className="new-tab-menu__empty">일치하는 항목이 없어요</li>
             ) : (
               items.map((item, index) => (
-                <li key={item.id} role="presentation">
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={index === clampedHighlight}
-                    data-highlighted={index === clampedHighlight}
-                    onMouseEnter={() => setHighlighted(index)}
-                    onClick={() => activate(item)}
-                  >
-                    <span className="new-tab-menu__icon">{item.icon}</span>
-                    <span className="new-tab-menu__label">{item.label}</span>
-                    {item.hint !== undefined && (
-                      <span className="new-tab-menu__hint">{item.hint}</span>
-                    )}
-                    {item.shortcut !== undefined && (
-                      <span className="new-tab-menu__shortcut" aria-hidden="true">
-                        {item.shortcut}
-                      </span>
-                    )}
-                  </button>
-                </li>
+                <Fragment key={item.id}>
+                  {index === firstPluginIndex && (
+                    <li
+                      className="new-tab-menu__section-label"
+                      role="presentation"
+                    >
+                      {t('plugins.menu.section')}
+                    </li>
+                  )}
+                  <li role="presentation">
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={index === clampedHighlight}
+                      data-highlighted={index === clampedHighlight}
+                      onMouseEnter={() => setHighlighted(index)}
+                      onClick={() => activate(item)}
+                    >
+                      <span className="new-tab-menu__icon">{item.icon}</span>
+                      <span className="new-tab-menu__label">{item.label}</span>
+                      {item.hint !== undefined && (
+                        <span className="new-tab-menu__hint">{item.hint}</span>
+                      )}
+                      {item.shortcut !== undefined && (
+                        <span className="new-tab-menu__shortcut" aria-hidden="true">
+                          {item.shortcut}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                </Fragment>
               ))
             )}
             <li className="new-tab-menu__link-item" role="presentation">

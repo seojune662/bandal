@@ -85,6 +85,8 @@ export function TabKindIcon({ kind, ...props }: TabKindIconProps): JSX.Element {
       return <Icon name="fileImage" {...props} />
     case 'file':
       return <Icon name="file" {...props} />
+    case 'plugin-panel':
+      return <Icon name="puzzle" {...props} />
     case 'browser':
     case 'chat':
     case 'board':

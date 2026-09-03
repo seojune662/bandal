@@ -131,3 +131,21 @@ describe('coursesStore archiveCourse', () => {
     expect(workspaceMocks.discardPendingSave).not.toHaveBeenCalled()
   })
 })
+
+describe('coursesStore setCourseColor', () => {
+  test('persists the color and replaces the course with the server response', async () => {
+    const original = course('c1', 0)
+    const updated = { ...original, color: 'violet' }
+    useCoursesStore.setState({ courses: [original] })
+    invokeMock.mockResolvedValue(updated)
+
+    await useCoursesStore.getState().setCourseColor(original.id, 'violet')
+
+    expect(invokeMock).toHaveBeenCalledWith('courses:setColor', {
+      courseId: original.id,
+      color: 'violet'
+    })
+    expect(useCoursesStore.getState().courses[0]?.color).toBe('violet')
+    expect(useCoursesStore.getState().pendingCourseId).toBeNull()
+  })
+})

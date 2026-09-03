@@ -13,6 +13,7 @@ import type {
   TabKind,
   TabPayloadMap
 } from '../../../../shared/tabs'
+import { usePluginsStore } from '../../stores/pluginsStore'
 // Re-exported so existing renderer imports keep working; the validator itself
 // now lives in shared/ because main validates descriptors too (favorites).
 export { TAB_KINDS, isTabKind, isTabDescriptor } from '../../../../shared/tabs'
@@ -51,6 +52,8 @@ export function tabPanelId(descriptor: TabDescriptor): string {
       return `group-chat:${descriptor.payload.courseId ?? 'unassigned'}`
     case 'whiteboard':
       return `whiteboard:${descriptor.payload.courseId}:${descriptor.payload.boardId}`
+    case 'plugin-panel':
+      return `plugin-panel:${descriptor.payload.pluginId}:${descriptor.payload.panelId}`
   }
 }
 
@@ -91,6 +94,17 @@ export function tabTitle(descriptor: TabDescriptor): string {
       return '그룹 채팅'
     case 'whiteboard':
       return '화이트보드'
+    case 'plugin-panel': {
+      const panel = usePluginsStore
+        .getState()
+        .plugins.find(
+          (plugin) => plugin.manifest.id === descriptor.payload.pluginId
+        )
+        ?.manifest.contributes.panels.find(
+          (item) => item.id === descriptor.payload.panelId
+        )
+      return panel?.title ?? '플러그인'
+    }
   }
 }
 
@@ -112,6 +126,8 @@ export function tabPayloadSummary(descriptor: TabDescriptor): string {
       return `그룹 ${descriptor.payload.groupId}`
     case 'whiteboard':
       return `보드 ${descriptor.payload.boardId}`
+    case 'plugin-panel':
+      return `${descriptor.payload.pluginId} · ${descriptor.payload.panelId}`
   }
 }
 

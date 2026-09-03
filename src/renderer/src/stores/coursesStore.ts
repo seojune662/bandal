@@ -42,6 +42,7 @@ interface CoursesState {
   /** Repoints a 연결 끊김 course at another folder. */
   relinkCourse: (courseId: string, folderPath: string) => Promise<CourseFolderResult>
   renameCourse: (courseId: string, name: string) => Promise<Course>
+  setCourseColor: (courseId: string, color: string) => Promise<Course>
   archiveCourse: (courseId: string, archived: boolean) => Promise<void>
   deleteCourse: (courseId: string) => Promise<void>
   clearError: () => void
@@ -380,6 +381,28 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
           state.pendingCourseId = null
         })
         return renamed
+      } catch (error) {
+        set((state) => {
+          state.pendingCourseId = null
+          state.error = errorMessage(error)
+        })
+        throw error
+      }
+    },
+
+    setCourseColor: async (courseId, color) => {
+      set((state) => {
+        state.pendingCourseId = courseId
+        state.error = null
+      })
+      try {
+        const updated = await invoke('courses:setColor', { courseId, color })
+        set((state) => {
+          const index = state.courses.findIndex((course) => course.id === courseId)
+          if (index !== -1) state.courses[index] = updated
+          state.pendingCourseId = null
+        })
+        return updated
       } catch (error) {
         set((state) => {
           state.pendingCourseId = null

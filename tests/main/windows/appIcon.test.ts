@@ -85,7 +85,7 @@ describe('resolveIconVariant', () => {
       }
     }
 
-    expect(combinations).toBe(4 * 7 * 2)
+    expect(combinations).toBe(6 * 7 * 2)
   })
 
   test.each<[ThemeId, 'dark' | 'light']>([

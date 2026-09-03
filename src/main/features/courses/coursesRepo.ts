@@ -17,7 +17,8 @@ import type {
   CourseSource,
   CreateCourseInput,
   RelinkCourseInput,
-  RenameCourseInput
+  RenameCourseInput,
+  SetCourseColorInput
 } from '../../../shared/types/course'
 import { NotFoundError, ValidationError } from '../../db/errors'
 import { nowIso, requireId, requireNonEmptyString } from '../../db/validate'
@@ -31,6 +32,7 @@ export interface CoursesRepo {
   /** Repoints a course at another folder (연결 끊김 복구). */
   relink(input: RelinkCourseInput): CourseFolderResult
   rename(input: RenameCourseInput): Course
+  setColor(input: SetCourseColorInput): Course
   archive(input: { courseId: string; archived: boolean }): Course
   /**
    * 한 번의 드래그 = 한 번의 원자적 호출. `groupId`(null = 그룹 해제)로
@@ -351,6 +353,18 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
         row.id
       )
       return rowToCourse({ ...row, name, updated_at: now })
+    },
+
+    setColor(input) {
+      const row = getRowOrThrow(input.courseId)
+      const color = requireNonEmptyString(input.color, 'color').trim()
+      const now = nowIso()
+      db.prepare('UPDATE courses SET color = ?, updated_at = ? WHERE id = ?').run(
+        color,
+        now,
+        row.id
+      )
+      return rowToCourse({ ...row, color, updated_at: now })
     },
 
     archive(input) {

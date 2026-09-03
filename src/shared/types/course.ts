@@ -57,6 +57,11 @@ export interface RenameCourseInput {
   name: string
 }
 
+export interface SetCourseColorInput {
+  courseId: string
+  color: string
+}
+
 export interface AddCourseFromFolderInput {
   /** Absolute path to an existing folder. */
   folderPath: string

@@ -28,6 +28,7 @@ import ImageTab from '../image/ImageTab'
 import FileTab from '../file/FileTab'
 import GroupChatTab from '../group/GroupChatTab'
 import CanvasTab from '../canvas/CanvasTab'
+import PluginPanelTab from '../plugins/PluginPanelTab'
 import { withMaterialSequence } from '../links/MaterialSequenceWrapper'
 
 export interface TabRegistryEntry {
@@ -84,13 +85,20 @@ export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
     component: CanvasTab,
     icon: null,
     defaultTitle: tabTitle
+  },
+  'plugin-panel': {
+    component: PluginPanelTab,
+    icon: 'puzzle',
+    defaultTitle: tabTitle
   }
 }
 
 /**
  * Component map in the shape DockviewReact wants (keyed by TabKind).
- * Every panel is wrapped with the material-sequence layer (edge drop zones
- * during a material drag + prev/next nav bar when links exist).
+ * Course material panels are wrapped with the material-sequence layer (edge
+ * drop zones during a material drag + prev/next nav bar when links exist).
+ * Plugin panels are deliberately direct guests: they cannot own material
+ * links and must not inherit course-scoped queries or overlays.
  */
 export const dockviewComponents: Record<
   string,
@@ -98,6 +106,8 @@ export const dockviewComponents: Record<
 > = Object.fromEntries(
   Object.entries(tabRegistry).map(([kind, entry]) => [
     kind,
-    withMaterialSequence(entry.component)
+    kind === 'plugin-panel'
+      ? entry.component
+      : withMaterialSequence(entry.component)
   ])
 )

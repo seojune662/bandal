@@ -45,7 +45,12 @@ import {
   readCollapsedGroupIds
 } from './courseGroupCollapse'
 import { folderProblemMessage } from './folderMessages'
-import { normalizeCourseColor } from './courseColors'
+import {
+  COURSE_COLORS,
+  courseColorLabel,
+  normalizeCourseColor,
+  type CourseColor
+} from './courseColors'
 import './courses.css'
 
 interface ContextMenuState {
@@ -53,6 +58,7 @@ interface ContextMenuState {
   x: number
   y: number
   placement: 'top' | 'bottom'
+  alignEnd: boolean
 }
 
 interface AddMenuState {
@@ -119,6 +125,7 @@ export function CourseSidebar(): JSX.Element {
   const addCourseFromFolder = useCoursesStore((state) => state.addCourseFromFolder)
   const relinkCourse = useCoursesStore((state) => state.relinkCourse)
   const renameCourse = useCoursesStore((state) => state.renameCourse)
+  const setCourseColor = useCoursesStore((state) => state.setCourseColor)
   const archiveCourse = useCoursesStore((state) => state.archiveCourse)
   const deleteCourse = useCoursesStore((state) => state.deleteCourse)
   const clearError = useCoursesStore((state) => state.clearError)
@@ -261,8 +268,38 @@ export function CourseSidebar(): JSX.Element {
       course,
       x: event.clientX,
       y: event.clientY,
-      placement: event.clientY > window.innerHeight / 2 ? 'top' : 'bottom'
+      placement: event.clientY > window.innerHeight / 2 ? 'top' : 'bottom',
+      alignEnd: false
     })
+  }
+
+  const openCourseMenu = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    course: Course
+  ): void => {
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const placement = rect.bottom > window.innerHeight / 2 ? 'top' : 'bottom'
+    selectCourse(course.id)
+    setAddMenu(null)
+    setGroupContextMenu(null)
+    setContextMenu({
+      course,
+      x: rect.right,
+      y: placement === 'top' ? rect.top : rect.bottom,
+      placement,
+      alignEnd: true
+    })
+  }
+
+  const changeCourseColor = async (color: CourseColor): Promise<void> => {
+    if (contextMenu === null) return
+    try {
+      await setCourseColor(contextMenu.course.id, color)
+      setContextMenu(null)
+    } catch {
+      showToast('과목 색상을 바꾸지 못했어요.', 'danger')
+    }
   }
 
   const openAddMenu = (event: React.MouseEvent<HTMLButtonElement>): void => {
@@ -401,6 +438,7 @@ export function CourseSidebar(): JSX.Element {
     const selected = course.id === selectedCourseId
     const pending = course.id === pendingCourseId
     const expanded = selected && !collapsedCourseIds.has(course.id)
+    const menuOpen = contextMenu?.course.id === course.id
     const dropBefore =
       dropTarget?.kind === 'before' && dropTarget.courseId === course.id
 
@@ -522,11 +560,18 @@ export function CourseSidebar(): JSX.Element {
             <span className="course-row__name">{course.name}</span>
             {course.missing ? (
               <span className="course-row__badge">연결 끊김</span>
-            ) : (
-              <span className="course-row__hint" aria-hidden="true">
-                ···
-              </span>
-            )}
+            ) : null}
+          </button>
+          <button
+            type="button"
+            className="course-row__menu-button"
+            aria-label={`${course.name} 과목 메뉴`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            disabled={pending}
+            onClick={(event) => openCourseMenu(event, course)}
+          >
+            <span aria-hidden="true">⋯</span>
           </button>
         </div>
         {expanded && (
@@ -900,12 +945,44 @@ export function CourseSidebar(): JSX.Element {
       {contextMenu !== null && (
         <div
           ref={contextMenuRef}
-          className="context-menu"
+          className="context-menu context-menu--course"
           role="menu"
+          aria-label={`${contextMenu.course.name} 과목 메뉴`}
           data-placement={contextMenu.placement}
+          data-align={contextMenu.alignEnd ? 'end' : undefined}
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <p className="context-menu__label">{contextMenu.course.name}</p>
+          <div
+            className="context-menu__color-group"
+            role="group"
+            aria-label="과목 색상"
+          >
+            <span className="context-menu__color-label">색상</span>
+            <div className="context-menu__color-palette">
+              {COURSE_COLORS.map((color) => {
+                const selected =
+                  normalizeCourseColor(contextMenu.course.color) === color
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    className="context-menu__color-swatch"
+                    role="menuitemradio"
+                    data-course-color={color}
+                    data-selected={selected || undefined}
+                    aria-label={courseColorLabel(color)}
+                    aria-checked={selected}
+                    disabled={contextMenu.course.id === pendingCourseId}
+                    onClick={() => void changeCourseColor(color)}
+                  >
+                    <span />
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <span className="context-menu__separator" />
           <button
             type="button"
             role="menuitem"

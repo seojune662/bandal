@@ -15,6 +15,14 @@ export interface ScrollMemoryEntry {
   scrollHeight: number
   /** Zoom factor relative to fit-width (1 = fit width). */
   zoom: number
+  /**
+   * Pixel-independent reading position. Older entries may not have it, so
+   * restore keeps the scroll-height fallback above for compatibility.
+   */
+  anchor?: {
+    page: number
+    pageOffset: number
+  }
 }
 
 export const SCROLL_MEMORY_CAPACITY = 20
