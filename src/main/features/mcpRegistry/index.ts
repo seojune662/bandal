@@ -1,9 +1,8 @@
 export {
   createMcpRegistry,
-  MCP_REGISTRY_FILE_NAME,
-  toSummary
+  MCP_REGISTRY_FILE_NAME
 } from './registryStore'
-export type { McpRegistry, McpRegistryDeps } from './registryStore'
+export type { McpRegistryDeps } from './registryStore'
 export {
   buildClaudeMcpConfig,
   buildCodexMcpOverrides,

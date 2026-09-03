@@ -55,5 +55,3 @@ export type GroupEvent =
   | { type: 'member-joined'; member: GroupMember }
   | { type: 'member-left'; userId: string }
   | { type: 'connection'; state: GroupConnectionState }
-
-export type GroupEventType = GroupEvent['type']

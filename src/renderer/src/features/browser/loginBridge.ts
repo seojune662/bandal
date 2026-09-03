@@ -455,39 +455,6 @@ async function applyFormReport(
   }
 }
 
-/** Compatibility path for the old explicit save action. */
-export async function saveLoginForTab(tabId: string): Promise<void> {
-  const element = elements.get(tabId)
-  const state = useBrowserGuests.getState().login[tabId]
-  const origin = element === undefined ? null : liveOrigin(element)
-  if (
-    element === undefined ||
-    state === undefined ||
-    origin === null ||
-    state.origin !== origin ||
-    state.pending
-  ) {
-    return
-  }
-  const guestWebContentsId = guestId(element)
-  if (guestWebContentsId === null) return
-
-  update(tabId, { pending: true, message: null })
-  try {
-    const saved = await invoke('credentials:capture', {
-      origin,
-      guestWebContentsId,
-      autoSubmit: false
-    })
-    if (saved === null) {
-      update(tabId, { pending: false, message: 'needs-input' })
-      return
-    }
-    update(tabId, { pending: false, savedLogin: saved, message: 'saved' })
-  } catch {
-    update(tabId, { pending: false, message: 'failed' })
-  }
-}
 
 export async function saveStagedLoginForTab(tabId: string): Promise<void> {
   const element = elements.get(tabId)

@@ -4,11 +4,10 @@
  * 브로드캐스트를 타면 렌더러가 불필요하게 깨어난다.
  */
 
-import { app, screen, type BrowserWindow, type Rectangle } from 'electron'
+import { screen, type BrowserWindow, type Rectangle } from 'electron'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 
-const STATE_FILE = 'window-state.json'
 const SAVE_DEBOUNCE_MS = 500
 
 export interface WindowState {
@@ -144,22 +143,4 @@ export function createWindowStateStore(
   }
 
   return { read, track, save }
-}
-
-function mainWindowStore(): WindowStateStore {
-  return createWindowStateStore({
-    file: join(app.getPath('userData'), STATE_FILE),
-    minWidth: 200,
-    minHeight: 200
-  })
-}
-
-/** Existing main-window compatibility wrapper. */
-export function readWindowState(): WindowState {
-  return mainWindowStore().read()
-}
-
-/** Existing main-window compatibility wrapper. */
-export function trackWindowState(win: BrowserWindow): void {
-  mainWindowStore().track(win)
 }

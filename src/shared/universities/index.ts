@@ -12,7 +12,6 @@
  */
 
 import type {
-  ServiceKind,
   University,
   UniversityService,
   UniversitySettings
@@ -26,18 +25,11 @@ import { SNU, VERIFIED_AT } from './snu'
 export { VERIFIED_AT as CATALOG_VERIFIED_AT }
 export { COMMON_SERVICES } from './common'
 export {
-  applyServiceOrder,
   moveServiceBefore,
   moveServiceBy,
   moveServiceToEnd
 } from './order'
 export * from './courseLink'
-export {
-  blackboardCourseLink,
-  canvasCourseLink,
-  ilosCourseLink,
-  moodleCourseLink
-} from './specs'
 
 /** 18 schools verified on 2026-08-05, 서울대 first (the reference entry). */
 export const UNIVERSITIES: readonly University[] = [
@@ -164,19 +156,4 @@ export function serviceTierIds(services: readonly ResolvedService[]): {
     primary: services.filter((service) => !service.secondary).map((s) => s.id),
     secondary: services.filter((service) => service.secondary).map((s) => s.id)
   }
-}
-
-const KIND_LABELS: Readonly<Record<ServiceKind, string>> = {
-  portal: '학사·포털',
-  lms: '강의',
-  registration: '수강신청',
-  library: '도서관',
-  mail: '메일',
-  homepage: '홈페이지',
-  community: '커뮤니티',
-  other: '그 밖에'
-}
-
-export function serviceKindLabel(kind: ServiceKind): string {
-  return KIND_LABELS[kind]
 }

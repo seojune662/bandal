@@ -1,7 +1,3 @@
-import type { SearchHit } from '../../../../shared/types/search'
-import { openMaterialInCourse } from '../workspace/openMaterial'
-import { materialKindForSearchHit } from './searchUi'
-
 const PDF_JUMP_RETRY_MS = 50
 const PDF_JUMP_MAX_ATTEMPTS = 200
 let pendingJumpTimer: number | null = null
@@ -52,13 +48,4 @@ export function requestPdfPageJump(page: number): void {
   }
 
   tryJump()
-}
-
-export function openContentSearchHit(courseId: string, hit: SearchHit): void {
-  openMaterialInCourse(
-    courseId,
-    materialKindForSearchHit(hit.kind),
-    hit.relPath
-  )
-  if (hit.kind === 'pdf' && hit.page !== null) requestPdfPageJump(hit.page)
 }

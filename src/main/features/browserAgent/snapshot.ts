@@ -78,7 +78,7 @@ export interface FrameSnapshot {
  * function is the only thing that produces that order, the copies cannot
  * disagree.
  */
-export const TARGET_SELECTOR = 'a, button, input, select, textarea, h1, h2, h3, [role=button], [role=link], [role=tab], [role=menuitem], [role=checkbox], [onclick], label, summary'
+const TARGET_SELECTOR = 'a, button, input, select, textarea, h1, h2, h3, [role=button], [role=link], [role=tab], [role=menuitem], [role=checkbox], [onclick], label, summary'
 
 /** Page-side prelude defining \`__bandalTargets()\`. Injected, never imported. */
 export const TARGET_INDEX_SOURCE = `
@@ -184,7 +184,7 @@ export const TARGET_INDEX_SOURCE = `
   const __bandalTargets = () => {
     const seenTargets = new Set();
     const targets = [];
-    document.querySelectorAll('a, button, input, select, textarea, h1, h2, h3, [role=button], [role=link], [role=tab], [role=menuitem], [role=checkbox], [onclick], label, summary').forEach((el) => {
+    document.querySelectorAll('${TARGET_SELECTOR}').forEach((el) => {
       if (seenTargets.has(el)) return;
       if (!visible(el)) return;
       seenTargets.add(el);

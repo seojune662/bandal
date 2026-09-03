@@ -64,8 +64,3 @@ export function pathForFile(file: File): string {
 export function startMaterialDrag(courseId: string, relPath: string): void {
   window.bandal.startMaterialDrag(courseId, relPath)
 }
-
-/** Temporary M0 helper — opens the settings window. */
-export function openSettingsWindow(): Promise<void> {
-  return window.bandal.openSettings()
-}

@@ -20,7 +20,6 @@ function drive(rig: CharmRig, start: { x: number; y: number }) {
     }
   }
   const engine = new CharmEngine(rig, sink, {
-    now: () => 0,
     raf: (cb) => {
       pending = cb
       return 1

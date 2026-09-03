@@ -189,5 +189,3 @@ export function PluginPanelTab(props: IDockviewPanelProps): JSX.Element {
     </div>
   )
 }
-
-export default PluginPanelTab

@@ -99,13 +99,3 @@ export const useOnboardingStore = create<OnboardingStore>()((set, get) => ({
     persist(closed)
   }
 }))
-
-/** Test-only: allow re-initialization. */
-export function resetOnboardingStoreForTests(): void {
-  initialized = false
-  useOnboardingStore.setState({
-    visible: false,
-    step: 0,
-    persisted: DEFAULT_ONBOARDING
-  })
-}

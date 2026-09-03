@@ -67,11 +67,6 @@ function isSafeSegment(segment: string): boolean {
   )
 }
 
-/** Base URL of a plugin's ui tree (`bandal-plugin://<id>/ui/`). */
-export function pluginUiOrigin(pluginId: string): string {
-  return `${PLUGIN_SCHEME}://${pluginId}/${PLUGIN_UI_DIR}/`
-}
-
 /** Never throws; null → 404. */
 export function parsePluginUrl(url: string): ParsedPluginUrl | null {
   let parsed: URL

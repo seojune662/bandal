@@ -3,7 +3,6 @@ import type { Database } from 'better-sqlite3'
 import type {
   DrawingData,
   DrawingKind,
-  DrawingShape,
   DrawingStyle
 } from '../../../shared/types/drawing'
 import { DRAWING_KINDS } from '../../../shared/types/drawing'

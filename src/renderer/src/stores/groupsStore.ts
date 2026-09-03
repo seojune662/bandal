@@ -144,10 +144,6 @@ export function selectUnassignedGroups(
   return groups.filter((group) => group.courseId === null)
 }
 
-export function selectTotalUnread(groups: readonly GroupSummary[]): number {
-  return groups.reduce((sum, group) => sum + group.unread, 0)
-}
-
 /** Test-only: drop the push subscription latch. */
 export function resetGroupsStoreForTests(): void {
   subscribed = false

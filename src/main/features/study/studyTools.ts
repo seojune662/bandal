@@ -5,11 +5,10 @@ import type {
 import { BUILTIN_STUDY_PACKS } from '../../../shared/workflowPacks/builtins'
 import {
   buildWorkflowPackPrompt,
-  type StudyPlanningContext,
-  type StudyPlanningDeadline
+  type StudyPlanningContext
 } from '../workflowPacks/packRunner'
 
-export type { StudyPlanningContext, StudyPlanningDeadline }
+export type { StudyPlanningContext }
 
 export const STUDY_TOOLS: readonly StudyToolDefinition[] =
   BUILTIN_STUDY_PACKS.map((pack) => ({

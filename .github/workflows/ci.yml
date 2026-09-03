@@ -13,7 +13,7 @@ on:
 
 jobs:
   check:
-    name: Typecheck and test
+    name: Static checks and test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -31,6 +31,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm typecheck
+      - run: pnpm deadcode
       - run: pnpm test
 
       # electron-vite build catches renderer-only breakage that tsc misses

@@ -3,7 +3,7 @@
  * course's AI-agent chat.
  */
 
-import type { AgentAvailability, AgentProvider, Usage } from './agent-events'
+import type { AgentAvailability, AgentProvider } from './agent-events'
 
 export type MessageRole = 'user' | 'assistant'
 
@@ -120,9 +120,4 @@ export interface AgentModelOption {
   displayName: string
   /** True for the CLI's own default when no --model is passed. */
   isDefault: boolean
-}
-
-export interface ChatTurnSummary {
-  turnSeq: number
-  usage?: Usage
 }

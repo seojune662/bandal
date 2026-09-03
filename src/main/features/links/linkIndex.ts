@@ -48,7 +48,6 @@ export interface LinkIndexDeps {
 
 // 타입은 그래프 뷰(renderer)와 공유하기 위해 shared/types/link.ts 로 이동했다.
 export type {
-  DetailedMaterialBacklink,
   MaterialBacklinkGroup
 } from '../../../shared/types/link'
 

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/renderer/src/{main,overlay-main,pip-main,settings-main}.tsx",
+    "scripts/**/*.mjs",
+    "e2e/**/*.ts",
+    "tests/**/*.{ts,tsx}",
+    "examples/plugins/**/*.js"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx,mts,mjs}",
+    "scripts/**/*.mjs",
+    "e2e/**/*.ts",
+    "tests/**/*.{ts,tsx}",
+    "examples/plugins/**/*.js"
+  ],
+  "ignore": [
+    "src/shared/brandMark.d.mts",
+    "src/shared/brandMark.ts"
+  ],
+  "ignoreDependencies": [
+    "@milkdown/exception",
+    "better-sqlite3-node"
+  ],
+  "ignoreBinaries": [
+    "iconutil",
+    "where.exe"
+  ],
+  "ignoreExportsUsedInFile": true
+}

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { OverlayView } from '../../shared/types/overlay'
 import type { Rect } from './overlayGeometry'
 import {
-  ORB_WINDOW_SIZE,
+  ORB_WINDOW_WIDTH,
   POPUP_MIN_SIZE
 } from './overlayGeometry'
 
@@ -58,8 +58,8 @@ export function createOrbWindow(opts: {
 }): BrowserWindow {
   const win = new BrowserWindow({
     ...opts.position,
-    width: ORB_WINDOW_SIZE,
-    height: ORB_WINDOW_SIZE,
+    width: ORB_WINDOW_WIDTH,
+    height: ORB_WINDOW_WIDTH,
     show: false,
     transparent: true,
     frame: false,

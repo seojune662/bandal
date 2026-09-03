@@ -37,11 +37,6 @@ export interface WhiteboardShape extends DrawingShape {
   authorId: string
 }
 
-export interface CreateWhiteboardInput {
-  groupId: string
-  title?: string
-}
-
 export interface AddWhiteboardShapeInput {
   boardId: string
   /** Client-generated uuid — retrying with the same id is a no-op, not a duplicate. */

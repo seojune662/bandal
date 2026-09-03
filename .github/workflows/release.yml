@@ -75,6 +75,7 @@ jobs:
       # and every repo/migration test would fail to load a binding.
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - run: pnpm deadcode
       - run: pnpm test
 
   create-release:

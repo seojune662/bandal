@@ -408,28 +408,6 @@ export function AgentSetupCard({
   )
 }
 
-/** Compatibility exports for consumers that still mount a specific gate. */
-export function InstallCard({
-  provider,
-  onProviderChange,
-  onRefresh,
-  availability = { installed: false, loggedIn: false }
-}: {
-  provider: AgentProvider
-  onProviderChange: (provider: AgentProvider) => void
-  onRefresh: () => void
-  availability?: AgentAvailability
-}): JSX.Element {
-  return (
-    <AgentSetupCard
-      provider={provider}
-      availability={availability}
-      onProviderChange={onProviderChange}
-      onRefresh={onRefresh}
-    />
-  )
-}
-
 export function LoginCard({
   provider,
   onProviderChange,

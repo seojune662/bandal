@@ -11,7 +11,6 @@
  */
 
 import { existsSync } from 'node:fs'
-import { dirname } from 'node:path'
 import type { AgentAvailability, AgentErrorCode } from '../../../shared/types/agent-events'
 import {
   augmentedPathEnv,
@@ -345,9 +344,4 @@ export function createBinaryLocator(deps: BinaryLocatorDeps = {}): BinaryLocator
       cachedShellPath = undefined
     }
   }
-}
-
-/** Directory of a located binary, useful for PATH augmentation. */
-export function binaryDir(binary: LocatedBinary): string {
-  return dirname(binary.path)
 }

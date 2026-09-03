@@ -70,7 +70,3 @@ export function readSupabaseConfig(): SupabaseConfig | null {
   }
   return { url, publishableKey }
 }
-
-export function isConfigured(): boolean {
-  return readSupabaseConfig() !== null
-}

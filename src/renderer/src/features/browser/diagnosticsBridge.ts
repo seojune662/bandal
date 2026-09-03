@@ -61,16 +61,6 @@ export function clearDiagnostics(tabId: string): void {
   byTab.delete(tabId)
 }
 
-/** Records something main refused, so blocks sit beside the errors they cause. */
-export function recordBlocked(tabId: string, message: string): void {
-  const current = byTab.get(tabId)
-  record(tabId, current?.url ?? '', {
-    kind: 'blocked',
-    message,
-    at: new Date().toISOString()
-  })
-}
-
 /** Everything the student can paste into an issue. */
 export function diagnosticsReport(tabId: string): string {
   const diagnostics = byTab.get(tabId)

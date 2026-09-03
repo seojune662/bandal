@@ -8,8 +8,6 @@ export interface Rect {
 /** Transparent desktop window; asymmetric space keeps both charm directions visible. */
 export const ORB_WINDOW_WIDTH = 260
 export const ORB_WINDOW_HEIGHT = 340
-/** Kept for the window factory, which the controller expands to the final bounds. */
-export const ORB_WINDOW_SIZE = ORB_WINDOW_WIDTH
 /** Visible pill inside the transparent desktop window. */
 export const ORB_VISUAL_SIZE = 56
 export const ORB_VISUAL_CENTER_Y = 120

@@ -5,24 +5,19 @@ import type { Database } from 'better-sqlite3'
 import type {
   CreateDrawingInput,
   Drawing,
-  DrawingBox,
-  DrawingColor,
   DrawingData,
   DrawingKind,
-  DrawingPoint,
   DrawingStyle,
-  DrawingTextRun,
-  TextAlign,
   UpdateDrawingInput
 } from '../../../shared/types/drawing'
-import { normalizeTextRuns } from '../../../shared/textRuns'
-import {
-  DRAWING_COLORS,
-  DRAWING_KINDS as ALL_DRAWING_KINDS,
-  TEXT_ALIGNS
-} from '../../../shared/types/drawing'
+import { DRAWING_KINDS as ALL_DRAWING_KINDS } from '../../../shared/types/drawing'
 import { NotFoundError, ValidationError } from '../../db/errors'
 import { nowIso, requireId, requireInt, requireNonEmptyString } from '../../db/validate'
+import {
+  assertDrawingData,
+  assertDrawingKind,
+  assertDrawingStyle
+} from '../drawingValidation'
 
 export interface DrawingsRepo {
   listForFile(courseId: string, relPath: string): Drawing[]
@@ -43,233 +38,10 @@ interface DrawingRow {
   updated_at: string
 }
 
-/**
- * Everything except `clip`: a clip is a reference to a PDF page, and placing
- * one back onto a PDF page has no meaning. Derived from the shared list rather
- * than copied, so a new kind cannot be silently forgotten here.
- */
+/** A PDF page accepts every drawing kind except a clip of another PDF page. */
 const DRAWING_KINDS: readonly DrawingKind[] = ALL_DRAWING_KINDS.filter(
   (kind) => kind !== 'clip'
 )
-/** textbox-only boolean switches; absent stays absent, anything non-boolean is rejected. */
-const TEXT_FLAG_FIELDS = ['bold', 'italic', 'underline', 'strike'] as const
-
-function assertUnit(value: unknown, field: string): number {
-  if (
-    typeof value !== 'number' ||
-    !Number.isFinite(value) ||
-    value < 0 ||
-    value > 1
-  ) {
-    throw new ValidationError(`${field} must be a finite number between 0 and 1`)
-  }
-  return value
-}
-
-function assertPositive(value: unknown, field: string, max = 1): number {
-  if (
-    typeof value !== 'number' ||
-    !Number.isFinite(value) ||
-    value <= 0 ||
-    value > max
-  ) {
-    throw new ValidationError(`${field} must be a finite number greater than 0 and at most ${max}`)
-  }
-  return value
-}
-
-function assertPoint(value: unknown, field: string): DrawingPoint {
-  if (value === null || typeof value !== 'object') {
-    throw new ValidationError(`${field} must be a drawing point`)
-  }
-  const point = value as Partial<DrawingPoint>
-  return {
-    x: assertUnit(point.x, `${field}.x`),
-    y: assertUnit(point.y, `${field}.y`),
-    p: assertUnit(point.p, `${field}.p`)
-  }
-}
-
-function assertBox(value: unknown, field: string): DrawingBox {
-  if (value === null || typeof value !== 'object') {
-    throw new ValidationError(`${field} must be a drawing box`)
-  }
-  const box = value as Partial<DrawingBox>
-  const result = {
-    x: assertUnit(box.x, `${field}.x`),
-    y: assertUnit(box.y, `${field}.y`),
-    width: assertUnit(box.width, `${field}.width`),
-    height: assertUnit(box.height, `${field}.height`)
-  }
-  if (result.x + result.width > 1 || result.y + result.height > 1) {
-    throw new ValidationError(`${field} must stay inside the normalized page`)
-  }
-  return result
-}
-
-function assertKind(value: unknown): DrawingKind {
-  if (!DRAWING_KINDS.includes(value as DrawingKind)) {
-    throw new ValidationError(`kind must be one of ${DRAWING_KINDS.join(', ')}`)
-  }
-  return value as DrawingKind
-}
-
-function assertTextRuns(text: string, value: unknown): DrawingTextRun[] {
-  if (!Array.isArray(value)) {
-    throw new ValidationError('data.textRuns needs textbox text and an array')
-  }
-  const runs = value.map((raw, index) => {
-    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-      throw new ValidationError(`data.textRuns[${index}] must be an object`)
-    }
-    const run = raw as DrawingTextRun
-    if (
-      !Number.isInteger(run.from) ||
-      !Number.isInteger(run.to) ||
-      run.from < 0 ||
-      run.to <= run.from ||
-      run.to > text.length
-    ) {
-      throw new ValidationError(`data.textRuns[${index}] has an invalid range`)
-    }
-    if (run.style === null || typeof run.style !== 'object' || Array.isArray(run.style)) {
-      throw new ValidationError(`data.textRuns[${index}].style must be an object`)
-    }
-    const style: DrawingTextRun['style'] = {}
-    if (run.style.color !== undefined) {
-      if (!DRAWING_COLORS.includes(run.style.color)) {
-        throw new ValidationError(`data.textRuns[${index}].style.color is invalid`)
-      }
-      style.color = run.style.color
-    }
-    if (run.style.fontSizePt !== undefined) {
-      style.fontSizePt = assertPositive(
-        run.style.fontSizePt,
-        `data.textRuns[${index}].style.fontSizePt`,
-        96
-      )
-    }
-    for (const field of TEXT_FLAG_FIELDS) {
-      const flag = run.style[field]
-      if (flag === undefined) continue
-      if (typeof flag !== 'boolean') {
-        throw new ValidationError(`data.textRuns[${index}].style.${field} must be boolean`)
-      }
-      style[field] = flag
-    }
-    return { from: run.from, to: run.to, style }
-  })
-  const normalized = normalizeTextRuns(text, runs)
-  if (normalized.length !== runs.length) {
-    throw new ValidationError('data.textRuns must be ordered, non-overlapping ranges')
-  }
-  return normalized
-}
-
-function assertData(value: unknown, kind: DrawingKind): DrawingData {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new ValidationError('data must be an object')
-  }
-  const candidate = value as DrawingData
-  const points = candidate.points?.map((point, index) =>
-    assertPoint(point, `data.points[${index}]`)
-  )
-  const box = candidate.box === undefined ? undefined : assertBox(candidate.box, 'data.box')
-  const text = candidate.text
-  if (text !== undefined && typeof text !== 'string') {
-    throw new ValidationError('data.text must be a string')
-  }
-  let textRuns: DrawingTextRun[] | undefined
-  if (candidate.textRuns !== undefined) {
-    if (text === undefined) {
-      throw new ValidationError('data.textRuns needs textbox text and an array')
-    }
-    textRuns = assertTextRuns(text, candidate.textRuns)
-  }
-
-  if ((kind === 'ink' || kind === 'highlighter') && (points?.length ?? 0) === 0) {
-    throw new ValidationError(`${kind} data needs at least one point`)
-  }
-  if ((kind === 'rect' || kind === 'ellipse' || kind === 'textbox') && box === undefined) {
-    throw new ValidationError(`${kind} data needs a box`)
-  }
-  if ((kind === 'line' || kind === 'arrow') && box === undefined && (points?.length ?? 0) < 2) {
-    throw new ValidationError(`${kind} data needs a box or two points`)
-  }
-  if (kind === 'textbox' && text === undefined) {
-    throw new ValidationError('textbox data needs text')
-  }
-
-  // An image shape stores a course-relative PATH, never pixels. Dropping it
-  // here would hand the renderer back a shape with nothing to draw — the same
-  // class of silent loss that made every whiteboard clip vanish on reopen.
-  const image = candidate.image
-  if (image !== undefined) {
-    if (
-      typeof image !== 'object' ||
-      image === null ||
-      typeof image.relPath !== 'string' ||
-      image.relPath.trim() === '' ||
-      typeof image.label !== 'string' ||
-      image.label.trim() === ''
-    ) {
-      throw new ValidationError('data.image needs relPath and label')
-    }
-  }
-  if (kind === 'image' && (image === undefined || box === undefined)) {
-    throw new ValidationError('image data needs a box and an image source')
-  }
-
-  const result: DrawingData = {}
-  if (points !== undefined) result.points = points
-  if (box !== undefined) result.box = box
-  if (text !== undefined) result.text = text
-  if (textRuns !== undefined && textRuns.length > 0) result.textRuns = textRuns
-  if (image !== undefined) result.image = { relPath: image.relPath, label: image.label }
-  return result
-}
-
-function assertStyle(value: unknown): DrawingStyle {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new ValidationError('style must be an object')
-  }
-  const style = value as Partial<DrawingStyle>
-  if (!DRAWING_COLORS.includes(style.color as DrawingColor)) {
-    throw new ValidationError(`style.color must be one of ${DRAWING_COLORS.join(', ')}`)
-  }
-  const result: DrawingStyle = {
-    color: style.color as DrawingColor,
-    width: assertPositive(style.width, 'style.width'),
-    opacity: assertUnit(style.opacity, 'style.opacity')
-  }
-  if (style.fontScale !== undefined) {
-    result.fontScale = assertPositive(style.fontScale, 'style.fontScale', 10)
-  }
-  if (style.fontSizePt !== undefined) {
-    result.fontSizePt = assertPositive(style.fontSizePt, 'style.fontSizePt', 96)
-  }
-  for (const field of TEXT_FLAG_FIELDS) {
-    const flag = style[field]
-    if (flag === undefined) continue
-    if (typeof flag !== 'boolean') {
-      throw new ValidationError(`style.${field} must be a boolean`)
-    }
-    result[field] = flag
-  }
-  if (style.align !== undefined) {
-    if (!TEXT_ALIGNS.includes(style.align as TextAlign)) {
-      throw new ValidationError(`style.align must be one of ${TEXT_ALIGNS.join(', ')}`)
-    }
-    result.align = style.align
-  }
-  if (style.fill !== undefined) {
-    if (!DRAWING_COLORS.includes(style.fill as DrawingColor)) {
-      throw new ValidationError(`style.fill must be one of ${DRAWING_COLORS.join(', ')}`)
-    }
-    result.fill = style.fill
-  }
-  return result
-}
 
 function rowToDrawing(row: DrawingRow): Drawing {
   return {
@@ -320,9 +92,9 @@ export function createDrawingsRepo(db: Database): DrawingsRepo {
       assertCourseExists(courseId)
       const relPath = requireNonEmptyString(input.relPath, 'relPath')
       const page = requireInt(input.page, 'page', 1)
-      const kind = assertKind(input.kind)
-      const data = assertData(input.data, kind)
-      const style = assertStyle(input.style)
+      const kind = assertDrawingKind(input.kind, DRAWING_KINDS)
+      const data = assertDrawingData(input.data, kind)
+      const style = assertDrawingStyle(input.style)
       const now = nowIso()
       const drawing: Drawing = {
         id: randomUUID(),
@@ -357,8 +129,12 @@ export function createDrawingsRepo(db: Database): DrawingsRepo {
     update(input) {
       const row = getRowOrThrow(requireId(input.id, 'id'))
       const kind = row.kind as DrawingKind
-      const data = input.data === undefined ? JSON.parse(row.data_json) as DrawingData : assertData(input.data, kind)
-      const style = input.style === undefined ? JSON.parse(row.style_json) as DrawingStyle : assertStyle(input.style)
+      const data = input.data === undefined
+        ? JSON.parse(row.data_json) as DrawingData
+        : assertDrawingData(input.data, kind)
+      const style = input.style === undefined
+        ? JSON.parse(row.style_json) as DrawingStyle
+        : assertDrawingStyle(input.style)
       const now = nowIso()
       db.prepare(
         'UPDATE pdf_drawings SET data_json = ?, style_json = ?, updated_at = ? WHERE id = ?'
@@ -372,7 +148,9 @@ export function createDrawingsRepo(db: Database): DrawingsRepo {
     },
 
     softDelete(idsInput) {
-      if (!Array.isArray(idsInput)) throw new ValidationError('ids must be an array')
+      if (!Array.isArray(idsInput)) {
+        throw new ValidationError('ids must be an array')
+      }
       const ids = [...new Set(idsInput.map((id) => requireId(id, 'id')))]
       if (ids.length === 0) return
       const now = nowIso()

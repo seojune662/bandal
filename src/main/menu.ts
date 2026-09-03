@@ -10,7 +10,7 @@
  *  - Edit/View/Window keep their roles (copy/paste/reload/minimize).
  */
 
-import { app, BrowserWindow, Menu } from 'electron'
+import { BrowserWindow, Menu } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import {
   parseChord,

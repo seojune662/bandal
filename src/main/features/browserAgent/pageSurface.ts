@@ -305,7 +305,7 @@ export function createPageSurface(deps: PageSurfaceDeps): PageSurface {
       return deps.findInPage(tabId, text)
     },
 
-    async handoff(tabId, message) {
+    async handoff(_tabId, message) {
       deps.run.wait(message)
       try {
         return await deps.run.awaitResume(HANDOFF_TIMEOUT_MS)

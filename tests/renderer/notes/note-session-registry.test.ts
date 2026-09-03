@@ -48,8 +48,8 @@ describe('multi-session registration', () => {
   test('two panels on the same file register independent sessions', () => {
     const a = makeSession('panel-a', fileRef)
     const b = makeSession('panel-b::duplicate::uuid', fileRef)
-    const offA = registerOpenNoteSession(fileRef, a.session)
-    const offB = registerOpenNoteSession(fileRef, b.session)
+    const offA = registerOpenNoteSession(a.session)
+    const offB = registerOpenNoteSession(b.session)
 
     expect(openNoteSessionsForFile(fileRef)).toHaveLength(2)
     expect(openNoteRefForPanel('panel-a')).toEqual(fileRef)
@@ -62,8 +62,8 @@ describe('multi-session registration', () => {
   test('openNotePanelId returns the most recently registered panel', () => {
     const a = makeSession('panel-a', fileRef)
     const b = makeSession('panel-b', fileRef)
-    const offA = registerOpenNoteSession(fileRef, a.session)
-    const offB = registerOpenNoteSession(fileRef, b.session)
+    const offA = registerOpenNoteSession(a.session)
+    const offB = registerOpenNoteSession(b.session)
 
     expect(openNotePanelId(fileRef)).toBe('panel-b')
     offB()
@@ -75,8 +75,8 @@ describe('multi-session registration', () => {
   test('sessions on other files are not mixed in', () => {
     const a = makeSession('panel-a', fileRef)
     const other = makeSession('panel-x', otherRef)
-    const offA = registerOpenNoteSession(fileRef, a.session)
-    const offOther = registerOpenNoteSession(otherRef, other.session)
+    const offA = registerOpenNoteSession(a.session)
+    const offOther = registerOpenNoteSession(other.session)
 
     expect(openNoteSessionsForFile(fileRef)).toHaveLength(1)
     expect(openNotePanelId(otherRef)).toBe('panel-x')
@@ -87,8 +87,8 @@ describe('multi-session registration', () => {
   test('a stale unregister does not evict a replacing session', () => {
     const first = makeSession('panel-a', fileRef)
     const second = makeSession('panel-a', fileRef)
-    const offFirst = registerOpenNoteSession(fileRef, first.session)
-    const offSecond = registerOpenNoteSession(fileRef, second.session)
+    const offFirst = registerOpenNoteSession(first.session)
+    const offSecond = registerOpenNoteSession(second.session)
 
     offFirst()
     expect(openNoteRefForPanel('panel-a')).toEqual(fileRef)
@@ -101,8 +101,8 @@ describe('flushOpenNoteSession', () => {
   test('flushes every session of the file and aggregates the result', async () => {
     const a = makeSession('panel-a', fileRef)
     const b = makeSession('panel-b', fileRef, { status: 'unavailable' })
-    const offA = registerOpenNoteSession(fileRef, a.session)
-    const offB = registerOpenNoteSession(fileRef, b.session)
+    const offA = registerOpenNoteSession(a.session)
+    const offB = registerOpenNoteSession(b.session)
 
     const flushed = await flushOpenNoteSession(fileRef)
     expect(a.session.flush).toHaveBeenCalledTimes(1)
@@ -120,8 +120,8 @@ describe('flushOpenNoteSession', () => {
     }
     const a = makeSession('panel-a', fileRef)
     const b = makeSession('panel-b', fileRef, conflict)
-    const offA = registerOpenNoteSession(fileRef, a.session)
-    const offB = registerOpenNoteSession(fileRef, b.session)
+    const offA = registerOpenNoteSession(a.session)
+    const offB = registerOpenNoteSession(b.session)
 
     const flushed = await flushOpenNoteSession(fileRef)
     expect(flushed?.result).toEqual(conflict)
@@ -139,9 +139,9 @@ describe('retargetOpenNoteSession', () => {
     const a = makeSession('panel-a', fileRef)
     const b = makeSession('panel-b', fileRef)
     const other = makeSession('panel-x', otherRef)
-    const offA = registerOpenNoteSession(fileRef, a.session)
-    const offB = registerOpenNoteSession(fileRef, b.session)
-    const offOther = registerOpenNoteSession(otherRef, other.session)
+    const offA = registerOpenNoteSession(a.session)
+    const offB = registerOpenNoteSession(b.session)
+    const offOther = registerOpenNoteSession(other.session)
 
     const rename = {
       sourceMarkdown: '# requested',

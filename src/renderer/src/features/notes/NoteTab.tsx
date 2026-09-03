@@ -407,7 +407,6 @@ function NoteEditorWorkspace({
 }
 
 function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Element {
-  const t = useT()
   const [editorSeed, setEditorSeed] = useState<EditorSeed | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [status, setStatus] = useState<SaveStatus>('saved')
@@ -871,7 +870,7 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
 
   useEffect(
     () =>
-      registerOpenNoteSession(noteRef.current, {
+      registerOpenNoteSession({
         panelId: panelApi.id,
         flush: () => flushRef.current(),
         ref: () => noteRef.current,

@@ -16,7 +16,7 @@ import type {
 import { usePluginsStore } from '../../stores/pluginsStore'
 // Re-exported so existing renderer imports keep working; the validator itself
 // now lives in shared/ because main validates descriptors too (favorites).
-export { TAB_KINDS, isTabKind, isTabDescriptor } from '../../../../shared/tabs'
+export { isTabDescriptor } from '../../../../shared/tabs'
 
 /**
  * Identity key == dockview panel id. Two descriptors that should share a
@@ -105,29 +105,6 @@ export function tabTitle(descriptor: TabDescriptor): string {
         )
       return panel?.title ?? '플러그인'
     }
-  }
-}
-
-/** One-line payload summary shown inside M2 placeholder panels. */
-export function tabPayloadSummary(descriptor: TabDescriptor): string {
-  switch (descriptor.kind) {
-    case 'pdf':
-    case 'note':
-    case 'image':
-    case 'file':
-      return descriptor.payload.relPath
-    case 'browser':
-      return descriptor.payload.initialUrl
-    case 'chat':
-      return `과목 ${descriptor.payload.courseId}`
-    case 'board':
-      return '모든 과목의 할 일'
-    case 'group-chat':
-      return `그룹 ${descriptor.payload.groupId}`
-    case 'whiteboard':
-      return `보드 ${descriptor.payload.boardId}`
-    case 'plugin-panel':
-      return `${descriptor.payload.pluginId} · ${descriptor.payload.panelId}`
   }
 }
 

@@ -1,10 +1,8 @@
 /**
  * What the agent is allowed to do, and where.
  *
- * `improvement-backlog.md` §5.8 is right about the existing tool-permission
- * grant: it is a bare tool name, applied course-wide, forever, with the event
- * suppressed so the student never learns it happened, and with no way to list
- * or revoke it. This deliberately inherits none of that.
+ * The CLI tool-permission grant is a bare tool name applied course-wide. This
+ * browser-specific grant deliberately inherits none of that broad scope.
  *
  * A grant is a TUPLE — (course, exact origin, capability) — and it expires.
  * There is no "forever" and no wildcard: a permission the student cannot

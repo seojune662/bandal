@@ -17,12 +17,13 @@ AI 튜터는 별도 API 키 없이 **사용자 본인의 Claude 구독**(Claude 
 
 ## 개발
 
-요구 사항: Node 22+, pnpm, macOS (패키징·E2E 기준).
+요구 사항: Node 24.x, pnpm 9.15.4, macOS (패키징·E2E 기준).
 
 ```bash
 pnpm install        # postinstall이 better-sqlite3를 Electron ABI로 리빌드
 pnpm dev            # electron-vite 개발 모드 (HMR)
 pnpm typecheck      # main/preload + renderer 타입 검사
+pnpm deadcode       # 미사용 파일·export·dependency 검사
 pnpm test           # vitest 단위·통합 테스트
 pnpm e2e            # 프로덕션 빌드 후 Playwright Electron E2E (임시 프로필 사용)
 pnpm dist           # electron-builder로 .dmg/.zip 생성 (release/)

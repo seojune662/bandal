@@ -23,8 +23,6 @@ import {
   useChatSessionStore,
 } from './chatSessionStore'
 
-export type { ChatPhase } from './chatSessionStore'
-
 export interface ChatSessionApi {
   state: ChatViewState
   phase: 'loading' | 'ready' | 'error'

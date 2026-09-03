@@ -140,11 +140,6 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       detail: redactText(detail)
     })
   }
-  const CAPABILITY_LABEL: Record<BrowserCapability, string> = {
-    read: '읽기',
-    interact: '조작',
-    download: '내려받기'
-  }
   async function gate(
     url: string,
     capability: BrowserCapability

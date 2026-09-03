@@ -43,7 +43,6 @@ export interface CharmRig {
 }
 
 export interface CharmEngineOptions {
-  now?: () => number
   raf?: (callback: (time: number) => void) => number
   caf?: (handle: number) => void
 }
@@ -71,7 +70,6 @@ export class CharmEngine {
   private handle: number | null = null
   private reducedMotion = false
   private disposed = false
-  private readonly now: () => number
   private readonly raf: (callback: (time: number) => void) => number
   private readonly caf: (handle: number) => void
 
@@ -80,7 +78,6 @@ export class CharmEngine {
     private readonly sink: CharmSink,
     options: CharmEngineOptions = {}
   ) {
-    this.now = options.now ?? (() => performance.now())
     this.raf = options.raf ?? ((cb) => window.requestAnimationFrame(cb))
     this.caf = options.caf ?? ((h) => window.cancelAnimationFrame(h))
     this.config = rig.rope

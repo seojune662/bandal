@@ -89,15 +89,3 @@ export function ExternalIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
     </svg>
   )
 }
-
-/** The per-course pin marker. */
-export function PinIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" width="1em" height="1em" {...props}>
-      <g {...STROKE}>
-        <path d="M9 3.5h6l-.8 5.2 3.3 3.3H6.5l3.3-3.3z" />
-        <path d="M12 12v8.5" />
-      </g>
-    </svg>
-  )
-}

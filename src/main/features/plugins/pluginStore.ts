@@ -190,8 +190,7 @@ interface ScannedFile {
  * content beside the copied runtime.
  */
 export function scanPluginFolder(
-  sourceDir: string,
-  warnings: string[]
+  sourceDir: string
 ): ScannedFile[] {
   const files: ScannedFile[] = []
   let totalBytes = 0
@@ -392,7 +391,7 @@ export function createPluginStore(deps: PluginStoreDeps): PluginStore {
       }
 
       const { manifest, warnings } = readManifest(source)
-      const files = scanPluginFolder(source, warnings)
+      const files = scanPluginFolder(source)
       const mainFile = files.find((file) => file.relPath === manifest.main)
       if (mainFile === undefined) {
         throw new ValidationError(`${manifest.main} is missing`)

@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import { useLocale } from './localeStore'
 import { translate } from './translate'
 
-export { DEFAULT_LOCALE, LOCALES, setLocale, useLocale } from './localeStore'
+export { LOCALES, setLocale, useLocale } from './localeStore'
 export type { Locale } from './types'
 
 export function useT(): (

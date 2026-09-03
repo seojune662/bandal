@@ -19,13 +19,6 @@ export type GroupMessageKind = 'text' | 'system'
  * Korean copy lives in the renderer so wording changes are not migrations
  * (supabase/README.md §8-⑨).
  */
-export type SystemEventCode =
-  | 'joined'
-  | 'left'
-  | 'kicked'
-  | 'code_auto_revoked'
-  | 'renamed'
-
 /** Denormalized author profile — shipped inside every broadcast payload. */
 export interface GroupAuthor {
   nickname: string

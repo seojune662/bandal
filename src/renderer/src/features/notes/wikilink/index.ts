@@ -20,14 +20,5 @@ export const wikilinkMarkdown: MilkdownPlugin[] = [
 
 export const wikilinkEditor: MilkdownPlugin[] = [wikilinkContextCtx, wikilinkView]
 
-export { wikilinkSchema, WIKILINK_NODE, wikilinkLabel } from './wikilinkSchema'
-export { remarkWikilinkPlugin } from './remarkWikilink'
-export {
-  wikilinkContextCtx,
-  wikilinkView,
-  type WikilinkEditorContext
-} from './wikilinkView'
-export {
-  createWikilinkPickerPlugin,
-  type WikilinkPickerOptions
-} from './wikilinkPickerPlugin'
+export { createWikilinkPickerPlugin } from './wikilinkPickerPlugin'
+export { wikilinkContextCtx } from './wikilinkView'

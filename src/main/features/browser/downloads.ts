@@ -3,8 +3,7 @@
  *
  * Getting a lecture PDF out of the school LMS and next to the rest of the
  * course is the weekly action this whole embedded browser exists for, and
- * until now Chromium's default sent it somewhere else entirely
- * (improvement-backlog §6.2, NEXT.md #23).
+ * Chromium's default otherwise sends it somewhere else entirely.
  *
  * ## Why stage in temp and adopt afterwards
  *

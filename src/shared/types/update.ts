@@ -6,15 +6,6 @@
  * no version to restart into).
  */
 
-export type UpdatePhase =
-  | 'unsupported'
-  | 'idle'
-  | 'checking'
-  | 'available'
-  | 'downloading'
-  | 'ready'
-  | 'error'
-
 export type UpdateStatus =
   /**
    * No update feed for this build: `pnpm dev`, or a copy that was never

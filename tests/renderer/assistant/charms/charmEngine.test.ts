@@ -26,7 +26,6 @@ function harness(initialPivot = { x: 100, y: 100 }) {
     }
   }
   const engine = new CharmEngine({ rope: CONFIG, anchor: 'below' }, sink, {
-    now: () => 0,
     raf: (cb) => {
       pending = cb
       handles += 1

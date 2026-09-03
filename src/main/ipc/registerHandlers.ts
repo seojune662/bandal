@@ -138,7 +138,6 @@ import { createUpdaterRuntime, resolveAppVersion } from '../features/updater'
 import {
   createAgentConfirmer,
   createAgentJournal,
-  createAgentTools,
   parseMaterialEditTargetId,
   restoreMaterialBackup,
   startAgentToolsServer

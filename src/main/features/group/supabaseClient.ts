@@ -60,22 +60,6 @@ export function createSupabaseClient(
   })
 }
 
-/**
- * ⚠ MUST be called after every session change, before (re)subscribing.
- * Without it a private channel silently receives nothing — the single most
- * common Realtime debugging trap (supabase/README.md §5.3).
- */
-export async function applyRealtimeAuth(
-  client: SupabaseClient,
-  accessToken: string | null
-): Promise<void> {
-  try {
-    await client.realtime.setAuth(accessToken ?? undefined)
-  } catch (error) {
-    console.error('[group] realtime.setAuth failed', error)
-  }
-}
-
 /** Postgres error shape as surfaced by PostgREST / supabase-js. */
 export interface PostgresErrorLike {
   code?: string

@@ -1,6 +1,5 @@
 import { closeSync, existsSync, mkdirSync, openSync, readSync, statSync,
   writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import type { Database } from 'better-sqlite3'
 import type { ActivityEvent, ActivityKind } from '../../../shared/types/study'
 import type { UpcomingDeadline } from '../../../shared/types/board'

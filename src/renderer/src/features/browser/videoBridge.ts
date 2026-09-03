@@ -333,11 +333,3 @@ export function useWebviewVideoBridge(
     }
   }, [tabId, webviewRef])
 }
-
-export function resetVideoBridgeForTests(): void {
-  reports.clear()
-  listeners.clear()
-  elements.clear()
-  readyTabs.clear()
-  pendingResumes.clear()
-}

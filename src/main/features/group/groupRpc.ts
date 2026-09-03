@@ -225,33 +225,6 @@ export async function rpcMarkRead(
   return num(data['lastReadSeq'])
 }
 
-export interface UnreadRow {
-  groupId: string
-  unread: number
-  lastMsgSeq: number
-  lastMsgAt: string | null
-  muted: boolean
-}
-
-/** `unread_counts()` is a set-returning function, so it arrives as rows. */
-export async function rpcUnreadCounts(
-  client: SupabaseClient
-): Promise<UnreadRow[]> {
-  const { data, error } = await client.rpc('unread_counts')
-  if (error !== null) throw error
-  if (!Array.isArray(data)) return []
-  return data.map((raw) => {
-    const record = asRecord(raw)
-    return {
-      groupId: str(record['group_id']),
-      unread: num(record['unread']),
-      lastMsgSeq: num(record['last_msg_seq']),
-      lastMsgAt: nullableStr(record['last_msg_at']),
-      muted: record['muted'] === true
-    }
-  })
-}
-
 export async function rpcLeaveGroup(
   client: SupabaseClient,
   groupId: string

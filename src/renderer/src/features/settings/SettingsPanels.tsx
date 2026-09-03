@@ -37,7 +37,6 @@ import { reopenedOnboarding } from '../onboarding/onboardingModel'
 import { Icon } from './SettingsIcon'
 
 export { McpServersPanel } from './McpServersPanel'
-export { PacksPanel } from './PacksPanel'
 
 /** Picker order for the *mode* axis — the registry order, then `system`. */
 const THEME_OPTIONS: readonly ThemePreference[] = [

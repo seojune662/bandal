@@ -741,7 +741,7 @@ function hasBoardDescriptor(params: unknown): boolean {
 }
 
 /** Dockview drop-in panel. Register this default export for the `board` kind. */
-export function BoardPanel(props: IDockviewPanelProps): JSX.Element {
+function BoardPanel(props: IDockviewPanelProps): JSX.Element {
   if (!hasBoardDescriptor(props.params)) {
     return <div className="board-panel" data-kind="unknown" />
   }
