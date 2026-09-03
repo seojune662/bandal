@@ -177,6 +177,18 @@ describe('passthroughShortcut (chords a focused guest would otherwise eat)', () 
     expect(shortcut({ key: 'd' })).toBe('bookmark')
   })
 
+  test('site priority still passes tab-lifetime shortcuts', () => {
+    expect(passthroughShortcut(chord({ key: 't' }), defaultKeymap, 'site')).toBe(
+      'new-tab'
+    )
+  })
+
+  test('site priority leaves browser-chrome shortcuts with the page', () => {
+    expect(
+      passthroughShortcut(chord({ key: 'r' }), defaultKeymap, 'site')
+    ).toBeNull()
+  })
+
   test('requires an exact resolved chord', () => {
     expect(shortcut({ alt: true })).toBeNull()
     expect(shortcut({ meta: false, control: false })).toBeNull()

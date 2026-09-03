@@ -1,3 +1,4 @@
+import { useUiStore } from '../../../src/renderer/src/stores/uiStore'
 import { describe, expect, test, vi } from 'vitest'
 
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({
@@ -12,7 +13,6 @@ import {
   IMPORT_MATERIALS_SHORTCUT_EVENT,
   resolveShortcut,
   runShortcutAction,
-  SHORTCUT_HELP_EVENT,
   type ShortcutInput
 } from '../../../src/renderer/src/app/shortcuts'
 import { resolveKeymap } from '../../../src/shared/keymap'
@@ -265,7 +265,6 @@ describe('runShortcutAction — event entry points', () => {
   test.each([
     ['add-course', ADD_COURSE_SHORTCUT_EVENT],
     ['import-materials', IMPORT_MATERIALS_SHORTCUT_EVENT],
-    ['shortcut-help', SHORTCUT_HELP_EVENT],
     ['send-feedback', FEEDBACK_EVENT]
   ] as const)('dispatches %s through %s', (type, eventName) => {
     const dispatchEvent = vi.fn()
@@ -286,6 +285,21 @@ describe('runShortcutAction — event entry points', () => {
       expect(dispatchEvent.mock.calls[0]?.[0]).toMatchObject({ type: eventName })
     } finally {
       vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('runShortcutAction — shortcut-help', () => {
+  test('opens the settings overlay on the shortcuts category', () => {
+    const openSettings = vi.fn()
+    const spy = vi
+      .spyOn(useUiStore, 'getState')
+      .mockReturnValue({ ...useUiStore.getState(), openSettings })
+    try {
+      runShortcutAction({ type: 'shortcut-help' })
+      expect(openSettings).toHaveBeenCalledWith('shortcuts')
+    } finally {
+      spy.mockRestore()
     }
   })
 })

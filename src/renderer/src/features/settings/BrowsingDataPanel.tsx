@@ -1,6 +1,6 @@
 /**
- * Browser settings: which search engine the omnibox uses, which sites the
- * student is signed in to, and how to forget any of it.
+ * Browser data: which sites the student is signed in to, their remembered
+ * permissions, and how to forget any of it.
  *
  * `browser:sessionSites` / `browser:clearSession` were fully implemented in
  * main but had ZERO renderer callers — a working feature nobody could reach.
@@ -13,11 +13,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { invoke } from '../../lib/ipc'
-import {
-  SEARCH_ENGINE_NAMES,
-  SEARCH_ENGINES,
-  type SearchEngineId
-} from '../../../../shared/search'
 import type { Settings } from '../../../../shared/types/settings'
 
 interface SignedInSite {
@@ -47,7 +42,7 @@ const PERMISSION_LABELS: Record<string, string> = {
 }
 
 export function BrowsingDataPanel({
-  settings
+  settings: _settings
 }: {
   settings: Settings | null
 }): JSX.Element {
@@ -128,34 +123,6 @@ export function BrowsingDataPanel({
 
   return (
     <div className="settings-stack">
-      <section className="settings-card">
-        <div className="settings-card__header">
-          <h2>검색 엔진</h2>
-          <p>주소창에 주소가 아닌 말을 넣었을 때 사용합니다.</p>
-        </div>
-        <div className="setting-row">
-          <div className="setting-row__copy">
-            <span className="setting-row__label">기본 검색 엔진</span>
-          </div>
-          <select
-            className="language-select"
-            aria-label="기본 검색 엔진"
-            value={settings?.browserSearchEngine ?? 'google'}
-            onChange={(event) => {
-              void invoke('settings:set', {
-                browserSearchEngine: event.target.value as SearchEngineId
-              })
-            }}
-          >
-            {(Object.keys(SEARCH_ENGINES) as SearchEngineId[]).map((id) => (
-              <option key={id} value={id}>
-                {SEARCH_ENGINE_NAMES[id]}
-              </option>
-            ))}
-          </select>
-        </div>
-      </section>
-
       <section className="settings-card">
         <div className="settings-card__header">
           <h2>로그인된 사이트</h2>

@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   CSSProperties,
   KeyboardEvent,
-  MutableRefObject,
-  ReactNode
+  MutableRefObject
 } from 'react'
 import { BandalMark } from '../../components/BandalMark'
 import { ProviderMark } from '../../components/ProviderMark'
@@ -34,6 +33,7 @@ import type {
 import type { ScreenPermissionState } from '../../../../shared/types/overlay'
 import { CHARM_OPTIONS, CharmPreview } from '../assistant/charms'
 import { reopenedOnboarding } from '../onboarding/onboardingModel'
+import { SettingsCard, ToggleRow } from './primitives'
 import { Icon } from './SettingsIcon'
 
 export { McpServersPanel } from './McpServersPanel'
@@ -58,84 +58,6 @@ function fontScaleLabel(scale: FontScale): string {
   return `${Math.round(scale * 100)}%`
 }
 
-function SettingsCard({
-  title,
-  description,
-  children,
-  className = ''
-}: {
-  title?: string
-  description?: string
-  children: ReactNode
-  className?: string
-}): JSX.Element {
-  return (
-    <section className={`settings-card ${className}`.trim()}>
-      {(title !== undefined || description !== undefined) && (
-        <div className="settings-card__header">
-          {title !== undefined && <h2>{title}</h2>}
-          {description !== undefined && <p>{description}</p>}
-        </div>
-      )}
-      {children}
-    </section>
-  )
-}
-
-function ToggleRow({
-  label,
-  description,
-  checked,
-  disabled = false,
-  onChange,
-  badge
-}: {
-  label: string
-  description: string
-  checked: boolean
-  disabled?: boolean
-  onChange?: (next: boolean) => void
-  badge?: string
-}): JSX.Element {
-  return (
-    <div className={`setting-row${disabled ? ' setting-row--disabled' : ''}`}>
-      <div className="setting-row__copy">
-        <div className="setting-row__label-line">
-          <span className="setting-row__label">{label}</span>
-          {badge !== undefined && <span className="badge">{badge}</span>}
-        </div>
-        <span className="setting-row__description">{description}</span>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-label={label}
-        aria-checked={checked}
-        disabled={disabled}
-        className={`toggle${checked ? ' toggle--checked' : ''}`}
-        onClick={() => onChange?.(!checked)}
-      >
-        <span className="toggle__thumb" />
-      </button>
-    </div>
-  )
-}
-
-function displayDataRoot(path: string | undefined): string {
-  if (path === undefined || path.length === 0 || path.endsWith('/Documents/Bandal')) {
-    return '~/Documents/Bandal'
-  }
-  return path
-}
-
-function rejectedMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message
-  }
-  if (typeof error === 'string' && error.trim().length > 0) return error
-  return fallback
-}
-
 export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -145,12 +67,6 @@ export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.E
   const [tutorialReset, setTutorialReset] = useState<
     'idle' | 'done' | 'failed'
   >('idle')
-  const [pickedDataRoot, setPickedDataRoot] = useState<string | null>(null)
-  const [pickingDataRoot, setPickingDataRoot] = useState(false)
-  const [dataRootError, setDataRootError] = useState<string | null>(null)
-
-  useEffect(() => setPickedDataRoot(null), [settings?.dataRoot])
-
   const handleReopenOnboarding = (): void => {
     void invoke('settings:set', { onboarding: reopenedOnboarding() })
       .then(() => setOnboardingReset('done'))
@@ -165,64 +81,8 @@ export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.E
       .catch(() => setTutorialReset('failed'))
   }
 
-  const handlePickDataRoot = (): void => {
-    if (pickingDataRoot) return
-    setPickingDataRoot(true)
-    setDataRootError(null)
-    void invoke('settings:pickDataRoot', {})
-      .then((result) => {
-        if (result !== null) setPickedDataRoot(result.dataRoot)
-      })
-      .catch((error: unknown) => {
-        setDataRootError(
-          rejectedMessage(error, t('settings.general.workspace.pickFailed'))
-        )
-      })
-      .finally(() => setPickingDataRoot(false))
-  }
-
   return (
     <div className="settings-stack">
-      <SettingsCard
-        title={t('settings.general.workspace.title')}
-        description={t('settings.general.workspace.description')}
-      >
-        <div
-          className="directory-field"
-          aria-label={t('settings.general.workspace.directoryLabel')}
-        >
-          <Icon name="folder" size={17} />
-          <input
-            type="text"
-            value={displayDataRoot(pickedDataRoot ?? settings?.dataRoot)}
-            aria-label={t('settings.general.workspace.pathLabel')}
-            readOnly
-          />
-        </div>
-        <div className="settings-card__rows">
-          <div className="setting-row">
-            <span
-              className={`setting-row__description${dataRootError === null ? '' : ' settings-feedback--error'}`}
-              role={dataRootError === null ? undefined : 'alert'}
-            >
-              {dataRootError ?? t('settings.general.workspace.moveNotice')}
-            </span>
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={pickingDataRoot}
-              onClick={handlePickDataRoot}
-            >
-              {t(
-                pickingDataRoot
-                  ? 'settings.general.workspace.picking'
-                  : 'settings.general.workspace.change'
-              )}
-            </button>
-          </div>
-        </div>
-      </SettingsCard>
-
       <SettingsCard
         title={t('settings.general.language.title')}
         description={t('settings.general.language.description')}
@@ -471,6 +331,7 @@ export function AppearancePanel({
   editorFont,
   density,
   orbCharm,
+  charmsEnabled,
   saving,
   error,
   onSelect,
@@ -486,6 +347,7 @@ export function AppearancePanel({
   editorFont: EditorFont
   density: Density
   orbCharm: OrbCharmId
+  charmsEnabled: boolean
   saving: boolean
   error: string | null
   onSelect: (theme: ThemePreference) => void
@@ -732,48 +594,50 @@ export function AppearancePanel({
         </div>
       </SettingsCard>
 
-      <SettingsCard
-        title={t('settings.appearance.charm.title')}
-        description={t('settings.appearance.charm.description')}
-      >
-        <div
-          className="theme-grid theme-grid--charm"
-          role="radiogroup"
-          aria-label={t('settings.appearance.charm.selectLabel')}
-          onKeyDown={charms.handleKeyDown}
+      {charmsEnabled && (
+        <SettingsCard
+          title={t('settings.appearance.charm.title')}
+          description={t('settings.appearance.charm.description')}
         >
-          {CHARM_OPTIONS.map((option, index) => {
-            const selected = orbCharm === option
-            return (
-              <button
-                key={option}
-                type="button"
-                role="radio"
-                ref={(node) => {
-                  charms.refs.current[index] = node
-                }}
-                aria-checked={selected}
-                tabIndex={index === charms.selectedIndex ? 0 : -1}
-                className={`theme-choice${selected ? ' theme-choice--selected' : ''}`}
-                onClick={() => onSelectCharm(option)}
-              >
-                <CharmPreview id={option} />
-                <span className="theme-choice__copy">
-                  <span className="theme-choice__label">
-                    {t(`settings.appearance.charm.${option}.label`)}
-                    <span className="theme-choice__check">
-                      {selected && <Icon name="check" size={14} />}
+          <div
+            className="theme-grid theme-grid--charm"
+            role="radiogroup"
+            aria-label={t('settings.appearance.charm.selectLabel')}
+            onKeyDown={charms.handleKeyDown}
+          >
+            {CHARM_OPTIONS.map((option, index) => {
+              const selected = orbCharm === option
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  role="radio"
+                  ref={(node) => {
+                    charms.refs.current[index] = node
+                  }}
+                  aria-checked={selected}
+                  tabIndex={index === charms.selectedIndex ? 0 : -1}
+                  className={`theme-choice${selected ? ' theme-choice--selected' : ''}`}
+                  onClick={() => onSelectCharm(option)}
+                >
+                  <CharmPreview id={option} />
+                  <span className="theme-choice__copy">
+                    <span className="theme-choice__label">
+                      {t(`settings.appearance.charm.${option}.label`)}
+                      <span className="theme-choice__check">
+                        {selected && <Icon name="check" size={14} />}
+                      </span>
+                    </span>
+                    <span className="theme-choice__description">
+                      {t(`settings.appearance.charm.${option}.description`)}
                     </span>
                   </span>
-                  <span className="theme-choice__description">
-                    {t(`settings.appearance.charm.${option}.description`)}
-                  </span>
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </SettingsCard>
+                </button>
+              )
+            })}
+          </div>
+        </SettingsCard>
+      )}
     </div>
   )
 }

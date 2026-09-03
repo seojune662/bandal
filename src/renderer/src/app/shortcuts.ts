@@ -329,7 +329,7 @@ export function runShortcutAction(
       openActiveVideoPip()
       return
     case 'shortcut-help':
-      window.dispatchEvent(new CustomEvent(SHORTCUT_HELP_EVENT))
+      useUiStore.getState().openSettings('shortcuts')
       return
     case 'send-feedback':
       window.dispatchEvent(new CustomEvent(FEEDBACK_EVENT))

@@ -19,7 +19,6 @@ import { useTourStore } from '../onboarding/tour/tourStore'
 import { FeedbackDialog, OPEN_FEEDBACK_EVENT } from './FeedbackDialog'
 import { MilestonesOverlay } from './MilestonesOverlay'
 import { ProgressRing } from './ProgressRing'
-import { ShortcutHelpOverlay } from './ShortcutHelpOverlay'
 import { useMilestones, type MilestoneId } from './milestonesStore'
 import './help.css'
 
@@ -134,7 +133,6 @@ export function HelpHub(): JSX.Element {
   const initUpdates = useUpdateStore((state) => state.init)
   const checkUpdates = useUpdateStore((state) => state.check)
   const [menu, setMenu] = useState<MenuPosition | null>(null)
-  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [milestonesOpen, setMilestonesOpen] = useState(false)
 
   useEffect(() => {
@@ -174,7 +172,7 @@ export function HelpHub(): JSX.Element {
     const openShortcuts = (): void => {
       closeMenu()
       setMilestonesOpen(false)
-      setShortcutsOpen(true)
+      useUiStore.getState().openSettings('shortcuts')
     }
     const handleFocusTarget = (event: Event): void => {
       const detail = (event as CustomEvent<{ target: FocusTarget }>).detail
@@ -295,7 +293,7 @@ export function HelpHub(): JSX.Element {
             role="menuitem"
             onClick={() => {
               closeMenu()
-              setShortcutsOpen(true)
+              useUiStore.getState().openSettings('shortcuts')
             }}
           >
             <span>{t('help.menu.shortcuts')}</span>
@@ -362,10 +360,6 @@ export function HelpHub(): JSX.Element {
         </div>
       )}
 
-      <ShortcutHelpOverlay
-        open={shortcutsOpen}
-        onClose={() => setShortcutsOpen(false)}
-      />
       <MilestonesOverlay
         open={milestonesOpen}
         selectedCourseId={selectedCourseId}

@@ -48,6 +48,7 @@ export interface DownloadsDeps {
     sourcePath: string
   }) => { relPath: string }
   emit: (update: BrowserDownloadUpdate) => void
+  onCompleted?: (fileName: string) => void
   /** Progress is throttled to this; `updated` fires per chunk. */
   progressIntervalMs?: number
   now?: () => number
@@ -180,6 +181,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
           failureReason:
             state === 'completed' ? null : '과목을 선택하지 않아 기본 폴더에 받았어요.'
         })
+        if (state === 'completed') deps.onCompleted?.(fileName)
       })
       return
     }
@@ -246,6 +248,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
           relPath,
           failureReason: null
         })
+        deps.onCompleted?.(fileName)
       } catch (error) {
         // The transfer worked; only filing it failed. Say so rather than
         // reporting a download failure the student cannot act on.

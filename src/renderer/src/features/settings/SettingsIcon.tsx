@@ -5,7 +5,15 @@ export type IconName =
   | 'general'
   | 'appearance'
   | 'ai'
+  | 'advanced'
+  | 'browser'
+  | 'checklist'
   | 'courses'
+  | 'experimental'
+  | 'mcp'
+  | 'notifications'
+  | 'packs'
+  | 'shortcuts'
   | 'university'
   | 'about'
   | 'arrow-left'
@@ -61,6 +69,23 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }): JS
         <path d="M12 3 9.8 8.8 4 11l5.8 2.2L12 19l2.2-5.8L20 11l-5.8-2.2Z" />
       </>
     ),
+    advanced: (
+      <>
+        <path d="M14.7 6.3a4 4 0 0 0-5 5L3.5 17.5a2.1 2.1 0 0 0 3 3l6.2-6.2a4 4 0 0 0 5-5l-2.5 2.5-3-3Z" />
+      </>
+    ),
+    browser: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18M12 3c2.2 2.5 3.3 5.5 3.3 9S14.2 18.5 12 21c-2.2-2.5-3.3-5.5-3.3-9S9.8 5.5 12 3Z" />
+      </>
+    ),
+    checklist: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="m8 12 2.5 2.5L16 9" />
+      </>
+    ),
     courses: (
       <>
         <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5Z" />
@@ -73,6 +98,34 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }): JS
         <circle cx="12" cy="12" r="9" />
         <path d="M12 11v6" />
         <path d="M12 7h.01" />
+      </>
+    ),
+    experimental: (
+      <>
+        <path d="M9 3h6M10 3v5l-5 9a2.5 2.5 0 0 0 2.2 3.7h9.6A2.5 2.5 0 0 0 19 17l-5-9V3" />
+        <path d="M7.5 15h9" />
+      </>
+    ),
+    mcp: (
+      <>
+        <path d="M8 3v5M16 3v5M6 8h12v2a6 6 0 0 1-6 6v5" />
+      </>
+    ),
+    notifications: (
+      <>
+        <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+        <path d="M10 21h4" />
+      </>
+    ),
+    packs: (
+      <>
+        <path d="M8.5 3H5a2 2 0 0 0-2 2v3.5a2.5 2.5 0 1 1 0 5V19a2 2 0 0 0 2 2h5.5a2.5 2.5 0 1 1 5 0H19a2 2 0 0 0 2-2v-5.5a2.5 2.5 0 1 1 0-5V5a2 2 0 0 0-2-2h-5.5a2.5 2.5 0 1 1-5 0Z" />
+      </>
+    ),
+    shortcuts: (
+      <>
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <path d="M7 9h.01M11 9h.01M15 9h.01M18 9h.01M7 13h.01M11 13h.01M15 13h3M7 16h10" />
       </>
     ),
     check: <path d="m5 12 4 4L19 6" />,

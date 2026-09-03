@@ -3,7 +3,8 @@
  * All text flows through React's escaping — no innerHTML anywhere.
  */
 
-import { memo, useRef } from 'react'
+import { memo, useRef, type MouseEvent } from 'react'
+import { openHttpLink } from '../../app/openHttpLink'
 import {
   IncrementalMarkdownParser,
   type MdBlockNode,
@@ -43,6 +44,7 @@ function InlineNodes({ nodes }: { nodes: MdInline[] }): JSX.Element {
                 target="_blank"
                 rel="noreferrer noopener"
                 className="chat-md__link"
+                onClick={(event) => handleLinkClick(event, node.href)}
               >
                 <InlineNodes nodes={node.children} />
               </a>
@@ -51,6 +53,21 @@ function InlineNodes({ nodes }: { nodes: MdInline[] }): JSX.Element {
       })}
     </>
   )
+}
+
+function handleLinkClick(event: MouseEvent<HTMLAnchorElement>, href: string): void {
+  let url: URL
+  try {
+    url = new URL(href)
+  } catch {
+    return
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return
+  event.preventDefault()
+  openHttpLink(url.toString(), {
+    shift: event.shiftKey,
+    mod: window.bandal?.platform === 'darwin' ? event.metaKey : event.ctrlKey
+  })
 }
 
 const BlockNode = memo(function BlockNode({

@@ -3,10 +3,12 @@ import {
   assignChord,
   conflictingAction,
   effectiveChords,
+  formattedChordParts,
+  importedKeybindings,
   restoreDefault
-} from '../../../src/renderer/src/features/help/shortcutModel'
+} from '../../../../src/renderer/src/features/settings/shortcuts/shortcutModel'
 
-describe('shortcut help model', () => {
+describe('shortcut settings model', () => {
   test('shows shared defaults and applies a custom chord', () => {
     expect(effectiveChords({}).get('shortcut-help')).toBe('mod+/')
     expect(
@@ -35,5 +37,24 @@ describe('shortcut help model', () => {
         'new-tab'
       )
     ).toEqual({ 'new-tab': null })
+  })
+
+  test('imports only known customizable actions with valid chord values', () => {
+    expect(
+      importedKeybindings({
+        'new-tab': 'mod+shift+t',
+        'close-tab': null,
+        'whiteboard-pen': 'x',
+        unknown: 'mod+k',
+        settings: 'not-a-key',
+        'quick-search': 42
+      })
+    ).toEqual({ 'new-tab': 'mod+shift+t', 'close-tab': null })
+    expect(importedKeybindings([])).toBeNull()
+  })
+
+  test('keeps the plus key as its own keycap', () => {
+    expect(formattedChordParts('mod+=', 'darwin')).toEqual(['⌘', '+'])
+    expect(formattedChordParts('mod+=', 'win32')).toEqual(['Ctrl', '+'])
   })
 })

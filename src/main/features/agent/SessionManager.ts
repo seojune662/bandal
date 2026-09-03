@@ -80,6 +80,7 @@ export interface SessionManagerDeps {
    * than the transient failure it is.
    */
   reportToolsUnavailable?: (courseId: string, sessionId: string) => void
+  onTurnComplete?: (info: { courseId: string; sessionId: string }) => void
 }
 
 export interface SessionManager {
@@ -448,6 +449,14 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         entry.info = { ...entry.info, status: 'idle' }
         deps.repo.setStatus(entry.info.id, 'idle')
         scheduleIdleReap(entry)
+        try {
+          deps.onTurnComplete?.({
+            courseId: entry.courseId,
+            sessionId: entry.sessionId
+          })
+        } catch (error) {
+          console.error('[agent] turn-complete hook failed', error)
+        }
         return true
       case 'error':
         if (event.fatal) {

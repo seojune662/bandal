@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { invoke } from '../lib/ipc'
 import { useCoursesStore } from '../stores/coursesStore'
 import { useMaterialsStore } from '../stores/materialsStore'
+import { settingsSnapshot } from '../stores/settingsSnapshot'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { descriptorFor } from '../features/workspace/tabIdentity'
 
@@ -44,8 +45,10 @@ export async function createMarkdownTab(title?: string): Promise<void> {
   }
 }
 
-export function createBrowserTab(url: string = DEFAULT_BROWSER_URL): void {
+export function createBrowserTab(url?: string): void {
+  const homePage = settingsSnapshot().browser.homePage
+  const initialUrl = url ?? (homePage !== '' ? homePage : DEFAULT_BROWSER_URL)
   useWorkspaceStore.getState().openTab(
-    descriptorFor('browser', { tabId: uuidv4(), initialUrl: url })
+    descriptorFor('browser', { tabId: uuidv4(), initialUrl })
   )
 }

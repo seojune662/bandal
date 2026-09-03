@@ -9,7 +9,12 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { accessSync, constants as fsConstants, writeFileSync } from 'node:fs'
+import {
+  accessSync,
+  constants as fsConstants,
+  mkdirSync,
+  writeFileSync
+} from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import {
   app,
@@ -47,7 +52,11 @@ import type { PushChannel, PushPayload } from '../../shared/ipc/events'
 import type { AgentAppState } from '../../shared/types/agentTools'
 import type { ScreenPermissionState } from '../../shared/types/overlay'
 import type { Settings, SettingsPatch } from '../../shared/types/settings'
-import { getSettings, setSettings as persistSettings } from '../settingsStore'
+import {
+  getSettings,
+  resetSettings,
+  setSettings as persistSettings
+} from '../settingsStore'
 import { getDatabase } from '../db/database'
 import { createLayoutRepo } from '../db/layoutRepo'
 import {
@@ -164,6 +173,10 @@ import {
 import { createPluginRateLimiter } from '../features/plugins/rateLimit'
 import { createPluginRuntime } from '../features/plugins/pluginRuntime'
 import { createPluginStore } from '../features/plugins/pluginStore'
+import {
+  createDeadlineScheduler,
+  createSystemNotifier
+} from '../features/notifications'
 import type { OverlayController } from '../windows/overlayController'
 import {
   createMiniPlayerController,
@@ -287,6 +300,7 @@ function screenPermissionState(access: ScreenAccess): ScreenPermissionState {
 export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const db = getDatabase()
   const setSettings = deps.setSettings ?? persistSettings
+  const notifier = createSystemNotifier(getSettings)
   const desktopGrants = createDesktopGrantsRepo(db)
   const desktopAudit = createDesktopAuditRepo(db)
   const desktopRun = createDesktopRunRegistry({
@@ -342,6 +356,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const annotationsRepo = createAnnotationsRepo(db)
   const boardRepo = createBoardRepo(db)
   const layoutRepo = createLayoutRepo(db)
+  const deadlineScheduler = createDeadlineScheduler({
+    db,
+    getSettings,
+    setSettings,
+    notifier,
+    onError: (error) => console.error('[notifications] deadline scheduler failed', error)
+  })
   // Plugin event producers are registered before the runtime is constructed.
   // Keeping this indirection local avoids moving the long-established course
   // and note handlers merely to satisfy initialization order.
@@ -966,6 +987,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return createBrowserTools({
       courseId,
       getRunId,
+      getAgentUse: () => getSettings().browser.agentUse,
       grants: browserGrants,
       audit: browserAudit,
       seen: browserSeen,
@@ -1515,6 +1537,28 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       }
     })
 
+  const notifyTurnComplete = (info: {
+    courseId: string
+    sessionId: string
+  }): void => {
+    try {
+      let courseName = ''
+      try {
+        courseName = coursesRepo.getById(info.courseId).name
+      } catch {
+        // A deleted course can finish a turn while its process is winding down.
+      }
+      notifier.notify({
+        kind: 'agentComplete',
+        title: 'AI 응답이 도착했어요',
+        body: courseName,
+        courseId: info.courseId
+      })
+    } catch (error) {
+      console.error('[notifications] agent completion failed', error)
+    }
+  }
+
   const sessionManager = createSessionManager({
     adapter: claudeAdapter,
     repo: chatRepo,
@@ -1527,7 +1571,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     startToolServer,
     reportToolsUnavailable: (courseId, sessionId) => {
       broadcast('agentTools:unavailable', { courseId, sessionId })
-    }
+    },
+    onTurnComplete: notifyTurnComplete
   })
   app.on('before-quit', () => {
     browserRuns.disposeAll()
@@ -1557,7 +1602,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     startToolServer,
     reportToolsUnavailable: (courseId, sessionId) => {
       broadcast('agentTools:unavailable', { courseId, sessionId })
-    }
+    },
+    onTurnComplete: notifyTurnComplete
   })
   const managerFor = (provider: string): typeof sessionManager =>
     provider === 'codex' ? codexSessionManager : sessionManager
@@ -2063,6 +2109,18 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       if (update.state === 'completed' && update.courseId !== null) {
         broadcast('materials:changed', { courseId: update.courseId })
       }
+    },
+    onCompleted: (fileName) => {
+      try {
+        notifier.notify({
+          kind: 'download',
+          title: '다운로드 완료',
+          body: fileName,
+          courseId: null
+        })
+      } catch (error) {
+        console.error('[notifications] download completion failed', error)
+      }
     }
   })
   handle('browser:clearSession', (req) => browserSessions.clear(req.origin))
@@ -2202,6 +2260,16 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       const pluginName =
         pluginStore.get(pluginId)?.manifest.name ?? pluginId
       broadcast('plugins:notice', { pluginId, pluginName, message, tone })
+      try {
+        notifier.notify({
+          kind: 'plugin',
+          title: pluginName,
+          body: message,
+          courseId: null
+        })
+      } catch (error) {
+        console.error('[notifications] plugin notice failed', error)
+      }
     },
     openPanel: (pluginId, panelId) => {
       broadcast('plugins:openPanel', { pluginId, panelId })
@@ -2245,9 +2313,20 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     }
   })
 
-  void pluginRuntime.syncEnabled().catch((error: unknown) => {
-    console.error('[plugins] enabled-plugin startup failed', error)
-  })
+  const syncEnabledPlugins = (): void => {
+    if (!getSettings().experimental.extensionRuntime) return
+    void pluginRuntime.syncEnabled().catch((error: unknown) => {
+      console.error('[plugins] enabled-plugin startup failed', error)
+    })
+  }
+  const stopEnabledPlugins = (): void => {
+    for (const plugin of pluginStore.list()) {
+      pluginRuntime.unload(plugin.manifest.id)
+      pluginStore.setState(plugin.manifest.id, 'disabled')
+    }
+    pluginChanged()
+  }
+  syncEnabledPlugins()
 
   app.on('before-quit', () => {
     stopPluginPanels()
@@ -2294,6 +2373,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     }
     pluginChanged()
     if (plugin.state === 'needs-approval') return { plugin }
+    if (!getSettings().experimental.extensionRuntime) return { plugin }
     try {
       plugin = await pluginRuntime.load(req.id)
     } catch (error) {
@@ -2316,6 +2396,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('plugins:reload', async (req) => {
     let plugin = pluginStore.get(req.id)
     if (plugin === null) throw new ValidationError(`unknown plugin "${req.id}"`)
+    if (!getSettings().experimental.extensionRuntime) return { plugin }
     try {
       plugin = await pluginRuntime.reload(req.id)
     } catch (error) {
@@ -2331,6 +2412,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return { plugin }
   })
   handle('plugins:runCommand', async (req) => {
+    if (!getSettings().experimental.extensionRuntime) {
+      throw new ValidationError('확장 플러그인 런타임이 설정에서 꺼져 있어요')
+    }
     await pluginRuntime.runCommand(req.pluginId, req.commandId)
     return OK
   })
@@ -2341,7 +2425,25 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
 
   // -- settings (real implementation, settingsStore-owned) ------------------
   handle('settings:get', () => getSettings())
-  handle('settings:set', (req) => setSettings(req))
+  const applyExtensionRuntimeChange = (
+    previous: Settings,
+    next: Settings
+  ): void => {
+    if (
+      previous.experimental.extensionRuntime ===
+      next.experimental.extensionRuntime
+    ) {
+      return
+    }
+    if (next.experimental.extensionRuntime) syncEnabledPlugins()
+    else stopEnabledPlugins()
+  }
+  handle('settings:set', (req) => {
+    const previous = getSettings()
+    const next = setSettings(req)
+    applyExtensionRuntimeChange(previous, next)
+    return next
+  })
   // [R3] dataRoot 변경. 새 과목만 새 위치에 생긴다 — 기존 과목 폴더는 절대
   // 경로로 저장되어 있으므로 옮기지 않고 그대로 동작한다.
   handle('settings:pickDataRoot', async () => {
@@ -2369,6 +2471,27 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     // setSettings 가 저장 + settings:changed 브로드캐스트까지 처리한다.
     setSettings({ dataRoot })
     return { dataRoot }
+  })
+  handle('settings:reset', () => {
+    const previous = getSettings()
+    const next = resetSettings(setSettings)
+    applyExtensionRuntimeChange(previous, next)
+    return next
+  })
+  handle('notifications:test', () => notifier.test())
+  handle('app:openLogs', async () => {
+    const logsPath = app.getPath('logs')
+    mkdirSync(logsPath, { recursive: true })
+    const error = await shell.openPath(logsPath)
+    if (error !== '') throw new Error(error)
+    return OK
+  })
+  handle('app:clearCache', async () => {
+    await Promise.all([
+      session.fromPartition(BROWSING_PARTITION).clearCache(),
+      session.defaultSession.clearCache()
+    ])
+    return OK
   })
 
   // -- layout ---------------------------------------------------------------
@@ -2570,6 +2693,12 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('feedback:send', (req) => feedback.send(req))
 
   assertEveryChannelHandled()
+  try {
+    deadlineScheduler.start()
+  } catch (error) {
+    console.error('[notifications] deadline scheduler startup failed', error)
+  }
+  app.on('before-quit', () => deadlineScheduler.dispose())
 
   return {
     miniPlayer,
