@@ -28,13 +28,4 @@ export function createSystemNotifier(
   })
 }
 
-export { createDeadlineScheduler, dueKeys } from './deadlineScheduler'
-export type { DeadlineScheduler, DeadlineTask } from './deadlineScheduler'
-export { createNotifier } from './notifier'
-export type {
-  NotificationKind,
-  Notifier,
-  NotifierDeps,
-  NotifyInput,
-  NotifyResult
-} from './notifier'
+export { createDeadlineScheduler } from './deadlineScheduler'
