@@ -38,20 +38,29 @@ function AgentUseSection({
   const t = useT()
   const enabled = settings?.browser.agentUse ?? false
   return (
-    <>
-      <SettingsCard>
-        <ToggleRow
-          label={t('settings.browser.agentUse.label')}
-          description={t('settings.browser.agentUse.description')}
-          checked={enabled}
-          disabled={settings === null}
-          onChange={(agentUse) => saveBrowserSettings(settings, { agentUse })}
-        />
-      </SettingsCard>
-      <div className={!enabled ? 'settings-browser__dimmed' : ''}>
-        <AgentAccessPanel />
-      </div>
-    </>
+    <SettingsCard>
+      <ToggleRow
+        label={t('settings.browser.agentUse.label')}
+        description={t('settings.browser.agentUse.description')}
+        checked={enabled}
+        disabled={settings === null}
+        onChange={(agentUse) => saveBrowserSettings(settings, { agentUse })}
+      />
+    </SettingsCard>
+  )
+}
+
+/** The grant/audit cards are long; everyday knobs come first, these after. */
+function AgentAccessSection({
+  settings
+}: {
+  settings: Settings | null
+}): JSX.Element {
+  const enabled = settings?.browser.agentUse ?? false
+  return (
+    <div className={!enabled ? 'settings-browser__dimmed' : ''}>
+      <AgentAccessPanel />
+    </div>
   )
 }
 
@@ -250,6 +259,7 @@ export function BrowserSettingsPanel({
       <SearchEngineCard settings={settings} />
       <DefaultZoomCard settings={settings} />
       <LinkRoutingCard settings={settings} />
+      <AgentAccessSection settings={settings} />
       <BrowsingDataPanel settings={settings} />
     </div>
   )

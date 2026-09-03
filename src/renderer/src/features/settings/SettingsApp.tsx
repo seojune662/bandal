@@ -613,6 +613,7 @@ export function SettingsApp({
                       <button
                         key={category.id}
                         type="button"
+                        data-category={category.id}
                         className={`settings-nav__item${
                           activeCategory === category.id
                             ? " settings-nav__item--active"
