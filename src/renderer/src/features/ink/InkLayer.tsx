@@ -39,7 +39,7 @@ import { healedImageBox } from './imagePlacement'
 import type { InkTool, InkToolState } from './inkToolStore'
 import type { RenderClip } from './ClipShape'
 import { isEditableTarget } from './domTarget'
-import { foreignObjectContentStyle } from './foreignObjectScale'
+import { foreignObjectLayout } from './foreignObjectScale'
 import { ReferencedShape } from './ReferencedShape'
 import { ResizeHandles, TEXTBOX_HANDLES } from './ResizeHandles'
 import {
@@ -820,8 +820,8 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
   }, [aspect, baseWidthPx])
 
   const textBoxContentStyle = useCallback((
-    box: DrawingBox,
-    shapeStyle: DrawingStyle
+    shapeStyle: DrawingStyle,
+    contentStyle: CSSProperties
   ): CSSProperties => {
     const fontSize = textBoxFontPx(baseWidthPx, shapeStyle.fontScale)
     const decorations = [
@@ -839,9 +839,8 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
       padding: `${TEXT_BOX_PADDING_EM}em`,
       borderWidth: `${TEXT_BOX_BORDER_EM}em`
     }
-    const scaled = foreignObjectContentStyle(box, baseWidthPx, aspect)
-    return scaled === null ? typography : { ...scaled, ...typography }
-  }, [aspect, baseWidthPx])
+    return { ...contentStyle, ...typography }
+  }, [baseWidthPx])
 
   /**
    * 서식 행의 컨트롤이 포커스를 가져가 textarea 가 blur 되면(버튼은
@@ -1112,16 +1111,21 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         const editedBox = isEditing && editingBoxOverride !== null
           ? editingBoxOverride
           : box
+        const foreignLayout = foreignObjectLayout(editedBox, baseWidthPx, aspect)
+        if (foreignLayout === null) return null
         // 리사이즈 중 글자 크기는 고정 — editedBox 가 제스처 박스라 줄바꿈이
         // 라이브로 재배치된다.
-        const contentStyle = textBoxContentStyle(editedBox, shape.style)
+        const contentStyle = textBoxContentStyle(
+          shape.style,
+          foreignLayout.contentStyle
+        )
         const textSelected =
           selectedId === shape.id &&
           (activeTool === 'select' || activeTool === 'text')
         return (
           <g key={shape.id} className="ink-layer__textbox-group">
             <foreignObject
-              {...editedBox}
+              {...foreignLayout.objectProps}
               className="ink-layer__textbox-object"
               onPointerDown={(event) => beginManipulation(event, shape, 'move')}
               onDoubleClick={(event) => {
@@ -1183,38 +1187,42 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
         )
       })}
 
-      {newTextBox !== null && surfaceReady && isRenderableBox(newTextBox) && (
-        <foreignObject
-          {...newTextBox}
-          className="ink-layer__textbox-object"
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <textarea
-            autoFocus
-            ref={newTextAreaRef}
-            className="ink-layer__textbox is-editing"
-            data-color={draftStyle?.color ?? color}
-            data-fill={draftStyle?.fill}
-            value={textDraft}
-            aria-label="텍스트 입력"
-            placeholder="텍스트를 입력하세요"
-            style={textBoxContentStyle(
-              newTextBox,
-              draftStyle ?? drawingStyle('text', width, opacity, color)
-            )}
+      {newTextBox !== null && surfaceReady && isRenderableBox(newTextBox) && (() => {
+        const foreignLayout = foreignObjectLayout(newTextBox, baseWidthPx, aspect)
+        if (foreignLayout === null) return null
+        return (
+          <foreignObject
+            {...foreignLayout.objectProps}
+            className="ink-layer__textbox-object"
             onPointerDown={(event) => event.stopPropagation()}
-            onChange={(event) => {
-              setTextDraft(event.target.value)
-              growEditingBox(event.target.scrollHeight, newTextBox, 'new')
-            }}
-            onBlur={(event) => {
-              if (deferBlurToFormatRow(event)) return
-              finishNewTextBox(newTextBox)
-            }}
-            onKeyDown={editKeyDown}
-          />
-        </foreignObject>
-      )}
+          >
+            <textarea
+              autoFocus
+              ref={newTextAreaRef}
+              className="ink-layer__textbox is-editing"
+              data-color={draftStyle?.color ?? color}
+              data-fill={draftStyle?.fill}
+              value={textDraft}
+              aria-label="텍스트 입력"
+              placeholder="텍스트를 입력하세요"
+              style={textBoxContentStyle(
+                draftStyle ?? drawingStyle('text', width, opacity, color),
+                foreignLayout.contentStyle
+              )}
+              onPointerDown={(event) => event.stopPropagation()}
+              onChange={(event) => {
+                setTextDraft(event.target.value)
+                growEditingBox(event.target.scrollHeight, newTextBox, 'new')
+              }}
+              onBlur={(event) => {
+                if (deferBlurToFormatRow(event)) return
+                finishNewTextBox(newTextBox)
+              }}
+              onKeyDown={editKeyDown}
+            />
+          </foreignObject>
+        )
+      })()}
 
       {gesture?.kind === 'stroke' && (() => {
         const path = strokePath(

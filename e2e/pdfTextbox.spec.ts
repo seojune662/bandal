@@ -1,7 +1,24 @@
 import { expect, test } from '@playwright/test'
+import type { Locator } from '@playwright/test'
 import { readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+
+async function expectSameBounds(
+  left: Locator,
+  right: Locator,
+  tolerancePx = 1
+): Promise<void> {
+  const leftBounds = await left.boundingBox()
+  const rightBounds = await right.boundingBox()
+  expect(leftBounds).not.toBeNull()
+  expect(rightBounds).not.toBeNull()
+  if (leftBounds === null || rightBounds === null) return
+  expect(Math.abs(leftBounds.x - rightBounds.x)).toBeLessThanOrEqual(tolerancePx)
+  expect(Math.abs(leftBounds.y - rightBounds.y)).toBeLessThanOrEqual(tolerancePx)
+  expect(Math.abs(leftBounds.width - rightBounds.width)).toBeLessThanOrEqual(tolerancePx)
+  expect(Math.abs(leftBounds.height - rightBounds.height)).toBeLessThanOrEqual(tolerancePx)
+}
 
 /**
  * PDF 텍스트박스 회귀:
@@ -55,6 +72,9 @@ test.describe('pdf textbox', () => {
       rect.y + rect.height * fy
     ]
     const textarea = page.locator('.ink-layer__textbox.is-editing')
+    const draftObject = page.locator('.ink-layer__textbox-object').filter({
+      has: textarea
+    })
     const expectAnchoredAt = async (
       clickX: number,
       clickY: number,
@@ -79,6 +99,7 @@ test.describe('pdf textbox', () => {
     await expect(textarea).toBeVisible()
     const first = (await textarea.boundingBox())!
     await expectAnchoredAt(ax, ay, first)
+    await expectSameBounds(draftObject, textarea)
 
     // 빈 채로 다른 곳 클릭: 사라지는 게 아니라 그 지점으로 이동한다.
     const [bx, by] = at(0.55, 0.5)
@@ -86,6 +107,14 @@ test.describe('pdf textbox', () => {
     await expect(textarea).toBeVisible()
     const moved = (await textarea.boundingBox())!
     await expectAnchoredAt(bx, by, moved)
+    await expectSameBounds(draftObject, textarea)
+
+    // 우측·하단에서도 잘리거나 과거 위치에 고정되지 않는다.
+    const [edgeX, edgeY] = at(0.96, 0.92)
+    await page.mouse.click(edgeX, edgeY)
+    const atEdge = (await textarea.boundingBox())!
+    await expectAnchoredAt(edgeX, edgeY, atEdge)
+    await expectSameBounds(draftObject, textarea)
 
     // 내용을 넣고 또 다른 곳 클릭: 지금 박스는 확정, 새 placeholder 가 열린다.
     await page.keyboard.type('committed here')
@@ -97,6 +126,7 @@ test.describe('pdf textbox', () => {
     await expect(textarea).toBeVisible()
     const third = (await textarea.boundingBox())!
     await expectAnchoredAt(cx, cy, third)
+    await expectSameBounds(draftObject, textarea)
     await page.keyboard.press('Escape')
   })
 
@@ -129,10 +159,14 @@ test.describe('pdf textbox', () => {
       })
       .toMatch(/px$/)
     const before = (await boxObject.boundingBox())!
+    await expectSameBounds(boxObject, inner)
 
     // select 툴로 박스를 잡고 w 핸들을 안쪽으로 끌어 폭을 좁힌다.
     await page.locator('.pdf-tool-rail__button[aria-label="선택"]').click()
     await page.mouse.click(before.x + before.width / 2, before.y + before.height / 2)
+    const selectionFrame = page.locator('.ink-layer__selection-frame')
+    await expect(selectionFrame).toBeVisible()
+    await expectSameBounds(boxObject, selectionFrame, 2)
     const westHandle = page.locator(
       '.ink-layer__textbox-resize[data-resize-handle="w"]'
     )
@@ -148,6 +182,8 @@ test.describe('pdf textbox', () => {
     await page.waitForTimeout(400)
 
     const after = (await boxObject.boundingBox())!
+    await expectSameBounds(boxObject, inner)
+    await expectSameBounds(boxObject, selectionFrame, 2)
     let fontAfter = ''
     await expect
       .poll(async () => {
@@ -164,6 +200,32 @@ test.describe('pdf textbox', () => {
     // 오른쪽 모서리는 고정된 채 왼쪽만 움직였다.
     expect(Math.abs(after.x + after.width - (before.x + before.width)))
       .toBeLessThan(8)
+  })
+
+  test('dragging a selected textbox moves its content and frame together', async () => {
+    const { page } = bandal
+    const boxObject = page.locator('.ink-layer__textbox-object', {
+      hasText: 'reflow test'
+    })
+    const inner = boxObject.locator('.ink-layer__textbox')
+    const before = (await boxObject.boundingBox())!
+    const startX = before.x + before.width / 2
+    const startY = before.y + before.height / 2
+    const dx = 70
+    const dy = 35
+
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    await page.mouse.move(startX + dx, startY + dy, { steps: 6 })
+    await page.mouse.up()
+
+    const after = (await boxObject.boundingBox())!
+    expect(Math.abs(after.x - before.x - dx)).toBeLessThanOrEqual(2)
+    expect(Math.abs(after.y - before.y - dy)).toBeLessThanOrEqual(2)
+    expect(Math.abs(after.width - before.width)).toBeLessThanOrEqual(1)
+    expect(Math.abs(after.height - before.height)).toBeLessThanOrEqual(1)
+    await expectSameBounds(boxObject, inner)
+    await expectSameBounds(boxObject, page.locator('.ink-layer__selection-frame'), 2)
   })
 
   test('the format row edits text and background styles of the selection', async () => {

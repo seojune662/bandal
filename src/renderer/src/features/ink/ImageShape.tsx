@@ -11,7 +11,7 @@ import type {
 } from '../../../../shared/types/drawing'
 import { invoke } from '../../lib/ipc'
 import { imageDataUrl } from '../image/imageSource'
-import { foreignObjectContentStyle } from './foreignObjectScale'
+import { foreignObjectLayout } from './foreignObjectScale'
 import { dataUrlImageAspect } from './imagePlacement'
 import type { ResizeHandle } from './inkGeometry'
 import { ResizeHandles } from './ResizeHandles'
@@ -224,21 +224,21 @@ export function ImageShape({
     )
   }
 
-  const contentStyle = foreignObjectContentStyle(box, baseWidthPx, aspect)
+  const foreignLayout = foreignObjectLayout(box, baseWidthPx, aspect)
   // Never render CSS pixels directly into the normalized SVG viewBox.
-  if (contentStyle === null) return null
+  if (foreignLayout === null) return null
 
   return (
     <g ref={groupRef} className="ink-layer__image-group">
       <foreignObject
-        {...box}
+        {...foreignLayout.objectProps}
         className="ink-layer__image-object"
         style={{ opacity: shape.style.opacity, overflow: 'hidden' }}
         onPointerDown={(event) => onBeginManipulation(event, shape, 'move')}
       >
         <div
           className="ink-layer__image"
-          style={contentStyle}
+          style={foreignLayout.contentStyle}
           data-state={loadState}
           aria-label={`${source.label}${failed ? ', 원본을 찾을 수 없어요' : ''}`}
         >

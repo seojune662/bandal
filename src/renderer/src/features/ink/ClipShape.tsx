@@ -9,7 +9,7 @@ import type {
   DrawingClipSource,
   DrawingShape
 } from '../../../../shared/types/drawing'
-import { foreignObjectContentStyle } from './foreignObjectScale'
+import { foreignObjectLayout } from './foreignObjectScale'
 import { dataUrlImageAspect } from './imagePlacement'
 import { observeImageVisibility } from './ImageShape'
 import type { ResizeHandle } from './inkGeometry'
@@ -181,15 +181,15 @@ export function ClipShape({
     )
   }
 
-  const contentStyle = foreignObjectContentStyle(box, baseWidthPx, aspect)
+  const foreignLayout = foreignObjectLayout(box, baseWidthPx, aspect)
   // Unmeasured surface: drawing now would size the border and radius against
   // the normalized viewBox and paint a huge wedge over the board.
-  if (contentStyle === null) return null
+  if (foreignLayout === null) return null
 
   return (
     <g ref={groupRef} className="ink-layer__clip-group">
       <foreignObject
-        {...box}
+        {...foreignLayout.objectProps}
         className="ink-layer__clip-object"
         style={{ opacity: shape.style.opacity, overflow: 'hidden' }}
         onPointerDown={(event) => onBeginManipulation(event, shape, 'move')}
@@ -200,7 +200,7 @@ export function ClipShape({
       >
         <div
           className="ink-layer__clip"
-          style={contentStyle}
+          style={foreignLayout.contentStyle}
           data-state={loadState}
           aria-label={`${source.label}${failed ? ', 원본을 찾을 수 없어요' : ''}`}
         >

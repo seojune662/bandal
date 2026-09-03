@@ -93,17 +93,21 @@ describe('InkLayer textbox drafts', () => {
     expect(html).not.toContain('<foreignObject')
   })
 
-  test('counter-scales textbox HTML inside the normalized SVG viewBox', () => {
+  test('scales the textbox foreignObject instead of its HTML child', () => {
     const html = renderLayer([
       savedShape({ kind: 'textbox', data: { box, text: '핵심 개념' } })
     ])
 
-    expect(html).toContain('transform:scale(')
+    expect(html).toContain(
+      '<foreignObject x="160" y="180" width="208" height="48" ' +
+      'transform="scale(0.00125 0.0016666666666666668)"'
+    )
+    expect(html).toContain('style="width:100%;height:100%;font-size:20.8px')
     expect(html).toContain('font-size:20.8px')
     expect(html).toContain('핵심 개념')
   })
 
-  test('counter-scales textbox HTML when text creation is not deferred', () => {
+  test('uses outer SVG scaling when text creation is not deferred', () => {
     const html = renderToStaticMarkup(
       <InkLayer
         aspect={0.75}
@@ -119,7 +123,10 @@ describe('InkLayer textbox drafts', () => {
       />
     )
 
-    expect(html).toContain('transform:scale(')
+    expect(html).toContain(
+      '<foreignObject x="160" y="180" width="208" height="48" ' +
+      'transform="scale(0.00125 0.0016666666666666668)"'
+    )
   })
 
   test('renders italic, combined decorations, alignment and fill metadata', () => {
@@ -339,7 +346,7 @@ describe('InkLayer image shapes', () => {
     }
   })
 
-  test('counter-scales HTML and reuses all four resize handles', () => {
+  test('scales the placeholder foreignObject and reuses all four resize handles', () => {
     const html = renderToStaticMarkup(
       <ImageShape
         shape={image}
@@ -353,9 +360,12 @@ describe('InkLayer image shapes', () => {
     )
 
     expect(html).toContain('ink-layer__image-group')
-    expect(html).toContain('transform:scale(0.00125, 0.0016666666666666668)')
-    expect(html).toContain('width:336px')
-    expect(html).toContain('height:168.00000000000003px')
+    expect(html).toContain(
+      '<foreignObject x="96" y="108" width="336" ' +
+      'height="168.00000000000003" ' +
+      'transform="scale(0.00125 0.0016666666666666668)"'
+    )
+    expect(html).toContain('class="ink-layer__image" style="width:100%;height:100%"')
     for (const handle of ['nw', 'ne', 'sw', 'se']) {
       expect(html).toContain(`data-resize-handle="${handle}"`)
     }
