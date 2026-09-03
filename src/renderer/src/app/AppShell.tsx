@@ -71,6 +71,7 @@ export function AppShell(): JSX.Element {
   const isLinkGraphOpen = useUiStore((state) => state.isLinkGraphOpen)
   const closeLinkGraph = useUiStore((state) => state.closeLinkGraph)
   const isSettingsOpen = useUiStore((state) => state.isSettingsOpen)
+  const settingsCategory = useUiStore((state) => state.settingsCategory)
   const openSettings = useUiStore((state) => state.openSettings)
   const closeSettings = useUiStore((state) => state.closeSettings)
   const isOnboardingVisible = useOnboardingStore((state) => state.visible)
@@ -128,7 +129,7 @@ export function AppShell(): JSX.Element {
   }, [loadCourses])
 
   useEffect(() => {
-    return onPush('ui:openSettings', () => openSettings())
+    return onPush('ui:openSettings', ({ category }) => openSettings(category))
   }, [openSettings])
 
   useEffect(() => {
@@ -383,7 +384,11 @@ export function AppShell(): JSX.Element {
       <ToastHost />
       {isSettingsOpen && (
         <div className="settings-overlay">
-          <SettingsApp embedded onClose={closeSettings} />
+          <SettingsApp
+            embedded
+            onClose={closeSettings}
+            initialCategory={settingsCategory}
+          />
         </div>
       )}
       <TourOverlay />

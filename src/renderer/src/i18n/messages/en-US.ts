@@ -692,5 +692,11 @@ export const enUS: Record<MessageKey, string> = {
   'help.milestones.item.favorite': 'Add a favorite',
   'help.milestones.item.question': 'Ask AI a question',
   'help.milestones.item.group': 'Join a group',
-  'help.milestones.item.pip': 'Use PiP'
+  'help.milestones.item.pip': 'Use PiP',
+
+  // ---- v0.37 settings shell (W-SHELL) ----
+  // ---- v0.37 shortcuts panel (W-SHORTCUTS) ----
+  // ---- v0.37 notifications panel (W-NOTIF) ----
+  // ---- v0.37 browser panel (W-BROWSER) ----
+  // ---- v0.37 advanced & experimental panels (W-ADV) ----
 }

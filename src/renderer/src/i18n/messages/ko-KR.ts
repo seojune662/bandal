@@ -690,7 +690,13 @@ export const koKR = {
   'help.milestones.item.favorite': '즐겨찾기',
   'help.milestones.item.question': 'AI에게 질문',
   'help.milestones.item.group': '그룹 참여',
-  'help.milestones.item.pip': 'PiP 사용'
+  'help.milestones.item.pip': 'PiP 사용',
+
+  // ---- v0.37 settings shell (W-SHELL) ----
+  // ---- v0.37 shortcuts panel (W-SHORTCUTS) ----
+  // ---- v0.37 notifications panel (W-NOTIF) ----
+  // ---- v0.37 browser panel (W-BROWSER) ----
+  // ---- v0.37 advanced & experimental panels (W-ADV) ----
 } as const
 
 export type MessageKey = keyof typeof koKR

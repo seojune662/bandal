@@ -1380,6 +1380,35 @@ export interface IpcContract {
     res: { dataRoot: string } | null
   }
 
+  /**
+   * [v0.37] 설정 초기화. dataRoot·locale·onboarding·tutorial·university·
+   * milestones·lastActiveCourseId 는 보존하고 나머지를 기본값으로 되돌린다.
+   * 저장 + settings:changed 브로드캐스트까지 포함한다.
+   */
+  'settings:reset': {
+    req: Record<string, never>
+    res: Settings
+  }
+
+  // -- notifications (v0.37) -----------------------------------------------
+  /** 설정 패널의 "테스트 알림 보내기". 알림이 꺼져 있어도 보낸다. */
+  'notifications:test': {
+    req: Record<string, never>
+    res: { ok: boolean; reason: 'unsupported' | null }
+  }
+
+  // -- app maintenance (v0.37 고급 패널) --------------------------------------
+  /** 로그 폴더를 OS 파일 관리자로 연다. */
+  'app:openLogs': {
+    req: Record<string, never>
+    res: { ok: true }
+  }
+  /** 브라우징 세션의 HTTP 캐시와 반달 썸네일 캐시를 비운다. */
+  'app:clearCache': {
+    req: Record<string, never>
+    res: { ok: true }
+  }
+
   // -- layout (dockview persistence per course) -----------------------------
   'layout:get': {
     req: { courseId: string }
@@ -1755,6 +1784,10 @@ export const IPC_CHANNELS = [
   'settings:get',
   'settings:set',
   'settings:pickDataRoot',
+  'settings:reset',
+  'notifications:test',
+  'app:openLogs',
+  'app:clearCache',
   'layout:get',
   'layout:save',
   'auth:getState',

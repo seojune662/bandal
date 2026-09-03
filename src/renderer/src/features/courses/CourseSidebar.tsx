@@ -851,7 +851,7 @@ export function CourseSidebar(): JSX.Element {
               type="button"
               className="rail-nav__item"
               aria-label="설정"
-              onClick={openSettings}
+              onClick={() => openSettings()}
             >
               <Icon name="settings" />
             </button>

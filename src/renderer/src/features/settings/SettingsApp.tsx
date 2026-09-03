@@ -56,6 +56,22 @@ type CategoryId =
 
 type CategoryGroup = "settings" | "workspace" | "info";
 
+const CATEGORY_IDS: readonly CategoryId[] = [
+  "account",
+  "general",
+  "appearance",
+  "ai",
+  "mcp",
+  "packs",
+  "university",
+  "courses",
+  "about",
+];
+
+function isCategoryId(value: unknown): value is CategoryId {
+  return CATEGORY_IDS.some((id) => id === value);
+}
+
 interface Category {
   id: CategoryId;
   group: CategoryGroup;
@@ -67,6 +83,8 @@ interface Category {
 interface SettingsAppProps {
   embedded?: boolean;
   onClose?: () => void;
+  /** Category to open on; unknown/null falls back to the first category. */
+  initialCategory?: string | null;
 }
 
 const AGENT_PROVIDERS: readonly AgentProvider[] = ["claude-code", "codex"];
@@ -76,10 +94,13 @@ type ProviderState<T> = Record<AgentProvider, T>;
 export function SettingsApp({
   embedded = false,
   onClose,
+  initialCategory = null,
 }: SettingsAppProps = {}): JSX.Element {
   const t = useT();
   const locale = useLocale();
-  const [activeCategory, setActiveCategory] = useState<CategoryId>("general");
+  const [activeCategory, setActiveCategory] = useState<CategoryId>(() =>
+    isCategoryId(initialCategory) ? initialCategory : "general",
+  );
   const [query, setQuery] = useState("");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [appearance, setAppearance] = useState<AppearanceSettings>(() =>

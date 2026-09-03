@@ -3,6 +3,7 @@
  * subscribed through `window.bandal.on(channel, cb)`.
  */
 
+import type { SettingsCategoryId } from '../settingsCategories'
 import type { AgentEvent } from '../types/agent-events'
 import type { AgentConfirmRequest } from '../types/agentTools'
 import type { Settings } from '../types/settings'
@@ -267,7 +268,7 @@ export interface PushEvents {
   'browser:external-auth': BrowserOpenUrl
   'settings:changed': SettingsChanged
   /** Open the in-app settings overlay (app menu ⌘, or legacy callers). */
-  'ui:openSettings': { }
+  'ui:openSettings': { category?: SettingsCategoryId }
   'browser:download': BrowserDownloadUpdate
   'browserAgent:run-state': BrowserAgentRunState
   'shortcut:passthrough': ShortcutPassthrough
