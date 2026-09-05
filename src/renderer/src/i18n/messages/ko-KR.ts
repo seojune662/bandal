@@ -837,7 +837,7 @@ export const koKR = {
   'settings.ai.account.signedIn': '로그인됨',
   'settings.ai.account.copyCommand': '직접 터미널에서 실행? 명령 복사',
   'settings.category.usage.label': '사용 통계',
-  'settings.category.usage.description': 'AI 사용량과 한도를 확인합니다.',
+  'settings.category.usage.description': '제공자별 AI 사용량을 확인합니다.',
   'settings.category.usage.keywords': '사용 통계 토큰 한도 usage stats tokens limits',
   // ---- v0.39 usage panel (W-USAGE-UI) ----
   'settings.usage.window.label': '기간',
