@@ -913,4 +913,7 @@ export const enUS: Record<MessageKey, string> = {
   'settings.catalog.development.extensions': 'Extension management',
   'settings.catalog.development.packs': 'Pack management',
 
+  // ---- v0.41 permissions & privacy panels (W-PERM-UI) ----
+  // ---- v0.41 assistant panel (W-ASSIST-UI) ----
+
 }

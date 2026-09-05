@@ -911,6 +911,9 @@ export const koKR = {
   'settings.catalog.development.extensions': '확장 관리',
   'settings.catalog.development.packs': '팩 관리',
 
+  // ---- v0.41 permissions & privacy panels (W-PERM-UI) ----
+  // ---- v0.41 assistant panel (W-ASSIST-UI) ----
+
 } as const
 
 export type MessageKey = keyof typeof koKR

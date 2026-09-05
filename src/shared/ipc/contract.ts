@@ -8,6 +8,12 @@
  * mutate existing shapes.
  */
 
+import type {
+  DiagnosticsBundle,
+  SystemPermissionId,
+  SystemPermissionStatus,
+  SystemPermissionsReport
+} from '../types/permissions'
 import type { CatalogInstallResult, PluginCatalog } from '../types/pluginCatalog'
 import type { UsageSummary, UsageWindowDays } from '../types/usage'
 import type {
@@ -1430,6 +1436,30 @@ export interface IpcContract {
     res: CatalogInstallResult
   }
 
+  // -- system permissions & diagnostics (v0.41) -----------------------------
+  'permissions:status': {
+    req: Record<string, never>
+    res: SystemPermissionsReport
+  }
+  /** Triggers the OS prompt when `canRequest`; returns the fresh status. */
+  'permissions:request': {
+    req: { id: SystemPermissionId }
+    res: SystemPermissionStatus
+  }
+  /** Opens the OS privacy page for this permission (mac deep link, win ms-settings). */
+  'permissions:openSettings': {
+    req: { id: SystemPermissionId }
+    res: { ok: true }
+  }
+  /**
+   * Writes a redacted diagnostics text bundle to a temp folder and reveals it.
+   * Nothing is uploaded; the user attaches it to feedback by hand.
+   */
+  'app:diagnostics': {
+    req: Record<string, never>
+    res: DiagnosticsBundle
+  }
+
   // -- layout (dockview persistence per course) -----------------------------
   'layout:get': {
     req: { courseId: string }
@@ -1812,6 +1842,10 @@ export const IPC_CHANNELS = [
   'usage:summary',
   'plugins:catalog',
   'plugins:installFromCatalog',
+  'permissions:status',
+  'permissions:request',
+  'permissions:openSettings',
+  'app:diagnostics',
   'layout:get',
   'layout:save',
   'auth:getState',

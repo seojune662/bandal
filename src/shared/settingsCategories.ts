@@ -8,6 +8,7 @@ export const SETTINGS_GROUPS = [
   'setup',
   'workflows',
   'interface',
+  'privacy',
   'advanced',
   'courses',
   'info'
@@ -16,6 +17,7 @@ export type SettingsGroupId = (typeof SETTINGS_GROUPS)[number]
 
 export const SETTINGS_CATEGORIES = [
   { id: 'ai', group: 'ai' },
+  { id: 'assistant', group: 'ai' },
   { id: 'account', group: 'setup' },
   { id: 'general', group: 'setup' },
   { id: 'mcp', group: 'setup' },
@@ -26,6 +28,8 @@ export const SETTINGS_CATEGORIES = [
   { id: 'notifications', group: 'interface' },
   { id: 'shortcuts', group: 'interface' },
   { id: 'usage', group: 'interface' },
+  { id: 'permissions', group: 'privacy' },
+  { id: 'privacy', group: 'privacy' },
   { id: 'advanced', group: 'advanced' },
   { id: 'experimental', group: 'advanced' },
   { id: 'courses', group: 'courses' },
