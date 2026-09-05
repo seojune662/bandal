@@ -42,6 +42,7 @@ import {
 } from "../../../../shared/types/settings";
 import { AccountPanel } from "./AccountPanel";
 import { AdvancedPanel } from "./advanced/AdvancedPanel";
+import { AssistantPanel } from "./assistant/AssistantPanel";
 import { ExperimentalPanel } from "./advanced/ExperimentalPanel";
 import { BrowserSettingsPanel } from "./browser/BrowserSettingsPanel";
 import {
@@ -54,6 +55,8 @@ import {
 } from "./SettingsPanels";
 import { PluginsCategoryPanel } from "./PluginsCategoryPanel";
 import { NotificationsPanel } from "./notifications/NotificationsPanel";
+import { PermissionsPanel } from "./permissions/PermissionsPanel";
+import { PrivacyPanel } from "./privacy/PrivacyPanel";
 import { ShortcutsPanel } from "./shortcuts/ShortcutsPanel";
 import { UsagePanel } from "./usage/UsagePanel";
 import { Icon } from "./SettingsIcon";
@@ -483,7 +486,6 @@ export function SettingsApp({
     packs: <PluginsCategoryPanel />,
     ai: (
       <AiPanel
-        settings={settings}
         provider={settings?.agentProvider ?? "claude-code"}
         providerReady={settings !== null}
         providerSaving={agentProviderSaving}
@@ -500,10 +502,13 @@ export function SettingsApp({
         onRetry={loadAvailability}
       />
     ),
+    assistant: <AssistantPanel settings={settings} />,
     browser: <BrowserSettingsPanel settings={settings} />,
     notifications: <NotificationsPanel settings={settings} />,
     usage: <UsagePanel />,
     shortcuts: <ShortcutsPanel settings={settings} />,
+    permissions: <PermissionsPanel />,
+    privacy: <PrivacyPanel />,
     advanced: <AdvancedPanel settings={settings} />,
     experimental: <ExperimentalPanel settings={settings} />,
     university: <UniversitySettingsPanel />,

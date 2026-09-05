@@ -31,7 +31,6 @@ import type {
   Settings,
   ThemePreference
 } from '../../../../shared/types/settings'
-import type { ScreenPermissionState } from '../../../../shared/types/overlay'
 import { CHARM_OPTIONS, CharmPreview } from '../assistant/charms'
 import { reopenedOnboarding } from '../onboarding/onboardingModel'
 import { SettingsCard, ToggleRow } from './primitives'
@@ -1206,82 +1205,7 @@ function ProviderCard({
   )
 }
 
-export function DesktopPermissionsSlot(
-  _props: { settings: Settings }
-): JSX.Element | null {
-  const t = useT()
-  const isDarwin =
-    typeof window !== 'undefined' && window.bandal.platform === 'darwin'
-  const [screenPermission, setScreenPermission] =
-    useState<ScreenPermissionState>('unknown')
-
-  useEffect(() => {
-    if (!isDarwin) return
-
-    let active = true
-    let receivedPush = false
-    const unsubscribe = onPush('desktopAgent:permission', ({ state }) => {
-      receivedPush = true
-      if (active) setScreenPermission(state)
-    })
-
-    void invoke('desktopAgent:permissionStatus', {}).then(
-      ({ state }) => {
-        if (active && !receivedPush) setScreenPermission(state)
-      },
-      () => undefined
-    )
-
-    return () => {
-      active = false
-      unsubscribe()
-    }
-  }, [isDarwin])
-
-  if (!isDarwin) return null
-
-  const visibleState =
-    screenPermission === 'unsupported' ? 'unknown' : screenPermission
-  const openPermissionSettings = (): void => {
-    void invoke('desktopAgent:openPermissionSettings', {}).catch(() => undefined)
-  }
-
-  return (
-    <div className="setting-row">
-      <div className="setting-row__copy">
-        <div className="setting-row__label-line">
-          <span className="setting-row__label">
-            {t('settings.ai.permissions.screen.label')}
-          </span>
-          <span
-            className={`status-pill${
-              visibleState === 'granted' ? ' status-pill--ready' : ''
-            }`}
-            data-state={visibleState}
-          >
-            <span className="status-pill__dot" />
-            {t(`settings.ai.permissions.screen.${visibleState}`)}
-          </span>
-        </div>
-        {visibleState === 'denied' && (
-          <span className="setting-row__description">
-            {t('settings.ai.permissions.screen.restartHint')}
-          </span>
-        )}
-      </div>
-      <button
-        type="button"
-        className="secondary-button"
-        onClick={openPermissionSettings}
-      >
-        {t('settings.ai.permissions.screen.open')}
-      </button>
-    </div>
-  )
-}
-
 export function AiPanel({
-  settings,
   provider,
   providerReady,
   providerSaving,
@@ -1293,7 +1217,6 @@ export function AiPanel({
   onProviderSelect,
   onRetry
 }: {
-  settings: Settings | null
   provider: AgentProvider
   providerReady: boolean
   providerSaving: boolean
@@ -1307,70 +1230,8 @@ export function AiPanel({
 }): JSX.Element {
   const t = useT()
 
-  const selectAssistantMode = (assistantMode: Settings['assistantMode']): void => {
-    if (settings === null || settings.assistantMode === assistantMode) return
-    void invoke('settings:set', { assistantMode }).catch(() => {
-      // settings:changed is the only source of visible state.
-    })
-  }
-
-  const toggleDesktopKeepAlive = (keepAliveOnClose: boolean): void => {
-    if (settings === null) return
-    void invoke('settings:set', {
-      desktopOrb: { ...settings.desktopOrb, keepAliveOnClose }
-    }).catch(() => {
-      // settings:changed is the only source of visible state.
-    })
-  }
-
   return (
     <div className="settings-stack">
-      <SettingsCard
-        title={t('settings.ai.orb.title')}
-        description={t('settings.ai.orb.description')}
-      >
-        <div className="settings-ai-orb">
-          <div className="setting-row settings-ai-orb__mode">
-            <div className="setting-row__copy">
-              <div
-                className="settings-ai-engine__segments"
-                role="radiogroup"
-                aria-label={t('settings.ai.orb.mode.selectLabel')}
-              >
-                {(['in-app', 'desktop'] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    role="radio"
-                    aria-checked={settings?.assistantMode === option}
-                    disabled={settings === null}
-                    className={`settings-ai-engine__segment${
-                      settings?.assistantMode === option
-                        ? ' settings-ai-engine__segment--selected'
-                        : ''
-                    }`}
-                    onClick={() => selectAssistantMode(option)}
-                  >
-                    {t(`settings.ai.orb.mode.${option === 'in-app' ? 'inApp' : 'desktop'}`)}
-                  </button>
-                ))}
-              </div>
-              <span className="setting-row__description">
-                {t('settings.ai.orb.mode.desktopDescription')}
-              </span>
-            </div>
-          </div>
-          <ToggleRow
-            label={t('settings.ai.orb.keepAlive')}
-            description={t('settings.ai.orb.keepAliveDescription')}
-            checked={settings?.desktopOrb.keepAliveOnClose ?? false}
-            disabled={settings?.assistantMode !== 'desktop'}
-            onChange={toggleDesktopKeepAlive}
-          />
-          {settings !== null && <DesktopPermissionsSlot settings={settings} />}
-        </div>
-      </SettingsCard>
-
       <SettingsCard
         title={t('settings.ai.engine.title')}
         description={t('settings.ai.engine.description')}

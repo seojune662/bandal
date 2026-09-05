@@ -15,17 +15,21 @@ import {
   mkdirSync,
   writeFileSync
 } from 'node:fs'
+import { release, tmpdir } from 'node:os'
 import { basename, extname, join } from 'node:path'
 import {
   app,
   BrowserWindow,
+  desktopCapturer,
   dialog,
   ipcMain,
   nativeImage,
   net,
+  Notification,
   protocol,
   session,
   shell,
+  systemPreferences,
   webContents
 } from 'electron'
 import type { NativeImage } from 'electron'
@@ -53,6 +57,7 @@ import type { AgentAppState } from '../../shared/types/agentTools'
 import type { AgentProvider, Usage } from '../../shared/types/agent-events'
 import { isUsageWindowDays } from '../../shared/types/usage'
 import type { ScreenPermissionState } from '../../shared/types/overlay'
+import { isSystemPermissionId } from '../../shared/types/permissions'
 import type { Settings, SettingsPatch } from '../../shared/types/settings'
 import {
   getSettings,
@@ -181,6 +186,8 @@ import { createPluginRuntime } from '../features/plugins/pluginRuntime'
 import { createPluginStore } from '../features/plugins/pluginStore'
 import { createCatalogService } from '../features/plugins/catalog/catalogService'
 import { createCatalogInstaller } from '../features/plugins/catalog/catalogInstall'
+import { createSystemPermissions } from '../features/permissions/systemPermissions'
+import { createDiagnosticsBundle } from '../features/diagnostics/diagnosticsBundle'
 import {
   createDeadlineScheduler,
   createSystemNotifier
@@ -2503,6 +2510,52 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     entries: pluginLog.list(req.id)
   }))
 
+  // -- system permissions & diagnostics -----------------------------------
+  const systemPermissions = createSystemPermissions({
+    platform: process.platform,
+    getDataRoot: () => getSettings().dataRoot,
+    getScreenAccess: () => systemPreferences.getMediaAccessStatus('screen'),
+    requestScreenAccess: () =>
+      desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: 1, height: 1 }
+      }),
+    isTrustedAccessibilityClient: (prompt) =>
+      systemPreferences.isTrustedAccessibilityClient(prompt),
+    notificationIsSupported: () => Notification.isSupported(),
+    openExternal: (url) => shell.openExternal(url)
+  })
+  const writeDiagnostics = createDiagnosticsBundle({
+    tempDir: tmpdir,
+    now: () => new Date(),
+    appVersion: () =>
+      resolveAppVersion(app.isPackaged, app.getVersion(), __APP_VERSION__),
+    electronVersion: () => process.versions.electron ?? 'unknown',
+    platform: process.platform,
+    osVersion: release,
+    getSettings,
+    getAgentAvailability: (provider) =>
+      agentLocators[provider].availability(),
+    getPlugins: () => pluginStore.list(),
+    getPluginLogs: () => pluginLog.list(null),
+    logsPath: () => app.getPath('logs'),
+    reveal: (path) => shell.showItemInFolder(path)
+  })
+
+  handle('permissions:status', () => systemPermissions.status())
+  handle('permissions:request', (req) => {
+    if (!isSystemPermissionId(req.id)) {
+      throw new ValidationError('권한 항목이 올바르지 않아요')
+    }
+    return systemPermissions.request(req.id)
+  })
+  handle('permissions:openSettings', (req) => {
+    if (!isSystemPermissionId(req.id)) {
+      throw new ValidationError('권한 항목이 올바르지 않아요')
+    }
+    return systemPermissions.openSettings(req.id)
+  })
+  handle('app:diagnostics', () => writeDiagnostics())
 
   // -- settings (real implementation, settingsStore-owned) ------------------
   handle('settings:get', () => getSettings())

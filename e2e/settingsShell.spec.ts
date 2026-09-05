@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { SETTINGS_CATEGORIES } from '../src/shared/settingsCategories'
+import { SETTINGS_CATEGORIES, SETTINGS_GROUPS } from '../src/shared/settingsCategories'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 
 /**
@@ -42,7 +42,7 @@ test.describe('settings shell', () => {
     await page.keyboard.press('Meta+,')
     const nav = page.locator('.settings-nav')
     await expect(nav).toBeVisible()
-    await expect(nav.locator('.settings-nav__group-label')).toHaveCount(7)
+    await expect(nav.locator('.settings-nav__group-label')).toHaveCount(SETTINGS_GROUPS.length)
 
     // The launcher disables safeStorage, so the encrypted registry (mcp) and
     // saved logins (university) render without a keychain prompt.

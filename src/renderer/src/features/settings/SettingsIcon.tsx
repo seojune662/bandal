@@ -5,6 +5,7 @@ export type IconName =
   | 'general'
   | 'appearance'
   | 'ai'
+  | 'assistant'
   | 'advanced'
   | 'browser'
   | 'checklist'
@@ -13,6 +14,8 @@ export type IconName =
   | 'mcp'
   | 'notifications'
   | 'packs'
+  | 'permissions'
+  | 'privacy'
   | 'shortcuts'
   | 'usage'
   | 'university'
@@ -70,6 +73,12 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }): JS
         <path d="M12 3 9.8 8.8 4 11l5.8 2.2L12 19l2.2-5.8L20 11l-5.8-2.2Z" />
       </>
     ),
+    assistant: (
+      <>
+        <circle cx="11" cy="12" r="7" />
+        <circle cx="16.5" cy="7.5" r="1.5" />
+      </>
+    ),
     advanced: (
       <>
         <path d="M14.7 6.3a4 4 0 0 0-5 5L3.5 17.5a2.1 2.1 0 0 0 3 3l6.2-6.2a4 4 0 0 0 5-5l-2.5 2.5-3-3Z" />
@@ -121,6 +130,18 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }): JS
     packs: (
       <>
         <path d="M8.5 3H5a2 2 0 0 0-2 2v3.5a2.5 2.5 0 1 1 0 5V19a2 2 0 0 0 2 2h5.5a2.5 2.5 0 1 1 5 0H19a2 2 0 0 0 2-2v-5.5a2.5 2.5 0 1 1 0-5V5a2 2 0 0 0-2-2h-5.5a2.5 2.5 0 1 1-5 0Z" />
+      </>
+    ),
+    permissions: (
+      <>
+        <path d="M12 3 20 6v5c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6Z" />
+        <path d="m9 12 2 2 4-4" />
+      </>
+    ),
+    privacy: (
+      <>
+        <rect x="5" y="10" width="14" height="11" rx="2" />
+        <path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" />
       </>
     ),
     shortcuts: (

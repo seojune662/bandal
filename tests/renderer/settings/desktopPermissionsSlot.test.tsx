@@ -37,7 +37,7 @@ vi.mock('../../../src/renderer/src/i18n', () => ({
   }
 }))
 
-import { DesktopPermissionsSlot } from '../../../src/renderer/src/features/settings/SettingsPanels'
+import { DesktopPermissionsSlot } from '../../../src/renderer/src/features/settings/assistant/AssistantPanel'
 import {
   setIpcAdapter,
   type IpcAdapter
