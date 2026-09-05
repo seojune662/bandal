@@ -839,7 +839,7 @@ export const enUS: Record<MessageKey, string> = {
   'settings.ai.account.signedIn': 'Signed in',
   'settings.ai.account.copyCommand': 'Run it in Terminal instead? Copy command',
   'settings.category.usage.label': 'Stats & Usage',
-  'settings.category.usage.description': 'View AI usage and limits.',
+  'settings.category.usage.description': 'View AI usage by provider.',
   'settings.category.usage.keywords': 'stats usage tokens limits quota',
   // ---- v0.39 usage panel (W-USAGE-UI) ----
   'settings.usage.window.label': 'Period',
