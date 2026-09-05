@@ -24,7 +24,10 @@ export type PluginApiMethod =
   | 'settings.set'
   | 'panel.post'
   | 'panel.open'
+  | 'panel.close'
   | 'net.fetch'
+  | 'editor.getSelection'
+  | 'editor.replaceSelection'
 
 export const PLUGIN_API_METHODS = [
   'courses.list',
@@ -40,7 +43,10 @@ export const PLUGIN_API_METHODS = [
   'settings.set',
   'panel.post',
   'panel.open',
-  'net.fetch'
+  'panel.close',
+  'net.fetch',
+  'editor.getSelection',
+  'editor.replaceSelection'
 ] as const satisfies readonly PluginApiMethod[]
 
 type MissingPluginApiMethod = Exclude<
@@ -62,7 +68,7 @@ export type PluginErrorCode =
   | 'plugin-not-active'
   | 'internal'
 
-export type PluginEventName = 'note:saved' | 'course:changed'
+export type PluginEventName = 'note:saved' | 'course:changed' | 'settings:changed'
 
 export const PLUGIN_RPC_PROTOCOL_VERSION = 1
 
@@ -125,7 +131,7 @@ export type MainToHost =
       ok: false
       error: { code: PluginErrorCode; message: string }
     }
-  | { t: 'command'; id: number; pluginId: string; commandId: string }
+  | { t: 'command'; id: number; pluginId: string; commandId: string; context?: unknown }
   | { t: 'event'; pluginId: string; name: PluginEventName; payload: unknown }
   | { t: 'panelMessage'; pluginId: string; panelId: string; payload: unknown }
   | { t: 'shutdown' }

@@ -5,7 +5,7 @@ import {
 } from '../../../../../shared/types/settings'
 import type { MessageKey } from '../../../i18n/messages/ko-KR'
 import { useT } from '../../../i18n'
-import { invoke } from '../../../lib/ipc'
+import { savePreference } from '../savePreference'
 import { SettingsCard, ToggleRow } from '../primitives'
 import './advanced-panel.css'
 
@@ -43,9 +43,7 @@ export function ExperimentalPanel({
               disabled={settings === null}
               onChange={(next) => {
                 if (settings === null) return
-                void invoke('settings:set', {
-                  experimental: { ...settings.experimental, [flag]: next }
-                }).catch(() => undefined)
+                void savePreference({ experimental: { [flag]: next } })
               }}
             />
           ))}

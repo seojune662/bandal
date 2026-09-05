@@ -5,7 +5,7 @@
  * Install is a validated COPY, never a symlink or an in-place load — the
  * source folder can change after the user approved it, the copy cannot. The
  * approval record stores the permission set AND a sha256 over
- * manifest.json + main.js, so a re-install with different code or grants
+ * manifest.json + main.js + panel/assets, so different code or grants
  * flips the plugin back to `needs-approval`.
  *
  * Runtime state (`starting`/`active`/`errored`) is held in memory here and
@@ -67,7 +67,7 @@ interface PluginRecord {
   enabled: boolean
   installedAt: string
   approvedPermissions: readonly PluginPermission[] | null
-  /** sha256 of manifest.json + main.js at approval time; null until approved. */
+  /** Content digest at approval time; null until approved. */
   sha256: string | null
   lastError: string | null
 }
@@ -181,6 +181,8 @@ interface ScannedFile {
   /** POSIX-relative path inside the plugin folder. */
   relPath: string
   size: number
+  modified: number
+  changed: number
 }
 
 /**
@@ -194,9 +196,12 @@ export function scanPluginFolder(
 ): ScannedFile[] {
   const files: ScannedFile[] = []
   let totalBytes = 0
+  let entries = 0
 
-  const walk = (dir: string): void => {
+  const walk = (dir: string, depth = 0): void => {
+    if (depth > 32) throw new ValidationError('plugin folder nesting exceeds 32 levels')
     for (const name of readdirSync(dir).sort()) {
+      if (++entries > 500) throw new ValidationError('plugin has more than 500 entries')
       if (name.startsWith('.')) {
         throw new ValidationError(`dotfiles are not allowed (${name})`)
       }
@@ -206,7 +211,7 @@ export function scanPluginFolder(
         throw new ValidationError(`symlinks are not allowed (${name})`)
       }
       if (stats.isDirectory()) {
-        walk(abs)
+        walk(abs, depth + 1)
         continue
       }
       if (!stats.isFile()) {
@@ -219,7 +224,7 @@ export function scanPluginFolder(
       if (!PLUGIN_FILE_EXTENSIONS.has(extname(name).toLowerCase())) {
         throw new ValidationError(`extension is not allowed (${relPath})`)
       }
-      files.push({ relPath, size: stats.size })
+      files.push({ relPath, size: stats.size, modified: stats.mtimeMs, changed: stats.ctimeMs })
       totalBytes += stats.size
       if (files.length > PLUGIN_LIMITS.files) {
         throw new ValidationError(
@@ -237,11 +242,16 @@ export function scanPluginFolder(
   return files
 }
 
-/** sha256 over manifest.json then main.js bytes. */
-export function hashPluginCode(dir: string, main: string): string {
+/** Include panel scripts/assets too. Two-file v1 plugins retain their digest. */
+export function hashPluginCode(dir: string, main: string, files = scanPluginFolder(dir)): string {
   const hash = createHash('sha256')
   hash.update(readFileSync(join(dir, MANIFEST_FILE)))
   hash.update(readFileSync(join(dir, main)))
+  for (const file of files.filter((file) => file.relPath !== MANIFEST_FILE && file.relPath !== main).sort((a, b) => a.relPath.localeCompare(b.relPath))) {
+    const content = readFileSync(join(dir, file.relPath))
+    hash.update(`\0${file.relPath}\0${content.length}\0`)
+    hash.update(content)
+  }
   return hash.digest('hex')
 }
 
@@ -251,11 +261,22 @@ export function createPluginStore(deps: PluginStoreDeps): PluginStore {
   const pluginsRoot = join(deps.userDataDir, PLUGINS_DIR)
   const runtimeState = new Map<string, PluginState>()
   const manifestCache = new Map<string, PluginManifest | null>()
+  const digestCache = new Map<string, { fingerprint: string; digest: string }>()
+  function currentDigest(id: string, main: string): string {
+    const files = scanPluginFolder(dirFor(id))
+    const fingerprint = JSON.stringify([main, files])
+    const cached = digestCache.get(id)
+    if (cached?.fingerprint === fingerprint) return cached.digest
+    const digest = hashPluginCode(dirFor(id), main, files)
+    digestCache.set(id, { fingerprint, digest })
+    return digest
+  }
 
   function load(): PluginEnvelope {
     if (!existsSync(envelopePath)) return emptyEnvelope()
+    const text = readFileSync(envelopePath, 'utf8')
     try {
-      return parseEnvelope(readFileSync(envelopePath, 'utf8'))
+      return parseEnvelope(text)
     } catch (error) {
       const quarantined = quarantineFile(envelopePath, new Date(now()))
       console.error(
@@ -303,7 +324,7 @@ export function createPluginStore(deps: PluginStoreDeps): PluginStore {
       return true
     }
     try {
-      return hashPluginCode(dirFor(record.id), manifest.main) !== record.sha256
+      return currentDigest(record.id, manifest.main) !== record.sha256
     } catch {
       return true
     }
@@ -391,6 +412,10 @@ export function createPluginStore(deps: PluginStoreDeps): PluginStore {
       }
 
       const { manifest, warnings } = readManifest(source)
+      // Read the registry before touching any installed files. I/O failures
+      // must not strand an unregistered replacement on disk.
+      const envelope = load()
+      const existing = envelope.plugins.find((plugin) => plugin.id === manifest.id)
       const files = scanPluginFolder(source)
       const mainFile = files.find((file) => file.relPath === manifest.main)
       if (mainFile === undefined) {
@@ -413,12 +438,13 @@ export function createPluginStore(deps: PluginStoreDeps): PluginStore {
 
       const target = dirFor(manifest.id)
       const staging = join(pluginsRoot, `.${manifest.id}.${process.pid}.staging`)
+      const previous = join(pluginsRoot, `.${manifest.id}.${process.pid}.previous`)
+      const previousState = runtimeState.get(manifest.id)
       mkdirSync(pluginsRoot, { recursive: true })
       rmSync(staging, { recursive: true, force: true })
       try {
         mkdirSync(staging, { recursive: true })
         copyFolder(source, files, staging)
-        const previous = join(pluginsRoot, `.${manifest.id}.${process.pid}.previous`)
         rmSync(previous, { recursive: true, force: true })
         if (existsSync(target)) renameSync(target, previous)
         try {
@@ -427,7 +453,6 @@ export function createPluginStore(deps: PluginStoreDeps): PluginStore {
           if (existsSync(previous)) renameSync(previous, target)
           throw error
         }
-        rmSync(previous, { recursive: true, force: true })
       } catch (error) {
         rmSync(staging, { recursive: true, force: true })
         throw error
@@ -435,8 +460,6 @@ export function createPluginStore(deps: PluginStoreDeps): PluginStore {
       manifestCache.delete(manifest.id)
       runtimeState.delete(manifest.id)
 
-      const envelope = load()
-      const existing = envelope.plugins.find((plugin) => plugin.id === manifest.id)
       const record: PluginRecord = {
         id: manifest.id,
         enabled: false,
@@ -447,17 +470,21 @@ export function createPluginStore(deps: PluginStoreDeps): PluginStore {
         sha256: existing?.sha256 ?? null,
         lastError: null
       }
-      persist({
-        ...envelope,
-        plugins: [
-          ...envelope.plugins.filter((plugin) => plugin.id !== manifest.id),
-          record
-        ]
-      })
-      const plugin = summaryFor(record)
-      if (plugin === null) {
-        throw new ConflictError('installed plugin could not be read back')
+      let plugin: PluginSummary | null
+      try {
+        plugin = summaryFor(record)
+        if (plugin === null) throw new ConflictError('installed plugin could not be read back')
+        persist({ ...envelope, plugins: [...envelope.plugins.filter((item) => item.id !== manifest.id), record] })
+      } catch (error) {
+        // The folder and registry are one transaction. A disk-full registry
+        // write must not leave new executable bytes under an old approval.
+        rmSync(target, { recursive: true, force: true })
+        if (existsSync(previous)) renameSync(previous, target)
+        manifestCache.delete(manifest.id)
+        if (previousState !== undefined) runtimeState.set(manifest.id, previousState)
+        throw error
       }
+      try { rmSync(previous, { recursive: true, force: true }) } catch { /* Recoverable backup; install already committed. */ }
       return { plugin, warnings }
     },
     async uninstall(id) {
@@ -469,6 +496,7 @@ export function createPluginStore(deps: PluginStoreDeps): PluginStore {
       })
       rmSync(dirFor(id), { recursive: true, force: true })
       manifestCache.delete(id)
+      digestCache.delete(id)
       runtimeState.delete(id)
     },
     setEnabled(id, enabled) {

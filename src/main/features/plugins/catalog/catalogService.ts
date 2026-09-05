@@ -27,6 +27,7 @@ export interface CatalogService {
 interface CatalogServiceDeps {
   userDataDir: string
   getPluginSources(): readonly string[]
+  getMarketplaceUrl?(): string | null
   fetch: CatalogFetch
   now?: () => Date
 }
@@ -155,7 +156,7 @@ async function fetchSource(
     const response = await deps.fetch(url, {
       signal: AbortSignal.timeout(10_000)
     })
-    const parsed = parseCatalogIndex(await readLimited(response), url, official)
+    const parsed = parseCatalogIndex(await readLimited(response), url, official, deps.getMarketplaceUrl?.() ?? null)
     const fetchedAt = (deps.now ?? (() => new Date()))().toISOString()
     return {
       source: {
@@ -208,17 +209,27 @@ function readCache(cachePath: string): PluginCatalog | null {
 export function createCatalogService(deps: CatalogServiceDeps): CatalogService {
   const cachePath = join(deps.userDataDir, CATALOG_CACHE_FILE)
   let latest: PluginCatalog | null = null
+  function annotate(catalog: PluginCatalog): PluginCatalog {
+    const marketplace = deps.getMarketplaceUrl?.()
+    return { ...catalog, entries: catalog.entries.map((entry) => {
+      const { marketplaceReleaseId: _untrusted, ...clean } = entry
+      if (!marketplace || entry.sourceUrl !== `${marketplace}/index.json`) return clean
+      const url = new URL(entry.url)
+      const match = /^\/releases\/([0-9a-f-]{36})\/download$/.exec(url.pathname)
+      return url.origin === marketplace && match ? { ...clean, marketplaceReleaseId: match[1]! } : clean
+    }) }
+  }
 
   return {
     async get(refresh) {
       if (!refresh) {
         const cached = latest ?? readCache(cachePath)
         if (cached !== null) {
-          latest = cached
-          return cached
+          latest = annotate(cached)
+          return latest
         }
       }
-      const catalog = await fetchCatalog(deps)
+      const catalog = annotate(await fetchCatalog(deps))
       latest = catalog
       mkdirSync(deps.userDataDir, { recursive: true })
       writeFileAtomic(cachePath, `${JSON.stringify(catalog, null, 2)}\n`, {

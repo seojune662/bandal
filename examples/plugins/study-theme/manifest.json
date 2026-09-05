@@ -1,0 +1,18 @@
+{
+  "manifestVersion": 2,
+  "id": "bandal.study-theme",
+  "name": "조용한 서재",
+  "version": "1.0.0",
+  "minAppVersion": "0.42.0",
+  "author": "Bandal",
+  "description": "차분한 남색 표면과 따뜻한 강조색을 사용하는 학습 테마입니다.",
+  "main": "main.js",
+  "permissions": ["themes"],
+  "contributes": {
+    "themes": [{ "id": "study", "title": "조용한 서재", "base": "dark", "tokens": {
+      "--bg-app": "#101820", "--bg-surface": "#14202b", "--bg-raised": "#203040",
+      "--text-primary": "#ffffff", "--text-secondary": "#dce3eb", "--text-muted": "#c7d0dd",
+      "--accent": "#efd09b", "--on-accent": "#18202b", "--border-subtle": "#38495a", "--border-strong": "#576a7d"
+    }}]
+  }
+}

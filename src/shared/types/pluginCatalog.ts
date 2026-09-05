@@ -35,6 +35,8 @@ export interface CatalogEntry {
   sourceUrl: string
   /** True only for entries from OFFICIAL_CATALOG_URL. */
   verified: boolean
+  /** Derived by main only for the configured marketplace origin. */
+  marketplaceReleaseId?: string
 }
 
 export interface CatalogSource {

@@ -22,6 +22,12 @@ interface NoteAddress {
 }
 
 export interface PluginApiDeps {
+  editor?: { request(input: Omit<import('../../../shared/types/pluginEditor').PluginEditorRequest, 'requestId'>): Promise<unknown> }
+  configuration?: {
+    has(id: string, key: string): boolean
+    get(id: string): Record<string, unknown>
+    set(id: string, key: string, value: unknown): void
+  }
   courses: CoursesRepo
   notes: NotesRepo
   materials: MaterialsRepo
@@ -30,6 +36,7 @@ export interface PluginApiDeps {
   onNoteSaved(courseId: string, relPath: string): void
   showNotice(pluginId: string, message: string, tone: 'info' | 'danger'): void
   openPanel(pluginId: string, panelId: string): void
+  closePanel?(pluginId: string, panelId: string): void
   postPanel(pluginId: string, panelId: string, payload: unknown): void
   panelExists(pluginId: string, panelId: string): boolean
   networkAllowed(pluginId: string, url: string): boolean
@@ -347,14 +354,19 @@ export function createPluginApi(deps: PluginApiDeps): PluginApiImpl {
     },
     'settings.get': async (pluginId, keyValue) => {
       const key = stringArg(keyValue, 'key', 120)
+      if (deps.configuration?.has(pluginId, key)) return deps.configuration.get(pluginId)[key] ?? null
       const current = deps.data.get(pluginId)
       if (typeof current !== 'object' || current === null || Array.isArray(current)) {
         return null
       }
-      return (current as Record<string, unknown>)[key] ?? null
+      return Object.hasOwn(current, key) ? (current as Record<string, unknown>)[key] ?? null : null
     },
     'settings.set': async (pluginId, keyValue, value) => {
       const key = stringArg(keyValue, 'key', 120)
+      if (deps.configuration?.has(pluginId, key)) {
+        deps.configuration.set(pluginId, key, value)
+        return null
+      }
       const stored = deps.data.get(pluginId)
       const current =
         typeof stored === 'object' && stored !== null && !Array.isArray(stored)
@@ -373,7 +385,20 @@ export function createPluginApi(deps: PluginApiDeps): PluginApiImpl {
       deps.openPanel(pluginId, panelId)
       return null
     },
+    'panel.close': async (pluginId, panelIdValue) => {
+      deps.closePanel?.(pluginId, assertPanel(deps, pluginId, panelIdValue))
+      return null
+    },
     'net.fetch': async (pluginId, url, options) =>
-      pluginFetch(deps, pluginId, url, options)
+      pluginFetch(deps, pluginId, url, options),
+    'editor.getSelection': async (pluginId) => {
+      if (deps.editor === undefined) throw new ValidationError('Editor is unavailable')
+      return deps.editor.request({ pluginId, action: 'getSelection' })
+    },
+    'editor.replaceSelection': async (pluginId, token, text) => {
+      if (deps.editor === undefined) throw new ValidationError('Editor is unavailable')
+      if (typeof text !== 'string' || text.length > 100_000) throw new ValidationError('Invalid replacement text')
+      return deps.editor.request({ pluginId, action: 'replaceSelection', token: stringArg(token, 'token', 120), text })
+    }
   }
 }

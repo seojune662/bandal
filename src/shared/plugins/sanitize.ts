@@ -21,6 +21,8 @@ import {
 } from '../types/plugin'
 import { isStaticPermission } from './permissions'
 import { isValidSemver } from './semver'
+import { parseSettingsSchema } from './configuration'
+import { parseV2Contributions } from './contributions'
 
 export interface SanitizedPluginManifest {
   manifest: PluginManifest | null
@@ -255,10 +257,10 @@ export function sanitizePluginManifest(raw: unknown): SanitizedPluginManifest {
   if (!isRecord(raw)) {
     return { manifest: null, warnings: ['manifest must be a JSON object.'] }
   }
-  if (raw['manifestVersion'] !== PLUGIN_MANIFEST_VERSION) {
+  if (raw['manifestVersion'] !== 1 && raw['manifestVersion'] !== PLUGIN_MANIFEST_VERSION) {
     return {
       manifest: null,
-      warnings: [`manifestVersion must be ${PLUGIN_MANIFEST_VERSION}.`]
+      warnings: [`manifestVersion must be 1 or ${PLUGIN_MANIFEST_VERSION}.`]
     }
   }
 
@@ -350,9 +352,17 @@ export function sanitizePluginManifest(raw: unknown): SanitizedPluginManifest {
     }
   }
 
+  let additions: Partial<PluginManifest['contributes']> = {}
+  if (raw['manifestVersion'] === 2 && isRecord(contributesRaw)) {
+    try {
+      additions = { settings: parseSettingsSchema(contributesRaw['settings']), ...parseV2Contributions(contributesRaw, commands) }
+    } catch (error) {
+      return { manifest: null, warnings: [error instanceof Error ? error.message : 'invalid contributions'] }
+    }
+  }
   return {
     manifest: {
-      manifestVersion: PLUGIN_MANIFEST_VERSION,
+      manifestVersion: raw['manifestVersion'],
       id,
       name,
       version: version.trim(),
@@ -361,7 +371,7 @@ export function sanitizePluginManifest(raw: unknown): SanitizedPluginManifest {
       author,
       main,
       permissions,
-      contributes: { commands, panels },
+      contributes: { commands, panels, ...additions },
       styles
     },
     warnings

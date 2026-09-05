@@ -7,6 +7,7 @@ import { invoke, onPush } from '../../../lib/ipc'
 import { useUiStore } from '../../../stores/uiStore'
 import { SettingsCard, ToggleRow } from '../primitives'
 import './assistant-panel.css'
+import { savePreference } from '../savePreference'
 
 const ASSISTANT_MODES = ['in-app', 'desktop'] as const
 type AssistantMode = Settings['assistantMode']
@@ -112,7 +113,7 @@ function OrbModePicker({
   const t = useT()
   const selectMode = (assistantMode: AssistantMode): void => {
     if (settings === null || settings.assistantMode === assistantMode) return
-    void invoke('settings:set', { assistantMode }).catch(() => undefined)
+    void savePreference({ assistantMode })
   }
   const handleModeKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (settings === null) return
@@ -165,9 +166,7 @@ function OrbCard({ settings }: { settings: Settings | null }): JSX.Element {
   const t = useT()
   const toggleKeepAlive = (keepAliveOnClose: boolean): void => {
     if (settings === null) return
-    void invoke('settings:set', {
-      desktopOrb: { ...settings.desktopOrb, keepAliveOnClose }
-    }).catch(() => undefined)
+    void savePreference({ desktopOrb: { keepAliveOnClose } })
   }
 
   return (

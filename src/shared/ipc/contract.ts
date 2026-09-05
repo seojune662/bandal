@@ -693,6 +693,21 @@ export interface IpcContract {
   // -- extensions (real plugins, `src/main/features/plugins`) ---------------
   /** Installed extensions with their state; renderer mirrors via `plugins:changed`. */
   'plugins:list': { req: Record<string, never>; res: { plugins: PluginSummary[] } }
+  'plugins:devFolders': { req: Record<string, never>; res: { folders: Array<{ id: string; path: string }> } }
+  'plugins:watchFolder': { req: { path: string }; res: { ok: true } }
+  'plugins:unwatchFolder': { req: { id: string }; res: { ok: true } }
+  'marketplace:dashboard': { req: Record<string, never>; res: import('../types/marketplace').MarketplaceDashboard }
+  'marketplace:release': { req: { id: string }; res: import('../types/marketplace').MarketplaceRelease }
+  'marketplace:resolveReport': { req: { id: string; reason: string }; res: { ok: true } }
+  'marketplace:register': { req: { id: string; displayName: string }; res: { ok: true } }
+  'marketplace:submit': { req: { changelog: string }; res: { canceled: boolean } }
+  'marketplace:review': { req: { id: string; decision: 'approved' | 'rejected' | 'withdrawn'; reason: string }; res: { ok: true } }
+  'marketplace:reviewBundle': { req: { id: string }; res: { canceled: boolean } }
+  'marketplace:report': { req: { releaseId: string; reason: string }; res: { ok: true } }
+  'plugins:getSettings': { req: { id: string }; res: { values: Record<string, unknown> } }
+  'plugins:editorReply': { req: { requestId: string; value: unknown; error?: string }; res: { ok: true } }
+  'plugins:setSetting': { req: { id: string; key: string; value: unknown }; res: { values: Record<string, unknown> } }
+  'plugins:resetSettings': { req: { id: string }; res: { values: Record<string, unknown> } }
   /** Native folder picker for `plugins:installFromFolder`. */
   'plugins:pickFolder': { req: Record<string, never>; res: { path: string | null } }
   /** Validates and copies a plugin folder into userData; installed disabled + needs approval. */
@@ -710,7 +725,7 @@ export interface IpcContract {
   'plugins:approve': { req: { id: string }; res: { plugin: PluginSummary } }
   'plugins:reload': { req: { id: string }; res: { plugin: PluginSummary } }
   'plugins:runCommand': {
-    req: { pluginId: string; commandId: string }
+    req: { pluginId: string; commandId: string; context?: { courseId: string; relPath: string } }
     res: { ok: true }
   }
   /** Ring buffer of recent plugin log lines (denials included); null = all plugins. */
@@ -1790,6 +1805,21 @@ export const IPC_CHANNELS = [
   'desktopAgent:permissionStatus',
   'desktopAgent:openPermissionSettings',
   'plugins:list',
+  'plugins:devFolders',
+  'plugins:watchFolder',
+  'plugins:unwatchFolder',
+  'marketplace:dashboard',
+  'marketplace:release',
+  'marketplace:resolveReport',
+  'marketplace:register',
+  'marketplace:submit',
+  'marketplace:review',
+  'marketplace:reviewBundle',
+  'marketplace:report',
+  'plugins:getSettings',
+  'plugins:editorReply',
+  'plugins:setSetting',
+  'plugins:resetSettings',
   'plugins:pickFolder',
   'plugins:installFromFolder',
   'plugins:uninstall',

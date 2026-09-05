@@ -25,6 +25,7 @@ import {
 import type { NoteContent, NoteRef } from '../../../../shared/types/note'
 import { openHttpLink } from '../../app/openHttpLink'
 import { showToast } from '../../app/toast'
+import { createPluginEditorAccess } from '../plugins/pluginEditor'
 import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 import { descriptorFor, isTabDescriptor } from '../workspace/tabIdentity'
@@ -294,6 +295,7 @@ function MilkdownNoteEditor({
           context.update(prosePluginsCtx, (plugins) => [
             ...plugins,
             createNoteImagePlugin(courseId),
+            createPluginEditorAccess(courseId, () => relPathRef.current),
             createMentionMenuPlugin({
               courseId,
               getSelfRelPath: () => relPathRef.current

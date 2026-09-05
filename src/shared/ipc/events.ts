@@ -304,6 +304,8 @@ export interface PushEvents {
   'mcp:changed': Record<string, never>
   // -- extensions -----------------------------------------------------------
   'plugins:changed': { plugins: PluginSummary[] }
+  'plugins:settingsChanged': { pluginId: string; values: Record<string, unknown> }
+  'plugins:editorRequest': import('../types/pluginEditor').PluginEditorRequest
   /** `bandal.notices.show` from a plugin; renderer prefixes the plugin name. */
   'plugins:notice': {
     pluginId: string
@@ -313,6 +315,7 @@ export interface PushEvents {
   }
   /** `bandal.panel.open` — renderer opens the `plugin-panel` tab. */
   'plugins:openPanel': { pluginId: string; panelId: string }
+  'plugins:closePanel': { pluginId: string; panelId: string }
 }
 
 export type PushChannel = keyof PushEvents

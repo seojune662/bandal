@@ -29,11 +29,13 @@ function parseTags(value: unknown): readonly string[] | null {
   return value
 }
 
-function resolveArtifactUrl(value: unknown, sourceUrl: string): string | null {
+function resolveArtifactUrl(value: unknown, sourceUrl: string, marketplace: string | null): string | null {
   if (typeof value !== 'string') return null
   try {
     const resolved = new URL(value, sourceUrl)
-    return resolved.protocol === 'https:' ? resolved.href : null
+    if (resolved.username || resolved.password) return null
+    return resolved.protocol === 'https:' || (marketplace !== null && sourceUrl === `${marketplace}/index.json` && resolved.origin === marketplace)
+      ? resolved.href : null
   } catch {
     return null
   }
@@ -42,11 +44,12 @@ function resolveArtifactUrl(value: unknown, sourceUrl: string): string | null {
 function parseEntry(
   raw: unknown,
   sourceUrl: string,
-  official: boolean
+  official: boolean,
+  marketplace: string | null
 ): CatalogEntry | null {
   if (!isRecord(raw)) return null
   const tags = parseTags(raw['tags'])
-  const url = resolveArtifactUrl(raw['url'], sourceUrl)
+  const url = resolveArtifactUrl(raw['url'], sourceUrl, marketplace)
   if (
     typeof raw['id'] !== 'string' ||
     raw['id'].length > PLUGIN_ID_MAX_LENGTH ||
@@ -84,7 +87,8 @@ function parseEntry(
 export function parseCatalogIndex(
   text: string,
   sourceUrl: string,
-  official: boolean
+  official: boolean,
+  marketplace: string | null = null
 ): CatalogIndex {
   let raw: unknown
   try {
@@ -104,7 +108,7 @@ export function parseCatalogIndex(
 
   const seen = new Set<string>()
   const entries = raw['entries'].flatMap((candidate) => {
-    const entry = parseEntry(candidate, sourceUrl, official)
+    const entry = parseEntry(candidate, sourceUrl, official, marketplace)
     if (entry === null || seen.has(entry.id)) return []
     seen.add(entry.id)
     return [entry]

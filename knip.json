@@ -1,6 +1,8 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
+    "server/marketplace/index.ts",
+    "sdk/cli/index.ts",
     "src/renderer/src/{main,overlay-main,pip-main,settings-main}.tsx",
     "scripts/**/*.mjs",
     "e2e/**/*.ts",
@@ -23,6 +25,7 @@
     "better-sqlite3-node"
   ],
   "ignoreBinaries": [
+    "supabase",
     "iconutil",
     "where.exe"
   ],

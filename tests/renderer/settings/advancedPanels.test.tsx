@@ -18,6 +18,7 @@ import {
 import { useUiStore } from '../../../src/renderer/src/stores/uiStore'
 
 vi.mock('../../../src/renderer/src/i18n', () => ({
+  useLocale: () => 'ko-KR',
   useT: () => (key: string) => key
 }))
 
@@ -104,8 +105,7 @@ describe('advanced and experimental settings', () => {
     act(() => switches[0]?.click())
     expect(invoke).toHaveBeenCalledWith('settings:set', {
       experimental: {
-        extensionRuntime: true,
-        orbCharms: true
+        extensionRuntime: true
       }
     })
   })
@@ -141,7 +141,8 @@ describe('advanced and experimental settings', () => {
       await Promise.resolve()
     })
 
-    // The development section keeps both management panels mounted.
+    // Installed extensions and workflow packs share the Installed destination.
+    act(() => container.querySelector<HTMLButtonElement>('.plugin-center-nav button:nth-child(2)')?.click())
     expect(container.textContent).toContain('packs mounted')
     expect(container.textContent).toContain('extensions mounted')
 
@@ -149,7 +150,7 @@ describe('advanced and experimental settings', () => {
     expect(master?.getAttribute('aria-checked')).toBe('false')
     act(() => master?.click())
     expect(invoke).toHaveBeenCalledWith('settings:set', {
-      experimental: { ...disabledSettings.experimental, extensionRuntime: true }
+      experimental: { extensionRuntime: true }
     })
 
     act(() => {

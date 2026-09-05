@@ -1,4 +1,5 @@
 import { editorViewCtx, type Editor } from '@milkdown/core'
+import { PluginMenuItems } from '../plugins/PluginMenuItems'
 import {
   createCodeBlockCommand,
   insertHrCommand,
@@ -586,6 +587,7 @@ export function NoteToolbar({
               </select>
             </label>
 
+            <PluginMenuItems location="editor" courseId={courseId} relPath={relPath} onClose={() => setMoreOpen(false)} />
             <fieldset className="note-format-scale">
               <legend>에디터 글자 크기</legend>
               <div className="note-format-scale__options">

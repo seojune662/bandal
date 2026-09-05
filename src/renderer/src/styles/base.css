@@ -31,14 +31,17 @@ body {
   user-select: none;
 }
 
-input {
+input,
+select,
+textarea {
   min-width: 0;
   font: inherit;
   color: inherit;
   user-select: text;
 }
 
-input::placeholder {
+input::placeholder,
+textarea::placeholder {
   color: var(--text-muted);
 }
 
@@ -56,7 +59,10 @@ button {
 
 button:focus-visible,
 a:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
@@ -75,7 +81,9 @@ input:focus-visible {
 }
 
 button:disabled,
-input:disabled {
+input:disabled,
+select:disabled,
+textarea:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }

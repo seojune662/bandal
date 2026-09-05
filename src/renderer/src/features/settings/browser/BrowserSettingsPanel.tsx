@@ -10,9 +10,8 @@ import type {
   LinkRouting,
   Settings
 } from '../../../../../shared/types/settings'
-import { showToast } from '../../../app/toast'
 import { useT } from '../../../i18n'
-import { invoke } from '../../../lib/ipc'
+import { savePreference } from '../savePreference'
 import { AgentAccessPanel } from '../AgentAccessPanel'
 import { BrowsingDataPanel } from '../BrowsingDataPanel'
 import { SettingsCard, ToggleRow } from '../primitives'
@@ -25,8 +24,8 @@ function saveBrowserSettings(
   patch: Partial<BrowserSettings>
 ): void {
   if (settings === null) return
-  void invoke('settings:set', {
-    browser: { ...settings.browser, ...patch }
+  void savePreference({
+    browser: patch
   })
 }
 
@@ -79,14 +78,12 @@ function HomePageCard({
     event.preventDefault()
     if (settings === null || savingHomePage) return
     setSavingHomePage(true)
-    void invoke('settings:set', {
-      browser: { ...settings.browser, homePage }
+    void savePreference({
+      browser: { homePage }
     })
       .then((nextSettings) => {
+        if (nextSettings === null) return
         setHomePage(nextSettings.browser.homePage)
-        if (nextSettings.browser.homePage !== homePage) {
-          showToast(t('settings.browser.homePage.invalid'), 'danger')
-        }
       })
       .finally(() => setSavingHomePage(false))
   }
@@ -142,7 +139,7 @@ function SearchEngineCard({
             value={settings?.browserSearchEngine ?? 'google'}
             disabled={settings === null}
             onChange={(event) => {
-              void invoke('settings:set', {
+              void savePreference({
                 browserSearchEngine: event.currentTarget.value as SearchEngineId
               })
             }}

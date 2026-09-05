@@ -8,6 +8,7 @@
  */
 interface ImportMetaEnv {
   readonly MAIN_VITE_SUPABASE_URL?: string
+  readonly MAIN_VITE_MARKETPLACE_URL?: string
   readonly MAIN_VITE_SUPABASE_PUBLISHABLE_KEY?: string
 }
 

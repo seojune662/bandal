@@ -55,7 +55,8 @@ test.describe('theme', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
     await assertNoHorizontalOverflow(page)
     await page.screenshot({
-      path: join(SCREENSHOT_DIR, 'theme-dark.png')
+      path: join(SCREENSHOT_DIR, 'theme-dark.png'),
+      animations: 'disabled'
     })
   })
 
@@ -69,7 +70,8 @@ test.describe('theme', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
     await assertNoHorizontalOverflow(page)
     await page.screenshot({
-      path: join(SCREENSHOT_DIR, 'theme-light.png')
+      path: join(SCREENSHOT_DIR, 'theme-light.png'),
+      animations: 'disabled'
     })
 
     // Round-trip back to dark: the broadcast keeps working both ways.
@@ -96,7 +98,8 @@ test.describe('theme', () => {
     expect(await readBgApp(page)).not.toBe(bandalBg)
     await assertNoHorizontalOverflow(page)
     await page.screenshot({
-      path: join(SCREENSHOT_DIR, 'palette-moss-dark.png')
+      path: join(SCREENSHOT_DIR, 'palette-moss-dark.png'),
+      animations: 'disabled'
     })
 
     // A flat mode: 이끼 re-tints the accent but must inherit 흑연's gray surfaces.

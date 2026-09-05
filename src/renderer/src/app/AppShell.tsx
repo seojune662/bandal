@@ -38,6 +38,8 @@ import { QuickFileSearch } from './QuickFileSearch'
 import { useGlobalShortcuts } from './shortcuts'
 import { showToast, ToastHost } from './toast'
 import { usePluginsStore } from '../stores/pluginsStore'
+import { subscribePluginEditor } from '../features/plugins/pluginEditor'
+import { subscribePluginThemes } from '../features/plugins/pluginThemes'
 import './app-shell.css'
 
 export function AppShell(): JSX.Element {
@@ -88,6 +90,8 @@ export function AppShell(): JSX.Element {
 
   // Auto-update toasts. Inert in `pnpm dev` (main reports phase 'unsupported').
   useUpdateNotifications()
+  useEffect(subscribePluginEditor, [])
+  useEffect(subscribePluginThemes, [])
 
   useEffect(() => {
     void initTheme().catch((error: unknown) => {
@@ -204,6 +208,9 @@ export function AppShell(): JSX.Element {
         showToast(`${pluginName}: ${message}`, tone)
       }
     )
+    const stopClosePanel = onPush('plugins:closePanel', ({ pluginId, panelId }) => {
+      useWorkspaceStore.getState().closeTabsMatching(descriptorFor('plugin-panel', { pluginId, panelId }))
+    })
     const stopOpenPanel = onPush(
       'plugins:openPanel',
       ({ pluginId, panelId }) => {
@@ -212,6 +219,7 @@ export function AppShell(): JSX.Element {
     )
     return () => {
       stopNotice()
+      stopClosePanel()
       stopOpenPanel()
     }
   }, [openTab])

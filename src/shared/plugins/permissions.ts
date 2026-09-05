@@ -27,7 +27,10 @@ export const PLUGIN_API_PERMISSIONS = {
   'settings.set': 'settings',
   'panel.post': 'panel',
   'panel.open': 'panel',
-  'net.fetch': 'net'
+  'panel.close': 'panel',
+  'net.fetch': 'net',
+  'editor.getSelection': 'editor.read',
+  'editor.replaceSelection': 'editor.write'
 } as const satisfies Record<PluginApiMethod, PluginStaticPermission | 'net'>
 
 const STATIC_PERMISSIONS = new Set<string>(PLUGIN_PERMISSIONS)
@@ -77,6 +80,10 @@ const DESCRIPTIONS_KO: Record<PluginStaticPermission, string> = {
   panel: '패널 탭 열기·메시지 주고받기',
   notices: '알림(토스트) 표시',
   settings: '플러그인 자체 설정 저장',
+  'editor.read': '활성 필기와 선택 영역 읽기',
+  'editor.write': '활성 필기의 선택 텍스트 수정',
+  menus: '필기·자료 문맥 메뉴 추가',
+  themes: '앱 테마 등록',
   events: '노트 저장·과목 변경 이벤트 받기'
 }
 
@@ -89,6 +96,10 @@ const DESCRIPTIONS_EN: Record<PluginStaticPermission, string> = {
   panel: 'Open a panel tab and exchange messages with it',
   notices: 'Show notifications (toasts)',
   settings: 'Store its own settings',
+  'editor.read': 'Read the active note and selection',
+  'editor.write': 'Edit the selected text in the active note',
+  menus: 'Add editor and material context menus',
+  themes: 'Register app themes',
   events: 'Receive note-saved and course-changed events'
 }
 

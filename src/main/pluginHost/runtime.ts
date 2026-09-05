@@ -245,7 +245,7 @@ export function createHostRuntime(
       on(name: unknown, handler: unknown): () => void {
         assertLocalPermission(instance, 'events')
         if (
-          (name !== 'note:saved' && name !== 'course:changed') ||
+          (name !== 'note:saved' && name !== 'course:changed' && name !== 'settings:changed') ||
           typeof handler !== 'function'
         ) {
           throw new Error('events.on received an unsupported event or handler')
@@ -262,6 +262,9 @@ export function createHostRuntime(
       },
       open(panelId: unknown): Promise<unknown> {
         return call('panel.open', assertPanel(instance, panelId))
+      },
+      close(panelId: unknown): Promise<unknown> {
+        return call('panel.close', assertPanel(instance, panelId))
       },
       onMessage(panelId: unknown, handler: unknown): () => void {
         assertLocalPermission(instance, 'panel')
@@ -303,6 +306,10 @@ export function createHostRuntime(
       settings: Object.freeze({
         get: (key: unknown) => call('settings.get', key),
         set: (key: unknown, value: unknown) => call('settings.set', key, value)
+      }),
+      editor: Object.freeze({
+        getSelection: () => call('editor.getSelection'),
+        replaceSelection: (token: unknown, text: unknown) => call('editor.replaceSelection', token, text)
       }),
       panel: Object.freeze(panel),
       events: Object.freeze(events),
@@ -484,7 +491,7 @@ export function createHostRuntime(
     }
     try {
       await timeout(
-        invokeInContext(instance, handler, []),
+        invokeInContext(instance, handler, [message.context ?? null]),
         PLUGIN_RPC_LIMITS.commandTimeoutMs,
         `command ${message.commandId}`
       )

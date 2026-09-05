@@ -25,7 +25,7 @@ export interface PluginRuntime {
   load(pluginId: string): Promise<PluginSummary>
   unload(pluginId: string): void
   reload(pluginId: string): Promise<PluginSummary>
-  runCommand(pluginId: string, commandId: string): Promise<void>
+  runCommand(pluginId: string, commandId: string, context?: unknown): Promise<void>
   sendEvent(name: PluginEventName, payload: unknown): void
   sendPanelMessage(pluginId: string, panelId: string, payload: unknown): void
   dispose(): void
@@ -64,6 +64,56 @@ function messageText(value: unknown): string {
 }
 
 export function createPluginRuntime(deps: PluginRuntimeDeps): PluginRuntime {
+  const hosts = new Map<string, PluginRuntime>()
+  let disposed = false
+  function host(id: string): PluginRuntime {
+    if (disposed) throw new Error('plugin runtime is disposed')
+    let runtime = hosts.get(id)
+    if (runtime === undefined) {
+      if (deps.store.get(id) === null) throw new ValidationError(`unknown plugin "${id}"`)
+      runtime = createPluginProcessRuntime({
+        ...deps,
+        store: {
+          ...deps.store,
+          get: (candidate) => candidate === id ? deps.store.get(id) : null,
+          list: () => deps.store.list().filter((plugin) => plugin.manifest.id === id)
+        }
+      }, id)
+      hosts.set(id, runtime)
+    }
+    return runtime
+  }
+  function unload(id: string): void {
+    const runtime = hosts.get(id)
+    hosts.delete(id)
+    runtime?.unload(id)
+    runtime?.dispose()
+  }
+  return {
+    async syncEnabled() {
+      await Promise.all(deps.store.list().filter((plugin) => plugin.enabled && plugin.state !== 'needs-approval')
+        .map((plugin) => host(plugin.manifest.id).syncEnabled()))
+    },
+    load: (id) => host(id).load(id),
+    unload,
+    reload: (id) => { unload(id); return host(id).load(id) },
+    runCommand: (id, command, context) => host(id).runCommand(id, command, context),
+    sendEvent: (name, payload) => {
+      for (const [id, runtime] of hosts) {
+        if (name === 'settings:changed' && (!isRecord(payload) || payload['pluginId'] !== id)) continue
+        runtime.sendEvent(name, payload)
+      }
+    },
+    sendPanelMessage: (id, panel, payload) => hosts.get(id)?.sendPanelMessage(id, panel, payload),
+    dispose() {
+      disposed = true
+      for (const runtime of hosts.values()) runtime.dispose()
+      hosts.clear()
+    }
+  }
+}
+
+function createPluginProcessRuntime(deps: PluginRuntimeDeps, ownerId: string): PluginRuntime {
   const fork = deps.fork ?? utilityProcess.fork
   const activations = new Map<string, PendingActivation>()
   const commands = new Map<number, PendingCommand>()
@@ -80,7 +130,8 @@ export function createPluginRuntime(deps: PluginRuntimeDeps): PluginRuntime {
     if (
       plugin === null ||
       !plugin.enabled ||
-      plugin.state !== 'active' ||
+      child === null ||
+      (plugin.state !== 'active' && !(plugin.state === 'starting' && activations.has(pluginId))) ||
       plugin.approvedPermissions === null ||
       deps.store.needsApproval(pluginId)
     ) {
@@ -150,32 +201,39 @@ export function createPluginRuntime(deps: PluginRuntimeDeps): PluginRuntime {
       resolveHostReady = resolve
       rejectHostReady = reject
     })
+    const hostEnvironment = Object.fromEntries(
+      ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'SystemRoot', 'WINDIR', 'LANG', 'LC_ALL']
+        .flatMap((key) => process.env[key] === undefined ? [] : [[key, process.env[key]!]])
+    )
     const spawned = fork(deps.hostEntry, [], {
-      serviceName: 'Bandal Plugin Host',
+      serviceName: `Bandal Plugin: ${ownerId}`,
+      env: hostEnvironment,
+      execArgv: ['--max-old-space-size=128'],
       stdio: ['ignore', 'pipe', 'pipe']
     })
     child = spawned
     spawned.on('message', (message: unknown) => {
+      if (child !== spawned) return
       void handleHostMessage(message)
     })
     spawned.on('error', (_type, location) => {
       deps.log.push({
-        pluginId: 'plugin-host',
+        pluginId: ownerId,
         level: 'error',
         message: `host fatal error${location === '' ? '' : ` at ${location}`}`
       })
     })
-    spawned.on('exit', handleExit)
+    spawned.on('exit', (code) => { if (child === spawned) handleExit(code) })
     spawned.stdout?.on('data', (chunk: Buffer | string) => {
       const message = String(chunk).trim()
       if (message !== '') {
-        deps.log.push({ pluginId: 'plugin-host', level: 'info', message })
+        deps.log.push({ pluginId: ownerId, level: 'info', message })
       }
     })
     spawned.stderr?.on('data', (chunk: Buffer | string) => {
       const message = String(chunk).trim()
       if (message !== '') {
-        deps.log.push({ pluginId: 'plugin-host', level: 'error', message })
+        deps.log.push({ pluginId: ownerId, level: 'error', message })
       }
     })
     return spawned
@@ -273,9 +331,12 @@ export function createPluginRuntime(deps: PluginRuntimeDeps): PluginRuntime {
   async function handleHostMessage(raw: unknown): Promise<void> {
     if (!isRecord(raw) || typeof raw['t'] !== 'string') return
     const message = raw as HostToMain
+    // Identity is bound to the transport, never supplied by plugin code.
+    if ('pluginId' in message && message.pluginId !== ownerId) return
     if (message.t === 'api') {
+      const sender = child
       const response = await broker.handle(message)
-      if (response !== null && child !== null && hostReady) {
+      if (response !== null && child !== null && child === sender && hostReady) {
         child.postMessage(response)
       }
       return
@@ -316,9 +377,12 @@ export function createPluginRuntime(deps: PluginRuntimeDeps): PluginRuntime {
           // Preserve the timeout as the caller-visible error.
         }
         reject(error)
+        child?.kill()
       }, PLUGIN_RPC_LIMITS.activateTimeoutMs + 1_000)
       activations.set(pluginId, { resolve, reject, timer })
     })
+    // Activation can time out while we are still awaiting the host handshake.
+    void result.catch(() => undefined)
 
     try {
       await readyHost()
@@ -393,7 +457,7 @@ export function createPluginRuntime(deps: PluginRuntimeDeps): PluginRuntime {
       unload(pluginId)
       return plugin.enabled ? load(pluginId) : plugin
     },
-    async runCommand(pluginId, commandId) {
+    async runCommand(pluginId, commandId, context) {
       const plugin = deps.store.get(pluginId)
       if (plugin === null || !plugin.enabled || plugin.state !== 'active') {
         throw new ValidationError(`plugin "${pluginId}" is not active`)
@@ -411,10 +475,11 @@ export function createPluginRuntime(deps: PluginRuntimeDeps): PluginRuntime {
         const timer = setTimeout(() => {
           commands.delete(id)
           reject(new Error(`plugin command "${commandId}" timed out`))
+          child?.kill()
         }, PLUGIN_RPC_LIMITS.commandTimeoutMs + 1_000)
         commands.set(id, { pluginId, resolve, reject, timer })
       })
-      send({ t: 'command', id, pluginId, commandId })
+      send({ t: 'command', id, pluginId, commandId, ...(context === undefined ? {} : { context }) })
       return result
     },
     sendEvent(name, payload) {

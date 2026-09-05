@@ -220,7 +220,7 @@ export function NotificationsPanel({
 
   const save: SaveNotifications = (patch) => {
     void invoke('settings:set', {
-      notifications: { ...settings.notifications, ...patch }
+      notifications: patch
     }).catch(() => showToast(t('settings.notifications.saveFailed'), 'danger'))
   }
   const sendTestNotification = (): void => {

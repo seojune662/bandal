@@ -8,6 +8,7 @@ import { useMaterialsStore } from '../../stores/materialsStore'
 import { materialDescriptor } from '../courses/favoriteDrop'
 import { MaterialsStudyToolMenuItem } from '../study/MaterialsStudyToolMenuItem'
 import { tabTitle } from '../workspace/tabIdentity'
+import { PluginMenuItems } from '../plugins/PluginMenuItems'
 
 export interface MaterialsContextMenuState {
   target: MaterialNode | null
@@ -156,6 +157,7 @@ export function MaterialsContextMenu({
         y={y}
         onClose={onClose}
       />
+      {target !== null && activeCourseId !== null && <PluginMenuItems location="materials" courseId={activeCourseId} relPath={target.relPath} onClose={onClose} />}
       {favoriteDescriptor !== null && (
         <button
           type="button"

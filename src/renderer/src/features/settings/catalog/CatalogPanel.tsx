@@ -19,6 +19,7 @@ import { parsePackImportText } from '../packImport'
 import { Icon } from '../SettingsIcon'
 import { CatalogCard } from './CatalogCard'
 import { filterEntries } from './catalogModel'
+import { compareSemver } from '../../../../../shared/plugins/semver'
 import { SourcesSection } from './SourcesSection'
 import './catalog.css'
 
@@ -212,9 +213,11 @@ function PackPasteDialog({
 }
 
 export function CatalogPanel({
-  settings
+  settings,
+  updatesOnly = false
 }: {
   settings: Settings | null
+  updatesOnly?: boolean
 }): JSX.Element {
   const t = useT()
   const mountedRef = useRef(true)
@@ -292,6 +295,10 @@ export function CatalogPanel({
     installedOnly,
     installedIds,
     installedPackNames
+  }).filter((entry) => {
+    if (!updatesOnly) return true
+    const installed = entry.kind === 'extension' ? extensionVersions.get(entry.id) : packVersions.get(entry.name)
+    return installed !== undefined && compareSemver(entry.version, installed) > 0
   })
   const installedCount = filterEntries(entries, {
     query: '',

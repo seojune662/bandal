@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 2,
+  "id": "bandal.selection-tools",
+  "name": "선택 텍스트 도구",
+  "version": "1.0.0",
+  "minAppVersion": "0.42.0",
+  "author": "Bandal",
+  "description": "선택한 텍스트의 대소문자를 바꾸고 실행 취소로 되돌릴 수 있습니다.",
+  "main": "main.js",
+  "permissions": ["commands", "menus", "editor.read", "editor.write", "settings", "notices"],
+  "contributes": {
+    "commands": [{ "id": "transform", "title": "선택 텍스트 대소문자 변환" }],
+    "menus": [{ "location": "editor", "command": "transform" }],
+    "settings": [{ "key": "case", "title": "변환 방식", "type": "select", "options": ["UPPERCASE", "lowercase"], "default": "UPPERCASE" }]
+  }
+}

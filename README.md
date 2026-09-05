@@ -14,6 +14,7 @@ AI 튜터는 별도 API 키 없이 **사용자 본인의 Claude 구독**(Claude 
 - **내장 브라우저** — 샌드박스가 강제된 webview 게스트 레이어
 - **학업 보드** — 과목 필터·마감일 배지가 있는 칸반 보드
 - **AI 튜터** — 헤드리스 Claude 에이전트 런타임, 도구 사용 권한 승인 UI
+- **플러그인 v2** — 명령·메뉴·선택 편집·패널·설정·테마 확장, 로컬 개발과 심사형 마켓플레이스
 
 ## 개발
 
@@ -26,6 +27,8 @@ pnpm typecheck      # main/preload + renderer 타입 검사
 pnpm deadcode       # 미사용 파일·export·dependency 검사
 pnpm test           # vitest 단위·통합 테스트
 pnpm e2e            # 프로덕션 빌드 후 Playwright Electron E2E (임시 프로필 사용)
+pnpm plugin:test    # 플러그인 CLI 생성·검증·패키징과 예제 검증
+pnpm marketplace:test # Docker + Supabase CLI로 격리된 로컬 서비스 통합 검사
 pnpm dist           # electron-builder로 .dmg/.zip 생성 (release/)
 pnpm generate-icon  # resources/ 아이콘 재생성 (SVG → PNG → icns)
 ```
@@ -41,6 +44,10 @@ IPC 계약(`src/shared/ipc`)만을 통해 renderer와 통신합니다. renderer�
 Zustand 스토어와 feature 단위 디렉터리(`src/renderer/src/features/*`)로 구성되며,
 preload는 `window.bandal` 브리지 하나만 노출합니다(contextIsolation·sandbox 활성).
 자세한 문서는 [docs/](docs/)를 참고하세요.
+
+플러그인 개발은 [API v2](docs/plugins-v2.md), 서버 연결과 배포 준비는
+[마켓플레이스 운영](docs/marketplace.md)을 참고하세요. 서비스는 별도 설정이 필요하며
+로컬 폴더 플러그인은 서버 연결 없이 사용할 수 있습니다.
 
 ## 라이선스
 

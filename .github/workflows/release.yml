@@ -177,6 +177,9 @@ jobs:
           # silently, with a green build.
           MAIN_VITE_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
           MAIN_VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.MAIN_VITE_SUPABASE_PUBLISHABLE_KEY }}
+          # Public origin only; server credentials must never reach this build.
+          # Leave unset until the marketplace service is deployed and verified.
+          MAIN_VITE_MARKETPLACE_URL: ${{ vars.MAIN_VITE_MARKETPLACE_URL }}
 
       # The failure above was invisible: nothing errored, a feature just went
       # missing. Assert the inlining actually happened so it can never ship

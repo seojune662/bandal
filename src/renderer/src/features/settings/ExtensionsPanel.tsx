@@ -8,6 +8,7 @@ import { useLocale, useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 import { usePluginsStore } from '../../stores/pluginsStore'
 import { PluginPermissionDialog } from '../plugins/PluginPermissionDialog'
+import { PluginConfiguration } from './PluginConfiguration'
 
 export function pluginPermissionsApproved(plugin: PluginSummary): boolean {
   const approved = plugin.approvedPermissions
@@ -95,6 +96,7 @@ export function ExtensionsPanel({
   initialOpenLogIds = []
 }: ExtensionsPanelProps = {}): JSX.Element {
   const t = useT()
+  const ko = useLocale() === 'ko-KR'
   const plugins = usePluginsStore((state) => state.plugins)
   const loading = usePluginsStore((state) => state.loading)
   const storeError = usePluginsStore((state) => state.error)
@@ -387,6 +389,10 @@ export function ExtensionsPanel({
                     />
                   </div>
                 )}
+                {(plugin.manifest.contributes.settings?.length ?? 0) > 0 && <details className="plugin-configuration-details">
+                  <summary>{ko ? '플러그인 설정' : 'Plugin settings'}</summary>
+                  <PluginConfiguration manifest={plugin.manifest} />
+                </details>}
               </article>
             )
           })}

@@ -1,6 +1,6 @@
 {
   "name": "bandal",
-  "version": "0.41.2",
+  "version": "0.42.0",
   "description": "Bandal (반달) — a study IDE for university students",
   "main": "./out/main/index.js",
   "author": "Bandal",
@@ -13,6 +13,12 @@
   },
   "scripts": {
     "dev": "electron-vite dev",
+    "marketplace:build": "vite build --config marketplace.vite.config.ts",
+    "marketplace:start": "node out/marketplace/server.cjs",
+    "marketplace:test": "node scripts/test-marketplace-local.mjs",
+    "plugin:build": "vite build --config sdk.vite.config.ts",
+    "plugin:test": "pnpm plugin:build && node scripts/test-plugin-sdk.mjs",
+    "plugin": "pnpm plugin:build && node out/plugin-cli/plugin.cjs",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "deadcode": "knip --treat-config-hints-as-errors",

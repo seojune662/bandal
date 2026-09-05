@@ -40,7 +40,7 @@ export interface PackStoreDeps {
 
 export interface PackStore {
   list(): WorkflowPackSummary[]
-  importText(json: string): { pack: WorkflowPack; warnings: string[] }
+  importText(json: string, replaceId?: string): { pack: WorkflowPack; warnings: string[] }
   remove(id: string): void
   setEnabled(id: string, enabled: boolean): void
   approve(id: string, at: string): void
@@ -203,7 +203,7 @@ export function createPackStore(deps: PackStoreDeps): PackStore {
       ]
     },
 
-    importText(json) {
+    importText(json, replaceId) {
       let raw: unknown
       try {
         raw = JSON.parse(json)
@@ -218,6 +218,14 @@ export function createPackStore(deps: PackStoreDeps): PackStore {
       }
 
       const state = load()
+      if (replaceId !== undefined) {
+        if (!replaceId.startsWith(CUSTOM_PACK_PREFIX) || !state.packs.some((pack) => pack.id === replaceId)) throw new ValidationError('Unknown custom pack')
+        const pack = clonePack({ ...sanitized.pack, id: replaceId })
+        const { [replaceId]: _approval, ...approvals } = state.approvals
+        persist({ ...state, packs: state.packs.map((previous) => previous.id === replaceId ? pack : previous), approvals,
+          disabledIds: [...new Set([...state.disabledIds, replaceId])] })
+        return { pack: clonePack(pack), warnings: [...sanitized.warnings] }
+      }
       if (state.packs.length >= MAX_CUSTOM_WORKFLOW_PACKS) {
         throw new ConflictError(
           `사용자 워크플로 팩은 최대 ${MAX_CUSTOM_WORKFLOW_PACKS}개까지 저장할 수 있습니다.`

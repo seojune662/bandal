@@ -277,6 +277,8 @@ export interface Settings {
    * (OFFICIAL_CATALOG_URL)는 항상 포함되며 여기엔 넣지 않는다.
    */
   pluginSources: readonly string[]
+  /** Selected namespaced plugin theme; built-in theme is the fallback. */
+  pluginTheme: string | null
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -304,7 +306,16 @@ export const DEFAULT_SETTINGS: Settings = {
   browser: DEFAULT_BROWSER_SETTINGS,
   shortcutPriority: 'bandal',
   experimental: DEFAULT_EXPERIMENTAL,
-  pluginSources: []
+  pluginSources: [],
+  pluginTheme: null
 }
 
-export type SettingsPatch = Partial<Settings>
+/** Preference groups accept field patches; maps (e.g. keybindings) replace. */
+export type SettingsPatch = Partial<Omit<Settings,
+  'browser' | 'notifications' | 'experimental' | 'desktopOrb'
+>> & {
+  browser?: Partial<BrowserSettings>
+  notifications?: Partial<NotificationSettings>
+  experimental?: Partial<ExperimentalSettings>
+  desktopOrb?: Partial<DesktopOrbSettings>
+}

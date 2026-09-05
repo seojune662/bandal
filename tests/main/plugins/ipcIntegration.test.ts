@@ -6,6 +6,13 @@ const HANDLERS_SOURCE = join(process.cwd(), 'src/main/ipc/registerHandlers.ts')
 
 const PLUGIN_CHANNELS = [
   'plugins:list',
+  'plugins:devFolders',
+  'plugins:watchFolder',
+  'plugins:unwatchFolder',
+  'plugins:getSettings',
+  'plugins:editorReply',
+  'plugins:setSetting',
+  'plugins:resetSettings',
   'plugins:pickFolder',
   'plugins:installFromFolder',
   'plugins:uninstall',

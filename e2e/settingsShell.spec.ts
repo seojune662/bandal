@@ -67,6 +67,8 @@ test.describe('settings shell', () => {
     await expect(nav.locator('[data-category="browser"]')).toBeVisible()
     await expect(nav.locator('[data-category="about"]')).toHaveCount(0)
     await expect(nav.locator('.settings-nav__hits')).toContainText('기본 줌')
+    await nav.locator('.settings-search-hit', { hasText: '기본 줌' }).click()
+    await expect(page.locator('.settings-panel [data-search-match="true"]')).toContainText('기본 줌')
     await shot(bandal, 'settings-search')
     await search.fill('')
   })

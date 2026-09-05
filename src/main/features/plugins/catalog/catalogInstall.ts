@@ -4,6 +4,7 @@ import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { compareSemver } from '../../../../shared/plugins/semver'
+import { readZipEntry } from '../../../../shared/plugins/archive'
 import { sanitizeWorkflowPack } from '../../../../shared/workflowPacks/sanitize'
 import {
   CATALOG_ARTIFACT_MAX_BYTES,
@@ -119,7 +120,7 @@ async function extractZip(bytes: Buffer, root: string): Promise<void> {
       await mkdir(destination, { recursive: true })
       continue
     }
-    const content = await entry.async('uint8array')
+    const content = await readZipEntry(entry, CATALOG_ARTIFACT_MAX_BYTES - extractedBytes)
     extractedBytes += content.byteLength
     if (extractedBytes > CATALOG_ARTIFACT_MAX_BYTES) {
       throw new ValidationError('압축을 푼 파일이 허용된 크기를 초과해요')
@@ -154,7 +155,7 @@ function catalogEntry(
 
 function existingPack(
   text: string,
-  store: Pick<PackStore, 'list'>
+  store: Pick<PackStore, 'list' | 'importText'>
 ): Extract<CatalogInstallResult, { kind: 'pack' }> | null {
   let raw: unknown
   try {
@@ -169,6 +170,9 @@ function existingPack(
     .list()
     .find(({ pack, source }) => source === 'user' && pack.name === name)
   if (found === undefined) return null
+  if (compareSemver(sanitized.pack.version, found.pack.version) > 0) {
+    return { kind: 'pack', ...store.importText(text, found.pack.id) }
+  }
   return { kind: 'pack', pack: found.pack, warnings: sanitized.warnings }
 }
 
@@ -201,8 +205,12 @@ export function createCatalogInstaller(deps: CatalogInstallerDeps): {
       try {
         await extractZip(bytes, root)
         const source = await pluginRoot(root)
-        if (readManifest(source).manifest.id !== entry.id) {
+        const manifest = readManifest(source).manifest
+        if (manifest.id !== entry.id) {
           throw new ValidationError('manifest.json의 id가 카탈로그 항목과 달라요')
+        }
+        if (manifest.version !== entry.version || (entry.minAppVersion !== null && manifest.minAppVersion !== entry.minAppVersion)) {
+          throw new ValidationError('플러그인 버전 정보가 카탈로그와 다릅니다.')
         }
         const installed = await deps.pluginStore.installFromFolder(source)
         return { kind: 'extension', ...installed }

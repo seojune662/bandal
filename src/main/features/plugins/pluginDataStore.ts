@@ -55,7 +55,7 @@ export function createPluginDataStore(deps: {
         text = readFileSync(file, 'utf8')
       } catch (error) {
         console.error('[plugins] settings read failed', pluginId, error)
-        return null
+        throw error
       }
       try {
         return JSON.parse(text) as unknown

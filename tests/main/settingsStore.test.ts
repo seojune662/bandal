@@ -59,6 +59,24 @@ async function loadSettingsStore() {
 }
 
 describe('settings store recovery', () => {
+  test('invalid home pages cannot erase a working home page', async () => {
+    temporaryUserData()
+    const store = await loadSettingsStore()
+    store.setSettings({ browser: { homePage: 'https://example.com/' } })
+    expect(() => store.setSettings({ browser: { homePage: 'javascript:alert(1)' } })).toThrow()
+    expect(store.getSettings().browser.homePage).toBe('https://example.com/')
+  })
+  test('independent preference patches preserve prior changes across reload', async () => {
+    temporaryUserData()
+    const store = await loadSettingsStore()
+    store.setSettings({ browser: { homePage: 'https://example.com/' } })
+    store.setSettings({ browser: { agentUse: true } })
+    store.setSettings({ experimental: { extensionRuntime: true } })
+    store.setSettings({ experimental: { orbCharms: true } })
+    const reloaded = await loadSettingsStore()
+    expect(reloaded.getSettings().browser).toMatchObject({ homePage: 'https://example.com/', agentUse: true })
+    expect(reloaded.getSettings().experimental).toMatchObject({ extensionRuntime: true, orbCharms: true })
+  })
   test('quarantines malformed JSON and returns defaults without losing the bytes', async () => {
     const userDataPath = temporaryUserData()
     const file = join(userDataPath, 'settings.json')

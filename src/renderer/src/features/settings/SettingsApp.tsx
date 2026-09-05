@@ -12,6 +12,7 @@ import { useLocale, useT } from "../../i18n";
 import { invoke, onPush } from "../../lib/ipc";
 import { useCoursesStore } from "../../stores/coursesStore";
 import { useUiStore } from "../../stores/uiStore";
+import { usePluginsStore } from "../../stores/pluginsStore";
 import {
   AGENT_PROVIDERS,
   isAgentProvider,
@@ -62,6 +63,7 @@ import { UsagePanel } from "./usage/UsagePanel";
 import { Icon } from "./SettingsIcon";
 import { searchSettings } from "./settingsSearchIndex";
 import { applyTheme } from "./settingsTheme";
+import { savePreference } from "./savePreference";
 import { UniversitySettingsPanel } from "./UniversitySettingsPanel";
 import {
   HELP_FOCUS_TARGET_EVENT,
@@ -74,6 +76,7 @@ import { useTourStore } from "../onboarding/tour/tourStore";
 import "../help/help.css";
 import "./settings-app.css";
 import "./settings-panels.css";
+import { subscribePluginThemes } from '../plugins/pluginThemes';
 
 interface Category {
   id: SettingsCategoryId;
@@ -117,11 +120,15 @@ export function SettingsApp({
   initialCategory = null,
 }: SettingsAppProps = {}): JSX.Element {
   const t = useT();
+  useEffect(() => embedded ? undefined : subscribePluginThemes(), [embedded]);
   const locale = useLocale();
   const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(() =>
     isSettingsCategoryId(initialCategory) ? initialCategory : "general",
   );
   const [query, setQuery] = useState("");
+  const [searchTarget, setSearchTarget] = useState<string | null>(null);
+  const [settingsAttempt, setSettingsAttempt] = useState(0);
+  const [settingsLoadError, setSettingsLoadError] = useState(false);
   const [milestonesOpen, setMilestonesOpen] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [appearance, setAppearance] = useState<AppearanceSettings>(() =>
@@ -163,6 +170,7 @@ export function SettingsApp({
   const autoProviderCheckedRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId);
+  const plugins = usePluginsStore((state) => state.plugins);
   const milestoneProgress = useMilestones((state) => state.progress);
   const refreshMilestones = useMilestones((state) => state.refresh);
 
@@ -182,8 +190,8 @@ export function SettingsApp({
     categories[0]!;
 
   const searchResults = useMemo(
-    () => searchSettings(query, locale),
-    [locale, query],
+    () => searchSettings(query, locale, plugins.map((plugin) => plugin.manifest)),
+    [locale, query, plugins],
   );
   const matchesByCategory = useMemo(
     () => new Map(searchResults.map((result) => [result.category, result.matches])),
@@ -242,7 +250,11 @@ export function SettingsApp({
 
   useEffect(() => {
     mountedRef.current = true;
+    let active = true;
+    let pushed = false;
+    setSettingsLoadError(false);
     const unsubscribe = onPush("settings:changed", ({ settings: next }) => {
+      pushed = true;
       setSettings(next);
       setAppearance(pickAppearance(next));
       if (!embedded) applyTheme(next);
@@ -250,13 +262,14 @@ export function SettingsApp({
 
     void invoke("settings:get", {})
       .then((result) => {
-        if (!mountedRef.current) return;
+        if (!active || pushed) return;
         setSettings(result);
         setAppearance(pickAppearance(result));
         if (!embedded) applyTheme(result);
       })
       .catch(() => {
-        if (mountedRef.current) {
+        if (active) {
+          setSettingsLoadError(true);
           setThemeErrorKey("settings.appearance.loadFailed");
         }
       });
@@ -265,10 +278,33 @@ export function SettingsApp({
     loadCourses(false);
 
     return () => {
+      active = false;
       mountedRef.current = false;
       unsubscribe();
     };
-  }, [embedded, loadAvailability]);
+  }, [embedded, loadAvailability, settingsAttempt]);
+
+  useEffect(() => {
+    const panelRoot = document.querySelector('.settings-panel');
+    if (!panelRoot || !searchTarget) return;
+    let highlighted: Element | null = null;
+    const locate = (): void => {
+      if (highlighted) return;
+      const label = [...panelRoot.querySelectorAll('.setting-row__label, .settings-card h2, label, h3')]
+        .find((node) => node.textContent?.toLocaleLowerCase().includes(searchTarget.toLocaleLowerCase()));
+      highlighted = label?.closest('.setting-row, .settings-card') ?? label ?? null;
+      if (!highlighted) return;
+      const details = highlighted.closest('details');
+      if (details) details.open = true;
+      highlighted.setAttribute('data-search-match', 'true');
+      highlighted.scrollIntoView?.({ block: 'center', behavior: 'instant' });
+      highlighted.querySelector<HTMLElement>('button, input, select, textarea')?.focus({ preventScroll: true });
+    };
+    locate();
+    const observer = new MutationObserver(locate);
+    observer.observe(panelRoot, { childList: true, subtree: true });
+    return () => { observer.disconnect(); highlighted?.removeAttribute('data-search-match'); };
+  }, [activeCategory, searchTarget]);
 
   useEffect(() => {
     const refreshAvailability = (): void => loadAvailability();
@@ -349,7 +385,7 @@ export function SettingsApp({
     if (themeSaving) return;
     const previous = appearance;
     const next = { ...previous, ...patch };
-    if (isSameAppearance(next, previous)) return;
+    if (isSameAppearance(next, previous) && !(settings?.pluginTheme && (patch.theme !== undefined || patch.palette !== undefined))) return;
     setAppearance(next);
     if (!embedded) applyTheme(next);
     setThemeSaving(true);
@@ -396,9 +432,7 @@ export function SettingsApp({
   const handleCharmSelect = (orbCharm: OrbCharmId): void => {
     if (settings === null || orbCharm === settings.orbCharm) return;
     // The settings:changed broadcast updates both this panel and the orb.
-    void invoke("settings:set", { orbCharm }).catch(() => {
-      // Failure leaves the previous charm; the radio re-renders from settings.
-    });
+    void savePreference({ orbCharm });
   };
 
   const handleAgentProviderSelect = (nextProvider: AgentProvider): void => {
@@ -532,7 +566,7 @@ export function SettingsApp({
       />
     ),
     mcp: <McpServersPanel />,
-    packs: <PluginsCategoryPanel />,
+    packs: <PluginsCategoryPanel searchTarget={searchTarget} />,
     ai: (
       <AiPanel
         provider={settings?.agentProvider ?? "claude-code"}
@@ -678,8 +712,8 @@ export function SettingsApp({
                   {groupCategories.map((category) => {
                     const matches = matchesByCategory.get(category.id) ?? [];
                     return (
+                      <div key={category.id}>
                       <button
-                        key={category.id}
                         type="button"
                         data-category={category.id}
                         className={`settings-nav__item${
@@ -690,7 +724,7 @@ export function SettingsApp({
                         aria-current={
                           activeCategory === category.id ? "page" : undefined
                         }
-                        onClick={() => setActiveCategory(category.id)}
+                        onClick={() => { setSearchTarget(query.trim() ? matches[0] ?? null : null); setActiveCategory(category.id); }}
                       >
                         <Icon name={category.id} />
                         <span className="settings-nav__copy">
@@ -702,6 +736,10 @@ export function SettingsApp({
                           )}
                         </span>
                       </button>
+                      {query.trim() && matches.map((match) => <button className="settings-search-hit" key={match} type="button" onClick={() => {
+                        setSearchTarget(match); setActiveCategory(category.id);
+                      }}>{match}</button>)}
+                      </div>
                     );
                   })}
                 </div>
@@ -723,6 +761,10 @@ export function SettingsApp({
 
         <main className="settings-content" tabIndex={-1}>
           <div className="settings-content__inner">
+            {settingsLoadError && <div role="alert" className="settings-extension-feedback">
+              {t('settings.appearance.loadFailed')}
+              <button type="button" className="secondary-button" onClick={() => setSettingsAttempt((n) => n + 1)}>{t('settings.plugins.action.retry')}</button>
+            </div>}
             <header className="content-heading">
               <span className="content-heading__eyebrow">
                 {t("settings.eyebrow")}

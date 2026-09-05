@@ -22,6 +22,10 @@
   },
   "include": [
     "electron.vite.config.ts",
+    "marketplace.vite.config.ts",
+    "sdk.vite.config.ts",
+    "sdk/cli/**/*.ts",
+    "server/**/*.ts",
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts"

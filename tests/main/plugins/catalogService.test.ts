@@ -69,4 +69,19 @@ describe('createCatalogService', () => {
     }).get(false)
     expect(cached).toEqual(fetched)
   })
+
+  test('only the configured marketplace can receive the reviewed badge, including local development', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'bandal-catalog-service-'))
+    roots.push(root)
+    const origin = 'http://127.0.0.1:4318'
+    const releaseId = '00000000-0000-0000-0000-000000000001'
+    const raw = JSON.parse(validIndex())
+    raw.entries[0].url = `${origin}/releases/${releaseId}/download`
+    raw.entries[0].marketplaceReleaseId = releaseId
+    const service = createCatalogService({ userDataDir: root, getMarketplaceUrl: () => origin,
+      getPluginSources: () => [`${origin}/index.json`, CUSTOM], fetch: async () => new Response(JSON.stringify(raw)) })
+    const catalog = await service.get(true)
+    expect(catalog.entries).toHaveLength(1)
+    expect(catalog.entries[0]).toMatchObject({ verified: false, marketplaceReleaseId: releaseId, sourceUrl: `${origin}/index.json` })
+  })
 })

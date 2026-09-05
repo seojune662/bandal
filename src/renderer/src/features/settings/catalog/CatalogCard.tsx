@@ -1,7 +1,9 @@
 import type { CatalogEntry } from '../../../../../shared/types/pluginCatalog'
-import { useT } from '../../../i18n'
+import { useState } from 'react'
+import { useLocale, useT } from '../../../i18n'
 import { Icon } from '../SettingsIcon'
 import { installState } from './catalogModel'
+import { MarketplaceReleaseDetails } from './MarketplaceReleaseDetails'
 
 function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean)
@@ -27,6 +29,8 @@ export function CatalogCard({
   onOpenExperimental: () => void
 }): JSX.Element {
   const t = useT()
+  const ko = useLocale() === 'ko-KR'
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const state = installState(entry, installedVersion)
   const runtimeBlocked = entry.kind === 'extension' && !runtimeEnabled
 
@@ -62,6 +66,10 @@ export function CatalogCard({
       </div>
 
       <p className="settings-catalog-card__description">{entry.description}</p>
+      {entry.marketplaceReleaseId && <details onToggle={(event) => setDetailsOpen(event.currentTarget.open)}>
+        <summary>{ko ? '심사 완료 · 버전 정보' : 'Reviewed · Release details'}</summary>
+        {detailsOpen && <MarketplaceReleaseDetails id={entry.marketplaceReleaseId} />}
+      </details>}
 
       <div className="settings-catalog-card__footer">
         <div className="settings-catalog-card__tags" aria-label={t('settings.catalog.card.tags')}>

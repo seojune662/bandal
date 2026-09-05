@@ -19,6 +19,7 @@ import { DEFAULT_SETTINGS } from '../shared/types/settings'
 import type { Settings, SettingsPatch } from '../shared/types/settings'
 import { sanitizeSettings } from './settingsSanitize'
 import { quarantineFile, writeFileAtomic } from './lib/atomicWrite'
+import { ValidationError } from './db/errors'
 
 const SETTINGS_FILE = 'settings.json'
 
@@ -55,8 +56,10 @@ export function getSettings(): Settings {
     cached = defaultsWithPaths()
     return cached
   }
+  // A read/permission failure is not corrupt JSON and must not reset data.
+  const text = readFileSync(file, 'utf8')
   try {
-    const raw: unknown = JSON.parse(readFileSync(file, 'utf8'))
+    const raw: unknown = JSON.parse(text)
     cached = sanitizeSettings(raw, defaultsWithPaths())
   } catch {
     const quarantinePath = quarantineFile(file)
@@ -71,7 +74,18 @@ export function getSettings(): Settings {
 /** Applies a patch, persists to disk, and broadcasts `settings:changed`. */
 export function setSettings(patch: SettingsPatch): Settings {
   const previous = getSettings()
-  const next = sanitizeSettings({ ...previous, ...patch }, defaultsWithPaths())
+  const merged = { ...previous, ...patch }
+  if ((patch.theme !== undefined || patch.palette !== undefined) && patch.pluginTheme === undefined) merged.pluginTheme = null
+  for (const key of ['browser', 'notifications', 'experimental', 'desktopOrb'] as const) {
+    const value = patch[key]
+    if (value !== undefined && value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      Object.assign(merged, { [key]: { ...previous[key], ...value } })
+    }
+  }
+  const next = sanitizeSettings(merged, defaultsWithPaths())
+  if (typeof patch.browser?.homePage === 'string' && patch.browser.homePage.trim() !== '' && next.browser.homePage === '') {
+    throw new ValidationError('홈페이지에 올바른 HTTP 또는 HTTPS 주소를 입력하세요.')
+  }
   try {
     writeSettingsAtomically(settingsPath(), next)
   } catch (error) {
@@ -103,7 +117,8 @@ export function resetSettings(
 function broadcastSettings(settings: Settings): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) {
-      win.webContents.send('settings:changed', { settings })
+      try { win.webContents.send('settings:changed', { settings }) }
+      catch (error) { console.warn('[settings] A closing window missed a settings update', error) }
     }
   }
 }

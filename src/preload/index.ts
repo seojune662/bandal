@@ -94,7 +94,10 @@ const PUSH_CHANNELS = [
   // -- extensions -----------------------------------------------------------
   'plugins:changed',
   'plugins:notice',
-  'plugins:openPanel'
+  'plugins:openPanel',
+  'plugins:closePanel',
+  'plugins:settingsChanged',
+  'plugins:editorRequest'
 ] as const satisfies readonly PushChannel[]
 
 type MissingPushChannel = Exclude<PushChannel, (typeof PUSH_CHANNELS)[number]>

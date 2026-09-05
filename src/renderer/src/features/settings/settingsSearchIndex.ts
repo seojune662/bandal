@@ -5,6 +5,7 @@ import {
 import type { Locale } from '../../i18n'
 import { enUS } from '../../i18n/messages/en-US'
 import { koKR } from '../../i18n/messages/ko-KR'
+import type { PluginManifest } from '../../../../shared/types/plugin'
 
 interface SettingsSearchRow {
   category: SettingsCategoryId
@@ -39,6 +40,9 @@ export const SETTINGS_SEARCH_ROWS = [
   { category: 'packs', ko: '워크플로 팩', en: 'Workflow packs' },
   { category: 'packs', ko: '카탈로그', en: 'Catalog' },
   { category: 'packs', ko: '소스', en: 'Sources' },
+  { category: 'packs', ko: '개발자 센터', en: 'Developer center' },
+  { category: 'packs', ko: '로컬 개발', en: 'Local development' },
+  { category: 'packs', ko: '설치됨', en: 'Installed' },
   { category: 'browser', ko: '에이전트 브라우저 사용', en: 'Agent browser access' },
   { category: 'browser', ko: '홈페이지', en: 'Home page' },
   { category: 'browser', ko: '검색 엔진', en: 'Search engine' },
@@ -86,7 +90,8 @@ function normalized(value: string, locale: Locale): string {
 
 export function searchSettings(
   query: string,
-  locale: Locale
+  locale: Locale,
+  plugins: readonly PluginManifest[] = []
 ): SettingsSearchResult[] {
   const needle = normalized(query.trim(), locale)
   if (needle.length === 0) {
@@ -96,10 +101,14 @@ export function searchSettings(
   const messages: Readonly<Record<string, string>> =
     locale === 'ko-KR' ? koKR : enUS
   return SETTINGS_CATEGORIES.flatMap(({ id }) => {
-    const rows = SETTINGS_SEARCH_ROWS.filter((row) => row.category === id)
-    const matches = rows
+    const rows: SettingsSearchRow[] = SETTINGS_SEARCH_ROWS.filter((row) => row.category === id)
+    if (id === 'packs') for (const plugin of plugins) {
+      rows.push({ category: id, ko: plugin.name, en: plugin.name })
+      for (const field of plugin.contributes.settings ?? []) rows.push({ category: id, ko: field.title, en: field.title })
+    }
+    const matches = [...new Set(rows
       .map((row) => (locale === 'ko-KR' ? row.ko : row.en))
-      .filter((label) => normalized(label, locale).includes(needle))
+      .filter((label) => normalized(label, locale).includes(needle)))]
     const categoryText = ['label', 'description', 'keywords']
       .map((field) => messages[`settings.category.${id}.${field}`] ?? '')
       .join(' ')

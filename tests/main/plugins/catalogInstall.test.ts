@@ -159,7 +159,7 @@ describe('createCatalogInstaller', () => {
     expect(existsSync(join(temporary, 'bandal-catalog-success'))).toBe(false)
   })
 
-  test('returns an existing user pack with the same sanitized name', async () => {
+  test.each(['1.0.0', '1.1.0'])('deduplicates or updates an existing pack at version %s', async (version) => {
     const root = mkdtempSync(join(tmpdir(), 'bandal-catalog-install-'))
     roots.push(root)
     const pack: WorkflowPack = {
@@ -176,16 +176,14 @@ describe('createCatalogInstaller', () => {
       usesWeb: false,
       outputs: { dir: '결과', primary: '요약' }
     }
-    const bytes = Buffer.from(JSON.stringify({ ...pack, id: 'catalog-pack' }))
+    const bytes = Buffer.from(JSON.stringify({ ...pack, id: 'catalog-pack', version }))
     const entry = makeEntry({
       id: 'catalog-pack',
       kind: 'pack',
       url: 'https://catalog.example/pack.json',
       sha256: sha256(bytes)
     })
-    const importText = vi.fn(() => {
-      throw new Error('duplicate pack must not be imported')
-    })
+    const importText = vi.fn(() => ({ pack: { ...pack, version }, warnings: [] }))
     const install = createCatalogInstaller({
       catalog: { current: () => catalog(entry) },
       pluginStore: {
@@ -203,9 +201,10 @@ describe('createCatalogInstaller', () => {
 
     await expect(install.install(SOURCE, entry.id)).resolves.toEqual({
       kind: 'pack',
-      pack,
+      pack: { ...pack, version },
       warnings: []
     })
-    expect(importText).not.toHaveBeenCalled()
+    if (version === '1.0.0') expect(importText).not.toHaveBeenCalled()
+    else expect(importText).toHaveBeenCalledWith(bytes.toString('utf8'), pack.id)
   })
 })

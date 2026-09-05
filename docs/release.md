@@ -69,7 +69,13 @@ draft 가 풀린다.
 | `MAIN_VITE_SUPABASE_PUBLISHABLE_KEY` | 위와 같음 |
 
 마지막 두 개는 비활성화가 아니라 *부재* 다 — `.env.example` 의 설명 참조.
-`service_role` 키는 어디에도 넣지 않는다.
+`service_role` 키는 앱 빌드 환경이나 앱 배포용 Actions 시크릿에 넣지 않는다.
+
+선택 사항인 Actions **변수** `MAIN_VITE_MARKETPLACE_URL`에는 운영 검증이 끝난
+마켓플레이스의 HTTPS origin을 지정한다. 릴리스 컴파일 단계에서만 앱에 포함되며,
+미설정 시 로컬 플러그인과 기존 공식 카탈로그는 사용할 수 있지만 온라인 제출·심사
+기능은 연결되지 않는다. 별도 서버 배포와 서버 전용 비밀 설정은
+[`marketplace.md`](marketplace.md)를 참고한다.
 
 `.p12` 는 base64 로 넣는다: `base64 -i cert.p12 | pbcopy`
 

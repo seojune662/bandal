@@ -10,8 +10,9 @@ import {
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createPluginStore } from '../../../src/main/features/plugins/pluginStore'
+import * as atomicWrite from '../../../src/main/lib/atomicWrite'
 
 function manifest(overrides: Record<string, unknown> = {}) {
   return {
@@ -64,6 +65,7 @@ describe('createPluginStore', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     rmSync(root, { recursive: true, force: true })
   })
 
@@ -160,6 +162,34 @@ describe('createPluginStore', () => {
     expect(
       store.setState('bandal.store-test', 'errored', 'activation failed')
     ).toMatchObject({ state: 'errored', lastError: 'activation failed' })
+  })
+
+  test('panel asset changes invalidate approval even when main.js is unchanged', async () => {
+    const store = createPluginStore({ userDataDir })
+    const source = makeSource(sourcesDir)
+    mkdirSync(join(source, 'ui'))
+    writeFileSync(join(source, 'ui', 'panel.js'), 'console.log("original")')
+    await store.installFromFolder(source)
+    store.approve('bandal.store-test')
+    expect(store.needsApproval('bandal.store-test')).toBe(false)
+    writeFileSync(join(store.dirFor('bandal.store-test'), 'ui', 'panel.js'), 'console.log("changed")')
+    expect(store.needsApproval('bandal.store-test')).toBe(true)
+  })
+
+  test('failed update restores the old executable, registry and approval', async () => {
+    const store = createPluginStore({ userDataDir })
+    await store.installFromFolder(makeSource(sourcesDir))
+    store.approve('bandal.store-test')
+    store.setEnabled('bandal.store-test', true)
+    const before = store.get('bandal.store-test')
+    const registry = readFileSync(join(userDataDir, 'plugins.json'), 'utf8')
+    const code = readFileSync(join(store.dirFor('bandal.store-test'), 'main.js'), 'utf8')
+    vi.spyOn(atomicWrite, 'writeFileAtomic').mockImplementationOnce(() => { throw new Error('Disk full') })
+    await expect(store.installFromFolder(makeSource(sourcesDir, { main: 'module.exports = { activate() { throw new Error("new") } }' }))).rejects.toThrow('Disk full')
+    expect(store.get('bandal.store-test')).toEqual(before)
+    expect(store.needsApproval('bandal.store-test')).toBe(false)
+    expect(readFileSync(join(userDataDir, 'plugins.json'), 'utf8')).toBe(registry)
+    expect(readFileSync(join(store.dirFor('bandal.store-test'), 'main.js'), 'utf8')).toBe(code)
   })
 
   test('uninstall removes both registry state and copied files', async () => {

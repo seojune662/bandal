@@ -13,6 +13,7 @@ import { useUpdateStore } from '../../stores/updateStore'
 import type { OrbCharmId } from '../../../../shared/orbCharm'
 import { PALETTES, SYSTEM_THEME } from '../../../../shared/theme'
 import type { PaletteId, ThemeId } from '../../../../shared/theme'
+import { PluginThemePicker } from './PluginThemePicker'
 import {
   AGENT_PROVIDERS,
   type AgentAvailability,
@@ -35,6 +36,7 @@ import { CHARM_OPTIONS, CharmPreview } from '../assistant/charms'
 import { reopenedOnboarding } from '../onboarding/onboardingModel'
 import { SettingsCard, ToggleRow } from './primitives'
 import { Icon } from './SettingsIcon'
+import { savePreference } from './savePreference'
 
 export { McpServersPanel } from './McpServersPanel'
 
@@ -122,16 +124,18 @@ export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.E
             label={t('settings.general.tabs.openBeside')}
             description={t('settings.general.tabs.openBesideDescription')}
             checked={settings?.openAdjacentTab ?? false}
+            disabled={settings === null}
             onChange={(openAdjacentTab) => {
-              void invoke('settings:set', { openAdjacentTab })
+              void savePreference({ openAdjacentTab })
             }}
           />
           <ToggleRow
             label={t('settings.general.tabs.restore')}
             description={t('settings.general.tabs.restoreDescription')}
             checked={settings?.restoreLastCourse ?? false}
+            disabled={settings === null}
             onChange={(restoreLastCourse) => {
-              void invoke('settings:set', { restoreLastCourse })
+              void savePreference({ restoreLastCourse })
             }}
           />
         </div>
@@ -366,6 +370,7 @@ export function AppearancePanel({
 
   return (
     <div className="settings-stack">
+      <PluginThemePicker />
       <SettingsCard
         title={t('settings.appearance.palette.title')}
         description={t('settings.appearance.palette.description')}

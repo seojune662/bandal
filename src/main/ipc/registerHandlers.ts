@@ -177,6 +177,12 @@ import { createMcpRegistry, testMcpServer } from '../features/mcpRegistry'
 import { isMethodAllowed } from '../../shared/plugins/permissions'
 import { createPluginApi } from '../features/plugins/pluginApi'
 import { createPluginDataStore } from '../features/plugins/pluginDataStore'
+import { createPluginSettings } from '../features/plugins/pluginSettings'
+import { createPluginEditorBridge } from '../features/plugins/pluginEditor'
+import { createPluginDevelopment } from '../features/plugins/pluginDevelopment'
+import { createMarketplaceClient, marketplaceUrl } from '../features/plugins/marketplaceClient'
+import { readFile, stat } from 'node:fs/promises'
+import { inspectPluginArchive } from '../../shared/plugins/archive'
 import { createPluginLog } from '../features/plugins/pluginLog'
 import {
   configurePluginPanels,
@@ -384,7 +390,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // Keeping this indirection local avoids moving the long-established course
   // and note handlers merely to satisfy initialization order.
   let emitPluginEvent: (
-    name: 'note:saved' | 'course:changed',
+    name: import('../../shared/types/pluginRpc').PluginEventName,
     payload: unknown
   ) => void = () => undefined
 
@@ -2315,8 +2321,12 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // -- third-party plugins -------------------------------------------------
   const pluginStore = createPluginStore({ userDataDir: deps.userDataPath })
   const pluginCatalog = createCatalogService({
+    getMarketplaceUrl: marketplaceUrl,
     userDataDir: deps.userDataPath,
-    getPluginSources: () => getSettings().pluginSources,
+    getPluginSources: () => {
+      const marketplace = marketplaceUrl()
+      return [...getSettings().pluginSources, ...(marketplace === null ? [] : [`${marketplace}/index.json`])]
+    },
     fetch: (url, init) => net.fetch(url, init)
   })
   const catalogInstaller = createCatalogInstaller({
@@ -2324,15 +2334,53 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     pluginStore,
     packStore,
     fetch: (url, init) => net.fetch(url, init),
-    appVersion: () => app.getVersion()
+    appVersion: () => resolveAppVersion(app.isPackaged, app.getVersion(), __APP_VERSION__)
   })
   const pluginData = createPluginDataStore({ userDataDir: deps.userDataPath })
+  const marketplace = createMarketplaceClient({ getClient: () => groupRuntime.getClient(), fetch: (url, init) => net.fetch(url instanceof URL ? url.href : url, init) })
+  handle('marketplace:dashboard', () => marketplace.dashboard())
+  handle('marketplace:release', (req) => marketplace.release(req.id))
+  handle('marketplace:resolveReport', async (req) => { await marketplace.resolveReport(req.id, req.reason); return OK })
+  handle('marketplace:register', async (req) => { await marketplace.register(req.id, req.displayName); return OK })
+  handle('marketplace:submit', async (req) => {
+    const picked = await dialog.showOpenDialog({ title: 'Submit plugin ZIP', properties: ['openFile'], filters: [{ name: 'Plugin archive', extensions: ['zip'] }] })
+    const file = picked.filePaths[0]
+    if (picked.canceled || file === undefined) return { canceled: true }
+    if ((await stat(file)).size > 8 * 1024 * 1024) throw new ValidationError('Plugin ZIP exceeds 8 MiB')
+    const bytes = await readFile(file)
+    await inspectPluginArchive(bytes)
+    await marketplace.submit(bytes.toString('base64'), req.changelog)
+    return { canceled: false }
+  })
+  handle('marketplace:review', async (req) => { await marketplace.review(req.id, req.decision, req.reason); return OK })
+  handle('marketplace:report', async (req) => { await marketplace.report(req.releaseId, req.reason); return OK })
+  handle('marketplace:reviewBundle', async (req) => {
+    const picked = await dialog.showSaveDialog({ title: 'Save plugin review bundle', defaultPath: 'plugin-review.zip', filters: [{ name: 'Plugin archive', extensions: ['zip'] }] })
+    if (picked.canceled || !picked.filePath) return { canceled: true }
+    const bytes = await marketplace.reviewBundle(req.id)
+    writeFileSync(picked.filePath, bytes)
+    return { canceled: false }
+  })
+  const pluginEditor = createPluginEditorBridge((request) => broadcast('plugins:editorRequest', request))
+  const pluginSettings = createPluginSettings({
+    data: pluginData,
+    manifest: (id) => pluginStore.manifestFor(id),
+    changed: (pluginId, values) => {
+      broadcast('plugins:settingsChanged', { pluginId, values })
+      emitPluginEvent('settings:changed', { pluginId, values })
+    }
+  })
   const pluginLog = createPluginLog()
   const pluginLimiter = createPluginRateLimiter()
   const pluginChanged = (): void => {
     broadcast('plugins:changed', { plugins: pluginStore.list() })
   }
   const pluginApi = createPluginApi({
+    editor: pluginEditor,
+    configuration: {
+      ...pluginSettings,
+      has: (id, key) => pluginStore.manifestFor(id)?.contributes.settings?.some((field) => field.key === key) ?? false
+    },
     courses: coursesRepo,
     notes: notesRepo,
     materials: materialsRepo,
@@ -2360,6 +2408,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     openPanel: (pluginId, panelId) => {
       broadcast('plugins:openPanel', { pluginId, panelId })
     },
+    closePanel: (pluginId, panelId) => broadcast('plugins:closePanel', { pluginId, panelId }),
     postPanel: postPluginPanelMessage,
     panelExists: (pluginId, panelId) =>
       pluginStore
@@ -2388,6 +2437,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     changed: pluginChanged
   })
   emitPluginEvent = (name, payload) => pluginRuntime.sendEvent(name, payload)
+  const pluginDevelopment = createPluginDevelopment({ store: pluginStore,
+    unload: (id) => pluginRuntime.unload(id), changed: pluginChanged,
+    log: (pluginId, message) => pluginLog.push({ pluginId, level: 'info', message }) })
   const stopPluginPanels = configurePluginPanels({
     store: pluginStore,
     preloadPath: deps.pluginPanelPreloadPath,
@@ -2416,10 +2468,25 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
 
   app.on('before-quit', () => {
     stopPluginPanels()
+    void pluginDevelopment.dispose()
+    pluginEditor.dispose()
     pluginRuntime.dispose()
   })
 
   handle('plugins:list', () => ({ plugins: pluginStore.list() }))
+  handle('plugins:devFolders', () => ({ folders: pluginDevelopment.list() }))
+  handle('plugins:watchFolder', async (req) => { await pluginDevelopment.start(req.path); return OK })
+  handle('plugins:unwatchFolder', async (req) => { await pluginDevelopment.stop(req.id); return OK })
+  handle('plugins:getSettings', (req) => ({ values: pluginSettings.get(req.id) }))
+  handle('plugins:editorReply', (req) => {
+    pluginEditor.reply(req.requestId, req.value, req.error)
+    return OK
+  })
+  handle('plugins:setSetting', (req) => {
+    pluginSettings.set(req.id, req.key, req.value)
+    return { values: pluginSettings.get(req.id) }
+  })
+  handle('plugins:resetSettings', (req) => ({ values: pluginSettings.reset(req.id) }))
   handle('plugins:catalog', (req) => pluginCatalog.get(req.refresh))
   handle('plugins:installFromCatalog', async (req) => {
     const installed = await catalogInstaller.install(req.sourceUrl, req.id)
@@ -2452,6 +2519,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return installed
   })
   handle('plugins:uninstall', async (req) => {
+    await pluginDevelopment.stop(req.id)
     pluginRuntime.unload(req.id)
     await pluginStore.uninstall(req.id)
     pluginData.remove(req.id)
@@ -2510,7 +2578,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     if (!getSettings().experimental.extensionRuntime) {
       throw new ValidationError('확장 플러그인 런타임이 설정에서 꺼져 있어요')
     }
-    await pluginRuntime.runCommand(req.pluginId, req.commandId)
+    await pluginRuntime.runCommand(req.pluginId, req.commandId, req.context)
     return OK
   })
   handle('plugins:logs', (req) => ({

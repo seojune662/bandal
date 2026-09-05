@@ -32,7 +32,7 @@ describe('sanitizePluginManifest', () => {
 
   test('rejects unsupported manifest versions and malformed plugin ids', () => {
     expect(
-      sanitizePluginManifest({ ...validManifest(), manifestVersion: 2 }).manifest
+      sanitizePluginManifest({ ...validManifest(), manifestVersion: 3 }).manifest
     ).toBeNull()
     expect(
       sanitizePluginManifest({ ...validManifest(), id: 'Bad Plugin!' }).manifest

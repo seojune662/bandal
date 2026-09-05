@@ -13,7 +13,7 @@
  * the editor (Milkdown, not CodeMirror) and the sandbox are all different.
  */
 
-export const PLUGIN_MANIFEST_VERSION = 1
+export const PLUGIN_MANIFEST_VERSION = 2
 
 /** Capabilities a manifest can request; each maps onto host API methods. */
 export const PLUGIN_PERMISSIONS = [
@@ -25,6 +25,10 @@ export const PLUGIN_PERMISSIONS = [
   'panel',
   'notices',
   'settings',
+  'editor.read',
+  'editor.write',
+  'menus',
+  'themes',
   'events'
 ] as const
 
@@ -70,8 +74,31 @@ export interface PluginPanelContribution {
   entry: string
 }
 
+export interface PluginSettingDefinition {
+  key: string
+  title: string
+  description?: string
+  type: 'string' | 'number' | 'boolean' | 'select'
+  default: string | number | boolean
+  options?: readonly string[]
+  min?: number
+  max?: number
+}
+
+export interface PluginMenuContribution {
+  command: string
+  location: 'editor' | 'materials'
+}
+
+export interface PluginThemeContribution {
+  id: string
+  title: string
+  base: 'light' | 'dark'
+  tokens: Readonly<Record<string, string>>
+}
+
 export interface PluginManifest {
-  manifestVersion: 1
+  manifestVersion: 1 | 2
   /** Immutable; settings and data folders key on it. */
   id: string
   name: string
@@ -87,6 +114,9 @@ export interface PluginManifest {
   contributes: {
     commands: readonly PluginCommandContribution[]
     panels: readonly PluginPanelContribution[]
+    settings?: readonly PluginSettingDefinition[]
+    menus?: readonly PluginMenuContribution[]
+    themes?: readonly PluginThemeContribution[]
   }
   /** `styles.css` applied ONLY inside the plugin's own panel pages. */
   styles: 'styles.css' | null

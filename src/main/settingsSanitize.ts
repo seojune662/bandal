@@ -268,6 +268,7 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
   return {
     theme: isTheme(record.theme) ? record.theme : defaults.theme,
     palette: isPalette(record.palette) ? record.palette : defaults.palette,
+    pluginTheme: typeof record.pluginTheme === 'string' && record.pluginTheme.length <= 180 && /^[a-z0-9.-]+:[a-z0-9-]+$/.test(record.pluginTheme) ? record.pluginTheme : null,
     // Only the registered steps: an arbitrary multiplier from disk (1.05, '1',
     // NaN) would produce a font-size the picker cannot show as selected.
     fontScale: isFontScale(record.fontScale)

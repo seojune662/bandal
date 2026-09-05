@@ -16,9 +16,10 @@ import {
 } from 'dockview'
 import 'dockview/dist/styles/dockview.css'
 import { Icon } from '../../app/icons'
+import { createBrowserTab, createMarkdownTab } from '../../app/tabCommands'
 import { BandalMark } from '../../components/BandalMark'
 import { Tooltip } from '../../components/Tooltip'
-import { useT } from '../../i18n'
+import { useLocale, useT } from '../../i18n'
 import { flushLastActiveCoursePersist, useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
@@ -26,7 +27,7 @@ import { useFileDropTarget } from '../materials/useFileDropTarget'
 import { NewTabMenu } from './NewTabMenu'
 import { TabContextMenu } from './TabContextMenu'
 import { openNewTabMenu, useNewTabMenu } from './newTabMenuController'
-import { isTabDescriptor, tabTitle } from './tabIdentity'
+import { descriptorFor, isTabDescriptor, tabTitle } from './tabIdentity'
 import { writeWorkspaceTabDragData } from './tabDrag'
 import { dockviewComponents } from './tabRegistry'
 import { installTabStripWheelScrolling } from './tabStripScroll'
@@ -181,6 +182,7 @@ function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
 }
 
 function Watermark(_props: IWatermarkPanelProps): JSX.Element {
+  const ko = useLocale() === 'ko-KR'
   const courses = useCoursesStore((state) => state.courses)
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
   const course =
@@ -207,6 +209,21 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
       <BandalMark size={56} className="workspace-watermark__moon" />
       <p className="eyebrow">CURRENT COURSE</p>
       <h1>{course.name}</h1>
+      <p className="workspace-watermark__hint">{ko ? '읽고, 기록하고, 연결하는 나만의 학습 공간' : 'A space to read, write, and connect your ideas.'}</p>
+      <div className="workspace-start-actions" aria-label={ko ? '학습 시작' : 'Start studying'}>
+        <button type="button" onClick={() => void createMarkdownTab()}>
+          <TabKindIcon kind="note" /><strong>{ko ? '새 필기' : 'New note'}</strong>
+          <span>{ko ? '생각을 기록하세요' : 'Capture an idea'}</span>
+        </button>
+        <button type="button" onClick={() => createBrowserTab()}>
+          <TabKindIcon kind="browser" /><strong>{ko ? '웹 탐색' : 'Browse the web'}</strong>
+          <span>{ko ? '자료를 찾아보세요' : 'Find your sources'}</span>
+        </button>
+        <button type="button" onClick={() => useWorkspaceStore.getState().openTab(descriptorFor('chat', { courseId: course.id, conversationId: crypto.randomUUID() }))}>
+          <TabKindIcon kind="chat" /><strong>{ko ? 'AI와 공부' : 'Study with AI'}</strong>
+          <span>{ko ? '질문에서 시작하세요' : 'Start with a question'}</span>
+        </button>
+      </div>
       <button
         type="button"
         className="workspace-watermark__cta"
@@ -215,7 +232,7 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
           openNewTabMenu({ x: rect.left, y: rect.bottom + 8 })
         }}
       >
-        <Icon name="plus" />새 탭 열기
+        <Icon name="plus" />{ko ? '새 탭 열기' : 'Open new tab'}
       </button>
     </div>
   )
