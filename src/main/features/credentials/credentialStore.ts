@@ -1,3 +1,4 @@
+import { runtimeSafeStorage } from '../../lib/safeStorageGate'
 import {
   chmodSync,
   existsSync,
@@ -317,7 +318,7 @@ export function createCredentialStore(
   // safeStorage; decryption is deferred until an encrypted file actually exists.
   const electron = require('electron') as typeof import('electron')
   defaultStore = buildCredentialStore({
-    safeStorage: electron.safeStorage,
+    safeStorage: runtimeSafeStorage(),
     userDataPath: electron.app.getPath('userData')
   })
   return defaultStore

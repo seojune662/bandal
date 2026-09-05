@@ -12,7 +12,8 @@
  * the 함께하기 section entirely.
  */
 
-import { app, safeStorage, shell } from 'electron'
+import { app, shell } from 'electron'
+import { runtimeSafeStorage } from '../../lib/safeStorageGate'
 import type { Database } from 'better-sqlite3'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AuthState } from '../../../shared/types/auth'
@@ -75,7 +76,7 @@ export function createGroupRuntime(deps: GroupRuntimeDeps): GroupRuntime {
 
     const storage = createSessionStore({
       filePath: sessionFilePath(app.getPath('userData')),
-      encryptor: safeStorage
+      encryptor: runtimeSafeStorage()
     })
     const client: SupabaseClient | null = createSupabaseClient({ storage })
     sharedClient = client

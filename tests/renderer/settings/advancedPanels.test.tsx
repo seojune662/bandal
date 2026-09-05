@@ -110,10 +110,17 @@ describe('advanced and experimental settings', () => {
     })
   })
 
-  test('gates only the extensions tab and follows settings changes', async () => {
+  test('plugin-system switch mirrors extensionRuntime and follows settings changes', async () => {
     let publishSettings = (_settings: Settings): void => undefined
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'settings:get' || channel === 'settings:set') return disabledSettings
+      if (channel === 'plugins:list') return { plugins: [] }
+      if (channel === 'packs:list') return { packs: [] }
+      if (channel === 'plugins:catalog') return { sources: [], entries: [], fetchedAt: null }
+      return undefined
+    })
     setIpcAdapter({
-      invoke: vi.fn(async () => disabledSettings),
+      invoke,
       on: vi.fn(
         (
           channel: string,
@@ -134,34 +141,25 @@ describe('advanced and experimental settings', () => {
       await Promise.resolve()
     })
 
+    // The development section keeps both management panels mounted.
     expect(container.textContent).toContain('packs mounted')
-    const tabs = container.querySelectorAll<HTMLButtonElement>('[role="tab"]')
-    act(() => tabs[1]?.click())
+    expect(container.textContent).toContain('extensions mounted')
 
-    expect(container.textContent).toContain(
-      'settings.plugins.extensionRuntime.disabled'
-    )
-    expect(container.textContent).not.toContain('extensions mounted')
-
-    const openExperimental = Array.from(
-      container.querySelectorAll<HTMLButtonElement>('button')
-    ).find(
-      (button) =>
-        button.textContent ===
-        'settings.plugins.extensionRuntime.openExperimental'
-    )
-    act(() => openExperimental?.click())
-    expect(useUiStore.getState().settingsCategory).toBe('experimental')
+    const master = container.querySelector<HTMLButtonElement>('[role="switch"]')
+    expect(master?.getAttribute('aria-checked')).toBe('false')
+    act(() => master?.click())
+    expect(invoke).toHaveBeenCalledWith('settings:set', {
+      experimental: { ...disabledSettings.experimental, extensionRuntime: true }
+    })
 
     act(() => {
       publishSettings({
         ...disabledSettings,
-        experimental: {
-          ...disabledSettings.experimental,
-          extensionRuntime: true
-        }
+        experimental: { ...disabledSettings.experimental, extensionRuntime: true }
       })
     })
-    expect(container.textContent).toContain('extensions mounted')
+    expect(
+      container.querySelector<HTMLButtonElement>('[role="switch"]')?.getAttribute('aria-checked')
+    ).toBe('true')
   })
 })

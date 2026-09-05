@@ -22,8 +22,8 @@ import {
   dialog,
   ipcMain,
   nativeImage,
+  net,
   protocol,
-  safeStorage,
   session,
   shell,
   webContents
@@ -106,6 +106,7 @@ import {
   CARRYOVER_HISTORY_LIMIT
 } from '../features/agent'
 import { createUsageRepo } from '../features/usage/usageRepo'
+import { runtimeSafeStorage } from '../lib/safeStorageGate'
 import {
   attachDownloadHandler,
   BROWSING_PARTITION,
@@ -178,6 +179,8 @@ import {
 import { createPluginRateLimiter } from '../features/plugins/rateLimit'
 import { createPluginRuntime } from '../features/plugins/pluginRuntime'
 import { createPluginStore } from '../features/plugins/pluginStore'
+import { createCatalogService } from '../features/plugins/catalog/catalogService'
+import { createCatalogInstaller } from '../features/plugins/catalog/catalogInstall'
 import {
   createDeadlineScheduler,
   createSystemNotifier
@@ -318,7 +321,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     })
   )
   const mcpRegistry = createMcpRegistry({
-    safeStorage,
+    safeStorage: runtimeSafeStorage(),
     userDataPath: app.getPath('userData')
   })
   deps.overlay.setScreenPermission(
@@ -2297,6 +2300,18 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
 
   // -- third-party plugins -------------------------------------------------
   const pluginStore = createPluginStore({ userDataDir: deps.userDataPath })
+  const pluginCatalog = createCatalogService({
+    userDataDir: deps.userDataPath,
+    getPluginSources: () => getSettings().pluginSources,
+    fetch: (url, init) => net.fetch(url, init)
+  })
+  const catalogInstaller = createCatalogInstaller({
+    catalog: pluginCatalog,
+    pluginStore,
+    packStore,
+    fetch: (url, init) => net.fetch(url, init),
+    appVersion: () => app.getVersion()
+  })
   const pluginData = createPluginDataStore({ userDataDir: deps.userDataPath })
   const pluginLog = createPluginLog()
   const pluginLimiter = createPluginRateLimiter()
@@ -2391,6 +2406,15 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
 
   handle('plugins:list', () => ({ plugins: pluginStore.list() }))
+  handle('plugins:catalog', (req) => pluginCatalog.get(req.refresh))
+  handle('plugins:installFromCatalog', async (req) => {
+    const installed = await catalogInstaller.install(req.sourceUrl, req.id)
+    if (installed.kind === 'extension') {
+      pluginRuntime.unload(installed.plugin.manifest.id)
+      pluginChanged()
+    }
+    return installed
+  })
   handle('plugins:pickFolder', async () => {
     const parent =
       BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]

@@ -13,7 +13,11 @@ const PLUGIN_CHANNELS = [
   'plugins:approve',
   'plugins:reload',
   'plugins:runCommand',
-  'plugins:logs'
+  'plugins:logs',
+
+  'plugins:catalog',
+
+  'plugins:installFromCatalog'
 ] as const
 
 describe('plugin IPC integration', () => {

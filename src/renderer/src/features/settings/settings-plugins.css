@@ -5,32 +5,56 @@
   gap: var(--space-4);
 }
 
-.settings-plugins-segments {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-1);
-  padding: var(--space-1);
-  background: var(--bg-raised);
+.settings-plugins-development {
+  overflow: hidden;
+  background: var(--bg-surface);
   border: thin solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
-.settings-plugins-segments button {
-  min-height: var(--button-height);
-  color: var(--text-secondary);
-  font: inherit;
+.settings-plugins-development > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: calc(var(--control-height) * 2);
+  padding: var(--space-3) var(--space-5);
+  color: var(--text-primary);
   font-size: var(--text-sm);
   font-weight: 650;
-  background: transparent;
-  border: thin solid transparent;
-  border-radius: var(--radius-sm);
+  cursor: pointer;
+  list-style: none;
 }
 
-.settings-plugins-segments button[aria-selected='true'] {
+.settings-plugins-development > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-plugins-development__chevron {
+  color: var(--text-muted);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.settings-plugins-development[open] .settings-plugins-development__chevron {
+  transform: rotate(180deg);
+}
+
+.settings-plugins-development__content {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border-top: thin solid var(--border-subtle);
+}
+
+.settings-plugins-development__content > section {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.settings-plugins-development__content > section > h2 {
+  margin: 0;
   color: var(--text-primary);
-  background: var(--bg-surface);
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
+  font-size: var(--text-sm);
 }
 
 .settings-extensions__toolbar,

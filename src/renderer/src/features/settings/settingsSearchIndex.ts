@@ -35,6 +35,8 @@ export const SETTINGS_SEARCH_ROWS = [
   { category: 'university', ko: '즐겨찾기 서비스', en: 'Favorite services' },
   { category: 'packs', ko: '플러그인', en: 'Plugins' },
   { category: 'packs', ko: '워크플로 팩', en: 'Workflow packs' },
+  { category: 'packs', ko: '카탈로그', en: 'Catalog' },
+  { category: 'packs', ko: '소스', en: 'Sources' },
   { category: 'browser', ko: '에이전트 브라우저 사용', en: 'Agent browser access' },
   { category: 'browser', ko: '홈페이지', en: 'Home page' },
   { category: 'browser', ko: '검색 엔진', en: 'Search engine' },

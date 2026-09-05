@@ -44,9 +44,9 @@ test.describe('settings shell', () => {
     await expect(nav).toBeVisible()
     await expect(nav.locator('.settings-nav__group-label')).toHaveCount(7)
 
-    // `mcp` mounts the encrypted registry; on a fresh macOS profile that can
-    // raise a keychain prompt no test can dismiss, so it stays out of the loop.
-    for (const { id } of SETTINGS_CATEGORIES.filter((c) => c.id !== 'mcp')) {
+    // The launcher disables safeStorage, so the encrypted registry (mcp) and
+    // saved logins (university) render without a keychain prompt.
+    for (const { id } of SETTINGS_CATEGORIES) {
       const item = nav.locator(`[data-category="${id}"]`)
       await expect(item).toBeVisible()
       await item.click()

@@ -103,6 +103,9 @@ export async function launchBandal(
   // 합성 dragstart 가 webContents.startDrag 를 부르면 macOS 중첩 런루프에
   // 걸려 앱 종료가 간헐적으로 영영 안 끝난다 — 테스트에선 끈다.
   env['BANDAL_DISABLE_NATIVE_DRAG'] = '1'
+  // 서명 안 된 테스트용 Electron 은 키체인 프롬프트에서 main 이 영영 멈춘다
+  // (SecItemCopyMatching 안에서 SecurityAgent 대기) — 테스트에선 safeStorage 를 끈다.
+  env['BANDAL_DISABLE_SAFE_STORAGE'] = '1'
 
   const app = await _electron.launch({
     executablePath: ELECTRON_BINARY,
