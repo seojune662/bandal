@@ -34,6 +34,7 @@ export interface GeminiBinaryLocatorDeps {
   platform?: Platform
   env?: NodeJS.ProcessEnv
   fileExists?: (path: string) => boolean
+  hasApiKey?: () => boolean
 }
 
 function fileNames(platform: Platform): string[] {
@@ -174,13 +175,21 @@ export function createGeminiBinaryLocator(
       return unavailableSummary(error)
     }
     const authDir = joinPath(platform, geminiHome(env), '.gemini')
-    const loggedIn = fileExists(joinPath(platform, authDir, 'oauth_creds.json'))
+    const hasOauthCredentials = fileExists(
+      joinPath(platform, authDir, 'oauth_creds.json')
+    )
+    let hasApiKey = false
+    try {
+      hasApiKey = deps.hasApiKey?.() ?? false
+    } catch {
+      hasApiKey = false
+    }
     const result: AgentAvailability = {
       installed: true,
       version: binary.version,
-      loggedIn
+      loggedIn: hasOauthCredentials || hasApiKey
     }
-    if (loggedIn) {
+    if (hasOauthCredentials) {
       const account = activeAccount(
         joinPath(platform, authDir, 'google_accounts.json')
       )

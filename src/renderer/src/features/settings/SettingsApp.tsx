@@ -91,6 +91,26 @@ interface SettingsAppProps {
 
 type ProviderState<T> = Record<AgentProvider, T>;
 
+function connectedProvider(
+  availability: AgentAvailability | null,
+): boolean {
+  return availability?.installed === true && availability.loggedIn;
+}
+
+export function soleConnectedProvider(
+  currentProvider: AgentProvider,
+  availability: Record<AgentProvider, AgentAvailability | null>,
+): AgentProvider | null {
+  if (AGENT_PROVIDERS.some((provider) => availability[provider] === null)) {
+    return null;
+  }
+  if (connectedProvider(availability[currentProvider])) return null;
+  const connected = AGENT_PROVIDERS.filter((provider) =>
+    connectedProvider(availability[provider]),
+  );
+  return connected.length === 1 ? connected[0]! : null;
+}
+
 export function SettingsApp({
   embedded = false,
   onClose,
@@ -140,6 +160,7 @@ export function SettingsApp({
   const [includeArchived, setIncludeArchived] = useState(false);
   const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const autoProviderCheckedRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId);
   const milestoneProgress = useMilestones((state) => state.progress);
@@ -272,6 +293,33 @@ export function SettingsApp({
   }, [loadAvailability]);
 
   useEffect(() => {
+    if (settings === null || autoProviderCheckedRef.current) return;
+    if (AGENT_PROVIDERS.some((provider) => availability[provider] === null)) {
+      return;
+    }
+    autoProviderCheckedRef.current = true;
+    const previousProvider = settings.agentProvider;
+    const nextProvider = soleConnectedProvider(previousProvider, availability);
+    if (nextProvider === null) return;
+
+    void invoke("settings:set", { agentProvider: nextProvider })
+      .then((nextSettings) => {
+        if (!mountedRef.current) return;
+        setSettings(nextSettings);
+        const nextKey = nextProvider === "claude-code" ? "claude" : nextProvider;
+        const previousKey =
+          previousProvider === "claude-code" ? "claude" : previousProvider;
+        showToast(
+          t("settings.ai.engine.autoSwitched", {
+            provider: t(`settings.ai.${nextKey}.name`),
+            unavailable: t(`settings.ai.${previousKey}.name`),
+          }),
+        );
+      })
+      .catch(() => undefined);
+  }, [availability, settings, t]);
+
+  useEffect(() => {
     if (embedded) return;
     document.documentElement.lang = locale;
     document.title = `${t("settings.app.name")} — ${t("settings.window.title")}`;
@@ -354,6 +402,7 @@ export function SettingsApp({
   };
 
   const handleAgentProviderSelect = (nextProvider: AgentProvider): void => {
+    autoProviderCheckedRef.current = true;
     if (
       settings === null ||
       nextProvider === settings.agentProvider ||

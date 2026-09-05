@@ -2,11 +2,15 @@ import type { AgentProvider } from '../../../shared/types/agent-events'
 import type { AgentModelOption } from '../../../shared/types/chat'
 import { createBinaryLocator } from './binaryLocator'
 import { FALLBACK_MODELS, probeModels, type CliModel } from './claude/modelProbe'
+import { createCodexBinaryLocator } from './codex/binaryLocator'
+import {
+  CODEX_FALLBACK_MODELS,
+  probeCodexModels
+} from './codex/modelCatalog'
+import { augmentedPathEnv } from './platform'
 
 const locator = createBinaryLocator()
-const CODEX_MODELS: readonly CliModel[] = [
-  { value: 'default', displayName: 'Codex 기본 모델' }
-]
+const codexLocator = createCodexBinaryLocator()
 const GEMINI_MODELS: readonly CliModel[] = [
   { value: 'auto', displayName: 'Gemini 자동 선택' },
   { value: 'pro', displayName: 'Gemini Pro' },
@@ -26,17 +30,32 @@ function toOptions(models: readonly CliModel[]): AgentModelOption[] {
   }))
 }
 
-const fallbackResult = (): { models: AgentModelOption[] } => ({
-  models: toOptions(FALLBACK_MODELS)
+const fallbackResult = (
+  provider: AgentProvider
+): { models: AgentModelOption[] } => ({
+  models: toOptions(
+    provider === 'codex'
+      ? CODEX_FALLBACK_MODELS
+      : provider === 'gemini'
+        ? GEMINI_MODELS
+        : FALLBACK_MODELS
+  )
 })
 
 async function discoverModels(
   provider: AgentProvider
 ): Promise<{ models: AgentModelOption[] }> {
-  if (provider !== 'claude-code') {
-    // Neither headless protocol exposes a model catalog.
+  if (provider === 'gemini') {
+    return { models: toOptions(GEMINI_MODELS) }
+  }
+  if (provider === 'codex') {
+    const binary = await codexLocator.locate()
+    const loginPath = await codexLocator.loginShellPath()
     return {
-      models: toOptions(provider === 'gemini' ? GEMINI_MODELS : CODEX_MODELS)
+      models: toOptions(await probeCodexModels({
+        binaryPath: binary.path,
+        env: augmentedPathEnv(binary.path, loginPath)
+      }))
     }
   }
   try {
@@ -44,7 +63,7 @@ async function discoverModels(
     const models = await probeModels({ binaryPath: binary.path })
     return { models: toOptions(models) }
   } catch {
-    return fallbackResult()
+    return fallbackResult(provider)
   }
 }
 
@@ -56,7 +75,7 @@ export function getAgentModels(
   if (cached !== undefined) {
     return cached
   }
-  const pending = discoverModels(provider).catch(() => fallbackResult())
+  const pending = discoverModels(provider).catch(() => fallbackResult(provider))
   modelCache.set(provider, pending)
   return pending
 }

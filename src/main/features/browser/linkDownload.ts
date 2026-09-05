@@ -10,6 +10,11 @@
 import { session } from 'electron'
 import { ValidationError } from '../../db/errors'
 import { MAX_WRITE_BYTES } from '../materials/materialsRepo'
+import {
+  driveConfirmUrl,
+  googleDriveFileId,
+  rewriteDriveUrl
+} from './driveUrl'
 import { BROWSING_PARTITION } from './webviewPolicy'
 
 export const FALLBACK_FILE_NAME = '다운로드'
@@ -72,31 +77,10 @@ export interface LinkDownloadResult {
   dataBase64: string
 }
 
-/**
- * 링크를 브라우징 세션으로 받아 (이름 후보, base64 본문)을 돌려준다.
- * 저장은 호출자가 materialsRepo.writeFile 로 한다.
- */
-export async function fetchLinkForMaterials(
-  url: string
-): Promise<LinkDownloadResult> {
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    throw new ValidationError('내려받을 주소가 올바르지 않습니다')
-  }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    throw new ValidationError('http/https 주소만 내려받을 수 있습니다')
-  }
-
-  const browsing = session.fromPartition(BROWSING_PARTITION)
-  const response = await browsing.fetch(parsed.toString(), {
-    redirect: 'follow'
-  })
+async function responseBody(response: Response): Promise<Buffer> {
   if (!response.ok) {
     throw new ValidationError(`다운로드에 실패했습니다 (HTTP ${response.status})`)
   }
-
   const declared = Number(response.headers.get('content-length') ?? '0')
   if (Number.isFinite(declared) && declared > MAX_WRITE_BYTES) {
     throw new ValidationError('파일이 너무 큽니다 (50MB 제한)')
@@ -105,12 +89,57 @@ export async function fetchLinkForMaterials(
   if (body.byteLength > MAX_WRITE_BYTES) {
     throw new ValidationError('파일이 너무 큽니다 (50MB 제한)')
   }
+  return body
+}
+
+function isHtmlResponse(response: Response, body: Buffer): boolean {
+  if (response.headers.get('content-type')?.includes('text/html') === true) {
+    return true
+  }
+  const prefix = body.subarray(0, 4096).toString('utf8')
+  return /<!doctype\s+html|<html\b|<form\b/iu.test(prefix)
+}
+
+/**
+ * 링크를 브라우징 세션으로 받아 (이름 후보, base64 본문)을 돌려준다.
+ * 저장은 호출자가 materialsRepo.writeFile 로 한다.
+ */
+export async function fetchLinkForMaterials(
+  url: string
+): Promise<LinkDownloadResult> {
+  const driveId = googleDriveFileId(url)
+  const rewritten = rewriteDriveUrl(url)
+  let parsed: URL
+  try {
+    parsed = new URL(rewritten)
+  } catch {
+    throw new ValidationError('내려받을 주소가 올바르지 않습니다')
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new ValidationError('http/https 주소만 내려받을 수 있습니다')
+  }
+
+  const browsing = session.fromPartition(BROWSING_PARTITION)
+  let response = await browsing.fetch(parsed.toString(), {
+    redirect: 'follow'
+  })
+  let body = await responseBody(response)
+  if (isHtmlResponse(response, body)) {
+    const confirmUrl = driveConfirmUrl(body.toString('utf8'))
+    if (confirmUrl !== null) {
+      response = await browsing.fetch(confirmUrl, { redirect: 'follow' })
+      body = await responseBody(response)
+    }
+  }
+
+  const disposition = response.headers.get('content-disposition')
+  const finalUrl = response.url === '' ? parsed.toString() : response.url
+  const fileName = (disposition === null || disposition === '') && driveId !== null
+    ? sanitizeFileName(driveId)
+    : fileNameForDownload(disposition, finalUrl)
 
   return {
-    fileName: fileNameForDownload(
-      response.headers.get('content-disposition'),
-      response.url === '' ? parsed.toString() : response.url
-    ),
+    fileName,
     dataBase64: body.toString('base64')
   }
 }

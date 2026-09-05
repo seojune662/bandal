@@ -4,6 +4,7 @@ import { join } from 'node:path'
 export const GEMINI_SYSTEM_SETTINGS_ENV_VAR =
   'GEMINI_CLI_SYSTEM_SETTINGS_PATH'
 export const GEMINI_MCP_TOKEN_ENV_VAR = 'BANDAL_MCP_TOKEN'
+const GEMINI_API_KEY_AUTH_TYPE = 'gemini-api-key'
 
 export const GEMINI_READ_ONLY_TOOLS = [
   'read_file',
@@ -27,6 +28,7 @@ export interface GeminiMcpServerSettings {
 
 interface GeminiSettingsOptions {
   userDataPath: string
+  useApiKey?: boolean
   mcpHttp?: { url: string; token: string }
   externalServers?: Record<string, GeminiMcpServerSettings>
 }
@@ -49,7 +51,12 @@ export function writeGeminiSettings(options: GeminiSettingsOptions): string {
     }
   }
   const settings = {
-    security: { folderTrust: { enabled: false } },
+    security: {
+      folderTrust: { enabled: false },
+      ...(options.useApiKey === true
+        ? { auth: { selectedType: GEMINI_API_KEY_AUTH_TYPE } }
+        : {})
+    },
     mcpServers,
     tools: { core: [...GEMINI_READ_ONLY_TOOLS] }
   }

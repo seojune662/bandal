@@ -13,6 +13,7 @@ import type { ChatAttachment } from '../../../../shared/types/chat'
 import { AgentUnavailableError, type BinaryLocator } from '../binaryLocator'
 import { attachJsonlStream, createStderrRing } from '../jsonlStream'
 import { augmentedPathEnv, killProcessTree, spawnClaude } from '../platform'
+import { createGeminiApiKeyStore } from '../geminiApiKeyStore'
 import { createGeminiBinaryLocator } from './binaryLocator'
 import type { GeminiMcpServerSettings } from './settingsFile'
 import {
@@ -40,6 +41,7 @@ export interface GeminiAdapterDeps {
   userDataPath: string
   locator?: BinaryLocator
   spawnImpl?: typeof spawnClaude
+  apiKey?: () => string | null
 }
 
 interface GeminiArgsOptions {
@@ -72,13 +74,22 @@ function childEnv(
   binaryPath: string,
   loginPath: string | null,
   settingsPath: string,
-  options: GeminiStartOptions
+  options: GeminiStartOptions,
+  apiKey: string | null
 ): NodeJS.ProcessEnv {
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...augmentedPathEnv(binaryPath, loginPath),
     ...(options.mcpExtraEnv ?? {})
   }
   env[GEMINI_SYSTEM_SETTINGS_ENV_VAR] = settingsPath
+  if (env['TERM'] === undefined || env['TERM'] === '') {
+    env['TERM'] = 'xterm-256color'
+  }
+  if (apiKey === null) {
+    delete env['GEMINI_API_KEY']
+  } else {
+    env['GEMINI_API_KEY'] = apiKey
+  }
   if (options.mcpHttp !== undefined) {
     env[GEMINI_MCP_TOKEN_ENV_VAR] = options.mcpHttp.token
   }
@@ -95,7 +106,13 @@ function attachmentNotice(
 }
 
 export function createGeminiAdapter(deps: GeminiAdapterDeps): AgentAdapter {
-  const locator = deps.locator ?? createGeminiBinaryLocator()
+  const defaultKeyStore = deps.apiKey === undefined
+    ? createGeminiApiKeyStore(deps.userDataPath)
+    : null
+  const apiKey = deps.apiKey ?? (() => defaultKeyStore?.readKey() ?? null)
+  const locator = deps.locator ?? createGeminiBinaryLocator({
+    hasApiKey: () => apiKey() !== null
+  })
   const spawnImpl = deps.spawnImpl ?? spawnClaude
 
   async function startSession(
@@ -206,9 +223,12 @@ export function createGeminiAdapter(deps: GeminiAdapterDeps): AgentAdapter {
       }
 
       let settingsPath: string
+      let storedApiKey: string | null
       try {
+        storedApiKey = apiKey()
         settingsPath = writeGeminiSettings({
           userDataPath: deps.userDataPath,
+          useApiKey: storedApiKey !== null,
           ...(options.mcpHttp === undefined ? {} : { mcpHttp: options.mcpHttp }),
           ...(options.geminiMcpServers === undefined
             ? {}
@@ -236,7 +256,13 @@ export function createGeminiAdapter(deps: GeminiAdapterDeps): AgentAdapter {
       try {
         spawned = spawnImpl(binaryPath, args, {
           cwd: options.cwd,
-          env: childEnv(binaryPath, loginPath, settingsPath, options),
+          env: childEnv(
+            binaryPath,
+            loginPath,
+            settingsPath,
+            options,
+            storedApiKey
+          ),
           stdio: ['ignore', 'pipe', 'pipe']
         })
       } catch (error) {

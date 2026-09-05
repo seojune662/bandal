@@ -743,13 +743,151 @@ function ProviderAccountRow({
   )
 }
 
+interface GeminiApiKeyStatus {
+  configured: boolean
+  hint: string | null
+  storageAvailable: boolean
+}
+
+function GeminiApiKeyRow({ onRefresh }: { onRefresh: () => void }): JSX.Element {
+  const t = useT()
+  const [status, setStatus] = useState<GeminiApiKeyStatus | null>(null)
+  const [key, setKey] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [errorKey, setErrorKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    void invoke('agent:geminiApiKey', {}).then(
+      (result) => {
+        if (active) setStatus(result)
+      },
+      () => {
+        if (active) setErrorKey('settings.ai.apiKey.loadFailed')
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const persist = (nextKey: string | null): void => {
+    if (saving || status?.storageAvailable !== true) return
+    setSaving(true)
+    setErrorKey(null)
+    void invoke('agent:setGeminiApiKey', { key: nextKey }).then(
+      (result) => {
+        setStatus({ ...result, storageAvailable: true })
+        setKey('')
+        setSaving(false)
+        onRefresh()
+      },
+      () => {
+        setSaving(false)
+        setErrorKey('settings.ai.apiKey.saveFailed')
+      }
+    )
+  }
+
+  const storageAvailable = status?.storageAvailable === true
+  const configured = status?.configured === true
+  const configuredLabel =
+    status?.hint === null || status?.hint === undefined
+      ? t('settings.ai.apiKey.configuredNoHint')
+      : t('settings.ai.apiKey.configured', { hint: status.hint })
+
+  return (
+    <form
+      className="settings-ai-api-key"
+      aria-busy={saving}
+      onSubmit={(event) => {
+        event.preventDefault()
+        const trimmed = key.trim()
+        if (trimmed !== '') persist(trimmed)
+      }}
+    >
+      <div className="setting-row">
+        <div className="setting-row__copy">
+          <span className="setting-row__label">{t('settings.ai.apiKey.label')}</span>
+          <span className="setting-row__description">
+            {t('settings.ai.apiKey.description')}{' '}
+            <button
+              type="button"
+              className="settings-ai-api-key__link"
+              onClick={() => {
+                void invoke('shell:openExternal', {
+                  url: 'https://aistudio.google.com/apikey'
+                }).catch(() => setErrorKey('settings.ai.apiKey.openFailed'))
+              }}
+            >
+              {t('settings.ai.apiKey.create')}
+            </button>
+          </span>
+          {status?.storageAvailable === false && (
+            <span className="setting-row__description">
+              {t('settings.ai.apiKey.storageUnavailable')}
+            </span>
+          )}
+        </div>
+        <div className="settings-ai-api-key__actions">
+          {configured ? (
+            <>
+              <span className="status-pill status-pill--ready">
+                <span className="status-pill__dot" />
+                {configuredLabel}
+              </span>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={saving || !storageAvailable}
+                onClick={() => persist(null)}
+              >
+                {t('settings.ai.apiKey.remove')}
+              </button>
+            </>
+          ) : (
+            <>
+              <input
+                type="password"
+                className="language-select settings-ai-api-key__input"
+                value={key}
+                autoComplete="off"
+                aria-label={t('settings.ai.apiKey.inputLabel')}
+                placeholder={t('settings.ai.apiKey.placeholder')}
+                disabled={!storageAvailable || saving}
+                onChange={(event) => setKey(event.target.value)}
+              />
+              <button
+                type="submit"
+                className="secondary-button"
+                disabled={!storageAvailable || saving || key.trim() === ''}
+              >
+                {t('settings.ai.apiKey.save')}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      {errorKey !== null && (
+        <p className="settings-ai-api-key__error" role="alert">
+          {t(errorKey)}
+        </p>
+      )}
+    </form>
+  )
+}
+
 function AgentConnector({
   provider,
   availability,
+  selectedProvider,
+  selectedAvailability,
   onRefresh
 }: {
   provider: AgentProvider
   availability: AgentAvailability
+  selectedProvider: AgentProvider
+  selectedAvailability: AgentAvailability | null
   onRefresh: () => void
 }): JSX.Element | null {
   const t = useT()
@@ -765,6 +903,7 @@ function AgentConnector({
   const installFinishedRef = useRef(false)
   const continueAfterInstallRef = useRef(false)
   const loginRequestedRef = useRef(false)
+  const wasLoggedInRef = useRef(availability.loggedIn)
 
   const needsUpdate = availability.code === 'version-too-old'
   const needsInstall = !availability.installed || needsUpdate
@@ -871,6 +1010,20 @@ function AgentConnector({
   }, [availability.loggedIn, needsInstall, openLogin])
 
   useEffect(() => {
+    const becameConnected = !wasLoggedInRef.current && availability.loggedIn
+    wasLoggedInRef.current = availability.loggedIn
+    const selectedConnected =
+      selectedAvailability?.installed === true && selectedAvailability.loggedIn
+    if (!becameConnected || provider === selectedProvider || selectedConnected) return
+    void invoke('settings:set', { agentProvider: provider }).catch(() => undefined)
+  }, [
+    availability.loggedIn,
+    provider,
+    selectedAvailability,
+    selectedProvider
+  ])
+
+  useEffect(() => {
     if (needsConnection) return
     setStage('idle')
     setError(null)
@@ -950,6 +1103,8 @@ function AgentConnector({
       onReauthenticate={openLogin}
     />
   )
+  const apiKeyRow =
+    provider === 'gemini' ? <GeminiApiKeyRow onRefresh={onRefresh} /> : null
 
   const errorKey =
     error === 'command'
@@ -964,6 +1119,7 @@ function AgentConnector({
     return (
       <>
         {accountRow}
+        {apiKeyRow}
         {stage === 'error' && (
           <div className="settings-ai-install-error" role="alert">
             <span>{loginFailure || t(errorKey)}</span>
@@ -1005,6 +1161,7 @@ function AgentConnector({
   return (
     <>
       {accountRow}
+      {apiKeyRow}
       <div className="settings-ai-installer">
         <div className="settings-ai-installer__copy">
           <strong>
@@ -1112,12 +1269,16 @@ function AgentConnector({
 function ProviderCard({
   provider,
   availability,
+  selectedProvider,
+  selectedAvailability,
   loading,
   error,
   onRetry
 }: {
   provider: AgentProvider
   availability: AgentAvailability | null
+  selectedProvider: AgentProvider
+  selectedAvailability: AgentAvailability | null
   loading: boolean
   error: string | null
   onRetry: () => void
@@ -1194,6 +1355,8 @@ function ProviderCard({
           <AgentConnector
             provider={provider}
             availability={availability}
+            selectedProvider={selectedProvider}
+            selectedAvailability={selectedAvailability}
             onRefresh={onRetry}
           />
         </>
@@ -1283,6 +1446,8 @@ export function AiPanel({
           key={option}
           provider={option}
           availability={availability[option]}
+          selectedProvider={provider}
+          selectedAvailability={availability[provider]}
           loading={loading[option]}
           error={error[option]}
           onRetry={() => onRetry(option)}

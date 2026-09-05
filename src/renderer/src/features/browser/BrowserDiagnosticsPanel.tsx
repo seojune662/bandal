@@ -11,7 +11,8 @@
  * viewer on? Did `window.open` come back null? What actually threw?
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { showToast } from '../../app/toast'
 import { Icon } from '../../app/icons'
 import {
@@ -32,31 +33,53 @@ const KIND_LABELS: Record<DiagnosticEntry['kind'], string> = {
 
 export function BrowserDiagnosticsPanel({
   tabId,
+  anchor,
   onClose
 }: {
   tabId: string
+  anchor: DOMRect
   onClose: () => void
 }): JSX.Element {
   const [, bump] = useState(0)
+  const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const onUpdate = (): void => bump((n) => n + 1)
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target
+      if (target instanceof Node && ref.current?.contains(target) === true) return
+      onClose()
+    }
     window.addEventListener(BROWSER_DIAGNOSTICS_EVENT, onUpdate)
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
     }
+    const onBlur = (): void => onClose()
+    window.addEventListener('pointerdown', onPointerDown, true)
     window.addEventListener('keydown', onKey)
+    window.addEventListener('blur', onBlur)
     return () => {
       window.removeEventListener(BROWSER_DIAGNOSTICS_EVENT, onUpdate)
+      window.removeEventListener('pointerdown', onPointerDown, true)
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('blur', onBlur)
     }
   }, [onClose])
 
   const diagnostics = diagnosticsFor(tabId)
   const entries = diagnostics?.entries ?? []
 
-  return (
-    <div className="browser-diagnostics" role="dialog" aria-label="페이지 진단">
+  return createPortal(
+    <div
+      ref={ref}
+      className="browser-diagnostics"
+      role="dialog"
+      aria-label="페이지 진단"
+      style={{
+        top: anchor.bottom,
+        right: Math.max(0, window.innerWidth - anchor.right)
+      }}
+    >
       <header className="browser-diagnostics__head">
         <h2>이 페이지 진단</h2>
         <button
@@ -107,6 +130,7 @@ export function BrowserDiagnosticsPanel({
           복사
         </button>
       </footer>
-    </div>
+    </div>,
+    document.body
   )
 }

@@ -59,8 +59,11 @@ function summarize(value: unknown): ToolResultSummary {
   }
 }
 
+const INELIGIBLE_ACCOUNT =
+  /IneligibleTierError|not eligible|RESTRICTED_DASHER/iu
+
 function classifyError(message: string): AgentErrorCode {
-  return /auth method|authenticate|authentication|login|logged in|credential/iu.test(
+  return /IneligibleTierError|not eligible|RESTRICTED_DASHER|auth method|authenticate|authentication|login|logged in|credential/iu.test(
     message
   )
     ? 'not-logged-in'
@@ -68,9 +71,23 @@ function classifyError(message: string): AgentErrorCode {
 }
 
 function visibleError(message: string): string {
-  return classifyError(message) === 'not-logged-in'
-    ? 'Gemini에 로그인이 필요해요.'
-    : message
+  if (INELIGIBLE_ACCOUNT.test(message)) {
+    return '이 구글 계정은 무료 Gemini를 쓸 수 없어요(학교·회사 계정). 개인 Gmail 계정으로 로그인하거나 설정 > AI 엔진에서 Gemini API 키를 넣어 주세요.'
+  }
+  if (classifyError(message) === 'not-logged-in') {
+    return 'Gemini에 로그인이 필요해요.'
+  }
+  const visible = message
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) =>
+      line !== '' &&
+      !/^at\s+.*file:\/\//iu.test(line) &&
+      !/Warning:\s*256-color support not detected/iu.test(line) &&
+      !/Ripgrep is not available/iu.test(line)
+    )
+    .slice(0, 2)
+  return visible.join('\n') || 'Gemini가 알 수 없는 오류로 종료했습니다.'
 }
 
 export function mapGeminiProcessFailure(

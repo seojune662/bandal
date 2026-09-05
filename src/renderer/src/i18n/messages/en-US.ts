@@ -967,5 +967,19 @@ export const enUS: Record<MessageKey, string> = {
   'settings.assistant.permissions.open': 'View System Permissions',
 
   // ---- v0.41.1 fixes (W-FIX-UI) ----
+  'settings.ai.engine.autoSwitched': 'Switched to {provider} · {unavailable} is not connected',
+  'settings.ai.apiKey.label': 'API key',
+  'settings.ai.apiKey.description': 'School and work Google accounts cannot use free Gemini sign-in. Connect with an API key instead.',
+  'settings.ai.apiKey.create': 'Create key',
+  'settings.ai.apiKey.configured': 'Using API key (…{hint})',
+  'settings.ai.apiKey.configuredNoHint': 'Using API key',
+  'settings.ai.apiKey.remove': 'Remove',
+  'settings.ai.apiKey.inputLabel': 'Gemini API key',
+  'settings.ai.apiKey.placeholder': 'Enter API key',
+  'settings.ai.apiKey.save': 'Save',
+  'settings.ai.apiKey.storageUnavailable': 'Secure storage is not available on this device.',
+  'settings.ai.apiKey.loadFailed': 'Could not load API key status.',
+  'settings.ai.apiKey.saveFailed': 'Could not save the API key.',
+  'settings.ai.apiKey.openFailed': 'Could not open the API key page.',
 
 }

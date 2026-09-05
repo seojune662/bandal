@@ -74,6 +74,41 @@ describe('Gemini stream-json mapper', () => {
     ])
   })
 
+  test('replaces the Workspace eligibility stack with an account action', () => {
+    const captured = [
+      'Warning: 256-color support not detected',
+      'IneligibleTierError: Your current account is not eligible for Gemini Code Assist for individuals',
+      'reasonCode: RESTRICTED_DASHER_USER',
+      'at authenticate (file:///opt/gemini/auth.js:10:2)',
+      'Ripgrep is not available on PATH'
+    ].join('\n')
+
+    expect(mapGeminiProcessFailure(1, captured)).toEqual([{
+      type: 'error',
+      code: 'not-logged-in',
+      message: '이 구글 계정은 무료 Gemini를 쓸 수 없어요(학교·회사 계정). 개인 Gmail 계정으로 로그인하거나 설정 > AI 엔진에서 Gemini API 키를 넣어 주세요.',
+      fatal: true
+    }])
+  })
+
+  test('shows only two useful stderr lines', () => {
+    const captured = [
+      'Warning: 256-color support not detected',
+      '첫 오류 줄',
+      'at run (file:///opt/gemini/index.js:1:1)',
+      'Ripgrep is not available; falling back',
+      '둘째 오류 줄',
+      '셋째 오류 줄'
+    ].join('\n')
+
+    expect(mapGeminiProcessFailure(1, captured)).toEqual([{
+      type: 'error',
+      code: 'process-crashed',
+      message: '첫 오류 줄\n둘째 오류 줄',
+      fatal: true
+    }])
+  })
+
   test('surfaces exit 53 as a completed max-turns turn', () => {
     expect(mapGeminiProcessFailure(53, '')).toEqual([
       {

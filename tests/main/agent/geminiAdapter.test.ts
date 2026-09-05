@@ -56,7 +56,13 @@ describe('Gemini adapter', () => {
       loginShellPath: async () => '/bin',
       reset: () => undefined
     }
-    const adapter = createGeminiAdapter({ userDataPath, locator, spawnImpl })
+    let storedApiKey: string | null = 'gemini-test-key-1234567890'
+    const adapter = createGeminiAdapter({
+      userDataPath,
+      locator,
+      spawnImpl,
+      apiKey: () => storedApiKey
+    })
     const session = await adapter.startSession({
       courseId: 'course',
       cwd: '/course',
@@ -79,11 +85,19 @@ describe('Gemini adapter', () => {
     const settingsPath = join(userDataPath, 'gemini', 'settings.json')
     expect(first?.[2]?.env).toMatchObject({
       GEMINI_CLI_SYSTEM_SETTINGS_PATH: settingsPath,
-      BANDAL_MCP_TOKEN: 'secret'
+      BANDAL_MCP_TOKEN: 'secret',
+      GEMINI_API_KEY: 'gemini-test-key-1234567890',
+      TERM: expect.any(String)
     })
     expect(statSync(settingsPath).mode & 0o777).toBe(0o600)
     expect(readFileSync(settingsPath, 'utf8')).toContain(
       'Bearer ${BANDAL_MCP_TOKEN}'
+    )
+    expect(readFileSync(settingsPath, 'utf8')).toContain(
+      '"selectedType":"gemini-api-key"'
+    )
+    expect(readFileSync(settingsPath, 'utf8')).not.toContain(
+      'gemini-test-key-1234567890'
     )
 
     ;(children[0]?.stdout as PassThrough).write(
@@ -93,10 +107,13 @@ describe('Gemini adapter', () => {
     children[0]?.emit('close', 0, null)
     await expect(session.sessionId).resolves.toBe('actual-session')
 
+    storedApiKey = null
     session.sendMessage('two')
     expect(spawnImpl.mock.calls[1]?.[1]).toEqual(expect.arrayContaining([
       '--resume', 'actual-session'
     ]))
+    expect(spawnImpl.mock.calls[1]?.[2]?.env?.['GEMINI_API_KEY']).toBeUndefined()
+    expect(readFileSync(settingsPath, 'utf8')).not.toContain('selectedType')
     session.dispose()
   })
 })

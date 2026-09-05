@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { invoke } from '../../lib/ipc'
 import { Icon } from '../../app/icons'
 import { BrowserIcon } from './browserIcons'
@@ -48,8 +49,10 @@ function stateLabel(download: BrowserDownload): string {
 }
 
 export function BrowserDownloadsPanel({
+  anchor,
   onClose
 }: {
+  anchor: DOMRect
   onClose: () => void
 }): JSX.Element {
   const downloads = useDownloads((state) => state.downloads)
@@ -65,11 +68,14 @@ export function BrowserDownloadsPanel({
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
     }
+    const onBlur = (): void => onClose()
     window.addEventListener('pointerdown', onPointerDown, true)
     window.addEventListener('keydown', onKey)
+    window.addEventListener('blur', onBlur)
     return () => {
       window.removeEventListener('pointerdown', onPointerDown, true)
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('blur', onBlur)
     }
   }, [onClose])
 
@@ -79,8 +85,17 @@ export function BrowserDownloadsPanel({
     })
   }
 
-  return (
-    <div ref={ref} className="browser-downloads" role="dialog" aria-label="다운로드">
+  return createPortal(
+    <div
+      ref={ref}
+      className="browser-downloads"
+      role="dialog"
+      aria-label="다운로드"
+      style={{
+        top: anchor.bottom,
+        right: Math.max(0, window.innerWidth - anchor.right)
+      }}
+    >
       {downloads.length === 0 ? (
         <p className="browser-downloads__empty">받은 파일이 없어요.</p>
       ) : (
@@ -122,6 +137,7 @@ export function BrowserDownloadsPanel({
           })}
         </ul>
       )}
-    </div>
+    </div>,
+    document.body
   )
 }

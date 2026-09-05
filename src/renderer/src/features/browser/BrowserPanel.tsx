@@ -445,9 +445,10 @@ function BrowserToolbar({
   )
   const activeDownloads = useDownloads((state) => state.activeCount)
   const anyDownloads = useDownloads((state) => state.downloads.length > 0)
-  const [downloadsOpen, setDownloadsOpen] = useState(false)
-  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+  const [downloadsAnchor, setDownloadsAnchor] = useState<DOMRect | null>(null)
+  const [diagnosticsAnchor, setDiagnosticsAnchor] = useState<DOMRect | null>(null)
   const [progressVisible, setProgressVisible] = useState(false)
+  const toolbarActionsRef = useRef<HTMLDivElement>(null)
 
   useEffect(
     () => scheduleProgressVisibility(nav.loading, setProgressVisible),
@@ -459,7 +460,8 @@ function BrowserToolbar({
   useEffect(() => {
     const onOpen = (event: Event): void => {
       if ((event as CustomEvent<string>).detail === tabId) {
-        setDiagnosticsOpen(true)
+        const anchor = toolbarActionsRef.current?.getBoundingClientRect()
+        if (anchor !== undefined) setDiagnosticsAnchor(anchor)
       }
     }
     window.addEventListener(OPEN_DIAGNOSTICS_EVENT, onOpen)
@@ -525,7 +527,7 @@ function BrowserToolbar({
           isPrivate={isPrivate}
         />
 
-        <div className="browser-toolbar__actions">
+        <div ref={toolbarActionsRef} className="browser-toolbar__actions">
           <Tooltip
             label={isPrivate ? '시크릿 모드 끄기' : '이 탭을 시크릿 모드로 전환'}
             placement="bottom"
@@ -571,22 +573,33 @@ function BrowserToolbar({
               <button
                 type="button"
                 className="browser-download-badge"
-                aria-expanded={downloadsOpen}
+                aria-expanded={downloadsAnchor !== null}
                 aria-label="다운로드"
-                onClick={() => setDownloadsOpen((open) => !open)}
+                onClick={(event) => {
+                  if (downloadsAnchor !== null) {
+                    setDownloadsAnchor(null)
+                    return
+                  }
+                  setDiagnosticsAnchor(null)
+                  setDownloadsAnchor(event.currentTarget.getBoundingClientRect())
+                }}
               >
                 <BrowserIcon name="download" />
                 {activeDownloads > 0 ? activeDownloads : null}
               </button>
             </Tooltip>
           )}
-          {downloadsOpen && (
-            <BrowserDownloadsPanel onClose={() => setDownloadsOpen(false)} />
+          {downloadsAnchor !== null && (
+            <BrowserDownloadsPanel
+              anchor={downloadsAnchor}
+              onClose={() => setDownloadsAnchor(null)}
+            />
           )}
-          {diagnosticsOpen && (
+          {diagnosticsAnchor !== null && (
             <BrowserDiagnosticsPanel
               tabId={tabId}
-              onClose={() => setDiagnosticsOpen(false)}
+              anchor={diagnosticsAnchor}
+              onClose={() => setDiagnosticsAnchor(null)}
             />
           )}
           {!isDefaultZoom(

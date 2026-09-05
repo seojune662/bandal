@@ -110,6 +110,7 @@ import {
   serializeTranscript,
   CARRYOVER_HISTORY_LIMIT
 } from '../features/agent'
+import { createGeminiApiKeyStore } from '../features/agent/geminiApiKeyStore'
 import { createUsageRepo } from '../features/usage/usageRepo'
 import { runtimeSafeStorage } from '../lib/safeStorageGate'
 import {
@@ -945,10 +946,14 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   const codexLocator = createCodexBinaryLocator()
   const codexAdapter = createCodexAdapter({ locator: codexLocator })
-  const geminiLocator = createGeminiBinaryLocator()
+  const geminiApiKeyStore = createGeminiApiKeyStore(deps.userDataPath)
+  const geminiLocator = createGeminiBinaryLocator({
+    hasApiKey: () => geminiApiKeyStore.readKey() !== null
+  })
   const geminiAdapter = createGeminiAdapter({
     locator: geminiLocator,
-    userDataPath: app.getPath('userData')
+    userDataPath: deps.userDataPath,
+    apiKey: () => geminiApiKeyStore.readKey()
   })
   const agentLocators: Record<AgentProvider, typeof binaryLocator> = {
     'claude-code': binaryLocator,
@@ -2041,6 +2046,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('agent:install', (req) => agentInstaller.install(req.provider))
   handle('agent:login', (req) => loginLauncher.login(req.provider))
   handle('agent:models', (req) => getAgentModels(req.provider))
+  handle('agent:geminiApiKey', () => geminiApiKeyStore.get())
+  handle('agent:setGeminiApiKey', (req) => geminiApiKeyStore.set(req.key))
 
   // -- saved logins ----------------------------------------------------------
   // `resolve()` deliberately has no channel. The password is read here, put

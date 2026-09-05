@@ -37,7 +37,8 @@ vi.mock('../../../src/main/settingsStore', () => ({
 
 import {
   attachGuestInput,
-  attachNavigationPolicies
+  attachNavigationPolicies,
+  forwardBrowserSwipe
 } from '../../../src/main/features/browser/hardenWebviews'
 
 type Listener = (...args: any[]) => void
@@ -165,5 +166,46 @@ describe('attachGuestInput', () => {
       shift: true
     })
     expect(nextEvent.preventDefault).toHaveBeenCalledOnce()
+  })
+})
+
+describe('forwardBrowserSwipe', () => {
+  test('maps macOS horizontal swipes for the focused webview guest', () => {
+    const host = {
+      send: vi.fn(),
+      isDestroyed: () => false
+    } as unknown as Electron.WebContents
+    const guest = {
+      id: 702,
+      getType: () => 'webview'
+    } as unknown as Electron.WebContents
+
+    forwardBrowserSwipe(host, guest, 'right', 'darwin')
+    forwardBrowserSwipe(host, guest, 'left', 'darwin')
+
+    expect(host.send).toHaveBeenNthCalledWith(1, 'shortcut:passthrough', {
+      action: 'browser-back',
+      webContentsId: 702
+    })
+    expect(host.send).toHaveBeenNthCalledWith(2, 'shortcut:passthrough', {
+      action: 'browser-forward',
+      webContentsId: 702
+    })
+  })
+
+  test('ignores a focused host page and non-macOS swipes', () => {
+    const host = {
+      send: vi.fn(),
+      isDestroyed: () => false
+    } as unknown as Electron.WebContents
+    const page = {
+      id: 703,
+      getType: () => 'window'
+    } as unknown as Electron.WebContents
+
+    forwardBrowserSwipe(host, page, 'right', 'darwin')
+    forwardBrowserSwipe(host, page, 'left', 'win32')
+
+    expect(host.send).not.toHaveBeenCalled()
   })
 })

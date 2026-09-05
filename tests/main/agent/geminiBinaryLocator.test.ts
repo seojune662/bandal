@@ -39,4 +39,25 @@ describe('Gemini binary locator', () => {
       accountEmail: 'student@example.com'
     })
   })
+
+  test('treats a stored API key as logged in without inventing an account email', async () => {
+    ctx = createTestDb()
+    const binary = join(ctx.dir, 'gemini')
+    writeFileSync(binary, '')
+    const locator = createGeminiBinaryLocator({
+      configuredPath: () => binary,
+      env: { GEMINI_CLI_HOME: ctx.dir },
+      platform: 'darwin',
+      hasApiKey: () => true,
+      exec: async (file) => file === '/bin/zsh'
+        ? { stdout: '/usr/bin', stderr: '' }
+        : { stdout: '0.58.0\n', stderr: '' }
+    })
+
+    await expect(locator.availability()).resolves.toEqual({
+      installed: true,
+      version: '0.58.0',
+      loggedIn: true
+    })
+  })
 })

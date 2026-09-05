@@ -6,7 +6,7 @@
  * ./webviewPolicy.ts; this module only attaches them to electron objects.
  */
 
-import { app, BrowserWindow, dialog, session, shell } from 'electron'
+import { app, BrowserWindow, dialog, session, shell, webContents } from 'electron'
 import type { Event as ElectronEvent, WebContents } from 'electron'
 import type {
   BrowserOpenUrl,
@@ -43,6 +43,25 @@ import {
 } from '../plugins/pluginPanels'
 
 const hardenedBrowsingSessions = new Set<string>()
+
+export function forwardBrowserSwipe(
+  host: WebContents,
+  focused: WebContents | null,
+  direction: string,
+  platform: NodeJS.Platform = process.platform
+): void {
+  if (platform !== 'darwin' || focused?.getType() !== 'webview') return
+  const action = direction === 'right'
+    ? 'browser-back'
+    : direction === 'left'
+      ? 'browser-forward'
+      : null
+  if (action === null || host.isDestroyed()) return
+  host.send('shortcut:passthrough', {
+    action,
+    webContentsId: focused.id
+  } satisfies ShortcutPassthrough)
+}
 
 /**
  * Harden the shared `persist:browsing` session (idempotent):
@@ -593,6 +612,15 @@ export function hardenWindowWebviews(win: BrowserWindow): void {
   hardenBrowsingSession(PRIVATE_BROWSING_PARTITION)
 
   const host = win.webContents
+  if (process.platform === 'darwin') {
+    win.on('swipe', (_event, direction) => {
+      forwardBrowserSwipe(
+        host,
+        webContents.getFocusedWebContents(),
+        direction
+      )
+    })
+  }
   host.on('will-attach-webview', (event, webPreferences, params) => {
     if (
       preparePluginPanelWebview(

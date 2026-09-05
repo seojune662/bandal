@@ -965,6 +965,20 @@ export const koKR = {
   'settings.assistant.permissions.open': '시스템 권한 보기',
 
   // ---- v0.41.1 fixes (W-FIX-UI) ----
+  'settings.ai.engine.autoSwitched': '{provider}로 전환했어요 · {unavailable}가 연결되어 있지 않아요',
+  'settings.ai.apiKey.label': 'API 키',
+  'settings.ai.apiKey.description': '학교·회사 구글 계정은 무료 Gemini 로그인이 안 돼요. API 키로 대신 연결할 수 있어요.',
+  'settings.ai.apiKey.create': '키 만들기',
+  'settings.ai.apiKey.configured': 'API 키 사용 중 (…{hint})',
+  'settings.ai.apiKey.configuredNoHint': 'API 키 사용 중',
+  'settings.ai.apiKey.remove': '제거',
+  'settings.ai.apiKey.inputLabel': 'Gemini API 키',
+  'settings.ai.apiKey.placeholder': 'API 키 입력',
+  'settings.ai.apiKey.save': '저장',
+  'settings.ai.apiKey.storageUnavailable': '이 기기에서는 안전 저장소를 쓸 수 없어요.',
+  'settings.ai.apiKey.loadFailed': 'API 키 상태를 불러오지 못했어요.',
+  'settings.ai.apiKey.saveFailed': 'API 키를 저장하지 못했어요.',
+  'settings.ai.apiKey.openFailed': 'API 키 페이지를 열지 못했어요.',
 
 } as const
 
