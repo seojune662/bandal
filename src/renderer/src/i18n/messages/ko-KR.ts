@@ -861,6 +861,8 @@ export const koKR = {
   'settings.usage.provider.lastUsed': '마지막 사용 {time}',
   'settings.usage.provider.empty': '아직 사용 기록 없음',
 
+  // ---- v0.40 plugin catalog (W-CAT-UI) ----
+
 } as const
 
 export type MessageKey = keyof typeof koKR

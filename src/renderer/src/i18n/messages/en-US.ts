@@ -863,4 +863,6 @@ export const enUS: Record<MessageKey, string> = {
   'settings.usage.provider.lastUsed': 'Last used {time}',
   'settings.usage.provider.empty': 'No usage yet',
 
+  // ---- v0.40 plugin catalog (W-CAT-UI) ----
+
 }

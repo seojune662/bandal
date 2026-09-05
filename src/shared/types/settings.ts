@@ -272,6 +272,11 @@ export interface Settings {
   shortcutPriority: ShortcutPriority
   /** [v0.37] 실험실 플래그. */
   experimental: ExperimentalSettings
+  /**
+   * [v0.40] 플러그인 카탈로그 추가 소스(index.json 의 https URL). 공식 소스
+   * (OFFICIAL_CATALOG_URL)는 항상 포함되며 여기엔 넣지 않는다.
+   */
+  pluginSources: readonly string[]
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -298,7 +303,8 @@ export const DEFAULT_SETTINGS: Settings = {
   notifications: DEFAULT_NOTIFICATIONS,
   browser: DEFAULT_BROWSER_SETTINGS,
   shortcutPriority: 'bandal',
-  experimental: DEFAULT_EXPERIMENTAL
+  experimental: DEFAULT_EXPERIMENTAL,
+  pluginSources: []
 }
 
 export type SettingsPatch = Partial<Settings>

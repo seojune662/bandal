@@ -266,3 +266,22 @@ describe('sanitizeSettings — v0.37 notifications / browser / shortcutPriority 
     expect('retiredFlag' in result.experimental).toBe(false)
   })
 })
+
+describe('sanitizeSettings — v0.40 pluginSources', () => {
+  test('keeps distinct https index URLs, drops the official one and junk', () => {
+    const result = sanitizeSettings(
+      {
+        pluginSources: [
+          'https://example.com/a/index.json',
+          'https://example.com/a/index.json',
+          'http://insecure.example.com/index.json',
+          'https://bandal.io/plugins/index.json',
+          'not a url',
+          42
+        ]
+      },
+      defaults
+    )
+    expect(result.pluginSources).toEqual(['https://example.com/a/index.json'])
+  })
+})

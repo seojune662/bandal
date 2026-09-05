@@ -12,6 +12,10 @@ import { sanitizeUniversitySettings } from '../shared/universities/sanitize'
 import { isZoomLevel } from '../shared/browserZoom'
 import { isAgentProvider } from '../shared/types/agent-events'
 import {
+  CATALOG_SOURCES_MAX,
+  OFFICIAL_CATALOG_URL
+} from '../shared/types/pluginCatalog'
+import {
   DEFAULT_BROWSER_SETTINGS,
   DEFAULT_EXPERIMENTAL,
   DEFAULT_NOTIFICATIONS,
@@ -231,6 +235,27 @@ export function sanitizeExperimental(raw: unknown): ExperimentalSettings {
   return result
 }
 
+/** Distinct absolute https index URLs, official one excluded, capped. */
+export function sanitizePluginSources(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const sources: string[] = []
+  for (const value of raw) {
+    if (typeof value !== 'string' || value.length > 2048) continue
+    let href: string
+    try {
+      const url = new URL(value)
+      if (url.protocol !== 'https:') continue
+      href = url.href
+    } catch {
+      continue
+    }
+    if (href === OFFICIAL_CATALOG_URL || sources.includes(href)) continue
+    sources.push(href)
+    if (sources.length >= CATALOG_SOURCES_MAX) break
+  }
+  return sources
+}
+
 /**
  * Validates unknown JSON into Settings, falling back to `defaults` per key.
  * `defaults` carries the environment-dependent values (dataRoot).
@@ -291,6 +316,7 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
     shortcutPriority: isShortcutPriority(record.shortcutPriority)
       ? record.shortcutPriority
       : defaults.shortcutPriority,
-    experimental: sanitizeExperimental(record.experimental)
+    experimental: sanitizeExperimental(record.experimental),
+    pluginSources: sanitizePluginSources(record.pluginSources)
   }
 }

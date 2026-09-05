@@ -8,6 +8,7 @@
  * mutate existing shapes.
  */
 
+import type { CatalogInstallResult, PluginCatalog } from '../types/pluginCatalog'
 import type { UsageSummary, UsageWindowDays } from '../types/usage'
 import type {
   AddCourseFromFolderInput,
@@ -1417,6 +1418,18 @@ export interface IpcContract {
     res: UsageSummary
   }
 
+  // -- plugin catalog (v0.40) -----------------------------------------------
+  /** Official + user sources merged. `refresh: false` serves the disk cache. */
+  'plugins:catalog': {
+    req: { refresh: boolean }
+    res: PluginCatalog
+  }
+  /** Download → sha256 verify → existing install path (folder / pack json). */
+  'plugins:installFromCatalog': {
+    req: { sourceUrl: string; id: string }
+    res: CatalogInstallResult
+  }
+
   // -- layout (dockview persistence per course) -----------------------------
   'layout:get': {
     req: { courseId: string }
@@ -1797,6 +1810,8 @@ export const IPC_CHANNELS = [
   'app:openLogs',
   'app:clearCache',
   'usage:summary',
+  'plugins:catalog',
+  'plugins:installFromCatalog',
   'layout:get',
   'layout:save',
   'auth:getState',
