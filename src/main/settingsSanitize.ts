@@ -10,6 +10,7 @@ import { isSearchEngineId } from '../shared/search'
 import { parseChord, SHORTCUT_SPECS } from '../shared/keymap'
 import { sanitizeUniversitySettings } from '../shared/universities/sanitize'
 import { isZoomLevel } from '../shared/browserZoom'
+import { isAgentProvider } from '../shared/types/agent-events'
 import {
   DEFAULT_BROWSER_SETTINGS,
   DEFAULT_EXPERIMENTAL,
@@ -254,10 +255,9 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
     browserSearchEngine: isSearchEngineId(record.browserSearchEngine)
       ? record.browserSearchEngine
       : defaults.browserSearchEngine,
-    agentProvider:
-      record.agentProvider === 'claude-code' || record.agentProvider === 'codex'
-        ? record.agentProvider
-        : defaults.agentProvider,
+    agentProvider: isAgentProvider(record.agentProvider)
+      ? record.agentProvider
+      : defaults.agentProvider,
     assistantMode: isAssistantMode(record.assistantMode)
       ? record.assistantMode
       : 'in-app',

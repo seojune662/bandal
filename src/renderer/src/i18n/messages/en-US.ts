@@ -825,4 +825,8 @@ export const enUS: Record<MessageKey, string> = {
   'settings.experimental.orbCharms.description': 'Add decorations to the AI orb. Turning this off hides them from Appearance.',
   'settings.plugins.extensionRuntime.disabled': 'The extension plugin runtime is turned off.',
   'settings.plugins.extensionRuntime.openExperimental': 'Turn on in Experimental',
+
+  // ---- v0.39 provider cards (W-PROVIDER-UI) ----
+  // ---- v0.39 usage panel (W-USAGE-UI) ----
+
 }

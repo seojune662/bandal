@@ -8,6 +8,7 @@
  * mutate existing shapes.
  */
 
+import type { UsageSummary, UsageWindowDays } from '../types/usage'
 import type {
   AddCourseFromFolderInput,
   Course,
@@ -1409,6 +1410,13 @@ export interface IpcContract {
     res: { ok: true }
   }
 
+  // -- usage ledger (v0.39) -------------------------------------------------
+  /** Aggregated AI usage for settings > 사용 통계. */
+  'usage:summary': {
+    req: { windowDays: UsageWindowDays }
+    res: UsageSummary
+  }
+
   // -- layout (dockview persistence per course) -----------------------------
   'layout:get': {
     req: { courseId: string }
@@ -1788,6 +1796,7 @@ export const IPC_CHANNELS = [
   'notifications:test',
   'app:openLogs',
   'app:clearCache',
+  'usage:summary',
   'layout:get',
   'layout:save',
   'auth:getState',

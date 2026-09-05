@@ -823,6 +823,10 @@ export const koKR = {
   'settings.experimental.orbCharms.description': 'AI 오브에 장식을 달 수 있어요. 끄면 외관 설정에서 숨겨집니다.',
   'settings.plugins.extensionRuntime.disabled': '확장 플러그인 런타임이 꺼져 있어요.',
   'settings.plugins.extensionRuntime.openExperimental': '실험실에서 켜기',
+
+  // ---- v0.39 provider cards (W-PROVIDER-UI) ----
+  // ---- v0.39 usage panel (W-USAGE-UI) ----
+
 } as const
 
 export type MessageKey = keyof typeof koKR

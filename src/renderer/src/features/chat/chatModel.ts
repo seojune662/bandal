@@ -12,6 +12,7 @@
  *    it locally via `appendLocalUserMessage`.
  */
 
+import { isAgentProvider } from '../../../../shared/types/agent-events'
 import type {
   AgentErrorCode,
   AgentEvent,
@@ -724,7 +725,7 @@ function persistedBlockToView(
 }
 
 function isProvider(value: unknown): value is ProviderSwitchNotice['from'] {
-  return value === 'claude-code' || value === 'codex'
+  return isAgentProvider(value)
 }
 
 /** Unknown notice kinds are dropped rather than rendered as garbage. */

@@ -25,6 +25,7 @@ export const SETTINGS_CATEGORIES = [
   { id: 'appearance', group: 'interface' },
   { id: 'notifications', group: 'interface' },
   { id: 'shortcuts', group: 'interface' },
+  { id: 'usage', group: 'interface' },
   { id: 'advanced', group: 'advanced' },
   { id: 'experimental', group: 'advanced' },
   { id: 'courses', group: 'courses' },

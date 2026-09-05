@@ -8,7 +8,12 @@
 
 import type { ChatAttachment } from './chat'
 
-export type AgentProvider = 'claude-code' | 'codex'
+export const AGENT_PROVIDERS = ['claude-code', 'codex', 'gemini'] as const
+export type AgentProvider = (typeof AGENT_PROVIDERS)[number]
+
+export function isAgentProvider(value: unknown): value is AgentProvider {
+  return AGENT_PROVIDERS.some((provider) => provider === value)
+}
 
 export type AgentErrorCode =
   | 'not-installed'
@@ -173,6 +178,11 @@ export interface AgentAvailability {
   version?: string
   loggedIn: boolean
   subscriptionType?: string
+  /**
+   * [v0.39] Signed-in account, when the CLI exposes one (gemini:
+   * ~/.gemini/google_accounts.json). Absent for CLIs that don't say.
+   */
+  accountEmail?: string
   /**
    * Why the CLI is unavailable, when it is. `version-too-old` comes with
    * `installed: true` + the found `version`, so the setup UI can say
