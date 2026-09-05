@@ -7,7 +7,10 @@ import type {
 import { Icon, type IconName } from '../../app/icons'
 import { startMaterialDrag as startNativeMaterialDrag } from '../../lib/ipc'
 import { openMaterialInWorkspace } from '../workspace/openMaterial'
-import { isFileDrag } from './importDrop'
+import {
+  classifyDrop,
+  isFileDrag
+} from './importDrop'
 import { beginMaterialFileDrag } from './materialFileDrag'
 import {
   MATERIAL_MOVE_MIME,
@@ -19,7 +22,7 @@ import {
   setCurrentMaterialDrag,
   type MaterialMoveDragPayload
 } from './materialMoveDrag'
-import { canAcceptUrlDrop, urlFromDrop } from './urlDrop'
+import { canAcceptUrlDrop } from './urlDrop'
 
 function iconForKind(kind: MaterialKind | 'dir', expanded = false): IconName {
   switch (kind) {
@@ -218,7 +221,8 @@ interface TreeNodeProps {
   onUrlDropTargetChange: (dirRelPath: string | null) => void
   onMove: (payload: MaterialMoveDragPayload, toDirRelPath: string) => void
   onImportFiles: (files: File[], dirRelPath: string) => void
-  onDownloadUrl: (url: string, dirRelPath: string) => void
+  onDownloadUrl: (url: string, dirRelPath: string, fileName?: string) => void
+  onUnsupportedDrop: (types: readonly string[]) => void
 }
 
 function TreeNode({
@@ -241,7 +245,8 @@ function TreeNode({
   onUrlDropTargetChange,
   onMove,
   onImportFiles,
-  onDownloadUrl
+  onDownloadUrl,
+  onUnsupportedDrop
 }: TreeNodeProps): JSX.Element {
   const isDirectory = node.kind === 'dir'
   const expanded = isDirectory && expandedPaths[node.relPath] === true
@@ -378,20 +383,21 @@ function TreeNode({
               onDropTargetChange(node.relPath)
               return
             }
+            if (canAcceptUrlDrop(types) && downloadingDirRelPath === null) {
+              event.preventDefault()
+              event.stopPropagation()
+              event.dataTransfer.dropEffect = 'copy'
+              onDropTargetChange(null)
+              onUrlDropTargetChange(node.relPath)
+              return
+            }
             if (isFileDrag(event.dataTransfer)) {
               event.preventDefault()
               event.stopPropagation()
               event.dataTransfer.dropEffect = 'copy'
               onUrlDropTargetChange(null)
               onDropTargetChange(node.relPath)
-              return
             }
-            if (!canAcceptUrlDrop(types) || downloadingDirRelPath !== null) return
-            event.preventDefault()
-            event.stopPropagation()
-            event.dataTransfer.dropEffect = 'copy'
-            onDropTargetChange(null)
-            onUrlDropTargetChange(node.relPath)
           }}
           onDragOver={(event) => {
             if (!isDirectory) return
@@ -408,20 +414,21 @@ function TreeNode({
               onDropTargetChange(node.relPath)
               return
             }
+            if (canAcceptUrlDrop(types) && downloadingDirRelPath === null) {
+              event.preventDefault()
+              event.stopPropagation()
+              event.dataTransfer.dropEffect = 'copy'
+              onDropTargetChange(null)
+              onUrlDropTargetChange(node.relPath)
+              return
+            }
             if (isFileDrag(event.dataTransfer)) {
               event.preventDefault()
               event.stopPropagation()
               event.dataTransfer.dropEffect = 'copy'
               onUrlDropTargetChange(null)
               onDropTargetChange(node.relPath)
-              return
             }
-            if (!canAcceptUrlDrop(types) || downloadingDirRelPath !== null) return
-            event.preventDefault()
-            event.stopPropagation()
-            event.dataTransfer.dropEffect = 'copy'
-            onDropTargetChange(null)
-            onUrlDropTargetChange(node.relPath)
           }}
           onDragLeave={(event) => {
             if (!isDirectory) return
@@ -444,11 +451,17 @@ function TreeNode({
           onDrop={(event) => {
             if (!isDirectory) return
             const types = [...event.dataTransfer.types]
-            if (canAcceptMaterialMove(types)) {
-              event.preventDefault()
-              event.stopPropagation()
-              onDropTargetChange(null)
-              onUrlDropTargetChange(null)
+            const files = [...event.dataTransfer.files]
+            const drop = classifyDrop(
+              types,
+              (type) => event.dataTransfer.getData(type),
+              files
+            )
+            event.preventDefault()
+            event.stopPropagation()
+            onDropTargetChange(null)
+            onUrlDropTargetChange(null)
+            if (drop.kind === 'move') {
               const payload = parseMaterialMoveDrag(
                 event.dataTransfer.getData(MATERIAL_MOVE_MIME)
               )
@@ -461,22 +474,15 @@ function TreeNode({
               onMove(payload, node.relPath)
               return
             }
-            if (isFileDrag(event.dataTransfer)) {
-              event.preventDefault()
-              event.stopPropagation()
-              onDropTargetChange(null)
-              onUrlDropTargetChange(null)
-              const files = [...event.dataTransfer.files]
-              if (files.length > 0) onImportFiles(files, node.relPath)
+            if (drop.kind === 'url') {
+              onDownloadUrl(drop.url, node.relPath, drop.fileName)
               return
             }
-            if (!canAcceptUrlDrop(types) || downloadingDirRelPath !== null) return
-            event.preventDefault()
-            event.stopPropagation()
-            onDropTargetChange(null)
-            onUrlDropTargetChange(null)
-            const url = urlFromDrop(event.dataTransfer)
-            if (url !== null) onDownloadUrl(url, node.relPath)
+            if (drop.kind === 'files') {
+              onImportFiles(files, node.relPath)
+              return
+            }
+            onUnsupportedDrop(types)
           }}
           onKeyDown={(event) => {
             if (event.key === 'ArrowDown') focusAdjacentRow(event, 1)
@@ -519,6 +525,7 @@ function TreeNode({
               onMove={onMove}
               onImportFiles={onImportFiles}
               onDownloadUrl={onDownloadUrl}
+              onUnsupportedDrop={onUnsupportedDrop}
             />
           ))}
         </ul>
@@ -546,7 +553,8 @@ interface MaterialTreeProps {
   onUrlDropTargetChange: (dirRelPath: string | null) => void
   onMove: (payload: MaterialMoveDragPayload, toDirRelPath: string) => void
   onImportFiles: (files: File[], dirRelPath: string) => void
-  onDownloadUrl: (url: string, dirRelPath: string) => void
+  onDownloadUrl: (url: string, dirRelPath: string, fileName?: string) => void
+  onUnsupportedDrop: (types: readonly string[]) => void
 }
 
 export function MaterialTree({
@@ -568,7 +576,8 @@ export function MaterialTree({
   onUrlDropTargetChange,
   onMove,
   onImportFiles,
-  onDownloadUrl
+  onDownloadUrl,
+  onUnsupportedDrop
 }: MaterialTreeProps): JSX.Element {
   return (
     <ul className="material-tree" role="tree" aria-label="자료 파일 트리">
@@ -595,6 +604,7 @@ export function MaterialTree({
           onMove={onMove}
           onImportFiles={onImportFiles}
           onDownloadUrl={onDownloadUrl}
+          onUnsupportedDrop={onUnsupportedDrop}
         />
       ))}
     </ul>

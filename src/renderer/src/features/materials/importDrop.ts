@@ -10,7 +10,37 @@ import { showToast } from '../../app/toast'
 import { invoke, pathForFile } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
+import { urlFromDataTransfer } from '../browser/urlDrop'
 import { getMaterialFileDrag } from './materialFileDrag'
+import { MATERIAL_MOVE_MIME } from './materialMoveDrag'
+
+type DropClassification =
+  | { kind: 'move' }
+  | { kind: 'url'; url: string; fileName?: string }
+  | { kind: 'files' }
+  | { kind: 'unsupported' }
+
+export function classifyDrop(
+  types: readonly string[],
+  getData: (type: string) => string,
+  files: readonly File[]
+): DropClassification {
+  const typeSet = new Set(types)
+  if (typeSet.has(MATERIAL_MOVE_MIME)) return { kind: 'move' }
+
+  const urlDrop = urlFromDataTransfer(types, getData)
+  if (urlDrop !== null) return { kind: 'url', ...urlDrop }
+  if (files.length > 0) return { kind: 'files' }
+  return { kind: 'unsupported' }
+}
+
+export function reportUnsupportedDrop(types: readonly string[]): void {
+  showToast(
+    `이 항목은 아직 받을 수 없어요 · 형식: ${types.join(', ')}`,
+    'danger'
+  )
+  console.warn('[materials] unsupported drop', types)
+}
 
 /** True when the drag payload contains OS files (vs. in-app HTML5 dnd). */
 export function isFileDrag(dataTransfer: DataTransfer | null): boolean {

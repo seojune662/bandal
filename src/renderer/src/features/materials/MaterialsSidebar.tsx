@@ -36,7 +36,13 @@ import {
 } from './materialPaths'
 import { isEditableTarget } from '../ink/domTarget'
 import { isEditablePasteTarget } from './clipboardPaste'
-import { importDroppedFiles, isFileDrag, isSelfMaterialDrop } from './importDrop'
+import {
+  classifyDrop,
+  importDroppedFiles,
+  isFileDrag,
+  isSelfMaterialDrop,
+  reportUnsupportedDrop
+} from './importDrop'
 import {
   clearMaterialFileDrag,
   getMaterialFileDrag,
@@ -50,7 +56,7 @@ import {
   parseMaterialMoveDrag,
   type MaterialMoveDragPayload
 } from './materialMoveDrag'
-import { canAcceptUrlDrop, urlFromDrop } from './urlDrop'
+import { canAcceptUrlDrop } from './urlDrop'
 import { useMaterialsPaste } from './useMaterialsPaste'
 import { WhiteboardsGroup } from './WhiteboardsGroup'
 import './materials.css'
@@ -412,7 +418,8 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
 
   const downloadFromUrl = async (
     url: string,
-    dirRelPath: string
+    dirRelPath: string,
+    fileName?: string
   ): Promise<void> => {
     if (course === null || course.missing || downloadPendingRef.current) return
     const courseId = course.id
@@ -426,7 +433,9 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         dirRelPath,
         url
       })
-      showToast(`자료로 저장했어요: ${materialBaseName(downloaded.relPath)}`)
+      showToast(
+        `자료로 저장했어요: ${fileName ?? materialBaseName(downloaded.relPath)}`
+      )
       if (activeCourseIdRef.current !== courseId) return
       setQuery('')
       clearSearch()
@@ -688,6 +697,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           course === null ||
           course.missing ||
           canAcceptMaterialMove(types) ||
+          canAcceptUrlDrop(types) ||
           !isFileDrag(event.dataTransfer)
         ) {
           return
@@ -701,6 +711,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           course === null ||
           course.missing ||
           canAcceptMaterialMove(types) ||
+          canAcceptUrlDrop(types) ||
           !isFileDrag(event.dataTransfer)
         ) {
           return
@@ -711,7 +722,13 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       }}
       onDragLeaveCapture={(event) => {
         const types = [...event.dataTransfer.types]
-        if (canAcceptMaterialMove(types) || !isFileDrag(event.dataTransfer)) return
+        if (
+          canAcceptMaterialMove(types) ||
+          canAcceptUrlDrop(types) ||
+          !isFileDrag(event.dataTransfer)
+        ) {
+          return
+        }
         const nextTarget = event.relatedTarget
         if (
           nextTarget instanceof Node &&
@@ -765,31 +782,37 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       onDrop={(event) => {
         if (course === null || course.missing) return
         const types = [...event.dataTransfer.types]
-        if (canAcceptMaterialMove(types)) return
-        if (isFileDrag(event.dataTransfer)) {
-          event.preventDefault()
+        const files = [...event.dataTransfer.files]
+        const drop = classifyDrop(
+          types,
+          (type) => event.dataTransfer.getData(type),
+          files
+        )
+        if (drop.kind === 'move') return
+        event.preventDefault()
+        setDropActive(false)
+        setDropTargetDirRelPath(null)
+        setUrlDropTargetDirRelPath(null)
+        if (drop.kind === 'url') {
+          void downloadFromUrl(drop.url, '', drop.fileName)
+          return
+        }
+        if (drop.kind === 'files') {
           // 이 사이드바에서 시작한 자료 드래그가 (폴더 행이 아닌) 사이드바로
           // 되돌아온 경우 = 드래그 취소 의도. 루트로 이동시키지 않고,
           // 드롭 하이라이트·행 활성까지 전부 원상 복구한다.
-          if (isSelfMaterialDrop(course.id, [...event.dataTransfer.files])) {
+          if (isSelfMaterialDrop(course.id, files)) {
             clearMaterialFileDrag()
-            setDropActive(false)
-            setDropTargetDirRelPath(null)
-            setUrlDropTargetDirRelPath(null)
             setSelectedRelPath(null)
             if (document.activeElement instanceof HTMLElement) {
               document.activeElement.blur()
             }
             return
           }
-          importFiles([...event.dataTransfer.files])
+          importFiles(files)
           return
         }
-        if (!canAcceptUrlDrop(types) || downloadingDirRelPath !== null) return
-        event.preventDefault()
-        setUrlDropTargetDirRelPath(null)
-        const url = urlFromDrop(event.dataTransfer)
-        if (url !== null) void downloadFromUrl(url, '')
+        reportUnsupportedDrop(types)
       }}
     >
       <div className="rail-heading materials-heading">
@@ -943,7 +966,13 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         }}
         onDrop={(event) => {
           if (event.target !== event.currentTarget) return
-          if (!canAcceptMaterialMove([...event.dataTransfer.types])) return
+          const types = [...event.dataTransfer.types]
+          const drop = classifyDrop(
+            types,
+            (type) => event.dataTransfer.getData(type),
+            [...event.dataTransfer.files]
+          )
+          if (drop.kind !== 'move') return
           event.preventDefault()
           event.stopPropagation()
           setDropTargetDirRelPath(null)
@@ -1056,8 +1085,12 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
                   onImportFiles={(files, dirRelPath) => {
                     importFiles(files, dirRelPath)
                   }}
-                  onDownloadUrl={(url, dirRelPath) => {
-                    void downloadFromUrl(url, dirRelPath)
+                  onDownloadUrl={(url, dirRelPath, fileName) => {
+                    void downloadFromUrl(url, dirRelPath, fileName)
+                  }}
+                  onUnsupportedDrop={(types) => {
+                    setDropActive(false)
+                    reportUnsupportedDrop(types)
                   }}
                 />
               )}

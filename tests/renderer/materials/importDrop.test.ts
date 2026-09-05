@@ -25,6 +25,7 @@ vi.mock('../../../src/renderer/src/app/toast', () => ({
 }))
 
 import {
+  classifyDrop,
   isSelfMaterialDrop,
   relPathInsideCourse
 } from '../../../src/renderer/src/features/materials/importDrop'
@@ -32,6 +33,8 @@ import {
   beginMaterialFileDrag,
   clearMaterialFileDrag
 } from '../../../src/renderer/src/features/materials/materialFileDrag'
+import { MATERIAL_MOVE_MIME } from '../../../src/renderer/src/features/materials/materialMoveDrag'
+import { canAcceptUrlDrop } from '../../../src/renderer/src/features/materials/urlDrop'
 
 // node 환경 — materialFileDrag 의 window 리스너를 위해 EventTarget 스텁.
 const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
@@ -79,6 +82,52 @@ describe('relPathInsideCourse', () => {
     expect(relPathInsideCourse(droppedNfd, folderNfc)).toBe(
       '대학글쓰기.pdf'.normalize('NFC')
     )
+  })
+})
+
+describe('classifyDrop', () => {
+  test('classifies an in-app material move', () => {
+    expect(classifyDrop([MATERIAL_MOVE_MIME], () => '', [])).toEqual({
+      kind: 'move'
+    })
+  })
+
+  test('prefers a DownloadURL over the accompanying Files type', () => {
+    const values: Record<string, string> = {
+      DownloadURL: 'application/pdf:강의.pdf:https://example.com/lecture.pdf'
+    }
+
+    expect(
+      classifyDrop(
+        ['Files', 'DownloadURL'],
+        (type) => values[type] ?? '',
+        []
+      )
+    ).toEqual({
+      kind: 'url',
+      url: 'https://example.com/lecture.pdf',
+      fileName: '강의.pdf'
+    })
+  })
+
+  test('classifies actual files when no URL is available', () => {
+    expect(
+      classifyDrop(['Files'], () => '', [new File([], '강의.pdf')])
+    ).toEqual({ kind: 'files' })
+  })
+
+  test('rejects an empty Files promise without a URL', () => {
+    expect(classifyDrop(['Files'], () => '', [])).toEqual({
+      kind: 'unsupported'
+    })
+  })
+})
+
+describe('canAcceptUrlDrop', () => {
+  test('accepts URL types alongside Files, but not Files alone or moves', () => {
+    expect(canAcceptUrlDrop(['Files', 'DownloadURL'])).toBe(true)
+    expect(canAcceptUrlDrop(['Files'])).toBe(false)
+    expect(canAcceptUrlDrop([MATERIAL_MOVE_MIME, 'text/plain'])).toBe(false)
   })
 })
 
