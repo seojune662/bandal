@@ -22,7 +22,13 @@ vi.mock('../../../src/renderer/src/i18n', () => ({
         '다른 앱을 쓰는 중에도 화면 위에 떠 있습니다.',
       'settings.ai.orb.keepAlive': '창을 닫아도 오브 유지',
       'settings.ai.orb.keepAliveDescription':
-        '메인 창을 닫아도 오브와 메뉴 막대 아이콘이 남습니다.'
+        '메인 창을 닫아도 오브와 메뉴 막대 아이콘이 남습니다.',
+      'settings.ai.gemini.name': 'Gemini',
+      'settings.ai.account.systemDefault': '시스템 기본',
+      'settings.ai.account.deviceLogin': '이 기기의 Gemini 로그인을 사용',
+      'settings.ai.account.thisDevice': '이 기기',
+      'settings.ai.account.signedIn': '로그인됨',
+      'settings.ai.account.reauthenticate': '재인증'
     }
     return messages[key] ?? key
   }
@@ -39,9 +45,9 @@ function renderPanel(settings: Settings): string {
       providerSaving={false}
       providerFeedback={null}
       providerFeedbackError={false}
-      availability={{ 'claude-code': null, codex: null }}
-      loading={{ 'claude-code': false, codex: false }}
-      error={{ 'claude-code': null, codex: null }}
+      availability={{ 'claude-code': null, codex: null, gemini: null }}
+      loading={{ 'claude-code': false, codex: false, gemini: false }}
+      error={{ 'claude-code': null, codex: null, gemini: null }}
       onProviderSelect={vi.fn()}
       onRetry={vi.fn()}
     />
@@ -61,8 +67,42 @@ describe('AI settings orb card', () => {
 
     expect(html).toContain('style="width:20px;height:20px" data-provider="claude-code"')
     expect(html).toContain('style="width:20px;height:20px" data-provider="codex"')
+    expect(html).toContain('style="width:20px;height:20px" data-provider="gemini"')
     expect(html).toContain('style="width:32px;height:32px" data-provider="claude-code"')
     expect(html).toContain('style="width:32px;height:32px" data-provider="codex"')
+    expect(html).toContain('style="width:32px;height:32px" data-provider="gemini"')
+  })
+
+  test('shows the signed-in Gemini account and reauthentication action', () => {
+    const html = renderToStaticMarkup(
+      <AiPanel
+        settings={{ ...DEFAULT_SETTINGS, agentProvider: 'gemini' }}
+        provider="gemini"
+        providerReady
+        providerSaving={false}
+        providerFeedback={null}
+        providerFeedbackError={false}
+        availability={{
+          'claude-code': null,
+          codex: null,
+          gemini: {
+            installed: true,
+            loggedIn: true,
+            accountEmail: 'student@example.com'
+          }
+        }}
+        loading={{ 'claude-code': false, codex: false, gemini: false }}
+        error={{ 'claude-code': null, codex: null, gemini: null }}
+        onProviderSelect={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    )
+
+    expect(html).toContain('시스템 기본')
+    expect(html).toContain('student@example.com')
+    expect(html).toContain('이 기기')
+    expect(html).toContain('로그인됨')
+    expect(html).toContain('>재인증</button>')
   })
 
   test('disables keep-alive while the orb is inside the app', () => {

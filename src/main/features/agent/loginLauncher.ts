@@ -20,8 +20,7 @@ import type { BinaryLocator } from './binaryLocator'
 import type { Platform } from './platform'
 
 export interface LoginLauncherDeps {
-  claudeLocator: BinaryLocator
-  codexLocator: BinaryLocator
+  locators: Record<AgentProvider, BinaryLocator>
   /** Injectable for tests — lets one OS exercise every branch. */
   platform?: Platform
   /** Injectable for tests — defaults to child_process.spawn. */
@@ -60,8 +59,7 @@ export function createLoginLauncher(deps: LoginLauncherDeps): LoginLauncher {
   async function login(
     provider: AgentProvider
   ): Promise<{ ok: boolean; message: string }> {
-    const locator =
-      provider === 'codex' ? deps.codexLocator : deps.claudeLocator
+    const locator = deps.locators[provider]
     let binaryPath: string
     try {
       binaryPath = (await locator.locate()).path

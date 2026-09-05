@@ -107,6 +107,14 @@ describe('agent tools MCP server', () => {
       '등록된 외부 도구 서버: docs — 문서 검색'
     )
     expect(JSON.stringify(handle.codexOverrides)).not.toContain('user-secret')
+    expect(handle.geminiMcpServers).toEqual({
+      docs: {
+        httpUrl: 'https://mcp.example/docs',
+        headers: { Authorization: 'Bearer user-secret' },
+        trust: true,
+        timeout: 60_000
+      }
+    })
 
     const unauthorized = await fetch(config.mcpServers.bandal.url, {
       method: 'POST',

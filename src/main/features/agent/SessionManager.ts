@@ -12,6 +12,9 @@ import type {
   AgentAdapter,
   AgentEvent,
   AgentSession,
+  AgentStartSessionOptions,
+  AgentProvider,
+  Usage,
   PermissionResponse
 } from '../../../shared/types/agent-events'
 import type {
@@ -24,6 +27,7 @@ import { AgentUnavailableError } from './binaryLocator'
 import { deriveConversationTitle } from './chatRepo'
 import type { BlockInput, ChatRepo } from './chatRepo'
 import type { ClaudeCodeSession } from './claude/ClaudeCodeAdapter'
+import type { GeminiMcpServerSettings } from './gemini/settingsFile'
 import {
   buildCarryoverPrompt,
   CARRYOVER_HISTORY_LIMIT,
@@ -66,6 +70,7 @@ export interface SessionManagerDeps {
     extraAllowedTools: readonly string[]
     extraEnv: Record<string, string>
     codexOverrides: string[]
+    geminiMcpServers?: Record<string, GeminiMcpServerSettings>
     mcpHint: string
     url: string
     token: string
@@ -81,6 +86,18 @@ export interface SessionManagerDeps {
    */
   reportToolsUnavailable?: (courseId: string, sessionId: string) => void
   onTurnComplete?: (info: { courseId: string; sessionId: string }) => void
+  onUsage?: (info: {
+    courseId: string
+    sessionId: string
+    provider: AgentProvider
+    model: string | null
+    usage?: Usage
+    durationMs?: number
+  }) => void
+}
+
+interface InternalStartOptions extends AgentStartSessionOptions {
+  geminiMcpServers?: Record<string, GeminiMcpServerSettings>
 }
 
 export interface SessionManager {
@@ -274,7 +291,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       return entry.sessionPromise
     }
     const course = deps.getCourse(entry.courseId)
-    const startOptions: Parameters<AgentAdapter['startSession']>[0] = {
+    const startOptions: InternalStartOptions = {
       courseId: entry.courseId,
       cwd: course.folder
     }
@@ -295,6 +312,9 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         startOptions.mcpHttp = { url: tools.url, token: tools.token }
         startOptions.mcpExtraEnv = tools.extraEnv
         startOptions.mcpExtraArgs = tools.codexOverrides
+        if (tools.geminiMcpServers !== undefined) {
+          startOptions.geminiMcpServers = tools.geminiMcpServers
+        }
         mcpHint = tools.mcpHint
       } catch (error) {
         console.error('[agent] in-app tools unavailable', error)
@@ -456,6 +476,20 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
           })
         } catch (error) {
           console.error('[agent] turn-complete hook failed', error)
+        }
+        try {
+          deps.onUsage?.({
+            courseId: entry.courseId,
+            sessionId: entry.sessionId,
+            provider: deps.adapter.provider,
+            model: entry.info.model,
+            ...(event.usage === undefined ? {} : { usage: event.usage }),
+            ...(event.durationMs === undefined
+              ? {}
+              : { durationMs: event.durationMs })
+          })
+        } catch (error) {
+          console.error('[agent] usage hook failed', error)
         }
         return true
       case 'error':

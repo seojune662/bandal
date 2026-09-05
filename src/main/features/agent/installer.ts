@@ -7,6 +7,7 @@ import type { AgentInstallProgress } from '../../../shared/ipc/events'
 import type { AgentProvider } from '../../../shared/types/agent-events'
 import { createBinaryLocator, type BinaryLocator } from './binaryLocator'
 import { createCodexBinaryLocator } from './codex/binaryLocator'
+import { createGeminiBinaryLocator } from './gemini/binaryLocator'
 import {
   augmentedPathEnv,
   killProcessTree,
@@ -22,6 +23,7 @@ export const CLAUDE_INSTALL_COMMAND =
 export const CLAUDE_INSTALL_COMMAND_WINDOWS =
   'irm https://claude.ai/install.ps1 | iex'
 export const CODEX_INSTALL_COMMAND = 'npm install -g @openai/codex'
+export const GEMINI_INSTALL_COMMAND = 'npm install -g @google/gemini-cli'
 export const AGENT_INSTALL_TIMEOUT_MS = 5 * 60 * 1000
 
 function loginShellPathSync(): string | null {
@@ -138,15 +140,17 @@ export function createAgentInstaller(deps?: {
    * copies here would leave the served singletons caching "not installed"
    * after a successful install. Defaults exist only for tests.
    */
-  claudeLocator?: BinaryLocator
-  codexLocator?: BinaryLocator
+  locators?: Record<AgentProvider, BinaryLocator>
 }): {
   commandFor(provider: AgentProvider): { command: string; supported: boolean }
   install(provider: AgentProvider): Promise<{ ok: boolean; message: string }>
 } {
   const broadcast = deps?.broadcast ?? (() => undefined)
-  const claudeLocator = deps?.claudeLocator ?? createBinaryLocator()
-  const codexLocator = deps?.codexLocator ?? createCodexBinaryLocator()
+  const locators: Record<AgentProvider, BinaryLocator> = deps?.locators ?? {
+    'claude-code': createBinaryLocator(),
+    codex: createCodexBinaryLocator(),
+    gemini: createGeminiBinaryLocator()
+  }
 
   function commandFor(
     provider: AgentProvider
@@ -157,8 +161,11 @@ export function createAgentInstaller(deps?: {
       }
       return { command: CLAUDE_INSTALL_COMMAND, supported: true }
     }
+    const command = provider === 'codex'
+      ? CODEX_INSTALL_COMMAND
+      : GEMINI_INSTALL_COMMAND
     return {
-      command: CODEX_INSTALL_COMMAND,
+      command,
       supported: resolveNpmSync() !== null
     }
   }
@@ -168,10 +175,7 @@ export function createAgentInstaller(deps?: {
   ): Promise<{ ok: boolean; message: string }> {
     const announced = commandFor(provider)
     if (!announced.supported) {
-      const message =
-        provider === 'codex'
-          ? 'npm을 찾지 못해 Codex를 자동 설치할 수 없습니다.'
-          : '이 운영체제에서는 Claude Code 자동 설치 명령을 지원하지 않습니다.'
+      const message = `npm을 찾지 못해 ${provider === 'codex' ? 'Codex' : 'Gemini'}를 자동 설치할 수 없습니다.`
       broadcast({ provider, line: message, done: true, ok: false })
       return { ok: false, message }
     }
@@ -197,12 +201,16 @@ export function createAgentInstaller(deps?: {
     } else {
       const npmPath = resolveNpmSync()
       if (npmPath === null) {
-        const message = 'npm을 찾지 못해 Codex를 자동 설치할 수 없습니다.'
+        const message = `npm을 찾지 못해 ${provider === 'codex' ? 'Codex' : 'Gemini'}를 자동 설치할 수 없습니다.`
         broadcast({ provider, line: message, done: true, ok: false })
         return { ok: false, message }
       }
       file = npmPath
-      args = ['install', '-g', '@openai/codex']
+      args = [
+        'install',
+        '-g',
+        provider === 'codex' ? '@openai/codex' : '@google/gemini-cli'
+      ]
     }
 
     let child: ChildProcess
@@ -283,11 +291,9 @@ export function createAgentInstaller(deps?: {
     } else if (processResult.code !== 0) {
       message = `설치 명령이 실패했습니다 (코드 ${processResult.code ?? '없음'}, 신호 ${processResult.signal ?? '없음'}).`
     } else {
-      ok = await verifyInstalled(
-        provider === 'claude-code' ? claudeLocator : codexLocator
-      )
+      ok = await verifyInstalled(locators[provider])
       message = ok
-        ? `${provider === 'claude-code' ? 'Claude Code' : 'Codex'} 설치를 확인했습니다.`
+        ? `${provider === 'claude-code' ? 'Claude Code' : provider === 'codex' ? 'Codex' : 'Gemini'} 설치를 확인했습니다.`
         : '설치 명령은 끝났지만 새 CLI를 PATH에서 찾지 못했습니다.'
     }
 

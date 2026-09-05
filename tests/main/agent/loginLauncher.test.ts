@@ -11,6 +11,7 @@ import {
   loginShellCommand
 } from '../../../src/main/features/agent/loginLauncher'
 import type { BinaryLocator } from '../../../src/main/features/agent/binaryLocator'
+import type { AgentProvider } from '../../../src/shared/types/agent-events'
 
 function fakeLocator(path: string | null): BinaryLocator {
   return {
@@ -23,6 +24,18 @@ function fakeLocator(path: string | null): BinaryLocator {
     availability: async () => ({ installed: path !== null, loggedIn: false }),
     loginShellPath: async () => null,
     reset: () => undefined
+  }
+}
+
+function locatorSet(
+  claudePath: string | null,
+  codexPath: string | null,
+  geminiPath: string | null = null
+): Record<AgentProvider, BinaryLocator> {
+  return {
+    'claude-code': fakeLocator(claudePath),
+    codex: fakeLocator(codexPath),
+    gemini: fakeLocator(geminiPath)
   }
 }
 
@@ -60,6 +73,9 @@ describe('loginShellCommand', () => {
     expect(loginShellCommand('codex', '/usr/local/bin/codex')).toBe(
       '"/usr/local/bin/codex" login'
     )
+    expect(loginShellCommand('gemini', '/usr/local/bin/gemini')).toBe(
+      '"/usr/local/bin/gemini"'
+    )
   })
 })
 
@@ -67,8 +83,7 @@ describe('login launcher', () => {
   test('macOS: opens Terminal via osascript with the quoted claude path', async () => {
     const calls: SpawnCall[] = []
     const launcher = createLoginLauncher({
-      claudeLocator: fakeLocator('/opt/homebrew/bin/claude'),
-      codexLocator: fakeLocator(null),
+      locators: locatorSet('/opt/homebrew/bin/claude', null),
       platform: 'darwin',
       spawnFn: fakeSpawnFn(calls, 'spawn')
     })
@@ -87,8 +102,7 @@ describe('login launcher', () => {
   test('macOS: codex opens with the login subcommand', async () => {
     const calls: SpawnCall[] = []
     const launcher = createLoginLauncher({
-      claudeLocator: fakeLocator(null),
-      codexLocator: fakeLocator('/usr/local/bin/codex'),
+      locators: locatorSet(null, '/usr/local/bin/codex'),
       platform: 'darwin',
       spawnFn: fakeSpawnFn(calls, 'spawn')
     })
@@ -99,11 +113,25 @@ describe('login launcher', () => {
     expect(calls[0]?.args.join(' ')).toContain('codex\\" login')
   })
 
+  test('macOS: gemini opens the interactive CLI directly', async () => {
+    const calls: SpawnCall[] = []
+    const launcher = createLoginLauncher({
+      locators: locatorSet(null, null, '/usr/local/bin/gemini'),
+      platform: 'darwin',
+      spawnFn: fakeSpawnFn(calls, 'spawn')
+    })
+
+    const result = await launcher.login('gemini')
+
+    expect(result.ok).toBe(true)
+    expect(calls[0]?.args.join(' ')).toContain('/usr/local/bin/gemini')
+    expect(calls[0]?.args.join(' ')).not.toContain('gemini\\" login')
+  })
+
   test('windows: uses start cmd /k with the quoted path', async () => {
     const calls: SpawnCall[] = []
     const launcher = createLoginLauncher({
-      claudeLocator: fakeLocator('C:\\Users\\s\\.local\\bin\\claude.exe'),
-      codexLocator: fakeLocator(null),
+      locators: locatorSet('C:\\Users\\s\\.local\\bin\\claude.exe', null),
       platform: 'win32',
       spawnFn: fakeSpawnFn(calls, 'spawn')
     })
@@ -120,8 +148,7 @@ describe('login launcher', () => {
   test('linux: falls back to a copy-paste message when no terminal opens', async () => {
     const calls: SpawnCall[] = []
     const launcher = createLoginLauncher({
-      claudeLocator: fakeLocator('/usr/local/bin/claude'),
-      codexLocator: fakeLocator(null),
+      locators: locatorSet('/usr/local/bin/claude', null),
       platform: 'linux',
       spawnFn: fakeSpawnFn(calls, 'error')
     })
@@ -136,8 +163,7 @@ describe('login launcher', () => {
   test('fails with an install hint when the CLI cannot be located', async () => {
     const calls: SpawnCall[] = []
     const launcher = createLoginLauncher({
-      claudeLocator: fakeLocator(null),
-      codexLocator: fakeLocator(null),
+      locators: locatorSet(null, null),
       platform: 'darwin',
       spawnFn: fakeSpawnFn(calls, 'spawn')
     })

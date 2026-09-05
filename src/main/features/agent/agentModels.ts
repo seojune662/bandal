@@ -7,6 +7,12 @@ const locator = createBinaryLocator()
 const CODEX_MODELS: readonly CliModel[] = [
   { value: 'default', displayName: 'Codex 기본 모델' }
 ]
+const GEMINI_MODELS: readonly CliModel[] = [
+  { value: 'auto', displayName: 'Gemini 자동 선택' },
+  { value: 'pro', displayName: 'Gemini Pro' },
+  { value: 'flash', displayName: 'Gemini Flash' },
+  { value: 'flash-lite', displayName: 'Gemini Flash Lite' }
+]
 const modelCache = new Map<
   AgentProvider,
   Promise<{ models: AgentModelOption[] }>
@@ -16,7 +22,7 @@ function toOptions(models: readonly CliModel[]): AgentModelOption[] {
   return models.map((model) => ({
     id: model.value,
     displayName: model.displayName,
-    isDefault: model.value === 'default'
+    isDefault: model.value === 'default' || model.value === 'auto'
   }))
 }
 
@@ -28,9 +34,10 @@ async function discoverModels(
   provider: AgentProvider
 ): Promise<{ models: AgentModelOption[] }> {
   if (provider !== 'claude-code') {
-    // Codex chooses the account's current default model when -m is omitted.
-    // The exec JSONL protocol does not expose a model catalog.
-    return { models: toOptions(CODEX_MODELS) }
+    // Neither headless protocol exposes a model catalog.
+    return {
+      models: toOptions(provider === 'gemini' ? GEMINI_MODELS : CODEX_MODELS)
+    }
   }
   try {
     const binary = await locator.locate()

@@ -19,6 +19,7 @@ export interface SettingsSearchResult {
 
 export const SETTINGS_SEARCH_ROWS = [
   { category: 'ai', ko: 'AI 엔진', en: 'AI engine' },
+  { category: 'ai', ko: 'Gemini', en: 'Gemini' },
   { category: 'ai', ko: '모델', en: 'Model' },
   { category: 'ai', ko: '데스크톱 오브', en: 'Desktop orb' },
   { category: 'account', ko: '로그인', en: 'Sign in' },
@@ -53,6 +54,10 @@ export const SETTINGS_SEARCH_ROWS = [
   { category: 'notifications', ko: '포커스 중 억제', en: 'Suppress while focused' },
   { category: 'shortcuts', ko: '단축키', en: 'Keyboard shortcuts' },
   { category: 'shortcuts', ko: '웹뷰 우선권', en: 'Webview priority' },
+  { category: 'usage', ko: '사용 통계', en: 'Stats & usage' },
+  { category: 'usage', ko: '토큰', en: 'Tokens' },
+  { category: 'usage', ko: 'AI 작업 시간', en: 'AI work time' },
+  { category: 'usage', ko: '제공자별 사용량', en: 'Usage by provider' },
   { category: 'advanced', ko: '데이터 폴더', en: 'Data folder' },
   { category: 'advanced', ko: '로그 폴더', en: 'Log folder' },
   { category: 'advanced', ko: '캐시 비우기', en: 'Clear cache' },

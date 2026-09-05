@@ -45,7 +45,8 @@ describe('migrations', () => {
       { version: 22, name: 'desktop-surface-and-mcp' },
       { version: 23, name: 'all-day-due-date' },
       { version: 24, name: 'material-links' },
-      { version: 25, name: 'pdf-view-state' }
+      { version: 25, name: 'pdf-view-state' },
+      { version: 26, name: 'agent-usage-ledger' }
     ])
   })
 
@@ -215,7 +216,7 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(25)
+    expect(count.n).toBe(26)
   })
 
   test('adds desktop conversation surface, grants, and audit (migration 022)', () => {
@@ -320,5 +321,21 @@ describe('migrations', () => {
     expect(
       ctx.db.prepare('SELECT label FROM material_links WHERE id = ?').get('link-1')
     ).toEqual({ label: '' })
+  })
+
+  test('creates the agent usage ledger without session foreign keys', () => {
+    const objects = ctx.db.prepare(
+      `SELECT type, name FROM sqlite_master
+        WHERE name IN ('agent_usage', 'idx_agent_usage_turn_at',
+                       'idx_agent_usage_provider_turn_at')`
+    ).all() as { type: string; name: string }[]
+    expect(objects).toEqual(expect.arrayContaining([
+      { type: 'table', name: 'agent_usage' },
+      { type: 'index', name: 'idx_agent_usage_turn_at' },
+      { type: 'index', name: 'idx_agent_usage_provider_turn_at' }
+    ]))
+    expect(
+      ctx.db.prepare('PRAGMA foreign_key_list(agent_usage)').all()
+    ).toEqual([])
   })
 })

@@ -28,4 +28,15 @@ describe('ProviderMark', () => {
     expect(html).toContain('M22.282 9.821')
     expect(html).not.toContain('>X<')
   })
+
+  test('renders the Gemini four-point star with currentColor', () => {
+    const html = renderToStaticMarkup(
+      <ProviderMark provider="gemini" size={32} />
+    )
+
+    expect(html).toContain('data-provider="gemini"')
+    expect(html).toContain('provider-mark--gemini')
+    expect(html).toContain('fill="currentColor"')
+    expect(html).toContain('M12 2C12.8 7.6')
+  })
 })

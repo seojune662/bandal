@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS board_tasks (
 CREATE TABLE IF NOT EXISTS agent_sessions (
   id             TEXT PRIMARY KEY,
   course_id      TEXT NOT NULL REFERENCES courses(id),
-  provider       TEXT NOT NULL,        -- 'claude-code' | 'codex'
+  provider       TEXT NOT NULL,        -- 'claude-code' | 'codex' | 'gemini'
   cli_session_id TEXT,
   model          TEXT,
   status         TEXT NOT NULL,        -- 'idle' | 'running' | 'error' | 'closed'

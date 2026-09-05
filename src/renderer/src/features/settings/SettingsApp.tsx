@@ -12,9 +12,11 @@ import { useLocale, useT } from "../../i18n";
 import { invoke, onPush } from "../../lib/ipc";
 import { useCoursesStore } from "../../stores/coursesStore";
 import { useUiStore } from "../../stores/uiStore";
-import type {
-  AgentAvailability,
-  AgentProvider,
+import {
+  AGENT_PROVIDERS,
+  isAgentProvider,
+  type AgentAvailability,
+  type AgentProvider,
 } from "../../../../shared/types/agent-events";
 import type { Course } from "../../../../shared/types/course";
 import {
@@ -53,6 +55,7 @@ import {
 import { PluginsCategoryPanel } from "./PluginsCategoryPanel";
 import { NotificationsPanel } from "./notifications/NotificationsPanel";
 import { ShortcutsPanel } from "./shortcuts/ShortcutsPanel";
+import { UsagePanel } from "./usage/UsagePanel";
 import { Icon } from "./SettingsIcon";
 import { searchSettings } from "./settingsSearchIndex";
 import { applyTheme } from "./settingsTheme";
@@ -83,8 +86,6 @@ interface SettingsAppProps {
   initialCategory?: string | null;
 }
 
-const AGENT_PROVIDERS: readonly AgentProvider[] = ["claude-code", "codex"];
-
 type ProviderState<T> = Record<AgentProvider, T>;
 
 export function SettingsApp({
@@ -107,13 +108,25 @@ export function SettingsApp({
   const [themeErrorKey, setThemeErrorKey] = useState<string | null>(null);
   const [availability, setAvailability] = useState<
     ProviderState<AgentAvailability | null>
-  >({ "claude-code": null, codex: null });
+  >(() =>
+    Object.fromEntries(
+      AGENT_PROVIDERS.map((provider) => [provider, null]),
+    ) as ProviderState<AgentAvailability | null>,
+  );
   const [availabilityLoading, setAvailabilityLoading] = useState<
     ProviderState<boolean>
-  >({ "claude-code": true, codex: true });
+  >(() =>
+    Object.fromEntries(
+      AGENT_PROVIDERS.map((provider) => [provider, true]),
+    ) as ProviderState<boolean>,
+  );
   const [availabilityError, setAvailabilityError] = useState<
     ProviderState<string | null>
-  >({ "claude-code": null, codex: null });
+  >(() =>
+    Object.fromEntries(
+      AGENT_PROVIDERS.map((provider) => [provider, null]),
+    ) as ProviderState<string | null>,
+  );
   const [agentProviderSaving, setAgentProviderSaving] = useState(false);
   const [agentProviderFeedbackKey, setAgentProviderFeedbackKey] = useState<
     string | null
@@ -241,7 +254,7 @@ export function SettingsApp({
     const unsubscribe = onPush("agent:install-progress", (progress) => {
       if (
         progress.done &&
-        (progress.provider === "claude-code" || progress.provider === "codex")
+        isAgentProvider(progress.provider)
       ) {
         loadAvailability(progress.provider);
       }
@@ -489,6 +502,7 @@ export function SettingsApp({
     ),
     browser: <BrowserSettingsPanel settings={settings} />,
     notifications: <NotificationsPanel settings={settings} />,
+    usage: <UsagePanel />,
     shortcuts: <ShortcutsPanel settings={settings} />,
     advanced: <AdvancedPanel settings={settings} />,
     experimental: <ExperimentalPanel settings={settings} />,

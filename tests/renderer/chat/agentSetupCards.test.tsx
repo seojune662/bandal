@@ -11,14 +11,16 @@ describe('agent setup copy', () => {
   test('uses Korean provider labels', () => {
     expect(providerLabel('claude-code')).toBe('Claude Code')
     expect(providerLabel('codex')).toBe('Codex (GPT)')
+    expect(providerLabel('gemini')).toBe('Gemini')
   })
 
-  test('offers both providers in the selector', () => {
+  test('offers all registered providers in the selector', () => {
     const html = renderToStaticMarkup(
       <ProviderSelector provider="claude-code" onChange={() => undefined} />
     )
     expect(html).toContain('Claude Code')
     expect(html).toContain('Codex (GPT)')
+    expect(html).toContain('Gemini')
   })
 
   test('shows the staged Claude account and plan guide', () => {

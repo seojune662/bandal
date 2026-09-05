@@ -150,6 +150,13 @@ describe('SessionManager', () => {
       extraAllowedTools: ['mcp__bandal__desktop_screenshot'],
       extraEnv: { BANDAL_MCP_DOCS_TOKEN: 'secret' },
       codexOverrides: ['-c', 'mcp_servers.docs.url="https://mcp.test"'],
+      geminiMcpServers: {
+        docs: {
+          httpUrl: 'https://mcp.test',
+          trust: true as const,
+          timeout: 60_000
+        }
+      },
       mcpHint: '등록된 외부 도구 서버: docs — 문서 검색',
       url: 'http://127.0.0.1:1234/mcp',
       token: 'bandal-token',
@@ -178,6 +185,13 @@ describe('SessionManager', () => {
       extraAllowedTools: ['mcp__bandal__desktop_screenshot'],
       mcpExtraEnv: { BANDAL_MCP_DOCS_TOKEN: 'secret' },
       mcpExtraArgs: ['-c', 'mcp_servers.docs.url="https://mcp.test"'],
+      geminiMcpServers: {
+        docs: {
+          httpUrl: 'https://mcp.test',
+          trust: true,
+          timeout: 60_000
+        }
+      },
       systemPromptAppend: expect.stringContaining(
         '등록된 외부 도구 서버: docs — 문서 검색'
       )
@@ -410,6 +424,41 @@ describe('SessionManager', () => {
       toolName: 'Read',
       ok: true,
       result: { summary: 'Read 10 lines' }
+    })
+  })
+
+  test('turn-complete forwards provider, model and usage to the ledger hook', async () => {
+    manager.disposeAll()
+    const onUsage = vi.fn()
+    manager = createSessionManager({
+      adapter: fake.adapter,
+      repo,
+      getCourse: () => ({ folder: ctx.dir, name: 'Linear Algebra' }),
+      emit: () => undefined,
+      onUsage
+    })
+    await manager.send(courseId, conversationId, 'measure this turn')
+    const session = fake.sessions[0]!
+    session.emit({
+      type: 'session-started',
+      sessionId: 'cli-usage',
+      model: 'claude-opus',
+      provider: 'claude-code'
+    })
+    session.emit({
+      type: 'turn-complete',
+      stopReason: 'success',
+      usage: { inputTokens: 12, outputTokens: 5, cacheReadTokens: 2 },
+      durationMs: 250
+    })
+
+    expect(onUsage).toHaveBeenCalledWith({
+      courseId,
+      sessionId: conversationId,
+      provider: 'claude-code',
+      model: 'claude-opus',
+      usage: { inputTokens: 12, outputTokens: 5, cacheReadTokens: 2 },
+      durationMs: 250
     })
   })
 

@@ -6,7 +6,8 @@ import { invoke } from '../../lib/ipc'
 
 const PROVIDER_BADGES: Record<AgentProvider, string> = {
   'claude-code': 'Claude',
-  codex: 'Codex'
+  codex: 'Codex',
+  gemini: 'Gemini'
 }
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error'

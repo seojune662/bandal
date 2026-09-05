@@ -892,6 +892,32 @@ export const migrations: Migration[] = [
          )`
       )
     }
+  },
+  {
+    // [v0.39] Provider-independent turn usage survives conversation deletion.
+    version: 26,
+    name: 'agent-usage-ledger',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS agent_usage (
+           id                 TEXT PRIMARY KEY,
+           session_id         TEXT NOT NULL,
+           course_id          TEXT NOT NULL,
+           provider           TEXT NOT NULL,
+           model              TEXT,
+           turn_at            TEXT NOT NULL,
+           input_tokens       INTEGER NOT NULL DEFAULT 0,
+           output_tokens      INTEGER NOT NULL DEFAULT 0,
+           cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+           cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+           duration_ms        INTEGER
+         );
+         CREATE INDEX IF NOT EXISTS idx_agent_usage_turn_at
+           ON agent_usage (turn_at);
+         CREATE INDEX IF NOT EXISTS idx_agent_usage_provider_turn_at
+           ON agent_usage (provider, turn_at);`
+      )
+    }
   }
 ]
 

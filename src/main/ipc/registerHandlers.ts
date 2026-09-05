@@ -50,6 +50,8 @@ import {
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
 import type { PushChannel, PushPayload } from '../../shared/ipc/events'
 import type { AgentAppState } from '../../shared/types/agentTools'
+import type { AgentProvider, Usage } from '../../shared/types/agent-events'
+import { isUsageWindowDays } from '../../shared/types/usage'
 import type { ScreenPermissionState } from '../../shared/types/overlay'
 import type { Settings, SettingsPatch } from '../../shared/types/settings'
 import {
@@ -92,14 +94,18 @@ import {
   createSessionManager,
   createCodexAdapter,
   createCodexBinaryLocator,
+  createGeminiAdapter,
+  createGeminiBinaryLocator,
   createAgentInstaller,
   createLoginLauncher,
   killAllCodexProcessesSync,
+  killAllGeminiProcessesSync,
   getAgentModels,
   killAllClaudeProcessesSync,
   serializeTranscript,
   CARRYOVER_HISTORY_LIMIT
 } from '../features/agent'
+import { createUsageRepo } from '../features/usage/usageRepo'
 import {
   attachDownloadHandler,
   BROWSING_PARTITION,
@@ -298,6 +304,7 @@ function screenPermissionState(access: ScreenAccess): ScreenPermissionState {
 
 export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const db = getDatabase()
+  const usageRepo = createUsageRepo(db)
   const setSettings = deps.setSettings ?? persistSettings
   const notifier = createSystemNotifier(getSettings)
   const desktopGrants = createDesktopGrantsRepo(db)
@@ -395,10 +402,11 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   function releaseCourseRuntime(courseId: string): void {
     materialsWatcher.unwatch(courseId)
     // Sessions are conversation-keyed now: close every conversation of the
-    // course on both managers (only ones with messages can hold a warm CLI).
+    // course on all managers (only ones with messages can hold a warm CLI).
     for (const conversation of chatRepo.listConversations(courseId)) {
       sessionManager.close(courseId, conversation.id)
       codexSessionManager.close(courseId, conversation.id)
+      geminiSessionManager.close(courseId, conversation.id)
       eventBatcher.flush(conversation.id)
     }
   }
@@ -927,6 +935,16 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   const codexLocator = createCodexBinaryLocator()
   const codexAdapter = createCodexAdapter({ locator: codexLocator })
+  const geminiLocator = createGeminiBinaryLocator()
+  const geminiAdapter = createGeminiAdapter({
+    locator: geminiLocator,
+    userDataPath: app.getPath('userData')
+  })
+  const agentLocators: Record<AgentProvider, typeof binaryLocator> = {
+    'claude-code': binaryLocator,
+    codex: codexLocator,
+    gemini: geminiLocator
+  }
 
   // -- assistant acting on the app -------------------------------------------
   // The agent reads third-party lecture PDFs, so these tools widen the blast
@@ -1463,7 +1481,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       deps: {
         courseId,
         // Keyed by conversation, not course: two conversations in one course
-        // are separate turn streams, and Claude and Codex share this factory.
+        // are separate turn streams, and all providers share this factory.
         // The number comes from `chatRepo.nextTurnSeq` via SessionManager —
         // a module-level counter here would never advance, which silently
         // froze `AGENT_TURN_LIMITS` (a spent budget stayed spent until the app
@@ -1558,6 +1576,21 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     }
   }
 
+  const recordUsage = (info: {
+    courseId: string
+    sessionId: string
+    provider: AgentProvider
+    model: string | null
+    usage?: Usage
+    durationMs?: number
+  }): void => {
+    try {
+      usageRepo.record(info)
+    } catch (error) {
+      console.error('[usage] failed to record agent turn', error)
+    }
+  }
+
   const sessionManager = createSessionManager({
     adapter: claudeAdapter,
     repo: chatRepo,
@@ -1571,21 +1604,24 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     reportToolsUnavailable: (courseId, sessionId) => {
       broadcast('agentTools:unavailable', { courseId, sessionId })
     },
-    onTurnComplete: notifyTurnComplete
+    onTurnComplete: notifyTurnComplete,
+    onUsage: recordUsage
   })
   app.on('before-quit', () => {
     browserRuns.disposeAll()
     materialsWatcher.dispose()
     sessionManager.disposeAll()
     codexSessionManager.disposeAll()
+    geminiSessionManager.disposeAll()
     eventBatcher.dispose()
   })
   process.on('exit', () => {
     killAllClaudeProcessesSync()
     killAllCodexProcessesSync()
+    killAllGeminiProcessesSync()
   })
 
-  // [M10] Two providers now. The session manager is per-adapter, so the
+  // The session manager is per-adapter, so the
   // active one is resolved per call from settings rather than captured once —
   // switching providers in settings must take effect on the next message, not
   // on the next app launch.
@@ -1602,10 +1638,31 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     reportToolsUnavailable: (courseId, sessionId) => {
       broadcast('agentTools:unavailable', { courseId, sessionId })
     },
-    onTurnComplete: notifyTurnComplete
+    onTurnComplete: notifyTurnComplete,
+    onUsage: recordUsage
+  })
+  const geminiSessionManager = createSessionManager({
+    adapter: geminiAdapter,
+    repo: chatRepo,
+    getCourse: (courseId) => ({
+      folder: coursesRepo.getFolder(courseId),
+      name: coursesRepo.getById(courseId).name
+    }),
+    emit: (courseId, sessionId, event) =>
+      eventBatcher.push(courseId, sessionId, event),
+    startToolServer,
+    reportToolsUnavailable: (courseId, sessionId) => {
+      broadcast('agentTools:unavailable', { courseId, sessionId })
+    },
+    onTurnComplete: notifyTurnComplete,
+    onUsage: recordUsage
   })
   const managerFor = (provider: string): typeof sessionManager =>
-    provider === 'codex' ? codexSessionManager : sessionManager
+    provider === 'codex'
+      ? codexSessionManager
+      : provider === 'gemini'
+        ? geminiSessionManager
+        : sessionManager
   /**
    * Provider is a per-CONVERSATION property: a persisted row routes by its own
    * provider, a warm-but-unpersisted entry stays with whichever manager holds
@@ -1621,6 +1678,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     }
     if (codexSessionManager.has(sessionId)) {
       return codexSessionManager
+    }
+    if (geminiSessionManager.has(sessionId)) {
+      return geminiSessionManager
     }
     return managerFor(getSettings().agentProvider)
   }
@@ -1738,9 +1798,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return result
   })
   handle('chat:deleteConversation', (req) => {
-    // Close any warm CLI on either manager before the row disappears.
+    // Close any warm CLI on every manager before the row disappears.
     sessionManager.close(req.courseId, req.sessionId)
     codexSessionManager.close(req.courseId, req.sessionId)
+    geminiSessionManager.close(req.courseId, req.sessionId)
     chatRepo.softDeleteSession(req.sessionId)
     return OK
   })
@@ -1822,6 +1883,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     // new one must hydrate its entry from the updated row on the next send.
     sessionManager.close(req.courseId, req.sessionId)
     codexSessionManager.close(req.courseId, req.sessionId)
+    geminiSessionManager.close(req.courseId, req.sessionId)
     eventBatcher.flush(req.sessionId)
     if (row === null || row.provider === req.provider) {
       return { sessionInfo: row, carried: null }
@@ -1841,9 +1903,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
 
   // -- agent (M4-H) ---------------------------------------------------------
   handle('agent:availability', async (req) =>
-    req.provider === 'codex'
-      ? codexLocator.availability()
-      : binaryLocator.availability()
+    agentLocators[req.provider].availability()
   )
 
   // Installers mutate the machine outside the app sandbox, so `agent:install`
@@ -1853,12 +1913,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // verification resets the caches the renderer actually queries.
   const agentInstaller = createAgentInstaller({
     broadcast: (progress) => broadcast('agent:install-progress', progress),
-    claudeLocator: binaryLocator,
-    codexLocator
+    locators: agentLocators
   })
   const loginLauncher = createLoginLauncher({
-    claudeLocator: binaryLocator,
-    codexLocator
+    locators: agentLocators
   })
   // -- AI study tools --------------------------------------------------------
   // The recipes run through the course's normal agent session and write their
@@ -2491,6 +2549,12 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       session.defaultSession.clearCache()
     ])
     return OK
+  })
+  handle('usage:summary', (req) => {
+    if (!isUsageWindowDays(req.windowDays)) {
+      throw new ValidationError('사용량 조회 기간이 올바르지 않습니다.')
+    }
+    return usageRepo.summary(req.windowDays)
   })
 
   // -- layout ---------------------------------------------------------------

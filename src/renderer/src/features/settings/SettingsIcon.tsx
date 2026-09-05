@@ -14,6 +14,7 @@ export type IconName =
   | 'notifications'
   | 'packs'
   | 'shortcuts'
+  | 'usage'
   | 'university'
   | 'about'
   | 'arrow-left'
@@ -126,6 +127,12 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }): JS
       <>
         <rect x="3" y="5" width="18" height="14" rx="2" />
         <path d="M7 9h.01M11 9h.01M15 9h.01M18 9h.01M7 13h.01M11 13h.01M15 13h3M7 16h10" />
+      </>
+    ),
+    usage: (
+      <>
+        <path d="M4 20V10h4v10M10 20V4h4v16M16 20v-7h4v7" />
+        <path d="M3 20h18" />
       </>
     ),
     check: <path d="m5 12 4 4L19 6" />,

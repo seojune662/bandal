@@ -5,9 +5,11 @@ import {
   useState,
   type ReactNode
 } from 'react'
-import type {
-  AgentAvailability,
-  AgentProvider
+import {
+  AGENT_PROVIDERS,
+  isAgentProvider,
+  type AgentAvailability,
+  type AgentProvider
 } from '../../../../shared/types/agent-events'
 import { BandalMark } from '../../components/BandalMark'
 import { Icon } from '../../app/icons'
@@ -15,7 +17,8 @@ import { invoke, onPush } from '../../lib/ipc'
 
 const PROVIDER_LABELS: Record<AgentProvider, string> = {
   'claude-code': 'Claude Code',
-  codex: 'Codex (GPT)'
+  codex: 'Codex (GPT)',
+  gemini: 'Gemini'
 }
 
 export function providerLabel(provider: AgentProvider): string {
@@ -41,10 +44,16 @@ export function ProviderSelector({
           aria-label="AI 제공자 선택"
           value={provider}
           disabled={disabled}
-          onChange={(event) => onChange(event.target.value as AgentProvider)}
+          onChange={(event) => {
+            const nextProvider = event.currentTarget.value
+            if (isAgentProvider(nextProvider)) onChange(nextProvider)
+          }}
         >
-          <option value="claude-code">Claude Code</option>
-          <option value="codex">Codex (GPT)</option>
+          {AGENT_PROVIDERS.map((option) => (
+            <option key={option} value={option}>
+              {PROVIDER_LABELS[option]}
+            </option>
+          ))}
         </select>
       </label>
     )
@@ -53,7 +62,7 @@ export function ProviderSelector({
     <fieldset className="chat-provider" disabled={disabled}>
       <legend>AI 제공자 선택</legend>
       <div className="chat-provider__options">
-        {(['claude-code', 'codex'] as const).map((option) => (
+        {AGENT_PROVIDERS.map((option) => (
           <label
             key={option}
             className="chat-provider__option"

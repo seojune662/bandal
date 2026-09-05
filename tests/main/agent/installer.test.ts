@@ -3,6 +3,7 @@ import {
   CLAUDE_INSTALL_COMMAND,
   CLAUDE_INSTALL_COMMAND_WINDOWS,
   CODEX_INSTALL_COMMAND,
+  GEMINI_INSTALL_COMMAND,
   createAgentInstaller
 } from '../../../src/main/features/agent/installer'
 import type { BinaryLocator } from '../../../src/main/features/agent/binaryLocator'
@@ -27,6 +28,13 @@ describe('agent installer command disclosure', () => {
     // Tests themselves run under pnpm/node, so the login-shell npm is present.
     expect(result.supported).toBe(true)
   })
+
+  test('returns the exact Gemini npm command', () => {
+    const result = createAgentInstaller().commandFor('gemini')
+    expect(result.command).toBe('npm install -g @google/gemini-cli')
+    expect(result.command).toBe(GEMINI_INSTALL_COMMAND)
+    expect(result.supported).toBe(true)
+  })
 })
 
 describe('agent installer locator wiring', () => {
@@ -42,8 +50,11 @@ describe('agent installer locator wiring', () => {
       reset: () => undefined
     })
     const installer = createAgentInstaller({
-      claudeLocator: stub(),
-      codexLocator: stub()
+      locators: {
+        'claude-code': stub(),
+        codex: stub(),
+        gemini: stub()
+      }
     })
     expect(installer.commandFor('claude-code').command).toBe(
       CLAUDE_INSTALL_COMMAND

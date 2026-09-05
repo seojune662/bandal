@@ -17,6 +17,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js'
 import type { McpServerConfig } from '../../../shared/types/mcp'
 import { resolveInside } from '../../db/validate'
+import type { GeminiMcpServerSettings } from '../agent/gemini/settingsFile'
 import {
   buildClaudeMcpConfig,
   buildCodexMcpOverrides,
@@ -45,6 +46,8 @@ export interface AgentToolsServerHandle {
   extraEnv: Record<string, string>
   /** Codex `-c` overrides for user MCP transports. */
   codexOverrides: string[]
+  /** Gemini system-settings entries for the same user MCP transports. */
+  geminiMcpServers: Record<string, GeminiMcpServerSettings>
   /** Concise, bounded tool summary for the session system prompt. */
   mcpHint: string
   /** Raw endpoint for CLIs that take MCP config as flags (codex `-c`). */
@@ -57,6 +60,34 @@ export interface AgentToolsServerHandle {
 interface SessionConnection {
   transport: StreamableHTTPServerTransport
   server: McpServer
+}
+
+function buildGeminiMcpServers(
+  servers: McpServerConfig[]
+): Record<string, GeminiMcpServerSettings> {
+  const result: Record<string, GeminiMcpServerSettings> = {}
+  for (const server of servers) {
+    if (!server.enabled || server.name === 'bandal') continue
+    if (server.transport === 'stdio' && server.command !== undefined) {
+      result[server.name] = {
+        command: server.command,
+        ...(server.args === undefined ? {} : { args: [...server.args] }),
+        ...(server.env === undefined ? {} : { env: { ...server.env } }),
+        trust: true,
+        timeout: 60_000
+      }
+    } else if (server.transport === 'http' && server.url !== undefined) {
+      result[server.name] = {
+        httpUrl: server.url,
+        ...(server.headers === undefined
+          ? {}
+          : { headers: { ...server.headers } }),
+        trust: true,
+        timeout: 60_000
+      }
+    }
+  }
+  return result
 }
 
 function makeMcpServer(agentTools: AgentTools): McpServer {
@@ -243,6 +274,7 @@ export async function startAgentToolsServer(
   const userMcpServers = options.userMcpServers ?? []
   const extraEnv: Record<string, string> = {}
   const codexOverrides = buildCodexMcpOverrides(userMcpServers, extraEnv)
+  const geminiMcpServers = buildGeminiMcpServers(userMcpServers)
   const mcpDirectory = resolveInside(options.userDataPath, 'mcp')
   const mcpConfigPath = resolveInside(mcpDirectory, `${sessionId}.json`)
   const config = buildClaudeMcpConfig(
@@ -281,6 +313,7 @@ export async function startAgentToolsServer(
     ],
     extraEnv,
     codexOverrides,
+    geminiMcpServers,
     mcpHint: promptHintFor(userMcpServers),
     url,
     token,
