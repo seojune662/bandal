@@ -966,4 +966,6 @@ export const enUS: Record<MessageKey, string> = {
   'settings.assistant.screen.description': 'Used only when the orb reads your screen. See System Permissions for details.',
   'settings.assistant.permissions.open': 'View System Permissions',
 
+  // ---- v0.41.1 fixes (W-FIX-UI) ----
+
 }

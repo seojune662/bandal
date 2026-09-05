@@ -1460,6 +1460,18 @@ export interface IpcContract {
     res: DiagnosticsBundle
   }
 
+  // -- gemini api key (v0.41.1) --------------------------------------------
+  /** Whether an API key is stored (safeStorage); `hint` = last 4 chars. */
+  'agent:geminiApiKey': {
+    req: Record<string, never>
+    res: { configured: boolean; hint: string | null; storageAvailable: boolean }
+  }
+  /** null removes the key. Rejects when safeStorage is unavailable. */
+  'agent:setGeminiApiKey': {
+    req: { key: string | null }
+    res: { configured: boolean; hint: string | null }
+  }
+
   // -- layout (dockview persistence per course) -----------------------------
   'layout:get': {
     req: { courseId: string }
@@ -1846,6 +1858,8 @@ export const IPC_CHANNELS = [
   'permissions:request',
   'permissions:openSettings',
   'app:diagnostics',
+  'agent:geminiApiKey',
+  'agent:setGeminiApiKey',
   'layout:get',
   'layout:save',
   'auth:getState',

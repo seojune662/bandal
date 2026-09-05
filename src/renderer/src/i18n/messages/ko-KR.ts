@@ -964,6 +964,8 @@ export const koKR = {
   'settings.assistant.screen.description': '오브가 화면을 읽을 때만 씁니다. 자세한 권한은 시스템 권한에서.',
   'settings.assistant.permissions.open': '시스템 권한 보기',
 
+  // ---- v0.41.1 fixes (W-FIX-UI) ----
+
 } as const
 
 export type MessageKey = keyof typeof koKR
