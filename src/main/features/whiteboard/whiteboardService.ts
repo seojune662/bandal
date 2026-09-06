@@ -41,6 +41,8 @@ export interface WhiteboardServiceDeps {
   getClient: () => SupabaseClientLike | null
   getUserId: () => string | null
   emit: (groupId: string, event: WhiteboardPushEvent) => void
+  /** Shared image shapes wait until their private storage object is durable. */
+  isAssetSynced?: (assetId: string) => boolean
   now?: () => number
   schedule?: (fn: () => void, ms: number) => NodeJS.Timeout
 }
@@ -461,6 +463,17 @@ export function createWhiteboardService(deps: WhiteboardServiceDeps): Whiteboard
       }
       const board = deps.repo.getBoardById(shape.boardId)
       if (board !== null && provision.get(board.groupId) === 'not-provisioned') {
+        return
+      }
+      const image = shape.data.image
+      if (
+        image?.storage === 'shared' &&
+        image.assetId !== undefined &&
+        deps.isAssetSynced?.(image.assetId) === false
+      ) {
+        // Preserve referential ordering: another member must never receive a
+        // shape before the image it points at can be downloaded.
+        armWake(5_000)
         return
       }
       const wait = shape.updatedAt === shape.createdAt

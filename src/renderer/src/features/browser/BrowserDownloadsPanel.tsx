@@ -44,7 +44,9 @@ function stateLabel(download: BrowserDownload): string {
     case 'interrupted':
       return download.failureReason ?? '받지 못했어요'
     default:
-      return progressLabel(download)
+      return download.paused === true
+        ? `일시중지 · ${progressLabel(download)}`
+        : progressLabel(download)
   }
 }
 
@@ -114,14 +116,27 @@ export function BrowserDownloadsPanel({
                   </span>
                 </span>
                 {running ? (
-                  <button
-                    type="button"
-                    className="browser-downloads__action"
-                    aria-label={`${download.fileName} 받기 취소`}
-                    onClick={() => control(download.id, 'cancel')}
-                  >
-                    취소
-                  </button>
+                  <span className="browser-downloads__actions">
+                    <button
+                      type="button"
+                      className="browser-downloads__action"
+                      aria-label={`${download.fileName} ${download.paused === true ? '계속 받기' : '일시중지'}`}
+                      onClick={() => control(
+                        download.id,
+                        download.paused === true ? 'resume' : 'pause'
+                      )}
+                    >
+                      {download.paused === true ? '계속' : '일시중지'}
+                    </button>
+                    <button
+                      type="button"
+                      className="browser-downloads__action"
+                      aria-label={`${download.fileName} 받기 취소`}
+                      onClick={() => control(download.id, 'cancel')}
+                    >
+                      취소
+                    </button>
+                  </span>
                 ) : (
                   <button
                     type="button"

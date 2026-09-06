@@ -23,6 +23,7 @@ interface ImageShapeProps {
   /** Pixel width of the surface; CSS inside the foreignObject is scaled by it. */
   baseWidthPx: number
   courseId?: string | undefined
+  boardId?: string | undefined
   selected: boolean
   onBeginManipulation: (
     event: ReactPointerEvent<Element>,
@@ -41,8 +42,8 @@ type LoadState = 'idle' | 'loading' | 'ready' | 'error'
 
 const IMAGE_CACHE_LIMIT = 48
 const imageCache = new Map<string, Promise<string | null>>()
-function cacheKey(courseId: string, relPath: string): string {
-  return JSON.stringify([courseId, relPath])
+function cacheKey(scope: 'course' | 'board', ownerId: string, imageId: string): string {
+  return JSON.stringify([scope, ownerId, imageId])
 }
 
 function touchCache(key: string, value: Promise<string | null>): void {
@@ -60,14 +61,23 @@ export function primeDrawingImageCache(
   source: DrawingImageSource,
   dataUrl: string
 ): void {
-  touchCache(cacheKey(courseId, source.relPath), Promise.resolve(dataUrl))
+  touchCache(cacheKey('course', courseId, source.relPath), Promise.resolve(dataUrl))
+}
+
+export function primeSharedDrawingImageCache(
+  boardId: string,
+  source: DrawingImageSource,
+  dataUrl: string
+): void {
+  if (source.assetId === undefined) return
+  touchCache(cacheKey('board', boardId, source.assetId), Promise.resolve(dataUrl))
 }
 
 export function loadDrawingImage(
   courseId: string,
   source: DrawingImageSource
 ): Promise<string | null> {
-  const key = cacheKey(courseId, source.relPath)
+  const key = cacheKey('course', courseId, source.relPath)
   const cached = imageCache.get(key)
   if (cached !== undefined) {
     touchCache(key, cached)
@@ -77,6 +87,28 @@ export function loadDrawingImage(
     courseId,
     relPath: source.relPath
   }).then((content) => imageDataUrl(source.relPath, content)).catch(() => null)
+  touchCache(key, pending)
+  void pending.then((url) => {
+    if (url === null && imageCache.get(key) === pending) imageCache.delete(key)
+  })
+  return pending
+}
+
+export function loadSharedDrawingImage(
+  boardId: string,
+  source: DrawingImageSource
+): Promise<string | null> {
+  if (source.assetId === undefined) return Promise.resolve(null)
+  const key = cacheKey('board', boardId, source.assetId)
+  const cached = imageCache.get(key)
+  if (cached !== undefined) {
+    touchCache(key, cached)
+    return cached
+  }
+  const pending = invoke('whiteboard:readAsset', {
+    boardId,
+    assetId: source.assetId
+  }).then((content) => imageDataUrl('.webp', content)).catch(() => null)
   touchCache(key, pending)
   void pending.then((url) => {
     if (url === null && imageCache.get(key) === pending) imageCache.delete(key)
@@ -116,6 +148,7 @@ export function ImageShape({
   aspect,
   baseWidthPx,
   courseId,
+  boardId,
   selected,
   onBeginManipulation,
   onNaturalAspect
@@ -138,7 +171,8 @@ export function ImageShape({
 
   useEffect(() => {
     if (!visible || source === undefined) return
-    if (courseId === undefined) {
+    const shared = source.storage === 'shared' && source.assetId !== undefined
+    if ((!shared && courseId === undefined) || (shared && boardId === undefined)) {
       setLoadState('error')
       setImageUrl(null)
       return
@@ -147,7 +181,10 @@ export function ImageShape({
     setLoadState('loading')
     setImageUrl(null)
     setNaturalAspect(null)
-    void loadDrawingImage(courseId, source)
+    const pending = shared
+      ? loadSharedDrawingImage(boardId as string, source)
+      : loadDrawingImage(courseId as string, source)
+    void pending
       .then(async (url) => {
         if (url === null) return { url: null, ratio: null }
         // 디코드 검증 겸 원본 비율 취득 — SVG <image> 는 onLoad 가 없다.
@@ -163,8 +200,9 @@ export function ImageShape({
         setImageUrl(url)
         setNaturalAspect(ratio)
         setLoadState('ready')
-        if (announcedAspectFor.current !== source.relPath) {
-          announcedAspectFor.current = source.relPath
+        const sourceId = source.assetId ?? source.relPath
+        if (announcedAspectFor.current !== sourceId) {
+          announcedAspectFor.current = sourceId
           onNaturalAspectRef.current?.(shape, ratio)
         }
       })
@@ -173,7 +211,7 @@ export function ImageShape({
     }
     // shape 정체성은 relPath 로 충분 — shape 객체 참조로 재로드하지 않는다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseId, source?.relPath, visible])
+  }, [boardId, courseId, source?.assetId, source?.relPath, source?.storage, visible])
 
   if (source === undefined) return null
   const failed = loadState === 'error'

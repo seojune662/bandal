@@ -7,6 +7,7 @@ describe('WhiteboardCanvas availability', () => {
   test('keeps the drawing surface enabled when sharing is not provisioned', () => {
     const html = renderToStaticMarkup(
       <WhiteboardCanvas
+        boardId="00000000-0000-4000-8000-000000000001"
         availability={{ state: 'not-provisioned' }}
         shapes={[]}
         canUndo={false}
@@ -18,6 +19,7 @@ describe('WhiteboardCanvas availability', () => {
         onRemove={vi.fn()}
         onUndo={vi.fn()}
         onRedo={vi.fn()}
+        onInsertImages={vi.fn()}
       />
     )
 
@@ -28,5 +30,6 @@ describe('WhiteboardCanvas availability', () => {
     )
     expect(html).toContain('aria-label="공유 화이트보드 캔버스"')
     expect(html).toContain('aria-label="펜"')
+    expect(html).toContain('aria-label="사진 추가"')
   })
 })

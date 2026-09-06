@@ -18,6 +18,7 @@ import type { IDockviewPanelProps } from 'dockview'
 import type { BrowserTabPayload } from '../../../../shared/tabs'
 import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
+import { DEFAULT_BROWSER_URL } from '../../app/tabCommands'
 import { Tooltip } from '../../components/Tooltip'
 import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
@@ -515,6 +516,19 @@ function BrowserToolbar({
               }
             >
               <Icon name={nav.loading ? 'x' : 'refresh'} />
+            </button>
+          </Tooltip>
+          <Tooltip label="홈" placement="bottom">
+            <button
+              type="button"
+              className="browser-nav-button"
+              aria-label="홈페이지로 이동"
+              onClick={() => {
+                const homePage = settingsSnapshot().browser.homePage
+                onNavigate(homePage !== '' ? homePage : DEFAULT_BROWSER_URL)
+              }}
+            >
+              <BrowserIcon name="home" />
             </button>
           </Tooltip>
         </div>

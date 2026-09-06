@@ -46,7 +46,8 @@ describe('migrations', () => {
       { version: 23, name: 'all-day-due-date' },
       { version: 24, name: 'material-links' },
       { version: 25, name: 'pdf-view-state' },
-      { version: 26, name: 'agent-usage-ledger' }
+      { version: 26, name: 'agent-usage-ledger' },
+      { version: 27, name: 'whiteboard-shared-assets' }
     ])
   })
 
@@ -216,7 +217,7 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(26)
+    expect(count.n).toBe(27)
   })
 
   test('adds desktop conversation surface, grants, and audit (migration 022)', () => {

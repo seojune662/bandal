@@ -941,6 +941,12 @@
   border-radius: var(--radius-sm);
 }
 
+.browser-downloads__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+}
+
 .browser-downloads__action:hover,
 .browser-downloads__action:focus-visible {
   color: var(--accent);

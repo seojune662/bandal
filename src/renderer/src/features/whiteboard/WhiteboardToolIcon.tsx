@@ -10,6 +10,7 @@ export type WhiteboardToolIconName =
   | 'ellipse'
   | 'arrow'
   | 'line'
+  | 'image'
   | 'lineWidth'
   | 'opacity'
   | 'undo'
@@ -74,6 +75,13 @@ const paths: Record<WhiteboardToolIconName, JSX.Element> = {
   ellipse: <ellipse cx="12" cy="12" rx="9" ry="7.5" />,
   arrow: <path d="M4 12h16m-6-6 6 6-6 6" />,
   line: <path d="M5 19 19 5" />,
+  image: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <circle cx="8.5" cy="9" r="1.5" />
+      <path d="m5.5 17 4.2-4 2.7 2.4 2.5-2.6 3.6 4.2" />
+    </>
+  ),
   lineWidth: (
     <>
       <path d="M5 7h14" strokeWidth="1" />

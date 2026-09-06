@@ -918,6 +918,38 @@ export const migrations: Migration[] = [
            ON agent_usage (provider, turn_at);`
       )
     }
+  },
+  {
+    // Optimized photos used by shared whiteboards. The bytes live on disk;
+    // this table is a durable upload queue and metadata mirror. A shape is
+    // not sent upstream until its referenced asset has reached storage.
+    version: 27,
+    name: 'whiteboard-shared-assets',
+    up: (db) => {
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS whiteboard_assets_cache (
+           id          TEXT PRIMARY KEY,
+           board_id    TEXT NOT NULL,
+           group_id    TEXT NOT NULL,
+           author_id   TEXT NOT NULL,
+           label       TEXT NOT NULL,
+           mime_type   TEXT NOT NULL,
+           width_px    INTEGER NOT NULL,
+           height_px   INTEGER NOT NULL,
+           remote_path TEXT NOT NULL,
+           pending     INTEGER NOT NULL DEFAULT 1,
+           attempts    INTEGER NOT NULL DEFAULT 0,
+           last_error  TEXT,
+           created_at  TEXT NOT NULL,
+           updated_at  TEXT NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_whiteboard_assets_board
+           ON whiteboard_assets_cache (board_id, created_at);
+         CREATE INDEX IF NOT EXISTS idx_whiteboard_assets_pending
+           ON whiteboard_assets_cache (pending, attempts)
+           WHERE pending = 1;`
+      )
+    }
   }
 ]
 

@@ -1,6 +1,10 @@
 export { InkLayer, type InkLayerProps } from './InkLayer'
 export type { RenderClip } from './ClipShape'
-export { loadDrawingImage, primeDrawingImageCache } from './ImageShape'
+export {
+  loadDrawingImage,
+  primeDrawingImageCache,
+  primeSharedDrawingImageCache
+} from './ImageShape'
 export * from './imageTransfer'
 export * from './imagePlacement'
 export * from './inkGeometry'

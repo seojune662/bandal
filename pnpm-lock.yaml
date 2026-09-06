@@ -75,6 +75,9 @@ importers:
       '@playwright/test':
         specifier: ^1.62.1
         version: 1.62.1
+      '@silurus/ooxml':
+        specifier: 0.86.1
+        version: 0.86.1
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
@@ -1323,6 +1326,9 @@ packages:
     resolution: {integrity: sha512-zD6NdeWEByGE9QF9vCrlJ5YQB4oq9q91kPZS37Jwj5hOkvR1lTBSpsKhKDw4IJtbQ35LsTS1HD9DZYGKIshU1Q==}
     cpu: [x64]
     os: [win32]
+
+  '@silurus/ooxml@0.86.1':
+    resolution: {integrity: sha512-Ah8o9RtKyPytAGP8a+7VJhde8tHNCLA7pi1CRv1jkLOd1eLrRLXxjnoEWOkpce/9zPeS9IBWRzNye7vS/KN4Sw==}
 
   '@sindresorhus/is@4.6.0':
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
@@ -5691,6 +5697,8 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.62.4':
     optional: true
+
+  '@silurus/ooxml@0.86.1': {}
 
   '@sindresorhus/is@4.6.0': {}
 

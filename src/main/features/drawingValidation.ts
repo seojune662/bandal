@@ -88,7 +88,30 @@ function assertImage(value: unknown): DrawingImageSource {
   ) {
     throw new ValidationError('data.image needs relPath and label')
   }
-  return { relPath: image.relPath, label: image.label }
+  const result: DrawingImageSource = {
+    relPath: image.relPath,
+    label: image.label
+  }
+  if (image.storage !== undefined || image.assetId !== undefined) {
+    if (
+      image.storage !== 'shared' ||
+      typeof image.assetId !== 'string' ||
+      image.assetId.trim() === '' ||
+      typeof image.widthPx !== 'number' ||
+      !Number.isInteger(image.widthPx) ||
+      image.widthPx <= 0 ||
+      typeof image.heightPx !== 'number' ||
+      !Number.isInteger(image.heightPx) ||
+      image.heightPx <= 0
+    ) {
+      throw new ValidationError('shared data.image needs assetId and pixel dimensions')
+    }
+    result.storage = 'shared'
+    result.assetId = image.assetId
+    result.widthPx = image.widthPx
+    result.heightPx = image.heightPx
+  }
+  return result
 }
 
 function assertClip(value: unknown): DrawingClipSource {

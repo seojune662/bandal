@@ -95,6 +95,7 @@ import type { MediaProgress } from '../types/mediaProgress'
 import type { PdfViewState } from '../types/pdfViewState'
 import type { PipOpenRequest, PipState } from '../types/pip'
 import type { SearchHit } from '../types/search'
+import type { BrowserExtensionSummary } from '../types/browserExtension'
 import type {
   MaterialBacklinkGroup,
   MaterialBacklinks,
@@ -110,6 +111,7 @@ import type {
 } from '../types/agentTools'
 import type {
   CredentialsAvailability,
+  CredentialsImportResult,
   FillLoginResult,
   SaveLoginInput,
   SavedLoginSummary
@@ -123,10 +125,14 @@ import type {
   PutPersonalShapeInput,
   RemovePersonalShapesInput,
   RemoveWhiteboardShapesInput,
+  PutWhiteboardAssetInput,
+  ReadWhiteboardAssetInput,
+  ReadWhiteboardAssetResult,
   RenamePersonalBoardInput,
   SetBoardBackgroundInput,
   SetBoardPageCountInput,
   UpdateWhiteboardShapeInput,
+  WhiteboardAssetSource,
   WhiteboardShape
 } from '../types/whiteboard'
 import type {
@@ -1083,6 +1089,16 @@ export interface IpcContract {
     req: { boardId: string; since: string | null }
     res: { shapes: WhiteboardShape[]; removedIds: string[]; syncedAt: string }
   }
+  /** Stores an optimized image locally first, then mirrors it to group storage. */
+  'whiteboard:putAsset': {
+    req: PutWhiteboardAssetInput
+    res: WhiteboardAssetSource
+  }
+  /** Reads from the durable local cache and downloads on a cache miss. */
+  'whiteboard:readAsset': {
+    req: ReadWhiteboardAssetInput
+    res: ReadWhiteboardAssetResult
+  }
 
   // -- personal whiteboards (local only) -------------------------------------
   //
@@ -1200,6 +1216,27 @@ export interface IpcContract {
   'browser:forgetPermission': {
     req: { id: string | null }
     res: { ok: true }
+  }
+  /** Updates the site-specific popup allowlist used by strict mode. */
+  'browser:setPopupPermission': {
+    req: { origin: string; decision: 'granted' | 'denied' }
+    res: { ok: true }
+  }
+  'browser:extensions': {
+    req: Record<string, never>
+    res: { extensions: BrowserExtensionSummary[] }
+  }
+  'browser:installExtension': {
+    req: Record<string, never>
+    res: { extension: BrowserExtensionSummary | null }
+  }
+  'browser:setExtensionEnabled': {
+    req: { path: string; enabled: boolean }
+    res: { extensions: BrowserExtensionSummary[] }
+  }
+  'browser:removeExtension': {
+    req: { path: string }
+    res: { extensions: BrowserExtensionSummary[] }
   }
 
   // -- printing ---------------------------------------------------------------
@@ -1353,6 +1390,16 @@ export interface IpcContract {
   'credentials:forget': {
     req: { origin: string }
     res: { ok: true }
+  }
+  /** Imports Chrome/Edge/Arc/Firefox CSV via a native picker; bytes stay in main. */
+  'credentials:importCsv': {
+    req: Record<string, never>
+    res: CredentialsImportResult
+  }
+  /** Imports Netscape bookmark HTML into app-wide browser favorites. */
+  'browser:importBookmarks': {
+    req: Record<string, never>
+    res: { imported: number; skipped: number; cancelled: boolean }
   }
   /**
    * Fills the login form in the browser guest showing `origin`. Main resolves
@@ -1862,6 +1909,11 @@ export const IPC_CHANNELS = [
   'browser:clearStorage',
   'browser:sitePermissions',
   'browser:forgetPermission',
+  'browser:setPopupPermission',
+  'browser:extensions',
+  'browser:installExtension',
+  'browser:setExtensionEnabled',
+  'browser:removeExtension',
   'print:pdf',
   'print:savePdfAs',
   'print:pdfFromUrl',
@@ -1940,6 +1992,8 @@ export const IPC_CHANNELS = [
   'whiteboard:addShape',
   'whiteboard:removeShapes',
   'whiteboard:sync',
+  'whiteboard:putAsset',
+  'whiteboard:readAsset',
   'canvas:list',
   'canvas:create',
   'canvas:rename',
@@ -1971,6 +2025,8 @@ export const IPC_CHANNELS = [
   'credentials:save',
   'credentials:capture',
   'credentials:forget',
+  'credentials:importCsv',
+  'browser:importBookmarks',
   'credentials:fill'
 ] as const satisfies readonly IpcChannel[]
 

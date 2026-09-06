@@ -111,6 +111,15 @@
   flex: 0 0 auto;
 }
 
+.whiteboard-tools__file-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .whiteboard-tools__group + .whiteboard-tools__group {
   padding-inline-start: var(--space-2);
   border-inline-start: 1px solid var(--border-subtle);

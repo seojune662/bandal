@@ -11,3 +11,5 @@ export {
 export { createHistoryRepo } from './historyRepo'
 export { createFaviconFetcher } from './favicon'
 export { createPermissionsRepo } from './permissionsRepo'
+export { parseBookmarkHtml, parsePasswordCsv } from './browserImport'
+export { createBrowserExtensionManager } from './extensionManager'

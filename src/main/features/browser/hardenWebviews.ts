@@ -34,6 +34,10 @@ import {
   requestingOriginOf
 } from './externalScheme'
 import { createPopupLimiter } from './popupLimiter'
+import {
+  privacyRequestHeaders,
+  shouldBlockTrackingRequest
+} from './trackingProtection'
 import { browsingUserAgent } from './userAgent'
 import { createBrowserSessionStore } from './sessionStore'
 import { getSettings } from '../../settingsStore'
@@ -185,9 +189,25 @@ function hardenBrowsingSession(partition: string): void {
   // Filtered: an unfiltered handler routes EVERY subresource of every page
   // through a main-process callback, and a 학사 포털 issues 300+ per load.
   browsingSession.webRequest.onBeforeRequest(
-    { urls: ['file://*/*'] },
+    { urls: ['<all_urls>'] },
     (details, callback) => {
-      callback({ cancel: details.url.startsWith('file:') })
+      const cancel = details.url.startsWith('file:') || shouldBlockTrackingRequest({
+        url: details.url,
+        referrer: details.referrer,
+        resourceType: details.resourceType
+      }, getSettings().browser.trackingProtection)
+      callback({ cancel })
+    }
+  )
+  browsingSession.webRequest.onBeforeSendHeaders(
+    { urls: ['http://*/*', 'https://*/*'] },
+    (details, callback) => {
+      callback({
+        requestHeaders: privacyRequestHeaders(
+          details.requestHeaders,
+          getSettings().browser.doNotTrack
+        )
+      })
     }
   )
 }
@@ -213,6 +233,19 @@ function noteBlocked(
   console.warn(`[browser] blocked ${kind}: ${reason} — ${url}`)
   if (host.isDestroyed()) return
   host.send('browser:blocked', { kind, url, reason })
+}
+
+function notePopupBlocked(
+  webContents: WebContents,
+  url: string,
+  reason: 'burst' | 'limit' | 'policy'
+): void {
+  const host = navigationHost(webContents)
+  const origin = originOf(webContents.getURL()) ?? ''
+  noteBlocked(host, 'popup', url, reason)
+  if (!host.isDestroyed()) {
+    host.send('browser:popup-blocked', { url, origin, reason })
+  }
 }
 
 /** The hardened preferences every real popup window gets. */
@@ -389,16 +422,20 @@ export function attachNavigationPolicies(
     })
 
     if (decision.kind === 'window') {
+      const origin = originOf(webContents.getURL())
+      const remembered = origin === null
+        ? null
+        : sitePermissions?.decisionFor(origin, 'popups') ?? null
+      if (
+        remembered === 'denied' ||
+        (getSettings().browser.popupBehavior === 'strict' && remembered !== 'granted')
+      ) {
+        notePopupBlocked(webContents, details.url, 'policy')
+        return { action: 'deny' }
+      }
       const admission = popupLimiter.admit(webContents.id)
       if (!admission.ok) {
-        const host = navigationHost(webContents)
-        noteBlocked(host, 'popup', details.url, admission.reason)
-        if (!host.isDestroyed()) {
-          host.send('browser:popup-blocked', {
-            url: details.url,
-            reason: admission.reason
-          })
-        }
+        notePopupBlocked(webContents, details.url, admission.reason)
         return { action: 'deny' }
       }
       const size = popupWindowSize(decision.scope, details.features)

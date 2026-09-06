@@ -117,11 +117,14 @@ import {
   attachDownloadHandler,
   BROWSING_PARTITION,
   createBrowserSessionStore,
+  createBrowserExtensionManager,
   downloadControls,
   createPermissionsRepo,
   useSitePermissions,
   createFaviconFetcher,
   createHistoryRepo,
+  parseBookmarkHtml,
+  parsePasswordCsv,
   fetchLinkForMaterials
 } from '../features/browser'
 import { createFavoritesRepo } from '../features/favorites'
@@ -137,6 +140,7 @@ import {
   createPackStore
 } from '../features/workflowPacks'
 import {
+  createWhiteboardAssetService,
   createWhiteboardRepo,
   createWhiteboardService
 } from '../features/whiteboard'
@@ -2067,6 +2071,32 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('credentials:capture', (req) => captureLogin(req))
   handle('credentials:forget', (req) => credentialStore.forget(req.origin))
   handle('credentials:fill', (req) => fillLogin(req))
+  handle('credentials:importCsv', async () => {
+    const owner = BrowserWindow.getFocusedWindow()
+    const options: Electron.OpenDialogOptions = {
+      title: '브라우저 비밀번호 CSV 가져오기',
+      properties: ['openFile'],
+      filters: [{ name: 'CSV', extensions: ['csv'] }]
+    }
+    const picked = owner === null
+      ? await dialog.showOpenDialog(options)
+      : await dialog.showOpenDialog(owner, options)
+    const file = picked.filePaths[0]
+    if (picked.canceled || file === undefined) {
+      return { imported: 0, skipped: 0, cancelled: true }
+    }
+    const info = await stat(file)
+    if (info.size > 5 * 1024 * 1024) {
+      throw new ValidationError('비밀번호 CSV는 5MB 이하여야 합니다.')
+    }
+    const parsed = parsePasswordCsv(await readFile(file, 'utf8'))
+    const result = credentialStore.importMany(parsed.logins)
+    return {
+      imported: result.imported,
+      skipped: parsed.skipped + result.skipped,
+      cancelled: false
+    }
+  })
 
   // -- favorites (left-rail pins for any TabDescriptor) ---------------------
   const favoritesRepo = createFavoritesRepo(db)
@@ -2081,14 +2111,93 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     favoritesRepo.reorder(req)
     return OK
   })
+  handle('browser:importBookmarks', async () => {
+    const owner = BrowserWindow.getFocusedWindow()
+    const options: Electron.OpenDialogOptions = {
+      title: '브라우저 북마크 HTML 가져오기',
+      properties: ['openFile'],
+      filters: [{ name: '북마크 HTML', extensions: ['html', 'htm'] }]
+    }
+    const picked = owner === null
+      ? await dialog.showOpenDialog(options)
+      : await dialog.showOpenDialog(owner, options)
+    const file = picked.filePaths[0]
+    if (picked.canceled || file === undefined) {
+      return { imported: 0, skipped: 0, cancelled: true }
+    }
+    const info = await stat(file)
+    if (info.size > 20 * 1024 * 1024) {
+      throw new ValidationError('북마크 파일은 20MB 이하여야 합니다.')
+    }
+    const bookmarks = parseBookmarkHtml(await readFile(file, 'utf8'))
+    const existing = new Set(
+      favoritesRepo.list(null).flatMap((favorite) =>
+        favorite.descriptor.kind === 'browser'
+          ? [favorite.descriptor.payload.initialUrl]
+          : []
+      )
+    )
+    let imported = 0
+    let skipped = 0
+    for (const bookmark of bookmarks) {
+      if (existing.has(bookmark.url)) {
+        skipped += 1
+        continue
+      }
+      favoritesRepo.add({
+        courseId: null,
+        label: bookmark.title,
+        descriptor: {
+          kind: 'browser',
+          payload: { tabId: randomUUID(), initialUrl: bookmark.url }
+        }
+      })
+      existing.add(bookmark.url)
+      imported += 1
+    }
+    return { imported, skipped, cancelled: false }
+  })
 
   // -- browser session ------------------------------------------------------
   // Restore / auto-persist / before-quit are already wired inside
   // hardenBrowsingSession; this factory returns that same singleton, so only
   // the IPC surface is left to connect.
   const browserSessions = createBrowserSessionStore()
+  const browserExtensionManager = createBrowserExtensionManager({
+    session: session.fromPartition(BROWSING_PARTITION),
+    getPreferences: () => getSettings().browser.extensions,
+    setPreferences: (extensions) => {
+      setSettings({ browser: { extensions } })
+    }
+  })
+  void browserExtensionManager.restore().catch((error: unknown) => {
+    console.warn('[browser] extension restore failed', error)
+  })
   handle('browser:sessionSites', async () => ({
     sites: await browserSessions.listSites()
+  }))
+  handle('browser:extensions', () => ({
+    extensions: browserExtensionManager.list()
+  }))
+  handle('browser:installExtension', async () => {
+    const owner = BrowserWindow.getFocusedWindow()
+    const options: Electron.OpenDialogOptions = {
+      title: '압축 해제된 Manifest V3 확장 폴더 선택',
+      buttonLabel: '확장 추가',
+      properties: ['openDirectory']
+    }
+    const picked = owner === null
+      ? await dialog.showOpenDialog(options)
+      : await dialog.showOpenDialog(owner, options)
+    const path = picked.filePaths[0]
+    if (picked.canceled || path === undefined) return { extension: null }
+    return { extension: await browserExtensionManager.install(path) }
+  })
+  handle('browser:setExtensionEnabled', async (req) => ({
+    extensions: await browserExtensionManager.setEnabled(req.path, req.enabled)
+  }))
+  handle('browser:removeExtension', async (req) => ({
+    extensions: await browserExtensionManager.remove(req.path)
   }))
 
   handle('browser:controlDownload', (req) => {
@@ -2125,6 +2234,18 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('browser:forgetPermission', (req) => {
     if (req.id === null) permissionsRepo.forgetAll()
     else permissionsRepo.forget(req.id)
+    return OK
+  })
+  handle('browser:setPopupPermission', (req) => {
+    let origin: string
+    try {
+      const parsed = new URL(req.origin)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error()
+      origin = parsed.origin
+    } catch {
+      throw new ValidationError('팝업 사이트 주소가 올바르지 않아요')
+    }
+    permissionsRepo.remember(origin, 'popups', req.decision)
     return OK
   })
 
@@ -2209,11 +2330,19 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // Borrows the group runtime's Supabase client: a second client would carry a
   // second session and the two could disagree about who is signed in.
   const whiteboardRepo = createWhiteboardRepo(db)
+  const whiteboardAssetService = createWhiteboardAssetService({
+    db,
+    repo: whiteboardRepo,
+    userDataPath: deps.userDataPath,
+    getClient: () => groupRuntime.getClient(),
+    getUserId: () => groupRuntime.getUserId()
+  })
   const whiteboardService = createWhiteboardService({
     repo: whiteboardRepo,
     getClient: () => groupRuntime.getClient(),
     getUserId: () => groupRuntime.getUserId(),
-    emit: (groupId, event) => broadcast('whiteboard:changed', { groupId, event })
+    emit: (groupId, event) => broadcast('whiteboard:changed', { groupId, event }),
+    isAssetSynced: (assetId) => whiteboardAssetService.isSynced(assetId)
   })
   handle('whiteboard:open', (req) => whiteboardService.open(req.groupId))
   handle('whiteboard:addShape', (req) => whiteboardService.addShape(req))
@@ -2228,6 +2357,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('whiteboard:sync', (req) =>
     whiteboardService.sync(req.boardId, req.since)
   )
+  handle('whiteboard:putAsset', (req) => whiteboardAssetService.put(req))
+  handle('whiteboard:readAsset', (req) => whiteboardAssetService.read(req))
 
   // -- personal whiteboards (local only) -------------------------------------
   // `canvas:` and not `board:` — the latter already means the study TASK board.
@@ -2651,6 +2782,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     const previous = getSettings()
     const next = setSettings(req)
     applyExtensionRuntimeChange(previous, next)
+    if (JSON.stringify(previous.browser.extensions) !== JSON.stringify(next.browser.extensions)) {
+      void browserExtensionManager.reconcile()
+    }
     return next
   })
   // [R3] dataRoot 변경. 새 과목만 새 위치에 생긴다 — 기존 과목 폴더는 절대
@@ -2685,6 +2819,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     const previous = getSettings()
     const next = resetSettings(setSettings)
     applyExtensionRuntimeChange(previous, next)
+    void browserExtensionManager.reconcile()
     return next
   })
   handle('notifications:test', () => notifier.test())
@@ -2729,6 +2864,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   const stopWhiteboardAuthReset = groupRuntime.onAuthChanged(() => {
     whiteboardService.resetForAuthChange()
+    whiteboardAssetService.resetForAuthChange()
   })
   const groups = (): ReturnType<typeof groupRuntime.service> =>
     groupRuntime.service()
@@ -2767,6 +2903,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   app.on('before-quit', () => {
     stopWhiteboardAuthReset()
     whiteboardService.dispose()
+    whiteboardAssetService.dispose()
     groupRuntime.dispose()
   })
   app.on('browser-window-blur', () => {

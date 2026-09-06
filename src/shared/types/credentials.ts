@@ -41,6 +41,12 @@ export interface SaveLoginInput {
   autoSubmit?: boolean
 }
 
+export interface CredentialsImportResult {
+  imported: number
+  skipped: number
+  cancelled: boolean
+}
+
 /**
  * Name of the function the browser tab installs in the guest page, which
  * returns what the student typed into a login form. Main calls it directly so

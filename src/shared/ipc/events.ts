@@ -120,6 +120,8 @@ export interface BrowserDownloadUpdate {
   /** 0 when the server sends no Content-Length. */
   totalBytes: number
   state: 'progressing' | 'completed' | 'cancelled' | 'interrupted'
+  /** Chromium keeps state=progressing while a resumable transfer is paused. */
+  paused?: boolean
   /** Course-relative path, once the file is in the course folder. */
   relPath: string | null
   courseId: string | null
@@ -245,8 +247,12 @@ export interface PushEvents {
     url: string
     reason: string
   }
-  /** A popup was refused by the per-guest cap, not by policy. */
-  'browser:popup-blocked': { url: string; reason: 'burst' | 'limit' }
+  /** A popup was refused by policy or the anti-spam limiter. */
+  'browser:popup-blocked': {
+    url: string
+    origin: string
+    reason: 'burst' | 'limit' | 'policy'
+  }
   /** A custom-scheme handoff finished (or found no program to hand to). */
   'browser:external-scheme': {
     url: string

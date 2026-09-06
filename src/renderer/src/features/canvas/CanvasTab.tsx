@@ -30,6 +30,7 @@ import {
   imageBoxAtPoint,
   instanceSurfaceKey,
   loadDrawingImage,
+  primeDrawingImageCache,
   useInkToolStore,
   type InkHistoryAction
 } from '../ink'
@@ -51,6 +52,12 @@ import {
 import { CanvasToolRail } from './CanvasToolRail'
 import { CanvasPage, DEFAULT_PAGE_ASPECT } from './CanvasPage'
 import { CanvasPreviewPanel } from './CanvasPreviewPanel'
+import { isEditablePasteTarget } from '../materials/clipboardPaste'
+import {
+  clipboardImageFiles,
+  normalizeWhiteboardImage,
+  WHITEBOARD_IMAGE_MAX_FILES
+} from '../whiteboard/imageImport'
 import './canvas.css'
 
 type LoadState =
@@ -517,6 +524,72 @@ function CanvasSession({
       .catch(() => {})
   }, [addInternal, board.courseId, color, setActiveTool, width])
 
+  const insertImageFiles = useCallback(async (filesInput: readonly File[]): Promise<void> => {
+    const files = [...filesInput].slice(0, WHITEBOARD_IMAGE_MAX_FILES)
+    if (files.length === 0) return
+    setStatusMessage('사진을 최적화하는 중…')
+    try {
+      const origin = { x: 0.5, y: 0.28 }
+      for (const [index, file] of files.entries()) {
+        const image = await normalizeWhiteboardImage(file)
+        const saved = await invoke('materials:writeFile', {
+          courseId: board.courseId,
+          dirRelPath: `.bandal/whiteboards/${board.id}`,
+          createDirIfMissing: true,
+          fileName: image.fileName,
+          encoding: 'base64',
+          data: image.base64
+        })
+        const source: DrawingImageSource = {
+          relPath: saved.relPath,
+          label: file.name || '사진'
+        }
+        primeDrawingImageCache(board.courseId, source, image.dataUrl)
+        const offset = Math.min(index, 8) * 0.03
+        addInternal({
+          kind: 'image',
+          data: {
+            box: imageBoxAtPoint(
+              {
+                x: Math.min(0.88, origin.x + offset),
+                y: Math.min(0.8, origin.y + offset)
+              },
+              DEFAULT_PAGE_ASPECT,
+              image.aspect
+            ),
+            image: source
+          },
+          style: { color, width, opacity: 1 }
+        }, visiblePage, true)
+      }
+      setActiveTool('select')
+      setStatusMessage(null)
+      showToast(
+        files.length === 1
+          ? '사진을 화이트보드에 추가했어요.'
+          : `${files.length}개 사진을 화이트보드에 추가했어요.`
+      )
+    } catch (error: unknown) {
+      const message = errorMessage(error, '사진을 추가하지 못했어요.')
+      setStatusMessage(message)
+      showToast(message, 'danger')
+    }
+  }, [addInternal, board.courseId, board.id, color, setActiveTool, visiblePage, width])
+
+  useEffect(() => {
+    if (!panelActive) return
+    const handlePaste = (event: ClipboardEvent): void => {
+      if (event.defaultPrevented || isEditablePasteTarget(event.target)) return
+      if (event.clipboardData === null) return
+      const files = clipboardImageFiles(event.clipboardData)
+      if (files.length === 0) return
+      event.preventDefault()
+      void insertImageFiles(files)
+    }
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [insertImageFiles, panelActive])
+
   const placeClip = useCallback((
     source: DrawingClipSource,
     point: { x: number; y: number },
@@ -647,6 +720,7 @@ function CanvasSession({
         exportingPdf={exportingPdf}
         onUndo={undo}
         onRedo={redo}
+        onInsertImages={(files) => { void insertImageFiles(files) }}
         onBackgroundChange={(background: BoardBackground) => {
           void updateBoardAppearance({ background })
         }}

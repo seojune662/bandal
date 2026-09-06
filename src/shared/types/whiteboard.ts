@@ -20,7 +20,8 @@
  * idempotent without a dedupe table.
  */
 
-import type { DrawingShape } from './drawing'
+import type { DrawingImageSource, DrawingShape } from './drawing'
+import type { MaterialFileContent } from './materials'
 
 export interface Whiteboard {
   id: string
@@ -66,6 +67,34 @@ export interface UpdateWhiteboardShapeInput {
 export interface RemoveWhiteboardShapesInput {
   boardId: string
   ids: string[]
+}
+
+/** One optimized image uploaded to the private storage area of a group board. */
+export interface PutWhiteboardAssetInput {
+  boardId: string
+  assetId: string
+  label: string
+  mimeType: 'image/webp'
+  base64: string
+  widthPx: number
+  heightPx: number
+}
+
+export interface ReadWhiteboardAssetInput {
+  boardId: string
+  assetId: string
+}
+
+export type ReadWhiteboardAssetResult = Extract<
+  MaterialFileContent,
+  { encoding: 'base64' }
+>
+
+export type WhiteboardAssetSource = DrawingImageSource & {
+  assetId: string
+  storage: 'shared'
+  widthPx: number
+  heightPx: number
 }
 
 /**

@@ -43,6 +43,8 @@ export interface CredentialStore {
   availability(): CredentialsAvailability
   list(): SavedLoginSummary[]
   save(input: SaveLoginInput): SavedLoginSummary
+  /** Main-only bulk path used by password CSV import; persists once. */
+  importMany(inputs: readonly SaveLoginInput[]): { imported: number; skipped: number }
   forget(origin: string): { ok: true }
   /** Main-process internal only. Never expose this method through IPC. */
   resolve(origin: string): ResolvedLogin | null
@@ -268,6 +270,34 @@ function buildCredentialStore(deps: CredentialStoreDeps): CredentialStore {
         login
       ])
       return summary(login)
+    },
+
+    importMany(inputs) {
+      if (!canEncrypt()) throw new Error(ENCRYPTION_UNAVAILABLE_REASON)
+      const byOrigin = new Map(load().map((login) => [login.origin, login]))
+      let imported = 0
+      let skipped = 0
+      for (const input of inputs) {
+        try {
+          const origin = normalizeCredentialOrigin(input.origin)
+          if (input.password === '') {
+            skipped += 1
+            continue
+          }
+          byOrigin.set(origin, {
+            origin,
+            username: input.username,
+            password: input.password,
+            autoSubmit: false,
+            updatedAt: new Date(now()).toISOString()
+          })
+          imported += 1
+        } catch {
+          skipped += 1
+        }
+      }
+      if (imported > 0) persist([...byOrigin.values()])
+      return { imported, skipped }
     },
 
     forget(origin: string): { ok: true } {

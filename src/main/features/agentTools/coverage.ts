@@ -143,6 +143,7 @@ export const NOT_FOR_AGENT: Readonly<Record<string, string>> = {
   'whiteboard:addShape': '공유 화이트보드는 다른 사람과 같이 쓰는 면이다. 개인 보드는 add_shapes 가 있다.',
   'whiteboard:removeShapes': '공유 화이트보드는 다른 사람과 같이 쓰는 면이다.',
   'whiteboard:updateShape': '공유 화이트보드는 다른 사람과 같이 쓰는 면이다.',
+  'whiteboard:putAsset': '사용자가 고른 로컬 이미지 바이트를 공유 보드에 올리는 렌더러 전용 단계다.',
 
   // -- the agent cannot compute what these need -----------------------------
   'annotations:create':

@@ -8,6 +8,7 @@ import type { SVGProps } from 'react'
 export type BrowserIconName =
   | 'arrowLeft'
   | 'arrowRight'
+  | 'home'
   | 'globe'
   | 'lock'
   | 'key'
@@ -32,6 +33,12 @@ const paths: Record<BrowserIconName, JSX.Element> = {
     </>
   ),
   arrowLeft: <path d="M19 12H5m6-6-6 6 6 6" />,
+  home: (
+    <>
+      <path d="m3.5 11.2 8.5-7 8.5 7" />
+      <path d="M5.5 9.7v10h13v-10M9.5 19.7v-6h5v6" />
+    </>
+  ),
   star: (
     <path d="m12 3.8 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8Z" />
   ),

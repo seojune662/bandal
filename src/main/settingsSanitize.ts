@@ -10,6 +10,7 @@ import { isSearchEngineId } from '../shared/search'
 import { parseChord, SHORTCUT_SPECS } from '../shared/keymap'
 import { sanitizeUniversitySettings } from '../shared/universities/sanitize'
 import { isZoomLevel } from '../shared/browserZoom'
+import { isAbsolute, normalize } from 'node:path'
 import { isAgentProvider } from '../shared/types/agent-events'
 import {
   CATALOG_SOURCES_MAX,
@@ -22,6 +23,8 @@ import {
   EXPERIMENTAL_FLAGS,
   isDeadlineLeadDays,
   isLinkRouting,
+  isPopupBehavior,
+  isTrackingProtection,
   isShortcutPriority,
   DEFAULT_DESKTOP_ORB,
   DEFAULT_MILESTONES,
@@ -212,13 +215,36 @@ export function sanitizeBrowserSettings(raw: unknown): BrowserSettings {
     return { ...d }
   }
   const r = raw as Record<string, unknown>
+  const extensions = Array.isArray(r.extensions)
+    ? r.extensions.flatMap((entry) => {
+        if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return []
+        const value = entry as Record<string, unknown>
+        if (
+          typeof value.path !== 'string' ||
+          value.path.length === 0 ||
+          value.path.length > 4096 ||
+          !isAbsolute(value.path)
+        ) return []
+        return [{ path: normalize(value.path), enabled: bool(value.enabled, true) }]
+      }).filter((entry, index, all) =>
+        all.findIndex((candidate) => candidate.path === entry.path) === index
+      ).slice(0, 20)
+    : []
   return {
     agentUse: bool(r.agentUse, d.agentUse),
     homePage: sanitizeHomePage(r.homePage),
     defaultZoomLevel: isZoomLevel(r.defaultZoomLevel)
       ? r.defaultZoomLevel
       : d.defaultZoomLevel,
-    linkRouting: isLinkRouting(r.linkRouting) ? r.linkRouting : d.linkRouting
+    linkRouting: isLinkRouting(r.linkRouting) ? r.linkRouting : d.linkRouting,
+    popupBehavior: isPopupBehavior(r.popupBehavior)
+      ? r.popupBehavior
+      : d.popupBehavior,
+    trackingProtection: isTrackingProtection(r.trackingProtection)
+      ? r.trackingProtection
+      : d.trackingProtection,
+    doNotTrack: bool(r.doNotTrack, d.doNotTrack),
+    extensions
   }
 }
 

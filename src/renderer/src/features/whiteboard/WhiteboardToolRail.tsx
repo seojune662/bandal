@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { DrawingColor } from '../../../../shared/types/drawing'
 import {
   useInkToolStore,
@@ -56,6 +56,7 @@ export interface WhiteboardToolRailProps {
   enabled: boolean
   onUndo: () => void
   onRedo: () => void
+  onInsertImages: (files: File[]) => void
 }
 
 export function WhiteboardToolRail({
@@ -63,8 +64,10 @@ export function WhiteboardToolRail({
   canRedo,
   enabled,
   onUndo,
-  onRedo
+  onRedo,
+  onInsertImages
 }: WhiteboardToolRailProps): JSX.Element {
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const activeTool = useInkToolStore((state) => state.activeTool)
   const color = useInkToolStore((state) => state.color)
   const width = useInkToolStore((state) => state.width)
@@ -114,6 +117,30 @@ export function WhiteboardToolRail({
             <WhiteboardToolIcon name={entry.tool} />
           </button>
         ))}
+        <input
+          ref={imageInputRef}
+          className="whiteboard-tools__file-input"
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/bmp"
+          multiple
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(event) => {
+            const files = Array.from(event.currentTarget.files ?? [])
+            event.currentTarget.value = ''
+            if (files.length > 0) onInsertImages(files)
+          }}
+        />
+        <button
+          type="button"
+          className="whiteboard-tools__button"
+          aria-label="사진 추가"
+          title="사진 추가 (Cmd/Ctrl+V로도 가능)"
+          disabled={!enabled}
+          onClick={() => imageInputRef.current?.click()}
+        >
+          <WhiteboardToolIcon name="image" />
+        </button>
       </div>
 
       <div

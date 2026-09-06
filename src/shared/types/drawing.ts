@@ -158,6 +158,13 @@ export interface DrawingImageSource {
   relPath: string
   /** Shown while loading and when the file has gone missing. */
   label: string
+  /** Shared-board asset id. Absent for course-local material images. */
+  assetId?: string
+  /** Shared assets live in the private group storage bucket, not a course. */
+  storage?: 'shared'
+  /** Persisted dimensions avoid a layout jump before the image is decoded. */
+  widthPx?: number
+  heightPx?: number
 }
 
 export interface DrawingStyle {

@@ -12,8 +12,8 @@
 
 import { useEffect, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { onPush } from '../../lib/ipc'
-import { showToast } from '../../app/toast'
+import { invoke, onPush } from '../../lib/ipc'
+import { showToast, showToastWithAction } from '../../app/toast'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { useNewTabMenu } from '../workspace/newTabMenuController'
@@ -108,10 +108,22 @@ function useAuthFallbackForwarding(): void {
  */
 function useBlockedNotices(): void {
   useEffect(() => {
-    const unsubscribePopup = onPush('browser:popup-blocked', () => {
-      // No 허용 button on purpose: a one-click popup allowlist is a phishing
-      // lever, and a page that needs a fourth window at once is not a page.
-      showToast('팝업을 막았어요.')
+    const unsubscribePopup = onPush('browser:popup-blocked', ({ origin, reason }) => {
+      if (reason === 'policy' && origin !== '') {
+        showToastWithAction('이 사이트의 팝업을 막았어요. 허용한 뒤 다시 눌러 주세요.', {
+          label: '이 사이트 허용',
+          run: () => {
+            void invoke('browser:setPopupPermission', {
+              origin,
+              decision: 'granted'
+            }).then(() => showToast('이 사이트의 팝업을 허용했어요.'))
+          }
+        })
+        return
+      }
+      // Burst/concurrent limits stay non-overridable: they are the last line
+      // of defence against a page filling the desktop with windows.
+      showToast('반복 팝업을 막았어요.')
     })
     // Main emits this on every deny. Nobody was listening, so a page that
     // navigated to a hard-blocked scheme produced a console.warn and nothing

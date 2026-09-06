@@ -122,6 +122,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
       | 'getReceivedBytes'
       | 'setSavePath'
       | 'getSavePath'
+      | 'isPaused'
       | 'on'
     >,
     webContentsId: number | null
@@ -130,6 +131,13 @@ export function createDownloadHandler(deps: DownloadsDeps) {
     const fileName = downloadFileName(item.getFilename())
     const courseId = deps.getTargetCourseId()
     liveDownloads.set(id, item as unknown as ControllableItem)
+    const isPaused = (): boolean => {
+      try {
+        return typeof item.isPaused === 'function' && item.isPaused()
+      } catch {
+        return false
+      }
+    }
     item.on('done', () => liveDownloads.delete(id))
 
     // No course selected: let Chromium do its default thing (~/Downloads).
@@ -146,6 +154,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
         receivedBytes: 0,
         totalBytes: item.getTotalBytes(),
         state: 'progressing',
+        paused: false,
         relPath: null,
         failureReason: null
       })
@@ -159,6 +168,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
           receivedBytes: item.getReceivedBytes(),
           totalBytes: item.getTotalBytes(),
           state: 'progressing',
+          paused: isPaused(),
           relPath: null,
           failureReason: null
         })
@@ -174,6 +184,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
               : state === 'cancelled'
                 ? 'cancelled'
                 : 'interrupted',
+          paused: false,
           // Not a course-relative path — the absolute one, because the whole
           // point is that the student cannot otherwise find the file.
           relPath: state === 'completed' ? item.getSavePath() : null,
@@ -201,6 +212,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
       ...base,
       receivedBytes: 0,
       state: 'progressing',
+      paused: false,
       relPath: null,
       failureReason: null
     })
@@ -216,6 +228,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
         receivedBytes: item.getReceivedBytes(),
         totalBytes: item.getTotalBytes(),
         state: 'progressing',
+        paused: isPaused(),
         relPath: null,
         failureReason: null
       })
@@ -228,6 +241,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
           ...base,
           receivedBytes: item.getReceivedBytes(),
           state: state === 'cancelled' ? 'cancelled' : 'interrupted',
+          paused: false,
           relPath: null,
           failureReason: null
         })
@@ -244,6 +258,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
           ...base,
           receivedBytes: item.getReceivedBytes(),
           state: 'completed',
+          paused: false,
           relPath,
           failureReason: null
         })
@@ -255,6 +270,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
           ...base,
           receivedBytes: item.getReceivedBytes(),
           state: 'interrupted',
+          paused: false,
           relPath: null,
           failureReason:
             error instanceof Error ? error.message : 'could not file the download'

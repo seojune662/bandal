@@ -8,9 +8,13 @@ import {
 import type {
   BrowserSettings,
   LinkRouting,
+  PopupBehavior,
   Settings
 } from '../../../../../shared/types/settings'
+import type { BrowserExtensionSummary } from '../../../../../shared/types/browserExtension'
 import { useT } from '../../../i18n'
+import { invoke } from '../../../lib/ipc'
+import { useFavoritesStore } from '../../../stores/favoritesStore'
 import { savePreference } from '../savePreference'
 import { AgentAccessPanel } from '../AgentAccessPanel'
 import { BrowsingDataPanel } from '../BrowsingDataPanel'
@@ -18,6 +22,8 @@ import { SettingsCard, ToggleRow } from '../primitives'
 import './browser-settings.css'
 
 const LINK_ROUTINGS: readonly LinkRouting[] = ['in-app', 'system']
+const POPUP_BEHAVIORS: readonly PopupBehavior[] = ['balanced', 'strict']
+const TRACKING_PROTECTIONS = ['balanced', 'strict', 'off'] as const
 
 function saveBrowserSettings(
   settings: Settings | null,
@@ -244,6 +250,265 @@ function LinkRoutingCard({
   )
 }
 
+function PrivacyProtectionCard({
+  settings
+}: {
+  settings: Settings | null
+}): JSX.Element {
+  const t = useT()
+  const browser = settings?.browser
+  return (
+    <SettingsCard
+      title={t('settings.browser.protection.title')}
+      description={t('settings.browser.protection.description')}
+    >
+      <div className="settings-card__rows">
+        <div className="setting-row">
+          <div className="setting-row__copy">
+            <span className="setting-row__label">
+              {t('settings.browser.tracking.label')}
+            </span>
+            <span className="setting-row__description">
+              {t('settings.browser.tracking.description')}
+            </span>
+          </div>
+          <select
+            className="language-select"
+            aria-label={t('settings.browser.tracking.label')}
+            value={browser?.trackingProtection ?? 'balanced'}
+            disabled={settings === null}
+            onChange={(event) => saveBrowserSettings(settings, {
+              trackingProtection: event.currentTarget.value as BrowserSettings['trackingProtection']
+            })}
+          >
+            {TRACKING_PROTECTIONS.map((protection) => (
+              <option key={protection} value={protection}>
+                {t(`settings.browser.tracking.${protection}`)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <ToggleRow
+          label={t('settings.browser.dnt.label')}
+          description={t('settings.browser.dnt.description')}
+          checked={browser?.doNotTrack ?? true}
+          disabled={settings === null}
+          onChange={(doNotTrack) => saveBrowserSettings(settings, { doNotTrack })}
+        />
+      </div>
+    </SettingsCard>
+  )
+}
+
+function PopupCard({ settings }: { settings: Settings | null }): JSX.Element {
+  const t = useT()
+  const selected = settings?.browser.popupBehavior ?? 'balanced'
+  return (
+    <SettingsCard
+      title={t('settings.browser.popups.title')}
+      description={t('settings.browser.popups.description')}
+    >
+      <div className="segmented settings-browser__segmented">
+        {POPUP_BEHAVIORS.map((behavior) => (
+          <button
+            key={behavior}
+            type="button"
+            className={`segmented__option${
+              selected === behavior ? ' segmented__option--selected' : ''
+            }`}
+            aria-pressed={selected === behavior}
+            disabled={settings === null}
+            onClick={() => saveBrowserSettings(settings, { popupBehavior: behavior })}
+          >
+            <span className="segmented__label">
+              {t(`settings.browser.popups.${behavior}`)}
+            </span>
+          </button>
+        ))}
+      </div>
+    </SettingsCard>
+  )
+}
+
+function BrowserImportCard(): JSX.Element {
+  const t = useT()
+  const [busy, setBusy] = useState<'bookmarks' | 'passwords' | null>(null)
+  const [feedback, setFeedback] = useState('')
+
+  const importBookmarks = (): void => {
+    setBusy('bookmarks')
+    setFeedback('')
+    void invoke('browser:importBookmarks', {})
+      .then((result) => {
+        if (result.cancelled) return
+        setFeedback(t('settings.browser.import.result')
+          .replace('{imported}', String(result.imported))
+          .replace('{skipped}', String(result.skipped)))
+        void useFavoritesStore.getState().load(null)
+      })
+      .catch(() => setFeedback(t('settings.browser.import.error')))
+      .finally(() => setBusy(null))
+  }
+
+  const importPasswords = (): void => {
+    setBusy('passwords')
+    setFeedback('')
+    void invoke('credentials:importCsv', {})
+      .then((result) => {
+        if (result.cancelled) return
+        setFeedback(t('settings.browser.import.result')
+          .replace('{imported}', String(result.imported))
+          .replace('{skipped}', String(result.skipped)))
+      })
+      .catch(() => setFeedback(t('settings.browser.import.passwordError')))
+      .finally(() => setBusy(null))
+  }
+
+  return (
+    <SettingsCard
+      title={t('settings.browser.import.title')}
+      description={t('settings.browser.import.description')}
+    >
+      <div className="settings-browser__import-actions">
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={busy !== null}
+          onClick={importBookmarks}
+        >
+          {busy === 'bookmarks'
+            ? t('settings.browser.import.loading')
+            : t('settings.browser.import.bookmarks')}
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={busy !== null}
+          onClick={importPasswords}
+        >
+          {busy === 'passwords'
+            ? t('settings.browser.import.loading')
+            : t('settings.browser.import.passwords')}
+        </button>
+      </div>
+      <p className="settings-feedback" aria-live="polite">{feedback}</p>
+    </SettingsCard>
+  )
+}
+
+function WebExtensionsCard(): JSX.Element {
+  const t = useT()
+  const [extensions, setExtensions] = useState<BrowserExtensionSummary[] | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState('')
+
+  const refresh = (): void => {
+    void invoke('browser:extensions', {})
+      .then((result) => setExtensions(result.extensions))
+      .catch(() => {
+        setExtensions([])
+        setFeedback(t('settings.browser.extensions.error'))
+      })
+  }
+
+  useEffect(refresh, [])
+
+  const install = (): void => {
+    setBusy('install')
+    setFeedback('')
+    void invoke('browser:installExtension', {})
+      .then(({ extension }) => {
+        if (extension === null) return
+        refresh()
+        setFeedback(extension.status === 'loaded'
+          ? t('settings.browser.extensions.installed')
+          : extension.error ?? t('settings.browser.extensions.error'))
+      })
+      .catch((error: unknown) => setFeedback(
+        error instanceof Error ? error.message : t('settings.browser.extensions.error')
+      ))
+      .finally(() => setBusy(null))
+  }
+
+  const toggle = (extension: BrowserExtensionSummary): void => {
+    setBusy(extension.path)
+    void invoke('browser:setExtensionEnabled', {
+      path: extension.path,
+      enabled: !extension.enabled
+    }).then((result) => setExtensions(result.extensions))
+      .catch(() => setFeedback(t('settings.browser.extensions.error')))
+      .finally(() => setBusy(null))
+  }
+
+  const remove = (extension: BrowserExtensionSummary): void => {
+    setBusy(extension.path)
+    void invoke('browser:removeExtension', { path: extension.path })
+      .then((result) => setExtensions(result.extensions))
+      .catch(() => setFeedback(t('settings.browser.extensions.error')))
+      .finally(() => setBusy(null))
+  }
+
+  return (
+    <SettingsCard
+      title={t('settings.browser.extensions.title')}
+      description={t('settings.browser.extensions.description')}
+    >
+      <button
+        type="button"
+        className="secondary-button settings-browser__extension-add"
+        disabled={busy !== null}
+        onClick={install}
+      >
+        {busy === 'install'
+          ? t('settings.browser.extensions.loading')
+          : t('settings.browser.extensions.add')}
+      </button>
+      {extensions === null ? (
+        <p className="settings-feedback">{t('settings.browser.extensions.loading')}</p>
+      ) : extensions.length === 0 ? (
+        <p className="settings-feedback">{t('settings.browser.extensions.empty')}</p>
+      ) : (
+        <ul className="settings-browser__extension-list">
+          {extensions.map((extension) => (
+            <li key={extension.path} className="settings-browser__extension-row">
+              <span className="settings-browser__extension-copy">
+                <strong>{extension.name}</strong>
+                <small>
+                  {extension.version !== '' ? `v${extension.version} · ` : ''}
+                  {extension.status === 'loaded'
+                    ? t('settings.browser.extensions.active')
+                    : extension.status === 'disabled'
+                      ? t('settings.browser.extensions.disabled')
+                      : extension.error ?? t('settings.browser.extensions.error')}
+                </small>
+              </span>
+              <button
+                type="button"
+                className="settings-site-row__action"
+                disabled={busy !== null}
+                onClick={() => toggle(extension)}
+              >
+                {extension.enabled
+                  ? t('settings.browser.extensions.disable')
+                  : t('settings.browser.extensions.enable')}
+              </button>
+              <button
+                type="button"
+                className="settings-site-row__action"
+                disabled={busy !== null}
+                onClick={() => remove(extension)}
+              >
+                {t('settings.browser.extensions.remove')}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="settings-feedback" aria-live="polite">{feedback}</p>
+    </SettingsCard>
+  )
+}
+
 export function BrowserSettingsPanel({
   settings
 }: {
@@ -256,6 +521,10 @@ export function BrowserSettingsPanel({
       <SearchEngineCard settings={settings} />
       <DefaultZoomCard settings={settings} />
       <LinkRoutingCard settings={settings} />
+      <PrivacyProtectionCard settings={settings} />
+      <PopupCard settings={settings} />
+      <WebExtensionsCard />
+      <BrowserImportCard />
       <AgentAccessSection settings={settings} />
       <BrowsingDataPanel settings={settings} />
     </div>

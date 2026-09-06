@@ -80,6 +80,8 @@ export interface InkLayerProps {
   className?: string
   /** Course that owns image paths. Required only when image shapes are present. */
   courseId?: string
+  /** Shared board that owns private image assets. */
+  boardId?: string
   /** Surface-owned PDF renderer; omitted on PDF markup and group boards. */
   renderClip?: RenderClip
   onOpenClip?: (source: DrawingClipSource) => void
@@ -301,6 +303,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     ariaLabel,
     className,
     courseId,
+    boardId,
     renderClip,
     onOpenClip,
     onRefineBox,
@@ -1223,6 +1226,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
               aspect={aspect}
               baseWidthPx={baseWidthPx}
               courseId={courseId}
+              boardId={boardId}
               selected={isSelected}
               renderClip={renderClip}
               onOpenClip={onOpenClip}

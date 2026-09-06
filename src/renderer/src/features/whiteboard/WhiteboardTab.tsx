@@ -8,12 +8,19 @@ import type {
   WhiteboardAvailability,
   WhiteboardShape
 } from '../../../../shared/types/whiteboard'
+import { showToast } from '../../app/toast'
 import { invoke, onPush } from '../../lib/ipc'
 import {
+  imageBoxAtPoint,
   instanceSurfaceKey,
+  primeSharedDrawingImageCache,
   useInkToolStore,
   type InkHistoryAction
 } from '../ink'
+import {
+  normalizeWhiteboardImage,
+  WHITEBOARD_IMAGE_MAX_FILES
+} from './imageImport'
 import {
   WhiteboardCanvas,
   type DrawableWhiteboardAvailability
@@ -180,6 +187,9 @@ function WhiteboardSession({
   const canRedo = useInkToolStore((state) =>
     (state.histories[surfaceKey]?.redo.length ?? 0) > 0
   )
+  const color = useInkToolStore((state) => state.color)
+  const width = useInkToolStore((state) => state.width)
+  const setActiveTool = useInkToolStore((state) => state.setActiveTool)
 
   const replace = useCallback((next: DrawingShape[]): void => {
     shapesRef.current = next
@@ -331,6 +341,57 @@ function WhiteboardSession({
     settleWhiteboardRedo(surfaceKey, executeHistory)
   }, [executeHistory, surfaceKey])
 
+  const insertImageFiles = useCallback(async (
+    filesInput: readonly File[],
+    surfaceAspect: number
+  ): Promise<void> => {
+    const files = [...filesInput].slice(0, WHITEBOARD_IMAGE_MAX_FILES)
+    if (files.length === 0) return
+    setStatusMessage('사진을 최적화하고 안전하게 저장하는 중…')
+    try {
+      for (const [index, file] of files.entries()) {
+        const image = await normalizeWhiteboardImage(file)
+        const source = await invoke('whiteboard:putAsset', {
+          boardId: board.id,
+          assetId: uuidv4(),
+          label: file.name || '사진',
+          mimeType: image.mimeType,
+          base64: image.base64,
+          widthPx: image.widthPx,
+          heightPx: image.heightPx
+        })
+        primeSharedDrawingImageCache(board.id, source, image.dataUrl)
+        const offset = Math.min(index, 8) * 0.03
+        addInternal({
+          kind: 'image',
+          data: {
+            box: imageBoxAtPoint(
+              {
+                x: Math.min(0.88, 0.5 + offset),
+                y: Math.min(0.8, 0.3 + offset)
+              },
+              surfaceAspect,
+              image.aspect
+            ),
+            image: source
+          },
+          style: { color, width, opacity: 1 }
+        }, true)
+      }
+      setActiveTool('select')
+      setStatusMessage(null)
+      showToast(
+        files.length === 1
+          ? '사진을 공유 화이트보드에 추가했어요.'
+          : `${files.length}개 사진을 공유 화이트보드에 추가했어요.`
+      )
+    } catch (error: unknown) {
+      const message = errorMessage(error)
+      setStatusMessage(message)
+      showToast(message, 'danger')
+    }
+  }, [addInternal, board.id, color, setActiveTool, width])
+
   useEffect(() => {
     if (!sessionActive) return
     return onPush('whiteboard:changed', ({ groupId, event: rawEvent }) => {
@@ -399,6 +460,7 @@ function WhiteboardSession({
 
   return (
     <WhiteboardCanvas
+      boardId={board.id}
       availability={availability}
       shapes={shapes}
       canUndo={canUndo}
@@ -410,6 +472,7 @@ function WhiteboardSession({
       onRemove={(ids) => { removeInternal(ids, true) }}
       onUndo={undo}
       onRedo={redo}
+      onInsertImages={(files, aspect) => { void insertImageFiles(files, aspect) }}
     />
   )
 }

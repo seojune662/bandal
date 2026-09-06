@@ -1,6 +1,6 @@
 import type { InkTool } from '../ink'
 
-export type CanvasToolIconName = InkTool | 'lineWidth' | 'undo' | 'redo'
+export type CanvasToolIconName = InkTool | 'image' | 'lineWidth' | 'undo' | 'redo'
 
 export function CanvasToolIcon({ name }: { name: CanvasToolIconName }): JSX.Element {
   return (
@@ -49,6 +49,13 @@ export function CanvasToolIcon({ name }: { name: CanvasToolIconName }): JSX.Elem
         </>
       )}
       {name === 'line' && <path d="M5 19 19 5" />}
+      {name === 'image' && (
+        <>
+          <rect x="3.5" y="5" width="17" height="14" rx="2" />
+          <circle cx="9" cy="10" r="1.5" />
+          <path d="m5.5 17 4.5-4 3 2.5 2.5-2 3 3.5" />
+        </>
+      )}
       {name === 'lineWidth' && (
         <>
           <path d="M4 7h16M4 12h16" />

@@ -10,6 +10,7 @@ interface ReferencedShapeProps {
   aspect: number
   baseWidthPx: number
   courseId?: string | undefined
+  boardId?: string | undefined
   selected: boolean
   renderClip?: RenderClip | undefined
   onOpenClip: Parameters<typeof ClipShape>[0]['onOpenClip']
@@ -29,6 +30,7 @@ export function ReferencedShape(props: ReferencedShapeProps): JSX.Element | null
     aspect,
     baseWidthPx,
     courseId,
+    boardId,
     selected,
     renderClip,
     onOpenClip,
@@ -54,6 +56,7 @@ export function ReferencedShape(props: ReferencedShapeProps): JSX.Element | null
       aspect={aspect}
       baseWidthPx={baseWidthPx}
       courseId={courseId}
+      boardId={boardId}
       selected={selected}
       onBeginManipulation={onBeginManipulation}
       onNaturalAspect={onNaturalAspect}

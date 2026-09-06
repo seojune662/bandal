@@ -96,7 +96,7 @@ test.describe('office document viewers + sidebar ux', () => {
   test('pptx opens as rendered slides in a tab', async () => {
     const { page } = bandal
     await page.locator('[data-material-path="deck.pptx"]').click()
-    await expect(page.locator('.file-slides__slide')).toBeVisible({ timeout: 20_000 })
+    await expect(page.locator('.file-slides__precise-viewer')).toBeVisible({ timeout: 20_000 })
     await expect(page.getByText('발표 제목 텍스트')).toBeVisible()
   })
 

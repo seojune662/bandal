@@ -38,7 +38,8 @@ const PERMISSION_LABELS: Record<string, string> = {
   'display-capture': '화면 공유',
   midi: 'MIDI 기기 사용',
   midiSysex: 'MIDI 기기 사용',
-  'window-management': '창 위치 관리'
+  'window-management': '창 위치 관리',
+  popups: '팝업 열기'
 }
 
 export function BrowsingDataPanel({

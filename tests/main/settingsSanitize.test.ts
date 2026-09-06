@@ -257,6 +257,55 @@ describe('sanitizeSettings — v0.37 notifications / browser / shortcutPriority 
     expect(sanitizeSettings({ shortcutPriority: 'site' }, defaults).shortcutPriority).toBe('site')
   })
 
+  test('browser privacy controls keep only registered values', () => {
+    const result = sanitizeSettings(
+      {
+        browser: {
+          popupBehavior: 'strict',
+          trackingProtection: 'off',
+          doNotTrack: false
+        }
+      },
+      defaults
+    )
+    expect(result.browser.popupBehavior).toBe('strict')
+    expect(result.browser.trackingProtection).toBe('off')
+    expect(result.browser.doNotTrack).toBe(false)
+
+    const rejected = sanitizeSettings(
+      {
+        browser: {
+          popupBehavior: 'ask-every-time',
+          trackingProtection: 'maximum',
+          doNotTrack: 'yes'
+        }
+      },
+      defaults
+    )
+    expect(rejected.browser.popupBehavior).toBe('balanced')
+    expect(rejected.browser.trackingProtection).toBe('balanced')
+    expect(rejected.browser.doNotTrack).toBe(true)
+  })
+
+  test('extension paths must be absolute, unique and bounded', () => {
+    const result = sanitizeSettings(
+      {
+        browser: {
+          extensions: [
+            { path: '/tmp/reader', enabled: false },
+            { path: '/tmp/reader', enabled: true },
+            { path: 'relative/extension', enabled: true },
+            null
+          ]
+        }
+      },
+      defaults
+    )
+    expect(result.browser.extensions).toEqual([
+      { path: '/tmp/reader', enabled: false }
+    ])
+  })
+
   test('experimental drops graduated flags and fills missing ones', () => {
     const result = sanitizeSettings(
       { experimental: { extensionRuntime: false, retiredFlag: true } },

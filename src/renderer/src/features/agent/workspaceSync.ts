@@ -107,7 +107,10 @@ export function useAgentWorkspaceSync(): void {
 
     schedule()
     const unsubWorkspace = useWorkspaceStore.subscribe(schedule)
-    const unsubCourses = useCoursesStore.subscribe(schedule)
+    // Course selection is also the context used by plugin commands. Publishing
+    // it immediately avoids a freshly-created/selected course briefly looking
+    // like "no course" when a command is invoked inside the debounce window.
+    const unsubCourses = useCoursesStore.subscribe(publish)
     return () => {
       if (timer !== null) window.clearTimeout(timer)
       unsubWorkspace()

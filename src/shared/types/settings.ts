@@ -156,6 +156,26 @@ export function isLinkRouting(value: unknown): value is LinkRouting {
   return value === 'in-app' || value === 'system'
 }
 
+export const POPUP_BEHAVIORS = ['balanced', 'strict'] as const
+export type PopupBehavior = (typeof POPUP_BEHAVIORS)[number]
+
+export function isPopupBehavior(value: unknown): value is PopupBehavior {
+  return POPUP_BEHAVIORS.some((behavior) => behavior === value)
+}
+
+export const TRACKING_PROTECTIONS = ['balanced', 'strict', 'off'] as const
+export type TrackingProtection = (typeof TRACKING_PROTECTIONS)[number]
+
+export function isTrackingProtection(value: unknown): value is TrackingProtection {
+  return TRACKING_PROTECTIONS.some((protection) => protection === value)
+}
+
+export interface BrowserExtensionPreference {
+  /** Absolute path to a user-selected unpacked extension directory. */
+  path: string
+  enabled: boolean
+}
+
 /**
  * [v0.37] 브라우저 설정. `browserSearchEngine`은 역사적 이유로 최상위에 남는다.
  * - `agentUse`: 에이전트 브라우저 사용 마스터 스위치. false면 사이트별 권한
@@ -168,13 +188,25 @@ export interface BrowserSettings {
   homePage: string
   defaultZoomLevel: number
   linkRouting: LinkRouting
+  /** Real popup windows: compatibility-safe defaults or site-allowlist only. */
+  popupBehavior: PopupBehavior
+  /** Third-party tracker filtering. Never applies to main-frame navigation. */
+  trackingProtection: TrackingProtection
+  /** Sends DNT and Global Privacy Control on normal and private requests. */
+  doNotTrack: boolean
+  /** Verified unpacked MV3 subset; Chromium does not retain these across boots. */
+  extensions: readonly BrowserExtensionPreference[]
 }
 
 export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
   agentUse: true,
   homePage: '',
   defaultZoomLevel: 0,
-  linkRouting: 'in-app'
+  linkRouting: 'in-app',
+  popupBehavior: 'balanced',
+  trackingProtection: 'balanced',
+  doNotTrack: true,
+  extensions: []
 }
 
 /**

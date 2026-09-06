@@ -8,6 +8,8 @@ import type { DrawingShape } from '../../../../shared/types/drawing'
 import type { WhiteboardAvailability } from '../../../../shared/types/whiteboard'
 import { InkLayer, useInkToolStore } from '../ink'
 import { TextFormatRow } from '../ink/TextFormatRow'
+import { isEditablePasteTarget } from '../materials/clipboardPaste'
+import { clipboardImageFiles } from './imageImport'
 import { WhiteboardToolRail } from './WhiteboardToolRail'
 
 export type DrawableWhiteboardAvailability = Extract<
@@ -47,6 +49,7 @@ function useCanvasSize(ref: RefObject<HTMLDivElement>): CanvasSize {
 }
 
 export interface WhiteboardCanvasProps {
+  boardId: string
   availability: DrawableWhiteboardAvailability
   shapes: readonly DrawingShape[]
   canUndo: boolean
@@ -63,9 +66,11 @@ export interface WhiteboardCanvasProps {
   onRemove: (ids: string[]) => void
   onUndo: () => void
   onRedo: () => void
+  onInsertImages: (files: File[], surfaceAspect: number) => void
 }
 
 export function WhiteboardCanvas({
+  boardId,
   availability,
   shapes,
   canUndo,
@@ -76,7 +81,8 @@ export function WhiteboardCanvas({
   onUpdate,
   onRemove,
   onUndo,
-  onRedo
+  onRedo,
+  onInsertImages
 }: WhiteboardCanvasProps): JSX.Element {
   const canvasRef = useRef<HTMLDivElement>(null)
   const size = useCanvasSize(canvasRef)
@@ -90,6 +96,20 @@ export function WhiteboardCanvas({
     size.height > 0
   const aspect = hasMeasuredCanvas ? size.height / size.width : 0
   const baseWidthPx = hasMeasuredCanvas ? size.width : 0
+
+  useEffect(() => {
+    if (!controlsEnabled) return
+    const handlePaste = (event: ClipboardEvent): void => {
+      if (event.defaultPrevented || isEditablePasteTarget(event.target)) return
+      if (event.clipboardData === null) return
+      const files = clipboardImageFiles(event.clipboardData)
+      if (files.length === 0) return
+      event.preventDefault()
+      onInsertImages(files, aspect)
+    }
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [aspect, controlsEnabled, onInsertImages])
 
   return (
     <section
@@ -109,6 +129,7 @@ export function WhiteboardCanvas({
         enabled={controlsEnabled}
         onUndo={onUndo}
         onRedo={onRedo}
+        onInsertImages={(files) => onInsertImages(files, aspect)}
       />
       <TextFormatRow visible={activeTool === 'text'} />
       {statusMessage !== null && (
@@ -119,6 +140,7 @@ export function WhiteboardCanvas({
           <InkLayer
             aspect={aspect}
             baseWidthPx={baseWidthPx}
+            boardId={boardId}
             shapes={shapes}
             tool={{ activeTool, color, width, opacity }}
             onCreate={onCreate}
