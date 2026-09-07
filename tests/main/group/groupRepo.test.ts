@@ -303,6 +303,24 @@ describe('course_group_links', () => {
     // Never-used groups sink to the bottom rather than to the top.
     expect(ids[2]).toBe('remote-quiet')
   })
+
+  test('keeps direct chats addressable without mixing them into study groups', () => {
+    repo.upsertGroup({
+      id: 'direct-1',
+      name: '나리',
+      color: 'moon',
+      memberCount: 2,
+      kind: 'direct',
+      directPeerId: 'friend-1'
+    })
+
+    expect(repo.listGroups()).toEqual([])
+    expect(repo.getGroup('direct-1')).toEqual(expect.objectContaining({
+      id: 'direct-1',
+      kind: 'direct',
+      directPeerId: 'friend-1'
+    }))
+  })
 })
 
 describe('group_messages_cache', () => {
@@ -514,5 +532,48 @@ describe('profile and member caches', () => {
     expect(repo.listMembers('remote-1')).toHaveLength(0)
     expect(repo.pendingFor('remote-1')).toHaveLength(0)
     expect(repo.searchProfiles('나')).toHaveLength(0)
+  })
+})
+
+describe('friend and published-course caches', () => {
+  test('friend replacement preserves request direction and direct-message unread counts', () => {
+    repo.replaceFriends([
+      {
+        userId: 'friend-1',
+        nickname: '나리',
+        avatarColor: 'moon',
+        avatarEmoji: '🌙',
+        status: 'accepted',
+        direction: 'incoming',
+        unread: 3
+      }
+    ])
+    expect(repo.listFriends()).toEqual([
+      expect.objectContaining({ userId: 'friend-1', direction: 'incoming', unread: 3 })
+    ])
+
+    repo.upsertGroup({
+      id: 'direct-1',
+      name: '나리',
+      color: 'moon',
+      kind: 'direct',
+      directPeerId: 'friend-1'
+    })
+    repo.setUnread('direct-1', 5, '2026-09-07T00:00:00.000Z')
+    expect(repo.listFriends()[0]?.unread).toBe(5)
+  })
+
+  test('scopes local publication identifiers by signed-in account', () => {
+    const courseId = seedCourse()
+    repo.setPublishedCourseShare('owner-a', courseId, 'share-a')
+    repo.setPublishedCourseShare('owner-b', courseId, 'share-b')
+
+    expect(repo.listPublishedCourseIds('owner-a')).toEqual([courseId])
+    expect(repo.getPublishedCourseShare('owner-a', courseId)).toBe('share-a')
+    expect(repo.getPublishedCourseShare('owner-b', courseId)).toBe('share-b')
+
+    repo.removePublishedCourseShare('owner-a', courseId)
+    expect(repo.getPublishedCourseShare('owner-a', courseId)).toBeNull()
+    expect(repo.getPublishedCourseShare('owner-b', courseId)).toBe('share-b')
   })
 })

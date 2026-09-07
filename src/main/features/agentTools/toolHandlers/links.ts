@@ -50,6 +50,7 @@ function relPathForDescriptor(descriptor: TabDescriptor): string | null {
     case 'group-chat':
     case 'whiteboard':
     case 'plugin-panel':
+    case 'friends':
       return null
   }
 }

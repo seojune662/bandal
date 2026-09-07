@@ -950,6 +950,68 @@ export const migrations: Migration[] = [
            WHERE pending = 1;`
       )
     }
+  },
+  {
+    version: 28,
+    name: 'typed-material-links',
+    up: (db) => {
+      const columns = new Set(
+        (db.prepare('PRAGMA table_info(material_links)').all() as { name: string }[])
+          .map((column) => column.name)
+      )
+      if (!columns.has('kind')) {
+        db.exec(
+          `ALTER TABLE material_links
+             ADD COLUMN kind TEXT NOT NULL DEFAULT 'related'`
+        )
+      }
+      if (!columns.has('metadata_json')) {
+        db.exec('ALTER TABLE material_links ADD COLUMN metadata_json TEXT')
+      }
+      db.exec(
+        `UPDATE material_links SET kind = 'sequence' WHERE label = 'next';
+         CREATE INDEX IF NOT EXISTS idx_material_links_kind
+           ON material_links (course_id, kind);`
+      )
+    }
+  },
+  {
+    version: 29,
+    name: 'friends-direct-chat-and-course-sharing-cache',
+    up: (db) => {
+      const columns = new Set(
+        (db.prepare('PRAGMA table_info(course_group_links)').all() as { name: string }[])
+          .map((column) => column.name)
+      )
+      if (!columns.has('kind_cache')) {
+        db.exec("ALTER TABLE course_group_links ADD COLUMN kind_cache TEXT NOT NULL DEFAULT 'study'")
+      }
+      if (!columns.has('direct_peer_id')) {
+        db.exec('ALTER TABLE course_group_links ADD COLUMN direct_peer_id TEXT')
+      }
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_course_group_links_kind
+           ON course_group_links (kind_cache, last_msg_at_cache DESC)
+           WHERE deleted_at IS NULL;
+         CREATE TABLE IF NOT EXISTS friends_cache (
+           user_id       TEXT PRIMARY KEY,
+           nickname      TEXT NOT NULL,
+           avatar_color  TEXT NOT NULL,
+           avatar_emoji  TEXT NOT NULL,
+           status        TEXT NOT NULL,
+           direction     TEXT NOT NULL,
+           unread        INTEGER NOT NULL DEFAULT 0,
+           fetched_at    TEXT NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS published_course_links (
+           owner_id   TEXT NOT NULL,
+           course_id  TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+           share_id   TEXT NOT NULL UNIQUE,
+           updated_at TEXT NOT NULL,
+           PRIMARY KEY (owner_id, course_id)
+         );`
+      )
+    }
   }
 ]
 

@@ -111,8 +111,9 @@ describe('IPC channel coverage', () => {
   test('batch 2 handlers delegate to their repositories', () => {
     const source = mainRouterSource()
     expect(source).toContain(
-      "handle('board:reorderTasks', (req) =>\n    boardRepo.reorderTasks(req.courseId, req.updates)"
+      "handle('board:reorderTasks', (req) => {\n    const result = boardRepo.reorderTasks(req.courseId, req.updates)"
     )
+    expect(source).toContain("broadcast('board:changed', { courseId: req.courseId })")
     expect(source).toContain(
       'grants: chatRepo.listGrantDetails(req.courseId)'
     )

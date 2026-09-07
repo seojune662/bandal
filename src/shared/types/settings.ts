@@ -20,6 +20,36 @@ export type ThemePreference = ThemeId | 'system'
 
 export type AssistantMode = 'in-app' | 'desktop'
 
+export const WIDGET_IDS = ['todo', 'board', 'mail'] as const
+export type WidgetId = (typeof WIDGET_IDS)[number]
+
+export function isWidgetId(value: unknown): value is WidgetId {
+  return WIDGET_IDS.some((id) => id === value)
+}
+
+/** Global right-rail widget dock preferences. */
+export interface WidgetSettings {
+  /** Enabled widgets in tab order. An empty list hides the dock. */
+  enabled: readonly WidgetId[]
+  active: WidgetId
+  /** Fraction of the right rail assigned to the dock. */
+  heightRatio: number
+  /** University-service id, or null to use the first resolved mail service. */
+  mailServiceId: string | null
+  /** Optional user-provided fallback when the catalog has no mail service. */
+  mailUrl: string
+  lastMailOpenedAt: string | null
+}
+
+export const DEFAULT_WIDGETS: WidgetSettings = {
+  enabled: ['todo'],
+  active: 'todo',
+  heightRatio: 0.38,
+  mailServiceId: null,
+  mailUrl: '',
+  lastMailOpenedAt: null
+}
+
 /** 데스크톱 오브 동작. 나중에 hotkey 등을 덧붙일 수 있게 객체로 둔다. */
 export interface DesktopOrbSettings {
   keepAliveOnClose: boolean
@@ -304,6 +334,8 @@ export interface Settings {
   shortcutPriority: ShortcutPriority
   /** [v0.37] 실험실 플래그. */
   experimental: ExperimentalSettings
+  /** Right-rail productivity widget dock. */
+  widgets: WidgetSettings
   /**
    * [v0.40] 플러그인 카탈로그 추가 소스(index.json 의 https URL). 공식 소스
    * (OFFICIAL_CATALOG_URL)는 항상 포함되며 여기엔 넣지 않는다.
@@ -338,16 +370,18 @@ export const DEFAULT_SETTINGS: Settings = {
   browser: DEFAULT_BROWSER_SETTINGS,
   shortcutPriority: 'bandal',
   experimental: DEFAULT_EXPERIMENTAL,
+  widgets: DEFAULT_WIDGETS,
   pluginSources: [],
   pluginTheme: null
 }
 
 /** Preference groups accept field patches; maps (e.g. keybindings) replace. */
 export type SettingsPatch = Partial<Omit<Settings,
-  'browser' | 'notifications' | 'experimental' | 'desktopOrb'
+  'browser' | 'notifications' | 'experimental' | 'desktopOrb' | 'widgets'
 >> & {
   browser?: Partial<BrowserSettings>
   notifications?: Partial<NotificationSettings>
   experimental?: Partial<ExperimentalSettings>
   desktopOrb?: Partial<DesktopOrbSettings>
+  widgets?: Partial<WidgetSettings>
 }

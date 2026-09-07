@@ -482,7 +482,20 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     }
     return result
   })
-  handle('courses:rename', (req) => courseListChanged(coursesRepo.rename(req)))
+  handle('courses:rename', (req) => {
+    const course = courseListChanged(coursesRepo.rename(req))
+    if (
+      groupRuntime.isStarted() &&
+      groups().listPublishedCourseIds().includes(course.id)
+    ) {
+      void groups()
+        .setCourseVisibility(course.id, course.name, true)
+        .catch((error: unknown) => {
+          console.error('[friends] shared course rename sync failed', error)
+        })
+    }
+    return course
+  })
   handle('courses:setColor', (req) =>
     courseListChanged(coursesRepo.setColor(req))
   )
@@ -545,6 +558,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     const result = materialLinksRepo.remove(req.courseId, req.id)
     broadcast('materials:changed', { courseId: req.courseId })
     return result
+  })
+  handle('links:updatePageNote', (req) => {
+    return materialLinksRepo.updateMetadata(
+      req.courseId,
+      req.id,
+      req.metadata
+    )
   })
   handle('links:listFor', (req) =>
     materialLinksRepo.listFor(req.courseId, req.relPath)
@@ -944,15 +964,26 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     if (req.courseId != null) {
       note(req.courseId, 'task-created', `할 일을 추가했습니다: ${req.title}`)
     }
+    broadcast('board:changed', { courseId: result.courseId })
     return result
   })
-  handle('board:updateTask', (req) => boardRepo.update(req))
-  handle('board:reorderTasks', (req) =>
-    boardRepo.reorderTasks(req.courseId, req.updates)
-  )
+  handle('board:updateTask', (req) => {
+    const result = boardRepo.update(req)
+    broadcast('board:changed', { courseId: result.courseId })
+    return result
+  })
+  handle('board:reorderTasks', (req) => {
+    const result = boardRepo.reorderTasks(req.courseId, req.updates)
+    broadcast('board:changed', { courseId: req.courseId })
+    return result
+  })
   handle('calendar:range', (req) => boardRepo.listRange(req))
   handle('calendar:upcoming', (req) => boardRepo.upcoming(req))
-  handle('board:deleteTask', (req) => boardRepo.softDelete(req))
+  handle('board:deleteTask', (req) => {
+    const result = boardRepo.softDelete(req)
+    broadcast('board:changed', { courseId: null })
+    return result
+  })
 
   // -- chat (M4-H: Claude Code CLI runtime) ---------------------------------
   const chatRepo = createChatRepo(db)
@@ -3053,6 +3084,27 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('friends:respond', async (req) => ({
     status: await groups().respondFriend(req.requesterId, req.accept)
   }))
+  handle('friends:remove', async (req) => {
+    await groups().removeFriend(req.userId)
+    return OK
+  })
+  handle('friends:publishedCourses', (req) =>
+    groups().listPublishedCourses(req.userId)
+  )
+  handle('friends:courseVisibility', () => ({
+    courseIds: groups().listPublishedCourseIds()
+  }))
+  handle('friends:setCourseVisibility', async (req) => {
+    const course = coursesRepo.getById(req.courseId)
+    return {
+      visible: await groups().setCourseVisibility(
+        course.id,
+        course.name,
+        req.visible
+      )
+    }
+  })
+  handle('directChat:open', (req) => groups().openDirectChat(req.friendUserId))
 
   // group chat
   handle('groupChat:open', (req) => groups().openChat(req.groupId))

@@ -10,12 +10,14 @@ import {
   serializerCtx
 } from '@milkdown/core'
 import type { MilkdownPlugin } from '@milkdown/ctx'
+import { DOMSerializer as ProseDOMSerializer } from '@milkdown/prose/model'
 import { Plugin, TextSelection } from '@milkdown/prose/state'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react'
 import type { IDockviewPanelProps } from 'dockview'
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -23,11 +25,23 @@ import {
   type MouseEvent as ReactMouseEvent
 } from 'react'
 import type { NoteContent, NoteRef } from '../../../../shared/types/note'
+import type { MaterialLinkRecord } from '../../../../shared/types/link'
+import {
+  hasPdfPageNoteHeader,
+  isPdfPageNotePairContext,
+  parsePdfPageNote,
+  recoverPdfPageNoteAsMarkdown,
+  serializePdfPageNote,
+  sourceRelPath,
+  type PdfPageNoteDocument,
+  type PdfPageNotePairContext
+} from '../../../../shared/pdfPageNote'
 import { openHttpLink } from '../../app/openHttpLink'
 import { showToast } from '../../app/toast'
 import { createPluginEditorAccess } from '../plugins/pluginEditor'
 import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor, isTabDescriptor } from '../workspace/tabIdentity'
 import { requestMaterialConnectionsRefresh } from '../links/useMaterialConnections'
 import { nativeHistoryGuard } from './nativeHistoryGuard'
@@ -48,9 +62,11 @@ import {
   loadNoteEditorPlugins,
   NOTE_EDITOR_PLUGINS
 } from './noteEditorPlugins'
+import { createMarkdownCodec, type MarkdownCodec } from './markdownCodec'
 import {
   createNoteImagePlugin,
-  createNoteImageView
+  createNoteImageView,
+  noteImageSource
 } from './noteImagePlugin'
 import {
   broadcastNoteEdit,
@@ -83,12 +99,18 @@ import {
 import { taskListItemView } from './taskListView'
 import { createWikilinkPickerPlugin, wikilinkContextCtx } from './wikilink'
 import './note-tab.css'
+import {
+  publishPageSyncAnchor,
+  subscribePageSyncAnchor,
+  usePageNoteSync
+} from '../links/pdfPageNoteSync'
 
 const SAVE_DELAY_MS = 800
 /** Live-mirror latency between duplicate panels of the same file. */
 const EDIT_BROADCAST_DELAY_MS = 300
 /** Second, late scroll restore after the async editor plugins settle. */
 const SCROLL_RESTORE_RETRY_MS = 120
+let pageNotePreviewCodecPromise: Promise<MarkdownCodec> | null = null
 
 type SaveStatus = 'saved' | 'dirty' | 'saving' | 'conflict' | 'error'
 type NoteViewMode = 'edit' | 'quiz'
@@ -100,6 +122,7 @@ interface EditorSeed {
 
 interface NoteSessionProps extends NoteRef {
   panelApi: IDockviewPanelProps['api']
+  pageNotePair: PdfPageNotePairContext | null
 }
 
 const STATUS_LABEL: Record<SaveStatus, string> = {
@@ -128,6 +151,81 @@ function normalizedTitleStem(title: string): string {
     .replace(/^\.+/, '')
     .slice(0, 120)
     .trim()
+}
+
+function pageNotePreviewCodec(): Promise<MarkdownCodec> {
+  pageNotePreviewCodecPromise ??= createMarkdownCodec()
+  return pageNotePreviewCodecPromise
+}
+
+/**
+ * Renders inactive pages with the editor's Markdown schema without mounting a
+ * full ProseMirror editor for every page in a long PDF.
+ */
+function PageNotePreview({
+  courseId,
+  markdown,
+  emptyLabel = '눌러서 이 페이지에 필기하세요.'
+}: {
+  courseId: string
+  markdown: string
+  emptyLabel?: string
+}): JSX.Element {
+  const renderHostRef = useRef<HTMLDivElement>(null)
+  const isEmpty = markdown.trim().length === 0
+
+  useEffect(() => {
+    const host = renderHostRef.current
+    if (host === null || isEmpty) return
+    let disposed = false
+    host.setAttribute('aria-busy', 'true')
+
+    void pageNotePreviewCodec()
+      .then((codec) => {
+        if (disposed) return
+        const proseDocument = codec.parse(markdown)
+        const milkdown = window.document.createElement('div')
+        const editor = window.document.createElement('div')
+        milkdown.className = 'milkdown'
+        editor.className = 'editor'
+        editor.appendChild(
+          ProseDOMSerializer.fromSchema(proseDocument.type.schema)
+            .serializeFragment(proseDocument.content)
+        )
+        for (const image of editor.querySelectorAll<HTMLImageElement>('img[src]')) {
+          image.src = noteImageSource(courseId, image.getAttribute('src') ?? '')
+        }
+        milkdown.appendChild(editor)
+        host.replaceChildren(milkdown)
+        host.removeAttribute('data-render-error')
+      })
+      .catch((error: unknown) => {
+        if (disposed) return
+        console.error('[Bandal] 페이지 필기 미리보기를 렌더링하지 못했습니다.', error)
+        const fallback = window.document.createElement('pre')
+        fallback.className = 'page-note-paper__fallback'
+        fallback.textContent = markdown
+        host.replaceChildren(fallback)
+        host.setAttribute('data-render-error', 'true')
+      })
+      .finally(() => {
+        if (!disposed) host.removeAttribute('aria-busy')
+      })
+
+    return () => {
+      disposed = true
+    }
+  }, [courseId, isEmpty, markdown])
+
+  return (
+    <div className="page-note-paper__preview">
+      {isEmpty ? (
+        <span className="page-note-paper__empty">{emptyLabel}</span>
+      ) : (
+        <div ref={renderHostRef} className="page-note-paper__render" />
+      )}
+    </div>
+  )
 }
 
 /** Put a newly opened note straight into its body, below the generated H1. */
@@ -212,7 +310,8 @@ function MilkdownNoteEditor({
   initialMarkdown,
   onMarkdownChange,
   onFormatStateChange,
-  onZoomStep
+  onZoomStep,
+  autoFocus = true
 }: {
   courseId: string
   relPath: string
@@ -220,6 +319,7 @@ function MilkdownNoteEditor({
   onMarkdownChange: (markdown: string) => void
   onFormatStateChange: (state: NoteFormatState) => void
   onZoomStep: (direction: -1 | 1) => void
+  autoFocus?: boolean
 }): JSX.Element {
   const t = useT()
   // rename 이 에디터를 재생성하지 않도록 relPath 는 ref 로만 플러그인에 전달.
@@ -268,7 +368,7 @@ function MilkdownNoteEditor({
             status === EditorStatus.Created
           ) {
             setEditorInitialization('ready')
-            requestAnimationFrame(() => focusNoteBody(editor))
+            if (autoFocus) requestAnimationFrame(() => focusNoteBody(editor))
           }
         })
         .config((context) => {
@@ -334,7 +434,7 @@ function MilkdownNoteEditor({
         editor
       )
     },
-    [courseId, editorPlugins, initialMarkdown]
+    [autoFocus, courseId, editorPlugins, initialMarkdown]
   )
 
   useEffect(() => {
@@ -406,12 +506,252 @@ function NoteEditorWorkspace({
   )
 }
 
-function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Element {
+function PageNoteWorkspace({
+  courseId,
+  relPath,
+  document,
+  onMarkdownChange,
+  fontScale,
+  onFontScaleChange,
+  onZoomStep,
+  pageNotePair,
+  panelId,
+  syncEnabled,
+  onCurrentPageChange
+}: {
+  courseId: string
+  relPath: string
+  document: PdfPageNoteDocument
+  onMarkdownChange: (markdown: string) => void
+  fontScale: NoteFontScale
+  onFontScaleChange: (scale: NoteFontScale) => void
+  onZoomStep: (direction: -1 | 1) => void
+  pageNotePair: PdfPageNotePairContext | null
+  panelId: string
+  syncEnabled: boolean
+  onCurrentPageChange: (page: number) => void
+}): JSX.Element {
+  const [pages, setPages] = useState(document.pages)
+  const [activePage, setActivePage] = useState(
+    Math.min(pageNotePair?.initialPage ?? 1, document.pages.length)
+  )
+  const [formatState, setFormatState] = useState<NoteFormatState>(
+    EMPTY_NOTE_FORMAT_STATE
+  )
+  const pagesRef = useRef(document.pages)
+  const scrollerRef = useRef<HTMLDivElement>(null)
+  const pageRefs = useRef(new Map<number, HTMLElement>())
+  const applyingSyncRef = useRef(false)
+  const scrollFrameRef = useRef<number | null>(null)
+
+  const captureAnchor = useCallback((): { page: number; pageOffset: number } | null => {
+    const scroller = scrollerRef.current
+    if (scroller === null || scroller.clientHeight <= 0) return null
+    const center = scroller.getBoundingClientRect().top + scroller.clientHeight / 2
+    let closest: { page: number; distance: number; offset: number } | null = null
+    for (const [page, element] of pageRefs.current) {
+      const box = element.getBoundingClientRect()
+      const distance = Math.abs(box.top + box.height / 2 - center)
+      if (closest === null || distance < closest.distance) {
+        closest = {
+          page,
+          distance,
+          offset: Math.min(1, Math.max(0, (center - box.top) / box.height))
+        }
+      }
+    }
+    return closest === null
+      ? null
+      : { page: closest.page, pageOffset: closest.offset }
+  }, [])
+
+  const restoreAnchor = useCallback(
+    (page: number, pageOffset: number): boolean => {
+      const scroller = scrollerRef.current
+      const element = pageRefs.current.get(
+        Math.min(Math.max(1, page), document.pages.length)
+      )
+      if (scroller === null || element === undefined) return false
+      const scrollerBox = scroller.getBoundingClientRect()
+      const pageBox = element.getBoundingClientRect()
+      const anchoredPoint = pageBox.top + pageBox.height * Math.min(1, Math.max(0, pageOffset))
+      scroller.scrollTop += anchoredPoint - (scrollerBox.top + scroller.clientHeight / 2)
+      return true
+    },
+    [document.pages.length]
+  )
+
+  useLayoutEffect(() => {
+    const initialPage = Math.min(
+      pageNotePair?.initialPage ?? 1,
+      document.pages.length
+    )
+    const frame = requestAnimationFrame(() => {
+      restoreAnchor(initialPage, 0)
+      onCurrentPageChange(initialPage)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [document.pages.length, onCurrentPageChange, pageNotePair?.initialPage, restoreAnchor])
+
+  useEffect(() => {
+    if (pageNotePair === null || !syncEnabled) return
+    return subscribePageSyncAnchor(pageNotePair.pairId, (anchor) => {
+      if (
+        anchor.connectionId !== pageNotePair.connectionId ||
+        anchor.originPanelId === panelId
+      ) return
+      applyingSyncRef.current = true
+      if (restoreAnchor(anchor.page, anchor.pageOffset)) {
+        onCurrentPageChange(
+          Math.min(Math.max(1, anchor.page), document.pages.length)
+        )
+      }
+      requestAnimationFrame(() => {
+        applyingSyncRef.current = false
+      })
+    })
+  }, [document.pages.length, onCurrentPageChange, pageNotePair, panelId, restoreAnchor, syncEnabled])
+
+  useEffect(() => () => {
+    if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current)
+  }, [])
+
+  const handleScroll = (): void => {
+    if (scrollFrameRef.current !== null) return
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null
+      const anchor = captureAnchor()
+      if (anchor === null) return
+      onCurrentPageChange(anchor.page)
+      if (pageNotePair !== null && syncEnabled && !applyingSyncRef.current) {
+        publishPageSyncAnchor({
+          connectionId: pageNotePair.connectionId,
+          pairId: pageNotePair.pairId,
+          page: anchor.page,
+          pageOffset: anchor.pageOffset,
+          originPanelId: panelId
+        })
+      }
+    })
+  }
+
+  const changePage = (page: number, markdown: string): void => {
+    if (pagesRef.current[page - 1] === markdown) return
+    const next = [...pagesRef.current]
+    next[page - 1] = markdown
+    pagesRef.current = next
+    setPages(next)
+    onMarkdownChange(serializePdfPageNote({ ...document, pages: next }))
+  }
+
+  const changeAppendix = (appendix: string): void => {
+    onMarkdownChange(
+      serializePdfPageNote({ ...document, pages: pagesRef.current, appendix })
+    )
+  }
+
+  return (
+    <div ref={scrollerRef} className="note-editor-scroll page-note-scroll" onScroll={handleScroll}>
+      <NoteToolbar
+        courseId={courseId}
+        relPath={relPath}
+        formatState={formatState}
+        fontScale={fontScale}
+        onFontScaleChange={onFontScaleChange}
+      />
+      <div className="page-note-list">
+        {pages.map((markdown, index) => {
+          const page = index + 1
+          const size = document.manifest.pages[index] ?? { width: 1, height: Math.SQRT2 }
+          const isActive = activePage === page
+          return (
+            <section
+              key={page}
+              ref={(element) => {
+                if (element === null) pageRefs.current.delete(page)
+                else pageRefs.current.set(page, element)
+              }}
+              className="page-note-paper"
+              data-active={isActive || undefined}
+              style={{ aspectRatio: `${size.width} / ${size.height}` }}
+              aria-label={`${page} 페이지 필기`}
+              onMouseDown={(event) => {
+                const target = event.target
+                if (target instanceof Element && target.closest('a[href]') !== null) return
+                setActivePage(page)
+              }}
+            >
+              <span className="page-note-paper__number">{page}</span>
+              <div className="page-note-paper__body">
+                {isActive ? (
+                  <MilkdownProvider key={page}>
+                    <MilkdownNoteEditor
+                      courseId={courseId}
+                      relPath={relPath}
+                      initialMarkdown={markdown}
+                      onMarkdownChange={(next) => changePage(page, next)}
+                      onFormatStateChange={setFormatState}
+                      onZoomStep={onZoomStep}
+                    />
+                  </MilkdownProvider>
+                ) : (
+                  <PageNotePreview courseId={courseId} markdown={markdown} />
+                )}
+              </div>
+            </section>
+          )
+        })}
+        {document.appendix.length > 0 && (
+          <section
+            className="page-note-appendix"
+            data-active={activePage === 0 || undefined}
+            onMouseDown={(event) => {
+              const target = event.target
+              if (target instanceof Element && target.closest('a[href]') !== null) return
+              setActivePage(0)
+            }}
+          >
+            <header>
+              <strong>연결 제외된 페이지</strong>
+              <span>PDF에서 사라진 페이지의 필기를 보존했습니다.</span>
+            </header>
+            {activePage === 0 ? (
+              <MilkdownProvider key="appendix">
+                <MilkdownNoteEditor
+                  courseId={courseId}
+                  relPath={relPath}
+                  initialMarkdown={document.appendix}
+                  onMarkdownChange={changeAppendix}
+                  onFormatStateChange={setFormatState}
+                  onZoomStep={onZoomStep}
+                />
+              </MilkdownProvider>
+            ) : (
+              <PageNotePreview
+                courseId={courseId}
+                markdown={document.appendix}
+                emptyLabel="보존된 필기가 없습니다."
+              />
+            )}
+          </section>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function NoteSession({
+  courseId,
+  relPath,
+  panelApi,
+  pageNotePair
+}: NoteSessionProps): JSX.Element {
   const [editorSeed, setEditorSeed] = useState<EditorSeed | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [status, setStatus] = useState<SaveStatus>('saved')
   const [statusDetail, setStatusDetail] = useState<string | null>(null)
   const [conflictBusy, setConflictBusy] = useState(false)
+  const [recoveryBusy, setRecoveryBusy] = useState(false)
   const [presentedMarkdown, setPresentedMarkdown] = useState('')
   const [viewMode, setViewMode] = useState<NoteViewMode>('edit')
   const [currentRelPath, setCurrentRelPath] = useState(relPath)
@@ -422,6 +762,21 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
       return 1
     }
   })
+  const pageNoteDocument = useMemo(
+    () => parsePdfPageNote(presentedMarkdown),
+    [presentedMarkdown]
+  )
+  const damagedPageNote =
+    pageNoteDocument === null && hasPdfPageNoteHeader(presentedMarkdown)
+  const [pageNoteConnection, setPageNoteConnection] =
+    useState<MaterialLinkRecord | null>(null)
+  const [pageNoteCurrentPage, setPageNoteCurrentPage] = useState(
+    pageNotePair?.initialPage ?? 1
+  )
+  const [pageNoteSync, setPageNoteSync] = usePageNoteSync(
+    pageNotePair?.pairId ?? null,
+    pageNoteConnection?.metadata?.syncScroll ?? true
+  )
 
   const aliveRef = useRef(true)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -443,6 +798,38 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
   /** Remote markdown waiting for focus to leave before it can remount the editor. */
   const pendingEditorMarkdownRef = useRef<string | null>(null)
   const pendingScrollTopRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (pageNoteDocument === null) {
+      setPageNoteConnection(null)
+      return
+    }
+    let disposed = false
+    void invoke('links:listFor', { courseId, relPath: currentRelPath })
+      .then(({ outgoing, incoming }) => {
+        if (disposed) return
+        const records = [...outgoing, ...incoming]
+        setPageNoteConnection(
+          records.find(
+            (record) =>
+              record.kind === 'pdf-page-note' &&
+              (pageNotePair === null || record.id === pageNotePair.connectionId)
+          ) ?? null
+        )
+      })
+      .catch(() => {
+        if (!disposed) setPageNoteConnection(null)
+      })
+    return () => {
+      disposed = true
+    }
+  }, [courseId, currentRelPath, pageNoteDocument !== null, pageNotePair])
+
+  useEffect(() => {
+    if (pageNotePair !== null && pageNoteConnection?.metadata !== null && pageNoteConnection !== null) {
+      setPageNoteSync(pageNoteConnection.metadata.syncScroll)
+    }
+  }, [pageNoteConnection, pageNotePair, setPageNoteSync])
 
   const noteFileKeyNow = useCallback(
     (): string => noteFileKey(noteRef.current.courseId, noteRef.current.relPath),
@@ -977,6 +1364,35 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
     [changeFontScale, fontScale]
   )
 
+  const openPageNotePair = useCallback((): void => {
+    if (
+      pageNoteConnection === null ||
+      pageNoteConnection.source.kind !== 'pdf' ||
+      pageNoteConnection.target.kind !== 'note'
+    ) return
+    useWorkspaceStore.getState().openPdfNotePair(
+      pageNoteConnection.source,
+      pageNoteConnection.target,
+      pageNoteConnection.id,
+      pageNoteCurrentPage
+    )
+  }, [pageNoteConnection, pageNoteCurrentPage])
+
+  const togglePageNoteSync = useCallback((): void => {
+    const next = !pageNoteSync
+    setPageNoteSync(next)
+    if (pageNoteConnection?.metadata === null || pageNoteConnection === null) return
+    void invoke('links:updatePageNote', {
+      courseId,
+      id: pageNoteConnection.id,
+      metadata: { ...pageNoteConnection.metadata, syncScroll: next }
+    }).then((updated) => {
+      if (aliveRef.current) setPageNoteConnection(updated)
+    }).catch((error: unknown) => {
+      console.error('[Bandal] 페이지 필기 동기화 설정을 저장하지 못했습니다.', error)
+    })
+  }, [courseId, pageNoteConnection, pageNoteSync, setPageNoteSync])
+
   const handleMarkdownChange = useCallback(
     (markdown: string): void => {
       if (markdown === currentMarkdownRef.current) return
@@ -1028,6 +1444,29 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
     }
   }, [])
 
+  const createRecoveryCopy = useCallback(async (): Promise<void> => {
+    if (recoveryBusy) return
+    setRecoveryBusy(true)
+    try {
+      const separator = currentRelPath.lastIndexOf('/')
+      const dirRelPath = separator < 0 ? '' : currentRelPath.slice(0, separator)
+      const title = `${noteStem(currentRelPath)} (복구 사본)`
+      const copy = await invoke('notes:create', { courseId, dirRelPath, title })
+      await invoke('notes:write', {
+        ...copy,
+        markdown: recoverPdfPageNoteAsMarkdown(currentMarkdownRef.current)
+      })
+      useWorkspaceStore.getState().openTab(
+        descriptorFor('note', { courseId, relPath: copy.relPath })
+      )
+      showToast(`원본을 유지하고 “${copy.relPath}”에 복구했어요.`)
+    } catch (error) {
+      showToast(`복구 사본을 만들지 못했어요: ${errorMessage(error)}`, 'danger')
+    } finally {
+      if (aliveRef.current) setRecoveryBusy(false)
+    }
+  }, [courseId, currentRelPath, recoveryBusy])
+
   const quizSections = useMemo(
     () => splitQuizMarkdown(presentedMarkdown),
     [presentedMarkdown]
@@ -1071,10 +1510,33 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
       }}
     >
       <header className="note-toolbar">
-        <span className="note-toolbar__path" title={currentRelPath}>
-          {fileName}
-        </span>
+        <div className="note-toolbar__identity">
+          <span className="note-toolbar__path" title={currentRelPath}>
+            {fileName}
+          </span>
+          {pageNoteDocument !== null && (
+            <span className="note-toolbar__page-source" title={sourceRelPath(pageNoteDocument.manifest)}>
+              {sourceRelPath(pageNoteDocument.manifest).split('/').at(-1)}
+              <span>{pageNoteCurrentPage} / {pageNoteDocument.pages.length}</span>
+            </span>
+          )}
+        </div>
         <div className="note-toolbar__actions">
+          {pageNoteDocument !== null && pageNoteConnection !== null && pageNotePair === null && (
+            <button type="button" className="note-action" onClick={openPageNotePair}>
+              나란히 열기
+            </button>
+          )}
+          {pageNoteDocument !== null && pageNotePair !== null && (
+            <button
+              type="button"
+              className="note-action note-toolbar__sync"
+              aria-pressed={pageNoteSync}
+              onClick={togglePageNoteSync}
+            >
+              {pageNoteSync ? '스크롤 연결됨' : '스크롤 독립'}
+            </button>
+          )}
           {quizSections !== null && (
             <button
               type="button"
@@ -1134,7 +1596,47 @@ function NoteSession({ courseId, relPath, panelApi }: NoteSessionProps): JSX.Ele
           style={{ '--note-font-scale': fontScale } as CSSProperties}
           onClickCapture={(event) => handleNoteLinkClick(event, courseId)}
         >
-          {viewMode === 'quiz' && quizSections !== null ? (
+          {damagedPageNote ? (
+            <div className="page-note-recovery" role="alert">
+              <strong>페이지 필기 형식을 읽을 수 없어요</strong>
+              <p>
+                페이지 구분 정보가 손상되어 원본 편집을 잠갔습니다. 원본은 그대로 두고
+                일반 마크다운 복구 사본을 만든 뒤 내용을 확인할 수 있어요.
+              </p>
+              <div className="page-note-recovery__actions">
+                <button
+                  type="button"
+                  className="note-action note-action--primary"
+                  disabled={recoveryBusy}
+                  onClick={() => void createRecoveryCopy()}
+                >
+                  {recoveryBusy ? '복구 중…' : '복구 사본 만들기'}
+                </button>
+                <button type="button" className="note-action" onClick={() => void loadNote()}>
+                  다시 불러오기
+                </button>
+              </div>
+              <details>
+                <summary>보존된 원문 보기</summary>
+                <pre>{presentedMarkdown}</pre>
+              </details>
+            </div>
+          ) : pageNoteDocument !== null ? (
+            <PageNoteWorkspace
+              key={editorSeed.revision}
+              courseId={courseId}
+              relPath={currentRelPath}
+              document={pageNoteDocument}
+              onMarkdownChange={handleMarkdownChange}
+              fontScale={fontScale}
+              onFontScaleChange={changeFontScale}
+              onZoomStep={stepFontScale}
+              pageNotePair={pageNotePair}
+              panelId={panelApi.id}
+              syncEnabled={pageNoteSync}
+              onCurrentPageChange={setPageNoteCurrentPage}
+            />
+          ) : viewMode === 'quiz' && quizSections !== null ? (
             <QuizPreview courseId={courseId} sections={quizSections} />
           ) : (
             <MilkdownProvider key={editorSeed.revision}>
@@ -1167,6 +1669,10 @@ export default function NoteTab(props: IDockviewPanelProps): JSX.Element {
   }
 
   const { courseId, relPath } = candidate.payload
+  const pageNotePair = isPdfPageNotePairContext(props.params['pageNotePair']) &&
+    props.params['pageNotePair'].role === 'note'
+    ? props.params['pageNotePair']
+    : null
   sessionIdRef.current ??= relPath
   return (
     <NoteSession
@@ -1174,6 +1680,7 @@ export default function NoteTab(props: IDockviewPanelProps): JSX.Element {
       courseId={courseId}
       relPath={relPath}
       panelApi={props.api}
+      pageNotePair={pageNotePair}
     />
   )
 }

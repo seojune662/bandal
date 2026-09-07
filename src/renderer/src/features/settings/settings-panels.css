@@ -797,6 +797,37 @@
   transform: none;
 }
 
+.widget-setting-row {
+  position: relative;
+}
+
+.widget-setting-row__order {
+  position: absolute;
+  top: 50%;
+  right: 58px;
+  display: flex;
+  gap: var(--space-1);
+  transform: translateY(-50%);
+}
+
+.widget-setting-row__order .secondary-button {
+  min-width: 30px;
+  padding-inline: var(--space-1);
+}
+
+.widget-mail-url {
+  width: min(300px, 48%);
+}
+
+.course-item__sharing {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
 .availability-skeleton,
 .course-loading {
   display: grid;

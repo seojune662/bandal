@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import type { TabDescriptor } from '../../../shared/tabs'
-import type { MaterialLinkRecord } from '../../../shared/types/link'
+import {
+  isPdfPageNoteLinkMetadata,
+  type MaterialLinkKind,
+  type MaterialLinkRecord,
+  type PdfPageNoteLinkMetadata
+} from '../../../shared/types/link'
 import { NotFoundError, ValidationError } from '../../db/errors'
 import { nowIso, requireId, requireNonEmptyString } from '../../db/validate'
 import {
@@ -14,6 +19,8 @@ export interface CreateMaterialLinkInput {
   source: TabDescriptor
   target: TabDescriptor
   label: string
+  kind?: MaterialLinkKind
+  metadata?: PdfPageNoteLinkMetadata | null
 }
 
 export interface MaterialLinksForPath {
@@ -24,6 +31,11 @@ export interface MaterialLinksForPath {
 export interface MaterialLinksRepo {
   create(input: CreateMaterialLinkInput): MaterialLinkRecord
   remove(courseId: string, id: string): { ok: true }
+  updateMetadata(
+    courseId: string,
+    id: string,
+    metadata: PdfPageNoteLinkMetadata
+  ): MaterialLinkRecord
   listFor(courseId: string, relPath: string): MaterialLinksForPath
   listForDescriptor(
     courseId: string,
@@ -39,16 +51,32 @@ interface MaterialLinkRow {
   source_json: string
   target_json: string
   label: string
+  kind: string
+  metadata_json: string | null
   created_at: string
 }
 
 function rowToRecord(row: MaterialLinkRow): MaterialLinkRecord {
+  let metadata: PdfPageNoteLinkMetadata | null = null
+  if (row.metadata_json !== null) {
+    try {
+      const parsed: unknown = JSON.parse(row.metadata_json)
+      if (isPdfPageNoteLinkMetadata(parsed)) metadata = parsed
+    } catch {
+      // A malformed optional payload must not hide the underlying connection.
+    }
+  }
   return {
     id: row.id,
     courseId: row.course_id,
     source: parseDescriptor(row.source_json),
     target: parseDescriptor(row.target_json),
+    kind:
+      row.kind === 'sequence' || row.kind === 'pdf-page-note'
+        ? row.kind
+        : 'related',
     label: row.label,
+    metadata,
     createdAt: row.created_at
   }
 }
@@ -64,6 +92,7 @@ function descriptorRelPath(descriptor: TabDescriptor): string | null {
     case 'chat':
     case 'board':
     case 'group-chat':
+    case 'friends':
     case 'whiteboard':
     case 'plugin-panel':
       return null
@@ -86,15 +115,37 @@ function requireLabel(value: unknown): string {
   return value
 }
 
+function requireKind(value: unknown): MaterialLinkKind {
+  if (value === 'related' || value === 'sequence' || value === 'pdf-page-note') {
+    return value
+  }
+  throw new ValidationError('kind must be a supported material link kind')
+}
+
+function validatePageNoteLink(
+  kind: MaterialLinkKind,
+  source: TabDescriptor,
+  target: TabDescriptor,
+  metadata: unknown
+): PdfPageNoteLinkMetadata | null {
+  if (kind !== 'pdf-page-note') return null
+  if (source.kind !== 'pdf' || target.kind !== 'note') {
+    throw new ValidationError('pdf-page-note must point from a PDF to a note')
+  }
+  if (!isPdfPageNoteLinkMetadata(metadata)) {
+    throw new ValidationError('pdf-page-note metadata is invalid')
+  }
+  return metadata
+}
+
 export function createMaterialLinksRepo(db: Database): MaterialLinksRepo {
   const selectCourse = db.prepare(
     'SELECT id FROM courses WHERE id = ? AND deleted_at IS NULL'
   )
-  // Same pair may carry different labels (a plain link and a 'next' sequence
-  // link coexist), so a duplicate is only a duplicate within the same label.
+  // The same pair may carry one relationship of each kind.
   const selectDuplicate = db.prepare(
     `SELECT * FROM material_links
-      WHERE course_id = ? AND source_json = ? AND target_json = ? AND label = ?
+      WHERE course_id = ? AND source_json = ? AND target_json = ? AND kind = ?
       ORDER BY created_at ASC, rowid ASC
       LIMIT 1`
   )
@@ -105,11 +156,17 @@ export function createMaterialLinksRepo(db: Database): MaterialLinksRepo {
   )
   const insert = db.prepare(
     `INSERT INTO material_links
-       (id, course_id, source_json, target_json, label, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
+       (id, course_id, source_json, target_json, kind, label, metadata_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   )
   const remove = db.prepare(
     'DELETE FROM material_links WHERE course_id = ? AND id = ?'
+  )
+  const selectById = db.prepare(
+    'SELECT * FROM material_links WHERE course_id = ? AND id = ?'
+  )
+  const updateMetadata = db.prepare(
+    'UPDATE material_links SET metadata_json = ? WHERE course_id = ? AND id = ?'
   )
 
   function assertCourseExists(courseId: string): void {
@@ -144,16 +201,40 @@ export function createMaterialLinksRepo(db: Database): MaterialLinksRepo {
       const source = serializeDescriptor(input.source)
       const target = serializeDescriptor(input.target)
       const label = requireLabel(input.label)
+      const kind = requireKind(
+        input.kind ?? (label === 'next' ? 'sequence' : 'related')
+      )
+      const metadata = validatePageNoteLink(
+        kind,
+        source.descriptor,
+        target.descriptor,
+        input.metadata ?? null
+      )
 
       if (source.json === target.json) {
         throw new ValidationError('source and target must be different')
+      }
+
+      if (kind === 'pdf-page-note') {
+        const existingForNote = (selectForCourse.all(courseId) as MaterialLinkRow[])
+          .find(
+            (row) =>
+              row.kind === 'pdf-page-note' &&
+              row.target_json === target.json &&
+              row.source_json !== source.json
+          )
+        if (existingForNote !== undefined) {
+          throw new ValidationError(
+            'a PDF page note can belong to only one source PDF'
+          )
+        }
       }
 
       const duplicate = selectDuplicate.get(
         courseId,
         source.json,
         target.json,
-        label
+        kind
       ) as MaterialLinkRow | undefined
       if (duplicate !== undefined) return rowToRecord(duplicate)
 
@@ -162,7 +243,9 @@ export function createMaterialLinksRepo(db: Database): MaterialLinksRepo {
         courseId,
         source: source.descriptor,
         target: target.descriptor,
+        kind,
         label,
+        metadata,
         createdAt: nowIso()
       }
       insert.run(
@@ -170,7 +253,9 @@ export function createMaterialLinksRepo(db: Database): MaterialLinksRepo {
         record.courseId,
         source.json,
         target.json,
+        record.kind,
         record.label,
+        metadata === null ? null : JSON.stringify(metadata),
         record.createdAt
       )
       return record
@@ -182,6 +267,21 @@ export function createMaterialLinksRepo(db: Database): MaterialLinksRepo {
       const result = remove.run(courseId, id)
       if (result.changes !== 1) throw new NotFoundError('materialLink', id)
       return { ok: true }
+    },
+
+    updateMetadata(rawCourseId, rawId, rawMetadata) {
+      const courseId = requireId(rawCourseId, 'courseId')
+      const id = requireId(rawId, 'id')
+      if (!isPdfPageNoteLinkMetadata(rawMetadata)) {
+        throw new ValidationError('pdf-page-note metadata is invalid')
+      }
+      const existing = selectById.get(courseId, id) as MaterialLinkRow | undefined
+      if (existing === undefined) throw new NotFoundError('materialLink', id)
+      if (existing.kind !== 'pdf-page-note') {
+        throw new ValidationError('only pdf-page-note metadata can be updated')
+      }
+      updateMetadata.run(JSON.stringify(rawMetadata), courseId, id)
+      return rowToRecord(selectById.get(courseId, id) as MaterialLinkRow)
     },
 
     listForDescriptor(rawCourseId, descriptor) {

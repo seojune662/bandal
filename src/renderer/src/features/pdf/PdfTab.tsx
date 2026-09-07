@@ -63,6 +63,13 @@ import type {
 } from '../../../../shared/types/annotation'
 import type { Drawing } from '../../../../shared/types/drawing'
 import type { TabDescriptor } from '../../../../shared/tabs'
+import {
+  isPdfPageNotePairContext,
+  parsePdfPageNote,
+  reconcilePdfPageNote,
+  serializePdfPageNote,
+  type PdfPageNotePairContext
+} from '../../../../shared/pdfPageNote'
 import { pdfClipLabel } from './clipTransfer'
 import {
   PDF_PAGE_NAVIGATION_EVENT,
@@ -70,6 +77,23 @@ import {
   type PdfPageNavigationTarget
 } from './pdfPageNavigation'
 import { useWhiteboardClipDelivery } from './useWhiteboardClipDelivery'
+import {
+  PdfPageNoteDialog,
+  readPdfPageSizes
+} from '../links/PdfPageNoteDialog'
+import {
+  requestMaterialConnectionsRefresh,
+  useMaterialConnections
+} from '../links/useMaterialConnections'
+import {
+  publishPageSyncAnchor,
+  subscribePageSyncAnchor,
+  usePageNoteSync
+} from '../links/pdfPageNoteSync'
+import {
+  subscribeOpenPdfPageNote,
+  takeOpenPdfPageNote
+} from '../links/pdfPageNoteNavigation'
 const ZOOM_MIN = 0.4
 const ZOOM_MAX = 4
 const ZOOM_STEP = 1.15
@@ -135,11 +159,15 @@ function ErrorPanel({ message }: { message: string }): JSX.Element {
 function PdfViewer({
   courseId,
   relPath,
-  interactive
+  interactive,
+  panelId,
+  pageNotePair
 }: {
   courseId: string
   relPath: string
   interactive: boolean
+  panelId: string
+  pageNotePair: PdfPageNotePairContext | null
 }): JSX.Element {
   // 문서 소스는 bandal-media:// URL — pdf.js 가 Range 요청으로 필요한
   // 페이지만 가져온다. base64-over-IPC 시절의 64MB 캡·메모리 상주가 없다.
@@ -176,6 +204,7 @@ function PdfViewer({
   const [currentPage, setCurrentPage] = useState(1)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [isRailOpen, setIsRailOpen] = useState(false)
+  const [isPageNoteDialogOpen, setIsPageNoteDialogOpen] = useState(false)
   const [pendingSelection, setPendingSelection] =
     useState<PendingSelection | null>(null)
   const [textSelectionActive, setTextSelectionActive] = useState(false)
@@ -208,6 +237,100 @@ function PdfViewer({
   const flashTimer = useRef<number | null>(null)
   const scrollFrame = useRef<number | null>(null)
   const saveTimer = useRef<number | null>(null)
+  const reconciledFingerprintRef = useRef<string | null>(null)
+  const applyingPageSyncRef = useRef(false)
+  const connections = useMaterialConnections(courseId, relPath)
+  const pageNoteConnections = useMemo(
+    () =>
+      connections.outgoing.filter(
+        (record) => record.kind === 'pdf-page-note' && record.target.kind === 'note'
+      ),
+    [connections.outgoing]
+  )
+  const pairedConnection = useMemo(
+    () =>
+      pageNotePair === null
+        ? null
+        : pageNoteConnections.find(
+            (record) => record.id === pageNotePair.connectionId
+          ) ?? null,
+    [pageNoteConnections, pageNotePair]
+  )
+  const [pageNoteSync, setPageNoteSync] = usePageNoteSync(
+    pageNotePair?.pairId ?? null,
+    pairedConnection?.metadata?.syncScroll ?? true
+  )
+  useEffect(() => {
+    if (pageNotePair !== null && pairedConnection?.metadata !== null && pairedConnection !== null) {
+      setPageNoteSync(pairedConnection.metadata.syncScroll)
+    }
+  }, [pageNotePair, pairedConnection, setPageNoteSync])
+
+  useEffect(() => {
+    if (pdfProxy === null || pageNoteConnections.length === 0) return
+    const fingerprint = pdfProxy.fingerprints[0] ?? ''
+    const stale = pageNoteConnections.filter(
+      (record) =>
+        record.metadata !== null &&
+        (record.metadata.fingerprint !== fingerprint ||
+          record.metadata.pageSizes.length !== pdfProxy.numPages)
+    )
+    const reconcileKey = `${fingerprint}:${pdfProxy.numPages}`
+    if (stale.length === 0 || reconciledFingerprintRef.current === reconcileKey) return
+    reconciledFingerprintRef.current = reconcileKey
+    let disposed = false
+    void readPdfPageSizes(pdfProxy).then(async (pageSizes) => {
+      for (const record of stale) {
+        if (disposed || record.target.kind !== 'note') return
+        try {
+          const note = await invoke('notes:read', record.target.payload)
+          const document = parsePdfPageNote(note.markdown)
+          if (document === null) continue
+          const reconciled = reconcilePdfPageNote(
+            document,
+            relPath,
+            fingerprint,
+            pageSizes
+          )
+          await invoke('notes:write', {
+            ...record.target.payload,
+            markdown: serializePdfPageNote(reconciled),
+            expectedMtime: note.mtime
+          })
+          await invoke('links:updatePageNote', {
+            courseId,
+            id: record.id,
+            metadata: {
+              version: 1,
+              syncScroll: record.metadata?.syncScroll ?? true,
+              fingerprint,
+              pageSizes
+            }
+          })
+        } catch (error) {
+          console.error('[Bandal] 변경된 PDF와 페이지 필기를 맞추지 못했습니다.', error)
+        }
+      }
+      if (!disposed) requestMaterialConnectionsRefresh(courseId)
+    }).catch((error: unknown) => {
+      console.error('[Bandal] 변경된 PDF의 페이지 크기를 읽지 못했습니다.', error)
+    })
+    return () => {
+      disposed = true
+    }
+  }, [courseId, pageNoteConnections, pdfProxy, relPath])
+
+  useEffect(() => {
+    if (pdfProxy === null) return
+    const openIfMatching = (target: { courseId: string; relPath: string }): void => {
+      if (target.courseId !== courseId || target.relPath !== relPath) return
+      takeOpenPdfPageNote(courseId, relPath)
+      setIsPageNoteDialogOpen(true)
+    }
+    const stop = subscribeOpenPdfPageNote(openIfMatching)
+    if (takeOpenPdfPageNote(courseId, relPath)) setIsPageNoteDialogOpen(true)
+    return stop
+  }, [courseId, pdfProxy, relPath])
 
   const rememberViewportAnchor = useCallback((): PdfViewportAnchor | null => {
     const anchor = captureViewportAnchor()
@@ -362,11 +485,67 @@ function PdfViewer({
         scrollFrame.current = null
         const anchor = rememberViewportAnchor()
         setCurrentPage(anchor?.page ?? pageAtViewportCenter())
+        if (
+          anchor !== null &&
+          pageNotePair !== null &&
+          pageNoteSync &&
+          !applyingPageSyncRef.current
+        ) {
+          publishPageSyncAnchor({
+            connectionId: pageNotePair.connectionId,
+            pairId: pageNotePair.pairId,
+            page: anchor.page,
+            pageOffset: anchor.pageOffset,
+            originPanelId: panelId
+          })
+        }
       })
     }
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current)
     saveTimer.current = window.setTimeout(persistScroll, SCROLL_SAVE_DEBOUNCE_MS)
-  }, [pageAtViewportCenter, persistScroll, rememberViewportAnchor])
+  }, [
+    pageAtViewportCenter,
+    pageNotePair,
+    pageNoteSync,
+    panelId,
+    persistScroll,
+    rememberViewportAnchor
+  ])
+
+  useEffect(() => {
+    if (pageNotePair === null || !pageNoteSync) return
+    return subscribePageSyncAnchor(pageNotePair.pairId, (anchor) => {
+      if (
+        anchor.connectionId !== pageNotePair.connectionId ||
+        anchor.originPanelId === panelId
+      ) {
+        return
+      }
+      applyingPageSyncRef.current = true
+      if (restoreViewportAnchor({
+        page: Math.min(Math.max(1, anchor.page), Math.max(1, numPages)),
+        pageOffset: anchor.pageOffset
+      })) {
+        setCurrentPage(anchor.page)
+      }
+      requestAnimationFrame(() => {
+        applyingPageSyncRef.current = false
+      })
+    })
+  }, [numPages, pageNotePair, pageNoteSync, panelId, restoreViewportAnchor])
+
+  const togglePageNoteSync = useCallback((): void => {
+    const next = !pageNoteSync
+    setPageNoteSync(next)
+    if (pairedConnection?.metadata === null || pairedConnection === null) return
+    void invoke('links:updatePageNote', {
+      courseId,
+      id: pairedConnection.id,
+      metadata: { ...pairedConnection.metadata, syncScroll: next }
+    }).catch((error: unknown) => {
+      console.error('[Bandal] 페이지 필기 동기화 설정을 저장하지 못했습니다.', error)
+    })
+  }, [courseId, pageNoteSync, pairedConnection, setPageNoteSync])
 
   // Switching away should flush the semantic anchor immediately instead of
   // waiting for the scroll debounce. On return, the layout effect above uses
@@ -754,6 +933,11 @@ function PdfViewer({
         onZoomFit={() => applyZoom(1)}
         onTogglePreview={() => setIsPreviewOpen((open) => !open)}
         onToggleRail={() => setIsRailOpen((open) => !open)}
+        onOpenPageNotes={() => setIsPageNoteDialogOpen(true)}
+        pageNoteCount={pageNoteConnections.length}
+        pageNotePaired={pageNotePair !== null}
+        pageNoteSyncEnabled={pageNoteSync}
+        onTogglePageNoteSync={togglePageNoteSync}
       />
       <TextFormatRow visible={activeTool === 'text'} />
       <div className="pdf-tab__main">
@@ -903,6 +1087,16 @@ function PdfViewer({
           />
         )}
       </div>
+      {isPageNoteDialogOpen && pdfProxy !== null && (
+        <PdfPageNoteDialog
+          courseId={courseId}
+          relPath={relPath}
+          pdf={pdfProxy}
+          currentPage={currentPage}
+          connections={pageNoteConnections}
+          onClose={() => setIsPageNoteDialogOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -932,6 +1126,10 @@ export default function PdfTab(props: IDockviewPanelProps): JSX.Element {
     )
   }
   const { courseId, relPath } = descriptor.payload
+  const pageNotePair = isPdfPageNotePairContext(props.params['pageNotePair']) &&
+    props.params['pageNotePair'].role === 'pdf'
+    ? props.params['pageNotePair']
+    : null
   return (
     <div className="workspace-panel pdf-panel" data-kind="pdf">
       <PdfViewer
@@ -939,6 +1137,8 @@ export default function PdfTab(props: IDockviewPanelProps): JSX.Element {
         courseId={courseId}
         relPath={relPath}
         interactive={panelActive}
+        panelId={props.api.id}
+        pageNotePair={pageNotePair}
       />
     </div>
   )

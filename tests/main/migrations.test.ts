@@ -47,7 +47,9 @@ describe('migrations', () => {
       { version: 24, name: 'material-links' },
       { version: 25, name: 'pdf-view-state' },
       { version: 26, name: 'agent-usage-ledger' },
-      { version: 27, name: 'whiteboard-shared-assets' }
+      { version: 27, name: 'whiteboard-shared-assets' },
+      { version: 28, name: 'typed-material-links' },
+      { version: 29, name: 'friends-direct-chat-and-course-sharing-cache' }
     ])
   })
 
@@ -217,7 +219,7 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(27)
+    expect(count.n).toBe(29)
   })
 
   test('adds desktop conversation surface, grants, and audit (migration 022)', () => {
@@ -290,7 +292,7 @@ describe('migrations', () => {
         pk: number
       }[]
 
-    expect(columns).toEqual([
+    expect(columns).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'id', type: 'TEXT', pk: 1 }),
       expect.objectContaining({ name: 'course_id', type: 'TEXT', notnull: 1 }),
       expect.objectContaining({ name: 'source_json', type: 'TEXT', notnull: 1 }),
@@ -301,8 +303,10 @@ describe('migrations', () => {
         notnull: 1,
         dflt_value: "''"
       }),
-      expect.objectContaining({ name: 'created_at', type: 'TEXT', notnull: 1 })
-    ])
+      expect.objectContaining({ name: 'created_at', type: 'TEXT', notnull: 1 }),
+      expect.objectContaining({ name: 'kind', type: 'TEXT', notnull: 1 }),
+      expect.objectContaining({ name: 'metadata_json', type: 'TEXT' })
+    ]))
 
     const index = ctx.db
       .prepare(
@@ -338,5 +342,36 @@ describe('migrations', () => {
     expect(
       ctx.db.prepare('PRAGMA foreign_key_list(agent_usage)').all()
     ).toEqual([])
+  })
+
+  test('adds direct-chat caches and account-scoped course publication links', () => {
+    const linkColumns = ctx.db.prepare('PRAGMA table_info(course_group_links)').all() as {
+      name: string
+      notnull: number
+      dflt_value: string | null
+    }[]
+    expect(linkColumns).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'kind_cache', notnull: 1, dflt_value: "'study'" }),
+      expect.objectContaining({ name: 'direct_peer_id' })
+    ]))
+
+    const friendColumns = ctx.db.prepare('PRAGMA table_info(friends_cache)').all() as {
+      name: string
+      notnull: number
+      dflt_value: string | null
+    }[]
+    expect(friendColumns).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'user_id', notnull: 0 }),
+      expect.objectContaining({ name: 'unread', notnull: 1, dflt_value: '0' })
+    ]))
+
+    const publicationColumns = ctx.db
+      .prepare('PRAGMA table_info(published_course_links)')
+      .all() as { name: string; pk: number }[]
+    expect(publicationColumns).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'owner_id', pk: 1 }),
+      expect.objectContaining({ name: 'course_id', pk: 2 }),
+      expect.objectContaining({ name: 'share_id' })
+    ]))
   })
 })

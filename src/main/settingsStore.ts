@@ -76,7 +76,7 @@ export function setSettings(patch: SettingsPatch): Settings {
   const previous = getSettings()
   const merged = { ...previous, ...patch }
   if ((patch.theme !== undefined || patch.palette !== undefined) && patch.pluginTheme === undefined) merged.pluginTheme = null
-  for (const key of ['browser', 'notifications', 'experimental', 'desktopOrb'] as const) {
+  for (const key of ['browser', 'notifications', 'experimental', 'desktopOrb', 'widgets'] as const) {
     const value = patch[key]
     if (value !== undefined && value !== null && typeof value === 'object' && !Array.isArray(value)) {
       Object.assign(merged, { [key]: { ...previous[key], ...value } })
@@ -85,6 +85,13 @@ export function setSettings(patch: SettingsPatch): Settings {
   const next = sanitizeSettings(merged, defaultsWithPaths())
   if (typeof patch.browser?.homePage === 'string' && patch.browser.homePage.trim() !== '' && next.browser.homePage === '') {
     throw new ValidationError('홈페이지에 올바른 HTTP 또는 HTTPS 주소를 입력하세요.')
+  }
+  if (
+    typeof patch.widgets?.mailUrl === 'string' &&
+    patch.widgets.mailUrl.trim() !== '' &&
+    next.widgets.mailUrl === ''
+  ) {
+    throw new ValidationError('메일 위젯에 올바른 HTTP 또는 HTTPS 주소를 입력하세요.')
   }
   try {
     writeSettingsAtomically(settingsPath(), next)

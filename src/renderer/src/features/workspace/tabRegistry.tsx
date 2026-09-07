@@ -28,6 +28,7 @@ import FileTab from '../file/FileTab'
 import GroupChatTab from '../group/GroupChatTab'
 import CanvasTab from '../canvas/CanvasTab'
 import { PluginPanelTab } from '../plugins/PluginPanelTab'
+import FriendsTab from '../group/FriendsTab'
 import { withMaterialSequence } from '../links/MaterialSequenceWrapper'
 
 export interface TabRegistryEntry {
@@ -72,6 +73,11 @@ export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
   },
   board: {
     component: BoardPanel,
+    icon: null,
+    defaultTitle: tabTitle
+  },
+  friends: {
+    component: FriendsTab,
     icon: null,
     defaultTitle: tabTitle
   },

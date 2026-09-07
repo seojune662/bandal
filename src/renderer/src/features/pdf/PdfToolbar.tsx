@@ -25,6 +25,11 @@ export interface PdfToolbarProps {
   onZoomFit: () => void
   onTogglePreview: () => void
   onToggleRail: () => void
+  onOpenPageNotes: () => void
+  pageNoteCount: number
+  pageNotePaired: boolean
+  pageNoteSyncEnabled: boolean
+  onTogglePageNoteSync: () => void
 }
 
 function PageJump({
@@ -81,7 +86,12 @@ export function PdfToolbar(props: PdfToolbarProps): JSX.Element {
     onZoomOut,
     onZoomFit,
     onTogglePreview,
-    onToggleRail
+    onToggleRail,
+    onOpenPageNotes,
+    pageNoteCount,
+    pageNotePaired,
+    pageNoteSyncEnabled,
+    onTogglePageNoteSync
   } = props
 
   return (
@@ -101,6 +111,30 @@ export function PdfToolbar(props: PdfToolbarProps): JSX.Element {
         numPages={props.numPages}
         onJumpToPage={props.onJumpToPage}
       />
+
+      <button
+        type="button"
+        className="pdf-toolbar__page-note"
+        title="PDF와 1:1로 맞춘 마크다운 필기"
+        onClick={onOpenPageNotes}
+      >
+        <Icon name="fileText" />
+        페이지 필기
+        {pageNoteCount > 0 && <span className="pdf-toolbar__badge">{pageNoteCount}</span>}
+      </button>
+
+      {pageNotePaired && (
+        <button
+          type="button"
+          className="pdf-toolbar__page-note-sync"
+          aria-pressed={pageNoteSyncEnabled}
+          title="나란히 연 필기와 스크롤 연결"
+          onClick={onTogglePageNoteSync}
+        >
+          <Icon name="link" />
+          {pageNoteSyncEnabled ? '스크롤 연결됨' : '스크롤 독립'}
+        </button>
+      )}
 
       <PdfToolRail
         courseId={props.courseId}

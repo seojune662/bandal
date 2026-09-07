@@ -46,6 +46,8 @@ export function tabPanelId(descriptor: TabDescriptor): string {
         : `chat:${descriptor.payload.courseId}`
     case 'board':
       return 'board'
+    case 'friends':
+      return 'friends'
     case 'group-chat':
       // Keyed by COURSE, not group — one 함께하기 tab per course, with an
       // in-panel switcher. See GroupChatTabPayload.
@@ -88,6 +90,8 @@ export function tabTitle(descriptor: TabDescriptor): string {
       return 'AI 튜터'
     case 'board':
       return '학업 보드'
+    case 'friends':
+      return '친구'
     case 'group-chat':
       // Pure by contract, so the group's cached name is NOT read here.
       // GroupChatTab renames the panel once the local cache resolves.

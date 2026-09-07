@@ -6,6 +6,7 @@ import type {
 } from 'react'
 import { BandalMark } from '../../components/BandalMark'
 import { ProviderMark } from '../../components/ProviderMark'
+import { showToast } from '../../app/toast'
 import { LOCALES, setLocale, useLocale, useT } from '../../i18n'
 import type { Locale } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
@@ -1486,6 +1487,39 @@ export function CoursesPanel({
   const courseCount = new Intl.NumberFormat(locale).format(courses.length)
   const restoreLabel = locale === 'ko-KR' ? '복원' : 'Restore'
   const restoringLabel = locale === 'ko-KR' ? '복원 중…' : 'Restoring…'
+  const [publishedCourseIds, setPublishedCourseIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  )
+  const [sharingCourseId, setSharingCourseId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    void invoke('friends:courseVisibility', {})
+      .then(({ courseIds }) => {
+        if (alive) setPublishedCourseIds(new Set(courseIds))
+      })
+      .catch(() => undefined)
+    return () => { alive = false }
+  }, [])
+
+  const toggleCourseSharing = (course: Course): void => {
+    const visible = !publishedCourseIds.has(course.id)
+    setSharingCourseId(course.id)
+    void invoke('friends:setCourseVisibility', { courseId: course.id, visible })
+      .then(() => {
+        setPublishedCourseIds((current) => {
+          const next = new Set(current)
+          if (visible) next.add(course.id)
+          else next.delete(course.id)
+          return next
+        })
+      })
+      .catch(() => showToast(
+        locale === 'ko-KR' ? '과목 공개 설정을 바꾸지 못했어요. 함께하기 로그인을 확인해 주세요.' : 'Could not change course visibility. Check your Together sign-in.',
+        'danger'
+      ))
+      .finally(() => setSharingCourseId(null))
+  }
 
   return (
     <div className="settings-stack">
@@ -1540,6 +1574,23 @@ export function CoursesPanel({
                   <strong>{course.name}</strong>
                   <span>{course.slug}</span>
                 </div>
+                {!course.archived && (
+                  <div className="course-item__sharing">
+                    <span>{locale === 'ko-KR' ? '친구 공개' : 'Share with friends'}</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-label={`${course.name} ${locale === 'ko-KR' ? '친구에게 공개' : 'visible to friends'}`}
+                      aria-checked={publishedCourseIds.has(course.id)}
+                      disabled={sharingCourseId !== null}
+                      className={`toggle${publishedCourseIds.has(course.id) ? ' toggle--checked' : ''}`}
+                      onClick={() => toggleCourseSharing(course)}
+                      title={locale === 'ko-KR' ? '과목 이름만 수락된 친구에게 공개합니다.' : 'Shares only the course name with accepted friends.'}
+                    >
+                      <span className="toggle__thumb" />
+                    </button>
+                  </div>
+                )}
                 {course.archived && (
                   <div className="course-item__actions">
                     <span className="badge">{t('settings.courses.archived')}</span>

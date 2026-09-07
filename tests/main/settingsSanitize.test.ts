@@ -334,3 +334,49 @@ describe('sanitizeSettings — v0.40 pluginSources', () => {
     expect(result.pluginSources).toEqual(['https://example.com/a/index.json'])
   })
 })
+
+describe('sanitizeSettings — sidebar widgets', () => {
+  test('keeps enabled widgets in user order, removes duplicates and repairs active', () => {
+    const result = sanitizeSettings(
+      {
+        widgets: {
+          enabled: ['mail', 'todo', 'mail', 'unknown'],
+          active: 'board'
+        }
+      },
+      defaults
+    )
+    expect(result.widgets.enabled).toEqual(['mail', 'todo'])
+    expect(result.widgets.active).toBe('mail')
+  })
+
+  test('allows an empty dock and clamps the remembered height', () => {
+    const result = sanitizeSettings(
+      { widgets: { enabled: [], heightRatio: 9 } },
+      defaults
+    )
+    expect(result.widgets.enabled).toEqual([])
+    expect(result.widgets.heightRatio).toBe(0.65)
+  })
+
+  test('accepts only absolute HTTP(S) mail URLs and valid timestamps', () => {
+    const valid = sanitizeSettings(
+      {
+        widgets: {
+          mailUrl: 'https://mail.example.edu/inbox',
+          lastMailOpenedAt: '2026-09-07T10:00:00.000Z'
+        }
+      },
+      defaults
+    ).widgets
+    expect(valid.mailUrl).toBe('https://mail.example.edu/inbox')
+    expect(valid.lastMailOpenedAt).toBe('2026-09-07T10:00:00.000Z')
+
+    const invalid = sanitizeSettings(
+      { widgets: { mailUrl: 'javascript:alert(1)', lastMailOpenedAt: 'someday' } },
+      defaults
+    ).widgets
+    expect(invalid.mailUrl).toBe('')
+    expect(invalid.lastMailOpenedAt).toBeNull()
+  })
+})

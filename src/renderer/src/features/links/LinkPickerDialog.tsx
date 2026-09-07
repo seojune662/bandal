@@ -150,7 +150,8 @@ export function LinkPickerDialog({
       await invoke('links:create', {
         courseId,
         source: materialLinkDescriptor(courseId, sourceRelPath),
-        target: materialLinkDescriptor(courseId, target.relPath)
+        target: materialLinkDescriptor(courseId, target.relPath),
+        kind: 'related'
       })
       requestMaterialConnectionsRefresh(courseId)
       showToast(t('links.picker.connected'))

@@ -28,6 +28,7 @@ interface MaterialsContextMenuProps extends MaterialsContextMenuState {
   onCopyRelativePath: () => void
   onReveal: () => void
   onConnect: () => void
+  onPageNote: () => void
   onRename: () => void
   onDelete: () => void
 }
@@ -59,6 +60,7 @@ export function MaterialsContextMenu({
   onCopyRelativePath,
   onReveal,
   onConnect,
+  onPageNote,
   onRename,
   onDelete
 }: MaterialsContextMenuProps): JSX.Element {
@@ -175,6 +177,11 @@ export function MaterialsContextMenu({
       >
         <Icon name="link" />{t('links.menu.connect')}
       </button>
+      {target?.kind === 'pdf' && (
+        <button type="button" role="menuitem" onClick={onPageNote}>
+          <Icon name="fileText" />PDF 페이지 필기
+        </button>
+      )}
       <button
         type="button"
         role="menuitem"

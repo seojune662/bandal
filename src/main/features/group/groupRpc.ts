@@ -14,6 +14,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   FriendEntry,
+  DirectChatOpenResult,
   GroupAuthor,
   GroupCreateResult,
   GroupMember,
@@ -24,7 +25,8 @@ import type {
   InviteCodeInfo,
   JoinGroupResult,
   PendingGroupInvite,
-  ProfileLookupResult
+  ProfileLookupResult,
+  PublishedCourse
 } from '../../../shared/types/group'
 
 type Json = Record<string, unknown>
@@ -329,6 +331,76 @@ export async function rpcRespondFriendRequest(
   return str(data['status']) === 'accepted' ? 'accepted' : 'declined'
 }
 
+export async function rpcRemoveFriend(
+  client: SupabaseClient,
+  userId: string
+): Promise<void> {
+  await callRpc(client, 'remove_friend', { p_user_id: userId })
+}
+
+export async function rpcEnsureDirectChat(
+  client: SupabaseClient,
+  friendUserId: string
+): Promise<DirectChatOpenResult> {
+  const data = asRecord(
+    await callRpc(client, 'ensure_direct_chat', { p_peer_id: friendUserId })
+  )
+  const peer = asRecord(data['peer'])
+  const groupId = str(data['groupId'])
+  if (groupId === '') throw new Error('ensure_direct_chat returned no group')
+  return {
+    groupId,
+    peer: {
+      userId: str(peer['userId'], friendUserId),
+      nickname: str(peer['nickname'], '알 수 없음'),
+      avatarColor: str(peer['avatarColor'], 'moon'),
+      avatarEmoji: str(peer['avatarEmoji'], '🌙'),
+      status: 'accepted',
+      direction: 'outgoing'
+    }
+  }
+}
+
+export async function upsertPublishedCourse(
+  client: SupabaseClient,
+  input: { id: string; ownerId: string; displayName: string }
+): Promise<void> {
+  const { error } = await client.from('published_courses').upsert({
+    id: input.id,
+    owner_id: input.ownerId,
+    display_name: input.displayName
+  })
+  if (error !== null) throw error
+}
+
+export async function deletePublishedCourse(
+  client: SupabaseClient,
+  id: string
+): Promise<void> {
+  const { error } = await client.from('published_courses').delete().eq('id', id)
+  if (error !== null) throw error
+}
+
+export async function selectPublishedCourses(
+  client: SupabaseClient,
+  ownerId: string
+): Promise<PublishedCourse[]> {
+  const { data, error } = await client
+    .from('published_courses')
+    .select('id, display_name, updated_at')
+    .eq('owner_id', ownerId)
+    .order('display_name')
+  if (error !== null) throw error
+  if (!Array.isArray(data)) return []
+  return data.flatMap((raw) => {
+    const row = asRecord(raw)
+    const id = row['id']
+    const displayName = row['display_name']
+    if (typeof id !== 'string' || typeof displayName !== 'string') return []
+    return [{ id, displayName, updatedAt: str(row['updated_at']) }]
+  })
+}
+
 export async function rpcBlockUser(
   client: SupabaseClient,
   input: { userId: string; blocked: boolean }
@@ -358,7 +430,7 @@ export async function selectMyGroups(
   const { data, error } = await client
     .from('group_members')
     .select(
-      'group_id, role, joined_at, last_read_seq, study_groups!inner(id, name, color, member_count, last_msg_seq, last_msg_at, deleted_at)'
+      'group_id, role, joined_at, last_read_seq, study_groups!inner(id, name, color, kind, member_count, last_msg_seq, last_msg_at, deleted_at)'
     )
     .is('left_at', null)
   if (error !== null) throw error
@@ -372,7 +444,7 @@ export async function selectMyGroups(
     const embedded = row['study_groups']
     const group = asRecord(Array.isArray(embedded) ? embedded[0] : embedded)
     const id = group['id']
-    if (typeof id !== 'string' || group['deleted_at'] !== null) continue
+    if (typeof id !== 'string' || group['deleted_at'] !== null || group['kind'] === 'direct') continue
     const lastReadSeq = num(row['last_read_seq'])
     out.push({
       lastReadSeq,
@@ -521,15 +593,39 @@ export async function selectFriends(
     .filter((id) => id !== '')
   if (otherIds.length === 0) return []
 
-  const { data: profileData } = await client
+  const { data: profileData, error: profileError } = await client
     .from('profiles')
     .select('id, nickname, avatar_color, avatar_emoji')
     .in('id', otherIds)
+  if (profileError !== null) throw profileError
   const profiles = new Map<string, Json>()
   if (Array.isArray(profileData)) {
     for (const raw of profileData) {
       const profile = asRecord(raw)
       profiles.set(str(profile['id']), profile)
+    }
+  }
+
+  const unreadByPeer = new Map<string, number>()
+  const { data: directData, error: directError } = await client
+    .from('group_members')
+    .select('last_read_seq, study_groups!inner(kind, direct_key, last_msg_seq, deleted_at)')
+    .eq('user_id', myUserId)
+    .is('left_at', null)
+  if (directError !== null) throw directError
+  if (Array.isArray(directData)) {
+    for (const raw of directData) {
+      const row = asRecord(raw)
+      const embedded = row['study_groups']
+      const group = asRecord(Array.isArray(embedded) ? embedded[0] : embedded)
+      if (group['kind'] !== 'direct' || group['deleted_at'] !== null) continue
+      const pair = str(group['direct_key']).split(':')
+      const peerId = pair.find((id) => id !== myUserId)
+      if (peerId === undefined) continue
+      unreadByPeer.set(
+        peerId,
+        Math.max(0, num(group['last_msg_seq']) - num(row['last_read_seq']))
+      )
     }
   }
 
@@ -543,7 +639,8 @@ export async function selectFriends(
       avatarColor: str(profile['avatar_color'], 'moon'),
       avatarEmoji: str(profile['avatar_emoji'], '🌙'),
       status: str(row['status']) === 'accepted' ? 'accepted' : 'pending',
-      direction: str(row['requested_by']) === myUserId ? 'outgoing' : 'incoming'
+      direction: str(row['requested_by']) === myUserId ? 'outgoing' : 'incoming',
+      unread: unreadByPeer.get(otherId) ?? 0
     }
   })
 }

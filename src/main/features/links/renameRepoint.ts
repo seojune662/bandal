@@ -17,6 +17,11 @@ import {
   wikilinkStem
 } from '../../../shared/wikilink'
 import { createMaterialLink, parseMaterialLink } from '../link/materialLink'
+import {
+  parsePdfPageNote,
+  serializePdfPageNote,
+  sourceRelPath
+} from '../../../shared/pdfPageNote'
 
 const PATH_TABLES = [
   'annotations',
@@ -216,6 +221,40 @@ export function collectRepointNoteCandidates(
         input.isDirectory
       ) ?? row.source_ref
     )
+  }
+  if (tableExists(input.db, 'material_links')) {
+    const pageNotes = input.db.prepare(
+      `SELECT source_json, target_json FROM material_links
+        WHERE course_id = ? AND kind = 'pdf-page-note'`
+    ).all(input.courseId) as Array<{ source_json: string; target_json: string }>
+    for (const row of pageNotes) {
+      try {
+        const source = parsePayloadJson(row.source_json)
+        const target = parsePayloadJson(row.target_json)
+        const sourcePath = source.payload['relPath']
+        const targetPath = target.payload['relPath']
+        if (
+          typeof sourcePath !== 'string' ||
+          typeof targetPath !== 'string' ||
+          repointedPath(
+            sourcePath,
+            input.fromRelPath,
+            input.toRelPath,
+            input.isDirectory
+          ) === null
+        ) continue
+        notes.add(
+          repointedPath(
+            targetPath,
+            input.fromRelPath,
+            input.toRelPath,
+            input.isDirectory
+          ) ?? targetPath
+        )
+      } catch {
+        // Malformed rows are reported by the database rewrite pass.
+      }
+    }
   }
   return [...notes]
 }
@@ -456,7 +495,7 @@ function rewriteCandidateNotes(
       }
       const markdown = readFileSync(absPath, 'utf8')
       let changed = false
-      const rewritten = markdown.replace(materialUrlPattern(), (href) => {
+      let rewritten = markdown.replace(materialUrlPattern(), (href) => {
         const parsed = parseMaterialLink(href)
         if (parsed === null) return href
         const relPathNext = repointedPath(
@@ -481,6 +520,20 @@ function rewriteCandidateNotes(
         changed = true
         return formatWikilink({ ...parsed, target: targetNext })
       })
+      const pageNote = parsePdfPageNote(rewritten)
+      if (pageNote !== null) {
+        const nextSource = repointedPath(
+          sourceRelPath(pageNote.manifest),
+          input.fromRelPath,
+          input.toRelPath,
+          input.isDirectory
+        )
+        if (nextSource !== null) {
+          pageNote.manifest.source = encodeURIComponent(nextSource)
+          rewritten = serializePdfPageNote(pageNote)
+          changed = true
+        }
+      }
       if (!changed) continue
       writeFileAtomic(absPath, rewritten, { mode })
       rewrittenNotes.push(relPath)

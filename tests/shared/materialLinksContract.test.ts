@@ -24,14 +24,21 @@ const record: MaterialLinkRecord = {
   courseId: 'course-1',
   source,
   target,
+  kind: 'related',
   label: '',
+  metadata: null,
   createdAt: '2026-08-27T00:00:00.000Z'
 }
 
 describe('material links shared contract', () => {
   test('lists every link IPC channel in the runtime witness', () => {
     expect(IPC_CHANNELS).toEqual(
-      expect.arrayContaining(['links:create', 'links:remove', 'links:listFor'])
+      expect.arrayContaining([
+        'links:create',
+        'links:updatePageNote',
+        'links:remove',
+        'links:listFor'
+      ])
     )
   })
 

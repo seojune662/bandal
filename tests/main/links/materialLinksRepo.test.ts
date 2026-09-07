@@ -174,4 +174,46 @@ describe('createMaterialLinksRepo', () => {
     expect(repo.listFor(COURSE_ID, 'diagram.png').outgoing).toEqual([])
     expect(() => repo.remove(COURSE_ID, created.id)).toThrow(/\[not-found\]/)
   })
+
+  test('creates and updates a typed PDF page-note connection', () => {
+    const metadata = {
+      version: 1 as const,
+      syncScroll: true,
+      fingerprint: 'pdf-a',
+      pageSizes: [{ width: 612, height: 792 }]
+    }
+    const created = repo.create({
+      courseId: COURSE_ID,
+      source: descriptor('pdf', 'slides.pdf'),
+      target: descriptor('note', 'slides 필기.md'),
+      kind: 'pdf-page-note',
+      label: 'PDF 페이지 필기',
+      metadata
+    })
+
+    expect(created.kind).toBe('pdf-page-note')
+    expect(created.metadata).toEqual(metadata)
+    expect(
+      repo.updateMetadata(COURSE_ID, created.id, {
+        ...metadata,
+        syncScroll: false
+      }).metadata?.syncScroll
+    ).toBe(false)
+  })
+
+  test('rejects page-note connections with reversed endpoints', () => {
+    expect(() => repo.create({
+      courseId: COURSE_ID,
+      source: descriptor('note', 'notes.md'),
+      target: descriptor('pdf', 'slides.pdf'),
+      kind: 'pdf-page-note',
+      label: '',
+      metadata: {
+        version: 1,
+        syncScroll: true,
+        fingerprint: '',
+        pageSizes: [{ width: 1, height: 1 }]
+      }
+    })).toThrow(/pdf-page-note must point from a PDF to a note/)
+  })
 })

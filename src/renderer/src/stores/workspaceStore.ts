@@ -58,6 +58,13 @@ interface WorkspaceState {
       background?: boolean
     }
   ) => void
+  /** Opens one PDF and its page-matched note as a persisted 50:50 pair. */
+  openPdfNotePair: (
+    pdf: TabDescriptor,
+    note: TabDescriptor,
+    connectionId: string,
+    initialPage: number
+  ) => void
   /** Closes the canonical tab and all its duplicate views. */
   closeTabsMatching: (descriptor: TabDescriptor) => void
   closeTab: (panelId: string) => void
@@ -405,6 +412,72 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         activePanel.api.setActive()
         void added
       }
+    },
+
+    openPdfNotePair: (pdfDescriptor, noteDescriptor, connectionId, initialPage) => {
+      if (
+        api === null ||
+        pdfDescriptor.kind !== 'pdf' ||
+        noteDescriptor.kind !== 'note'
+      ) {
+        return
+      }
+      const pairId = crypto.randomUUID()
+      const current = api.activePanel
+      let pdfPanel =
+        current !== undefined && panelIdMatchesDescriptor(current.id, pdfDescriptor)
+          ? current
+          : api.getPanel(tabPanelId(pdfDescriptor))
+
+      if (pdfPanel === undefined) {
+        pdfPanel = api.addPanel({
+          id: tabPanelId(pdfDescriptor),
+          component: 'pdf',
+          title: tabTitle(pdfDescriptor),
+          params: {
+            descriptor: pdfDescriptor,
+            pageNotePair: {
+              connectionId,
+              pairId,
+              role: 'pdf',
+              initialPage
+            }
+          }
+        })
+      } else {
+        pdfPanel.api.updateParameters({
+          descriptor: pdfDescriptor,
+          pageNotePair: {
+            connectionId,
+            pairId,
+            role: 'pdf',
+            initialPage
+          }
+        })
+      }
+
+      const canonicalNoteId = tabPanelId(noteDescriptor)
+      const noteId =
+        api.getPanel(canonicalNoteId) === undefined
+          ? canonicalNoteId
+          : createDuplicatePanelId(noteDescriptor)
+      const notePanel = api.addPanel({
+        id: noteId,
+        component: 'note',
+        title: tabTitle(noteDescriptor),
+        params: {
+          descriptor: noteDescriptor,
+          pageNotePair: {
+            connectionId,
+            pairId,
+            role: 'note',
+            initialPage
+          }
+        },
+        position: { referencePanel: pdfPanel, direction: 'right' }
+      })
+      pdfPanel.api.setActive()
+      notePanel.api.setActive()
     },
 
     closeTab: (panelId) => {

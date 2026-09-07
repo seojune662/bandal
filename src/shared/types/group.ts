@@ -67,6 +67,9 @@ export interface GroupSummary {
   unread: number
   lastMsgAt: string | null
   joinedAt: string
+  /** Internal transport kind; omitted by legacy caches. */
+  kind?: 'study' | 'direct'
+  directPeerId?: string | null
 }
 
 export interface InviteCodeInfo {
@@ -159,6 +162,18 @@ export interface FriendEntry {
   status: FriendStatus
   /** Who asked. Only meaningful while `status === 'pending'`. */
   direction: 'incoming' | 'outgoing'
+  unread?: number
+}
+
+export interface PublishedCourse {
+  id: string
+  displayName: string
+  updatedAt: string
+}
+
+export interface DirectChatOpenResult {
+  groupId: string
+  peer: FriendEntry
 }
 
 /** Exact-match nickname lookup (prefix search is never exposed server-side). */

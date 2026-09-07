@@ -14,7 +14,7 @@ import type { BoardTask, TaskStatus } from '../../../../shared/types/board'
 import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
 import { useFocusTrap } from '../../components/useFocusTrap'
-import { invoke } from '../../lib/ipc'
+import { invoke, onPush } from '../../lib/ipc'
 import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { normalizeCourseColor } from '../courses/courseColors'
@@ -244,7 +244,9 @@ function BoardSurface(): JSX.Element {
 
   useEffect(() => {
     void loadTasks()
+    const stop = onPush('board:changed', () => void loadTasks(false))
     return () => {
+      stop()
       loadSequence.current += 1
     }
   }, [loadTasks])

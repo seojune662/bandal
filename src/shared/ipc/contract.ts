@@ -158,6 +158,7 @@ import type {
 } from '../types/auth'
 import type {
   FriendEntry,
+  DirectChatOpenResult,
   GroupChatOpenResult,
   GroupCreateResult,
   GroupMember,
@@ -167,6 +168,7 @@ import type {
   InviteCodeInfo,
   JoinGroupResult,
   PendingGroupInvite,
+  PublishedCourse,
   ProfileLookupResult,
   ReportTargetType
 } from '../types/group'
@@ -1289,7 +1291,17 @@ export interface IpcContract {
       courseId: string
       source: TabDescriptor
       target: TabDescriptor
+      kind?: import('../types/link').MaterialLinkKind
       label?: string
+      metadata?: import('../types/link').PdfPageNoteLinkMetadata | null
+    }
+    res: MaterialLinkRecord
+  }
+  'links:updatePageNote': {
+    req: {
+      courseId: string
+      id: string
+      metadata: import('../types/link').PdfPageNoteLinkMetadata
     }
     res: MaterialLinkRecord
   }
@@ -1666,6 +1678,26 @@ export interface IpcContract {
     req: { requesterId: string; accept: boolean }
     res: { status: 'accepted' | 'declined' }
   }
+  'friends:remove': {
+    req: { userId: string }
+    res: { ok: true }
+  }
+  'friends:publishedCourses': {
+    req: { userId: string }
+    res: PublishedCourse[]
+  }
+  'friends:courseVisibility': {
+    req: Record<string, never>
+    res: { courseIds: string[] }
+  }
+  'friends:setCourseVisibility': {
+    req: { courseId: string; visible: boolean }
+    res: { visible: boolean }
+  }
+  'directChat:open': {
+    req: { friendUserId: string }
+    res: DirectChatOpenResult
+  }
 
   // -- group chat -----------------------------------------------------------
   /**
@@ -1970,6 +2002,11 @@ export const IPC_CHANNELS = [
   'friends:list',
   'friends:request',
   'friends:respond',
+  'friends:remove',
+  'friends:publishedCourses',
+  'friends:courseVisibility',
+  'friends:setCourseVisibility',
+  'directChat:open',
   'groupChat:open',
   'groupChat:send',
   'groupChat:loadOlder',
@@ -2016,6 +2053,7 @@ export const IPC_CHANNELS = [
   'whiteboard:updateShape',
   'whiteboard:close',
   'links:create',
+  'links:updatePageNote',
   'links:remove',
   'links:listFor',
   'links:listForDescriptor',

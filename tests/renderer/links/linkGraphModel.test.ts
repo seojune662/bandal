@@ -26,7 +26,16 @@ function link(
   target: TabDescriptor,
   label = ''
 ): MaterialLinkRecord {
-  return { id, courseId: COURSE_ID, source, target, label, createdAt: '2026-01-01T00:00:00Z' }
+  return {
+    id,
+    courseId: COURSE_ID,
+    source,
+    target,
+    kind: label === 'next' ? 'sequence' : 'related',
+    label,
+    metadata: null,
+    createdAt: '2026-01-01T00:00:00Z'
+  }
 }
 
 function backlinkGroup(

@@ -25,7 +25,9 @@ function record(
     courseId: COURSE_ID,
     source: descriptor(source),
     target: descriptor(target),
+    kind: label === SEQUENCE_LABEL ? 'sequence' : 'related',
     label,
+    metadata: null,
     createdAt
   }
 }

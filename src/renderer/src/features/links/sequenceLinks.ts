@@ -28,7 +28,7 @@ function latestSequenceRecord(
 ): MaterialLinkRecord | null {
   let latest: MaterialLinkRecord | null = null
   for (const record of records) {
-    if (record.label !== SEQUENCE_LABEL) continue
+    if (record.kind !== 'sequence' && record.label !== SEQUENCE_LABEL) continue
     if (latest === null || record.createdAt > latest.createdAt) latest = record
   }
   return latest

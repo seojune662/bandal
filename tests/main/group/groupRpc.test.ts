@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest'
-import { selectPendingInvites } from '../../../src/main/features/group/groupRpc'
+import {
+  rpcEnsureDirectChat,
+  selectPendingInvites
+} from '../../../src/main/features/group/groupRpc'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 interface CapturedFilters {
@@ -60,5 +63,39 @@ describe('selectPendingInvites', () => {
         createdAt: '2026-08-18T00:00:00Z'
       }
     ])
+  })
+})
+
+describe('rpcEnsureDirectChat', () => {
+  test('uses the friend-only RPC and maps the peer profile', async () => {
+    const rpc = async (name: string, args: Record<string, unknown>) => {
+      expect(name).toBe('ensure_direct_chat')
+      expect(args).toEqual({ p_peer_id: 'friend-1' })
+      return {
+        data: {
+          groupId: 'direct-1',
+          peer: {
+            userId: 'friend-1',
+            nickname: '하늘',
+            avatarColor: 'blue',
+            avatarEmoji: '☁️'
+          }
+        },
+        error: null
+      }
+    }
+    const client = { rpc } as unknown as SupabaseClient
+
+    await expect(rpcEnsureDirectChat(client, 'friend-1')).resolves.toEqual({
+      groupId: 'direct-1',
+      peer: {
+        userId: 'friend-1',
+        nickname: '하늘',
+        avatarColor: 'blue',
+        avatarEmoji: '☁️',
+        status: 'accepted',
+        direction: 'outgoing'
+      }
+    })
   })
 })

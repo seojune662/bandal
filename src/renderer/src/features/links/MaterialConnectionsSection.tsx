@@ -136,6 +136,7 @@ function relPathForDescriptor(descriptor: TabDescriptor): string | null {
     case 'chat':
     case 'board':
     case 'group-chat':
+    case 'friends':
     case 'whiteboard':
     case 'plugin-panel':
       return null
@@ -157,11 +158,12 @@ function LinkedMaterialRow({
 }: {
   row: ConnectionRow
   pending: boolean
-  onOpen: (descriptor: TabDescriptor) => void
+  onOpen: (row: ConnectionRow) => void
   onRemove: (record: MaterialLinkRecord) => void
 }): JSX.Element {
   const t = useT()
   const label = row.record.label.trim()
+  const isPageNote = row.record.kind === 'pdf-page-note'
 
   return (
     <li className="material-connections__row" data-direction={row.direction}>
@@ -175,14 +177,18 @@ function LinkedMaterialRow({
           {connectionFileName(row.descriptor)}
         </span>
         <span className="material-connections__meta">
-          <span>{t(`links.connected.${row.direction}`)}</span>
+          <span>{isPageNote ? 'PDF 페이지 필기' : t(`links.connected.${row.direction}`)}</span>
           <span aria-hidden="true">·</span>
-          <span>{label.length === 0 ? t('links.label.empty') : label}</span>
+          <span>
+            {isPageNote
+              ? `${row.record.metadata?.pageSizes.length ?? 0}쪽 · ${row.record.metadata?.syncScroll === false ? '동기화 꺼짐' : '동기화 켬'}`
+              : label.length === 0 ? t('links.label.empty') : label}
+          </span>
         </span>
       </span>
       <span className="material-connections__actions">
-        <button type="button" onClick={() => onOpen(row.descriptor)}>
-          {t('links.action.open')}
+        <button type="button" onClick={() => onOpen(row)}>
+          {isPageNote ? '나란히 열기' : t('links.action.open')}
         </button>
         <button
           type="button"
@@ -221,8 +227,21 @@ export function MaterialConnectionsSection({
     },
     [courseId]
   )
-  const openConnection = useCallback((descriptor: TabDescriptor): void => {
-    useWorkspaceStore.getState().openTab(descriptor)
+  const openConnection = useCallback((row: ConnectionRow): void => {
+    if (
+      row.record.kind === 'pdf-page-note' &&
+      row.record.source.kind === 'pdf' &&
+      row.record.target.kind === 'note'
+    ) {
+      useWorkspaceStore.getState().openPdfNotePair(
+        row.record.source,
+        row.record.target,
+        row.record.id,
+        1
+      )
+      return
+    }
+    useWorkspaceStore.getState().openTab(row.descriptor)
   }, [])
   const unlink = useCallback(
     async (record: MaterialLinkRecord): Promise<void> => {

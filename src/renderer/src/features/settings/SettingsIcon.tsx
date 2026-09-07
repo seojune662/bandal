@@ -4,6 +4,7 @@ export type IconName =
   | 'account'
   | 'general'
   | 'appearance'
+  | 'widgets'
   | 'ai'
   | 'assistant'
   | 'advanced'
@@ -66,6 +67,14 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }): JS
       <>
         <circle cx="12" cy="12" r="8" />
         <path d="M12 4a8 8 0 0 0 0 16Z" />
+      </>
+    ),
+    widgets: (
+      <>
+        <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+        <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+        <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+        <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
       </>
     ),
     ai: (

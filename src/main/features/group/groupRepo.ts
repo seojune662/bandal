@@ -23,7 +23,8 @@ import type {
   GroupMessage,
   GroupRole,
   GroupSummary,
-  PendingGroupMessage
+  PendingGroupMessage,
+  FriendEntry
 } from '../../../shared/types/group'
 import { ValidationError } from '../../db/errors'
 import { nowIso, requireId } from '../../db/validate'
@@ -49,6 +50,18 @@ interface LinkRow {
   created_at: string
   updated_at: string
   deleted_at: string | null
+  kind_cache: string
+  direct_peer_id: string | null
+}
+
+interface FriendRow {
+  user_id: string
+  nickname: string
+  avatar_color: string
+  avatar_emoji: string
+  status: string
+  direction: string
+  unread: number
 }
 
 interface MessageRow {
@@ -127,7 +140,9 @@ function rowToSummary(row: LinkRow): GroupSummary {
     memberCount: row.member_count_cache,
     unread: row.unread_cache,
     lastMsgAt: row.last_msg_at_cache,
-    joinedAt: row.joined_at
+    joinedAt: row.joined_at,
+    kind: row.kind_cache === 'direct' ? 'direct' : 'study',
+    directPeerId: row.direct_peer_id
   }
 }
 
@@ -185,6 +200,8 @@ export interface GroupUpsert {
   lastMsgAt?: string | null
   joinedAt?: string
   courseId?: string | null
+  kind?: 'study' | 'direct'
+  directPeerId?: string | null
 }
 
 export interface GroupRepo {
@@ -227,6 +244,13 @@ export interface GroupRepo {
   upsertProfiles(profiles: readonly GroupMember[]): void
   /** Autocomplete source for the invite palette — offline, prefix, local. */
   searchProfiles(prefix: string, limit?: number): GroupMember[]
+  listFriends(): FriendEntry[]
+  replaceFriends(friends: readonly FriendEntry[]): void
+  removeFriend(userId: string): void
+  listPublishedCourseIds(ownerId: string): string[]
+  getPublishedCourseShare(ownerId: string, courseId: string): string | null
+  setPublishedCourseShare(ownerId: string, courseId: string, shareId: string): void
+  removePublishedCourseShare(ownerId: string, courseId: string): void
   /** Wipes every Phase-2 cache. Used on sign-out. */
   clearAll(): void
 }
@@ -288,7 +312,7 @@ export function createGroupRepo(db: Database): GroupRepo {
       const rows = db
         .prepare(
           `SELECT * FROM course_group_links
-           WHERE deleted_at IS NULL
+           WHERE deleted_at IS NULL AND kind_cache = 'study'
            ORDER BY (last_msg_at_cache IS NULL), last_msg_at_cache DESC, name_cache ASC`
         )
         .all() as LinkRow[]
@@ -318,13 +342,16 @@ export function createGroupRepo(db: Database): GroupRepo {
           // `courseId: undefined` must NOT unlink — only an explicit null does.
           course_id:
             input.courseId === undefined ? existing.course_id : input.courseId,
-          updated_at: now
+          updated_at: now,
+          kind_cache: input.kind ?? existing.kind_cache,
+          direct_peer_id:
+            input.directPeerId === undefined ? existing.direct_peer_id : input.directPeerId
         }
         db.prepare(
           `UPDATE course_group_links
               SET course_id = ?, name_cache = ?, color_cache = ?,
                   member_count_cache = ?, unread_cache = ?,
-                  last_msg_at_cache = ?, updated_at = ?
+                  last_msg_at_cache = ?, updated_at = ?, kind_cache = ?, direct_peer_id = ?
             WHERE id = ?`
         ).run(
           next.course_id,
@@ -334,6 +361,8 @@ export function createGroupRepo(db: Database): GroupRepo {
           next.unread_cache,
           next.last_msg_at_cache,
           now,
+          next.kind_cache,
+          next.direct_peer_id,
           existing.id
         )
         return rowToSummary(next)
@@ -360,14 +389,16 @@ export function createGroupRepo(db: Database): GroupRepo {
         joined_at: input.joinedAt ?? now,
         created_at: deleted?.created_at ?? now,
         updated_at: now,
-        deleted_at: null
+        deleted_at: null,
+        kind_cache: input.kind ?? deleted?.kind_cache ?? 'study',
+        direct_peer_id: input.directPeerId ?? deleted?.direct_peer_id ?? null
       }
       db.prepare(
         `INSERT INTO course_group_links
            (id, course_id, remote_group_id, name_cache, color_cache,
             member_count_cache, unread_cache, last_msg_at_cache, joined_at,
-            created_at, updated_at, deleted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            created_at, updated_at, deleted_at, kind_cache, direct_peer_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(remote_group_id) DO UPDATE SET
            course_id = excluded.course_id,
            name_cache = excluded.name_cache,
@@ -377,6 +408,8 @@ export function createGroupRepo(db: Database): GroupRepo {
            last_msg_at_cache = excluded.last_msg_at_cache,
            joined_at = excluded.joined_at,
            updated_at = excluded.updated_at,
+           kind_cache = excluded.kind_cache,
+           direct_peer_id = excluded.direct_peer_id,
            deleted_at = NULL`
       ).run(
         row.id,
@@ -390,7 +423,9 @@ export function createGroupRepo(db: Database): GroupRepo {
         row.joined_at,
         row.created_at,
         row.updated_at,
-        row.deleted_at
+        row.deleted_at,
+        row.kind_cache,
+        row.direct_peer_id
       )
       return rowToSummary(row)
     },
@@ -413,11 +448,17 @@ export function createGroupRepo(db: Database): GroupRepo {
     },
 
     setUnread(groupId, unread, lastMsgAt) {
+      const nextUnread = Math.max(0, Math.trunc(unread))
       db.prepare(
         `UPDATE course_group_links
             SET unread_cache = ?, last_msg_at_cache = ?, updated_at = ?
           WHERE remote_group_id = ?`
-      ).run(Math.max(0, Math.trunc(unread)), lastMsgAt, nowIso(), groupId)
+      ).run(nextUnread, lastMsgAt, nowIso(), groupId)
+      const direct = linkRow(groupId)
+      if (direct?.kind_cache === 'direct' && direct.direct_peer_id !== null) {
+        db.prepare('UPDATE friends_cache SET unread = ? WHERE user_id = ?')
+          .run(nextUnread, direct.direct_peer_id)
+      }
     },
 
     removeGroup(groupId) {
@@ -428,7 +469,7 @@ export function createGroupRepo(db: Database): GroupRepo {
       const live = new Set(remoteGroupIds)
       const rows = db
         .prepare(
-          'SELECT remote_group_id FROM course_group_links WHERE deleted_at IS NULL'
+          "SELECT remote_group_id FROM course_group_links WHERE deleted_at IS NULL AND kind_cache = 'study'"
         )
         .all() as { remote_group_id: string }[]
       const now = nowIso()
@@ -721,6 +762,80 @@ export function createGroupRepo(db: Database): GroupRepo {
       return rows.map(rowToMember)
     },
 
+    listFriends() {
+      const rows = db.prepare(
+        `SELECT * FROM friends_cache
+         ORDER BY CASE status WHEN 'accepted' THEN 0 ELSE 1 END, lower(nickname)`
+      ).all() as FriendRow[]
+      return rows.map((row) => ({
+        userId: row.user_id,
+        nickname: row.nickname,
+        avatarColor: row.avatar_color,
+        avatarEmoji: row.avatar_emoji,
+        status: row.status === 'accepted' ? 'accepted' : 'pending',
+        direction: row.direction === 'incoming' ? 'incoming' : 'outgoing',
+        unread: Math.max(0, row.unread)
+      }))
+    },
+
+    replaceFriends(friends) {
+      const replace = db.transaction((entries: readonly FriendEntry[]) => {
+        db.prepare('DELETE FROM friends_cache').run()
+        const insert = db.prepare(
+          `INSERT INTO friends_cache
+             (user_id, nickname, avatar_color, avatar_emoji, status, direction, unread, fetched_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        const now = nowIso()
+        for (const friend of entries) {
+          insert.run(friend.userId, friend.nickname, friend.avatarColor,
+            friend.avatarEmoji, friend.status, friend.direction, friend.unread ?? 0, now)
+        }
+      })
+      replace(friends)
+    },
+
+    removeFriend(userId) {
+      db.prepare('DELETE FROM friends_cache WHERE user_id = ?').run(requireId(userId, 'userId'))
+    },
+
+    listPublishedCourseIds(ownerId) {
+      return (db.prepare(
+        'SELECT course_id FROM published_course_links WHERE owner_id = ? ORDER BY course_id'
+      ).all(requireId(ownerId, 'ownerId')) as { course_id: string }[])
+        .map((row) => row.course_id)
+    },
+
+    getPublishedCourseShare(ownerId, courseId) {
+      const row = db.prepare(
+        'SELECT share_id FROM published_course_links WHERE owner_id = ? AND course_id = ?'
+      ).get(requireId(ownerId, 'ownerId'), requireId(courseId, 'courseId')) as
+        | { share_id: string }
+        | undefined
+      return row?.share_id ?? null
+    },
+
+    setPublishedCourseShare(ownerId, courseId, shareId) {
+      db.prepare(
+        `INSERT INTO published_course_links (owner_id, course_id, share_id, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(owner_id, course_id) DO UPDATE SET
+           share_id = excluded.share_id,
+           updated_at = excluded.updated_at`
+      ).run(
+        requireId(ownerId, 'ownerId'),
+        requireId(courseId, 'courseId'),
+        requireId(shareId, 'shareId'),
+        nowIso()
+      )
+    },
+
+    removePublishedCourseShare(ownerId, courseId) {
+      db.prepare(
+        'DELETE FROM published_course_links WHERE owner_id = ? AND course_id = ?'
+      ).run(requireId(ownerId, 'ownerId'), requireId(courseId, 'courseId'))
+    },
+
     clearAll() {
       const run = db.transaction(() => {
         db.prepare('DELETE FROM group_outbox').run()
@@ -728,6 +843,7 @@ export function createGroupRepo(db: Database): GroupRepo {
         db.prepare('DELETE FROM group_members_cache').run()
         db.prepare('DELETE FROM group_profiles_cache').run()
         db.prepare('DELETE FROM course_group_links').run()
+        db.prepare('DELETE FROM friends_cache').run()
       })
       run()
     }

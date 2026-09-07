@@ -65,6 +65,9 @@ describe('tabPanelId', () => {
       tabPanelId(descriptorFor('chat', { courseId: 'c1', conversationId: 'v2' }))
     )
     expect(tabPanelId(descriptorFor('board', {}))).toBe('board')
+    expect(tabPanelId(descriptorFor('friends', {}))).toBe('friends')
+    expect(tabPanelId(descriptorFor('friends', { friendUserId: 'friend-1' })))
+      .toBe('friends')
   })
 
   test('browser tabs key off their stable tabId', () => {
@@ -152,6 +155,10 @@ describe('isTabDescriptor', () => {
     ).toBe(true)
     expect(isTabDescriptor(descriptorFor('chat', { courseId: 'c' }))).toBe(true)
     expect(isTabDescriptor(descriptorFor('board', {}))).toBe(true)
+    expect(isTabDescriptor(descriptorFor('friends', {}))).toBe(true)
+    expect(
+      isTabDescriptor(descriptorFor('friends', { friendUserId: 'friend-1' }))
+    ).toBe(true)
     expect(
       isTabDescriptor(
         descriptorFor('whiteboard', { courseId: 'c', boardId: 'b1' })
@@ -181,6 +188,7 @@ describe('isTabDescriptor', () => {
     expect(isTabDescriptor({ kind: 'pdf', payload: { courseId: 'c' } })).toBe(false)
     expect(isTabDescriptor({ kind: 'pdf', payload: null })).toBe(false)
     expect(isTabDescriptor({ kind: 'chat', payload: { courseId: '' } })).toBe(false)
+    expect(isTabDescriptor({ kind: 'friends', payload: { friendUserId: '' } })).toBe(false)
     expect(isTabDescriptor(null)).toBe(false)
     expect(isTabDescriptor('pdf')).toBe(false)
   })
@@ -232,6 +240,7 @@ describe('tabTitle', () => {
       tabTitle(descriptorFor('browser', { tabId: 't', initialUrl: 'not a url' }))
     ).toBe('브라우저')
     expect(tabTitle(descriptorFor('board', {}))).toBe('학업 보드')
+    expect(tabTitle(descriptorFor('friends', {}))).toBe('친구')
     expect(
       tabTitle(
         descriptorFor('whiteboard', { courseId: 'c', boardId: 'b1' })

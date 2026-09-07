@@ -8,7 +8,7 @@ import type { SVGProps } from 'react'
 import type { TabKind } from '../../../../shared/tabs'
 import { Icon } from '../../app/icons'
 
-type LocalKind = 'browser' | 'chat' | 'board' | 'group-chat' | 'whiteboard'
+type LocalKind = 'browser' | 'chat' | 'board' | 'group-chat' | 'whiteboard' | 'friends'
 
 const localPaths: Record<LocalKind, JSX.Element> = {
   browser: (
@@ -42,6 +42,12 @@ const localPaths: Record<LocalKind, JSX.Element> = {
     <>
       <rect x="3.5" y="4" width="17" height="14" rx="2" />
       <path d="m7 14 3-3 2.5 2 4-5M8 21h8M12 18v3" />
+    </>
+  ),
+  friends: (
+    <>
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3.5 19c0-3 2.5-4.5 5.5-4.5s5.5 1.5 5.5 4.5M16 5.5a3 3 0 0 1 0 5M18 19c0-2-.7-3.3-2.2-4" />
     </>
   )
 }
@@ -92,6 +98,7 @@ export function TabKindIcon({ kind, ...props }: TabKindIconProps): JSX.Element {
     case 'board':
     case 'group-chat':
     case 'whiteboard':
+    case 'friends':
       return <LocalIcon kind={kind} {...props} />
   }
 }

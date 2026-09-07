@@ -11,6 +11,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { normalizeCourseColor } from '../courses/courseColors'
 import { CourseGroupsSection } from '../group/CourseGroupsSection'
 import { LinkPickerDialog } from '../links/LinkPickerDialog'
+import { requestOpenPdfPageNote } from '../links/pdfPageNoteNavigation'
 import {
   flushOpenNoteSession,
   openNotePanelId,
@@ -59,6 +60,7 @@ import {
 import { canAcceptUrlDrop } from './urlDrop'
 import { useMaterialsPaste } from './useMaterialsPaste'
 import { WhiteboardsGroup } from './WhiteboardsGroup'
+import { WidgetDock } from '../widgets/WidgetDock'
 import './materials.css'
 
 const SEARCH_DEBOUNCE_MS = 240
@@ -1100,6 +1102,8 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         )}
       </div>
 
+      <WidgetDock />
+
       {contextMenu !== null && (
         <MaterialsContextMenu
           {...contextMenu}
@@ -1128,6 +1132,15 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
             const target = contextMenu.target
             if (target === null || target.kind === 'dir') return
             setLinkTarget(target)
+            setContextMenu(null)
+          }}
+          onPageNote={() => {
+            const target = contextMenu.target
+            if (course === null || target === null || target.kind !== 'pdf') return
+            useWorkspaceStore.getState().openTab(
+              descriptorFor('pdf', { courseId: course.id, relPath: target.relPath })
+            )
+            requestOpenPdfPageNote({ courseId: course.id, relPath: target.relPath })
             setContextMenu(null)
           }}
           onRename={() => {

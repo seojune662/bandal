@@ -30,6 +30,8 @@ import {
   DEFAULT_MILESTONES,
   DEFAULT_ONBOARDING,
   DEFAULT_TUTORIAL,
+  DEFAULT_WIDGETS,
+  isWidgetId,
   isDensity,
   isEditorFont,
   isFontScale
@@ -44,7 +46,8 @@ import type {
   Milestones,
   OnboardingState,
   Settings,
-  TutorialState
+  TutorialState,
+  WidgetSettings
 } from '../shared/types/settings'
 
 const CUSTOMIZABLE_SHORTCUT_IDS: ReadonlySet<string> = new Set(
@@ -261,6 +264,39 @@ export function sanitizeExperimental(raw: unknown): ExperimentalSettings {
   return result
 }
 
+export function sanitizeWidgets(raw: unknown): WidgetSettings {
+  const d = DEFAULT_WIDGETS
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return { ...d, enabled: [...d.enabled] }
+  }
+  const r = raw as Record<string, unknown>
+  const enabled = Array.isArray(r.enabled)
+    ? [...new Set(r.enabled.filter(isWidgetId))]
+    : [...d.enabled]
+  const active = isWidgetId(r.active) && enabled.includes(r.active)
+    ? r.active
+    : (enabled[0] ?? d.active)
+  const ratio =
+    typeof r.heightRatio === 'number' && Number.isFinite(r.heightRatio)
+      ? Math.min(0.65, Math.max(0.25, r.heightRatio))
+      : d.heightRatio
+  return {
+    enabled,
+    active,
+    heightRatio: ratio,
+    mailServiceId:
+      typeof r.mailServiceId === 'string' && r.mailServiceId.length <= 128
+        ? r.mailServiceId
+        : null,
+    mailUrl: sanitizeHomePage(r.mailUrl),
+    lastMailOpenedAt:
+      typeof r.lastMailOpenedAt === 'string' &&
+      !Number.isNaN(Date.parse(r.lastMailOpenedAt))
+        ? r.lastMailOpenedAt
+        : null
+  }
+}
+
 /** Distinct absolute https index URLs, official one excluded, capped. */
 export function sanitizePluginSources(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
@@ -344,6 +380,7 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
       ? record.shortcutPriority
       : defaults.shortcutPriority,
     experimental: sanitizeExperimental(record.experimental),
+    widgets: sanitizeWidgets(record.widgets),
     pluginSources: sanitizePluginSources(record.pluginSources)
   }
 }

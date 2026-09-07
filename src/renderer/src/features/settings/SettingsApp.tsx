@@ -65,6 +65,7 @@ import { searchSettings } from "./settingsSearchIndex";
 import { applyTheme } from "./settingsTheme";
 import { savePreference } from "./savePreference";
 import { UniversitySettingsPanel } from "./UniversitySettingsPanel";
+import { WidgetSettingsPanel } from "./WidgetSettingsPanel";
 import {
   HELP_FOCUS_TARGET_EVENT,
   milestoneDestination,
@@ -565,6 +566,7 @@ export function SettingsApp({
         onSelectCharm={handleCharmSelect}
       />
     ),
+    widgets: <WidgetSettingsPanel settings={settings} />,
     mcp: <McpServersPanel />,
     packs: <PluginsCategoryPanel searchTarget={searchTarget} />,
     ai: (

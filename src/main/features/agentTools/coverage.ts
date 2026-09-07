@@ -124,6 +124,8 @@ export const NOT_FOR_AGENT: Readonly<Record<string, string>> = {
   'materials:preview': 'OS 미리보기(Quick Look)를 여는 일. 앱 밖의 동작이다.',
   'links:remove':
     '링크 해제는 학생이 화면에서 한 번 누르면 되고, 에이전트가 자료 그래프를 지울 이유가 없다.',
+  'links:updatePageNote':
+    '페이지 스크롤 동기화 설정은 현재 열린 두 패널의 직접 조작 상태라 학생이 화면에서 선택한다.',
 
   // -- internal plumbing, not capabilities ----------------------------------
   'materials:watch': '파일 감시자 수명. 렌더러가 패널을 열고 닫으며 관리한다.',

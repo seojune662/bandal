@@ -15,6 +15,7 @@ export type TabKind =
   | 'chat'
   | 'board'
   | 'group-chat'
+  | 'friends'
   | 'whiteboard'
   | 'image'
   | 'file'
@@ -66,6 +67,10 @@ export interface ChatTabPayload {
 
 /** The board is a per-window singleton; it carries no payload. */
 export type BoardTabPayload = Record<string, never>
+export interface FriendsTabPayload {
+  /** Optionally open this accepted friend's conversation immediately. */
+  friendUserId?: string
+}
 
 /**
  * [P2 · M11] Remote study-group chat — ONE tab per course.
@@ -115,6 +120,7 @@ export interface TabPayloadMap {
   chat: ChatTabPayload
   board: BoardTabPayload
   'group-chat': GroupChatTabPayload
+  friends: FriendsTabPayload
   whiteboard: WhiteboardTabPayload
   image: ImageTabPayload
   file: FileTabPayload
@@ -168,6 +174,7 @@ export const TAB_KINDS = [
   'chat',
   'board',
   'group-chat',
+  'friends',
   'whiteboard',
   'image',
   'file',
@@ -217,6 +224,8 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
       )
     case 'board':
       return true
+    case 'friends':
+      return payload['friendUserId'] === undefined || isNonEmptyString(payload['friendUserId'])
     case 'whiteboard':
       return (
         isNonEmptyString(payload['courseId']) &&

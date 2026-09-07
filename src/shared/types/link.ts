@@ -1,4 +1,5 @@
 import type { TabDescriptor } from '../tabs'
+import type { PdfPageSize } from '../pdfPageNote'
 
 /**
  * Deep links between a note and the material it is about.
@@ -18,8 +19,45 @@ export interface MaterialLinkRecord {
   courseId: string
   source: TabDescriptor
   target: TabDescriptor
+  kind: MaterialLinkKind
   label: string
+  metadata: PdfPageNoteLinkMetadata | null
   createdAt: string
+}
+
+export type MaterialLinkKind = 'related' | 'sequence' | 'pdf-page-note'
+
+export interface PdfPageNoteLinkMetadata {
+  version: 1
+  syncScroll: boolean
+  fingerprint: string
+  pageSizes: PdfPageSize[]
+}
+
+export function isPdfPageNoteLinkMetadata(
+  value: unknown
+): value is PdfPageNoteLinkMetadata {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as Record<string, unknown>
+  return (
+    candidate['version'] === 1 &&
+    typeof candidate['syncScroll'] === 'boolean' &&
+    typeof candidate['fingerprint'] === 'string' &&
+    Array.isArray(candidate['pageSizes']) &&
+    candidate['pageSizes'].length > 0 &&
+    candidate['pageSizes'].every((entry) => {
+      if (typeof entry !== 'object' || entry === null) return false
+      const size = entry as Record<string, unknown>
+      return (
+        typeof size['width'] === 'number' &&
+        Number.isFinite(size['width']) &&
+        size['width'] > 0 &&
+        typeof size['height'] === 'number' &&
+        Number.isFinite(size['height']) &&
+        size['height'] > 0
+      )
+    })
+  )
 }
 
 export interface MaterialLink {

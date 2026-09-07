@@ -25,6 +25,10 @@ const harness = vi.hoisted(() => ({
     joinWithCode: vi.fn(),
     respondInvite: vi.fn()
   },
+  friends: {
+    friends: [],
+    init: vi.fn(async () => undefined)
+  },
   courses: {
     courses: [],
     selectedCourseId: null,
@@ -69,6 +73,11 @@ vi.mock('../../../src/renderer/src/stores/groupsStore', () => ({
   useGroupsStore: (selector: (state: typeof harness.groups) => unknown) =>
     selector(harness.groups),
   selectGroupsForCourse: () => []
+}))
+
+vi.mock('../../../src/renderer/src/stores/friendsStore', () => ({
+  useFriendsStore: (selector: (state: typeof harness.friends) => unknown) =>
+    selector(harness.friends)
 }))
 
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({
@@ -219,6 +228,7 @@ beforeEach(() => {
   harness.bandalInvoke.mockResolvedValue(null)
   harness.auth.init.mockReset()
   harness.groups.init.mockClear()
+  harness.friends.init.mockClear()
   harness.auth.init.mockImplementation(async () => {
     harness.authInvoke('auth:getState', {})
   })

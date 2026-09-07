@@ -239,6 +239,7 @@ function EdgeDropStrips({
       courseId: drag.courseId,
       source: plan.source,
       target: plan.target,
+      kind: 'sequence',
       label: SEQUENCE_LABEL
     })
       .then(() => {

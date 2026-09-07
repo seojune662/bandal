@@ -165,3 +165,20 @@
   font-size: var(--text-xs);
   color: var(--text-muted);
 }
+.together-friends {
+  display: flex;
+  width: 100%;
+  min-height: var(--control-height);
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  border-radius: var(--radius-sm);
+}
+
+.together-friends:hover { color: var(--text-primary); background: var(--bg-raised); }
+.together-friends svg { width: var(--icon-size); color: var(--accent); }
+.together-friends span { flex: 1; text-align: left; }
+.together-friends strong { color: var(--text-muted); font-size: var(--text-xs); }
+.together-friends i { width: 7px; height: 7px; background: var(--accent); border-radius: 50%; }

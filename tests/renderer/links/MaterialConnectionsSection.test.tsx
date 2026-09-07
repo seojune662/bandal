@@ -37,7 +37,9 @@ function record(
       kind: targetRelPath.endsWith('.pdf') ? 'pdf' : 'note',
       payload: { courseId: 'course-1', relPath: targetRelPath }
     },
+    kind: label === 'next' ? 'sequence' : 'related',
     label,
+    metadata: null,
     createdAt: '2026-08-27T00:00:00.000Z'
   }
 }
@@ -90,6 +92,28 @@ describe('MaterialConnectionsSection', () => {
     expect(html).toContain('data-direction="incoming"')
     expect(html).toContain('개념.png')
     expect(html).toContain('개념 그림')
+  })
+
+  test('renders PDF page notes as a paired connection', () => {
+    const pageNote = record('pages-1', '강의.pdf', '강의 필기.md', 'PDF 페이지 필기')
+    pageNote.source = {
+      kind: 'pdf',
+      payload: { courseId: 'course-1', relPath: '강의.pdf' }
+    }
+    pageNote.kind = 'pdf-page-note'
+    pageNote.metadata = {
+      version: 1,
+      syncScroll: true,
+      fingerprint: 'pdf',
+      pageSizes: Array.from({ length: 12 }, () => ({ width: 612, height: 792 }))
+    }
+    setConnections({ outgoing: [pageNote] })
+
+    const html = renderSection()
+
+    expect(html).toContain('PDF 페이지 필기')
+    expect(html).toContain('12쪽 · 동기화 켬')
+    expect(html).toContain('나란히 열기')
   })
 
   test('renders neutral empty labels for both groups', () => {

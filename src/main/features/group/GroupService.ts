@@ -15,6 +15,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto'
 import type {
   AuthProvider,
   AuthSignInResult,
@@ -23,6 +24,7 @@ import type {
 } from '../../../shared/types/auth'
 import type {
   FriendEntry,
+  DirectChatOpenResult,
   GroupChatOpenResult,
   GroupCreateResult,
   GroupMember,
@@ -33,6 +35,7 @@ import type {
   JoinGroupResult,
   PendingGroupInvite,
   ProfileLookupResult,
+  PublishedCourse,
   ReportTargetType
 } from '../../../shared/types/group'
 import type { GroupEvent } from '../../../shared/types/group-events'
@@ -113,6 +116,11 @@ export interface GroupService {
   listFriends(): Promise<FriendEntry[]>
   requestFriend(nickname: string): Promise<{ status: 'pending' | 'accepted'; userId: string }>
   respondFriend(requesterId: string, accept: boolean): Promise<'accepted' | 'declined'>
+  removeFriend(userId: string): Promise<void>
+  openDirectChat(friendUserId: string): Promise<DirectChatOpenResult>
+  listPublishedCourses(userId: string): Promise<PublishedCourse[]>
+  listPublishedCourseIds(): string[]
+  setCourseVisibility(courseId: string, displayName: string, visible: boolean): Promise<boolean>
 
   // group chat
   openChat(groupId: string): Promise<GroupChatOpenResult>
@@ -181,7 +189,14 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
     if (newest !== undefined) {
       const existing = deps.repo.getGroup(groupId)
       if (existing !== null) {
-        deps.repo.setUnread(groupId, existing.unread, newest.createdAt)
+        const incoming = messages.filter(
+          (message) => message.authorId !== deps.auth.userId()
+        ).length
+        const unread = existing.kind === 'direct'
+          ? existing.unread + incoming
+          : existing.unread
+        deps.repo.setUnread(groupId, unread, newest.createdAt)
+        if (existing.kind === 'direct' && incoming > 0) deps.invalidate('profile')
       }
     }
   }
@@ -473,11 +488,13 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
     },
 
     async listFriends() {
+      const cached = deps.repo.listFriends()
       const client = deps.getClient()
       const userId = deps.auth.userId()
-      if (client === null || userId === null) return []
+      if (client === null || userId === null) return cached
       try {
         const friends = await rpc.selectFriends(client, userId)
+        deps.repo.replaceFriends(friends)
         // Friends double as the invite palette's offline autocomplete cache
         // — that is exactly what makes the second 조별과제 zero typing (§5.3).
         deps.repo.upsertProfiles(
@@ -494,7 +511,7 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
         return friends
       } catch (error) {
         console.error('[group] friend list failed', error)
-        return []
+        return cached
       }
     },
 
@@ -514,6 +531,56 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
       })
       deps.invalidate('profile')
       return status
+    },
+
+    async removeFriend(userId) {
+      const { client } = requireSession()
+      await rpc.rpcRemoveFriend(client, userId)
+      deps.repo.removeFriend(userId)
+      deps.invalidate('profile')
+    },
+
+    async openDirectChat(friendUserId) {
+      const { client } = requireSession()
+      const result = await rpc.rpcEnsureDirectChat(client, friendUserId)
+      deps.repo.upsertGroup({
+        id: result.groupId,
+        name: result.peer.nickname,
+        color: result.peer.avatarColor,
+        memberCount: 2,
+        kind: 'direct',
+        directPeerId: result.peer.userId,
+        courseId: null
+      })
+      return result
+    },
+
+    listPublishedCourses(userId) {
+      const { client } = requireSession()
+      return rpc.selectPublishedCourses(client, userId)
+    },
+
+    listPublishedCourseIds() {
+      const userId = deps.auth.userId()
+      return userId === null ? [] : deps.repo.listPublishedCourseIds(userId)
+    },
+
+    async setCourseVisibility(courseId, displayName, visible) {
+      const { client, userId } = requireSession()
+      const existing = deps.repo.getPublishedCourseShare(userId, courseId)
+      if (!visible) {
+        if (existing !== null) await rpc.deletePublishedCourse(client, existing)
+        deps.repo.removePublishedCourseShare(userId, courseId)
+        return false
+      }
+      const shareId = existing ?? randomUUID()
+      await rpc.upsertPublishedCourse(client, {
+        id: shareId,
+        ownerId: userId,
+        displayName: displayName.trim()
+      })
+      deps.repo.setPublishedCourseShare(userId, courseId, shareId)
+      return true
     },
 
     async openChat(groupId) {
@@ -591,7 +658,7 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
       // broadcast would be a request per scroll frame.
       if (summary !== null && summary.unread > 0) {
         deps.repo.setUnread(groupId, 0, summary.lastMsgAt)
-        deps.invalidate('unread')
+        deps.invalidate(summary.kind === 'direct' ? 'profile' : 'unread')
       }
       const client = deps.getClient()
       if (client === null || deps.auth.userId() === null) return
@@ -642,7 +709,14 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
 
     setWindowFocused(focused) {
       deps.realtime.setWindowFocused(focused)
-      if (focused) deps.outbox.wake()
+      if (focused) {
+        deps.outbox.wake()
+        // Direct chats do not hold a realtime channel while their tab is
+        // closed. Refresh the lightweight friend projection on focus so new
+        // requests and unread counts still surface without a persistent
+        // socket per friend.
+        deps.invalidate('profile')
+      }
     },
 
     async catchUp(groupId, afterSeq) {

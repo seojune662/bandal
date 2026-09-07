@@ -1,0 +1,75 @@
+.widget-divider {
+  position: relative;
+  height: 7px;
+  flex: 0 0 7px;
+  cursor: row-resize;
+}
+
+.widget-divider::after {
+  position: absolute;
+  top: 3px;
+  right: 0;
+  left: 0;
+  height: 1px;
+  content: '';
+  background: var(--border-subtle);
+}
+
+.widget-divider:hover::after { background: var(--accent); }
+
+.widget-dock {
+  display: flex;
+  min-height: 140px;
+  flex: 0 0 auto;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.widget-tabs {
+  display: flex;
+  min-height: 34px;
+  align-items: end;
+  gap: var(--space-1);
+  padding-inline: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.widget-tabs button {
+  height: 33px;
+  padding-inline: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  border-bottom: 2px solid transparent;
+}
+
+.widget-tabs button[aria-selected='true'] { color: var(--text-primary); border-color: var(--accent); }
+.widget-content { min-height: 0; flex: 1; overflow: auto; }
+.widget-task { display: flex; min-height: 100%; flex-direction: column; }
+.widget-toolbar { display: flex; align-items: center; justify-content: space-between; padding: var(--space-2); }
+.widget-scope { display: flex; padding: 2px; background: var(--bg-app); border-radius: var(--radius-sm); }
+.widget-scope button, .widget-open-board { padding: 3px 6px; color: var(--text-muted); font-size: 10px; border-radius: 4px; }
+.widget-scope button[aria-pressed='true'] { color: var(--text-primary); background: var(--bg-raised); }
+.widget-open-board:hover { color: var(--accent); }
+.widget-quick-add { display: flex; gap: var(--space-1); padding: 0 var(--space-2) var(--space-2); }
+.widget-quick-add input { min-width: 0; height: 30px; flex: 1; padding-inline: var(--space-2); color: var(--text-primary); background: var(--bg-app); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); }
+.widget-quick-add button { display: grid; width: 30px; place-items: center; color: var(--on-accent); background: var(--accent); border-radius: var(--radius-sm); }
+.widget-quick-add button:disabled { opacity: .45; }
+.widget-todo-list { display: flex; flex-direction: column; padding: 0 var(--space-2) var(--space-3); list-style: none; }
+.widget-todo-list li { display: flex; min-width: 0; align-items: center; gap: var(--space-2); padding: 7px 3px; border-bottom: 1px solid var(--border-subtle); }
+.widget-check { width: 16px; height: 16px; flex: 0 0 auto; border: 1px solid var(--border-strong); border-radius: 50%; }
+.widget-check:hover { border-color: var(--accent); background: var(--accent-muted); }
+.widget-task-copy { display: flex; min-width: 0; flex-direction: column; }
+.widget-task-copy strong { overflow: hidden; color: var(--text-primary); font-size: var(--text-xs); font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.widget-task-copy small, .widget-empty { color: var(--text-muted); font-size: 10px; }
+.widget-empty { padding: var(--space-3); text-align: center; }
+.widget-board-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 0 var(--space-2) var(--space-2); }
+.widget-board-columns section { min-width: 0; padding: 5px; background: var(--bg-app); border-radius: var(--radius-sm); }
+.widget-board-columns h4 { margin-bottom: 5px; color: var(--text-secondary); font-size: 9px; }
+.widget-board-columns h4 span { color: var(--text-muted); }
+.widget-board-columns button { display: block; width: 100%; margin-bottom: 4px; padding: 5px; overflow: hidden; color: var(--text-primary); font-size: 9px; text-align: left; text-overflow: ellipsis; white-space: nowrap; background: var(--bg-raised); border-radius: 4px; }
+.widget-mail { display: flex; height: 100%; min-height: 120px; align-items: center; justify-content: center; flex-direction: column; gap: var(--space-1); padding: var(--space-3); color: var(--text-secondary); text-align: center; }
+.widget-mail__icon { font-size: 28px; }
+.widget-mail strong { color: var(--text-primary); }
+.widget-mail small, .widget-mail__last { color: var(--text-muted); font-size: 10px; }
+.widget-mail button { margin-top: var(--space-2); padding: 6px 14px; color: var(--on-accent); font-size: var(--text-xs); background: var(--accent); border-radius: var(--radius-sm); }

@@ -66,6 +66,15 @@ describe('settings store recovery', () => {
     expect(() => store.setSettings({ browser: { homePage: 'javascript:alert(1)' } })).toThrow()
     expect(store.getSettings().browser.homePage).toBe('https://example.com/')
   })
+  test('invalid mail widget URLs cannot erase a working shortcut', async () => {
+    temporaryUserData()
+    const store = await loadSettingsStore()
+    store.setSettings({ widgets: { mailUrl: 'https://mail.example.edu/' } })
+    expect(() =>
+      store.setSettings({ widgets: { mailUrl: 'javascript:alert(1)' } })
+    ).toThrow()
+    expect(store.getSettings().widgets.mailUrl).toBe('https://mail.example.edu/')
+  })
   test('independent preference patches preserve prior changes across reload', async () => {
     temporaryUserData()
     const store = await loadSettingsStore()
