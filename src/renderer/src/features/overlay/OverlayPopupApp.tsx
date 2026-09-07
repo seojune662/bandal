@@ -22,10 +22,10 @@ export function OverlayPopupApp(): JSX.Element {
     void invoke('desktopAgent:openPermissionSettings', {}).catch(reportPopupError)
   }, [])
 
-  const openConversationInApp = useCallback(
+  const selectConversation = useCallback(
     (conversationId: string): void => {
       if (state.courseId === null) return
-      void invoke('overlay:openInApp', {
+      void invoke('overlay:setConversation', {
         courseId: state.courseId,
         conversationId
       }).catch(reportPopupError)
@@ -108,7 +108,7 @@ export function OverlayPopupApp(): JSX.Element {
             conversationId={state.conversationId}
             variant="overlay"
             surface="desktop"
-            onOpenConversation={openConversationInApp}
+            onOpenConversation={selectConversation}
           />
         )}
       </div>

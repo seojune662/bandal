@@ -52,13 +52,15 @@ interface InAppAssistantProps {
   popupConversationId: string | null
   selection: AnchoredSelection | null
   clearSelection: () => void
+  onOpenConversation: (conversationId: string) => void
 }
 
 function InAppAssistant({
   selectedCourseId,
   popupConversationId,
   selection,
-  clearSelection
+  clearSelection,
+  onOpenConversation
 }: InAppAssistantProps): JSX.Element {
   const [popupOpen, setPopupOpen] = useState(false)
   const pendingPromptRef = useRef<ChatPromptPayload | null>(null)
@@ -105,6 +107,7 @@ function InAppAssistant({
         visible={popupOpen}
         conversationId={popupConversationId}
         onClose={closePopup}
+        onOpenConversation={onOpenConversation}
       />
       {selection !== null && (
         <SelectionOrb
@@ -133,6 +136,21 @@ export function AssistantLayer(): JSX.Element {
   )
   const { selection, clear } = useSelectionAnchor()
 
+  const openConversation = useCallback(
+    (conversationId: string): void => {
+      if (selectedCourseId === null) return
+      void invoke('overlay:setConversation', {
+        courseId: selectedCourseId,
+        conversationId
+      })
+        .then(setOverlayState)
+        .catch((error: unknown) => {
+          console.error('[Bandal] 오브 대화를 바꾸지 못했습니다.', error)
+        })
+    },
+    [selectedCourseId]
+  )
+
   useEffect(() => {
     if (
       selectedCourseId === null ||
@@ -160,6 +178,7 @@ export function AssistantLayer(): JSX.Element {
         popupConversationId={popupConversationId}
         selection={selection}
         clearSelection={clear}
+        onOpenConversation={openConversation}
       />
     </div>
   )

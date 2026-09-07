@@ -166,14 +166,18 @@ describe('useAgentPreflight store', () => {
   })
 
   test('probe runs the live agent:availability check and lands in ready', async () => {
-    invokeMock.mockResolvedValueOnce(NOT_LOGGED_IN)
+    invokeMock.mockImplementation(async (_channel, request) =>
+      request.provider === 'codex' ? READY : NOT_LOGGED_IN
+    )
     await useAgentPreflight.getState().probe()
-    expect(invokeMock).toHaveBeenCalledWith('agent:availability', {
-      provider: 'claude-code'
-    })
+    expect(invokeMock.mock.calls.map((call) => call[1])).toEqual([
+      { provider: 'claude-code' },
+      { provider: 'codex' },
+      { provider: 'gemini' }
+    ])
     const state = useAgentPreflight.getState()
     expect(state.status).toBe('ready')
-    expect(state.availability).toEqual(NOT_LOGGED_IN)
+    expect(state.availability).toEqual(READY)
   })
 
   test('concurrent probes collapse into one invoke', async () => {
@@ -181,7 +185,7 @@ describe('useAgentPreflight store', () => {
     const first = useAgentPreflight.getState().probe()
     const second = useAgentPreflight.getState().probe()
     await Promise.all([first, second])
-    expect(invokeMock).toHaveBeenCalledTimes(1)
+    expect(invokeMock).toHaveBeenCalledTimes(3)
   })
 
   test('probe failure never throws — it flags the error state', async () => {

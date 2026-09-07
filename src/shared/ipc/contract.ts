@@ -663,6 +663,10 @@ export interface IpcContract {
     req: { courseId: string }
     res: OverlayState
   }
+  'overlay:setConversation': {
+    req: { courseId: string; conversationId: string }
+    res: OverlayState
+  }
   'overlay:togglePopup': {
     req: { open?: boolean }
     res: { open: boolean }
@@ -1843,6 +1847,7 @@ export const IPC_CHANNELS = [
   'chat:revokeGrant',
   'overlay:getState',
   'overlay:setCourse',
+  'overlay:setConversation',
   'overlay:togglePopup',
   'overlay:orbDragBegin',
   'overlay:orbDragEnd',

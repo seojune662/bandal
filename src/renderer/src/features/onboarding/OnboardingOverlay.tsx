@@ -271,8 +271,8 @@ function AiStep(): JSX.Element {
         {ready ? 'AI 튜터가 준비됐어요' : 'AI 튜터를 연결해요'}
       </h2>
       <p className="onboarding-desc">
-        AI 튜터는 내 컴퓨터의 Claude Code CLI로 동작해요. 지금 설치와 로그인
-        상태를 확인해볼게요.
+        AI 튜터는 내 컴퓨터에 연결된 Codex, Claude 또는 Gemini로 동작해요.
+        지금 연결 상태를 확인해볼게요.
       </p>
 
       <div className="onboarding-ai-card" aria-busy={checking}>
@@ -292,7 +292,7 @@ function AiStep(): JSX.Element {
               ok={installed}
               detail={
                 installed
-                  ? `Claude Code ${availability?.version ?? ''}`.trim()
+                  ? `AI 도구 ${availability?.version ?? ''}`.trim()
                   : '설치되지 않았어요'
               }
             />
@@ -305,9 +305,8 @@ function AiStep(): JSX.Element {
             />
             {!ready && (
               <p className="onboarding-ai-hint">
-                터미널에서{' '}
-                <code className="onboarding-inline-code">claude</code>를 실행해
-                {installed ? ' 로그인한' : ' 설치와 로그인을 마친'} 뒤 재확인을
+                설정의 AI 제공자에서 Codex, Claude 또는 Gemini 중 하나를
+                {installed ? ' 로그인한' : ' 설치하고 로그인한'} 뒤 재확인을
                 눌러주세요.
               </p>
             )}

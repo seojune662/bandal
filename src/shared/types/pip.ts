@@ -1,6 +1,15 @@
 export type PipSource =
   | { kind: 'local'; courseId: string; relPath: string; title: string }
-  | { kind: 'web'; url: string; title: string }
+  | {
+      kind: 'web'
+      url: string
+      title: string
+      /** Best-effort identity for the exact video selected in the source tab. */
+      videoHint?: {
+        index: number
+        aspect?: number
+      }
+    }
 
 export interface PipOpenRequest {
   source: PipSource

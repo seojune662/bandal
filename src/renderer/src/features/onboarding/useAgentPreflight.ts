@@ -1,6 +1,6 @@
 /**
- * [M6-A] Shared agent-preflight probe: "is Claude Code installed / logged in
- * RIGHT NOW?" — a live check (docs/orca-analysis.md §8), never a stored flag.
+ * Shared agent-preflight probe: "is any supported AI provider connected right
+ * now?" This is only used inside onboarding; the app shell never nags users.
  *
  * One zustand store backs every consumer (boot probe, shell preflight
  * banners, onboarding step ③), so a 재확인 from any surface refreshes all of
@@ -10,6 +10,7 @@
 
 import { create } from 'zustand'
 import type { AgentAvailability } from '../../../../shared/types/agent-events'
+import { AGENT_PROVIDERS } from '../../../../shared/types/agent-events'
 import { invoke, onPush } from '../../lib/ipc'
 
 export type PreflightIssueKind =
@@ -114,7 +115,7 @@ function ensureAutoRefresh(): void {
   window.addEventListener('focus', probe)
   document.addEventListener('visibilitychange', probeWhenVisible)
   const unsubscribe = onPush('agent:install-progress', (progress) => {
-    if (progress.provider === 'claude-code' && progress.done) probe()
+    if (progress.done) probe()
   })
   autoRefreshCleanup = () => {
     window.removeEventListener('focus', probe)
@@ -136,9 +137,18 @@ export const useAgentPreflight = create<PreflightStore>()((set, get) => {
       ensureAutoRefresh()
       if (inflight !== null) return inflight
       dispatch({ type: 'probe-start' })
-      inflight = invoke('agent:availability', { provider: 'claude-code' })
+      inflight = Promise.all(
+        AGENT_PROVIDERS.map((provider) =>
+          invoke('agent:availability', { provider })
+        )
+      )
         .then((availability) => {
-          dispatch({ type: 'probe-success', availability })
+          const representative =
+            availability.find((state) => state.installed && state.loggedIn) ??
+            availability.find((state) => state.installed) ??
+            availability[0]
+          if (representative === undefined) throw new Error('No AI providers')
+          dispatch({ type: 'probe-success', availability: representative })
         })
         .catch(() => {
           dispatch({ type: 'probe-failure' })

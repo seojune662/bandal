@@ -93,6 +93,7 @@ describe('ChatSurface approval dock', () => {
     expect(html).toContain('aria-label="승인 요청"')
     expect(html).toContain('write_file')
     expect(html).toContain('과목을 삭제할까요?')
+    expect(html).toContain('aria-label="대화 목록"')
     expect(html.indexOf('class="chat-scroll"')).toBeLessThan(
       html.indexOf('class="chat-approval-dock"')
     )

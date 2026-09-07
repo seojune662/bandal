@@ -13,6 +13,8 @@ export interface WebVideoReport {
   currentTime: number
   playbackRate: number
   paused: boolean
+  videoIndex: number
+  aspect?: number
   pageUrl: string
   title: string
 }
@@ -44,6 +46,9 @@ function reportFrom(value: unknown): WebVideoReport | null {
     !Number.isFinite(report['playbackRate']) ||
     report['playbackRate'] <= 0 ||
     typeof report['paused'] !== 'boolean' ||
+    typeof report['videoIndex'] !== 'number' ||
+    !Number.isInteger(report['videoIndex']) ||
+    report['videoIndex'] < -1 ||
     !validPageUrl(report['pageUrl']) ||
     typeof report['title'] !== 'string'
   ) {
@@ -54,6 +59,12 @@ function reportFrom(value: unknown): WebVideoReport | null {
     currentTime: report['currentTime'],
     playbackRate: report['playbackRate'],
     paused: report['paused'],
+    videoIndex: report['videoIndex'],
+    ...(typeof report['aspect'] === 'number' &&
+    Number.isFinite(report['aspect']) &&
+    report['aspect'] > 0
+      ? { aspect: report['aspect'] }
+      : {}),
     pageUrl: report['pageUrl'],
     title: report['title']
   }
@@ -93,6 +104,9 @@ export const VIDEO_REPORTER_SOURCE = `(() => {
       playbackRate: video !== null && Number.isFinite(video.playbackRate) && video.playbackRate > 0
         ? video.playbackRate : 1,
       paused: video === null || video.paused,
+      videoIndex: video === null ? -1 : Array.from(document.querySelectorAll('video')).indexOf(video),
+      aspect: video !== null && video.videoWidth > 0 && video.videoHeight > 0
+        ? video.videoWidth / video.videoHeight : undefined,
       pageUrl: location.href,
       title: document.title
     };
@@ -127,6 +141,9 @@ export const VIDEO_PAUSE_SOURCE = `(() => {
     playbackRate: Number.isFinite(video.playbackRate) && video.playbackRate > 0
       ? video.playbackRate : 1,
     paused,
+    videoIndex: Array.from(document.querySelectorAll('video')).indexOf(video),
+    aspect: video.videoWidth > 0 && video.videoHeight > 0
+      ? video.videoWidth / video.videoHeight : undefined,
     pageUrl: location.href,
     title: document.title
   };
@@ -158,6 +175,8 @@ function updateReport(tabId: string, report: WebVideoReport | null): void {
     previous.currentTime === report.currentTime &&
     previous.playbackRate === report.playbackRate &&
     previous.paused === report.paused &&
+    previous.videoIndex === report.videoIndex &&
+    previous.aspect === report.aspect &&
     previous.pageUrl === report.pageUrl &&
     previous.title === report.title
   ) {
@@ -272,7 +291,17 @@ export async function openWebVideoInPip(
     source: {
       kind: 'web',
       url: snapshot?.pageUrl ?? fallback.url,
-      title: snapshot?.title || fallback.title
+      title: snapshot?.title || fallback.title,
+      ...(snapshot === null
+        ? {}
+        : {
+            videoHint: {
+              index: snapshot.videoIndex,
+              ...(snapshot.aspect === undefined
+                ? {}
+                : { aspect: snapshot.aspect })
+            }
+          })
     },
     positionSec: snapshot?.currentTime ?? 0,
     playbackRate: snapshot?.playbackRate ?? 1,

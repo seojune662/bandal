@@ -15,6 +15,8 @@ describe('video reporter', () => {
             currentTime: 83.25,
             playbackRate: 1.5,
             paused: false,
+            videoIndex: 2,
+            aspect: 16 / 9,
             pageUrl: 'https://lms.example.edu/lecture/1',
             title: '1주차 강의'
           })
@@ -24,6 +26,8 @@ describe('video reporter', () => {
       currentTime: 83.25,
       playbackRate: 1.5,
       paused: false,
+      videoIndex: 2,
+      aspect: 16 / 9,
       pageUrl: 'https://lms.example.edu/lecture/1',
       title: '1주차 강의'
     })

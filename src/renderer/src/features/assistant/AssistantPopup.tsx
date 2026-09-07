@@ -61,6 +61,7 @@ export interface AssistantPopupProps {
   visible: boolean
   conversationId: string | null
   onClose: () => void
+  onOpenConversation: (conversationId: string) => void
 }
 
 function validGeometry(value: unknown): value is PopupGeometry {
@@ -133,7 +134,8 @@ function sameGeometry(
 export function AssistantPopup({
   visible,
   conversationId,
-  onClose
+  onClose,
+  onOpenConversation
 }: AssistantPopupProps): JSX.Element {
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
   const popupRef = useRef<HTMLElement>(null)
@@ -372,6 +374,7 @@ export function AssistantPopup({
             conversationId={conversationId}
             variant="popup"
             headerControlsHost={controlsHost}
+            onOpenConversation={onOpenConversation}
           />
         )}
       </div>

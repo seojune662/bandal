@@ -49,7 +49,11 @@ class FakeWebContents {
   readonly send = vi.fn()
   readonly executeJavaScript = vi.fn((script: string) =>
     Promise.resolve(
-      script.includes('video.currentTime : null') ? this.polledPosition : true
+      script.includes('video.currentTime : null')
+        ? this.polledPosition
+        : script.startsWith('new Promise')
+          ? { ready: true, aspect: 16 / 9 }
+          : true
     )
   )
   private readonly listeners = new Map<
@@ -404,5 +408,19 @@ describe('createMiniPlayerController', () => {
     subject.controller.moveBy(12.4, -8.6)
 
     expect(window.setPosition).toHaveBeenCalledWith(948, 597)
+  })
+
+  test('keeps toolbar dragging inside the matching display work area', () => {
+    const window = new FakeWindow()
+    const subject = setup([window])
+    subject.controller.open({
+      source: WEB_SOURCE,
+      positionSec: 0,
+      playbackRate: 1
+    })
+
+    subject.controller.moveBy(5_000, 5_000)
+
+    expect(window.setPosition).toHaveBeenCalledWith(960, 630)
   })
 })

@@ -17,6 +17,10 @@ import {
 } from './miniPlayerWindow'
 import { createMiniPlayerToolbar } from './miniPlayerToolbar'
 import { createWindowStateStore } from './windowBounds'
+import {
+  isWebPipIsolationResult,
+  webPipIsolationSource
+} from './webPipIsolation'
 
 const STATE_FILE = 'mini-player-state.json'
 const DEFAULT_MARGIN = 24
@@ -57,6 +61,7 @@ interface ActivePlayer {
   toolbar: BrowserWindow | null
   source: PipSource
   allowClose: boolean
+  webIsolated: boolean
 }
 
 function finiteNonNegative(value: number, fallback: number): number {
@@ -163,7 +168,9 @@ export function createMiniPlayerController(
 
   const initialBounds = (): Rect => {
     const saved = boundsStore.read().bounds
-    if (saved !== null) return saved
+    if (saved !== null) {
+      return clampToArea(saved, screen.getDisplayMatching(saved).workArea)
+    }
     const area = screen.getPrimaryDisplay().workArea
     return clampToArea(
       {
@@ -196,7 +203,7 @@ export function createMiniPlayerController(
 
   const initializeWebVideo = (player: ActivePlayer): void => {
     const script = `(() => {
-      const video = document.querySelector('video')
+      const video = document.querySelector('[data-bandal-pip-video], video')
       if (!(video instanceof HTMLVideoElement)) return false
       video.currentTime = ${JSON.stringify(positionSec)}
       video.playbackRate = ${JSON.stringify(playbackRate)}
@@ -220,7 +227,7 @@ export function createMiniPlayerController(
       void player.window.webContents
         .executeJavaScript(
           `(() => {
-            const video = document.querySelector('video')
+            const video = document.querySelector('[data-bandal-pip-video], video')
             return video instanceof HTMLVideoElement ? video.currentTime : null
           })()`
         )
@@ -239,14 +246,52 @@ export function createMiniPlayerController(
   }
 
   const startWebPlaybackTracking = (player: ActivePlayer): void => {
+    const failIsolation = (): void => {
+      if (active !== player || player.webIsolated) return
+      deps.broadcast('pip:error', {
+        message: '이 사이트의 영상만 작은 창으로 분리하지 못했어요.'
+      })
+      restore()
+    }
     player.window.webContents.on('did-finish-load', () => {
       if (active !== player) return
-      initializeWebVideo(player)
-      stopPolling()
-      pollTimer = setInterval(
-        () => pollWebPosition(player),
-        WEB_POSITION_POLL_MS
-      )
+      const source = player.source
+      if (source.kind !== 'web') return
+      try {
+        void player.window.webContents
+          .executeJavaScript(
+            webPipIsolationSource(source, positionSec, playbackRate, paused),
+            true
+          )
+          .then((result: unknown) => {
+            if (active !== player || player.window.isDestroyed()) return
+            if (!isWebPipIsolationResult(result) || !result.ready) {
+              failIsolation()
+              return
+            }
+            player.webIsolated = true
+            if (result.aspect !== undefined) {
+              reportedAspect = result.aspect
+              player.window.setAspectRatio(result.aspect)
+            }
+            player.window.show()
+            const toolbar = player.toolbar
+            if (toolbar !== null && !toolbar.isDestroyed()) {
+              toolbar.showInactive()
+            }
+            initializeWebVideo(player)
+            stopPolling()
+            pollTimer = setInterval(
+              () => pollWebPosition(player),
+              WEB_POSITION_POLL_MS
+            )
+          })
+          .catch(() => {
+            failIsolation()
+          })
+      } catch {
+        failIsolation()
+      }
     })
   }
 
@@ -279,7 +324,8 @@ export function createMiniPlayerController(
       window,
       toolbar: null,
       source: request.source,
-      allowClose: quitting
+      allowClose: quitting,
+      webIsolated: false
     }
     active = player
 
@@ -288,10 +334,14 @@ export function createMiniPlayerController(
     })
     window.on('closed', () => finishUnexpectedClose(player))
     boundsStore.track(window)
-    window.setAspectRatio(DEFAULT_ASPECT)
-    showWhenReady(player)
+    const requestedAspect =
+      request.source.kind === 'web'
+        ? request.source.videoHint?.aspect
+        : undefined
+    window.setAspectRatio(requestedAspect ?? DEFAULT_ASPECT)
 
     if (request.source.kind === 'local') {
+      showWhenReady(player)
       sendInitialLocalSeek(player)
       loadLocalPipView(window, request.source)
     } else {
@@ -378,10 +428,16 @@ export function createMiniPlayerController(
       return
     }
     const bounds = player.window.getBounds()
-    player.window.setPosition(
-      Math.round(bounds.x + dx),
-      Math.round(bounds.y + dy)
+    const target = {
+      ...bounds,
+      x: Math.round(bounds.x + dx),
+      y: Math.round(bounds.y + dy)
+    }
+    const clamped = clampToArea(
+      target,
+      screen.getDisplayMatching(target).workArea
     )
+    player.window.setPosition(clamped.x, clamped.y)
   }
 
   const isAlive = (): boolean =>

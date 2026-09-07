@@ -373,6 +373,13 @@ export function ChatSurface({
 
   const selectorControls = (
     <>
+      <ConversationListMenu
+        courseId={courseId}
+        currentConversationId={conversationKey}
+        surface={surface}
+        onNewConversation={handleNewConversation}
+        onOpenConversation={handleOpenConversation}
+      />
       <ProviderSelector
         compact
         provider={provider}
@@ -413,14 +420,6 @@ export function ChatSurface({
         : (
         <header className="chat-header">
           {headerExtra}
-          {variant === 'tab' && (
-            <ConversationListMenu
-              courseId={courseId}
-              currentConversationId={conversationKey}
-              onNewConversation={handleNewConversation}
-              onOpenConversation={handleOpenConversation}
-            />
-          )}
           {hasSessionUsage && (
             <div className="chat-session-usage" title={sessionUsageTitle}>
               <span className="chat-session-usage__label">오늘 이 대화:</span>

@@ -51,6 +51,7 @@ export interface OverlayController {
   isActive(): boolean
   getState(): ManagedOverlayState
   setCourse(courseId: string): ManagedOverlayState
+  setConversation(courseId: string, conversationId: string): ManagedOverlayState
   togglePopup(open?: boolean): { open: boolean }
   orbDragBegin(grab: { grabX: number; grabY: number }): void
   orbDragEnd(): void
@@ -369,6 +370,16 @@ export function createOverlayController(
     return getState()
   }
 
+  const setConversation = (
+    nextCourseId: string,
+    conversationId: string
+  ): ManagedOverlayState => {
+    courseOverride = nextCourseId
+    conversations.set(nextCourseId, conversationId)
+    broadcastState()
+    return getState()
+  }
+
   const orbDragBegin = (grab: { grabX: number; grabY: number }): void => {
     if (!liveWindow(orb)) return
     orbDragEnd()
@@ -473,6 +484,7 @@ export function createOverlayController(
     isActive,
     getState,
     setCourse,
+    setConversation,
     togglePopup,
     orbDragBegin,
     orbDragEnd,

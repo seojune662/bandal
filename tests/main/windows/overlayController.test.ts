@@ -228,6 +228,16 @@ describe('createOverlayController', () => {
     expect(other).toEqual(expect.any(String))
     expect(other).not.toBe(first)
     expect(subject.controller.setCourse('course-a').conversationId).toBe(first)
+
+    const selected = subject.controller.setConversation(
+      'course-a',
+      'conversation-history'
+    )
+    expect(selected.conversationId).toBe('conversation-history')
+    expect(subject.controller.setCourse('course-b').conversationId).toBe(other)
+    expect(subject.controller.setCourse('course-a').conversationId).toBe(
+      'conversation-history'
+    )
   })
 
   test('starts idempotently and destroys both overlay windows on stop', () => {

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { AgentProvider } from '../../../../shared/types/agent-events'
-import type { ChatConversationSummary } from '../../../../shared/types/chat'
+import type {
+  ChatConversationSummary,
+  ChatSurface
+} from '../../../../shared/types/chat'
 import { Icon } from '../../app/icons'
 import { invoke } from '../../lib/ipc'
 
@@ -15,6 +18,7 @@ type LoadState = 'idle' | 'loading' | 'ready' | 'error'
 export interface ConversationListMenuProps {
   courseId: string
   currentConversationId: string
+  surface?: ChatSurface
   onNewConversation: () => void
   onOpenConversation: (conversationId: string) => void
 }
@@ -74,6 +78,7 @@ function relativeTime(value: string | null): string {
 export function ConversationListMenu({
   courseId,
   currentConversationId,
+  surface = 'app',
   onNewConversation,
   onOpenConversation
 }: ConversationListMenuProps): JSX.Element {
@@ -97,7 +102,7 @@ export function ConversationListMenu({
     const requestSerial = ++requestSerialRef.current
     setLoadState('loading')
     try {
-      const result = await invoke('chat:conversations', { courseId })
+      const result = await invoke('chat:conversations', { courseId, surface })
       if (!mountedRef.current || requestSerial !== requestSerialRef.current) {
         return
       }
@@ -110,7 +115,7 @@ export function ConversationListMenu({
       console.error('[Bandal] 대화 목록을 불러오지 못했습니다.', error)
       setLoadState('error')
     }
-  }, [courseId])
+  }, [courseId, surface])
 
   useEffect(() => {
     mountedRef.current = true
@@ -181,6 +186,11 @@ export function ConversationListMenu({
       })
       if (!mountedRef.current) return
       setConfirmingId(null)
+      if (conversationId === currentConversationId) {
+        setOpen(false)
+        onNewConversation()
+        return
+      }
       await loadConversations()
     } catch (error) {
       if (!mountedRef.current) return

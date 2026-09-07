@@ -362,6 +362,76 @@ test.describe('browser', () => {
     }
   })
 
+  test('web PiP shows only the selected video player', async () => {
+    const server: FileServer = await startFileServer({
+      '/lecture': {
+        fileName: 'lecture.html',
+        contentType: 'text/html; charset=utf-8',
+        attachment: false,
+        body: [
+          '<html><head><title>PiP lecture</title></head><body>',
+          '<header id="page-chrome">SITE HEADER</header>',
+          '<video id="lecture-video" width="640" height="360"></video>',
+          '<aside id="recommendations">RECOMMENDATIONS</aside>',
+          '</body></html>'
+        ].join('')
+      }
+    })
+    try {
+      const { app, page } = bandal
+      const url = `${server.origin}/lecture`
+      await openBrowserTab(page, url)
+      await waitForBrowserGuest(app, url)
+
+      const pipButton = page
+        .locator('.browser-toolbar')
+        .last()
+        .getByRole('button', { name: '작은 창으로 보기' })
+      await expect(pipButton).toBeVisible({ timeout: 10_000 })
+
+      const pipWindowPromise = app.waitForEvent('window', {
+        predicate: (candidate) => candidate.url() === url,
+        timeout: 15_000
+      })
+      await pipButton.click()
+      const pipWindow = await pipWindowPromise
+      await expect
+        .poll(() =>
+          pipWindow.evaluate(() => {
+            const video = document.querySelector('#lecture-video')
+            const chrome = document.querySelector('#page-chrome')
+            const recommendations = document.querySelector('#recommendations')
+            return {
+              isolated: video?.hasAttribute('data-bandal-pip-root') ?? false,
+              chrome: chrome === null ? null : getComputedStyle(chrome).visibility,
+              recommendations:
+                recommendations === null
+                  ? null
+                  : getComputedStyle(recommendations).visibility
+            }
+          })
+        )
+        .toEqual({
+          isolated: true,
+          chrome: 'hidden',
+          recommendations: 'hidden'
+        })
+
+      const toolbar =
+        app.windows().find((candidate) =>
+          candidate.url().includes('pip.html?view=toolbar')
+        ) ??
+        (await app.waitForEvent('window', {
+          predicate: (candidate) =>
+            candidate.url().includes('pip.html?view=toolbar')
+        }))
+      await toolbar.getByRole('button', { name: '미니 플레이어 닫기' }).click()
+      await expect.poll(() => pipWindow.isClosed()).toBe(true)
+    } finally {
+      await server.close()
+    }
+  })
+
   test('a downloaded file lands in the course folder, not ~/Downloads', async () => {
     // The whole reason the embedded browser exists: getting a lecture handout
     // next to the rest of the course without a manual move.

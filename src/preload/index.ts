@@ -52,6 +52,7 @@ const PUSH_CHANNELS = [
   'materials:changed',
   // -- picture-in-picture ---------------------------------------------------
   'pip:state',
+  'pip:error',
   'pip:seek',
   'ui:openMaterial',
   'ui:openUrl',

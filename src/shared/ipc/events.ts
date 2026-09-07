@@ -219,6 +219,7 @@ export interface PushEvents {
   'materials:changed': MaterialsChanged
   // -- picture-in-picture ---------------------------------------------------
   'pip:state': PipState
+  'pip:error': { message: string }
   'pip:seek': {
     positionSec: number
     playbackRate: number

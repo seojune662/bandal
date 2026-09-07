@@ -54,9 +54,17 @@ import {
 import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contract'
 import type { PushChannel, PushPayload } from '../../shared/ipc/events'
 import type { AgentAppState } from '../../shared/types/agentTools'
-import type { AgentProvider, Usage } from '../../shared/types/agent-events'
+import type {
+  AgentAvailability,
+  AgentProvider,
+  Usage
+} from '../../shared/types/agent-events'
 import { isUsageWindowDays } from '../../shared/types/usage'
 import type { ScreenPermissionState } from '../../shared/types/overlay'
+import {
+  firstConnectedProvider,
+  providerPreferenceOrder
+} from '../../shared/agentProviderSelection'
 import { isSystemPermissionId } from '../../shared/types/permissions'
 import type { Settings, SettingsPatch } from '../../shared/types/settings'
 import {
@@ -1688,6 +1696,81 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       : provider === 'gemini'
         ? geminiSessionManager
         : sessionManager
+
+  const closeConversationManagers = (
+    courseId: string,
+    sessionId: string
+  ): void => {
+    sessionManager.close(courseId, sessionId)
+    codexSessionManager.close(courseId, sessionId)
+    geminiSessionManager.close(courseId, sessionId)
+    eventBatcher.flush(sessionId)
+  }
+
+  const switchConversationProvider = (
+    courseId: string,
+    sessionId: string,
+    provider: AgentProvider
+  ): ReturnType<typeof chatRepo.switchProvider> => {
+    const row = chatRepo.getSession(sessionId)
+    closeConversationManagers(courseId, sessionId)
+    if (row === null || row.provider === provider) return row
+    const { text: _text, ...carried } = serializeTranscript(
+      chatRepo.historyTail(sessionId, CARRYOVER_HISTORY_LIMIT)
+    )
+    const sessionInfo = chatRepo.switchProvider(sessionId, provider)
+    chatRepo.appendNotice(courseId, sessionId, {
+      kind: 'provider-switch',
+      from: row.provider,
+      to: provider,
+      carried
+    })
+    return sessionInfo
+  }
+
+  /** Pick a ready provider lazily, only when a chat surface is actually used. */
+  const resolveConnectedManager = async (
+    courseId: string,
+    sessionId: string
+  ): Promise<typeof sessionManager> => {
+    const row = chatRepo.getSession(sessionId)
+    if (row?.status === 'running') return managerFor(row.provider)
+    const warmProvider = sessionManager.has(sessionId)
+      ? 'claude-code'
+      : codexSessionManager.has(sessionId)
+        ? 'codex'
+        : geminiSessionManager.has(sessionId)
+          ? 'gemini'
+          : null
+    const preferred =
+      row?.provider ?? warmProvider ?? getSettings().agentProvider
+    const candidates = providerPreferenceOrder(
+      preferred,
+      getSettings().agentProvider
+    )
+    let chosen: AgentProvider | null = null
+    const availabilityByProvider: Partial<
+      Record<AgentProvider, AgentAvailability>
+    > = {}
+    for (const provider of candidates) {
+      try {
+        const availability = await agentLocators[provider].availability()
+        availabilityByProvider[provider] = availability
+        chosen = firstConnectedProvider(candidates, availabilityByProvider)
+        if (chosen !== null) break
+      } catch {
+        // A broken provider probe must not prevent trying another connection.
+      }
+    }
+    if (chosen === null) return managerFor(preferred)
+    if (row !== null && row.provider !== chosen) {
+      switchConversationProvider(courseId, sessionId, chosen)
+    }
+    if (getSettings().agentProvider !== chosen) {
+      setSettings({ agentProvider: chosen })
+    }
+    return managerFor(chosen)
+  }
   /**
    * Provider is a per-CONVERSATION property: a persisted row routes by its own
    * provider, a warm-but-unpersisted entry stays with whichever manager holds
@@ -1715,7 +1798,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // 응답한 뒤에 fire-and-forget 으로 미룬다 — 자료가 많은 과목에서 동기
   // rebuild 가 대화 열기(과목 전환)를 통째로 막고 있었다. 실제 첫 메시지가
   // 나가기 전에는 넉넉히 끝난다.
-  handle('chat:open', (req) => {
+  handle('chat:open', async (req) => {
     setImmediate(() => {
       try {
         rebuildContextCoalesced(req.courseId)
@@ -1723,7 +1806,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         console.error('[context] rebuild failed', error)
       }
     })
-    return resolveManager(req.sessionId).open(
+    const manager = await resolveConnectedManager(req.courseId, req.sessionId)
+    return manager.open(
       req.courseId,
       req.sessionId,
       req.surface ?? 'app'
@@ -1758,6 +1842,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // -- desktop overlay -----------------------------------------------------
   handle('overlay:getState', () => deps.overlay.getState())
   handle('overlay:setCourse', (req) => deps.overlay.setCourse(req.courseId))
+  handle('overlay:setConversation', (req) =>
+    deps.overlay.setConversation(req.courseId, req.conversationId)
+  )
   handle('overlay:togglePopup', (req) => deps.overlay.togglePopup(req.open))
   handle('overlay:orbDragBegin', (req) => {
     deps.overlay.orbDragBegin(req)
@@ -1904,25 +1991,18 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     if (row?.status === 'running') {
       throw new Error('답변이 끝난 뒤에 바꿀 수 있어요.')
     }
-    // Both managers: the old one would keep an orphaned CLI process, and the
-    // new one must hydrate its entry from the updated row on the next send.
-    sessionManager.close(req.courseId, req.sessionId)
-    codexSessionManager.close(req.courseId, req.sessionId)
-    geminiSessionManager.close(req.courseId, req.sessionId)
-    eventBatcher.flush(req.sessionId)
     if (row === null || row.provider === req.provider) {
+      closeConversationManagers(req.courseId, req.sessionId)
       return { sessionInfo: row, carried: null }
     }
     const { text: _text, ...carried } = serializeTranscript(
       chatRepo.historyTail(req.sessionId, CARRYOVER_HISTORY_LIMIT)
     )
-    const sessionInfo = chatRepo.switchProvider(req.sessionId, req.provider)
-    chatRepo.appendNotice(req.courseId, req.sessionId, {
-      kind: 'provider-switch',
-      from: row.provider,
-      to: req.provider,
-      carried
-    })
+    const sessionInfo = switchConversationProvider(
+      req.courseId,
+      req.sessionId,
+      req.provider
+    )
     return { sessionInfo, carried }
   })
 

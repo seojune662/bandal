@@ -181,13 +181,33 @@
   padding: 0 var(--space-1);
   color: var(--text-primary);
   background: transparent;
-  opacity: 0.72;
+  opacity: 0;
   transition:
     opacity var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 
-.pip-toolbar--active {
+.pip-toolbar:active {
+  cursor: grabbing;
+}
+
+.pip-toolbar__grab {
+  width: var(--space-6);
+  height: 4px;
+  margin-right: auto;
+  background: color-mix(in srgb, currentColor 42%, transparent);
+  border-radius: var(--radius-pill);
+}
+
+.pip-toolbar__button {
+  cursor: pointer;
+}
+
+.pip-toolbar--active,
+.pip-toolbar:focus-within {
   background: var(--bg-overlay);
   opacity: 1;
 }
