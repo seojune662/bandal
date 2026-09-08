@@ -105,6 +105,7 @@ import {
   subscribePageSyncAnchor,
   usePageNoteSync
 } from '../links/pdfPageNoteSync'
+import { PageCenterCache } from '../pdf/useVisiblePages'
 
 const SAVE_DELAY_MS = 800
 /** Live-mirror latency between duplicate panels of the same file. */
@@ -544,12 +545,21 @@ export function PageNoteWorkspace({
   const [activePage, setActivePage] = useState(
     Math.min(pageNotePair?.initialPage ?? 1, document.pages.length)
   )
+  const [viewportPage, setViewportPage] = useState(
+    Math.min(pageNotePair?.initialPage ?? 1, document.pages.length)
+  )
   const [formatState, setFormatState] = useState<NoteFormatState>(
     EMPTY_NOTE_FORMAT_STATE
   )
   const pagesRef = useRef(document.pages)
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef(new Map<number, HTMLElement>())
+  const pageRefCallbacks = useRef(
+    new Map<number, (element: HTMLElement | null) => void>()
+  )
+  const pageCenterCacheRef = useRef(new PageCenterCache())
+  const reportedPageRef = useRef(0)
   const applyingSyncRef = useRef(false)
   const scrollFrameRef = useRef<number | null>(null)
   const syncReleaseTimerRef = useRef<number | null>(null)
@@ -561,39 +571,60 @@ export function PageNoteWorkspace({
       performance.now() + PAGE_NOTE_INPUT_SCROLL_SUPPRESSION_MS
   }
 
+  const registerPage = useCallback((page: number) => {
+    const cached = pageRefCallbacks.current.get(page)
+    if (cached !== undefined) return cached
+    const callback = (element: HTMLElement | null): void => {
+      const previous = pageRefs.current.get(page)
+      if (element === null) pageRefs.current.delete(page)
+      else pageRefs.current.set(page, element)
+      if (previous !== element) pageCenterCacheRef.current.invalidate()
+    }
+    pageRefCallbacks.current.set(page, callback)
+    return callback
+  }, [])
+
+  useEffect(() => {
+    const list = listRef.current
+    if (list === null) return
+    const observer = new ResizeObserver(() => {
+      pageCenterCacheRef.current.invalidate()
+    })
+    observer.observe(list)
+    return () => observer.disconnect()
+  }, [])
+
+  const reportCurrentPage = useCallback(
+    (page: number): void => {
+      setViewportPage((current) => (current === page ? current : page))
+      if (reportedPageRef.current === page) return
+      reportedPageRef.current = page
+      onCurrentPageChange(page)
+    },
+    [onCurrentPageChange]
+  )
+
   const captureAnchor = useCallback((): { page: number; pageOffset: number } | null => {
     const scroller = scrollerRef.current
-    if (scroller === null || scroller.clientHeight <= 0) return null
-    const center = scroller.getBoundingClientRect().top + scroller.clientHeight / 2
-    let closest: { page: number; distance: number; offset: number } | null = null
-    for (const [page, element] of pageRefs.current) {
-      const box = element.getBoundingClientRect()
-      const distance = Math.abs(box.top + box.height / 2 - center)
-      if (closest === null || distance < closest.distance) {
-        closest = {
-          page,
-          distance,
-          offset: Math.min(1, Math.max(0, (center - box.top) / box.height))
-        }
-      }
-    }
-    return closest === null
-      ? null
-      : { page: closest.page, pageOffset: closest.offset }
+    if (scroller === null) return null
+    return pageCenterCacheRef.current.captureViewportAnchor(
+      scroller,
+      pageRefs.current
+    )
   }, [])
 
   const restoreAnchor = useCallback(
     (page: number, pageOffset: number): boolean => {
       const scroller = scrollerRef.current
-      const element = pageRefs.current.get(
-        Math.min(Math.max(1, page), document.pages.length)
+      if (scroller === null) return false
+      return pageCenterCacheRef.current.restoreViewportAnchor(
+        scroller,
+        pageRefs.current,
+        {
+          page: Math.min(Math.max(1, page), document.pages.length),
+          pageOffset
+        }
       )
-      if (scroller === null || element === undefined) return false
-      const scrollerBox = scroller.getBoundingClientRect()
-      const pageBox = element.getBoundingClientRect()
-      const anchoredPoint = pageBox.top + pageBox.height * Math.min(1, Math.max(0, pageOffset))
-      scroller.scrollTop += anchoredPoint - (scrollerBox.top + scroller.clientHeight / 2)
-      return true
     },
     [document.pages.length]
   )
@@ -605,10 +636,10 @@ export function PageNoteWorkspace({
     )
     const frame = requestAnimationFrame(() => {
       restoreAnchor(initialPage, 0)
-      onCurrentPageChange(initialPage)
+      reportCurrentPage(initialPage)
     })
     return () => cancelAnimationFrame(frame)
-  }, [document.pages.length, onCurrentPageChange, pageNotePair?.initialPage, restoreAnchor])
+  }, [document.pages.length, pageNotePair?.initialPage, reportCurrentPage, restoreAnchor])
 
   useEffect(() => {
     if (pageNotePair === null || !syncEnabled) return
@@ -620,7 +651,7 @@ export function PageNoteWorkspace({
       applyingSyncRef.current = true
       const restored = restoreAnchor(anchor.page, anchor.pageOffset)
       if (restored) {
-        onCurrentPageChange(
+        reportCurrentPage(
           Math.min(Math.max(1, anchor.page), document.pages.length)
         )
       }
@@ -642,7 +673,7 @@ export function PageNoteWorkspace({
         syncReleaseTimerRef.current = null
       }, PAGE_SYNC_ECHO_GUARD_MS)
     })
-  }, [document.pages.length, onCurrentPageChange, pageNotePair, panelId, restoreAnchor, syncEnabled])
+  }, [document.pages.length, pageNotePair, panelId, reportCurrentPage, restoreAnchor, syncEnabled])
 
   useEffect(() => () => {
     if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current)
@@ -657,7 +688,7 @@ export function PageNoteWorkspace({
       scrollFrameRef.current = null
       const anchor = captureAnchor()
       if (anchor === null) return
-      onCurrentPageChange(anchor.page)
+      reportCurrentPage(anchor.page)
       const applyingSync = applyingSyncRef.current
       if (applyingSync) {
         applyingSyncRef.current = false
@@ -728,7 +759,7 @@ export function PageNoteWorkspace({
           fontScale={fontScale}
           onFontScaleChange={onFontScaleChange}
         />
-        <div className="page-note-list">
+        <div ref={listRef} className="page-note-list">
           {pages.map((markdown, index) => {
             const page = index + 1
             const size = document.manifest.pages[index] ?? {
@@ -739,10 +770,7 @@ export function PageNoteWorkspace({
             return (
               <section
                 key={page}
-                ref={(element) => {
-                  if (element === null) pageRefs.current.delete(page)
-                  else pageRefs.current.set(page, element)
-                }}
+                ref={registerPage(page)}
                 className="page-note-paper"
                 data-active={isActive || undefined}
                 style={{ aspectRatio: `${size.width} / ${size.height}` }}
@@ -770,8 +798,13 @@ export function PageNoteWorkspace({
                       onFormatStateChange={setFormatState}
                       onZoomStep={onZoomStep}
                     />
-                  ) : (
+                  ) : Math.abs(page - viewportPage) <= 2 ? (
                     <PageNotePreview courseId={courseId} markdown={markdown} />
+                  ) : (
+                    <div
+                      className="page-note-paper__preview"
+                      aria-hidden="true"
+                    />
                   )}
                 </div>
               </section>

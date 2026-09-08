@@ -11,7 +11,6 @@ import {
 } from '../../stores/groupsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
-import { useFriendsStore } from '../../stores/friendsStore'
 import { GroupIcon } from './groupIcons'
 import { GroupListRow } from './GroupListRow'
 import './group.css'
@@ -94,8 +93,6 @@ export function TogetherFooter(): JSX.Element | null {
   const initGroups = useGroupsStore((state) => state.init)
   const respondInvite = useGroupsStore((state) => state.respondInvite)
   const openTab = useWorkspaceStore((state) => state.openTab)
-  const friends = useFriendsStore((state) => state.friends)
-  const initFriends = useFriendsStore((state) => state.init)
   const signedIn = auth.phase === 'signed-in'
   const unassignedGroups = useMemo(
     () => selectGroupsForCourse(allGroups, null),
@@ -109,9 +106,8 @@ export function TogetherFooter(): JSX.Element | null {
   useEffect(() => {
     if (signedIn) {
       void initGroups()
-      void initFriends()
     }
-  }, [initFriends, initGroups, signedIn])
+  }, [initGroups, signedIn])
 
   const openGroup = useCallback(
     (groupId: string) => {
@@ -149,6 +145,14 @@ export function TogetherFooter(): JSX.Element | null {
 
   if (auth.phase === 'unconfigured') return null
 
+  if (
+    signedIn &&
+    pendingInvites.length === 0 &&
+    unassignedGroups.length === 0
+  ) {
+    return null
+  }
+
   // 로그인 상태에서 초대도 미지정 그룹도 없으면 렌더할 내용이 없다 —
   // 빈 섹션은 border-top+패딩만 남겨 하단 메뉴 위에 이중 선을 그린다.
   return (
@@ -165,16 +169,6 @@ export function TogetherFooter(): JSX.Element | null {
         />
       ) : (
         <>
-          <button
-            type="button"
-            className="together-friends"
-            onClick={() => openTab(descriptorFor('friends', {}))}
-          >
-            <GroupIcon name="users" />
-            <span>친구</span>
-            <strong>{friends.reduce((sum, friend) => sum + (friend.unread ?? 0), 0) || friends.filter((friend) => friend.status === 'accepted').length}</strong>
-            {friends.some((friend) => (friend.status === 'pending' && friend.direction === 'incoming') || (friend.unread ?? 0) > 0) && <i aria-label="새 친구 소식" />}
-          </button>
           {pendingInvites.length > 0 && (
             <ul className="group-invites">
               {pendingInvites.map((invite) => (

@@ -13,23 +13,63 @@
  * panels/browserAnchor.ts (the webview guest lives outside the panel DOM).
  */
 
-import type { FunctionComponent } from 'react'
+import {
+  lazy,
+  Suspense,
+  type FunctionComponent,
+  type LazyExoticComponent
+} from 'react'
 import type { IDockviewPanelProps } from 'dockview'
 import type { TabDescriptor, TabKind } from '../../../../shared/tabs'
 import type { IconName } from '../../app/icons'
 import { tabTitle } from './tabIdentity'
-import { BrowserPanel } from '../browser/BrowserPanel'
-import NoteTab from '../notes/NoteTab'
-import BoardPanel from '../board/BoardPanel'
-import ChatTab from '../chat/ChatTab'
-import PdfTab from '../pdf/PdfTab'
-import ImageTab from '../image/ImageTab'
-import FileTab from '../file/FileTab'
-import GroupChatTab from '../group/GroupChatTab'
-import CanvasTab from '../canvas/CanvasTab'
-import { PluginPanelTab } from '../plugins/PluginPanelTab'
-import FriendsTab from '../group/FriendsTab'
 import { withMaterialSequence } from '../links/MaterialSequenceWrapper'
+
+type DockPanel = FunctionComponent<IDockviewPanelProps>
+
+/**
+ * Dockview needs a synchronous component registry, while the actual viewers
+ * are large and rarely all needed in one session. This stable wrapper keeps
+ * the registry synchronous and moves each implementation into its own chunk.
+ */
+function deferredPanel(
+  load: () => Promise<{ default: DockPanel }>
+): DockPanel {
+  const Deferred: LazyExoticComponent<DockPanel> = lazy(load)
+  return function DeferredDockPanel(props): JSX.Element {
+    return (
+      <Suspense
+        fallback={
+          <div className="workspace-panel-loading" role="status">
+            탭 불러오는 중…
+          </div>
+        }
+      >
+        <Deferred {...props} />
+      </Suspense>
+    )
+  }
+}
+
+const BrowserPanel = deferredPanel(() =>
+  import('../browser/BrowserPanel').then((module) => ({
+    default: module.BrowserPanel
+  }))
+)
+const NoteTab = deferredPanel(() => import('../notes/NoteTab'))
+const BoardPanel = deferredPanel(() => import('../board/BoardPanel'))
+const ChatTab = deferredPanel(() => import('../chat/ChatTab'))
+const PdfTab = deferredPanel(() => import('../pdf/PdfTab'))
+const ImageTab = deferredPanel(() => import('../image/ImageTab'))
+const FileTab = deferredPanel(() => import('../file/FileTab'))
+const GroupChatTab = deferredPanel(() => import('../group/GroupChatTab'))
+const CanvasTab = deferredPanel(() => import('../canvas/CanvasTab'))
+const PluginPanelTab = deferredPanel(() =>
+  import('../plugins/PluginPanelTab').then((module) => ({
+    default: module.PluginPanelTab
+  }))
+)
+const FriendsTab = deferredPanel(() => import('../group/FriendsTab'))
 
 export interface TabRegistryEntry {
   component: FunctionComponent<IDockviewPanelProps>

@@ -14,16 +14,33 @@ const SETTING_EVENT = 'bandal:pdf-page-note-sync-setting'
 /** Fallback release when assigning scrollTop produces no scroll event. */
 export const PAGE_SYNC_ECHO_GUARD_MS = 150
 const settings = new Map<string, boolean>()
+const pendingAnchors = new Map<
+  string,
+  Omit<PageSyncAnchor, 'sequence'>
+>()
+let anchorFrame: number | null = null
 let sequence = 0
 
 export function publishPageSyncAnchor(
   anchor: Omit<PageSyncAnchor, 'sequence'>
 ): void {
-  window.dispatchEvent(
-    new CustomEvent<PageSyncAnchor>(ANCHOR_EVENT, {
-      detail: { ...anchor, sequence: ++sequence }
-    })
-  )
+  // Both panes publish from scroll handlers. Keep only the latest semantic
+  // position for a pair in this frame so a trackpad burst never builds an
+  // event backlog behind the user's finger.
+  pendingAnchors.set(anchor.pairId, anchor)
+  if (anchorFrame !== null) return
+  anchorFrame = window.requestAnimationFrame(() => {
+    anchorFrame = null
+    const queued = [...pendingAnchors.values()]
+    pendingAnchors.clear()
+    for (const pending of queued) {
+      window.dispatchEvent(
+        new CustomEvent<PageSyncAnchor>(ANCHOR_EVENT, {
+          detail: { ...pending, sequence: ++sequence }
+        })
+      )
+    }
+  })
 }
 
 export function subscribePageSyncAnchor(

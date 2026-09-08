@@ -21,24 +21,6 @@
   display: block;
 }
 
-.course-sidebar-chrome__mark {
-  color: var(--accent);
-  width: var(--brand-mark-size);
-  height: var(--brand-mark-size);
-  flex: 0 0 auto;
-}
-
-.course-sidebar-chrome__name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: var(--tracking-tight);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .course-sidebar-chrome__toggle {
   margin-left: auto;
   -webkit-app-region: no-drag;

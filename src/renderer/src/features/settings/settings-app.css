@@ -458,6 +458,10 @@
   padding: var(--space-5) var(--space-5) var(--space-4);
 }
 
+.settings-card__body {
+  padding: 0 var(--space-5) var(--space-5);
+}
+
 .settings-card h2,
 .course-card-heading h2,
 .integration-card__title h2 {

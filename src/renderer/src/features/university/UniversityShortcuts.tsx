@@ -440,15 +440,12 @@ export function UniversityShortcuts(): JSX.Element | null {
       <button
         type="button"
         className="university-section__heading"
-        aria-label={`CAMPUS ${university.nameKo} ${collapsed ? '펼치기' : '접기'}`}
+        aria-label={`${university.nameKo} 바로가기 ${collapsed ? '펼치기' : '접기'}`}
         aria-expanded={!collapsed}
         onClick={toggleCollapsed}
       >
         <Icon name="chevronRight" className="university-section__chevron" />
-        <span className="university-section__heading-copy">
-          <span className="eyebrow">CAMPUS</span>
-          <span className="university-section__name">{university.nameKo}</span>
-        </span>
+        <span className="university-section__name">{university.nameKo}</span>
       </button>
 
       {!collapsed && (

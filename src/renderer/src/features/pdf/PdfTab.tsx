@@ -21,7 +21,7 @@ import type { IDockviewPanelProps } from 'dockview'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
-import './pdfWorker'
+import { configurePdfWorker } from './pdfWorker'
 import 'react-pdf/dist/Page/TextLayer.css'
 import './pdf.css'
 import { isTabDescriptor } from '../workspace/tabIdentity'
@@ -95,6 +95,9 @@ import {
   subscribeOpenPdfPageNote,
   takeOpenPdfPageNote
 } from '../links/pdfPageNoteNavigation'
+
+configurePdfWorker()
+
 const ZOOM_MIN = 0.4
 const ZOOM_MAX = 4
 const ZOOM_STEP = 1.15

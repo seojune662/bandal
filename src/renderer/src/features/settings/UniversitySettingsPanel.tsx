@@ -127,19 +127,31 @@ export function UniversitySettingsPanel(): JSX.Element {
                 })}
           </p>
         </div>
-        {!loaded ? (
-          <p className="settings-feedback">{t('settings.university.loading')}</p>
-        ) : (
-          <SettingsUniversityPicker
-            selectedId={settings.universityId}
-            customName={settings.customUniversity?.nameKo}
-            busy={busy}
-            onSelectPreset={(id) => run(() => selectPreset(id))}
-            onAddCustom={(input) => run(() => addCustom(input))}
-          />
-        )}
+        <div className="settings-card__body">
+          {!loaded ? (
+            <p className="settings-feedback settings-feedback--inline">
+              {t('settings.university.loading')}
+            </p>
+          ) : (
+            <SettingsUniversityPicker
+              selectedId={settings.universityId}
+              customName={settings.customUniversity?.nameKo}
+              busy={busy}
+              onSelectPreset={(id) => run(() => selectPreset(id))}
+              onAddCustom={(input) => run(() => addCustom(input))}
+            />
+          )}
+          <p
+            className={`settings-feedback settings-feedback--inline${error !== null ? ' settings-feedback--error' : ''}`}
+            aria-live="polite"
+          >
+            {error !== null
+              ? t('settings.university.saveError')
+              : t('settings.university.catalogHelp')}
+          </p>
+        </div>
         {university !== null && (
-          <div className="settings-card__footer-row">
+          <div className="settings-card__footer-row settings-card__footer-row--compact">
             <button
               type="button"
               className="secondary-button"
@@ -150,14 +162,6 @@ export function UniversitySettingsPanel(): JSX.Element {
             </button>
           </div>
         )}
-        <p
-          className={`settings-feedback${error !== null ? ' settings-feedback--error' : ''}`}
-          aria-live="polite"
-        >
-          {error !== null
-            ? t('settings.university.saveError')
-            : t('settings.university.catalogHelp')}
-        </p>
       </section>
 
       {university !== null && (

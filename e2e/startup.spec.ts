@@ -55,6 +55,10 @@ test.describe('cold launch', () => {
     expect(calls).toBe(0)
   })
 
+  test('starts without a right-rail widget until the user adds one', async () => {
+    await expect(bandal.page.locator('.widget-dock')).toHaveCount(0)
+  })
+
   test('a new browser tab opens with chrome, named as one', async () => {
     // The app-rendered start page was retired in the Quiet Chrome redesign;
     // a new tab is now an ordinary guest with the toolbar over it.
@@ -64,8 +68,10 @@ test.describe('cold launch', () => {
     await expect(page.locator('.browser-toolbar').first()).toBeVisible({
       timeout: 15_000
     })
-    await expect(
-      page.locator('.workspace-tab__title', { hasText: '새 탭' })
-    ).toBeVisible()
+    const title = page.locator('.workspace-tab__title').last()
+    await expect(title).toBeVisible()
+    // Once the guest responds it may already be "Google"; the regression was
+    // exposing the placeholder host name as if it were a meaningful title.
+    await expect(title).not.toHaveText('www.google.com')
   })
 })

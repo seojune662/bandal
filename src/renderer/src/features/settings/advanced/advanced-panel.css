@@ -2,7 +2,6 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  padding-bottom: var(--space-3);
   border-top: thin solid var(--border-subtle);
 }
 

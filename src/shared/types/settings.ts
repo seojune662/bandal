@@ -42,7 +42,7 @@ export interface WidgetSettings {
 }
 
 export const DEFAULT_WIDGETS: WidgetSettings = {
-  enabled: ['todo'],
+  enabled: [],
   active: 'todo',
   heightRatio: 0.38,
   mailServiceId: null,

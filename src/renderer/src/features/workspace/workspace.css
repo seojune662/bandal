@@ -105,6 +105,16 @@
   flex: 0 0 auto;
 }
 
+.workspace-panel-loading {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  background: var(--bg-app);
+}
+
 :root[data-platform='darwin'] .workspace-chrome__traffic {
   display: block;
   width: var(--traffic-light-inset);

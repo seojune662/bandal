@@ -52,6 +52,20 @@ test.describe('settings shell', () => {
       await item.click()
       await expect(item).toHaveAttribute('aria-current', 'page')
       await expect(page.locator('.settings-panel')).toBeVisible()
+
+      const clippedCards = await page.locator('.settings-card').evaluateAll(
+        (cards) =>
+          cards
+            .map((card, index) => ({
+              index,
+              horizontal: card.scrollWidth - card.clientWidth,
+              vertical: card.scrollHeight - card.clientHeight
+            }))
+            .filter(
+              ({ horizontal, vertical }) => horizontal > 1 || vertical > 1
+            )
+      )
+      expect(clippedCards, `${id} 설정 카드가 내용을 잘라서는 안 됩니다`).toEqual([])
       await shot(bandal, `settings-${id}`)
     }
   })
@@ -81,5 +95,52 @@ test.describe('settings shell', () => {
     await expect(
       page.locator('.settings-nav [data-category="shortcuts"]')
     ).toHaveAttribute('aria-current', 'page')
+  })
+
+  test('keeps selectable content and footer actions inset from card outlines', async () => {
+    const { page } = bandal
+    const nav = page.locator('.settings-nav')
+
+    await nav.locator('[data-category="university"]').click()
+    await page.getByRole('option', { name: /^서울대학교/ }).click()
+    const universityCard = page.locator('.settings-card').first()
+    const clearUniversity = universityCard.getByRole('button', {
+      name: '학교 선택 해제'
+    })
+    await expect(clearUniversity).toBeVisible()
+    const universityInset = await universityCard.evaluate((card) => {
+      const action = card.querySelector('.settings-card__footer-row button')
+      if (!(action instanceof HTMLElement)) return null
+      const outer = card.getBoundingClientRect()
+      const inner = action.getBoundingClientRect()
+      return {
+        left: inner.left - outer.left,
+        bottom: outer.bottom - inner.bottom
+      }
+    })
+    expect(universityInset?.left).toBeGreaterThanOrEqual(16)
+    expect(universityInset?.bottom).toBeGreaterThanOrEqual(12)
+    await shot(bandal, 'settings-university-selected')
+
+    await nav.locator('[data-category="appearance"]').click()
+    const densityCard = page.locator('.settings-card', {
+      has: page.getByRole('heading', { name: '밀도' })
+    })
+    const densityGap = await densityCard.evaluate((card) => {
+      const choices = card.querySelectorAll('.theme-grid--density .theme-choice')
+      const lastChoice = choices.item(choices.length - 1)
+      if (!(lastChoice instanceof HTMLElement)) return null
+      return card.getBoundingClientRect().bottom - lastChoice.getBoundingClientRect().bottom
+    })
+    expect(densityGap).toBeGreaterThanOrEqual(16)
+
+    await nav.locator('[data-category="advanced"]').click()
+    const maintenanceCard = page.locator('.settings-card').last()
+    const dangerGap = await maintenanceCard.evaluate((card) => {
+      const row = card.querySelector('.settings-advanced-danger-row')
+      if (!(row instanceof HTMLElement)) return null
+      return card.getBoundingClientRect().bottom - row.getBoundingClientRect().bottom
+    })
+    expect(dangerGap).toBeGreaterThanOrEqual(0)
   })
 })

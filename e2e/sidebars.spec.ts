@@ -13,7 +13,19 @@ test.describe('sidebars', () => {
   let bandal: BandalApp
 
   test.beforeAll(async () => {
-    bandal = await launchBandal()
+    bandal = await launchBandal({
+      extraSettings: {
+        university: {
+          universityId: 'snu',
+          customUniversity: null,
+          hiddenServiceIds: [],
+          customServices: [],
+          openExternallyOverrides: {},
+          serviceOrder: [],
+          secondaryOverrides: {}
+        }
+      }
+    })
   })
 
   test.afterAll(async () => {
@@ -32,6 +44,18 @@ test.describe('sidebars', () => {
     await expect(expand).toHaveCount(1)
     await expand.click()
     await expect(page.locator('aside.app-rail--left')).toBeVisible()
+  })
+
+  test('uses the school as the rail identity instead of centered branding', async () => {
+    const { page } = bandal
+    const rail = page.locator('aside.app-rail--left')
+
+    await expect(rail.locator('.course-sidebar-chrome__name')).toHaveCount(0)
+    await expect(rail.locator('.course-sidebar-chrome__mark')).toHaveCount(0)
+    await expect(rail.getByText('CAMPUS', { exact: true })).toHaveCount(0)
+    await expect(
+      rail.getByRole('button', { name: /서울대학교 바로가기/ })
+    ).toBeVisible()
   })
 
   test('the materials sidebar can be reopened with no tabs open', async () => {

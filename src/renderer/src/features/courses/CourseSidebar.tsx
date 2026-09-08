@@ -8,12 +8,16 @@ import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
 import { BandalMark } from '../../components/BandalMark'
 import { Tooltip } from '../../components/Tooltip'
+import { useAuthStore } from '../../stores/authStore'
 import { useCoursesStore } from '../../stores/coursesStore'
+import { useFriendsStore } from '../../stores/friendsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { SidebarAccountEntry } from '../account/SidebarAccountEntry'
 import { TogetherFooter } from '../group/TogetherFooter'
 import { HelpHub } from '../help/HelpHub'
 import { UniversityShortcuts } from '../university/UniversityShortcuts'
+import { descriptorFor } from '../workspace/tabIdentity'
 import { TabKindIcon } from '../workspace/workspaceIcons'
 import {
   ArchiveCourseDialog,
@@ -137,6 +141,10 @@ export function CourseSidebar(): JSX.Element {
   const toggleLinkGraph = useUiStore((state) => state.toggleLinkGraph)
   const toggleLeftRail = useUiStore((state) => state.toggleLeftRail)
   const openSettings = useUiStore((state) => state.openSettings)
+  const authPhase = useAuthStore((state) => state.auth.phase)
+  const friends = useFriendsStore((state) => state.friends)
+  const initFriends = useFriendsStore((state) => state.init)
+  const openTab = useWorkspaceStore((state) => state.openTab)
 
   const [query, setQuery] = useState('')
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -180,6 +188,18 @@ export function CourseSidebar(): JSX.Element {
       clearCurrentCourseDrag()
     },
     []
+  )
+
+  useEffect(() => {
+    if (authPhase === 'signed-in') void initFriends()
+  }, [authPhase, initFriends])
+
+  const friendAttentionCount = friends.reduce(
+    (total, friend) =>
+      total +
+      (friend.unread ?? 0) +
+      (friend.status === 'pending' && friend.direction === 'incoming' ? 1 : 0),
+    0
   )
 
   const normalizedQuery = query.trim().toLocaleLowerCase()
@@ -639,8 +659,6 @@ export function CourseSidebar(): JSX.Element {
     <aside className="app-rail app-rail--left" aria-label="과목 목록">
       <div className="course-sidebar-chrome">
         <span className="course-sidebar-chrome__traffic" aria-hidden="true" />
-        <BandalMark size={18} className="course-sidebar-chrome__mark" />
-        <span className="course-sidebar-chrome__name">Bandal</span>
         <Tooltip label="과목 사이드바 접기" placement="bottom">
           <button
             type="button"
@@ -846,6 +864,34 @@ export function CourseSidebar(): JSX.Element {
       <footer className="rail-footer">
         <nav className="rail-nav" aria-label="앱 메뉴">
           <SidebarAccountEntry />
+          {authPhase === 'signed-in' && (
+            <Tooltip
+              label={
+                friendAttentionCount > 0
+                  ? `친구 · 새 소식 ${friendAttentionCount}개`
+                  : '친구'
+              }
+              placement="top"
+            >
+              <button
+                type="button"
+                className="rail-nav__item"
+                aria-label={
+                  friendAttentionCount > 0
+                    ? `친구, 새 소식 ${friendAttentionCount}개`
+                    : '친구'
+                }
+                onClick={() => openTab(descriptorFor('friends', {}))}
+              >
+                <TabKindIcon kind="friends" />
+                {friendAttentionCount > 0 && (
+                  <span className="rail-nav__badge" aria-hidden="true">
+                    {friendAttentionCount > 99 ? '99+' : friendAttentionCount}
+                  </span>
+                )}
+              </button>
+            </Tooltip>
+          )}
           <Tooltip label="설정" placement="top">
             <button
               type="button"

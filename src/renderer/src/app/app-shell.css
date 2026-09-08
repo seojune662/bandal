@@ -116,6 +116,16 @@
   border-left: 1px solid var(--border-subtle);
 }
 
+.settings-load-state {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  background: var(--bg-app);
+}
+
 .rail-heading {
   display: flex;
   align-items: center;
@@ -226,6 +236,7 @@
 }
 
 .rail-nav__item {
+  position: relative;
   display: grid;
   place-items: center;
   width: var(--button-height);
@@ -234,6 +245,25 @@
   color: var(--text-muted);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
+}
+
+.rail-nav__badge {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  display: grid;
+  min-width: 16px;
+  height: 16px;
+  padding-inline: 4px;
+  place-items: center;
+  color: var(--on-accent);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  background: var(--accent);
+  border: 2px solid var(--bg-surface);
+  border-radius: var(--radius-pill);
 }
 
 .rail-nav__item svg {

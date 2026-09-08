@@ -13,9 +13,28 @@ const uiState = vi.hoisted(() => ({
   toggleLeftRail: vi.fn(),
   openSettings: vi.fn()
 }))
+const authState = vi.hoisted(() => ({ phase: 'unconfigured' }))
+const friendsState = vi.hoisted(() => ({
+  friends: [] as unknown[],
+  init: vi.fn(async () => undefined)
+}))
+const workspaceState = vi.hoisted(() => ({ openTab: vi.fn() }))
 
 vi.mock('../../../src/renderer/src/stores/uiStore', () => ({
   useUiStore: (selector: (state: typeof uiState) => unknown) => selector(uiState)
+}))
+vi.mock('../../../src/renderer/src/stores/authStore', () => ({
+  useAuthStore: (
+    selector: (state: { auth: typeof authState }) => unknown
+  ) => selector({ auth: authState })
+}))
+vi.mock('../../../src/renderer/src/stores/friendsStore', () => ({
+  useFriendsStore: (selector: (state: typeof friendsState) => unknown) =>
+    selector(friendsState)
+}))
+vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
+  useWorkspaceStore: (selector: (state: typeof workspaceState) => unknown) =>
+    selector(workspaceState)
 }))
 vi.mock('../../../src/renderer/src/features/account/SidebarAccountEntry', () => ({
   SidebarAccountEntry: () => null
@@ -81,6 +100,10 @@ beforeEach(() => {
     cancelAnimationFrame: vi.fn()
   })
   invokeMock.mockReset()
+  authState.phase = 'unconfigured'
+  friendsState.friends = []
+  friendsState.init.mockClear()
+  workspaceState.openTab.mockClear()
   setIpcAdapter({
     invoke: invokeMock,
     on: vi.fn(() => () => undefined)
@@ -108,6 +131,22 @@ afterEach(() => {
 })
 
 describe('CourseSidebar course menu', () => {
+  test('puts the friends entry in the bottom icon navigation', () => {
+    authState.phase = 'signed-in'
+    act(() => root.render(<CourseSidebar />))
+
+    const button = container.querySelector<HTMLButtonElement>(
+      '.rail-footer [aria-label="친구"]'
+    )
+    expect(button).not.toBeNull()
+    expect(container.querySelector('.together-friends')).toBeNull()
+
+    act(() => button?.click())
+    expect(workspaceState.openTab).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'friends' })
+    )
+  })
+
   test('opens from the ellipsis button and changes the course color', async () => {
     const menuButton = container.querySelector<HTMLButtonElement>(
       '[aria-label="항공역학 과목 메뉴"]'

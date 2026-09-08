@@ -252,7 +252,6 @@ export function useVisiblePages(
     (anchor: PdfViewportAnchor): boolean => {
       const scroller = scrollerRef.current
       if (scroller === null) return false
-      pageCenterCacheRef.current.invalidate()
       return pageCenterCacheRef.current.restoreViewportAnchor(
         scroller,
         elementsRef.current,

@@ -336,6 +336,13 @@ describe('sanitizeSettings — v0.40 pluginSources', () => {
 })
 
 describe('sanitizeSettings — sidebar widgets', () => {
+  test('starts new and reset profiles without a widget dock', () => {
+    const result = sanitizeSettings({}, defaults)
+
+    expect(defaults.widgets.enabled).toEqual([])
+    expect(result.widgets.enabled).toEqual([])
+  })
+
   test('keeps enabled widgets in user order, removes duplicates and repairs active', () => {
     const result = sanitizeSettings(
       {

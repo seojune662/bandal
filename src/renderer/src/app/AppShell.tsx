@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState
+} from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import type { PushPayload } from '../../../shared/ipc/events'
 import { invoke, onPush } from '../lib/ipc'
-import { AssistantLayer } from '../features/assistant'
-import { BoardOverlay } from '../features/board/BoardPanel'
-import { LinkGraphOverlay } from '../features/links/graph/LinkGraphOverlay'
-import { BrowserWebviewLayer } from '../features/browser/BrowserWebviewLayer'
-import { PrintPreviewOverlay } from '../features/print/PrintPreviewOverlay'
 import { usePrintRequests } from '../features/print/usePrintRequests'
 import { useAgentWorkspaceSync } from '../features/agent/workspaceSync'
 import { CourseSidebar } from '../features/courses/CourseSidebar'
@@ -16,7 +18,6 @@ import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
 import { useOnboardingStore } from '../features/onboarding/onboardingStore'
 import { TourOverlay } from '../features/onboarding/tour/TourOverlay'
 import { useTourStore } from '../features/onboarding/tour/tourStore'
-import { SettingsApp } from '../features/settings/SettingsApp'
 import { useUpdateNotifications } from '../features/updates/useUpdateNotifications'
 import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
 import { RailResizer } from './RailResizer'
@@ -32,13 +33,59 @@ import { useBrowserGuests } from '../features/browser/browserGuestsStore'
 import { requestWebVideoResume } from '../features/browser/videoBridge'
 import { requestVideoResume } from '../features/file/lib/videoProgress'
 import { useUniversityStore } from '../stores/universityStore'
-import { QuickFileSearch } from './QuickFileSearch'
 import { useGlobalShortcuts } from './shortcuts'
 import { showToast, ToastHost } from './toast'
 import { usePluginsStore } from '../stores/pluginsStore'
 import { subscribePluginEditor } from '../features/plugins/pluginEditor'
 import { subscribePluginThemes } from '../features/plugins/pluginThemes'
 import './app-shell.css'
+
+const AssistantLayer = lazy(() =>
+  import('../features/assistant').then((module) => ({
+    default: module.AssistantLayer
+  }))
+)
+const BoardOverlay = lazy(() =>
+  import('../features/board/BoardPanel').then((module) => ({
+    default: module.BoardOverlay
+  }))
+)
+const LinkGraphOverlay = lazy(() =>
+  import('../features/links/graph/LinkGraphOverlay').then((module) => ({
+    default: module.LinkGraphOverlay
+  }))
+)
+const BrowserWebviewLayer = lazy(() =>
+  import('../features/browser/BrowserWebviewLayer').then((module) => ({
+    default: module.BrowserWebviewLayer
+  }))
+)
+const PrintPreviewOverlay = lazy(() =>
+  import('../features/print/PrintPreviewOverlay').then((module) => ({
+    default: module.PrintPreviewOverlay
+  }))
+)
+const SettingsApp = lazy(() =>
+  import('../features/settings/SettingsApp').then((module) => ({
+    default: module.SettingsApp
+  }))
+)
+const QuickFileSearch = lazy(() =>
+  import('./QuickFileSearch').then((module) => ({
+    default: module.QuickFileSearch
+  }))
+)
+
+function scheduleAfterFirstPaint(task: () => void): () => void {
+  let idle: number | null = null
+  const frame = window.requestAnimationFrame(() => {
+    idle = window.requestIdleCallback(task, { timeout: 800 })
+  })
+  return () => {
+    window.cancelAnimationFrame(frame)
+    if (idle !== null) window.cancelIdleCallback(idle)
+  }
+}
 
 export function AppShell(): JSX.Element {
   usePrintRequests()
@@ -98,14 +145,17 @@ export function AppShell(): JSX.Element {
     void loadCourses()
     // First-run onboarding. AI availability is checked only when AI is used.
     void useOnboardingStore.getState().init()
-    void useTourStore.getState().init()
+    const cancelDeferredBoot = scheduleAfterFirstPaint(() => {
+      void useTourStore.getState().init()
+      useDownloads.getState().init()
+      useAgentRuns.getState().init()
+      void usePluginsStore.getState().refresh().catch((error: unknown) => {
+        console.error('[Bandal] 플러그인 목록을 불러오지 못했습니다.', error)
+      })
+    })
     // [M8] 학교 바로가기 — the rail section renders nothing until this lands.
     void useUniversityStore.getState().init()
-    useDownloads.getState().init()
-    useAgentRuns.getState().init()
-    void usePluginsStore.getState().refresh().catch((error: unknown) => {
-      console.error('[Bandal] 플러그인 목록을 불러오지 못했습니다.', error)
-    })
+    return cancelDeferredBoot
   }, [initTheme, loadCourses])
 
   // Browser downloads are filed under the selected course. Main only sees the
@@ -352,8 +402,8 @@ export function AppShell(): JSX.Element {
       {/* [M9] No dedicated titlebar row — that buys back a full
           --chrome-height of vertical space. The chrome is split by who owns
           the window's top-left corner:
-            - rail OPEN  → CourseSidebar's brand row (반달 mark + traffic-light
-              inset + collapse toggle) sits there.
+            - rail OPEN  → CourseSidebar reserves the traffic-light inset and
+              owns the collapse toggle. School identity lives directly below.
             - rail CLOSED → WorkspaceHost's ChromeLeft takes over with the
               inset + an expand toggle, so the rail is never unrecoverable.
           WorkspaceHost also owns `+` (after the last tab) and the right
@@ -368,16 +418,18 @@ export function AppShell(): JSX.Element {
       {rightRailOpen && <MaterialsSidebar course={selectedCourse} />}
       {rightRailOpen && <RailResizer side="right" />}
 
-      <BrowserWebviewLayer />
-      <PrintPreviewOverlay />
-      {isBoardOverlayOpen && <BoardOverlay onClose={closeBoardOverlay} />}
-      {isLinkGraphOpen && selectedCourse !== null && (
-        <LinkGraphOverlay
-          courseId={selectedCourse.id}
-          onClose={closeLinkGraph}
-        />
-      )}
-      <QuickFileSearch />
+      <Suspense fallback={null}>
+        <BrowserWebviewLayer />
+        <PrintPreviewOverlay />
+        {isBoardOverlayOpen && <BoardOverlay onClose={closeBoardOverlay} />}
+        {isLinkGraphOpen && selectedCourse !== null && (
+          <LinkGraphOverlay
+            courseId={selectedCourse.id}
+            onClose={closeLinkGraph}
+          />
+        )}
+        <QuickFileSearch />
+      </Suspense>
       {/* One modal at a time: first-run onboarding outranks the nickname step,
           which waits for the wizard to close. */}
       {isOnboardingVisible ? (
@@ -389,15 +441,25 @@ export function AppShell(): JSX.Element {
           Mounted at shell level (not inside a panel) so the conversation
           survives tab switches — the session itself lives in chatSessionStore,
           keyed by course, so the tab and the popup share one dialogue. */}
-      <AssistantLayer />
+      <Suspense fallback={null}>
+        <AssistantLayer />
+      </Suspense>
       <ToastHost />
       {isSettingsOpen && (
         <div className="settings-overlay">
-          <SettingsApp
-            embedded
-            onClose={closeSettings}
-            initialCategory={settingsCategory}
-          />
+          <Suspense
+            fallback={
+              <div className="settings-load-state" role="status">
+                설정 불러오는 중…
+              </div>
+            }
+          >
+            <SettingsApp
+              embedded
+              onClose={closeSettings}
+              initialCategory={settingsCategory}
+            />
+          </Suspense>
         </div>
       )}
       <TourOverlay />
