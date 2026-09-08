@@ -240,6 +240,19 @@ function applyInlinePatch(view: EditorView, patch: TextStylePatch): void {
   view.focus()
 }
 
+function insertHardBreak(view: EditorView): boolean {
+  const hardBreak = view.state.schema.nodes.hard_break
+  if (hardBreak === undefined) return false
+  const marks = view.state.storedMarks ?? view.state.selection.$from.marks()
+  view.dispatch(
+    view.state.tr
+      .replaceSelectionWith(hardBreak.create())
+      .setStoredMarks(marks)
+      .scrollIntoView()
+  )
+  return true
+}
+
 export interface TextBoxEditorHandle {
   focus: () => void
   apply: (patch: TextStylePatch) => void
@@ -356,7 +369,11 @@ export const TextBoxEditor = forwardRef<TextBoxEditorHandle, TextBoxEditorProps>
               'Mod-y': redo,
               'Mod-b': toggleMark(schema.marks.strong!),
               'Mod-i': toggleMark(schema.marks.em!),
-              'Mod-u': toggleMark(schema.marks.underline!)
+              'Mod-u': toggleMark(schema.marks.underline!),
+              Enter: (_state, _dispatch, view) =>
+                view === undefined ? false : insertHardBreak(view),
+              'Shift-Enter': (_state, _dispatch, view) =>
+                view === undefined ? false : insertHardBreak(view)
             })
           ]
         }),

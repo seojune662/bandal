@@ -130,6 +130,40 @@ test.describe('pdf textbox', () => {
     await page.keyboard.press('Escape')
   })
 
+  test('Enter inserts and persists a real line break', async () => {
+    const { page } = bandal
+    const layer = page.locator('.pdf-page[data-pdf-page="1"] .pdf-drawing-layer')
+    const bounds = (await layer.boundingBox())!
+    await page.mouse.click(
+      bounds.x + bounds.width * 0.72,
+      bounds.y + bounds.height * 0.52
+    )
+
+    const editor = page.locator('.ink-layer__textbox-editor-content')
+    await expect(editor).toBeVisible()
+    await page.keyboard.type('first line')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('second line')
+    await expect(editor.locator('br')).not.toHaveCount(0)
+    await page.keyboard.press('Meta+Enter')
+
+    await expect.poll(async () => page.evaluate(async () => {
+      const bridge = (window as unknown as {
+        bandal: { invoke: (channel: string, req: unknown) => Promise<unknown> }
+      }).bandal
+      const courses = (await bridge.invoke('courses:list', {})) as Array<{ id: string }>
+      const drawings = (await bridge.invoke('drawings:listForFile', {
+        courseId: courses[0]!.id,
+        relPath: 'slides.pdf'
+      })) as Array<{ kind: string; data: { text?: string } }>
+      return drawings.some(
+        (drawing) =>
+          drawing.kind === 'textbox' &&
+          drawing.data.text === 'first line\nsecond line'
+      )
+    })).toBe(true)
+  })
+
   test('narrowing the box reflows text at a fixed font size', async () => {
     const { page } = bandal
     const layer = page.locator('.pdf-page[data-pdf-page="1"] .pdf-drawing-layer')
@@ -542,5 +576,71 @@ test.describe('pdf textbox', () => {
     await expect(textarea).toBeVisible()
     await expect(textarea).toContainText('legacy giant')
     await page.keyboard.press('Escape')
+  })
+
+  test('keeps zoom fixed and makes every drawing tool reachable in a narrow split', async () => {
+    const { page } = bandal
+    const pdfTab = page.locator('.pdf-tab')
+    await pdfTab.evaluate((element) => {
+      element.style.width = '420px'
+      element.style.flex = '0 0 420px'
+    })
+
+    try {
+      const toolbar = page.getByRole('toolbar', { name: 'PDF 뷰어 도구' })
+      const shell = toolbar.locator('.pdf-tool-rail-shell')
+      const rail = toolbar.getByRole('group', { name: '자유 필기 도구' })
+      const exportButton = toolbar.getByRole('button', {
+        name: '주석 포함 PDF 내보내기'
+      })
+      await expect(toolbar.getByRole('button', { name: '축소' })).toBeVisible()
+      await expect(toolbar.getByRole('button', { name: '확대' })).toBeVisible()
+      await expect(toolbar.getByRole('button', { name: '페이지 미리보기' })).toBeVisible()
+
+      const layout = await toolbar.evaluate((element) => {
+        const strip = element.querySelector('.pdf-tool-rail-shell')
+        if (!(strip instanceof HTMLElement)) return null
+        const outer = element.getBoundingClientRect()
+        const inner = strip.getBoundingClientRect()
+        return {
+          toolbarTop: outer.top,
+          stripTop: inner.top,
+          toolbarWidth: outer.width,
+          stripWidth: inner.width
+        }
+      })
+      expect(layout).not.toBeNull()
+      expect(layout!.stripTop).toBeGreaterThan(layout!.toolbarTop + 20)
+      expect(layout!.stripWidth).toBeGreaterThan(layout!.toolbarWidth * 0.9)
+
+      const nextTools = toolbar.getByRole('button', { name: '다음 필기 도구' })
+      await expect(nextTools).toBeVisible()
+      await expect(nextTools).toBeEnabled()
+      await expect(shell).toHaveAttribute('data-overflow', 'true')
+
+      const isExportReachable = async (): Promise<boolean> => {
+        const [railBounds, exportBounds] = await Promise.all([
+          rail.boundingBox(),
+          exportButton.boundingBox()
+        ])
+        return railBounds !== null && exportBounds !== null &&
+          exportBounds.x >= railBounds.x &&
+          exportBounds.x + exportBounds.width <= railBounds.x + railBounds.width
+      }
+
+      for (let step = 0; step < 8 && !(await isExportReachable()); step += 1) {
+        const before = await rail.evaluate((element) => element.scrollLeft)
+        await nextTools.click()
+        await expect.poll(
+          () => rail.evaluate((element) => element.scrollLeft)
+        ).toBeGreaterThan(before)
+      }
+      await expect.poll(isExportReachable).toBe(true)
+    } finally {
+      await pdfTab.evaluate((element) => {
+        element.style.removeProperty('width')
+        element.style.removeProperty('flex')
+      })
+    }
   })
 })

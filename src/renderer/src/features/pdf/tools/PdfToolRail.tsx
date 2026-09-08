@@ -1,5 +1,12 @@
-import { useEffect, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type WheelEvent as ReactWheelEvent
+} from 'react'
 import type { DrawingColor } from '../../../../../shared/types/drawing'
+import { Icon } from '../../../app/icons'
 import { invoke } from '../../../lib/ipc'
 import { PdfToolIcon } from './pdfToolIcons'
 import type { DrawingsApi } from './useDrawings'
@@ -56,6 +63,18 @@ const COLOR_LABELS: Record<DrawingColor, string> = {
   violet: '보라'
 }
 
+interface ToolRailScrollState {
+  overflow: boolean
+  before: boolean
+  after: boolean
+}
+
+const EMPTY_SCROLL_STATE: ToolRailScrollState = {
+  overflow: false,
+  before: false,
+  after: false
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   return target.isContentEditable || target.closest('input, textarea, select, [contenteditable="true"]') !== null
@@ -76,6 +95,41 @@ export function PdfToolRail({
   const setOpacity = usePdfToolStore((state) => state.setOpacity)
   const [exporting, setExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState<string | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [scrollState, setScrollState] =
+    useState<ToolRailScrollState>(EMPTY_SCROLL_STATE)
+
+  const updateScrollState = useCallback((): void => {
+    const element = scrollRef.current
+    if (element === null) return
+    const max = Math.max(0, element.scrollWidth - element.clientWidth)
+    const next: ToolRailScrollState = {
+      overflow: max > 1,
+      before: element.scrollLeft > 1,
+      after: element.scrollLeft < max - 1
+    }
+    setScrollState((current) =>
+      current.overflow === next.overflow &&
+      current.before === next.before &&
+      current.after === next.after
+        ? current
+        : next
+    )
+  }, [])
+
+  useEffect(() => {
+    const element = scrollRef.current
+    if (element === null) return
+    const observer = new ResizeObserver(updateScrollState)
+    observer.observe(element)
+    updateScrollState()
+    return () => observer.disconnect()
+  }, [updateScrollState])
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(updateScrollState)
+    return () => cancelAnimationFrame(frame)
+  }, [drawingsApi.error, exportMessage, exporting, updateScrollState])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -111,117 +165,176 @@ export function PdfToolRail({
     }
   }
 
+  const scrollByPage = (direction: -1 | 1): void => {
+    const element = scrollRef.current
+    if (element === null) return
+    element.scrollBy({
+      left: direction * Math.max(160, element.clientWidth * 0.72),
+      behavior: 'smooth'
+    })
+  }
+
+  const handleWheel = (event: ReactWheelEvent<HTMLDivElement>): void => {
+    if (
+      !scrollState.overflow ||
+      Math.abs(event.deltaX) >= Math.abs(event.deltaY)
+    ) return
+    const movingBefore = event.deltaY < 0
+    if (
+      (movingBefore && !scrollState.before) ||
+      (!movingBefore && !scrollState.after)
+    ) return
+    event.preventDefault()
+    event.currentTarget.scrollLeft += event.deltaY
+  }
+
   return (
-    <div className="pdf-tool-rail" role="group" aria-label="자유 필기 도구">
-      <div className="pdf-tool-rail__group pdf-tool-rail__tools">
-        {TOOLS.map((entry) => (
-          <button
-            key={entry.tool}
-            type="button"
-            className="pdf-tool-rail__button"
-            data-active={activeTool === entry.tool ? 'true' : 'false'}
-            aria-pressed={activeTool === entry.tool}
-            aria-label={entry.label}
-            title={`${entry.label}${entry.shortcut === undefined ? '' : ` (${entry.shortcut})`}`}
-            onClick={() => setActiveTool(entry.tool)}
-          >
-            {entry.icon}
-          </button>
-        ))}
-      </div>
+    <div
+      className="pdf-tool-rail-shell"
+      data-overflow={scrollState.overflow ? 'true' : 'false'}
+    >
+      <button
+        type="button"
+        className="pdf-tool-rail__scroll-button"
+        data-visible={scrollState.overflow ? 'true' : 'false'}
+        aria-label="이전 필기 도구"
+        title="이전 필기 도구"
+        disabled={!scrollState.before}
+        onClick={() => scrollByPage(-1)}
+      >
+        <Icon name="chevronLeft" />
+      </button>
 
       <div
-        className="pdf-tool-rail__group pdf-tool-rail__palette"
+        ref={scrollRef}
+        className="pdf-tool-rail"
         role="group"
-        aria-label="필기 색상"
+        aria-label="자유 필기 도구"
+        onScroll={updateScrollState}
+        onWheel={handleWheel}
       >
-        {COLORS.map((entry) => (
+        <div className="pdf-tool-rail__group pdf-tool-rail__tools">
+          {TOOLS.map((entry) => (
+            <button
+              key={entry.tool}
+              type="button"
+              className="pdf-tool-rail__button"
+              data-active={activeTool === entry.tool ? 'true' : 'false'}
+              aria-pressed={activeTool === entry.tool}
+              aria-label={entry.label}
+              title={`${entry.label}${entry.shortcut === undefined ? '' : ` (${entry.shortcut})`}`}
+              onClick={() => setActiveTool(entry.tool)}
+            >
+              {entry.icon}
+            </button>
+          ))}
+        </div>
+
+        <div
+          className="pdf-tool-rail__group pdf-tool-rail__palette"
+          role="group"
+          aria-label="필기 색상"
+        >
+          {COLORS.map((entry) => (
+            <button
+              key={entry}
+              type="button"
+              className="pdf-tool-rail__swatch"
+              data-color={entry}
+              data-selected={color === entry ? 'true' : 'false'}
+              aria-label={COLOR_LABELS[entry]}
+              aria-pressed={color === entry}
+              title={COLOR_LABELS[entry]}
+              onClick={() => setColor(entry)}
+            />
+          ))}
+        </div>
+
+        <div className="pdf-tool-rail__group pdf-tool-rail__settings">
+          <label className="pdf-tool-rail__range" title="선 굵기">
+            <PdfToolIcon name="lineWidth" />
+            <input
+              type="range"
+              min="0.001"
+              max="0.025"
+              step="0.001"
+              value={width}
+              aria-label="선 굵기"
+              onChange={(event) => setWidth(Number(event.target.value))}
+            />
+          </label>
+          <label className="pdf-tool-rail__range" title="불투명도">
+            <PdfToolIcon name="opacity" />
+            <input
+              type="range"
+              min="0.1"
+              max="1"
+              step="0.05"
+              value={opacity}
+              aria-label="불투명도"
+              onChange={(event) => setOpacity(Number(event.target.value))}
+            />
+          </label>
+        </div>
+
+        <div className="pdf-tool-rail__group pdf-tool-rail__history">
           <button
-            key={entry}
             type="button"
-            className="pdf-tool-rail__swatch"
-            data-color={entry}
-            data-selected={color === entry ? 'true' : 'false'}
-            aria-label={COLOR_LABELS[entry]}
-            aria-pressed={color === entry}
-            title={COLOR_LABELS[entry]}
-            onClick={() => setColor(entry)}
-          />
-        ))}
-      </div>
-
-      <div className="pdf-tool-rail__group pdf-tool-rail__settings">
-        <label className="pdf-tool-rail__range" title="선 굵기">
-          <PdfToolIcon name="lineWidth" />
-          <input
-            type="range"
-            min="0.001"
-            max="0.025"
-            step="0.001"
-            value={width}
-            aria-label="선 굵기"
-            onChange={(event) => setWidth(Number(event.target.value))}
-          />
-        </label>
-        <label className="pdf-tool-rail__range" title="불투명도">
-          <PdfToolIcon name="opacity" />
-          <input
-            type="range"
-            min="0.1"
-            max="1"
-            step="0.05"
-            value={opacity}
-            aria-label="불투명도"
-            onChange={(event) => setOpacity(Number(event.target.value))}
-          />
-        </label>
-      </div>
-
-      <div className="pdf-tool-rail__group pdf-tool-rail__history">
-        <button
-          type="button"
-          className="pdf-tool-rail__button"
-          aria-label="되돌리기"
-          title="되돌리기 (⌘Z)"
-          disabled={!drawingsApi.canUndo || drawingsApi.historyBusy}
-          onClick={() => void drawingsApi.undo()}
-        >
-          <PdfToolIcon name="undo" />
-        </button>
-        <button
-          type="button"
-          className="pdf-tool-rail__button"
-          aria-label="다시 실행"
-          title="다시 실행 (⇧⌘Z)"
-          disabled={!drawingsApi.canRedo || drawingsApi.historyBusy}
-          onClick={() => void drawingsApi.redo()}
-        >
-          <PdfToolIcon name="redo" />
-        </button>
-      </div>
-
-      <div className="pdf-tool-rail__group pdf-tool-rail__export-group">
-        <button
-          type="button"
-          className="pdf-tool-rail__button pdf-tool-rail__export"
-          aria-label={exporting ? '주석 포함 PDF 내보내는 중' : '주석 포함 PDF 내보내기'}
-          title={exporting ? '주석 포함 PDF 내보내는 중' : '주석 포함 PDF 내보내기'}
-          disabled={exporting}
-          onClick={() => void exportPdf()}
-        >
-          <PdfToolIcon name="export" />
-        </button>
-
-        {(drawingsApi.error ?? exportMessage) !== null && (
-          <span
-            className="pdf-tool-rail__status"
-            role="status"
-            title={drawingsApi.error ?? exportMessage ?? undefined}
+            className="pdf-tool-rail__button"
+            aria-label="되돌리기"
+            title="되돌리기 (⌘Z)"
+            disabled={!drawingsApi.canUndo || drawingsApi.historyBusy}
+            onClick={() => void drawingsApi.undo()}
           >
-            {drawingsApi.error ?? exportMessage}
-          </span>
-        )}
+            <PdfToolIcon name="undo" />
+          </button>
+          <button
+            type="button"
+            className="pdf-tool-rail__button"
+            aria-label="다시 실행"
+            title="다시 실행 (⇧⌘Z)"
+            disabled={!drawingsApi.canRedo || drawingsApi.historyBusy}
+            onClick={() => void drawingsApi.redo()}
+          >
+            <PdfToolIcon name="redo" />
+          </button>
+        </div>
+
+        <div className="pdf-tool-rail__group pdf-tool-rail__export-group">
+          <button
+            type="button"
+            className="pdf-tool-rail__button pdf-tool-rail__export"
+            aria-label={exporting ? '주석 포함 PDF 내보내는 중' : '주석 포함 PDF 내보내기'}
+            title={exporting ? '주석 포함 PDF 내보내는 중' : '주석 포함 PDF 내보내기'}
+            disabled={exporting}
+            onClick={() => void exportPdf()}
+          >
+            <PdfToolIcon name="export" />
+          </button>
+
+          {(drawingsApi.error ?? exportMessage) !== null && (
+            <span
+              className="pdf-tool-rail__status"
+              role="status"
+              title={drawingsApi.error ?? exportMessage ?? undefined}
+            >
+              {drawingsApi.error ?? exportMessage}
+            </span>
+          )}
+        </div>
       </div>
+
+      <button
+        type="button"
+        className="pdf-tool-rail__scroll-button"
+        data-visible={scrollState.overflow ? 'true' : 'false'}
+        aria-label="다음 필기 도구"
+        title="다음 필기 도구"
+        disabled={!scrollState.after}
+        onClick={() => scrollByPage(1)}
+      >
+        <Icon name="chevronRight" />
+      </button>
     </div>
   )
 }

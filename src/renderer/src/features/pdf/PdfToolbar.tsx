@@ -100,10 +100,12 @@ export function PdfToolbar(props: PdfToolbarProps): JSX.Element {
         type="button"
         className="pdf-toolbar__preview-toggle"
         aria-pressed={isPreviewOpen}
+        aria-label="페이지 미리보기"
+        title="페이지 미리보기"
         onClick={onTogglePreview}
       >
         <Icon name="layoutLeft" />
-        미리보기
+        <span className="pdf-toolbar__label">미리보기</span>
       </button>
 
       <PageJump
@@ -115,11 +117,12 @@ export function PdfToolbar(props: PdfToolbarProps): JSX.Element {
       <button
         type="button"
         className="pdf-toolbar__page-note"
+        aria-label="페이지 필기"
         title="PDF와 1:1로 맞춘 마크다운 필기"
         onClick={onOpenPageNotes}
       >
         <Icon name="fileText" />
-        페이지 필기
+        <span className="pdf-toolbar__label">페이지 필기</span>
         {pageNoteCount > 0 && <span className="pdf-toolbar__badge">{pageNoteCount}</span>}
       </button>
 
@@ -128,11 +131,14 @@ export function PdfToolbar(props: PdfToolbarProps): JSX.Element {
           type="button"
           className="pdf-toolbar__page-note-sync"
           aria-pressed={pageNoteSyncEnabled}
+          aria-label={pageNoteSyncEnabled ? '스크롤 연결됨' : '스크롤 독립'}
           title="나란히 연 필기와 스크롤 연결"
           onClick={onTogglePageNoteSync}
         >
           <Icon name="link" />
-          {pageNoteSyncEnabled ? '스크롤 연결됨' : '스크롤 독립'}
+          <span className="pdf-toolbar__label">
+            {pageNoteSyncEnabled ? '스크롤 연결됨' : '스크롤 독립'}
+          </span>
         </button>
       )}
 

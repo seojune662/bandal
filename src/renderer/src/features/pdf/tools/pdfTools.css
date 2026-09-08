@@ -1,16 +1,58 @@
 /* Free-form PDF drawing chrome and the z-index 3 SVG overlay. */
 
+.pdf-tool-rail-shell {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  align-self: stretch;
+  min-width: 0;
+  border-inline: 1px solid var(--border-subtle);
+}
+
 .pdf-tool-rail {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+  height: 100%;
   padding-inline: var(--space-2);
   overflow-x: auto;
   overscroll-behavior-inline: contain;
-  border-inline: 1px solid var(--border-subtle);
+  touch-action: pan-x;
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
+}
+
+.pdf-tool-rail__scroll-button {
+  display: none;
+  place-items: center;
+  flex: 0 0 auto;
+  width: var(--control-height);
+  height: 100%;
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border-inline-end: 1px solid var(--border-subtle);
+}
+
+.pdf-tool-rail__scroll-button:last-child {
+  border-inline: 0;
+  border-inline-start: 1px solid var(--border-subtle);
+}
+
+.pdf-tool-rail__scroll-button[data-visible='true'] {
+  display: grid;
+}
+
+.pdf-tool-rail__scroll-button:hover:not(:disabled),
+.pdf-tool-rail__scroll-button:focus-visible {
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.pdf-tool-rail__scroll-button:disabled {
+  color: var(--text-muted);
+  opacity: 0.38;
 }
 
 .pdf-tool-rail::-webkit-scrollbar {
