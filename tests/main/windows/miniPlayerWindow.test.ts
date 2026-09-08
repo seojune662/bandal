@@ -86,7 +86,8 @@ describe('mini player window factories', () => {
     })
     expect(created.setAlwaysOnTop).toHaveBeenCalledWith(true, 'floating')
     expect(created.setVisibleOnAllWorkspaces).toHaveBeenCalledWith(true, {
-      visibleOnFullScreen: true
+      visibleOnFullScreen: true,
+      skipTransformProcessType: true
     })
     expect(created.webContents.setWindowOpenHandler).toHaveBeenCalledOnce()
   })

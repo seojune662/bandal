@@ -18,6 +18,33 @@ const mainWindowClosedListeners = new Set<() => void>()
 const MIN_WIDTH = 1024
 const MIN_HEIGHT = 640
 
+/**
+ * Repairs macOS app presence after a floating panel and reveals the main
+ * window. `setVisibleOnAllWorkspaces` used to let Electron change the whole
+ * process into a UIElement application, which has no Dock or ⌘Tab entry.
+ */
+export function ensureRegularAppPresence(): void {
+  if (process.platform !== 'darwin') return
+  const dock = app.dock
+  if (!dock) return
+
+  app.setActivationPolicy('regular')
+  if (!dock.isVisible()) {
+    void dock.show().catch((error: unknown) => {
+      console.warn('[window] Dock 아이콘을 복구하지 못했습니다.', error)
+    })
+  }
+}
+
+export function revealMainWindow(win: BrowserWindow): void {
+  if (win.isDestroyed()) return
+  ensureRegularAppPresence()
+  if (win.isMinimized()) win.restore()
+  win.show()
+  if (process.platform === 'darwin') app.focus({ steal: true })
+  win.focus()
+}
+
 /** Painted before any CSS loads, so it must track the theme's --bg-app
  * exactly (src/shared/theme.ts) or launch flashes the wrong color. */
 export function resolveWindowBackground(): string {
@@ -60,7 +87,7 @@ export function onMainWindowClosed(cb: () => void): () => void {
 
 export function createMainWindow(): BrowserWindow {
   if (mainWindow !== null && !mainWindow.isDestroyed()) {
-    mainWindow.focus()
+    revealMainWindow(mainWindow)
     return mainWindow
   }
 

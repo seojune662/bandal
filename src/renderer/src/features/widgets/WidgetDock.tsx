@@ -16,7 +16,6 @@ import { useUniversityStore } from '../../stores/universityStore'
 import { dueDayLabel } from '../board/boardLogic'
 import { localDateKey } from '../calendar/calendarDate'
 import type { DidFailLoadEvent, WebviewTag } from '../browser/webviewTypes'
-import { openInBandalBrowser } from '../university/openService'
 import './widgets.css'
 
 const LABELS: Record<WidgetId, string> = {
@@ -317,6 +316,7 @@ function EmbeddedMail({ target }: {
   const [error, setError] = useState<string | null>(null)
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
   const refreshNavigation = useCallback((): void => {
     const webview = webviewRef.current
@@ -370,10 +370,31 @@ function EmbeddedMail({ target }: {
     }
   }, [refreshNavigation, target.url])
 
+  useEffect(() => {
+    if (!expanded) return
+    const collapseOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setExpanded(false)
+    }
+    window.addEventListener('keydown', collapseOnEscape)
+    return () => window.removeEventListener('keydown', collapseOnEscape)
+  }, [expanded])
+
   return (
-    <div className="widget-mail widget-mail--embedded">
-      <header className="widget-mail__toolbar">
-        <strong title={target.label}>{target.label}</strong>
+    <div
+      className={`widget-mail widget-mail--embedded${expanded ? ' widget-mail--expanded' : ''}`}
+      data-expanded={expanded || undefined}
+    >
+      <header
+        className="widget-mail__toolbar"
+        onDoubleClick={() => setExpanded((current) => !current)}
+      >
+        <div className="widget-mail__identity">
+          <span className="widget-mail__status-dot" aria-hidden="true" />
+          <strong title={target.label}>{target.label}</strong>
+          <small>{expanded ? '넓은 메일함' : '간편 메일함'}</small>
+        </div>
         <div className="widget-mail__actions">
           <button type="button" aria-label="메일 뒤로" title="뒤로" disabled={!canGoBack} onClick={() => webviewRef.current?.goBack()}>
             <Icon name="chevronLeft" />
@@ -384,8 +405,14 @@ function EmbeddedMail({ target }: {
           <button type="button" aria-label="메일 새로고침" title="새로고침" onClick={() => webviewRef.current?.reload()}>
             <Icon name="refresh" />
           </button>
-          <button type="button" aria-label="메일 크게 열기" title="반달 브라우저에서 크게 열기" onClick={() => openInBandalBrowser(target.url)}>
-            <Icon name="layoutLeft" />
+          <button
+            type="button"
+            aria-label={expanded ? '메일함 위젯으로 접기' : '메일함 넓히기'}
+            title={expanded ? '위젯으로 접기 (Esc)' : '앱 안에서 넓게 보기'}
+            aria-pressed={expanded}
+            onClick={() => setExpanded((current) => !current)}
+          >
+            <Icon name={expanded ? 'layoutRight' : 'layoutLeft'} />
           </button>
         </div>
       </header>
@@ -393,6 +420,7 @@ function EmbeddedMail({ target }: {
         className="widget-mail__viewport"
         data-loading={loading || undefined}
         data-error={error === null ? undefined : 'true'}
+        data-presentation={expanded ? 'wide' : 'compact'}
       >
         <webview
           ref={(element) => {
@@ -403,11 +431,33 @@ function EmbeddedMail({ target }: {
           aria-label={`${target.label} 메일함`}
           allowpopups={'' as unknown as boolean}
         />
-        {loading && <span className="widget-mail__loading" role="status">메일 불러오는 중…</span>}
+        {loading && (
+          <div className="widget-mail__loading" role="status">
+            <span className="widget-mail__loading-icon" aria-hidden="true">
+              <Icon name="archive" />
+            </span>
+            <strong>메일함을 여는 중</strong>
+            <small>로그인 상태와 새 메일을 확인하고 있어요.</small>
+            <span className="widget-mail__loading-lines" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+          </div>
+        )}
         {error !== null && (
           <div className="widget-mail__error" role="alert">
-            <span>{error}</span>
-            <button type="button" onClick={() => webviewRef.current?.reload()}>다시 시도</button>
+            <span className="widget-mail__error-icon" aria-hidden="true">
+              <Icon name="archive" />
+            </span>
+            <strong>{error}</strong>
+            <small>네트워크나 학교 메일 로그인 상태를 확인해 주세요.</small>
+            <div>
+              <button type="button" onClick={() => webviewRef.current?.reload()}>다시 시도</button>
+              {!expanded && (
+                <button type="button" onClick={() => setExpanded(true)}>넓게 보기</button>
+              )}
+            </div>
           </div>
         )}
       </div>

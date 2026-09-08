@@ -37,13 +37,17 @@ vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
     selector(workspaceState)
 }))
 vi.mock('../../../src/renderer/src/features/account/SidebarAccountEntry', () => ({
-  SidebarAccountEntry: () => null
+  SidebarAccountEntry: () => (
+    <button type="button" className="rail-nav__item" aria-label="내 프로필" />
+  )
 }))
 vi.mock('../../../src/renderer/src/features/group/TogetherFooter', () => ({
   TogetherFooter: () => null
 }))
 vi.mock('../../../src/renderer/src/features/help/HelpHub', () => ({
-  HelpHub: () => null
+  HelpHub: () => (
+    <button type="button" className="rail-nav__item" aria-label="도움말" />
+  )
 }))
 vi.mock('../../../src/renderer/src/features/university/UniversityShortcuts', () => ({
   UniversityShortcuts: () => null
@@ -145,6 +149,24 @@ describe('CourseSidebar course menu', () => {
     expect(workspaceState.openTab).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'friends' })
     )
+  })
+
+  test('keeps profile, settings, help, friends, graph and board in that order', () => {
+    authState.phase = 'signed-in'
+    act(() => root.render(<CourseSidebar />))
+
+    const labels = Array.from(
+      container.querySelectorAll<HTMLElement>('.rail-nav > .rail-nav__item')
+    ).map((item) => item.getAttribute('aria-label'))
+
+    expect(labels).toEqual([
+      '내 프로필',
+      '설정',
+      '도움말',
+      '친구',
+      '연결 그래프',
+      '학업 보드 열기'
+    ])
   })
 
   test('opens from the ellipsis button and changes the course color', async () => {

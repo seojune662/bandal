@@ -47,6 +47,13 @@ describe('createOrbWindow', () => {
       focusable: false
     })
     expect(electronMocks.win.setContentProtection).toHaveBeenCalledWith(false)
+    expect(electronMocks.win.setVisibleOnAllWorkspaces).toHaveBeenCalledWith(
+      true,
+      {
+        visibleOnFullScreen: true,
+        skipTransformProcessType: true
+      }
+    )
     expect(electronMocks.win.setIgnoreMouseEvents).toHaveBeenCalledWith(true, {
       forward: true
     })

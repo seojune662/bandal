@@ -36,7 +36,14 @@ function createMiniPlayerWindow(options: CommonWindowOptions): BrowserWindow {
   })
 
   win.setAlwaysOnTop(true, 'floating')
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  win.setVisibleOnAllWorkspaces(true, {
+    visibleOnFullScreen: true,
+    // Electron otherwise flips the whole process between
+    // UIElementApplication and ForegroundApplication. On macOS that removes
+    // Bandal from the Dock and ⌘Tab while PiP is being created, and the
+    // reverse transition is not reliable when an NSPanel closes quickly.
+    skipTransformProcessType: true
+  })
   return win
 }
 

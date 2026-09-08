@@ -80,7 +80,15 @@ test.describe('right rail widgets', () => {
     await expect(mailbox).toBeAttached()
     await expect(mailbox).toHaveAttribute('src', 'https://mail.example.test/inbox')
     await expect(mailbox).toHaveAttribute('partition', 'persist:browsing')
+    await expect(mailbox.locator('xpath=..')).toHaveAttribute(
+      'data-presentation',
+      'compact'
+    )
     await expect(widget.getByRole('button', { name: '메일 새로고침' })).toBeVisible()
-    await expect(widget.getByRole('button', { name: '메일 크게 열기' })).toBeVisible()
+    await widget.getByRole('button', { name: '메일함 넓히기' }).click()
+    await expect(widget.locator('.widget-mail')).toHaveAttribute('data-expanded', 'true')
+    await expect(widget.getByRole('button', { name: '메일함 위젯으로 접기' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(widget.locator('.widget-mail')).not.toHaveAttribute('data-expanded', 'true')
   })
 })

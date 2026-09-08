@@ -864,6 +864,17 @@ export function CourseSidebar(): JSX.Element {
       <footer className="rail-footer">
         <nav className="rail-nav" aria-label="앱 메뉴">
           <SidebarAccountEntry />
+          <Tooltip label="설정" placement="top">
+            <button
+              type="button"
+              className="rail-nav__item"
+              aria-label="설정"
+              onClick={() => openSettings()}
+            >
+              <Icon name="settings" />
+            </button>
+          </Tooltip>
+          <HelpHub />
           {authPhase === 'signed-in' && (
             <Tooltip
               label={
@@ -892,17 +903,6 @@ export function CourseSidebar(): JSX.Element {
               </button>
             </Tooltip>
           )}
-          <Tooltip label="설정" placement="top">
-            <button
-              type="button"
-              className="rail-nav__item"
-              aria-label="설정"
-              onClick={() => openSettings()}
-            >
-              <Icon name="settings" />
-            </button>
-          </Tooltip>
-          <HelpHub />
           <span className="rail-nav__spacer" aria-hidden="true" />
           <Tooltip
             label={

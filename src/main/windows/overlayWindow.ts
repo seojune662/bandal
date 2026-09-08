@@ -34,7 +34,12 @@ function configureOverlayWindow(
   if (process.platform === 'darwin') {
     // Electron 43 exposes visibleOnFullScreen specifically for showing a
     // window across Spaces, including above another app's full-screen Space.
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    win.setVisibleOnAllWorkspaces(true, {
+      visibleOnFullScreen: true,
+      // Keep Bandal a regular foreground application. Electron's default
+      // process-type transform temporarily removes the Dock/⌘Tab entry.
+      skipTransformProcessType: true
+    })
     win.excludedFromShownWindowsMenu = true
   }
 

@@ -14,8 +14,10 @@ import { installApplicationMenu } from './menu'
 import { getSettings, setSettings as persistSettings } from './settingsStore'
 import {
   createMainWindow,
+  ensureRegularAppPresence,
   getMainWindow,
   onMainWindowClosed,
+  revealMainWindow,
   refreshTitleBarOverlay,
   resolveWindowBackground
 } from './windows/mainWindow'
@@ -131,6 +133,7 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     app.setAppUserModelId('com.bandal.app')
+    ensureRegularAppPresence()
 
     // [M6-A] Custom menu: keeps ⌘W free for "close tab" in the renderer.
     // Rebuild only when accelerator settings change; rebuilding for unrelated
@@ -163,8 +166,7 @@ if (!app.requestSingleInstanceLock()) {
       const existing = getMainWindow()
       const main = existing ?? createMainWindow()
       if (existing !== null) {
-        main.show()
-        main.focus()
+        revealMainWindow(main)
       } else {
         overlay.syncMainWindowVisibility()
       }
@@ -195,8 +197,7 @@ if (!app.requestSingleInstanceLock()) {
         overlay.syncMainWindowVisibility()
         return
       }
-      existing.show()
-      existing.focus()
+      revealMainWindow(existing)
       if (!existing.webContents.isDestroyed()) {
         existing.webContents.send(target.channel, target.payload)
       }
@@ -229,6 +230,7 @@ if (!app.requestSingleInstanceLock()) {
       },
       onMiniPlayerStateChanged: (open) => {
         miniPlayerOpen = open
+        if (!open) ensureRegularAppPresence()
         syncMiniPlayerTray()
       }
     })
@@ -388,9 +390,12 @@ if (!app.requestSingleInstanceLock()) {
     window.webContents.once('did-fail-load', attachDeepLinks)
 
     app.on('activate', () => {
-      if (getMainWindow() === null) {
+      const existing = getMainWindow()
+      if (existing === null) {
         createMainWindow()
         overlay.syncMainWindowVisibility()
+      } else {
+        revealMainWindow(existing)
       }
     })
   }).catch((error: unknown) => {
