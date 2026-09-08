@@ -100,6 +100,7 @@ import { taskListItemView } from './taskListView'
 import { createWikilinkPickerPlugin, wikilinkContextCtx } from './wikilink'
 import './note-tab.css'
 import {
+  PAGE_SYNC_ECHO_GUARD_MS,
   publishPageSyncAnchor,
   subscribePageSyncAnchor,
   usePageNoteSync
@@ -110,6 +111,11 @@ const SAVE_DELAY_MS = 800
 const EDIT_BROADCAST_DELAY_MS = 300
 /** Second, late scroll restore after the async editor plugins settle. */
 const SCROLL_RESTORE_RETRY_MS = 120
+/**
+ * Caret visibility adjustments can scroll the page-note pane after an input
+ * event. That is editor housekeeping, not a request to move the paired PDF.
+ */
+const PAGE_NOTE_INPUT_SCROLL_SUPPRESSION_MS = 300
 let pageNotePreviewCodecPromise: Promise<MarkdownCodec> | null = null
 
 type SaveStatus = 'saved' | 'dirty' | 'saving' | 'conflict' | 'error'
@@ -300,7 +306,7 @@ export function isNoteConflict(error: unknown): boolean {
   )
 }
 
-function MilkdownNoteEditor({
+export function MilkdownNoteEditor({
   courseId,
   relPath,
   initialMarkdown,
@@ -328,6 +334,13 @@ function MilkdownNoteEditor({
     'idle' | 'initializing' | 'ready' | 'failed'
   >('idle')
   const editorAttemptRef = useRef(0)
+  // `initialMarkdown` is a seed, not a controlled value. Page-note typing
+  // serializes the whole document and feeds the current page back through
+  // props on every transaction. Including that changing value in useEditor's
+  // dependencies destroyed and recreated ProseMirror for every Korean IME
+  // keystroke, which split composed syllables and reset the caret. Intentional
+  // external replacements already remount this component via the revision key.
+  const initialMarkdownRef = useRef(initialMarkdown)
   const onChangeRef = useRef(onMarkdownChange)
   const onFormatStateChangeRef = useRef(onFormatStateChange)
   const onZoomStepRef = useRef(onZoomStep)
@@ -369,7 +382,7 @@ function MilkdownNoteEditor({
         })
         .config((context) => {
           context.set(rootCtx, root)
-          context.set(defaultValueCtx, initialMarkdown)
+          context.set(defaultValueCtx, initialMarkdownRef.current)
           context.set(rootAttrsCtx, {
             'aria-label': '마크다운 필기 편집기',
             'aria-multiline': 'true'
@@ -430,7 +443,7 @@ function MilkdownNoteEditor({
         editor
       )
     },
-    [autoFocus, courseId, editorPlugins, initialMarkdown]
+    [autoFocus, courseId, editorPlugins]
   )
 
   useEffect(() => {
@@ -539,6 +552,14 @@ export function PageNoteWorkspace({
   const pageRefs = useRef(new Map<number, HTMLElement>())
   const applyingSyncRef = useRef(false)
   const scrollFrameRef = useRef<number | null>(null)
+  const syncReleaseTimerRef = useRef<number | null>(null)
+  const composingRef = useRef(false)
+  const suppressSyncUntilRef = useRef(0)
+
+  const suppressInputDrivenSync = (): void => {
+    suppressSyncUntilRef.current =
+      performance.now() + PAGE_NOTE_INPUT_SCROLL_SUPPRESSION_MS
+  }
 
   const captureAnchor = useCallback((): { page: number; pageOffset: number } | null => {
     const scroller = scrollerRef.current
@@ -597,19 +618,37 @@ export function PageNoteWorkspace({
         anchor.originPanelId === panelId
       ) return
       applyingSyncRef.current = true
-      if (restoreAnchor(anchor.page, anchor.pageOffset)) {
+      const restored = restoreAnchor(anchor.page, anchor.pageOffset)
+      if (restored) {
         onCurrentPageChange(
           Math.min(Math.max(1, anchor.page), document.pages.length)
         )
       }
-      requestAnimationFrame(() => {
+      if (syncReleaseTimerRef.current !== null) {
+        window.clearTimeout(syncReleaseTimerRef.current)
+      }
+      if (!restored) {
         applyingSyncRef.current = false
-      })
+        syncReleaseTimerRef.current = null
+        return
+      }
+      // Element scroll events are processed around animation frames. Releasing
+      // in the very next rAF can happen before handleScroll's rAF and turn the
+      // incoming movement into an outgoing echo. The scroll handler releases
+      // this guard itself; the timer only covers the no-scroll (already there)
+      // case.
+      syncReleaseTimerRef.current = window.setTimeout(() => {
+        applyingSyncRef.current = false
+        syncReleaseTimerRef.current = null
+      }, PAGE_SYNC_ECHO_GUARD_MS)
     })
   }, [document.pages.length, onCurrentPageChange, pageNotePair, panelId, restoreAnchor, syncEnabled])
 
   useEffect(() => () => {
     if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current)
+    if (syncReleaseTimerRef.current !== null) {
+      window.clearTimeout(syncReleaseTimerRef.current)
+    }
   }, [])
 
   const handleScroll = (): void => {
@@ -619,7 +658,22 @@ export function PageNoteWorkspace({
       const anchor = captureAnchor()
       if (anchor === null) return
       onCurrentPageChange(anchor.page)
-      if (pageNotePair !== null && syncEnabled && !applyingSyncRef.current) {
+      const applyingSync = applyingSyncRef.current
+      if (applyingSync) {
+        applyingSyncRef.current = false
+        if (syncReleaseTimerRef.current !== null) {
+          window.clearTimeout(syncReleaseTimerRef.current)
+          syncReleaseTimerRef.current = null
+        }
+      }
+      const inputDrivenScroll =
+        composingRef.current || performance.now() < suppressSyncUntilRef.current
+      if (
+        pageNotePair !== null &&
+        syncEnabled &&
+        !applyingSync &&
+        !inputDrivenScroll
+      ) {
         publishPageSyncAnchor({
           connectionId: pageNotePair.connectionId,
           pairId: pageNotePair.pairId,
@@ -657,6 +711,15 @@ export function PageNoteWorkspace({
         ref={scrollerRef}
         className="note-editor-scroll page-note-scroll"
         onScroll={handleScroll}
+        onBeforeInputCapture={suppressInputDrivenSync}
+        onCompositionStartCapture={() => {
+          composingRef.current = true
+          suppressInputDrivenSync()
+        }}
+        onCompositionEndCapture={() => {
+          composingRef.current = false
+          suppressInputDrivenSync()
+        }}
       >
         <NoteToolbar
           courseId={courseId}

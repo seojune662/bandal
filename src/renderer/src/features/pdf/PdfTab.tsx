@@ -86,6 +86,7 @@ import {
   useMaterialConnections
 } from '../links/useMaterialConnections'
 import {
+  PAGE_SYNC_ECHO_GUARD_MS,
   publishPageSyncAnchor,
   subscribePageSyncAnchor,
   usePageNoteSync
@@ -239,6 +240,7 @@ function PdfViewer({
   const saveTimer = useRef<number | null>(null)
   const reconciledFingerprintRef = useRef<string | null>(null)
   const applyingPageSyncRef = useRef(false)
+  const pageSyncReleaseTimerRef = useRef<number | null>(null)
   const connections = useMaterialConnections(courseId, relPath)
   const pageNoteConnections = useMemo(
     () =>
@@ -485,11 +487,19 @@ function PdfViewer({
         scrollFrame.current = null
         const anchor = rememberViewportAnchor()
         setCurrentPage(anchor?.page ?? pageAtViewportCenter())
+        const applyingPageSync = applyingPageSyncRef.current
+        if (applyingPageSync) {
+          applyingPageSyncRef.current = false
+          if (pageSyncReleaseTimerRef.current !== null) {
+            window.clearTimeout(pageSyncReleaseTimerRef.current)
+            pageSyncReleaseTimerRef.current = null
+          }
+        }
         if (
           anchor !== null &&
           pageNotePair !== null &&
           pageNoteSync &&
-          !applyingPageSyncRef.current
+          !applyingPageSync
         ) {
           publishPageSyncAnchor({
             connectionId: pageNotePair.connectionId,
@@ -522,15 +532,25 @@ function PdfViewer({
         return
       }
       applyingPageSyncRef.current = true
-      if (restoreViewportAnchor({
+      const restored = restoreViewportAnchor({
         page: Math.min(Math.max(1, anchor.page), Math.max(1, numPages)),
         pageOffset: anchor.pageOffset
-      })) {
+      })
+      if (restored) {
         setCurrentPage(anchor.page)
       }
-      requestAnimationFrame(() => {
+      if (pageSyncReleaseTimerRef.current !== null) {
+        window.clearTimeout(pageSyncReleaseTimerRef.current)
+      }
+      if (!restored) {
         applyingPageSyncRef.current = false
-      })
+        pageSyncReleaseTimerRef.current = null
+        return
+      }
+      pageSyncReleaseTimerRef.current = window.setTimeout(() => {
+        applyingPageSyncRef.current = false
+        pageSyncReleaseTimerRef.current = null
+      }, PAGE_SYNC_ECHO_GUARD_MS)
     })
   }, [numPages, pageNotePair, pageNoteSync, panelId, restoreViewportAnchor])
 
@@ -561,6 +581,9 @@ function PdfViewer({
       if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current)
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current)
       if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
+      if (pageSyncReleaseTimerRef.current !== null) {
+        window.clearTimeout(pageSyncReleaseTimerRef.current)
+      }
     }
   }, [persistScroll])
 

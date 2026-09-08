@@ -11,6 +11,8 @@ export interface PageSyncAnchor {
 
 const ANCHOR_EVENT = 'bandal:pdf-page-note-anchor'
 const SETTING_EVENT = 'bandal:pdf-page-note-sync-setting'
+/** Fallback release when assigning scrollTop produces no scroll event. */
+export const PAGE_SYNC_ECHO_GUARD_MS = 150
 const settings = new Map<string, boolean>()
 let sequence = 0
 
