@@ -152,6 +152,7 @@ function TaskCard({
     <article
       className="board-card"
       data-status={task.status}
+      data-color={task.color}
       data-task-id={task.id}
       data-due-state={task.status === 'done' ? undefined : deadlineState}
       data-dragging={dragging}
@@ -318,6 +319,7 @@ function BoardSurface(): JSX.Element {
         title: draft.title,
         status,
         kind: draft.kind,
+        color: draft.color,
         dueAt: draft.dueDate.length === 0
           ? null
           : dueAtForLocalInput(draft.dueDate, '', true),

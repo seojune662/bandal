@@ -1012,6 +1012,21 @@ export const migrations: Migration[] = [
          );`
       )
     }
+  },
+  {
+    version: 30,
+    name: 'board-task-colors',
+    up: (db) => {
+      const columns = new Set(
+        (db.prepare('PRAGMA table_info(board_tasks)').all() as { name: string }[])
+          .map((column) => column.name)
+      )
+      if (!columns.has('color')) {
+        db.exec(
+          "ALTER TABLE board_tasks ADD COLUMN color TEXT NOT NULL DEFAULT 'none'"
+        )
+      }
+    }
   }
 ]
 

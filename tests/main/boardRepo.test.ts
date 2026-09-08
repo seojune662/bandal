@@ -48,24 +48,27 @@ describe('boardRepo', () => {
       expect(repo.list({ courseId: null })[0]?.id).toBe(task.id)
     })
 
-    test('defaults kind and allDay and persists explicit calendar fields', () => {
+    test('defaults kind, color and allDay and persists explicit calendar fields', () => {
       const localExamDue = new Date(2026, 8, 1)
       const regular = repo.create({ courseId, title: 'regular' })
       const exam = repo.create({
         courseId,
         title: 'midterm',
         kind: 'exam',
+        color: 'blue',
         allDay: true,
         dueAt: localExamDue.toISOString()
       })
 
       expect(regular.kind).toBe('task')
+      expect(regular.color).toBe('none')
       expect(regular.allDay).toBe(false)
       expect(exam.kind).toBe('exam')
+      expect(exam.color).toBe('blue')
       expect(exam.allDay).toBe(true)
       expect(exam.dueAt).toBe('2026-09-01')
       expect(repo.list({ courseId, includeDone: true }).find((task) => task.id === exam.id))
-        .toMatchObject({ kind: 'exam', allDay: true })
+        .toMatchObject({ kind: 'exam', color: 'blue', allDay: true })
     })
 
     test('accepts an all-day date key and rejects it for a timed task', () => {
@@ -151,12 +154,14 @@ describe('boardRepo', () => {
         id: task.id,
         title: 'new',
         notes: 'edited',
+        color: 'violet',
         dueAt: '2026-09-01T00:00:00.000Z'
       })
 
       // Assert
       expect(updated.title).toBe('new')
       expect(updated.notes).toBe('edited')
+      expect(updated.color).toBe('violet')
       expect(updated.dueAt).toBe('2026-09-01T00:00:00.000Z')
       expect(updated.sortOrder).toBe(task.sortOrder)
     })
@@ -238,6 +243,15 @@ describe('boardRepo', () => {
       expect(() => repo.update({ id: task.id, dueAt: 'not-a-date' })).toThrow(
         ValidationError
       )
+    })
+
+    test('rejects an unknown task color at the repository boundary', () => {
+      const task = repo.create({ courseId, title: 'task' })
+
+      expect(() => repo.update({
+        id: task.id,
+        color: 'ultraviolet' as never
+      })).toThrow(ValidationError)
     })
   })
 

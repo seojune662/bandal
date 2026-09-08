@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
-import type { BoardTask, TaskKind } from '../../../../shared/types/board'
+import { TASK_COLORS } from '../../../../shared/types/board'
+import type { BoardTask, TaskColor, TaskKind } from '../../../../shared/types/board'
 import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
 import { normalizeCourseColor } from '../courses/courseColors'
@@ -17,10 +18,21 @@ const KIND_LABELS: Record<TaskKind, string> = {
   class: '수업'
 }
 
+const COLOR_LABELS: Record<TaskColor, string> = {
+  none: '없음',
+  red: '빨강',
+  orange: '주황',
+  yellow: '노랑',
+  green: '초록',
+  blue: '파랑',
+  violet: '보라'
+}
+
 export interface TaskEditorDraft {
   title: string
   notes: string
   kind: TaskKind
+  color: TaskColor
   dueAt: string | null
   allDay: boolean
   courseId: string | null
@@ -47,6 +59,7 @@ export function TaskEditorPopover({
   const [title, setTitle] = useState(task.title)
   const [notes, setNotes] = useState(task.notes)
   const [kind, setKind] = useState<TaskKind>(task.kind)
+  const [color, setColor] = useState<TaskColor>(task.color)
   const [dueDate, setDueDate] = useState(() =>
     task.dueAt === null ? '' : localDateKey(task.dueAt)
   )
@@ -92,6 +105,7 @@ export function TaskEditorPopover({
         title: normalizedTitle,
         notes,
         kind,
+        color,
         dueAt: dueDate.length === 0
           ? null
           : dueAtForLocalInput(dueDate, dueTime, !hasTime),
@@ -174,6 +188,27 @@ export function TaskEditorPopover({
                   onChange={() => setKind(value as TaskKind)}
                 />
                 <span>{label}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset className="board-color-picker">
+          <legend>색상</legend>
+          <div>
+            {TASK_COLORS.map((value) => (
+              <label key={value} title={COLOR_LABELS[value]}>
+                <input
+                  type="radio"
+                  name={`board-editor-color-${task.id}`}
+                  value={value}
+                  checked={color === value}
+                  onChange={() => setColor(value)}
+                />
+                <span data-color={value}>
+                  {value === 'none' && <b aria-hidden="true">×</b>}
+                  <span className="sr-only">{COLOR_LABELS[value]}</span>
+                </span>
               </label>
             ))}
           </div>

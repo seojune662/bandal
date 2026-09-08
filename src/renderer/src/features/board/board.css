@@ -558,6 +558,13 @@
   --board-status: var(--status-done);
 }
 
+.board-card[data-color='red'] { --board-status: var(--danger); }
+.board-card[data-color='orange'] { --board-status: var(--course-orange); }
+.board-card[data-color='yellow'] { --board-status: var(--course-gold); }
+.board-card[data-color='green'] { --board-status: var(--course-green); }
+.board-card[data-color='blue'] { --board-status: var(--course-blue); }
+.board-card[data-color='violet'] { --board-status: var(--course-violet); }
+
 .board-card:hover,
 .board-card:focus-visible {
   border-color: var(--board-status);

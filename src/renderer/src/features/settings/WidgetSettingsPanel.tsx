@@ -8,7 +8,7 @@ import { savePreference } from './savePreference'
 const LABELS: Record<WidgetId, { ko: string; en: string }> = {
   todo: { ko: '투두', en: 'To-do' },
   board: { ko: '학업 보드', en: 'Study board' },
-  mail: { ko: '웹메일', en: 'Webmail' }
+  mail: { ko: '메일함', en: 'Mailbox' }
 }
 
 export function WidgetSettingsPanel({ settings }: { settings: Settings | null }): JSX.Element {
@@ -71,7 +71,7 @@ export function WidgetSettingsPanel({ settings }: { settings: Settings | null })
                   label={LABELS[id][ko ? 'ko' : 'en']}
                   description={
                     id === 'mail'
-                      ? ko ? '메일 내용을 읽지 않고 웹메일을 빠르게 엽니다.' : 'Quickly opens webmail without reading your mailbox.'
+                      ? ko ? '우측 위젯 안에서 메일을 읽고 관리합니다.' : 'Read and manage mail inside the right-side widget.'
                       : ko ? '기존 학업 보드 태스크를 사용합니다.' : 'Uses your existing study-board tasks.'
                   }
                   checked={enabled}
@@ -91,8 +91,8 @@ export function WidgetSettingsPanel({ settings }: { settings: Settings | null })
       </SettingsCard>
 
       <SettingsCard
-        title={ko ? '웹메일 연결' : 'Webmail shortcut'}
-        description={ko ? '학교 프리셋을 고르거나 직접 주소를 입력하세요.' : 'Choose a school preset or enter a URL.'}
+        title={ko ? '메일 위젯 연결' : 'Mail widget connection'}
+        description={ko ? '학교 메일을 위젯 안에 열고, 브라우저와 로그인 상태를 공유합니다.' : 'Open school mail inside the widget and share its signed-in session with the browser.'}
       >
         <div className="settings-card__rows">
           {mailServices.length > 0 && (

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import type { TaskKind, TaskStatus } from '../../../../shared/types/board'
+import { TASK_COLORS } from '../../../../shared/types/board'
+import type { TaskColor, TaskKind, TaskStatus } from '../../../../shared/types/board'
 import { Icon } from '../../app/icons'
 import './boardForms.css'
 
@@ -16,9 +17,20 @@ const KIND_LABELS: Record<TaskKind, string> = {
   class: '수업'
 }
 
+const COLOR_LABELS: Record<TaskColor, string> = {
+  none: '색상 없음',
+  red: '빨강',
+  orange: '주황',
+  yellow: '노랑',
+  green: '초록',
+  blue: '파랑',
+  violet: '보라'
+}
+
 export interface BoardQuickAddDraft {
   title: string
   kind: TaskKind
+  color: TaskColor
   dueDate: string
 }
 
@@ -41,6 +53,7 @@ export function BoardQuickAdd({
 }: BoardQuickAddProps): JSX.Element {
   const [title, setTitle] = useState('')
   const [kind, setKind] = useState<TaskKind>('task')
+  const [color, setColor] = useState<TaskColor>('none')
   const [dueDate, setDueDate] = useState('')
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -50,6 +63,7 @@ export function BoardQuickAdd({
     if (!active) {
       setTitle('')
       setKind('task')
+      setColor('none')
       setDueDate('')
       setError(null)
     }
@@ -78,7 +92,7 @@ export function BoardQuickAdd({
     }
     setError(null)
     try {
-      await onCreate({ title: title.trim(), kind, dueDate })
+      await onCreate({ title: title.trim(), kind, color, dueDate })
     } catch (submitError) {
       setError(
         submitError instanceof Error ? submitError.message : '항목을 추가하지 못했습니다.'
@@ -133,6 +147,27 @@ export function BoardQuickAdd({
           onChange={(event) => setDueDate(event.target.value)}
         />
       </label>
+      <fieldset className="board-color-picker">
+        <legend>색상</legend>
+        <div>
+          {TASK_COLORS.map((value) => (
+            <label key={value} title={COLOR_LABELS[value]}>
+              <input
+                type="radio"
+                name={`board-color-${status}`}
+                value={value}
+                checked={color === value}
+                disabled={disabled}
+                aria-label={COLOR_LABELS[value]}
+                onChange={() => setColor(value)}
+              />
+              <span data-color={value} aria-hidden="true">
+                {value === 'none' ? '×' : ''}
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       {error !== null && <p className="board-quick-add__error" role="alert">{error}</p>}
       <footer className="board-quick-add__actions">
         <button type="button" className="board-button" disabled={disabled} onClick={onCancel}>

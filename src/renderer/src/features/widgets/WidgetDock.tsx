@@ -1,19 +1,67 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { BoardTask, TaskStatus } from '../../../../shared/types/board'
+import { TASK_COLORS } from '../../../../shared/types/board'
+import type {
+  BoardTask,
+  TaskColor,
+  TaskStatus,
+  UpdateTaskInput
+} from '../../../../shared/types/board'
 import { DEFAULT_SETTINGS, type Settings, type WidgetId } from '../../../../shared/types/settings'
 import { Icon } from '../../app/icons'
+import { showToast } from '../../app/toast'
 import { invoke, onPush } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useUniversityStore } from '../../stores/universityStore'
 import { dueDayLabel } from '../board/boardLogic'
-import { openShortcut } from '../university/openService'
+import { localDateKey } from '../calendar/calendarDate'
+import type { DidFailLoadEvent, WebviewTag } from '../browser/webviewTypes'
+import { openInBandalBrowser } from '../university/openService'
 import './widgets.css'
 
 const LABELS: Record<WidgetId, string> = {
   todo: '투두',
   board: '보드',
   mail: '메일'
+}
+
+const TASK_COLOR_LABELS: Record<TaskColor, string> = {
+  none: '색상 없음',
+  red: '빨강',
+  orange: '주황',
+  yellow: '노랑',
+  green: '초록',
+  blue: '파랑',
+  violet: '보라'
+}
+
+function TaskColorPicker({
+  value,
+  onChange,
+  label = '할 일 색상'
+}: {
+  value: TaskColor
+  onChange: (color: TaskColor) => void
+  label?: string
+}): JSX.Element {
+  return (
+    <div className="widget-color-picker" role="group" aria-label={label}>
+      {TASK_COLORS.map((color) => (
+        <button
+          key={color}
+          type="button"
+          className="widget-color-swatch"
+          data-color={color}
+          aria-label={TASK_COLOR_LABELS[color]}
+          aria-pressed={value === color}
+          title={TASK_COLOR_LABELS[color]}
+          onClick={() => onChange(color)}
+        >
+          {color === 'none' && <span aria-hidden="true">×</span>}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 function useLiveSettings(): Settings {
@@ -32,26 +80,51 @@ function useLiveSettings(): Settings {
   return settings
 }
 
-function useBoardTasks(): { tasks: BoardTask[]; loading: boolean; reload: () => void } {
+function useBoardTasks(): { tasks: BoardTask[]; loading: boolean } {
   const [tasks, setTasks] = useState<BoardTask[]>([])
   const [loading, setLoading] = useState(true)
-  const load = useCallback(() => {
-    setLoading(true)
+  const loadSequence = useRef(0)
+  const load = useCallback((showLoading = true) => {
+    const sequence = ++loadSequence.current
+    if (showLoading) setLoading(true)
     void invoke('board:listTasks', { includeDone: true })
-      .then(setTasks)
-      .finally(() => setLoading(false))
+      .then((next) => {
+        if (sequence === loadSequence.current) setTasks(next)
+      })
+      .catch((loadError: unknown) => {
+        console.error('[Bandal] 위젯 할 일을 불러오지 못했습니다.', loadError)
+      })
+      .finally(() => {
+        if (sequence === loadSequence.current) setLoading(false)
+      })
   }, [])
   useEffect(() => {
     load()
-    return onPush('board:changed', load)
+    const stop = onPush('board:changed', () => load(false))
+    return () => {
+      stop()
+      loadSequence.current += 1
+    }
   }, [load])
-  return { tasks, loading, reload: load }
+  return { tasks, loading }
 }
 
 function byDue(left: BoardTask, right: BoardTask): number {
   if (left.dueAt === null && right.dueAt !== null) return 1
   if (left.dueAt !== null && right.dueAt === null) return -1
   return (left.dueAt ?? '').localeCompare(right.dueAt ?? '') || left.sortOrder - right.sortOrder
+}
+
+function taskDateLabel(task: BoardTask): string | null {
+  if (task.dueAt === null) return null
+  const dateKey = localDateKey(task.dueAt)
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const date = new Date(year!, month! - 1, day!)
+  if (Number.isNaN(date.getTime())) return null
+  return new Intl.DateTimeFormat('ko-KR', {
+    month: 'short',
+    day: 'numeric'
+  }).format(date)
 }
 
 function TaskScope({ currentOnly, onChange }: { currentOnly: boolean; onChange: (next: boolean) => void }): JSX.Element {
@@ -70,6 +143,9 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
   const toggleBoard = useUiStore((state) => state.toggleBoardOverlay)
   const [currentOnly, setCurrentOnly] = useState(false)
   const [draft, setDraft] = useState('')
+  const [draftDate, setDraftDate] = useState('')
+  const [draftColor, setDraftColor] = useState<TaskColor>('none')
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const visible = useMemo(
     () => tasks.filter((task) => !currentOnly || task.courseId === selectedCourseId),
@@ -85,16 +161,43 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
       await invoke('board:createTask', {
         courseId: selectedCourseId,
         title,
-        status: 'todo'
+        status: 'todo',
+        color: draftColor,
+        dueAt: draftDate === '' ? null : draftDate,
+        allDay: draftDate !== ''
       })
       setDraft('')
+      setDraftDate('')
+      setDraftColor('none')
+    } catch (createError) {
+      console.error('[Bandal] 위젯 할 일을 추가하지 못했습니다.', createError)
+      showToast('할 일을 추가하지 못했어요.', 'danger')
     } finally {
       setSaving(false)
     }
   }
 
+  const updateTask = (input: UpdateTaskInput): void => {
+    void invoke('board:updateTask', input).catch((updateError: unknown) => {
+      console.error('[Bandal] 위젯 할 일을 수정하지 못했습니다.', updateError)
+      showToast('할 일을 수정하지 못했어요.', 'danger')
+    })
+  }
+
   const updateStatus = (task: BoardTask, status: TaskStatus): void => {
-    void invoke('board:updateTask', { id: task.id, status })
+    updateTask({ id: task.id, status })
+  }
+
+  const updateDate = (task: BoardTask, dueAt: string): void => {
+    updateTask({
+      id: task.id,
+      dueAt: dueAt === '' ? null : dueAt,
+      allDay: dueAt !== ''
+    })
+  }
+
+  const updateColor = (task: BoardTask, color: TaskColor): void => {
+    updateTask({ id: task.id, color })
   }
 
   const list = [...visible].sort(byDue)
@@ -105,17 +208,63 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
         <button type="button" className="widget-open-board" onClick={toggleBoard}>전체 보드</button>
       </div>
       <form className="widget-quick-add" onSubmit={(event) => { event.preventDefault(); void add() }}>
-        <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="할 일 추가" aria-label="할 일 추가" />
-        <button type="submit" disabled={draft.trim() === '' || saving} aria-label="추가"><Icon name="plus" /></button>
+        <div className="widget-quick-add__title">
+          <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="할 일 추가" aria-label="할 일 추가" />
+          <button type="submit" disabled={draft.trim() === '' || saving} aria-label="추가"><Icon name="plus" /></button>
+        </div>
+        <div className="widget-quick-add__options">
+          <label className="widget-date-field">
+            <span>날짜</span>
+            <input
+              type="date"
+              value={draftDate}
+              aria-label="할 일 날짜"
+              onChange={(event) => setDraftDate(event.target.value)}
+            />
+          </label>
+          <TaskColorPicker value={draftColor} onChange={setDraftColor} />
+        </div>
       </form>
       {loading ? (
         <p className="widget-empty">불러오는 중…</p>
       ) : mode === 'todo' ? (
         <ul className="widget-todo-list">
           {list.filter((task) => task.status !== 'done').map((task) => (
-            <li key={task.id}>
-              <button type="button" className="widget-check" aria-label={`${task.title} 완료`} onClick={() => updateStatus(task, 'done')} />
-              <span className="widget-task-copy"><strong>{task.title}</strong><small>{task.courseId === null ? '전체' : (courseNames.get(task.courseId) ?? '알 수 없는 과목')}{task.dueAt === null ? '' : ` · ${dueDayLabel(task.dueAt) ?? ''}`}</small></span>
+            <li key={task.id} data-color={task.color} data-expanded={editingId === task.id || undefined}>
+              <div className="widget-todo-row">
+                <button type="button" className="widget-check" aria-label={`${task.title} 완료`} onClick={() => updateStatus(task, 'done')} />
+                <button
+                  type="button"
+                  className="widget-task-copy"
+                  aria-expanded={editingId === task.id}
+                  onClick={() => setEditingId((current) => current === task.id ? null : task.id)}
+                >
+                  <strong>{task.title}</strong>
+                  <small>
+                    {task.courseId === null ? '전체' : (courseNames.get(task.courseId) ?? '알 수 없는 과목')}
+                    {task.dueAt === null ? '' : ` · ${taskDateLabel(task) ?? ''} · ${dueDayLabel(task.dueAt) ?? ''}`}
+                  </small>
+                </button>
+                <span className="widget-task-color" data-color={task.color} aria-hidden="true" />
+              </div>
+              {editingId === task.id && (
+                <div className="widget-todo-editor" aria-label={`${task.title} 빠른 편집`}>
+                  <label className="widget-date-field">
+                    <span>날짜</span>
+                    <input
+                      type="date"
+                      value={task.dueAt === null ? '' : localDateKey(task.dueAt)}
+                      aria-label={`${task.title} 날짜`}
+                      onChange={(event) => updateDate(task, event.target.value)}
+                    />
+                  </label>
+                  <TaskColorPicker
+                    value={task.color}
+                    label={`${task.title} 색상`}
+                    onChange={(color) => updateColor(task, color)}
+                  />
+                </div>
+              )}
             </li>
           ))}
           {list.every((task) => task.status === 'done') && <li className="widget-empty">남은 할 일이 없어요.</li>}
@@ -126,7 +275,7 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
             <section key={status}>
               <h4>{status === 'todo' ? '할 일' : status === 'in-progress' ? '진행 중' : '완료'} <span>{list.filter((task) => task.status === status).length}</span></h4>
               {list.filter((task) => task.status === status).slice(0, 5).map((task) => (
-                <button key={task.id} type="button" title="다음 상태로 이동" onClick={() => updateStatus(task, status === 'todo' ? 'in-progress' : status === 'in-progress' ? 'done' : 'todo')}>
+                <button key={task.id} type="button" data-color={task.color} title="다음 상태로 이동" onClick={() => updateStatus(task, status === 'todo' ? 'in-progress' : status === 'in-progress' ? 'done' : 'todo')}>
                   {task.title}
                 </button>
               ))}
@@ -144,23 +293,124 @@ function MailWidget({ settings }: { settings: Settings }): JSX.Element {
   useEffect(() => void init(), [init])
   const mails = services.filter((service) => service.kind === 'mail')
   const selected = mails.find((service) => service.id === settings.widgets.mailServiceId) ?? mails[0] ?? null
-  const target = selected ?? (settings.widgets.mailUrl === '' ? null : {
-    id: 'custom', label: '웹메일', url: settings.widgets.mailUrl, opensExternally: false
-  })
+  const target = selected === null
+    ? (settings.widgets.mailUrl === '' ? null : {
+        label: '웹메일',
+        url: settings.widgets.mailUrl
+      })
+    : {
+        label: selected.label,
+        url: selected.url
+      }
 
   if (target === null) {
     return <div className="widget-mail"><p>설정에서 학교 메일이나 URL을 연결해 주세요.</p></div>
   }
+  return <EmbeddedMail target={target} />
+}
+
+function EmbeddedMail({ target }: {
+  target: { label: string; url: string }
+}): JSX.Element {
+  const webviewRef = useRef<WebviewTag | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [canGoBack, setCanGoBack] = useState(false)
+  const [canGoForward, setCanGoForward] = useState(false)
+
+  const refreshNavigation = useCallback((): void => {
+    const webview = webviewRef.current
+    if (webview === null) return
+    try {
+      setCanGoBack(webview.canGoBack())
+      setCanGoForward(webview.canGoForward())
+    } catch {
+      setCanGoBack(false)
+      setCanGoForward(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const webview = webviewRef.current
+    if (webview === null) return
+    const start = (): void => {
+      try {
+        if (!webview.isLoadingMainFrame()) return
+      } catch {
+        // The guest may not be attached on its very first load yet.
+      }
+      setLoading(true)
+      setError(null)
+    }
+    const stop = (): void => {
+      setLoading(false)
+      refreshNavigation()
+    }
+    const failed = (event: Event): void => {
+      const detail = event as DidFailLoadEvent
+      if (!detail.isMainFrame || detail.errorCode === -3) return
+      setLoading(false)
+      setError('메일을 불러오지 못했어요.')
+    }
+    const navigate = (): void => refreshNavigation()
+    webview.addEventListener('did-start-loading', start)
+    webview.addEventListener('did-stop-loading', stop)
+    webview.addEventListener('did-fail-load', failed)
+    webview.addEventListener('did-navigate', navigate)
+    webview.addEventListener('did-navigate-in-page', navigate)
+    void invoke('settings:set', {
+      widgets: { lastMailOpenedAt: new Date().toISOString() }
+    })
+    return () => {
+      webview.removeEventListener('did-start-loading', start)
+      webview.removeEventListener('did-stop-loading', stop)
+      webview.removeEventListener('did-fail-load', failed)
+      webview.removeEventListener('did-navigate', navigate)
+      webview.removeEventListener('did-navigate-in-page', navigate)
+    }
+  }, [refreshNavigation, target.url])
+
   return (
-    <div className="widget-mail">
-      <span className="widget-mail__icon">✉️</span>
-      <strong>{target.label}</strong>
-      <small>{new URL(target.url).hostname}</small>
-      <button type="button" onClick={() => {
-        openShortcut(target)
-        void invoke('settings:set', { widgets: { lastMailOpenedAt: new Date().toISOString() } })
-      }}>메일 열기</button>
-      {settings.widgets.lastMailOpenedAt !== null && <span className="widget-mail__last">마지막 열기 {new Intl.DateTimeFormat('ko-KR', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(settings.widgets.lastMailOpenedAt))}</span>}
+    <div className="widget-mail widget-mail--embedded">
+      <header className="widget-mail__toolbar">
+        <strong title={target.label}>{target.label}</strong>
+        <div className="widget-mail__actions">
+          <button type="button" aria-label="메일 뒤로" title="뒤로" disabled={!canGoBack} onClick={() => webviewRef.current?.goBack()}>
+            <Icon name="chevronLeft" />
+          </button>
+          <button type="button" aria-label="메일 앞으로" title="앞으로" disabled={!canGoForward} onClick={() => webviewRef.current?.goForward()}>
+            <Icon name="chevronRight" />
+          </button>
+          <button type="button" aria-label="메일 새로고침" title="새로고침" onClick={() => webviewRef.current?.reload()}>
+            <Icon name="refresh" />
+          </button>
+          <button type="button" aria-label="메일 크게 열기" title="반달 브라우저에서 크게 열기" onClick={() => openInBandalBrowser(target.url)}>
+            <Icon name="layoutLeft" />
+          </button>
+        </div>
+      </header>
+      <div
+        className="widget-mail__viewport"
+        data-loading={loading || undefined}
+        data-error={error === null ? undefined : 'true'}
+      >
+        <webview
+          ref={(element) => {
+            webviewRef.current = element as WebviewTag | null
+          }}
+          src={target.url}
+          partition="persist:browsing"
+          aria-label={`${target.label} 메일함`}
+          allowpopups={'' as unknown as boolean}
+        />
+        {loading && <span className="widget-mail__loading" role="status">메일 불러오는 중…</span>}
+        {error !== null && (
+          <div className="widget-mail__error" role="alert">
+            <span>{error}</span>
+            <button type="button" onClick={() => webviewRef.current?.reload()}>다시 시도</button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

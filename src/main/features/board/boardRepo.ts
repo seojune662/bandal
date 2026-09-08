@@ -6,12 +6,14 @@
 
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
+import { TASK_COLORS } from '../../../shared/types/board'
 import type {
   BoardTask,
   CalendarRangeInput,
   CreateTaskInput,
   ListTasksInput,
   TaskKind,
+  TaskColor,
   TaskStatus,
   UpdateTaskInput,
   UpcomingDeadline
@@ -50,6 +52,7 @@ interface TaskRow {
   notes: string
   status: string
   kind: string
+  color: string
   due_at: string | null
   all_day: number
   sort_order: number
@@ -78,6 +81,15 @@ function assertKind(value: unknown): TaskKind {
     )
   }
   return value as TaskKind
+}
+
+function assertColor(value: unknown): TaskColor {
+  if (!TASK_COLORS.includes(value as TaskColor)) {
+    throw new ValidationError(
+      `color must be one of ${TASK_COLORS.join(', ')} (got "${String(value)}")`
+    )
+  }
+  return value as TaskColor
 }
 
 function assertAllDay(value: unknown): boolean {
@@ -151,6 +163,7 @@ function rowToTask(row: TaskRow): BoardTask {
     notes: row.notes,
     status: row.status as TaskStatus,
     kind: row.kind as TaskKind,
+    color: row.color as TaskColor,
     dueAt: row.due_at,
     allDay: row.all_day === 1,
     sortOrder: row.sort_order,
@@ -360,6 +373,7 @@ export function createBoardRepo(db: Database): BoardRepo {
       }
       const status = input.status === undefined ? 'todo' : assertStatus(input.status)
       const kind = input.kind === undefined ? 'task' : assertKind(input.kind)
+      const color = input.color === undefined ? 'none' : assertColor(input.color)
       const notes = input.notes ?? ''
       if (typeof notes !== 'string') {
         throw new ValidationError('notes must be a string')
@@ -375,6 +389,7 @@ export function createBoardRepo(db: Database): BoardRepo {
         notes,
         status,
         kind,
+        color,
         dueAt,
         allDay,
         sortOrder: nextSortOrder(courseId, status),
@@ -383,9 +398,9 @@ export function createBoardRepo(db: Database): BoardRepo {
       }
       db.prepare(
         `INSERT INTO board_tasks
-           (id, course_id, title, notes, status, kind, due_at, all_day,
+           (id, course_id, title, notes, status, kind, color, due_at, all_day,
             sort_order, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         task.id,
         courseId,
@@ -393,6 +408,7 @@ export function createBoardRepo(db: Database): BoardRepo {
         notes,
         status,
         kind,
+        color,
         dueAt,
         allDay ? 1 : 0,
         task.sortOrder,
@@ -413,6 +429,7 @@ export function createBoardRepo(db: Database): BoardRepo {
       }
       const status = input.status === undefined ? (row.status as TaskStatus) : assertStatus(input.status)
       const kind = input.kind === undefined ? (row.kind as TaskKind) : assertKind(input.kind)
+      const color = input.color === undefined ? (row.color as TaskColor) : assertColor(input.color)
       const allDay =
         input.allDay === undefined ? row.all_day === 1 : assertAllDay(input.allDay)
       const dueAt =
@@ -444,16 +461,17 @@ export function createBoardRepo(db: Database): BoardRepo {
       const now = nowIso()
       db.prepare(
         `UPDATE board_tasks
-         SET title = ?, notes = ?, status = ?, kind = ?, due_at = ?, all_day = ?,
+         SET title = ?, notes = ?, status = ?, kind = ?, color = ?, due_at = ?, all_day = ?,
              sort_order = ?, course_id = ?, updated_at = ?
          WHERE id = ?`
-      ).run(title, notes, status, kind, dueAt, allDay ? 1 : 0, sortOrder, courseId, now, row.id)
+      ).run(title, notes, status, kind, color, dueAt, allDay ? 1 : 0, sortOrder, courseId, now, row.id)
       return rowToTask({
         ...row,
         title,
         notes,
         status,
         kind,
+        color,
         due_at: dueAt,
         all_day: allDay ? 1 : 0,
         sort_order: sortOrder,

@@ -5,6 +5,17 @@
 
 export type TaskStatus = 'todo' | 'in-progress' | 'done'
 
+export const TASK_COLORS = [
+  'none',
+  'red',
+  'orange',
+  'yellow',
+  'green',
+  'blue',
+  'violet'
+] as const
+export type TaskColor = (typeof TASK_COLORS)[number]
+
 /**
  * What the entry represents on the calendar.
  *
@@ -22,6 +33,8 @@ export interface BoardTask {
   notes: string
   status: TaskStatus
   kind: TaskKind
+  /** Optional personal label color, independent of course/status colors. */
+  color: TaskColor
   /** `allDay`가 true면 시간대 무관 `YYYY-MM-DD`, false면 ISO instant. */
   dueAt: string | null
   /** True when `dueAt` marks a whole day rather than a moment. */
@@ -37,6 +50,7 @@ export interface CreateTaskInput {
   notes?: string
   status?: TaskStatus
   kind?: TaskKind
+  color?: TaskColor
   dueAt?: string | null
   allDay?: boolean
 }
@@ -47,6 +61,7 @@ export interface UpdateTaskInput {
   notes?: string
   status?: TaskStatus
   kind?: TaskKind
+  color?: TaskColor
   dueAt?: string | null
   allDay?: boolean
   sortOrder?: number

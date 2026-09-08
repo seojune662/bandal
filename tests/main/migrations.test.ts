@@ -49,7 +49,8 @@ describe('migrations', () => {
       { version: 26, name: 'agent-usage-ledger' },
       { version: 27, name: 'whiteboard-shared-assets' },
       { version: 28, name: 'typed-material-links' },
-      { version: 29, name: 'friends-direct-chat-and-course-sharing-cache' }
+      { version: 29, name: 'friends-direct-chat-and-course-sharing-cache' },
+      { version: 30, name: 'board-task-colors' }
     ])
   })
 
@@ -219,7 +220,34 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(29)
+    expect(count.n).toBe(30)
+  })
+
+  test('adds a persistent default color to existing board tasks (migration 030)', () => {
+    const columns = ctx.db
+      .prepare('PRAGMA table_info(board_tasks)')
+      .all() as { name: string; notnull: number; dflt_value: string | null }[]
+
+    expect(columns).toContainEqual(
+      expect.objectContaining({
+        name: 'color',
+        notnull: 1,
+        dflt_value: "'none'"
+      })
+    )
+
+    const now = new Date().toISOString()
+    ctx.db.prepare(
+      `INSERT INTO board_tasks
+         (id, title, notes, status, kind, due_at, all_day, sort_order,
+          created_at, updated_at)
+       VALUES ('legacy-color', 'Legacy', '', 'todo', 'task', NULL, 0, 0, ?, ?)`
+    ).run(now, now)
+
+    const row = ctx.db
+      .prepare('SELECT color FROM board_tasks WHERE id = ?')
+      .get('legacy-color') as { color: string }
+    expect(row.color).toBe('none')
   })
 
   test('adds desktop conversation surface, grants, and audit (migration 022)', () => {
