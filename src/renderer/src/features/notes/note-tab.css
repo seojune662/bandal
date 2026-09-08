@@ -218,8 +218,8 @@
   width: 100%;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-5) var(--space-6) var(--space-8);
+  gap: 2px;
+  padding: var(--space-1) var(--space-2) var(--space-4);
 }
 
 .page-note-paper {
@@ -266,6 +266,16 @@
   overscroll-behavior: auto;
 }
 
+.note-tab .page-note-paper .milkdown .editor {
+  padding: var(--space-5) var(--space-4);
+  font-size: calc(var(--text-sm) * var(--note-font-scale));
+  line-height: 1.65;
+}
+
+.note-tab .page-note-paper .milkdown .note-editor-placeholder::before {
+  content: none;
+}
+
 .page-note-paper .note-editor-shell,
 .page-note-paper .note-editor-shell > [data-milkdown-root],
 .page-note-paper .note-editor-shell .milkdown {
@@ -277,22 +287,17 @@
 .page-note-paper__preview {
   min-height: 100%;
   color: var(--text-secondary);
-  font-size: calc(var(--text-base) * var(--note-font-scale));
-  line-height: 1.75;
+  font-size: calc(var(--text-sm) * var(--note-font-scale));
+  line-height: 1.65;
   overflow-wrap: anywhere;
   cursor: text;
 }
 
-.page-note-paper__empty,
 .page-note-paper__fallback {
   display: block;
   margin: 0;
-  padding: var(--space-7) var(--space-6);
+  padding: var(--space-5) var(--space-4);
   white-space: pre-wrap;
-}
-
-.page-note-paper__empty {
-  color: var(--text-muted);
 }
 
 .page-note-paper__render,
@@ -302,10 +307,7 @@
 }
 
 .page-note-paper__render[aria-busy='true']::before {
-  display: block;
-  padding: var(--space-7) var(--space-6);
-  color: var(--text-muted);
-  content: '미리보기 준비 중…';
+  content: none;
 }
 
 .page-note-appendix {

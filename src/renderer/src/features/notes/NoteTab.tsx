@@ -164,12 +164,10 @@ function pageNotePreviewCodec(): Promise<MarkdownCodec> {
  */
 function PageNotePreview({
   courseId,
-  markdown,
-  emptyLabel = '눌러서 이 페이지에 필기하세요.'
+  markdown
 }: {
   courseId: string
   markdown: string
-  emptyLabel?: string
 }): JSX.Element {
   const renderHostRef = useRef<HTMLDivElement>(null)
   const isEmpty = markdown.trim().length === 0
@@ -219,9 +217,7 @@ function PageNotePreview({
 
   return (
     <div className="page-note-paper__preview">
-      {isEmpty ? (
-        <span className="page-note-paper__empty">{emptyLabel}</span>
-      ) : (
+      {!isEmpty && (
         <div ref={renderHostRef} className="page-note-paper__render" />
       )}
     </div>
@@ -506,7 +502,7 @@ function NoteEditorWorkspace({
   )
 }
 
-function PageNoteWorkspace({
+export function PageNoteWorkspace({
   courseId,
   relPath,
   document,
@@ -650,42 +646,60 @@ function PageNoteWorkspace({
     )
   }
 
+  // The page-note toolbar calls Milkdown's useInstance(). Keep the toolbar and
+  // whichever page is currently editable inside one provider. Previously each
+  // page wrapped only MilkdownNoteEditor, leaving the toolbar outside the
+  // context and crashing the whole renderer whenever a page-note tab was
+  // restored at startup.
   return (
-    <div ref={scrollerRef} className="note-editor-scroll page-note-scroll" onScroll={handleScroll}>
-      <NoteToolbar
-        courseId={courseId}
-        relPath={relPath}
-        formatState={formatState}
-        fontScale={fontScale}
-        onFontScaleChange={onFontScaleChange}
-      />
-      <div className="page-note-list">
-        {pages.map((markdown, index) => {
-          const page = index + 1
-          const size = document.manifest.pages[index] ?? { width: 1, height: Math.SQRT2 }
-          const isActive = activePage === page
-          return (
-            <section
-              key={page}
-              ref={(element) => {
-                if (element === null) pageRefs.current.delete(page)
-                else pageRefs.current.set(page, element)
-              }}
-              className="page-note-paper"
-              data-active={isActive || undefined}
-              style={{ aspectRatio: `${size.width} / ${size.height}` }}
-              aria-label={`${page} 페이지 필기`}
-              onMouseDown={(event) => {
-                const target = event.target
-                if (target instanceof Element && target.closest('a[href]') !== null) return
-                setActivePage(page)
-              }}
-            >
-              <span className="page-note-paper__number">{page}</span>
-              <div className="page-note-paper__body">
-                {isActive ? (
-                  <MilkdownProvider key={page}>
+    <MilkdownProvider>
+      <div
+        ref={scrollerRef}
+        className="note-editor-scroll page-note-scroll"
+        onScroll={handleScroll}
+      >
+        <NoteToolbar
+          courseId={courseId}
+          relPath={relPath}
+          formatState={formatState}
+          fontScale={fontScale}
+          onFontScaleChange={onFontScaleChange}
+        />
+        <div className="page-note-list">
+          {pages.map((markdown, index) => {
+            const page = index + 1
+            const size = document.manifest.pages[index] ?? {
+              width: 1,
+              height: Math.SQRT2
+            }
+            const isActive = activePage === page
+            return (
+              <section
+                key={page}
+                ref={(element) => {
+                  if (element === null) pageRefs.current.delete(page)
+                  else pageRefs.current.set(page, element)
+                }}
+                className="page-note-paper"
+                data-active={isActive || undefined}
+                style={{ aspectRatio: `${size.width} / ${size.height}` }}
+                aria-label={`${page} 페이지 필기`}
+                onMouseDown={(event) => {
+                  const target = event.target
+                  if (
+                    target instanceof Element &&
+                    target.closest('a[href]') !== null
+                  ) {
+                    return
+                  }
+                  setActivePage(page)
+                }}
+              >
+                <span className="page-note-paper__number">{page}</span>
+                <div className="page-note-paper__body">
+                  {isActive ? (
                     <MilkdownNoteEditor
+                      key={page}
                       courseId={courseId}
                       relPath={relPath}
                       initialMarkdown={markdown}
@@ -693,31 +707,35 @@ function PageNoteWorkspace({
                       onFormatStateChange={setFormatState}
                       onZoomStep={onZoomStep}
                     />
-                  </MilkdownProvider>
-                ) : (
-                  <PageNotePreview courseId={courseId} markdown={markdown} />
-                )}
-              </div>
-            </section>
-          )
-        })}
-        {document.appendix.length > 0 && (
-          <section
-            className="page-note-appendix"
-            data-active={activePage === 0 || undefined}
-            onMouseDown={(event) => {
-              const target = event.target
-              if (target instanceof Element && target.closest('a[href]') !== null) return
-              setActivePage(0)
-            }}
-          >
-            <header>
-              <strong>연결 제외된 페이지</strong>
-              <span>PDF에서 사라진 페이지의 필기를 보존했습니다.</span>
-            </header>
-            {activePage === 0 ? (
-              <MilkdownProvider key="appendix">
+                  ) : (
+                    <PageNotePreview courseId={courseId} markdown={markdown} />
+                  )}
+                </div>
+              </section>
+            )
+          })}
+          {document.appendix.length > 0 && (
+            <section
+              className="page-note-appendix"
+              data-active={activePage === 0 || undefined}
+              onMouseDown={(event) => {
+                const target = event.target
+                if (
+                  target instanceof Element &&
+                  target.closest('a[href]') !== null
+                ) {
+                  return
+                }
+                setActivePage(0)
+              }}
+            >
+              <header>
+                <strong>연결 제외된 페이지</strong>
+                <span>PDF에서 사라진 페이지의 필기를 보존했습니다.</span>
+              </header>
+              {activePage === 0 ? (
                 <MilkdownNoteEditor
+                  key="appendix"
                   courseId={courseId}
                   relPath={relPath}
                   initialMarkdown={document.appendix}
@@ -725,18 +743,17 @@ function PageNoteWorkspace({
                   onFormatStateChange={setFormatState}
                   onZoomStep={onZoomStep}
                 />
-              </MilkdownProvider>
-            ) : (
-              <PageNotePreview
-                courseId={courseId}
-                markdown={document.appendix}
-                emptyLabel="보존된 필기가 없습니다."
-              />
-            )}
-          </section>
-        )}
+              ) : (
+                <PageNotePreview
+                  courseId={courseId}
+                  markdown={document.appendix}
+                />
+              )}
+            </section>
+          )}
+        </div>
       </div>
-    </div>
+    </MilkdownProvider>
   )
 }
 
