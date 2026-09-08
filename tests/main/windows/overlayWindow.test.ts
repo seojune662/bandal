@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+
+const nativePlatform = process.platform
 
 const electronMocks = vi.hoisted(() => {
   const win = {
@@ -30,8 +32,13 @@ import { createOrbWindow } from '../../../src/main/windows/overlayWindow'
 
 describe('createOrbWindow', () => {
   beforeEach(() => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
     vi.clearAllMocks()
     electronMocks.options = null
+  })
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: nativePlatform })
   })
 
   test('creates the pass-through base window before controller height expansion', () => {
