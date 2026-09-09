@@ -9,6 +9,8 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { createGmailService } from '../features/mail/gmailService'
+import { createPresentationService } from '../features/presentation/presentationService'
 import {
   accessSync,
   constants as fsConstants,
@@ -332,6 +334,15 @@ function screenPermissionState(access: ScreenAccess): ScreenPermissionState {
 }
 
 export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
+  const mail = createGmailService(app.getPath('userData'))
+  handle('mail:state', () => mail.state())
+  handle('mail:connect', () => mail.connect())
+  handle('mail:cancelConnect', () => { mail.cancelConnect(); return OK })
+  handle('mail:disconnect', async () => { await mail.disconnect(); return OK })
+  handle('mail:list', (req) => mail.list(req))
+  handle('mail:read', (req) => mail.read(req.id))
+  handle('mail:modify', async (req) => { await mail.modify(req); return OK })
+  handle('mail:reply', async (req) => { await mail.reply(req); return OK })
   const db = getDatabase()
   const usageRepo = createUsageRepo(db)
   const setSettings = deps.setSettings ?? persistSettings
@@ -814,6 +825,19 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     listAnnotations: (courseId, relPath) =>
       annotationsRepo.listForFile({ courseId, relPath })
   })
+  const presentations = createPresentationService({
+    userData: app.getPath('userData'), materials: materialsRepo, exporter: pdfExporter,
+    changed: (courseId) => { materialsRepo.invalidateTree(courseId); broadcast('materials:changed', { courseId }) }
+  })
+  handle('presentation:runtime', () => presentations.runtime.getState())
+  handle('presentation:installRuntime', () => presentations.runtime.install())
+  handle('presentation:cancelRuntime', () => { presentations.runtime.cancelInstall(); return OK })
+  handle('presentation:prepare', (req) => presentations.prepare(req))
+  handle('presentation:cancelPrepare', (req) => { presentations.runtime.cancel(req.requestId); return OK })
+  handle('presentation:pdfStart', (req) => presentations.start(req))
+  handle('presentation:pdfPage', async (req) => { await presentations.append(req); return OK })
+  handle('presentation:pdfFinish', (req) => presentations.finish(req.sessionId))
+  handle('presentation:pdfCancel', async (req) => { await presentations.cancel(req.sessionId); return OK })
   // -- printing ---------------------------------------------------------------
   handle('print:pdf', async (req) => {
     const bytes = Buffer.from(req.base64, 'base64')

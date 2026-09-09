@@ -1027,6 +1027,15 @@ export const migrations: Migration[] = [
         )
       }
     }
+  },
+  {
+    version: 31,
+    name: 'friend-conversation-previews',
+    up: (db) => {
+      const columns = new Set((db.prepare('PRAGMA table_info(friends_cache)').all() as { name: string }[]).map((column) => column.name))
+      if (!columns.has('last_message_preview')) db.exec('ALTER TABLE friends_cache ADD COLUMN last_message_preview TEXT')
+      if (!columns.has('last_message_at')) db.exec('ALTER TABLE friends_cache ADD COLUMN last_message_at TEXT')
+    }
   }
 ]
 

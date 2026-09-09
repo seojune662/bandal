@@ -1,6 +1,7 @@
 /** Burn stored annotations and drawings into a new PDF without touching the source. */
 
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import fontkit from '@pdf-lib/fontkit'
@@ -34,7 +35,7 @@ import type {
   TextAlign
 } from '../../../shared/types/drawing'
 import { ValidationError } from '../../db/errors'
-import { requireId, requireNonEmptyString, resolveInside } from '../../db/validate'
+import { requireId, requireNonEmptyString, resolveInside, resolveInsideReal } from '../../db/validate'
 import {
   layoutTextboxLines,
   usedTextboxFaces,
@@ -336,14 +337,15 @@ async function canonicalPath(path: string): Promise<string> {
   }
 }
 
-function resolveDefaultFontPath(file: TextboxFontFile): string {
+export function resolveDefaultFontPath(file: TextboxFontFile): string {
   // Keep Electron out of the module graph until the default is actually used.
   // Vitest imports this module in plain Node and supplies resolveFontPath.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { app } = require('electron') as typeof import('electron')
-  return app.isPackaged
-    ? join(process.resourcesPath, 'fonts', file)
-    : join(app.getAppPath(), 'resources', 'fonts', file)
+  if (app.isPackaged) return join(process.resourcesPath, 'fonts', file)
+  const devPath = join(app.getAppPath(), 'resources', 'fonts', file)
+  // Launching the built main entry directly sets appPath to out/main.
+  return existsSync(devPath) ? devPath : resolve(__dirname, '../../resources/fonts', file)
 }
 
 export interface PdfExporterDeps {
@@ -356,6 +358,7 @@ export interface PdfExporterDeps {
 
 export function createPdfExporter(deps: PdfExporterDeps): {
   exportAnnotated(input: ExportAnnotatedPdfInput, savePath: string): Promise<void>
+  annotateDocument(pdf: PDFDocument, input: ExportAnnotatedPdfInput): Promise<void>
 } {
   const fontBytes = new Map<TextboxFontFile, Promise<Uint8Array>>()
 
@@ -408,7 +411,48 @@ export function createPdfExporter(deps: PdfExporterDeps): {
     }
   }
 
+  async function annotateDocument(pdf: PDFDocument, input: ExportAnnotatedPdfInput): Promise<void> {
+    const { courseId, relPath } = input
+    const pages = pdf.getPages()
+    const annotations = deps.listAnnotations(courseId, relPath)
+    const drawings = deps.listDrawings(courseId, relPath)
+    const textboxes = drawings.filter((drawing) => drawing.kind === 'textbox')
+    const fonts = textboxes.length > 0 ? await embedTextboxFonts(pdf, textboxes) : null
+
+    for (const annotation of annotations) {
+      const page = pages[annotation.page - 1]
+      if (page === undefined) continue
+      const { width, height } = page.getSize()
+      drawAnnotation(page, annotation, width, height)
+    }
+    for (const drawing of drawings) {
+      const page = pages[drawing.page - 1]
+      if (page === undefined) continue
+      const { width, height } = page.getSize()
+      if (drawing.kind === 'ink' || drawing.kind === 'highlighter') {
+        drawInk(page, drawing, width, height)
+      } else if (drawing.kind === 'rect' || drawing.kind === 'ellipse') {
+        if (drawing.data.box !== undefined) {
+          drawBoxShape(page, drawing, drawing.data.box, width, height)
+        }
+      } else if (drawing.kind === 'line' || drawing.kind === 'arrow') {
+        drawStraightLine(page, drawing, width, height)
+      } else if (drawing.kind === 'image' && drawing.data.image && drawing.data.box) {
+        const canonicalImage = resolveInsideReal(deps.getCourseFolder(courseId), drawing.data.image.relPath)
+        const { nativeImage } = await import('electron')
+        const png = nativeImage.createFromBuffer(await readFile(canonicalImage)).toPNG()
+        const image = await pdf.embedPng(png)
+        const box = drawing.data.box
+        page.drawImage(image, { x: box.x * width, y: (1 - box.y - box.height) * height, width: box.width * width, height: box.height * height, opacity: drawing.style.opacity })
+      } else if (drawing.kind === 'textbox' && fonts !== null && drawing.data.box !== undefined) {
+        drawTextbox(page, drawing, drawing.data.box, fonts, width, height)
+      }
+    }
+
+  }
+
   return {
+    annotateDocument,
     async exportAnnotated(input, savePathInput) {
       const courseId = requireId(input.courseId, 'courseId')
       const relPath = requireNonEmptyString(input.relPath, 'relPath')
@@ -425,35 +469,7 @@ export function createPdfExporter(deps: PdfExporterDeps): {
       }
 
       const pdf = await PDFDocument.load(await readFile(sourcePath))
-      const pages = pdf.getPages()
-      const annotations = deps.listAnnotations(courseId, relPath)
-      const drawings = deps.listDrawings(courseId, relPath)
-      const textboxes = drawings.filter((drawing) => drawing.kind === 'textbox')
-      const fonts = textboxes.length > 0 ? await embedTextboxFonts(pdf, textboxes) : null
-
-      for (const annotation of annotations) {
-        const page = pages[annotation.page - 1]
-        if (page === undefined) continue
-        const { width, height } = page.getSize()
-        drawAnnotation(page, annotation, width, height)
-      }
-      for (const drawing of drawings) {
-        const page = pages[drawing.page - 1]
-        if (page === undefined) continue
-        const { width, height } = page.getSize()
-        if (drawing.kind === 'ink' || drawing.kind === 'highlighter') {
-          drawInk(page, drawing, width, height)
-        } else if (drawing.kind === 'rect' || drawing.kind === 'ellipse') {
-          if (drawing.data.box !== undefined) {
-            drawBoxShape(page, drawing, drawing.data.box, width, height)
-          }
-        } else if (drawing.kind === 'line' || drawing.kind === 'arrow') {
-          drawStraightLine(page, drawing, width, height)
-        } else if (fonts !== null && drawing.data.box !== undefined) {
-          drawTextbox(page, drawing, drawing.data.box, fonts, width, height)
-        }
-      }
-
+      await annotateDocument(pdf, input)
       // Write beside the destination then atomically replace it. Besides avoiding
       // partial PDFs, this cannot follow a destination symlink/hardlink back to
       // the source file.

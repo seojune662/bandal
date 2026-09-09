@@ -606,26 +606,13 @@ export async function selectFriends(
     }
   }
 
-  const unreadByPeer = new Map<string, number>()
-  const { data: directData, error: directError } = await client
-    .from('group_members')
-    .select('last_read_seq, study_groups!inner(kind, direct_key, last_msg_seq, deleted_at)')
-    .eq('user_id', myUserId)
-    .is('left_at', null)
+  const directByPeer = new Map<string, Json>()
+  const { data: directData, error: directError } = await client.rpc('direct_chat_summaries')
   if (directError !== null) throw directError
   if (Array.isArray(directData)) {
     for (const raw of directData) {
       const row = asRecord(raw)
-      const embedded = row['study_groups']
-      const group = asRecord(Array.isArray(embedded) ? embedded[0] : embedded)
-      if (group['kind'] !== 'direct' || group['deleted_at'] !== null) continue
-      const pair = str(group['direct_key']).split(':')
-      const peerId = pair.find((id) => id !== myUserId)
-      if (peerId === undefined) continue
-      unreadByPeer.set(
-        peerId,
-        Math.max(0, num(group['last_msg_seq']) - num(row['last_read_seq']))
-      )
+      directByPeer.set(str(row['peer_id']), row)
     }
   }
 
@@ -640,7 +627,10 @@ export async function selectFriends(
       avatarEmoji: str(profile['avatar_emoji'], '🌙'),
       status: str(row['status']) === 'accepted' ? 'accepted' : 'pending',
       direction: str(row['requested_by']) === myUserId ? 'outgoing' : 'incoming',
-      unread: unreadByPeer.get(otherId) ?? 0
+      unread: num(directByPeer.get(otherId)?.['unread']),
+      hasUnread: num(directByPeer.get(otherId)?.['unread']) > 0,
+      lastMessagePreview: nullableStr(directByPeer.get(otherId)?.['last_message_preview']),
+      lastMessageAt: nullableStr(directByPeer.get(otherId)?.['last_message_at'])
     }
   })
 }

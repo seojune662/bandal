@@ -4,6 +4,12 @@
  * in every ordinary markdown editor.
  */
 
+import type { TabDescriptor } from './tabs'
+
+export function isPageNoteSource(descriptor: TabDescriptor): descriptor is Extract<TabDescriptor, { kind: 'pdf' | 'file' }> {
+  return descriptor.kind === 'pdf' || (descriptor.kind === 'file' && /\.pptx?$/i.test(descriptor.payload.relPath))
+}
+
 export interface PdfPageSize {
   width: number
   height: number

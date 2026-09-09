@@ -214,6 +214,6 @@ describe('createMaterialLinksRepo', () => {
         fingerprint: '',
         pageSizes: [{ width: 1, height: 1 }]
       }
-    })).toThrow(/pdf-page-note must point from a PDF to a note/)
+    })).toThrow(/page notes must point from a PDF or presentation to a note/)
   })
 })

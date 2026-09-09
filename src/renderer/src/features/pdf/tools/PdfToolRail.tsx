@@ -17,6 +17,8 @@ interface PdfToolRailProps {
   courseId: string
   relPath: string
   drawingsApi: DrawingsApi
+  onExport?: () => Promise<void>
+  interactive?: boolean
 }
 
 interface ToolButton {
@@ -83,7 +85,9 @@ function isEditableTarget(target: EventTarget | null): boolean {
 export function PdfToolRail({
   courseId,
   relPath,
-  drawingsApi
+  drawingsApi,
+  onExport,
+  interactive = true
 }: PdfToolRailProps): JSX.Element {
   const activeTool = usePdfToolStore((state) => state.activeTool)
   const color = usePdfToolStore((state) => state.color)
@@ -133,6 +137,7 @@ export function PdfToolRail({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!interactive) return
       if (isEditableTarget(event.target)) return
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
         event.preventDefault()
@@ -149,13 +154,14 @@ export function PdfToolRail({
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [drawingsApi, setActiveTool])
+  }, [drawingsApi, setActiveTool, interactive])
 
   const exportPdf = async (): Promise<void> => {
     if (exporting) return
     setExporting(true)
     setExportMessage(null)
     try {
+      if (onExport) { await onExport(); return }
       const result = await invoke('pdf:exportAnnotated', { courseId, relPath })
       setExportMessage(result.savedPath === null ? null : '주석 포함 PDF를 저장했어요.')
     } catch (error: unknown) {

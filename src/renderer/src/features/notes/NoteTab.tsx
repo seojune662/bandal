@@ -1480,7 +1480,7 @@ function NoteSession({
   const openPageNotePair = useCallback((): void => {
     if (
       pageNoteConnection === null ||
-      pageNoteConnection.source.kind !== 'pdf' ||
+      !(pageNoteConnection.source.kind === 'pdf' || pageNoteConnection.source.kind === 'file') ||
       pageNoteConnection.target.kind !== 'note'
     ) return
     useWorkspaceStore.getState().openPdfNotePair(

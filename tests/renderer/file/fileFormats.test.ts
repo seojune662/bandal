@@ -9,7 +9,7 @@ describe('viewerKindFor (문서 형식 라우팅)', () => {
     expect(viewerKindFor('강의/1주차.pptx')).toBe('slides')
     expect(viewerKindFor('과제/보고서.hwp')).toBe('hwp')
     expect(viewerKindFor('과제/보고서.HWPX')).toBe('hwp')
-    expect(viewerKindFor('옛자료/구형.ppt')).toBe('preview')
+    expect(viewerKindFor('옛자료/구형.ppt')).toBe('slides')
     expect(viewerKindFor('노트/메모.docx')).toBe('docx')
     expect(viewerKindFor('표/성적.xlsx')).toBe('sheet')
   })

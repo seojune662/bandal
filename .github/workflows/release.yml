@@ -180,13 +180,17 @@ jobs:
           # Public origin only; server credentials must never reach this build.
           # Leave unset until the marketplace service is deployed and verified.
           MAIN_VITE_MARKETPLACE_URL: ${{ vars.MAIN_VITE_MARKETPLACE_URL }}
+          # Dedicated Google Desktop OAuth app. Empty = safe unconfigured UI.
+          MAIN_VITE_GMAIL_CLIENT_ID: ${{ secrets.MAIN_VITE_GMAIL_CLIENT_ID }}
+          MAIN_VITE_GMAIL_VERIFIED: ${{ vars.MAIN_VITE_GMAIL_VERIFIED }}
 
       # The failure above was invisible: nothing errored, a feature just went
       # missing. Assert the inlining actually happened so it can never ship
       # quietly again. Never prints the values.
-      - name: Assert the Supabase config was inlined
+      - name: Assert required app configuration was inlined
         env:
           MAIN_VITE_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
+          MAIN_VITE_GMAIL_CLIENT_ID: ${{ secrets.MAIN_VITE_GMAIL_CLIENT_ID }}
         run: |
           # Exact match against the secret, not a /supabase\.co/ substring.
           # @supabase/supabase-js ships ~200 placeholder URLs of its own
@@ -204,7 +208,16 @@ jobs:
               console.error('::error::the configured Supabase URL is not in out/main/index.js - check the env block on the pnpm build step.');
               process.exit(1);
             }
-            console.log('Supabase config inlined (exact match).');
+            const gmailClientId = (process.env.MAIN_VITE_GMAIL_CLIENT_ID || '').trim();
+            if (gmailClientId === '') {
+              console.error('::error::secret MAIN_VITE_GMAIL_CLIENT_ID is empty - the native mail widget cannot connect.');
+              process.exit(1);
+            }
+            if (!s.includes(gmailClientId)) {
+              console.error('::error::the configured Gmail client ID is not in out/main/index.js - check the env block on the pnpm build step.');
+              process.exit(1);
+            }
+            console.log('Required build configuration inlined (exact match).');
           "
 
       # --- macOS signing -------------------------------------------------

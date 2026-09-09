@@ -63,7 +63,20 @@ function errorMessage(error: unknown): string {
     : '그룹 채팅을 여는 중 문제가 발생했습니다.'
 }
 
-export function useGroupChat(groupId: string): GroupChatApi {
+export function useGroupChat(groupId: string, readable = true): GroupChatApi {
+  const [focused, setFocused] = useState(() => typeof document !== 'undefined' && document.hasFocus() && !document.hidden)
+  const [readRetry, setReadRetry] = useState(0)
+  useEffect(() => {
+    const update = (): void => setFocused(document.hasFocus() && !document.hidden)
+    window.addEventListener('focus', update)
+    window.addEventListener('blur', update)
+    document.addEventListener('visibilitychange', update)
+    return () => {
+      window.removeEventListener('focus', update)
+      window.removeEventListener('blur', update)
+      document.removeEventListener('visibilitychange', update)
+    }
+  }, [])
   const [state, setState] = useState<GroupChatViewState>(initialGroupChatState)
   const [phase, setPhase] = useState<GroupChatPhase>('loading')
   const [group, setGroup] = useState<GroupSummary | null>(null)
@@ -172,19 +185,25 @@ export function useGroupChat(groupId: string): GroupChatApi {
 
   // Read receipts: debounced, monotonic, and never sent while hydrating.
   useEffect(() => {
-    if (phase !== 'ready' || state.lastSeq <= markedSeqRef.current) return
+    if (!readable || !focused || phase !== 'ready' || state.lastSeq <= markedSeqRef.current) return
     if (markReadTimerRef.current !== null) {
       window.clearTimeout(markReadTimerRef.current)
     }
     const seq = state.lastSeq
+    let cancelled = false
     markReadTimerRef.current = window.setTimeout(() => {
       markReadTimerRef.current = null
-      markedSeqRef.current = seq
-      void invoke('groupChat:markRead', { groupId, seq }).catch(() => {
-        // Convergent: the server takes greatest(), so a lost call self-heals.
+      void invoke('groupChat:markRead', { groupId, seq }).then(() => {
+        if (!cancelled && aliveRef.current) markedSeqRef.current = Math.max(markedSeqRef.current, seq)
+      }).catch(() => {
+        if (!cancelled && aliveRef.current) markReadTimerRef.current = window.setTimeout(() => setReadRetry((n) => n + 1), 5000)
       })
     }, MARK_READ_DEBOUNCE_MS)
-  }, [groupId, phase, state.lastSeq])
+    return () => {
+      cancelled = true
+      if (markReadTimerRef.current !== null) window.clearTimeout(markReadTimerRef.current)
+    }
+  }, [groupId, phase, state.lastSeq, readable, focused, readRetry])
 
   // Rate-limit countdown for the composer's "조금만 천천히 보내요" hint.
   useEffect(() => {

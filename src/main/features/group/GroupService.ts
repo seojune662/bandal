@@ -181,6 +181,7 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
    */
   function ingest(groupId: string, messages: readonly GroupMessage[]): void {
     if (messages.length === 0) return
+    const previousMaxSeq = deps.repo.maxSeq(groupId)
     deps.repo.upsertMessages(messages)
     for (const message of messages) {
       deps.emit(groupId, { type: 'message', message })
@@ -190,13 +191,14 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
       const existing = deps.repo.getGroup(groupId)
       if (existing !== null) {
         const incoming = messages.filter(
-          (message) => message.authorId !== deps.auth.userId()
+          (message) => message.seq > previousMaxSeq && message.kind === 'text' &&
+            !message.deleted && message.authorId !== deps.auth.userId()
         ).length
         const unread = existing.kind === 'direct'
           ? existing.unread + incoming
           : existing.unread
         deps.repo.setUnread(groupId, unread, newest.createdAt)
-        if (existing.kind === 'direct' && incoming > 0) deps.invalidate('profile')
+        if (existing.kind === 'direct') deps.invalidate('profile')
       }
     }
   }
@@ -590,7 +592,7 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
       // unread is defined server-side as `last_msg_seq - last_read_seq`, so
       // the cached max seq minus the cached unread reproduces it. Being
       // slightly stale is harmless — `mark_read()` takes greatest().
-      const lastReadSeq = Math.max(
+      const lastReadSeq = group?.kind === 'direct' ? 0 : Math.max(
         0,
         deps.repo.maxSeq(groupId) - (group?.unread ?? 0)
       )
@@ -653,21 +655,17 @@ export function createGroupService(deps: GroupServiceDeps): GroupService {
 
     async markRead(groupId, seq) {
       const summary = deps.repo.getGroup(groupId)
+      const client = deps.getClient()
+      if (client === null || deps.auth.userId() === null) throw new Error('읽음 상태를 저장하려면 연결이 필요해요.')
+      await rpc.rpcMarkRead(client, { groupId, seq })
       // Only broadcast when a badge actually cleared. markRead fires on every
       // scroll, and the renderer refetches on invalidation — an unconditional
       // broadcast would be a request per scroll frame.
-      if (summary !== null && summary.unread > 0) {
+      if (summary !== null && summary.unread > 0 && deps.repo.maxSeq(groupId) <= seq) {
         deps.repo.setUnread(groupId, 0, summary.lastMsgAt)
-        deps.invalidate(summary.kind === 'direct' ? 'profile' : 'unread')
+        if (summary.kind !== 'direct') deps.invalidate('unread')
       }
-      const client = deps.getClient()
-      if (client === null || deps.auth.userId() === null) return
-      try {
-        await rpc.rpcMarkRead(client, { groupId, seq })
-      } catch (error) {
-        // Read state is convergent: the next mark_read wins with greatest().
-        console.error('[group] markRead failed', error)
-      }
+      if (summary?.kind === 'direct') deps.invalidate('profile')
     },
 
     retry(localId) {

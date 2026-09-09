@@ -16,6 +16,7 @@ import { invoke } from '../../lib/ipc'
 import { Icon } from '../../app/icons'
 import { BrowserIcon } from './browserIcons'
 import { useDownloads, type BrowserDownload } from './downloadsStore'
+import { convertPresentationToPdf } from '../file/pptx/presentationJobs'
 
 function sizeLabel(bytes: number): string {
   if (bytes <= 0) return ''
@@ -138,6 +139,11 @@ export function BrowserDownloadsPanel({
                     </button>
                   </span>
                 ) : (
+                  <>
+                  {download.state === 'completed' && download.courseId !== null && download.relPath !== null && /\.pptx?$/i.test(download.relPath) && <button type="button" className="browser-downloads__action" onClick={() => {
+                    if (download.courseId === null || download.relPath === null) return
+                    onClose(); void convertPresentationToPdf({ courseId: download.courseId, relPath: download.relPath })
+                  }}>PDF로 변환</button>}
                   <button
                     type="button"
                     className="browser-downloads__action"
@@ -146,6 +152,7 @@ export function BrowserDownloadsPanel({
                   >
                     <Icon name="x" />
                   </button>
+                  </>
                 )}
               </li>
             )

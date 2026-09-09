@@ -16,6 +16,7 @@ import {
   useImperativeHandle,
   useLayoutEffect,
   useRef,
+  useId,
   type KeyboardEvent
 } from 'react'
 import type { GroupConnectionState } from '../../../../shared/types/group'
@@ -63,6 +64,7 @@ export const GroupComposer = forwardRef<GroupComposerHandle, GroupComposerProps>
     ref
   ) {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
+    const inputId = useId()
 
     useImperativeHandle(ref, () => ({
       focus: () => textareaRef.current?.focus()
@@ -104,11 +106,12 @@ export const GroupComposer = forwardRef<GroupComposerHandle, GroupComposerProps>
             <span>노트 공유</span>
           </button>
         )}
-        <label className="sr-only" htmlFor="group-composer-input">
+        <label className="sr-only" htmlFor={inputId}>
           메시지 입력
         </label>
         <textarea
-          id="group-composer-input"
+          id={inputId}
+          disabled={disabled}
           ref={textareaRef}
           className="group-composer__input"
           rows={1}

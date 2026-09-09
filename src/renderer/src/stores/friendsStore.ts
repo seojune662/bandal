@@ -17,6 +17,7 @@ interface FriendsState {
 let subscribed = false
 let initialization: Promise<void> | null = null
 let accountEpoch = 0
+let loadVersion = 0
 
 export const useFriendsStore = create<FriendsState>()((set, get) => ({
   friends: [],
@@ -56,13 +57,14 @@ export const useFriendsStore = create<FriendsState>()((set, get) => ({
   },
   load: async () => {
     const epoch = accountEpoch
+    const version = ++loadVersion
     set({ loading: true })
     try {
       const friends = await invoke('friends:list', {})
-      if (epoch !== accountEpoch) return
+      if (epoch !== accountEpoch || version !== loadVersion) return
       set({ friends, loading: false, error: null, initialized: true })
     } catch (error) {
-      if (epoch !== accountEpoch) return
+      if (epoch !== accountEpoch || version !== loadVersion) return
       set({
         loading: false,
         initialized: true,
@@ -89,6 +91,7 @@ export function resetFriendsStoreForTests(): void {
   subscribed = false
   initialization = null
   accountEpoch = 0
+  loadVersion = 0
   useFriendsStore.setState({
     friends: [],
     loading: false,

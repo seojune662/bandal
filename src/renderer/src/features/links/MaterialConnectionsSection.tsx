@@ -230,7 +230,7 @@ export function MaterialConnectionsSection({
   const openConnection = useCallback((row: ConnectionRow): void => {
     if (
       row.record.kind === 'pdf-page-note' &&
-      row.record.source.kind === 'pdf' &&
+      (row.record.source.kind === 'pdf' || row.record.source.kind === 'file') &&
       row.record.target.kind === 'note'
     ) {
       useWorkspaceStore.getState().openPdfNotePair(

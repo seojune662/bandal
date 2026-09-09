@@ -14,6 +14,8 @@ import type {
   SystemPermissionStatus,
   SystemPermissionsReport
 } from '../types/permissions'
+import type { MailIpcContract } from '../types/mail'
+import type { PresentationIpcContract } from '../types/presentation'
 import type { CatalogInstallResult, PluginCatalog } from '../types/pluginCatalog'
 import type { UsageSummary, UsageWindowDays } from '../types/usage'
 import type {
@@ -191,7 +193,7 @@ export type RunWorkflowPackStudyInput = Omit<RunStudyToolInput, 'tool'> & {
   followUpOf?: string
 }
 
-export interface IpcContract {
+export interface IpcContract extends MailIpcContract, PresentationIpcContract {
   // -- courses --------------------------------------------------------------
   'courses:list': {
     req: { includeArchived?: boolean }
@@ -1807,6 +1809,11 @@ export type IpcResponse<K extends IpcChannel> = IpcContract[K]['res']
  * here actually got a handler.
  */
 export const IPC_CHANNELS = [
+  'presentation:runtime', 'presentation:installRuntime', 'presentation:cancelRuntime',
+  'presentation:prepare', 'presentation:cancelPrepare', 'presentation:pdfStart',
+  'presentation:pdfPage', 'presentation:pdfFinish', 'presentation:pdfCancel',
+  'mail:state', 'mail:connect', 'mail:cancelConnect', 'mail:disconnect',
+  'mail:list', 'mail:read', 'mail:modify', 'mail:reply',
   'courses:list',
   'courses:create',
   'courses:pickFolder',

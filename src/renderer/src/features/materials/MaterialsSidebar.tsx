@@ -1136,9 +1136,9 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           }}
           onPageNote={() => {
             const target = contextMenu.target
-            if (course === null || target === null || target.kind !== 'pdf') return
+            if (course === null || target === null || (target.kind !== 'pdf' && !/\.pptx?$/i.test(target.relPath))) return
             useWorkspaceStore.getState().openTab(
-              descriptorFor('pdf', { courseId: course.id, relPath: target.relPath })
+              descriptorFor(target.kind === 'pdf' ? 'pdf' : 'file', { courseId: course.id, relPath: target.relPath })
             )
             requestOpenPdfPageNote({ courseId: course.id, relPath: target.relPath })
             setContextMenu(null)

@@ -15,7 +15,7 @@ import { useUiStore } from '../../stores/uiStore'
 import { useUniversityStore } from '../../stores/universityStore'
 import { dueDayLabel } from '../board/boardLogic'
 import { localDateKey } from '../calendar/calendarDate'
-import type { DidFailLoadEvent, WebviewTag } from '../browser/webviewTypes'
+import { NativeMailWidget } from './MailWidget'
 import './widgets.css'
 
 const LABELS: Record<WidgetId, string> = {
@@ -302,168 +302,9 @@ function MailWidget({ settings }: { settings: Settings }): JSX.Element {
         url: selected.url
       }
 
-  if (target === null) {
-    return <div className="widget-mail"><p>설정에서 학교 메일이나 URL을 연결해 주세요.</p></div>
-  }
-  return <EmbeddedMail target={target} />
+  return <NativeMailWidget fallback={target} />
 }
 
-function EmbeddedMail({ target }: {
-  target: { label: string; url: string }
-}): JSX.Element {
-  const webviewRef = useRef<WebviewTag | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [canGoBack, setCanGoBack] = useState(false)
-  const [canGoForward, setCanGoForward] = useState(false)
-  const [expanded, setExpanded] = useState(false)
-
-  const refreshNavigation = useCallback((): void => {
-    const webview = webviewRef.current
-    if (webview === null) return
-    try {
-      setCanGoBack(webview.canGoBack())
-      setCanGoForward(webview.canGoForward())
-    } catch {
-      setCanGoBack(false)
-      setCanGoForward(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    const webview = webviewRef.current
-    if (webview === null) return
-    const start = (): void => {
-      try {
-        if (!webview.isLoadingMainFrame()) return
-      } catch {
-        // The guest may not be attached on its very first load yet.
-      }
-      setLoading(true)
-      setError(null)
-    }
-    const stop = (): void => {
-      setLoading(false)
-      refreshNavigation()
-    }
-    const failed = (event: Event): void => {
-      const detail = event as DidFailLoadEvent
-      if (!detail.isMainFrame || detail.errorCode === -3) return
-      setLoading(false)
-      setError('메일을 불러오지 못했어요.')
-    }
-    const navigate = (): void => refreshNavigation()
-    webview.addEventListener('did-start-loading', start)
-    webview.addEventListener('did-stop-loading', stop)
-    webview.addEventListener('did-fail-load', failed)
-    webview.addEventListener('did-navigate', navigate)
-    webview.addEventListener('did-navigate-in-page', navigate)
-    void invoke('settings:set', {
-      widgets: { lastMailOpenedAt: new Date().toISOString() }
-    })
-    return () => {
-      webview.removeEventListener('did-start-loading', start)
-      webview.removeEventListener('did-stop-loading', stop)
-      webview.removeEventListener('did-fail-load', failed)
-      webview.removeEventListener('did-navigate', navigate)
-      webview.removeEventListener('did-navigate-in-page', navigate)
-    }
-  }, [refreshNavigation, target.url])
-
-  useEffect(() => {
-    if (!expanded) return
-    const collapseOnEscape = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      setExpanded(false)
-    }
-    window.addEventListener('keydown', collapseOnEscape)
-    return () => window.removeEventListener('keydown', collapseOnEscape)
-  }, [expanded])
-
-  return (
-    <div
-      className={`widget-mail widget-mail--embedded${expanded ? ' widget-mail--expanded' : ''}`}
-      data-expanded={expanded || undefined}
-    >
-      <header
-        className="widget-mail__toolbar"
-        onDoubleClick={() => setExpanded((current) => !current)}
-      >
-        <div className="widget-mail__identity">
-          <span className="widget-mail__status-dot" aria-hidden="true" />
-          <strong title={target.label}>{target.label}</strong>
-          <small>{expanded ? '넓은 메일함' : '간편 메일함'}</small>
-        </div>
-        <div className="widget-mail__actions">
-          <button type="button" aria-label="메일 뒤로" title="뒤로" disabled={!canGoBack} onClick={() => webviewRef.current?.goBack()}>
-            <Icon name="chevronLeft" />
-          </button>
-          <button type="button" aria-label="메일 앞으로" title="앞으로" disabled={!canGoForward} onClick={() => webviewRef.current?.goForward()}>
-            <Icon name="chevronRight" />
-          </button>
-          <button type="button" aria-label="메일 새로고침" title="새로고침" onClick={() => webviewRef.current?.reload()}>
-            <Icon name="refresh" />
-          </button>
-          <button
-            type="button"
-            aria-label={expanded ? '메일함 위젯으로 접기' : '메일함 넓히기'}
-            title={expanded ? '위젯으로 접기 (Esc)' : '앱 안에서 넓게 보기'}
-            aria-pressed={expanded}
-            onClick={() => setExpanded((current) => !current)}
-          >
-            <Icon name={expanded ? 'layoutRight' : 'layoutLeft'} />
-          </button>
-        </div>
-      </header>
-      <div
-        className="widget-mail__viewport"
-        data-loading={loading || undefined}
-        data-error={error === null ? undefined : 'true'}
-        data-presentation={expanded ? 'wide' : 'compact'}
-      >
-        <webview
-          ref={(element) => {
-            webviewRef.current = element as WebviewTag | null
-          }}
-          src={target.url}
-          partition="persist:browsing"
-          aria-label={`${target.label} 메일함`}
-          allowpopups={'' as unknown as boolean}
-        />
-        {loading && (
-          <div className="widget-mail__loading" role="status">
-            <span className="widget-mail__loading-icon" aria-hidden="true">
-              <Icon name="archive" />
-            </span>
-            <strong>메일함을 여는 중</strong>
-            <small>로그인 상태와 새 메일을 확인하고 있어요.</small>
-            <span className="widget-mail__loading-lines" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-          </div>
-        )}
-        {error !== null && (
-          <div className="widget-mail__error" role="alert">
-            <span className="widget-mail__error-icon" aria-hidden="true">
-              <Icon name="archive" />
-            </span>
-            <strong>{error}</strong>
-            <small>네트워크나 학교 메일 로그인 상태를 확인해 주세요.</small>
-            <div>
-              <button type="button" onClick={() => webviewRef.current?.reload()}>다시 시도</button>
-              {!expanded && (
-                <button type="button" onClick={() => setExpanded(true)}>넓게 보기</button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
 
 export function WidgetDock(): JSX.Element | null {
   const settings = useLiveSettings()

@@ -25,6 +25,9 @@
     "better-sqlite3-node"
   ],
   "ignoreBinaries": [
+    "initdb",
+    "pg_ctl",
+    "psql",
     "supabase",
     "iconutil",
     "where.exe"

@@ -11,7 +11,7 @@
  *     no `seq` yet — that is the honest position, not a styling choice (§4.4).
  */
 
-import { memo } from 'react'
+import { Fragment, memo } from 'react'
 import type { GroupMember } from '../../../../shared/types/group'
 import { Icon } from '../../app/icons'
 import { GroupAvatar } from './GroupAvatar'
@@ -50,9 +50,10 @@ function sameBurst(
     return false
   }
   if (previous.authorId !== current.authorId) return false
+  if (new Date(previous.createdAt).toDateString() !== new Date(current.createdAt).toDateString()) return false
   const gap =
     new Date(current.createdAt).getTime() - new Date(previous.createdAt).getTime()
-  return Number.isFinite(gap) && gap < GROUPING_WINDOW_MS
+  return Number.isFinite(gap) && gap >= 0 && gap < GROUPING_WINDOW_MS
 }
 
 interface CommittedRowProps {
@@ -213,6 +214,7 @@ function PendingRow({
 }
 
 interface GroupMessageListProps {
+  presentation?: 'group' | 'direct'
   messages: readonly CommittedMessageView[]
   pending: readonly PendingMessageView[]
   members: readonly GroupMember[]
@@ -225,6 +227,7 @@ interface GroupMessageListProps {
 }
 
 export function GroupMessageList({
+  presentation = 'group',
   messages,
   pending,
   courseId,
@@ -235,8 +238,12 @@ export function GroupMessageList({
   onReport
 }: GroupMessageListProps): JSX.Element {
   return (
-    <ul className="group-msg-list">
+    <ul className="group-msg-list" data-presentation={presentation}>
       {messages.map((message, index) => (
+        <Fragment key={message.id}>
+        {presentation === 'direct' && (index === 0 || new Date(messages[index - 1]!.createdAt).toDateString() !== new Date(message.createdAt).toDateString()) && (
+          <li className="friends-date"><time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</time></li>
+        )}
         <CommittedRow
           key={message.id}
           message={message}
@@ -247,6 +254,7 @@ export function GroupMessageList({
           onDelete={onDelete}
           onReport={onReport}
         />
+        </Fragment>
       ))}
       {pending.map((message) => (
         <PendingRow

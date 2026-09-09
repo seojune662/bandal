@@ -35,6 +35,7 @@ import { requestVideoResume } from '../features/file/lib/videoProgress'
 import { useUniversityStore } from '../stores/universityStore'
 import { useGlobalShortcuts } from './shortcuts'
 import { showToast, ToastHost } from './toast'
+import { PresentationProgress } from '../features/file/pptx/presentationJobs'
 import { usePluginsStore } from '../stores/pluginsStore'
 import { subscribePluginEditor } from '../features/plugins/pluginEditor'
 import { subscribePluginThemes } from '../features/plugins/pluginThemes'
@@ -445,6 +446,7 @@ export function AppShell(): JSX.Element {
         <AssistantLayer />
       </Suspense>
       <ToastHost />
+      <PresentationProgress />
       {isSettingsOpen && (
         <div className="settings-overlay">
           <Suspense

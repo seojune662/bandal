@@ -10,11 +10,11 @@ export type FileViewerKind =
 const DOCX_EXTENSIONS = ['.docx'] as const
 const SHEET_EXTENSIONS = ['.xlsx', '.xls', '.csv', '.tsv'] as const
 /** 슬라이드 레이아웃 렌더 (읽기 전용). */
-const SLIDES_EXTENSIONS = ['.pptx'] as const
+const SLIDES_EXTENSIONS = ['.pptx', '.ppt'] as const
 /** 한글 문서 — 본문 텍스트 미리보기. */
 const HWP_EXTENSIONS = ['.hwp', '.hwpx'] as const
 /** 앱이 렌더링하지 못하는 형식 — OS 미리보기(Quick Look)로 넘긴다. */
-const PREVIEW_EXTENSIONS = ['.ppt'] as const
+const PREVIEW_EXTENSIONS: readonly string[] = []
 /** materialsRepo.kindForFile 의 VIDEO_EXTENSIONS 와 같은 목록이어야 한다. */
 const VIDEO_EXTENSIONS = ['.mp4', '.m4v', '.webm'] as const
 

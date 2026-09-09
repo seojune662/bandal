@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { friendAttentionCount as countFriendAttention } from '../../../../shared/group/friendAttention'
 import type {
   Course,
   CourseGroup,
@@ -194,13 +195,7 @@ export function CourseSidebar(): JSX.Element {
     if (authPhase === 'signed-in') void initFriends()
   }, [authPhase, initFriends])
 
-  const friendAttentionCount = friends.reduce(
-    (total, friend) =>
-      total +
-      (friend.unread ?? 0) +
-      (friend.status === 'pending' && friend.direction === 'incoming' ? 1 : 0),
-    0
-  )
+  const friendAttentionCount = countFriendAttention(friends)
 
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const isSearching = query.length > 0

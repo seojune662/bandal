@@ -70,25 +70,19 @@ test.describe('right rail widgets', () => {
     await expect(rows.nth(0)).toHaveAttribute('data-color', 'violet')
   })
 
-  test('opens a compact mailbox in the widget with the shared browser session', async () => {
+  test('opens a native mailbox without embedding the desktop mail website', async () => {
     const { page } = bandal
     const widget = page.getByRole('region', { name: '자료 사이드바' }).getByRole('region', { name: '위젯' })
 
     await widget.getByRole('tab', { name: '메일' }).click()
 
-    const mailbox = widget.locator('webview[aria-label="웹메일 메일함"]')
-    await expect(mailbox).toBeAttached()
-    await expect(mailbox).toHaveAttribute('src', 'https://mail.example.test/inbox')
-    await expect(mailbox).toHaveAttribute('partition', 'persist:browsing')
-    await expect(mailbox.locator('xpath=..')).toHaveAttribute(
-      'data-presentation',
-      'compact'
-    )
+    await expect(widget.locator('webview')).toHaveCount(0)
+    await expect(widget.getByText('공부하면서 메일도 가볍게')).toBeVisible()
     await expect(widget.getByRole('button', { name: '메일 새로고침' })).toBeVisible()
     await widget.getByRole('button', { name: '메일함 넓히기' }).click()
-    await expect(widget.locator('.widget-mail')).toHaveAttribute('data-expanded', 'true')
-    await expect(widget.getByRole('button', { name: '메일함 위젯으로 접기' })).toBeVisible()
+    await expect(page.getByRole('dialog', { name: '메일함', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '메일함 접기', exact: true })).toBeVisible()
     await page.keyboard.press('Escape')
-    await expect(widget.locator('.widget-mail')).not.toHaveAttribute('data-expanded', 'true')
+    await expect(page.getByRole('dialog', { name: '메일함', exact: true })).toHaveCount(0)
   })
 })

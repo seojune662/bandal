@@ -14,6 +14,9 @@ import { SlidesViewer } from './viewers/SlidesViewer'
 import { TextViewer } from './viewers/TextViewer'
 import { VideoViewer } from './viewers/VideoViewer'
 import './file-tab.css'
+import { PresentationLoader } from './pptx/PresentationLoader'
+import { PresentationContext } from './pptx/presentationContext'
+import { isPdfPageNotePairContext } from '../../../../shared/pdfPageNote'
 
 type FileLoadState =
   | { status: 'loading' }
@@ -109,6 +112,8 @@ function LoadedFile({
       }
       return (
         <SlidesViewer
+          courseId={courseId}
+          relPath={relPath}
           base64={content.data}
           fileName={name}
           onError={handleError}
@@ -200,7 +205,7 @@ function FileLoader({
 
     // 동영상은 bandal-media:// 스트리밍, preview 는 OS 로 넘기므로
     // 둘 다 IPC로 읽지 않는다.
-    if (viewerKind === 'video' || viewerKind === 'preview') {
+    if (viewerKind === 'video' || viewerKind === 'preview' || viewerKind === 'slides') {
       return () => {
         cancelled = true
       }
@@ -224,6 +229,7 @@ function FileLoader({
     }
   }, [courseId, relPath])
 
+  if (viewerKindFor(relPath) === 'slides') return <PresentationLoader courseId={courseId} relPath={relPath} />
   if (viewerKindFor(relPath) === 'video') {
     return <VideoViewer courseId={courseId} relPath={relPath} />
   }
@@ -253,6 +259,12 @@ function FileLoader({
 }
 
 export default function FileTab(props: IDockviewPanelProps): JSX.Element {
+  const [interactive, setInteractive] = useState(props.api.isActive && props.api.isVisible)
+  useEffect(() => {
+    const update = (): void => setInteractive(props.api.isActive && props.api.isVisible)
+    const active = props.api.onDidActiveChange(update), visible = props.api.onDidVisibilityChange(update)
+    return () => { active.dispose(); visible.dispose() }
+  }, [props.api])
   const hasBeenShown = useHasBeenShown(props.api)
   const candidate = props.params['descriptor']
 
@@ -270,7 +282,9 @@ export default function FileTab(props: IDockviewPanelProps): JSX.Element {
   }
 
   const { courseId, relPath } = candidate.payload
+  const pair = isPdfPageNotePairContext(props.params['pageNotePair']) ? props.params['pageNotePair'] : null
   return (
+    <PresentationContext.Provider value={{ panelId: props.api.id, interactive, pair }}>
     <div className="workspace-panel file-panel" data-kind="file">
       <FileLoader
         key={`${courseId}:${relPath}`}
@@ -278,5 +292,6 @@ export default function FileTab(props: IDockviewPanelProps): JSX.Element {
         relPath={relPath}
       />
     </div>
+    </PresentationContext.Provider>
   )
 }

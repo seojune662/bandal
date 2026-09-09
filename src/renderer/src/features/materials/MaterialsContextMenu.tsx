@@ -9,6 +9,7 @@ import { materialDescriptor } from '../courses/favoriteDrop'
 import { MaterialsStudyToolMenuItem } from '../study/MaterialsStudyToolMenuItem'
 import { tabTitle } from '../workspace/tabIdentity'
 import { PluginMenuItems } from '../plugins/PluginMenuItems'
+import { convertPresentationToPdf } from '../file/pptx/presentationJobs'
 
 export interface MaterialsContextMenuState {
   target: MaterialNode | null
@@ -177,11 +178,15 @@ export function MaterialsContextMenu({
       >
         <Icon name="link" />{t('links.menu.connect')}
       </button>
-      {target?.kind === 'pdf' && (
+      {(target?.kind === 'pdf' || (target?.kind !== 'dir' && /\.pptx?$/i.test(target?.relPath ?? ''))) && (
         <button type="button" role="menuitem" onClick={onPageNote}>
-          <Icon name="fileText" />PDF 페이지 필기
+          <Icon name="fileText" />페이지 필기
         </button>
       )}
+      {target && target.kind !== 'dir' && /\.pptx?$/i.test(target.relPath) && <button type="button" role="menuitem" onClick={() => {
+        if (activeCourseId === null) return
+        onClose(); void convertPresentationToPdf({ courseId: activeCourseId, relPath: target.relPath })
+      }}><Icon name="fileText" />PDF로 변환</button>}
       <button
         type="button"
         role="menuitem"

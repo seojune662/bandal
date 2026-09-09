@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode } from 'react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+vi.mock('../../../src/renderer/src/features/file/pptx/presentationJobs', () => ({ PresentationProgress: () => null, convertPresentationToPdf: vi.fn() }))
 
 const harness = vi.hoisted(() => ({
   effects: [] as Array<() => void | (() => void)>,

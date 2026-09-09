@@ -92,7 +92,7 @@ export function WidgetSettingsPanel({ settings }: { settings: Settings | null })
 
       <SettingsCard
         title={ko ? '메일 위젯 연결' : 'Mail widget connection'}
-        description={ko ? '학교 메일을 위젯 안에 열고, 브라우저와 로그인 상태를 공유합니다.' : 'Open school mail inside the widget and share its signed-in session with the browser.'}
+        description={ko ? 'Gmail은 메일 위젯에서 별도로 연결해 읽기·답장·보관할 수 있습니다. 아래 학교 메일은 전체 메일함 바로가기에 사용합니다.' : 'Connect Gmail separately in the widget to read, reply, and archive. School mail below is used for the full mailbox shortcut.'}
       >
         <div className="settings-card__rows">
           {mailServices.length > 0 && (

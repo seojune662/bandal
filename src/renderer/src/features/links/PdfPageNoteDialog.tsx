@@ -24,7 +24,8 @@ type CreationMode = 'new' | 'existing'
 export interface PdfPageNoteDialogProps {
   courseId: string
   relPath: string
-  pdf: PDFDocumentProxy
+  pdf?: PDFDocumentProxy
+  presentation?: { pageSizes: PdfPageSize[]; fingerprint: string }
   currentPage: number
   connections: MaterialLinkRecord[]
   onClose: () => void
@@ -32,7 +33,7 @@ export interface PdfPageNoteDialogProps {
 
 function stem(relPath: string): string {
   const fileName = relPath.split('/').at(-1) ?? relPath
-  return fileName.replace(/\.pdf$/iu, '')
+  return fileName.replace(/\.(pdf|pptx?)$/iu, '')
 }
 
 function parentPath(relPath: string): string {
@@ -68,10 +69,14 @@ export function PdfPageNoteDialog({
   courseId,
   relPath,
   pdf,
+  presentation,
   currentPage,
   connections,
   onClose
 }: PdfPageNoteDialogProps): JSX.Element {
+  const numPages = presentation?.pageSizes.length ?? pdf?.numPages ?? 0
+  const fingerprint = presentation?.fingerprint ?? pdf?.fingerprints[0] ?? ''
+  const format = presentation ? 'PPT' : 'PDF'
   const [mode, setMode] = useState<CreationMode>('new')
   const [title, setTitle] = useState(`${stem(relPath)} 페이지 필기`)
   const [notes, setNotes] = useState<LinkPickerFile[]>([])
@@ -114,7 +119,7 @@ export function PdfPageNoteDialog({
   }, [notes, query])
 
   const openConnection = (record: MaterialLinkRecord): void => {
-    if (record.source.kind !== 'pdf' || record.target.kind !== 'note') return
+    if ((record.source.kind !== 'pdf' && record.source.kind !== 'file') || record.target.kind !== 'note') return
     useWorkspaceStore.getState().openPdfNotePair(
       record.source,
       record.target,
@@ -130,8 +135,8 @@ export function PdfPageNoteDialog({
     setError(null)
     let createdRelPath: string | null = null
     try {
-      setProgress(`PDF ${pdf.numPages}쪽의 크기를 확인하는 중…`)
-      const pageSizes = await readPdfPageSizes(pdf)
+      setProgress(`${format} ${numPages}쪽의 크기를 확인하는 중…`)
+      const pageSizes = presentation?.pageSizes ?? (pdf ? await readPdfPageSizes(pdf) : [])
       const sourceMarkdown =
         mode === 'existing' && selectedPath !== null
           ? (await invoke('notes:read', { courseId, relPath: selectedPath })).markdown
@@ -147,7 +152,7 @@ export function PdfPageNoteDialog({
       const markdown = createPdfPageNoteMarkdown(
         created.relPath.split('/').at(-1)?.replace(/\.md$/iu, '') ?? title,
         relPath,
-        pdf.fingerprints[0] ?? '',
+        fingerprint,
         pageSizes,
         sourceMarkdown.length > 0 ? [sourceMarkdown] : []
       )
@@ -156,20 +161,20 @@ export function PdfPageNoteDialog({
         markdown,
         expectedMtime: seed.mtime
       })
-      setProgress('PDF와 필기를 연결하는 중…')
+      setProgress('자료와 필기를 연결하는 중…')
       const connection = await invoke('links:create', {
         courseId,
-        source: descriptorFor('pdf', { courseId, relPath }),
+        source: descriptorFor(presentation ? 'file' : 'pdf', { courseId, relPath }),
         target: descriptorFor('note', {
           courseId,
           relPath: created.relPath
         }),
         kind: 'pdf-page-note',
-        label: 'PDF 페이지 필기',
+        label: `${format} 페이지 필기`,
         metadata: {
           version: 1,
           syncScroll: true,
-          fingerprint: pdf.fingerprints[0] ?? '',
+          fingerprint,
           pageSizes
         }
       })
@@ -180,7 +185,7 @@ export function PdfPageNoteDialog({
         connection.id,
         currentPage
       )
-      showToast('PDF 페이지 필기를 만들었어요.')
+      showToast(`${format} 페이지 필기를 만들었어요.`)
       onClose()
     } catch (caught) {
       console.error('[Bandal] PDF 페이지 필기를 만들지 못했습니다.', caught)
@@ -212,8 +217,8 @@ export function PdfPageNoteDialog({
       >
         <header className="link-picker__head">
           <div>
-            <h2 id="pdf-page-note-title">PDF 페이지 필기</h2>
-            <p>{pdf.numPages}쪽을 같은 비율의 빈 필기 페이지와 연결합니다.</p>
+            <h2 id="pdf-page-note-title">{format} 페이지 필기</h2>
+            <p>{numPages}쪽을 같은 비율의 빈 필기 페이지와 연결합니다.</p>
           </div>
           <button type="button" className="link-picker__close" disabled={busy} onClick={onClose} aria-label="닫기">
             <Icon name="x" />
@@ -280,7 +285,7 @@ export function PdfPageNoteDialog({
           )}
 
           <div className="pdf-page-note-dialog__summary">
-            <span><strong>{pdf.numPages}</strong> 페이지</span>
+            <span><strong>{numPages}</strong> 페이지</span>
             <span>페이지 비율 유지</span>
             <span>양방향 스크롤</span>
             <span>좌우 50:50</span>

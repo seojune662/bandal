@@ -21,6 +21,7 @@ import { create } from 'zustand'
 import type { DockviewApi } from 'dockview'
 import { isTabDescriptor } from '../../../shared/tabs'
 import type { TabDescriptor } from '../../../shared/tabs'
+import { isPageNoteSource } from '../../../shared/pdfPageNote'
 import { showToast } from '../app/toast'
 import { invoke } from '../lib/ipc'
 import { settingsSnapshot } from './settingsSnapshot'
@@ -417,7 +418,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     openPdfNotePair: (pdfDescriptor, noteDescriptor, connectionId, initialPage) => {
       if (
         api === null ||
-        pdfDescriptor.kind !== 'pdf' ||
+        !isPageNoteSource(pdfDescriptor) ||
         noteDescriptor.kind !== 'note'
       ) {
         return
@@ -432,7 +433,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       if (pdfPanel === undefined) {
         pdfPanel = api.addPanel({
           id: tabPanelId(pdfDescriptor),
-          component: 'pdf',
+          component: pdfDescriptor.kind,
           title: tabTitle(pdfDescriptor),
           params: {
             descriptor: pdfDescriptor,

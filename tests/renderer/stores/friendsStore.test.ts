@@ -39,6 +39,15 @@ beforeEach(() => {
 })
 
 describe('friends store account projection', () => {
+  test('a slow earlier refresh cannot restore a cleared unread badge', async () => {
+    let resolveEarlier!: (friends: FriendEntry[]) => void
+    ipc.invoke.mockReturnValueOnce(new Promise<FriendEntry[]>((resolve) => { resolveEarlier = resolve }))
+    const earlier = useFriendsStore.getState().load()
+    ipc.invoke.mockResolvedValueOnce([{ ...friend, unread: 0, hasUnread: false }])
+    await useFriendsStore.getState().load()
+    resolveEarlier([friend]); await earlier
+    expect(useFriendsStore.getState().friends[0]?.unread).toBe(0)
+  })
   test('loads on each non-overlapping init so opening the hub refreshes requests', async () => {
     await useFriendsStore.getState().init()
     await useFriendsStore.getState().init()

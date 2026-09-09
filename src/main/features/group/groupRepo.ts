@@ -62,6 +62,8 @@ interface FriendRow {
   status: string
   direction: string
   unread: number
+  last_message_preview: string | null
+  last_message_at: string | null
 }
 
 interface MessageRow {
@@ -774,7 +776,10 @@ export function createGroupRepo(db: Database): GroupRepo {
         avatarEmoji: row.avatar_emoji,
         status: row.status === 'accepted' ? 'accepted' : 'pending',
         direction: row.direction === 'incoming' ? 'incoming' : 'outgoing',
-        unread: Math.max(0, row.unread)
+        unread: Math.max(0, row.unread),
+        hasUnread: row.unread > 0,
+        lastMessagePreview: row.last_message_preview,
+        lastMessageAt: row.last_message_at
       }))
     },
 
@@ -783,13 +788,14 @@ export function createGroupRepo(db: Database): GroupRepo {
         db.prepare('DELETE FROM friends_cache').run()
         const insert = db.prepare(
           `INSERT INTO friends_cache
-             (user_id, nickname, avatar_color, avatar_emoji, status, direction, unread, fetched_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+             (user_id, nickname, avatar_color, avatar_emoji, status, direction, unread, fetched_at, last_message_preview, last_message_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         const now = nowIso()
         for (const friend of entries) {
           insert.run(friend.userId, friend.nickname, friend.avatarColor,
-            friend.avatarEmoji, friend.status, friend.direction, friend.unread ?? 0, now)
+            friend.avatarEmoji, friend.status, friend.direction, friend.unread ?? 0, now,
+            friend.lastMessagePreview ?? null, friend.lastMessageAt ?? null)
         }
       })
       replace(friends)

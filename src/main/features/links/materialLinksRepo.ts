@@ -129,8 +129,8 @@ function validatePageNoteLink(
   metadata: unknown
 ): PdfPageNoteLinkMetadata | null {
   if (kind !== 'pdf-page-note') return null
-  if (source.kind !== 'pdf' || target.kind !== 'note') {
-    throw new ValidationError('pdf-page-note must point from a PDF to a note')
+  if (!(source.kind === 'pdf' || (source.kind === 'file' && /\.pptx?$/i.test(source.payload.relPath))) || target.kind !== 'note') {
+    throw new ValidationError('page notes must point from a PDF or presentation to a note')
   }
   if (!isPdfPageNoteLinkMetadata(metadata)) {
     throw new ValidationError('pdf-page-note metadata is invalid')

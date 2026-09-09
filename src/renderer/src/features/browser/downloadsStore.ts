@@ -10,9 +10,10 @@ import { create } from 'zustand'
 import type { BrowserDownloadUpdate } from '../../../../shared/ipc/events'
 import { invoke, onPush } from '../../lib/ipc'
 import { showToast, showToastWithAction } from '../../app/toast'
+import { convertPresentationToPdf } from '../file/pptx/presentationJobs'
 
 /** Finished downloads linger this long so the student can click through. */
-const RECENT_TTL_MS = 60_000
+const RECENT_TTL_MS = 24 * 60 * 60_000
 
 export interface BrowserDownload extends BrowserDownloadUpdate {
   finishedAt: number | null
@@ -69,7 +70,13 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
         downloadFolderNotices.delete(update.id)
       }
 
-      if (update.state === 'completed' && update.relPath !== null) {
+      if (update.state === 'completed' && previous.some((item) => item.id === update.id && item.state === 'completed')) return
+      if (update.state === 'completed' && update.courseId !== null && update.relPath !== null && /\.pptx?$/i.test(update.relPath)) {
+        const { courseId, relPath } = update
+        showToastWithAction('프레젠테이션을 저장했어요. PDF 사본도 만들까요?', {
+          label: 'PDF로 변환', run: () => { void convertPresentationToPdf({ courseId, relPath }) }
+        })
+      } else if (update.state === 'completed' && update.relPath !== null) {
         showToastWithAction(`${update.fileName}을(를) 자료에 저장했어요.`, {
           label: '자료에서 보기',
           run: () => {

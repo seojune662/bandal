@@ -163,6 +163,9 @@ export interface FriendEntry {
   /** Who asked. Only meaningful while `status === 'pending'`. */
   direction: 'incoming' | 'outgoing'
   unread?: number
+  hasUnread?: boolean
+  lastMessagePreview?: string | null
+  lastMessageAt?: string | null
 }
 
 export interface PublishedCourse {
