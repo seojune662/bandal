@@ -70,6 +70,7 @@ const PluginPanelTab = deferredPanel(() =>
   }))
 )
 const FriendsTab = deferredPanel(() => import('../group/FriendsTab'))
+const RecordingTab = deferredPanel(() => import('../recordings/RecordingTab'))
 
 export interface TabRegistryEntry {
   component: FunctionComponent<IDockviewPanelProps>
@@ -81,6 +82,7 @@ export interface TabRegistryEntry {
 // `tabPanelId` is the sole dedupe key; registry metadata does not participate
 // in deciding whether an existing panel is focused or a new panel is opened.
 export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
+  recording: { component: RecordingTab, icon: null, defaultTitle: tabTitle },
   pdf: {
     component: PdfTab,
     icon: 'filePdf',

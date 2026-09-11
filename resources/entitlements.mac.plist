@@ -15,6 +15,8 @@
 -->
 <plist version="1.0">
   <dict>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
     <!-- V8 compiles JavaScript at runtime. Without these two the renderer
          process dies at launch. Required by every Electron app. -->
     <key>com.apple.security.cs.allow-jit</key>

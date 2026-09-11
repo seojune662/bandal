@@ -95,6 +95,7 @@ function descriptorRelPath(descriptor: TabDescriptor): string | null {
     case 'friends':
     case 'whiteboard':
     case 'plugin-panel':
+    case 'recording':
       return null
   }
 }

@@ -108,8 +108,8 @@ export async function launchBandal(
   env['BANDAL_DISABLE_SAFE_STORAGE'] = '1'
 
   const app = await _electron.launch({
-    executablePath: ELECTRON_BINARY,
-    args: [MAIN_ENTRY],
+    executablePath: process.env['BANDAL_E2E_EXECUTABLE'] ?? ELECTRON_BINARY,
+    args: process.env['BANDAL_E2E_EXECUTABLE'] ? [] : [MAIN_ENTRY],
     env
   })
 

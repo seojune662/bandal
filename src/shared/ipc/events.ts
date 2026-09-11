@@ -4,6 +4,7 @@
  */
 
 import type { SettingsCategoryId } from '../settingsCategories'
+import type { RecordingEvent, SpeechModelState } from '../recording'
 import type { AgentEvent } from '../types/agent-events'
 import type { AgentConfirmRequest } from '../types/agentTools'
 import type { Settings } from '../types/settings'
@@ -189,6 +190,8 @@ export interface GroupsInvalidated {
 }
 
 export interface PushEvents {
+  'recordings:event': RecordingEvent
+  'recordings:modelsChanged': SpeechModelState[]
   'chat:event-batch': ChatEventBatch
   /** A course was created, renamed, archived or removed. */
   'courses:changed': { }

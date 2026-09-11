@@ -31,7 +31,7 @@ function declaredChannels(): string[] {
     source.indexOf('export interface IpcContract'),
     source.indexOf('export const IPC_CHANNELS')
   )
-  const extensions = ['mail', 'presentation'].map((name) => readFileSync(join(process.cwd(), `src/shared/types/${name}.ts`), 'utf8')).join('\n')
+  const extensions = ['types/mail', 'types/presentation', 'recording'].map((name) => readFileSync(join(process.cwd(), `src/shared/${name}.ts`), 'utf8')).join('\n')
   return [...`${body}\n${extensions}`.matchAll(/^ {2}'([a-z][A-Za-z]*:[A-Za-z]+)': \{/gm)].map(
     (match) => match[1] as string
   )

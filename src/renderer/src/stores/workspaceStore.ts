@@ -55,6 +55,8 @@ interface WorkspaceState {
     descriptor: TabDescriptor,
     options?: {
       newInstance?: boolean
+      /** Open a document alongside the current recording or other panel. */
+      beside?: boolean
       /** ⌘-click: open it but stay where you are, as every browser does. */
       background?: boolean
     }
@@ -367,11 +369,15 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       if (api === null) return
       // newInstance: 같은 파일의 새 뷰를 하나 더 연다 (⌘클릭/분할 열기).
       // 복제 패널 id 규칙은 탭 복제와 동일 — validateLayout이 이미 수용한다.
-      const panelId =
+      let panelId =
         options?.newInstance === true
           ? createDuplicatePanelId(descriptor)
           : tabPanelId(descriptor)
-      const existing = api.getPanel(panelId)
+      let existing = api.getPanel(panelId)
+      if (options?.beside && existing && existing.group === api.activePanel?.group) {
+        panelId = createDuplicatePanelId(descriptor)
+        existing = undefined
+      }
       if (existing !== undefined) {
         // Refresh the params before focusing. The panel id does not always
         // capture the whole payload: a 함께하기 tab is keyed by course but
@@ -394,9 +400,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
               (panel) => panel.id === activePanel.id
             )
       const position =
-        settingsSnapshot().openAdjacentTab &&
-        activePanel !== undefined &&
-        activeIndex >= 0
+        options?.beside && activePanel
+          ? { position: { referencePanel: activePanel, direction: 'right' as const } }
+          : settingsSnapshot().openAdjacentTab &&
+              activePanel !== undefined &&
+              activeIndex >= 0
           ? { position: { referencePanel: activePanel, index: activeIndex + 1 } }
           : {}
       const added = api.addPanel({

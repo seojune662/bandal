@@ -138,6 +138,9 @@ vi.mock('../../../src/renderer/src/features/onboarding/PreflightBanners', () => 
 vi.mock('../../../src/renderer/src/features/workspace/WorkspaceHost', () => ({
   WorkspaceHost: () => null
 }))
+vi.mock('../../../src/renderer/src/features/recordings/RecordingIndicator', () => ({
+  RecordingIndicator: () => null
+}))
 
 vi.mock('../../../src/renderer/src/app/QuickFileSearch', () => ({
   QuickFileSearch: () => null

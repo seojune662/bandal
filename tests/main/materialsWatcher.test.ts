@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -31,18 +31,21 @@ describe('materialsWatcher', () => {
   let courseDir: string
   let watcher: MaterialsWatcher
   let changes: string[]
+  let activeAudio: string | null
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'bandal-watch-'))
     courseDir = join(dir, 'course')
     mkdirSync(courseDir)
     changes = []
+    activeAudio = null
     watcher = createMaterialsWatcher({
       getCourseFolder: (courseId) => {
         if (courseId !== 'c1') throw new Error(`unknown course ${courseId}`)
         return courseDir
       },
       onChange: (courseId) => changes.push(courseId),
+      ignoreContentChange: (_courseId, relPath) => relPath === activeAudio,
       debounceMs: DEBOUNCE_MS
     })
   })
@@ -94,6 +97,25 @@ describe('materialsWatcher', () => {
 
     // Assert
     expect(changes).toHaveLength(0)
+  })
+
+  test('ignores active audio content churn but still observes documents and renames', async () => {
+    activeAudio = 'audio.wav'
+    writeFileSync(join(courseDir, activeAudio), 'initial')
+    watcher.watch('c1')
+    await sleep(200)
+    for (let chunk = 0; chunk < 3; chunk++) {
+      writeFileSync(join(courseDir, activeAudio), `audio ${chunk}`)
+      await sleep(120)
+    }
+    await sleep(DEBOUNCE_MS * 4)
+    expect(changes).toHaveLength(0)
+    writeFileSync(join(courseDir, 'lecture.md'), '# notes')
+    await waitFor(() => changes.length > 0)
+    await sleep(DEBOUNCE_MS * 4)
+    changes.length = 0
+    renameSync(join(courseDir, activeAudio), join(courseDir, 'renamed.wav'))
+    await waitFor(() => changes.length > 0)
   })
 
   test('watching an unknown course is a safe no-op', () => {

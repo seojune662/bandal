@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import { deriveConversationTitle } from '../features/agent/chatRepo'
 import schemaSql from './schema.sql?raw'
+import { RECORDING_SCHEMA } from '../features/recordings/schema'
 
 export interface Migration {
   version: number
@@ -1036,7 +1037,8 @@ export const migrations: Migration[] = [
       if (!columns.has('last_message_preview')) db.exec('ALTER TABLE friends_cache ADD COLUMN last_message_preview TEXT')
       if (!columns.has('last_message_at')) db.exec('ALTER TABLE friends_cache ADD COLUMN last_message_at TEXT')
     }
-  }
+  },
+  { version: 32, name: 'lecture-recordings', up: (db) => { db.exec(RECORDING_SCHEMA) } }
 ]
 
 /** Creates the bookkeeping table if needed and returns applied versions. */

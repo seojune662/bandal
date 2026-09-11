@@ -30,6 +30,7 @@ export const MEDIA_HOST = 'material'
 
 /** 확장자 → Content-Type. 동영상이 주 대상, 이미지 계열은 향후 사용 대비. */
 const MEDIA_CONTENT_TYPES: Record<string, string> = {
+  '.wav': 'audio/wav',
   '.mp4': 'video/mp4',
   '.m4v': 'video/mp4',
   '.webm': 'video/webm',

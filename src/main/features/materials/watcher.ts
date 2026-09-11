@@ -14,7 +14,7 @@
 
 import { watch, type FSWatcher } from 'chokidar'
 import { existsSync } from 'node:fs'
-import { basename } from 'node:path'
+import { basename, relative, sep } from 'node:path'
 
 export const MATERIALS_WATCH_DEBOUNCE_MS = 300
 
@@ -30,6 +30,8 @@ export interface MaterialsWatcherDeps {
   getCourseFolder: (courseId: string) => string
   /** Fired (debounced) whenever the course folder changed on disk. */
   onChange: (courseId: string) => void
+  /** Suppress content-only churn for an actively written recording. Structural events still refresh. */
+  ignoreContentChange?: (courseId: string, relPath: string) => boolean
   debounceMs?: number
 }
 
@@ -93,7 +95,13 @@ export function createMaterialsWatcher(
         ignorePermissionErrors: true
       })
       entries.set(courseId, { watcher, timer: null })
-      watcher.on('all', () => scheduleChange(courseId))
+      watcher.on('all', (event, path) => {
+        if (
+          event === 'change' &&
+          deps.ignoreContentChange?.(courseId, relative(folder, path).split(sep).join('/'))
+        ) return
+        scheduleChange(courseId)
+      })
       watcher.on('error', (error) => {
         // e.g. the folder disappeared mid-scan. Keep the watcher; surface a
         // change so the renderer refreshes to the (possibly empty) tree.

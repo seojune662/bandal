@@ -20,6 +20,7 @@ import { TourOverlay } from '../features/onboarding/tour/TourOverlay'
 import { useTourStore } from '../features/onboarding/tour/tourStore'
 import { useUpdateNotifications } from '../features/updates/useUpdateNotifications'
 import { WorkspaceHost } from '../features/workspace/WorkspaceHost'
+import { RecordingIndicator } from '../features/recordings/RecordingIndicator'
 import { RailResizer } from './RailResizer'
 import { applyStoredRailWidths } from './railWidth'
 import { descriptorFor } from '../features/workspace/tabIdentity'
@@ -414,6 +415,7 @@ export function AppShell(): JSX.Element {
 
       <main className="app-workspace" aria-label="작업 공간">
         <WorkspaceHost />
+        <RecordingIndicator />
       </main>
 
       {rightRailOpen && <MaterialsSidebar course={selectedCourse} />}

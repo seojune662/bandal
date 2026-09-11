@@ -48,6 +48,8 @@ export interface BandalBridge {
  * blank. The assignment below stops compiling when a channel is missing.
  */
 const PUSH_CHANNELS = [
+  'recordings:event',
+  'recordings:modelsChanged',
   'chat:event-batch',
   'materials:changed',
   // -- picture-in-picture ---------------------------------------------------

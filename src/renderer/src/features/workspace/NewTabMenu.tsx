@@ -205,6 +205,15 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         run: () => createMarkdownTab(titled ? trimmed : undefined)
       })
     }
+    if (matches('녹음', '강의 녹음', '실시간 자막', 'STT', 'recording')) {
+      result.push({
+        id: 'recording',
+        label: '녹음',
+        hint: '강의 · 실시간 자막',
+        icon: <TabKindIcon kind="recording" />,
+        run: () => openTab(descriptorFor('recording', { courseId: course.id }))
+      })
+    }
     if (matches('새 브라우저 탭')) {
       result.push({
         id: 'new-browser',

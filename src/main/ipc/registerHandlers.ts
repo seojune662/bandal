@@ -29,6 +29,7 @@ import {
   net,
   Notification,
   protocol,
+  powerMonitor,
   session,
   shell,
   systemPreferences,
@@ -98,6 +99,11 @@ import {
 import { DRAG_ICON_PNG_BASE64 } from './dragIcon'
 import { createPdfViewStateRepo } from '../features/pdf/pdfViewStateRepo'
 import { createNotesRepo } from '../features/notes'
+import { createRecordingRepo } from '../features/recordings/recordingRepo'
+import { createModelManager } from '../features/recordings/modelManager'
+import { createRecordingService } from '../features/recordings/recordingService'
+import { speechModel } from '../features/recordings/modelCatalog'
+import { getMainWindow, onMainWindowClosed } from '../windows/mainWindow'
 import { createAnnotationsRepo } from '../features/annotations'
 import { createDrawingsRepo, createPdfExporter } from '../features/pdf'
 import { createBoardRepo } from '../features/board'
@@ -379,6 +385,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       db,
       courseFolder: coursesRepo.getFolder(change.courseId)
     })
+    recordings.repoint(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory)
     // Notes bypass materialsRepo, and a rewritten backlink can change more
     // than the renamed path. Invalidate before telling renderers to re-read.
     materialsRepo.invalidateTree(change.courseId)
@@ -397,6 +404,67 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
     onPathChanged: onMaterialPathChanged
   })
+  const recordings = createRecordingRepo(db, (id) => coursesRepo.getFolder(id))
+  recordings.recover()
+  const speechModels = createModelManager(
+    join(deps.userDataPath, 'speech-models'),
+    (models) => broadcast('recordings:modelsChanged', models)
+  )
+  const recordingService = createRecordingService({
+    repo: recordings,
+    models: speechModels,
+    hostEntry: join(__dirname, 'speechHost.js'),
+    emit: (event) => broadcast('recordings:event', event),
+    onActivityChanged: (active, session) => {
+      getMainWindow()?.webContents.setBackgroundThrottling(!active)
+      if (!active) {
+        materialsRepo.invalidateTree(session.courseId)
+        broadcast('materials:changed', { courseId: session.courseId })
+      }
+    }
+  })
+  handle('recordings:models', () => speechModels.list())
+  handle('recordings:downloadModel', (req) => {
+    speechModel(req.modelId)
+    void speechModels.download(req.modelId)
+    return OK
+  })
+  handle('recordings:cancelDownload', (req) => {
+    speechModels.cancel(req.modelId)
+    return OK
+  })
+  handle('recordings:list', (req) => recordings.list(req.courseId))
+  handle('recordings:create', (req) => recordings.create(req.courseId, req.title, req.modelId))
+  handle('recordings:read', (req) => recordings.read(req.id, req.afterId))
+  handle('recordings:control', (req) => recordingService.control(req.id, req.action, req.modelId))
+  handle('recordings:append', (req) => recordingService.append(req.id, req.sequence, req.pcm))
+  handle('recordings:anchor', (req) =>
+    recordings.anchor(req.id, req.label, req.relPath, req.page, req.sample)
+  )
+  handle('recordings:export', (req) => {
+    const recording = recordings.get(req.id)
+    const note = notesRepo.create({
+      courseId: recording.courseId,
+      dirRelPath: '',
+      title: `${recording.title} · 강의 기록`
+    })
+    notesRepo.write({ ...note, markdown: recordings.markdown(req.id) })
+    materialsRepo.invalidateTree(recording.courseId)
+    broadcast('materials:changed', { courseId: recording.courseId })
+    return note
+  })
+  powerMonitor.on('suspend', () =>
+    recordingService.interrupt('컴퓨터가 잠자기에 들어가 녹음이 중단되었습니다. 저장된 원음은 보존됩니다.')
+  )
+  onMainWindowClosed(() =>
+    recordingService.interrupt('녹음 창이 닫혔습니다. 저장된 음성에서 다시 자막을 생성할 수 있어요.')
+  )
+  powerMonitor.on('thermal-state-change', (detail) =>
+    recordingService.setThermalState(detail.state)
+  )
+  if (process.platform === 'darwin')
+    recordingService.setThermalState(powerMonitor.getCurrentThermalState())
+  app.on('before-quit', () => recordingService.dispose())
   const courseLinksRepo = createCourseLinksRepo(db)
   const materialLinksRepo = createMaterialLinksRepo(db)
   const annotationsRepo = createAnnotationsRepo(db)
@@ -419,6 +487,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
 
   const materialsWatcher = createMaterialsWatcher({
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
+    ignoreContentChange: (courseId, relPath) => {
+      const active = recordingService.getActiveSession()
+      return active?.courseId === courseId && active.audioRelPath === relPath
+    },
     onChange: (courseId) => {
       // 브로드캐스트보다 먼저 캐시를 비운다 — 렌더러의 조용한 재조회가
       // 반드시 새 트리를 보게 하기 위한 순서다.
@@ -440,6 +512,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
 
   /** Course went away (delete/archive) → release its live resources. */
   function releaseCourseRuntime(courseId: string): void {
+    if (recordingService.getActiveSession()?.courseId === courseId)
+      recordingService.interrupt('과목이 닫혀 녹음을 중단했습니다. 저장된 음성은 과목 폴더에 남아 있습니다.')
     materialsWatcher.unwatch(courseId)
     // Sessions are conversation-keyed now: close every conversation of the
     // course on all managers (only ones with messages can hold a warm CLI).

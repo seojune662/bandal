@@ -15,9 +15,9 @@ directories:
 # package.json `dependencies` (with transitives), because externalizeDepsPlugin
 # leaves main/preload imports as runtime require()s.
 #
-# ⚠ That is why `dependencies` holds ONLY the five packages main/preload
-# actually require at runtime (@supabase/supabase-js, better-sqlite3, chokidar,
-# cross-spawn, electron-updater). Everything the renderer uses — milkdown,
+# ⚠ `dependencies` holds only packages required by main/preload/utility
+# processes at runtime, including sherpa-onnx-node for isolated speech inference.
+# Everything the renderer uses — milkdown,
 # pdfjs-dist, react, dockview … — is bundled into out/renderer by vite and
 # lives in `devDependencies`, so it never reaches the installer. Adding a
 # renderer-only package to `dependencies` silently re-inflates every download.
@@ -33,6 +33,10 @@ files:
   - '!node_modules/better-sqlite3/src/**'
   - '!node_modules/better-sqlite3/build/**'
   - '!node_modules/better-sqlite3/prebuilds/linux*'
+  - '!node_modules/@fugood/node-whisper-wasm/**'
+  - '!node_modules/@fugood/whisper.node/src/**'
+  - '!node_modules/@fugood/whisper.node/whisper.cpp/**'
+  - '!node_modules/@fugood/whisper.node/scripts/**'
 
 # The Korean-capable font used to burn text-box markup into exported PDFs.
 # pdf-lib's built-in Helvetica is WinAnsi-only, so without this every Hangul
@@ -54,6 +58,8 @@ extraResources:
 # filesystem, so native binaries must remain outside the asar archive.
 asarUnpack:
   - '**/*.node'
+  - '**/sherpa-onnx-*/**'
+  - '**/@fugood/node-whisper-*/**'
 
 # Every native dependency ships Node-API prebuilds, so Electron ABI rebuilding
 # is unnecessary. Before adding a native dependency, verify that it ships
@@ -108,6 +114,7 @@ mac:
   notarize: true
   extendInfo:
     CFBundleDisplayName: Bandal
+    NSMicrophoneUsageDescription: 강의를 녹음하고 기기에서 실시간 자막을 만들기 위해 마이크를 사용합니다.
     NSAudioCaptureUsageDescription: 화면 공유 시 시스템 소리를 함께 전달하기 위해 필요합니다.
     NSScreenCaptureUsageDescription: 화면을 읽어 질문에 답하기 위해 필요합니다.
   # Applies to the zip target. Version-free so the website can link

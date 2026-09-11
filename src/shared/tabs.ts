@@ -9,6 +9,7 @@
  */
 
 export type TabKind =
+  | 'recording'
   | 'pdf'
   | 'note'
   | 'browser'
@@ -114,6 +115,7 @@ export interface GroupChatTabPayload {
 }
 
 export interface TabPayloadMap {
+  recording: { courseId: string }
   pdf: PdfTabPayload
   note: NoteTabPayload
   browser: BrowserTabPayload
@@ -168,6 +170,7 @@ export type TabDescriptor = {
  * below stops compiling when a kind is missing.
  */
 export const TAB_KINDS = [
+  'recording',
   'pdf',
   'note',
   'browser',
@@ -204,6 +207,8 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
   if (!isRecord(payload)) return false
 
   switch (value['kind']) {
+    case 'recording':
+      return isNonEmptyString(payload['courseId'])
     case 'pdf':
     case 'note':
       return (

@@ -51,7 +51,8 @@ describe('migrations', () => {
       { version: 28, name: 'typed-material-links' },
       { version: 29, name: 'friends-direct-chat-and-course-sharing-cache' },
       { version: 30, name: 'board-task-colors' },
-      { version: 31, name: 'friend-conversation-previews' }
+      { version: 31, name: 'friend-conversation-previews' },
+      { version: 32, name: 'lecture-recordings' }
     ])
   })
 
@@ -221,7 +222,7 @@ describe('migrations', () => {
     const count = ctx.db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as {
       n: number
     }
-    expect(count.n).toBe(31)
+    expect(count.n).toBe(32)
   })
 
   test('adds a persistent default color to existing board tasks (migration 030)', () => {
