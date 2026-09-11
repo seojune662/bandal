@@ -20,6 +20,11 @@ const event = (overrides: Partial<Parameters<typeof chordFromKeyboardEvent>[0]> 
 })
 
 describe('shared keymap contract', () => {
+  test('resolves macOS Option symbols without overriding ordinary keyboard layouts', () => {
+    expect(chordFromKeyboardEvent(event({ key: '∑', code: 'KeyW', metaKey: true, altKey: true }))).toBe('mod+alt+w')
+    expect(chordFromKeyboardEvent(event({ key: 'a', code: 'KeyQ', metaKey: true }))).toBe('mod+a')
+    expect(chordFromKeyboardEvent(event({ key: 'ㅈ', code: 'KeyW', metaKey: true }))).toBe('mod+w')
+  })
   test('parses, records, formats and matches canonical chords', () => {
     const chord = parseChord('shift+MOD+b')
     expect(chord).toEqual({ mod: true, alt: false, shift: true, key: 'b' })
@@ -78,6 +83,10 @@ describe('shared keymap contract', () => {
         ["new-tab", "mod+t", true],
         ["new-markdown", "mod+shift+m", true],
         ["new-browser-tab", "mod+shift+b", true],
+        ["new-ai-tab", "mod+shift+a", true],
+        ["new-recording-tab", "mod+alt+r", true],
+        ["new-whiteboard", "mod+alt+w", true],
+        ["open-study-board", "mod+alt+d", true],
         ["close-tab", "mod+w", true],
         ["quick-search", "mod+p", false],
         ["settings", "mod+,", false],

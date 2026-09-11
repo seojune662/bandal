@@ -66,6 +66,7 @@ import { applyTheme } from "./settingsTheme";
 import { savePreference } from "./savePreference";
 import { UniversitySettingsPanel } from "./UniversitySettingsPanel";
 import { WidgetSettingsPanel } from "./WidgetSettingsPanel";
+import { TabsSettingsPanel } from "./TabsSettingsPanel";
 import {
   HELP_FOCUS_TARGET_EVENT,
   milestoneDestination,
@@ -544,7 +545,8 @@ export function SettingsApp({
     }
   };
 
-  const panel = {
+  const panel: Record<SettingsCategoryId, ReactNode> = {
+    tabs: null,
     account: <AccountPanel />,
     general: <GeneralPanel settings={settings} />,
     appearance: (
@@ -611,6 +613,7 @@ export function SettingsApp({
     ),
     about: <AboutPanel />,
   } satisfies Record<SettingsCategoryId, ReactNode>;
+  panel.tabs = <TabsSettingsPanel settings={settings} aiPanel={panel.ai} browserPanel={panel.browser} onNavigate={setActiveCategory} />;
 
   return (
     <div

@@ -133,6 +133,12 @@ export interface BrowserDownloadUpdate {
 export interface ShortcutPassthrough {
   action:
     | 'new-tab'
+    | 'new-markdown'
+    | 'new-browser-tab'
+    | 'new-ai-tab'
+    | 'new-recording-tab'
+    | 'new-whiteboard'
+    | 'open-study-board'
     | 'close-tab'
     | 'activate-last-tab'
     | 'activate-tab-1'

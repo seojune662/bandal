@@ -21,8 +21,7 @@
     "src/shared/brandMark.ts"
   ],
   "ignoreDependencies": [
-    "@milkdown/exception",
-    "better-sqlite3-node"
+    "@milkdown/exception"
   ],
   "ignoreBinaries": [
     "initdb",

@@ -25,6 +25,7 @@ export const SETTINGS_CATEGORIES = [
   { id: 'packs', group: 'workflows' },
   { id: 'browser', group: 'workflows' },
   { id: 'appearance', group: 'interface' },
+  { id: 'tabs', group: 'interface' },
   { id: 'widgets', group: 'interface' },
   { id: 'notifications', group: 'interface' },
   { id: 'shortcuts', group: 'interface' },

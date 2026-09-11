@@ -183,10 +183,10 @@ describe('resolveShortcut — guards', () => {
     expect(resolveShortcut(input({ key: 'w' }))).toBeNull()
   })
 
-  test('alt always disqualifies the chord', () => {
+  test('alt resolves registered tab commands but not unassigned chords', () => {
     expect(
       resolveShortcut(input({ key: 'w', metaKey: true, altKey: true }))
-    ).toBeNull()
+    ).toEqual({ type: 'new-whiteboard' })
     expect(
       resolveShortcut(input({ key: 't', metaKey: true, altKey: true }))
     ).toBeNull()

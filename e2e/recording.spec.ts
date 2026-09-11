@@ -336,7 +336,7 @@ test('real native STT through AudioWorklet: pause, tab switch, stop, playback, e
       timeout: 30_000
     })
     await expect(page.locator('.recording-indicator')).toHaveCount(0)
-    await expect(page.locator('.recording__player audio')).toBeVisible()
+    await expect(page.locator('.recording-playback')).toBeVisible()
     const wavPath = await page.evaluate(async () => {
       const courses = await window.bandal.invoke('courses:list', {})
       const recordings = await window.bandal.invoke('recordings:list', {
@@ -359,6 +359,8 @@ test('real native STT through AudioWorklet: pause, tab switch, stop, playback, e
     await page.screenshot({
       path: 'e2e/test-results/recording-transcript.png'
     })
+    if (!(await page.locator('.recording__sidebar').isVisible()))
+      await page.getByRole('button', { name: '설정·자료 펼치기' }).click()
     await page.getByRole('button', { name: '↗ 마크다운으로 내보내기' }).click()
     await expect(
       page.locator('[aria-label="마크다운 필기 편집기"]').filter({ hasText: '테스트 한국어 강의' })
@@ -385,6 +387,8 @@ test('real native STT through AudioWorklet: pause, tab switch, stop, playback, e
         .locator('.dv-tab')
         .filter({ has: restored.page.getByText('녹음', { exact: true }) })
         .click()
+      if (!(await restored.page.locator('.recording__sidebar').isVisible()))
+        await restored.page.getByRole('button', { name: '설정·자료 펼치기' }).click()
       await restored.page.getByRole('radio', { name: /SenseVoice/ }).check()
       await restored.page.getByRole('button', { name: '선택한 모델로 자막 다시 생성' }).click()
       await expect

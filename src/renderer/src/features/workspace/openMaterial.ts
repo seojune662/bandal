@@ -78,6 +78,21 @@ export function openMaterialInCourse(
     useWorkspaceStore.getState().openTab(descriptor)
   }
 
+  if (relPath.toLowerCase().endsWith('.wav')) {
+    void invoke('recordings:resolve', { courseId, relPath }).then((recording) => {
+      if (recording) {
+        openTab(descriptorFor('recording', {
+          courseId, sessionId: recording.id, title: recording.title
+        }))
+        recordMaterialOpened(courseId, relPath)
+      } else {
+        void invoke('materials:reveal', { courseId, relPath }).catch(() =>
+          showToast('파일을 열지 못했습니다.', 'danger'))
+      }
+    }).catch(() => showToast('녹음 파일을 열지 못했습니다.', 'danger'))
+    return
+  }
+
   if (kind === 'other' && isViewableFile(relPath)) {
     openTab(descriptorFor('file', { courseId, relPath }))
     recordMaterialOpened(courseId, relPath)

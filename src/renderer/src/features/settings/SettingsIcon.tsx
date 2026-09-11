@@ -5,6 +5,7 @@ export type IconName =
   | 'general'
   | 'appearance'
   | 'widgets'
+  | 'tabs'
   | 'ai'
   | 'assistant'
   | 'advanced'
@@ -29,6 +30,7 @@ export type IconName =
 
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }): JSX.Element {
   const paths: Record<IconName, ReactNode> = {
+    tabs: <><rect x="3" y="5" width="18" height="15" rx="2" /><path d="M3 10h18M9 5v5M15 5v5" /></>,
     account: (
       <>
         <circle cx="12" cy="8" r="3.5" />

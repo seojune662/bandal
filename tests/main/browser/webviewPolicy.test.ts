@@ -201,12 +201,15 @@ describe('passthroughShortcut (chords a focused guest would otherwise eat)', () 
     expect(shortcut({ key: ']', shift: true })).toBe('next-tab')
   })
 
-  test('leaves the app-only shifted chords with the page', () => {
-    // ⌘⇧B (new browser tab) / ⌘⇧M (new note) are ours but would be startling
-    // to fire from inside a page.
-    for (const key of ['b', 'm', 'w']) {
-      expect(shortcut({ key, shift: true }), key).toBeNull()
-    }
+  test('keeps every new-tab command available from a focused page', () => {
+    expect(shortcut({ key: 'b', shift: true })).toBe('new-browser-tab')
+    expect(shortcut({ key: 'm', shift: true })).toBe('new-markdown')
+    expect(shortcut({ key: 'a', shift: true })).toBe('new-ai-tab')
+    expect(shortcut({ key: 'r', alt: true })).toBe('new-recording-tab')
+    expect(shortcut({ key: 'w', alt: true })).toBe('new-whiteboard')
+    expect(shortcut({ key: 'd', alt: true })).toBe('open-study-board')
+    expect(shortcut({ key: 'w', shift: true })).toBeNull()
+    expect(passthroughShortcut({ ...chord(), key: '∑', code: 'KeyW', alt: true }, defaultKeymap, 'site')).toBe('new-whiteboard')
   })
 
   test('switches tabs from inside a page, the way a browser does', () => {

@@ -5,6 +5,7 @@
  */
 
 import { isOrbCharmId } from '../shared/orbCharm'
+import { sanitizeTabPreferences } from '../shared/tabPreferences'
 import { isPaletteId, isThemeId } from '../shared/theme'
 import { isSearchEngineId } from '../shared/search'
 import { parseChord, SHORTCUT_SPECS } from '../shared/keymap'
@@ -381,6 +382,7 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
       : defaults.shortcutPriority,
     experimental: sanitizeExperimental(record.experimental),
     widgets: sanitizeWidgets(record.widgets),
+    tabs: sanitizeTabPreferences(record.tabs),
     pluginSources: sanitizePluginSources(record.pluginSources)
   }
 }

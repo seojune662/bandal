@@ -59,6 +59,14 @@ async function loadSettingsStore() {
 }
 
 describe('settings store recovery', () => {
+  test('merges tab preference patches and keeps them across reload', async () => {
+    temporaryUserData()
+    const store = await loadSettingsStore()
+    store.setSettings({ tabs: { recordingModel: 'sensevoice' } })
+    store.setSettings({ tabs: { recordingSidebarOpen: false, boardDefaultView: 'board' } })
+    const reloaded = await loadSettingsStore()
+    expect(reloaded.getSettings().tabs).toMatchObject({ recordingModel: 'sensevoice', recordingSidebarOpen: false, boardDefaultView: 'board', recordingPlaybackRate: 1 })
+  })
   test('invalid home pages cannot erase a working home page', async () => {
     temporaryUserData()
     const store = await loadSettingsStore()

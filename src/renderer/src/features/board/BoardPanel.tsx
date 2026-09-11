@@ -13,6 +13,7 @@ import type { IpcRequest } from '../../../../shared/ipc/contract'
 import type { BoardTask, TaskStatus } from '../../../../shared/types/board'
 import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
+import { settingsSnapshot } from '../../stores/settingsSnapshot'
 import { useFocusTrap } from '../../components/useFocusTrap'
 import { invoke, onPush } from '../../lib/ipc'
 import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
@@ -210,11 +211,11 @@ function TaskCard({
 
 function BoardSurface(): JSX.Element {
   const courses = useCoursesStore((state) => state.courses)
-  const [view, setView] = useState<'board' | 'calendar'>('calendar')
+  const [view, setView] = useState<'board' | 'calendar'>(() => settingsSnapshot().tabs.boardDefaultView)
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0)
   const [tasks, setTasks] = useState<BoardTask[]>([])
   const [courseFilter, setCourseFilter] = useState<string | null | undefined>(undefined)
-  const [hideDone, setHideDone] = useState(false)
+  const [hideDone, setHideDone] = useState(() => settingsSnapshot().tabs.boardHideDone)
   const [isLoading, setIsLoading] = useState(true)
   const [isMutating, setIsMutating] = useState(false)
   const [error, setError] = useState<string | null>(null)

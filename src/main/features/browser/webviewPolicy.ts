@@ -108,6 +108,9 @@ const GUEST_ALLOWED: ReadonlySet<ShortcutActionId> = new Set(
 function isTabLifetimeAction(action: ShortcutActionId): boolean {
   return (
     action === 'new-tab' ||
+    action === 'new-markdown' || action === 'new-browser-tab' ||
+    action === 'new-ai-tab' || action === 'new-recording-tab' ||
+    action === 'new-whiteboard' || action === 'open-study-board' ||
     action === 'close-tab' ||
     action === 'activate-last-tab' ||
     action === 'reopen-tab' ||
@@ -124,6 +127,12 @@ function passthroughActionFor(
     return action as PassthroughAction
   }
   switch (action) {
+    case 'new-markdown':
+    case 'new-browser-tab':
+    case 'new-ai-tab':
+    case 'new-recording-tab':
+    case 'new-whiteboard':
+    case 'open-study-board':
     case 'new-tab':
     case 'close-tab':
     case 'activate-last-tab':
@@ -160,6 +169,7 @@ export function passthroughShortcut(
   input: {
     type: string
     key: string
+    code?: string | undefined
     meta: boolean
     control: boolean
     alt: boolean
@@ -171,6 +181,7 @@ export function passthroughShortcut(
   if (input.type !== 'keyDown') return null
   const chord = chordFromKeyboardEvent({
     key: input.key,
+    code: input.code,
     metaKey: input.meta,
     ctrlKey: input.control,
     altKey: input.alt,

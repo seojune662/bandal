@@ -1,7 +1,10 @@
 .recording {
   height: 100%;
   min-width: 0;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
   color: var(--text-primary);
   background: var(--bg-app);
   container-type: inline-size;
@@ -55,8 +58,7 @@
   color: var(--text-muted);
 }
 .recording__header {
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
   z-index: 1;
   display: flex;
   align-items: center;
@@ -77,7 +79,7 @@
   gap: var(--space-1);
 }
 .recording .recording__settings-button {
-  display: none;
+  display: inline-flex;
 }
 .recording__heading > svg {
   width: 20px;
@@ -96,13 +98,22 @@
 .recording__layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 284px;
-  max-width: 1160px;
-  margin: 0 auto;
-  min-height: calc(100% - 58px);
+  flex: 1;
+  min-height: 0;
+}
+.recording[data-sidebar='false'] .recording__layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+.recording__sidebar[hidden] {
+  display: none;
 }
 .recording__main {
-  padding: var(--space-6);
+  padding: var(--space-5) clamp(20px, 4cqw, 56px);
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior-y: contain;
 }
 .recording__intro {
   margin: var(--space-3) 0 var(--space-6);
@@ -189,22 +200,27 @@
   flex-wrap: wrap;
   gap: var(--space-2);
 }
-.recording:not([data-status='new']):not([data-status='ready']) .recording__intro {
+.recording:not([data-status='new']):not([data-status='ready'])
+  .recording__intro {
   margin-block: 0 var(--space-4);
 }
-.recording:not([data-status='new']):not([data-status='ready']) .recording__eyebrow {
+.recording:not([data-status='new']):not([data-status='ready'])
+  .recording__eyebrow {
   display: none;
 }
-.recording:not([data-status='new']):not([data-status='ready']) .recording__wave {
+.recording:not([data-status='new']):not([data-status='ready'])
+  .recording__wave {
   height: 48px;
 }
-.recording:is([data-status='complete'], [data-status='interrupted']) .recording__wave,
+.recording:is([data-status='complete'], [data-status='interrupted'])
+  .recording__wave,
 .recording:is([data-status='complete'], [data-status='interrupted'])
   .recording__console
   > .recording__footnote {
   display: none;
 }
-.recording:is([data-status='complete'], [data-status='interrupted']) .recording__controls {
+.recording:is([data-status='complete'], [data-status='interrupted'])
+  .recording__controls {
   margin-top: var(--space-3);
 }
 .recording button.recording__primary {
@@ -264,10 +280,7 @@
   white-space: nowrap;
 }
 .recording__transcript-scroll {
-  max-height: 52vh;
   min-height: 220px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 .recording__empty {
   text-align: center;
@@ -348,10 +361,112 @@
 }
 .recording__sidebar {
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   scroll-margin-top: 64px;
   border-left: 1px solid var(--border-subtle);
   padding: var(--space-5);
   background: var(--bg-surface);
+}
+.recording__setup > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding-block: var(--space-2);
+  list-style: none;
+}
+.recording__setup > summary::after {
+  content: '⌄';
+  font-size: 16px;
+}
+.recording__setup:not([open]) > summary::after {
+  content: '›';
+}
+.recording__setup > summary::-webkit-details-marker {
+  display: none;
+}
+.recording__setup > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.recording__model-description {
+  margin-block: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.recording__model-description summary {
+  cursor: pointer;
+}
+.recording .recording__preferences-link {
+  width: 100%;
+  margin-bottom: var(--space-3);
+  font-size: var(--text-xs);
+}
+.recording-playback {
+  width: 100%;
+  padding: var(--space-3);
+  box-sizing: border-box;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.recording-playback__transport {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.recording .recording-playback__play {
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  background: var(--accent);
+  color: var(--bg-app);
+  flex-shrink: 0;
+}
+.recording .recording-playback__play:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(1.1);
+}
+.recording
+  .recording-playback__transport
+  > button:not(.recording-playback__play) {
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  font-size: var(--text-xs);
+}
+.recording-playback__time {
+  font: var(--text-xs) var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.recording .recording-playback select {
+  width: 64px;
+  height: 30px;
+  padding: 3px;
+  font-size: var(--text-xs);
+}
+.recording .recording-playback input[type='range'] {
+  border: 0;
+  padding: 0;
+  margin: var(--space-3) 0 0;
+  width: 100%;
+  accent-color: var(--accent);
+}
+.recording[data-status='complete'] .recording__console,
+.recording[data-status='interrupted'] .recording__console {
+  padding: var(--space-3) var(--space-4);
+}
+.recording[data-status='complete'] .recording__wave,
+.recording[data-status='complete'] .recording__footnote,
+.recording[data-status='complete'] .recording__controls {
+  display: none;
+}
+.recording[data-status='complete'] .recording__clock {
+  font-size: var(--text-lg);
 }
 .recording__side-section {
   padding-bottom: var(--space-5);
@@ -568,11 +683,16 @@
     padding: var(--space-5);
   }
   .recording__sidebar {
+    position: absolute;
+    z-index: 3;
+    top: 58px;
+    bottom: 0;
+    right: 0;
+    width: min(300px, 100%);
+    box-sizing: border-box;
+    box-shadow: var(--shadow-md);
     border-left: 0;
     border-top: 1px solid var(--border-subtle);
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-5);
   }
 }
 @container (max-width: 470px) {
@@ -588,6 +708,14 @@
   }
   .recording__local {
     display: none;
+  }
+  .recording-playback__transport {
+    flex-wrap: wrap;
+  }
+  .recording-playback__time {
+    order: 1;
+    width: 100%;
+    text-align: center;
   }
   .recording__segment {
     grid-template-columns: 62px minmax(0, 1fr);

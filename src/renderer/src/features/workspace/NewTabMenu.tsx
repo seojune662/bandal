@@ -16,7 +16,7 @@ import {
 import type { Course } from '../../../../shared/types/course'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
-import { createBrowserTab, createMarkdownTab } from '../../app/tabCommands'
+import { createBrowserTab, createMarkdownTab, createStudyTab } from '../../app/tabCommands'
 import { showToast } from '../../app/toast'
 import { useFavoritesStore } from '../../stores/favoritesStore'
 import { useGroupsStore } from '../../stores/groupsStore'
@@ -29,7 +29,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useNewTabMenu } from './newTabMenuController'
 import { descriptorFor, looksLikeUrl, normalizeUrl } from './tabIdentity'
 import { TabKindIcon } from './workspaceIcons'
-import { invoke, onPush } from '../../lib/ipc'
+import { onPush } from '../../lib/ipc'
 import { useT } from '../../i18n'
 import {
   chordMap as pluginChordMap,
@@ -45,7 +45,7 @@ interface MenuItem {
   id: string
   label: string
   hint?: string
-  shortcut?: string
+  shortcut?: string | undefined
   icon: JSX.Element
   keepOpen?: boolean
   section?: 'plugins'
@@ -210,6 +210,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         id: 'recording',
         label: '녹음',
         hint: '강의 · 실시간 자막',
+        shortcut: shortcutLabel(keymap, 'new-recording-tab', platform),
         icon: <TabKindIcon kind="recording" />,
         run: () => openTab(descriptorFor('recording', { courseId: course.id }))
       })
@@ -235,18 +236,9 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         id: 'new-whiteboard',
         label: '새 화이트보드',
         hint: '정리 · 마인드맵',
+        shortcut: shortcutLabel(keymap, 'new-whiteboard', platform),
         icon: <TabKindIcon kind="whiteboard" />,
-        run: async () => {
-          try {
-            const board = await invoke('canvas:create', { courseId: course.id })
-            openTab(descriptorFor('whiteboard', {
-              courseId: course.id,
-              boardId: board.id
-            }))
-          } catch (error) {
-            console.error('[Bandal] 화이트보드를 만들지 못했습니다.', error)
-          }
-        }
+        run: () => createStudyTab('whiteboard')
       })
     }
     if (matches('AI', 'AI 튜터')) {
@@ -254,6 +246,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         id: 'chat',
         label: 'AI',
         hint: course.name,
+        shortcut: shortcutLabel(keymap, 'new-ai-tab', platform),
         icon: <TabKindIcon kind="chat" />,
         run: () => {
           openTab(
@@ -269,12 +262,15 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
       result.push({
         id: 'board',
         label: '학업 보드',
+        shortcut: shortcutLabel(keymap, 'open-study-board', platform),
         icon: <TabKindIcon kind="board" />,
         run: () => {
           openTab(descriptorFor('board', {}))
         }
       })
     }
+    const order = ['open-url', 'new-note', 'new-browser', 'chat', 'recording', 'new-whiteboard', 'board']
+    result.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
     // One course-scoped tab owns the in-panel group switcher. Keep the entry
     // hidden when the course has no groups, and carry the matching group only
     // when search entered through a group name.
@@ -375,6 +371,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
     openTab,
     newMarkdownShortcut,
     newBrowserShortcut,
+    keymap,
     plugins,
     pluginChords,
     platform

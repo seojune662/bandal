@@ -10,6 +10,10 @@ export type ShortcutActionId =
   | 'new-tab'
   | 'new-markdown'
   | 'new-browser-tab'
+  | 'new-ai-tab'
+  | 'new-recording-tab'
+  | 'new-whiteboard'
+  | 'open-study-board'
   | 'close-tab'
   | 'quick-search'
   | 'settings'
@@ -72,6 +76,7 @@ export interface Chord {
 /** The KeyboardEvent fields needed by the shared, DOM-independent helpers. */
 export interface KeyboardChordEvent {
   key: string
+  code?: string | undefined
   metaKey: boolean
   ctrlKey: boolean
   altKey: boolean
@@ -87,6 +92,10 @@ export const SHORTCUT_SPECS = [
   { id: 'new-tab', labelKo: '새 탭', labelEn: 'New tab', defaultChord: 'mod+t', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
   { id: 'new-markdown', labelKo: '새 마크다운', labelEn: 'New Markdown', defaultChord: 'mod+shift+m', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
   { id: 'new-browser-tab', labelKo: '새 브라우저 탭', labelEn: 'New browser tab', defaultChord: 'mod+shift+b', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
+  { id: 'new-ai-tab', labelKo: '새 AI 탭', labelEn: 'New AI tab', defaultChord: 'mod+shift+a', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
+  { id: 'new-recording-tab', labelKo: '녹음 탭 열기', labelEn: 'Open recording tab', defaultChord: 'mod+alt+r', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
+  { id: 'new-whiteboard', labelKo: '새 화이트보드', labelEn: 'New whiteboard', defaultChord: 'mod+alt+w', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
+  { id: 'open-study-board', labelKo: '학업 보드 탭 열기', labelEn: 'Open study board tab', defaultChord: 'mod+alt+d', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
   { id: 'close-tab', labelKo: '탭 닫기', labelEn: 'Close tab', defaultChord: 'mod+w', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
   { id: 'quick-search', labelKo: '빠른 파일 검색', labelEn: 'Quick file search', defaultChord: 'mod+p', scope: 'global', customizable: CUSTOM, guestAllowed: HOST_ONLY },
   { id: 'settings', labelKo: '설정', labelEn: 'Settings', defaultChord: 'mod+,', scope: 'global', customizable: CUSTOM, guestAllowed: HOST_ONLY },
@@ -241,7 +250,12 @@ export function formatChord(chord: Chord, platform: string): string {
 
 /** Records a keydown as a canonical chord. Modifier-only keydowns are ignored. */
 export function chordFromKeyboardEvent(event: KeyboardChordEvent): string | null {
-  const key = normalizeKey(event.key)
+  // macOS Option can report ∑/®/∂ instead of W/R/D. Only fall back for
+  // modified non-ASCII/dead keys; ordinary non-QWERTY letter layouts keep key.
+  const physical = event.code?.match(/^Key([A-Z])$/)?.[1]
+  const value = physical && (event.metaKey || event.ctrlKey) &&
+    (event.key === 'Dead' || /[^\x00-\x7f]/.test(event.key)) ? physical : event.key
+  const key = normalizeKey(value)
   if (key === null) return null
   return serializeChord({
     mod: event.metaKey || event.ctrlKey,

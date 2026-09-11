@@ -4,6 +4,7 @@ import { onPush } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
+import { activateRecordingView } from './recordingNavigation'
 import { abandonCapture, stopCapture, useCaptureStore } from './captureStore'
 import './recording.css'
 
@@ -25,7 +26,10 @@ export function RecordingIndicator(): JSX.Element | null {
           session: {
             ...event.session,
             samples: Math.max(current.samples, event.session.samples),
-            nextSequence: Math.max(current.nextSequence, event.session.nextSequence)
+            nextSequence: Math.max(
+              current.nextSequence,
+              event.session.nextSequence
+            )
           }
         })
       }),
@@ -38,7 +42,14 @@ export function RecordingIndicator(): JSX.Element | null {
       courseId === capture.session.courseId &&
       hydration === 'ready'
     ) {
-      useWorkspaceStore.getState().openTab(descriptorFor('recording', { courseId }))
+      if (!activateRecordingView(capture.session.id))
+        useWorkspaceStore.getState().openTab(
+          descriptorFor('recording', {
+            courseId,
+            sessionId: capture.session.id,
+            title: capture.session.title
+          })
+        )
       setPending(false)
     }
   }, [pending, capture.session, courseId, hydration])

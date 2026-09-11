@@ -31,7 +31,7 @@ export { isTabDescriptor } from '../../../../shared/tabs'
 export function tabPanelId(descriptor: TabDescriptor): string {
   switch (descriptor.kind) {
     case 'recording':
-      return `recording:${descriptor.payload.courseId}`
+      return `recording:${descriptor.payload.courseId}${descriptor.payload.sessionId ? `:${descriptor.payload.sessionId}` : ''}`
     case 'pdf':
     case 'note':
     case 'image':
@@ -75,7 +75,7 @@ function stripExtension(name: string): string {
 export function tabTitle(descriptor: TabDescriptor): string {
   switch (descriptor.kind) {
     case 'recording':
-      return '녹음'
+      return descriptor.payload.title || '녹음'
     case 'pdf':
     case 'image':
     case 'file':

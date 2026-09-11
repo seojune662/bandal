@@ -76,7 +76,7 @@ export function setSettings(patch: SettingsPatch): Settings {
   const previous = getSettings()
   const merged = { ...previous, ...patch }
   if ((patch.theme !== undefined || patch.palette !== undefined) && patch.pluginTheme === undefined) merged.pluginTheme = null
-  for (const key of ['browser', 'notifications', 'experimental', 'desktopOrb', 'widgets'] as const) {
+  for (const key of ['browser', 'notifications', 'experimental', 'desktopOrb', 'widgets', 'tabs'] as const) {
     const value = patch[key]
     if (value !== undefined && value !== null && typeof value === 'object' && !Array.isArray(value)) {
       Object.assign(merged, { [key]: { ...previous[key], ...value } })

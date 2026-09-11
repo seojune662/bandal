@@ -69,6 +69,16 @@ describe('durable lecture recordings', () => {
     expect(() => repo.anchor(session.id, 'bad', '../outside.md')).toThrow()
     expect(() => repo.create('course', 'test', 'bad' as never)).toThrow('모델')
   })
+  it('resolves existing WAV files by course and survives folder renames', () => {
+    const session = recording()
+    expect(repo.resolve('course', session.audioRelPath)?.id).toBe(session.id)
+    expect(repo.resolve('course', 'unrelated.wav')).toBeNull()
+    expect(() => repo.resolve('missing-course', session.audioRelPath)).toThrow()
+    expect(() => repo.resolve('course', '../outside.wav')).toThrow()
+    renameSync(join(folder, '녹음'), join(folder, '강의 녹음'))
+    repo.repoint('course', '녹음', '강의 녹음', true)
+    expect(repo.resolve('course', session.audioRelPath.replace('녹음/', '강의 녹음/'))?.id).toBe(session.id)
+  })
   it('rejects symlinked recording roots outside the course', () => {
     symlinkSync(testDb.dir, join(folder, '녹음'))
     expect(() => repo.create('course', 'test', 'zipformer-ko')).toThrow()

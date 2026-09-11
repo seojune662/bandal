@@ -434,6 +434,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
   handle('recordings:list', (req) => recordings.list(req.courseId))
+  handle('recordings:resolve', (req) => recordings.resolve(req.courseId, req.relPath))
   handle('recordings:create', (req) => recordings.create(req.courseId, req.title, req.modelId))
   handle('recordings:read', (req) => recordings.read(req.id, req.afterId))
   handle('recordings:control', (req) => recordingService.control(req.id, req.action, req.modelId))
@@ -2573,7 +2574,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // `canvas:` and not `board:` — the latter already means the study TASK board.
   const canvasRepo = createCanvasRepo(db)
   handle('canvas:list', (req) => canvasRepo.listBoards(req.courseId))
-  handle('canvas:create', (req) => canvasRepo.createBoard(req))
+  handle('canvas:create', (req) => {
+    const board = canvasRepo.createBoard(req)
+    return canvasRepo.setBackground({ boardId: board.id, background: getSettings().tabs.whiteboardBackground })
+  })
   handle('canvas:rename', (req) => canvasRepo.renameBoard(req))
   handle('canvas:remove', (req) => {
     canvasRepo.removeBoard(req.id)

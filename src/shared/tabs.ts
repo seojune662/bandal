@@ -115,7 +115,7 @@ export interface GroupChatTabPayload {
 }
 
 export interface TabPayloadMap {
-  recording: { courseId: string }
+  recording: { courseId: string; sessionId?: string; title?: string; newRecording?: boolean }
   pdf: PdfTabPayload
   note: NoteTabPayload
   browser: BrowserTabPayload
@@ -208,7 +208,10 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
 
   switch (value['kind']) {
     case 'recording':
-      return isNonEmptyString(payload['courseId'])
+      return isNonEmptyString(payload['courseId']) &&
+        (payload['sessionId'] === undefined || isNonEmptyString(payload['sessionId'])) &&
+        (payload['title'] === undefined || typeof payload['title'] === 'string') &&
+        (payload['newRecording'] === undefined || typeof payload['newRecording'] === 'boolean')
     case 'pdf':
     case 'note':
       return (

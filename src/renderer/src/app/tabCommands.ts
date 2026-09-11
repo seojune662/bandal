@@ -21,7 +21,7 @@ export function defaultMarkdownTitle(now: Date): string {
   const pad = (value: number): string => String(value).padStart(2, '0')
   const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
   const time = `${pad(now.getHours())}.${pad(now.getMinutes())}`
-  return `새 마크다운 ${date} ${time}`
+  return `${settingsSnapshot().tabs.markdownTitlePrefix} ${date} ${time}`
 }
 
 function activeCourseId(): string | null {
@@ -48,7 +48,27 @@ export async function createMarkdownTab(title?: string): Promise<void> {
 export function createBrowserTab(url?: string): void {
   const homePage = settingsSnapshot().browser.homePage
   const initialUrl = url ?? (homePage !== '' ? homePage : DEFAULT_BROWSER_URL)
-  useWorkspaceStore.getState().openTab(
-    descriptorFor('browser', { tabId: uuidv4(), initialUrl })
-  )
+  useWorkspaceStore
+    .getState()
+    .openTab(descriptorFor('browser', { tabId: uuidv4(), initialUrl }))
+}
+
+export async function createStudyTab(
+  kind: 'chat' | 'recording' | 'whiteboard' | 'board'
+): Promise<void> {
+  const courseId = activeCourseId()
+  const open = useWorkspaceStore.getState().openTab
+  if (kind === 'board') {
+    open(descriptorFor('board', {}))
+    return
+  }
+  if (courseId === null) return
+  if (kind === 'chat') {
+    open(descriptorFor('chat', { courseId, conversationId: uuidv4() }))
+  } else if (kind === 'recording') {
+    open(descriptorFor('recording', { courseId }))
+  } else {
+    const board = await invoke('canvas:create', { courseId })
+    open(descriptorFor('whiteboard', { courseId, boardId: board.id }))
+  }
 }

@@ -3,6 +3,7 @@
  */
 
 import { DEFAULT_ORB_CHARM } from '../orbCharm'
+import { DEFAULT_TAB_PREFERENCES, type TabPreferences } from '../tabPreferences'
 import type { OrbCharmId } from '../orbCharm'
 import type { AgentProvider } from './agent-events'
 import { DEFAULT_PALETTE_ID, DEFAULT_THEME_ID } from '../theme'
@@ -277,6 +278,7 @@ export const DEFAULT_MILESTONES: Milestones = {
 }
 
 export interface Settings {
+  tabs: TabPreferences
   theme: ThemePreference
   /**
    * The color family layered over `theme` (src/shared/theme.ts). Independent
@@ -346,6 +348,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  tabs: DEFAULT_TAB_PREFERENCES,
   theme: DEFAULT_THEME_ID,
   palette: DEFAULT_PALETTE_ID,
   fontScale: DEFAULT_FONT_SCALE,
@@ -377,8 +380,9 @@ export const DEFAULT_SETTINGS: Settings = {
 
 /** Preference groups accept field patches; maps (e.g. keybindings) replace. */
 export type SettingsPatch = Partial<Omit<Settings,
-  'browser' | 'notifications' | 'experimental' | 'desktopOrb' | 'widgets'
+  'browser' | 'notifications' | 'experimental' | 'desktopOrb' | 'widgets' | 'tabs'
 >> & {
+  tabs?: Partial<TabPreferences>
   browser?: Partial<BrowserSettings>
   notifications?: Partial<NotificationSettings>
   experimental?: Partial<ExperimentalSettings>

@@ -63,6 +63,7 @@ export interface RecordingIpcContract {
   'recordings:downloadModel': { req: { modelId: SpeechModelId }; res: { ok: true } }
   'recordings:cancelDownload': { req: { modelId: SpeechModelId }; res: { ok: true } }
   'recordings:list': { req: { courseId: string }; res: RecordingSession[] }
+  'recordings:resolve': { req: { courseId: string; relPath: string }; res: RecordingSession | null }
   'recordings:create': {
     req: { courseId: string; title: string; modelId: SpeechModelId }
     res: RecordingSession
@@ -91,6 +92,7 @@ export const RECORDING_CHANNELS = [
   'recordings:downloadModel',
   'recordings:cancelDownload',
   'recordings:list',
+  'recordings:resolve',
   'recordings:create',
   'recordings:read',
   'recordings:control',

@@ -10,7 +10,8 @@ import {
 } from '../../../shared/keymap'
 import { onPush } from '../lib/ipc'
 import { openNewTabMenu } from '../features/workspace/newTabMenuController'
-import { createBrowserTab, createMarkdownTab } from './tabCommands'
+import { createBrowserTab, createMarkdownTab, createStudyTab } from './tabCommands'
+import { showToast } from './toast'
 import { tabIdForWebContents } from '../features/browser/guestActions'
 import { viewerKindFor } from '../features/file/fileFormats'
 import { tabPanelId } from '../features/workspace/tabIdentity'
@@ -35,6 +36,7 @@ export type ShortcutAction =
   | { type: 'new-tab' }
   | { type: 'new-markdown' }
   | { type: 'new-browser-tab' }
+  | { type: 'new-ai-tab' | 'new-recording-tab' | 'new-whiteboard' | 'open-study-board' }
   | { type: 'close-tab' }
   | { type: 'quick-search' }
   | { type: 'settings' }
@@ -63,6 +65,7 @@ export type ShortcutAction =
 
 export interface ShortcutInput {
   key: string
+  code?: string | undefined
   metaKey: boolean
   ctrlKey: boolean
   altKey: boolean
@@ -87,6 +90,10 @@ function actionForId(id: ShortcutActionId): ShortcutAction | null {
     case 'new-tab':
     case 'new-markdown':
     case 'new-browser-tab':
+    case 'new-ai-tab':
+    case 'new-recording-tab':
+    case 'new-whiteboard':
+    case 'open-study-board':
     case 'close-tab':
     case 'quick-search':
     case 'settings':
@@ -224,6 +231,15 @@ export function runShortcutAction(
     case 'new-browser-tab':
       createBrowserTab()
       return
+    case 'new-ai-tab':
+    case 'new-recording-tab':
+    case 'new-whiteboard':
+    case 'open-study-board':
+      void createStudyTab({
+        'new-ai-tab': 'chat', 'new-recording-tab': 'recording',
+        'new-whiteboard': 'whiteboard', 'open-study-board': 'board'
+      }[action.type] as 'chat' | 'recording' | 'whiteboard' | 'board').catch(() => showToast('탭을 열지 못했습니다.', 'danger'))
+      return
     case 'close-tab':
       if (originTabId !== undefined) {
         useWorkspaceStore
@@ -347,6 +363,13 @@ function passthroughAction(
   action: ShortcutPassthrough['action']
 ): ShortcutAction | null {
   switch (action) {
+    case 'new-markdown':
+    case 'new-browser-tab':
+    case 'new-ai-tab':
+    case 'new-recording-tab':
+    case 'new-whiteboard':
+    case 'open-study-board':
+      return { type: action }
     case 'new-tab':
       return { type: 'new-tab' }
     case 'close-tab':
@@ -462,6 +485,7 @@ export function useGlobalShortcuts(): void {
     const onKeyDown = (event: KeyboardEvent): void => {
       const action = resolveShortcut({
         key: event.key,
+        code: event.code,
         metaKey: event.metaKey,
         ctrlKey: event.ctrlKey,
         altKey: event.altKey,

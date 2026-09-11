@@ -322,6 +322,14 @@ export function createRecordingRepo(db: Database, getFolder: (id: string) => str
   }
   return {
     get,
+    resolve(courseId: string, relPath: string): RecordingSession | null {
+      requireNonEmptyString(relPath, 'relPath')
+      resolveInsideReal(getFolder(courseId), relPath)
+      const row = db.prepare(
+        "SELECT payload FROM recording_sessions WHERE course_id = ? AND json_extract(payload, '$.audioRelPath') = ? LIMIT 1"
+      ).get(courseId, relPath.replaceAll('\\', '/')) as { payload: string } | undefined
+      return row ? JSON.parse(row.payload) as RecordingSession : null
+    },
     save,
     list,
     create,
