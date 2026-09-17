@@ -63,6 +63,7 @@ export interface CodexAdapterDeps {
 export const CODEX_MCP_TOKEN_ENV_VAR = 'BANDAL_MCP_TOKEN'
 
 export interface BuildCodexArgsOptions {
+  effort?: string
   cwd: string
   prompt: string
   model?: string
@@ -99,6 +100,7 @@ export function buildCodexArgs(opts: BuildCodexArgsOptions): string[] {
     )
   }
   args.push(...(opts.mcpExtraArgs ?? []))
+  if (opts.effort) args.push('-c', `model_reasoning_effort=${JSON.stringify(opts.effort)}`)
   if (opts.model !== undefined && opts.model !== '' && opts.model !== 'default') {
     args.push('-m', opts.model)
   }
@@ -315,6 +317,7 @@ export function createCodexAdapter(
         cwd: opts.cwd,
         prompt: promptFor(content),
         ...(opts.model === undefined ? {} : { model: opts.model }),
+        ...(opts.effort === undefined ? {} : { effort: opts.effort }),
         ...(threadId === null ? {} : { resumeCliSessionId: threadId }),
         ...(opts.mcpHttp === undefined ? {} : { mcpUrl: opts.mcpHttp.url }),
         ...(opts.mcpExtraArgs === undefined

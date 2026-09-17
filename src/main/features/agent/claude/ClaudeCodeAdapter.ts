@@ -97,6 +97,8 @@ export function transcriptDirFor(cwd: string): string {
 }
 
 export function buildClaudeArgs(opts: {
+  effort?: string
+  selectedSkills?: string[]
   resumeCliSessionId?: string
   model?: string
   systemPromptAppend?: string
@@ -140,6 +142,12 @@ export function buildClaudeArgs(opts: {
   if (opts.systemPromptAppend !== undefined && opts.systemPromptAppend !== '') {
     args.push('--append-system-prompt', opts.systemPromptAppend)
   }
+  if (opts.selectedSkills?.length) {
+    args.splice(args.indexOf('--disable-slash-commands'), 1)
+    const denied = args.indexOf('--disallowedTools')
+    args.splice(denied, 2)
+  }
+  if (opts.effort) args.push('--effort', opts.effort)
   if (opts.model !== undefined && opts.model !== '') {
     args.push('--model', opts.model)
   }

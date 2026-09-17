@@ -46,14 +46,26 @@ export function parseCodexModelCatalog(
     ) {
       continue
     }
+    const efforts = Array.isArray(model['supported_reasoning_levels'])
+      ? model['supported_reasoning_levels'].flatMap((entry: unknown) => {
+          if (typeof entry !== 'object' || entry === null) return []
+          const effort = (entry as Record<string, unknown>)['effort']
+          return typeof effort === 'string' && /^[a-z]+$/.test(effort) ? [effort] : []
+        }) : []
     models.push({
       value: model['slug'],
-      displayName: model['display_name']
+      displayName: model['display_name'],
+      ...(efforts.length > 0 ? { supportedEfforts: efforts } : {}),
+      ...(typeof model['default_reasoning_level'] === 'string' ? { defaultEffort: model['default_reasoning_level'] } : {})
     })
   }
-  return models.length === 0
-    ? [...CODEX_FALLBACK_MODELS]
-    : [defaultOption(configuredModel), ...models]
+  if (models.length === 0) return [...CODEX_FALLBACK_MODELS]
+  const configured = models.find((model) => model.value === configuredModel)
+  return [{
+    ...defaultOption(configuredModel),
+    ...(configured?.supportedEfforts ? { supportedEfforts: configured.supportedEfforts } : {}),
+    ...(configured?.defaultEffort ? { defaultEffort: configured.defaultEffort } : {})
+  }, ...models]
 }
 
 function configuredModel(configPath: string): string | null {

@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PermissionResponse } from '../../../../../shared/types/agent-events'
 import type { PermissionBlockView } from '../chatModel'
-import { prettyInput, summarizeInput } from '../toolPresentation'
+import { presentTool, prettyInput, summarizeInput } from '../toolPresentation'
 
 export interface PermissionDialogProps {
   block: PermissionBlockView
@@ -15,6 +15,7 @@ export interface PermissionDialogProps {
   isActive: boolean
   autoFocusReject?: boolean
   shouldAutoFocusReject?: () => boolean
+  responseState?: 'pending' | 'error' | undefined
   onRespond: (requestId: string, response: PermissionResponse) => void
 }
 
@@ -33,12 +34,15 @@ export function PermissionDialog({
   isActive,
   autoFocusReject = false,
   shouldAutoFocusReject,
-  onRespond
+  onRespond,
+  responseState
 }: PermissionDialogProps): JSX.Element {
   const [isExpanded, setIsExpanded] = useState(false)
   const rejectButtonRef = useRef<HTMLButtonElement>(null)
   const isPending = block.behavior === undefined && isActive
-  const summary = summarizeInput(block.input)
+  const presentation = presentTool({ kind: 'tool', id: block.id, toolName: block.toolName, input: block.input, label: '', status: 'running' })
+  const toolTitle = ({ Read: '파일 읽기', Write: '파일 작성', Edit: '파일 수정', Bash: '명령 실행', Grep: '파일 검색', Glob: '파일 검색', WebFetch: '웹 페이지 읽기', WebSearch: '웹 검색' } as Record<string, string>)[block.toolName] ?? block.toolName
+  const summary = presentation.detail ?? (summarizeInput(block.input) ? '세부 작업 내용 보기' : '')
   const detail = prettyInput(block.input)
 
   useEffect(() => {
@@ -61,7 +65,7 @@ export function PermissionDialog({
         >
           {resolvedLabel(block.behavior)}
         </span>
-        <span className="chat-permission__tool">{block.toolName}</span>
+        <span className="chat-permission__tool" title={block.toolName}>{toolTitle}</span>
         {summary !== '' && (
           <span className="chat-permission__summary">{summary}</span>
         )}
@@ -76,7 +80,7 @@ export function PermissionDialog({
         <strong>도구 실행 허용이 필요해요</strong>
       </div>
       <div className="chat-permission__request">
-        <span className="chat-permission__tool">{block.toolName}</span>
+        <span className="chat-permission__tool" title={block.toolName}>{toolTitle}</span>
         {summary !== '' && (
           <button
             type="button"
@@ -91,7 +95,9 @@ export function PermissionDialog({
       {isExpanded && detail !== '' && (
         <pre className="chat-permission__detail">{detail}</pre>
       )}
-      <div className="chat-permission__actions">
+      {responseState === 'error' && <p role="alert">응답을 보내지 못했어요. 다시 선택해 주세요.</p>}
+      {responseState === 'pending' && <p role="status">응답을 보내는 중…</p>}
+      <fieldset className="chat-permission__actions" disabled={responseState === 'pending'}>
         <button
           ref={rejectButtonRef}
           type="button"
@@ -106,18 +112,18 @@ export function PermissionDialog({
           className="chat-permission__btn chat-permission__btn--allow"
           onClick={() => onRespond(block.id, { behavior: 'allow' })}
         >
-          허용
+          이번만 허용
         </button>
-        <button
+        {block.suggestions?.some((suggestion) => suggestion.remember) && <button
           type="button"
           className="chat-permission__btn"
           onClick={() =>
             onRespond(block.id, { behavior: 'allow', remember: true })
           }
         >
-          항상 허용
-        </button>
-      </div>
+          이 도구 기억하기
+        </button>}
+      </fieldset>
     </div>
   )
 }

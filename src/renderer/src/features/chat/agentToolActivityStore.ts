@@ -3,7 +3,8 @@ import { create } from 'zustand'
 import type {
   AgentAction,
   AgentConfirmScope,
-  AgentConfirmRequest
+  AgentConfirmRequest,
+  AgentConfirmationState
 } from '../../../../shared/types/agentTools'
 import { invoke, onPush, type Unsubscribe } from '../../lib/ipc'
 import { showToast } from '../../app/toast'
@@ -14,6 +15,8 @@ export interface AgentConfirmationActivity {
   kind: 'confirmation'
   request: AgentConfirmRequest
   response: boolean | null
+  resolution?: AgentConfirmationState['status']
+  revision?: number
   isResponding: boolean
   hasResponseError: boolean
 }
@@ -193,11 +196,26 @@ function fetchTurnChanges(conversationId: string, turnId: string): void {
     })
 }
 
+function syncConfirmation(state: AgentConfirmationState): void {
+  const existing = snapshotFor(state.request.conversationId).items.find((item) => item.kind === 'confirmation' && item.request.requestId === state.request.requestId)
+  if (existing?.kind === 'confirmation' && (existing.revision ?? 0) > state.revision) return
+  recordAgentConfirmation(state.request)
+  updateConfirmation(state.request.conversationId, state.request.requestId, (item) => ({
+    ...item, revision: state.revision, resolution: state.status,
+    response: state.status === 'pending' ? null : state.status === 'approved',
+    isResponding: false, hasResponseError: false
+  }))
+}
+
 /** Retains both assistant-tool push listeners while a course chat is mounted. */
 export function acquireAgentToolActivity(conversationId: string): () => void {
   const runtime = runtimeFor(conversationId)
   runtime.refCount += 1
   if (runtime.refCount === 1) {
+    const unsubscribeState = onPush('agentTools:confirmationChanged', (state) => {
+      if (state.request.conversationId === conversationId) syncConfirmation(state)
+    })
+    void invoke('agentTools:confirmations', { conversationId }).then((states) => states.forEach(syncConfirmation)).catch(() => undefined)
     const unsubscribeConfirm = onPush('agentTools:confirm', (request) => {
       // Was `request.conversationId === conversationId`. That is why an approval card
       // appeared in EVERY past conversation of the same course: one card, one
@@ -222,6 +240,7 @@ export function acquireAgentToolActivity(conversationId: string): () => void {
       )
     })
     runtime.unsubscribe = () => {
+      unsubscribeState()
       unsubscribeConfirm()
       unsubscribeChanged()
       unsubscribeUnavailable()
@@ -271,13 +290,12 @@ export function respondToAgentConfirm(
     // `exactOptionalPropertyTypes`: the key must be absent, not undefined.
     ...(scope === undefined ? {} : { scope })
   })
-    .then(() => {
-      updateConfirmation(conversationId, requestId, (item) => ({
-        ...item,
-        response: approved,
-        isResponding: false,
-        hasResponseError: false
-      }))
+    .then(() => invoke('agentTools:confirmations', { conversationId }))
+    .then((states) => {
+      states.forEach(syncConfirmation)
+      if (!states.some((state) => state.request.requestId === requestId)) {
+        updateConfirmation(conversationId, requestId, (item) => ({ ...item, response: false, resolution: 'cancelled', isResponding: false, hasResponseError: false }))
+      }
     })
     .catch(() => {
       updateConfirmation(conversationId, requestId, (item) => ({

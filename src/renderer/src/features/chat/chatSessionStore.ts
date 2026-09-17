@@ -1,3 +1,4 @@
+import type { ChatContext } from '../../../../shared/types/chatCapabilities'
 import { startTransition } from 'react'
 import { create } from 'zustand'
 import type {
@@ -15,7 +16,6 @@ import { invoke, onPush, type Unsubscribe } from '../../lib/ipc'
 import {
   appendLocalUserMessage,
   applyAgentEvents,
-  applyLocalPermissionResponse,
   checkBatchSeq,
   clearNotice,
   hydrateFromHistory,
@@ -33,6 +33,10 @@ export interface ChatSessionSnapshot {
   availability: AgentAvailability | null
   openError: string | null
   models: AgentModelOption[]
+  effort?: string | null
+  configurationError?: string | null
+  configuring?: boolean
+  permissionResponses?: Record<string, 'pending' | 'error'>
   /** Conversation title (first user message). Null until the first send. */
   title: string | null
 }
@@ -147,7 +151,7 @@ function loadModels(
 ): void {
   const runtime = runtimeFor(courseId, conversationId)
   if (
-    runtime.modelsPromise !== null ||
+    (runtime.modelsPromise !== null && runtime.modelsProvider === provider) ||
     (runtime.modelsProvider === provider &&
       snapshotFor(conversationId).models.length > 0)
   ) {
@@ -156,14 +160,15 @@ function loadModels(
   runtime.modelsProvider = provider
   runtime.modelsPromise = invoke('agent:models', { provider })
     .then(({ models }) => {
-      updateSnapshot(conversationId, (current) => ({ ...current, models }))
+      if (runtime.modelsProvider !== provider) return
+      updateSnapshot(conversationId, (current) => current.provider === provider ? { ...current, models } : current)
     })
     .catch(() => {
       // Main normally returns a fallback. Keep the selector usable if IPC is
       // unavailable during teardown or in an older preload.
     })
     .finally(() => {
-      runtime.modelsPromise = null
+      if (runtime.modelsProvider === provider) runtime.modelsPromise = null
     })
 }
 
@@ -194,10 +199,8 @@ async function openConversation(
       availability: result.availability,
       openError: null,
       title: result.sessionInfo?.title ?? current.title,
-      state: hydrateFromHistory(
-        result.history,
-        result.sessionInfo?.model ?? null
-      ),
+      effort: result.sessionInfo?.effort ?? null,
+      state: { ...applyAgentEvents(hydrateFromHistory(result.history, result.sessionInfo?.model ?? null), result.pendingPermissions ?? []), streaming: result.sessionInfo?.status === 'running' },
       phase: 'ready'
     }))
     loadModels(
@@ -264,9 +267,23 @@ export function acquireChatSession(
   if (wasUnused) {
     runtime.lastSeq = null
     runtime.queue = []
-    runtime.unsubscribe = onPush('chat:event-batch', (batch) => {
+    const unsubscribeBatch = onPush('chat:event-batch', (batch) => {
       handleBatch(courseId, conversationId, batch)
     })
+    const unsubscribeMessage = onPush('chat:message', (event) => {
+      if (event.sessionId !== conversationId) return
+      flushQueue(courseId, conversationId)
+      updateSnapshot(conversationId, (current) => {
+        if (current.state.messages.some((message) => message.id === event.message.id)) return current
+        const messages = [...current.state.messages, ...hydrateFromHistory([event.message], null).messages]
+        messages.sort((a, b) => (a.turnSeq ?? Infinity) - (b.turnSeq ?? Infinity))
+        return { ...current, state: { ...current.state, messages } }
+      })
+    })
+    const unsubscribeSettings = onPush('chat:configurationChanged', (event) => {
+      if (event.sessionId === conversationId) updateSnapshot(conversationId, (current) => ({ ...current, effort: event.effort, state: { ...current.state, model: event.model } }))
+    })
+    runtime.unsubscribe = () => { unsubscribeBatch(); unsubscribeMessage(); unsubscribeSettings() }
     void openConversation(
       courseId,
       conversationId,
@@ -298,14 +315,15 @@ export function acquireChatSession(
   }
 }
 
-export function sendChatMessage(
+export async function sendChatMessage(
   courseId: string,
   conversationId: string,
   content: string,
-  attachments: ChatAttachment[] = []
-): void {
+  attachments: ChatAttachment[] = [],
+  context?: ChatContext
+): Promise<void> {
   const text = content.trim()
-  if (text === '' && attachments.length === 0) {
+  if (text === '' && attachments.length === 0 && !context) {
     return
   }
   const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -315,20 +333,21 @@ export function sendChatMessage(
   updateSnapshot(conversationId, (current) => ({
     ...current,
     title: current.title ?? (derivedTitle === '' ? null : derivedTitle),
-    state: appendLocalUserMessage(current.state, localId, text, attachments)
+    state: appendLocalUserMessage(current.state, localId, text, attachments, context)
   }))
   const request = {
     courseId,
     sessionId: conversationId,
     content: text,
+    ...(context ? { context } : {}),
     ...(attachments.length === 0 ? {} : { attachments })
   }
-  void invoke('chat:send', request).catch(() => {
+  try { await invoke('chat:send', request) } catch (error) {
     updateSnapshot(conversationId, (current) => ({
-      ...current,
-      state: markSendFailed(current.state)
+      ...current, state: { ...markSendFailed(current.state), messages: current.state.messages.filter((message) => message.id !== localId) }
     }))
-  })
+    throw error
+  }
 }
 
 export function cancelChatTurn(courseId: string, conversationId: string): void {
@@ -338,27 +357,28 @@ export function cancelChatTurn(courseId: string, conversationId: string): void {
 }
 
 export function respondToChatPermission(
-  courseId: string,
-  conversationId: string,
-  requestId: string,
-  response: PermissionResponse
+  courseId: string, conversationId: string, requestId: string, response: PermissionResponse
 ): void {
-  updateSnapshot(conversationId, (current) => ({
-    ...current,
-    state: applyLocalPermissionResponse(
-      current.state,
-      requestId,
-      response.behavior
-    )
-  }))
-  void invoke('chat:respondPermission', {
-    courseId,
-    sessionId: conversationId,
-    requestId,
-    response
-  }).catch(() => {
-    // A dropped response remains pending in the CLI and is surfaced there.
-  })
+  if (snapshotFor(conversationId).permissionResponses?.[requestId] === 'pending') return
+  updateSnapshot(conversationId, (current) => ({ ...current, permissionResponses: { ...current.permissionResponses, [requestId]: 'pending' } }))
+  void invoke('chat:respondPermission', { courseId, sessionId: conversationId, requestId, response })
+    .then(() => updateSnapshot(conversationId, (current) => {
+      const responses = { ...current.permissionResponses }; delete responses[requestId]
+      return { ...current, permissionResponses: responses }
+    }))
+    .catch(() => updateSnapshot(conversationId, (current) => ({ ...current, permissionResponses: { ...current.permissionResponses, [requestId]: 'error' } })))
+}
+
+export async function setChatConfiguration(courseId: string, conversationId: string, model: string, effort: string | null): Promise<void> {
+  if (snapshotFor(conversationId).configuring) return
+  updateSnapshot(conversationId, (current) => ({ ...current, configuring: true, configurationError: null }))
+  try {
+    const result = await invoke('chat:setConfiguration', { courseId, sessionId: conversationId, model, effort })
+    updateSnapshot(conversationId, (current) => ({ ...current, effort: result.effort, state: { ...current.state, model: result.model } }))
+  } catch (error) {
+    updateSnapshot(conversationId, (current) => ({ ...current, configurationError: errorMessage(error) }))
+    throw error
+  } finally { updateSnapshot(conversationId, (current) => ({ ...current, configuring: false })) }
 }
 
 export function refreshChatSession(

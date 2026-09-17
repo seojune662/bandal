@@ -72,7 +72,7 @@ export interface ChatRepo {
   /** Persists the resume record once the CLI reports its session id. */
   recordSessionStart(sessionId: string, record: SessionStartRecord): void
   /** Pins a model without touching the resumable CLI session id. */
-  setModel(sessionId: string, model: string): void
+  setModel(sessionId: string, model: string, effort?: string | null): void
   /**
    * Re-routes a conversation to another provider in place. The CLI resume
    * record (session id, model, transcript, launch config) belongs to the old
@@ -110,6 +110,7 @@ interface SessionRow {
   provider: string
   cli_session_id: string | null
   model: string | null
+  effort: string | null
   status: string
   last_used_at: string | null
   title: string | null
@@ -140,6 +141,7 @@ function rowToSessionInfo(row: SessionRow): ChatSessionInfo {
     provider: row.provider as AgentProvider,
     cliSessionId: row.cli_session_id,
     model: row.model,
+    effort: row.effort ?? null,
     status: row.status as AgentSessionStatus,
     lastUsedAt: row.last_used_at,
     title: row.title
@@ -306,11 +308,12 @@ export function createChatRepo(db: Database): ChatRepo {
       )
     },
 
-    setModel(sessionId, model) {
+    setModel(sessionId, model, effort = null) {
       db.prepare(
-        `UPDATE agent_sessions SET model = ?, updated_at = ? WHERE id = ?`
+        `UPDATE agent_sessions SET model = ?, effort = ?, updated_at = ? WHERE id = ?`
       ).run(
         requireNonEmptyString(model, 'model').trim(),
+        effort,
         nowIso(),
         requireId(sessionId, 'sessionId')
       )
@@ -320,7 +323,7 @@ export function createChatRepo(db: Database): ChatRepo {
       const id = requireId(sessionId, 'sessionId')
       db.prepare(
         `UPDATE agent_sessions
-         SET provider = ?, cli_session_id = NULL, model = NULL,
+         SET provider = ?, cli_session_id = NULL, model = NULL, effort = NULL,
              transcript_path = NULL, launch_config_json = NULL,
              status = 'idle', updated_at = ?
          WHERE id = ? AND deleted_at IS NULL`

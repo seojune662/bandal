@@ -15,6 +15,7 @@ export type MessageBlockKind =
   | 'tool'
   | 'permission'
   | 'notice'
+  | 'artifact'
 
 /** One ordered block within a message (text, thinking, tool call, ...). */
 export interface MessageBlock {
@@ -65,6 +66,7 @@ export interface ChatSessionInfo {
   /** Session id assigned by the CLI, for resuming. */
   cliSessionId: string | null
   model: string | null
+  effort?: string | null
   status: AgentSessionStatus
   lastUsedAt: string | null
   /** First user message, collapsed to one line (≤60 chars). Null until sent. */
@@ -89,6 +91,7 @@ export interface ChatConversationSummary {
 }
 
 export interface ChatOpenResult {
+  pendingPermissions?: import('./agent-events').AgentPermissionRequestEvent[]
   history: ChatMessage[]
   sessionInfo: ChatSessionInfo | null
   availability: AgentAvailability
@@ -107,6 +110,7 @@ export interface ChatAttachment {
 }
 
 export interface ChatSendInput {
+  context?: import('./chatCapabilities').ChatContext
   courseId: string
   /** Conversation id (renderer-minted uuid; becomes agent_sessions.id). */
   sessionId: string
@@ -120,4 +124,7 @@ export interface AgentModelOption {
   displayName: string
   /** True for the CLI's own default when no --model is passed. */
   isDefault: boolean
+  resolvedModel?: string
+  supportedEfforts?: string[]
+  defaultEffort?: string
 }

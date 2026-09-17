@@ -51,6 +51,8 @@ const PUSH_CHANNELS = [
   'recordings:event',
   'recordings:modelsChanged',
   'chat:event-batch',
+  'chat:message',
+  'chat:configurationChanged',
   'materials:changed',
   // -- picture-in-picture ---------------------------------------------------
   'pip:state',
@@ -84,6 +86,7 @@ const PUSH_CHANNELS = [
   'board:changed',
   'canvas:changed',
   'agentTools:confirm',
+  'agentTools:confirmationChanged',
   'agentTools:unavailable',
   'agentTools:changed',
   // -- desktop overlay ------------------------------------------------------

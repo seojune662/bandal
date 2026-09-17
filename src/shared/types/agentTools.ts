@@ -100,6 +100,7 @@ export type AgentConfirmScope =
   | 'always'
 
 export interface AgentConfirmRequest {
+  turnId?: string
   requestId: string
   courseId: string
   /**
@@ -123,5 +124,12 @@ export interface AgentConfirmResponse {
   requestId: string
   approved: boolean
   /** Which scope the student picked; ignored unless the request offered them. */
+  scope?: AgentConfirmScope
+}
+
+export interface AgentConfirmationState {
+  request: AgentConfirmRequest
+  status: 'pending' | 'approved' | 'denied' | 'expired' | 'cancelled'
+  revision: number
   scope?: AgentConfirmScope
 }

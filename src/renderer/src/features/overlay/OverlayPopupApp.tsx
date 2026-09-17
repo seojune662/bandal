@@ -41,7 +41,7 @@ export function OverlayPopupApp(): JSX.Element {
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || event.defaultPrevented) return
       event.preventDefault()
       closePopup()
     }

@@ -156,6 +156,8 @@ export interface AgentErrorEvent {
 }
 
 export type AgentEvent =
+  | { type: 'turn-started'; turnSeq: number }
+  | { type: 'permission-resolved'; requestId: string; behavior: 'allow' | 'deny' }
   | AgentSessionStartedEvent
   | AgentTextDeltaEvent
   | AgentTextFinalEvent
@@ -205,6 +207,8 @@ export interface AgentCapabilities {
 }
 
 export interface AgentStartSessionOptions {
+  effort?: string
+  selectedSkills?: string[]
   courseId: string
   /** Working directory for the CLI process (the course folder). */
   cwd: string

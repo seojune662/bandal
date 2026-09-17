@@ -20,6 +20,9 @@ import {
   type ChatQuote
 } from './chatPromptBus'
 import { Composer, type ComposerHandle } from './Composer'
+import { ModelMenu } from './ModelMenu'
+import { updateComposerDraft, useComposerDraft } from './composerDraftStore'
+import type { ChatContext } from '../../../../shared/types/chatCapabilities'
 import { ConversationListMenu } from './ConversationListMenu'
 import { formatCost, MessageList, UsageText } from './MessageList'
 import { useChatSession } from './useChatSession'
@@ -35,7 +38,6 @@ import {
 import {
   AgentSetupCard,
   GateCard,
-  ProviderSelector
 } from './AgentSetupCards'
 import { PermissionDialog } from './blocks/PermissionDialog'
 import type { MessageView, PermissionBlockView } from './chatModel'
@@ -43,6 +45,7 @@ import './chat.css'
 import './chat-blocks.css'
 import './agent-setup.css'
 import './conversation-list.css'
+import './chat-refresh.css'
 import { BandalMark } from '../../components/BandalMark'
 
 const SCROLL_PIN_THRESHOLD_PX = 48
@@ -175,7 +178,11 @@ export function ChatSurface({
   const session = useChatSession(courseId, conversationKey, surface)
   const agentToolActivity = useAgentToolActivity(conversationKey)
   const openTab = useWorkspaceStore((store) => store.openTab)
-  const [draft, setDraft] = useState('')
+  const composerDraft = useComposerDraft(conversationKey)
+  const draft = composerDraft.text
+  const setDraft = useCallback((value: string | ((current: string) => string)) => {
+    updateComposerDraft(conversationKey, (current) => ({ text: typeof value === 'function' ? value(current.text) : value }))
+  }, [conversationKey])
   const [pendingQuotes, setPendingQuotes] = useState<ChatQuote[]>([])
   const composerRef = useRef<ComposerHandle>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -221,7 +228,7 @@ export function ChatSurface({
       )
     }
     composerRef.current?.focus()
-  }, [pendingPrompt, consumePrompt, conversationKey])
+  }, [pendingPrompt, consumePrompt, conversationKey, setDraft])
 
   useEffect(() => {
     const scroller = scrollRef.current
@@ -241,17 +248,17 @@ export function ChatSurface({
   }, [])
 
   const handleSend = useCallback(
-    (attachments: ChatAttachment[]) => {
+    async (attachments: ChatAttachment[], context?: ChatContext) => {
       const text = composeOutgoingText(draft, pendingQuotes)
-      if (text === '' && attachments.length === 0) {
+      if (text === '' && attachments.length === 0 && !context) {
         return
       }
-      setDraft('')
+      await session.send(text, attachments, context)
+      setDraft((current) => current === draft ? '' : current)
       setPendingQuotes([])
       isPinnedRef.current = true
-      session.send(text, attachments)
     },
-    [draft, pendingQuotes, session.send]
+    [draft, pendingQuotes, session.send, setDraft]
   )
 
   const removeQuote = useCallback((index: number) => {
@@ -263,12 +270,7 @@ export function ChatSurface({
   const handlePickStarter = useCallback((prompt: string) => {
     setDraft(prompt)
     composerRef.current?.focus()
-  }, [])
-
-  const shouldAutoFocusApproval = useCallback(
-    () => composerRef.current?.isActivelyTyping() !== true,
-    []
-  )
+  }, [setDraft])
 
   const handleOpenConversation = useCallback(
     (nextConversationId: string) => {
@@ -292,9 +294,10 @@ export function ChatSurface({
 
   const handleProviderChange = useCallback(
     (nextProvider: AgentProvider) => {
+      if (nextProvider !== provider) updateComposerDraft(conversationKey, { skills: [], creation: null })
       session.setProvider(nextProvider)
     },
-    [session.setProvider]
+    [session.setProvider, provider, conversationKey]
   )
 
   const root = (children: ReactNode): JSX.Element => (
@@ -348,9 +351,6 @@ export function ChatSurface({
     historicalAgentToolItems
   )
   const isEmpty = state.messages.length === 0 && !hasAgentToolCards
-  const defaultModel = models.find((model) => model.isDefault) ?? models[0]
-  const selectedModel = state.model ?? defaultModel?.id ?? ''
-  const includesSelected = models.some((model) => model.id === selectedModel)
   const hasSessionUsage =
     state.sessionUsage.inputTokens > 0 ||
     state.sessionUsage.outputTokens > 0 ||
@@ -380,31 +380,6 @@ export function ChatSurface({
         onNewConversation={handleNewConversation}
         onOpenConversation={handleOpenConversation}
       />
-      <ProviderSelector
-        compact
-        provider={provider}
-        onChange={handleProviderChange}
-        disabled={state.streaming}
-      />
-      <label className="chat-model">
-        <span className="chat-model__label">모델</span>
-        <select
-          className="chat-model__select"
-          aria-label="AI 모델 선택"
-          value={selectedModel}
-          disabled={state.streaming || models.length === 0}
-          onChange={(event) => session.setModel(event.target.value)}
-        >
-          {!includesSelected && selectedModel !== '' && (
-            <option value={selectedModel}>{selectedModel}</option>
-          )}
-          {models.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.displayName}
-            </option>
-          ))}
-        </select>
-      </label>
     </>
   )
 
@@ -462,15 +437,14 @@ export function ChatSurface({
           <EmptyState onPick={handlePickStarter} />
         ) : (
           <>
-            {/* Rail first: the grid places children in source order, so this
-                is what puts it in the narrow LEFT column — and it keeps DOM
-                order equal to visual order for keyboard and screen readers. */}
-            <AgentApprovalRail
-              items={historicalAgentToolItems}
-              onRespondConfirm={agentToolActivity.respondConfirm}
-              onUndoTurn={agentToolActivity.undoTurn}
-            />
             <MessageList
+              renderActivity={(turnSeq, isLast) => {
+                const items = historicalAgentToolItems.filter((item) => {
+                  const turnId = item.kind === 'confirmation' ? item.request.turnId : item.turnId
+                  return turnId && turnSeq !== undefined ? turnId === `${conversationKey}:${turnSeq}` : isLast
+                })
+                return hasVisibleAgentToolActivity(items) ? <details className="chat-approval-history"><summary>작업 기록</summary><AgentApprovalRail items={items} onRespondConfirm={agentToolActivity.respondConfirm} onUndoTurn={agentToolActivity.undoTurn} /></details> : null
+              }}
               messages={state.messages}
               pendingPermissionId={state.pendingPermissionId}
               dockedPermissionId={pendingPermission?.id ?? null}
@@ -487,21 +461,23 @@ export function ChatSurface({
           aria-label="승인 요청"
         >
           <div className="chat-approval-dock__content">
+            {pendingAgentConfirmations.length + (pendingPermission ? 1 : 0) > 1 && <p className="chat-menu-note">승인 대기 {pendingAgentConfirmations.length + (pendingPermission ? 1 : 0)}개 · 순서대로 확인해 주세요.</p>}
             {pendingPermission !== null && (
               <PermissionDialog
                 block={pendingPermission}
                 isActive
-                autoFocusReject={pendingAgentConfirmations.length === 0}
-                shouldAutoFocusReject={shouldAutoFocusApproval}
+                autoFocusReject={false}
+                responseState={session.permissionResponses?.[pendingPermission.id]}
+                shouldAutoFocusReject={() => false}
                 onRespond={session.respondPermission}
               />
             )}
             {pendingAgentConfirmations.length > 0 && (
               <AgentToolActivity
-                items={pendingAgentConfirmations}
+                items={pendingPermission ? [] : pendingAgentConfirmations.slice(0, 1)}
                 onRespondConfirm={agentToolActivity.respondConfirm}
                 onUndoTurn={agentToolActivity.undoTurn}
-                shouldAutoFocusReject={shouldAutoFocusApproval}
+                shouldAutoFocusReject={() => false}
               />
             )}
           </div>
@@ -510,6 +486,10 @@ export function ChatSurface({
       <Composer
         ref={composerRef}
         courseId={courseId}
+        conversationId={conversationKey}
+        provider={provider}
+        screenAvailable={surface === 'desktop'}
+        modelControl={<ModelMenu provider={provider} models={models} model={state.model} effort={session.effort ?? null} disabled={state.streaming || hasPendingApprovals} saving={session.configuring ?? false} error={session.configurationError ?? null} onProvider={handleProviderChange} onChange={session.setConfiguration} />}
         value={draft}
         quotes={pendingQuotes}
         onRemoveQuote={removeQuote}
@@ -517,7 +497,7 @@ export function ChatSurface({
         onSend={handleSend}
         onCancel={session.cancel}
         isStreaming={state.streaming}
-        isWaitingPermission={state.pendingPermissionId !== null}
+        isWaitingPermission={hasPendingApprovals}
         limit={state.limit}
         disabled={false}
       />

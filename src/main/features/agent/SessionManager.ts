@@ -85,7 +85,8 @@ export interface SessionManagerDeps {
    * than the transient failure it is.
    */
   reportToolsUnavailable?: (courseId: string, sessionId: string) => void
-  onTurnComplete?: (info: { courseId: string; sessionId: string }) => void
+  onRequestsCancelled?: (sessionId: string) => void
+  onTurnComplete?: (info: { courseId: string; sessionId: string; turnSeq?: number }) => void
   onUsage?: (info: {
     courseId: string
     sessionId: string
@@ -110,9 +111,11 @@ export interface SessionManager {
     courseId: string,
     sessionId: string,
     content: string,
-    attachments?: ChatAttachment[]
+    attachments?: ChatAttachment[],
+    context?: import('../../../shared/types/chatCapabilities').ChatContext,
+    skillPaths?: string[]
   ): Promise<{ turnSeq: number }>
-  setModel(courseId: string, sessionId: string, model: string): void
+  setModel(courseId: string, sessionId: string, model: string, effort?: string | null): void
   cancel(courseId: string, sessionId: string): void
   respondPermission(
     courseId: string,
@@ -141,10 +144,13 @@ interface CourseChat {
   info: ChatSessionInfo
   session: AgentSession | null
   sessionPromise: Promise<AgentSession> | null
+  generation: number
+  sending: boolean
   unsubscribe: (() => void) | null
   turnSeq: number
   turnBlocks: Map<string, TurnBlock>
-  pendingPermissions: Map<string, { toolName: string; input: unknown }>
+  selectedSkills?: string[]
+  pendingPermissions: Map<string, { toolName: string; input: unknown; suggestions?: import('../../../shared/types/agent-events').PermissionSuggestion[] }>
   idleTimer: NodeJS.Timeout | null
   lastUsedAt: number
   /** In-app MCP server bound to this session; closed with it. */
@@ -205,6 +211,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
     let entry = chats.get(sessionId)
     if (entry === undefined) {
       const row = deps.repo.getSession(sessionId)
+      if (row && row.courseId !== courseId) throw new Error('대화가 이 과목에 속하지 않아요.')
       const resolvedSurface = row?.surface ?? surface
       entry = {
         courseId,
@@ -225,6 +232,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         },
         session: null,
         sessionPromise: null,
+        generation: 0,
+        sending: false,
         unsubscribe: null,
         turnSeq: 0,
         turnBlocks: new Map(),
@@ -235,10 +244,15 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       }
       chats.set(sessionId, entry)
     }
+    if (entry.courseId !== courseId) throw new Error('대화가 이 과목에 속하지 않아요.')
     return entry
   }
 
   function dropSession(entry: CourseChat): void {
+    entry.generation += 1
+    deps.onRequestsCancelled?.(entry.sessionId)
+    for (const requestId of entry.pendingPermissions.keys()) deps.emit(entry.courseId, entry.sessionId, { type: 'permission-resolved', requestId, behavior: 'deny' })
+    entry.pendingPermissions.clear()
     entry.unsubscribe?.()
     entry.unsubscribe = null
     entry.session?.dispose()
@@ -290,6 +304,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
     if (entry.sessionPromise !== null) {
       return entry.sessionPromise
     }
+    const generation = entry.generation
     const course = deps.getCourse(entry.courseId)
     const startOptions: InternalStartOptions = {
       courseId: entry.courseId,
@@ -306,6 +321,10 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
           () => entry.turnSeq,
           entry.surface
         )
+        if (entry.generation !== generation) {
+          await tools.close()
+          throw new Error('전송을 취소했어요.')
+        }
         entry.toolServer = tools
         startOptions.mcpConfigPath = tools.mcpConfigPath
         startOptions.extraAllowedTools = tools.extraAllowedTools
@@ -317,10 +336,12 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         }
         mcpHint = tools.mcpHint
       } catch (error) {
+        if (entry.generation !== generation) throw error
         console.error('[agent] in-app tools unavailable', error)
         deps.reportToolsUnavailable?.(entry.courseId, entry.sessionId)
       }
     }
+    if (entry.generation !== generation) throw new Error('전송을 취소했어요.')
     startOptions.systemPromptAppend = buildStudyPrompt(course.name, {
       surface: entry.surface,
       mcpHint
@@ -328,11 +349,17 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
     if (entry.info.cliSessionId !== null) {
       startOptions.resumeCliSessionId = entry.info.cliSessionId
     }
+    if (entry.selectedSkills?.length) startOptions.selectedSkills = entry.selectedSkills
+    if (entry.info.effort) startOptions.effort = entry.info.effort
     if (entry.info.model !== null) {
       startOptions.model = entry.info.model
     }
     entry.sessionPromise = deps.adapter.startSession(startOptions).then(
       (session) => {
+        if (entry.generation !== generation) {
+          session.dispose()
+          throw new Error('전송을 취소했어요.')
+        }
         evictLruIfNeeded(entry)
         entry.session = session
         entry.sessionPromise = null
@@ -340,7 +367,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         return session
       },
       (error: unknown) => {
-        entry.sessionPromise = null
+        if (entry.generation === generation) entry.sessionPromise = null
         throw error
       }
     )
@@ -465,6 +492,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       case 'permission-request':
         return applyPermissionRequest(entry, event)
       case 'turn-complete':
+        entry.pendingPermissions.clear()
         commitTurn(entry, event.stopReason)
         entry.info = { ...entry.info, status: 'idle' }
         deps.repo.setStatus(entry.info.id, 'idle')
@@ -472,7 +500,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         try {
           deps.onTurnComplete?.({
             courseId: entry.courseId,
-            sessionId: entry.sessionId
+            sessionId: entry.sessionId,
+            turnSeq: entry.turnSeq
           })
         } catch (error) {
           console.error('[agent] turn-complete hook failed', error)
@@ -511,7 +540,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
   ): boolean {
     entry.pendingPermissions.set(event.requestId, {
       toolName: event.toolName,
-      input: event.input
+      input: event.input,
+      ...(event.suggestions ? { suggestions: event.suggestions } : {})
     })
     const grants = deps.repo.listGrants(entry.courseId)
     if (grants.includes(event.toolName)) {
@@ -549,101 +579,132 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       const availability = await deps.adapter.checkAvailability()
       return {
         // Provisional conversations have no rows, so the tail is just empty.
-        history: deps.repo.historyTail(sessionId),
+        history: [
+          ...deps.repo.historyTail(sessionId),
+          ...(entry.info.status === 'running' && entry.turnBlocks.size ? [{
+            id: `live-${sessionId}:${entry.turnSeq}`, courseId, sessionId, role: 'assistant' as const, turnSeq: entry.turnSeq,
+            createdAt: new Date(entry.lastUsedAt).toISOString(),
+            blocks: [...entry.turnBlocks.values()].sort((a, b) => a.ord - b.ord).map((block) => ({ id: block.key, messageId: `live-${sessionId}:${entry.turnSeq}`, ord: block.ord, ...block.input }))
+          }] : [])
+        ],
         sessionInfo: entry.info,
-        availability
+        availability,
+        pendingPermissions: [...entry.pendingPermissions].map(([requestId, input]) => ({ type: 'permission-request' as const, requestId, ...input }))
       }
     },
 
-    async send(courseId, sessionId, content, attachments = []) {
+    async send(courseId, sessionId, content, attachments = [], context, skillPaths = []) {
       const entry = entryFor(courseId, sessionId)
-      entry.lastUsedAt = Date.now()
-      if (entry.idleTimer !== null) {
-        clearTimeout(entry.idleTimer)
-        entry.idleTimer = null
-      }
-      // Captured BEFORE ensureSession: a warm process has already seen every
-      // prior turn, only a fresh spawn may need the transcript replayed.
-      const isFreshSpawn = entry.session === null && entry.sessionPromise === null
-      let session: AgentSession
+      if (entry.info.status === 'running' || entry.sending || entry.sessionPromise) throw new Error('진행 중인 응답이 끝난 뒤 보내 주세요.')
+      if (JSON.stringify(entry.selectedSkills ?? []) !== JSON.stringify(skillPaths)) { dropSession(entry); entry.selectedSkills = skillPaths }
+      entry.sending = true
       try {
-        session = await ensureSession(entry)
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'Failed to start the agent'
-        const code =
-          error instanceof AgentUnavailableError ? error.code : 'spawn-failed'
-        deps.emit(courseId, sessionId, {
-          type: 'error',
-          code,
-          message,
-          fatal: true
-        })
-        throw error
-      }
-      // Derived trigger, no flag column: a persisted conversation whose new
-      // process has no CLI session id to resume means that CLI never saw the
-      // transcript — the provider was switched (switchProvider nulls the id)
-      // or the previous spawn died before `session-started`. Prime its first
-      // prompt with the prior history; the persisted text and title stay raw.
-      const priming =
-        isFreshSpawn && entry.persisted && entry.info.cliSessionId === null
-          ? serializeTranscript(
-              deps.repo.historyTail(sessionId, CARRYOVER_HISTORY_LIMIT)
-            )
-          : null
-      if (!entry.persisted) {
-        // First send materializes the conversation row (lazy creation).
-        deps.repo.createSession(
-          sessionId,
-          courseId,
-          deps.adapter.provider,
-          entry.surface
+        entry.lastUsedAt = Date.now()
+        if (entry.idleTimer !== null) {
+          clearTimeout(entry.idleTimer)
+          entry.idleTimer = null
+        }
+        // Captured BEFORE ensureSession: a warm process has already seen every
+        // prior turn, only a fresh spawn may need the transcript replayed.
+        const isFreshSpawn = entry.session === null && entry.sessionPromise === null
+        let session: AgentSession
+        try {
+          session = await ensureSession(entry)
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Failed to start the agent'
+          const code =
+            error instanceof AgentUnavailableError ? error.code : 'spawn-failed'
+          deps.emit(courseId, sessionId, {
+            type: 'error',
+            code,
+            message,
+            fatal: true
+          })
+          throw error
+        }
+        // Derived trigger, no flag column: a persisted conversation whose new
+        // process has no CLI session id to resume means that CLI never saw the
+        // transcript — the provider was switched (switchProvider nulls the id)
+        // or the previous spawn died before `session-started`. Prime its first
+        // prompt with the prior history; the persisted text and title stay raw.
+        const priming =
+          isFreshSpawn && entry.persisted && entry.info.cliSessionId === null
+            ? serializeTranscript(
+                deps.repo.historyTail(sessionId, CARRYOVER_HISTORY_LIMIT)
+              )
+            : null
+        if (!entry.persisted) {
+          // First send materializes the conversation row (lazy creation).
+          deps.repo.createSession(
+            sessionId,
+            courseId,
+            deps.adapter.provider,
+            entry.surface
+          )
+          entry.persisted = true
+        }
+        const turnSeq = deps.repo.nextTurnSeq(sessionId)
+        entry.turnSeq = turnSeq
+        entry.turnBlocks = new Map()
+        deps.repo.appendMessage(courseId, entry.info.id, 'user', turnSeq, [
+          {
+            kind: 'text',
+            payload: {
+              text: content,
+              ...(context ? { context } : {}),
+              ...(attachments.length === 0 ? {} : { images: attachments })
+            }
+          }
+        ])
+        const title = deriveConversationTitle(content)
+        if (title !== '') {
+          deps.repo.setTitleIfEmpty(sessionId, title)
+          entry.info = { ...entry.info, title: entry.info.title ?? title }
+        }
+        entry.info = { ...entry.info, status: 'running' }
+        deps.repo.setStatus(entry.info.id, 'running')
+        const contextText = [
+          ...(context?.files ?? []).map((file) => `Attached course file: ${JSON.stringify(file.relPath)}. Read this file when relevant.`),
+          ...skillPaths.map((path) => `Explicitly selected skill: ${JSON.stringify(path)}. Read its SKILL.md and follow its instructions and referenced scripts for this task. Do not substitute a description of the task for executing the skill.`),
+          ...(context?.creation ? [`Create an actual ${context.creation} file using the selected skill. Save the final deliverables under the course-relative directory ${JSON.stringify(context.outputDir ?? '생성 결과')}, verify the output, and include a relative file link in your reply. Report failure honestly if the required service or runtime is unavailable.`] : []),
+          ...(context?.browser ? ['Use the current browser tab as context via the Bandal browser tools. Ask for access through the existing permission flow.'] : []),
+          ...(context?.screen ? ['Use the current screen as context via the Bandal desktop screenshot tool, with the existing screen-access permission.'] : [])
+        ].join('\n')
+        const outgoing = contextText ? `${content}\n\n<user-selected-context>\n${contextText}\n</user-selected-context>` : content
+        deps.emit(courseId, sessionId, { type: 'turn-started', turnSeq })
+        session.sendMessage(
+          priming !== null && priming.text !== ''
+            ? buildCarryoverPrompt(priming, outgoing)
+            : outgoing,
+          attachments
         )
+        return { turnSeq }
+      } finally { entry.sending = false }
+    },
+
+    setModel(courseId, sessionId, model, effort = null) {
+      const entry = entryFor(courseId, sessionId)
+      if (entry.info.status === 'running' || entry.sending) throw new Error('답변이 끝난 뒤에 바꿀 수 있어요.')
+      const selected = model.trim()
+      if (!selected) throw new Error('모델을 선택해 주세요.')
+      if (!entry.persisted) {
+        deps.repo.createSession(sessionId, courseId, deps.adapter.provider, entry.surface)
         entry.persisted = true
       }
-      const turnSeq = deps.repo.nextTurnSeq(sessionId)
-      entry.turnSeq = turnSeq
-      entry.turnBlocks = new Map()
-      deps.repo.appendMessage(courseId, entry.info.id, 'user', turnSeq, [
-        {
-          kind: 'text',
-          payload: {
-            text: content,
-            ...(attachments.length === 0 ? {} : { images: attachments })
-          }
-        }
-      ])
-      const title = deriveConversationTitle(content)
-      if (title !== '') {
-        deps.repo.setTitleIfEmpty(sessionId, title)
-        entry.info = { ...entry.info, title: entry.info.title ?? title }
-      }
-      entry.info = { ...entry.info, status: 'running' }
-      deps.repo.setStatus(entry.info.id, 'running')
-      session.sendMessage(
-        priming !== null && priming.text !== ''
-          ? buildCarryoverPrompt(priming, content)
-          : content,
-        attachments
-      )
-      return { turnSeq }
-    },
-
-    setModel(courseId, sessionId, model) {
-      const entry = entryFor(courseId, sessionId)
-      const selected = model.trim()
-      // A provisional conversation has no row yet — the in-memory info carries
-      // the choice into ensureSession, and session-started persists it.
       if (entry.persisted) {
-        deps.repo.setModel(entry.info.id, selected)
+        deps.repo.setModel(entry.info.id, selected, effort)
       }
-      entry.info = { ...entry.info, model: selected }
+      entry.info = { ...entry.info, model: selected, effort }
       dropSession(entry)
     },
 
-    cancel(_courseId, sessionId) {
-      chats.get(sessionId)?.session?.cancel()
+    cancel(courseId, sessionId) {
+      const entry = chats.get(sessionId)
+      if (!entry) return
+      if (entry.courseId !== courseId) throw new Error('대화가 이 과목에 속하지 않아요.')
+      if (entry.sending && !entry.session) dropSession(entry)
+      else entry.session?.cancel()
     },
 
     respondPermission(courseId, sessionId, requestId, response) {
@@ -651,7 +712,10 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       if (entry === undefined || entry.session === null) {
         return
       }
+      if (entry.courseId !== courseId) throw new Error('대화가 일치하지 않아요.')
       const pending = entry.pendingPermissions.get(requestId)
+      if (pending === undefined) return
+      entry.session.respondPermission(requestId, response)
       entry.pendingPermissions.delete(requestId)
       if (
         pending !== undefined &&
@@ -664,13 +728,17 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         kind: 'permission',
         payload: { ...payloadOf(existing), behavior: response.behavior }
       }))
-      entry.session.respondPermission(requestId, response)
+      deps.emit(courseId, sessionId, { type: 'permission-resolved', requestId, behavior: response.behavior })
     },
 
     close(_courseId, sessionId) {
       const entry = chats.get(sessionId)
       if (entry === undefined) {
         return
+      }
+      if (entry.info.status === 'running') {
+        commitTurn(entry, 'interrupted')
+        if (entry.persisted) deps.repo.setStatus(entry.info.id, 'idle')
       }
       dropSession(entry)
       chats.delete(sessionId)

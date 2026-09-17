@@ -3,9 +3,11 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type ClipboardEvent,
+  type ReactNode,
   type KeyboardEvent
 } from 'react'
 import type { ChatAttachment } from '../../../../shared/types/chat'
@@ -17,6 +19,10 @@ import { invoke } from '../../lib/ipc'
 import type { ChatQuote } from './chatPromptBus'
 import type { LimitInfo } from './chatModel'
 import './composer.css'
+import { AddMenu } from './AddMenu'
+import { draftContext, updateComposerDraft, useComposerDraft } from './composerDraftStore'
+import { CREATION_LABELS, type ChatContext } from '../../../../shared/types/chatCapabilities'
+import type { AgentProvider } from '../../../../shared/types/agent-events'
 
 const MAX_TEXTAREA_HEIGHT_PX = 200
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -62,13 +68,17 @@ export interface ComposerHandle {
 const RECENT_TYPING_WINDOW_MS = 1_500
 
 export interface ComposerProps {
+  conversationId?: string
+  provider?: AgentProvider
+  modelControl?: ReactNode
+  screenAvailable?: boolean
   courseId: string
   value: string
   /** composer 위에 뜨는 인용 칩들 — 전송 시 부모가 본문과 합성한다. */
   quotes?: readonly ChatQuote[]
   onRemoveQuote?: (index: number) => void
   onChange: (value: string) => void
-  onSend: (attachments: ChatAttachment[]) => void
+  onSend: (attachments: ChatAttachment[], context?: ChatContext) => void | Promise<void>
   onCancel: () => void
   isStreaming: boolean
   isWaitingPermission: boolean
@@ -125,6 +135,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
   function Composer(
     {
       courseId,
+      conversationId = courseId,
+      provider = 'claude-code',
+      modelControl,
+      screenAvailable = false,
       value,
       quotes = [],
       onRemoveQuote,
@@ -140,9 +154,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
   ): JSX.Element {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const mentionSequenceRef = useRef(0)
+    const dismissedMentionRef = useRef<{ text: string; caret: number } | null>(null)
     const isComposingRef = useRef(false)
     const lastInputAtRef = useRef(Number.NEGATIVE_INFINITY)
-    const [attachments, setAttachments] = useState<ChatAttachment[]>([])
+    const draftState = useComposerDraft(conversationId)
+    const attachments = draftState.images
+    const setAttachments = useCallback((update: ChatAttachment[] | ((images: ChatAttachment[]) => ChatAttachment[])): void => {
+      updateComposerDraft(conversationId, (current) => ({ images: typeof update === 'function' ? update(current.images) : update }))
+    }, [conversationId])
+    const submittingRef = useRef(false)
+    const [submitting, setSubmitting] = useState(false)
+    const hasContext = draftState.files.length > 0 || draftState.skills.length > 0 || draftState.browser || draftState.screen
     const [attachmentError, setAttachmentError] = useState<string | null>(null)
     const [mention, setMention] = useState<MentionRange | null>(null)
     const [mentionHits, setMentionHits] = useState<MaterialSearchHit[]>([])
@@ -168,7 +190,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
       )}px`
     }, [])
 
+    useLayoutEffect(resize, [resize, value])
+
     const updateMention = useCallback((text: string, caret: number) => {
+      const dismissed = dismissedMentionRef.current
+      if (dismissed?.text === text && dismissed.caret === caret) return
+      dismissedMentionRef.current = null
       setMention(mentionAt(text, caret))
       setMentionIndex(0)
     }, [])
@@ -244,20 +271,28 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
       [mention, onChange, resize, value]
     )
 
-    const submit = useCallback(() => {
+    const submit = useCallback(async () => {
       if (
-        isStreaming ||
+        isStreaming || submittingRef.current ||
         disabled ||
-        (value.trim() === '' && attachments.length === 0 && quotes.length === 0)
+        (value.trim() === '' && attachments.length === 0 && quotes.length === 0 && !hasContext)
       ) {
         return
       }
-      onSend(attachments)
-      setAttachments([])
-      setAttachmentError(null)
-      setMention(null)
-      window.requestAnimationFrame(resize)
-    }, [attachments, disabled, isStreaming, onSend, quotes.length, resize, value])
+      submittingRef.current = true; setSubmitting(true); setAttachmentError(null)
+      try {
+        const pendingFiles = draftState.files.filter((file) => file.path)
+        const imported = pendingFiles.length ? await invoke('chat:importAttachments', { courseId, paths: pendingFiles.map((file) => file.path!) }) : []
+        let index = 0
+        const files = draftState.files.map((file) => file.path ? imported[index++]! : file)
+        updateComposerDraft(conversationId, { files })
+        await onSend(attachments, draftContext({ ...draftState, files }))
+        updateComposerDraft(conversationId, { images: [], files: [], skills: [], creation: null, browser: false, screen: false })
+        setMention(null)
+        window.requestAnimationFrame(resize)
+      } catch (error) { setAttachmentError(error instanceof Error ? error.message : '전송하지 못했어요. 다시 시도해 주세요.') }
+      finally { submittingRef.current = false; setSubmitting(false) }
+    }, [attachments, disabled, isStreaming, onSend, quotes.length, resize, value, hasContext, draftState, courseId, conversationId])
 
     const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
       if (event.nativeEvent.isComposing) {
@@ -270,6 +305,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
         )
         if (event.key === 'Escape') {
           event.preventDefault()
+          event.stopPropagation()
+          dismissedMentionRef.current = { text: value, caret: event.currentTarget.selectionStart ?? value.length }
           setMention(null)
           setMentionHits([])
           return
@@ -307,7 +344,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
     }
 
     const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>): void => {
-      const images = Array.from(event.clipboardData.files).filter((file) =>
+      if (submitting) return
+      const pastedFiles = Array.from(event.clipboardData.files)
+      const files = pastedFiles.filter((file) => !file.type.startsWith('image/')).flatMap((file) => {
+        const path = window.bandal.pathForFile(file)
+        return path ? [{ name: file.name, path }] : []
+      })
+      if (files.length) {
+        event.preventDefault()
+        updateComposerDraft(conversationId, (current) => ({ files: [...current.files, ...files].slice(0, 20) }))
+      }
+      const images = pastedFiles.filter((file) =>
         file.type.startsWith('image/')
       )
       if (images.length === 0) {
@@ -349,8 +396,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
 
     const canSend =
       !isStreaming &&
-      !disabled &&
-      (value.trim() !== '' || attachments.length > 0 || quotes.length > 0)
+      !disabled && !submitting &&
+      (value.trim() !== '' || attachments.length > 0 || quotes.length > 0 || hasContext)
     const resetTime = formatResetTime(limit?.resetsAt)
     const clampedMentionIndex = Math.min(
       mentionIndex,
@@ -358,7 +405,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
     )
 
     return (
-      <div className="chat-composer-zone">
+      <div className="chat-composer-zone" onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) event.preventDefault() }} onDrop={(event) => {
+        if (!event.dataTransfer.files.length || submitting) return
+        event.preventDefault()
+        const files = Array.from(event.dataTransfer.files).flatMap((file) => {
+          const path = window.bandal.pathForFile(file)
+          return path ? [{ name: file.name, path }] : []
+        })
+        updateComposerDraft(conversationId, (current) => ({ files: [...current.files, ...files].slice(0, 20) }))
+      }}>
+        {hasContext && <div className="chat-context-chips" aria-label="첨부한 맥락">
+          {draftState.files.map((file, index) => <span className="chat-context-chip" key={file.relPath ?? file.path}>{file.name}<button type="button" aria-label={`${file.name} 제거`} disabled={submitting} onClick={() => updateComposerDraft(conversationId, (current) => ({ files: current.files.filter((_, i) => i !== index) }))}>×</button></span>)}
+          {draftState.skills.map((skill) => <span className="chat-context-chip" key={skill.id}>{draftState.creation ? `${CREATION_LABELS[draftState.creation]} 만들기 · ` : ''}{skill.name}<button type="button" aria-label={`${skill.name} 제거`} disabled={submitting} onClick={() => updateComposerDraft(conversationId, (current) => ({ skills: current.skills.filter((item) => item.id !== skill.id), creation: null }))}>×</button></span>)}
+          {(['browser', 'screen'] as const).map((kind) => draftState[kind] && <span className="chat-context-chip" key={kind}>{kind === 'browser' ? '현재 브라우저 페이지' : '현재 화면'}<button type="button" aria-label={`${kind === 'browser' ? '브라우저 페이지' : '화면'} 제거`} onClick={() => updateComposerDraft(conversationId, { [kind]: false })}>×</button></span>)}
+        </div>}
         {limit !== null && (
           <div className="chat-limit" role="status">
             <span className="chat-limit__title">사용 한도에 도달했어요.</span>
@@ -447,13 +507,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
               )}
             </div>
           )}
+          <AddMenu courseId={courseId} conversationId={conversationId} provider={provider} disabled={submitting} screenAvailable={screenAvailable} />
           <textarea
             ref={textareaRef}
             className="chat-composer__input"
             rows={1}
-            placeholder="무엇이든 물어보세요 · @로 파일 언급"
+            placeholder={draftState.creation ? `어떤 ${CREATION_LABELS[draftState.creation]}을 만들까요?` : "무엇이든 물어보세요"}
             value={value}
-            disabled={disabled}
+            disabled={disabled || submitting}
             onChange={(event) => {
               lastInputAtRef.current = Date.now()
               onChange(event.target.value)
@@ -487,6 +548,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
                 : undefined
             }
           />
+          <div className="chat-composer-controls">
+          {modelControl}
           {isStreaming ? (
             <button
               type="button"
@@ -519,8 +582,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
               </svg>
             </button>
           )}
+          </div>
         </div>
-        <div className="chat-composer__hint">
+        <div className="chat-composer__hint" aria-live="polite">
           {isWaitingPermission ? (
             <span className="chat-composer__hint-waiting">
               도구 실행 허용을 기다리는 중이에요 — 위 카드에서 응답해 주세요.
@@ -528,7 +592,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
           ) : isStreaming ? (
             <span>답변을 작성하고 있어요…</span>
           ) : (
-            <span>Enter로 전송 · Shift+Enter로 줄바꿈</span>
+            submitting ? <span>메시지를 보내는 중…</span> : null
           )}
         </div>
       </div>

@@ -9,6 +9,10 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { importChatAttachments } from '../features/agent/chatAttachments'
+import { collectChatArtifacts, createArtifactFolder } from '../features/agent/chatArtifacts'
+import type { CreationKind } from '../../shared/types/chatCapabilities'
+import { discoverChatSkills } from '../features/agent/chatSkills'
 import { createGmailService } from '../features/mail/gmailService'
 import { createPresentationService } from '../features/presentation/presentationService'
 import {
@@ -1116,7 +1120,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // caps stop a poisoned document from creating hundreds of anything.
   const agentJournal = createAgentJournal(db)
   const agentConfirmer = createAgentConfirmer({
-    emit: (request) => broadcast('agentTools:confirm', request)
+    emit: (request) => broadcast('agentTools:confirm', request),
+    changed: (state) => broadcast('agentTools:confirmationChanged', state)
   })
   const packStore = createPackStore({ userDataPath: deps.userDataPath })
   // One guard is shared by every MCP server and the pack runner. Creating a
@@ -1188,7 +1193,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       // The app's own confirmer, not the CLI's permission flow — Codex has no
       // interactive approval at all (agentTools/confirm.ts).
       confirm: (request) =>
-        agentConfirmer.confirm({ ...request, conversationId }),
+        agentConfirmer.confirm({ ...request, conversationId, turnId: getRunId() }),
       // A live run drives a VISIBLE tab: the student watches the page move and
       // can stop it. That is the mitigation for every reliability failure mode
       // here, and a hidden guest would be background-throttled anyway.
@@ -1664,7 +1669,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         canvasRepo,
         packRunGuard,
         confirm: async (request) =>
-          (await agentConfirmer.confirm({ ...request, conversationId: sessionKey })) !==
+          (await agentConfirmer.confirm({ ...request, conversationId: sessionKey, turnId: `${sessionKey}:${getTurnSeq()}` })) !==
           false,
         browser: browserToolsFor(
           courseId,
@@ -1684,7 +1689,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
                   agentConfirmer.confirm({
                     ...input,
                     courseId,
-                    conversationId: sessionKey
+                    conversationId: sessionKey,
+                    turnId: `${sessionKey}:${getTurnSeq()}`
                   }),
                 run: desktopRun,
                 onPermission: (payload) => {
@@ -1717,10 +1723,43 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       }
     })
 
+  const chatOperations = new Map<string, { cancelled: boolean }>()
+  const assertChatIdle = (sessionId: string): void => {
+    if (chatOperations.has(sessionId)) throw new Error('진행 중인 작업이 끝난 뒤 다시 시도해 주세요.')
+  }
+  const cancelChatOperation = (sessionId: string): void => {
+    const operation = chatOperations.get(sessionId)
+    if (operation) operation.cancelled = true
+  }
+  const artifactJobs = new Map<string, { courseId: string; dir: string; creation: CreationKind }>()
   const notifyTurnComplete = (info: {
     courseId: string
     sessionId: string
+    turnSeq?: number
   }): void => {
+    agentConfirmer.cancelConversation(info.sessionId)
+    const job = artifactJobs.get(info.sessionId)
+    if (job) {
+      artifactJobs.delete(info.sessionId)
+      void collectChatArtifacts(job.courseId, coursesRepo.getFolder(job.courseId), job.dir, job.creation).then((artifacts) => {
+        const message = chatRepo.appendMessage(job.courseId, info.sessionId, 'assistant', info.turnSeq ?? 0, artifacts.length
+          ? artifacts.map((artifact) => ({ kind: 'artifact' as const, payload: artifact }))
+          : [{ kind: 'text' as const, payload: { text: '생성된 파일을 확인하지 못했어요. 위 작업 결과에서 필요한 연결이나 실행 오류를 확인해 주세요.' } }])
+        eventBatcher.flush(info.sessionId)
+        broadcast('chat:message', { sessionId: info.sessionId, message })
+        materialsRepo.invalidateTree(job.courseId)
+        broadcast('materials:changed', { courseId: job.courseId })
+      }).catch((error) => {
+        console.error('[chat] artifact verification failed', error)
+        try {
+          const message = chatRepo.appendMessage(job.courseId, info.sessionId, 'assistant', info.turnSeq ?? 0, [
+            { kind: 'text', payload: { text: '생성 파일을 확인하지 못했어요. 과목 자료의 생성 결과 폴더를 확인하거나 다시 시도해 주세요.' } }
+          ])
+          eventBatcher.flush(info.sessionId)
+          broadcast('chat:message', { sessionId: info.sessionId, message })
+        } catch { /* The conversation or course may have been deleted. */ }
+      })
+    }
     try {
       let courseName = ''
       try {
@@ -1761,16 +1800,20 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       folder: coursesRepo.getFolder(courseId),
       name: coursesRepo.getById(courseId).name
     }),
-    emit: (courseId, sessionId, event) =>
-      eventBatcher.push(courseId, sessionId, event),
+    emit: (courseId, sessionId, event) => {
+      if (event.type === 'error' && event.fatal) artifactJobs.delete(sessionId)
+      eventBatcher.push(courseId, sessionId, event)
+    },
     startToolServer,
     reportToolsUnavailable: (courseId, sessionId) => {
       broadcast('agentTools:unavailable', { courseId, sessionId })
     },
     onTurnComplete: notifyTurnComplete,
+    onRequestsCancelled: (sessionId) => agentConfirmer.cancelConversation(sessionId),
     onUsage: recordUsage
   })
   app.on('before-quit', () => {
+    agentConfirmer.disposeAll()
     browserRuns.disposeAll()
     materialsWatcher.dispose()
     sessionManager.disposeAll()
@@ -1795,13 +1838,16 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       folder: coursesRepo.getFolder(courseId),
       name: coursesRepo.getById(courseId).name
     }),
-    emit: (courseId, sessionId, event) =>
-      eventBatcher.push(courseId, sessionId, event),
+    emit: (courseId, sessionId, event) => {
+      if (event.type === 'error' && event.fatal) artifactJobs.delete(sessionId)
+      eventBatcher.push(courseId, sessionId, event)
+    },
     startToolServer,
     reportToolsUnavailable: (courseId, sessionId) => {
       broadcast('agentTools:unavailable', { courseId, sessionId })
     },
     onTurnComplete: notifyTurnComplete,
+    onRequestsCancelled: (sessionId) => agentConfirmer.cancelConversation(sessionId),
     onUsage: recordUsage
   })
   const geminiSessionManager = createSessionManager({
@@ -1811,13 +1857,16 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       folder: coursesRepo.getFolder(courseId),
       name: coursesRepo.getById(courseId).name
     }),
-    emit: (courseId, sessionId, event) =>
-      eventBatcher.push(courseId, sessionId, event),
+    emit: (courseId, sessionId, event) => {
+      if (event.type === 'error' && event.fatal) artifactJobs.delete(sessionId)
+      eventBatcher.push(courseId, sessionId, event)
+    },
     startToolServer,
     reportToolsUnavailable: (courseId, sessionId) => {
       broadcast('agentTools:unavailable', { courseId, sessionId })
     },
     onTurnComplete: notifyTurnComplete,
+    onRequestsCancelled: (sessionId) => agentConfirmer.cancelConversation(sessionId),
     onUsage: recordUsage
   })
   const managerFor = (provider: string): typeof sessionManager =>
@@ -1943,15 +1992,60 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       req.surface ?? 'app'
     )
   })
-  handle('chat:send', (req) =>
-    resolveManager(req.sessionId).send(
-      req.courseId,
-      req.sessionId,
-      req.content,
-      req.attachments
-    )
-  )
+  handle('agent:skills', async (req) => (await discoverChatSkills(req.provider, coursesRepo.getFolder(req.courseId))).map(({ path: _path, ...skill }) => skill))
+  handle('chat:importAttachments', async (req) => {
+    const result = await importChatAttachments(coursesRepo.getFolder(req.courseId), req.paths)
+    materialsRepo.invalidateTree(req.courseId)
+    broadcast('materials:changed', { courseId: req.courseId })
+    return result
+  })
+  handle('chat:openArtifact', (req) => {
+    materialsRepo.absolutePathFor(req.courseId, req.relPath)
+    deps.openMaterial({ ...req, positionSec: 0, playbackRate: 1 })
+    return OK
+  })
+  handle('chat:pickAttachments', async () => {
+    const result = await dialog.showOpenDialog({ title: '대화에 첨부', properties: ['openFile', 'multiSelections'] })
+    return { paths: result.canceled ? [] : result.filePaths }
+  })
+  handle('chat:send', async (req) => {
+    assertChatIdle(req.sessionId)
+    const operation = { cancelled: false }
+    chatOperations.set(req.sessionId, operation)
+    let createdArtifactJob = false
+    try {
+      const manager = resolveManager(req.sessionId)
+      const opened = await manager.open(req.courseId, req.sessionId)
+      if (opened.sessionInfo?.status === 'running') throw new Error('진행 중인 응답이 끝난 뒤 보내 주세요.')
+      const context = req.context ? { ...req.context } : undefined
+      if (context) delete context.outputDir
+      if (context?.files && context.files.length > 20) throw new Error('파일은 한 번에 20개까지 첨부할 수 있어요.')
+      for (const file of context?.files ?? []) materialsRepo.absolutePathFor(req.courseId, file.relPath)
+      const installed = context?.skillIds?.length ? await discoverChatSkills(opened.sessionInfo?.provider ?? 'claude-code', coursesRepo.getFolder(req.courseId)) : []
+      const skills = (context?.skillIds ?? []).map((id) => {
+        const skill = installed.find((candidate) => candidate.id === id)
+        if (!skill) throw new Error('선택한 스킬을 찾을 수 없어요. 추가 메뉴에서 다시 선택해 주세요.')
+        return skill
+      })
+      if (context) context.skillNames = skills.map((skill) => skill.name)
+      if (context?.creation && !skills.some((skill) => skill.creationKinds.includes(context.creation!))) throw new Error('이 생성 작업에 연결된 스킬이 없어요.')
+      if (operation.cancelled) throw new Error('전송을 취소했어요.')
+      if (context?.creation) {
+        const dir = await createArtifactFolder(coursesRepo.getFolder(req.courseId))
+        if (operation.cancelled) throw new Error('전송을 취소했어요.')
+        context.outputDir = dir
+        createdArtifactJob = true
+        artifactJobs.set(req.sessionId, { courseId: req.courseId, dir, creation: context.creation })
+      }
+      return await manager.send(req.courseId, req.sessionId, req.content, req.attachments, context, skills.map((skill) => skill.path))
+    } catch (error) {
+      if (createdArtifactJob) artifactJobs.delete(req.sessionId)
+      throw error
+    } finally { chatOperations.delete(req.sessionId) }
+  })
   handle('chat:cancel', (req) => {
+    cancelChatOperation(req.sessionId)
+    agentConfirmer.cancelConversation(req.sessionId)
     resolveManager(req.sessionId).cancel(req.courseId, req.sessionId)
     return OK
   })
@@ -2093,6 +2187,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       }
     })
   )
+  handle('agentTools:confirmations', (req) => agentConfirmer.list(req.conversationId))
   handle('agentTools:respondConfirm', (req) => {
     agentConfirmer.resolve(req)
     return OK
@@ -2108,15 +2203,38 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
   handle('chat:close', (req) => {
+    cancelChatOperation(req.sessionId)
+    artifactJobs.delete(req.sessionId)
+    agentConfirmer.cancelConversation(req.sessionId)
     resolveManager(req.sessionId).close(req.courseId, req.sessionId)
     eventBatcher.flush(req.sessionId)
     return OK
   })
+  handle('chat:setConfiguration', async (req) => {
+    assertChatIdle(req.sessionId)
+    const operation = { cancelled: false }
+    chatOperations.set(req.sessionId, operation)
+    try {
+      const opened = await resolveManager(req.sessionId).open(req.courseId, req.sessionId)
+      const provider = opened.sessionInfo?.provider ?? 'claude-code'
+      const { models } = await getAgentModels(provider)
+      const selected = models.find((model) => model.id === req.model || model.resolvedModel === req.model)
+      if (!selected || (req.effort !== null && !selected.supportedEfforts?.includes(req.effort))) {
+        throw new Error('이 모델에서 지원하지 않는 설정이에요. 모델 목록을 다시 확인해 주세요.')
+      }
+      if (operation.cancelled) throw new Error('설정 변경을 취소했어요.')
+      resolveManager(req.sessionId).setModel(req.courseId, req.sessionId, req.model, req.effort)
+      broadcast('chat:configurationChanged', { sessionId: req.sessionId, model: req.model, effort: req.effort })
+      return { model: req.model, effort: req.effort }
+    } finally { chatOperations.delete(req.sessionId) }
+  })
   handle('chat:setModel', (req) => {
+    assertChatIdle(req.sessionId)
     resolveManager(req.sessionId).setModel(req.courseId, req.sessionId, req.model)
     return OK
   })
   handle('chat:setProvider', (req) => {
+    assertChatIdle(req.sessionId)
     const row = chatRepo.getSession(req.sessionId)
     if (row?.status === 'running') {
       throw new Error('답변이 끝난 뒤에 바꿀 수 있어요.')

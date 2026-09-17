@@ -38,8 +38,25 @@ function installAdapter(
 }
 
 describe('assistant tool activity store wiring', () => {
+  test('a delayed pending snapshot cannot restore an approval resolved in another window', async () => {
+    let resolveSnapshot!: (value: unknown) => void
+    const handlers = installAdapter(() => new Promise((resolve) => { resolveSnapshot = resolve }))
+    releases.push(acquireAgentToolActivity('chat-stale'))
+    const request = { requestId: 'resolved-elsewhere', courseId: 'course', conversationId: 'chat-stale', tool: 'browser_access', summary: 'Read page', details: [] }
+    handlers.get('agentTools:confirmationChanged')?.({ request, status: 'expired', revision: 2 } as never)
+    resolveSnapshot([{ request, status: 'pending', revision: 1 }])
+    await Promise.resolve()
+    expect(useAgentToolActivityStore.getState().conversations['chat-stale']?.items[0]).toMatchObject({ response: false, resolution: 'expired', revision: 2 })
+  })
+
   test('keeps a destructive confirmation after sending the response', async () => {
-    const invoke = vi.fn(async () => ({ ok: true }))
+    let responded = false
+    const request = { requestId: 'confirm-1', courseId: 'course-1', conversationId: 'chat-1', tool: 'delete_course', summary: '과목을 삭제할까요?', details: [] }
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'agentTools:confirmations') return responded ? [{ request, status: 'denied', revision: 2 }] : []
+      responded = true
+      return { ok: true }
+    })
     const handlers = installAdapter(invoke)
     releases.push(acquireAgentToolActivity('chat-1'))
 

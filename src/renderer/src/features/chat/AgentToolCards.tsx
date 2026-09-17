@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type {
   AgentAction,
   AgentConfirmScope,
@@ -57,6 +57,7 @@ export function agentTurnUndoButtonLabel(
 }
 
 export interface AgentConfirmCardProps {
+  resolution?: 'pending' | 'approved' | 'denied' | 'expired' | 'cancelled' | undefined
   request: AgentConfirmRequest
   response: boolean | null
   isResponding?: boolean
@@ -95,8 +96,11 @@ export function AgentConfirmCard({
   hasResponseError = false,
   autoFocusReject = true,
   shouldAutoFocusReject,
-  onRespond
+  onRespond,
+  resolution
 }: AgentConfirmCardProps): JSX.Element {
+  const [selection, setSelection] = useState<{ requestId: string; scope: AgentConfirmScope }>({ requestId: request.requestId, scope: 'once' })
+  const scope = selection.requestId === request.requestId ? selection.scope : 'once'
   const isPending = response === null
   const kindLabel = confirmKindLabel(request.tool)
   const severity = request.tool === 'browser_access' ? 'quiet' : 'danger'
@@ -121,7 +125,7 @@ export function AgentConfirmCard({
   if (!isPending) {
     const subject = confirmationSubject(request)
     const responseLabel =
-      response && request.tool === 'browser_access'
+      resolution === 'expired' ? '시간 초과' : resolution === 'cancelled' ? '취소됨' : response && request.tool === 'browser_access'
         ? '허용함'
         : agentConfirmResponseLabel(response)
 
@@ -201,29 +205,12 @@ export function AgentConfirmCard({
         >
           거절
         </button>
-        {request.scopes === undefined ? (
-          <button
-            type="button"
-            className="chat-agent-confirm__button chat-agent-confirm__button--approve"
-            disabled={isResponding}
-            onClick={() => onRespond(request.requestId, true)}
-          >
-            승인
-          </button>
-        ) : (
-          request.scopes.map((scope) => (
-            <button
-              key={scope}
-              type="button"
-              className="chat-agent-confirm__button chat-agent-confirm__button--scope"
-              aria-label={`${agentConfirmScopeLabel(scope)} 승인`}
-              disabled={isResponding}
-              onClick={() => onRespond(request.requestId, true, scope)}
-            >
-              {agentConfirmScopeLabel(scope)}
-            </button>
-          ))
-        )}
+        {request.scopes && request.scopes.length > 1 && <select aria-label="허용 범위" value={request.scopes.includes(scope) ? scope : request.scopes[0]} disabled={isResponding} onChange={(event) => setSelection({ requestId: request.requestId, scope: event.target.value as AgentConfirmScope })}>
+          {request.scopes.map((option) => <option value={option} key={option}>{agentConfirmScopeLabel(option)}</option>)}
+        </select>}
+        <button type="button" className="chat-agent-confirm__button chat-agent-confirm__button--approve" disabled={isResponding} onClick={() => onRespond(request.requestId, true, request.scopes ? request.scopes.includes(scope) ? scope : request.scopes[0] : undefined)}>
+          {scope === 'once' ? '이번만 허용' : '허용'}
+        </button>
       </div>
     </article>
   )
@@ -242,7 +229,7 @@ function confirmKindLabel(tool: string): string {
     case 'browser_use_saved_login':
       return '저장된 로그인 사용'
     default:
-      return '파괴적 변경 확인'
+      return tool.startsWith('desktop_') ? '화면 접근 확인' : tool.startsWith('delete_') ? '삭제 확인' : '작업 실행 확인'
   }
 }
 
@@ -358,6 +345,7 @@ export function AgentToolActivity({
             key={`confirmation:${item.request.requestId}`}
             request={item.request}
             response={item.response}
+            resolution={item.resolution}
             isResponding={item.isResponding}
             hasResponseError={item.hasResponseError}
             autoFocusReject={item.request.requestId === activeRequestId}

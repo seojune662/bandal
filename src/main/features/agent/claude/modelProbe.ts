@@ -16,6 +16,9 @@ export interface CliModel {
   value: string
   displayName: string
   description?: string
+  resolvedModel?: string
+  supportedEfforts?: string[]
+  defaultEffort?: string
 }
 
 export const FALLBACK_MODELS: CliModel[] = [
@@ -61,6 +64,10 @@ function parseModels(value: unknown): CliModel[] | null {
     }
     if (typeof record['description'] === 'string') {
       model.description = record['description']
+    }
+    if (typeof record['resolvedModel'] === 'string') model.resolvedModel = record['resolvedModel']
+    if (record['supportsEffort'] === true && Array.isArray(record['supportedEffortLevels'])) {
+      model.supportedEfforts = record['supportedEffortLevels'].filter((level): level is string => typeof level === 'string' && /^[a-z]+$/.test(level))
     }
     parsed.push(model)
   }

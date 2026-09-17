@@ -623,6 +623,14 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
    * send respawns with `--model`; history and the resumable CLI session id
    * survive.
    */
+  'agentTools:confirmations': {
+    req: { conversationId: string }
+    res: import('../types/agentTools').AgentConfirmationState[]
+  }
+  'chat:setConfiguration': {
+    req: { courseId: string; sessionId: string; model: string; effort: string | null }
+    res: { model: string; effort: string | null }
+  }
   'chat:setModel': {
     req: { courseId: string; sessionId: string; model: string }
     res: { ok: true }
@@ -773,6 +781,22 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     res: AgentAvailability
   }
   /** Models the installed CLI reports. Cached in main for the process lifetime. */
+  'agent:skills': {
+    req: { provider: AgentProvider; courseId: string }
+    res: import('../types/chatCapabilities').ChatSkill[]
+  }
+  'chat:importAttachments': {
+    req: { courseId: string; paths: string[] }
+    res: { name: string; relPath: string }[]
+  }
+  'chat:openArtifact': {
+    req: { courseId: string; relPath: string }
+    res: { ok: true }
+  }
+  'chat:pickAttachments': {
+    req: Record<string, never>
+    res: { paths: string[] }
+  }
   'agent:models': {
     req: { provider: AgentProvider }
     res: { models: AgentModelOption[] }
@@ -1881,6 +1905,8 @@ export const IPC_CHANNELS = [
   'chat:respondPermission',
   'chat:close',
   'chat:setModel',
+  'chat:setConfiguration',
+  'agentTools:confirmations',
   'chat:setProvider',
   'chat:conversations',
   'chat:deleteConversation',
@@ -1927,6 +1953,10 @@ export const IPC_CHANNELS = [
   'mcp:test',
   'agent:availability',
   'agent:models',
+  'agent:skills',
+  'chat:pickAttachments',
+  'chat:openArtifact',
+  'chat:importAttachments',
   'drawings:listForFile',
   'drawings:create',
   'drawings:update',

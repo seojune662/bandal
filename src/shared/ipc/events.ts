@@ -199,6 +199,8 @@ export interface PushEvents {
   'recordings:event': RecordingEvent
   'recordings:modelsChanged': SpeechModelState[]
   'chat:event-batch': ChatEventBatch
+  'chat:message': { sessionId: string; message: import('../types/chat').ChatMessage }
+  'chat:configurationChanged': { sessionId: string; model: string; effort: string | null }
   /** A course was created, renamed, archived or removed. */
   'courses:changed': { }
   /** Board tasks changed outside the board panel. */
@@ -207,6 +209,7 @@ export interface PushEvents {
   'canvas:changed': { courseId: string }
   /** A destructive assistant tool is waiting for the student. */
   'agentTools:confirm': AgentConfirmRequest
+  'agentTools:confirmationChanged': import('../types/agentTools').AgentConfirmationState
   /** One request finished changing things; show the change list. */
   /**
    * `conversationId` so the change list lands in the chat that caused it —

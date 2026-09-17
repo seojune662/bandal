@@ -1,3 +1,4 @@
+import type { ChatContext } from '../../../../shared/types/chatCapabilities'
 import { useCallback, useEffect } from 'react'
 import type {
   AgentAvailability,
@@ -20,6 +21,7 @@ import {
   sendChatMessage,
   setChatProvider,
   setChatModel,
+  setChatConfiguration,
   useChatSessionStore,
 } from './chatSessionStore'
 
@@ -30,9 +32,14 @@ export interface ChatSessionApi {
   availability: AgentAvailability | null
   openError: string | null
   models: AgentModelOption[]
+  effort?: string | null
+  configurationError?: string | null
+  configuring?: boolean
+  permissionResponses?: Record<string, 'pending' | 'error'>
+  setConfiguration: (model: string, effort: string | null) => Promise<void>
   /** Conversation title (first user message). Null until the first send. */
   title: string | null
-  send: (content: string, attachments?: ChatAttachment[]) => void
+  send: (content: string, attachments?: ChatAttachment[], context?: ChatContext) => Promise<void>
   cancel: () => void
   respondPermission: (
     requestId: string,
@@ -66,8 +73,8 @@ export function useChatSession(
   )
 
   const send = useCallback(
-    (content: string, attachments?: ChatAttachment[]) => {
-      sendChatMessage(courseId, conversationId, content, attachments)
+    (content: string, attachments?: ChatAttachment[], context?: ChatContext) => {
+      return sendChatMessage(courseId, conversationId, content, attachments, context)
     },
     [courseId, conversationId]
   )
@@ -108,6 +115,7 @@ export function useChatSession(
     refresh,
     dismissNotice,
     setModel,
+    setConfiguration: (model, effort) => setChatConfiguration(courseId, conversationId, model, effort),
     setProvider
   }
 }

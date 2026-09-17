@@ -26,7 +26,10 @@ function toOptions(models: readonly CliModel[]): AgentModelOption[] {
   return models.map((model) => ({
     id: model.value,
     displayName: model.displayName,
-    isDefault: model.value === 'default' || model.value === 'auto'
+    isDefault: model.value === 'default' || model.value === 'auto',
+    ...(model.resolvedModel ? { resolvedModel: model.resolvedModel } : {}),
+    ...(model.supportedEfforts ? { supportedEfforts: model.supportedEfforts } : {}),
+    ...(model.defaultEffort ? { defaultEffort: model.defaultEffort } : {})
   }))
 }
 

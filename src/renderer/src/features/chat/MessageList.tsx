@@ -4,7 +4,9 @@
  * half-moon avatar, 중단됨 treatment and a subtle usage footnote per turn.
  */
 
-import { memo } from 'react'
+import { Fragment, memo, type ReactNode } from 'react'
+import { invoke } from '../../lib/ipc'
+import { CREATION_LABELS } from '../../../../shared/types/chatCapabilities'
 import type {
   PermissionResponse,
   Usage
@@ -90,6 +92,8 @@ const BlockRenderer = memo(function BlockRenderer({
       // Notice-only messages are rendered by SystemNotice; a stray notice
       // block inside a normal turn has no bubble form.
       return null
+    case 'artifact':
+      return <div className="chat-artifact"><span>{block.artifact.name}</span><button type="button" onClick={() => void invoke('chat:openArtifact', { courseId: block.artifact.courseId, relPath: block.artifact.relPath }).catch(() => undefined)}>열기</button><button type="button" onClick={() => { void invoke('materials:reveal', { courseId: block.artifact.courseId, relPath: block.artifact.relPath }).catch(() => undefined) }}>파일 위치</button></div>
     case 'text':
       return <TextBlock block={block} />
     case 'thinking':
@@ -173,6 +177,7 @@ const UserMessage = memo(function UserMessage({
   const text = message.blocks
     .map((block) => (block.kind === 'text' ? block.text : ''))
     .join('')
+  const contexts = message.blocks.flatMap((block) => block.kind === 'text' && block.context ? [block.context] : [])
   const images = message.blocks.flatMap((block) =>
     block.kind === 'text' ? (block.images ?? []) : []
   )
@@ -191,6 +196,13 @@ const UserMessage = memo(function UserMessage({
             ))}
           </div>
         )}
+        {contexts.map((context, index) => <div className="chat-context-chips" key={index}>
+          {context.files?.map((file) => <span className="chat-context-chip" key={file.relPath}>{file.name}</span>)}
+          {context.creation && <span className="chat-context-chip">{CREATION_LABELS[context.creation]} 만들기</span>}
+          {context.skillNames?.map((name) => <span className="chat-context-chip" key={name}>{name}</span>)}
+          {context.browser && <span className="chat-context-chip">브라우저 페이지</span>}
+          {context.screen && <span className="chat-context-chip">화면</span>}
+        </div>)}
         {text !== '' && <span>{text}</span>}
       </div>
     </article>
@@ -272,6 +284,7 @@ const AssistantMessage = memo(function AssistantMessage({
 )
 
 export interface MessageListProps {
+  renderActivity?: (turnSeq: number | undefined, isLast: boolean) => ReactNode
   messages: MessageView[]
   pendingPermissionId: string | null
   dockedPermissionId?: string | null
@@ -282,23 +295,27 @@ export function MessageList({
   messages,
   pendingPermissionId,
   dockedPermissionId = null,
-  onRespondPermission
+  onRespondPermission,
+  renderActivity
 }: MessageListProps): JSX.Element {
+  const lastAssistantIndex = new Map<number | undefined, number>()
+  messages.forEach((message, index) => {
+    if (message.role === 'assistant') lastAssistantIndex.set(message.turnSeq, index)
+  })
   return (
     <div className="chat-thread" role="log" aria-label="AI 튜터 대화">
-      {messages.map((message) =>
+      {messages.map((message, index) =>
         isNoticeMessage(message) ? (
           <SystemNotice key={message.id} message={message} />
         ) : message.role === 'user' ? (
           <UserMessage key={message.id} message={message} />
         ) : (
-          <AssistantMessage
-            key={message.id}
+          <Fragment key={message.id}><AssistantMessage
             message={message}
             pendingPermissionId={pendingPermissionId}
             dockedPermissionId={dockedPermissionId}
             onRespondPermission={onRespondPermission}
-          />
+          />{lastAssistantIndex.get(message.turnSeq) === index && renderActivity?.(message.turnSeq, index === messages.length - 1)}</Fragment>
         )
       )}
     </div>

@@ -127,6 +127,38 @@ describe('SessionManager', () => {
     ctx.cleanup()
   })
 
+  test('persists effort before the first turn and forwards it after reopening', async () => {
+    manager.setModel(courseId, conversationId, 'model-a', 'high')
+    manager.close(courseId, conversationId)
+    expect((await manager.open(courseId, conversationId)).sessionInfo).toMatchObject({ model: 'model-a', effort: 'high' })
+    await manager.send(courseId, conversationId, 'hello')
+    expect(fake.startOptions[0]).toMatchObject({ model: 'model-a', effort: 'high' })
+    expect(() => manager.setModel(courseId, conversationId, 'model-b')).toThrow()
+  })
+
+  test('rejects simultaneous sends and disposes a process that starts after cancellation', async () => {
+    let complete!: (session: AgentSession) => void
+    fake.adapter.startSession = () => new Promise((resolve) => { complete = resolve })
+    const first = manager.send(courseId, conversationId, 'first')
+    const cancelled = expect(first).rejects.toThrow('취소')
+    await expect(manager.send(courseId, conversationId, 'duplicate')).rejects.toThrow('진행 중')
+    manager.cancel(courseId, conversationId)
+    const delayed = createFakeSession()
+    complete(delayed)
+    await cancelled
+    expect(delayed.disposed).toBe(true)
+    expect(delayed.sentMessages).toEqual([])
+    expect(repo.historyTail(conversationId, 10)).toEqual([])
+  })
+
+  test('cancels pending permission cards when closing an active turn and reopens idle', async () => {
+    await manager.send(courseId, conversationId, 'hello')
+    fake.sessions[0]!.emit({ type: 'permission-request', requestId: 'pending-close', toolName: 'Read', input: {} })
+    manager.close(courseId, conversationId)
+    expect(emitted.map((item) => item.event)).toContainEqual({ type: 'permission-resolved', requestId: 'pending-close', behavior: 'deny' })
+    expect((await manager.open(courseId, conversationId)).sessionInfo?.status).toBe('idle')
+  })
+
   test('open() returns availability and empty history without spawning', async () => {
     const result = await manager.open(courseId, conversationId)
     expect(result.history).toEqual([])
@@ -257,6 +289,7 @@ describe('SessionManager', () => {
       course_id: courseId,
       title: '선형대수 중간고사 요약해줘'
     })
+    fake.sessions[0]!.emit({ type: 'turn-complete', stopReason: 'success' })
     // a later send never renames the conversation
     await manager.send(courseId, conversationId, 'another question')
     const title = (
@@ -275,7 +308,7 @@ describe('SessionManager', () => {
 
     fake.sessions[0]!.emit({ type: 'text-delta', blockId: 'b1', text: 'a' })
     fake.sessions[1]!.emit({ type: 'text-delta', blockId: 'b1', text: 'b' })
-    expect(emitted.map(({ sessionId }) => sessionId)).toEqual([
+    expect(emitted.filter(({ event }) => event.type !== 'turn-started').map(({ sessionId }) => sessionId)).toEqual([
       conversationId,
       other
     ])
@@ -567,6 +600,7 @@ describe('SessionManager', () => {
     session.emit({ type: 'text-delta', blockId: 'b1', text: 'x' })
     session.emit({ type: 'turn-complete', stopReason: 'success' })
     expect(emitted.map(({ event }) => event.type)).toEqual([
+      'turn-started',
       'text-delta',
       'turn-complete'
     ])

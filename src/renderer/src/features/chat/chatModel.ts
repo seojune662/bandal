@@ -36,6 +36,7 @@ export interface TextBlockView {
   streaming: boolean
   /** Present on persisted/local user text blocks with pasted images. */
   images?: ChatAttachment[]
+  context?: import('../../../../shared/types/chatCapabilities').ChatContext
 }
 
 export interface ThinkingBlockView {
@@ -76,6 +77,7 @@ export interface NoticeBlockView {
 }
 
 export type BlockView =
+  | { kind: 'artifact'; id: string; artifact: import('../../../../shared/types/chatCapabilities').ChatArtifact }
   | TextBlockView
   | ThinkingBlockView
   | ToolBlockView
@@ -89,6 +91,7 @@ export interface TurnStats {
 }
 
 export interface MessageView {
+  turnSeq?: number
   id: string
   role: 'user' | 'assistant'
   blocks: BlockView[]
@@ -109,6 +112,7 @@ export interface LimitInfo {
 }
 
 export interface ChatViewState {
+  activeTurnSeq?: number
   messages: MessageView[]
   /** True while an assistant turn is in flight. */
   streaming: boolean
@@ -249,6 +253,7 @@ function updateLiveMessage(
   const counter = state.counter + 1
   const fresh: MessageView = {
     id: `assistant-${counter}`,
+    ...(state.activeTurnSeq === undefined ? {} : { turnSeq: state.activeTurnSeq }),
     role: 'assistant',
     blocks: [],
     streaming: true,
@@ -508,6 +513,8 @@ export function applyAgentEvent(
   event: AgentEvent
 ): ChatViewState {
   switch (event.type) {
+    case 'turn-started':
+      return { ...state, activeTurnSeq: event.turnSeq, messages: state.messages.map((message, index) => index === state.messages.length - 1 && message.role === 'user' ? { ...message, turnSeq: event.turnSeq } : message) }
     case 'session-started':
       return { ...state, model: event.model }
     case 'text-delta':
@@ -522,6 +529,8 @@ export function applyAgentEvent(
       return applyToolInputDelta(state, event.toolCallId, event.partialInput)
     case 'tool-end':
       return applyToolEnd(state, event)
+    case 'permission-resolved':
+      return applyLocalPermissionResponse(state, event.requestId, event.behavior)
     case 'permission-request':
       return applyPermissionRequest(state, event)
     case 'turn-complete':
@@ -555,7 +564,8 @@ export function appendLocalUserMessage(
   state: ChatViewState,
   id: string,
   text: string,
-  images: ChatAttachment[] = []
+  images: ChatAttachment[] = [],
+  context?: import('../../../../shared/types/chatCapabilities').ChatContext
 ): ChatViewState {
   const message: MessageView = {
     id,
@@ -566,7 +576,8 @@ export function appendLocalUserMessage(
         id: `${id}-text`,
         text,
         streaming: false,
-        ...(images.length === 0 ? {} : { images })
+        ...(images.length === 0 ? {} : { images }),
+        ...(context ? { context } : {})
       }
     ],
     streaming: false,
@@ -613,9 +624,7 @@ export function applyLocalPermissionResponse(
     ...state,
     messages,
     pendingPermissionId:
-      state.pendingPermissionId === requestId
-        ? null
-        : state.pendingPermissionId
+      messages.flatMap((message) => message.blocks).find((block) => block.kind === 'permission' && block.behavior === undefined)?.id ?? null
   }
 }
 
@@ -670,7 +679,8 @@ function persistedBlockToView(
         id: block.id,
         text: asString(payload['text'], ''),
         streaming: false,
-        ...(images.length === 0 ? {} : { images })
+        ...(images.length === 0 ? {} : { images }),
+        ...(typeof payload['context'] === 'object' && payload['context'] !== null ? { context: payload['context'] as import('../../../../shared/types/chatCapabilities').ChatContext } : {})
       },
       interrupted
     }
@@ -713,6 +723,9 @@ function persistedBlockToView(
       },
       interrupted
     }
+  }
+  if (block.kind === 'artifact' && typeof payload['relPath'] === 'string' && typeof payload['courseId'] === 'string') {
+    return { view: { kind: 'artifact', id: block.id, artifact: payload as unknown as import('../../../../shared/types/chatCapabilities').ChatArtifact }, interrupted: false }
   }
   if (block.kind === 'notice') {
     const notice = asProviderSwitchNotice(payload)
@@ -770,9 +783,10 @@ export function hydrateFromHistory(
     }
     return {
       id: message.id,
+      turnSeq: message.turnSeq,
       role: message.role,
       blocks,
-      streaming: false,
+      streaming: message.id.startsWith('live-'),
       interrupted
     }
   })

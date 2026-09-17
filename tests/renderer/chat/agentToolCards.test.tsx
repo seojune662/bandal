@@ -88,9 +88,9 @@ describe('assistant app-action cards', () => {
 
     expect(html).toContain('data-severity="quiet"')
     expect(html).toContain('>거절</button>')
-    expect(html).toContain('>이번만</button>')
-    expect(html).toContain('>이 사이트</button>')
-    expect(html).toContain('>이 과목 전체</button>')
+    expect(html).toContain('>이번만</option>')
+    expect(html).toContain('>이 사이트</option>')
+    expect(html).toContain('>이 과목 전체</option>')
     expect(html).not.toContain('>승인</button>')
   })
 

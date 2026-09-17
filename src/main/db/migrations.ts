@@ -1038,7 +1038,17 @@ export const migrations: Migration[] = [
       if (!columns.has('last_message_at')) db.exec('ALTER TABLE friends_cache ADD COLUMN last_message_at TEXT')
     }
   },
-  { version: 32, name: 'lecture-recordings', up: (db) => { db.exec(RECORDING_SCHEMA) } }
+  { version: 32, name: 'lecture-recordings', up: (db) => { db.exec(RECORDING_SCHEMA) } },
+  {
+    version: 33,
+    name: 'chat-reasoning-effort',
+    up: (db) => {
+      const columns = db.prepare('PRAGMA table_info(agent_sessions)').all() as { name: string }[]
+      if (!columns.some((column) => column.name === 'effort')) {
+        db.exec('ALTER TABLE agent_sessions ADD COLUMN effort TEXT')
+      }
+    }
+  }
 ]
 
 /** Creates the bookkeeping table if needed and returns applied versions. */
