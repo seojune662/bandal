@@ -347,7 +347,9 @@ jobs:
               # Bound a stalled request. Retry transport errors, rate limits,
               # and GitHub 5xx responses without rebuilding signed installers.
               code=000
-              if code="$(curl -sS --connect-timeout 30 --max-time 240 -X POST \
+              # HTTP/2 uploads stalled on both runners and locally; the same
+              # installer completed over HTTP/1.1. Keep the transfer bounded.
+              if code="$(curl --http1.1 -sS --connect-timeout 30 --max-time 240 -X POST \
                 -H "Authorization: Bearer $GH_TOKEN" \
                 -H "Content-Type: application/octet-stream" \
                 --data-binary @"$file" \
