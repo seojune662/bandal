@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useId,
@@ -289,6 +290,14 @@ function boxForShape(shape: DrawingShape, gesture: Gesture | null): DrawingBox |
   }
   return shape.data.box
 }
+
+// Existing strokes do not change as the pen moves. Keep perfect-freehand's
+// outline calculation out of the pointer frame for every previously drawn line.
+const InkStroke = memo(function InkStroke({ shape, aspect }: { shape: DrawingShape; aspect: number }): JSX.Element | null {
+  const path = strokePath(shape.data.points ?? [], shape.style, aspect, shape.kind === 'highlighter')
+  return path ? <path className={shape.kind === 'highlighter' ? 'ink-layer__mark is-highlighter' : 'ink-layer__mark'}
+    d={path} fill={drawingColorVariable(shape.style.color)} opacity={shape.style.opacity} /> : null
+})
 
 export function InkLayer(props: InkLayerProps): JSX.Element {
   const {
@@ -831,6 +840,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
     kind: 'move' | 'resize',
     handle: ResizeHandle = 'se'
   ): void => {
+    if (event.button !== 0) return
     // select 툴 = 범용 조작(선/화살표는 이동만), text 툴 = 텍스트박스만.
     const canManipulate =
       (activeTool === 'select' &&
@@ -1127,24 +1137,7 @@ export function InkLayer(props: InkLayerProps): JSX.Element {
             }
           : {}
         if (shape.kind === 'ink' || shape.kind === 'highlighter') {
-          const path = strokePath(
-            shape.data.points ?? [],
-            shape.style,
-            aspect,
-            shape.kind === 'highlighter'
-          )
-          if (path.length === 0) return null
-          return (
-            <path
-              key={shape.id}
-              className={shape.kind === 'highlighter'
-                ? 'ink-layer__mark is-highlighter'
-                : 'ink-layer__mark'}
-              d={path}
-              fill={markColor}
-              opacity={shape.style.opacity}
-            />
-          )
+          return <InkStroke key={shape.id} shape={shape} aspect={aspect} />
         }
         const box = boxForShape(shape, gesture)
         if (shape.kind === 'rect' && isRenderableBox(box)) {

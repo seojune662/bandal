@@ -30,6 +30,7 @@ import { openNewTabMenu, useNewTabMenu } from './newTabMenuController'
 import { descriptorFor, isTabDescriptor, tabTitle } from './tabIdentity'
 import { writeWorkspaceTabDragData } from './tabDrag'
 import { dockviewComponents } from './tabRegistry'
+import { installTabDragScrolling } from './tabDragScroll'
 import { installTabStripWheelScrolling } from './tabStripScroll'
 import { TabKindIcon } from './workspaceIcons'
 import './workspace.css'
@@ -333,6 +334,13 @@ export function WorkspaceHost(): JSX.Element {
   const closeMenu = useNewTabMenu((state) => state.close)
   const layoutSubscription = useRef<{ dispose: () => void } | null>(null)
   const hostRef = useRef<HTMLDivElement>(null)
+  const layoutFrame = useRef<number | null>(null)
+  const flushLayout = (): void => {
+    if (layoutFrame.current === null) return
+    cancelAnimationFrame(layoutFrame.current)
+    layoutFrame.current = null
+    useWorkspaceStore.getState().notifyLayoutChanged()
+  }
 
   useEffect(() => {
     setActiveCourse(courseId)
@@ -342,17 +350,21 @@ export function WorkspaceHost(): JSX.Element {
   useEffect(() => {
     const host = hostRef.current
     if (host === null) return
-    return installTabStripWheelScrolling(host)
+    const stopWheel = installTabStripWheelScrolling(host)
+    const stopDrag = installTabDragScrolling(host)
+    return () => { stopWheel(); stopDrag() }
   }, [])
 
   useEffect(() => {
     const flush = (): void => {
+      flushLayout()
       useWorkspaceStore.getState().flushPendingSave()
       flushLastActiveCoursePersist()
     }
     window.addEventListener('beforeunload', flush)
     return () => {
       window.removeEventListener('beforeunload', flush)
+      flushLayout()
       layoutSubscription.current?.dispose()
       layoutSubscription.current = null
       useWorkspaceStore.getState().detachApi()
@@ -362,7 +374,11 @@ export function WorkspaceHost(): JSX.Element {
   const onReady = (event: DockviewReadyEvent): void => {
     layoutSubscription.current?.dispose()
     layoutSubscription.current = event.api.onDidLayoutChange(() => {
-      useWorkspaceStore.getState().notifyLayoutChanged()
+      if (layoutFrame.current !== null) return
+      layoutFrame.current = requestAnimationFrame(() => {
+        layoutFrame.current = null
+        useWorkspaceStore.getState().notifyLayoutChanged()
+      })
     })
     useWorkspaceStore.getState().attachApi(event.api)
   }

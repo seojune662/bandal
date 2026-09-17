@@ -259,6 +259,7 @@ function FileLoader({
 }
 
 export default function FileTab(props: IDockviewPanelProps): JSX.Element {
+  useEffect(() => { props.api.setRenderer('always') }, [props.api])
   const [interactive, setInteractive] = useState(props.api.isActive && props.api.isVisible)
   useEffect(() => {
     const update = (): void => setInteractive(props.api.isActive && props.api.isVisible)

@@ -5,9 +5,10 @@
 
 import {
   cpSync, copyFileSync, existsSync, lstatSync, mkdirSync, opendirSync,
-  readFileSync, renameSync, statSync, unlinkSync,
+  renameSync, statSync, unlinkSync,
   writeFileSync
 } from 'node:fs'
+import { readFile, stat } from 'node:fs/promises'
 import type { Dirent } from 'node:fs'
 import { basename, extname, isAbsolute, join, posix, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -34,7 +35,7 @@ export interface MaterialsRepo {
   import(courseId: string, paths: string[], dirRelPath?: string): ImportResult
   /** 파일/폴더를 다른 과목-상대 디렉터리로 옮긴다 ('' = 루트). */
   move(input: { courseId: string; fromRelPath: string; toDirRelPath: string }): { relPath: string }
-  readFile(courseId: string, relPath: string): MaterialFileContent
+  readFile(courseId: string, relPath: string): Promise<MaterialFileContent>
   reveal(courseId: string, relPath: string): { ok: true }
   rename(input: { courseId: string; relPath: string; newName: string }): { relPath: string }
   softDelete(input: { courseId: string; relPath: string }): Promise<{ ok: true }>
@@ -606,12 +607,14 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       return { relPath }
     },
 
-    readFile(courseId, relPath) {
+    async readFile(courseId, relPath) {
       const { abs } = resolveMaterial(courseId, relPath)
-      if (!existsSync(abs) || !statSync(abs).isFile()) {
-        throw new NotFoundError('material', relPath)
-      }
-      const size = statSync(abs).size
+      const info = await stat(abs).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') throw new NotFoundError('material', relPath)
+        throw error
+      })
+      if (!info.isFile()) throw new NotFoundError('material', relPath)
+      const size = info.size
       if (size > MAX_READ_BYTES) {
         const sizeMb = Math.round(size / (1024 * 1024))
         throw new ValidationError(
@@ -620,9 +623,9 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       }
       const ext = extname(abs).toLowerCase()
       if (TEXT_EXTENSIONS.has(ext)) {
-        return { encoding: 'utf8', data: readFileSync(abs, 'utf8') }
+        return { encoding: 'utf8', data: await readFile(abs, 'utf8') }
       }
-      return { encoding: 'base64', data: readFileSync(abs).toString('base64') }
+      return { encoding: 'base64', data: (await readFile(abs)).toString('base64') }
     },
 
     reveal(courseId, relPath) {

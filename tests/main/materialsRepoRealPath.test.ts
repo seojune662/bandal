@@ -46,8 +46,8 @@ describe('materialsRepo realpath boundary', () => {
     ctx.cleanup()
   })
 
-  test('readFile rejects a symlink escape', () => {
-    expect(() => repo.readFile(courseId, 'linked/secret.md')).toThrow(
+  test('readFile rejects a symlink escape', async () => {
+    await expect(repo.readFile(courseId, 'linked/secret.md')).rejects.toThrow(
       ValidationError
     )
   })

@@ -100,11 +100,12 @@ import { taskListItemView } from './taskListView'
 import { createWikilinkPickerPlugin, wikilinkContextCtx } from './wikilink'
 import './note-tab.css'
 import {
-  PAGE_SYNC_ECHO_GUARD_MS,
+  claimPageSyncInput,
   publishPageSyncAnchor,
   subscribePageSyncAnchor,
   usePageNoteSync
 } from '../links/pdfPageNoteSync'
+import { PageSyncScroll } from '../links/pageSyncScroll'
 import { PageCenterCache } from '../pdf/useVisiblePages'
 
 const SAVE_DELAY_MS = 800
@@ -560,9 +561,9 @@ export function PageNoteWorkspace({
   )
   const pageCenterCacheRef = useRef(new PageCenterCache())
   const reportedPageRef = useRef(0)
-  const applyingSyncRef = useRef(false)
+  const viewportAnchorRef = useRef<{ page: number; pageOffset: number } | null>(null)
+  const pageSyncScroll = useRef(new PageSyncScroll())
   const scrollFrameRef = useRef<number | null>(null)
-  const syncReleaseTimerRef = useRef<number | null>(null)
   const composingRef = useRef(false)
   const suppressSyncUntilRef = useRef(0)
 
@@ -587,8 +588,18 @@ export function PageNoteWorkspace({
   useEffect(() => {
     const list = listRef.current
     if (list === null) return
+    let previousWidth = list.clientWidth
     const observer = new ResizeObserver(() => {
       pageCenterCacheRef.current.invalidate()
+      const width = list.clientWidth
+      const scroller = scrollerRef.current
+      if (width <= 0 || !scroller || scroller.clientHeight <= 0) return
+      if (width !== previousWidth && viewportAnchorRef.current) {
+        pageSyncScroll.current.apply(scroller, () => {
+          pageCenterCacheRef.current.restoreViewportAnchor(scroller, pageRefs.current, viewportAnchorRef.current!)
+        })
+      }
+      previousWidth = width
     })
     observer.observe(list)
     return () => observer.disconnect()
@@ -607,16 +618,16 @@ export function PageNoteWorkspace({
   const captureAnchor = useCallback((): { page: number; pageOffset: number } | null => {
     const scroller = scrollerRef.current
     if (scroller === null) return null
-    return pageCenterCacheRef.current.captureViewportAnchor(
-      scroller,
-      pageRefs.current
-    )
+    const anchor = pageCenterCacheRef.current.captureViewportAnchor(scroller, pageRefs.current)
+    if (anchor) viewportAnchorRef.current = anchor
+    return anchor
   }, [])
 
   const restoreAnchor = useCallback(
     (page: number, pageOffset: number): boolean => {
       const scroller = scrollerRef.current
-      if (scroller === null) return false
+      if (scroller === null || scroller.clientHeight <= 0) return false
+      viewportAnchorRef.current = { page, pageOffset }
       return pageCenterCacheRef.current.restoreViewportAnchor(
         scroller,
         pageRefs.current,
@@ -648,38 +659,15 @@ export function PageNoteWorkspace({
         anchor.connectionId !== pageNotePair.connectionId ||
         anchor.originPanelId === panelId
       ) return
-      applyingSyncRef.current = true
-      const restored = restoreAnchor(anchor.page, anchor.pageOffset)
-      if (restored) {
-        reportCurrentPage(
-          Math.min(Math.max(1, anchor.page), document.pages.length)
-        )
-      }
-      if (syncReleaseTimerRef.current !== null) {
-        window.clearTimeout(syncReleaseTimerRef.current)
-      }
-      if (!restored) {
-        applyingSyncRef.current = false
-        syncReleaseTimerRef.current = null
-        return
-      }
-      // Element scroll events are processed around animation frames. Releasing
-      // in the very next rAF can happen before handleScroll's rAF and turn the
-      // incoming movement into an outgoing echo. The scroll handler releases
-      // this guard itself; the timer only covers the no-scroll (already there)
-      // case.
-      syncReleaseTimerRef.current = window.setTimeout(() => {
-        applyingSyncRef.current = false
-        syncReleaseTimerRef.current = null
-      }, PAGE_SYNC_ECHO_GUARD_MS)
+      const scroller = scrollerRef.current
+      if (!scroller || scroller.clientHeight <= 0 || !pageSyncScroll.current.accept(anchor.sequence)) return
+      pageSyncScroll.current.apply(scroller, () => restoreAnchor(anchor.page, anchor.pageOffset))
+      reportCurrentPage(Math.min(Math.max(1, anchor.page), document.pages.length))
     })
   }, [document.pages.length, pageNotePair, panelId, reportCurrentPage, restoreAnchor, syncEnabled])
 
   useEffect(() => () => {
     if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current)
-    if (syncReleaseTimerRef.current !== null) {
-      window.clearTimeout(syncReleaseTimerRef.current)
-    }
   }, [])
 
   const handleScroll = (): void => {
@@ -689,14 +677,8 @@ export function PageNoteWorkspace({
       const anchor = captureAnchor()
       if (anchor === null) return
       reportCurrentPage(anchor.page)
-      const applyingSync = applyingSyncRef.current
-      if (applyingSync) {
-        applyingSyncRef.current = false
-        if (syncReleaseTimerRef.current !== null) {
-          window.clearTimeout(syncReleaseTimerRef.current)
-          syncReleaseTimerRef.current = null
-        }
-      }
+      const scroller = scrollerRef.current
+      const applyingSync = scroller !== null && pageSyncScroll.current.isEcho(scroller)
       const inputDrivenScroll =
         composingRef.current || performance.now() < suppressSyncUntilRef.current
       if (
@@ -741,6 +723,11 @@ export function PageNoteWorkspace({
       <div
         ref={scrollerRef}
         className="note-editor-scroll page-note-scroll"
+        onWheelCapture={() => {
+          suppressSyncUntilRef.current = 0
+          if (pageNotePair) claimPageSyncInput(pageNotePair.pairId, panelId)
+        }}
+        onPointerDownCapture={() => { if (pageNotePair) claimPageSyncInput(pageNotePair.pairId, panelId) }}
         onScroll={handleScroll}
         onBeforeInputCapture={suppressInputDrivenSync}
         onCompositionStartCapture={() => {

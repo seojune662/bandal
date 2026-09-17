@@ -86,11 +86,12 @@ import {
   useMaterialConnections
 } from '../links/useMaterialConnections'
 import {
-  PAGE_SYNC_ECHO_GUARD_MS,
+  claimPageSyncInput,
   publishPageSyncAnchor,
   subscribePageSyncAnchor,
   usePageNoteSync
 } from '../links/pdfPageNoteSync'
+import { PageSyncScroll } from '../links/pageSyncScroll'
 import {
   subscribeOpenPdfPageNote,
   takeOpenPdfPageNote
@@ -242,8 +243,7 @@ function PdfViewer({
   const scrollFrame = useRef<number | null>(null)
   const saveTimer = useRef<number | null>(null)
   const reconciledFingerprintRef = useRef<string | null>(null)
-  const applyingPageSyncRef = useRef(false)
-  const pageSyncReleaseTimerRef = useRef<number | null>(null)
+  const pageSyncScroll = useRef(new PageSyncScroll())
   const connections = useMaterialConnections(courseId, relPath)
   const pageNoteConnections = useMemo(
     () =>
@@ -490,14 +490,8 @@ function PdfViewer({
         scrollFrame.current = null
         const anchor = rememberViewportAnchor()
         setCurrentPage(anchor?.page ?? pageAtViewportCenter())
-        const applyingPageSync = applyingPageSyncRef.current
-        if (applyingPageSync) {
-          applyingPageSyncRef.current = false
-          if (pageSyncReleaseTimerRef.current !== null) {
-            window.clearTimeout(pageSyncReleaseTimerRef.current)
-            pageSyncReleaseTimerRef.current = null
-          }
-        }
+        const scroller = scrollerRef.current
+        const applyingPageSync = scroller !== null && pageSyncScroll.current.isEcho(scroller)
         if (
           anchor !== null &&
           pageNotePair !== null &&
@@ -534,26 +528,14 @@ function PdfViewer({
       ) {
         return
       }
-      applyingPageSyncRef.current = true
-      const restored = restoreViewportAnchor({
+      const scroller = scrollerRef.current
+      if (!scroller || scroller.clientHeight <= 0 || !pageSyncScroll.current.accept(anchor.sequence)) return
+      pageSyncScroll.current.apply(scroller, () => restoreViewportAnchor({
         page: Math.min(Math.max(1, anchor.page), Math.max(1, numPages)),
         pageOffset: anchor.pageOffset
-      })
-      if (restored) {
-        setCurrentPage(anchor.page)
-      }
-      if (pageSyncReleaseTimerRef.current !== null) {
-        window.clearTimeout(pageSyncReleaseTimerRef.current)
-      }
-      if (!restored) {
-        applyingPageSyncRef.current = false
-        pageSyncReleaseTimerRef.current = null
-        return
-      }
-      pageSyncReleaseTimerRef.current = window.setTimeout(() => {
-        applyingPageSyncRef.current = false
-        pageSyncReleaseTimerRef.current = null
-      }, PAGE_SYNC_ECHO_GUARD_MS)
+      }))
+      setCurrentPage(Math.min(Math.max(1, anchor.page), Math.max(1, numPages)))
+
     })
   }, [numPages, pageNotePair, pageNoteSync, panelId, restoreViewportAnchor])
 
@@ -584,9 +566,6 @@ function PdfViewer({
       if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current)
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current)
       if (flashTimer.current !== null) window.clearTimeout(flashTimer.current)
-      if (pageSyncReleaseTimerRef.current !== null) {
-        window.clearTimeout(pageSyncReleaseTimerRef.current)
-      }
     }
   }, [persistScroll])
 
@@ -977,6 +956,9 @@ function PdfViewer({
         )}
         <div
           ref={scrollerRef}
+        onWheelCapture={() => { if (pageNotePair) claimPageSyncInput(pageNotePair.pairId, panelId) }}
+        onPointerDownCapture={() => { if (pageNotePair) claimPageSyncInput(pageNotePair.pairId, panelId) }}
+        onKeyDownCapture={() => { if (pageNotePair) claimPageSyncInput(pageNotePair.pairId, panelId) }}
           className="pdf-scroller"
           onScroll={handleScroll}
         >

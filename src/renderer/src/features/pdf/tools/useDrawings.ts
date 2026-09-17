@@ -306,7 +306,7 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
     return result
   }, [drawings])
 
-  return {
+  return useMemo(() => ({
     drawings,
     byPage,
     loading,
@@ -320,5 +320,5 @@ export function useDrawings(courseId: string, relPath: string): DrawingsApi {
     remove,
     undo,
     redo
-  }
+  }), [drawings, byPage, loading, historyBusy, canUndo, canRedo, error, create, update, refine, remove, undo, redo])
 }

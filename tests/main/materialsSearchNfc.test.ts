@@ -66,14 +66,14 @@ describe('materials search normalization', () => {
     expect(hits).toHaveLength(1)
   })
 
-  test('the stored path keeps the filesystem spelling so the file still opens', () => {
+  test('the stored path keeps the filesystem spelling so the file still opens', async () => {
     writeFileSync(join(folder, NFD_NAME), 'hello')
 
     const [hit] = repo.search('c1', '과제')
     expect(hit).toBeDefined()
     // Reading through the returned relPath must work — normalizing what we
     // persist would make the file findable and then unopenable.
-    expect(() => repo.readFile('c1', hit!.relPath)).not.toThrow()
+    await expect(repo.readFile('c1', hit!.relPath)).resolves.toEqual({ encoding: 'base64', data: Buffer.from('hello').toString('base64') })
   })
 
   test('nested Korean folders match too', () => {

@@ -1,5 +1,5 @@
-import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { PptxPresentation, PptxTextRunInfo } from '@silurus/ooxml/pptx'
+import { memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { PptxPresentation } from '@silurus/ooxml/pptx'
 import { DrawingLayer } from '../../pdf/tools/DrawingLayer'
 import { PdfToolRail } from '../../pdf/tools/PdfToolRail'
 import { useDrawings } from '../../pdf/tools/useDrawings'
@@ -7,7 +7,7 @@ import { usePdfToolStore } from '../../pdf/tools/toolStore'
 import { PdfPageNoteDialog } from '../../links/PdfPageNoteDialog'
 import { useMaterialConnections } from '../../links/useMaterialConnections'
 import { subscribeOpenPdfPageNote, takeOpenPdfPageNote } from '../../links/pdfPageNoteNavigation'
-import { publishPageSyncAnchor, subscribePageSyncAnchor, usePageNoteSync } from '../../links/pdfPageNoteSync'
+import { claimPageSyncInput, publishPageSyncAnchor, subscribePageSyncAnchor, usePageNoteSync } from '../../links/pdfPageNoteSync'
 import { PresentationContext } from './presentationContext'
 import { convertPresentationToPdf, decodePresentation, loadSlidePresentation, slidePageSize } from './presentationJobs'
 import { openHttpLink } from '../../../app/openHttpLink'
@@ -15,11 +15,17 @@ import { invoke } from '../../../lib/ipc'
 import { showToast } from '../../../app/toast'
 import { normalizeWhiteboardImage, clipboardImageFiles } from '../../whiteboard/imageImport'
 import type { DrawingsApi } from '../../pdf/tools/useDrawings'
+import { PageSyncScroll } from '../../links/pageSyncScroll'
+import { renderInkSnapshot } from '../../ink/renderInkSnapshot'
+import { SlideContextMenu } from './SlideContextMenu'
+import { createScrollMemory } from '../../pdf/lib/scrollMemory'
+import { SlideRenderCache } from './slideRenderCache'
 import './presentation.css'
 
 const GAP = 6, PADDING = 12
-function SlideSurface({ presentation, index, width, courseId, relPath, drawings, interactive, annotating, jump }: {
-  presentation: PptxPresentation; index: number; width: number; courseId: string; relPath: string; drawings: DrawingsApi; interactive: boolean; annotating: boolean; jump: (index: number) => void
+const slideMemory = createScrollMemory()
+const SlideSurface = memo(function SlideSurface({ presentation, cache, index, width, courseId, relPath, drawings, interactive, annotating, jump }: {
+  presentation: PptxPresentation; cache: SlideRenderCache; index: number; width: number; courseId: string; relPath: string; drawings: DrawingsApi; interactive: boolean; annotating: boolean; jump: (index: number) => void
 }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null), textRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
@@ -28,17 +34,16 @@ function SlideSurface({ presentation, index, width, courseId, relPath, drawings,
   useEffect(() => {
     const canvas = canvasRef.current, text = textRef.current
     if (!canvas || !text) return
-    let cancelled = false
-    const runs: PptxTextRunInfo[] = []
+    const abort = new AbortController()
     setError(null)
-    void presentation.renderSlideToBitmap(index, { width, dpr: Math.min(window.devicePixelRatio || 1, 2), onTextRun: (run) => runs.push(run) }).then(async (bitmap) => {
-      try {
-        if (cancelled) return
-        canvas.width = bitmap.width; canvas.height = bitmap.height
-        canvas.getContext('2d')?.drawImage(bitmap, 0, 0)
-      } finally { bitmap.close() }
+    // Bound bitmap memory at high zoom; text-layer coordinates stay in CSS pixels.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2, 2400 / width, 2400 / (width * presentation.slideHeight / presentation.slideWidth))
+    void cache.render(index, width, dpr, abort.signal).then(async ({ canvas: rendered, runs }) => {
+      if (abort.signal.aborted) return
+      canvas.width = rendered.width; canvas.height = rendered.height
+      canvas.getContext('2d')?.drawImage(rendered, 0, 0)
       const { buildPptxTextLayer } = await import('@silurus/ooxml/pptx')
-      if (cancelled) return
+      if (abort.signal.aborted) return
       buildPptxTextLayer(text, runs, width, width * presentation.slideHeight / presentation.slideWidth, (target) => {
         if (target.kind === 'external' && /^https?:\/\//i.test(target.url)) openHttpLink(target.url)
         if (target.kind === 'internal') {
@@ -46,9 +51,9 @@ function SlideSurface({ presentation, index, width, courseId, relPath, drawings,
           if (page !== undefined) jump(page)
         }
       }, index)
-    }).catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : '렌더링 오류') })
-    return () => { cancelled = true; text.replaceChildren() }
-  }, [presentation, index, width, retry, jump])
+    }).catch((cause) => { if (!abort.signal.aborted) setError(cause instanceof Error ? cause.message : '렌더링 오류') })
+    return () => { abort.abort(); text.replaceChildren() }
+  }, [presentation, cache, index, width, retry, jump])
   return <>
     <canvas ref={canvasRef} className="presentation-page__canvas" />
     <div ref={textRef} className="presentation-page__text" style={{ pointerEvents: annotating ? 'none' : 'auto' }} />
@@ -57,7 +62,7 @@ function SlideSurface({ presentation, index, width, courseId, relPath, drawings,
     {!annotating && (drawings.byPage.get(index + 1)?.length ?? 0) > 0 && <DrawingLayer courseId={courseId} relPath={relPath} page={index + 1} pageWidth={width} pageWidthPt={slidePageSize(presentation).width} aspect={presentation.slideHeight / presentation.slideWidth} drawings={drawings.byPage.get(index + 1) ?? []} loading={false} interactive={false} create={drawings.create} update={drawings.update} refine={drawings.refine} remove={drawings.remove} />}
     <span className="presentation-page__number" data-drawing={annotating && activeTool !== 'select' || undefined}>{index + 1}</span>
   </>
-}
+})
 
 export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onFallback }: { base64: string; fileName: string; courseId: string; relPath: string; onFallback: (message: string) => void }): JSX.Element {
   const workspace = useContext(PresentationContext)
@@ -66,11 +71,26 @@ export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onF
   const [annotating, setAnnotating] = useState(true)
   const [notesOpen, setNotesOpen] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [zoom, setZoom] = useState(1)
+  const memoryKey = `${courseId}:${relPath}`
+  const [savedPosition] = useState(() => slideMemory.get(workspace.panelId, memoryKey))
+  const [zoom, setZoom] = useState(savedPosition?.zoom ?? 1)
+  const positionRef = useRef(savedPosition?.anchor ?? null)
   const [view, setView] = useState({ top: 0, width: 800, height: 700 })
   const [currentPage, setCurrentPage] = useState(1)
   const [includeInk, setIncludeInk] = useState(true)
-  const scroller = useRef<HTMLDivElement>(null), fileInput = useRef<HTMLInputElement>(null), frame = useRef<number | null>(null), echoUntil = useRef(0)
+  const [contextMenu, setContextMenu] = useState<{ index: number; node: HTMLElement; x: number; y: number } | null>(null)
+  const [copying, setCopying] = useState(false)
+  const copyingRef = useRef(false)
+  const copyAbort = useRef<AbortController | null>(null)
+  useEffect(() => () => copyAbort.current?.abort(), [])
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null)
+    scroller.current?.focus({ preventScroll: true })
+  }, [])
+  const scroller = useRef<HTMLDivElement>(null), fileInput = useRef<HTMLInputElement>(null), frame = useRef<number | null>(null)
+  const pageSyncScroll = useRef(new PageSyncScroll())
+  const cache = useMemo(() => presentation ? new SlideRenderCache(presentation) : null, [presentation])
+  useEffect(() => () => cache?.dispose(), [cache])
   const drawings = useDrawings(courseId, relPath)
   const connections = useMaterialConnections(courseId, relPath)
   const pageConnections = connections.outgoing.filter((entry) => entry.kind === 'pdf-page-note')
@@ -87,38 +107,49 @@ export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onF
 
   useEffect(() => {
     let cancelled = false, loaded: PptxPresentation | null = null
-    void loadSlidePresentation(base64).then(async (value) => {
+    void (async () => {
+      const bytes = decodePresentation(base64)
+      // Hash before the worker can transfer the buffer. Decode the deck once.
+      const hash = await crypto.subtle.digest('SHA-256', bytes)
+      if (cancelled) return
+      const value = await loadSlidePresentation(bytes)
       loaded = value
       if (cancelled) { value.destroy(); return }
-      const digest = await crypto.subtle.digest('SHA-256', decodePresentation(base64))
-      if (cancelled) return
-      setFingerprint(Array.from(new Uint8Array(digest), (n) => n.toString(16).padStart(2, '0')).join(''))
+      setFingerprint(Array.from(new Uint8Array(hash), (n) => n.toString(16).padStart(2, '0')).join(''))
       setPresentation(value)
-    }).catch((cause) => { if (!cancelled) onFallback(cause instanceof Error ? cause.message : '슬라이드를 해석하지 못했어요.') })
+    })().catch((cause) => { if (!cancelled) onFallback(cause instanceof Error ? cause.message : '슬라이드를 해석하지 못했어요.') })
     return () => { cancelled = true; loaded?.destroy() }
   }, [base64, onFallback])
   const width = Math.max(180, view.width - PADDING * 2) * zoom
   const height = presentation ? width * presentation.slideHeight / presentation.slideWidth : width * .75
   const stride = height + GAP
-  const previousStride = useRef(stride)
   useLayoutEffect(() => {
-    const node = scroller.current, previous = previousStride.current
-    previousStride.current = stride
-    if (!node || previous === stride) return
-    const anchor = Math.max(0, (node.scrollTop + node.clientHeight / 2 - PADDING) / previous)
-    echoUntil.current = performance.now() + 150
-    node.scrollTop = PADDING + anchor * stride - node.clientHeight / 2
-    setView((old) => ({ ...old, top: node.scrollTop }))
-  }, [stride])
+    const node = scroller.current
+    if (!node || !workspace.interactive || node.clientHeight <= 0) return
+    const anchor = positionRef.current
+    if (anchor) pageSyncScroll.current.apply(node, () => {
+      node.scrollTop = PADDING + (anchor.page - 1) * stride + anchor.pageOffset * height - node.clientHeight / 2
+    })
+    setView((old) => old.top === node.scrollTop ? old : { ...old, top: node.scrollTop })
+  }, [stride, height, view.height, workspace.interactive])
+  const rememberPosition = useCallback((node: HTMLElement): void => {
+    if (node.clientHeight <= 0 || !presentation) return
+    const center = node.scrollTop + node.clientHeight / 2
+    const index = Math.min(presentation.slideCount - 1, Math.max(0, Math.floor((center - PADDING + GAP / 2) / stride)))
+    const anchor = { page: index + 1, pageOffset: Math.max(0, Math.min(1, (center - PADDING - index * stride) / height)) }
+    positionRef.current = anchor
+    slideMemory.set(workspace.panelId, memoryKey, { scrollTop: node.scrollTop, scrollHeight: node.scrollHeight, zoom, anchor })
+  }, [presentation, stride, height, workspace.panelId, memoryKey, zoom])
   const jump = useCallback((index: number): void => {
     const node = scroller.current
-    node?.scrollTo({ top: PADDING + index * stride + height / 2 - node.clientHeight / 2 })
+    if (node) pageSyncScroll.current.apply(node, () => { node.scrollTop = PADDING + index * stride + height / 2 - node.clientHeight / 2 })
+    if (node) rememberPosition(node)
     setCurrentPage(index + 1)
     if (workspace.pair && sync) {
-      echoUntil.current = performance.now() + 150
+      claimPageSyncInput(workspace.pair.pairId, workspace.panelId)
       publishPageSyncAnchor({ ...workspace.pair, originPanelId: workspace.panelId, page: index + 1, pageOffset: .5 })
     }
-  }, [stride, height, workspace.pair, workspace.panelId, sync])
+  }, [stride, height, workspace.pair, workspace.panelId, sync, rememberPosition])
   useEffect(() => {
     const node = scroller.current
     if (!node) return
@@ -137,13 +168,13 @@ export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onF
     return subscribePageSyncAnchor(workspace.pair.pairId, (anchor) => {
       if (anchor.originPanelId === workspace.panelId || anchor.connectionId !== workspace.pair?.connectionId) return
       const node = scroller.current
-      if (!node || node.clientHeight <= 0) return
-      echoUntil.current = performance.now() + 150
-      node.scrollTop = PADDING + Math.max(0, Math.min(presentation.slideCount - 1, anchor.page - 1)) * stride + anchor.pageOffset * height - node.clientHeight / 2
-      setCurrentPage(anchor.page)
+      if (!node || node.clientHeight <= 0 || !pageSyncScroll.current.accept(anchor.sequence)) return
+      pageSyncScroll.current.apply(node, () => { node.scrollTop = PADDING + Math.max(0, Math.min(presentation.slideCount - 1, anchor.page - 1)) * stride + anchor.pageOffset * height - node.clientHeight / 2 })
+      rememberPosition(node)
+      setCurrentPage(Math.min(presentation.slideCount, Math.max(1, anchor.page)))
       setView((old) => ({ ...old, top: node.scrollTop }))
     })
-  }, [workspace.pair, workspace.panelId, sync, presentation, height, stride])
+  }, [workspace.pair, workspace.panelId, sync, presentation, height, stride, rememberPosition])
   useEffect(() => () => { if (frame.current !== null) cancelAnimationFrame(frame.current) }, [])
   useEffect(() => {
     const node = scroller.current
@@ -168,11 +199,46 @@ export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onF
       }
     } catch (cause) { showToast(cause instanceof Error ? cause.message : '이미지를 넣지 못했어요.', 'danger') }
   }, [presentation, courseId, relPath, currentPage, drawings.create])
+  const copySlide = useCallback(async (withInk: boolean): Promise<void> => {
+    if (!contextMenu || !presentation || !cache || copyingRef.current) return
+    const { index, node } = contextMenu
+    closeContextMenu()
+    copyingRef.current = true
+    setCopying(true)
+    const abort = new AbortController()
+    copyAbort.current = abort
+    try {
+      const pixelWidth = 1600
+      const pixelHeight = Math.round(pixelWidth * presentation.slideHeight / presentation.slideWidth)
+      const ink = withInk ? node.querySelector<SVGSVGElement>('.pdf-drawing-layer') : null
+      const rendering = cache.render(index, pixelWidth, 1, abort.signal)
+      const snapshot = ink ? renderInkSnapshot(ink, pixelWidth, pixelHeight, rendering.then((slide) => slide.canvas)) : Promise.resolve(null)
+      const [rendered, overlay] = await Promise.all([rendering, snapshot])
+      if (abort.signal.aborted) return
+      const canvas = document.createElement('canvas')
+      canvas.width = pixelWidth; canvas.height = pixelHeight
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('이미지를 만들지 못했어요.')
+      context.fillStyle = 'white'
+      context.fillRect(0, 0, pixelWidth, pixelHeight)
+      context.drawImage(rendered.canvas, 0, 0, pixelWidth, pixelHeight)
+      if (overlay) context.drawImage(overlay, 0, 0, pixelWidth, pixelHeight)
+      const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('이미지를 만들지 못했어요.')), 'image/png'))
+      if (abort.signal.aborted) return
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      showToast(`${index + 1}번 슬라이드를 이미지로 복사했어요.`)
+    } catch (cause) {
+      if (!abort.signal.aborted) showToast(cause instanceof Error ? cause.message : '이미지를 복사하지 못했어요.', 'danger')
+    } finally {
+      copyingRef.current = false
+      if (!abort.signal.aborted) setCopying(false)
+    }
+  }, [contextMenu, presentation, cache, closeContextMenu])
   const exportPdf = useCallback(() => convertPresentationToPdf({ courseId, relPath }, undefined, includeInk), [courseId, relPath, includeInk])
   const pageSizes = useMemo(() => presentation ? Array.from({ length: presentation.slideCount }, () => slidePageSize(presentation)) : [], [presentation])
   const start = Math.max(0, Math.floor((view.top - PADDING) / stride) - 1)
   const end = Math.min(presentation?.slideCount ?? 0, Math.ceil((view.top + view.height) / stride) + 2)
-  if (!presentation) return <div className="file-status" role="status">슬라이드를 해석하는 중…</div>
+  if (!presentation || !cache) return <div className="file-status" role="status">슬라이드를 해석하는 중…</div>
   return <div className="presentation-viewer" onPaste={(event) => {
     if (!workspace.interactive || (event.target instanceof HTMLElement && event.target.closest('input,textarea,[contenteditable=true]'))) return
     const files = clipboardImageFiles(event.clipboardData)
@@ -189,24 +255,34 @@ export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onF
       <label><input type="checkbox" checked={includeInk} onChange={(e) => setIncludeInk(e.target.checked)} />필기 포함</label><button type="button" onClick={() => void exportPdf()}>PDF로 변환</button>
     </div></header>
     {annotating && <PdfToolRail courseId={courseId} relPath={relPath} drawingsApi={drawings} interactive={workspace.interactive} onExport={exportPdf} />}
-    <div className="presentation-scroller" ref={scroller} onWheelCapture={() => { echoUntil.current = 0 }} onPointerDownCapture={() => { echoUntil.current = 0 }} onScroll={() => {
+    <div className="presentation-scroller" tabIndex={0} aria-label="슬라이드 스크롤 영역" ref={scroller} onWheelCapture={() => { if (workspace.pair) claimPageSyncInput(workspace.pair.pairId, workspace.panelId) }} onPointerDownCapture={(event) => {
+      if (workspace.pair) claimPageSyncInput(workspace.pair.pairId, workspace.panelId)
+      if (event.target instanceof Element && !event.target.closest('input,textarea,button,a,[contenteditable=true]')) scroller.current?.focus({ preventScroll: true })
+    }} onScroll={() => {
       if (frame.current !== null) return
       frame.current = requestAnimationFrame(() => {
         frame.current = null
         const node = scroller.current
         if (!node || node.clientHeight <= 0) return
+        rememberPosition(node)
         const top = node.scrollTop
         setView((old) => ({ ...old, top }))
         const center = top + node.clientHeight / 2
         const index = Math.min(presentation.slideCount - 1, Math.max(0, Math.floor((center - PADDING + GAP / 2) / stride)))
         setCurrentPage(index + 1)
-        if (workspace.pair && sync && performance.now() > echoUntil.current) publishPageSyncAnchor({ ...workspace.pair, originPanelId: workspace.panelId, page: index + 1, pageOffset: Math.max(0, Math.min(1, (center - PADDING - index * stride) / height)) })
+        if (workspace.pair && sync && !pageSyncScroll.current.isEcho(node)) publishPageSyncAnchor({ ...workspace.pair, originPanelId: workspace.panelId, page: index + 1, pageOffset: Math.max(0, Math.min(1, (center - PADDING - index * stride) / height)) })
       })
     }}><div className="presentation-pages" style={{ minWidth: width + PADDING * 2 }}>
-      {Array.from({ length: presentation.slideCount }, (_, index) => <section key={index} className="presentation-page" aria-label={`슬라이드 ${index + 1}`} data-slide-index={index} style={{ width, height }}>
-        {index >= start && index < end && <SlideSurface presentation={presentation} index={index} width={width} courseId={courseId} relPath={relPath} drawings={drawings} interactive={workspace.interactive} annotating={annotating} jump={jump} />}
+      {Array.from({ length: presentation.slideCount }, (_, index) => <section key={index} className="presentation-page" aria-label={`슬라이드 ${index + 1}`} onContextMenu={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        if (!copyingRef.current) setContextMenu({ index, node: event.currentTarget, x: event.clientX, y: event.clientY })
+      }} data-slide-index={index} style={{ width, height }}>
+        {index >= start && index < end && <SlideSurface cache={cache} presentation={presentation} index={index} width={width} courseId={courseId} relPath={relPath} drawings={drawings} interactive={workspace.interactive} annotating={annotating} jump={jump} />}
       </section>)}
     </div></div>
+    {contextMenu && <SlideContextMenu x={contextMenu.x} y={contextMenu.y} busy={copying} onCopy={(ink) => void copySlide(ink)} onClose={closeContextMenu} />}
+    {copying && <span className="presentation-copy-status" role="status">슬라이드 이미지를 복사하는 중…</span>}
     {notesOpen && <aside className="presentation-notes"><strong>{currentPage}번 슬라이드 노트</strong><p>{presentation.getNotes(currentPage - 1)?.trim() || '발표자 노트가 없어요.'}</p></aside>}
     {dialogOpen && <PdfPageNoteDialog courseId={courseId} relPath={relPath} presentation={{ pageSizes, fingerprint }} currentPage={currentPage} connections={pageConnections} onClose={() => setDialogOpen(false)} />}
   </div>

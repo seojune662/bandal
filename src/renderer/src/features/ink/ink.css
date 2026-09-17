@@ -1,3 +1,16 @@
+/* PDF and slide canvases keep their paper colors in every app theme.
+   Match the exported document palette; dark UI text is otherwise white on paper. */
+.pdf-tab,
+.presentation-viewer {
+  --drawing-color-ink: rgb(20 23 31);
+  --drawing-color-red: rgb(214 36 46);
+  --drawing-color-orange: rgb(240 99 20);
+  --drawing-color-yellow: rgb(245 184 10);
+  --drawing-color-green: rgb(26 148 77);
+  --drawing-color-blue: rgb(20 97 224);
+  --drawing-color-violet: rgb(125 54 209);
+}
+
 .ink-layer {
   overflow: visible;
   touch-action: none;

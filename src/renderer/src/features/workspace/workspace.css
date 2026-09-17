@@ -721,3 +721,9 @@
     opacity: 1;
   }
 }
+
+/* Once a tab drag starts, every group header must remain a drop target. */
+.workspace-host[data-tab-dragging] .dv-tabs-and-actions-container,
+.workspace-host[data-tab-dragging] .dv-tabs-and-actions-container * {
+  -webkit-app-region: no-drag;
+}

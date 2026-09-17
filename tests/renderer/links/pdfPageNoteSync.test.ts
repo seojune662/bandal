@@ -2,6 +2,8 @@
 
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import {
+  claimPageSyncInput,
+  setPageNoteSyncEnabled,
   publishPageSyncAnchor,
   subscribePageSyncAnchor,
   type PageSyncAnchor
@@ -74,5 +76,25 @@ describe('PDF page-note scroll event coordinator', () => {
     expect(second).toHaveLength(1)
     stopFirst()
     stopSecond()
+  })
+
+  test('a gesture in the other pane cancels an undelivered anchor', () => {
+    const received = vi.fn()
+    const stop = subscribePageSyncAnchor('handoff', received)
+    publishPageSyncAnchor({ pairId: 'handoff', connectionId: 'link', originPanelId: 'left', page: 3, pageOffset: .2 })
+    claimPageSyncInput('handoff', 'right')
+    ;(queuedFrame as FrameRequestCallback)(16)
+    expect(received).not.toHaveBeenCalled()
+    stop()
+  })
+
+  test('disabling sync drops queued movement', () => {
+    const received = vi.fn()
+    const stop = subscribePageSyncAnchor('disable', received)
+    publishPageSyncAnchor({ pairId: 'disable', connectionId: 'link', originPanelId: 'left', page: 3, pageOffset: .2 })
+    setPageNoteSyncEnabled('disable', false)
+    ;(queuedFrame as FrameRequestCallback)(16)
+    expect(received).not.toHaveBeenCalled()
+    stop()
   })
 })

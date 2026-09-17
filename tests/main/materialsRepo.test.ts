@@ -414,10 +414,10 @@ describe('materialsRepo', () => {
   })
 
   describe('readFile', () => {
-    test('returns utf8 for text files and base64 for binaries', () => {
+    test('returns utf8 for text files and base64 for binaries', async () => {
       // Act
-      const md = repo.readFile(courseId, 'notes/week1.md')
-      const png = repo.readFile(courseId, 'notes/img/diagram.png')
+      const md = await repo.readFile(courseId, 'notes/week1.md')
+      const png = await repo.readFile(courseId, 'notes/img/diagram.png')
 
       // Assert
       expect(md).toEqual({ encoding: 'utf8', data: '# w1' })
@@ -425,9 +425,9 @@ describe('materialsRepo', () => {
       expect(Buffer.from(png.data, 'base64').toString()).toBe('png-bytes')
     })
 
-    test('rejects path traversal', () => {
+    test('rejects path traversal', async () => {
       // Act / Assert
-      expect(() => repo.readFile(courseId, '../outside.txt')).toThrow(PathTraversalError)
+      await expect(repo.readFile(courseId, '../outside.txt')).rejects.toThrow(PathTraversalError)
     })
   })
 
@@ -845,17 +845,17 @@ describe('materialsRepo (linked course folder)', () => {
     expect(repo.search(courseId, 'secret')).toEqual([])
   })
 
-  test('reads a file from the linked folder', () => {
+  test('reads a file from the linked folder', async () => {
     // Act / Assert
-    expect(repo.readFile(courseId, 'sub/week2.md')).toEqual({
+    expect(await repo.readFile(courseId, 'sub/week2.md')).toEqual({
       encoding: 'utf8',
       data: '# w2'
     })
   })
 
-  test('scopes the traversal guard to the linked folder, not the data root', () => {
+  test('scopes the traversal guard to the linked folder, not the data root', async () => {
     // Act / Assert
-    expect(() => repo.readFile(courseId, '../secret.md')).toThrow(PathTraversalError)
+    await expect(repo.readFile(courseId, '../secret.md')).rejects.toThrow(PathTraversalError)
     expect(() => repo.reveal(courseId, '../secret.md')).toThrow(PathTraversalError)
   })
 

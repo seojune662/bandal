@@ -12,9 +12,9 @@ export function decodePresentation(base64: string): ArrayBuffer {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   return bytes.buffer
 }
-export async function loadSlidePresentation(base64: string): Promise<PptxPresentation> {
+export async function loadSlidePresentation(input: string | ArrayBuffer): Promise<PptxPresentation> {
   const { PptxPresentation } = await import('@silurus/ooxml/pptx')
-  return PptxPresentation.load(decodePresentation(base64), { mode: 'worker', progressiveLayout: true, useGoogleFonts: false, resourceLimits: PPTX_LIMITS })
+  return PptxPresentation.load(typeof input === 'string' ? decodePresentation(input) : input, { mode: 'worker', progressiveLayout: true, useGoogleFonts: false, resourceLimits: PPTX_LIMITS })
 }
 export function slidePageSize(presentation: Pick<PptxPresentation, 'slideWidth' | 'slideHeight'>): { width: number; height: number } {
   // OOXML dimensions are EMUs: 914,400 per inch, 12,700 per PDF point.

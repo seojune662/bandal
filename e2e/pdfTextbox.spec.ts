@@ -192,6 +192,10 @@ test.describe('pdf textbox', () => {
         return fontBefore
       })
       .toMatch(/px$/)
+    // Wait for the optimistic textbox to receive its durable id before
+    // measuring; replacing that node can otherwise return a null bounding box.
+    await expect(boxObject.locator('[data-textbox-id]:not([data-textbox-id^="pending:"])')).toHaveCount(1)
+    await expect(boxObject).toBeVisible()
     const before = (await boxObject.boundingBox())!
     await expectSameBounds(boxObject, inner)
 
