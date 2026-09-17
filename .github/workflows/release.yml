@@ -313,12 +313,48 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      # Kept for post-mortems: the publish step uploads to the release, but a
-      # failed run leaves nothing to inspect otherwise.
-      # Uploading here, rather than letting electron-builder publish, is what
-      # makes the two platform jobs deterministic: both push into the single
-      # release id minted by create-release. `gh release upload` is not usable
-      # because it resolves by TAG, and a draft is not addressable by tag.
+      # Keep completed builds independent of GitHub release upload failures.
+      # Retrying only the publish job reuses these exact signed installers.
+      - name: Save signed installers for publishing
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-installers-${{ matrix.os }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.blockmap
+            release/latest*.yml
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-logs-${{ matrix.os }}
+          path: |
+            release/*.yml
+            release/builder-*.yaml
+          if-no-files-found: ignore
+
+  publish:
+    name: Publish release
+    needs: [verify, create-release, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+
+      - name: Download both platforms' signed installers
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-installers-*
+          path: release
+          merge-multiple: true
+
       - name: Upload the installers into the draft
         shell: bash
         env:
@@ -379,40 +415,6 @@ jobs:
           fi
           echo "uploaded $uploaded asset(s) into release $RELEASE_ID"
 
-      - name: Preserve installers for upload recovery
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-installers-${{ matrix.os }}
-          path: |
-            release/*.dmg
-            release/*.zip
-            release/*.exe
-            release/*.blockmap
-            release/latest*.yml
-          compression-level: 0
-          retention-days: 3
-          if-no-files-found: ignore
-
-      - name: Upload build logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: build-logs-${{ matrix.os }}
-          path: |
-            release/*.yml
-            release/builder-*.yaml
-          if-no-files-found: ignore
-
-  publish:
-    name: Publish release
-    needs: [verify, build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.verify.outputs.tag }}
-
       - name: Check both platforms uploaded their update feed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -431,13 +433,13 @@ jobs:
           fi
           echo "release_id=$RELEASE_ID" >> "$GITHUB_ENV"
           ASSETS="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
-            --paginate --jq '.[].name')"
+            --paginate --jq '.[] | select(.state=="uploaded") | .name')"
           echo "$ASSETS"
           MISSING=0
           # These two files ARE the auto-update feed. A release without them
           # installs fine but never updates anyone — the failure mode this
           # whole pipeline exists to prevent.
-          for required in latest-mac.yml latest.yml; do
+          for required in Bandal-arm64.dmg Bandal-x64.dmg Bandal-arm64-mac.zip Bandal-x64-mac.zip Bandal-Setup.exe latest-mac.yml latest.yml; do
             echo "$ASSETS" | grep -qx "$required" || { echo "::error::missing $required"; MISSING=1; }
           done
           exit $MISSING
@@ -449,7 +451,7 @@ jobs:
           # By id, not by tag — `gh release edit <tag>` cannot see the draft
           # it is being asked to publish.
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
-            -F draft=false --jq '.html_url'
+            -f tag_name="${{ needs.verify.outputs.tag }}" -F draft=false --jq '.html_url'
 
       # The marketing site reads the newest release tag at BUILD time, so a
       # release it never rebuilt for leaves it advertising an old version while
