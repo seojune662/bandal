@@ -335,25 +335,38 @@ jobs:
                       release/*.blockmap release/latest*.yml; do
             name="$(basename "$file")"
             echo "uploading $name"
-            # Replace an existing asset so a re-run is idempotent rather than
-            # failing on a duplicate name.
-            existing="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
-              --paginate --jq ".[] | select(.name==\"$name\") | .id" | head -n1)"
-            if [ -n "$existing" ]; then
-              gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$existing" >/dev/null
-            fi
-            # curl, not `gh api`: the asset upload lives on uploads.github.com
-            # and `gh api --hostname uploads.github.com` resolves that to
-            # api.uploads.github.com, which does not exist.
-            code="$(curl -sS -X POST \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @"$file" \
-              -o /tmp/upload-response.json -w '%{http_code}' \
-              "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$name")"
-            if [ "$code" -ge 300 ]; then
-              echo "::error::upload of $name failed (HTTP $code)"
-              cat /tmp/upload-response.json
+            success=0
+            for attempt in 1 2 3 4; do
+              # Failed uploads can leave a `starter` asset behind. Remove it
+              # before EACH retry, not only before a full workflow re-run.
+              existing="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+                --paginate --jq ".[] | select(.name==\"$name\") | .id" | head -n1)"
+              if [ -n "$existing" ]; then
+                gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$existing" >/dev/null
+              fi
+              # Bound a stalled request. Retry transport errors, rate limits,
+              # and GitHub 5xx responses without rebuilding signed installers.
+              code=000
+              if code="$(curl -sS --connect-timeout 30 --max-time 240 -X POST \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary @"$file" \
+                -o /tmp/upload-response.json -w '%{http_code}' \
+                "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$name")"; then
+                if [ "$code" = 201 ]; then
+                  success=1
+                  break
+                fi
+                case "$code" in
+                  408|429|5??) ;;
+                  *) echo "::error::upload of $name rejected (HTTP $code)"; exit 1 ;;
+                esac
+              fi
+              echo "::warning::upload of $name attempt $attempt failed (HTTP $code)"
+              if [ "$attempt" -lt 4 ]; then sleep "$((attempt * 10))"; fi
+            done
+            if [ "$success" -ne 1 ]; then
+              echo "::error::upload of $name failed after 4 attempts"
               exit 1
             fi
             uploaded=$((uploaded + 1))
@@ -363,6 +376,21 @@ jobs:
             exit 1
           fi
           echo "uploaded $uploaded asset(s) into release $RELEASE_ID"
+
+      - name: Preserve installers for upload recovery
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-installers-${{ matrix.os }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.blockmap
+            release/latest*.yml
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
 
       - name: Upload build logs on failure
         if: failure()
