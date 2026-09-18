@@ -30,6 +30,7 @@ jobs:
       # from the package's own install script.
       - run: pnpm install --frozen-lockfile
 
+      - run: node --test scripts/test-release-assets.mjs
       - run: pnpm typecheck
       - run: pnpm deadcode
       - run: pnpm test
