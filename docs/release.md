@@ -100,7 +100,7 @@ App Store Connect API 키는 Users and Access → Integrations → **Team Keys**
 ## 4. macOS 서명의 함정
 
 `hardenedRuntime: true` 는 공증의 전제 조건이고, 기본적으로 여러 기능을 막는다.
-`resources/entitlements.mac.plist` 의 네 항목은 전부 **실제로 뭔가가 깨져서**
+`resources/entitlements.mac.plist` 의 항목들은 전부 **실제로 뭔가가 깨져서**
 들어간 것이다. 그리고 이 문제들은 **서명된 빌드에서만 재현된다** — `pnpm dev`
 에서는 절대 안 보인다.
 
@@ -109,6 +109,7 @@ App Store Connect API 키는 Users and Access → Integrations → **Team Keys**
 | `allow-jit`, `allow-unsigned-executable-memory` | 렌더러가 실행 즉시 죽는다 |
 | `disable-library-validation` | 앱은 뜨는데 DB 초기화 실패 다이얼로그 |
 | `allow-dyld-environment-variables` | 앱은 멀쩡한데 **채팅만** 안 된다 |
+| `personal-information.calendars` | Apple 캘린더 권한 창이 뜨지 않고 macOS가 접근을 거부한다. 부모 앱과 캘린더 도구 모두 필요 |
 
 그래서 릴리스 전 검증은 반드시 **공증된 dmg** 로 한다:
 
@@ -118,6 +119,13 @@ spctl -a -vvv -t install /Applications/Bandal.app   # → source=Notarized Devel
 ```
 
 그리고 앱을 열어 **과목 추가 → PDF 열기 → 채팅 1회**까지 해 본다.
+
+릴리스 CI는 `node scripts/verify-calendar-signing.mjs release/mac*/Bandal.app`로 서명 누락을 검사하고 게시 전에 중단한다.
+캘린더는 앱과 `Contents/Resources/calendar/bandal-calendar` 각각에 대해
+`codesign -d --entitlements - <경로>`로 `com.apple.security.personal-information.calendars = true`를 확인한 뒤,
+**설정 → 달력 → Apple 캘린더 연결**에서 실제 권한 창을 확인한다. 모의 응답을 사용하는 E2E만으로는 이 서명 누락을 발견할 수 없다.
+이 entitlement는 App Sandbox뿐 아니라 Hardened Runtime에도 적용된다
+([Apple 문서](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.personal-information.calendars)).
 
 ---
 

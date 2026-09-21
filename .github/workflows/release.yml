@@ -313,6 +313,10 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      - name: Verify calendar access in signed macOS apps
+        if: matrix.os == 'macos-14'
+        run: node scripts/verify-calendar-signing.mjs release/mac*/Bandal.app
+
       # Keep completed builds independent of GitHub release upload failures.
       # Retrying only the publish job reuses these exact signed installers.
       - name: Save signed installers for publishing

@@ -27,7 +27,7 @@ pnpm e2e
 - `better-sqlite3-node`는 테스트가 `createRequire`로 동적 로딩한다.
 - `@milkdown/exception`은 Milkdown 패키지들의 모듈 인스턴스를 같은 버전으로
   고정하기 위한 직접 의존성이다.
-- `iconutil`과 `where.exe`는 운영체제에서 제공하는 외부 명령이다.
+- `iconutil`, `plutil`, `where.exe`는 운영체제에서 제공하는 외부 명령이다. `plutil`은 배포 앱의 캘린더 서명 권한을 검사할 때 사용한다.
 ## 삭제와 호환 원칙
 
 - 화면과 runtime 진입점에서 도달할 수 없고 Git 이력상 교체된 구현은 전용 CSS와

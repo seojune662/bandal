@@ -32,6 +32,7 @@
     "psql",
     "supabase",
     "iconutil",
+    "plutil",
     "where.exe"
   ],
   "ignoreExportsUsedInFile": true

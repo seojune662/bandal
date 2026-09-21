@@ -15,6 +15,11 @@
 -->
 <plist version="1.0">
   <dict>
+    <!-- EventKit runs in bandal-calendar, but TCC also checks the responsible
+         parent app. Both use this file. Without this hardened-runtime
+         entitlement macOS denies access without showing a permission prompt. -->
+    <key>com.apple.security.personal-information.calendars</key>
+    <true/>
     <key>com.apple.security.device.audio-input</key>
     <true/>
     <!-- V8 compiles JavaScript at runtime. Without these two the renderer
