@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { flushSync } from 'react-dom'
+import type { DockviewApi } from 'dockview'
 import { AppShell } from '../src/renderer/src/app/AppShell'
 import { RendererErrorBoundary } from '../src/renderer/src/app/RendererErrorBoundary'
 import { setIpcAdapter } from '../src/renderer/src/lib/ipc'
@@ -39,12 +41,17 @@ const compact = mode === 'ai' || mode === 'board' || innerWidth < 900
 useUiStore.setState({ leftRailOpen: !compact, rightRailOpen: !compact && innerWidth >= 1100 })
 
 type Experience = 'workspace' | 'linked' | 'board' | 'ai'
+let demoWorkspace: DockviewApi | null = null
+const attachWorkspace = useWorkspaceStore.getState().attachApi
+useWorkspaceStore.setState({ attachApi: api => { demoWorkspace = api; attachWorkspace(api) } })
 function openExperience(view: Experience) {
   commit(next => { next.scene = view })
   const store = useWorkspaceStore.getState()
   useUiStore.getState().closeSettings()
   useUiStore.getState().closeBoardOverlay()
-  for (const panel of Object.keys(store.openTabs)) store.closeTab(panel)
+  // Fully unmount old Dockview portals before reusing canonical panel IDs.
+  // Otherwise React can retain a PDF portal with its previous group's geometry.
+  flushSync(() => { for (const panel of Object.keys(store.openTabs)) store.closeTab(panel) })
   if (view === 'ai') store.openTab({ kind: 'chat', payload: { courseId, conversationId: 'demo-chat' } })
   else if (view === 'board') store.openTab({ kind: 'board', payload: {} })
   else if (view === 'linked' && innerWidth >= 700) store.openPdfNotePair(pdfDescriptor, pageNoteDescriptor, 'demo-pdf-note-link', 1)
@@ -52,6 +59,11 @@ function openExperience(view: Experience) {
     store.openTab({ kind: 'pdf', payload: { courseId, relPath: PDF } })
     store.openTab({ kind: 'note', payload: { courseId, relPath: view === 'linked' ? PAGE_NOTE : data.primaryNotePath ?? NOTE } }, { beside: innerWidth >= 700, background: innerWidth < 700 })
   }
+  // Dockview's retained PDF overlay can cache pre-split bounds during a preset
+  // replacement. Reconcile after React effects and the position-cache frame.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (demoWorkspace) demoWorkspace.layout(demoWorkspace.width, demoWorkspace.height, true)
+  }))
 }
 
 function Demo(): React.JSX.Element {
@@ -60,6 +72,7 @@ function Demo(): React.JSX.Element {
   const [notice, setNotice] = useState('')
   const [confirmReset, setConfirmReset] = useState(false)
   const resetDialog = useRef<HTMLDialogElement>(null)
+  const resetTrigger = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     if (confirmReset) resetDialog.current?.showModal()
     else resetDialog.current?.close()
@@ -83,13 +96,13 @@ function Demo(): React.JSX.Element {
   return <div className="web-demo" data-view={mode}>
     <div className="demo-toolbar" aria-label={ko ? '웹 체험 도구' : 'Demo tools'}>
       <div className="demo-scenes">{([['workspace', ko ? 'PDF와 필기' : 'PDF & notes'], ['linked', ko ? '페이지 연결' : 'Linked notes'], ['board', ko ? '보드·달력' : 'Board & calendar'], ['ai', ko ? 'AI 예시' : 'AI example']] as const).map(([value, label]) => <button key={value} disabled={!ready} aria-pressed={current === value} onClick={() => { try { openExperience(value); setCurrent(value) } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) } }}>{label}</button>)}</div>
-      <div className="demo-utilities"><button onClick={exportNotes} title={ko ? '체험 중 쓴 필기를 .md 파일로 저장' : 'Download your notes as Markdown'}>{ko ? '필기 내보내기' : 'Export notes'} ↓</button><button onClick={() => setConfirmReset(true)} aria-label={ko ? '체험 초기화' : 'Reset demo'}>↺</button></div>
+      <div className="demo-utilities"><button onClick={exportNotes} title={ko ? '체험 중 쓴 필기를 .md 파일로 저장' : 'Download your notes as Markdown'}>{ko ? '필기 내보내기' : 'Export notes'} ↓</button><button ref={resetTrigger} onClick={() => setConfirmReset(true)} aria-label={ko ? '체험 초기화' : 'Reset demo'}>↺</button></div>
     </div>
     {(current === 'ai' || mode === 'ai') && <p className="demo-disclosure">{ko ? '실제 앱의 AI 화면입니다. 웹에서는 미리 준비한 예시 답변을 보여주며, AI 요청·도구 실행·계정 연결은 하지 않습니다.' : 'The actual app chat UI, with scripted example replies. No AI requests, tool execution or account connection.'}</p>}
     <div className="demo-app"><RendererErrorBoundary><AppShell /></RendererErrorBoundary></div>
     <div className="demo-status"><span><i />{storageLabel()}</span><span>{ko ? '실제 앱 UI · 예제 자료' : 'Actual app UI · Sample material'}</span></div>
     {notice && <div className="demo-notice" role="status">{notice}<button aria-label={ko ? '알림 닫기' : 'Dismiss'} onClick={() => setNotice('')}>×</button></div>}
-    <dialog ref={resetDialog} className="demo-reset" aria-labelledby="reset-title" onCancel={() => setConfirmReset(false)}><h2 id="reset-title">{ko ? '체험을 처음부터 다시 할까요?' : 'Start over?'}</h2><p>{ko ? '이 체험에서 작성한 필기와 과제가 지워집니다. 필요한 필기는 먼저 내보내세요.' : 'This clears notes and tasks in this demo. Export anything you want to keep first.'}</p><button onClick={exportNotes}>{ko ? '필기 내보내기' : 'Export notes'}</button><button autoFocus onClick={() => setConfirmReset(false)}>{ko ? '취소' : 'Cancel'}</button><button onClick={resetDemo}>{ko ? '초기화' : 'Reset'}</button></dialog>
+    <dialog ref={resetDialog} className="demo-reset" aria-labelledby="reset-title" onCancel={() => setConfirmReset(false)} onClose={() => { setConfirmReset(false); resetTrigger.current?.focus() }}><h2 id="reset-title">{ko ? '체험을 처음부터 다시 할까요?' : 'Start over?'}</h2><p>{ko ? '이 체험에서 작성한 필기와 과제가 지워집니다. 필요한 필기는 먼저 내보내세요.' : 'This clears notes and tasks in this demo. Export anything you want to keep first.'}</p><button onClick={exportNotes}>{ko ? '필기 내보내기' : 'Export notes'}</button><button autoFocus onClick={() => setConfirmReset(false)}>{ko ? '취소' : 'Cancel'}</button><button onClick={resetDemo}>{ko ? '초기화' : 'Reset'}</button></dialog>
   </div>
 }
 createRoot(document.getElementById('root')!).render(<Demo />)
