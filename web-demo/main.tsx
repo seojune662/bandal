@@ -49,9 +49,16 @@ function openExperience(view: Experience) {
   const store = useWorkspaceStore.getState()
   useUiStore.getState().closeSettings()
   useUiStore.getState().closeBoardOverlay()
-  // Fully unmount old Dockview portals before reusing canonical panel IDs.
-  // Otherwise React can retain a PDF portal with its previous group's geometry.
-  flushSync(() => { for (const panel of Object.keys(store.openTabs)) store.closeTab(panel) })
+  // Keep the loaded PDF when changing note modes. Reopening it would reset the
+  // worker and drop a note-scroll gesture while PDF metadata is loading.
+  const reading = view === 'workspace' || view === 'linked'
+  const retainedPdf = reading ? Object.entries(store.openTabs).find(([, tab]) => tab.kind === 'pdf' && tab.payload.courseId === courseId && tab.payload.relPath === PDF)?.[0] : undefined
+  flushSync(() => { for (const panel of Object.keys(store.openTabs)) if (panel !== retainedPdf) store.closeTab(panel) })
+  if (retainedPdf) {
+    const panel = demoWorkspace?.getPanel(retainedPdf)
+    panel?.api.setActive()
+    if (view === 'workspace') panel?.api.updateParameters({ pageNotePair: undefined })
+  }
   if (view === 'ai') store.openTab({ kind: 'chat', payload: { courseId, conversationId: 'demo-chat' } })
   else if (view === 'board') store.openTab({ kind: 'board', payload: {} })
   else if (view === 'linked' && innerWidth >= 700) store.openPdfNotePair(pdfDescriptor, pageNoteDescriptor, 'demo-pdf-note-link', 1)
