@@ -1,0 +1,20 @@
+:root { --rail-left-width: 192px; --rail-right-width: 228px; }
+.web-demo { display: flex; flex-direction: column; height: 100%; overflow: hidden; background: var(--bg-app); }
+.demo-toolbar { display: flex; justify-content: space-between; align-items: center; flex: none; min-height: 48px; gap: 8px; padding: 8px 12px; background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle); }
+.demo-scenes, .demo-utilities { display: flex; gap: 4px; align-items: center; }
+.demo-toolbar button { padding: 7px 10px; border-radius: 6px; font-size: 12px; white-space: nowrap; }
+.demo-toolbar button[aria-pressed=true] { color: var(--accent); background: var(--accent-muted); }
+.demo-toolbar button:hover { background: var(--bg-raised); }
+.demo-utilities { color: var(--text-muted); }
+.demo-app { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+.demo-status { padding: 7px 14px; display: flex; gap: 12px; justify-content: space-between; color: var(--text-muted); background: var(--bg-surface); border-top: 1px solid var(--border-subtle); font-size: 10px; }
+.demo-status span { display: flex; align-items: center; gap: 7px; }
+.demo-status i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.demo-disclosure { padding: 8px 14px; color: var(--text-secondary); background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle); font-size: 11px; line-height: 1.6; }
+.demo-notice { position: absolute; z-index: 100000; bottom: 45px; left: 14px; right: 14px; margin: auto; max-width: 570px; padding: 16px; border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--shadow-lg); background: var(--bg-surface); color: var(--text-primary); font-size: 13px; }
+.demo-notice button { margin-left: 12px; }
+.demo-reset { position: absolute; z-index: 100001; inset: 0; margin: auto; width: min(440px,90%); height: fit-content; padding: 24px; background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: 14px; color: var(--text-primary); }
+.demo-reset::backdrop { background: #0007; }
+.demo-reset h2 { font-size: 18px; }.demo-reset p { margin-block: 12px 20px; line-height: 1.7; color: var(--text-secondary); }
+.demo-reset button { padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: 6px; margin-right: 8px; }
+@media(max-width:700px) { .demo-toolbar { flex-wrap: wrap; padding: 6px; gap: 2px; } .demo-scenes { width: 100%; justify-content: space-between; }.demo-scenes button { padding: 6px; font-size: 11px; }.demo-utilities { margin-left: auto; }.demo-utilities button { padding: 2px 6px; font-size: 10px; }.demo-status { font-size: 9px; padding: 6px; }.demo-app .board-panel { min-width: 0; }.demo-app .app-rail { max-width: 190px; } }

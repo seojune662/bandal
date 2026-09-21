@@ -707,6 +707,9 @@ export const enUS: Record<MessageKey, string> = {
   // ---- v0.37 settings shell (W-SHELL) ----
   'settings.checklist.label': 'Getting started checklist',
   'settings.checklist.complete': 'Getting started checklist complete',
+  'settings.category.calendar.label': 'Calendar',
+  'settings.category.calendar.description': 'Connect Apple Calendar and your Bandal schedule.',
+  'settings.category.calendar.keywords': 'calendar Apple iCloud events sync connect',
   'settings.category.browser.label': 'Browser',
   'settings.category.browser.description': 'Manage the home page, search, zoom, and link behavior.',
   'settings.category.browser.keywords': 'browser webview home page search engine zoom links browsing data agent',

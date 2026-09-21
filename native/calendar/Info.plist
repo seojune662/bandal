@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.bandal.app.calendar</string>
+  <key>CFBundleName</key><string>Bandal</string>
+  <key>NSCalendarsUsageDescription</key><string>선택한 캘린더의 일정을 반달에서 보고, 직접 선택한 과제와 일정을 캘린더에 저장합니다.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key><string>선택한 캘린더의 일정을 반달에서 보고, 직접 선택한 과제와 일정을 캘린더에 저장합니다.</string>
+</dict></plist>

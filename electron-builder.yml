@@ -1,3 +1,4 @@
+beforePack: scripts/build-calendar.mjs
 # Packaging config for Bandal (electron-builder).
 #
 # productName stays ASCII ("Bandal") on purpose: non-ASCII bundle/executable
@@ -112,8 +113,15 @@ mac:
   # APPLE_API_KEY_ID / APPLE_API_ISSUER). Skipped automatically when those
   # env vars are absent, so local builds stay fast.
   notarize: true
+  extraResources:
+    - from: resources/native/calendar/${arch}/bandal-calendar
+      to: calendar/bandal-calendar
+  binaries:
+    - Contents/Resources/calendar/bandal-calendar
   extendInfo:
     CFBundleDisplayName: Bandal
+    NSCalendarsUsageDescription: 선택한 캘린더의 일정을 반달에서 보고, 직접 선택한 과제와 일정을 캘린더에 저장합니다.
+    NSCalendarsFullAccessUsageDescription: 선택한 캘린더의 일정을 반달에서 보고, 직접 선택한 과제와 일정을 캘린더에 저장합니다.
     NSMicrophoneUsageDescription: 강의를 녹음하고 기기에서 실시간 자막을 만들기 위해 마이크를 사용합니다.
     NSAudioCaptureUsageDescription: 화면 공유 시 시스템 소리를 함께 전달하기 위해 필요합니다.
     NSScreenCaptureUsageDescription: 화면을 읽어 질문에 답하기 위해 필요합니다.

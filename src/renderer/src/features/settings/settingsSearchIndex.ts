@@ -19,6 +19,7 @@ export interface SettingsSearchResult {
 }
 
 export const SETTINGS_SEARCH_ROWS = [
+  { category: 'calendar', ko: 'Apple 캘린더 · iCloud · 일정 보기 · 과제 보내기', en: 'Apple Calendar, iCloud, events and export assignments' },
   { category: 'tabs', ko: '녹음 모델 · 마이크 · 자막 · 재생 속도', en: 'Recording models, microphone, captions and playback speed' },
   { category: 'tabs', ko: '마크다운 · 브라우저 · AI · 화이트보드 · 학업 보드', en: 'Markdown, browser, AI, whiteboard and study board' },
   { category: 'ai', ko: 'AI 엔진', en: 'AI engine' },

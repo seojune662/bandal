@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import type { DockviewPanelApi } from 'dockview'
 
 function isShown(api: DockviewPanelApi): boolean {
-  return api.isActive && api.isVisible
+  // isActive means the globally focused panel, not the selected tab of each
+  // split group. A visible PDF must load while the neighboring note has focus.
+  return api.isVisible
 }
 
 /**
- * Latches once the panel is both its group's active tab and in a visible group.
+ * Latches once the panel is visible, including an unfocused split group.
  */
 export function useHasBeenShown(api: DockviewPanelApi): boolean {
   const [hasBeenShown, setHasBeenShown] = useState(() => isShown(api))

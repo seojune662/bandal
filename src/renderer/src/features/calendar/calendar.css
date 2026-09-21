@@ -458,6 +458,21 @@
   flex: 1 1 auto;
 }
 
+/* A split pane can be narrow even on a wide desktop window. */
+@container calendar-surface (max-width: 58rem) {
+  .calendar { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+  .calendar-month { min-height: 560px; }
+  .calendar-agenda { border-top: 1px solid var(--border-subtle); border-left: 0; }
+  .calendar-entry__kind, .calendar-entry__overdue, .calendar-entry time { display: none; }
+}
+@container calendar-surface (max-width: 38rem) {
+  .calendar-month, .calendar-agenda { padding: var(--space-3); }
+  .calendar-month__count, .calendar-entry .board-course-dot { display: none; }
+  .calendar-form__row, .calendar-form__date-row { grid-template-columns: minmax(0, 1fr); }
+  .board-toolbar { grid-template-columns: 1fr auto; gap: var(--space-2); }
+  .board-toolbar__filters { grid-column: 1 / -1; grid-row: 2; }
+}
+
 @media (max-width: 58rem) {
   .calendar {
     grid-template-columns: minmax(0, 1fr);

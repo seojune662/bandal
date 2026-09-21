@@ -45,3 +45,8 @@ electron.vite.config.*.mjs
 
 # Playwright artifacts
 test-results/
+
+# Compiled and signed during macOS packaging
+resources/native/calendar/
+
+web-demo/dist/

@@ -9,6 +9,7 @@ export type IconName =
   | 'ai'
   | 'assistant'
   | 'advanced'
+  | 'calendar'
   | 'browser'
   | 'checklist'
   | 'courses'
@@ -30,6 +31,7 @@ export type IconName =
 
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }): JSX.Element {
   const paths: Record<IconName, ReactNode> = {
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 11h18M8 15h2M14 15h2" /></>,
     tabs: <><rect x="3" y="5" width="18" height="15" rx="2" /><path d="M3 10h18M9 5v5M15 5v5" /></>,
     account: (
       <>

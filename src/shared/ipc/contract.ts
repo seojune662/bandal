@@ -1,3 +1,4 @@
+import type { AppleCalendarState, AppleCalendarEvent, AppleCalendarPreferences } from '../types/appleCalendar'
 /**
  * [C1] The single source of truth for request/response IPC.
  *
@@ -1184,6 +1185,13 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
 
   // -- calendar + deadlines ---------------------------------------------------
   /** Entries whose due date falls in [from, to) — one query per month view. */
+  'appleCalendar:state': { req: Record<string, never>; res: AppleCalendarState }
+  'appleCalendar:connect': { req: Record<string, never>; res: AppleCalendarState }
+  'appleCalendar:disconnect': { req: Record<string, never>; res: AppleCalendarState }
+  'appleCalendar:configure': { req: Pick<AppleCalendarPreferences, 'selectedCalendarIds' | 'destinationCalendarId'>; res: AppleCalendarState }
+  'appleCalendar:events': { req: { from: string; to: string }; res: AppleCalendarEvent[] }
+  'appleCalendar:export': { req: { taskId: string }; res: { eventId: string; updated: boolean } }
+  'appleCalendar:permissions': { req: Record<string, never>; res: { ok: true } }
   'calendar:range': {
     req: CalendarRangeInput
     res: BoardTask[]
@@ -2085,6 +2093,13 @@ export const IPC_CHANNELS = [
   'canvas:setBackground',
   'canvas:exportPdf',
   'canvas:removeShapes',
+  'appleCalendar:state',
+  'appleCalendar:connect',
+  'appleCalendar:disconnect',
+  'appleCalendar:configure',
+  'appleCalendar:events',
+  'appleCalendar:export',
+  'appleCalendar:permissions',
   'calendar:range',
   'calendar:upcoming',
   'search:query',

@@ -1,0 +1,1 @@
+export const PDF_FINGERPRINT = "a2414f9252a10130c4de78ca8fa6522f"

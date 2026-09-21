@@ -23,6 +23,7 @@ export const SETTINGS_CATEGORIES = [
   { id: 'mcp', group: 'setup' },
   { id: 'university', group: 'setup' },
   { id: 'packs', group: 'workflows' },
+  { id: 'calendar', group: 'workflows' },
   { id: 'browser', group: 'workflows' },
   { id: 'appearance', group: 'interface' },
   { id: 'tabs', group: 'interface' },

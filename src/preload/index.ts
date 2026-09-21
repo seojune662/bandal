@@ -84,6 +84,7 @@ const PUSH_CHANNELS = [
   // -- surfaces the assistant can now change --------------------------------
   'courses:changed',
   'board:changed',
+  'appleCalendar:changed',
   'canvas:changed',
   'agentTools:confirm',
   'agentTools:confirmationChanged',

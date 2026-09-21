@@ -705,6 +705,9 @@ export const koKR = {
   // ---- v0.37 settings shell (W-SHELL) ----
   'settings.checklist.label': '시작 체크리스트',
   'settings.checklist.complete': '시작 체크리스트 완료',
+  'settings.category.calendar.label': '달력',
+  'settings.category.calendar.description': 'Apple 캘린더와 반달 일정을 연결합니다.',
+  'settings.category.calendar.keywords': '달력 애플 Apple iCloud 캘린더 일정 동기화 연결',
   'settings.category.browser.label': '브라우저',
   'settings.category.browser.description': '홈페이지·검색·확대/축소와 링크 동작을 관리합니다.',
   'settings.category.browser.keywords': '브라우저 웹뷰 홈페이지 검색 엔진 줌 확대 축소 링크 열기 브라우징 데이터 에이전트',

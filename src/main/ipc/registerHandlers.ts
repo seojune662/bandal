@@ -1,3 +1,4 @@
+import { createAppleCalendar } from '../features/calendar/appleCalendar'
 /**
  * Registers a handler for EVERY channel in IpcContract.
  *
@@ -1079,6 +1080,17 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     const result = boardRepo.reorderTasks(req.courseId, req.updates)
     broadcast('board:changed', { courseId: req.courseId })
     return result
+  })
+  const appleCalendar = createAppleCalendar(boardRepo, () => broadcast('appleCalendar:changed', {}))
+  handle('appleCalendar:state', () => appleCalendar.state())
+  handle('appleCalendar:connect', () => appleCalendar.connect())
+  handle('appleCalendar:disconnect', () => appleCalendar.disconnect())
+  handle('appleCalendar:configure', req => appleCalendar.configure(req))
+  handle('appleCalendar:events', req => appleCalendar.events(req))
+  handle('appleCalendar:export', req => appleCalendar.exportTask(req.taskId))
+  handle('appleCalendar:permissions', async () => {
+    if (process.platform === 'darwin') await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars')
+    return OK
   })
   handle('calendar:range', (req) => boardRepo.listRange(req))
   handle('calendar:upcoming', (req) => boardRepo.upcoming(req))

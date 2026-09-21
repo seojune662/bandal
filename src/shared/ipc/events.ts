@@ -204,6 +204,7 @@ export interface PushEvents {
   /** A course was created, renamed, archived or removed. */
   'courses:changed': { }
   /** Board tasks changed outside the board panel. */
+  'appleCalendar:changed': Record<string, never>
   'board:changed': { courseId: string | null }
   /** A personal whiteboard or its shapes changed. */
   'canvas:changed': { courseId: string }

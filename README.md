@@ -12,7 +12,7 @@ AI 튜터는 별도 API 키 없이 **사용자 본인의 Claude 구독**(Claude 
 - **PDF 주석** — 가상화된 페이지 렌더링, 하이라이트/인용 앵커, 주석에서 바로 AI 질문
 - **마크다운 필기** — Milkdown 기반 WYSIWYG, 자동 저장, 디스크 충돌 감지
 - **내장 브라우저** — 샌드박스가 강제된 webview 게스트 레이어
-- **학업 보드** — 과목 필터·마감일 배지가 있는 칸반 보드
+- **학업 보드·달력** — 과목별 할 일과 일정, macOS Apple 캘린더 조회·과제 전송 ([안내](docs/apple-calendar.md))
 - **AI 튜터** — 헤드리스 Claude 에이전트 런타임, 도구 사용 권한 승인 UI
 - **플러그인 v2** — 명령·메뉴·선택 편집·패널·설정·테마 확장, 로컬 개발과 심사형 마켓플레이스
 
@@ -23,7 +23,8 @@ AI 튜터는 별도 API 키 없이 **사용자 본인의 Claude 구독**(Claude 
 ```bash
 pnpm install        # postinstall이 better-sqlite3를 Electron ABI로 리빌드
 pnpm dev            # electron-vite 개발 모드 (HMR)
-pnpm typecheck      # main/preload + renderer 타입 검사
+pnpm typecheck      # main/preload + renderer + 웹 체험 타입 검사
+pnpm build:web-demo # 실제 앱 UI를 사용하는 브라우저 체험 빌드
 pnpm deadcode       # 미사용 파일·export·dependency 검사
 pnpm test           # vitest 단위·통합 테스트
 pnpm e2e            # 프로덕션 빌드 후 Playwright Electron E2E (임시 프로필 사용)

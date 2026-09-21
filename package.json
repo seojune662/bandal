@@ -1,6 +1,6 @@
 {
   "name": "bandal",
-  "version": "0.50.0",
+  "version": "0.51.0",
   "description": "Bandal (반달) — a study IDE for university students",
   "main": "./out/main/index.js",
   "author": "Bandal",
@@ -12,7 +12,7 @@
     "pnpm": "9.15.4"
   },
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/build-calendar.mjs && electron-vite dev",
     "marketplace:build": "vite build --config marketplace.vite.config.ts",
     "marketplace:start": "node out/marketplace/server.cjs",
     "marketplace:test": "node scripts/test-marketplace-local.mjs",
@@ -20,7 +20,7 @@
     "plugin:test": "pnpm plugin:build && node scripts/test-plugin-sdk.mjs",
     "plugin": "pnpm plugin:build && node out/plugin-cli/plugin.cjs",
     "build": "electron-vite build",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p web-demo/tsconfig.json",
     "deadcode": "knip --treat-config-hints-as-errors",
     "start": "electron-vite preview",
     "package": "electron-vite build && electron-builder",
@@ -30,7 +30,9 @@
     "generate-icon": "node scripts/generate-icon.mjs",
     "dist:mac": "electron-vite build && electron-builder --mac",
     "dist:win": "electron-vite build && electron-builder --win",
-    "dist:unsigned": "electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg:arm64 -c.mac.notarize=false -c.mac.identity=null"
+    "dist:unsigned": "electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg:arm64 -c.mac.notarize=false -c.mac.identity=null",
+    "native:calendar": "node scripts/build-calendar.mjs",
+    "build:web-demo": "node scripts/build-web-demo.mjs"
   },
   "dependencies": {
     "@fugood/whisper.node": "1.1.3",

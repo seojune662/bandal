@@ -1,3 +1,4 @@
+import { CalendarSettingsPanel } from "../calendar/CalendarSettingsPanel";
 import { DEFAULT_ORB_CHARM } from "../../../../shared/orbCharm";
 import type { OrbCharmId } from "../../../../shared/orbCharm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -590,6 +591,7 @@ export function SettingsApp({
       />
     ),
     assistant: <AssistantPanel settings={settings} />,
+    calendar: <CalendarSettingsPanel />,
     browser: <BrowserSettingsPanel settings={settings} />,
     notifications: <NotificationsPanel settings={settings} />,
     usage: <UsagePanel />,

@@ -7,6 +7,8 @@ macOS·Windows 설치 파일을 만들고, 새 버전이 나오면 앱이 스스
 
 v0.26.0부터 macOS 12 이상과 Electron 43을 지원한다.
 
+v0.51.0부터 `beforePack`에서 `scripts/build-calendar.mjs`가 대상 아키텍처의 EventKit 도구를 Swift로 컴파일한다. `Contents/Resources/calendar/bandal-calendar`는 앱과 함께 서명·공증하며, 도구와 앱 양쪽에 캘린더 권한 설명을 포함한다. 개발 모드는 `pnpm dev`가 도구를 먼저 빌드한다.
+
 ---
 
 ## 1. 한 줄 요약
