@@ -16,6 +16,7 @@ import type {
 export interface AnnotationsApi {
   annotations: Annotation[]
   byPage: Map<number, Annotation[]>
+  loading: boolean
   /** Non-null after a failed IPC call; cleared by the next success. */
   error: string | null
   create(input: CreateAnnotationInput): Promise<Annotation | null>
@@ -34,9 +35,11 @@ export function useAnnotations(
 ): AnnotationsApi {
   const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
+    setLoading(true)
     invoke('annotations:listForFile', { courseId, relPath })
       .then((list) => {
         if (!cancelled) {
@@ -47,6 +50,7 @@ export function useAnnotations(
       .catch((cause: unknown) => {
         if (!cancelled) setError(errorMessage(cause))
       })
+      .finally(() => { if (!cancelled) setLoading(false) })
     return () => {
       cancelled = true
     }
@@ -116,7 +120,7 @@ export function useAnnotations(
     return map
   }, [annotations])
 
-  return { annotations, byPage, error, create, update, remove }
+  return { annotations, byPage, loading, error, create, update, remove }
 }
 
 export const HIGHLIGHT_COLORS: readonly HighlightColor[] = [

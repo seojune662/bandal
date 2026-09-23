@@ -16,8 +16,8 @@ import { showToast } from '../../../app/toast'
 import { normalizeWhiteboardImage, clipboardImageFiles } from '../../whiteboard/imageImport'
 import type { DrawingsApi } from '../../pdf/tools/useDrawings'
 import { PageSyncScroll } from '../../links/pageSyncScroll'
-import { renderInkSnapshot } from '../../ink/renderInkSnapshot'
-import { SlideContextMenu } from './SlideContextMenu'
+import { usePageImageCopy } from '../../pageImageCopy/usePageImageCopy'
+import { pageImageSize } from '../../pageImageCopy/pageImage'
 import { createScrollMemory } from '../../pdf/lib/scrollMemory'
 import { SlideRenderCache } from './slideRenderCache'
 import './presentation.css'
@@ -78,15 +78,8 @@ export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onF
   const [view, setView] = useState({ top: 0, width: 800, height: 700 })
   const [currentPage, setCurrentPage] = useState(1)
   const [includeInk, setIncludeInk] = useState(true)
-  const [contextMenu, setContextMenu] = useState<{ index: number; node: HTMLElement; x: number; y: number } | null>(null)
-  const [copying, setCopying] = useState(false)
-  const copyingRef = useRef(false)
-  const copyAbort = useRef<AbortController | null>(null)
-  useEffect(() => () => copyAbort.current?.abort(), [])
-  const closeContextMenu = useCallback(() => {
-    setContextMenu(null)
-    scroller.current?.focus({ preventScroll: true })
-  }, [])
+  const copyIdentity = useMemo(() => ({ base64, courseId, relPath }), [base64, courseId, relPath])
+  const pageImageCopy = usePageImageCopy(copyIdentity)
   const scroller = useRef<HTMLDivElement>(null), fileInput = useRef<HTMLInputElement>(null), frame = useRef<number | null>(null)
   const pageSyncScroll = useRef(new PageSyncScroll())
   const cache = useMemo(() => presentation ? new SlideRenderCache(presentation) : null, [presentation])
@@ -107,6 +100,7 @@ export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onF
 
   useEffect(() => {
     let cancelled = false, loaded: PptxPresentation | null = null
+    setPresentation(null)
     void (async () => {
       const bytes = decodePresentation(base64)
       // Hash before the worker can transfer the buffer. Decode the deck once.
@@ -199,41 +193,6 @@ export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onF
       }
     } catch (cause) { showToast(cause instanceof Error ? cause.message : '이미지를 넣지 못했어요.', 'danger') }
   }, [presentation, courseId, relPath, currentPage, drawings.create])
-  const copySlide = useCallback(async (withInk: boolean): Promise<void> => {
-    if (!contextMenu || !presentation || !cache || copyingRef.current) return
-    const { index, node } = contextMenu
-    closeContextMenu()
-    copyingRef.current = true
-    setCopying(true)
-    const abort = new AbortController()
-    copyAbort.current = abort
-    try {
-      const pixelWidth = 1600
-      const pixelHeight = Math.round(pixelWidth * presentation.slideHeight / presentation.slideWidth)
-      const ink = withInk ? node.querySelector<SVGSVGElement>('.pdf-drawing-layer') : null
-      const rendering = cache.render(index, pixelWidth, 1, abort.signal)
-      const snapshot = ink ? renderInkSnapshot(ink, pixelWidth, pixelHeight, rendering.then((slide) => slide.canvas)) : Promise.resolve(null)
-      const [rendered, overlay] = await Promise.all([rendering, snapshot])
-      if (abort.signal.aborted) return
-      const canvas = document.createElement('canvas')
-      canvas.width = pixelWidth; canvas.height = pixelHeight
-      const context = canvas.getContext('2d')
-      if (!context) throw new Error('이미지를 만들지 못했어요.')
-      context.fillStyle = 'white'
-      context.fillRect(0, 0, pixelWidth, pixelHeight)
-      context.drawImage(rendered.canvas, 0, 0, pixelWidth, pixelHeight)
-      if (overlay) context.drawImage(overlay, 0, 0, pixelWidth, pixelHeight)
-      const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('이미지를 만들지 못했어요.')), 'image/png'))
-      if (abort.signal.aborted) return
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-      showToast(`${index + 1}번 슬라이드를 이미지로 복사했어요.`)
-    } catch (cause) {
-      if (!abort.signal.aborted) showToast(cause instanceof Error ? cause.message : '이미지를 복사하지 못했어요.', 'danger')
-    } finally {
-      copyingRef.current = false
-      if (!abort.signal.aborted) setCopying(false)
-    }
-  }, [contextMenu, presentation, cache, closeContextMenu])
   const exportPdf = useCallback(() => convertPresentationToPdf({ courseId, relPath }, undefined, includeInk), [courseId, relPath, includeInk])
   const pageSizes = useMemo(() => presentation ? Array.from({ length: presentation.slideCount }, () => slidePageSize(presentation)) : [], [presentation])
   const start = Math.max(0, Math.floor((view.top - PADDING) / stride) - 1)
@@ -273,16 +232,16 @@ export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onF
         if (workspace.pair && sync && !pageSyncScroll.current.isEcho(node)) publishPageSyncAnchor({ ...workspace.pair, originPanelId: workspace.panelId, page: index + 1, pageOffset: Math.max(0, Math.min(1, (center - PADDING - index * stride) / height)) })
       })
     }}><div className="presentation-pages" style={{ minWidth: width + PADDING * 2 }}>
-      {Array.from({ length: presentation.slideCount }, (_, index) => <section key={index} className="presentation-page" aria-label={`슬라이드 ${index + 1}`} onContextMenu={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        if (!copyingRef.current) setContextMenu({ index, node: event.currentTarget, x: event.clientX, y: event.clientY })
-      }} data-slide-index={index} style={{ width, height }}>
+      {Array.from({ length: presentation.slideCount }, (_, index) => <section key={index} className="presentation-page" tabIndex={-1} aria-label={`슬라이드 ${index + 1}`} onContextMenu={(event) => pageImageCopy.openMenu(event, {
+        label: `${index + 1}번 슬라이드`,
+        disabledReason: index < start || index >= end ? '슬라이드를 불러온 뒤 다시 시도해 주세요.' : undefined,
+        inkDisabledReason: drawings.loading || drawings.error ? '필기를 모두 불러온 뒤 다시 복사해 주세요.' : undefined,
+        render: (signal) => cache.render(index, pageImageSize(presentation.slideWidth, presentation.slideHeight).width, 1, signal)
+      })} data-slide-index={index} style={{ width, height }}>
         {index >= start && index < end && <SlideSurface cache={cache} presentation={presentation} index={index} width={width} courseId={courseId} relPath={relPath} drawings={drawings} interactive={workspace.interactive} annotating={annotating} jump={jump} />}
       </section>)}
     </div></div>
-    {contextMenu && <SlideContextMenu x={contextMenu.x} y={contextMenu.y} busy={copying} onCopy={(ink) => void copySlide(ink)} onClose={closeContextMenu} />}
-    {copying && <span className="presentation-copy-status" role="status">슬라이드 이미지를 복사하는 중…</span>}
+    {pageImageCopy.overlay}
     {notesOpen && <aside className="presentation-notes"><strong>{currentPage}번 슬라이드 노트</strong><p>{presentation.getNotes(currentPage - 1)?.trim() || '발표자 노트가 없어요.'}</p></aside>}
     {dialogOpen && <PdfPageNoteDialog courseId={courseId} relPath={relPath} presentation={{ pageSizes, fingerprint }} currentPage={currentPage} connections={pageConnections} onClose={() => setDialogOpen(false)} />}
   </div>

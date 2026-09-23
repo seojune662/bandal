@@ -37,6 +37,8 @@ import {
 import { PdfToolbar } from './PdfToolbar'
 import { TextFormatRow } from '../ink/TextFormatRow'
 import { PdfPageView } from './PdfPageView'
+import { usePageImageCopy } from '../pageImageCopy/usePageImageCopy'
+import { renderPdfPageImage } from './lib/renderPageImage'
 import { PdfPreviewPanel } from './PdfPreviewPanel'
 import { AnnotationRail } from './AnnotationRail'
 import {
@@ -200,6 +202,8 @@ function PdfViewer({
   } = useVisiblePages(scrollerRef)
 
   const [pdfProxy, setPdfProxy] = useState<PDFDocumentProxy | null>(null)
+  const copyIdentity = useMemo(() => ({ fileSource, pdfProxy }), [fileSource, pdfProxy])
+  const pageImageCopy = usePageImageCopy(copyIdentity)
   const [numPages, setNumPages] = useState(0)
   const [pageAspects, setPageAspects] = useState<Map<number, number>>(new Map())
   const [containerWidth, setContainerWidth] = useState(0)
@@ -994,6 +998,12 @@ function PdfViewer({
                     <PdfPageView
                       key={pageNumber}
                       pageNumber={pageNumber}
+                      onContextMenu={(event) => pageImageCopy.openMenu(event, {
+                        label: `${pageNumber} 페이지`,
+                        disabledReason: !pdfProxy || !visiblePages.has(pageNumber) ? '페이지를 불러온 뒤 다시 시도해 주세요.' : undefined,
+                        inkDisabledReason: drawingsApi.loading || drawingsApi.error || annotationsApi.loading || annotationsApi.error ? '필기를 모두 불러온 뒤 다시 복사해 주세요.' : undefined,
+                        render: pdfProxy ? (signal) => renderPdfPageImage(pdfProxy, pageNumber, signal) : undefined
+                      })}
                       width={pageWidth}
                       aspect={pageAspects.get(pageNumber) ?? defaultAspect}
                       isVisible={visiblePages.has(pageNumber)}
@@ -1095,6 +1105,7 @@ function PdfViewer({
           />
         )}
       </div>
+      {pageImageCopy.overlay}
       {isPageNoteDialogOpen && pdfProxy !== null && (
         <PdfPageNoteDialog
           courseId={courseId}

@@ -68,7 +68,7 @@ function PageJump({
           setIsEditing(true)
           event.target.select()
         }}
-        onBlur={submit}
+        onBlur={() => { if (isEditing) submit() }}
         onChange={(event) => setDraft(event.target.value)}
       />
       <span className="pdf-toolbar__page-total">/ {numPages}</span>

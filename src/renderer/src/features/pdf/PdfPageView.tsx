@@ -49,6 +49,7 @@ const PDF_PASTED_IMAGE_DIRECTORY = 'images'
 
 export interface PdfPageViewProps {
   pageNumber: number
+  onContextMenu?: (event: React.MouseEvent<HTMLElement>) => void
   /** Rendered CSS width of the page in px. */
   width: number
   /** height / width — placeholder sizing before the page ever renders. */
@@ -350,6 +351,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
           event.currentTarget.focus({ preventScroll: true })
         }
       }}
+      onContextMenu={props.onContextMenu}
       onClick={handleClick}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}

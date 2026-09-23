@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
+import { usePageImageCopy } from '../../pageImageCopy/usePageImageCopy'
 import { AnnotatedSlidesViewer } from '../pptx/AnnotatedSlidesViewer'
 import {
   EMU_PER_INCH,
@@ -167,6 +168,7 @@ function LegacySlidesViewer({
   const [presentation, setPresentation] = useState<ParsedPresentation | null>(null)
   const [slideWidthPx, setSlideWidthPx] = useState(0)
   const columnRef = useRef<HTMLDivElement>(null)
+  const pageImageCopy = usePageImageCopy(base64)
 
   useEffect(() => {
     let cancelled = false
@@ -210,6 +212,7 @@ function LegacySlidesViewer({
 
   return (
     <div className="file-slides">
+      {pageImageCopy.overlay}
       <header className="file-slides__header">
         <strong>{fileName}</strong>
         <span>{slides.length}슬라이드 · 읽기 전용 미리보기</span>
@@ -222,6 +225,11 @@ function LegacySlidesViewer({
               key={index}
               className="file-slides__page"
               aria-label={`슬라이드 ${index + 1}`}
+              tabIndex={-1}
+              onContextMenu={(event) => pageImageCopy.openMenu(event, {
+                label: `${index + 1}번 슬라이드`,
+                disabledReason: '간단 미리보기에서는 이미지 복사를 지원하지 않아요. 자료를 다시 열거나 PDF로 변환해 주세요.'
+              })}
             >
               <div
                 className="file-slides__slide"

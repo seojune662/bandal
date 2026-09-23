@@ -317,6 +317,28 @@ jobs:
         if: matrix.os == 'macos-14'
         run: node scripts/verify-calendar-signing.mjs release/mac*/Bandal.app
 
+      - name: Verify native PDF and PPTX image clipboard in the packaged app
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            if [ "$(node -p 'process.arch')" = "arm64" ]; then
+              export BANDAL_E2E_EXECUTABLE="$PWD/release/mac-arm64/Bandal.app/Contents/MacOS/Bandal"
+            else
+              export BANDAL_E2E_EXECUTABLE="$PWD/release/mac/Bandal.app/Contents/MacOS/Bandal"
+            fi
+          else
+            export BANDAL_E2E_EXECUTABLE="$PWD/release/win-unpacked/Bandal.exe"
+          fi
+          pnpm exec playwright test -c e2e pageImageCopy.spec.ts interactionStability.spec.ts --grep 'page image clipboard|copies the clicked slide'
+
+      - name: Save clipboard test traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: clipboard-test-results-${{ matrix.os }}
+          path: e2e/test-results
+          if-no-files-found: ignore
+
       # Keep completed builds independent of GitHub release upload failures.
       # Retrying only the publish job reuses these exact signed installers.
       - name: Save signed installers for publishing

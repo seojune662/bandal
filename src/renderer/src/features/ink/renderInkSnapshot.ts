@@ -18,11 +18,12 @@ function blobUrl(blob: Blob): Promise<string> {
   })
 }
 
-async function dataUrl(url: string): Promise<string> {
+async function dataUrl(url: string, signal: AbortSignal): Promise<string> {
+  signal.throwIfAborted()
   // Local drawing images already arrive through IPC as data URLs. Fetching
   // those again is unnecessary and is blocked by the renderer's connect-src.
   if (url.startsWith('data:')) return url
-  const response = await fetch(url)
+  const response = await fetch(url, { signal })
   if (!response.ok) throw new Error('필기의 이미지를 불러오지 못했어요.')
   return blobUrl(await response.blob())
 }
@@ -39,7 +40,7 @@ function containsCharacter(text: string, range: string): boolean {
 }
 
 /** Image-mode SVG cannot fetch web fonts: embed only the subsets used here. */
-async function embedFonts(text: string, families: Set<string>): Promise<string> {
+async function embedFonts(text: string, families: Set<string>, signal: AbortSignal): Promise<string> {
   const rules: CSSFontFaceRule[] = []
   const visit = (list: CSSRuleList): void => {
     for (const rule of Array.from(list)) {
@@ -60,18 +61,26 @@ async function embedFonts(text: string, families: Set<string>): Promise<string> 
     const urls = [...css.matchAll(/url\(["']?([^"')]+)["']?\)/g)]
     for (const match of urls) {
       const url = new URL(match[1]!, rule.parentStyleSheet?.href ?? document.baseURI).href
-      css = css.replace(match[0], `url("${await dataUrl(url)}")`)
+      css = css.replace(match[0], `url("${await dataUrl(url, signal)}")`)
     }
     return css
   }))).join('\n')
 }
 
-/** Capture current ink, including an uncommitted textbox, without editor chrome. */
-export async function renderInkSnapshot(source: SVGSVGElement, width: number, height: number, background: Promise<HTMLCanvasElement>): Promise<HTMLImageElement> {
+/** Freeze current ink and PDF text highlights before menu focus commits text. */
+export function captureInkSnapshot(page: HTMLElement): ((paper: HTMLCanvasElement, signal: AbortSignal) => Promise<HTMLImageElement>) | null {
+  if (page.querySelector('.ink-layer__image-placeholder, .ink-layer__clip-placeholder, .pdf-drawing-layer.is-loading')) {
+    throw new Error('필기와 이미지를 모두 불러온 뒤 다시 복사해 주세요.')
+  }
+  const highlights = Array.from(page.querySelectorAll<HTMLElement>('.pdf-highlight'))
+  const source = page.querySelector<SVGSVGElement>('.pdf-drawing-layer') ?? document.createElementNS(SVG_NS, 'svg')
+  if (!source.childElementCount && !highlights.length) return null
   const clone = source.cloneNode(true) as SVGSVGElement
+  clone.setAttribute('viewBox', '0 0 1 1')
+  clone.setAttribute('preserveAspectRatio', 'none')
   const originals = [source, ...Array.from(source.querySelectorAll('*'))]
   const copies = [clone, ...Array.from(clone.querySelectorAll('*'))]
-  const images: Promise<void>[] = []
+  const images: ((signal: AbortSignal) => Promise<void>)[] = []
   const families = new Set<string>()
   for (let index = 0; index < originals.length; index++) {
     const original = originals[index]!, copy = copies[index] as HTMLElement | SVGElement
@@ -90,36 +99,65 @@ export async function renderInkSnapshot(source: SVGSVGElement, width: number, he
     }
     if (original instanceof HTMLImageElement) {
       const url = original.currentSrc || original.src
-      images.push(dataUrl(url).then((value) => { (copy as HTMLImageElement).src = value }))
+      images.push((signal) => dataUrl(url, signal).then((value) => { (copy as HTMLImageElement).src = value }))
     }
     if (original instanceof SVGImageElement) {
-      images.push(dataUrl(original.href.baseVal).then((value) => { copy.setAttribute('href', value) }))
+      const url = original.href.baseVal
+      images.push((signal) => dataUrl(url, signal).then((value) => { copy.setAttribute('href', value) }))
     }
     copy.removeAttribute('contenteditable')
     copy.removeAttribute('tabindex')
   }
   clone.querySelectorAll(OMIT).forEach((node) => node.remove())
-  clone.setAttribute('width', String(width))
-  clone.setAttribute('height', String(height))
-  clone.style.cssText = 'overflow:hidden'
-  const [fonts, paper] = await Promise.all([embedFonts(source.textContent ?? '', families), background, Promise.all(images)])
-  const blob = await new Promise<Blob>((resolve, reject) => paper.toBlob((value) => value ? resolve(value) : reject(new Error('슬라이드를 읽지 못했어요.')), 'image/png'))
-  const backdrop = document.createElementNS(SVG_NS, 'image')
-  backdrop.setAttribute('href', await blobUrl(blob))
-  backdrop.setAttribute('width', '1')
-  backdrop.setAttribute('height', '1')
-  backdrop.setAttribute('preserveAspectRatio', 'none')
-  // Keep paper inside the SVG so multiply highlighters blend with the slide's
-  // text, instead of tinting black text when a transparent overlay is flattened.
-  clone.prepend(backdrop)
-  if (fonts) {
-    const style = document.createElementNS(SVG_NS, 'style')
-    style.textContent = fonts
-    clone.prepend(style)
+  const highlightLayer = document.createElementNS(SVG_NS, 'g')
+  for (const highlight of highlights) {
+    const rect = document.createElementNS(SVG_NS, 'rect')
+    for (const [attribute, property] of [['x', 'left'], ['y', 'top'], ['width', 'width'], ['height', 'height']]) {
+      rect.setAttribute(attribute!, String(parseFloat(highlight.style.getPropertyValue(property!)) / 100))
+    }
+    rect.setAttribute('fill', getComputedStyle(highlight).backgroundColor)
+    // Hover, selection and flash opacity belong to editor chrome.
+    rect.setAttribute('opacity', '.42')
+    rect.style.mixBlendMode = 'multiply'
+    highlightLayer.append(rect)
   }
-  const image = new Image()
-  // Data URLs keep foreignObject SVG origin-clean in Chromium's image decoder.
-  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(clone))}`
-  await image.decode()
-  return image
+  clone.prepend(highlightLayer)
+  const text = source.textContent ?? ''
+  return async (paper, signal) => {
+    signal.throwIfAborted()
+    clone.setAttribute('width', String(paper.width))
+    clone.setAttribute('height', String(paper.height))
+    clone.style.cssText = 'overflow:hidden'
+    const [fonts] = await Promise.all([embedFonts(text, families, signal), Promise.all(images.map((load) => load(signal)))])
+    signal.throwIfAborted()
+    const blob = await new Promise<Blob>((resolve, reject) => paper.toBlob((value) => value ? resolve(value) : reject(new Error('페이지를 읽지 못했어요. 다시 시도해 주세요.')), 'image/png'))
+    const backdrop = document.createElementNS(SVG_NS, 'image')
+    backdrop.setAttribute('href', await blobUrl(blob))
+    backdrop.setAttribute('width', '1')
+    backdrop.setAttribute('height', '1')
+    backdrop.setAttribute('preserveAspectRatio', 'none')
+    // Put paper inside the SVG so multiply ink blends with original text.
+    clone.prepend(backdrop)
+    if (fonts) {
+      const style = document.createElementNS(SVG_NS, 'style')
+      style.textContent = fonts
+      clone.prepend(style)
+    }
+    signal.throwIfAborted()
+    const image = new Image()
+    const cancel = (): void => image.removeAttribute('src')
+    signal.addEventListener('abort', cancel, { once: true })
+    try {
+      // Data URLs keep foreignObject SVG origin-clean in Chromium.
+      image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(clone))}`
+      await image.decode()
+      signal.throwIfAborted()
+      return image
+    } catch (error) {
+      cancel()
+      throw error
+    } finally {
+      signal.removeEventListener('abort', cancel)
+    }
+  }
 }
