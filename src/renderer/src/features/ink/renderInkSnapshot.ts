@@ -58,11 +58,27 @@ async function embedFonts(text: string, families: Set<string>, signal: AbortSign
   })
   return (await Promise.all(needed.map(async (rule) => {
     let css = rule.cssText
+    let src = rule.style.getPropertyValue('src')
     const urls = [...css.matchAll(/url\(["']?([^"')]+)["']?\)/g)]
     for (const match of urls) {
       const url = new URL(match[1]!, rule.parentStyleSheet?.href ?? document.baseURI).href
-      css = css.replace(match[0], `url("${await dataUrl(url, signal)}")`)
+      const data = await dataUrl(url, signal)
+      const embedded = `url("${data}")`
+      css = css.replace(match[0], embedded)
+      src = src.replace(match[0], embedded)
     }
+    // A one-shot SVG raster cannot repaint after font-display:swap replaces a
+    // fallback. Decode the same embedded font first, then block fallback paint.
+    const font = new FontFace(rule.style.getPropertyValue('font-family').replace(/["']/g, ''), src, {
+      weight: rule.style.getPropertyValue('font-weight') || 'normal',
+      style: rule.style.getPropertyValue('font-style') || 'normal',
+      stretch: rule.style.getPropertyValue('font-stretch') || 'normal',
+      unicodeRange: rule.style.getPropertyValue('unicode-range') || 'U+0-10FFFF',
+      display: 'block'
+    })
+    await font.load()
+    signal.throwIfAborted()
+    css = css.replace(/font-display\s*:[^;}]+/g, 'font-display: block')
     return css
   }))).join('\n')
 }
