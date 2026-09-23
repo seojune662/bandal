@@ -3,6 +3,10 @@
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+
+// jsdom has no layout observer; viewport geometry is covered in Electron E2E.
+vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} })
+
 import type { Course } from '../../../src/shared/types/course'
 
 const uiState = vi.hoisted(() => ({

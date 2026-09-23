@@ -1,3 +1,4 @@
+import { useViewportBounds } from '../../lib/useViewportBounds'
 /**
  * "+" new-tab menu — a lightweight take on Orca's typed omnibox: a filter
  * field on top; typing a URL turns the first entry into "open in browser",
@@ -106,6 +107,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
     resolveKeymap(settingsSnapshot().keybindings)
   )
   const menuRef = useRef<HTMLDivElement>(null)
+  useViewportBounds(menuRef)
   const inputRef = useRef<HTMLInputElement>(null)
   const linkUrlRef = useRef<HTMLInputElement>(null)
 

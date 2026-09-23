@@ -235,6 +235,8 @@
 }
 
 .tour-offer {
+  max-height: calc(85dvh - var(--space-6));
+  overflow-y: auto;
   position: fixed;
   right: var(--space-5);
   bottom: var(--space-5);

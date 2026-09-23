@@ -4,6 +4,7 @@
  * (courseId, status) column; new/moved tasks append to the end.
  */
 
+import { isCalendarDate } from '../../../shared/taskSchedule'
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import { TASK_COLORS } from '../../../shared/types/board'
@@ -53,6 +54,7 @@ interface TaskRow {
   status: string
   kind: string
   color: string
+  start_at: string | null
   due_at: string | null
   all_day: number
   sort_order: number
@@ -124,7 +126,7 @@ function normalizeDueAt(value: unknown, allDay: boolean): string | null {
   if (typeof value !== 'string') {
     throw new ValidationError('dueAt must be YYYY-MM-DD, an ISO instant, or null')
   }
-  if (allDay && LOCAL_DATE_KEY.test(value)) {
+  if (allDay && isCalendarDate(value)) {
     return value
   }
   if (!isIsoInstant(value)) {
@@ -136,6 +138,12 @@ function normalizeDueAt(value: unknown, allDay: boolean): string | null {
   }
   const instant = new Date(value)
   return allDay ? localDateKey(instant) : instant.toISOString()
+}
+
+function validateRange(startAt: string | null, dueAt: string | null): void {
+  if (startAt !== null && (dueAt === null || startAt > dueAt)) {
+    throw new ValidationError('종료 날짜와 시각은 시작보다 빠를 수 없습니다.')
+  }
 }
 
 function requireIso(value: unknown, name: string): string {
@@ -164,6 +172,7 @@ function rowToTask(row: TaskRow): BoardTask {
     status: row.status as TaskStatus,
     kind: row.kind as TaskKind,
     color: row.color as TaskColor,
+    startAt: row.start_at,
     dueAt: row.due_at,
     allDay: row.all_day === 1,
     sortOrder: row.sort_order,
@@ -287,12 +296,13 @@ export function createBoardRepo(db: Database): BoardRepo {
       const clauses = [
         'deleted_at IS NULL',
         'due_at IS NOT NULL',
-        `((all_day = 1 AND due_at >= ? AND due_at < ?)
-          OR (all_day != 1 AND due_at >= ? AND due_at < ?))`
+        `((all_day = 1 AND due_at >= ? AND COALESCE(start_at, due_at) <= ?)
+          OR (all_day != 1 AND (due_at > ? OR (due_at = ? AND (start_at IS NULL OR start_at = due_at))) AND COALESCE(start_at, due_at) < ?))`
       ]
       const params = [
         localDateKey(new Date(from)),
-        localDateKey(new Date(to)),
+        localDateKey(new Date(Date.parse(to) - 1)),
+        from,
         from,
         to
       ]
@@ -380,6 +390,8 @@ export function createBoardRepo(db: Database): BoardRepo {
       }
       const allDay = input.allDay === undefined ? false : assertAllDay(input.allDay)
       const dueAt = normalizeDueAt(input.dueAt, allDay)
+      const startAt = normalizeDueAt(input.startAt, allDay)
+      validateRange(startAt, dueAt)
 
       const now = nowIso()
       const task: BoardTask = {
@@ -390,6 +402,7 @@ export function createBoardRepo(db: Database): BoardRepo {
         status,
         kind,
         color,
+        startAt,
         dueAt,
         allDay,
         sortOrder: nextSortOrder(courseId, status),
@@ -398,9 +411,9 @@ export function createBoardRepo(db: Database): BoardRepo {
       }
       db.prepare(
         `INSERT INTO board_tasks
-           (id, course_id, title, notes, status, kind, color, due_at, all_day,
+           (id, course_id, title, notes, status, kind, color, start_at, due_at, all_day,
             sort_order, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         task.id,
         courseId,
@@ -409,6 +422,7 @@ export function createBoardRepo(db: Database): BoardRepo {
         status,
         kind,
         color,
+        startAt,
         dueAt,
         allDay ? 1 : 0,
         task.sortOrder,
@@ -437,6 +451,13 @@ export function createBoardRepo(db: Database): BoardRepo {
           ? dateKeyToLocalInstant(row.due_at)
           : normalizeDueAt(input.dueAt === undefined ? row.due_at : input.dueAt, allDay)
 
+      const previousStart = input.startAt === undefined ? row.start_at : input.startAt
+      const startAt = dueAt === null && input.startAt === undefined ? null
+        : input.startAt === undefined && !allDay && previousStart !== null && LOCAL_DATE_KEY.test(previousStart)
+          ? dateKeyToLocalInstant(previousStart)
+          : normalizeDueAt(previousStart, allDay)
+      validateRange(startAt, dueAt)
+
       let courseId: string | null
       if (input.courseId === undefined) {
         courseId = row.course_id
@@ -461,10 +482,10 @@ export function createBoardRepo(db: Database): BoardRepo {
       const now = nowIso()
       db.prepare(
         `UPDATE board_tasks
-         SET title = ?, notes = ?, status = ?, kind = ?, color = ?, due_at = ?, all_day = ?,
+         SET title = ?, notes = ?, status = ?, kind = ?, color = ?, start_at = ?, due_at = ?, all_day = ?,
              sort_order = ?, course_id = ?, updated_at = ?
          WHERE id = ?`
-      ).run(title, notes, status, kind, color, dueAt, allDay ? 1 : 0, sortOrder, courseId, now, row.id)
+      ).run(title, notes, status, kind, color, startAt, dueAt, allDay ? 1 : 0, sortOrder, courseId, now, row.id)
       return rowToTask({
         ...row,
         title,
@@ -472,6 +493,7 @@ export function createBoardRepo(db: Database): BoardRepo {
         status,
         kind,
         color,
+        start_at: startAt,
         due_at: dueAt,
         all_day: allDay ? 1 : 0,
         sort_order: sortOrder,

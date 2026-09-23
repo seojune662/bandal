@@ -3,7 +3,7 @@
 /* Shell-level companion. Every visible colour and spacing value is semantic. */
 
 .assistant-layer {
-  /* Above the board's 60 overlay, below quick search/onboarding/toasts. */
+  /* Above workspace content; below dialogs so the orb cannot cover actions. */
   --assistant-layer-z: 64;
   --assistant-orb-size: var(--empty-mark-size);
   --assistant-selection-size: calc(var(--icon-button-size) + var(--space-1));

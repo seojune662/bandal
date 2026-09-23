@@ -49,7 +49,7 @@ function seed(): DemoData {
   const titles = ko ? ['해시 테이블 구현 과제', '운영체제 4장 읽기', '행렬 연산 연습문제', '충돌 해결 방식 비교', '3주차 강의 복습'] : ['Implement a hash table', 'Read OS chapter 4', 'Matrix exercises', 'Compare collision handling', 'Review lecture 3']
   return { version: 1, primaryNotePath: NOTE, courses, notes, layouts: {}, views: {}, annotations: [], drawings: [], chats: {},
     links: [{ id: 'demo-pdf-note-link', courseId, source: pdfDescriptor, target: pageNoteDescriptor, kind: 'pdf-page-note', label: '페이지 필기', metadata, createdAt: stamp() }],
-    tasks: titles.map((title, i) => { const date = new Date(); date.setDate(date.getDate() + i + 1); const dueAt = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; return { id: `demo-task-${i}`, title, courseId: courses[i % courses.length]!.id, notes: '', kind: i % 2 ? 'task' : 'assignment', color: 'none', status: i < 3 ? 'todo' : i === 3 ? 'in-progress' : 'done', dueAt, allDay: true, sortOrder: i, createdAt: stamp(), updatedAt: stamp() } }) }
+    tasks: titles.map((title, i) => { const date = new Date(); date.setDate(date.getDate() + i + 1); const dueAt = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; return { id: `demo-task-${i}`, title, courseId: courses[i % courses.length]!.id, notes: '', kind: i % 2 ? 'task' : 'assignment', color: 'none', status: i < 3 ? 'todo' : i === 3 ? 'in-progress' : 'done', startAt: null, dueAt, allDay: true, sortOrder: i, createdAt: stamp(), updatedAt: stamp() } }) }
 }
 let memoryOnly = false
 function restore(): DemoData {

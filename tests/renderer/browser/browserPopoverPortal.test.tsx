@@ -3,6 +3,10 @@
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+
+// jsdom has no layout observer; viewport geometry is covered in Electron E2E.
+vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} })
+
 import { BrowserDiagnosticsPanel } from '../../../src/renderer/src/features/browser/BrowserDiagnosticsPanel'
 import { BrowserDownloadsPanel } from '../../../src/renderer/src/features/browser/BrowserDownloadsPanel'
 

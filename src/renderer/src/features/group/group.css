@@ -566,6 +566,8 @@
 }
 
 .group-join {
+  max-height: calc(85dvh - var(--space-6));
+  overflow-y: auto;
   position: relative;
   display: flex;
   flex-direction: column;

@@ -88,9 +88,12 @@ if command == "export" {
           let calendar = store.calendar(withIdentifier: calendarId), calendar.allowsContentModifications,
           let taskId = request["taskId"] as? String, !taskId.isEmpty,
           let title = request["title"] as? String, !title.isEmpty,
-          let due = request["dueAt"] as? String else { fail("저장할 캘린더와 일정의 제목·날짜를 확인해주세요.") }
+          let startValue = request["start"] as? String,
+          let endValue = request["end"] as? String else { fail("저장할 캘린더와 일정의 제목·날짜를 확인해주세요.") }
     let allDay = request["allDay"] as? Bool ?? true
-    guard let start = allDay ? (day.date(from: due) ?? instant(due).map { Calendar.current.startOfDay(for: $0) }) : instant(due) else { fail("날짜 형식이 올바르지 않습니다.") }
+    guard let start = allDay ? day.date(from: startValue) : instant(startValue),
+          let end = allDay ? day.date(from: endValue) : instant(endValue),
+          allDay ? end > start : end >= start else { fail("날짜 형식이 올바르지 않습니다.") }
     let marker = "bandal://calendar/task/\(taskId)"
     var existing: EKEvent? = nil
     if let id = request["eventId"] as? String, let found = store.event(withIdentifier: id), found.url?.absoluteString == marker {
@@ -110,7 +113,7 @@ if command == "export" {
     event.url = URL(string: marker)
     event.isAllDay = allDay
     event.startDate = start
-    event.endDate = allDay ? Calendar.current.date(byAdding: .day, value: 1, to: start)! : start.addingTimeInterval(3600)
+    event.endDate = end
     do {
         try store.save(event, span: .thisEvent, commit: true)
         respond(["eventId": event.eventIdentifier ?? event.calendarItemIdentifier, "updated": existing != nil])

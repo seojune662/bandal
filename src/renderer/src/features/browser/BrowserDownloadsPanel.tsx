@@ -1,3 +1,4 @@
+import { useViewportBounds } from '../../lib/useViewportBounds'
 /**
  * The downloads list.
  *
@@ -61,6 +62,7 @@ export function BrowserDownloadsPanel({
   const downloads = useDownloads((state) => state.downloads)
   const dismiss = useDownloads((state) => state.dismiss)
   const ref = useRef<HTMLDivElement>(null)
+  useViewportBounds(ref)
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent): void => {

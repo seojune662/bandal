@@ -98,8 +98,14 @@ export function dueAtForLocalInput(
   time: string,
   allDay: boolean
 ): string {
+  if (!dateKeyParts(dateKey)) throw new Error('유효한 날짜를 입력해주세요.')
   if (allDay) return dateKey
-  return localDateFromKey(dateKey, allDay ? '00:00' : time).toISOString()
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('유효한 시각을 입력해주세요.')
+  const date = localDateFromKey(dateKey, time)
+  if (localDateKey(date) !== dateKey || localTimeInput(date.toISOString()) !== time) {
+    throw new Error('선택한 시간대에 존재하지 않는 시각입니다. 다른 시각을 지정해주세요.')
+  }
+  return date.toISOString()
 }
 
 export function localTimeInput(value: string | null): string {

@@ -1,3 +1,4 @@
+import { placeFixedMenu } from '../../lib/placeFixedMenu'
 /**
  * `@` 멘션 — 노트 본문 어디서든 과목 자료를 검색해 마크다운 링크로 삽입한다.
  *
@@ -307,8 +308,7 @@ export function createMentionMenuPlugin(
         menu.replaceChildren(...children)
 
         const coordinates = view.coordsAtPos(view.state.selection.from)
-        menu.style.left = `${coordinates.left}px`
-        menu.style.top = `${coordinates.bottom}px`
+        placeFixedMenu(menu, coordinates.left, coordinates.bottom)
       }
 
       const handleMouseDown = (event: MouseEvent): void => {
@@ -328,11 +328,14 @@ export function createMentionMenuPlugin(
         executeMentionItem(editorView, state, selected)
       }
 
+      const onResize = () => render(editorView)
+      window.addEventListener('resize', onResize)
       menu.addEventListener('mousedown', handleMouseDown)
       render(editorView)
       return {
         update: render,
         destroy: () => {
+          window.removeEventListener('resize', onResize)
           menu.removeEventListener('mousedown', handleMouseDown)
           menu.remove()
         }

@@ -9,7 +9,7 @@ const calendars = [
   { id: 'personal', title: '개인', source: 'iCloud', color: '#112233', writable: true },
   { id: 'holidays', title: '공휴일', source: '구독', color: '#334455', writable: false }
 ]
-const task: BoardTask = { id: 'task-1', title: '과제', notes: '', courseId: null, dueAt: '2026-09-22', allDay: true, status: 'todo', kind: 'assignment', color: 'none', sortOrder: 0, createdAt: '', updatedAt: '' }
+const task: BoardTask = { id: 'task-1', title: '과제', notes: '', courseId: null, startAt: null, dueAt: '2026-09-22', allDay: true, status: 'todo', kind: 'assignment', color: 'none', sortOrder: 0, createdAt: '', updatedAt: '' }
 function fixture(options: { supported?: boolean; connected?: boolean } = {}) {
   const native = {
     state: vi.fn<CalendarNative['state']>().mockResolvedValue({ authorization: 'authorized', calendars, defaultCalendarId: 'personal' }),
@@ -84,7 +84,7 @@ describe('Apple Calendar integration', () => {
     const { service, native } = fixture()
     await service.connect()
     await Promise.all([service.exportTask(task.id), service.exportTask(task.id)])
-    expect(native.export.mock.calls[0]?.[0]).toMatchObject({ eventId: null, dueAt: '2026-09-22', allDay: true })
+    expect(native.export.mock.calls[0]?.[0]).toMatchObject({ eventId: null, start: '2026-09-22', end: '2026-09-23', allDay: true })
     expect(native.export.mock.calls[1]?.[0]).toMatchObject({ eventId: 'event-1' })
   })
   test('a failed configuration write keeps the previous configuration', async () => {

@@ -331,7 +331,8 @@ export const AGENT_TOOL_DEFINITIONS = [
         notes: string('설명'),
         status: { type: 'string', enum: ['todo', 'in-progress', 'done'] },
         kind: { type: 'string', enum: ['task', 'assignment', 'exam', 'class'] },
-        dueAt: nullableString('ISO 날짜/시간 또는 null'),
+        startAt: nullableString('기간 시작. 종일은 YYYY-MM-DD, 시간 지정은 ISO instant. 마감만 지정할 때 null'),
+        dueAt: nullableString('마감 또는 기간 종료. 종일은 마지막 날을 포함하는 YYYY-MM-DD, 시간 지정은 ISO instant, 날짜 없음은 null'),
         allDay: boolean('종일 일정인지 여부')
       },
       ['courseId', 'title']
@@ -349,7 +350,8 @@ export const AGENT_TOOL_DEFINITIONS = [
         notes: string('새 설명'),
         status: { type: 'string', enum: ['todo', 'in-progress', 'done'] },
         kind: { type: 'string', enum: ['task', 'assignment', 'exam', 'class'] },
-        dueAt: nullableString('ISO 날짜/시간 또는 null'),
+        startAt: nullableString('기간 시작. 종일은 YYYY-MM-DD, 시간 지정은 ISO instant. 마감만 지정할 때 null'),
+        dueAt: nullableString('마감 또는 기간 종료. 종일은 마지막 날을 포함하는 YYYY-MM-DD, 시간 지정은 ISO instant, 날짜 없음은 null'),
         allDay: boolean('종일 일정인지 여부'),
         sortOrder: integer('0부터 시작하는 정렬 순서', 0)
       },

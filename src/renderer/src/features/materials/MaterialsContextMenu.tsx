@@ -1,3 +1,4 @@
+import { useViewportBounds } from '../../lib/useViewportBounds'
 import { useEffect, useRef } from 'react'
 import type { MaterialNode } from '../../../../shared/types/materials'
 import { Icon } from '../../app/icons'
@@ -66,6 +67,7 @@ export function MaterialsContextMenu({
   onDelete
 }: MaterialsContextMenuProps): JSX.Element {
   const menuRef = useRef<HTMLDivElement>(null)
+  useViewportBounds(menuRef)
   const hasTarget = target !== null
   const t = useT()
   const activeCourseId = useMaterialsStore((state) => state.activeCourseId)

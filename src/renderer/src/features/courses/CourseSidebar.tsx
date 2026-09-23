@@ -1,3 +1,4 @@
+import { useViewportBounds } from '../../lib/useViewportBounds'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { friendAttentionCount as countFriendAttention } from '../../../../shared/group/friendAttention'
 import type {
@@ -173,8 +174,11 @@ export function CourseSidebar(): JSX.Element {
     readCollapsedGroupIds
   )
   const contextMenuRef = useRef<HTMLDivElement>(null)
+  useViewportBounds(contextMenuRef)
   const addMenuRef = useRef<HTMLDivElement>(null)
+  useViewportBounds(addMenuRef)
   const groupContextMenuRef = useRef<HTMLDivElement>(null)
+  useViewportBounds(groupContextMenuRef)
 
   useEffect(() => {
     const refreshAfterSettingsChange = (): void => {

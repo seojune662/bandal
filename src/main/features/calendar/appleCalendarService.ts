@@ -1,3 +1,4 @@
+import { taskCalendarInterval } from '../../../shared/taskSchedule'
 import type { AppleCalendar, AppleCalendarEvent, AppleCalendarPreferences, AppleCalendarState, CalendarAuthorization } from '../../../shared/types/appleCalendar'
 import type { BoardTask } from '../../../shared/types/board'
 
@@ -16,7 +17,7 @@ interface NativeState {
 export interface CalendarNative {
   state(connect: boolean, includeCalendars: boolean): Promise<NativeState>
   events(input: { from: string; to: string; calendarIds: string[] }): Promise<AppleCalendarEvent[]>
-  export(input: { taskId: string; calendarId: string; title: string; notes: string; dueAt: string; allDay: boolean; eventId: string | null }): Promise<{ eventId: string; updated: boolean }>
+  export(input: { taskId: string; calendarId: string; title: string; notes: string; start: string; end: string; allDay: boolean; eventId: string | null }): Promise<{ eventId: string; updated: boolean }>
 }
 
 export function sanitizeCalendarConfig(raw: unknown): CalendarConfig {
@@ -103,10 +104,11 @@ export function createAppleCalendarService(deps: {
       const native = await requireConnection()
       const task = deps.task(taskId)
       if (!task) throw new Error('일정을 찾을 수 없습니다. 삭제된 일정인지 확인해주세요.')
-      if (!task.dueAt) throw new Error('일정에 날짜를 먼저 지정해주세요.')
+      const interval = taskCalendarInterval(task)
+      if (!interval) throw new Error('일정에 날짜를 먼저 지정해주세요.')
       const calendarId = config.destinationCalendarId
       if (!calendarId || !native.calendars.some(c => c.id === calendarId && c.writable)) throw new Error('설정에서 일정을 보낼 캘린더를 선택해주세요.')
-      const result = await deps.native.export({ taskId, calendarId, title: task.title, notes: task.notes, dueAt: task.dueAt, allDay: task.allDay, eventId: config.exports[taskId] ?? null })
+      const result = await deps.native.export({ taskId, calendarId, title: task.title, notes: task.notes, ...interval, eventId: config.exports[taskId] ?? null })
       persist({ ...config, exports: { ...config.exports, [taskId]: result.eventId } })
       return result
     })

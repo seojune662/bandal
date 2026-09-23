@@ -1,3 +1,4 @@
+import { placeFixedMenu } from '../../lib/placeFixedMenu'
 import type { Ctx } from '@milkdown/ctx'
 import {
   createCodeBlockCommand,
@@ -345,8 +346,7 @@ export function createSlashMenuPlugin(
         menu.replaceChildren(...children)
 
         const coordinates = view.coordsAtPos(view.state.selection.from)
-        menu.style.left = `${coordinates.left}px`
-        menu.style.top = `${coordinates.bottom}px`
+        placeFixedMenu(menu, coordinates.left, coordinates.bottom)
       }
 
       const handleMouseDown = (event: MouseEvent): void => {
@@ -360,11 +360,14 @@ export function createSlashMenuPlugin(
         executeSlashItem(editorView, state, selected, run)
       }
 
+      const onResize = () => render(editorView)
+      window.addEventListener('resize', onResize)
       menu.addEventListener('mousedown', handleMouseDown)
       render(editorView)
       return {
         update: render,
         destroy: () => {
+          window.removeEventListener('resize', onResize)
           menu.removeEventListener('mousedown', handleMouseDown)
           menu.remove()
         }

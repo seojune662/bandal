@@ -1,3 +1,5 @@
+import { taskCalendarInterval } from '../src/shared/taskSchedule'
+import { localDateValue } from '../src/renderer/src/features/calendar/calendarDate'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../src/shared/ipc/contract'
 import type { PushChannel, PushPayload } from '../src/shared/ipc/events'
 import type { IpcAdapter } from '../src/renderer/src/lib/ipc'
@@ -111,11 +113,11 @@ const handlers: Handlers = {
   'links:remove': ({ id }) => { commit(next => { next.links = next.links.filter(l => l.id !== id) }); return ok },
   'link:sendHighlightToNote': input => { const path = input.noteRelPath ?? NOTE; const current = data.notes[key(input.courseId, path)]; writeNote(input.courseId, path, `${current?.markdown ?? '# 학습 노트\n'}\n> ${input.quote}\n\n[${input.page}쪽](bandal://material?path=${encodeURIComponent(input.relPath)}&page=${input.page})\n${input.comment ?? ''}\n`); return { relPath: path, created: !current } },
   'board:listTasks': input => data.tasks.filter(task => (input.courseId === undefined || task.courseId === input.courseId) && (input.includeDone !== false || task.status !== 'done')),
-  'board:createTask': input => { const task = { ...input, id: id(), notes: input.notes ?? '', status: input.status ?? 'todo' as const, kind: input.kind ?? 'task' as const, color: input.color ?? 'none' as const, dueAt: input.dueAt ?? null, allDay: input.allDay ?? true, sortOrder: data.tasks.length, createdAt: stamp(), updatedAt: stamp() }; commit(next => { next.tasks.push(task) }); emit('board:changed', { courseId: task.courseId }); return task },
+  'board:createTask': input => { const task = { ...input, id: id(), notes: input.notes ?? '', status: input.status ?? 'todo' as const, kind: input.kind ?? 'task' as const, color: input.color ?? 'none' as const, startAt: input.startAt ?? null, dueAt: input.dueAt ?? null, allDay: input.allDay ?? true, sortOrder: data.tasks.length, createdAt: stamp(), updatedAt: stamp() }; commit(next => { next.tasks.push(task) }); emit('board:changed', { courseId: task.courseId }); return task },
   'board:updateTask': input => { commit(next => { Object.assign(next.tasks.find(t => t.id === input.id)!, input, { updatedAt: stamp() }) }); const task = data.tasks.find(t => t.id === input.id)!; emit('board:changed', { courseId: task.courseId }); return task },
   'board:reorderTasks': ({ courseId, updates }) => { commit(next => { for (const update of updates) Object.assign(next.tasks.find(t => t.id === update.id)!, update) }); emit('board:changed', { courseId }); return data.tasks.filter(t => t.courseId === courseId) },
   'board:deleteTask': ({ id }) => { const task = data.tasks.find(t => t.id === id); commit(next => { next.tasks = next.tasks.filter(t => t.id !== id) }); emit('board:changed', { courseId: task?.courseId ?? null }); return ok },
-  'calendar:range': ({ from, to, courseId }) => data.tasks.filter(task => { const time = task.dueAt ? new Date(task.allDay ? `${task.dueAt}T00:00:00` : task.dueAt).getTime() : NaN; return (courseId === undefined || task.courseId === courseId) && time >= Date.parse(from) && time < Date.parse(to) }),
+  'calendar:range': ({ from, to, courseId }) => data.tasks.filter(task => { const range = taskCalendarInterval(task); if (!range) return false; const start = localDateValue(range.start).getTime(), end = localDateValue(range.end).getTime(); return (courseId === undefined || task.courseId === courseId) && start < Date.parse(to) && Math.max(end, start + 1) > Date.parse(from) }),
   'calendar:upcoming': () => [],
   'appleCalendar:state': () => ({ supported: false, connected: false, authorization: 'not-determined', calendars: [], selectedCalendarIds: [], destinationCalendarId: null }),
   'appleCalendar:events': () => [],

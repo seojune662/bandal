@@ -1,3 +1,4 @@
+import { useViewportBounds } from '../../lib/useViewportBounds'
 /**
  * 모든 워크스페이스 탭을 감싸는 자료 연결 레이어.
  *
@@ -390,6 +391,7 @@ function ConnectionsPanel({
   onClose: () => void
 }): JSX.Element {
   const panelRef = useRef<HTMLDivElement>(null)
+  useViewportBounds(panelRef)
 
   // 웹뷰 게스트가 포인터를 삼키지 않게 — LinkPickerDialog 와 같은 이유.
   useEffect(() => acquirePointerPassthrough(), [])

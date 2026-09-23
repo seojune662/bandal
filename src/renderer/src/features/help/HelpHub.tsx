@@ -1,3 +1,4 @@
+import { useViewportBounds } from '../../lib/useViewportBounds'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CHANGELOG_URL, DOCS_URL } from '../../../../shared/appLinks'
 import { formatChord, parseChord, SHORTCUT_SPECS } from '../../../../shared/keymap'
@@ -126,6 +127,7 @@ export function HelpHub(): JSX.Element {
   const locale = useLocale()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  useViewportBounds(menuRef)
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
   const progress = useMilestones((state) => state.progress)
   const refreshMilestones = useMilestones((state) => state.refresh)

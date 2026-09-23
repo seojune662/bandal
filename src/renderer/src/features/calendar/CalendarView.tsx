@@ -1,3 +1,5 @@
+import { TaskScheduleFields, useTaskSchedule } from './TaskScheduleFields'
+import { boardTasksByDay } from './boardTaskDays'
 import type { AppleCalendarEvent, AppleCalendarState } from '../../../../shared/types/appleCalendar'
 import { useUiStore } from '../../stores/uiStore'
 import { appleEventsByDay } from './appleCalendarDays'
@@ -10,10 +12,8 @@ import { invoke, onPush } from '../../lib/ipc'
 import { normalizeCourseColor } from '../courses/courseColors'
 import {
   calendarMonthGrid,
-  dueAtForLocalInput,
   localDateFromKey,
   localDateKey,
-  localTimeInput,
   taskIsOverdue
 } from './calendarDate'
 import './calendar.css'
@@ -70,6 +70,7 @@ interface CalendarDraft {
   kind: TaskKind
   courseId: string | null
   dueAt: string
+  startAt: string | null
   allDay: boolean
   dateKey: string
 }
@@ -107,15 +108,20 @@ function fullDateTitle(key: string): string {
   }).format(new Date(year, month - 1, day))
 }
 
-function timeLabel(task: BoardTask): string | null {
+function timeLabel(task: BoardTask, dayKey?: string): string | null {
   if (task.allDay || task.dueAt === null) return null
-  const date = new Date(task.dueAt)
-  if (Number.isNaN(date.getTime())) return null
-  return new Intl.DateTimeFormat('ko-KR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).format(date)
+  const end = new Date(task.dueAt)
+  if (Number.isNaN(end.getTime())) return null
+  const format = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+  if (!task.startAt) return format.format(end)
+  const start = new Date(task.startAt)
+  if (localDateKey(start) === localDateKey(end)) return `${format.format(start)}–${format.format(end)}`
+  if (dayKey) {
+    if (dayKey === localDateKey(start)) return `${format.format(start)}부터`
+    if (dayKey === localDateKey(end)) return `${format.format(end)}까지`
+    return '진행 중'
+  }
+  return `${fullDateTitle(localDateKey(start))} ${format.format(start)} – ${fullDateTitle(localDateKey(end))} ${format.format(end)}`
 }
 
 function courseFor(task: BoardTask, courses: readonly Course[]): Course | null {
@@ -136,29 +142,29 @@ function CalendarTaskForm({
   const [title, setTitle] = useState(task?.title ?? '')
   const [kind, setKind] = useState<TaskKind>(task?.kind ?? 'assignment')
   const [courseId, setCourseId] = useState(task?.courseId ?? defaultCourseId ?? '')
-  const [day, setDay] = useState(task?.dueAt == null ? dateKey : localDateKey(task.dueAt))
-  const [time, setTime] = useState(localTimeInput(task?.dueAt ?? null))
-  const [allDay, setAllDay] = useState(task?.allDay ?? true)
+  const schedule = useTaskSchedule(task, dateKey)
   const [error, setError] = useState<string | null>(null)
   const currentCourseMissing =
     courseId.length > 0 && !courses.some((course) => course.id === courseId)
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
-    if (title.trim().length === 0 || day.length === 0) {
+    if (title.trim().length === 0 || schedule.endDate.length === 0) {
       setError('제목과 날짜를 입력해주세요.')
       return
     }
     setError(null)
     try {
       const action = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('data-action') === 'export' && onExport ? onExport : onSubmit
+      const timing = schedule.value()
+      if (!timing.dueAt) throw new Error('날짜를 입력해주세요.')
       await action({
         title: title.trim(),
         kind,
         courseId: courseId.length === 0 ? null : courseId,
-        dueAt: dueAtForLocalInput(day, time, allDay),
-        allDay,
-        dateKey: day
+        ...timing,
+        dueAt: timing.dueAt,
+        dateKey: schedule.hasRange ? schedule.startDate : schedule.endDate
       })
     } catch (submitError) {
       setError(messageFor(submitError))
@@ -205,26 +211,7 @@ function CalendarTaskForm({
           ))}
         </select>
       </label>
-      <div className="calendar-form__row calendar-form__date-row">
-        <label className="board-field">
-          <span>날짜 <small>날짜만 고르면 하루 종일</small></span>
-          <input type="date" value={day} required onChange={(event) => setDay(event.target.value)} />
-        </label>
-        <label className="board-field">
-          <span>마감 시각</span>
-          <input
-            type="time"
-            value={time}
-            disabled={allDay}
-            required={!allDay}
-            onChange={(event) => setTime(event.target.value)}
-          />
-        </label>
-      </div>
-      <label className="calendar-form__all-day">
-        <input type="checkbox" checked={allDay} onChange={(event) => setAllDay(event.target.checked)} />
-        하루 종일
-      </label>
+      <TaskScheduleFields schedule={schedule} required />
       {error !== null && <p className="calendar-form__error" role="alert">{error}</p>}
       <footer className="calendar-form__actions">
         {onDelete !== undefined && (
@@ -243,7 +230,7 @@ function CalendarTaskForm({
           {busy ? '저장 중…' : '저장'}
         </button>
       </footer>
-      {onExport && <div className="calendar-export"><button type="submit" className="board-button" data-action="export" disabled={busy}>저장하고 Apple 캘린더로 보내기</button><small>다시 보내면 기존 일정이 갱신됩니다. 시간 지정 일정은 1시간으로 저장합니다.</small></div>}
+      {onExport && <div className="calendar-export"><button type="submit" className="board-button" data-action="export" disabled={busy}>저장하고 Apple 캘린더로 보내기</button><small>설정한 날짜와 시간을 그대로 보냅니다. 다시 보내면 기존 일정이 갱신됩니다.</small></div>}
     </form>
   )
 }
@@ -347,21 +334,7 @@ export function CalendarView({
     }
   }, [recentTaskId, tasks])
 
-  const tasksByDay = useMemo(() => {
-    const grouped = new Map<string, BoardTask[]>()
-    tasks.forEach((task) => {
-      if (task.dueAt === null) return
-      const key = localDateKey(task.dueAt)
-      const entries = grouped.get(key) ?? []
-      entries.push(task)
-      grouped.set(key, entries)
-    })
-    grouped.forEach((entries) => entries.sort((left, right) => {
-      if (left.allDay !== right.allDay) return left.allDay ? -1 : 1
-      return (left.dueAt ?? '').localeCompare(right.dueAt ?? '')
-    }))
-    return grouped
-  }, [tasks])
+  const tasksByDay = useMemo(() => boardTasksByDay(tasks, grid.days), [tasks, grid.days])
 
   const selectDay = (key: string): void => {
     setSelectedKey(key)
@@ -393,6 +366,7 @@ export function CalendarView({
         title: draft.title,
         status: 'todo',
         kind: draft.kind,
+        startAt: draft.startAt,
         dueAt: draft.dueAt,
         allDay: draft.allDay
       })
@@ -415,6 +389,7 @@ export function CalendarView({
         id: task.id,
         title: draft.title,
         kind: draft.kind,
+        startAt: draft.startAt,
         dueAt: draft.dueAt,
         allDay: draft.allDay,
         ...(draft.courseId === task.courseId ? {} : { courseId: draft.courseId })
@@ -534,14 +509,14 @@ export function CalendarView({
                         data-done={task.status === 'done' || undefined}
                         data-recent={recentTaskId === task.id || undefined}
                         data-course-color={course === null ? undefined : normalizeCourseColor(course.color)}
-                        title={`${KIND_LABELS[task.kind]} · ${task.title}`}
+                        title={`${KIND_LABELS[task.kind]} · ${task.title}${task.startAt && task.dueAt ? ` · ${fullDateTitle(localDateKey(task.startAt))} – ${fullDateTitle(localDateKey(task.dueAt))}` : ''}`}
                         onClick={() => { setSelectedKey(day.key); setAdding(false); setSelectedAppleId(null); setEditingId(task.id) }}
                       >
                         <span className="board-course-dot" aria-hidden="true" />
                         <span className="calendar-entry__kind">{KIND_LABELS[task.kind]}</span>
                         <span className="calendar-entry__title">{task.title}</span>
                         {taskIsOverdue(task) && <span className="calendar-entry__overdue">지남</span>}
-                        {timeLabel(task) !== null && <time>{timeLabel(task)}</time>}
+                        {timeLabel(task, day.key) !== null && <time>{timeLabel(task, day.key)}</time>}
                       </button>
                     )
                   })}

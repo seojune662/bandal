@@ -1,14 +1,13 @@
+import { useFocusTrap } from '../../components/useFocusTrap'
+import { createPortal } from 'react-dom'
+import { useViewportBounds } from '../../lib/useViewportBounds'
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import { TASK_COLORS } from '../../../../shared/types/board'
 import type { BoardTask, TaskColor, TaskKind } from '../../../../shared/types/board'
 import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
 import { normalizeCourseColor } from '../courses/courseColors'
-import {
-  dueAtForLocalInput,
-  localDateKey,
-  localTimeInput
-} from '../calendar/calendarDate'
+import { TaskScheduleFields, useTaskSchedule } from '../calendar/TaskScheduleFields'
 import './boardForms.css'
 
 const KIND_LABELS: Record<TaskKind, string> = {
@@ -33,6 +32,7 @@ export interface TaskEditorDraft {
   notes: string
   kind: TaskKind
   color: TaskColor
+  startAt: string | null
   dueAt: string | null
   allDay: boolean
   courseId: string | null
@@ -56,17 +56,13 @@ export function TaskEditorPopover({
   onDelete
 }: TaskEditorPopoverProps): JSX.Element {
   const popoverRef = useRef<HTMLDivElement>(null)
+  useViewportBounds(popoverRef)
+  useFocusTrap(popoverRef, { active: true, onEscape: onClose })
   const [title, setTitle] = useState(task.title)
   const [notes, setNotes] = useState(task.notes)
   const [kind, setKind] = useState<TaskKind>(task.kind)
   const [color, setColor] = useState<TaskColor>(task.color)
-  const [dueDate, setDueDate] = useState(() =>
-    task.dueAt === null ? '' : localDateKey(task.dueAt)
-  )
-  const [dueTime, setDueTime] = useState(() =>
-    localTimeInput(task.allDay ? null : task.dueAt)
-  )
-  const [hasTime, setHasTime] = useState(task.dueAt !== null && !task.allDay)
+  const schedule = useTaskSchedule(task)
   const [courseId, setCourseId] = useState(task.courseId ?? '')
   const [isSaving, setIsSaving] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -106,10 +102,7 @@ export function TaskEditorPopover({
         notes,
         kind,
         color,
-        dueAt: dueDate.length === 0
-          ? null
-          : dueAtForLocalInput(dueDate, dueTime, !hasTime),
-        allDay: dueDate.length > 0 && !hasTime,
+        ...schedule.value(),
         courseId: courseId.length === 0 ? null : courseId
       })
       onClose()
@@ -139,7 +132,7 @@ export function TaskEditorPopover({
   const currentCourseMissing =
     task.courseId !== null && !courses.some((course) => course.id === task.courseId)
 
-  return (
+  return createPortal(
     <div
       ref={popoverRef}
       className="board-editor"
@@ -225,41 +218,7 @@ export function TaskEditorPopover({
           />
         </label>
 
-        <div className="board-editor__deadline">
-          <label className="board-field" htmlFor="board-task-due-date">
-            <span>마감일 <small>날짜만 고르면 하루 종일</small></span>
-            <input
-              id="board-task-due-date"
-              type="date"
-              value={dueDate}
-              onChange={(event) => {
-                setDueDate(event.target.value)
-                if (event.target.value.length === 0) setHasTime(false)
-              }}
-            />
-          </label>
-          <label className="board-editor__time-toggle">
-            <input
-              type="checkbox"
-              checked={hasTime}
-              disabled={dueDate.length === 0}
-              onChange={(event) => setHasTime(event.target.checked)}
-            />
-            시간 지정
-          </label>
-          {hasTime && dueDate.length > 0 && (
-            <label className="board-field" htmlFor="board-task-due-time">
-              <span>마감 시각</span>
-              <input
-                id="board-task-due-time"
-                type="time"
-                value={dueTime}
-                required
-                onChange={(event) => setDueTime(event.target.value)}
-              />
-            </label>
-          )}
-        </div>
+        <TaskScheduleFields schedule={schedule} />
 
         <label className="board-field" htmlFor="board-task-course">
           <span>과목</span>
@@ -326,6 +285,7 @@ export function TaskEditorPopover({
           </div>
         </footer>
       </form>
-    </div>
+    </div>,
+    document.body
   )
 }

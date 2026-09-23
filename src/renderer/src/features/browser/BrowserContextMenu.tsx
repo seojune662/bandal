@@ -1,3 +1,4 @@
+import { useViewportBounds } from '../../lib/useViewportBounds'
 /**
  * Right-click inside a guest page.
  *
@@ -137,6 +138,7 @@ export function BrowserContextMenu({
   onClose: () => void
 }): JSX.Element {
   const menuRef = useRef<HTMLDivElement>(null)
+  useViewportBounds(menuRef)
 
   useEffect(() => {
     const release = acquirePointerPassthrough()

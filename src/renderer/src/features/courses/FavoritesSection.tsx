@@ -1,3 +1,4 @@
+import { useViewportBounds } from '../../lib/useViewportBounds'
 import { useEffect, useId, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import type { Favorite } from '../../../../shared/types/favorite'
@@ -64,6 +65,7 @@ export function FavoritesSection({
   const requestedScope = useRef<string | null>(null)
   const linkUrlRef = useRef<HTMLInputElement>(null)
   const renamePopoverRef = useRef<HTMLFormElement>(null)
+  useViewportBounds(renamePopoverRef)
   const renameTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {

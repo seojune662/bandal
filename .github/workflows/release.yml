@@ -317,7 +317,7 @@ jobs:
         if: matrix.os == 'macos-14'
         run: node scripts/verify-calendar-signing.mjs release/mac*/Bandal.app
 
-      - name: Verify native PDF and PPTX image clipboard in the packaged app
+      - name: Verify clipboard, schedules and viewport menus in the packaged app
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
@@ -330,6 +330,7 @@ jobs:
             export BANDAL_E2E_EXECUTABLE="$PWD/release/win-unpacked/Bandal.exe"
           fi
           pnpm exec playwright test -c e2e pageImageCopy.spec.ts interactionStability.spec.ts --grep 'page image clipboard|copies the clicked slide'
+          pnpm exec playwright test -c e2e taskSchedule.spec.ts viewportMenus.spec.ts appleCalendar.spec.ts
 
       - name: Save clipboard test traces on failure
         if: failure()

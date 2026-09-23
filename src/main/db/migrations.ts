@@ -1048,6 +1048,16 @@ export const migrations: Migration[] = [
         db.exec('ALTER TABLE agent_sessions ADD COLUMN effort TEXT')
       }
     }
+  },
+  {
+    version: 34,
+    name: 'board-task-schedule-range',
+    up: (db) => {
+      const columns = db.prepare('PRAGMA table_info(board_tasks)').all() as { name: string }[]
+      if (!columns.some((column) => column.name === 'start_at')) {
+        db.exec('ALTER TABLE board_tasks ADD COLUMN start_at TEXT')
+      }
+    }
   }
 ]
 

@@ -1,3 +1,4 @@
+import { useViewportBounds } from '../../lib/useViewportBounds'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { PersonalBoard } from '../../../../shared/types/whiteboard'
 import { Icon } from '../../app/icons'
@@ -69,7 +70,9 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
   const [menu, setMenu] = useState<BoardMenuState | null>(null)
   const [renameDraft, setRenameDraft] = useState<BoardRenameState | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  useViewportBounds(menuRef)
   const renamePopoverRef = useRef<HTMLFormElement>(null)
+  useViewportBounds(renamePopoverRef)
   const activeCourseIdRef = useRef<string | null>(courseId)
   const renameInputId = useId()
 

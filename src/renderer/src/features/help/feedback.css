@@ -11,6 +11,9 @@
 }
 
 .help-feedback {
+  max-height: calc(100dvh - var(--space-8));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   width: min(100%, var(--dialog-width));
   padding: var(--space-5);
   color: var(--text-primary);

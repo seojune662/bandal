@@ -35,7 +35,9 @@ export interface BoardTask {
   kind: TaskKind
   /** Optional personal label color, independent of course/status colors. */
   color: TaskColor
-  /** `allDay`가 true면 시간대 무관 `YYYY-MM-DD`, false면 ISO instant. */
+  /** Optional range start; null means a single day or a deadline only. */
+  startAt: string | null
+  /** Range end/deadline. Inclusive YYYY-MM-DD for all-day, exclusive ISO end for timed ranges. */
   dueAt: string | null
   /** True when `dueAt` marks a whole day rather than a moment. */
   allDay: boolean
@@ -52,6 +54,7 @@ export interface CreateTaskInput {
   kind?: TaskKind
   color?: TaskColor
   dueAt?: string | null
+  startAt?: string | null
   allDay?: boolean
 }
 
@@ -63,6 +66,7 @@ export interface UpdateTaskInput {
   kind?: TaskKind
   color?: TaskColor
   dueAt?: string | null
+  startAt?: string | null
   allDay?: boolean
   sortOrder?: number
   /** Move the task to another course (null = global). Omit to keep. */

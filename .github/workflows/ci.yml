@@ -34,6 +34,10 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm deadcode
       - run: pnpm test
+      - name: Calendar boundaries in a DST timezone
+        run: pnpm exec vitest run tests/main/taskSchedule.test.ts tests/renderer/calendar/calendarDate.test.ts
+        env:
+          TZ: America/New_York
 
       # electron-vite build catches renderer-only breakage that tsc misses
       # (bad imports, missing assets). Cheap — about a second.
@@ -53,6 +57,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm exec playwright test -c e2e pageImageCopy.spec.ts interactionStability.spec.ts --grep "page image clipboard|copies the clicked slide"
+      - run: pnpm exec playwright test -c e2e taskSchedule.spec.ts viewportMenus.spec.ts appleCalendar.spec.ts
       - name: Save clipboard test traces on failure
         if: failure()
         uses: actions/upload-artifact@v7

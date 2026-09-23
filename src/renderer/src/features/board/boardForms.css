@@ -125,7 +125,10 @@
 
 .board-quick-add {
   display: grid;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   gap: var(--space-3);
   padding: var(--space-3);
   background: var(--bg-surface);
@@ -178,30 +181,6 @@
 
 .board-quick-add__actions {
   justify-content: flex-end;
-}
-
-.board-editor__deadline {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: var(--space-2);
-}
-
-.board-editor__deadline .board-field:last-child {
-  grid-column: 1 / -1;
-}
-
-.board-editor__time-toggle {
-  display: flex;
-  align-items: center;
-  min-height: var(--button-height);
-  gap: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-}
-
-.board-editor__time-toggle input {
-  accent-color: var(--accent);
 }
 
 @media (max-width: 38rem) {

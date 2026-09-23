@@ -1,3 +1,5 @@
+import { useViewportBounds } from '../../lib/useViewportBounds'
+import { createPortal } from 'react-dom'
 import {
   useCallback,
   useEffect,
@@ -194,7 +196,7 @@ function TaskCard({
             data-due-state={task.status === 'done' ? 'later' : deadlineState}
           >
             {deadlineLabel !== null && <strong>{deadlineLabel}</strong>}
-            <span>{formatDueDate(task.dueAt)}</span>
+            <span>{task.startAt && `${formatDueDate(task.startAt)} – `}{formatDueDate(task.dueAt)}</span>
             <span className="sr-only">
               {task.status !== 'done' && deadlineState === 'overdue'
                 ? '마감 지남'
@@ -229,6 +231,8 @@ function BoardSurface(): JSX.Element {
   const boardRef = useRef<HTMLElement>(null)
   const loadSequence = useRef(0)
   const contextMenuRef = useRef<HTMLDivElement>(null)
+  useViewportBounds(contextMenuRef)
+  useFocusTrap(contextMenuRef, { active: contextMenu !== null, onEscape: () => setContextMenu(null) })
 
   const loadTasks = useCallback(async (showLoading = true): Promise<void> => {
     const sequence = ++loadSequence.current
@@ -405,6 +409,7 @@ function BoardSurface(): JSX.Element {
         title: draft.title,
         notes: draft.notes,
         kind: draft.kind,
+        startAt: draft.startAt,
         dueAt: draft.dueAt,
         allDay: draft.allDay,
         // Only send courseId on an actual move — same-course saves keep the
@@ -683,7 +688,7 @@ function BoardSurface(): JSX.Element {
         })}
       </div>}
 
-      {view === 'board' && contextMenu !== null && contextTask !== null && (
+      {view === 'board' && contextMenu !== null && contextTask !== null && createPortal(
         <div
           ref={contextMenuRef}
           className="board-context-menu"
@@ -718,7 +723,7 @@ function BoardSurface(): JSX.Element {
           >
             <Icon name="trash" /> 삭제
           </button>
-        </div>
+        </div>, document.body
       )}
 
       {view === 'board' && editor !== null && editingTask !== null && (

@@ -88,6 +88,9 @@
 }
 
 .plugin-permission-dialog {
+  max-height: calc(100dvh - var(--space-8));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   width: min(100%, calc(var(--dialog-width) + var(--space-8)));
   overflow: hidden;
   color: var(--text-primary);

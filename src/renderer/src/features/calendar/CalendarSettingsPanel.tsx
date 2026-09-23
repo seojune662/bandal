@@ -67,7 +67,7 @@ export function CalendarSettingsPanel(): JSX.Element {
       <SettingsCard title={ko ? '반달 일정을 보낼 곳' : 'Where to send Bandal events'} description={ko ? '달력에서 과제·일정을 열고 “Apple 캘린더로 보내기”를 누르세요. 다시 보내면 기존 일정이 갱신됩니다. 자동 양방향 동기화는 하지 않습니다.' : 'Open a task in the calendar and choose “Send to Apple Calendar”. Sending it again updates the existing event. Changes do not sync automatically in both directions.'}>
         <div className="settings-card__body">
         <label className="apple-calendar-destination"><span>{ko ? '저장할 캘린더' : 'Destination calendar'}</span><select disabled={busy} value={state.destinationCalendarId ?? ''} onChange={e => void change(state.selectedCalendarIds, e.target.value || null)}><option value="">{ko ? '선택해주세요' : 'Choose a calendar'}</option>{state.destinationCalendarId && !state.calendars.some(c => c.id === state.destinationCalendarId && c.writable) && <option value={state.destinationCalendarId} disabled>{ko ? '이전 캘린더를 사용할 수 없습니다' : 'Previous calendar unavailable'}</option>}{state.calendars.filter(c => c.writable).map(c => <option key={c.id} value={c.id}>{c.title} · {c.source}</option>)}</select></label>
-        <p className="apple-calendar-hint">{ko ? '시간이 있는 일정은 1시간, 날짜만 있는 일정은 하루 종일로 저장합니다. 원본 과제를 삭제해도 보낸 일정은 유지됩니다.' : 'Timed events last one hour; date-only tasks become all-day events. Deleting a task keeps the exported event.'}</p>
+        <p className="apple-calendar-hint">{ko ? '마감 일정은 지정 시각에, 기간 일정은 설정한 시작·종료에 맞춰 저장합니다. 원본 과제를 삭제해도 보낸 일정은 유지됩니다.' : 'Deadlines keep their exact time; events keep their start and end dates. Deleting a task keeps the exported event.'}</p>
         </div>
       </SettingsCard>
     </>}

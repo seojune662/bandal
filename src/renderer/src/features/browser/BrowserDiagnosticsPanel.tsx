@@ -1,3 +1,4 @@
+import { useViewportBounds } from '../../lib/useViewportBounds'
 /**
  * 페이지 진단.
  *
@@ -42,6 +43,7 @@ export function BrowserDiagnosticsPanel({
 }): JSX.Element {
   const [, bump] = useState(0)
   const ref = useRef<HTMLDivElement>(null)
+  useViewportBounds(ref)
 
   useEffect(() => {
     const onUpdate = (): void => bump((n) => n + 1)

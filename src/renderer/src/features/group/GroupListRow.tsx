@@ -1,3 +1,4 @@
+import { useViewportBounds } from '../../lib/useViewportBounds'
 import {
   useCallback,
   useEffect,
@@ -49,6 +50,7 @@ export function GroupListRow({
   const itemRef = useRef<HTMLLIElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  useViewportBounds(menuRef)
   const menuId = useId()
 
   const closeMenu = useCallback((): void => {

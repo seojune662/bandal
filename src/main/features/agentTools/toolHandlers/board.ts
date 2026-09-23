@@ -46,6 +46,7 @@ export function boardTools(ctx: ToolContext) {
           ? null
           : stringField(input, 'dueAt')
         : undefined
+      const startAt = has(input, 'startAt') ? nullableStringField(input, 'startAt') : undefined
       const allDay = optionalBoolean(input, 'allDay')
 
       reserve('tasks', 1)
@@ -57,6 +58,7 @@ export function boardTools(ctx: ToolContext) {
           ...(notes !== undefined ? { notes } : {}),
           ...(status !== undefined ? { status } : {}),
           ...(kind !== undefined ? { kind } : {}),
+          ...(startAt !== undefined ? { startAt } : {}),
           ...(dueAt !== undefined ? { dueAt } : {}),
           ...(allDay !== undefined ? { allDay } : {})
         })
@@ -77,6 +79,7 @@ export function boardTools(ctx: ToolContext) {
       if (has(input, 'notes')) update.notes = stringField(input, 'notes')
       if (has(input, 'status')) update.status = stringField(input, 'status') as TaskStatus
       if (has(input, 'kind')) update.kind = stringField(input, 'kind') as TaskKind
+      if (has(input, 'startAt')) update.startAt = nullableStringField(input, 'startAt')
       if (has(input, 'dueAt')) {
         update.dueAt = input['dueAt'] === null ? null : stringField(input, 'dueAt')
       }
