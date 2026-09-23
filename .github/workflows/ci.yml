@@ -1,8 +1,8 @@
 # Fast checks on every push and PR.
 #
-# Deliberately Linux-only and build-free: this exists so a release tag never
-# discovers a broken typecheck 20 minutes into a notarized macOS build. The
-# packaging itself is exercised by release.yml.
+# Static checks run on Linux. Native clipboard checks also run on Windows so
+# platform rendering differences are caught before cutting a release tag.
+# Packaged macOS and Windows apps are checked again in release.yml.
 name: CI
 
 on:
@@ -38,3 +38,25 @@ jobs:
       # electron-vite build catches renderer-only breakage that tsc misses
       # (bad imports, missing assets). Cheap — about a second.
       - run: pnpm build
+
+  clipboard:
+    name: Windows image clipboard
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm exec playwright test -c e2e pageImageCopy.spec.ts interactionStability.spec.ts --grep "page image clipboard|copies the clicked slide"
+      - name: Save clipboard test traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-clipboard-test-results
+          path: e2e/test-results
+          if-no-files-found: ignore

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { PDFDocument, rgb } from 'pdf-lib'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 
-async function pixels(page: Page, png: string): Promise<{ corner: number[]; marker: number[]; highlight: number[]; image: number[]; textPixels: number }> {
+async function pixels(page: Page, png: string): Promise<{ corner: number[]; marker: number[]; highlight: number[]; image: number[]; textPixels: number; textBounds: number[] }> {
   return page.evaluate(async (base64) => {
     const image = new Image()
     image.src = `data:image/png;base64,${base64}`
@@ -16,8 +16,16 @@ async function pixels(page: Page, png: string): Promise<{ corner: number[]; mark
     const at = (x: number, y: number): number[] => [...ctx.getImageData(Math.floor(canvas.width * x), Math.floor(canvas.height * y), 1, 1).data]
     const text = ctx.getImageData(canvas.width * .1, canvas.height * .22, canvas.width * .35, canvas.height * .18).data
     let textPixels = 0
-    for (let i = 0; i < text.length; i += 4) if (text[i]! < 180 && text[i + 1]! < 180 && text[i + 2]! < 180) textPixels++
-    return { corner: at(.01, .01), marker: at(.9, .9), highlight: at(.3, .14), image: at(.65, .65), textPixels }
+    const textWidth = Math.floor(canvas.width * .35)
+    const textBounds = [textWidth, Math.floor(canvas.height * .18), -1, -1]
+    for (let i = 0; i < text.length; i += 4) {
+      if (text[i]! >= 180 || text[i + 1]! >= 180 || text[i + 2]! >= 180) continue
+      textPixels++
+      const x = (i / 4) % textWidth, y = Math.floor(i / 4 / textWidth)
+      textBounds[0] = Math.min(textBounds[0]!, x); textBounds[1] = Math.min(textBounds[1]!, y)
+      textBounds[2] = Math.max(textBounds[2]!, x); textBounds[3] = Math.max(textBounds[3]!, y)
+    }
+    return { corner: at(.01, .01), marker: at(.9, .9), highlight: at(.3, .14), image: at(.65, .65), textPixels, textBounds }
   }, png)
 }
 
@@ -107,6 +115,8 @@ test.describe('page image clipboard', () => {
     const result = await readClipboard()
     expect(result.size).toEqual(plain.size)
     annotated = result.png
+    writeFileSync(info.outputPath('pdf-with-ink.png'), Buffer.from(annotated, 'base64'))
+    writeFileSync(info.outputPath('pdf-original.png'), Buffer.from(original, 'base64'))
     const after = await pixels(page, annotated)
     expect(after.corner).toEqual(before.corner)
     expect(after.marker).toEqual(before.marker)
@@ -119,18 +129,26 @@ test.describe('page image clipboard', () => {
     await info.attach('pdf-original.png', { body: Buffer.from(original, 'base64'), contentType: 'image/png' })
   })
 
-  test('is independent of zoom, supports portrait pages, and caps extremely tall pages', async () => {
+  test('is independent of zoom, supports portrait pages, and caps extremely tall pages', async ({}, info) => {
     const { page, app } = bandal
     let second = await jump(2)
     await page.getByRole('button', { name: '확대', exact: true }).click()
     await page.getByRole('button', { name: '확대', exact: true }).click()
     second = await jump(2)
     expect((await copy(second, false)).png === original).toBe(true)
-    const zoomedInk = await pixels(page, (await copy(second, true)).png)
+    const zoomed = await copy(second, true)
+    writeFileSync(info.outputPath('pdf-zoomed-ink.png'), Buffer.from(zoomed.png, 'base64'))
+    const zoomedInk = await pixels(page, zoomed.png)
     const initialInk = await pixels(page, annotated)
     expect(zoomedInk.highlight).toEqual(initialInk.highlight)
     expect(zoomedInk.image).toEqual(initialInk.image)
-    expect(Math.abs(zoomedInk.textPixels - initialInk.textPixels)).toBeLessThan(initialInk.textPixels * .05)
+    // Font hinting can change the number of dark edge pixels across zoom/DPI,
+    // especially on Windows. Compare the exported text's actual placement and
+    // dimensions instead, allowing up to 3 output pixels for rasterization.
+    await info.attach('text-geometry.json', { body: JSON.stringify({ initialInk, zoomedInk }), contentType: 'application/json' })
+    console.log('Exported text geometry:', { initial: initialInk.textBounds, zoomed: zoomedInk.textBounds })
+    expect(zoomedInk.textPixels).toBeGreaterThan(500)
+    for (let i = 0; i < 4; i++) expect(Math.abs(zoomedInk.textBounds[i]! - initialInk.textBounds[i]!)).toBeLessThanOrEqual(3)
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((window) => !window.isDestroyed() && window.webContents.getURL().includes('index.html'))!.setSize(1100, 850))
     expect((await copy(await jump(2), false)).png === original).toBe(true)
     expect((await copy(await jump(3), false)).size).toEqual({ width: 1600, height: 2264 })
