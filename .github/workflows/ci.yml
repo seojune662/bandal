@@ -58,7 +58,7 @@ jobs:
       - run: pnpm build
       - run: pnpm exec playwright test -c e2e pageImageCopy.spec.ts interactionStability.spec.ts --grep "page image clipboard|copies the clicked slide"
       - run: pnpm exec playwright test -c e2e taskSchedule.spec.ts viewportMenus.spec.ts appleCalendar.spec.ts
-      - run: pnpm exec playwright test -c e2e coursePerformance.spec.ts
+      - run: pnpm exec playwright test -c e2e coursePerformance.spec.ts --repeat-each=2
       - name: Save clipboard test traces on failure
         if: failure()
         uses: actions/upload-artifact@v7

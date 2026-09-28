@@ -16,7 +16,14 @@ test('cold material scan yields to the main loop and persists an immediate snaps
       for (let f = 0; f < 100; f++) writeFileSync(join(dir, `note-${f}.md`), '# Test\n')
     }
     await page.evaluate(id => window.bandal.invoke('materials:createFolder', { courseId: id, dirRelPath: '', name: 'invalidate' }), course.id)
-    await app.evaluate(() => {
+    await app.evaluate(async () => {
+      const { Session } = (process as any).getBuiltinModule('inspector')
+      const session = new Session()
+      session.connect()
+      const post = (method: string): Promise<any> => new Promise((resolve, reject) => session.post(method, (error: Error | null, result: unknown) => error ? reject(error) : resolve(result)))
+      await post('Profiler.enable')
+      await post('Profiler.start')
+      ;(globalThis as any).__courseCpu = { session, post }
       const sample = { last: performance.now(), max: 0, timer: undefined as ReturnType<typeof setInterval> | undefined }
       sample.timer = setInterval(() => { const now = performance.now(); sample.max = Math.max(sample.max, now - sample.last - 10); sample.last = now }, 10)
       ;(globalThis as any).__courseTiming = sample
@@ -31,6 +38,18 @@ test('cold material scan yields to the main loop and persists an immediate snaps
       clearInterval(sample.timer)
       return sample.max as number
     })
+    const profile = await app.evaluate(async () => {
+      const { session, post } = (globalThis as any).__courseCpu
+      const { profile } = await post('Profiler.stop')
+      session.disconnect()
+      delete (globalThis as any).__courseCpu
+      return profile
+    })
+    await info.attach('main-process.cpuprofile', { body: JSON.stringify(profile), contentType: 'application/json' })
+    const sampleTime = new Map<number, number>()
+    for (let i = 0; i < profile.samples.length; i++) sampleTime.set(profile.samples[i], (sampleTime.get(profile.samples[i]) ?? 0) + profile.timeDeltas[i])
+    const hotFunctions = profile.nodes.map((node: any) => ({ name: node.callFrame.functionName, url: node.callFrame.url, line: node.callFrame.lineNumber, ms: (sampleTime.get(node.id) ?? 0) / 1000 })).sort((a: any, b: any) => b.ms - a.ms).slice(0, 15)
+    console.log('Main CPU samples:', hotFunctions)
     const snapshot = await page.evaluate(async id => {
       const start = performance.now()
       const result = await window.bandal.invoke('materials:snapshot', { courseId: id })
