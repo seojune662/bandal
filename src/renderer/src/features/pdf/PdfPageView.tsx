@@ -49,6 +49,7 @@ const PDF_PASTED_IMAGE_DIRECTORY = 'images'
 
 export interface PdfPageViewProps {
   pageNumber: number
+  onFirstRender?: () => void
   onContextMenu?: (event: React.MouseEvent<HTMLElement>) => void
   /** Rendered CSS width of the page in px. */
   width: number
@@ -394,6 +395,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
             renderAnnotationLayer={false}
             loading={<div className="pdf-page__placeholder" style={{ height }} />}
             error={<div className="pdf-page__placeholder" style={{ height }} />}
+            onRenderSuccess={() => props.onFirstRender?.()}
             onLoadSuccess={(page) => {
               const viewport = page.getViewport({ scale: 1 })
               if (viewport.width > 0) {

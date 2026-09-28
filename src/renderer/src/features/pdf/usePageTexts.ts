@@ -1,3 +1,4 @@
+import { useCourseActive } from '../workspace/courseActivity'
 /**
  * Lazily extracts page text (via the pdf.js document proxy, no rendering
  * required) for every page that carries annotations, so staleness can be
@@ -34,6 +35,7 @@ export function usePageTexts(
   annotatedPages: number[],
   indexTarget?: PageTextIndexTarget
 ): Map<number, string> {
+  const courseActive = useCourseActive()
   const [texts, setTexts] = useState<Map<number, string>>(new Map())
 
   // Reset the cache when the document itself changes.
@@ -44,7 +46,7 @@ export function usePageTexts(
   const pagesKey = annotatedPages.join(',')
 
   useEffect(() => {
-    if (pdf === null) return
+    if (pdf === null || !courseActive) return
     let cancelled = false
     const missing = annotatedPages.filter((page) => !texts.has(page))
     if (missing.length === 0) return
@@ -52,6 +54,8 @@ export function usePageTexts(
     void (async () => {
       for (const pageNumber of missing) {
         try {
+          await new Promise<void>(resolve => setTimeout(resolve, 32))
+          if (cancelled) return
           const page = await pdf.getPage(pageNumber)
           const content = await page.getTextContent()
           if (cancelled) return
@@ -82,7 +86,7 @@ export function usePageTexts(
     // texts intentionally omitted: re-run is driven by pages/pdf; the
     // in-effect `has` checks make repeats idempotent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdf, pagesKey, indexTarget?.courseId, indexTarget?.relPath])
+  }, [pdf, pagesKey, indexTarget?.courseId, indexTarget?.relPath, courseActive])
 
   return texts
 }

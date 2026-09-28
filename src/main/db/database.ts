@@ -30,7 +30,7 @@ export function getDatabase(): Database {
  * and applies pending migrations. Exported for reuse; prefer initDatabase
  * in app code.
  */
-export function openDatabase(filePath: string): Database {
+export function openDatabase(filePath: string, migrate = true): Database {
   // Lazy require: keeps module load side-effect free and defers the native
   // binding load until Electron is actually running.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -40,18 +40,18 @@ export function openDatabase(filePath: string): Database {
   const opened = new BetterSqlite3(filePath)
   opened.pragma('journal_mode = WAL')
   opened.pragma('foreign_keys = ON')
-  runMigrations(opened)
+  if (migrate) runMigrations(opened)
   return opened
 }
 
 /** Opens userData/bandal.db and runs migrations. Idempotent. */
-export function initDatabase(): void {
+export function initDatabase(migrate = true): void {
   if (db !== null) {
     return
   }
   const filePath = join(app.getPath('userData'), DB_FILE)
   try {
-    db = openDatabase(filePath)
+    db = openDatabase(filePath, migrate)
     console.log(`[db] opened ${filePath}`)
   } catch (error) {
     console.error(`[db] failed to open ${filePath}:`, error)

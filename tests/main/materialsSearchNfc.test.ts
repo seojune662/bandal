@@ -52,40 +52,40 @@ describe('materials search normalization', () => {
     expect(searchKey(NFC_NAME)).toBe(searchKey(NFD_NAME))
   })
 
-  test('a file written NFD is found by an NFC query', () => {
+  test('a file written NFD is found by an NFC query', async () => {
     writeFileSync(join(folder, NFD_NAME), 'x')
 
-    const hits = repo.search('c1', '과제')
+    const hits = (await repo.search('c1', '과제'))
     expect(hits.map((hit) => hit.name.normalize('NFC'))).toContain(NFC_NAME)
   })
 
-  test('a file written NFC is found by an NFD query', () => {
+  test('a file written NFC is found by an NFD query', async () => {
     writeFileSync(join(folder, NFC_NAME), 'x')
 
-    const hits = repo.search('c1', '과제'.normalize('NFD'))
+    const hits = (await repo.search('c1', '과제'.normalize('NFD')))
     expect(hits).toHaveLength(1)
   })
 
   test('the stored path keeps the filesystem spelling so the file still opens', async () => {
     writeFileSync(join(folder, NFD_NAME), 'hello')
 
-    const [hit] = repo.search('c1', '과제')
+    const [hit] = (await repo.search('c1', '과제'))
     expect(hit).toBeDefined()
     // Reading through the returned relPath must work — normalizing what we
     // persist would make the file findable and then unopenable.
     await expect(repo.readFile('c1', hit!.relPath)).resolves.toEqual({ encoding: 'base64', data: Buffer.from('hello').toString('base64') })
   })
 
-  test('nested Korean folders match too', () => {
+  test('nested Korean folders match too', async () => {
     mkdirSync(join(folder, '1주차'.normalize('NFD')))
     writeFileSync(join(folder, '1주차'.normalize('NFD'), NFD_NAME), 'x')
 
-    expect(repo.search('c1', '1주차')).toHaveLength(1)
+    expect((await repo.search('c1', '1주차'))).toHaveLength(1)
   })
 
-  test('ascii search is unaffected', () => {
+  test('ascii search is unaffected', async () => {
     writeFileSync(join(folder, 'Chap1.pdf'), 'x')
 
-    expect(repo.search('c1', 'chap')).toHaveLength(1)
+    expect((await repo.search('c1', 'chap'))).toHaveLength(1)
   })
 })

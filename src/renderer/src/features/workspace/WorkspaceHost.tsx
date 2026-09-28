@@ -1,3 +1,6 @@
+import { useAgentRuns } from '../browser/AgentRunBanner'
+import { CourseActivity } from './courseActivity'
+import { flushCourseNotes } from '../notes/noteSessionRegistry'
 /**
  * Dockview host for the tabbed workspace (center region of the shell).
  * Owns: dockview mounting, the custom tab/watermark/header chrome, the
@@ -5,7 +8,7 @@
  * course-switch hydration.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   DockviewReact,
   type DockviewReadyEvent,
@@ -22,7 +25,7 @@ import { Tooltip } from '../../components/Tooltip'
 import { useLocale, useT } from '../../i18n'
 import { flushLastActiveCoursePersist, useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
-import { useWorkspaceStore } from '../../stores/workspaceStore'
+import { useWorkspaceStore, retainedTabDescriptors } from '../../stores/workspaceStore'
 import { useFileDropTarget } from '../materials/useFileDropTarget'
 import { NewTabMenu } from './NewTabMenu'
 import { TabContextMenu } from './TabContextMenu'
@@ -322,69 +325,27 @@ function HeaderActions(_props: IDockviewHeaderActionsProps): JSX.Element {
   return <ToggleRightRail />
 }
 
-export function WorkspaceHost(): JSX.Element {
-  const courses = useCoursesStore((state) => state.courses)
-  const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
-  const course =
-    courses.find((entry) => entry.id === selectedCourseId) ?? null
-  const courseId = course?.id ?? null
-
-  const setActiveCourse = useWorkspaceStore((state) => state.setActiveCourse)
-  const isMenuOpen = useNewTabMenu((state) => state.isOpen)
-  const closeMenu = useNewTabMenu((state) => state.close)
+function CourseWorkspace({ courseId, active }: { courseId: string | null; active: boolean }): JSX.Element {
   const layoutSubscription = useRef<{ dispose: () => void } | null>(null)
-  const hostRef = useRef<HTMLDivElement>(null)
-  const layoutFrame = useRef<number | null>(null)
-  const flushLayout = (): void => {
-    if (layoutFrame.current === null) return
-    cancelAnimationFrame(layoutFrame.current)
-    layoutFrame.current = null
-    useWorkspaceStore.getState().notifyLayoutChanged()
-  }
-
-  useEffect(() => {
-    setActiveCourse(courseId)
-    closeMenu()
-  }, [courseId, setActiveCourse, closeMenu])
-
-  useEffect(() => {
-    const host = hostRef.current
-    if (host === null) return
-    const stopWheel = installTabStripWheelScrolling(host)
-    const stopDrag = installTabDragScrolling(host)
-    return () => { stopWheel(); stopDrag() }
-  }, [])
-
-  useEffect(() => {
-    const flush = (): void => {
-      flushLayout()
-      useWorkspaceStore.getState().flushPendingSave()
-      flushLastActiveCoursePersist()
-    }
-    window.addEventListener('beforeunload', flush)
-    return () => {
-      window.removeEventListener('beforeunload', flush)
-      flushLayout()
-      layoutSubscription.current?.dispose()
-      layoutSubscription.current = null
-      useWorkspaceStore.getState().detachApi()
-    }
-  }, [])
-
-  const onReady = (event: DockviewReadyEvent): void => {
+  const frame = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current)
     layoutSubscription.current?.dispose()
+    useWorkspaceStore.getState().detachCourseApi(courseId)
+  }, [courseId])
+  const onReady = (event: DockviewReadyEvent): void => {
+    useWorkspaceStore.getState().attachCourseApi(courseId, event.api)
     layoutSubscription.current = event.api.onDidLayoutChange(() => {
-      if (layoutFrame.current !== null) return
-      layoutFrame.current = requestAnimationFrame(() => {
-        layoutFrame.current = null
-        useWorkspaceStore.getState().notifyLayoutChanged()
+      if (frame.current !== null) return
+      frame.current = requestAnimationFrame(() => {
+        frame.current = null
+        const store = useWorkspaceStore.getState()
+        if (store.activeCourseId === courseId) store.notifyLayoutChanged()
       })
     })
-    useWorkspaceStore.getState().attachApi(event.api)
   }
-
-  return (
-    <div ref={hostRef} className="workspace-host" data-tour="tab-strip">
+  return <CourseActivity.Provider value={active}>
+    <div className="workspace-course" hidden={!active} aria-hidden={!active} data-workspace-course={courseId ?? ''}>
       <DockviewReact
         theme={bandalTheme}
         scrollbars="native"
@@ -396,7 +357,61 @@ export function WorkspaceHost(): JSX.Element {
         rightHeaderActionsComponent={HeaderActions}
         onReady={onReady}
       />
-      {isMenuOpen && course !== null && <NewTabMenu course={course} />}
     </div>
-  )
+  </CourseActivity.Provider>
+}
+
+export function WorkspaceHost(): JSX.Element {
+  const courses = useCoursesStore(state => state.courses)
+  const selectedCourseId = useCoursesStore(state => state.selectedCourseId)
+  const course = courses.find(entry => entry.id === selectedCourseId) ?? null
+  const courseId = course?.id ?? null
+  const [retained, setRetained] = useState<string[]>([])
+  const alive = retained.filter(id => courses.some(course => course.id === id))
+  const ids = courseId === null ? alive : [...alive.filter(id => id !== courseId), courseId]
+  const isMenuOpen = useNewTabMenu(state => state.isOpen)
+  const hostRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    useWorkspaceStore.getState().setActiveCourse(courseId)
+    useNewTabMenu.getState().close()
+  }, [courseId])
+
+  useEffect(() => {
+    let cancelled = false
+    setRetained(ids)
+    const trim = async (): Promise<void> => {
+      const keep = [...ids]
+      for (const candidate of ids) {
+        if (keep.length <= 3) break
+        const running = retainedTabDescriptors(candidate).some(tab => tab.kind === 'browser' && useAgentRuns.getState().byTab[tab.payload.tabId] !== undefined)
+        if (candidate === courseId || running || !await flushCourseNotes(candidate)) continue
+        if (cancelled) return
+        keep.splice(keep.indexOf(candidate), 1)
+      }
+      if (!cancelled && keep.length !== ids.length) setRetained(keep)
+    }
+    void trim()
+    return () => { cancelled = true }
+  }, [courseId, courses])
+
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    const stopWheel = installTabStripWheelScrolling(host)
+    const stopDrag = installTabDragScrolling(host)
+    const flush = (): void => {
+      useWorkspaceStore.getState().notifyLayoutChanged()
+      useWorkspaceStore.getState().flushPendingSave()
+      flushLastActiveCoursePersist()
+    }
+    window.addEventListener('beforeunload', flush)
+    return () => { stopWheel(); stopDrag(); window.removeEventListener('beforeunload', flush); flush() }
+  }, [])
+
+  return <div ref={hostRef} className="workspace-host" data-tour="tab-strip">
+    {[...ids].sort().map(id => <CourseWorkspace key={id} courseId={id} active={id === courseId} />)}
+    {courseId === null && <CourseWorkspace key="empty" courseId={null} active />}
+    {isMenuOpen && course !== null && <NewTabMenu course={course} />}
+  </div>
 }

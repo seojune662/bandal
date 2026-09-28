@@ -114,7 +114,7 @@ export interface AgentToolsDeps {
    */
   courseLinksRepo: Pick<CourseLinksRepo, 'list' | 'create' | 'update' | 'delete'>
   favoritesRepo: Pick<FavoritesRepo, 'list' | 'add' | 'rename' | 'softDelete'>
-  searchIndex: Pick<SearchIndex, 'query'>
+  searchIndex: { query: (...args: Parameters<SearchIndex['query']>) => ReturnType<SearchIndex['query']> | Promise<ReturnType<SearchIndex['query']>> }
   linkService: Pick<LinkService, 'sendHighlightToNote' | 'sendWebClipToNote'>
   notesRepo: Pick<NotesRepo, 'read' | 'write' | 'create'>
   boardRepo: Pick<BoardRepo, 'list' | 'create' | 'update' | 'softDelete'>

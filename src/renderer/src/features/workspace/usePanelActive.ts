@@ -1,3 +1,4 @@
+import { useCourseActive } from './courseActivity'
 import { useEffect, useState } from 'react'
 import type { IDockviewPanelProps } from 'dockview'
 
@@ -6,6 +7,7 @@ import type { IDockviewPanelProps } from 'dockview'
  * CanvasTab/WhiteboardTab 에 복제돼 있던 훅의 공용화 지점.
  */
 export function usePanelActive(api: IDockviewPanelProps['api']): boolean {
+  const courseActive = useCourseActive()
   const [active, setActive] = useState(() => api.isActive && api.isVisible)
 
   useEffect(() => {
@@ -19,5 +21,5 @@ export function usePanelActive(api: IDockviewPanelProps['api']): boolean {
     }
   }, [api])
 
-  return active
+  return courseActive && active
 }

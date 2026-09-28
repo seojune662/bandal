@@ -128,6 +128,7 @@ export const NOT_FOR_AGENT: Readonly<Record<string, string>> = {
     '페이지 스크롤 동기화 설정은 현재 열린 두 패널의 직접 조작 상태라 학생이 화면에서 선택한다.',
 
   // -- internal plumbing, not capabilities ----------------------------------
+  'materials:snapshot': '자료 목록을 즉시 복원하기 위한 UI 캐시. 에이전트는 list_materials로 완성된 목록을 읽는다.',
   'materials:watch': '파일 감시자 수명. 렌더러가 패널을 열고 닫으며 관리한다.',
   'materials:unwatch': '파일 감시자를 떼는 짝. 위와 같은 이유로 렌더러 소관이다.',
   'activity:record': '텔레메트리. 에이전트가 자기 활동을 위조할 자리가 아니다.',

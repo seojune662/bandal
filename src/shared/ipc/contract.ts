@@ -332,6 +332,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   }
 
   // -- materials ------------------------------------------------------------
+  'materials:snapshot': { req: { courseId: string }; res: { tree: MaterialNode[] | null } }
   'materials:tree': {
     req: { courseId: string }
     res: MaterialNode[]
@@ -1868,6 +1869,7 @@ export const IPC_CHANNELS = [
   'courseLinks:update',
   'courseLinks:delete',
   'shell:openExternal',
+  'materials:snapshot',
   'materials:tree',
   'materials:search',
   'materials:import',

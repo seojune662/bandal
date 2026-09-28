@@ -261,7 +261,7 @@ export function createPluginApi(deps: PluginApiDeps): PluginApiImpl {
     'notes.list': async (_pluginId, courseIdValue) => {
       const courseId = stringArg(courseIdValue, 'courseId')
       deps.courses.getById(courseId)
-      return flatten(deps.materials.tree(courseId))
+      return flatten(await deps.materials.tree(courseId))
         .filter((node) => node.kind === 'note')
         .map((node) => ({
           id: noteId({ courseId, relPath: node.relPath }),

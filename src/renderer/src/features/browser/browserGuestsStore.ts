@@ -1,3 +1,4 @@
+import { useAgentRuns } from './AgentRunBanner'
 /**
  * [M3-F] Store of live webview guests + their navigation state.
  *
@@ -247,7 +248,7 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
     const evicted = pickEvictions(
       grown.map((guest) => guest.tabId),
       MAX_LIVE_GUESTS,
-      (id) => id !== tabId && getBrowserAnchorRect(id) === null
+      (id) => id !== tabId && getBrowserAnchorRect(id) === null && useAgentRuns.getState().byTab[id] === undefined
     )
     const evictedSet = new Set(evicted)
     set({

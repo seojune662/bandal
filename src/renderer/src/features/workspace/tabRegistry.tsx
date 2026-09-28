@@ -1,3 +1,4 @@
+import { useHasBeenShown } from './useHasBeenShown'
 /**
  * Tab registry: single place mapping TabKind → panel component + metadata.
  *
@@ -147,14 +148,15 @@ export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
  * Plugin panels are deliberately direct guests: they cannot own material
  * links and must not inherit course-scoped queries or overlays.
  */
-export const dockviewComponents: Record<
-  string,
-  FunctionComponent<IDockviewPanelProps>
-> = Object.fromEntries(
-  Object.entries(tabRegistry).map(([kind, entry]) => [
-    kind,
-    kind === 'plugin-panel'
-      ? entry.component
-      : withMaterialSequence(entry.component)
+function visiblePanel(Component: DockPanel): DockPanel {
+  return function VisiblePanel(props) {
+    const shown = useHasBeenShown(props.api)
+    return shown ? <Component {...props} /> : <div className="workspace-panel-loading" />
+  }
+}
+
+export const dockviewComponents: Record<string, DockPanel> = Object.fromEntries(
+  Object.entries(tabRegistry).map(([kind, entry]) => [kind,
+    visiblePanel(kind === 'plugin-panel' ? entry.component : withMaterialSequence(entry.component))
   ])
 )

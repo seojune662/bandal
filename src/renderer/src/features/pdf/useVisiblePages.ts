@@ -1,3 +1,4 @@
+import { useCourseActive } from '../workspace/courseActivity'
 /**
  * Page virtualization for the PDF scroller. One IntersectionObserver
  * (rootMargin = one viewport in each direction) watches every page wrapper;
@@ -160,6 +161,9 @@ function setsEqual(a: Set<number>, b: Set<number>): boolean {
 export function useVisiblePages(
   scrollerRef: RefObject<HTMLElement>
 ): VisiblePagesApi {
+  const courseActive = useCourseActive()
+  const activeRef = useRef(courseActive)
+  activeRef.current = courseActive
   const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([1]))
   const observerRef = useRef<IntersectionObserver | null>(null)
   const elementsRef = useRef(new Map<number, HTMLElement>())
@@ -169,10 +173,12 @@ export function useVisiblePages(
 
   useEffect(() => {
     const scroller = scrollerRef.current
-    if (scroller === null) return
+    if (scroller === null || !courseActive) return
 
+    let observing = true
     const observer = new IntersectionObserver(
       (entries) => {
+        if (!observing || !activeRef.current || scroller.clientHeight === 0) return
         const intersecting = intersectingRef.current
         for (const entry of entries) {
           const page = pageOfElementRef.current.get(entry.target)
@@ -194,10 +200,11 @@ export function useVisiblePages(
       observer.observe(element)
     }
     return () => {
+      observing = false
       observer.disconnect()
       observerRef.current = null
     }
-  }, [scrollerRef])
+  }, [scrollerRef, courseActive])
 
   // Ref callbacks are cached per page so PdfPageView memo props stay stable
   // and React does not detach/re-attach refs on every parent render.

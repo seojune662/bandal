@@ -70,11 +70,11 @@ describe('context dossier', () => {
     return readFileSync(join(courseFolder, '.bandal', 'COURSE.md'), 'utf8')
   }
 
-  function indexMaterials(scanLimits?: {
+  async function indexMaterials(scanLimits?: {
     maxDepth: number
     maxEntries: number
-  }): void {
-    createMaterialsRepo({
+  }): Promise<void> {
+    await createMaterialsRepo({
       db: ctx.db,
       getCourseFolder: (id) => courses.getFolder(id),
       revealItem: () => undefined,
@@ -83,7 +83,7 @@ describe('context dossier', () => {
     }).tree(courseId)
   }
 
-  test('places third-party highlight quotes inside an explicit data-only boundary', () => {
+  test('places third-party highlight quotes inside an explicit data-only boundary', async () => {
     const annotations = createAnnotationsRepo(ctx.db)
     annotations.create({
       courseId,
@@ -114,7 +114,7 @@ describe('context dossier', () => {
     expect(markdown).toContain('\n---\n')
   })
 
-  test('caps highlights and reports omitted rows', () => {
+  test('caps highlights and reports omitted rows', async () => {
     const annotations = createAnnotationsRepo(ctx.db)
     for (let index = 1; index <= 41; index += 1) {
       annotations.create({
@@ -136,7 +136,7 @@ describe('context dossier', () => {
     expect(Buffer.byteLength(markdown, 'utf8')).toBeLessThanOrEqual(15 * 1024)
   })
 
-  test('injects whiteboards and material links only when their callbacks exist', () => {
+  test('injects whiteboards and material links only when their callbacks exist', async () => {
     writer().rebuild(courseId)
     expect(dossier()).not.toContain('## 화이트보드')
     expect(dossier()).not.toContain('## 자료 연결')
@@ -187,7 +187,7 @@ describe('context dossier', () => {
     }
   })
 
-  test('caps injected sections by byte budget and reports omitted entries', () => {
+  test('caps injected sections by byte budget and reports omitted entries', async () => {
     const boards = Array.from({ length: 80 }, (_, index) => ({
       title: `보드-${index}-${'긴제목'.repeat(60)}`,
       shapeCount: index
@@ -226,11 +226,11 @@ describe('context dossier', () => {
     expect(materialLinks).not.toContain('필기/159-')
   })
 
-  test('writes every context section plus the generated-directory guidance', () => {
+  test('writes every context section plus the generated-directory guidance', async () => {
     mkdirSync(join(courseFolder, 'notes'), { recursive: true })
     writeFileSync(join(courseFolder, 'lecture.pdf'), 'pdf')
     writeFileSync(join(courseFolder, 'notes', 'week1.md'), '# 연결 리스트\n본문')
-    indexMaterials()
+    await indexMaterials()
     activity.record({
       courseId,
       kind: 'note-edited',
@@ -285,9 +285,9 @@ describe('context dossier', () => {
     )
   })
 
-  test('reads the existing index without a second directory scan', () => {
+  test('reads the existing index without a second directory scan', async () => {
     writeFileSync(join(courseFolder, 'indexed.pdf'), 'pdf')
-    indexMaterials()
+    await indexMaterials()
     writeFileSync(join(courseFolder, 'not-indexed-yet.pdf'), 'pdf')
     filesystemScan.directoryReads.mockClear()
 
@@ -299,18 +299,18 @@ describe('context dossier', () => {
     expect(markdown).not.toContain('not-indexed-yet.pdf')
   })
 
-  test('writes the materials truncation signal into the dossier', () => {
+  test('writes the materials truncation signal into the dossier', async () => {
     for (let index = 0; index < 5; index += 1) {
       writeFileSync(join(courseFolder, `material-${index}.pdf`), 'pdf')
     }
-    indexMaterials({ maxDepth: 12, maxEntries: 3 })
+    await indexMaterials({ maxDepth: 12, maxEntries: 3 })
 
     writer().rebuild(courseId)
 
     expect(dossier()).toContain('일부만 포함됨')
   })
 
-  test('does not throw or recreate a missing course folder', () => {
+  test('does not throw or recreate a missing course folder', async () => {
     const missingFolder = join(ctx.dir, 'gone-course-folder')
     const contextWriter = createContextWriter({
       getCourseFolder: () => missingFolder,
@@ -326,7 +326,7 @@ describe('context dossier', () => {
     expect(existsSync(missingFolder)).toBe(false)
   })
 
-  test('does not throw when course-folder access fails with EACCES', () => {
+  test('does not throw when course-folder access fails with EACCES', async () => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const accessError = Object.assign(new Error('permission denied'), {
       code: 'EACCES'

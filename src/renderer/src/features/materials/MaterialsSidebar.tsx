@@ -1,3 +1,4 @@
+const materialScrollPositions = new Map<string, number>()
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Course } from '../../../../shared/types/course'
 import type { MaterialNode } from '../../../../shared/types/materials'
@@ -214,6 +215,15 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const [deletePending, setDeletePending] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const sidebarRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const id = course?.id
+    const body = sidebarRef.current?.querySelector<HTMLElement>('.materials-body')
+    if (!id || !body) return
+    const restore = requestAnimationFrame(() => { body.scrollTop = materialScrollPositions.get(id) ?? 0 })
+    const save = (): void => { materialScrollPositions.set(id, body.scrollTop) }
+    body.addEventListener('scroll', save, { passive: true })
+    return () => { cancelAnimationFrame(restore); body.removeEventListener('scroll', save) }
+  }, [course?.id])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const downloadPendingRef = useRef(false)
   const activeCourseIdRef = useRef<string | null>(course?.id ?? null)

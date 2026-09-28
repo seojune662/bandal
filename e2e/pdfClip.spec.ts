@@ -57,7 +57,7 @@ test.describe('pdf clip to whiteboard', () => {
     await page.waitForTimeout(2500)
 
     // A whiteboard opens even though none was open to drag onto...
-    await expect(page.locator('.ink-layer')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('.canvas-tab__ink-layer')).toBeVisible({ timeout: 15_000 })
     // ...and the page actually landed on it.
     await expect(page.locator('.ink-layer .ink-layer__clip-group')).toHaveCount(1, {
       timeout: 15_000

@@ -104,11 +104,11 @@ export function miscTools(ctx: ToolContext) {
       return { ok: true as const }
     },
 
-    search_course(input) {
+    async search_course(input) {
       const courseId = stringField(input, 'courseId', { nonEmpty: true })
       const query = stringField(input, 'query', { nonEmpty: true })
       const limit = optionalInteger(input, 'limit', 1)
-      return { hits: deps.searchIndex.query(courseId, query, limit) }
+      return { hits: await deps.searchIndex.query(courseId, query, limit) }
     },
 
     browser_scroll(input) {

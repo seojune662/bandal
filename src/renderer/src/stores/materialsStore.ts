@@ -1,3 +1,4 @@
+import { useCoursesStore } from './coursesStore'
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import type {
@@ -23,6 +24,8 @@ interface MaterialsState {
   toggleFolder: (relPath: string) => void
 }
 
+const courseTrees = new Map<string, { tree: MaterialNode[]; expandedPaths: Record<string, boolean> }>()
+let activeCacheKey: string | null = null
 let treeSequence = 0
 let searchSequence = 0
 
@@ -42,26 +45,40 @@ export const useMaterialsStore: ImmerStore<MaterialsState> = create<MaterialsSta
 
     loadTree: async (courseId, options = {}) => {
       const sequence = ++treeSequence
-      if (get().activeCourseId !== courseId) {
+      const cacheKey = `${courseId}:${useCoursesStore.getState().courses.find(course => course.id === courseId)?.folderPath ?? ''}`
+      const previous = get()
+      if (activeCacheKey !== null) courseTrees.set(activeCacheKey, { tree: previous.tree, expandedPaths: previous.expandedPaths })
+      const cached = courseTrees.get(cacheKey)
+      if (get().activeCourseId !== courseId || activeCacheKey !== cacheKey) {
+        activeCacheKey = cacheKey
+        searchSequence += 1
         set((state) => {
           state.activeCourseId = courseId
-          state.tree = []
+          state.tree = cached?.tree ?? []
           state.searchResults = []
-          state.expandedPaths = {}
+          state.isSearching = false
+          state.expandedPaths = cached?.expandedPaths ?? {}
         })
       }
       set((state) => {
-        if (options.silent !== true) state.isLoading = true
+        if (options.silent !== true && cached === undefined) state.isLoading = true
         state.error = null
       })
 
       try {
+        if (cached === undefined) {
+          const snapshot = await invoke('materials:snapshot', { courseId })
+          if (sequence !== treeSequence || get().activeCourseId !== courseId) return
+          if (snapshot.tree !== null) set(state => { state.tree = snapshot.tree!; state.isLoading = false })
+        }
         const tree = await invoke('materials:tree', { courseId })
         if (sequence !== treeSequence || get().activeCourseId !== courseId) return
         set((state) => {
           state.tree = tree
           state.isLoading = false
         })
+        courseTrees.set(cacheKey, { tree, expandedPaths: get().expandedPaths })
+        if (courseTrees.size > 16) courseTrees.delete(courseTrees.keys().next().value!)
       } catch (error) {
         if (sequence !== treeSequence || get().activeCourseId !== courseId) return
         set((state) => {

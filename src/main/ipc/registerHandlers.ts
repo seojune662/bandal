@@ -1,3 +1,7 @@
+import { setMaterialMediaHandler } from '../features/materials/mediaRegistration'
+import { traceIpc } from '../performanceTrace'
+import { createFolderAvailability } from '../features/courses/folderAvailability'
+import { createBackgroundClient } from '../background/client'
 import { createAppleCalendar } from '../features/calendar/appleCalendar'
 /**
  * Registers a handler for EVERY channel in IpcContract.
@@ -33,7 +37,6 @@ import {
   nativeImage,
   net,
   Notification,
-  protocol,
   powerMonitor,
   session,
   shell,
@@ -98,8 +101,7 @@ import {
   createMaterialsRepo,
   createMaterialsWatcher,
   createMediaProgressRepo,
-  createMediaProtocolHandler,
-  MEDIA_SCHEME
+  createMediaProtocolHandler
 } from '../features/materials'
 import { DRAG_ICON_PNG_BASE64 } from './dragIcon'
 import { createPdfViewStateRepo } from '../features/pdf/pdfViewStateRepo'
@@ -288,12 +290,13 @@ function handle<K extends IpcChannel>(
 ): void {
   registered.add(channel)
   ipcMain.handle(channel, async (_event, req: IpcRequest<K>) => {
+    const start = performance.now()
     try {
       return await fn(req)
     } catch (error) {
       console.error(`[ipc] ${channel} failed:`, error)
       throw error
-    }
+    } finally { traceIpc(channel, performance.now() - start) }
   })
 }
 
@@ -377,6 +380,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   )
   const coursesRepo = createCoursesRepo({
     db,
+    folderMissing: createFolderAvailability(() => broadcast('courses:changed', {})),
     getDataRoot: () => getSettings().dataRoot
   })
   const onMaterialPathChanged = (change: {
@@ -396,7 +400,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     materialsRepo.invalidateTree(change.courseId)
     broadcast('materials:changed', { courseId: change.courseId })
   }
+  const background = createBackgroundClient()
   const materialsRepo = createMaterialsRepo({
+    scan: (folder, limits) => background.request('scan', { folder, limits }),
     db,
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
     revealItem: (absPath) => shell.showItemInFolder(absPath),
@@ -410,7 +416,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     onPathChanged: onMaterialPathChanged
   })
   const recordings = createRecordingRepo(db, (id) => coursesRepo.getFolder(id))
-  recordings.recover()
   const speechModels = createModelManager(
     join(deps.userDataPath, 'speech-models'),
     (models) => broadcast('recordings:modelsChanged', models)
@@ -501,6 +506,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       // 브로드캐스트보다 먼저 캐시를 비운다 — 렌더러의 조용한 재조회가
       // 반드시 새 트리를 보게 하기 위한 순서다.
       materialsRepo.invalidateTree(courseId)
+      refreshSearch(courseId)
       broadcast('materials:changed', { courseId })
     }
   })
@@ -508,11 +514,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // [bandal-media] 동영상 스트리밍 프로토콜. 스킴 특권 등록은 index.ts 가
   // whenReady 전에 마쳤고, 핸들러는 materialsRepo 의 경로 가드를 재사용하므로
   // 여기(레포 생성 직후)에서 등록한다. registerHandlers 는 앱당 한 번 불린다.
-  protocol.handle(
-    MEDIA_SCHEME,
+  setMaterialMediaHandler(
     createMediaProtocolHandler({
       absolutePathFor: (courseId, relPath) =>
-        materialsRepo.absolutePathFor(courseId, relPath)
+        materialsRepo.absolutePathForAsync(courseId, relPath)
     })
   )
 
@@ -521,6 +526,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     if (recordingService.getActiveSession()?.courseId === courseId)
       recordingService.interrupt('과목이 닫혀 녹음을 중단했습니다. 저장된 음성은 과목 폴더에 남아 있습니다.')
     materialsWatcher.unwatch(courseId)
+    const watchedIndex = watchedCourses.indexOf(courseId)
+    if (watchedIndex >= 0) watchedCourses.splice(watchedIndex, 1)
     // Sessions are conversation-keyed now: close every conversation of the
     // course on all managers (only ones with messages can hold a warm CLI).
     for (const conversation of chatRepo.listConversations(courseId)) {
@@ -684,6 +691,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
 
   // -- materials ------------------------------------------------------------
+  handle('materials:snapshot', (req) => ({ tree: materialsRepo.snapshot(req.courseId) }))
   handle('materials:tree', (req) => materialsRepo.tree(req.courseId))
   handle('materials:search', (req) => materialsRepo.search(req.courseId, req.query))
   handle('materials:import', (req) => {
@@ -758,14 +766,21 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       data: dataBase64
     })
   })
+  const watchedCourses: string[] = []
   handle('materials:watch', (req) => {
+    const previous = watchedCourses.indexOf(req.courseId)
+    if (previous >= 0) watchedCourses.splice(previous, 1)
+    else materialsRepo.invalidateTree(req.courseId)
+    watchedCourses.push(req.courseId)
     materialsWatcher.watch(req.courseId)
+    while (watchedCourses.length > 3) materialsWatcher.unwatch(watchedCourses.shift()!)
+    refreshSearch(req.courseId)
     return OK
   })
-  handle('materials:unwatch', (req) => {
-    materialsWatcher.unwatch(req.courseId)
-    return OK
-  })
+  // Keep the last three folders watched, matching retained workspaces. This
+  // avoids rescanning a warm course and still observes external edits there.
+  handle('materials:unwatch', () => OK)
+
 
   // -- notes ----------------------------------------------------------------
   // 필기는 notesRepo 가 과목 폴더에 직접 쓰므로 자료 트리 캐시를 여기서
@@ -1671,7 +1686,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         courseGroupsRepo,
         courseLinksRepo,
         favoritesRepo,
-        searchIndex,
+        searchIndex: { query: (courseId, query, limit) => background.request('searchQuery', {
+          dbPath: db.name, courseId, folder: coursesRepo.getFolder(courseId), query, ...(limit === undefined ? {} : { limit }), fresh: true
+        }, 0) },
         linkService,
         appState: () => appStateSnapshot(),
         materialsRepo,
@@ -2195,6 +2212,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         })
         // watcher 도 곧 알아채지만, 즉시성을 위해 직접 무효화·브로드캐스트.
         materialsRepo.invalidateTree(courseId)
+        refreshSearch(courseId)
         broadcast('materials:changed', { courseId })
       }
     })
@@ -2781,11 +2799,26 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // The index is a rebuildable cache, not user data — same status as
   // materials_index — so it owns its own tables instead of a migration.
   const searchIndex = createSearchIndex(db, {
+    refreshOnQuery: false,
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
   })
-  handle('search:query', (req) => {
-    // Notes and text files are cheap to re-read; PDFs arrive from the renderer.
-    return { hits: searchIndex.query(req.courseId, req.query, req.limit) }
+  const searchRefreshedAt = new Map<string, number>()
+  const searchRefreshes = new Map<string, Promise<unknown>>()
+  const refreshSearch = (courseId: string): void => {
+    if (searchRefreshes.has(courseId) || Date.now() - (searchRefreshedAt.get(courseId) ?? 0) < 2000) return
+    const task = background.request('searchRefresh', {
+      dbPath: db.name, courseId, folder: coursesRepo.getFolder(courseId)
+    }, 2).then(() => { searchRefreshedAt.set(courseId, Date.now()); broadcast('search:changed', { courseId }) })
+      .catch(error => console.warn('[search] background refresh failed', error))
+      .finally(() => searchRefreshes.delete(courseId))
+    searchRefreshes.set(courseId, task)
+  }
+  handle('search:query', async (req) => {
+    const hits = await background.request('searchQuery', {
+      ...req, dbPath: db.name, folder: coursesRepo.getFolder(req.courseId)
+    }, 0)
+    refreshSearch(req.courseId)
+    return { hits }
   })
   handle('search:indexPdfPages', (req) => {
     searchIndex.indexPdfPages(req)

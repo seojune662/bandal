@@ -1,3 +1,4 @@
+import { useCourseActive } from './courseActivity'
 import { useEffect, useState } from 'react'
 import type { DockviewPanelApi } from 'dockview'
 
@@ -11,13 +12,14 @@ function isShown(api: DockviewPanelApi): boolean {
  * Latches once the panel is visible, including an unfocused split group.
  */
 export function useHasBeenShown(api: DockviewPanelApi): boolean {
-  const [hasBeenShown, setHasBeenShown] = useState(() => isShown(api))
+  const active = useCourseActive()
+  const [hasBeenShown, setHasBeenShown] = useState(() => active && isShown(api))
 
   useEffect(() => {
     if (hasBeenShown) return
 
     const update = (): void => {
-      if (isShown(api)) setHasBeenShown(true)
+      if (active && isShown(api)) setHasBeenShown(true)
     }
     const activeDisposable = api.onDidActiveChange(update)
     const visibleDisposable = api.onDidVisibilityChange(update)
@@ -29,7 +31,7 @@ export function useHasBeenShown(api: DockviewPanelApi): boolean {
       activeDisposable.dispose()
       visibleDisposable.dispose()
     }
-  }, [api, hasBeenShown])
+  }, [api, hasBeenShown, active])
 
   return hasBeenShown
 }

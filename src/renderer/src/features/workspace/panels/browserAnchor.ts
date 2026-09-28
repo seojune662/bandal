@@ -1,3 +1,4 @@
+import { useCourseActive } from '../courseActivity'
 /**
  * Heavy-pane decoupling prep (docs/orca-analysis.md §6).
  *
@@ -61,12 +62,15 @@ export function useBrowserAnchorRect(
   tabId: string,
   ref: RefObject<HTMLElement>
 ): void {
+  const courseActive = useCourseActive()
   useEffect(() => {
+    if (!courseActive) { publish(tabId, null); return }
     const element = ref.current
     if (tabId === '' || element === null) return
 
     const report = (): void => {
-      publish(tabId, measure(element))
+      const rect = measure(element)
+      publish(tabId, rect.width > 0 && rect.height > 0 ? rect : null)
     }
     report()
 
@@ -81,5 +85,5 @@ export function useBrowserAnchorRect(
       window.removeEventListener('resize', report)
       publish(tabId, null)
     }
-  }, [tabId, ref])
+  }, [tabId, ref, courseActive])
 }

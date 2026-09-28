@@ -229,6 +229,7 @@ export interface PushEvents {
    * missing feature unless we say so.
    */
   'agentTools:unavailable': { courseId: string; sessionId: string }
+  'search:changed': { courseId: string }
   'materials:changed': MaterialsChanged
   // -- picture-in-picture ---------------------------------------------------
   'pip:state': PipState

@@ -640,17 +640,23 @@ export function PageNoteWorkspace({
     [document.pages.length]
   )
 
+  const initialRestoreKey = useRef<string | null>(null)
   useLayoutEffect(() => {
-    const initialPage = Math.min(
-      pageNotePair?.initialPage ?? 1,
-      document.pages.length
-    )
+    const initialPage = Math.min(pageNotePair?.initialPage ?? 1, document.pages.length)
+    const key = `${pageNotePair?.pairId ?? ''}:${initialPage}`
+    if (initialRestoreKey.current === key) return
     const frame = requestAnimationFrame(() => {
-      restoreAnchor(initialPage, 0)
+      initialRestoreKey.current = key
+      // A user jump / peer scroll may already have arrived while the editor
+      // mounted. Never overwrite it with the initial page or echo page 1 back.
+      if (viewportAnchorRef.current !== null) return
+      const scroller = scrollerRef.current
+      if (!scroller) return
+      pageSyncScroll.current.apply(scroller, () => restoreAnchor(initialPage, 0))
       reportCurrentPage(initialPage)
     })
     return () => cancelAnimationFrame(frame)
-  }, [document.pages.length, pageNotePair?.initialPage, reportCurrentPage, restoreAnchor])
+  }, [document.pages.length, pageNotePair?.pairId, pageNotePair?.initialPage, reportCurrentPage, restoreAnchor])
 
   useEffect(() => {
     if (pageNotePair === null || !syncEnabled) return
@@ -1359,11 +1365,11 @@ function NoteSession({
     () =>
       registerOpenNoteSession({
         panelId: panelApi.id,
-        flush: () => flushRef.current(),
+        flush: () => { flushPendingEditorMarkdown(); return flushRef.current() },
         ref: () => noteRef.current,
         retarget: retargetNote
       }),
-    [panelApi, retargetNote]
+    [panelApi, retargetNote, flushPendingEditorMarkdown]
   )
 
   // Live sync channel with other panels showing the same file. Re-subscribes

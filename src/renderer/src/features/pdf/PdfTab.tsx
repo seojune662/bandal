@@ -201,6 +201,8 @@ function PdfViewer({
     invalidatePageOffsets
   } = useVisiblePages(scrollerRef)
 
+  const [firstPageRendered, setFirstPageRendered] = useState(false)
+  const markFirstRender = useCallback(() => setFirstPageRendered(true), [])
   const [pdfProxy, setPdfProxy] = useState<PDFDocumentProxy | null>(null)
   const copyIdentity = useMemo(() => ({ fileSource, pdfProxy }), [fileSource, pdfProxy])
   const pageImageCopy = usePageImageCopy(copyIdentity)
@@ -351,7 +353,7 @@ function PdfViewer({
     () => [...byPage.keys()].sort((a, b) => a - b),
     [byPage]
   )
-  const pageTexts = usePageTexts(pdfProxy, annotatedPages)
+  const pageTexts = usePageTexts(firstPageRendered ? pdfProxy : null, annotatedPages)
   const staleIds = useStaleAnnotationIds(annotations, pageTexts)
   const pageOfAnnotation = useMemo(() => {
     const map = new Map<string, number>()
@@ -996,6 +998,7 @@ function PdfViewer({
                       : null
                   return (
                     <PdfPageView
+                      onFirstRender={markFirstRender}
                       key={pageNumber}
                       pageNumber={pageNumber}
                       onContextMenu={(event) => pageImageCopy.openMenu(event, {

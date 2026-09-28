@@ -13,7 +13,6 @@
  */
 
 import { watch, type FSWatcher } from 'chokidar'
-import { existsSync } from 'node:fs'
 import { basename, relative, sep } from 'node:path'
 
 export const MATERIALS_WATCH_DEBOUNCE_MS = 300
@@ -78,13 +77,6 @@ export function createMaterialsWatcher(
         folder = deps.getCourseFolder(courseId)
       } catch (error) {
         console.warn(`[materials] cannot watch unknown course ${courseId}:`, error)
-        return
-      }
-      // A linked course folder can be gone (moved / unmounted). Skip rather
-      // than hold a watcher on a path chokidar will never see; the renderer
-      // re-watches once the course is re-linked.
-      if (!existsSync(folder)) {
-        console.warn(`[materials] course folder missing, not watching: ${folder}`)
         return
       }
       const watcher = watch(folder, {

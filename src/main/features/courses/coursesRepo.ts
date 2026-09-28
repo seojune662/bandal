@@ -66,6 +66,7 @@ export interface CoursesRepoDeps {
   db: Database
   /** Returns the current dataRoot (settings-backed in the app). */
   getDataRoot: () => string
+  folderMissing?: (folder: string) => boolean
 }
 
 interface CourseRow {
@@ -87,7 +88,7 @@ function toSource(value: string): CourseSource {
   return value === 'linked' ? 'linked' : 'managed'
 }
 
-function rowToCourse(row: CourseRow): Course {
+function rowToCourse(row: CourseRow, missing = folderState(row.folder_path) !== 'ok'): Course {
   return {
     id: row.id,
     name: row.name,
@@ -95,7 +96,7 @@ function rowToCourse(row: CourseRow): Course {
     color: row.color,
     folderPath: row.folder_path,
     source: toSource(row.source),
-    missing: folderState(row.folder_path) !== 'ok',
+    missing,
     archived: row.archived === 1,
     groupId: row.group_id ?? null,
     sortOrder: row.sort_order,
@@ -124,6 +125,7 @@ export function slugify(name: string): string {
 }
 
 export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
+  const toCourse = (row: CourseRow): Course => rowToCourse(row, deps.folderMissing?.(row.folder_path))
   const { db, getDataRoot } = deps
 
   function selectLive(courseId: string): CourseRow | undefined {
@@ -216,7 +218,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
          ORDER BY sort_order ASC, created_at ASC`
       )
       .all() as CourseRow[]
-    return rows.map(rowToCourse)
+    return rows.map(toCourse)
   }
 
   return {
@@ -284,7 +286,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
       if (existing !== undefined) {
         // Not an error: hand back the course that already owns the folder so
         // the caller can focus it. An archived one is revived first.
-        return { status: 'duplicate', course: rowToCourse(reviveArchived(existing)) }
+        return { status: 'duplicate', course: toCourse(reviveArchived(existing)) }
       }
 
       const requested = typeof input.name === 'string' ? input.name.trim() : ''
@@ -320,10 +322,10 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
 
       const owner = selectLiveByFolder(folderPath)
       if (owner !== undefined && owner.id !== row.id) {
-        return { status: 'duplicate', course: rowToCourse(reviveArchived(owner)) }
+        return { status: 'duplicate', course: toCourse(reviveArchived(owner)) }
       }
       if (owner !== undefined) {
-        return { status: 'ok', course: rowToCourse(row) }
+        return { status: 'ok', course: toCourse(row) }
       }
 
       const now = nowIso()
@@ -332,7 +334,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
       ).run(folderPath, now, row.id)
       return {
         status: 'ok',
-        course: rowToCourse({
+        course: toCourse({
           ...row,
           folder_path: folderPath,
           source: 'linked',
@@ -352,7 +354,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
         now,
         row.id
       )
-      return rowToCourse({ ...row, name, updated_at: now })
+      return toCourse({ ...row, name, updated_at: now })
     },
 
     setColor(input) {
@@ -364,7 +366,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
         now,
         row.id
       )
-      return rowToCourse({ ...row, color, updated_at: now })
+      return toCourse({ ...row, color, updated_at: now })
     },
 
     archive(input) {
@@ -378,7 +380,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
         now,
         row.id
       )
-      return rowToCourse({ ...row, archived: input.archived ? 1 : 0, updated_at: now })
+      return toCourse({ ...row, archived: input.archived ? 1 : 0, updated_at: now })
     },
 
     softDelete(input) {
@@ -532,7 +534,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
     },
 
     getById(courseId) {
-      return rowToCourse(getRowOrThrow(courseId))
+      return toCourse(getRowOrThrow(courseId))
     },
 
     getFolder(courseId) {

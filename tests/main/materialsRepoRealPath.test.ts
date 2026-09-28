@@ -52,8 +52,8 @@ describe('materialsRepo realpath boundary', () => {
     )
   })
 
-  test('tree scanning skips symlink directories instead of descending', () => {
-    expect(repo.tree(courseId).map((entry) => entry.relPath)).not.toContain(
+  test('tree scanning skips symlink directories instead of descending', async () => {
+    expect((await repo.tree(courseId)).map((entry) => entry.relPath)).not.toContain(
       'linked'
     )
   })

@@ -81,6 +81,7 @@ interface TextDocumentScan {
 }
 
 interface SearchIndexDeps {
+  refreshOnQuery?: boolean
   getCourseFolder: (courseId: string) => string
   readTextFile?: (path: string) => string
   logger?: Pick<Console, 'warn'>
@@ -89,6 +90,8 @@ interface SearchIndexDeps {
 export interface SearchIndex {
   /** Refreshes changed notes/text files for the course. */
   refreshTextFiles(courseId: string): void
+  /** Worker refresh releases the shared database write lock between batches. */
+  refreshInBackground(courseId: string): Promise<void>
   indexPdfPages(input: {
     courseId: string
     relPath: string
@@ -318,7 +321,7 @@ export function createSearchIndex(
     deps.readTextFile ?? ((path: string) => readFileSync(path, 'utf8'))
   const logger = deps.logger ?? console
 
-  function refreshTextFiles(courseId: string): void {
+  function* refreshTextFileBatches(courseId: string): Generator<void> {
     const id = requireId(courseId, 'courseId')
     const previousMetadata =
       textFileMetadataByCourse.get(id) ?? new Map<string, TextFileMetadata>()
@@ -329,17 +332,33 @@ export function createSearchIndex(
       logger
     )
 
-    if (scan.changed.length > 0 || scan.removed.length > 0) {
-      const refresh = db.transaction(() => {
-        for (const relPath of scan.removed) removeTextFile.run(id, relPath)
-        for (const document of scan.changed) {
+    for (let offset = 0; offset < scan.removed.length; offset += 100) {
+      db.transaction(() => {
+        for (const relPath of scan.removed.slice(offset, offset + 100)) removeTextFile.run(id, relPath)
+      })()
+      yield
+    }
+    for (let offset = 0; offset < scan.changed.length;) {
+      const batch: TextDocument[] = []
+      let chars = 0
+      while (offset < scan.changed.length && batch.length < 100 && chars < 256_000) {
+        const document = scan.changed[offset++]!
+        batch.push(document)
+        chars += document.body.length
+      }
+      db.transaction(() => {
+        for (const document of batch) {
           removeTextFile.run(id, document.relPath)
           insert.run(id, document.relPath, document.kind, null, document.body)
         }
-      })
-      refresh()
+      })()
+      yield
     }
     textFileMetadataByCourse.set(id, scan.metadata)
+  }
+
+  function refreshTextFiles(courseId: string): void {
+    for (const _batch of refreshTextFileBatches(courseId)) { /* synchronous API */ }
   }
 
   function indexPdfPages(input: {
@@ -384,7 +403,7 @@ export function createSearchIndex(
     replacePages()
   }
 
-  function prune(courseId: string): void {
+  function* pruneBatches(courseId: string): Generator<void> {
     const id = requireId(courseId, 'courseId')
     const root = deps.getCourseFolder(id)
     const rows = db
@@ -399,10 +418,25 @@ export function createSearchIndex(
     const remove = db.prepare(
       `DELETE FROM ${SEARCH_TABLE} WHERE course_id = ? AND rel_path = ?`
     )
-    const pruneRows = db.transaction(() => {
-      for (const relPath of stale) remove.run(id, relPath)
-    })
-    pruneRows()
+    for (let offset = 0; offset < stale.length; offset += 100) {
+      db.transaction(() => {
+        for (const relPath of stale.slice(offset, offset + 100)) remove.run(id, relPath)
+      })()
+      yield
+    }
+  }
+
+  function prune(courseId: string): void {
+    for (const _batch of pruneBatches(courseId)) { /* synchronous API */ }
+  }
+
+  async function refreshInBackground(courseId: string): Promise<void> {
+    for (const _batch of refreshTextFileBatches(courseId)) {
+      await new Promise<void>(resolve => setTimeout(resolve, 0))
+    }
+    for (const _batch of pruneBatches(courseId)) {
+      await new Promise<void>(resolve => setTimeout(resolve, 0))
+    }
   }
 
   function query(courseId: string, queryText: string, limit?: number): SearchHit[] {
@@ -415,8 +449,7 @@ export function createSearchIndex(
     // Text files are cheap and mutable outside Bandal, so every search gets a
     // fresh view. Pruning also removes cached PDF pages after an out-of-band
     // delete without ever reparsing a PDF in main.
-    refreshTextFiles(id)
-    prune(id)
+    if (deps.refreshOnQuery !== false) { refreshTextFiles(id); prune(id) }
 
     let rows: SearchRow[] = []
     if (needle.length >= 3) {
@@ -457,5 +490,5 @@ export function createSearchIndex(
       .slice(0, resolvedLimit)
   }
 
-  return { refreshTextFiles, indexPdfPages, query, prune }
+  return { refreshTextFiles, refreshInBackground, indexPdfPages, query, prune }
 }

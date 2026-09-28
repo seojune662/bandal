@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, useMemo, type CSSProperties } from 'react'
 import type {
   MaterialKind,
   MaterialNode,
@@ -202,6 +202,8 @@ function InlineNameEditor({
 }
 
 interface TreeNodeProps {
+  flat?: boolean
+  virtualIndex?: number
   courseId: string
   node: MaterialNode
   depth: number
@@ -226,6 +228,8 @@ interface TreeNodeProps {
 }
 
 function TreeNode({
+  flat = false,
+  virtualIndex,
   courseId,
   node,
   depth,
@@ -285,6 +289,7 @@ function TreeNode({
   return (
     <li
       role="treeitem"
+      data-material-index={virtualIndex}
       aria-level={depth + 1}
       aria-expanded={isDirectory ? expanded : undefined}
     >
@@ -500,7 +505,7 @@ function TreeNode({
           {rowContents}
         </button>
       )}
-      {isDirectory && expanded && node.children !== undefined && (
+      {!flat && isDirectory && expanded && node.children !== undefined && (
         <ul role="group">
           {node.children.map((child) => (
             <TreeNode
@@ -557,58 +562,78 @@ interface MaterialTreeProps {
   onUnsupportedDrop: (types: readonly string[]) => void
 }
 
-export function MaterialTree({
-  courseId,
-  nodes,
-  expandedPaths,
-  editingRelPath,
-  selectedRelPath,
-  pasteTargetDirRelPath,
-  dropTargetDirRelPath,
-  urlDropTargetDirRelPath,
-  downloadingDirRelPath,
-  onToggleFolder,
-  onSelect,
-  onContextMenu,
-  onCancelRename,
-  onRename,
-  onDropTargetChange,
-  onUrlDropTargetChange,
-  onMove,
-  onImportFiles,
-  onDownloadUrl,
-  onUnsupportedDrop
-}: MaterialTreeProps): JSX.Element {
-  return (
-    <ul className="material-tree" role="tree" aria-label="자료 파일 트리">
-      {nodes.map((node) => (
-        <TreeNode
-          key={node.relPath}
-          courseId={courseId}
-          node={node}
-          depth={0}
-          expandedPaths={expandedPaths}
-          editingRelPath={editingRelPath}
-          selectedRelPath={selectedRelPath}
-          pasteTargetDirRelPath={pasteTargetDirRelPath}
-          dropTargetDirRelPath={dropTargetDirRelPath}
-          urlDropTargetDirRelPath={urlDropTargetDirRelPath}
-          downloadingDirRelPath={downloadingDirRelPath}
-          onToggleFolder={onToggleFolder}
-          onSelect={onSelect}
-          onContextMenu={onContextMenu}
-          onCancelRename={onCancelRename}
-          onRename={onRename}
-          onDropTargetChange={onDropTargetChange}
-          onUrlDropTargetChange={onUrlDropTargetChange}
-          onMove={onMove}
-          onImportFiles={onImportFiles}
-          onDownloadUrl={onDownloadUrl}
-          onUnsupportedDrop={onUnsupportedDrop}
-        />
-      ))}
-    </ul>
-  )
+interface FlatMaterial { node: MaterialNode; depth: number }
+function flattenVisible(nodes: MaterialNode[], expanded: Record<string, boolean>, depth = 0): FlatMaterial[] {
+  const rows: FlatMaterial[] = []
+  for (const node of nodes) {
+    rows.push({ node, depth })
+    if (node.kind === 'dir' && expanded[node.relPath]) rows.push(...flattenVisible(node.children ?? [], expanded, depth + 1))
+  }
+  return rows
+}
+
+function VirtualMaterialTree({ rows, ...props }: MaterialTreeProps & { rows: FlatMaterial[] }): JSX.Element {
+  const root = useRef<HTMLUListElement>(null)
+  const [window, setWindow] = useState({ start: 0, end: 60, height: 32 })
+  const scrollToIndex = (index: number): void => {
+    const list = root.current, body = list?.closest<HTMLElement>('.materials-body')
+    if (!list || !body) return
+    const listTop = list.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop
+    body.scrollTop = listTop + index * window.height - body.clientHeight / 2
+    setWindow(current => ({ ...current, start: Math.max(0, index - 20), end: Math.min(rows.length, index + 40) }))
+    requestAnimationFrame(() => root.current?.querySelector<HTMLButtonElement>(`[data-material-index="${index}"] button`)?.focus())
+  }
+  useEffect(() => {
+    const list = root.current, body = list?.closest<HTMLElement>('.materials-body')
+    if (!list || !body) return
+    let frame: number | null = null
+    const update = (): void => {
+      if (frame !== null) return
+      frame = requestAnimationFrame(() => {
+        frame = null
+        const row = list.querySelector<HTMLElement>('.material-row')
+        const height = row?.getBoundingClientRect().height || 32
+        const top = Math.max(0, body.getBoundingClientRect().top - list.getBoundingClientRect().top)
+        const start = Math.max(0, Math.floor(top / height) - 12)
+        const end = Math.min(rows.length, Math.ceil((top + body.clientHeight) / height) + 12)
+        setWindow(current => current.start === start && current.end === end && current.height === height ? current : { start, end, height })
+      })
+    }
+    const observer = new ResizeObserver(update)
+    observer.observe(body)
+    body.addEventListener('scroll', update, { passive: true })
+    update()
+    return () => { if (frame !== null) cancelAnimationFrame(frame); observer.disconnect(); body.removeEventListener('scroll', update) }
+  }, [rows.length])
+  useEffect(() => {
+    if (!props.editingRelPath) return
+    const index = rows.findIndex(row => row.node.relPath === props.editingRelPath)
+    if (index >= 0 && (index < window.start || index >= window.end)) scrollToIndex(index)
+  }, [props.editingRelPath])
+  const start = Math.min(window.start, Math.max(0, rows.length - 1)), end = Math.max(start + 1, window.end)
+  return <ul ref={root} className="material-tree" data-total-rows={rows.length} role="tree" aria-label="자료 파일 트리"
+    onKeyDownCapture={event => {
+      if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || (event.target as HTMLElement).tagName !== 'BUTTON') return
+      const element = (event.target as HTMLElement).closest<HTMLElement>('[data-material-index]')
+      if (!element) return
+      const index = Number(element.dataset['materialIndex'])
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : index + (event.key === 'ArrowDown' ? 1 : -1)
+      if (next < 0 || next >= rows.length) return
+      event.preventDefault(); event.stopPropagation(); scrollToIndex(next)
+    }}>
+    <li role="presentation" aria-hidden style={{ height: start * window.height }} />
+    {rows.slice(start, end).map(({ node, depth }, index) =>
+      <TreeNode {...props} key={node.relPath} node={node} depth={depth} flat virtualIndex={start + index} />)}
+    <li role="presentation" aria-hidden style={{ height: Math.max(0, rows.length - end) * window.height }} />
+  </ul>
+}
+
+export function MaterialTree(props: MaterialTreeProps): JSX.Element {
+  const rows = useMemo(() => flattenVisible(props.nodes, props.expandedPaths), [props.nodes, props.expandedPaths])
+  if (rows.length > 200) return <VirtualMaterialTree {...props} rows={rows} />
+  return <ul className="material-tree" role="tree" aria-label="자료 파일 트리">
+    {props.nodes.map(node => <TreeNode {...props} key={node.relPath} node={node} depth={0} />)}
+  </ul>
 }
 
 interface MaterialSearchResultsProps {

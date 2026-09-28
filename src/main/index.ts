@@ -1,3 +1,6 @@
+import { registerEarlyMediaProtocol } from './features/materials/mediaRegistration'
+import { markStartup } from './performanceTrace'
+import { createBackgroundClient } from './background/client'
 import path, { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -131,7 +134,13 @@ if (!app.requestSingleInstanceLock()) {
     createMainWindow()
   })
 
-  void app.whenReady().then(() => {
+  let resolveStartup!: () => void
+  let rejectStartup!: (error: unknown) => void
+  const startup = new Promise<void>((resolve, reject) => { resolveStartup = resolve; rejectStartup = reject })
+  void startup.catch(() => undefined)
+  ipcMain.handle('startup:ready', () => startup)
+
+  void app.whenReady().then(async () => {
     app.setAppUserModelId('com.bandal.app')
     ensureRegularAppPresence()
 
@@ -142,11 +151,20 @@ if (!app.requestSingleInstanceLock()) {
     let menuKeybindings = JSON.stringify(initialSettings.keybindings)
     installApplicationMenu(resolveKeymap(initialSettings.keybindings))
 
-    // DB 초기화 실패는 치명적이다 — 여기서 던지면 아래 createMainWindow()가
-    // 실행되지 않아 "창 없는 앱"이 된다. 반드시 사용자에게 보이게 만든다.
+    // Paint the shell before migration/recovery, keeping the main loop free.
+    // The preload readiness barrier prevents data access until services exist.
     try {
-      initDatabase()
+      registerEarlyMediaProtocol()
+      const shellWindow = createMainWindow()
+      markStartup('window-created')
+      shellWindow.webContents.once('did-finish-load', () => markStartup('renderer-loaded'))
+      const initializer = createBackgroundClient()
+      try { await initializer.request('migrate', { dbPath: join(app.getPath('userData'), 'bandal.db') }, 0) }
+      finally { initializer.dispose() }
+      initDatabase(false)
+      markStartup('database-ready')
     } catch (error: unknown) {
+      rejectStartup(error)
       reportFatalStartupError('데이터베이스 초기화', error)
       return
     }
@@ -341,6 +359,8 @@ if (!app.requestSingleInstanceLock()) {
       return { ok: true }
     })
 
+    markStartup('services-ready')
+    resolveStartup()
     const window = createMainWindow()
     overlay.start()
     tray.refresh()
@@ -388,6 +408,7 @@ if (!app.requestSingleInstanceLock()) {
     }
     window.webContents.once('did-finish-load', attachDeepLinks)
     window.webContents.once('did-fail-load', attachDeepLinks)
+    if (!window.webContents.isLoadingMainFrame()) attachDeepLinks()
 
     app.on('activate', () => {
       const existing = getMainWindow()
@@ -401,6 +422,7 @@ if (!app.requestSingleInstanceLock()) {
   }).catch((error: unknown) => {
     // whenReady 체인의 나머지(메뉴 설치, 핸들러 등록, 창 생성)에서 던진 경우.
     // catch가 없으면 unhandled rejection으로 조용히 사라진다.
+    rejectStartup(error)
     reportFatalStartupError('앱 초기화', error)
   })
 

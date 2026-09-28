@@ -4,25 +4,25 @@
  */
 
 import {
-  cpSync, copyFileSync, existsSync, lstatSync, mkdirSync, opendirSync,
+  cpSync, copyFileSync, existsSync, lstatSync, mkdirSync,
   renameSync, statSync, unlinkSync,
   writeFileSync
 } from 'node:fs'
-import { readFile, stat } from 'node:fs/promises'
-import type { Dirent } from 'node:fs'
-import { basename, extname, isAbsolute, join, posix, sep } from 'node:path'
+import { readFile, stat, realpath } from 'node:fs/promises'
+import { basename, extname, isAbsolute, join, posix, sep, relative } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import type { ImportResult, MaterialFileContent, MaterialKind,
   MaterialNode, MaterialSearchHit } from '../../../shared/types/materials'
-import { materialKindForPath } from '../../../shared/materialKind'
+import { scanMaterialTree, type MaterialWalk, type ScanTruncation } from './scanMaterialTree'
 import { ConflictError, NotFoundError, ValidationError } from '../../db/errors'
 import { assertRealInside, nowIso, requireId, requireNonEmptyString,
   resolveInside } from '../../db/validate'
 
 export interface MaterialsRepo {
-  tree(courseId: string): MaterialNode[]
-  search(courseId: string, query: string): MaterialSearchHit[]
+  tree(courseId: string): Promise<MaterialNode[]>
+  snapshot(courseId: string): MaterialNode[] | null
+  search(courseId: string, query: string): Promise<MaterialSearchHit[]>
   /**
    * 캐시된 트리를 버린다. 저장소 자신의 변이는 내부에서 알아서 무효화하므로,
    * 밖에서(watcher, 에이전트의 직접 파일 쓰기 등) 폴더가 바뀌었을 때만
@@ -31,6 +31,7 @@ export interface MaterialsRepo {
   invalidateTree(courseId: string): void
   /** 경로 이탈 가드를 거친 절대 경로. 네이티브 파일 드래그(startDrag)용. */
   absolutePathFor(courseId: string, relPath: string): string
+  absolutePathForAsync(courseId: string, relPath: string): Promise<string>
   /** `dirRelPath` ''/생략 = 과목 폴더 루트. */
   import(courseId: string, paths: string[], dirRelPath?: string): ImportResult
   /** 파일/폴더를 다른 과목-상대 디렉터리로 옮긴다 ('' = 루트). */
@@ -73,6 +74,7 @@ export interface MaterialsRepoDeps {
   /** Moves an absolute path to the OS trash (electron shell.trashItem). */
   trashItem: (absPath: string) => Promise<void>
   /** Production uses the exported defaults; tests may lower them. */
+  scan?: typeof scanMaterialTree
   scanLimits?: MaterialsScanLimits
   onPathChanged?: (change: { courseId: string; fromRelPath: string; toRelPath: string; isDirectory: boolean }) => void
 }
@@ -110,7 +112,7 @@ export const MAX_WRITE_BYTES = 50 * 1024 * 1024
 export const MATERIAL_SCAN_MAX_DEPTH = 12
 /**
  * Twenty thousand directory entries is well beyond a normal course, but puts
- * a finite ceiling on synchronous main-process filesystem work.
+ * a finite ceiling on background filesystem work.
  */
 export const MATERIAL_SCAN_MAX_ENTRIES = 20_000
 
@@ -120,118 +122,7 @@ export const MATERIAL_INDEX_STATE_REL_PATH = '.bandal/__materials_index_state__'
 
 const TRUNCATED_BY_DEPTH = 1
 const TRUNCATED_BY_ENTRY_COUNT = 2
-
-type ScanTruncation = 'depth' | 'entries'
-
-interface WalkState {
-  entriesRead: number
-  files: MaterialNode[]
-  limits: MaterialsScanLimits
-  truncation: Set<ScanTruncation>
-}
-
-interface MaterialWalk {
-  nodes: MaterialNode[]
-  files: MaterialNode[]
-  truncation: Set<ScanTruncation>
-}
-
-export function kindForFile(fileName: string): MaterialKind {
-  return materialKindForPath(fileName)
-}
-
-function isHidden(name: string): boolean {
-  return name.startsWith('.')
-}
-
-function sortedEntries(absDir: string, state: WalkState): Dirent<string>[] {
-  if (state.truncation.has('entries')) return []
-
-  const directory = opendirSync(absDir)
-  const entries: Dirent<string>[] = []
-  try {
-    while (true) {
-      const entry = directory.readSync()
-      if (entry === null) break
-
-      // One look-ahead entry is necessary to distinguish exactly-at-limit
-      // from truncated. It is never stat'ed or returned.
-      if (state.entriesRead >= state.limits.maxEntries) {
-        state.truncation.add('entries')
-        break
-      }
-      state.entriesRead += 1
-      // Hidden and special entries still consume the scan budget: otherwise
-      // a folder full of them could bypass the main-thread work ceiling.
-      if (!isHidden(entry.name)) entries.push(entry)
-    }
-  } finally {
-    directory.closeSync()
-  }
-
-  return entries.sort((a, b) => {
-    if (a.isDirectory() !== b.isDirectory()) {
-      return a.isDirectory() ? -1 : 1
-    }
-    return a.name.localeCompare(b.name)
-  })
-}
-
-function walkDir(
-  absDir: string,
-  relDir: string,
-  depth: number,
-  state: WalkState
-): MaterialNode[] {
-  const entries = sortedEntries(absDir, state)
-  const nodes: MaterialNode[] = []
-  for (const entry of entries) {
-    const relPath = relDir === '' ? entry.name : posix.join(relDir, entry.name)
-    const absPath = join(absDir, entry.name)
-    if (entry.isDirectory()) {
-      let children: MaterialNode[] = []
-      if (depth >= state.limits.maxDepth) {
-        state.truncation.add('depth')
-      } else {
-        children = walkDir(absPath, relPath, depth + 1, state)
-      }
-      nodes.push({
-        relPath,
-        name: entry.name,
-        kind: 'dir',
-        children
-      })
-    } else if (entry.isFile()) {
-      const stat = statSync(absPath)
-      const node: MaterialNode = {
-        relPath,
-        name: entry.name,
-        kind: kindForFile(entry.name),
-        size: stat.size,
-        mtime: Math.round(stat.mtimeMs)
-      }
-      nodes.push(node)
-      state.files.push(node)
-    }
-    // Symlinks and other entry types are intentionally skipped.
-  }
-  return nodes
-}
-
-function scanMaterialTree(
-  folder: string,
-  limits: MaterialsScanLimits
-): MaterialWalk {
-  const state: WalkState = {
-    entriesRead: 0,
-    files: [],
-    limits,
-    truncation: new Set()
-  }
-  const nodes = walkDir(folder, '', 0, state)
-  return { nodes, files: state.files, truncation: state.truncation }
-}
-
+export { kindForFile } from './scanMaterialTree'
 function truncationNode(
   truncation: Set<ScanTruncation>,
   limits: MaterialsScanLimits
@@ -358,11 +249,17 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
     maxEntries: MATERIAL_SCAN_MAX_ENTRIES
   }
 
-  // [perf] 과목 전환마다 폴더 전체를 다시 걷는 동기 스캔이 메인 프로세스
-  // 멈춤(비치볼)의 주범이었다. 스캔 결과를 과목별로 캐시하고, 저장소 변이와
-  // invalidateTree 호출(watcher 경유)에서만 버린다. materials_index 재구축도
-  // 실제 스캔이 일어날 때만 함께 일어난다.
-  const treeCache = new Map<string, MaterialNode[]>()
+  const treeCache = new Map<string, { folder: string; nodes: MaterialNode[] }>()
+  const generations = new Map<string, number>()
+  const scans = new Map<string, Promise<MaterialNode[]>>()
+  db.exec(`CREATE TABLE IF NOT EXISTS material_tree_snapshots (
+    course_id TEXT PRIMARY KEY REFERENCES courses(id) ON DELETE CASCADE,
+    folder TEXT NOT NULL, tree TEXT NOT NULL
+  )`)
+  function invalidate(courseId: string): void {
+    treeCache.delete(courseId)
+    generations.set(courseId, (generations.get(courseId) ?? 0) + 1)
+  }
 
   function notifyPathChanged(courseId: string, fromRelPath: string, toRelPath: string, isDirectory: boolean): void {
     try { deps.onPathChanged?.({ courseId, fromRelPath, toRelPath, isDirectory }) }
@@ -378,45 +275,43 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
     return { id, folder }
   }
 
-  /** Rebuilds materials_index from an already completed tree scan. */
-  function rebuildIndex(courseId: string, scan: MaterialWalk): void {
+  /** Apply only changed cache rows in bounded transactions; never hold a
+   * write lock across an await or monopolize the main event loop. */
+  async function rebuildIndex(courseId: string, scan: MaterialWalk, current: () => boolean): Promise<void> {
     const now = nowIso()
-    const rebuild = db.transaction(() => {
-      db.prepare('DELETE FROM materials_index WHERE course_id = ?').run(courseId)
-      const insert = db.prepare(
-        `INSERT INTO materials_index
-           (id, course_id, rel_path, kind, size, mtime, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      const truncationFlags =
+    const existing = new Map((db.prepare('SELECT rel_path, kind, size, mtime FROM materials_index WHERE course_id = ?')
+      .all(courseId) as { rel_path: string; kind: string; size: number; mtime: number }[]).map(row => [row.rel_path, row]))
+    const files = [...scan.files, {
+      relPath: MATERIAL_INDEX_STATE_REL_PATH, kind: 'other', size:
         (scan.truncation.has('depth') ? TRUNCATED_BY_DEPTH : 0) |
-        (scan.truncation.has('entries') ? TRUNCATED_BY_ENTRY_COUNT : 0)
-      // A hidden cache-only row distinguishes an indexed empty course from a
-      // course that has never been scanned, and carries truncation to dossier.
-      insert.run(
-        randomUUID(),
-        courseId,
-        MATERIAL_INDEX_STATE_REL_PATH,
-        'other',
-        truncationFlags,
-        Date.now(),
-        now,
-        now
-      )
-      for (const file of scan.files) {
-        insert.run(
-          randomUUID(),
-          courseId,
-          file.relPath,
-          file.kind,
-          file.size ?? 0,
-          file.mtime ?? 0,
-          now,
-          now
-        )
-      }
-    })
-    rebuild()
+        (scan.truncation.has('entries') ? TRUNCATED_BY_ENTRY_COUNT : 0), mtime: Date.now()
+    }]
+    const upsert = db.prepare(`INSERT INTO materials_index
+      (id, course_id, rel_path, kind, size, mtime, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(course_id, rel_path) DO UPDATE SET kind=excluded.kind,
+        size=excluded.size, mtime=excluded.mtime, updated_at=excluded.updated_at, deleted_at=NULL`)
+    for (let offset = 0; offset < files.length; offset += 100) {
+      if (!current()) return
+      db.transaction(() => {
+        for (const file of files.slice(offset, offset + 100)) {
+          const old = existing.get(file.relPath)
+          existing.delete(file.relPath)
+          if (old?.kind === file.kind && old.size === file.size && old.mtime === file.mtime) continue
+          upsert.run(randomUUID(), courseId, file.relPath, file.kind, file.size ?? 0, file.mtime ?? 0, now, now)
+        }
+      })()
+      await new Promise<void>(resolve => setImmediate(resolve))
+    }
+    // A capped scan is not proof that an unvisited file was deleted.
+    if (scan.truncation.size > 0) return
+    const stale = [...existing.keys()]
+    const remove = db.prepare('DELETE FROM materials_index WHERE course_id = ? AND rel_path = ?')
+    for (let offset = 0; offset < stale.length; offset += 100) {
+      if (!current()) return
+      db.transaction(() => { for (const path of stale.slice(offset, offset + 100)) remove.run(courseId, path) })()
+      await new Promise<void>(resolve => setImmediate(resolve))
+    }
   }
 
   function resolveMaterialAbs(courseId: string, relPath: string): string {
@@ -433,52 +328,90 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
     return { abs, folder }
   }
 
-  /** 캐시 미스에만 디스크를 걷고 materials_index 를 재구축한다. */
-  function cachedTree(courseId: string, folder: string): MaterialNode[] {
+  async function cachedTree(courseId: string, folder: string): Promise<MaterialNode[]> {
     const cached = treeCache.get(courseId)
-    if (cached !== undefined) return cached
-    const scan = scanMaterialTree(folder, scanLimits)
-    rebuildIndex(courseId, scan)
-    if (scan.truncation.size > 0) {
-      scan.nodes.push(truncationNode(scan.truncation, scanLimits))
-    }
-    treeCache.set(courseId, scan.nodes)
-    return scan.nodes
+    if (cached?.folder === folder) return cached.nodes
+    const pending = scans.get(courseId)
+    if (pending) return pending
+    const generation = generations.get(courseId) ?? 0
+    const current = (): boolean => (generations.get(courseId) ?? 0) === generation && getCourseFolder(courseId) === folder
+    const task = (async () => {
+      let scan: MaterialWalk
+      try { scan = await (deps.scan ?? scanMaterialTree)(folder, scanLimits) }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        // A disappearing child must not replace the whole course with an empty tree.
+        try { await stat(folder); throw error } catch (rootError) {
+          if (rootError === error || (rootError as NodeJS.ErrnoException).code !== 'ENOENT') throw rootError
+        }
+        scan = { nodes: [], files: [], truncation: new Set() }
+      }
+      if (!current()) return null
+      await rebuildIndex(courseId, scan, current)
+      if (!current()) return null
+      if (scan.truncation.size > 0) scan.nodes.push(truncationNode(scan.truncation, scanLimits))
+      treeCache.set(courseId, { folder, nodes: scan.nodes })
+      if (treeCache.size > 16) treeCache.delete(treeCache.keys().next().value!)
+      db.prepare('INSERT OR REPLACE INTO material_tree_snapshots (course_id, folder, tree) VALUES (?, ?, ?)')
+        .run(courseId, folder, JSON.stringify(scan.nodes))
+      return scan.nodes
+    })().then(async result => {
+      scans.delete(courseId)
+      return result ?? cachedTree(courseId, getCourseFolder(courseId))
+    }, error => { scans.delete(courseId); throw error })
+    scans.set(courseId, task)
+    return task
+  }
+
+  async function absolutePathForAsync(courseId: string, relPath: string): Promise<string> {
+    const folder = getCourseFolder(requireId(courseId, 'courseId'))
+    const abs = resolveInside(folder, requireNonEmptyString(relPath, 'relPath'))
+    const [root, target] = await Promise.all([realpath(folder), realpath(abs)])
+    const rel = relative(root, target)
+    if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new ValidationError('path resolves outside the course folder')
+    return abs
   }
 
   return {
+    absolutePathForAsync,
     absolutePathFor(courseId, relPath) {
       return resolveMaterialAbs(courseId, relPath)
     },
 
-    invalidateTree(courseId) {
-      treeCache.delete(requireId(courseId, 'courseId'))
+    invalidateTree(courseId) { invalidate(requireId(courseId, 'courseId')) },
+
+    snapshot(courseId) {
+      const id = requireId(courseId, 'courseId'), folder = getCourseFolder(id)
+      const cached = treeCache.get(id)
+      if (cached?.folder === folder) return cached.nodes
+      const row = db.prepare('SELECT tree FROM material_tree_snapshots WHERE course_id = ? AND folder = ?').get(id, folder) as { tree: string } | undefined
+      try {
+        if (!row) return null
+        const value: unknown = JSON.parse(row.tree)
+        const valid = (nodes: unknown, depth = 0): nodes is MaterialNode[] =>
+          depth <= MATERIAL_SCAN_MAX_DEPTH + 1 && Array.isArray(nodes) && nodes.length <= MATERIAL_SCAN_MAX_ENTRIES + 1 && nodes.every(node =>
+            node !== null && typeof node === 'object' && typeof node.relPath === 'string' && typeof node.name === 'string' &&
+            typeof node.kind === 'string' && (node.kind !== 'dir' || valid(node.children ?? [], depth + 1)))
+        return valid(value) ? value : null
+      } catch { return null }
     },
 
-    tree(courseId) {
+    async tree(courseId) {
       const id = requireId(courseId, 'courseId')
       const folder = getCourseFolder(id)
-      if (!existsSync(folder)) {
-        // Folder was removed out-of-band; surface an empty tree, not a crash.
-        // 캐시도 함께 버린다 — 사라진 폴더의 옛 트리를 계속 보여주면 안 된다.
-        console.warn(`[materials] course folder missing on disk: ${folder}`)
-        treeCache.delete(id)
+      // Async existence check also detects removed roots on a warm cache.
+      try { await stat(folder) } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        invalidate(id)
         return []
       }
       return cachedTree(id, folder)
     },
 
-    search(courseId, query) {
+    async search(courseId, query) {
       const id = requireId(courseId, 'courseId')
-      const folder = getCourseFolder(id)
       const needle = searchKey(requireNonEmptyString(query, 'query').trim())
-      if (!existsSync(folder)) {
-        treeCache.delete(id)
-        return []
-      }
-      // 캐시가 차 있으면 materials_index 는 그 스캔과 일치한다 — 키 입력마다
-      // 디스크를 다시 걷지 않는다. 비어 있으면 여기서 한 번만 채운다.
-      cachedTree(id, folder)
+      await cachedTree(id, getCourseFolder(id))
 
       // Matching happens in JS, not in SQL, because SQLite's `instr` compares
       // bytes. macOS hands back decomposed (NFD) filenames from readdir while
@@ -563,7 +496,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           failed.push({ path: String(sourcePath), reason })
         }
       }
-      if (imported.length > 0) treeCache.delete(id)
+      if (imported.length > 0) invalidate(id)
       return { imported, failed }
     },
 
@@ -602,13 +535,13 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       assertRealInside(folder, destAbs)
       renameSync(sourceAbs, destAbs)
       const courseId = requireId(input.courseId, 'courseId')
-      treeCache.delete(courseId)
+      invalidate(courseId)
       notifyPathChanged(courseId, input.fromRelPath, relPath, sourceKind === 'dir')
       return { relPath }
     },
 
     async readFile(courseId, relPath) {
-      const { abs } = resolveMaterial(courseId, relPath)
+      const abs = await absolutePathForAsync(courseId, relPath)
       const info = await stat(abs).catch((error: NodeJS.ErrnoException) => {
         if (error.code === 'ENOENT') throw new NotFoundError('material', relPath)
         throw error
@@ -658,7 +591,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       assertRealInside(folder, destinationAbs)
       renameSync(sourceAbs, destinationAbs)
       const courseId = requireId(input.courseId, 'courseId')
-      treeCache.delete(courseId)
+      invalidate(courseId)
       notifyPathChanged(courseId, input.relPath, destinationRelPath, sourceKind === 'dir')
       return { relPath: destinationRelPath }
     },
@@ -668,7 +601,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       assertFileOrDirectory(abs, input.relPath)
       assertRealInside(folder, abs)
       await trashItem(abs)
-      treeCache.delete(requireId(input.courseId, 'courseId'))
+      invalidate(requireId(input.courseId, 'courseId'))
       return { ok: true }
     },
 
@@ -701,7 +634,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       } else {
         copyFileSync(sourceAbs, candidateAbs)
       }
-      treeCache.delete(requireId(input.courseId, 'courseId'))
+      invalidate(requireId(input.courseId, 'courseId'))
       return { relPath: candidateRelPath }
     },
 
@@ -723,7 +656,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       }
       assertRealInside(folder, abs)
       mkdirSync(abs)
-      treeCache.delete(requireId(input.courseId, 'courseId'))
+      invalidate(requireId(input.courseId, 'courseId'))
       return { relPath }
     },
 
@@ -761,7 +694,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       const bytes = decodeWriteData(input.encoding, input.data)
       assertRealInside(folder, abs)
       writeFileSync(abs, bytes, { flag: 'wx' })
-      treeCache.delete(requireId(input.courseId, 'courseId'))
+      invalidate(requireId(input.courseId, 'courseId'))
       return { relPath }
     },
 
@@ -807,7 +740,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         copyFileSync(sourcePath, abs)
         unlinkSync(sourcePath)
       }
-      treeCache.delete(requireId(input.courseId, 'courseId'))
+      invalidate(requireId(input.courseId, 'courseId'))
       return { relPath }
     }
   }

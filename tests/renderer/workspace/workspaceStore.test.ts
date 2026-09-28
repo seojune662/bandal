@@ -511,3 +511,37 @@ describe('debounced structural saves', () => {
     expect(savesFor('c1')).toHaveLength(1)
   })
 })
+
+test('retained courses reuse their own Dockview without clearing or hydrating again', async () => {
+  const first = new FakeDockview(), second = new FakeDockview()
+  const state = useWorkspaceStore.getState()
+  state.setActiveCourse('c1')
+  state.attachCourseApi('c1', first.asApi())
+  await settle()
+  first.json = singleLeafLayout([pdfA])
+  state.notifyLayoutChanged()
+  state.attachCourseApi('c2', second.asApi())
+  state.setActiveCourse('c2')
+  await settle()
+  const clears = first.clearCount
+  state.setActiveCourse('c1')
+  expect(useWorkspaceStore.getState().hydration).toBe('ready')
+  expect(first.clearCount).toBe(clears)
+  expect(useWorkspaceStore.getState().openTabs[tabPanelId(pdfA)]).toEqual(pdfA)
+  expect(invokeMock.mock.calls.filter(([channel]) => channel === 'layout:get')).toHaveLength(2)
+})
+
+test('a file selected during hydration opens after restore instead of being discarded', async () => {
+  let resolve!: (value: { layout: unknown }) => void
+  invokeMock.mockImplementation((channel: string) => channel === 'layout:get'
+    ? new Promise(r => { resolve = r }) : Promise.resolve({ ok: true }))
+  const dock = new FakeDockview(), state = useWorkspaceStore.getState()
+  state.setActiveCourse('c1')
+  state.attachCourseApi('c1', dock.asApi())
+  state.openTab(pdfB)
+  expect(dock.addPanelCalls).toHaveLength(0)
+  resolve({ layout: singleLeafLayout([pdfA]) })
+  await settle()
+  expect(dock.addPanelCalls).toHaveLength(1)
+  expect(dock.addPanelCalls[0]?.id).toBe(tabPanelId(pdfB))
+})

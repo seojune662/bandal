@@ -1,5 +1,5 @@
 /**
- * Workspace store: owns which course's layout is mounted in dockview, the
+ * Workspace store: owns the active and retained course Dockviews, the
  * open/close/activate tab API, and per-course layout persistence.
  *
  * Persistence design (see docs/orca-analysis.md §5):
@@ -14,7 +14,7 @@
  *    `layout:get` responses are discarded.
  *
  * The dockview `DockviewApi` is imperative and lives outside React state;
- * `WorkspaceHost` attaches it once ready.
+ * `WorkspaceHost` attaches each retained API; `api` points at the active one.
  */
 
 import { create } from 'zustand'
@@ -46,6 +46,8 @@ interface WorkspaceState {
   hydration: WorkspaceHydration
   /** Mirror of the descriptors currently open in dockview, by panel id. */
   openTabs: Record<string, TabDescriptor>
+  attachCourseApi: (courseId: string | null, api: DockviewApi) => void
+  detachCourseApi: (courseId: string | null) => void
   attachApi: (api: DockviewApi) => void
   detachApi: () => void
   /** Swap the whole layout: save current course, hydrate the target. */
@@ -115,6 +117,10 @@ interface ActiveSave {
 
 // Imperative, non-reactive internals.
 let api: DockviewApi | null = null
+let retainedMode = false
+const courseApis = new Map<string | null, DockviewApi>()
+const hydratedCourses = new Set<string>()
+const pendingOpens = new Map<string, (() => void)[]>()
 
 /**
  * ⌘⇧T stack. Bounded, and cleared on course switch — reopening a tab from a
@@ -162,6 +168,20 @@ function clearSaveTimer(): void {
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
+  const queueDuringHydration = (open: () => void): boolean => {
+    const { activeCourseId, hydration } = get()
+    if (activeCourseId === null || hydration !== 'loading') return false
+    const queued = pendingOpens.get(activeCourseId) ?? []
+    queued.push(open)
+    pendingOpens.set(activeCourseId, queued)
+    return true
+  }
+  const replayOpens = (courseId: string): void => {
+    const queued = pendingOpens.get(courseId) ?? []
+    pendingOpens.delete(courseId)
+    for (const open of queued) open()
+  }
+
   const saveIsPending = (save: PendingSave): boolean =>
     pendingSaves.includes(save)
 
@@ -309,6 +329,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     const live = api.toJSON()
     runtimeLayouts.set(courseId, live)
     lastStructuralKey = structuralKey(live)
+    hydratedCourses.add(courseId)
     set({ openTabs: tabsFromLayout(live), hydration: 'ready' })
 
     // Persist the cleaned document when validation dropped anything, so the
@@ -316,12 +337,36 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     if (validated !== null && validated.droppedPanelIds.length > 0) {
       scheduleSave(courseId, persistentLayout(live))
     }
+    replayOpens(courseId)
   }
 
   return {
     activeCourseId: null,
     hydration: 'idle',
     openTabs: {},
+
+    attachCourseApi: (courseId, nextApi) => {
+      retainedMode = true
+      courseApis.set(courseId, nextApi)
+      if (get().activeCourseId !== courseId) return
+      api = nextApi
+      if (courseId === null) set({ hydration: 'ready', openTabs: {} })
+      else void hydrate(courseId, ++switchSerial)
+    },
+
+    detachCourseApi: (courseId) => {
+      const outgoing = courseApis.get(courseId)
+      if (outgoing && courseId !== null && hydratedCourses.has(courseId)) {
+        const live = outgoing.toJSON()
+        runtimeLayouts.set(courseId, live)
+        replacePendingSave(courseId, persistentLayout(live))
+        flush()
+      }
+      courseApis.delete(courseId)
+      if (courseId !== null) hydratedCourses.delete(courseId)
+      if (api === outgoing) api = null
+      set({ openTabs: { ...get().openTabs } })
+    },
 
     attachApi: (nextApi) => {
       api = nextApi
@@ -358,6 +403,16 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         hydration: courseId === null ? 'ready' : 'loading'
       })
       lastStructuralKey = ''
+      if (retainedMode) {
+        api = courseApis.get(courseId) ?? null
+        if (api && courseId !== null && hydratedCourses.has(courseId)) {
+          const live = api.toJSON()
+          lastStructuralKey = structuralKey(live)
+          set({ openTabs: tabsFromLayout(live), hydration: 'ready' })
+          replayOpens(courseId)
+          return
+        }
+      }
       if (courseId === null) {
         clearDockview()
         return
@@ -366,6 +421,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     openTab: (descriptor, options) => {
+      if (queueDuringHydration(() => get().openTab(descriptor, options))) return
       if (api === null) return
       // newInstance: 같은 파일의 새 뷰를 하나 더 연다 (⌘클릭/분할 열기).
       // 복제 패널 id 규칙은 탭 복제와 동일 — validateLayout이 이미 수용한다.
@@ -424,6 +480,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     openPdfNotePair: (pdfDescriptor, noteDescriptor, connectionId, initialPage) => {
+      if (queueDuringHydration(() => get().openPdfNotePair(pdfDescriptor, noteDescriptor, connectionId, initialPage))) return
       if (
         api === null ||
         !isPageNoteSource(pdfDescriptor) ||
@@ -596,6 +653,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     discardPendingSave: (courseId) => {
+      pendingOpens.delete(courseId)
+      runtimeLayouts.delete(courseId)
+      hydratedCourses.delete(courseId)
       const previousLength = pendingSaves.length
       pendingSaves = pendingSaves.filter((save) => save.courseId !== courseId)
       if (pendingSaves.length !== previousLength && pendingSaves.length === 0) {
@@ -612,6 +672,10 @@ export function resetWorkspaceStoreForTests(): void {
     clearTimeout(activeSave.retryTimer)
   }
   api = null
+  retainedMode = false
+  courseApis.clear()
+  hydratedCourses.clear()
+  pendingOpens.clear()
   switchSerial = 0
   suppressLayoutEvents = false
   lastStructuralKey = ''
@@ -624,4 +688,15 @@ export function resetWorkspaceStoreForTests(): void {
     hydration: 'idle',
     openTabs: {}
   })
+}
+
+export function retainedTabDescriptors(courseId?: string): TabDescriptor[] {
+  const state = useWorkspaceStore.getState()
+  const descriptors = courseId === undefined || state.activeCourseId === courseId ? Object.values(state.openTabs) : []
+  for (const id of courseApis.keys()) {
+    if (id === null || id === state.activeCourseId || (courseId !== undefined && id !== courseId)) continue
+    const layout = runtimeLayouts.get(id)
+    if (layout) descriptors.push(...Object.values(tabsFromLayout(layout)))
+  }
+  return descriptors
 }

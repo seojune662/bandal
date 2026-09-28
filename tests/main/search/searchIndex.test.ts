@@ -5,6 +5,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { join } from 'node:path'
+import { createRequire } from 'node:module'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { ValidationError } from '../../../src/main/db/errors'
 import {
@@ -58,6 +59,29 @@ describe('course content search index', () => {
       .get() as { sql: string }
 
     expect(sql.sql).toContain("tokenize='trigram'")
+  })
+
+  test('background refresh releases the database between batches for foreground writes', async () => {
+    for (let i = 0; i < 250; i++) writeFileSync(join(courseFolder, `${i}.md`), '검색할 내용')
+    ctx.db.exec('CREATE TABLE foreground_probe (value INTEGER)')
+    const Sqlite = createRequire(import.meta.url)('better-sqlite3-node') as typeof import('better-sqlite3')
+    const foreground = new Sqlite(ctx.db.name, { timeout: 0 })
+    const count = (): number => (ctx.db.prepare('SELECT count(*) AS n FROM course_content_fts').get() as { n: number }).n
+    try {
+      const refresh = index.refreshInBackground('course-1')
+      expect(count()).toBeGreaterThan(0)
+      expect(count()).toBeLessThan(250)
+      foreground.prepare('INSERT INTO foreground_probe VALUES (1)').run()
+      await refresh
+      expect(count()).toBe(250)
+      for (let i = 0; i < 250; i++) unlinkSync(join(courseFolder, `${i}.md`))
+      const removal = index.refreshInBackground('course-1')
+      expect(count()).toBeGreaterThan(0)
+      expect(count()).toBeLessThan(250)
+      foreground.prepare('INSERT INTO foreground_probe VALUES (2)').run()
+      await removal
+      expect(count()).toBe(0)
+    } finally { foreground.close() }
   })
 
   test('finds an unsegmented Korean substring from NFD text using an NFC query', () => {

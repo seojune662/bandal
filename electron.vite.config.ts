@@ -47,6 +47,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
+          backgroundHost: resolve(__dirname, 'src/main/background/host.ts'),
           pluginHost: resolve(__dirname, 'src/main/pluginHost/index.ts'),
           speechHost: resolve(__dirname, 'src/main/features/recordings/speechHost.ts')
         }

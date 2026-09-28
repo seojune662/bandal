@@ -14,7 +14,7 @@ import { useEffect, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { invoke, onPush } from '../../lib/ipc'
 import { showToast, showToastWithAction } from '../../app/toast'
-import { useWorkspaceStore } from '../../stores/workspaceStore'
+import { useWorkspaceStore, retainedTabDescriptors } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { useNewTabMenu } from '../workspace/newTabMenuController'
 import { BrowserGuestView } from './BrowserGuestView'
@@ -40,7 +40,7 @@ function useGuestReaper(): void {
         // empty; only reap against a settled workspace.
         if (state.hydration !== 'ready') return
         const openBrowserTabs = new Set<string>()
-        for (const descriptor of Object.values(state.openTabs)) {
+        for (const descriptor of retainedTabDescriptors()) {
           if (descriptor.kind === 'browser') {
             openBrowserTabs.add(descriptor.payload.tabId)
           }

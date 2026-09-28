@@ -54,6 +54,7 @@ const PUSH_CHANNELS = [
   'chat:message',
   'chat:configurationChanged',
   'materials:changed',
+  'search:changed',
   // -- picture-in-picture ---------------------------------------------------
   'pip:state',
   'pip:error',
@@ -112,9 +113,13 @@ const _allPushChannelsListed: MissingPushChannel extends never ? true : never =
   true
 void _allPushChannelsListed
 
+// Registered before the first window. Buffer early calls until DB/services are ready.
+const servicesReady = ipcRenderer.invoke('startup:ready')
+void servicesReady.catch(() => undefined)
+
 const bridge: BandalBridge = {
   invoke(channel, req) {
-    return ipcRenderer.invoke(channel, req) as Promise<
+    return servicesReady.then(() => ipcRenderer.invoke(channel, req)) as Promise<
       IpcResponse<typeof channel>
     >
   },
@@ -145,6 +150,7 @@ const bridge: BandalBridge = {
     ipcRenderer.send('materials:startDrag', { courseId, relPath })
   },
   async openSettings() {
+    await servicesReady
     await ipcRenderer.invoke('window:openSettings')
   }
 }

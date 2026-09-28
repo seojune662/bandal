@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { readVisibleDocument } from '../../lib/documentWork'
+import { useCourseActive } from '../workspace/courseActivity'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import type { IDockviewPanelProps } from 'dockview'
 import type { MaterialFileContent } from '../../../../shared/types/materials'
 import { showToast } from '../../app/toast'
@@ -187,8 +189,13 @@ function FileLoader({
   relPath: string
 }): JSX.Element {
   const [state, setState] = useState<FileLoadState>({ status: 'loading' })
+  const courseActive = useCourseActive()
+  const loadedKey = useRef<string | null>(null)
 
   useEffect(() => {
+    const key = `${courseId}\0${relPath}`
+    if (!courseActive || loadedKey.current === key) return
+    const controller = new AbortController()
     let cancelled = false
     const viewerKind = viewerKindFor(relPath)
     setState({ status: 'loading' })
@@ -211,9 +218,9 @@ function FileLoader({
       }
     }
 
-    void invoke('materials:readFile', { courseId, relPath })
+    void readVisibleDocument(() => invoke('materials:readFile', { courseId, relPath }), controller.signal)
       .then((content) => {
-        if (!cancelled) setState({ status: 'ready', content, viewerKind })
+        if (!cancelled) { loadedKey.current = key; setState({ status: 'ready', content, viewerKind }) }
       })
       .catch(() => {
         if (!cancelled) {
@@ -226,8 +233,9 @@ function FileLoader({
 
     return () => {
       cancelled = true
+      controller.abort()
     }
-  }, [courseId, relPath])
+  }, [courseId, relPath, courseActive])
 
   if (viewerKindFor(relPath) === 'slides') return <PresentationLoader courseId={courseId} relPath={relPath} />
   if (viewerKindFor(relPath) === 'video') {
@@ -260,6 +268,7 @@ function FileLoader({
 
 export default function FileTab(props: IDockviewPanelProps): JSX.Element {
   useEffect(() => { props.api.setRenderer('always') }, [props.api])
+  const courseActive = useCourseActive()
   const [interactive, setInteractive] = useState(props.api.isActive && props.api.isVisible)
   useEffect(() => {
     const update = (): void => setInteractive(props.api.isActive && props.api.isVisible)
@@ -285,7 +294,7 @@ export default function FileTab(props: IDockviewPanelProps): JSX.Element {
   const { courseId, relPath } = candidate.payload
   const pair = isPdfPageNotePairContext(props.params['pageNotePair']) ? props.params['pageNotePair'] : null
   return (
-    <PresentationContext.Provider value={{ panelId: props.api.id, interactive, pair }}>
+    <PresentationContext.Provider value={{ panelId: props.api.id, interactive: interactive && courseActive, pair }}>
     <div className="workspace-panel file-panel" data-kind="file">
       <FileLoader
         key={`${courseId}:${relPath}`}
