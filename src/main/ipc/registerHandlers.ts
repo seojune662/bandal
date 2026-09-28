@@ -2,6 +2,7 @@ import { setMaterialMediaHandler } from '../features/materials/mediaRegistration
 import { traceIpc } from '../performanceTrace'
 import { createFolderAvailability } from '../features/courses/folderAvailability'
 import { createBackgroundClient } from '../background/client'
+import { startBackgroundCheckpoints } from '../db/backgroundCheckpoint'
 import { createAppleCalendar } from '../features/calendar/appleCalendar'
 /**
  * Registers a handler for EVERY channel in IpcContract.
@@ -400,9 +401,14 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     broadcast('materials:changed', { courseId: change.courseId })
   }
   const background = createBackgroundClient()
+  const checkpoints = startBackgroundCheckpoints(db,
+    () => background.request('checkpoint', { dbPath: db.name }, 3),
+    error => console.warn('[db] background checkpoint failed', error))
+  app.once('will-quit', () => checkpoints.dispose())
   // Derived search writes must never hold the user database's write lock.
   const searchCachePath = join(deps.userDataPath, 'search-cache.db')
   const materialsRepo = createMaterialsRepo({
+    onIndexBuilt: checkpoints.request,
     scan: (folder, limits) => background.request('scan', { folder, limits }),
     db,
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),

@@ -77,6 +77,7 @@ export interface MaterialsRepoDeps {
   /** Production uses the exported defaults; tests may lower them. */
   scan?: typeof scanMaterialTree
   scanLimits?: MaterialsScanLimits
+  onIndexBuilt?: () => void
   onPathChanged?: (change: { courseId: string; fromRelPath: string; toRelPath: string; isDirectory: boolean }) => void
 }
 
@@ -355,6 +356,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       if (treeCache.size > 16) treeCache.delete(treeCache.keys().next().value!)
       traceSyncWork('materials.snapshotWrite', () => db.prepare('INSERT OR REPLACE INTO material_tree_snapshots (course_id, folder, tree) VALUES (?, ?, ?)')
         .run(courseId, folder, JSON.stringify(scan.nodes)))
+      deps.onIndexBuilt?.()
       return scan.nodes
     })().then(async result => {
       scans.delete(courseId)

@@ -8,6 +8,11 @@ let db: Database | null = null
 let search: ReturnType<typeof createSearchIndex> | null = null
 const folders = new Map<string, string>()
 async function run<K extends keyof BackgroundTasks>(kind: K, input: BackgroundTasks[K]['input']): Promise<unknown> {
+  if (kind === 'checkpoint') {
+    const opened = openDatabase((input as BackgroundTasks['checkpoint']['input']).dbPath, false)
+    try { opened.pragma('wal_checkpoint(PASSIVE)') } finally { opened.close() }
+    return null
+  }
   if (kind === 'migrate') {
     const opened = openDatabase((input as BackgroundTasks['migrate']['input']).dbPath)
     try {
