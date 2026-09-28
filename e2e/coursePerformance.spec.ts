@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { createRequire } from 'node:module'
 import { PDFDocument } from 'pdf-lib'
 import { createCourse, launchBandal } from './helpers/launch'
 
@@ -35,8 +36,9 @@ test('cold material scan yields to the main loop and persists an immediate snaps
       const result = await window.bandal.invoke('materials:snapshot', { courseId: id })
       return { ms: performance.now() - start, roots: result.tree?.length }
     }, course.id)
-    await info.attach('cold-course-timing', { body: JSON.stringify({ scan, mainDelayMs, snapshot }), contentType: 'application/json' })
-    console.log('Cold course timing:', { scan, mainDelayMs, snapshot })
+    const mainWork = await app.evaluate(() => (globalThis as any).__bandalPerformance.work)
+    await info.attach('cold-course-timing', { body: JSON.stringify({ scan, mainDelayMs, snapshot, mainWork }), contentType: 'application/json' })
+    console.log('Cold course timing:', { scan, mainDelayMs, snapshot, mainWork })
     expect(scan.roots).toBe(101)
     expect(snapshot.roots).toBe(101)
     expect(mainDelayMs).toBeLessThan(200)
@@ -142,5 +144,26 @@ test('a flat folder renders a bounded list and keyboard navigation reaches the l
     await expect(page.locator('[data-material-path="note-1199.md"]')).toBeFocused()
     await page.keyboard.press('Home')
     await expect(first).toBeFocused()
+  } finally { await bandal.close() }
+})
+
+test('PDF search uses the background cache without writing the user database', async () => {
+  const bandal = await launchBandal()
+  try {
+    const { page } = bandal
+    const course = await page.evaluate(() => window.bandal.invoke('courses:create', { name: '검색 캐시', color: 'blue' }))
+    const pdf = await PDFDocument.create()
+    pdf.addPage().drawText('Isolated cache')
+    writeFileSync(join(course.folderPath, 'search.pdf'), await pdf.save())
+    await page.evaluate(id => window.bandal.invoke('search:indexPdfPages', {
+      courseId: id, relPath: 'search.pdf', pages: [{ page: 1, text: '백그라운드검색검증' }]
+    }), course.id)
+    const result = await page.evaluate(id => window.bandal.invoke('search:query', { courseId: id, query: '검색검증' }), course.id)
+    expect(result.hits).toEqual(expect.arrayContaining([expect.objectContaining({ relPath: 'search.pdf', page: 1 })]))
+    const Sqlite = createRequire(__filename)('better-sqlite3-node') as typeof import('better-sqlite3')
+    const db = new Sqlite(join(bandal.userDataDir, 'bandal.db'), { readonly: true })
+    try {
+      expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'course_content_fts'").get()).toBeUndefined()
+    } finally { db.close() }
   } finally { await bandal.close() }
 })

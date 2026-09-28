@@ -27,6 +27,10 @@ async function run<K extends keyof BackgroundTasks>(kind: K, input: BackgroundTa
   folders.set(req.courseId, req.folder)
   db ??= openDatabase(req.dbPath, false)
   search ??= createSearchIndex(db, { getCourseFolder: id => folders.get(id)!, refreshOnQuery: false })
+  if (kind === 'searchIndexPdf') {
+    search.indexPdfPages(input as BackgroundTasks['searchIndexPdf']['input'])
+    return null
+  }
   if (kind === 'searchRefresh') { await search.refreshInBackground(req.courseId); return null }
   if (req.fresh) await search.refreshInBackground(req.courseId)
   return search.query(req.courseId, req.query, req.limit)

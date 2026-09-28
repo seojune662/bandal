@@ -168,7 +168,6 @@ import {
   createWhiteboardService
 } from '../features/whiteboard'
 import { createBoardPdfExporter, createCanvasRepo } from '../features/canvas'
-import { createSearchIndex } from '../features/search'
 import { createInsights } from '../features/insights'
 import { createLinkService } from '../features/link'
 import { createLinkIndex } from '../features/links'
@@ -401,6 +400,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     broadcast('materials:changed', { courseId: change.courseId })
   }
   const background = createBackgroundClient()
+  // Derived search writes must never hold the user database's write lock.
+  const searchCachePath = join(deps.userDataPath, 'search-cache.db')
   const materialsRepo = createMaterialsRepo({
     scan: (folder, limits) => background.request('scan', { folder, limits }),
     db,
@@ -1687,7 +1688,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         courseLinksRepo,
         favoritesRepo,
         searchIndex: { query: (courseId, query, limit) => background.request('searchQuery', {
-          dbPath: db.name, courseId, folder: coursesRepo.getFolder(courseId), query, ...(limit === undefined ? {} : { limit }), fresh: true
+          dbPath: searchCachePath, courseId, folder: coursesRepo.getFolder(courseId), query, ...(limit === undefined ? {} : { limit }), fresh: true
         }, 0) },
         linkService,
         appState: () => appStateSnapshot(),
@@ -2796,18 +2797,14 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
 
   // -- full-text search + study gaps -----------------------------------------
-  // The index is a rebuildable cache, not user data — same status as
-  // materials_index — so it owns its own tables instead of a migration.
-  const searchIndex = createSearchIndex(db, {
-    refreshOnQuery: false,
-    getCourseFolder: (courseId) => coursesRepo.getFolder(courseId)
-  })
+  // All full-text cache reads/writes belong to the background process and a
+  // separate database, including pages already extracted by the renderer.
   const searchRefreshedAt = new Map<string, number>()
   const searchRefreshes = new Map<string, Promise<unknown>>()
   const refreshSearch = (courseId: string): void => {
     if (searchRefreshes.has(courseId) || Date.now() - (searchRefreshedAt.get(courseId) ?? 0) < 2000) return
     const task = background.request('searchRefresh', {
-      dbPath: db.name, courseId, folder: coursesRepo.getFolder(courseId)
+      dbPath: searchCachePath, courseId, folder: coursesRepo.getFolder(courseId)
     }, 2).then(() => { searchRefreshedAt.set(courseId, Date.now()); broadcast('search:changed', { courseId }) })
       .catch(error => console.warn('[search] background refresh failed', error))
       .finally(() => searchRefreshes.delete(courseId))
@@ -2815,13 +2812,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   }
   handle('search:query', async (req) => {
     const hits = await background.request('searchQuery', {
-      ...req, dbPath: db.name, folder: coursesRepo.getFolder(req.courseId)
+      ...req, dbPath: searchCachePath, folder: coursesRepo.getFolder(req.courseId)
     }, 0)
     refreshSearch(req.courseId)
     return { hits }
   })
-  handle('search:indexPdfPages', (req) => {
-    searchIndex.indexPdfPages(req)
+  handle('search:indexPdfPages', async (req) => {
+    await background.request('searchIndexPdf', { ...req, dbPath: searchCachePath, folder: coursesRepo.getFolder(req.courseId) }, 1)
     return OK
   })
 

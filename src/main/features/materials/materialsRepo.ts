@@ -11,6 +11,7 @@ import {
 import { readFile, stat, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, posix, sep, relative } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { traceSyncWork } from '../../performanceTrace'
 import type { Database } from 'better-sqlite3'
 import type { ImportResult, MaterialFileContent, MaterialKind,
   MaterialNode, MaterialSearchHit } from '../../../shared/types/materials'
@@ -293,14 +294,14 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         size=excluded.size, mtime=excluded.mtime, updated_at=excluded.updated_at, deleted_at=NULL`)
     for (let offset = 0; offset < files.length; offset += 100) {
       if (!current()) return
-      db.transaction(() => {
+      traceSyncWork('materials.indexBatch', () => db.transaction(() => {
         for (const file of files.slice(offset, offset + 100)) {
           const old = existing.get(file.relPath)
           existing.delete(file.relPath)
           if (old?.kind === file.kind && old.size === file.size && old.mtime === file.mtime) continue
           upsert.run(randomUUID(), courseId, file.relPath, file.kind, file.size ?? 0, file.mtime ?? 0, now, now)
         }
-      })()
+      })())
       await new Promise<void>(resolve => setImmediate(resolve))
     }
     // A capped scan is not proof that an unvisited file was deleted.
@@ -309,7 +310,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
     const remove = db.prepare('DELETE FROM materials_index WHERE course_id = ? AND rel_path = ?')
     for (let offset = 0; offset < stale.length; offset += 100) {
       if (!current()) return
-      db.transaction(() => { for (const path of stale.slice(offset, offset + 100)) remove.run(courseId, path) })()
+      traceSyncWork('materials.pruneBatch', () => db.transaction(() => { for (const path of stale.slice(offset, offset + 100)) remove.run(courseId, path) })())
       await new Promise<void>(resolve => setImmediate(resolve))
     }
   }
@@ -352,8 +353,8 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       if (scan.truncation.size > 0) scan.nodes.push(truncationNode(scan.truncation, scanLimits))
       treeCache.set(courseId, { folder, nodes: scan.nodes })
       if (treeCache.size > 16) treeCache.delete(treeCache.keys().next().value!)
-      db.prepare('INSERT OR REPLACE INTO material_tree_snapshots (course_id, folder, tree) VALUES (?, ?, ?)')
-        .run(courseId, folder, JSON.stringify(scan.nodes))
+      traceSyncWork('materials.snapshotWrite', () => db.prepare('INSERT OR REPLACE INTO material_tree_snapshots (course_id, folder, tree) VALUES (?, ?, ?)')
+        .run(courseId, folder, JSON.stringify(scan.nodes)))
       return scan.nodes
     })().then(async result => {
       scans.delete(courseId)
