@@ -10,6 +10,7 @@
  * without adding a delete to the hot path.
  */
 
+import { addressSearchTerms } from '../../../shared/browserSearch'
 import type { Database } from 'better-sqlite3'
 import { requireNonEmptyString } from '../../db/validate'
 
@@ -36,7 +37,7 @@ export interface RecordVisitInput {
 export interface HistoryRepo {
   /** Upserts: a revisit bumps the count and the timestamp, never appends. */
   recordVisit(input: RecordVisitInput, at?: Date): void
-  /** Ranked for the omnibox: host-prefix match first, then count, then recency. */
+  /** Empty input returns recent visits; otherwise host prefix, count, recency. */
   search(query: string, limit?: number): HistoryEntry[]
   /** `null` clears everything; a course id clears just that course's rows. */
   clear(courseId: string | null): void
@@ -118,22 +119,27 @@ export function createHistoryRepo(db: Database): HistoryRepo {
     },
 
     search(query, limit = 8) {
-      const trimmed = query.trim().toLowerCase()
-      if (trimmed === '') return []
-      const like = `%${trimmed}%`
-      const rows = db
-        .prepare(
-          `SELECT * FROM browser_history
-             WHERE lower(url) LIKE ? OR lower(title) LIKE ?
-             ORDER BY
-               -- A host the student is literally typing outranks anything a
-               -- raw frequency sort would surface.
-               CASE WHEN lower(host) LIKE ? THEN 0 ELSE 1 END,
-               visit_count DESC,
-               last_visited_at DESC
-             LIMIT ?`
-        )
-        .all(like, like, `${trimmed}%`, limit) as HistoryRow[]
+      const terms = addressSearchTerms(query)
+      const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(50, Math.trunc(limit))) : 8
+      const escapeLike = (value: string): string => value.replace(/[\\%_]/gu, '\\$&')
+      // Treat '%' and '_' literally; all typed words must match, in any order.
+      // Also match encoded Korean paths without decoding every row on main.
+      const where = terms.map(() => `(lower(url) LIKE ? ESCAPE '\\'
+        OR lower(url) LIKE ? ESCAPE '\\' OR lower(title) LIKE ? ESCAPE '\\')`).join(' AND ')
+      const args = terms.flatMap((term) => [
+        `%${escapeLike(term)}%`,
+        `%${escapeLike(encodeURI(term).toLowerCase())}%`,
+        `%${escapeLike(term)}%`
+      ])
+      const prefix = terms.join(' ').replace(/^https?:\/\/(?:www\.)?/u, '')
+      const order = terms.length === 0
+        ? 'last_visited_at DESC, visit_count DESC'
+        : `CASE WHEN lower(host) LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END,
+           visit_count DESC, last_visited_at DESC`
+      if (terms.length > 0) args.push(`${escapeLike(prefix)}%`)
+      const rows = db.prepare(`SELECT * FROM browser_history
+        ${where === '' ? '' : `WHERE ${where}`} ORDER BY ${order} LIMIT ?`)
+        .all(...args, boundedLimit) as HistoryRow[]
       return rows.map(toEntry)
     },
 

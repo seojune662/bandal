@@ -104,8 +104,10 @@ describe('suggestionsFor', () => {
     openTabs: [{ title: '자료구조 3주차', url: 'https://myetl.snu.ac.kr/w3' }]
   }
 
-  test('empty input suggests nothing', () => {
-    expect(suggestionsFor('   ', sources)).toEqual([])
+  test('empty input offers local shortcuts without a web search', () => {
+    const items = suggestionsFor('   ', sources)
+    expect(items.some((item) => item.kind === 'favorite')).toBe(true)
+    expect(items.some((item) => item.kind === 'search')).toBe(false)
   })
 
   test('what was typed comes first, so ↵ is never a surprise', () => {
@@ -114,10 +116,10 @@ describe('suggestionsFor', () => {
     expect(first?.url).toBe('https://myetl.snu.ac.kr')
   })
 
-  test('a plain query offers a web search, but not first', () => {
+  test('a plain query keeps web search first as history arrives', () => {
     const items = suggestionsFor('자료', sources)
     expect(items.some((item) => item.kind === 'search')).toBe(true)
-    expect(items[0]?.kind).not.toBe('search')
+    expect(items[0]?.kind).toBe('search')
   })
 
   test('things the student already chose outrank history', () => {
@@ -149,6 +151,34 @@ describe('suggestionsFor', () => {
     expect(items.some((item) => item.label === 'https://untitled.ac.kr/x')).toBe(
       true
     )
+  })
+
+  test('requires all words, across both title and address', () => {
+    const items = suggestionsFor('snu 자료구조', sources)
+    expect(items.filter((item) => item.kind !== 'search').map((item) => item.label))
+      .toEqual(['자료구조 3주차', '자료구조'])
+  })
+
+  test('filters unrelated history and matches decoded Korean paths', () => {
+    const items = suggestionsFor('공간예약', { ...sources, history: [
+      ...sources.history,
+      { url: 'https://snu.ac.kr/%EA%B3%B5%EA%B0%84%EC%98%88%EC%95%BD', title: 'SNU', host: 'snu.ac.kr' }
+    ] })
+    expect(items.map((item) => item.kind)).toEqual(['search', 'history'])
+    expect(items[1]?.label).toBe('SNU')
+  })
+
+  test('deduplicates equivalent root URLs but preserves video parameters', () => {
+    const items = suggestionsFor('youtube', { ...sources, openTabs: [], services: [],
+      favorites: [{ label: 'YouTube', url: 'https://youtube.com' }],
+      history: [
+        { url: 'https://youtube.com/', title: 'Home', host: 'youtube.com' },
+        { url: 'https://youtube.com/watch?v=one', title: 'One', host: 'youtube.com' },
+        { url: 'https://youtube.com/watch?v=two', title: 'Two', host: 'youtube.com' }
+      ]
+    })
+    expect(items.map((item) => item.kind)).toEqual(['search', 'favorite', 'history', 'history'])
+    expect(items.at(-1)?.url).toBe('https://youtube.com/watch?v=two')
   })
 
   test('is bounded so the dropdown cannot run off screen', () => {

@@ -3,6 +3,7 @@
  * default), anything else becomes a search-engine query.
  */
 
+import { addressSearchTerms, addressMatchRank } from '../../../../shared/browserSearch'
 import { looksLikeUrl, normalizeUrl } from '../workspace/tabIdentity'
 
 import {
@@ -88,98 +89,49 @@ export interface SuggestionSources {
 
 const MAX_SUGGESTIONS = 8
 
-function hostPrefixScore(host: string, query: string): number {
-  const bare = host.replace(/^www\./i, '').toLowerCase()
-  if (bare.startsWith(query)) return 0
-  if (bare.includes(query)) return 1
-  return 2
-}
-
-/**
- * What the omnibox offers for `input`.
- *
- * Ordering is the whole feature: the literal interpretation of what was typed
- * comes first (so ↵ never surprises), then things the student already chose —
- * open tabs, favorites, school services — then history, then a web search as
- * the fallback. Within history, a host being typed beats raw frequency.
- */
+/** The literal action stays first even when asynchronous history arrives. */
 export function suggestionsFor(
   input: string,
   sources: SuggestionSources,
   engine: SearchEngineId = DEFAULT_SEARCH_ENGINE
 ): AddressSuggestion[] {
   const trimmed = input.trim()
-  if (trimmed === '') return []
-  const query = trimmed.toLowerCase()
-  const out: AddressSuggestion[] = []
-  const seen = new Set<string>()
-
-  const push = (suggestion: AddressSuggestion): void => {
-    if (seen.has(suggestion.url)) return
-    seen.add(suggestion.url)
-    out.push(suggestion)
+  const terms = addressSearchTerms(trimmed)
+  const primaryUrl = resolveAddressInput(trimmed, engine)
+  const primary: AddressSuggestion[] = primaryUrl === null ? [] : [{
+    kind: looksLikeUrl(trimmed) ? 'url' : 'search',
+    url: primaryUrl,
+    label: trimmed,
+    detail: looksLikeUrl(trimmed) ? '주소로 이동' : '웹에서 검색'
+  }]
+  const candidates: AddressSuggestion[] = [
+    ...sources.openTabs.map((tab): AddressSuggestion => ({
+      kind: 'tab', url: tab.url, label: tab.title || tab.url, detail: tab.url
+    })),
+    ...[...sources.favorites, ...sources.services].map((item): AddressSuggestion => ({
+      kind: 'favorite', url: item.url, label: item.label, detail: item.url
+    })),
+    ...sources.history.map((entry): AddressSuggestion => ({
+      kind: 'history', url: entry.url, label: entry.title || entry.url, detail: entry.url
+    }))
+  ]
+  const ranked = candidates
+    .map((item) => ({ item, rank: addressMatchRank(item.label, item.url, terms) }))
+    .filter(({ rank }) => rank !== null)
+    // Stable sort preserves source priority, then the repo's frequency/recency.
+    .sort((a, b) => a.rank! - b.rank!)
+  const out = [...primary]
+  const seen = new Set(primary.map((item) => canonicalUrl(item.url)))
+  for (const { item } of ranked) {
+    const key = canonicalUrl(item.url)
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(item)
+    if (out.length === MAX_SUGGESTIONS) break
   }
+  return out
+}
 
-  // 1. Exactly what was typed, read literally. Always first so ↵ is predictable.
-  if (looksLikeUrl(trimmed)) {
-    const url = normalizeUrl(trimmed)
-    push({ kind: 'url', url, label: url, detail: '' })
-  }
-
-  const matches = (label: string, url: string): boolean =>
-    label.toLowerCase().includes(query) || url.toLowerCase().includes(query)
-
-  // 2. Things the student already picked, most specific first.
-  for (const tab of sources.openTabs) {
-    if (matches(tab.title, tab.url)) {
-      push({ kind: 'tab', url: tab.url, label: tab.title, detail: tab.url })
-    }
-  }
-  for (const favorite of sources.favorites) {
-    if (matches(favorite.label, favorite.url)) {
-      push({
-        kind: 'favorite',
-        url: favorite.url,
-        label: favorite.label,
-        detail: favorite.url
-      })
-    }
-  }
-  for (const service of sources.services) {
-    if (matches(service.label, service.url)) {
-      push({
-        kind: 'favorite',
-        url: service.url,
-        label: service.label,
-        detail: service.url
-      })
-    }
-  }
-
-  // 3. History, already ranked by the repo but re-sorted so a host being
-  //    typed floats above a merely frequent page.
-  const ranked = [...sources.history].sort(
-    (a, b) => hostPrefixScore(a.host, query) - hostPrefixScore(b.host, query)
-  )
-  for (const entry of ranked) {
-    push({
-      kind: 'history',
-      url: entry.url,
-      label: entry.title === '' ? entry.url : entry.title,
-      detail: entry.url
-    })
-  }
-
-  // 4. Web search is always reachable, even when everything else matched.
-  const searchUrl = resolveAddressInput(trimmed, engine)
-  if (searchUrl !== null && !looksLikeUrl(trimmed)) {
-    push({
-      kind: 'search',
-      url: searchUrl,
-      label: trimmed,
-      detail: '웹에서 검색'
-    })
-  }
-
-  return out.slice(0, MAX_SUGGESTIONS)
+function canonicalUrl(url: string): string {
+  try { return new URL(url).href } catch { return url }
 }

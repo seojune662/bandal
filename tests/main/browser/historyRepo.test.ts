@@ -117,9 +117,31 @@ describe('historyRepo', () => {
     ])
   })
 
-  test('an empty query suggests nothing', () => {
-    visit('https://a.ac.kr/x')
-    expect(repo.search('   ')).toEqual([])
+  test('an empty query returns recent visits ahead of old frequent pages', () => {
+    visit('https://a.ac.kr/old', 'old', 'c1', new Date('2026-09-01'))
+    visit('https://a.ac.kr/old', 'old', 'c1', new Date('2026-09-02'))
+    visit('https://a.ac.kr/new', 'new', 'c1', new Date('2026-09-28'))
+    expect(repo.search('   ').map((item) => item.title)).toEqual(['new', 'old'])
+  })
+
+  test('words match across title and URL in any order', () => {
+    visit('https://snu.ac.kr/course', '자료구조 강의실')
+    visit('https://other.ac.kr/course', '자료구조 강의실')
+    expect(repo.search('강의실 snu 자료구조').map((item) => item.url))
+      .toEqual(['https://snu.ac.kr/course'])
+  })
+
+  test('Korean paths match whether pasted encoded or typed naturally', () => {
+    visit('https://snu.ac.kr/%EA%B3%B5%EA%B0%84%EC%98%88%EC%95%BD', 'SNU')
+    expect(repo.search('공간예약')).toHaveLength(1)
+    expect(repo.search('%EA%B3%B5%EA%B0%84%EC%98%88%EC%95%BD')).toHaveLength(1)
+  })
+
+  test('SQL wildcard characters are literal input', () => {
+    visit('https://snu.ac.kr/a_b', 'a_b')
+    visit('https://snu.ac.kr/axb', 'axb')
+    expect(repo.search('a_b').map((item) => item.title)).toEqual(['a_b'])
+    expect(repo.search('%')).toEqual([])
   })
 
   test('honours the limit', () => {

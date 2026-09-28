@@ -15,6 +15,7 @@ import {
   useFavoritesStore
 } from '../../stores/favoritesStore'
 import type { Favorite } from '../../../../shared/types/favorite'
+import { useBrowserGuests } from './browserGuestsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useUniversityStore } from '../../stores/universityStore'
 import {
@@ -44,27 +45,29 @@ export function useAddressSuggestions(
   draft: string | null,
   includeHistory = true
 ): AddressSuggestion[] {
-  const [history, setHistory] = useState<HistoryHit[]>([])
+  const [history, setHistory] = useState<{ query: string; entries: HistoryHit[] } | null>(null)
   const courseId = useWorkspaceStore((state) => state.activeCourseId)
   const favorites = useFavoritesStore(
     (state) => state.byCourse[favoriteScopeKey(courseId)] ?? EMPTY_FAVORITES
   )
   const openTabs = useWorkspaceStore((state) => state.openTabs)
+  // Closed address bars need not re-render when another guest navigates.
+  const nav = useBrowserGuests((state) => draft === null ? undefined : state.nav)
   const services = useUniversityStore((state) => state.services)
 
   useEffect(() => {
-    if (!includeHistory || draft === null || draft.trim() === '') {
-      setHistory([])
+    if (!includeHistory || draft === null) {
+      setHistory(null)
       return
     }
     let cancelled = false
     const timer = setTimeout(() => {
-      void invoke('browser:searchHistory', { query: draft })
+      void invoke('browser:searchHistory', { query: draft, limit: 24 })
         .then((result) => {
-          if (!cancelled) setHistory(result.entries)
+          if (!cancelled) setHistory({ query: draft, entries: result.entries })
         })
         .catch(() => {
-          // Suggestions are a convenience; a failed lookup just means fewer.
+          if (!cancelled) setHistory(null)
         })
     }, HISTORY_DEBOUNCE_MS)
     return () => {
@@ -78,7 +81,7 @@ export function useAddressSuggestions(
   return suggestionsFor(
     draft,
     {
-      history,
+      history: includeHistory && history?.query === draft ? history.entries : [],
       favorites: favorites.flatMap((favorite) =>
         favorite.descriptor.kind === 'browser'
           ? [
@@ -93,12 +96,12 @@ export function useAddressSuggestions(
         label: service.label,
         url: service.url
       })),
-      openTabs: Object.values(openTabs).flatMap((descriptor) =>
-        descriptor.kind === 'browser'
+      openTabs: Object.entries(openTabs).flatMap(([tabId, descriptor]) =>
+        descriptor.kind === 'browser' && !descriptor.payload.isPrivate
           ? [
               {
-                title: descriptor.payload.initialUrl,
-                url: descriptor.payload.initialUrl
+                title: nav?.[tabId]?.title || descriptor.payload.initialUrl,
+                url: nav?.[tabId]?.url || descriptor.payload.initialUrl
               }
             ]
           : []

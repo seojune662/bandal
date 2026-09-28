@@ -905,7 +905,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     req: { url: string; title: string; courseId: string | null }
     res: { ok: true }
   }
-  /** Ranked omnibox candidates. Empty query returns nothing. */
+  /** Ranked omnibox candidates. Empty query returns recent visits. */
   'browser:searchHistory': {
     req: { query: string; limit?: number }
     res: {

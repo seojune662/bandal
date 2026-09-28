@@ -45,10 +45,6 @@ import { toggleFavorite, useBrowserFavorite } from './browserFavorite'
 import { BrowserFindBar } from './BrowserFindBar'
 import { AgentRunBanner } from './AgentRunBanner'
 import {
-  searchEngine,
-  useAddressSuggestions
-} from './useAddressSuggestions'
-import {
   browserFavoriteShortcuts,
   hostnameForUrl,
   initialForUrl,
@@ -61,7 +57,7 @@ import {
   fillLoginForTab,
   saveStagedLoginForTab
 } from './loginBridge'
-import { addressDisplayParts, resolveAddressInput } from './urlInput'
+import { BrowserAddressInput } from './BrowserAddressInput'
 import { scheduleProgressVisibility } from './loadingIndicator'
 import { openWebVideoInPip, useWebVideoReport } from './videoBridge'
 import './browser.css'
@@ -134,177 +130,6 @@ function BrowserSiteMark({ url }: { url: string }): JSX.Element {
     >
       {initialForUrl(url)}
     </span>
-  )
-}
-
-function BrowserAddressInput({
-  value,
-  onNavigate,
-  focusSeq,
-  favicon,
-  isPrivate
-}: {
-  value: string
-  onNavigate: (url: string) => void
-  /** Increments when ⌘L asks for focus; 0 = never asked. */
-  focusSeq: number
-  /** data: URL, or undefined to fall back to the generic globe. */
-  favicon: string | undefined
-  isPrivate: boolean
-}): JSX.Element {
-  const [draft, setDraft] = useState<string | null>(null)
-  const [focused, setFocused] = useState(false)
-  const [highlighted, setHighlighted] = useState(0)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const suggestions = useAddressSuggestions(draft, !isPrivate)
-
-  useEffect(() => {
-    if (focusSeq === 0) return
-    inputRef.current?.focus()
-    inputRef.current?.select()
-  }, [focusSeq])
-  useEffect(() => setHighlighted(0), [draft])
-
-  const parts = addressDisplayParts(value)
-  const showDisplayUrl = !focused && draft === null && value.length > 0
-  const open = focused && draft !== null && suggestions.length > 0
-  const clamped = Math.min(highlighted, Math.max(0, suggestions.length - 1))
-
-  const go = (url: string): void => {
-    setDraft(null)
-    inputRef.current?.blur()
-    onNavigate(url)
-  }
-
-  const submit = (): void => {
-    // ↵ takes the highlighted row when one is, otherwise the literal input —
-    // so typing and pressing enter never lands somewhere unexpected.
-    const picked = open ? suggestions[clamped] : undefined
-    if (picked !== undefined) {
-      go(picked.url)
-      return
-    }
-    const url = resolveAddressInput(draft ?? value, searchEngine())
-    if (url === null) return
-    go(url)
-  }
-
-  return (
-    <form
-      className="browser-address"
-      role="search"
-      data-display-url={showDisplayUrl ? 'true' : undefined}
-      onSubmit={(event) => {
-        event.preventDefault()
-        submit()
-      }}
-    >
-      {/* The favicon used to REPLACE this, and every real site has a
-          favicon — so the lock was only ever visible on sites without an
-          icon, and an http:// phishing clone of a 학사포털 looked exactly
-          like the real https:// one. They are different facts and both get
-          shown. */}
-      <span
-        className={
-          parts.secure
-            ? 'browser-address__security'
-            : 'browser-address__security browser-address__security--insecure'
-        }
-        title={
-          parts.secure
-            ? '이 연결은 암호화돼 있어요'
-            : '암호화되지 않은 연결이에요. 비밀번호를 입력하지 마세요.'
-        }
-        aria-label={parts.secure ? '보안 연결' : '보안되지 않은 연결'}
-      >
-        <BrowserIcon name={parts.secure ? 'lock' : 'insecure'} />
-      </span>
-      {favicon !== undefined && (
-        <img className="browser-address__favicon" src={favicon} alt="" />
-      )}
-      <span className="browser-address__field">
-        <input
-          ref={inputRef}
-          type="text"
-          spellCheck={false}
-          autoComplete="off"
-          aria-label="주소 또는 검색어"
-          placeholder="검색어 또는 주소를 입력하세요"
-          value={draft ?? value}
-          onChange={(event) => setDraft(event.target.value)}
-          onFocus={(event) => {
-            setFocused(true)
-            event.currentTarget.select()
-          }}
-          onBlur={() => {
-            setFocused(false)
-            setDraft(null)
-          }}
-          role="combobox"
-          aria-expanded={open}
-          aria-controls="browser-address-suggestions"
-          aria-autocomplete="list"
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              event.preventDefault()
-              setDraft(null)
-              event.currentTarget.blur()
-              return
-            }
-            if (!open) return
-            if (event.key === 'ArrowDown') {
-              event.preventDefault()
-              setHighlighted((index) => (index + 1) % suggestions.length)
-            } else if (event.key === 'ArrowUp') {
-              event.preventDefault()
-              setHighlighted(
-                (index) =>
-                  (index - 1 + suggestions.length) % suggestions.length
-              )
-            }
-          }}
-        />
-        {showDisplayUrl && (
-          <span className="browser-address__display" aria-hidden="true">
-            <span>{parts.prefix}</span>
-            <strong>{parts.domain}</strong>
-            <span>{parts.suffix}</span>
-          </span>
-        )}
-      </span>
-      {open && (
-        <ul
-          id="browser-address-suggestions"
-          className="browser-suggestions"
-          role="listbox"
-        >
-          {suggestions.map((suggestion, index) => (
-            <li key={`${suggestion.kind}:${suggestion.url}`}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={index === clamped}
-                data-highlighted={index === clamped ? 'true' : undefined}
-                className="browser-suggestion"
-                onMouseEnter={() => setHighlighted(index)}
-                // The input's blur would close the list before a click lands.
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => go(suggestion.url)}
-              >
-                <span className="browser-suggestion__label">
-                  {suggestion.label}
-                </span>
-                {suggestion.detail !== '' && (
-                  <span className="browser-suggestion__detail">
-                    {suggestion.detail}
-                  </span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </form>
   )
 }
 
