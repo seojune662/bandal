@@ -48,6 +48,7 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
           backgroundHost: resolve(__dirname, 'src/main/background/host.ts'),
+          watcherHost: resolve(__dirname, 'src/main/background/watcherHost.ts'),
           pluginHost: resolve(__dirname, 'src/main/pluginHost/index.ts'),
           speechHost: resolve(__dirname, 'src/main/features/recordings/speechHost.ts')
         }

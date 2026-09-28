@@ -303,7 +303,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           upsert.run(randomUUID(), courseId, file.relPath, file.kind, file.size ?? 0, file.mtime ?? 0, now, now)
         }
       })())
-      await new Promise<void>(resolve => setImmediate(resolve))
+      await new Promise<void>(resolve => setTimeout(resolve, 0))
     }
     // A capped scan is not proof that an unvisited file was deleted.
     if (scan.truncation.size > 0) return
@@ -312,7 +312,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
     for (let offset = 0; offset < stale.length; offset += 100) {
       if (!current()) return
       traceSyncWork('materials.pruneBatch', () => db.transaction(() => { for (const path of stale.slice(offset, offset + 100)) remove.run(courseId, path) })())
-      await new Promise<void>(resolve => setImmediate(resolve))
+      await new Promise<void>(resolve => setTimeout(resolve, 0))
     }
   }
 

@@ -28,15 +28,20 @@ export interface MaterialsWatcherDeps {
   /** Absolute course folder for a live course id (throws otherwise). */
   getCourseFolder: (courseId: string) => string
   /** Fired (debounced) whenever the course folder changed on disk. */
-  onChange: (courseId: string) => void
+  onChange: (courseId: string, changes: MaterialChanges) => void
+  onReady?: (courseId: string) => void
   /** Suppress content-only churn for an actively written recording. Structural events still refresh. */
   ignoreContentChange?: (courseId: string, relPath: string) => boolean
   debounceMs?: number
 }
 
+export interface MaterialChanges { structural: boolean; paths: string[] }
+
 interface WatchEntry {
   watcher: FSWatcher
   timer: NodeJS.Timeout | null
+  structural: boolean
+  paths: Set<string>
 }
 
 function isHidden(path: string): boolean {
@@ -49,13 +54,19 @@ export function createMaterialsWatcher(
   const debounceMs = deps.debounceMs ?? MATERIALS_WATCH_DEBOUNCE_MS
   const entries = new Map<string, WatchEntry>()
 
-  function scheduleChange(courseId: string): void {
+  function scheduleChange(courseId: string, structural = true, relPath?: string): void {
     const entry = entries.get(courseId)
     if (entry === undefined) return
+    entry.structural ||= structural
+    if (relPath && entry.paths.size < 100) entry.paths.add(relPath)
+    else if (relPath) entry.structural = true
     if (entry.timer !== null) clearTimeout(entry.timer)
     entry.timer = setTimeout(() => {
       entry.timer = null
-      deps.onChange(courseId)
+      const changes = { structural: entry.structural, paths: [...entry.paths] }
+      entry.structural = false
+      entry.paths.clear()
+      deps.onChange(courseId, changes)
     }, debounceMs)
   }
 
@@ -86,13 +97,15 @@ export function createMaterialsWatcher(
         // existence is unnecessary — missing paths simply stop emitting.
         ignorePermissionErrors: true
       })
-      entries.set(courseId, { watcher, timer: null })
+      entries.set(courseId, { watcher, timer: null, structural: false, paths: new Set() })
+      watcher.on('ready', () => deps.onReady?.(courseId))
       watcher.on('all', (event, path) => {
+        const relPath = relative(folder, path).split(sep).join('/')
         if (
           event === 'change' &&
-          deps.ignoreContentChange?.(courseId, relative(folder, path).split(sep).join('/'))
+          deps.ignoreContentChange?.(courseId, relPath)
         ) return
-        scheduleChange(courseId)
+        scheduleChange(courseId, event !== 'change', relPath)
       })
       watcher.on('error', (error) => {
         // e.g. the folder disappeared mid-scan. Keep the watcher; surface a

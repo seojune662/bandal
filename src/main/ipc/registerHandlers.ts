@@ -3,6 +3,7 @@ import { traceIpc } from '../performanceTrace'
 import { createFolderAvailability } from '../features/courses/folderAvailability'
 import { createBackgroundClient } from '../background/client'
 import { startBackgroundCheckpoints } from '../db/backgroundCheckpoint'
+import { createBackgroundMaterialsWatcher } from '../background/materialsWatcher'
 import { createAppleCalendar } from '../features/calendar/appleCalendar'
 /**
  * Registers a handler for EVERY channel in IpcContract.
@@ -100,7 +101,6 @@ import { PRINT_PDF_MAX_BYTES, printPdfBytes } from '../features/print'
 import { setPrintMenuEnabled } from '../menu'
 import {
   createMaterialsRepo,
-  createMaterialsWatcher,
   createMediaProgressRepo,
   createMediaProtocolHandler
 } from '../features/materials'
@@ -503,7 +503,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     payload: unknown
   ) => void = () => undefined
 
-  const materialsWatcher = createMaterialsWatcher({
+  const materialsWatcher = createBackgroundMaterialsWatcher({
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
     ignoreContentChange: (courseId, relPath) => {
       const active = recordingService.getActiveSession()
