@@ -1,68 +1,38 @@
-# Fast checks on every push and PR.
-#
-# Static checks run on Linux. Native clipboard checks also run on Windows so
-# platform rendering differences are caught before cutting a release tag.
-# Packaged macOS and Windows apps are checked again in release.yml.
+# Check affected code once per commit. Release reuses this exact-SHA result.
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
-
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Run the full unit suite and dead-code audit'
+        type: boolean
+        default: false
+permissions:
+  contents: read
 jobs:
   check:
-    name: Static checks and test
+    name: Affected checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: pnpm
-
-      # Full install, not `--ignore-scripts`: the test suite opens real SQLite
-      # databases via the `better-sqlite3-node` alias, and that binding comes
-      # from the package's own install script.
       - run: pnpm install --frozen-lockfile
-
-      - run: node --test scripts/test-release-assets.mjs
-      - run: pnpm typecheck
-      - run: pnpm deadcode
-      - run: pnpm test
-      - name: Calendar boundaries in a DST timezone
-        run: pnpm exec vitest run tests/main/taskSchedule.test.ts tests/renderer/calendar/calendarDate.test.ts
+      - name: Verify changed code and its dependents
         env:
-          TZ: America/New_York
-
-      # electron-vite build catches renderer-only breakage that tsc misses
-      # (bad imports, missing assets). Cheap — about a second.
-      - run: pnpm build
-
-  clipboard:
-    name: Windows image clipboard
-    runs-on: windows-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm exec playwright test -c e2e pageImageCopy.spec.ts interactionStability.spec.ts --grep "page image clipboard|copies the clicked slide"
-      - run: pnpm exec playwright test -c e2e taskSchedule.spec.ts viewportMenus.spec.ts appleCalendar.spec.ts browserAddress.spec.ts
-      - run: pnpm exec playwright test -c e2e coursePerformance.spec.ts --repeat-each=2
-      - name: Save clipboard test traces on failure
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: windows-clipboard-test-results
-          path: e2e/test-results
-          if-no-files-found: ignore
+          FULL: ${{ inputs.full == true && '--full' || '' }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          args=()
+          if [ -n "$FULL" ]; then args+=("$FULL"); fi
+          if [ -n "$PR_BASE" ]; then args+=(--base "$PR_BASE"); fi
+          node scripts/affected-checks.mjs "${args[@]}"

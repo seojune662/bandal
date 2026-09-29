@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
@@ -166,46 +166,27 @@ describe('createPdfExporter', () => {
     expect((await PDFDocument.load(outputBytes)).getPageCount()).toBe(1)
   })
 
-  test('falls back to Helvetica when the Korean font cannot be loaded', async () => {
-    const timestamp = '2026-01-01T00:00:00.000Z'
-    const drawings: Drawing[] = [{
-      id: 'fallback-text',
-      courseId: 'course-1',
-      relPath: 'slides/source.pdf',
-      page: 1,
-      kind: 'textbox',
-      data: {
-        box: { x: 0.1, y: 0.1, width: 0.5, height: 0.2 },
-        text: '한글 폰트를 찾을 수 없음'
-      },
-      style: { color: 'ink', width: 0.002, opacity: 1, fontScale: 1 },
-      createdAt: timestamp,
-      updatedAt: timestamp
-    }]
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  test('a missing Korean font fails without publishing question marks or overwriting files', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const missing = join(ctx.dir, 'temporarily-missing.otf')
     const exporter = createPdfExporter({
       getCourseFolder: () => ctx.dir,
-      listDrawings: () => [...drawings, textbox('bold-fallback', 'bold', { bold: true })],
+      listDrawings: () => [textbox('text', '한글 주석 메모', {})],
       listAnnotations: () => [],
-      resolveFontPath: () => join(ctx.dir, 'missing-font.otf')
+      resolveFontPath: () => missing
     })
-    const outputPath = join(ctx.dir, 'fallback-annotated.pdf')
-
-    await exporter.exportAnnotated(
-      { courseId: 'course-1', relPath: 'slides/source.pdf' },
-      outputPath
-    )
-
-    const outputBytes = readFileSync(outputPath)
-    expect(outputBytes.subarray(0, 5).toString()).toBe('%PDF-')
-    expect((await PDFDocument.load(outputBytes)).getPageCount()).toBe(1)
-    const names = await embeddedFontNames(outputBytes)
-    expect(hasFace(names, 'Helvetica-Bold')).toBe(true)
-    expect(hasFace(names, 'NotoSansKR')).toBe(false)
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('falling back to Helvetica'),
-      expect.anything()
-    )
+    const outputPath = join(ctx.dir, 'annotated.pdf')
+    const input = { courseId: 'course-1', relPath: 'slides/source.pdf' }
+    await expect(exporter.exportAnnotated(input, outputPath)).rejects.toThrow('한글 글꼴')
+    expect(existsSync(outputPath)).toBe(false)
+    writeFileSync(outputPath, 'previous download')
+    await expect(exporter.exportAnnotated(input, outputPath)).rejects.toThrow('한글 글꼴')
+    expect(readFileSync(outputPath, 'utf8')).toBe('previous download')
+    expect(readFileSync(sourcePath)).toEqual(sourceBytes)
+    // A transient failure must not poison the cached font promise forever.
+    copyFileSync(fontPath, missing)
+    await exporter.exportAnnotated(input, outputPath)
+    expect(await pdfText(outputPath)).toContain('한글 주석 메모')
   })
 
   test('falls back to Regular weight when only the Bold face is missing', async () => {

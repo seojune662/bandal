@@ -1,25 +1,19 @@
 import { readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import fontkit, {
-  type Font as FontkitFont,
-  type Path as FontkitPath
-} from '@pdf-lib/fontkit'
+import fontkit from '@pdf-lib/fontkit'
 import {
   BlendMode,
   LineCapStyle,
   PageSizes,
   PDFDocument,
-  degrees,
   rgb,
   type Color,
-  type PDFFont,
   type PDFPage
 } from 'pdf-lib'
 import {
   TEXT_BOX_PADDING_EM,
   TEXT_EXPORT_FONT_PT,
   TEXT_FILL_OPACITY,
-  TEXT_ITALIC_SKEW_DEG,
   TEXT_UNDERLINE_THICKNESS_EM,
   textBoxFontPx
 } from '../../../shared/textBoxMetrics'
@@ -36,6 +30,7 @@ import type {
   BoardSurface,
   OpenPersonalBoardResult
 } from '../../../shared/types/whiteboard'
+import { drawPdfText, type TextboxFont } from '../pdfText'
 import { NotFoundError, ValidationError } from '../../db/errors'
 import { requireId } from '../../db/validate'
 import {
@@ -80,24 +75,6 @@ interface BoardPalette {
   marks: Record<DrawingColor, Color>
 }
 
-interface ScalableFontkitPath extends FontkitPath {
-  scale(x: number, y: number): ScalableFontkitPath
-  /** Affine map x' = m0·x + m2·y + m4, y' = m1·x + m3·y + m5; returns a new path. */
-  transform(
-    m0: number,
-    m1: number,
-    m2: number,
-    m3: number,
-    m4: number,
-    m5: number
-  ): ScalableFontkitPath
-}
-
-interface TextboxFont {
-  embedded: PDFFont
-  outlines: FontkitFont
-}
-
 /**
  * Faces embedded for this document. A face is embedded ONLY when some box will
  * place a glyph with it: fontkit's CFF subsetter throws (asynchronously, past
@@ -115,16 +92,6 @@ interface TextLineRun {
   fontSize: number
   color: Color
   opacity: number
-}
-
-interface GlyphPen {
-  x: number
-  y: number
-  fontSize: number
-  color: Color
-  opacity: number
-  /** tan(italic angle); 0 for upright text. */
-  shear: number
 }
 
 const BOARD_PALETTES: Record<BoardSurface, BoardPalette> = {
@@ -339,36 +306,6 @@ function drawStraightLine(
   }
 }
 
-/**
- * Visible layer: glyph outlines from the exact embedded face. `drawSvgPath`
- * ignores pdf-lib's skew options, so the italic slant is applied to the
- * outline itself (x' = x + tan·y in glyph space) before the SVG y-flip.
- */
-function drawGlyphOutlines(page: PDFPage, outlines: FontkitFont, line: string, pen: GlyphPen): void {
-  const run = outlines.layout(line)
-  const scale = pen.fontSize / outlines.unitsPerEm
-  let penX = pen.x
-  let penY = pen.y
-  for (let glyphIndex = 0; glyphIndex < run.glyphs.length; glyphIndex += 1) {
-    const glyph = run.glyphs[glyphIndex]
-    const position = run.positions[glyphIndex]
-    if (glyph === undefined || position === undefined) continue
-    const path = glyph.path as ScalableFontkitPath
-    const svgPath = path.transform(1, 0, pen.shear, 1, 0, 0).scale(1, -1).toSVG()
-    if (svgPath.length > 0) {
-      page.drawSvgPath(svgPath, {
-        x: penX + position.xOffset * scale,
-        y: penY + position.yOffset * scale,
-        scale,
-        color: pen.color,
-        opacity: pen.opacity
-      })
-    }
-    penX += position.xAdvance * scale
-    penY += position.yAdvance * scale
-  }
-}
-
 /** Underline / strikethrough rules spanning exactly the drawn line. */
 function drawTextDecorations(page: PDFPage, style: DrawingStyle, run: TextLineRun): void {
   if (run.width <= 0) return
@@ -443,27 +380,9 @@ function drawTextbox(
     let x = bounds.x + inset + Math.max(0, maxWidth - line.width) * alignFactor
     for (const run of line.runs) {
       const color = palette.marks[run.style.color]
-      const italic = run.style.italic === true
-      const skew = italic ? { ySkew: degrees(TEXT_ITALIC_SKEW_DEG) } : {}
-      const shear = italic ? Math.tan((TEXT_ITALIC_SKEW_DEG * Math.PI) / 180) : 0
-      // Keep a real subset-font text object for search/copy and its ToUnicode
-      // map. The visible layer uses outlines from that exact same face.
-      page.drawText(run.text, {
-        x,
-        y,
-        size: run.fontSize,
-        font: run.font.embedded,
-        color,
-        opacity: 0,
-        ...skew
-      })
-      drawGlyphOutlines(page, run.font.outlines, run.text, {
-        x,
-        y,
-        fontSize: run.fontSize,
-        color,
-        opacity,
-        shear
+      drawPdfText(page, run.text, run.font, {
+        x, y, fontSize: run.fontSize, color, opacity,
+        italic: run.style.italic === true
       })
       drawTextDecorations(page, run.style, {
         x,

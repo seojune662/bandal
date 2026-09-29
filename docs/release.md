@@ -50,6 +50,28 @@ SHA-256으로 서버의 저장 결과를 확인한다. 이미 일치하는 파�
 
 ---
 
+## 변경 범위에 맞춘 검사
+
+일상적인 수정은 전체 검사를 다시 돌리지 않는다. `scripts/affected-checks.mjs`가
+이전 태그 이후의 변경 파일을 구하고, Vitest 의존 관계에 연결된 단위 검사와
+수정 영역의 TypeScript 프로젝트만 선택한다. 버전 숫자만 바뀐 `package.json`은
+전역 변경으로 취급하지 않는다. PR은 대상 브랜치와 비교한다.
+
+- 로컬: 재현 사례와 직접 관련된 회귀 검사만 한 번 실행한다.
+- CI: 선택된 코드 검사만 수행한다. 전체 빌드와 Windows E2E 중복 실행을 제거했다.
+- 릴리스: 같은 SHA의 CI가 성공하면 그 결과를 재사용한다. 진행 중이면 기다리고,
+  실패하면 게시를 중단한다. CI가 없는 태그는 선택된 검사를 릴리스에서 한 번 수행한다.
+- 설치 파일: 변경 기능의 E2E만 각 플랫폼의 패키징된 앱에서 실행한다. 예를 들어
+  PDF 내보내기 수정에 브라우저·달력·과목 전환 검사를 붙이지 않는다.
+- 서명·공증, 설치 파일 생성, 업로드 체크섬·업데이트 피드 검증은 계속 수행한다.
+
+선택 결과는 `node scripts/affected-checks.mjs --base <기준 커밋> --plan`으로 확인한다.
+공유 런타임이나 의존성이 바뀌면 검사를 넓힌다. 별도 전체 점검이 필요하면 CI의
+`workflow_dispatch`에서 `full`을 켜거나 `node scripts/affected-checks.mjs --full`을
+실행한다. 기존 테스트는 삭제하지 않고 이 경로에서 계속 사용할 수 있다.
+
+---
+
 ## 2. 왜 레포가 하나인가
 
 소스·워크플로·릴리스가 모두 `seojune662/bandal` 에 있다.
@@ -118,7 +140,7 @@ codesign --verify --deep --strict /Applications/Bandal.app
 spctl -a -vvv -t install /Applications/Bandal.app   # → source=Notarized Developer ID
 ```
 
-그리고 앱을 열어 **과목 추가 → PDF 열기 → 채팅 1회**까지 해 본다.
+앱 실행과 변경 기능은 선택된 패키지 E2E로 확인한다. PDF·채팅 등 무관한 기능을 매번 다시 검사하지 않는다.
 
 릴리스 CI는 `node scripts/verify-calendar-signing.mjs release/mac*/Bandal.app`로 서명 누락을 검사하고 게시 전에 중단한다.
 캘린더는 앱과 `Contents/Resources/calendar/bandal-calendar` 각각에 대해

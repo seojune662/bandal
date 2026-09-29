@@ -9,18 +9,14 @@ import {
   BlendMode,
   LineCapStyle,
   PDFDocument,
-  StandardFonts,
-  degrees,
   rgb,
   type Color,
-  type PDFFont,
   type PDFPage
 } from 'pdf-lib'
 import {
   TEXT_BOX_PADDING_EM,
   TEXT_EXPORT_FONT_PT,
   TEXT_FILL_OPACITY,
-  TEXT_ITALIC_SKEW_DEG,
   TEXT_UNDERLINE_THICKNESS_EM,
   textBoxFontPx
 } from '../../../shared/textBoxMetrics'
@@ -34,6 +30,7 @@ import type {
   ExportAnnotatedPdfInput,
   TextAlign
 } from '../../../shared/types/drawing'
+import { drawPdfText, type TextboxFont } from '../pdfText'
 import { ValidationError } from '../../db/errors'
 import { requireId, requireNonEmptyString, resolveInside, resolveInsideReal } from '../../db/validate'
 import {
@@ -56,8 +53,8 @@ const TEXT_ALIGN_FACTORS: Record<TextAlign, number> = { left: 0, center: 0.5, ri
  * every try/catch) on a subset that holds nothing but `.notdef`.
  */
 interface TextboxFonts {
-  regular: PDFFont | null
-  bold: PDFFont | null
+  regular: TextboxFont | null
+  bold: TextboxFont | null
 }
 
 interface TextLineRun {
@@ -272,8 +269,8 @@ function drawTextbox(
     textRuns: drawing.data.textRuns,
     style,
     fonts: {
-      regular: fonts.regular === null ? null : { metrics: fonts.regular, value: fonts.regular },
-      bold: fonts.bold === null ? null : { metrics: fonts.bold, value: fonts.bold }
+      regular: fonts.regular === null ? null : { metrics: fonts.regular.embedded, value: fonts.regular },
+      bold: fonts.bold === null ? null : { metrics: fonts.bold.embedded, value: fonts.bold }
     },
     surfaceWidthPt: width,
     maxWidth
@@ -288,18 +285,9 @@ function drawTextbox(
     let x = left + inset + Math.max(0, maxWidth - line.width) * alignFactor
     for (const run of line.runs) {
       const runColor = DRAWING_COLORS[run.style.color]
-      // No italic Korean face is bundled, so italic is a synthetic slant.
-      const skew = run.style.italic === true
-        ? { ySkew: degrees(TEXT_ITALIC_SKEW_DEG) }
-        : {}
-      page.drawText(run.text, {
-        x,
-        y,
-        size: run.fontSize,
-        font: run.font,
-        color: runColor,
-        opacity,
-        ...skew
+      drawPdfText(page, run.text, run.font, {
+        x, y, fontSize: run.fontSize, color: runColor, opacity,
+        italic: run.style.italic === true
       })
       drawTextDecorations(page, run.style, {
         x,
@@ -368,7 +356,10 @@ export function createPdfExporter(deps: PdfExporterDeps): {
     if (cached !== undefined) return cached
     const promise = Promise.resolve().then(() =>
       readFile((deps.resolveFontPath ?? resolveDefaultFontPath)(file))
-    )
+    ).catch((error: unknown) => {
+      fontBytes.delete(file)
+      throw error
+    })
     fontBytes.set(file, promise)
     return promise
   }
@@ -377,9 +368,13 @@ export function createPdfExporter(deps: PdfExporterDeps): {
     pdf: PDFDocument,
     file: TextboxFontFile,
     consequence: string
-  ): Promise<PDFFont | null> {
+  ): Promise<TextboxFont | null> {
     try {
-      return await pdf.embedFont(await loadFontBytes(file), { subset: true })
+      const bytes = await loadFontBytes(file)
+      return {
+        embedded: await pdf.embedFont(bytes, { subset: true }),
+        outlines: fontkit.create(bytes)
+      }
     } catch (error) {
       console.warn(`[pdf] ${file} could not be loaded; ${consequence}`, error)
       return null
@@ -402,13 +397,10 @@ export function createPdfExporter(deps: PdfExporterDeps): {
     // Bold boxes whose face failed draw with Regular, so Regular is needed then too.
     const needsRegular = wanted.has('regular') || (wanted.has('bold') && bold === null)
     const regular = needsRegular
-      ? await tryEmbedFace(pdf, 'NotoSansKR-Regular.otf', 'falling back to Helvetica.')
+      ? await tryEmbedFace(pdf, 'NotoSansKR-Regular.otf', 'export cancelled to preserve the text.')
       : null
     if (!needsRegular || regular !== null) return { regular, bold }
-    return {
-      regular: await pdf.embedFont(StandardFonts.Helvetica),
-      bold: bold ?? (wanted.has('bold') ? await pdf.embedFont(StandardFonts.HelveticaBold) : null)
-    }
+    throw new Error('PDF 내보내기에 필요한 한글 글꼴을 읽지 못했어요. 앱을 다시 설치한 뒤 시도해 주세요.')
   }
 
   async function annotateDocument(pdf: PDFDocument, input: ExportAnnotatedPdfInput): Promise<void> {
