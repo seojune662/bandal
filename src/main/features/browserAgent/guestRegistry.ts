@@ -18,6 +18,7 @@ export interface GuestWebContents {
 }
 
 export interface GuestRegistryDeps {
+  isManagedPage?: (guest: GuestWebContents) => boolean
   fromId: (id: number) => GuestWebContents | null
   /** Confirms the guest is on the hardened browsing partition. */
   isBrowsingPartition: (guest: GuestWebContents) => boolean
@@ -51,7 +52,7 @@ export function createGuestRegistry(deps: GuestRegistryDeps) {
           byTab.delete(tabId)
           return null
         }
-        if (guest.getType() !== 'webview') return null
+        if (guest.getType() !== 'webview' && !deps.isManagedPage?.(guest)) return null
         if (!deps.isBrowsingPartition(guest)) return null
         return guest
       } catch {

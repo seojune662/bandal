@@ -8,7 +8,8 @@ export interface BrowsingContext {
 const contexts = new Map<number, BrowsingContext>()
 
 export function registerBrowsingContext(id: number, parentId?: number): void {
-  contexts.set(id, (parentId === undefined ? undefined : contexts.get(parentId)) ?? {
+  const parent = parentId === undefined ? undefined : contexts.get(parentId)
+  contexts.set(id, parent ? { ...parent, tabId: null } : {
     rootId: id, tabId: null, courseId: null
   })
 }
@@ -19,7 +20,7 @@ export function browsingContext(id: number | null): BrowsingContext | undefined 
 
 export function setBrowsingCourse(id: number, tabId: string, courseId: string | null): void {
   const context = contexts.get(id)
-  if (!context || context.rootId !== id) throw new Error('브라우저 탭을 찾지 못했어요.')
+  if (!context) throw new Error('브라우저 탭을 찾지 못했어요.')
   context.tabId = tabId
   context.courseId = courseId
 }

@@ -1,3 +1,4 @@
+import { openDiagnostics } from './diagnosticsBridge'
 import { useCourseActive } from '../workspace/courseActivity'
 /**
  * [M3-F] Browser tab panel — dockview drop-in replacing the M2 placeholder.
@@ -646,6 +647,12 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
           />
         )}
       <BrowserBookmarksBar favorites={favorites} onNavigate={navigate} />
+      {isPanelVisible && (navState.httpStatus ?? 0) >= 400 && (
+        <div className="browser-external-auth" role="status">
+          <span className="browser-external-auth__message">{`사이트에서 HTTP ${navState.httpStatus} 응답을 보냈어요. 로그인 요청은 자동으로 다시 보내지 않습니다.`}</span>
+          <button type="button" className="browser-login-prompt__action" onClick={() => openDiagnostics(tabId)}>진단 보기</button>
+        </div>
+      )}
       {isPanelVisible && authFallback !== undefined && (
         <div
           className="browser-external-auth"

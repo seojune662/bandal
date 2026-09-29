@@ -1,3 +1,5 @@
+import { disconnectBrowserTab } from './browserGuestsStore'
+import { closeBrowserTab } from '../../stores/workspaceStore'
 /**
  * Publishes the browser tabs the student can see to main, for the agent.
  *
@@ -142,15 +144,8 @@ export function useCloseTabRequests(): void {
   useEffect(
     () =>
       onPush('browser:close-tab', ({ tabId }) => {
-        const workspace = useWorkspaceStore.getState()
-        for (const [panelId, descriptor] of Object.entries(workspace.openTabs)) {
-          if (!isTabDescriptor(descriptor) || descriptor.kind !== 'browser') {
-            continue
-          }
-          if (descriptor.payload.tabId !== tabId) continue
-          workspace.closeTab(panelId)
-          return
-        }
+        disconnectBrowserTab(tabId)
+        closeBrowserTab(tabId)
       }),
     []
   )

@@ -15,6 +15,7 @@ async function fixture() {
           'content-disposition': `attachment; filename="${url.searchParams.get('name') || 'handout.txt'}"` })
         res.end(`lecture:${req.method}:${body}`)
       } else {
+        if (url.pathname === '/unavailable') res.statusCode = 503
         res.setHeader('content-type', 'text/html; charset=utf-8')
         res.end(`<html><head><title>Browser fixture</title></head><body><h1>Lecture page</h1><script>
           window.result = null;
@@ -38,10 +39,10 @@ async function openTab(bandal: BandalApp, url: string) {
   await page.getByLabel('새 탭 검색').fill(url)
   await page.getByRole('option', { name: `${url} 열기` }).click()
   await expect.poll(() => bandal.app.evaluate(({ webContents }, target) =>
-    webContents.getAllWebContents().find(w => w.getType() === 'webview' && w.getURL() === target)?.id ?? null, url
+    webContents.getAllWebContents().find(w => w.getType() !== 'webview' && w.getURL() === target)?.id ?? null, url
   )).not.toBeNull()
   const id = await bandal.app.evaluate(({ webContents }, target) =>
-    webContents.getAllWebContents().find(w => w.getType() === 'webview' && w.getURL() === target)!.id, url)
+    webContents.getAllWebContents().find(w => w.getType() !== 'webview' && w.getURL() === target)!.id, url)
   await expect.poll(() => run(bandal, id, 'document.readyState')).toBe('complete')
   return id
 }
@@ -64,6 +65,13 @@ test('cross-site POST, opener messaging and nested authentication keep their nat
     const child = await childAt(bandal, `${site.other}/auth`)
     await expect.poll(() => run(bandal, child, 'window.received')).toMatchObject({ method: 'POST', body: 'state=keep-me' })
     expect(await run(bandal, child, 'window.opener !== null')).toBe(true)
+    // Assert the authenticated WebContents is the visible tab, not an orphan
+    // Chromium page behind a different empty view.
+    await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }, id) => {
+      const host = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('index.html'))!
+      return host.contentView.children.some(v => 'webContents' in v && (v as Electron.WebContentsView).webContents.id === id && v.getVisible())
+    }, child)).toBe(true)
+    expect(await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1)
     await run(bandal, child, `window.opener.postMessage('authenticated','*')`)
     await expect.poll(() => run(bandal, root, 'window.result')).toBe('authenticated')
     await run(bandal, child, `window.open('${site.origin}/confirm','confirmation'); undefined`)
@@ -87,7 +95,7 @@ test('downloads retain the page, close only empty popups and keep their initiati
     expect(await run(bandal, root, 'document.querySelector("h1").textContent')).toBe('Lecture page')
     await run(bandal, root, `window.open('${site.origin}/download?name=popup.txt'); undefined`)
     await expect.poll(() => existsSync(join(courseDir, 'popup.txt'))).toBe(true)
-    await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter(w => w.webContents.getURL() === 'about:blank').length)).toBe(0)
+    await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('index.html'))!.contentView.children.length)).toBe(1)
     // No-course-switch race: this retained tab must still file in its own course.
     await createCourse(bandal.page, '다른 과목')
     await run(bandal, root, `(() => { const f=document.createElement('form');f.method='POST';f.action='${site.origin}/download?name=post.txt';f.target='_blank';f.innerHTML='<input name="token" value="post-download">';document.body.append(f);f.submit(); })()`)
@@ -117,9 +125,9 @@ test('private login windows keep an isolated session and direct downloads show t
     // Use the actual toolbar toggle to create the isolated guest.
     await bandal.page.getByRole('button', { name: '시크릿 모드 켜기' }).first().click()
     await expect.poll(() => bandal.app.evaluate(({ webContents, session }) =>
-      webContents.getAllWebContents().find(w => w.getType() === 'webview' && w.session === session.fromPartition('bandal-private') && w.getURL().startsWith('http'))?.id ?? null)).not.toBeNull()
+      webContents.getAllWebContents().find(w => w.getType() !== 'webview' && w.session === session.fromPartition('bandal-private') && w.getURL().startsWith('http'))?.id ?? null)).not.toBeNull()
     const privateId = await bandal.app.evaluate(({ webContents, session }) =>
-      webContents.getAllWebContents().find(w => w.getType() === 'webview' && w.session === session.fromPartition('bandal-private'))!.id)
+      webContents.getAllWebContents().find(w => w.getType() !== 'webview' && w.session === session.fromPartition('bandal-private'))!.id)
     expect(await run(bandal, privateId, 'document.cookie')).not.toContain('normal_session')
     await run(bandal, privateId, `window.open('${site.other}/private-auth'); undefined`)
     const child = await childAt(bandal, `${site.other}/private-auth`)
@@ -134,5 +142,24 @@ test('private login windows keep an isolated session and direct downloads show t
     await expect(bandal.page.locator('.browser-error').getByRole('button', { name: '폴더 보기', exact: true })).toBeVisible()
     await expect(bandal.page.locator('.browser-error')).toContainText('direct.txt')
     await bandal.page.screenshot({ path: testInfo.outputPath('download-result.png') })
+  } finally { await bandal.close(); await site.close() }
+})
+
+
+test('HTTP failures remain readable in a normal tab and diagnostics omit auth query strings', async () => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '서버 응답')
+    const root = await openTab(bandal, `${site.origin}/unavailable?token=not-for-diagnostics`)
+    await expect(bandal.page.getByRole('status').filter({ hasText: 'HTTP 503' })).toBeVisible()
+    expect(await run(bandal, root, 'document.querySelector("h1").textContent')).toBe('Lecture page')
+    await bandal.page.getByRole('button', { name: '진단 보기', exact: true }).click()
+    const dialog = bandal.page.getByRole('dialog', { name: '페이지 진단' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText('HTTP 503')
+    await expect(dialog).not.toContainText('not-for-diagnostics')
+    // Shell menus/dialogs must actually be above the native page.
+    await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('index.html'))!.contentView.children.filter(v => v.getVisible()).length)).toBe(0)
+    await expect(bandal.page.locator('.browser-native-anchor')).toHaveCSS('background-image', /data:image/)
   } finally { await bandal.close(); await site.close() }
 })

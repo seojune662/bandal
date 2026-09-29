@@ -24,6 +24,7 @@ import {
 } from './diagnosticsBridge'
 
 const KIND_LABELS: Record<DiagnosticEntry['kind'], string> = {
+  http: '서버 응답',
   error: '오류',
   rejection: '처리 안 된 오류',
   console: '콘솔',

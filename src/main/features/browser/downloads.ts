@@ -41,7 +41,7 @@ export interface DownloadsDeps {
    */
   getTargetCourseId: (webContentsId: number | null) => string | null
   resolveCourseFile?: (courseId: string, relPath: string) => string
-  onStarted?: (webContentsId: number | null) => void
+  onNavigationSettled?: (webContentsId: number | null) => void
   getOwnerWebContentsId?: (webContentsId: number | null) => number | null
   adoptFile: (input: {
     courseId: string
@@ -156,7 +156,8 @@ export function createDownloadHandler(deps: DownloadsDeps) {
       }
     }
     item.on('done', () => liveDownloads.delete(id))
-    deps.onStarted?.(webContentsId)
+    // Closing a WebContentsView while its response is streaming cancels it.
+    item.on('done', () => deps.onNavigationSettled?.(webContentsId))
 
     // No course selected: let Chromium do its default thing (~/Downloads).
     // Refusing the download outright would be worse.

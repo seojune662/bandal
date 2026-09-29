@@ -1,7 +1,7 @@
 /**
- * [M3-F] Minimal structural types for Electron's `<webview>` tag as seen from
- * the renderer. The renderer tsconfig has no electron types (by design — it
- * is sandboxed), so we type only the surface we actually use.
+ * Browser page controls shared by the DOM anchor and native WebContentsView.
+ * The historical type name is retained for the selection/login/video bridges;
+ * browser pages are owned by main, not mounted as Electron webview tags.
  */
 
 export interface WebviewTag extends HTMLElement {
@@ -54,6 +54,7 @@ export interface WebviewTag extends HTMLElement {
 }
 
 export interface DidNavigateEvent extends Event {
+  httpResponseCode?: number
   url: string
 }
 

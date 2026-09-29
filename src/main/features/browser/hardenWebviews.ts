@@ -1,3 +1,4 @@
+import { isManagedBrowserPage } from './managedPages'
 /**
  * [M3-F] Electron wiring for the hardened `<webview>` browser tabs.
  *
@@ -56,7 +57,7 @@ export function forwardBrowserSwipe(
   direction: string,
   platform: NodeJS.Platform = process.platform
 ): void {
-  if (platform !== 'darwin' || focused?.getType() !== 'webview') return
+  if (platform !== 'darwin' || !focused || (focused.getType() !== 'webview' && !isManagedBrowserPage(focused.id))) return
   const action = direction === 'right'
     ? 'browser-back'
     : direction === 'left'
@@ -232,7 +233,7 @@ function noteBlocked(
   url: string,
   reason: string
 ): void {
-  console.warn(`[browser] blocked ${kind}: ${reason} — ${url}`)
+  console.warn(`[browser] blocked ${kind}: ${reason} — ${requestingOriginOf(url)}`)
   if (host.isDestroyed()) return
   host.send('browser:blocked', { kind, url, reason })
 }
@@ -405,7 +406,7 @@ function navigationHost(webContents: WebContents): WebContents {
  */
 export function attachNavigationPolicies(
   webContents: WebContents,
-  opts: { openInTab: (url: string) => void; partition?: string }
+  opts: { openInTab: (url: string) => void; partition?: string; createTab?: (options: Electron.BrowserWindowConstructorOptions, details: Electron.HandlerDetails) => WebContents }
 ): void {
   if (policyAttached.has(webContents)) return
   policyAttached.add(webContents)
@@ -447,6 +448,13 @@ export function attachNavigationPolicies(
       const size = popupWindowSize(decision.scope, details.features)
       return {
         action: 'allow',
+        ...(opts.createTab ? { createWindow: (options: Electron.BrowserWindowConstructorOptions) => {
+          try {
+            const child = opts.createTab!(options, details)
+            child.once('destroyed', () => popupLimiter.release(rootId))
+            return child
+          } catch (error) { popupLimiter.release(rootId); throw error }
+        } } : {}),
         overrideBrowserWindowOptions: {
           width: size.width,
           height: size.height,

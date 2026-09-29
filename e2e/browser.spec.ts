@@ -66,11 +66,11 @@ async function dispatchBrowserShortcut(
         .filter(
           (contents) =>
             !contents.isDestroyed() &&
-            contents.getType() === 'webview' &&
+            contents.getType() !== 'webview' &&
             contents.getURL() === normalizedUrl
         )
         .sort((left, right) => right.id - left.id)[0]
-      const host = guest?.hostWebContents
+      const host = webContents.getAllWebContents().find(w => w.getURL().includes('index.html'))
       if (
         guest === undefined ||
         host === undefined ||
@@ -104,7 +104,7 @@ async function waitForBrowserGuest(
           .filter(
             (contents) =>
               !contents.isDestroyed() &&
-              contents.getType() === 'webview' &&
+              contents.getType() !== 'webview' &&
               contents.getURL() === normalizedUrl
           )
           .sort((left, right) => right.id - left.id)[0]

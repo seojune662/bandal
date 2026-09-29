@@ -18,7 +18,7 @@ type Listener = (event: unknown, state: string) => void
 class FakeItem {
   savePath = ''
   received = 0
-  private listeners = new Map<string, Listener>()
+  private listeners = new Map<string, Listener[]>()
 
   constructor(
     private readonly fileName: string,
@@ -41,11 +41,11 @@ class FakeItem {
     return this.savePath
   }
   on(name: string, listener: Listener): this {
-    this.listeners.set(name, listener)
+    this.listeners.set(name, [...(this.listeners.get(name) ?? []), listener])
     return this
   }
   fire(name: string, state: string): void {
-    this.listeners.get(name)?.(null, state)
+    this.listeners.get(name)?.forEach(listener => listener(null, state))
   }
   /** Pretend Chromium streamed the bytes to savePath. */
   writeBytes(body = 'pdf-bytes'): void {
@@ -179,6 +179,16 @@ describe('download handler', () => {
     expect(last?.recoverable).toBe(true)
     expect(existsSync(item.savePath)).toBe(true)
     expect(getDownloadFile(last!.id).path).toBe(item.savePath)
+  })
+
+  test('settles the navigation only after the transfer ends', () => {
+    const done = vi.fn()
+    const item = new FakeItem('wait.txt')
+    handler({ onNavigationSettled: done })(item as never, 42)
+    expect(done).not.toHaveBeenCalled()
+    item.writeBytes()
+    item.fire('done', 'completed')
+    expect(done).toHaveBeenCalledWith(42)
   })
 
   test('keeps the initiating tab after its download-only child closes', () => {

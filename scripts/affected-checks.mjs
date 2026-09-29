@@ -38,7 +38,8 @@ export function planChecks(files, full = false) {
   const e2e = new Set(files.filter((f) => /^e2e\/[^/]+\.spec\.ts$/.test(f)))
   if (has(/^(src\/main\/features\/(pdf\/|canvas\/|presentation\/|pdfText|textboxPdfLayout)|src\/shared\/(types\/drawing|textBoxMetrics)|resources\/fonts\/|e2e\/helpers\/renderPdf)/)) e2e.add('e2e/pdfExport.spec.ts')
   if (has(/^src\/renderer\/src\/features\/(pdf|ink)\//)) e2e.add('e2e/pdfTextbox.spec.ts')
-  if (has(/(renderInkSnapshot|pageImage|clipboard)/i)) e2e.add('e2e/pageImageCopy.spec.ts')
+  if (has(/(renderInkSnapshot|pageImage)/i)) e2e.add('e2e/pageImageCopy.spec.ts')
+  if (has(/(systemClipboard|noteImagePlugin|BufferedPdfCanvas|zoomInput)/)) e2e.add('e2e/interactionFixes.spec.ts')
   if (has(/(BrowserAddress|browserSearch|urlInput|useAddressSuggestions)/)) e2e.add('e2e/browserAddress.spec.ts')
   if (has(/^src\/.*\/browser\//)) e2e.add('e2e/browserCompatibility.spec.ts')
   if (has(/^src\/.*(calendar\/|appleCalendar\/|board\/|taskSchedule|calendarDate|types\/board)/)) {
@@ -47,7 +48,7 @@ export function planChecks(files, full = false) {
   }
   if (has(/(useViewportBounds|BoardEditor|CalendarForm)/)) e2e.add('e2e/viewportMenus.spec.ts')
   if (has(/^src\/(main\/(background\/|db\/|index\.ts|features\/materials\/)|preload\/|renderer\/src\/(features\/workspace\/|stores\/workspaceStore))/)) e2e.add('e2e/coursePerformance.spec.ts')
-  if (has(/^src\/renderer\/src\/features\/notes\//)) e2e.add('e2e/noteToolbar.spec.ts')
+  if (has(/^src\/renderer\/src\/features\/notes\/(NoteTab|NoteToolbar|noteEditorPlugins|noteFormatting|nativeHistoryGuard)/)) e2e.add('e2e/noteToolbar.spec.ts')
   if (full) {
     for (const spec of ['pdfExport', 'browserAddress', 'pageImageCopy', 'taskSchedule', 'appleCalendar', 'viewportMenus', 'coursePerformance']) {
       e2e.add(`e2e/${spec}.spec.ts`)
@@ -58,7 +59,17 @@ export function planChecks(files, full = false) {
   const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f))
   // Runtime font files are loaded from disk, outside the TS import graph.
   if (has(/^resources\/fonts\//)) unitInputs.push('src/main/features/pdf/exportPdf.ts', 'src/main/features/canvas/exportBoardPdf.ts')
-  return { full, types: [...types], scriptTests: [...scriptTests], unitInputs, e2e: [...e2e] }
+  const pdfChanges = files.filter(f => /^src\/renderer\/src\/features\/(pdf|ink)\//.test(f))
+  const pdfZoomOnly = !full && pdfChanges.length > 0 && pdfChanges.every(f => /\/(PdfTab\.tsx|PdfPageView\.tsx|BufferedPdfCanvas\.tsx|pdf\.css|lib\/zoomInput\.ts)$/.test(f))
+  const partial = new Map()
+  if (pdfZoomOnly) partial.set('e2e/pdfTextbox.spec.ts', 'zooming in and back preserves normalized geometry')
+  const infrastructure = files.filter(f => /^src\/(main\/(background\/|db\/|index\.ts|features\/materials\/)|preload\/|renderer\/src\/(features\/workspace\/|stores\/workspaceStore))/.test(f))
+  if (!full && infrastructure.length > 0 && infrastructure.every(f => f === 'src/preload/index.ts' || f === 'src/renderer/src/stores/workspaceStore.ts')) {
+    partial.set('e2e/coursePerformance.spec.ts', '100 course switches retain the visible PDF')
+  }
+  const e2eGrep = partial.size ? [...e2e].map(f => partial.get(f) ?? f.replace('e2e/', '').replaceAll('.', '\\.')).join('|') : null
+
+  return { e2eGrep, full, types: [...types], scriptTests: [...scriptTests], unitInputs, e2e: [...e2e] }
 }
 
 function run(command, args) {
@@ -76,7 +87,7 @@ export function main(args) {
   if (args.includes('--plan')) return
   if (args.includes('--e2e')) {
     const tests = plan.e2e.map((f) => f.replace(/^e2e\//, ''))
-    run('pnpm', ['exec', 'playwright', 'test', '-c', 'e2e', ...tests])
+    run('pnpm', ['exec', 'playwright', 'test', '-c', 'e2e', ...tests, ...(plan.e2eGrep ? ['--grep', plan.e2eGrep] : [])])
     return
   }
   for (const config of plan.types) run('pnpm', ['exec', 'tsc', '--noEmit', '-p', config])

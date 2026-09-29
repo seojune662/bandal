@@ -73,6 +73,7 @@ interface WorkspaceState {
   /** Closes the canonical tab and all its duplicate views. */
   closeTabsMatching: (descriptor: TabDescriptor) => void
   closeTab: (panelId: string) => void
+  saveRetainedLayout: (courseId: string | null, layout: ReturnType<DockviewApi['toJSON']>) => void
   closeOthers: (panelId: string) => void
   /** [M6-A] ⌘W: close the focused tab; no tab → no-op (never the window). */
   closeActiveTab: () => void
@@ -546,6 +547,14 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       notePanel.api.setActive()
     },
 
+    saveRetainedLayout: (courseId, layout) => {
+      if (courseId === null) return
+      runtimeLayouts.set(courseId, layout)
+      scheduleSave(courseId, persistentLayout(layout))
+      // Reaping must see closures in inactive retained workspaces too.
+      set({ openTabs: { ...get().openTabs } })
+    },
+
     closeTab: (panelId) => {
       if (api === null) return
       const panel = api.getPanel(panelId)
@@ -699,4 +708,37 @@ export function retainedTabDescriptors(courseId?: string): TabDescriptor[] {
     if (layout) descriptors.push(...Object.values(tabsFromLayout(layout)))
   }
   return descriptors
+}
+
+/** Site-created pages belong to their opener even while its course is hidden. */
+export function openBrowserTabInCourse(descriptor: TabDescriptor, courseId: string | null | undefined, background: boolean): void {
+  const state = useWorkspaceStore.getState()
+  const target = courseId === undefined ? undefined : courseApis.get(courseId)
+  if (courseId === undefined || courseId === state.activeCourseId || !target) {
+    state.openTab(descriptor, { background })
+    return
+  }
+  const previous = target.activePanel
+  target.addPanel({ id: tabPanelId(descriptor), component: descriptor.kind, title: tabTitle(descriptor), params: { descriptor } })
+  previous?.api.setActive()
+  const layout = target.toJSON()
+  state.saveRetainedLayout(courseId!, layout)
+}
+
+export function closeBrowserTab(tabId: string): void {
+  const state = useWorkspaceStore.getState()
+  const apis = new Set([...courseApis.values(), ...(api ? [api] : [])])
+  for (const target of apis) {
+    let changed = false
+    for (const panel of [...target.panels]) {
+      const descriptor = panel.params?.descriptor
+      if (isTabDescriptor(descriptor) && descriptor.kind === 'browser' && descriptor.payload.tabId === tabId) {
+        panel.api.close()
+        changed = true
+      }
+    }
+    if (changed) for (const [courseId, courseApi] of courseApis) {
+      if (courseApi === target && courseId !== state.activeCourseId) state.saveRetainedLayout(courseId, target.toJSON())
+    }
+  }
 }

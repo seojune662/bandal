@@ -1,3 +1,4 @@
+import type { BrowserPageEvent } from '../types/browserNative'
 /**
  * Push events: main → renderer, one-way, delivered via webContents.send and
  * subscribed through `window.bandal.on(channel, cb)`.
@@ -63,6 +64,10 @@ export interface MaterialsChanged {
  * it as a new Bandal browser tab.
  */
 export interface BrowserOpenUrl {
+  /** Existing Chromium page to adopt without replaying its navigation. */
+  tabId?: string
+  openerTabId?: string
+  courseId?: string | null
   url: string
   /** Popups and links inherit the opener tab's browsing session. */
   isPrivate?: boolean
@@ -252,6 +257,7 @@ export interface PushEvents {
     positionSec: number
     playbackRate: number
   }
+  'browser:page-event': BrowserPageEvent
   'browser:open-url': BrowserOpenUrl
   /**
    * Something the browser refused, so it can be seen instead of guessed at.

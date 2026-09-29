@@ -10,9 +10,8 @@ import { useAgentRuns } from './AgentRunBanner'
  *    course switch) or LRU eviction. The guest's last URL is remembered for
  *    the whole renderer session so a re-created guest restores where it was.
  *
- * Nav state is fed straight from webview DOM events (BrowserGuestView); the
- * legacy `browser:*` invoke channels from the WebContentsView plan are NOT
- * used (contract cleanup is an M5 concern).
+ * Main forwards native-page events through BrowserGuestView. Related opener
+ * and child pages stay resident until their connection is closed.
  */
 
 import { create } from 'zustand'
@@ -40,6 +39,7 @@ export interface LiveGuest {
 }
 
 export interface BrowserNavState {
+  httpStatus?: number
   /** A download navigation does not commit a document. */
   hasDocument?: boolean
   url: string
@@ -52,6 +52,19 @@ export interface BrowserNavState {
 export interface BrowserVisit {
   url: string
   title: string
+}
+
+const connectedBrowserTabs = new Set<string>()
+const browserOpeners = new Map<string, string>()
+export function connectBrowserTabs(opener: string, child: string): void {
+  browserOpeners.set(child, opener)
+  connectedBrowserTabs.add(opener)
+  connectedBrowserTabs.add(child)
+}
+export function disconnectBrowserTab(tabId: string): void {
+  for (const [child, parent] of browserOpeners) if (child === tabId || parent === tabId) browserOpeners.delete(child)
+  connectedBrowserTabs.clear()
+  for (const [child, parent] of browserOpeners) { connectedBrowserTabs.add(child); connectedBrowserTabs.add(parent) }
 }
 
 export const MAX_RECENT_VISITS = 6
@@ -250,7 +263,7 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
     const evicted = pickEvictions(
       grown.map((guest) => guest.tabId),
       MAX_LIVE_GUESTS,
-      (id) => id !== tabId && getBrowserAnchorRect(id) === null && useAgentRuns.getState().byTab[id] === undefined
+      (id) => !connectedBrowserTabs.has(id) && id !== tabId && getBrowserAnchorRect(id) === null && useAgentRuns.getState().byTab[id] === undefined
     )
     const evictedSet = new Set(evicted)
     set({
@@ -362,6 +375,7 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
   },
 
   removeGuest: (tabId) => {
+    disconnectBrowserTab(tabId)
     const { liveGuests, nav, login, recent, overlay, zoom } = get()
     if (liveGuests.some((guest) => guest.tabId === tabId && guest.isPrivate)) {
       lastKnownUrls.delete(tabId)
@@ -418,6 +432,8 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
 
 /** Test-only: reset the store and the session URL-restore map. */
 export function resetBrowserGuestsForTests(): void {
+  browserOpeners.clear()
+  connectedBrowserTabs.clear()
   lastKnownUrls.clear()
   useBrowserGuests.setState({
     liveGuests: [],

@@ -18,6 +18,7 @@ import {
   type DragEvent as ReactDragEvent
 } from 'react'
 import { Page } from 'react-pdf'
+import { BufferedPdfCanvas } from './BufferedPdfCanvas'
 import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
 import { rectsContainPoint } from './lib/annotationGeometry'
@@ -390,6 +391,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
         <>
           <Page
             pageNumber={pageNumber}
+            renderMode="none"
             width={width}
             renderTextLayer
             renderAnnotationLayer={false}
@@ -403,7 +405,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
                 onAspect(pageNumber, viewport.height / viewport.width)
               }
             }}
-          />
+          ><BufferedPdfCanvas /></Page>
           <div className="pdf-highlight-layer" aria-hidden="true">
             {annotations.map((annotation) =>
               annotation.rects.map((rect, index) => (

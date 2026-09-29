@@ -1,3 +1,4 @@
+import type { BrowserPageState, BrowserPageAction } from '../types/browserNative'
 import type { AppleCalendarState, AppleCalendarEvent, AppleCalendarPreferences } from '../types/appleCalendar'
 /**
  * [C1] The single source of truth for request/response IPC.
@@ -893,6 +894,24 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   'browser:setDownloadTarget': {
     req: { courseId: string | null; webContentsId: number; tabId: string }
     res: { ok: true }
+  }
+  'browser:createPage': {
+    req: { tabId: string; isPrivate: boolean; courseId: string | null }
+    res: { state: BrowserPageState; adopted: boolean }
+  }
+  'browser:pageBounds': {
+    req: { tabId: string; bounds: { x: number; y: number; width: number; height: number } | null; preview?: boolean }
+    res: { snapshot: string | null }
+  }
+  'browser:pageAction': {
+    req: { tabId: string; action: BrowserPageAction; args: unknown[] }
+    res: unknown
+  }
+  'browser:destroyPage': { req: { tabId: string }; res: { ok: true } }
+  'clipboard:beginCopy': { req: {}; res: { token: number } }
+  'clipboard:writeImage': {
+    req: { token: number; png: string | null; html: string; text: string }
+    res: { written: boolean }
   }
   'browser:downloadFile': {
     req: { id: string; action: 'open' | 'reveal' | 'saveAs' | 'retry' }
@@ -1993,6 +2012,12 @@ export const IPC_CHANNELS = [
   'browserAgent:auditTail',
   'browser:controlDownload',
   'browser:downloadFile',
+  'browser:createPage',
+  'browser:pageBounds',
+  'browser:pageAction',
+  'browser:destroyPage',
+  'clipboard:beginCopy',
+  'clipboard:writeImage',
   'browser:clearStorage',
   'browser:sitePermissions',
   'browser:forgetPermission',

@@ -1,5 +1,6 @@
+import { attachNativePage } from './nativePageHandle'
 /**
- * [M3-F] One live <webview> guest, positioned over its panel anchor.
+ * [M3-F] One native browser page, positioned over its stable DOM panel anchor.
  *
  * Lives in the fixed BrowserWebviewLayer — never inside the dockview panel
  * DOM — so tab drags/splits re-parent only the lightweight anchor while the
@@ -34,7 +35,7 @@ import {
 } from './guestActions'
 import { useWebviewSelectionBridge } from './selectionBridge'
 import { useWebviewLoginBridge } from './loginBridge'
-import { useWebviewDiagnosticsBridge } from './diagnosticsBridge'
+import { useWebviewDiagnosticsBridge, recordHttpResponse } from './diagnosticsBridge'
 import {
   useWebviewVideoBridge,
   videoReportForTab
@@ -51,13 +52,12 @@ import type {
 } from './webviewTypes'
 
 /** The only partition main-side hardening allows guests to attach with. */
-const BROWSING_PARTITION = 'persist:browsing'
-const PRIVATE_BROWSING_PARTITION = 'bandal-private'
 
 interface BrowserGuestViewProps {
   tabId: string
   src: string
   isPrivate: boolean
+  suppressed: boolean
 }
 
 function guestStyle(rect: AnchorRect | null): CSSProperties {
@@ -73,9 +73,11 @@ function guestStyle(rect: AnchorRect | null): CSSProperties {
 export function BrowserGuestView({
   tabId,
   src,
-  isPrivate
+  isPrivate,
+  suppressed
 }: BrowserGuestViewProps): JSX.Element {
   const webviewRef = useRef<WebviewTag | null>(null)
+  const nativeRef = useRef<ReturnType<typeof attachNativePage> | null>(null)
   const [ownerCourse] = useState(() =>
     useCoursesStore.getState().courses.find((course) =>
       retainedTabDescriptors(course.id).some((tab) => tab.kind === 'browser' && tab.payload.tabId === tabId)
@@ -89,6 +91,15 @@ export function BrowserGuestView({
   const overlayVisible = useBrowserGuests(
     (state) => (state.overlay[tabId] ?? null) !== null
   )
+  useEffect(() => {
+    if (!webviewRef.current) return
+    const native = attachNativePage(webviewRef.current, tabId, isPrivate, ownerCourse)
+    nativeRef.current = native
+    return () => { native.dispose(); nativeRef.current = null }
+  }, [tabId, isPrivate, ownerCourse])
+  useEffect(() => {
+    nativeRef.current?.bounds(overlayVisible || suppressed || contextMenu ? null : rect, rect !== null && !overlayVisible && (suppressed || contextMenu !== null))
+  }, [rect, overlayVisible, suppressed, contextMenu])
   useWebviewSelectionBridge(webviewRef)
   useWebviewLoginBridge(tabId, webviewRef, !isPrivate)
   useWebviewDiagnosticsBridge(tabId, webviewRef)
@@ -139,6 +150,7 @@ export function BrowserGuestView({
     }
 
     const listeners: ReadonlyArray<[string, EventListener]> = [
+      ['dom-ready', () => { registerGuestWebContents(tabId, element); applyZoom() }],
       [
         'did-start-loading',
         () => {
@@ -150,7 +162,7 @@ export function BrowserGuestView({
             // not attached yet — treat as main-frame load
           }
           useBrowserGuests.getState().setOverlay(tabId, null)
-          update({ loading: true })
+          update({ loading: true, httpStatus: 0 })
         }
       ],
       [
@@ -163,6 +175,8 @@ export function BrowserGuestView({
       [
         'did-navigate',
         ((event: DidNavigateEvent) => {
+          recordHttpResponse(tabId, event.url, event.httpResponseCode ?? 0)
+          update({ httpStatus: event.httpResponseCode ?? 0 })
           if (event.url !== 'about:blank') update({ url: event.url, hasDocument: true, ...historyState() })
         }) as EventListener
       ],
@@ -228,11 +242,11 @@ export function BrowserGuestView({
         // exists, and main needs the id -> tabId mapping to route a chord it
         // swallowed (see ShortcutPassthrough). Re-running per navigation is
         // harmless and self-healing.
-        'dom-ready',
+        'native-ready',
         () => {
           registerGuestWebContents(tabId, element)
           applyZoom()
-          if (!initialNavigationStarted) {
+          if (!initialNavigationStarted && !nativeRef.current?.isAdopted()) {
             initialNavigationStarted = true
             void (async () => {
               const matched = await invoke('browser:courseForUrl', { url: src }).catch(() => ({ courseId: null }))
@@ -352,21 +366,9 @@ export function BrowserGuestView({
       className="browser-guest"
       style={guestStyle(overlayVisible ? null : rect)}
     >
-      <webview
-        ref={(element) => {
-          webviewRef.current = element as WebviewTag | null
-        }}
-        src="about:blank"
-        partition={isPrivate ? PRIVATE_BROWSING_PARTITION : BROWSING_PARTITION}
-        // Without this attribute Chromium drops window.open/target=_blank
-        // INSIDE the guest — main's setWindowOpenHandler never even fires
-        // Main preserves Chromium-created windows and applies site permissions.
-        // @types/react types it as boolean, but React's runtime silently
-        // DROPS boolean-true for unknown attributes — only a string reaches
-        // the DOM, so the cast is load-bearing. Verified via
-        // renderToStaticMarkup: {true} → no attribute, '' → attribute set.
-        allowpopups={'' as unknown as boolean}
-      />
+      <div className="browser-native-anchor" ref={(element) => {
+        webviewRef.current = element as WebviewTag | null
+      }} />
       {contextMenu !== null && (
         <BrowserContextMenu
           tabId={tabId}

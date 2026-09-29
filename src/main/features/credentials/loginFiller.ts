@@ -1,3 +1,4 @@
+import { isManagedBrowserPage } from '../browser/managedPages'
 import type { FillLoginResult } from '../../../shared/types/credentials'
 import type { CredentialStore } from './credentialStore'
 import { normalizeCredentialOrigin } from './credentialStore'
@@ -56,7 +57,7 @@ export function resolveGuest(
     const guest = deps.fromId(request.guestWebContentsId)
     if (
       guest === null ||
-      guest.getType() !== 'webview' ||
+      (guest.getType() !== 'webview' && !isManagedBrowserPage(request.guestWebContentsId)) ||
       currentOrigin(guest) !== origin
     ) {
       return null

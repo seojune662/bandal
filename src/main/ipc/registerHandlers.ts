@@ -1,3 +1,6 @@
+import { createBrowserPage, setBrowserPageBounds, browserPageAction, destroyBrowserPage } from '../features/browser/nativeTabs'
+import { isManagedBrowserPage } from '../features/browser/managedPages'
+import { beginClipboardCopy, writeImageClipboard } from '../features/systemClipboard'
 import { copyFile } from 'node:fs/promises'
 import { browsingContext, setBrowsingCourse } from '../features/browser/browsingContext'
 import { finishDownloadNavigation } from '../features/browser/popupLifecycle'
@@ -291,15 +294,16 @@ function assertEveryChannelHandled(): void {
 
 function handle<K extends IpcChannel>(
   channel: K,
-  fn: (req: IpcRequest<K>) => Promise<IpcResponse<K>> | IpcResponse<K>
+  fn: (req: IpcRequest<K>, event: Electron.IpcMainInvokeEvent) => Promise<IpcResponse<K>> | IpcResponse<K>
 ): void {
   registered.add(channel)
   ipcMain.handle(channel, async (_event, req: IpcRequest<K>) => {
     const start = performance.now()
     try {
-      return await fn(req)
+      return await fn(req, _event)
     } catch (error) {
-      console.error(`[ipc] ${channel} failed:`, error)
+      if (channel === 'browser:pageAction') console.error('[ipc] Browser action failed')
+      else console.error(`[ipc] ${channel} failed:`, error)
       throw error
     } finally { traceIpc(channel, performance.now() - start) }
   })
@@ -1526,6 +1530,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     emit: (state) => broadcast('browserAgent:run-state', state)
   })
   const guestRegistry = createGuestRegistry({
+    isManagedPage: (guest) => isManagedBrowserPage(guest.id),
     fromId: (id) => webContents.fromId(id) as never,
     // A guest the agent may drive is a webview on the hardened partition and
     // nothing else — never the app's own renderer.
@@ -2666,6 +2671,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     )
   }))
 
+  handle('browser:createPage', (req, event) => createBrowserPage(event, req))
+  handle('browser:pageBounds', (req, event) => setBrowserPageBounds(event, req))
+  handle('browser:pageAction', (req, event) => browserPageAction(event, req))
+  handle('browser:destroyPage', (req, event) => { destroyBrowserPage(event, req.tabId); return OK })
+  handle('clipboard:beginCopy', () => ({ token: beginClipboardCopy() }))
+  handle('clipboard:writeImage', writeImageClipboard)
+
   handle('browser:downloadFile', async ({ id, action }) => {
     const file = getDownloadFile(id)
     if (action === 'retry') {
@@ -2691,7 +2703,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       stagingRoot: join(app.getPath('userData'), 'download-recovery'),
       getTargetCourseId: (id) => browsingContext(id)?.courseId ?? null,
       resolveCourseFile: (courseId, relPath) => materialsRepo.absolutePathFor(courseId, relPath),
-      onStarted: finishDownloadNavigation,
+      onNavigationSettled: finishDownloadNavigation,
       getOwnerWebContentsId: (id) => browsingContext(id)?.rootId ?? id,
       adoptFile: (input) => materialsRepo.adoptFile(input),
       emit: (update) => {

@@ -84,3 +84,15 @@ describe('guestRegistry', () => {
     expect(api.resolve('t1')).toBeNull()
   })
 })
+
+test('native pages need both explicit manager ownership and the browsing session', () => {
+  const page = guest({ getType: () => 'window' })
+  let managed = true, browsing = true
+  const registry = createGuestRegistry({ fromId: () => page, isManagedPage: () => managed, isBrowsingPartition: () => browsing })
+  registry.register('native', page.id)
+  expect(registry.resolve('native')).toBe(page)
+  managed = false
+  expect(registry.resolve('native')).toBeNull()
+  managed = true; browsing = false
+  expect(registry.resolve('native')).toBeNull()
+})

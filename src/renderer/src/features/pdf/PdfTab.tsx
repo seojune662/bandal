@@ -36,6 +36,7 @@ import {
 } from './useVisiblePages'
 import { PdfToolbar } from './PdfToolbar'
 import { TextFormatRow } from '../ink/TextFormatRow'
+import { wheelZoomFactor } from './lib/zoomInput'
 import { PdfPageView } from './PdfPageView'
 import { usePageImageCopy } from '../pageImageCopy/usePageImageCopy'
 import { renderPdfPageImage } from './lib/renderPageImage'
@@ -113,7 +114,6 @@ const PDF_DOCUMENT_OPTIONS = {
   disableAutoFetch: true,
   rangeChunkSize: 1048576
 }
-const WHEEL_ZOOM_STEP = 1.05
 /** A4 portrait height/width — placeholder ratio before first measure. */
 const DEFAULT_PAGE_ASPECT = Math.SQRT2
 const PAGE_GUTTER_PX = 48
@@ -233,7 +233,6 @@ function PdfViewer({
   }, [activeTool])
 
   const zoomRef = useRef(zoom)
-  zoomRef.current = zoom
   const interactiveRef = useRef(interactive)
   interactiveRef.current = interactive
   const currentPageRef = useRef(currentPage)
@@ -243,6 +242,11 @@ function PdfViewer({
   const restoreRef = useRef<{ done: boolean }>({ done: false })
   const jumpToPageRef = useRef<(page: number) => void>(() => {})
   const viewAnchorRef = useRef<PdfViewportAnchor | null>(null)
+  const zoomPointRef = useRef<{ page: number; x: number; y: number; clientX: number; clientY: number } | null>(null)
+  const zoomFrameRef = useRef<number | null>(null)
+  const zoomPinnedPages = useRef(new Set<number>())
+  const zoomEndTimer = useRef<number | null>(null)
+  const [zooming, setZooming] = useState(false)
   const pendingLayoutAnchorRef = useRef<PdfViewportAnchor | null>(null)
   const wasInteractiveRef = useRef(interactive)
   const flashTimer = useRef<number | null>(null)
@@ -405,6 +409,18 @@ function PdfViewer({
       return
     }
 
+    const zoomPoint = zoomPointRef.current
+    const zoomElement = zoomPoint ? elementFor(zoomPoint.page) : null
+    const scroller = scrollerRef.current
+    if (zoomPoint && zoomElement && scroller) {
+      const box = zoomElement.getBoundingClientRect()
+      scroller.scrollLeft += box.left + box.width * zoomPoint.x - zoomPoint.clientX
+      scroller.scrollTop += box.top + box.height * zoomPoint.y - zoomPoint.clientY
+      zoomPointRef.current = null
+      pendingLayoutAnchorRef.current = null
+      rememberViewportAnchor()
+      return
+    }
     const becameInteractive = !wasInteractiveRef.current
     wasInteractiveRef.current = true
     const anchor =
@@ -431,16 +447,34 @@ function PdfViewer({
   ])
 
   // -- zoom -----------------------------------------------------------------
-  const applyZoom = useCallback((next: number): void => {
+  const applyZoom = useCallback((next: number, point?: { clientX: number; clientY: number; page: number }): void => {
     const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next))
     if (clamped === zoomRef.current) return
-    const anchor = rememberViewportAnchor()
-    if (anchor !== null) {
-      pendingLayoutAnchorRef.current = anchor
+    const scroller = scrollerRef.current
+    const page = point?.page || pageAtViewportCenter()
+    const element = elementFor(page)
+    if (scroller && element) {
+      const viewport = scroller.getBoundingClientRect()
+      const box = element.getBoundingClientRect()
+      const clientX = point?.clientX ?? viewport.left + scroller.clientWidth / 2
+      const clientY = point?.clientY ?? viewport.top + scroller.clientHeight / 2
+      zoomPointRef.current = { page, x: (clientX - box.left) / box.width, y: (clientY - box.top) / box.height, clientX, clientY }
     }
-    setPendingSelection(null)
-    setZoom(clamped)
-  }, [rememberViewportAnchor])
+    zoomRef.current = clamped
+    for (const page of visiblePages) zoomPinnedPages.current.add(page)
+    setZooming(true)
+    if (zoomEndTimer.current !== null) window.clearTimeout(zoomEndTimer.current)
+    zoomEndTimer.current = window.setTimeout(() => {
+      zoomPinnedPages.current.clear()
+      setZooming(false)
+    }, 200)
+    if (zoomFrameRef.current !== null) return
+    zoomFrameRef.current = window.requestAnimationFrame(() => {
+      zoomFrameRef.current = null
+      setPendingSelection(null)
+      setZoom(zoomRef.current)
+    })
+  }, [elementFor, pageAtViewportCenter, visiblePages])
 
   useEffect(() => {
     const scroller = scrollerRef.current
@@ -448,12 +482,19 @@ function PdfViewer({
     const handleWheel = (event: WheelEvent): void => {
       if (!event.ctrlKey && !event.metaKey) return
       event.preventDefault()
-      const factor = event.deltaY < 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP
-      applyZoom(zoomRef.current * factor)
+      const pageNode = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-pdf-page]') : null
+      applyZoom(zoomRef.current * wheelZoomFactor(event.deltaY, event.deltaMode, scroller.clientHeight), {
+        clientX: event.clientX, clientY: event.clientY,
+        page: Number(pageNode?.dataset.pdfPage) || pageAtViewportCenter()
+      })
     }
     scroller.addEventListener('wheel', handleWheel, { passive: false })
     return () => scroller.removeEventListener('wheel', handleWheel)
-  }, [applyZoom])
+  }, [applyZoom, pageAtViewportCenter])
+  useEffect(() => () => {
+    if (zoomFrameRef.current !== null) window.cancelAnimationFrame(zoomFrameRef.current)
+    if (zoomEndTimer.current !== null) window.clearTimeout(zoomEndTimer.current)
+  }, [])
 
   // -- scroll: current page, memory save ------------------------------------
   const persistScroll = useCallback((): void => {
@@ -611,6 +652,7 @@ function PdfViewer({
         viewAnchorRef.current = savedAnchor
         if (Number.isFinite(saved.zoom) && saved.zoom > 0 && saved.zoom !== 1) {
           pendingLayoutAnchorRef.current = savedAnchor
+          zoomRef.current = saved.zoom
           setZoom(saved.zoom)
         }
         requestAnimationFrame(() => {
@@ -1009,7 +1051,7 @@ function PdfViewer({
                       })}
                       width={pageWidth}
                       aspect={pageAspects.get(pageNumber) ?? defaultAspect}
-                      isVisible={visiblePages.has(pageNumber)}
+                      isVisible={visiblePages.has(pageNumber) || (zooming && zoomPinnedPages.current.has(pageNumber))}
                       clipDragEnabled={activeTool === 'select'}
                       onSendClip={(source, clientX, clientY) => {
                         setPendingSelection(null)

@@ -1,6 +1,6 @@
 import type { Node as ProseNode } from '@milkdown/prose/model'
-import { Fragment } from '@milkdown/prose/model'
-import { Plugin, PluginKey } from '@milkdown/prose/state'
+import { DOMParser as ProseDOMParser, Fragment } from '@milkdown/prose/model'
+import { NodeSelection, Plugin, PluginKey } from '@milkdown/prose/state'
 import type {
   EditorView,
   NodeView,
@@ -321,10 +321,87 @@ export function createNoteImageView(courseId: string): NodeViewConstructor {
   }
 }
 
+let copySerial = 0
+
+async function portableImage(courseId: string, source: string): Promise<string> {
+  const image = new Image()
+  image.crossOrigin = 'anonymous'
+  image.src = noteImageSource(courseId, source)
+  await image.decode()
+  const canvas = document.createElement('canvas')
+  if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth * image.naturalHeight > 32_000_000) throw new Error('이미지가 너무 크거나 아직 준비되지 않았어요.')
+  canvas.width = image.naturalWidth
+  canvas.height = image.naturalHeight
+  try {
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('이미지를 복사하지 못했어요.')
+    context.drawImage(image, 0, 0)
+    return canvas.toDataURL('image/png')
+  } finally { canvas.width = canvas.height = 0 }
+}
+
+async function copyNoteSelection(view: EditorView, courseId: string, cut: boolean, serial: number): Promise<void> {
+  const { selection, doc } = view.state
+  const { dom, text } = view.serializeForClipboard(selection.content())
+  const { token } = await invoke('clipboard:beginCopy', {})
+  const images = [...dom.querySelectorAll('img')]
+  await Promise.all(images.map(async (image) => {
+    const source = image.getAttribute('src') ?? ''
+    image.src = await portableImage(courseId, source)
+    image.dataset.bandalCourse = courseId
+    const relPath = noteLocalRelPath(source)
+    if (relPath) image.dataset.bandalSource = relPath
+  }))
+  if (serial !== copySerial || view.isDestroyed) return
+  const single = selection instanceof NodeSelection && selection.node.type.name === 'image'
+  const result = await invoke('clipboard:writeImage', {
+    token, png: single ? images[0]?.src ?? null : null,
+    html: dom.outerHTML, text
+  })
+  if (result.written && cut && view.state.doc === doc && view.state.selection.eq(selection)) {
+    view.dispatch(view.state.tr.deleteSelection().scrollIntoView())
+  }
+}
+
+async function pastePortableImages(view: EditorView, courseId: string, html: string): Promise<void> {
+  const requestId = addPendingRange(view, view.state.selection)
+  try {
+    const container = document.createElement('div')
+    container.innerHTML = html
+    for (const image of container.querySelectorAll<HTMLImageElement>('img[data-bandal-course]')) {
+      const existing = image.dataset.bandalSource
+      if (image.dataset.bandalCourse === courseId && existing && !existing.split('/').includes('..')) {
+        image.setAttribute('src', existing)
+      } else {
+        const data = image.getAttribute('src') ?? ''
+        if (!data.startsWith('data:image/png;base64,')) throw new Error('복사된 이미지가 올바르지 않아요.')
+        const bytes = Uint8Array.from(atob(data.split(',')[1]!), (c) => c.charCodeAt(0))
+        const result = await saveImages(courseId, [new File([bytes], 'image.png', { type: 'image/png' })])
+        const saved = result.images[0]
+        if (!saved) throw result.failures[0] ?? new Error('이미지를 저장하지 못했어요.')
+        image.setAttribute('src', saved.relPath)
+      }
+      delete image.dataset.bandalCourse
+      delete image.dataset.bandalSource
+    }
+    if (view.isDestroyed) return
+    const range = noteImageInsertKey.getState(view.state)?.get(requestId)
+    if (!range) return
+    const slice = ProseDOMParser.fromSchema(view.state.schema).parseSlice(container)
+    view.dispatch(view.state.tr.replaceRange(range.from, range.to, slice)
+      .setMeta(noteImageInsertKey, { type: 'remove', id: requestId } satisfies PendingImageMeta).scrollIntoView())
+  } catch (error) {
+    if (!view.isDestroyed) removePendingRange(view, requestId)
+    showToast(errorMessage(error), 'danger')
+  }
+}
+
 export function createNoteImagePlugin(
   courseId: string
 ): Plugin<PendingImageState> {
+  let closeMenu: (() => void) | undefined
   return new Plugin<PendingImageState>({
+    view: () => ({ destroy: () => closeMenu?.() }),
     key: noteImageInsertKey,
     state: {
       init: () => new Map(),
@@ -346,7 +423,38 @@ export function createNoteImagePlugin(
       }
     },
     props: {
+      handleDOMEvents: {
+        copy: (view, event) => handleImageCopy(view, event, courseId, false),
+        cut: (view, event) => handleImageCopy(view, event, courseId, true),
+        contextmenu: (view, event) => {
+          const image = event.target instanceof HTMLImageElement ? event.target : null
+          if (!image) return false
+          event.preventDefault()
+          closeMenu?.()
+          const position = view.posAtDOM(image, 0)
+          view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, position)))
+          const menu = document.createElement('button')
+          menu.textContent = '이미지 복사'
+          menu.className = 'note-image-copy-menu'
+          menu.style.cssText = `position:fixed;z-index:10000;left:${Math.min(event.clientX, window.innerWidth - 120)}px;top:${Math.min(event.clientY, window.innerHeight - 40)}px;padding:10px 16px;background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border-subtle);border-radius:8px`
+          const close = (): void => { menu.remove(); document.removeEventListener('pointerdown', outside, true); closeMenu = undefined }
+          closeMenu = close
+          const outside = (e: Event): void => { if (e.target !== menu) close() }
+          menu.onclick = () => { close(); void copyNoteSelection(view, courseId, false, ++copySerial).catch(error => showToast(errorMessage(error), 'danger')) }
+          document.body.append(menu)
+          document.addEventListener('pointerdown', outside, true)
+          menu.onkeydown = (e) => { if (e.key === 'Escape') close() }
+          menu.focus()
+          return true
+        }
+      },
       handlePaste: (view, event) => {
+        const html = event.clipboardData?.getData('text/html') ?? ''
+        if (html.includes('data-bandal-course=')) {
+          event.preventDefault()
+          void pastePortableImages(view, courseId, html)
+          return true
+        }
         const files = imageFiles(event.clipboardData)
         if (files.length === 0) return false
         event.preventDefault()
@@ -385,4 +493,14 @@ export function createNoteImagePlugin(
       }
     }
   })
+}
+
+function handleImageCopy(view: EditorView, event: ClipboardEvent, courseId: string, cut: boolean): boolean {
+  const serial = ++copySerial
+  let hasImage = false
+  view.state.selection.content().content.descendants((node) => { if (node.type.name === 'image') hasImage = true })
+  if (!hasImage) return false
+  event.preventDefault()
+  void copyNoteSelection(view, courseId, cut, serial).catch(error => showToast(errorMessage(error), 'danger'))
+  return true
 }

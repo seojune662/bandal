@@ -47,3 +47,22 @@ test('login and download changes select compatibility rather than omnibox E2E', 
   const plan = planChecks(['src/main/features/browser/downloads.ts', 'src/renderer/src/features/browser/BrowserGuestView.tsx'])
   assert.deepEqual(plan.e2e, ['e2e/browserCompatibility.spec.ts'])
 })
+
+test('native image clipboard does not repeat PDF image export checks', () => {
+  assert.deepEqual(planChecks(['src/main/features/systemClipboard.ts']).e2e, ['e2e/interactionFixes.spec.ts'])
+})
+test('PDF buffering runs continuous zoom and drawing geometry, without unrelated textbox editing', () => {
+  const plan = planChecks(['src/renderer/src/features/pdf/BufferedPdfCanvas.tsx', 'src/renderer/src/features/pdf/PdfTab.tsx'])
+  assert.deepEqual(plan.e2e, ['e2e/pdfTextbox.spec.ts', 'e2e/interactionFixes.spec.ts'])
+  assert.match(plan.e2eGrep, /zooming in and back/)
+  assert.equal(planChecks(['src/renderer/src/features/ink/InkLayer.tsx']).e2eGrep, null)
+})
+
+test('image-only note changes skip unrelated toolbar commands', () => {
+  assert.deepEqual(planChecks(['src/renderer/src/features/notes/noteImagePlugin.ts']).e2e, ['e2e/interactionFixes.spec.ts'])
+})
+test('workspace-only changes focus on retained course views rather than rescanning files', () => {
+  const plan = planChecks(['src/renderer/src/stores/workspaceStore.ts'])
+  assert.match(plan.e2eGrep, /100 course switches/)
+  assert.equal(planChecks(['src/main/features/materials/materialsRepo.ts']).e2eGrep, null)
+})

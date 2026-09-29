@@ -61,6 +61,7 @@ const PUSH_CHANNELS = [
   'pip:seek',
   'ui:openMaterial',
   'ui:openUrl',
+  'browser:page-event',
   'browser:open-url',
   'browser:activate-tab',
   'browser:close-tab',

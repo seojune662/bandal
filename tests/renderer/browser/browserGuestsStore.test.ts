@@ -14,6 +14,8 @@ vi.mock('../../../src/renderer/src/lib/ipc', () => ({
 }))
 
 import {
+  connectBrowserTabs,
+  disconnectBrowserTab,
   initialNavState,
   MAX_RECENT_VISITS,
   resetBrowserGuestsForTests,
@@ -249,4 +251,15 @@ describe('removeGuest', () => {
     store().removeGuest('nope')
     expect(store().liveGuests).toEqual([])
   })
+})
+
+test('opener connections survive LRU pressure and release their pins after closing', () => {
+  store().ensureGuest('parent', 'https://parent.example')
+  store().ensureGuest('child', 'https://auth.example')
+  connectBrowserTabs('parent', 'child')
+  for (let i = 0; i < MAX_LIVE_GUESTS + 2; i++) store().ensureGuest(`pressure-${i}`, 'https://example.com')
+  expect(store().liveGuests.map(g => g.tabId)).toEqual(expect.arrayContaining(['parent', 'child']))
+  disconnectBrowserTab('child')
+  store().ensureGuest('after-close', 'https://example.com')
+  expect(store().liveGuests.map(g => g.tabId)).not.toContain('parent')
 })

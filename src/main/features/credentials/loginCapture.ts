@@ -1,3 +1,4 @@
+import { isManagedBrowserPage } from '../browser/managedPages'
 import {
   LOGIN_CAPTURE_GLOBAL,
   type SavedLoginSummary
@@ -188,7 +189,7 @@ export function createLoginCapturer(
         guest = resolved.fromId(request.guestWebContentsId)
         if (
           guest === null ||
-          guest.getType() !== 'webview' ||
+          (guest.getType() !== 'webview' && !isManagedBrowserPage(request.guestWebContentsId)) ||
           !isRelatedLoginOrigin(pending.origin, guest.getURL())
         ) {
           return null

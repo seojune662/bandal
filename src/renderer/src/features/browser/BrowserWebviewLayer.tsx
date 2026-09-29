@@ -1,3 +1,4 @@
+import { useNativePageOcclusion } from './useNativePageOcclusion'
 /**
  * [M3-F] Fixed layer hosting every live <webview> guest OUTSIDE the dockview
  * DOM. Mounted once at shell level (AppShell).
@@ -14,11 +15,11 @@ import { useEffect, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { invoke, onPush } from '../../lib/ipc'
 import { showToast, showToastWithAction } from '../../app/toast'
-import { useWorkspaceStore, retainedTabDescriptors } from '../../stores/workspaceStore'
+import { useWorkspaceStore, retainedTabDescriptors, openBrowserTabInCourse } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { useNewTabMenu } from '../workspace/newTabMenuController'
 import { BrowserGuestView } from './BrowserGuestView'
-import { useBrowserGuests } from './browserGuestsStore'
+import { useBrowserGuests, connectBrowserTabs } from './browserGuestsStore'
 import {
   useActivateTabRequests,
   useAgentTabSync,
@@ -64,21 +65,20 @@ function useGuestReaper(): void {
 function useOpenUrlForwarding(): void {
   useEffect(
     () =>
-      onPush('browser:open-url', ({ url, background, requestId, isPrivate }) => {
-        const tabId = uuidv4()
+      onPush('browser:open-url', ({ url, background, requestId, isPrivate, tabId: adoptedTabId, courseId, openerTabId }) => {
+        const tabId = adoptedTabId ?? uuidv4()
+        if (openerTabId) connectBrowserTabs(openerTabId, tabId)
         // Main matched the new tab to the agent's request by URL prefix, which
         // a redirect breaks. Remember which request this tab belongs to so the
         // guest can say so when it registers.
         if (requestId !== undefined) rememberOpenRequest(tabId, requestId)
-        useWorkspaceStore
-          .getState()
-          .openTab(
+        openBrowserTabInCourse(
             descriptorFor('browser', {
               tabId,
               initialUrl: url,
               ...(isPrivate === true ? { isPrivate: true } : {})
             }),
-            background === true ? { background: true } : undefined
+            courseId, background === true
           )
       }),
     []
@@ -217,7 +217,8 @@ export function BrowserWebviewLayer(): JSX.Element {
   useActivateTabRequests()
   useCloseTabRequests()
 
-  const isPassthrough = isDragActive || isMenuOpen || hasExternalToken
+  const occluded = useNativePageOcclusion()
+  const isPassthrough = isDragActive || isMenuOpen || hasExternalToken || occluded
 
   return (
     <div
@@ -230,6 +231,7 @@ export function BrowserWebviewLayer(): JSX.Element {
           tabId={guest.tabId}
           src={guest.src}
           isPrivate={guest.isPrivate}
+          suppressed={isPassthrough}
         />
       ))}
     </div>

@@ -50,7 +50,7 @@ export function trackPopupDownload(
     if (committed || child.isDestroyed()) return
     // about:blank may contain a document written by its opener (reports,
     // authentication). Never close that document just because its URL is blank.
-    const empty = await child.executeJavaScript(
+    const empty = await child.mainFrame.executeJavaScript(
       "!document.body || document.body.children.length === 0 && !document.body.textContent.trim()"
     ).catch(() => false)
     if (!empty || committed || window.isDestroyed()) return
@@ -59,4 +59,16 @@ export function trackPopupDownload(
     if (!opener.isDestroyed()) opener.focus()
   })
   window.once('closed', () => downloadOnly.delete(child.id))
+}
+
+/** Download-only site tabs disappear; written about:blank documents survive. */
+export function trackTabDownload(child: WebContents, close: () => void): void {
+  let committed = false
+  child.on('did-navigate', (_event, url) => { if (url && url !== 'about:blank') committed = true })
+  downloadOnly.set(child.id, async () => {
+    if (committed || child.isDestroyed()) return
+    const empty = await child.mainFrame.executeJavaScript("!document.body || document.body.children.length === 0 && !document.body.textContent.trim()").catch(() => false)
+    if (empty && !committed && !child.isDestroyed()) close()
+  })
+  child.once('destroyed', () => downloadOnly.delete(child.id))
 }

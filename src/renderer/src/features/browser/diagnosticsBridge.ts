@@ -26,7 +26,7 @@ const CONSOLE_PREFIX = '__bandal_diag__'
 const MAX_ENTRIES = 100
 
 export interface DiagnosticEntry {
-  kind: 'error' | 'rejection' | 'console' | 'open-null' | 'env' | 'blocked'
+  kind: 'error' | 'rejection' | 'console' | 'open-null' | 'env' | 'blocked' | 'http'
   message: string
   at: string
 }
@@ -46,10 +46,19 @@ export function openDiagnostics(tabId: string): void {
   window.dispatchEvent(new CustomEvent(OPEN_DIAGNOSTICS_EVENT, { detail: tabId }))
 }
 
+function diagnosticAddress(value: string): string {
+  try { const url = new URL(value); return `${url.origin}${url.pathname}` } catch { return 'unknown' }
+}
+
+export function recordHttpResponse(tabId: string, url: string, status: number): void {
+  if (!Number.isInteger(status) || status < 100) return
+  record(tabId, url, { kind: 'http', message: `HTTP ${status}${status === 503 ? ' · 서버가 서비스를 제공하지 못했어요. 로그인 요청은 자동으로 재전송하지 않습니다.' : ''}`, at: new Date().toISOString() })
+}
+
 function record(tabId: string, url: string, entry: DiagnosticEntry): void {
   const current = byTab.get(tabId) ?? { url, entries: [] }
   const entries = [...current.entries, entry].slice(-MAX_ENTRIES)
-  byTab.set(tabId, { url, entries })
+  byTab.set(tabId, { url: diagnosticAddress(url), entries })
   window.dispatchEvent(new CustomEvent(BROWSER_DIAGNOSTICS_EVENT, { detail: tabId }))
 }
 
@@ -85,30 +94,19 @@ const REPORTER_SOURCE = `(() => {
       console.log(prefix + JSON.stringify({
         kind,
         message: String(message).slice(0, 2000),
-        url: location.href
+        url: location.origin + location.pathname
       }));
     } catch (ignored) { /* a message we cannot serialise is not worth throwing over */ }
   };
-  window.addEventListener('error', (event) => {
-    send('error', (event.message || '') + ' @ ' + (event.filename || '') + ':' + (event.lineno || 0));
-  }, true);
-  window.addEventListener('unhandledrejection', (event) => {
-    const reason = event.reason;
-    send('rejection', reason && reason.message ? reason.message : String(reason));
-  });
-  const nativeError = console.error.bind(console);
-  console.error = (...args) => {
-    send('console', args.map((a) => {
-      try { return typeof a === 'string' ? a : JSON.stringify(a); } catch (e) { return String(a); }
-    }).join(' '));
-    nativeError(...args);
-  };
+  // Never collect console arguments, rejection values, credentials or auth payloads.
+  window.addEventListener('error', () => send('error', 'Page script error'), true);
+  window.addEventListener('unhandledrejection', () => send('rejection', 'Unhandled page promise rejection'));
   // The single most useful signal: a page whose window.open came back null is
   // a page our popup policy just broke.
   const nativeOpen = window.open.bind(window);
   window.open = (...args) => {
     const result = nativeOpen(...args);
-    if (result === null) send('open-null', 'window.open(' + String(args[0] ?? '') + ') returned null');
+    if (result === null) send('open-null', 'window.open returned null');
     return result;
   };
   // One-shot environment probe — answers the questions we previously had to
@@ -149,7 +147,13 @@ function parse(
     ) {
       return null
     }
-    return { kind, message: text.slice(0, 2000), url }
+    if (kind === 'env') {
+      const env = JSON.parse(text) as Record<string, unknown>
+      const summary = { pdfViewerEnabled: env['pdfViewerEnabled'] === true, cookieEnabled: env['cookieEnabled'] === true }
+      return { kind, message: JSON.stringify(summary), url: diagnosticAddress(url) }
+    }
+    const labels = { error: 'Page script error', rejection: 'Unhandled page promise rejection', console: 'Page console error', 'open-null': 'window.open returned null' }
+    return { kind, message: labels[kind], url: diagnosticAddress(url) }
   } catch {
     return null
   }
