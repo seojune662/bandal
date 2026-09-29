@@ -39,7 +39,10 @@ export interface DownloadsDeps {
    * Course to file downloads under, or null when no course is selected — then
    * the download is left to the OS default rather than silently dropped.
    */
-  getTargetCourseId: () => string | null
+  getTargetCourseId: (webContentsId: number | null) => string | null
+  resolveCourseFile?: (courseId: string, relPath: string) => string
+  onStarted?: (webContentsId: number | null) => void
+  getOwnerWebContentsId?: (webContentsId: number | null) => number | null
   adoptFile: (input: {
     courseId: string
     dirRelPath: string
@@ -85,6 +88,19 @@ type ControllableItem = Pick<
 
 const liveDownloads = new Map<string, ControllableItem>()
 
+export interface DownloadFile {
+  path: string
+  fileName: string
+  retry?: () => void
+}
+const downloadFiles = new Map<string, DownloadFile>()
+/** Only IDs issued by the download handler can access downloaded files. */
+export function getDownloadFile(id: string): DownloadFile {
+  const file = downloadFiles.get(id)
+  if (!file) throw new Error('다운로드한 파일을 찾지 못했어요.')
+  return file
+}
+
 export const downloadControls: DownloadControls = {
   cancel: (id) => {
     try {
@@ -129,7 +145,8 @@ export function createDownloadHandler(deps: DownloadsDeps) {
   ): void {
     const id = randomUUID()
     const fileName = downloadFileName(item.getFilename())
-    const courseId = deps.getTargetCourseId()
+    const courseId = deps.getTargetCourseId(webContentsId)
+    const ownerId = deps.getOwnerWebContentsId?.(webContentsId) ?? webContentsId
     liveDownloads.set(id, item as unknown as ControllableItem)
     const isPaused = (): boolean => {
       try {
@@ -139,6 +156,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
       }
     }
     item.on('done', () => liveDownloads.delete(id))
+    deps.onStarted?.(webContentsId)
 
     // No course selected: let Chromium do its default thing (~/Downloads).
     // Refusing the download outright would be worse.
@@ -148,7 +166,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
     // never completing, never swept by the recent-downloads TTL, and never
     // saying where the file actually landed.
     if (courseId === null) {
-      const loose = { id, webContentsId, fileName, courseId: null }
+      const loose = { id, webContentsId: ownerId, fileName, courseId: null }
       deps.emit({
         ...loose,
         receivedBytes: 0,
@@ -174,6 +192,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
         })
       })
       item.on('done', (_event, state) => {
+        if (state === 'completed') downloadFiles.set(id, { path: item.getSavePath(), fileName })
         deps.emit({
           ...loose,
           receivedBytes: item.getReceivedBytes(),
@@ -189,7 +208,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
           // point is that the student cannot otherwise find the file.
           relPath: state === 'completed' ? item.getSavePath() : null,
           failureReason:
-            state === 'completed' ? null : '과목을 선택하지 않아 기본 폴더에 받았어요.'
+            state === 'interrupted' ? '연결이 끊겨 파일을 받지 못했어요.' : null
         })
         if (state === 'completed') deps.onCompleted?.(fileName)
       })
@@ -203,7 +222,7 @@ export function createDownloadHandler(deps: DownloadsDeps) {
 
     const base = {
       id,
-      webContentsId,
+      webContentsId: ownerId,
       fileName,
       totalBytes: item.getTotalBytes(),
       courseId
@@ -247,37 +266,44 @@ export function createDownloadHandler(deps: DownloadsDeps) {
         })
         return
       }
-      try {
-        const { relPath } = deps.adoptFile({
-          courseId,
-          dirRelPath: '',
-          fileName,
-          sourcePath: item.getSavePath()
-        })
-        deps.emit({
-          ...base,
-          receivedBytes: item.getReceivedBytes(),
-          state: 'completed',
-          paused: false,
-          relPath,
-          failureReason: null
-        })
-        deps.onCompleted?.(fileName)
-      } catch (error) {
-        // The transfer worked; only filing it failed. Say so rather than
-        // reporting a download failure the student cannot act on.
-        deps.emit({
-          ...base,
-          receivedBytes: item.getReceivedBytes(),
-          state: 'interrupted',
-          paused: false,
-          relPath: null,
-          failureReason:
-            error instanceof Error ? error.message : 'could not file the download'
-        })
-      } finally {
-        cleanStaging(stagingDir)
+      const fileCompleted = (): void => {
+        try {
+          const { relPath } = deps.adoptFile({
+            courseId,
+            dirRelPath: '',
+            fileName,
+            sourcePath: item.getSavePath()
+          })
+          const path = deps.resolveCourseFile?.(courseId, relPath)
+          if (path) downloadFiles.set(id, { path, fileName })
+          cleanStaging(stagingDir)
+          deps.emit({
+            ...base,
+            receivedBytes: item.getReceivedBytes(),
+            state: 'completed',
+            recoverable: false,
+            paused: false,
+            relPath,
+            failureReason: null
+          })
+          deps.onCompleted?.(fileName)
+        } catch (error) {
+          downloadFiles.set(id, { path: item.getSavePath(), fileName, retry: fileCompleted })
+          // The transfer worked; only filing it failed. Say so rather than
+          // reporting a download failure the student cannot act on.
+          deps.emit({
+            ...base,
+            receivedBytes: item.getReceivedBytes(),
+            state: 'interrupted',
+            recoverable: true,
+            paused: false,
+            relPath: null,
+            failureReason:
+              error instanceof Error ? error.message : 'could not file the download'
+          })
+        }
       }
+      fileCompleted()
     })
   }
 }
@@ -290,7 +316,7 @@ function cleanStaging(dir: string): void {
   }
 }
 
-/** Wires the handler onto the browsing session. Idempotent per session. */
+/** Attach once to each normal/private session during IPC initialization. */
 export function attachDownloadHandler(
   browsingSession: Session,
   deps: DownloadsDeps

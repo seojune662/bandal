@@ -887,15 +887,15 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     res: { ok: true }
   }
   /**
-   * Course that browser downloads should be filed under. Main cannot know it:
-   * `will-download` only sees the guest. null = no course selected, in which
-   * case the download falls through to the OS download folder.
-   *
-   * Deliberately NOT read from `settings.lastActiveCourseId` — that write is
-   * debounced, so a download could land in the previously selected course.
+   * Register a tab's course before its first navigation. Child windows
+   * inherit this context; switching the sidebar never changes ownership.
    */
   'browser:setDownloadTarget': {
-    req: { courseId: string | null }
+    req: { courseId: string | null; webContentsId: number; tabId: string }
+    res: { ok: true }
+  }
+  'browser:downloadFile': {
+    req: { id: string; action: 'open' | 'reveal' | 'saveAs' | 'retry' }
     res: { ok: true }
   }
 
@@ -1992,6 +1992,7 @@ export const IPC_CHANNELS = [
   'browserAgent:revokeGrant',
   'browserAgent:auditTail',
   'browser:controlDownload',
+  'browser:downloadFile',
   'browser:clearStorage',
   'browser:sitePermissions',
   'browser:forgetPermission',

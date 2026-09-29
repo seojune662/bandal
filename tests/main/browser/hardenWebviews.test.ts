@@ -32,7 +32,7 @@ vi.mock('electron', () => ({
 }))
 
 vi.mock('../../../src/main/settingsStore', () => ({
-  getSettings: () => ({ keybindings: settingsMocks.keybindings })
+  getSettings: () => ({ keybindings: settingsMocks.keybindings, browser: { popupBehavior: 'balanced' } })
 }))
 
 import {
@@ -96,7 +96,7 @@ describe('attachNavigationPolicies', () => {
     expect(denied.preventDefault).toHaveBeenCalledOnce()
   })
 
-  test('denies a cross-site popup and forwards it through openInTab', () => {
+  test('preserves a cross-site popup including its original POST request', () => {
     const webContents = new FakeWebContents()
     const openInTab = vi.fn()
     attachNavigationPolicies(webContents as unknown as Electron.WebContents, {
@@ -106,11 +106,13 @@ describe('attachNavigationPolicies', () => {
     const result = webContents.windowOpenHandler?.({
       url: 'https://video.example.net/watch/42',
       disposition: 'foreground-tab',
-      features: ''
+      features: '',
+      postBody: { data: [{ type: 'rawData', bytes: Buffer.from('state=test') }] }
     })
 
-    expect(result).toEqual({ action: 'deny' })
-    expect(openInTab).toHaveBeenCalledWith('https://video.example.net/watch/42')
+    expect(result.action).toBe('allow')
+    expect(result.overrideBrowserWindowOptions.webPreferences.partition).toBe('persist:browsing')
+    expect(openInTab).not.toHaveBeenCalled()
   })
 })
 

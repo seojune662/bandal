@@ -38,6 +38,8 @@ import {
   privacyRequestHeaders,
   shouldBlockTrackingRequest
 } from './trackingProtection'
+import { browsingContext, registerBrowsingContext, forgetBrowsingContext } from './browsingContext'
+import { trackPopupDownload } from './popupLifecycle'
 import { browsingUserAgent } from './userAgent'
 import { createBrowserSessionStore } from './sessionStore'
 import { getSettings } from '../../settingsStore'
@@ -388,7 +390,7 @@ async function chooseCertificate(
 
 const navigationHosts = new WeakMap<WebContents, WebContents>()
 const navigationPartitions = new WeakMap<WebContents, string>()
-const backgroundTabOpens = new WeakSet<WebContents>()
+const policyAttached = new WeakSet<WebContents>()
 
 function navigationHost(webContents: WebContents): WebContents {
   const registered = navigationHosts.get(webContents)
@@ -405,6 +407,10 @@ export function attachNavigationPolicies(
   webContents: WebContents,
   opts: { openInTab: (url: string) => void; partition?: string }
 ): void {
+  if (policyAttached.has(webContents)) return
+  policyAttached.add(webContents)
+  if (!browsingContext(webContents.id)) registerBrowsingContext(webContents.id)
+  const rootId = browsingContext(webContents.id)!.rootId
   const navigationGuard = (event: ElectronEvent, url: string): void => {
     if (isNavigationAllowed(url)) return
     event.preventDefault()
@@ -433,7 +439,7 @@ export function attachNavigationPolicies(
         notePopupBlocked(webContents, details.url, 'policy')
         return { action: 'deny' }
       }
-      const admission = popupLimiter.admit(webContents.id)
+      const admission = popupLimiter.admit(rootId)
       if (!admission.ok) {
         notePopupBlocked(webContents, details.url, admission.reason)
         return { action: 'deny' }
@@ -444,24 +450,13 @@ export function attachNavigationPolicies(
         overrideBrowserWindowOptions: {
           width: size.width,
           height: size.height,
-          // No app chrome on it: this is the site's own window, not ours.
+          // Chromium owns the child and preserves its opener and request body.
           autoHideMenuBar: true,
           webPreferences: popupWebPreferences(
             opts.partition ?? navigationPartitions.get(webContents) ?? BROWSING_PARTITION
           )
         }
       }
-    }
-
-    if (decision.kind === 'tab') {
-      const background = details.disposition === 'background-tab'
-      if (background) backgroundTabOpens.add(webContents)
-      try {
-        opts.openInTab(decision.url)
-      } finally {
-        if (background) backgroundTabOpens.delete(webContents)
-      }
-      return { action: 'deny' }
     }
 
     if (decision.kind === 'scheme') {
@@ -475,6 +470,32 @@ export function attachNavigationPolicies(
 
     noteBlocked(navigationHost(webContents), 'popup', details.url, 'not-allowed')
     return { action: 'deny' }
+  })
+
+  webContents.on('did-create-window', (window) => {
+    const child = window.webContents
+    const host = navigationHost(webContents)
+    const partition = opts.partition ?? navigationPartitions.get(webContents) ?? BROWSING_PARTITION
+    registerBrowsingContext(child.id, webContents.id)
+    navigationHosts.set(child, host)
+    navigationPartitions.set(child, partition)
+    window.once('closed', () => popupLimiter.release(rootId))
+    attachNavigationPolicies(child, { ...opts, partition })
+    trackPopupDownload(window, webContents, host)
+    child.on('did-finish-load', () => {
+      const url = child.getURL()
+      if (!isBlockedEmbeddedAuthUrl(url)) return
+      void child.executeJavaScript(`(() => {
+        const text = (document.body?.innerText || '').slice(0, 20000);
+        return /disallowed[_ -]?useragent|browser or app may not be secure|couldn't sign you in|브라우저 또는 앱이 안전하지 않을 수|지원되지 않는 브라우저/i.test(text);
+      })()`).then((blocked) => {
+        if (blocked !== true || host.isDestroyed()) return
+        host.send('browser:external-auth', {
+          url, webContentsId: rootId,
+          ...(partition === PRIVATE_BROWSING_PARTITION ? { isPrivate: true } : {})
+        } satisfies BrowserOpenUrl)
+      }).catch(() => undefined)
+    })
   })
 
   /**
@@ -528,7 +549,8 @@ export function attachNavigationPolicies(
   })
 
   webContents.once('destroyed', () => {
-    popupLimiter.forget(webContents.id)
+    if (rootId === webContents.id) popupLimiter.forget(rootId)
+    forgetBrowsingContext(webContents.id)
     navigationHosts.delete(webContents)
     navigationPartitions.delete(webContents)
   })
@@ -574,52 +596,6 @@ export function attachGuestInput(
 ): void {
   navigationHosts.set(guest, host)
   navigationPartitions.set(guest, partition)
-
-  // A popup we allowed is still a window that can navigate. Without this the
-  // popup exception would be a hole: the child could walk to file:// or a
-  // custom scheme, which is exactly what `will-navigate` exists to stop.
-  guest.on('did-create-window', (window) => {
-    const child = window.webContents
-    window.once('closed', () => popupLimiter.release(guest.id))
-    const guard = (event: { preventDefault: () => void }, url: string): void => {
-      if (isNavigationAllowed(url)) return
-      event.preventDefault()
-      void offerExternalScheme(host, child, url)
-    }
-    child.on('will-navigate', guard)
-    child.on('will-redirect', guard)
-    child.on('did-finish-load', () => {
-      const url = child.getURL()
-      if (!isBlockedEmbeddedAuthUrl(url)) return
-      void child.executeJavaScript(`(() => {
-        const text = (document.body?.innerText || '').slice(0, 20000);
-        return /disallowed[_ -]?useragent|browser or app may not be secure|couldn't sign you in|브라우저 또는 앱이 안전하지 않을 수|지원되지 않는 브라우저/i.test(text);
-      })()`).then((blocked) => {
-        if (blocked !== true || host.isDestroyed()) return
-        host.send('browser:external-auth', {
-          url,
-          webContentsId: guest.id,
-          ...(partition === PRIVATE_BROWSING_PARTITION ? { isPrivate: true } : {})
-        } satisfies BrowserOpenUrl)
-      }).catch(() => undefined)
-    })
-    // A popup may not open further popups; one level is enough.
-    child.setWindowOpenHandler((details) => {
-      const decision = decidePopup({
-        openerUrl: child.getURL(),
-        targetUrl: details.url
-      })
-      if (decision.kind === 'tab' && !host.isDestroyed()) {
-        host.send('browser:open-url', {
-          url: decision.url,
-          ...(partition === PRIVATE_BROWSING_PARTITION ? { isPrivate: true } : {})
-        } as BrowserOpenUrl)
-        return { action: 'deny' }
-      }
-      noteBlocked(host, 'popup', details.url, 'nested')
-      return { action: 'deny' }
-    })
-  })
 
   // [M6-A] ⌘T/⌘W keep working while the guest has keyboard focus: intercept
   // them before the guest page sees the chord and replay them in the host.
@@ -688,7 +664,6 @@ export function hardenWindowWebviews(win: BrowserWindow): void {
       if (host.isDestroyed()) return
       const payload: BrowserOpenUrl = {
         url,
-        background: backgroundTabOpens.has(guest),
         ...(partition === PRIVATE_BROWSING_PARTITION ? { isPrivate: true } : {})
       }
       host.send('browser:open-url', payload)

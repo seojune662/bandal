@@ -15,6 +15,7 @@ import {
 } from '../workspace/panels/browserAnchor'
 import { useBrowserGuests, type BrowserNavState } from './browserGuestsStore'
 import { invoke } from '../../lib/ipc'
+import { retainedTabDescriptors, useWorkspaceStore } from '../../stores/workspaceStore'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { ABORTED_ERROR_CODE } from './loadError'
 import {
@@ -75,6 +76,11 @@ export function BrowserGuestView({
   isPrivate
 }: BrowserGuestViewProps): JSX.Element {
   const webviewRef = useRef<WebviewTag | null>(null)
+  const [ownerCourse] = useState(() =>
+    useCoursesStore.getState().courses.find((course) =>
+      retainedTabDescriptors(course.id).some((tab) => tab.kind === 'browser' && tab.payload.tabId === tabId)
+    )?.id ?? useWorkspaceStore.getState().activeCourseId
+  )
   const [rect, setRect] = useState<AnchorRect | null>(() =>
     getBrowserAnchorRect(tabId)
   )
@@ -106,6 +112,8 @@ export function BrowserGuestView({
     const element = webviewRef.current
     if (element === null) return
     registerGuestElement(tabId, element)
+    let initialNavigationStarted = false
+    let disposed = false
 
     const update = (patch: Partial<BrowserNavState>): void => {
       useBrowserGuests.getState().updateNav(tabId, patch)
@@ -154,13 +162,14 @@ export function BrowserGuestView({
       ],
       [
         'did-navigate',
-        ((event: DidNavigateEvent) =>
-          update({ url: event.url, ...historyState() })) as EventListener
+        ((event: DidNavigateEvent) => {
+          if (event.url !== 'about:blank') update({ url: event.url, hasDocument: true, ...historyState() })
+        }) as EventListener
       ],
       [
         'did-navigate-in-page',
         ((event: DidNavigateInPageEvent) => {
-          if (event.isMainFrame) update({ url: event.url, ...historyState() })
+          if (event.isMainFrame) update({ url: event.url, hasDocument: true, ...historyState() })
         }) as EventListener
       ],
       [
@@ -223,6 +232,25 @@ export function BrowserGuestView({
         () => {
           registerGuestWebContents(tabId, element)
           applyZoom()
+          if (!initialNavigationStarted) {
+            initialNavigationStarted = true
+            void (async () => {
+              const matched = await invoke('browser:courseForUrl', { url: src }).catch(() => ({ courseId: null }))
+              if (disposed) return
+              await invoke('browser:setDownloadTarget', {
+                webContentsId: element.getWebContentsId(), tabId,
+                courseId: matched.courseId ?? ownerCourse
+              })
+              if (!disposed) await element.loadURL(src).catch(() => undefined)
+            })().catch((error: unknown) => {
+              // Download navigations intentionally abort their document load.
+              if (String(error).includes('ERR_ABORTED')) return
+              if (!disposed) useBrowserGuests.getState().setOverlay(tabId, {
+                kind: 'error', errorCode: -2,
+                errorDescription: '페이지를 열지 못했어요.', url: src
+              })
+            })
+          }
         }
       ],
       [
@@ -311,6 +339,7 @@ export function BrowserGuestView({
       element.addEventListener(name, listener)
     }
     return () => {
+      disposed = true
       for (const [name, listener] of listeners) {
         element.removeEventListener(name, listener)
       }
@@ -327,11 +356,11 @@ export function BrowserGuestView({
         ref={(element) => {
           webviewRef.current = element as WebviewTag | null
         }}
-        src={src}
+        src="about:blank"
         partition={isPrivate ? PRIVATE_BROWSING_PARTITION : BROWSING_PARTITION}
         // Without this attribute Chromium drops window.open/target=_blank
         // INSIDE the guest — main's setWindowOpenHandler never even fires
-        // (it still denies native windows and forwards URLs as Bandal tabs).
+        // Main preserves Chromium-created windows and applies site permissions.
         // @types/react types it as boolean, but React's runtime silently
         // DROPS boolean-true for unknown attributes — only a string reaches
         // the DOM, so the cast is load-bearing. Verified via

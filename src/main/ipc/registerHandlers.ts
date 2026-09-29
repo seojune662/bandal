@@ -1,3 +1,8 @@
+import { copyFile } from 'node:fs/promises'
+import { browsingContext, setBrowsingCourse } from '../features/browser/browsingContext'
+import { finishDownloadNavigation } from '../features/browser/popupLifecycle'
+import { getDownloadFile } from '../features/browser/downloads'
+import { PRIVATE_BROWSING_PARTITION } from '../features/browser/webviewPolicy'
 import { setMaterialMediaHandler } from '../features/materials/mediaRegistration'
 import { traceIpc } from '../performanceTrace'
 import { createFolderAvailability } from '../features/courses/folderAvailability'
@@ -2615,11 +2620,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
 
   // -- browser downloads ----------------------------------------------------
-  // `will-download` only sees the guest, so the renderer tells us which course
-  // a download belongs to. null = no course selected → the OS default folder.
-  let downloadCourseId: string | null = null
   handle('browser:setDownloadTarget', (req) => {
-    downloadCourseId = req.courseId
+    setBrowsingCourse(req.webContentsId, req.tabId, req.courseId)
     return OK
   })
   // -- browser history ------------------------------------------------------
@@ -2664,31 +2666,56 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     )
   }))
 
-  attachDownloadHandler(session.fromPartition(BROWSING_PARTITION), {
-    stagingRoot: join(app.getPath('temp'), 'bandal-downloads'),
-    getTargetCourseId: () => downloadCourseId,
-    adoptFile: (input) => materialsRepo.adoptFile(input),
-    emit: (update) => {
-      broadcast('browser:download', update)
-      // The watcher also fires, but announcing the course explicitly keeps the
-      // tree honest when the file lands while another course is on screen.
-      if (update.state === 'completed' && update.courseId !== null) {
-        broadcast('materials:changed', { courseId: update.courseId })
-      }
-    },
-    onCompleted: (fileName) => {
-      try {
-        notifier.notify({
-          kind: 'download',
-          title: '다운로드 완료',
-          body: fileName,
-          courseId: null
-        })
-      } catch (error) {
-        console.error('[notifications] download completion failed', error)
+  handle('browser:downloadFile', async ({ id, action }) => {
+    const file = getDownloadFile(id)
+    if (action === 'retry') {
+      if (!file.retry) throw new Error('다시 저장할 파일이 없어요.')
+      file.retry()
+    } else if (action === 'reveal') shell.showItemInFolder(file.path)
+    else if (action === 'open') {
+      const error = await shell.openPath(file.path)
+      if (error) throw new Error(error)
+    } else {
+      const result = await dialog.showSaveDialog({
+        title: '다운로드 파일 다른 위치에 저장', defaultPath: file.fileName
+      })
+      if (!result.canceled && result.filePath && result.filePath !== file.path) {
+        await copyFile(file.path, result.filePath)
       }
     }
+    return OK
   })
+
+  for (const partition of [BROWSING_PARTITION, PRIVATE_BROWSING_PARTITION]) {
+    attachDownloadHandler(session.fromPartition(partition), {
+      stagingRoot: join(app.getPath('userData'), 'download-recovery'),
+      getTargetCourseId: (id) => browsingContext(id)?.courseId ?? null,
+      resolveCourseFile: (courseId, relPath) => materialsRepo.absolutePathFor(courseId, relPath),
+      onStarted: finishDownloadNavigation,
+      getOwnerWebContentsId: (id) => browsingContext(id)?.rootId ?? id,
+      adoptFile: (input) => materialsRepo.adoptFile(input),
+      emit: (update) => {
+        broadcast('browser:download', update)
+        // The watcher also fires, but announcing the course explicitly keeps the
+        // tree honest when the file lands while another course is on screen.
+        if (update.state === 'completed' && update.courseId !== null) {
+          broadcast('materials:changed', { courseId: update.courseId })
+        }
+      },
+      onCompleted: (fileName) => {
+        try {
+          notifier.notify({
+            kind: 'download',
+            title: '다운로드 완료',
+            body: fileName,
+            courseId: null
+          })
+        } catch (error) {
+          console.error('[notifications] download completion failed', error)
+        }
+      }
+    })
+  }
   handle('browser:clearSession', (req) => browserSessions.clear(req.origin))
 
   // -- group whiteboard ------------------------------------------------------

@@ -40,6 +40,8 @@ export interface LiveGuest {
 }
 
 export interface BrowserNavState {
+  /** A download navigation does not commit a document. */
+  hasDocument?: boolean
   url: string
   title: string
   loading: boolean

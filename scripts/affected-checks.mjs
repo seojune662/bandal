@@ -39,7 +39,8 @@ export function planChecks(files, full = false) {
   if (has(/^(src\/main\/features\/(pdf\/|canvas\/|presentation\/|pdfText|textboxPdfLayout)|src\/shared\/(types\/drawing|textBoxMetrics)|resources\/fonts\/|e2e\/helpers\/renderPdf)/)) e2e.add('e2e/pdfExport.spec.ts')
   if (has(/^src\/renderer\/src\/features\/(pdf|ink)\//)) e2e.add('e2e/pdfTextbox.spec.ts')
   if (has(/(renderInkSnapshot|pageImage|clipboard)/i)) e2e.add('e2e/pageImageCopy.spec.ts')
-  if (has(/^src\/.*\/(browser\/|browserSearch)/)) e2e.add('e2e/browserAddress.spec.ts')
+  if (has(/(BrowserAddress|browserSearch|urlInput|useAddressSuggestions)/)) e2e.add('e2e/browserAddress.spec.ts')
+  if (has(/^src\/.*\/browser\//)) e2e.add('e2e/browserCompatibility.spec.ts')
   if (has(/^src\/.*(calendar\/|appleCalendar\/|board\/|taskSchedule|calendarDate|types\/board)/)) {
     e2e.add('e2e/taskSchedule.spec.ts')
     e2e.add('e2e/appleCalendar.spec.ts')

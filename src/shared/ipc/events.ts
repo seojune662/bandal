@@ -126,6 +126,8 @@ export interface BrowserDownloadUpdate {
   /** Course-relative path, once the file is in the course folder. */
   relPath: string | null
   courseId: string | null
+  /** Complete bytes were kept and can be saved elsewhere or filed again. */
+  recoverable?: boolean
   /** The transfer worked but filing it did not. */
   failureReason: string | null
 }

@@ -2,13 +2,14 @@
  * Browser downloads, as the renderer sees them.
  *
  * Main does the filing (see `main/features/browser/downloads.ts`); this store
- * only mirrors progress so the toolbar can show it, and tells main which
- * course to file under whenever the selection changes.
+ * mirrors progress so the toolbar and direct-download page can show it.
  */
 
 import { create } from 'zustand'
 import type { BrowserDownloadUpdate } from '../../../../shared/ipc/events'
 import { invoke, onPush } from '../../lib/ipc'
+import { useBrowserGuests } from './browserGuestsStore'
+import { tabIdForWebContents } from './guestActions'
 import { showToast, showToastWithAction } from '../../app/toast'
 import { convertPresentationToPdf } from '../file/pptx/presentationJobs'
 
@@ -23,12 +24,7 @@ interface DownloadsState {
   /** Newest first. */
   downloads: BrowserDownload[]
   activeCount: number
-  /** What main is currently filing downloads under. */
-  targetCourseId: string | null
-  followPage: (url: string, fallbackCourseId: string | null) => Promise<void>
   init: () => void
-  /** Tells main where completed downloads should be filed. */
-  setTargetCourse: (courseId: string | null) => Promise<void>
   dismiss: (id: string) => void
 }
 
@@ -38,12 +34,19 @@ const downloadFolderNotices = new Set<string>()
 export const useDownloads = create<DownloadsState>()((set, get) => ({
   downloads: [],
   activeCount: 0,
-  targetCourseId: null,
 
   init: () => {
     if (initialized) return
     initialized = true
     onPush('browser:download', (update) => {
+      const tabId = update.webContentsId === null ? null : tabIdForWebContents(update.webContentsId)
+      if (tabId !== null) {
+        const guests = useBrowserGuests.getState()
+        if (guests.nav[tabId] && !guests.nav[tabId]?.hasDocument) {
+          guests.updateNav(tabId, { loading: false })
+          guests.setOverlay(tabId, { kind: 'download', downloadId: update.id })
+        }
+      }
       const previous = get().downloads
       const finished = update.state !== 'progressing'
       const next: BrowserDownload = {
@@ -77,15 +80,9 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
           label: 'PDF로 변환', run: () => { void convertPresentationToPdf({ courseId, relPath }) }
         })
       } else if (update.state === 'completed' && update.relPath !== null) {
-        showToastWithAction(`${update.fileName}을(를) 자료에 저장했어요.`, {
-          label: '자료에서 보기',
-          run: () => {
-            if (update.courseId === null || update.relPath === null) return
-            void invoke('materials:reveal', {
-              courseId: update.courseId,
-              relPath: update.relPath
-            })
-          }
+        showToastWithAction(`${update.fileName}을(를) ${update.courseId ? '자료에' : '다운로드 폴더에'} 저장했어요.`, {
+          label: '폴더 보기',
+          run: () => { void invoke('browser:downloadFile', { id: update.id, action: 'reveal' }) }
         })
       } else if (update.state === 'interrupted') {
         showToast(
@@ -102,30 +99,6 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
         }
       }
     })
-  },
-
-  setTargetCourse: async (courseId) => {
-    set({ targetCourseId: courseId })
-    await invoke('browser:setDownloadTarget', { courseId })
-  },
-
-  /**
-   * Files downloads under the course the OPEN PAGE is about, when the page is
-   * a recognised LMS course. A student on 자료구조's LMS page means the handout
-   * to go to 자료구조, whatever the sidebar happens to have selected.
-   * Falls back to the selected course when nothing matches — never guesses.
-   */
-  followPage: async (url, fallbackCourseId) => {
-    let courseId = fallbackCourseId
-    try {
-      const matched = await invoke('browser:courseForUrl', { url })
-      if (matched.courseId !== null) courseId = matched.courseId
-    } catch {
-      // Matching is an optimisation; the fallback is always correct-ish.
-    }
-    if (courseId === get().targetCourseId) return
-    set({ targetCourseId: courseId })
-    await invoke('browser:setDownloadTarget', { courseId })
   },
 
   dismiss: (id) => {

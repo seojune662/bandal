@@ -39,7 +39,7 @@ export interface BrowserLoadErrorOverlay {
   url: string
 }
 
-export type BrowserOverlay = BrowserLoadErrorOverlay | BrowserCrashOverlay
+export type BrowserOverlay = BrowserLoadErrorOverlay | BrowserCrashOverlay | { kind: 'download'; downloadId: string }
 
 export interface LoadErrorCopy {
   title: string

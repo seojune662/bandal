@@ -909,8 +909,8 @@
 .browser-downloads {
   position: fixed;
   z-index: 60;
-  min-width: 18rem;
-  max-width: 24rem;
+  width: min(26rem, calc(100vw - 1rem));
+  max-width: calc(100vw - 1rem);
   max-height: 20rem;
   overflow-y: auto;
   padding: var(--space-2);
@@ -935,6 +935,7 @@
 
 .browser-downloads__row {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
   padding: var(--space-2);
@@ -947,9 +948,10 @@
 }
 
 .browser-downloads__text {
+  flex-basis: calc(100% - 2rem);
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex-grow: 1;
   min-width: 0;
 }
 
@@ -962,6 +964,7 @@
 }
 
 .browser-downloads__meta {
+  overflow-wrap: anywhere;
   font-size: var(--text-xs);
   color: var(--text-muted);
 }
@@ -979,6 +982,8 @@
 
 .browser-downloads__actions {
   display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   flex: 0 0 auto;
   gap: var(--space-1);
 }

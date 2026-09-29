@@ -41,3 +41,9 @@ test('server and SDK edits retain their related tests instead of becoming no-op 
     assert.deepEqual(plan.types, ['tsconfig.node.json'])
   }
 })
+
+
+test('login and download changes select compatibility rather than omnibox E2E', () => {
+  const plan = planChecks(['src/main/features/browser/downloads.ts', 'src/renderer/src/features/browser/BrowserGuestView.tsx'])
+  assert.deepEqual(plan.e2e, ['e2e/browserCompatibility.spec.ts'])
+})

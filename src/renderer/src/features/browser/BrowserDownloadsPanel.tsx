@@ -14,6 +14,7 @@ import { useViewportBounds } from '../../lib/useViewportBounds'
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { invoke } from '../../lib/ipc'
+import { showToast } from '../../app/toast'
 import { Icon } from '../../app/icons'
 import { BrowserIcon } from './browserIcons'
 import { useDownloads, type BrowserDownload } from './downloadsStore'
@@ -40,7 +41,7 @@ function progressLabel(download: BrowserDownload): string {
 function stateLabel(download: BrowserDownload): string {
   switch (download.state) {
     case 'completed':
-      return download.relPath ?? '완료'
+      return `${download.courseId ? '과목 자료' : '다운로드'} · ${download.relPath ?? '완료'}`
     case 'cancelled':
       return '취소했어요'
     case 'interrupted':
@@ -87,6 +88,12 @@ export function BrowserDownloadsPanel({
   const control = (id: string, action: 'cancel' | 'pause' | 'resume'): void => {
     void invoke('browser:controlDownload', { id, action }).catch(() => {
       // The transfer finished between render and click; the row updates itself.
+    })
+  }
+
+  const fileAction = (id: string, action: 'open' | 'reveal' | 'saveAs' | 'retry'): void => {
+    void invoke('browser:downloadFile', { id, action }).catch(() => {
+      showToast('파일을 처리하지 못했어요. 저장 위치를 확인해 주세요.', 'danger')
     })
   }
 
@@ -142,6 +149,14 @@ export function BrowserDownloadsPanel({
                   </span>
                 ) : (
                   <>
+                  {(download.state === 'completed' || download.recoverable) && (
+                    <span className="browser-downloads__actions">
+                      {download.state === 'completed' && <button type="button" className="browser-downloads__action" onClick={() => fileAction(download.id, 'open')}>열기</button>}
+                      <button type="button" className="browser-downloads__action" onClick={() => fileAction(download.id, 'reveal')}>폴더 보기</button>
+                      <button type="button" className="browser-downloads__action" onClick={() => fileAction(download.id, 'saveAs')}>다른 위치에 저장</button>
+                      {download.recoverable && <button type="button" className="browser-downloads__action" onClick={() => fileAction(download.id, 'retry')}>다시 저장</button>}
+                    </span>
+                  )}
                   {download.state === 'completed' && download.courseId !== null && download.relPath !== null && /\.pptx?$/i.test(download.relPath) && <button type="button" className="browser-downloads__action" onClick={() => {
                     if (download.courseId === null || download.relPath === null) return
                     onClose(); void convertPresentationToPdf({ courseId: download.courseId, relPath: download.relPath })

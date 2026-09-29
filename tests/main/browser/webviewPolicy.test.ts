@@ -360,18 +360,18 @@ describe('decidePopup', () => {
     ).toEqual({ kind: 'window', scope: 'sso' })
   })
 
-  test('a same-university NON-auth popup opens as a Bandal tab', () => {
+  test('a same-university non-auth popup preserves its browsing context', () => {
     // my.snu 마이페이지처럼 메뉴 내비게이션 팝업 — opener 가 필요 없고,
     // 맨 창으로 뜨면 사용자에겐 고장으로 보인다.
     expect(
       decide('https://my.snu.ac.kr/p/ST/', 'https://my.snu.ac.kr/portal')
-    ).toEqual({ kind: 'tab', url: 'https://my.snu.ac.kr/p/ST/' })
+    ).toEqual({ kind: 'window', scope: 'opener' })
   })
 
-  test('an ordinary web target still becomes a Bandal tab', () => {
+  test('a cross-site target preserves its browsing context', () => {
     expect(decide('https://google.com/')).toEqual({
-      kind: 'tab',
-      url: 'https://google.com/'
+      kind: 'window',
+      scope: 'opener'
     })
   })
 

@@ -39,7 +39,7 @@ function progressing(receivedBytes: number): BrowserDownloadUpdate {
 beforeEach(() => {
   mocks.showToast.mockReset()
   mocks.showToastWithAction.mockReset()
-  useDownloads.setState({ downloads: [], activeCount: 0, targetCourseId: null })
+  useDownloads.setState({ downloads: [], activeCount: 0 })
 })
 
 describe('downloadsStore notices', () => {

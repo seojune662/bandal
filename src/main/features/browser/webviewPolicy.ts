@@ -7,7 +7,7 @@
  *    sandbox/contextIsolation/webSecurity + preload removal
  *  - navigation guard shared by `will-navigate` AND `will-redirect`
  *  - a tiered permission policy (./permissionPolicy.ts)
- *  - `setWindowOpenHandler` → deny + forward http(s) URLs to the renderer
+ *  - `setWindowOpenHandler` → preserve Chromium-created browsing contexts
  *
  * The wiring against real electron objects lives in ./hardenWebviews.ts.
  */
@@ -367,8 +367,6 @@ export function isLikelyAuthPopupUrl(url: string): boolean {
 export type PopupDecision =
   /** A real popup window. */
   | { kind: 'window'; scope: 'opener' | 'sso' }
-  /** Open as a Bandal tab; `window.opener` is severed. */
-  | { kind: 'tab'; url: string }
   /** A custom scheme worth asking the student about. */
   | { kind: 'scheme' }
   | { kind: 'deny' }
@@ -381,22 +379,17 @@ export function decidePopup(input: {
   openerUrl: string
   targetUrl: string
 }): PopupDecision {
-  const { openerUrl, targetUrl } = input
-  // Google may still reject Electron after loading, but opening it in an
-  // app-owned SSO window preserves window.opener and gives the flow a chance.
-  // A detected refusal gets an explicit external-browser fallback in the tab.
-  if (isBlockedEmbeddedAuthUrl(targetUrl)) return { kind: 'window', scope: 'sso' }
+  const { targetUrl } = input
+  // Let Chromium create the requested browsing context. URL-only tab
+  // forwarding loses POST bodies, named-window reuse and window.opener.
   if (isOpenerScopedPopupTarget(targetUrl)) return { kind: 'window', scope: 'opener' }
-  if (isSameSiteAcademicPopup(openerUrl, targetUrl)) {
-    // 인증성 대상만 진짜 창(opener 보존) — 나머지 같은 대학 팝업은
-    // 일반 브라우저처럼 반달 탭으로 연다.
-    if (isLikelyAuthPopupUrl(targetUrl)) {
-      return { kind: 'window', scope: 'sso' }
+  if (popupForwardUrl(targetUrl) !== null) {
+    return {
+      kind: 'window',
+      scope: isBlockedEmbeddedAuthUrl(targetUrl) || isLikelyAuthPopupUrl(targetUrl)
+        ? 'sso' : 'opener'
     }
-    return { kind: 'tab', url: targetUrl }
   }
-  const forwardUrl = popupForwardUrl(targetUrl)
-  if (forwardUrl !== null) return { kind: 'tab', url: forwardUrl }
   // The scheme classifier — not this function — decides what is worth asking
   // about, so a `deny` here really does mean denied and `scheme` really does
   // mean a dialog is coming.

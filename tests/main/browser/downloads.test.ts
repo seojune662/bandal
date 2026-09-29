@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   createDownloadHandler,
   downloadFileName,
+  getDownloadFile,
   type BrowserDownloadUpdate
 } from '../../../src/main/features/browser/downloads'
 
@@ -175,6 +176,34 @@ describe('download handler', () => {
     expect(last?.state).toBe('interrupted')
     expect(last?.failureReason).toContain('course folder is gone')
     expect(last?.relPath).toBeNull()
+    expect(last?.recoverable).toBe(true)
+    expect(existsSync(item.savePath)).toBe(true)
+    expect(getDownloadFile(last!.id).path).toBe(item.savePath)
+  })
+
+  test('keeps the initiating tab after its download-only child closes', () => {
+    let owner: number | null = 7
+    const item = new FakeItem('child.txt')
+    handler({ getOwnerWebContentsId: () => owner })(item as never, 42)
+    owner = null
+    item.writeBytes()
+    item.fire('done', 'completed')
+    expect(updates.at(-1)?.webContentsId).toBe(7)
+  })
+
+  test('retries filing complete bytes without another network download', () => {
+    let fail = true
+    const item = new FakeItem('retry.pdf')
+    handler({ adoptFile: () => {
+      if (fail) throw new Error('folder unavailable')
+      return { relPath: 'retry.pdf' }
+    } })(item as never, 11)
+    item.writeBytes()
+    item.fire('done', 'completed')
+    fail = false
+    getDownloadFile(updates.at(-1)!.id).retry!()
+    expect(updates.at(-1)?.state).toBe('completed')
+    expect(existsSync(item.savePath)).toBe(false)
   })
 
   test('with no course selected it leaves the download to the OS', () => {

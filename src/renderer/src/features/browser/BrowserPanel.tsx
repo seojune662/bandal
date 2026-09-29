@@ -24,7 +24,6 @@ import { Tooltip } from '../../components/Tooltip'
 import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 import { favoriteScopeKey, useFavoritesStore } from '../../stores/favoritesStore'
-import { useCoursesStore } from '../../stores/coursesStore'
 import { settingsSnapshot } from '../../stores/settingsSnapshot'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { isTabDescriptor } from '../workspace/tabIdentity'
@@ -36,6 +35,7 @@ import {
   type BrowserNavState
 } from './browserGuestsStore'
 import { BrowserCrashPage, BrowserErrorPage } from './BrowserErrorPage'
+import { BrowserDownloadPage } from './BrowserDownloadPage'
 import { BrowserDownloadsPanel } from './BrowserDownloadsPanel'
 import { BrowserDiagnosticsPanel } from './BrowserDiagnosticsPanel'
 import { OPEN_DIAGNOSTICS_EVENT } from './diagnosticsBridge'
@@ -600,17 +600,6 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
     return () => window.cancelAnimationFrame(handle)
   }, [isPanelVisible, tabId])
 
-  // A visible LMS course page decides where its downloads go.
-  useEffect(() => {
-    if (!isPanelVisible || navState.url === '') return
-    void useDownloads
-      .getState()
-      .followPage(navState.url, useCoursesStore.getState().selectedCourseId)
-      .catch(() => {
-        // Falls back to the selected course; nothing to surface.
-      })
-  }, [isPanelVisible, navState.url])
-
   useEffect(() => {
     if (tabId === '' || navState.url === '' || navState.url === initialUrl) {
       return
@@ -694,7 +683,9 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
         data-browser-anchor={tabId}
       >
         {overlay !== null ? (
-          overlay.kind === 'crashed' ? (
+          overlay.kind === 'download' ? (
+            <BrowserDownloadPage id={overlay.downloadId} />
+          ) : overlay.kind === 'crashed' ? (
             <BrowserCrashPage tabId={tabId} overlay={overlay} />
           ) : (
             <BrowserErrorPage tabId={tabId} overlay={overlay} />
