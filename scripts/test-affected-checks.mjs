@@ -33,3 +33,11 @@ test('CI reuse requires the same commit and rejects older success behind a newer
   assert.equal(matchingRun([success, failure], 'exact'), failure)
   assert.equal(matchingRun([success], 'exact'), success)
 })
+
+test('server and SDK edits retain their related tests instead of becoming no-op checks', () => {
+  for (const file of ['server/marketplace/index.ts', 'sdk/cli/index.ts']) {
+    const plan = planChecks([file])
+    assert.deepEqual(plan.unitInputs, [file])
+    assert.deepEqual(plan.types, ['tsconfig.node.json'])
+  }
+})

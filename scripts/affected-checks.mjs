@@ -29,7 +29,7 @@ export function planChecks(files, full = false) {
   // Global runtime/toolchain changes justify a broad check; routine features do not.
   full ||= has(/^(package\.json|pnpm-lock\.yaml|electron\.vite\.config\.ts|vitest\.config\.ts|tests\/setup\.ts)$/)
   const types = new Set()
-  if (full || has(/^(src\/(main|preload|shared)\/|tsconfig\.node\.json)/)) types.add('tsconfig.node.json')
+  if (full || has(/^(src\/(main|preload|shared)\/|server\/|sdk\/|(?:marketplace|sdk)\.vite\.config\.ts|tsconfig\.node\.json)/)) types.add('tsconfig.node.json')
   if (full || has(/^(src\/(renderer|shared)\/|tsconfig\.web\.json)/)) types.add('tsconfig.web.json')
   if (full || has(/^(web-demo\/|src\/shared\/|web-demo\/tsconfig\.json)/)) types.add('web-demo/tsconfig.json')
   const scriptTests = new Set(files.filter((f) => /^scripts\/test-.*\.mjs$/.test(f)))
@@ -54,7 +54,7 @@ export function planChecks(files, full = false) {
   }
   // At least one launch for an installer with no feature-specific E2E coverage.
   if (e2e.size === 0) e2e.add('e2e/startup.spec.ts')
-  const unitInputs = files.filter((f) => /^(src|tests)\/.*\.[cm]?[jt]sx?$/.test(f))
+  const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f))
   // Runtime font files are loaded from disk, outside the TS import graph.
   if (has(/^resources\/fonts\//)) unitInputs.push('src/main/features/pdf/exportPdf.ts', 'src/main/features/canvas/exportBoardPdf.ts')
   return { full, types: [...types], scriptTests: [...scriptTests], unitInputs, e2e: [...e2e] }
