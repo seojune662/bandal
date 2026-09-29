@@ -243,6 +243,7 @@ function PdfViewer({
   const jumpToPageRef = useRef<(page: number) => void>(() => {})
   const viewAnchorRef = useRef<PdfViewportAnchor | null>(null)
   const zoomPointRef = useRef<{ page: number; x: number; y: number; clientX: number; clientY: number } | null>(null)
+  const zoomGesturePointRef = useRef<typeof zoomPointRef.current>(null)
   const zoomFrameRef = useRef<number | null>(null)
   const zoomPinnedPages = useRef(new Set<number>())
   const zoomEndTimer = useRef<number | null>(null)
@@ -458,7 +459,14 @@ function PdfViewer({
       const box = element.getBoundingClientRect()
       const clientX = point?.clientX ?? viewport.left + scroller.clientWidth / 2
       const clientY = point?.clientY ?? viewport.top + scroller.clientHeight / 2
-      zoomPointRef.current = { page, x: (clientX - box.left) / box.width, y: (clientY - box.top) / box.height, clientX, clientY }
+      const gesture = zoomGesturePointRef.current
+      // Keep the same document coordinate throughout one gesture. Recomputing
+      // from rounded scrollTop on Windows accumulates a pixel fraction per tick.
+      const anchor = gesture && gesture.page === page && gesture.clientX === clientX && gesture.clientY === clientY
+        ? gesture
+        : { page, x: (clientX - box.left) / box.width, y: (clientY - box.top) / box.height, clientX, clientY }
+      zoomGesturePointRef.current = anchor
+      zoomPointRef.current = anchor
     }
     zoomRef.current = clamped
     for (const page of visiblePages) zoomPinnedPages.current.add(page)
@@ -466,6 +474,7 @@ function PdfViewer({
     if (zoomEndTimer.current !== null) window.clearTimeout(zoomEndTimer.current)
     zoomEndTimer.current = window.setTimeout(() => {
       zoomPinnedPages.current.clear()
+      zoomGesturePointRef.current = null
       setZooming(false)
     }, 200)
     if (zoomFrameRef.current !== null) return

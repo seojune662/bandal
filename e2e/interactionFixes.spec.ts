@@ -91,6 +91,14 @@ test('PDF zoom retains painted pixels throughout a gesture and anchors the point
     const result = await first.evaluate(async element => {
       const rect = element.getBoundingClientRect(), point = { x: rect.left + rect.width * .55, y: rect.top + 180 }
       const scroller = element.closest('.pdf-scroller')!
+      // Emulate integer CSS-pixel scrolling too: Windows commonly quantizes
+      // scrollTop at DPR=1 while Retina macOS keeps half-pixel coordinates.
+      const scrollTop = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')!
+      Object.defineProperty(scroller, 'scrollTop', {
+        configurable: true,
+        get() { return scrollTop.get!.call(this) },
+        set(value: number) { scrollTop.set!.call(this, Math.round(value)) }
+      })
       const startCanvas = element.querySelector('canvas')!
       let missing = 0, blank = 0, maxDrift = 0
       const yRatio = (point.y - rect.top) / rect.height
@@ -106,6 +114,7 @@ test('PDF zoom retains painted pixels throughout a gesture and anchors the point
         const b = element.getBoundingClientRect()
         maxDrift = Math.max(maxDrift, Math.abs(b.top + b.height * yRatio - point.y))
       }
+      Reflect.deleteProperty(scroller, 'scrollTop')
       return { missing, blank, maxDrift, keptOldCanvas: startCanvas === element.querySelector('.pdf-buffered-canvas canvas'), growth: element.getBoundingClientRect().width / rect.width, scrollLeft: scroller.scrollLeft }
     })
     expect(result.missing).toBe(0); expect(result.blank).toBe(0)
