@@ -66,13 +66,20 @@ function install(tab: Tab, parent?: Tab): void {
     createTab: (options, details) => {
       // Returning this WebContents lets Chromium perform its ORIGINAL request,
       // including POST/referrer/opener/frame name. Never loadURL(details.url).
+      // Deferred background links may pass a null webContents option. The
+      // WebContentsView constructor accepts the key only for an actual page.
+      const original = (options as { webContents?: WebContents }).webContents
       const child: Tab = { tabId: randomUUID(), host: tab.host, partition: tab.partition,
-        adopted: true, view: new WebContentsView({ ...(options as { webContents?: WebContents }), webPreferences: {
+        adopted: true, view: new WebContentsView({ ...(original ? { webContents: original } : {}), webPreferences: {
           ...options.webPreferences, ...popupWebPreferences(tab.partition)
         } }) }
       install(child, tab)
-      if (!(options as { webContents?: WebContents }).webContents && details.disposition === 'background-tab') {
-        void child.view.webContents.loadURL(details.url, { httpReferrer: details.referrer }).catch(() => undefined)
+      if (!original && details.disposition === 'background-tab') {
+        const body = details.postBody
+        void child.view.webContents.loadURL(details.url, {
+          httpReferrer: details.referrer,
+          ...(body ? { postData: body.data, extraHeaders: `Content-Type: ${body.contentType}${body.boundary ? `; boundary=${body.boundary}` : ''}` } : {})
+        }).catch(() => undefined)
       }
       host.send('browser:open-url', { tabId: child.tabId, url: details.url,
         courseId: browsingContext(wc.id)?.courseId ?? null, openerTabId: tab.tabId,

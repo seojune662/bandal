@@ -163,3 +163,24 @@ test('HTTP failures remain readable in a normal tab and diagnostics omit auth qu
     await expect(bandal.page.locator('.browser-native-anchor')).toHaveCSS('background-image', /data:image/)
   } finally { await bandal.close(); await site.close() }
 })
+
+test('middle-click opens a loaded background tab without replacing the visible page', async () => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '백그라운드 탭')
+    const root = await openTab(bandal, `${site.origin}/lecture`)
+    await run(bandal, root, `document.body.insertAdjacentHTML('afterbegin', '<a style="display:block;height:40px" href="${site.other}/background">Background link</a>')`)
+    await bandal.app.evaluate(({ webContents }, id) => {
+      const wc = webContents.fromId(id)!
+      wc.sendInputEvent({ type: 'mouseDown', button: 'middle', clickCount: 1, x: 35, y: 20 })
+      wc.sendInputEvent({ type: 'mouseUp', button: 'middle', clickCount: 1, x: 35, y: 20 })
+    }, root)
+    const child = await childAt(bandal, `${site.other}/background`)
+    await expect.poll(() => bandal.app.evaluate(({webContents}, id) => webContents.fromId(id)!.mainFrame.executeJavaScript('window.received'), child)).toMatchObject({ method: 'GET', body: '' })
+    expect(await bandal.app.evaluate(({ BrowserWindow }, id) => {
+      const host = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('index.html'))!
+      return host.contentView.children.some(v => 'webContents' in v && (v as Electron.WebContentsView).webContents.id === id && v.getVisible())
+    }, root)).toBe(true)
+    expect(await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1)
+  } finally { await bandal.close(); await site.close() }
+})
