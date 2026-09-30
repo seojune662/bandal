@@ -232,6 +232,19 @@ test('floating assistant stays above native pages while browser remains interact
       const assistant = main.getChildWindows().find(w => w.webContents.getURL().includes('view=assistant'))!
       return { visible: assistant.isVisible(), top: assistant.isAlwaysOnTop(), browserVisible: main.contentView.children.some(v => 'webContents' in v && (v as Electron.WebContentsView).webContents.id === id && v.getVisible()) }
     }, root)).toEqual({ visible: true, top: false, browserVisible: true })
+    const initialWidth = await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('view=assistant'))!.getBounds().width)
+    const grip = popup.getByRole('button', { name: '오른쪽 아래에서 채팅창 크기 조절' })
+    await grip.hover()
+    await popup.mouse.down()
+    // CDP pointer events do not move the OS cursor read by native window resizing.
+    // Leave time for the pointerdown IPC, then move that cursor by 40 px.
+    await popup.waitForTimeout(100)
+    await bandal.app.evaluate(({ screen }) => {
+      const point = screen.getCursorScreenPoint()
+      screen.getCursorScreenPoint = () => ({ x: point.x + 40, y: point.y })
+    })
+    await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('view=assistant'))!.getBounds().width)).toBe(initialWidth + 40)
+    await popup.mouse.up()
     await popup.getByRole('button', { name: '반달 AI 채팅 닫기' }).click()
     expect(await run(bandal, root, 'document.querySelector("h1").textContent')).toBe('Lecture page')
   } finally { await bandal.close(); await site.close() }

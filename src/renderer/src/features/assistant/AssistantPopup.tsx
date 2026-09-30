@@ -1,3 +1,4 @@
+import { invoke } from '../../lib/ipc'
 import {
   useCallback,
   useLayoutEffect,
@@ -255,9 +256,11 @@ export function AssistantPopup({
     event.currentTarget.setPointerCapture(event.pointerId)
     event.preventDefault()
     event.stopPropagation()
+    if (native) void invoke('assistant:window', { action: 'resize', phase: 'begin', corner }).catch(console.error)
   }
 
   const resize = (event: ReactPointerEvent<HTMLButtonElement>): void => {
+    if (native) return
     const gesture = resizeRef.current
     const element = popupRef.current
     if (gesture === null || element === null || gesture.pointerId !== event.pointerId) return
@@ -280,6 +283,10 @@ export function AssistantPopup({
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
     resizeRef.current = null
+    if (native) {
+      void invoke('assistant:window', { action: 'resize', phase: 'end' }).catch(console.error)
+      return
+    }
     if (geometryRef.current !== null) persistGeometry(geometryRef.current)
   }
 
