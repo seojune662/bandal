@@ -17,11 +17,14 @@ async function fixture() {
       } else {
         if (url.pathname === '/unavailable') res.statusCode = 503
         res.setHeader('content-type', 'text/html; charset=utf-8')
-        res.end(`<html><head><title>Browser fixture</title></head><body><h1>Lecture page</h1><script>
+        const html = `<html><head><title>Browser fixture</title></head><body><h1>Lecture page</h1><script>
           window.result = null;
           addEventListener('message', e => { window.result = e.data });
           window.received = ${JSON.stringify({ method: req.method, body, referer: req.headers.referer ?? '' })};
-        </script></body></html>`)
+        </script></body></html>`
+        // An attached cross-site frame can still be loading its new document.
+        if (url.pathname === '/frame') setTimeout(() => res.end(html), 800)
+        else res.end(html)
       }
     })
   })
@@ -330,8 +333,17 @@ test('two-finger history works inside a cross-origin iframe', async () => {
     await run(bandal, id, `location.href='${site.origin}/second'`)
     await expect.poll(() => run(bandal, id, 'location.pathname')).toBe('/second')
     await run(bandal, id, `document.body.innerHTML='<iframe src="${site.other}/frame" style="position:fixed;inset:0;width:100%;height:100%;border:0"></iframe>'`)
-    await expect.poll(() => bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id)!.mainFrame.frames.length, id)).toBe(1)
-    await bandal.page.waitForTimeout(200)
+    await expect.poll(() => bandal.app.evaluate(async ({ webContents }, { id, url }) => {
+      const frame = webContents.fromId(id)!.mainFrame.frames.find(f => f.url === url)
+      return frame ? frame.executeJavaScript('document.readyState') : null
+    }, { id, url: `${site.other}/frame` })).toBe('complete')
+    await bandal.app.evaluate(async ({ BrowserWindow, webContents }, id) => {
+      const wc = webContents.fromId(id)!
+      BrowserWindow.fromWebContents(wc)?.focus()
+      wc.focus()
+      await wc.mainFrame.frames[0]!.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+      wc.sendInputEvent({ type: 'mouseMove', x: 120, y: 120 })
+    }, id)
     for (let i = 0; i < 12; i++) {
       await bandal.app.evaluate(({ webContents }, id) => { const wc = webContents.fromId(id)!; wc.focus(); wc.sendInputEvent({ type: 'mouseWheel', x: 120, y: 120, deltaX: 22, deltaY: 0, hasPreciseScrollingDeltas: true, canScroll: true }) }, id)
       await bandal.page.waitForTimeout(40)
