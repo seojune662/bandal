@@ -62,7 +62,7 @@ async function renderBrowserTab(
   if (contentType === 'application/pdf') {
     const url = guestActions.currentUrl(tabId)
     if (url === null) throw new Error('이 탭을 인쇄할 수 없어요.')
-    const result = await invoke('print:pdfFromUrl', { url })
+    const result = await invoke('print:pdfFromUrl', { url, tabId })
     return result.base64
   }
   const bytes = await guestActions.printToPdf(tabId, {

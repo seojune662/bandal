@@ -57,6 +57,7 @@ interface BrowserGuestViewProps {
   tabId: string
   src: string
   isPrivate: boolean
+  profileId: string
   suppressed: boolean
 }
 
@@ -74,6 +75,7 @@ export function BrowserGuestView({
   tabId,
   src,
   isPrivate,
+  profileId,
   suppressed
 }: BrowserGuestViewProps): JSX.Element {
   const webviewRef = useRef<WebviewTag | null>(null)
@@ -93,10 +95,10 @@ export function BrowserGuestView({
   )
   useEffect(() => {
     if (!webviewRef.current) return
-    const native = attachNativePage(webviewRef.current, tabId, isPrivate, ownerCourse)
+    const native = attachNativePage(webviewRef.current, tabId, isPrivate, ownerCourse, profileId)
     nativeRef.current = native
     return () => { native.dispose(); nativeRef.current = null }
-  }, [tabId, isPrivate, ownerCourse])
+  }, [tabId, isPrivate, ownerCourse, profileId])
   useEffect(() => {
     nativeRef.current?.bounds(overlayVisible || suppressed || contextMenu ? null : rect, rect !== null && !overlayVisible && (suppressed || contextMenu !== null))
   }, [rect, overlayVisible, suppressed, contextMenu])
@@ -328,7 +330,7 @@ export function BrowserGuestView({
           // Chromium lists every declared icon; the last is the best match.
           const best = event.favicons.at(-1)
           if (best === undefined) return
-          void invoke('browser:favicon', { url: best })
+          void invoke('browser:favicon', { url: best, profileId, isPrivate })
             .then((result) => {
               useBrowserGuests.getState().setFavicon(tabId, result.dataUrl)
             })
@@ -364,6 +366,7 @@ export function BrowserGuestView({
   return (
     <div
       className="browser-guest"
+      data-tab-id={tabId}
       style={guestStyle(overlayVisible ? null : rect)}
     >
       <div className="browser-native-anchor" ref={(element) => {

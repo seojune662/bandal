@@ -43,8 +43,10 @@ const PERMISSION_LABELS: Record<string, string> = {
 }
 
 export function BrowsingDataPanel({
+  profileId = 'default',
   settings: _settings
 }: {
+  profileId?: string
   settings: Settings | null
 }): JSX.Element {
   const [sites, setSites] = useState<SignedInSite[] | null>(null)
@@ -53,23 +55,23 @@ export function BrowsingDataPanel({
   const [feedback, setFeedback] = useState<string | null>(null)
 
   const loadSites = useCallback(() => {
-    void invoke('browser:sessionSites', {})
+    void invoke('browser:sessionSites', { profileId })
       .then((result) => setSites(result.sites))
       .catch(() => setSites([]))
-  }, [])
+  }, [profileId])
 
   const loadPermissions = useCallback(() => {
-    void invoke('browser:sitePermissions', {})
+    void invoke('browser:sitePermissions', { profileId })
       .then((result) => setPermissions(result.permissions))
       .catch(() => setPermissions([]))
-  }, [])
+  }, [profileId])
 
   useEffect(() => loadSites(), [loadSites])
   useEffect(() => loadPermissions(), [loadPermissions])
 
   const forgetPermission = (id: string | null): void => {
     setBusy(id ?? 'permissions')
-    void invoke('browser:forgetPermission', { id })
+    void invoke('browser:forgetPermission', { profileId, id })
       .then(() => {
         setFeedback(
           id === null
@@ -84,7 +86,7 @@ export function BrowsingDataPanel({
 
   const forget = (origin: string | null): void => {
     setBusy(origin ?? '*')
-    void invoke('browser:clearSession', { origin })
+    void invoke('browser:clearSession', { profileId, origin })
       .then(() => {
         setFeedback(
           origin === null
@@ -105,7 +107,7 @@ export function BrowsingDataPanel({
    */
   const clearStorage = (): void => {
     setBusy('storage')
-    void invoke('browser:clearStorage', { origin: null, cache: true })
+    void invoke('browser:clearStorage', { profileId, origin: null, cache: true })
       .then(() => {
         setFeedback('저장된 사이트 데이터와 캐시를 지웠습니다.')
         loadSites()
@@ -116,7 +118,7 @@ export function BrowsingDataPanel({
 
   const clearHistory = (): void => {
     setBusy('history')
-    void invoke('browser:clearHistory', { courseId: null })
+    void invoke('browser:clearHistory', { profileId, courseId: null })
       .then(() => setFeedback('방문 기록을 지웠습니다.'))
       .catch(() => setFeedback('방문 기록을 지우지 못했습니다.'))
       .finally(() => setBusy(null))

@@ -43,9 +43,10 @@ interface HistoryHit {
 
 export function useAddressSuggestions(
   draft: string | null,
-  includeHistory = true
+  includeHistory = true,
+  profileId = 'default'
 ): AddressSuggestion[] {
-  const [history, setHistory] = useState<{ query: string; entries: HistoryHit[] } | null>(null)
+  const [history, setHistory] = useState<{ query: string; profileId: string; entries: HistoryHit[] } | null>(null)
   const courseId = useWorkspaceStore((state) => state.activeCourseId)
   const favorites = useFavoritesStore(
     (state) => state.byCourse[favoriteScopeKey(courseId)] ?? EMPTY_FAVORITES
@@ -62,9 +63,9 @@ export function useAddressSuggestions(
     }
     let cancelled = false
     const timer = setTimeout(() => {
-      void invoke('browser:searchHistory', { query: draft, limit: 24 })
+      void invoke('browser:searchHistory', { query: draft, limit: 24, profileId })
         .then((result) => {
-          if (!cancelled) setHistory({ query: draft, entries: result.entries })
+          if (!cancelled) setHistory({ query: draft, profileId, entries: result.entries })
         })
         .catch(() => {
           if (!cancelled) setHistory(null)
@@ -74,14 +75,14 @@ export function useAddressSuggestions(
       cancelled = true
       clearTimeout(timer)
     }
-  }, [draft, includeHistory])
+  }, [draft, includeHistory, profileId])
 
   if (draft === null) return []
 
   return suggestionsFor(
     draft,
     {
-      history: includeHistory && history?.query === draft ? history.entries : [],
+      history: includeHistory && history?.profileId === profileId && history?.query === draft ? history.entries : [],
       favorites: favorites.flatMap((favorite) =>
         favorite.descriptor.kind === 'browser'
           ? [
@@ -97,7 +98,7 @@ export function useAddressSuggestions(
         url: service.url
       })),
       openTabs: Object.entries(openTabs).flatMap(([tabId, descriptor]) =>
-        descriptor.kind === 'browser' && !descriptor.payload.isPrivate
+        descriptor.kind === 'browser' && (descriptor.payload.profileId ?? 'default') === profileId && !descriptor.payload.isPrivate
           ? [
               {
                 title: nav?.[tabId]?.title || descriptor.payload.initialUrl,

@@ -21,7 +21,18 @@ export function changedFiles(base) {
     delete after.version
     if (JSON.stringify(before) === JSON.stringify(after)) files.delete('package.json')
   }
+  // Adding this isolated browser preload leaves the app's build pipeline intact.
+  if (files.has('electron.vite.config.ts')) {
+    const before = git('show', `${base}:electron.vite.config.ts`)
+    const after = readFileSync('electron.vite.config.ts', 'utf8')
+    if (onlyBrowserGestureEntryChanged(before, after)) files.delete('electron.vite.config.ts')
+  }
   return { base, files: [...files] }
+}
+
+export function onlyBrowserGestureEntryChanged(before, after) {
+  const strip = value => value.replace(/^\s*browserGesture: resolve\(__dirname, 'src\/preload\/browserGesture\.ts'\),?\r?\n/gm, '').trim()
+  return strip(before) === strip(after)
 }
 
 export function planChecks(files, full = false) {
@@ -30,7 +41,7 @@ export function planChecks(files, full = false) {
   full ||= has(/^(package\.json|pnpm-lock\.yaml|electron\.vite\.config\.ts|vitest\.config\.ts|tests\/setup\.ts)$/)
   const types = new Set()
   if (full || has(/^(src\/(main|preload|shared)\/|server\/|sdk\/|(?:marketplace|sdk)\.vite\.config\.ts|tsconfig\.node\.json)/)) types.add('tsconfig.node.json')
-  if (full || has(/^(src\/(renderer|shared)\/|tsconfig\.web\.json)/)) types.add('tsconfig.web.json')
+  if (full || has(/^(src\/(renderer|shared)\/|src\/preload\/browser|tsconfig\.web\.json)/)) types.add('tsconfig.web.json')
   if (full || has(/^(web-demo\/|src\/shared\/|web-demo\/tsconfig\.json)/)) types.add('web-demo/tsconfig.json')
   const scriptTests = new Set(files.filter((f) => /^scripts\/test-.*\.mjs$/.test(f)))
   if (has(/^(scripts\/(affected-checks|reuse-ci)\.mjs|\.github\/workflows\/)/)) scriptTests.add('scripts/test-affected-checks.mjs')
@@ -41,13 +52,13 @@ export function planChecks(files, full = false) {
   if (has(/(renderInkSnapshot|pageImage)/i)) e2e.add('e2e/pageImageCopy.spec.ts')
   if (has(/(systemClipboard|noteImagePlugin|BufferedPdfCanvas|zoomInput)/)) e2e.add('e2e/interactionFixes.spec.ts')
   if (has(/(BrowserAddress|browserSearch|urlInput|useAddressSuggestions)/)) e2e.add('e2e/browserAddress.spec.ts')
-  if (has(/^src\/.*\/browser\//)) e2e.add('e2e/browserCompatibility.spec.ts')
+  if (has(/^src\/.*\/browser\/|src\/preload\/browser|src\/main\/windows\/assistantWindow|src\/renderer\/src\/features\/assistant\//)) e2e.add('e2e/browserCompatibility.spec.ts')
   if (has(/^src\/.*(calendar\/|appleCalendar\/|board\/|taskSchedule|calendarDate|types\/board)/)) {
     e2e.add('e2e/taskSchedule.spec.ts')
     e2e.add('e2e/appleCalendar.spec.ts')
   }
   if (has(/(useViewportBounds|BoardEditor|CalendarForm)/)) e2e.add('e2e/viewportMenus.spec.ts')
-  if (has(/^src\/(main\/(background\/|db\/|index\.ts|features\/materials\/)|preload\/|renderer\/src\/(features\/workspace\/|stores\/workspaceStore))/)) e2e.add('e2e/coursePerformance.spec.ts')
+  if (has(/^src\/(main\/(background\/|db\/|index\.ts|features\/materials\/)|preload\/index\.ts|renderer\/src\/(features\/workspace\/|stores\/workspaceStore))/)) e2e.add('e2e/coursePerformance.spec.ts')
   if (has(/^src\/renderer\/src\/features\/notes\/(NoteTab|NoteToolbar|noteEditorPlugins|noteFormatting|nativeHistoryGuard)/)) e2e.add('e2e/noteToolbar.spec.ts')
   if (full) {
     for (const spec of ['pdfExport', 'browserAddress', 'pageImageCopy', 'taskSchedule', 'appleCalendar', 'viewportMenus', 'coursePerformance']) {
@@ -63,7 +74,7 @@ export function planChecks(files, full = false) {
   const pdfZoomOnly = !full && pdfChanges.length > 0 && pdfChanges.every(f => /\/(PdfTab\.tsx|PdfPageView\.tsx|BufferedPdfCanvas\.tsx|pdf\.css|lib\/zoomInput\.ts)$/.test(f))
   const partial = new Map()
   if (pdfZoomOnly) partial.set('e2e/pdfTextbox.spec.ts', 'zooming in and back preserves normalized geometry')
-  const infrastructure = files.filter(f => /^src\/(main\/(background\/|db\/|index\.ts|features\/materials\/)|preload\/|renderer\/src\/(features\/workspace\/|stores\/workspaceStore))/.test(f))
+  const infrastructure = files.filter(f => /^src\/(main\/(background\/|db\/|index\.ts|features\/materials\/)|preload\/index\.ts|renderer\/src\/(features\/workspace\/|stores\/workspaceStore))/.test(f))
   if (!full && infrastructure.length > 0 && infrastructure.every(f => f === 'src/preload/index.ts' || f === 'src/renderer/src/stores/workspaceStore.ts')) {
     partial.set('e2e/coursePerformance.spec.ts', '100 course switches retain the visible PDF')
   }

@@ -1,3 +1,4 @@
+import { BrowserProfileSelect } from '../../browser/BrowserProfileSelect'
 import { useEffect, useState, type FormEvent } from 'react'
 import { ZOOM_LEVELS, zoomPercent } from '../../../../../shared/browserZoom'
 import {
@@ -330,7 +331,7 @@ function PopupCard({ settings }: { settings: Settings | null }): JSX.Element {
   )
 }
 
-function BrowserImportCard(): JSX.Element {
+function BrowserImportCard({ profileId }: { profileId: string }): JSX.Element {
   const t = useT()
   const [busy, setBusy] = useState<'bookmarks' | 'passwords' | null>(null)
   const [feedback, setFeedback] = useState('')
@@ -353,7 +354,7 @@ function BrowserImportCard(): JSX.Element {
   const importPasswords = (): void => {
     setBusy('passwords')
     setFeedback('')
-    void invoke('credentials:importCsv', {})
+    void invoke('credentials:importCsv', { profileId })
       .then((result) => {
         if (result.cancelled) return
         setFeedback(t('settings.browser.import.result')
@@ -396,14 +397,14 @@ function BrowserImportCard(): JSX.Element {
   )
 }
 
-function WebExtensionsCard(): JSX.Element {
+function WebExtensionsCard({ profileId }: { profileId: string }): JSX.Element {
   const t = useT()
   const [extensions, setExtensions] = useState<BrowserExtensionSummary[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [feedback, setFeedback] = useState('')
 
   const refresh = (): void => {
-    void invoke('browser:extensions', {})
+    void invoke('browser:extensions', { profileId })
       .then((result) => setExtensions(result.extensions))
       .catch(() => {
         setExtensions([])
@@ -416,7 +417,7 @@ function WebExtensionsCard(): JSX.Element {
   const install = (): void => {
     setBusy('install')
     setFeedback('')
-    void invoke('browser:installExtension', {})
+    void invoke('browser:installExtension', { profileId })
       .then(({ extension }) => {
         if (extension === null) return
         refresh()
@@ -432,7 +433,7 @@ function WebExtensionsCard(): JSX.Element {
 
   const toggle = (extension: BrowserExtensionSummary): void => {
     setBusy(extension.path)
-    void invoke('browser:setExtensionEnabled', {
+    void invoke('browser:setExtensionEnabled', { profileId,
       path: extension.path,
       enabled: !extension.enabled
     }).then((result) => setExtensions(result.extensions))
@@ -442,7 +443,7 @@ function WebExtensionsCard(): JSX.Element {
 
   const remove = (extension: BrowserExtensionSummary): void => {
     setBusy(extension.path)
-    void invoke('browser:removeExtension', { path: extension.path })
+    void invoke('browser:removeExtension', { profileId, path: extension.path })
       .then((result) => setExtensions(result.extensions))
       .catch(() => setFeedback(t('settings.browser.extensions.error')))
       .finally(() => setBusy(null))
@@ -514,8 +515,11 @@ export function BrowserSettingsPanel({
 }: {
   settings: Settings | null
 }): JSX.Element {
+  const [profileId, setProfileId] = useState('default')
   return (
     <div className="settings-stack">
+      <BrowserProfileSelect value={profileId} onChange={setProfileId} />
+      <SettingsCard><ToggleRow label="두 손가락으로 앞뒤 이동" description="페이지 가장자리에서 가로로 쓸어 탐색합니다." checked={settings?.browser.swipeNavigation ?? true} onChange={swipeNavigation => saveBrowserSettings(settings, { swipeNavigation })} /></SettingsCard>
       <AgentUseSection settings={settings} />
       <HomePageCard settings={settings} />
       <SearchEngineCard settings={settings} />
@@ -523,10 +527,10 @@ export function BrowserSettingsPanel({
       <LinkRoutingCard settings={settings} />
       <PrivacyProtectionCard settings={settings} />
       <PopupCard settings={settings} />
-      <WebExtensionsCard />
-      <BrowserImportCard />
+      <WebExtensionsCard key={`extensions-${profileId}`} profileId={profileId} />
+      <BrowserImportCard profileId={profileId} />
       <AgentAccessSection settings={settings} />
-      <BrowsingDataPanel settings={settings} />
+      <BrowsingDataPanel key={profileId} settings={settings} profileId={profileId} />
     </div>
   )
 }

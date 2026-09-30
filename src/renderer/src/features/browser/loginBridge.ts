@@ -384,7 +384,7 @@ async function stageSubmittedLogin(
     }
     if (candidate.kind === 'save') {
       try {
-        const logins = await invoke('credentials:list', {})
+        const logins = await invoke('credentials:list', { profileId: useBrowserGuests.getState().liveGuests.find(g => g.tabId === tabId)?.profileId ?? 'default' })
         if (logins.some((login) => login.origin === summary.origin)) {
           candidate.kind = 'update'
         }
@@ -433,7 +433,7 @@ async function applyFormReport(
 
   let saved: SavedLoginSummary | undefined
   try {
-    const logins = await invoke('credentials:list', {})
+    const logins = await invoke('credentials:list', { profileId: useBrowserGuests.getState().liveGuests.find(g => g.tabId === tabId)?.profileId ?? 'default' })
     saved = logins.find((login) => login.origin === report.origin)
   } catch {
     update(tabId, { pending: false, message: 'failed' })

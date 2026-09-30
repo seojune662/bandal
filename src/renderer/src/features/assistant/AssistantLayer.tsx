@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { OverlayState } from '../../../../shared/types/overlay'
-import { invoke } from '../../lib/ipc'
+import { AssistantPopup } from './AssistantPopup'
+import { invoke, onPush } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import {
   requestChatPrompt,
@@ -12,7 +13,6 @@ import {
 } from '../overlay/useOverlayState'
 import { AssistantOrb } from './AssistantOrb'
 import { CharmLayer } from './charms'
-import { AssistantPopup } from './AssistantPopup'
 import { orbStateForActivity } from './orbActivityState'
 import { SelectionOrb } from './SelectionOrb'
 import { useAssistantActivity } from './useAssistantActivity'
@@ -75,15 +75,24 @@ function InAppAssistant({
     if (popupConversationId === null || pendingPromptRef.current === null) return
     const prompt = pendingPromptRef.current
     pendingPromptRef.current = null
-    requestChatPrompt(popupConversationId, prompt)
+    if (window.bandal.platform === 'web') requestChatPrompt(popupConversationId, prompt)
+    else void invoke('assistant:window', { action: 'prompt', conversationId: popupConversationId, prompt })
   }, [popupConversationId])
+
+  useEffect(() => { if (window.bandal.platform !== 'web') return onPush('assistant:state', next => setPopupOpen(next.visible)) }, [])
+  useEffect(() => {
+    if (window.bandal.platform === 'web') return
+    let geometry: { x: number; y: number; width: number; height: number } | undefined
+    try { geometry = JSON.parse(localStorage.getItem('bandal:assistant-popup-geometry:v1') ?? 'null') ?? undefined } catch { /* default */ }
+    void invoke('assistant:window', { action: 'sync', state: { visible: popupOpen, courseId: selectedCourseId, conversationId: popupConversationId }, ...(geometry ? { geometry } : {}) }).catch(console.error)
+  }, [popupOpen, selectedCourseId, popupConversationId])
 
   const togglePopup = useCallback((): void => {
     activity.clearAlert()
     setPopupOpen((open) => !open)
   }, [activity])
 
-  const closePopup = useCallback((): void => setPopupOpen(false), [])
+
 
   const pickSelection = useCallback(
     (picked: AnchoredSelection): void => {
@@ -91,7 +100,8 @@ function InAppAssistant({
       activity.clearAlert()
       const payload = quotePayload(picked)
       if (popupConversationId === null) pendingPromptRef.current = payload
-      else requestChatPrompt(popupConversationId, payload)
+      else if (window.bandal.platform === 'web') requestChatPrompt(popupConversationId, payload)
+      else void invoke('assistant:window', { action: 'prompt', conversationId: popupConversationId, prompt: payload })
       window.getSelection()?.removeAllRanges()
       clearSelection()
     },
@@ -103,12 +113,7 @@ function InAppAssistant({
   return (
     <>
       <CharmLayer orbRef={orbRef} orbState={orbState} />
-      <AssistantPopup
-        visible={popupOpen}
-        conversationId={popupConversationId}
-        onClose={closePopup}
-        onOpenConversation={onOpenConversation}
-      />
+      {window.bandal.platform === 'web' && <AssistantPopup visible={popupOpen} conversationId={popupConversationId} onClose={() => setPopupOpen(false)} onOpenConversation={onOpenConversation} />}
       {selection !== null && (
         <SelectionOrb
           selection={selection}

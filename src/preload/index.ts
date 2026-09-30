@@ -93,6 +93,8 @@ const PUSH_CHANNELS = [
   'agentTools:unavailable',
   'agentTools:changed',
   // -- desktop overlay ------------------------------------------------------
+  'assistant:state',
+  'assistant:prompt',
   'overlay:state',
   'overlay:prompt',
   'ui:openChat',

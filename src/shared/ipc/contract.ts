@@ -429,7 +429,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
    * path safety are enforced by the same guards as materials:writeFile.
    */
   'materials:downloadFromUrl': {
-    req: { courseId: string; dirRelPath: string; url: string }
+    req: { courseId: string; dirRelPath: string; url: string; tabId?: string }
     res: { relPath: string }
   }
   'materials:createFolder': {
@@ -879,12 +879,12 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   // -- browser session ------------------------------------------------------
   /** Signed-in sites in the browsing partition, for the settings list. */
   'browser:sessionSites': {
-    req: Record<string, never>
+    req: { profileId?: string }
     res: { sites: { origin: string; cookieCount: number }[] }
   }
   /** Forgets one origin's cookies, or all of them when origin is null. */
   'browser:clearSession': {
-    req: { origin: string | null }
+    req: { profileId?: string; origin: string | null }
     res: { ok: true }
   }
   /**
@@ -895,8 +895,13 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     req: { courseId: string | null; webContentsId: number; tabId: string }
     res: { ok: true }
   }
+  'browser:prepareProfileSwitch': { req: { tabId: string }; res: { allowed: boolean } }
+  'assistant:window': { req: import('../types/assistantWindow').AssistantWindowRequest; res: import('../types/assistantWindow').AssistantWindowState }
+  'browser:profiles': { req: {}; res: import('../types/browserProfile').BrowserProfile[] }
+  'browser:saveProfile': { req: { id?: string; name: string; color: string; icon: string }; res: import('../types/browserProfile').BrowserProfile }
+  'browser:deleteProfile': { req: { id: string }; res: { ok: true } }
   'browser:createPage': {
-    req: { tabId: string; isPrivate: boolean; courseId: string | null }
+    req: { tabId: string; isPrivate: boolean; courseId: string | null; profileId?: string }
     res: { state: BrowserPageState; adopted: boolean }
   }
   'browser:pageBounds': {
@@ -921,12 +926,12 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   // -- browser history ------------------------------------------------------
   /** Upsert on visit. A revisit bumps the count, it does not append a row. */
   'browser:recordVisit': {
-    req: { url: string; title: string; courseId: string | null }
+    req: { profileId?: string; url: string; title: string; courseId: string | null }
     res: { ok: true }
   }
   /** Ranked omnibox candidates. Empty query returns recent visits. */
   'browser:searchHistory': {
-    req: { query: string; limit?: number }
+    req: { profileId?: string; query: string; limit?: number }
     res: {
       entries: {
         url: string
@@ -939,7 +944,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   }
   /** `null` clears everything; a course id clears just that course's rows. */
   'browser:clearHistory': {
-    req: { courseId: string | null }
+    req: { profileId?: string; courseId: string | null }
     res: { ok: true }
   }
   /**
@@ -956,7 +961,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
    * relaxing it is the wrong trade.
    */
   'browser:favicon': {
-    req: { url: string }
+    req: { isPrivate?: boolean; profileId?: string; url: string }
     res: { dataUrl: string | null }
   }
 
@@ -1255,14 +1260,14 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   }
   /** Clears cache and site storage, not just cookies. */
   'browser:clearStorage': {
-    req: { origin: string | null; cache: boolean }
+    req: { profileId?: string; origin: string | null; cache: boolean }
     res: { ok: true }
   }
 
   // -- site permissions -------------------------------------------------------
   /** Every camera/location/notification answer the student has given. */
   'browser:sitePermissions': {
-    req: { }
+    req: { profileId?: string; }
     res: {
       permissions: {
         id: string
@@ -1275,28 +1280,28 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   }
   /** `id: null` forgets every remembered answer. */
   'browser:forgetPermission': {
-    req: { id: string | null }
+    req: { profileId?: string; id: string | null }
     res: { ok: true }
   }
   /** Updates the site-specific popup allowlist used by strict mode. */
   'browser:setPopupPermission': {
-    req: { origin: string; decision: 'granted' | 'denied' }
+    req: { profileId?: string; origin: string; decision: 'granted' | 'denied' }
     res: { ok: true }
   }
   'browser:extensions': {
-    req: Record<string, never>
+    req: { profileId?: string }
     res: { extensions: BrowserExtensionSummary[] }
   }
   'browser:installExtension': {
-    req: Record<string, never>
+    req: { profileId?: string }
     res: { extension: BrowserExtensionSummary | null }
   }
   'browser:setExtensionEnabled': {
-    req: { path: string; enabled: boolean }
+    req: { profileId?: string; path: string; enabled: boolean }
     res: { extensions: BrowserExtensionSummary[] }
   }
   'browser:removeExtension': {
-    req: { path: string }
+    req: { profileId?: string; path: string }
     res: { extensions: BrowserExtensionSummary[] }
   }
 
@@ -1325,7 +1330,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
    * the portal's own cookies carry.
    */
   'print:pdfFromUrl': {
-    req: { url: string }
+    req: { url: string; tabId?: string }
     res: { base64: string }
   }
   /**
@@ -1441,12 +1446,12 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   }
   /** Summaries only — a stored password is never returned to the renderer. */
   'credentials:list': {
-    req: Record<string, never>
+    req: { profileId?: string }
     res: SavedLoginSummary[]
   }
   /** Metadata edits from the settings window. Send `password: ''` to keep it. */
   'credentials:save': {
-    req: SaveLoginInput
+    req: SaveLoginInput & { profileId?: string }
     res: SavedLoginSummary
   }
   /**
@@ -1459,12 +1464,12 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     res: SavedLoginSummary | null
   }
   'credentials:forget': {
-    req: { origin: string }
+    req: { profileId?: string; origin: string }
     res: { ok: true }
   }
   /** Imports Chrome/Edge/Arc/Firefox CSV via a native picker; bytes stay in main. */
   'credentials:importCsv': {
-    req: Record<string, never>
+    req: { profileId?: string }
     res: CredentialsImportResult
   }
   /** Imports Netscape bookmark HTML into app-wide browser favorites. */
@@ -2012,6 +2017,11 @@ export const IPC_CHANNELS = [
   'browserAgent:auditTail',
   'browser:controlDownload',
   'browser:downloadFile',
+  'browser:prepareProfileSwitch',
+  'assistant:window',
+  'browser:profiles',
+  'browser:saveProfile',
+  'browser:deleteProfile',
   'browser:createPage',
   'browser:pageBounds',
   'browser:pageAction',

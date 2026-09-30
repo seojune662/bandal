@@ -58,6 +58,7 @@ interface ResizeGesture extends PointerGesture {
 }
 
 export interface AssistantPopupProps {
+  native?: boolean
   visible: boolean
   conversationId: string | null
   onClose: () => void
@@ -133,6 +134,7 @@ function sameGeometry(
 
 export function AssistantPopup({
   visible,
+  native = false,
   conversationId,
   onClose,
   onOpenConversation
@@ -154,6 +156,7 @@ export function AssistantPopup({
   }, [])
 
   const clampCurrent = useCallback((): void => {
+    if (native) return
     const element = popupRef.current
     if (element === null) return
     const next = clampPopupGeometry(
@@ -163,7 +166,7 @@ export function AssistantPopup({
     )
     if (!sameGeometry(geometryRef.current, next)) updateGeometry(next)
     persistGeometry(next)
-  }, [updateGeometry])
+  }, [updateGeometry, native])
 
   useLayoutEffect(() => {
     clampCurrent()
@@ -191,7 +194,7 @@ export function AssistantPopup({
   }, [visible])
 
   const beginMove = (event: ReactPointerEvent<HTMLElement>): void => {
-    if (event.button !== 0 || resizeRef.current !== null) return
+    if (native || event.button !== 0 || resizeRef.current !== null) return
     const target = event.target
     if (target instanceof Element && target.closest('button') !== null) return
     const element = popupRef.current
@@ -283,7 +286,7 @@ export function AssistantPopup({
   const style: CSSProperties = {
     // 표시 전환용 opacity(페이드 인)와 별개로 배경 알파만 조절한다.
     ['--assistant-popup-alpha' as string]: popupAlpha,
-    ...(geometry === null
+    ...(native || geometry === null
       ? {}
       : {
           left: geometry.x,

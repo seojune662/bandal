@@ -184,3 +184,145 @@ test('middle-click opens a loaded background tab without replacing the visible p
     expect(await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1)
   } finally { await bandal.close(); await site.close() }
 })
+
+test('profiles isolate logins and history, switch a live tab and inherit popup sessions', async () => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '프로필 검증')
+    const root = await openTab(bandal, `${site.origin}/lecture`)
+    await run(bandal, root, `document.cookie='account=personal';localStorage.setItem('account','personal')`)
+    const profile = await bandal.page.evaluate(() => window.bandal.invoke('browser:saveProfile', { name: '학교', color: '#397db5', icon: '●' }))
+    await bandal.page.getByRole('button', { name: '브라우저 프로필', exact: true }).click()
+    await bandal.page.getByRole('dialog', { name: '브라우저 프로필 선택' }).getByRole('button', { name: '● 학교', exact: true }).click()
+    await expect.poll(() => bandal.app.evaluate(({ webContents }, oldId) => webContents.fromId(oldId)?.isDestroyed() ?? true, root)).toBe(true)
+    const school = await childAt(bandal, `${site.origin}/lecture`)
+    await expect.poll(() => run(bandal, school, 'document.readyState')).toBe('complete')
+    expect(await run(bandal, school, `document.cookie+':'+localStorage.getItem('account')`)).toBe(':null')
+    await run(bandal, school, `document.cookie='account=school';localStorage.setItem('account','school');window.open('${site.origin}/profile-child','child');void 0`)
+    const child = await childAt(bandal, `${site.origin}/profile-child`)
+    expect(await run(bandal, child, 'document.cookie')).toBe('account=school')
+    const history = await bandal.page.evaluate(async id => {
+      await window.bandal.invoke('browser:recordVisit', { profileId: id, url: 'https://school.example/unique', title: '학교만', courseId: null })
+      return [await window.bandal.invoke('browser:searchHistory', { query: '학교만' }), await window.bandal.invoke('browser:searchHistory', { profileId: id, query: '학교만' })]
+    }, profile.id)
+    expect(history[0].entries).toHaveLength(0)
+    expect(history[1].entries).toHaveLength(1)
+    const personalAgain = await openTab(bandal, `${site.origin}/personal-again`)
+    expect(await run(bandal, personalAgain, 'document.cookie')).toBe('account=personal')
+    expect(await run(bandal, school, 'document.cookie')).toBe('account=school')
+    // Session identity is preserved across child creation; default still has personal cookies.
+    expect(await bandal.app.evaluate(async ({ session }, origin) => (await session.fromPartition('persist:browsing').cookies.get({ url: origin }))[0]?.value, site.origin)).toBe('personal')
+  } finally { await bandal.close(); await site.close() }
+})
+
+test('floating assistant stays above native pages while browser remains interactive', async () => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '채팅 겹침 검증')
+    const root = await openTab(bandal, `${site.origin}/lecture`)
+    await bandal.page.evaluate(async () => {
+      const overlay = await window.bandal.invoke('overlay:getState', {})
+      await window.bandal.invoke('assistant:window', { action: 'sync', state: { visible: true, courseId: overlay.courseId, conversationId: overlay.conversationId } })
+    })
+    await expect.poll(() => bandal.app.windows().some(p => p.url().includes('view=assistant'))).toBe(true)
+    const popup = bandal.app.windows().find(p => p.url().includes('view=assistant'))!
+    await expect(popup.locator('#assistant-popup')).toBeVisible()
+    expect(await bandal.app.evaluate(({ BrowserWindow }, id) => {
+      const main = BrowserWindow.getAllWindows().find(w => w.contentView.children.some(v => 'webContents' in v && (v as Electron.WebContentsView).webContents.id === id))!
+      const assistant = main.getChildWindows().find(w => w.webContents.getURL().includes('view=assistant'))!
+      return { visible: assistant.isVisible(), top: assistant.isAlwaysOnTop(), browserVisible: main.contentView.children.some(v => 'webContents' in v && (v as Electron.WebContentsView).webContents.id === id && v.getVisible()) }
+    }, root)).toEqual({ visible: true, top: false, browserVisible: true })
+    await popup.getByRole('button', { name: '반달 AI 채팅 닫기' }).click()
+    expect(await run(bandal, root, 'document.querySelector("h1").textContent')).toBe('Lecture page')
+  } finally { await bandal.close(); await site.close() }
+})
+
+test('horizontal trackpad gestures navigate once and respect scrolling elements', async () => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '제스처 검증')
+    const root = await openTab(bandal, `${site.origin}/lecture`)
+    await run(bandal, root, `location.href='${site.origin}/second'`)
+    await expect.poll(() => run(bandal, root, 'location.pathname')).toBe('/second')
+    const wheel = async (deltaX: number, deltaY = 0) => {
+      await bandal.app.evaluate(({ webContents }, { id, deltaX, deltaY }) => { const wc = webContents.fromId(id)!; wc.focus(); wc.sendInputEvent({ type: 'mouseWheel', x: 120, y: 120, deltaX, deltaY, hasPreciseScrollingDeltas: true, canScroll: true }) }, { id: root, deltaX, deltaY })
+      await bandal.page.waitForTimeout(40)
+    }
+    // Electron input deltas have the opposite sign to DOM WheelEvent deltas.
+    await wheel(5)
+    for (let i = 0; i < 10; i++) await wheel(22)
+    await expect.poll(() => run(bandal, root, 'location.pathname')).toBe('/lecture')
+    await bandal.page.waitForTimeout(700)
+    await run(bandal, root, `document.body.innerHTML='<div id="scroller" style="position:fixed;inset:0;overflow:auto"><div style="width:3000px;height:100px">wide</div></div>';document.getElementById('scroller').scrollLeft=400`)
+    for (let i = 0; i < 10; i++) await wheel(-22)
+    await bandal.page.waitForTimeout(250)
+    expect(await run(bandal, root, 'location.pathname')).toBe('/lecture')
+  } finally { await bandal.close(); await site.close() }
+})
+
+test('profile session and tab identity survive restart without replacing the default login', async () => {
+  const site = await fixture()
+  let bandal = await launchBandal({ keepProfileOnClose: true })
+  try {
+    await createCourse(bandal.page, '프로필 복원')
+    await openTab(bandal, `${site.origin}/lecture`)
+    const profile = await bandal.page.evaluate(() => window.bandal.invoke('browser:saveProfile', { name: '복원 계정', color: '#9757b0', icon: '●' }))
+    await bandal.page.getByRole('button', { name: '브라우저 프로필', exact: true }).click()
+    await bandal.page.getByRole('dialog').getByRole('button', { name: '● 복원 계정', exact: true }).click()
+    const id = await childAt(bandal, `${site.origin}/lecture`)
+    await run(bandal, id, `location.href='${site.origin}/after-login'`)
+    await expect.poll(() => run(bandal, id, 'location.pathname')).toBe('/after-login')
+    await run(bandal, id, `document.cookie='account=retained;max-age=86400';localStorage.setItem('profile','retained')`)
+    // Layout writes are debounced; wait for the actual descriptor to be persisted.
+    await expect.poll(() => bandal.page.evaluate(async () => { const state = await window.bandal.invoke('overlay:getState', {}); return state.courseId ? JSON.stringify(await window.bandal.invoke('layout:get', { courseId: state.courseId })) : '' })).toContain(profile.id)
+    const directory = bandal.profileDir
+    await bandal.close()
+    bandal = await launchBandal({ reuseProfileDir: directory })
+    await expect(bandal.page.getByRole('button', { name: '브라우저 프로필', exact: true })).toContainText('복원 계정')
+    const restored = await childAt(bandal, `${site.origin}/after-login`)
+    expect(await run(bandal, restored, `document.cookie+':'+localStorage.getItem('profile')`)).toBe('account=retained:retained')
+    expect(await bandal.page.evaluate(id => window.bandal.invoke('browser:profiles', {}).then(p => p.some(x => x.id === id)), profile.id)).toBe(true)
+  } finally { await bandal.close(); await site.close() }
+})
+
+test('cancelled beforeunload keeps the current profile and its page alive', async () => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '프로필 전환 취소')
+    const id = await openTab(bandal, `${site.origin}/lecture`)
+    await run(bandal, id, `addEventListener('beforeunload',e=>{e.preventDefault();e.returnValue='unsaved'});document.body.innerHTML='<button style="position:fixed;inset:0">Edit</button>'`)
+    await bandal.app.evaluate(({ webContents, dialog }, id) => {
+      dialog.showMessageBoxSync = () => 0
+      const wc = webContents.fromId(id)!
+      wc.sendInputEvent({ type: 'mouseDown', x: 80, y: 80, button: 'left', clickCount: 1 })
+      wc.sendInputEvent({ type: 'mouseUp', x: 80, y: 80, button: 'left', clickCount: 1 })
+    }, id)
+    // Electron owns beforeunload; prevent Playwright's automatic CDP dismiss from racing it.
+    bandal.app.context().pages().find(p => p.url() === `${site.origin}/lecture`)?.on('dialog', () => {})
+    const tabId = await bandal.page.locator('.browser-guest').getAttribute('data-tab-id')
+    expect(tabId).toBeTruthy()
+    const result = await bandal.page.evaluate(tabId => window.bandal.invoke('browser:prepareProfileSwitch', { tabId: tabId! }), tabId)
+    expect(result.allowed).toBe(false)
+    expect(await run(bandal, id, 'document.body.textContent')).toBe('Edit')
+    await run(bandal, id, 'onbeforeunload=null')
+    await bandal.app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1 })
+  } finally { await bandal.close(); await site.close() }
+})
+
+test('two-finger history works inside a cross-origin iframe', async () => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '프레임 제스처')
+    const id = await openTab(bandal, `${site.origin}/lecture`)
+    await run(bandal, id, `location.href='${site.origin}/second'`)
+    await expect.poll(() => run(bandal, id, 'location.pathname')).toBe('/second')
+    await run(bandal, id, `document.body.innerHTML='<iframe src="${site.other}/frame" style="position:fixed;inset:0;width:100%;height:100%;border:0"></iframe>'`)
+    await expect.poll(() => bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id)!.mainFrame.frames.length, id)).toBe(1)
+    await bandal.page.waitForTimeout(200)
+    for (let i = 0; i < 12; i++) {
+      await bandal.app.evaluate(({ webContents }, id) => { const wc = webContents.fromId(id)!; wc.focus(); wc.sendInputEvent({ type: 'mouseWheel', x: 120, y: 120, deltaX: 22, deltaY: 0, hasPreciseScrollingDeltas: true, canScroll: true }) }, id)
+      await bandal.page.waitForTimeout(40)
+    }
+    await expect.poll(() => run(bandal, id, 'location.pathname')).toBe('/lecture')
+  } finally { await bandal.close(); await site.close() }
+})

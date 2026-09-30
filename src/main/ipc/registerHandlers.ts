@@ -1,11 +1,15 @@
-import { createBrowserPage, setBrowserPageBounds, browserPageAction, destroyBrowserPage } from '../features/browser/nativeTabs'
+import { writeFileAtomic, quarantineFile } from '../lib/atomicWrite'
+import { assistantWindowRequest } from '../windows/assistantWindow'
+import { existsSync, readFileSync } from 'node:fs'
+import { initializeBrowserProfiles, listBrowserProfiles, saveBrowserProfile, deleteBrowserProfile, browserProfileResources, guestProfile, onBrowserSession, ensureProfileSession, profileDirectory } from '../features/browser/profiles'
+import { hardenBrowsingSession, useProfilePermissions } from '../features/browser/hardenWebviews'
+import { browserSessionForTab, prepareProfileSwitch, createBrowserPage, setBrowserPageBounds, browserPageAction, destroyBrowserPage } from '../features/browser/nativeTabs'
 import { isManagedBrowserPage } from '../features/browser/managedPages'
 import { beginClipboardCopy, writeImageClipboard } from '../features/systemClipboard'
 import { copyFile } from 'node:fs/promises'
 import { browsingContext, setBrowsingCourse } from '../features/browser/browsingContext'
 import { finishDownloadNavigation } from '../features/browser/popupLifecycle'
 import { getDownloadFile } from '../features/browser/downloads'
-import { PRIVATE_BROWSING_PARTITION } from '../features/browser/webviewPolicy'
 import { setMaterialMediaHandler } from '../features/materials/mediaRegistration'
 import { traceIpc } from '../performanceTrace'
 import { createFolderAvailability } from '../features/courses/folderAvailability'
@@ -148,7 +152,6 @@ import { runtimeSafeStorage } from '../lib/safeStorageGate'
 import {
   attachDownloadHandler,
   BROWSING_PARTITION,
-  createBrowserSessionStore,
   createBrowserExtensionManager,
   downloadControls,
   createPermissionsRepo,
@@ -772,8 +775,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       console.error('[materials] startDrag failed', error)
     }
   })
-  handle('materials:downloadFromUrl', async (req) => {
-    const { fileName, dataBase64 } = await fetchLinkForMaterials(req.url)
+  handle('materials:downloadFromUrl', async (req, event) => {
+    const { fileName, dataBase64 } = await fetchLinkForMaterials(req.url, browserSessionForTab(event, req.tabId))
     return materialsRepo.writeFile({
       courseId: req.courseId,
       dirRelPath: req.dirRelPath,
@@ -974,10 +977,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     writeFileSync(result.filePath, Buffer.from(req.base64, 'base64'))
     return { ok: true as const, canceled: false, savedPath: result.filePath }
   })
-  handle('print:pdfFromUrl', async (req) => {
+  handle('print:pdfFromUrl', async (req, event) => {
     // The guest is already showing this PDF, but printToPDF cannot rasterize
     // plugin content — so fetch the original bytes instead of a blank render.
-    const fetched = await fetchLinkForMaterials(req.url)
+    const fetched = await fetchLinkForMaterials(req.url, browserSessionForTab(event, req.tabId))
     return { base64: fetched.dataBase64 }
   })
   handle('window:setPrintEnabled', (req) => {
@@ -1212,6 +1215,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     conversationId: string,
     getRunId: () => string
   ): ReturnType<typeof createBrowserTools> => {
+    const recipeSession = (): Electron.Session => {
+      if (openBrowserTabs.courseId === courseId && openBrowserTabs.activeTabId) {
+        const guest = guestRegistry.resolve(openBrowserTabs.activeTabId)
+        if (guest) return guest.session as Electron.Session
+      }
+      return ensureProfileSession()
+    }
     return createBrowserTools({
       courseId,
       getRunId,
@@ -1479,7 +1489,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         useSavedLogin: async (tabId) => {
           const guest = guestRegistry.resolve(tabId)
           if (guest === null) return { filled: false, username: null }
-          const result = await fillLogin({
+          const result = await loginBridgeFor(guest.id).fill({
             origin: guest.getURL(),
             guestWebContentsId: guest.id
           })
@@ -1508,12 +1518,12 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         }
       },
       // The student's own login — the same session they signed in to by hand.
-      fetch: (url) => session.fromPartition(BROWSING_PARTITION).fetch(url),
+      fetch: (url) => recipeSession().fetch(url),
       // Same path a link-drag takes: browsing-session fetch with the 200MB
       // cap, then materialsRepo's own guards. One download implementation,
       // not two.
       collect: async ({ courseId: target, url, dirRelPath }) => {
-        const { fileName, dataBase64 } = await fetchLinkForMaterials(url)
+        const { fileName, dataBase64 } = await fetchLinkForMaterials(url, recipeSession())
         return materialsRepo.writeFile({
           courseId: target,
           dirRelPath,
@@ -1534,9 +1544,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     fromId: (id) => webContents.fromId(id) as never,
     // A guest the agent may drive is a webview on the hardened partition and
     // nothing else — never the app's own renderer.
-    isBrowsingPartition: (guest) =>
-      (guest as unknown as { session?: Electron.Session }).session ===
-      session.fromPartition(BROWSING_PARTITION)
+    isBrowsingPartition: (guest) => {
+      if (!isManagedBrowserPage(guest.id)) return false
+      return !guestProfile(guest.id).isPrivate
+    }
   })
   const generations = new GenerationTracker()
 
@@ -2437,16 +2448,34 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // -- saved logins ----------------------------------------------------------
   // `resolve()` deliberately has no channel. The password is read here, put
   // straight into the guest page, and never travels back to the renderer.
+  initializeBrowserProfiles(db)
+  handle('assistant:window', (req, event) => assistantWindowRequest(event, req))
+  handle('browser:profiles', () => listBrowserProfiles())
+  handle('browser:saveProfile', (req) => saveBrowserProfile(req))
+  handle('browser:deleteProfile', async (req) => {
+    const answer = await dialog.showMessageBox({ type: 'warning', message: '이 브라우저 프로필과 로그인·방문 기록을 삭제할까요?', buttons: ['취소', '삭제'], defaultId: 0, cancelId: 0 })
+    if (answer.response === 1) await deleteBrowserProfile(req.id)
+    return OK
+  })
   const credentialStore = createCredentialStore()
-  const fillLogin = createLoginFiller(credentialStore)
-  const captureLogin = createLoginCapturer(credentialStore)
+  const loginBridges = new Map<string, { fill: ReturnType<typeof createLoginFiller>; capture: ReturnType<typeof createLoginCapturer> }>()
+  function loginBridgeFor(id: number) {
+    const profile = guestProfile(id)
+    if (profile.isPrivate) throw new Error('시크릿 탭에는 로그인 정보를 저장하지 않습니다.')
+    if (!loginBridges.has(profile.profileId)) {
+      const store = browserProfileResources(profile.profileId).credentials
+      loginBridges.set(profile.profileId, { fill: createLoginFiller(store), capture: createLoginCapturer(store) })
+    }
+    return loginBridges.get(profile.profileId)!
+  }
   handle('credentials:availability', () => credentialStore.availability())
-  handle('credentials:list', () => credentialStore.list())
-  handle('credentials:save', (req) => credentialStore.save(req))
-  handle('credentials:capture', (req) => captureLogin(req))
-  handle('credentials:forget', (req) => credentialStore.forget(req.origin))
-  handle('credentials:fill', (req) => fillLogin(req))
-  handle('credentials:importCsv', async () => {
+  handle('credentials:list', (req) => browserProfileResources(req.profileId).credentials.list())
+  handle('credentials:save', (req) => browserProfileResources(req.profileId).credentials.save(req))
+  handle('credentials:capture', (req) => loginBridgeFor(req.guestWebContentsId).capture(req))
+  handle('credentials:forget', (req) => browserProfileResources(req.profileId).credentials.forget(req.origin))
+  handle('credentials:fill', (req) => loginBridgeFor(req.guestWebContentsId).fill(req))
+  handle('credentials:importCsv', async (req) => {
+    const credentialStore = browserProfileResources(req.profileId).credentials
     const owner = BrowserWindow.getFocusedWindow()
     const options: Electron.OpenDialogOptions = {
       title: '브라우저 비밀번호 CSV 가져오기',
@@ -2537,24 +2566,45 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // Restore / auto-persist / before-quit are already wired inside
   // hardenBrowsingSession; this factory returns that same singleton, so only
   // the IPC surface is left to connect.
-  const browserSessions = createBrowserSessionStore()
-  const browserExtensionManager = createBrowserExtensionManager({
-    session: session.fromPartition(BROWSING_PARTITION),
-    getPreferences: () => getSettings().browser.extensions,
+  const extensionManagers = new Map<string, ReturnType<typeof createBrowserExtensionManager>>()
+  const extensionPreferences = new Map<string, import('../../shared/types/settings').BrowserExtensionPreference[]>()
+  function extensionManagerFor(id = 'default') {
+    ensureProfileSession(id)
+    if (extensionManagers.has(id)) return extensionManagers.get(id)!
+    const preferencesFile = id === 'default' ? '' : join(profileDirectory(id), 'extensions.json')
+    if (preferencesFile && existsSync(preferencesFile)) {
+      try {
+        const raw: unknown = JSON.parse(readFileSync(preferencesFile, 'utf8'))
+        if (!Array.isArray(raw)) throw new Error('Invalid extension preferences')
+        extensionPreferences.set(id, raw.filter(p => typeof p?.path === 'string' && typeof p?.enabled === 'boolean'))
+      } catch { quarantineFile(preferencesFile) }
+    }
+    const manager = createBrowserExtensionManager({
+    session: ensureProfileSession(id),
+    getPreferences: () => id === 'default' ? getSettings().browser.extensions : extensionPreferences.get(id) ?? [],
     setPreferences: (extensions) => {
-      setSettings({ browser: { extensions } })
+      if (id === 'default') setSettings({ browser: { extensions } })
+      else {
+        extensionPreferences.set(id, [...extensions])
+        mkdirSync(profileDirectory(id), { recursive: true })
+        writeFileAtomic(preferencesFile, JSON.stringify(extensions))
+      }
     }
   })
-  void browserExtensionManager.restore().catch((error: unknown) => {
+  extensionManagers.set(id, manager)
+  void manager.restore().catch((error: unknown) => {
     console.warn('[browser] extension restore failed', error)
   })
-  handle('browser:sessionSites', async () => ({
-    sites: await browserSessions.listSites()
+  return manager
+  }
+  const browserExtensionManager = extensionManagerFor()
+  handle('browser:sessionSites', async (req) => ({
+    sites: await browserProfileResources(req.profileId).cookies.listSites()
   }))
-  handle('browser:extensions', () => ({
-    extensions: browserExtensionManager.list()
+  handle('browser:extensions', (req) => ({
+    extensions: extensionManagerFor(req.profileId).list()
   }))
-  handle('browser:installExtension', async () => {
+  handle('browser:installExtension', async (req) => {
     const owner = BrowserWindow.getFocusedWindow()
     const options: Electron.OpenDialogOptions = {
       title: '압축 해제된 Manifest V3 확장 폴더 선택',
@@ -2566,13 +2616,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       : await dialog.showOpenDialog(owner, options)
     const path = picked.filePaths[0]
     if (picked.canceled || path === undefined) return { extension: null }
-    return { extension: await browserExtensionManager.install(path) }
+    return { extension: await extensionManagerFor(req.profileId).install(path) }
   })
   handle('browser:setExtensionEnabled', async (req) => ({
-    extensions: await browserExtensionManager.setEnabled(req.path, req.enabled)
+    extensions: await extensionManagerFor(req.profileId).setEnabled(req.path, req.enabled)
   }))
   handle('browser:removeExtension', async (req) => ({
-    extensions: await browserExtensionManager.remove(req.path)
+    extensions: await extensionManagerFor(req.profileId).remove(req.path)
   }))
 
   handle('browser:controlDownload', (req) => {
@@ -2590,7 +2640,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
    * classic "저만 깨져요, 크롬에선 되는데요" with no button that fixes it.
    */
   handle('browser:clearStorage', async (req) => {
-    const browsing = session.fromPartition(BROWSING_PARTITION)
+    const browsing = ensureProfileSession(req.profileId)
     await browsing.clearStorageData(
       req.origin === null ? {} : { origin: req.origin }
     )
@@ -2603,10 +2653,11 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // so they take the repo by injection rather than importing the database.
   const permissionsRepo = createPermissionsRepo(db)
   useSitePermissions(permissionsRepo)
-  handle('browser:sitePermissions', () => ({
-    permissions: permissionsRepo.list()
+  handle('browser:sitePermissions', (req) => ({
+    permissions: browserProfileResources(req.profileId).permissions.list()
   }))
   handle('browser:forgetPermission', (req) => {
+    const permissionsRepo = browserProfileResources(req.profileId).permissions
     if (req.id === null) permissionsRepo.forgetAll()
     else permissionsRepo.forget(req.id)
     return OK
@@ -2620,7 +2671,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     } catch {
       throw new ValidationError('팝업 사이트 주소가 올바르지 않아요')
     }
-    permissionsRepo.remember(origin, 'popups', req.decision)
+    browserProfileResources(req.profileId).permissions.remember(origin, 'popups', req.decision)
     return OK
   })
 
@@ -2634,11 +2685,11 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // Pruning on boot rather than per write keeps the visit path a single upsert.
   historyRepo.prune()
   handle('browser:recordVisit', (req) => {
-    historyRepo.recordVisit(req)
+    browserProfileResources(req.profileId).history.recordVisit(req)
     return OK
   })
   handle('browser:searchHistory', (req) => ({
-    entries: historyRepo
+    entries: browserProfileResources(req.profileId).history
       .search(req.query, req.limit)
       .map(({ url, title, host, visitCount, lastVisitedAt }) => ({
         url,
@@ -2649,13 +2700,16 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       }))
   }))
   handle('browser:clearHistory', (req) => {
-    historyRepo.clear(req.courseId)
+    browserProfileResources(req.profileId).history.clear(req.courseId)
     return OK
   })
-  const faviconFor = createFaviconFetcher()
-  handle('browser:favicon', async (req) => ({
-    dataUrl: await faviconFor(req.url)
-  }))
+  const faviconFetchers = new Map<string, ReturnType<typeof createFaviconFetcher>>()
+  handle('browser:favicon', async (req) => {
+    const profileId = req.profileId ?? 'default'
+    const id = `${profileId}:${req.isPrivate === true}`
+    if (!faviconFetchers.has(id)) faviconFetchers.set(id, createFaviconFetcher({ fetch: (url) => ensureProfileSession(profileId, req.isPrivate).fetch(url) }))
+    return { dataUrl: await faviconFetchers.get(id)!(req.url) }
+  })
   handle('browser:courseForUrl', (req) => ({
     courseId: matchCourseByUrl(
       req.url,
@@ -2671,6 +2725,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     )
   }))
 
+  handle('browser:prepareProfileSwitch', (req, event) => prepareProfileSwitch(event, req.tabId))
   handle('browser:createPage', (req, event) => createBrowserPage(event, req))
   handle('browser:pageBounds', (req, event) => setBrowserPageBounds(event, req))
   handle('browser:pageAction', (req, event) => browserPageAction(event, req))
@@ -2698,7 +2753,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
 
-  for (const partition of [BROWSING_PARTITION, PRIVATE_BROWSING_PARTITION]) {
+  onBrowserSession((partition, id) => {
+    hardenBrowsingSession(partition)
+    if (partition.startsWith('persist:')) useProfilePermissions(partition, browserProfileResources(id).permissions)
     attachDownloadHandler(session.fromPartition(partition), {
       stagingRoot: join(app.getPath('userData'), 'download-recovery'),
       getTargetCourseId: (id) => browsingContext(id)?.courseId ?? null,
@@ -2727,8 +2784,11 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         }
       }
     })
-  }
-  handle('browser:clearSession', (req) => browserSessions.clear(req.origin))
+  })
+  ensureProfileSession()
+  ensureProfileSession('default', true)
+  for (const profile of listBrowserProfiles()) extensionManagerFor(profile.id)
+  handle('browser:clearSession', (req) => browserProfileResources(req.profileId).cookies.clear(req.origin))
 
   // -- group whiteboard ------------------------------------------------------
   // Borrows the group runtime's Supabase client: a second client would carry a

@@ -1,9 +1,11 @@
+import { installSwipeNavigation } from './swipeNavigation'
+import { ensureProfileSession, profilePartition, registerGuestProfile, forgetGuestProfile } from './profiles'
 import { randomUUID } from 'node:crypto'
-import { BrowserWindow, WebContentsView } from 'electron'
+import { BrowserWindow, WebContentsView, dialog } from 'electron'
 import type { WebContents, IpcMainInvokeEvent } from 'electron'
 import type { BrowserPageAction, BrowserPageState, BrowserPageEvent } from '../../../shared/types/browserNative'
 import { attachGuestInput, attachNavigationPolicies, popupWebPreferences } from './hardenWebviews'
-import { BROWSING_PARTITION, PRIVATE_BROWSING_PARTITION, isNavigationAllowed } from './webviewPolicy'
+import { isNavigationAllowed } from './webviewPolicy'
 import { browsingContext, registerBrowsingContext, setBrowsingCourse } from './browsingContext'
 import { registerManagedPage, forgetManagedPage } from './managedPages'
 import { trackTabDownload } from './popupLifecycle'
@@ -12,8 +14,12 @@ interface Tab {
   tabId: string
   host: BrowserWindow
   view: WebContentsView
+  switching?: boolean
+  parentId?: string
   adopted: boolean
   partition: string
+  profileId: string
+  isPrivate: boolean
 }
 const hosts = new Set<WebContents>()
 const tabs = new Map<string, Tab>()
@@ -53,13 +59,16 @@ function destroy(tab: Tab): void {
 }
 function install(tab: Tab, parent?: Tab): void {
   const wc = tab.view.webContents, host = tab.host.webContents
+  if (parent) tab.parentId = parent.tabId
   tabs.set(tab.tabId, tab)
   registerManagedPage(wc.id)
+  registerGuestProfile(wc.id, tab.profileId, tab.isPrivate)
   registerBrowsingContext(wc.id, parent?.view.webContents.id)
   setBrowsingCourse(wc.id, tab.tabId, parent ? browsingContext(parent.view.webContents.id)?.courseId ?? null : null)
   tab.view.setVisible(false)
   tab.host.contentView.addChildView(tab.view)
   attachGuestInput(host, wc, tab.partition)
+  installSwipeNavigation(wc)
   attachNavigationPolicies(wc, {
     partition: tab.partition,
     openInTab: (url) => host.send('browser:open-url', { url }),
@@ -69,7 +78,7 @@ function install(tab: Tab, parent?: Tab): void {
       // Deferred background links may pass a null webContents option. The
       // WebContentsView constructor accepts the key only for an actual page.
       const original = (options as { webContents?: WebContents }).webContents
-      const child: Tab = { tabId: randomUUID(), host: tab.host, partition: tab.partition,
+      const child: Tab = { tabId: randomUUID(), host: tab.host, partition: tab.partition, profileId: tab.profileId, isPrivate: tab.isPrivate,
         adopted: true, view: new WebContentsView({ ...(original ? { webContents: original } : {}), webPreferences: {
           ...options.webPreferences, ...popupWebPreferences(tab.partition)
         } }) }
@@ -83,7 +92,7 @@ function install(tab: Tab, parent?: Tab): void {
       }
       host.send('browser:open-url', { tabId: child.tabId, url: details.url,
         courseId: browsingContext(wc.id)?.courseId ?? null, openerTabId: tab.tabId,
-        isPrivate: tab.partition === PRIVATE_BROWSING_PARTITION,
+        isPrivate: tab.isPrivate, profileId: tab.profileId,
         background: details.disposition === 'background-tab' })
       return child.view.webContents
     }
@@ -116,6 +125,7 @@ function install(tab: Tab, parent?: Tab): void {
   wc.once('destroyed', () => {
     const requestedByPage = tabs.get(tab.tabId) === tab
     forgetManagedPage(wc.id)
+    forgetGuestProfile(wc.id)
     if (requestedByPage) {
       tabs.delete(tab.tabId)
       if (tab.adopted) {
@@ -124,20 +134,22 @@ function install(tab: Tab, parent?: Tab): void {
       }
     }
     if (!tab.host.isDestroyed()) tab.host.contentView.removeChildView(tab.view)
-    if (requestedByPage && !host.isDestroyed()) host.send('browser:close-tab', { tabId: tab.tabId })
+    if (requestedByPage && !tab.switching && !host.isDestroyed()) host.send('browser:close-tab', { tabId: tab.tabId })
   })
   if (parent) trackTabDownload(wc, () => wc.close())
 }
-export function createBrowserPage(event: IpcMainInvokeEvent, req: { tabId: string; isPrivate: boolean; courseId: string | null }) {
+export function createBrowserPage(event: IpcMainInvokeEvent, req: { tabId: string; isPrivate: boolean; courseId: string | null; profileId?: string }) {
   const host = owner(event)
+  const profileId = req.profileId ?? 'default'
+  ensureProfileSession(profileId, req.isPrivate)
   if (closedSiteTabs.has(req.tabId)) throw new Error('Browser tab already closed')
   const existing = tabs.get(req.tabId)
   if (existing) {
-    if (existing.host !== host || (existing.partition === PRIVATE_BROWSING_PARTITION) !== req.isPrivate) throw new Error('Invalid browser tab owner')
+    if (existing.host !== host || existing.isPrivate !== req.isPrivate || existing.profileId !== profileId) throw new Error('Invalid browser tab owner')
     return { state: state(existing.view.webContents), adopted: true }
   }
-  const partition = req.isPrivate ? PRIVATE_BROWSING_PARTITION : BROWSING_PARTITION
-  const tab: Tab = { tabId: req.tabId, host, partition, adopted: false,
+  const partition = profilePartition(profileId, req.isPrivate)
+  const tab: Tab = { tabId: req.tabId, host, partition, profileId, isPrivate: req.isPrivate, adopted: false,
     view: new WebContentsView({ webPreferences: popupWebPreferences(partition) }) }
   install(tab)
   setBrowsingCourse(tab.view.webContents.id, tab.tabId, req.courseId)
@@ -191,4 +203,32 @@ export async function browserPageAction(event: IpcMainInvokeEvent, req: { tabId:
     case 'focus': return wc.focus()
     default: throw new Error('Unsupported browser action')
   }
+}
+
+/** Close with Chromium beforeunload; a cancelled form stays in its original session. */
+export async function prepareProfileSwitch(event: IpcMainInvokeEvent, tabId: string): Promise<{ allowed: boolean }> {
+  owner(event)
+  if (!tabs.has(tabId)) return { allowed: true }
+  const tab = owned(event, tabId)
+  const descendants = (id: string): Tab[] => [...tabs.values()].filter(t => t.parentId === id).flatMap(t => [t, ...descendants(t.tabId)])
+  const children = descendants(tabId)
+  if (children.length && dialog.showMessageBoxSync(tab.host, { type: 'question', message: '연결된 로그인·팝업 탭을 닫고 프로필을 전환할까요?', detail: '작성 중인 내용과 로그인 진행 상태는 새 프로필로 옮겨지지 않습니다.', buttons: ['취소', '전환'], defaultId: 0, cancelId: 0 }) !== 1) return { allowed: false }
+  const wc = tab.view.webContents
+  const allowed = await new Promise<boolean>(resolve => {
+    tab.switching = true
+    const blocked = (e: Electron.Event): void => {
+      if (dialog.showMessageBoxSync(tab.host, { type: 'question', message: '작성 중인 내용이 사라질 수 있습니다. 프로필을 바꿀까요?', buttons: ['취소', '전환'], defaultId: 0, cancelId: 0 }) === 1) e.preventDefault()
+      else { tab.switching = false; wc.removeListener('destroyed', closed); resolve(false) }
+    }
+    const closed = (): void => { resolve(true) }
+    wc.once('will-prevent-unload', blocked)
+    wc.once('destroyed', closed)
+    wc.close({ waitForBeforeUnload: true })
+  })
+  if (allowed) for (const child of children) if (!child.view.webContents.isDestroyed()) child.view.webContents.close()
+  return { allowed }
+}
+
+export function browserSessionForTab(event: IpcMainInvokeEvent, tabId?: string): Electron.Session {
+  return tabId ? owned(event, tabId).view.webContents.session : ensureProfileSession()
 }

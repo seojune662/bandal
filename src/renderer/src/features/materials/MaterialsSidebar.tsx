@@ -440,7 +440,9 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     setUrlDropTargetDirRelPath(null)
     setDownloadingDirRelPath(dirRelPath)
     try {
+      const sourceTab = useWorkspaceStore.getState().activeTabDescriptor()
       const downloaded = await invoke('materials:downloadFromUrl', {
+        ...(sourceTab?.kind === 'browser' ? { tabId: sourceTab.payload.tabId } : {}),
         courseId,
         dirRelPath,
         url

@@ -66,3 +66,15 @@ test('workspace-only changes focus on retained course views rather than rescanni
   assert.match(plan.e2eGrep, /100 course switches/)
   assert.equal(planChecks(['src/main/features/materials/materialsRepo.ts']).e2eGrep, null)
 })
+
+test('isolated browser gesture entry does not expand into unrelated checks', async () => {
+  const { onlyBrowserGestureEntryChanged } = await import('./affected-checks.mjs')
+  const before = "input: {\n          index: resolve(__dirname, 'src/preload/index.ts'),\n}"
+  const after = before.replace('input: {', "input: {\n          browserGesture: resolve(__dirname, 'src/preload/browserGesture.ts'),")
+  assert.equal(onlyBrowserGestureEntryChanged(before, after), true)
+  assert.equal(onlyBrowserGestureEntryChanged(before, after.replace('input:', 'output:')), false)
+  const plan = planChecks(['src/preload/browserGesture.ts', 'src/preload/browserSwipe.ts'])
+  assert.equal(plan.full, false)
+  assert.deepEqual(plan.e2e, ['e2e/browserCompatibility.spec.ts'])
+  assert.ok(plan.types.includes('tsconfig.web.json'))
+})

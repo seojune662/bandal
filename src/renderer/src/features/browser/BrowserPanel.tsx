@@ -58,6 +58,7 @@ import {
   fillLoginForTab,
   saveStagedLoginForTab
 } from './loginBridge'
+import { BrowserProfilePicker } from './BrowserProfilePicker'
 import { BrowserAddressInput } from './BrowserAddressInput'
 import { scheduleProgressVisibility } from './loadingIndicator'
 import { openWebVideoInPip, useWebVideoReport } from './videoBridge'
@@ -84,6 +85,8 @@ interface ToolbarProps {
   onNavigate: (url: string) => void
   isPrivate: boolean
   onTogglePrivate: () => void
+  profileId: string
+  onProfileChange: (id: string) => Promise<void>
 }
 
 function usePanelVisible(api: IDockviewPanelProps['api']): boolean {
@@ -261,7 +264,9 @@ function BrowserToolbar({
   nav,
   onNavigate,
   isPrivate,
-  onTogglePrivate
+  onTogglePrivate,
+  profileId,
+  onProfileChange
 }: ToolbarProps): JSX.Element {
   const video = useWebVideoReport(tabId)
   const login = useBrowserGuests((state) => state.login[tabId])
@@ -367,9 +372,11 @@ function BrowserToolbar({
           focusSeq={addressFocusSeq}
           favicon={favicon}
           isPrivate={isPrivate}
+          profileId={profileId}
         />
 
         <div ref={toolbarActionsRef} className="browser-toolbar__actions">
+          <BrowserProfilePicker profileId={profileId} onChange={onProfileChange} />
           <Tooltip
             label={isPrivate ? '시크릿 모드 끄기' : '이 탭을 시크릿 모드로 전환'}
             placement="bottom"
@@ -517,6 +524,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   const initialUrl = payload?.initialUrl ?? ''
   const initialPrivate = payload?.isPrivate === true
   const [isPrivate, setPrivate] = useState(initialPrivate)
+  const [profileId, setProfileId] = useState(payload?.profileId ?? 'default')
 
   const anchorRef = useRef<HTMLDivElement>(null)
   useBrowserAnchorRect(tabId, anchorRef)
@@ -539,39 +547,55 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
       if (state.liveGuests.some((guest) => guest.tabId === tabId)) {
         guestActions.navigate(tabId, url)
       } else {
-        state.ensureGuest(tabId, url, isPrivate)
+        state.ensureGuest(tabId, url, isPrivate, profileId)
       }
       // A fresh address dismisses whatever the last load left on screen.
       state.setOverlay(tabId, null)
     },
-    [isPrivate, tabId]
+    [isPrivate, tabId, profileId]
   )
 
   // Every browser tab loads its URL in a guest, including the default new tab.
   useEffect(() => {
     if (tabId !== '') {
-      useBrowserGuests.getState().ensureGuest(tabId, initialUrl, isPrivate)
+      useBrowserGuests.getState().ensureGuest(tabId, initialUrl, isPrivate, profileId)
     }
-  }, [isPrivate, tabId, initialUrl])
+  }, [isPrivate, tabId, initialUrl, profileId])
 
   const togglePrivate = useCallback((): void => {
     if (tabId === '') return
-    const next = !isPrivate
-    const url = navState.url || initialUrl
-    setPrivate(next)
-    props.api.updateParameters({
-      descriptor: {
-        kind: 'browser',
-        payload: {
-          tabId,
-          initialUrl: url,
-          ...(next ? { isPrivate: true } : {})
+    void (async () => {
+      const { allowed } = await invoke('browser:prepareProfileSwitch', { tabId })
+      if (!allowed) return
+      const next = !isPrivate
+      const url = navState.url || initialUrl
+      setPrivate(next)
+      props.api.updateParameters({
+        descriptor: {
+          kind: 'browser',
+          payload: {
+            tabId,
+            initialUrl: url,
+            profileId,
+            ...(next ? { isPrivate: true } : {})
+          }
         }
-      }
-    })
-    useBrowserGuests.getState().ensureGuest(tabId, url, next)
+      })
+      useBrowserGuests.getState().ensureGuest(tabId, url, next, profileId)
+      useWorkspaceStore.getState().notifyLayoutChanged()
+    })().catch(console.error)
+  }, [initialUrl, isPrivate, navState.url, props.api, tabId, profileId])
+
+  const changeProfile = useCallback(async (id: string): Promise<void> => {
+    if (id === profileId) return
+    const { allowed } = await invoke('browser:prepareProfileSwitch', { tabId })
+    if (!allowed) return
+    const url = navState.url || initialUrl
+    props.api.updateParameters({ descriptor: { kind: 'browser', payload: { tabId, initialUrl: url, isPrivate, profileId: id } } })
+    setProfileId(id)
+    useBrowserGuests.getState().ensureGuest(tabId, url, isPrivate, id)
     useWorkspaceStore.getState().notifyLayoutChanged()
-  }, [initialUrl, isPrivate, navState.url, props.api, tabId])
+  }, [profileId, tabId, navState.url, initialUrl, props.api, isPrivate])
 
   // Reflect the page title into the dockview tab.
   const { api } = props
@@ -611,12 +635,13 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
         payload: {
           tabId,
           initialUrl: navState.url,
+          profileId,
           ...(isPrivate ? { isPrivate: true } : {})
         }
       }
     })
     useWorkspaceStore.getState().notifyLayoutChanged()
-  }, [api, initialUrl, isPrivate, navState.url, tabId])
+  }, [api, initialUrl, isPrivate, navState.url, tabId, profileId])
 
   if (payload === null) {
     return <div className="workspace-panel" data-kind="unknown" />
@@ -634,6 +659,8 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
         onNavigate={navigate}
         isPrivate={isPrivate}
         onTogglePrivate={togglePrivate}
+        profileId={profileId}
+        onProfileChange={changeProfile}
       />
       {isPanelVisible &&
         !isPrivate &&

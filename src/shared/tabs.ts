@@ -53,6 +53,7 @@ export interface BrowserTabPayload {
   initialUrl: string
   /** Non-persistent browsing session for this tab. */
   isPrivate?: boolean
+  profileId?: string
 }
 
 export interface ChatTabPayload {
@@ -222,7 +223,8 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
       return (
         isNonEmptyString(payload['tabId']) &&
         typeof payload['initialUrl'] === 'string' &&
-        (payload['isPrivate'] === undefined || typeof payload['isPrivate'] === 'boolean')
+        (payload['isPrivate'] === undefined || typeof payload['isPrivate'] === 'boolean') &&
+        (payload['profileId'] === undefined || typeof payload['profileId'] === 'string')
       )
     case 'chat':
       return (

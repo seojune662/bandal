@@ -9,11 +9,12 @@ const SOURCE_LABELS: Record<AddressSuggestion['kind'], string> = {
   url: '이동', search: '검색', history: '방문 기록', favorite: '즐겨찾기', tab: '열린 탭'
 }
 
-export function BrowserAddressInput({ value, onNavigate, focusSeq, favicon, isPrivate }: {
+export function BrowserAddressInput({ value, onNavigate, focusSeq, favicon, isPrivate, profileId }: {
   value: string
   onNavigate: (url: string) => void
   focusSeq: number
   favicon: string | undefined
+  profileId?: string
   isPrivate: boolean
 }): JSX.Element {
   const [draft, setDraft] = useState<string | null>(null)
@@ -26,7 +27,7 @@ export function BrowserAddressInput({ value, onNavigate, focusSeq, favicon, isPr
   const listRef = useRef<HTMLDivElement>(null)
   const composing = useRef(false)
   const listId = useId()
-  const suggestions = useAddressSuggestions(focused ? (edited ? draft : '') : null, !isPrivate)
+  const suggestions = useAddressSuggestions(focused ? (edited ? draft : '') : null, !isPrivate, profileId)
   const open = focused && suggestions.length > 0
   const highlighted = selectedUrl === null
     ? (edited && draft?.trim() ? 0 : -1)

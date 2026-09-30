@@ -235,6 +235,7 @@ export function sanitizeBrowserSettings(raw: unknown): BrowserSettings {
       ).slice(0, 20)
     : []
   return {
+    swipeNavigation: bool(r.swipeNavigation, d.swipeNavigation),
     agentUse: bool(r.agentUse, d.agentUse),
     homePage: sanitizeHomePage(r.homePage),
     defaultZoomLevel: isZoomLevel(r.defaultZoomLevel)

@@ -71,6 +71,7 @@ export interface BrowserOpenUrl {
   url: string
   /** Popups and links inherit the opener tab's browsing session. */
   isPrivate?: boolean
+  profileId?: string
   /** Originating guest, when the event must be routed back to its tab. */
   webContentsId?: number
   /**
@@ -272,6 +273,8 @@ export interface PushEvents {
   }
   /** A popup was refused by policy or the anti-spam limiter. */
   'browser:popup-blocked': {
+    profileId?: string
+    isPrivate?: boolean
     url: string
     origin: string
     reason: 'burst' | 'limit' | 'policy'
@@ -317,6 +320,8 @@ export interface PushEvents {
   // -- group whiteboard -----------------------------------------------------
   'whiteboard:changed': WhiteboardChanged
   // -- desktop overlay ------------------------------------------------------
+  'assistant:state': import('../types/assistantWindow').AssistantWindowState
+  'assistant:prompt': { conversationId: string; prompt: import('../types/assistantWindow').AssistantPrompt }
   'overlay:state': OverlayState
   'overlay:prompt': OverlayPrompt
   'ui:openChat': { courseId: string; conversationId: string }

@@ -39,7 +39,7 @@ describe('ensureGuest', () => {
     store().ensureGuest('t1', 'https://example.com')
 
     expect(store().liveGuests).toEqual([
-      { tabId: 't1', src: 'https://example.com', isPrivate: false }
+      { tabId: 't1', src: 'https://example.com', isPrivate: false, profileId: 'default' }
     ])
     expect(store().nav['t1']).toMatchObject({
       url: 'https://example.com',
@@ -78,7 +78,7 @@ describe('ensureGuest', () => {
     expect(store().liveGuests).toEqual([{
       tabId: 't1',
       src: 'https://example.com/account',
-      isPrivate: true
+      isPrivate: true, profileId: 'default'
     }])
     expect(store().nav['t1']).toEqual(initialNavState('https://example.com/account'))
   })
@@ -104,7 +104,7 @@ describe('anchor overlay (host DOM shown instead of the guest)', () => {
     store().setOverlay('t1', failure)
 
     expect(store().liveGuests).toEqual([
-      { tabId: 't1', src: 'https://example.invalid', isPrivate: false }
+      { tabId: 't1', src: 'https://example.invalid', isPrivate: false, profileId: 'default' }
     ])
     expect(store().overlay['t1']).toEqual(failure)
   })
@@ -204,6 +204,7 @@ describe('nav state + URL restore', () => {
     })
 
     expect(invokeMock).toHaveBeenCalledWith('browser:recordVisit', {
+      profileId: 'default',
       url: 'https://example.com/course',
       title: 'Course home',
       courseId: 'course-current'

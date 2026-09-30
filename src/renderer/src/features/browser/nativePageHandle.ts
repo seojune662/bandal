@@ -3,7 +3,7 @@ import type { BrowserPageAction, BrowserPageState } from '../../../../shared/typ
 import type { WebviewTag } from './webviewTypes'
 
 /** DOM anchor + asynchronous native-page transport. The anchor never hosts a webview. */
-export function attachNativePage(element: HTMLElement, tabId: string, isPrivate: boolean, courseId: string | null) {
+export function attachNativePage(element: HTMLElement, tabId: string, isPrivate: boolean, courseId: string | null, profileId = 'default') {
   const handle = element as WebviewTag
   let current: BrowserPageState = { id: 0, url: '', title: '', loading: false, canGoBack: false, canGoForward: false }
   let adopted = false, disposed = false, boundsSerial = 0
@@ -15,7 +15,7 @@ export function attachNativePage(element: HTMLElement, tabId: string, isPrivate:
     current = event.state
     emit(event.name, event.detail)
   })
-  const ready = invoke('browser:createPage', { tabId, isPrivate, courseId }).then(result => {
+  const ready = invoke('browser:createPage', { tabId, isPrivate, courseId, profileId }).then(result => {
     if (disposed) return
     current = result.state
     adopted = result.adopted

@@ -1,3 +1,4 @@
+import { BrowserProfileSelect } from '../browser/BrowserProfileSelect'
 import { useEffect, useRef, useState } from 'react'
 import type {
   CredentialsAvailability,
@@ -17,6 +18,10 @@ function formatUpdatedAt(value: string, locale: string): string {
 }
 
 export function SavedLoginsSettings(): JSX.Element {
+  const [profileId, setProfileId] = useState('default')
+  return <><BrowserProfileSelect value={profileId} onChange={setProfileId} /><ProfileSavedLogins key={profileId} profileId={profileId} /></>
+}
+function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
   const locale = useLocale()
   const korean = locale === 'ko-KR'
   const mountedRef = useRef(true)
@@ -32,7 +37,7 @@ export function SavedLoginsSettings(): JSX.Element {
     setError(false)
     void Promise.all([
       invoke('credentials:availability', {}),
-      invoke('credentials:list', {})
+      invoke('credentials:list', { profileId })
     ])
       .then(([nextAvailability, nextLogins]) => {
         if (!mountedRef.current) return
@@ -64,7 +69,7 @@ export function SavedLoginsSettings(): JSX.Element {
     try {
       // Main treats an empty password as metadata-only only when this exact
       // origin already exists. The password never returns to this window.
-      const saved = await invoke('credentials:save', {
+      const saved = await invoke('credentials:save', { profileId,
         origin: login.origin,
         username: login.username,
         password: '',
@@ -93,7 +98,7 @@ export function SavedLoginsSettings(): JSX.Element {
 
     setPendingOrigin(login.origin)
     try {
-      await invoke('credentials:forget', { origin: login.origin })
+      await invoke('credentials:forget', { profileId, origin: login.origin })
       if (mountedRef.current) {
         setLogins((current) =>
           current.filter((item) => item.origin !== login.origin)

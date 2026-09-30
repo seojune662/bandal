@@ -65,7 +65,7 @@ function useGuestReaper(): void {
 function useOpenUrlForwarding(): void {
   useEffect(
     () =>
-      onPush('browser:open-url', ({ url, background, requestId, isPrivate, tabId: adoptedTabId, courseId, openerTabId }) => {
+      onPush('browser:open-url', ({ url, background, requestId, isPrivate, profileId, tabId: adoptedTabId, courseId, openerTabId }) => {
         const tabId = adoptedTabId ?? uuidv4()
         if (openerTabId) connectBrowserTabs(openerTabId, tabId)
         // Main matched the new tab to the agent's request by URL prefix, which
@@ -76,6 +76,7 @@ function useOpenUrlForwarding(): void {
             descriptorFor('browser', {
               tabId,
               initialUrl: url,
+              profileId: profileId ?? 'default',
               ...(isPrivate === true ? { isPrivate: true } : {})
             }),
             courseId, background === true
@@ -108,12 +109,14 @@ function useAuthFallbackForwarding(): void {
  */
 function useBlockedNotices(): void {
   useEffect(() => {
-    const unsubscribePopup = onPush('browser:popup-blocked', ({ origin, reason }) => {
+    const unsubscribePopup = onPush('browser:popup-blocked', ({ origin, reason, profileId = 'default', isPrivate }) => {
+      if (isPrivate && reason === 'policy') { showToast('시크릿 탭의 팝업이 차단됐어요. 브라우저 설정에서 팝업 차단 수준을 확인해 주세요.'); return }
       if (reason === 'policy' && origin !== '') {
         showToastWithAction('이 사이트의 팝업을 막았어요. 허용한 뒤 다시 눌러 주세요.', {
           label: '이 사이트 허용',
           run: () => {
             void invoke('browser:setPopupPermission', {
+              profileId,
               origin,
               decision: 'granted'
             }).then(() => showToast('이 사이트의 팝업을 허용했어요.'))
@@ -227,10 +230,11 @@ export function BrowserWebviewLayer(): JSX.Element {
     >
       {liveGuests.map((guest) => (
         <BrowserGuestView
-          key={`${guest.tabId}:${guest.isPrivate ? 'private' : 'normal'}`}
+          key={`${guest.tabId}:${guest.isPrivate ? 'private' : 'normal'}:${guest.profileId}`}
           tabId={guest.tabId}
           src={guest.src}
           isPrivate={guest.isPrivate}
+          profileId={guest.profileId}
           suppressed={isPassthrough}
         />
       ))}

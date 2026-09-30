@@ -36,6 +36,7 @@ export interface LiveGuest {
   /** URL the <webview> element is created with; never changes afterwards. */
   src: string
   isPrivate: boolean
+  profileId: string
 }
 
 export interface BrowserNavState {
@@ -114,7 +115,7 @@ interface BrowserGuestsState {
   authFallback: Record<string, string | undefined>
   setFavicon: (tabId: string, dataUrl: string | null) => void
   setAuthFallback: (tabId: string, url: string | null) => void
-  ensureGuest: (tabId: string, initialUrl: string, isPrivate?: boolean) => void
+  ensureGuest: (tabId: string, initialUrl: string, isPrivate?: boolean, profileId?: string) => void
   requestAddressFocus: (tabId: string) => void
   openFind: (tabId: string) => void
   closeFind: (tabId: string) => void
@@ -219,6 +220,7 @@ function recordVisitFrom(
   // Same (url, title) as we already reported for this tab: nothing new.
   if (patch.url === undefined && patch.title === undefined) return
   void invoke('browser:recordVisit', {
+    profileId: useBrowserGuests.getState().liveGuests.find(g => g.tabId === tabId)?.profileId ?? 'default',
     url,
     title,
     courseId: useCoursesStore.getState().selectedCourseId
@@ -248,17 +250,18 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
     })
   },
 
-  ensureGuest: (tabId, initialUrl, isPrivate = false) => {
+  ensureGuest: (tabId, initialUrl, isPrivate = false, profileId = 'default') => {
     const { liveGuests, nav, login, recent, authFallback } = get()
     const currentGuest = liveGuests.find((guest) => guest.tabId === tabId)
-    if (currentGuest !== undefined && currentGuest.isPrivate === isPrivate) {
+    if (currentGuest !== undefined && currentGuest.isPrivate === isPrivate && currentGuest.profileId === profileId) {
       get().touchGuest(tabId)
       return
     }
-    const src = lastKnownUrls.get(tabId) ?? initialUrl
+    const changedProfile = currentGuest !== undefined && currentGuest.profileId !== profileId
+    const src = changedProfile ? initialUrl : lastKnownUrls.get(tabId) ?? initialUrl
     const grown = [
       ...liveGuests.filter((guest) => guest.tabId !== tabId),
-      { tabId, src, isPrivate }
+      { tabId, src, isPrivate, profileId }
     ]
     const evicted = pickEvictions(
       grown.map((guest) => guest.tabId),
@@ -268,6 +271,7 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
     const evictedSet = new Set(evicted)
     set({
       liveGuests: grown.filter((guest) => !evictedSet.has(guest.tabId)),
+      favicon: withoutKeys(get().favicon, [tabId, ...evicted]),
       nav: {
         ...withoutKeys(nav, evicted),
         [tabId]: initialNavState(src)
@@ -278,7 +282,7 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
       },
       recent: {
         ...recent,
-        [tabId]: isPrivate ? [] : (recent[tabId] ?? [])
+        [tabId]: isPrivate || changedProfile ? [] : (recent[tabId] ?? [])
       },
       authFallback: withoutKeys(authFallback, [tabId])
     })

@@ -29,7 +29,6 @@ const ALLOWED_TYPES = new Set([
 const MAX_BYTES = 100 * 1024
 
 /** In-memory, per run. A favicon is not worth a file on disk. */
-const cache = new Map<string, string | null>()
 const MAX_CACHE_ENTRIES = 200
 
 export interface FaviconDeps {
@@ -37,6 +36,7 @@ export interface FaviconDeps {
 }
 
 export function createFaviconFetcher(deps: FaviconDeps = {}) {
+  const cache = new Map<string, string | null>()
   const doFetch =
     deps.fetch ??
     ((url: string) => session.fromPartition(BROWSING_PARTITION).fetch(url))
@@ -82,5 +82,5 @@ export function createFaviconFetcher(deps: FaviconDeps = {}) {
 
 /** Test seam: the cache is module state and outlives a single test. */
 export function resetFaviconCacheForTests(): void {
-  cache.clear()
+  // Each fetcher owns its profile cache.
 }

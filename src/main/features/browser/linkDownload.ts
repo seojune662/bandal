@@ -105,7 +105,8 @@ function isHtmlResponse(response: Response, body: Buffer): boolean {
  * 저장은 호출자가 materialsRepo.writeFile 로 한다.
  */
 export async function fetchLinkForMaterials(
-  url: string
+  url: string,
+  browsing = session.fromPartition(BROWSING_PARTITION)
 ): Promise<LinkDownloadResult> {
   const driveId = googleDriveFileId(url)
   const rewritten = rewriteDriveUrl(url)
@@ -119,7 +120,6 @@ export async function fetchLinkForMaterials(
     throw new ValidationError('http/https 주소만 내려받을 수 있습니다')
   }
 
-  const browsing = session.fromPartition(BROWSING_PARTITION)
   let response = await browsing.fetch(parsed.toString(), {
     redirect: 'follow'
   })

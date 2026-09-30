@@ -1,3 +1,5 @@
+import { guestProfile } from './profiles'
+import { installGestureSession, navigateBySwipe } from './swipeNavigation'
 import { isManagedBrowserPage } from './managedPages'
 /**
  * [M3-F] Electron wiring for the hardened `<webview>` browser tabs.
@@ -64,6 +66,7 @@ export function forwardBrowserSwipe(
       ? 'browser-forward'
       : null
   if (action === null || host.isDestroyed()) return
+  if (isManagedBrowserPage(focused.id)) { navigateBySwipe(focused, action === 'browser-back' ? 'back' : 'forward'); return }
   host.send('shortcut:passthrough', {
     action,
     webContentsId: focused.id
@@ -82,6 +85,9 @@ export function forwardBrowserSwipe(
  * Remembered site decisions. Injected once at startup so this module keeps
  * knowing nothing about SQLite.
  */
+const profilePermissions = new Map<string, PermissionsRepo>()
+export function useProfilePermissions(partition: string, repo: PermissionsRepo): void { profilePermissions.set(partition, repo) }
+function permissionsFor(partition: string): PermissionsRepo | null { return profilePermissions.get(partition) ?? (partition === BROWSING_PARTITION ? sitePermissions : null) }
 let sitePermissions: PermissionsRepo | null = null
 
 export function useSitePermissions(repo: PermissionsRepo): void {
@@ -109,7 +115,8 @@ function originOf(url: string): string | null {
 async function askSitePermission(
   origin: string,
   permission: string,
-  remember: boolean
+  remember: boolean,
+  partition: string
 ): Promise<boolean> {
   const owner = BrowserWindow.getFocusedWindow()
   const options: Electron.MessageBoxOptions = {
@@ -127,17 +134,18 @@ async function askSitePermission(
       : await dialog.showMessageBox(owner, options)
   const granted = response === 1
   if (remember) {
-    sitePermissions?.remember(origin, permission, granted ? 'granted' : 'denied')
+    permissionsFor(partition)?.remember(origin, permission, granted ? 'granted' : 'denied')
   }
   return granted
 }
 
-function hardenBrowsingSession(partition: string): void {
+export function hardenBrowsingSession(partition: string): void {
   if (hardenedBrowsingSessions.has(partition)) return
   hardenedBrowsingSessions.add(partition)
 
   const browsingSession = session.fromPartition(partition)
-  const persistent = partition === BROWSING_PARTITION
+  installGestureSession(browsingSession)
+  const persistent = partition.startsWith('persist:')
   // The persist: partition lets Chromium retain persistent cookies itself.
   // Flush cookies and DOM storage on graceful quit without changing expiry.
   if (persistent) createBrowserSessionStore().startFlushOnQuit()
@@ -160,12 +168,12 @@ function hardenBrowsingSession(partition: string): void {
         callback(false)
         return
       }
-      const remembered = sitePermissions?.decisionFor(origin, permission) ?? null
+      const remembered = permissionsFor(partition)?.decisionFor(origin, permission) ?? null
       if (remembered !== null) {
         callback(remembered === 'granted')
         return
       }
-      void askSitePermission(origin, permission, persistent).then(callback)
+      void askSitePermission(origin, permission, persistent, partition).then(callback)
     }
   )
   // SYNCHRONOUS — it cannot prompt. It answers from what the student already
@@ -178,7 +186,7 @@ function hardenBrowsingSession(partition: string): void {
       if (tier === 'deny') return false
       const origin = originOf(requestingOrigin)
       if (origin === null) return false
-      return sitePermissions?.decisionFor(origin, permission) === 'granted'
+      return permissionsFor(partition)?.decisionFor(origin, permission) === 'granted'
     }
   )
   // Physical devices are refused outright, so a page cannot even enumerate
@@ -247,7 +255,8 @@ function notePopupBlocked(
   const origin = originOf(webContents.getURL()) ?? ''
   noteBlocked(host, 'popup', url, reason)
   if (!host.isDestroyed()) {
-    host.send('browser:popup-blocked', { url, origin, reason })
+    host.send('browser:popup-blocked', {
+    ...(isManagedBrowserPage(webContents.id) ? guestProfile(webContents.id) : {}), url, origin, reason })
   }
 }
 
@@ -432,7 +441,7 @@ export function attachNavigationPolicies(
       const origin = originOf(webContents.getURL())
       const remembered = origin === null
         ? null
-        : sitePermissions?.decisionFor(origin, 'popups') ?? null
+        : permissionsFor(opts.partition ?? BROWSING_PARTITION)?.decisionFor(origin, 'popups') ?? null
       if (
         remembered === 'denied' ||
         (getSettings().browser.popupBehavior === 'strict' && remembered !== 'granted')

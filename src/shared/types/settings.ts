@@ -215,6 +215,7 @@ export interface BrowserExtensionPreference {
  * - `defaultZoomLevel`: 새 탭의 줌 레벨. src/shared/browserZoom.ts 의 스톱만 허용.
  */
 export interface BrowserSettings {
+  swipeNavigation: boolean
   agentUse: boolean
   homePage: string
   defaultZoomLevel: number
@@ -230,6 +231,7 @@ export interface BrowserSettings {
 }
 
 export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
+  swipeNavigation: true,
   agentUse: true,
   homePage: '',
   defaultZoomLevel: 0,

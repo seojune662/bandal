@@ -5,14 +5,14 @@ import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css'
 import './styles/tokens.css'
 import './styles/base.css'
 import './features/overlay/overlay.css'
-import type { OverlayView } from '../../shared/types/overlay'
+import { NativeAssistantApp } from './features/assistant/NativeAssistantApp'
 import { OverlayOrbApp } from './features/overlay/OverlayOrbApp'
 import { OverlayPopupApp } from './features/overlay/OverlayPopupApp'
 import { useLocale } from './i18n'
 import { useUiStore } from './stores/uiStore'
 
 const requestedView = new URLSearchParams(location.search).get('view')
-const view: OverlayView = requestedView === 'popup' ? 'popup' : 'orb'
+const view = requestedView === 'assistant' ? 'assistant' : requestedView === 'popup' ? 'popup' : 'orb'
 
 document.documentElement.dataset['overlayView'] = view
 document.documentElement.dataset['platform'] = window.bandal.platform
@@ -31,7 +31,7 @@ function OverlayEntry(): JSX.Element {
     document.documentElement.lang = locale
   }, [locale])
 
-  return view === 'popup' ? <OverlayPopupApp /> : <OverlayOrbApp />
+  return view === 'assistant' ? <NativeAssistantApp /> : view === 'popup' ? <OverlayPopupApp /> : <OverlayOrbApp />
 }
 
 const rootElement = document.getElementById('root')
