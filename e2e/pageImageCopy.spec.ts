@@ -79,7 +79,13 @@ test.describe('page image clipboard', () => {
     return bandal.app.evaluate(({ clipboard }) => ({ size: clipboard.readImage().getSize(), png: clipboard.readImage().toPNG().toString('base64') }))
   }
   async function copy(page: Locator, ink: boolean): Promise<Awaited<ReturnType<typeof readClipboard>>> {
-    await expect.poll(async () => page.evaluate((node) => Math.abs(node.getBoundingClientRect().height - node.querySelector('.react-pdf__Page')!.getBoundingClientRect().height))).toBeLessThan(2)
+    await expect.poll(async () => page.evaluate((node) => {
+      // Compare the page content box; its decorative top/bottom borders are
+      // outside the rendered PDF and consistently add 2 px on Windows.
+      const style = getComputedStyle(node)
+      const contentHeight = node.getBoundingClientRect().height - parseFloat(style.borderTopWidth) - parseFloat(style.borderBottomWidth)
+      return Math.abs(contentHeight - node.querySelector('.react-pdf__Page')!.getBoundingClientRect().height)
+    })).toBeLessThan(2)
     await page.click({ button: 'right', position: { x: 30, y: 30 } })
     await expect(bandal.page.getByRole('menu')).toHaveAttribute('aria-label', `${await page.getAttribute('data-pdf-page')} 페이지 메뉴`)
     await bandal.page.getByRole('menuitem', { name: ink ? '이미지로 복사' : '원본만 이미지로 복사', exact: true }).click()

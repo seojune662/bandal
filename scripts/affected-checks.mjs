@@ -31,7 +31,8 @@ export function changedFiles(base) {
 }
 
 export function onlyBrowserGestureEntryChanged(before, after) {
-  const strip = value => value.replace(/^\s*browserGesture: resolve\(__dirname, 'src\/preload\/browserGesture\.ts'\),?\r?\n/gm, '').trim()
+  // Git blobs use LF while Windows checkouts may use CRLF.
+  const strip = value => value.replaceAll('\r\n', '\n').replace(/^\s*browserGesture: resolve\(__dirname, 'src\/preload\/browserGesture\.ts'\),?\n/gm, '').trim()
   return strip(before) === strip(after)
 }
 

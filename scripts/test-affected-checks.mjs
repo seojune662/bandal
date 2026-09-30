@@ -72,7 +72,9 @@ test('isolated browser gesture entry does not expand into unrelated checks', asy
   const before = "input: {\n          index: resolve(__dirname, 'src/preload/index.ts'),\n}"
   const after = before.replace('input: {', "input: {\n          browserGesture: resolve(__dirname, 'src/preload/browserGesture.ts'),")
   assert.equal(onlyBrowserGestureEntryChanged(before, after), true)
+  assert.equal(onlyBrowserGestureEntryChanged(before, after.replaceAll('\n', '\r\n')), true)
   assert.equal(onlyBrowserGestureEntryChanged(before, after.replace('input:', 'output:')), false)
+  assert.equal(onlyBrowserGestureEntryChanged(before, after.replace('input:', 'output:').replaceAll('\n', '\r\n')), false)
   const plan = planChecks(['src/preload/browserGesture.ts', 'src/preload/browserSwipe.ts'])
   assert.equal(plan.full, false)
   assert.deepEqual(plan.e2e, ['e2e/browserCompatibility.spec.ts'])
