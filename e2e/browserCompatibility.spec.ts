@@ -173,11 +173,29 @@ test('middle-click opens a loaded background tab without replacing the visible p
     await createCourse(bandal.page, '백그라운드 탭')
     const root = await openTab(bandal, `${site.origin}/lecture`)
     await run(bandal, root, `document.body.insertAdjacentHTML('afterbegin', '<a style="display:block;height:40px" href="${site.other}/background">Background link</a>')`)
-    await bandal.app.evaluate(({ webContents }, id) => {
-      const wc = webContents.fromId(id)!
-      wc.sendInputEvent({ type: 'mouseDown', button: 'middle', clickCount: 1, x: 35, y: 20 })
-      wc.sendInputEvent({ type: 'mouseUp', button: 'middle', clickCount: 1, x: 35, y: 20 })
+    // A loaded document may still await native view attachment. Electron also
+    // requires the owning window to be focused before sendInputEvent works.
+    await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }, id) => {
+      const host = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('index.html'))!
+      return host.contentView.children.some(v => 'webContents' in v &&
+        (v as Electron.WebContentsView).webContents.id === id && v.getVisible() && v.getBounds().width > 100)
+    }, root)).toBe(true)
+    await bandal.app.evaluate(({ app, BrowserWindow, webContents }, id) => {
+      const host = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('index.html'))!
+      host.show()
+      if (process.platform === 'darwin') app.focus({ steal: true })
+      host.focus()
+      webContents.fromId(id)!.focus()
     }, root)
+    await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('index.html'))!.isFocused())).toBe(true)
+    const point = await run(bandal, root, `(() => { const r = document.querySelector('a').getBoundingClientRect(); return { x: Math.round(r.x + 20), y: Math.round(r.y + r.height / 2) }; })()`)
+    await bandal.app.evaluate(({ webContents }, { id, point }) => {
+      const wc = webContents.fromId(id)!
+      wc.sendInputEvent({ type: 'mouseMove', ...point })
+      wc.sendInputEvent({ type: 'mouseDown', button: 'middle', clickCount: 1, ...point })
+      wc.sendInputEvent({ type: 'mouseUp', button: 'middle', clickCount: 1, ...point })
+    }, { id: root, point })
     const child = await childAt(bandal, `${site.other}/background`)
     await expect.poll(() => bandal.app.evaluate(({webContents}, id) => webContents.fromId(id)!.mainFrame.executeJavaScript('window.received'), child)).toMatchObject({ method: 'GET', body: '' })
     expect(await bandal.app.evaluate(({ BrowserWindow }, id) => {
