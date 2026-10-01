@@ -450,21 +450,26 @@ test.describe('pdf textbox', () => {
         surfaceWidth: number
         surfaceHeight: number
       } | null = null
-      // Zoom rebuilds the virtualized page. Avoid sampling the one frame in
-      // which the old node is detached and the replacement has not mounted.
+      // Read both rectangles in the same renderer frame. Two separate IPC
+      // reads can straddle the zoom layout and report a false geometry drift.
       await expect.poll(async () => {
-        const pageBounds = await surface.boundingBox()
-        const shapeBounds = await boxObject.boundingBox()
-        if (pageBounds === null || shapeBounds === null) return false
-        geometry = {
-          x: (shapeBounds.x - pageBounds.x) / pageBounds.width,
-          y: (shapeBounds.y - pageBounds.y) / pageBounds.height,
-          width: shapeBounds.width / pageBounds.width,
-          height: shapeBounds.height / pageBounds.height,
-          surfaceWidth: pageBounds.width,
-          surfaceHeight: pageBounds.height
-        }
-        return true
+        geometry = await surface.evaluate(layer => {
+          const shape = [...layer.querySelectorAll<HTMLElement>('.ink-layer__textbox-object')]
+            .find(node => node.textContent?.includes('zoom invariant'))
+          if (!shape) return null
+          const pageBounds = layer.getBoundingClientRect()
+          const shapeBounds = shape.getBoundingClientRect()
+          if (!pageBounds.width || !pageBounds.height) return null
+          return {
+            x: (shapeBounds.x - pageBounds.x) / pageBounds.width,
+            y: (shapeBounds.y - pageBounds.y) / pageBounds.height,
+            width: shapeBounds.width / pageBounds.width,
+            height: shapeBounds.height / pageBounds.height,
+            surfaceWidth: pageBounds.width,
+            surfaceHeight: pageBounds.height
+          }
+        })
+        return geometry !== null
       }).toBe(true)
       if (geometry === null) throw new Error('textbox geometry did not settle')
       return geometry
@@ -510,13 +515,15 @@ test.describe('pdf textbox', () => {
     await toolbar.getByRole('button', { name: '축소' }).click()
     await expect(zoomValue).toHaveAttribute('aria-label', originalZoomLabel!)
 
-    const after = await relativeGeometry()
-    expect(Math.abs(after.x - before.x) * before.surfaceWidth).toBeLessThanOrEqual(1)
-    expect(Math.abs(after.y - before.y) * before.surfaceHeight).toBeLessThanOrEqual(1)
-    expect(Math.abs(after.width - before.width) * before.surfaceWidth)
-      .toBeLessThanOrEqual(1)
-    expect(Math.abs(after.height - before.height) * before.surfaceHeight)
-      .toBeLessThanOrEqual(1)
+    await expect.poll(async () => {
+      const after = await relativeGeometry()
+      return Math.max(
+        Math.abs(after.x - before.x) * before.surfaceWidth,
+        Math.abs(after.y - before.y) * before.surfaceHeight,
+        Math.abs(after.width - before.width) * before.surfaceWidth,
+        Math.abs(after.height - before.height) * before.surfaceHeight
+      )
+    }).toBeLessThanOrEqual(1)
 
     await expect
       .poll(async () => (await readStoredShape())?.updatedAt)

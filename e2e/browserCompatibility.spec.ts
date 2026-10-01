@@ -190,11 +190,17 @@ test('middle-click opens a loaded background tab without replacing the visible p
     await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('index.html'))!.isFocused())).toBe(true)
     const point = await run(bandal, root, `(() => { const r = document.querySelector('a').getBoundingClientRect(); return { x: Math.round(r.x + 20), y: Math.round(r.y + r.height / 2) }; })()`)
-    await bandal.app.evaluate(({ webContents }, { id, point }) => {
+    // CDP acknowledges each trusted Chromium input event. sendInputEvent is
+    // fire-and-forget and can drop a middle release during macOS activation.
+    await bandal.app.evaluate(async ({ webContents }, { id, point }) => {
       const wc = webContents.fromId(id)!
-      wc.sendInputEvent({ type: 'mouseMove', ...point })
-      wc.sendInputEvent({ type: 'mouseDown', button: 'middle', clickCount: 1, ...point })
-      wc.sendInputEvent({ type: 'mouseUp', button: 'middle', clickCount: 1, ...point })
+      const owned = !wc.debugger.isAttached()
+      if (owned) wc.debugger.attach('1.3')
+      try {
+        await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point })
+        await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'middle', buttons: 4, clickCount: 1, ...point })
+        await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'middle', buttons: 0, clickCount: 1, ...point })
+      } finally { if (owned && wc.debugger.isAttached()) wc.debugger.detach() }
     }, { id: root, point })
     const child = await childAt(bandal, `${site.other}/background`)
     await expect.poll(() => bandal.app.evaluate(({webContents}, id) => webContents.fromId(id)!.mainFrame.executeJavaScript('window.received'), child)).toMatchObject({ method: 'GET', body: '' })

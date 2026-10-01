@@ -20,7 +20,7 @@ test('reorders, splits, merges, cancels and edge-scrolls tabs without losing edi
     await createCourse(page, '탭 이동 검사')
     const folder = readdirSync(bandal.dataRoot, { withFileTypes: true }).find((entry) => entry.isDirectory())!
     const dir = join(bandal.dataRoot, folder.name)
-    for (let i = 0; i < 20; i++) writeFileSync(join(dir, `move-${i}.md`), `# 이동 ${i}\n`)
+    for (let i = 0; i < 20; i++) writeFileSync(join(dir, `move-${i}.md`), `# move-${i}\n\n본문\n`)
     await page.getByRole('button', { name: '자료 새로고침' }).click()
     for (let i = 0; i < 3; i++) await page.locator(`[data-material-path="move-${i}.md"]`).click()
     const tab = (index: number): Locator => page.locator('.dv-tab').filter({ has: page.locator('.workspace-tab__title', { hasText: new RegExp(`^move-${index}$`) }) })
