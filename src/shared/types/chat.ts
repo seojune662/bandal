@@ -59,6 +59,7 @@ export interface ChatMessage {
 export type AgentSessionStatus = 'idle' | 'running' | 'error' | 'closed'
 
 export interface ChatSessionInfo {
+  accessPolicy?: import('./aiAccess').AiAccessPolicy
   id: string
   courseId: string
   surface: ChatSurface
@@ -91,6 +92,7 @@ export interface ChatConversationSummary {
 }
 
 export interface ChatOpenResult {
+  eventSeq?: number
   pendingPermissions?: import('./agent-events').AgentPermissionRequestEvent[]
   history: ChatMessage[]
   sessionInfo: ChatSessionInfo | null

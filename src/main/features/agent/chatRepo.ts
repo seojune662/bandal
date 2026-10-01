@@ -1,3 +1,4 @@
+import { parseAiAccess, type AiAccessPolicy } from '../../../shared/types/aiAccess'
 /**
  * Chat persistence: agent_sessions / messages / message_blocks /
  * permission_grants. Assistant turns are committed atomically on
@@ -52,6 +53,7 @@ export interface PermissionGrantDetails {
 }
 
 export interface ChatRepo {
+  setAccessPolicy(sessionId: string, policy: AiAccessPolicy): void
   /** Live session row by id, or null when it never persisted / was deleted. */
   getSession(sessionId: string): ChatSessionInfo | null
   /** Persists a conversation under a CALLER-supplied id (renderer-minted). */
@@ -104,6 +106,7 @@ export interface ChatRepo {
 }
 
 interface SessionRow {
+  access_policy?: string | null
   id: string
   course_id: string
   surface: string
@@ -136,6 +139,7 @@ interface BlockRow {
 function rowToSessionInfo(row: SessionRow): ChatSessionInfo {
   return {
     id: row.id,
+    accessPolicy: parseAiAccess(row.access_policy ? parsePayload(row.access_policy) : null),
     courseId: row.course_id,
     surface: row.surface as ChatSurface,
     provider: row.provider as AgentProvider,
@@ -207,6 +211,7 @@ export function createChatRepo(db: Database): ChatRepo {
   }
 
   return {
+    setAccessPolicy(sessionId, policy) { db.prepare('UPDATE agent_sessions SET access_policy = ? WHERE id = ? AND deleted_at IS NULL').run(JSON.stringify(parseAiAccess(policy)), requireId(sessionId, 'sessionId')) },
     getSession(sessionId) {
       const row = db
         .prepare(

@@ -1058,7 +1058,12 @@ export const migrations: Migration[] = [
         db.exec('ALTER TABLE board_tasks ADD COLUMN start_at TEXT')
       }
     }
-  }
+  },
+  { version: 35, name: 'conversation-access-policy', up: (db) => {
+    const columns = db.prepare('PRAGMA table_info(agent_sessions)').all() as { name: string }[]
+    if (!columns.some(column => column.name === 'access_policy')) db.exec('ALTER TABLE agent_sessions ADD COLUMN access_policy TEXT')
+  } }
+
 ]
 
 /** Creates the bookkeeping table if needed and returns applied versions. */

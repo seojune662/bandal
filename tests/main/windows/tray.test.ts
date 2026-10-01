@@ -155,7 +155,8 @@ describe('installTray', () => {
     })
 
     installed.setIconVariant('/resources/icons/moss-light')
-    expect(electronMocks.nativeImage.createFromPath).not.toHaveBeenCalled()
+    if (process.platform === 'darwin') expect(electronMocks.nativeImage.createFromPath).toHaveBeenCalled()
+    else expect(electronMocks.nativeImage.createFromPath).not.toHaveBeenCalled()
 
     settings = { ...settings, assistantMode: 'desktop' }
     installed.refresh()

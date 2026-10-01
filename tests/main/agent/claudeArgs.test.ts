@@ -72,7 +72,7 @@ describe('buildClaudeArgs — write containment', () => {
 
   test('keeps the read-only study tools allowlisted', () => {
     const rules = allowedRules(args)
-    for (const tool of ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite']) {
+    for (const tool of ['Read(./**)', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite']) {
       expect(rules).toContain(tool)
     }
   })
@@ -151,4 +151,11 @@ describe('createClaudeCodeAdapter — MCP environment', () => {
     })
     session.dispose()
   })
+})
+
+test('automatic mode routes unscoped search and direct file writes through the common gate', () => {
+  const args = buildClaudeArgs({ accessPolicy: { mode: 'auto', scope: { course: true, browser: false, screen: false } } })
+  const rules = args[args.indexOf('--allowedTools') + 1]!.split(',')
+  expect(rules).toContain('Read(./**)')
+  for (const rule of ['Glob', 'Grep', 'Edit(./**)', 'Write(./**)', 'WebSearch', 'WebFetch']) expect(rules).not.toContain(rule)
 })

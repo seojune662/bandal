@@ -1,29 +1,29 @@
 {
-  "version": 1,
+  "version": 2,
   "variants": {
     "bandal-dark": {
-      "colorsHash": "2445e9aab6d252504708defd3a2e7a22695db2c7c4428838fe065632f5224681"
+      "colorsHash": "46c4a361ead998d91b0a051e81163fdf332af4cde5d964461dbdc160a5c7e04c"
     },
     "bandal-light": {
-      "colorsHash": "6de1f60d98e5f1d83d2f5a4400afc43abbca5c6caba365d03791bfdadd95f4c2"
+      "colorsHash": "c3c829105352869e36f1cebb942232ebc087e3e6b132f19f6143c71555e010a4"
     },
     "ink-dark": {
-      "colorsHash": "4b2888109e839e5123d9569ca00e868bcd1fb1a43893f30027f78ff71f85cf57"
+      "colorsHash": "49a040dea37884520f5c01fd33a2b57e97fc87e423767487eb0f7a4fcef5e4b2"
     },
     "ink-light": {
-      "colorsHash": "c610553fafb2239b0fd27cccc6827c2565a2d834c059c8bf76654b10a06a189a"
+      "colorsHash": "45da31ea99500a501b82d422eb241839555b440c9aaefc68fc9c912c047029e5"
     },
     "lavender-dark": {
-      "colorsHash": "2b26658f65b931fe2930e3ee33bb1f9c264f44669d9a7f07544ce83cf015b174"
+      "colorsHash": "7443b43da8806d2f50ea070fd0f03f07cf0f3b593f25a83b029de85c1625d5d7"
     },
     "lavender-light": {
-      "colorsHash": "07bccb96f976fe24fb0c11d1482b703843d5513d45ae054dd7702158a5668e91"
+      "colorsHash": "54dbd7ce7bd8b31e214023f2aed643963edc34cbf234da0632ea636c8123f658"
     },
     "moss-dark": {
-      "colorsHash": "34f84a32a64cccdd8c053c4730d8c5bd3f143b83069f7e96cbc3fff835840f81"
+      "colorsHash": "220983dcb1d6fb7d04e67a7f66786e59b4a8c6b19b2548b4e4002b57c7711537"
     },
     "moss-light": {
-      "colorsHash": "a72e75aa7dbb5e43445073191352dde69932581293ffec04aa146dc69bbb1b35"
+      "colorsHash": "aa7b66d1216e1b59bdb860123622f142fb75386f5e4fc6487368115fa82ccfce"
     }
   }
 }

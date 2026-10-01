@@ -1,3 +1,4 @@
+import { useOrbMenu, type QuickAction } from './OrbQuickMenu'
 import {
   forwardRef,
   useCallback,
@@ -31,6 +32,7 @@ export interface AssistantOrbProps {
   open: boolean
   state: BandalOrbState
   onToggle: () => void
+  onAction?: (action: QuickAction) => void
 }
 
 function readPosition(): Point | null {
@@ -73,13 +75,14 @@ function samePoint(left: Point | null, right: Point): boolean {
 }
 
 function AssistantOrbImpl(
-  { open, state, onToggle }: AssistantOrbProps,
+  { open, state, onToggle, onAction }: AssistantOrbProps,
   forwardedRef: ForwardedRef<HTMLButtonElement>
 ): JSX.Element {
   const buttonRef = useRef<HTMLButtonElement>(null)
   // The charm layer reads the rendered rect through this ref; drag state
   // stays private to the internal ref.
   useImperativeHandle(forwardedRef, () => buttonRef.current as HTMLButtonElement)
+  const menu = useOrbMenu(buttonRef, onAction)
   const dragRef = useRef<DragState | null>(null)
   const [position, setPosition] = useState<Point | null>(readPosition)
 
@@ -107,6 +110,7 @@ function AssistantOrbImpl(
 
   const onPointerDown = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     if (event.button !== 0) return
+    menu.close()
     const element = buttonRef.current
     if (element === null) return
     const rect = element.getBoundingClientRect()
@@ -155,7 +159,10 @@ function AssistantOrbImpl(
       : { transform: `translate3d(${position.x}px, ${position.y}px, 0)` }
 
   return (
+    <>
+    {menu.menu}
     <button
+      onPointerEnter={menu.enter} onPointerLeave={menu.leave} onFocus={menu.enter} onBlur={menu.leave}
       ref={buttonRef}
       type="button"
       className="assistant-orb"
@@ -181,8 +188,9 @@ function AssistantOrbImpl(
         if (event.detail === 0) onToggle()
       }}
     >
-      <BandalOrbMark state={state} />
+      <BandalOrbMark state={menu.hovered ? 'hover' : state} />
     </button>
+    </>
   )
 }
 

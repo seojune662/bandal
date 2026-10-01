@@ -4,6 +4,8 @@ import type { BrowserWindow, Rectangle } from 'electron'
 import type { OverlayControllerDeps } from '../../../src/main/windows/overlayController'
 
 const electronMocks = vi.hoisted(() => ({
+  app: { on: vi.fn() },
+  BrowserWindow: { getFocusedWindow: vi.fn(() => null) },
   screen: {
     getPrimaryDisplay: vi.fn(),
     getDisplayMatching: vi.fn(),
@@ -25,7 +27,7 @@ const storeMocks = vi.hoisted(() => ({
   createWindowStateStore: vi.fn()
 }))
 
-vi.mock('electron', () => ({ screen: electronMocks.screen }))
+vi.mock('electron', () => electronMocks)
 vi.mock('../../../src/main/windows/overlayWindow', () => windowFactoryMocks)
 vi.mock('../../../src/main/windows/windowBounds', () => ({
   createWindowStateStore: storeMocks.createWindowStateStore
@@ -359,7 +361,7 @@ describe('createOverlayController', () => {
     expect(subject.controller.getState().mode).toBe('in-app')
   })
 
-  test('tracks synthetic focus events even while isFocused stays false', () => {
+  test('tracks synthetic focus events even while isFocused stays false', async () => {
     const subject = setup(desktopSettings())
     const main = new FakeWindow(
       { x: 0, y: 0, width: 1280, height: 800 },
@@ -378,7 +380,7 @@ describe('createOverlayController', () => {
     expect(subject.controller.getState().desktopVisible).toBe(false)
 
     main.emit('blur')
-    expect(subject.orb.showInactive).toHaveBeenCalledTimes(2)
+    await vi.waitFor(() => expect(subject.orb.showInactive).toHaveBeenCalledTimes(2))
     expect(subject.controller.getState().desktopVisible).toBe(true)
     expect(main.isFocused).toHaveBeenCalled()
   })

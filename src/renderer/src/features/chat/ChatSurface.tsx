@@ -1,8 +1,9 @@
+import { useMaterialContext } from './ContextChips'
+import { invoke } from '../../lib/ipc'
 import {
   useCallback,
   useEffect,
   useRef,
-  useState,
   type ReactNode
 } from 'react'
 import { createPortal } from 'react-dom'
@@ -121,17 +122,20 @@ export interface ChatSurfaceProps {
 }
 
 function EmptyState({
+  courseId,
   onPick
 }: {
   onPick: (prompt: string) => void
+  courseId: string
 }): JSX.Element {
+  const { snapshot } = useMaterialContext(courseId)
   return (
     <div className="chat-empty">
-      <BandalMark size={56} className="chat-empty__moon" />
+      <BandalMark size={56} className="chat-empty__moon" motion="intro" />
       <h2 className="chat-empty__title">
-        이 과목에 대해 무엇이든 물어보세요
+        {snapshot?.courseName ? `${snapshot.courseName}, 함께 공부해요` : '무엇이 궁금한가요?'}
       </h2>
-      <p className="chat-empty__desc">강의자료를 읽고 필기도 도와줘요.</p>
+      <p className="chat-empty__desc">{snapshot?.material ? `${snapshot.material.title}${snapshot.material.page ? ` ${snapshot.material.page}쪽` : ''}을 함께 보고 있어요.` : '강의자료를 읽고 필기도 도와줘요.'}</p>
       <div className="chat-empty__chips">
         {STARTER_PROMPTS.map((prompt) => (
           <button
@@ -183,7 +187,10 @@ export function ChatSurface({
   const setDraft = useCallback((value: string | ((current: string) => string)) => {
     updateComposerDraft(conversationKey, (current) => ({ text: typeof value === 'function' ? value(current.text) : value }))
   }, [conversationKey])
-  const [pendingQuotes, setPendingQuotes] = useState<ChatQuote[]>([])
+  const pendingQuotes = composerDraft.quotes ?? []
+  const setPendingQuotes = useCallback((update: ChatQuote[] | ((quotes: ChatQuote[]) => ChatQuote[])) => {
+    updateComposerDraft(conversationKey, current => ({ quotes: typeof update === 'function' ? update(current.quotes ?? []) : update }))
+  }, [conversationKey])
   const composerRef = useRef<ComposerHandle>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isPinnedRef = useRef(true)
@@ -204,6 +211,11 @@ export function ChatSurface({
   )
   const hasPendingApprovals =
     pendingPermission !== null || pendingAgentConfirmations.length > 0
+
+  useEffect(() => {
+    if (window.bandal.platform === 'web') return
+    void invoke('assistant:approval', { conversationId: conversationKey, visible: pendingAgentConfirmations.length > 0 }).catch(console.error)
+  }, [conversationKey, pendingAgentConfirmations.length])
 
   useEffect(() => {
     const owner = approvalTitleOwnerRef.current
@@ -434,7 +446,7 @@ export function ChatSurface({
         onScroll={handleScroll}
       >
         {isEmpty ? (
-          <EmptyState onPick={handlePickStarter} />
+          <EmptyState courseId={courseId} onPick={handlePickStarter} />
         ) : (
           <>
             <MessageList
@@ -453,9 +465,9 @@ export function ChatSurface({
           </>
         )}
       </div>
-      {hasPendingApprovals && (
+      {(pendingPermission !== null || (window.bandal.platform === 'web' && hasPendingApprovals)) && (
         <div
-          className="chat-approval-dock"
+          className="chat-approval-dock chat-approval-side"
           role="region"
           aria-live="polite"
           aria-label="승인 요청"
@@ -488,7 +500,7 @@ export function ChatSurface({
         courseId={courseId}
         conversationId={conversationKey}
         provider={provider}
-        screenAvailable={surface === 'desktop'}
+        screenAvailable={window.bandal.platform !== 'web'}
         modelControl={<ModelMenu provider={provider} models={models} model={state.model} effort={session.effort ?? null} disabled={state.streaming || hasPendingApprovals} saving={session.configuring ?? false} error={session.configurationError ?? null} onProvider={handleProviderChange} onChange={session.setConfiguration} />}
         value={draft}
         quotes={pendingQuotes}

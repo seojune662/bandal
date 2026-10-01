@@ -19,7 +19,7 @@ export function NativeAssistantApp(): JSX.Element {
     <AssistantPopup native visible={state.visible} conversationId={state.conversationId}
       onClose={() => { void invoke('assistant:window', { action: 'close' }) }}
       onOpenConversation={conversationId => {
-        if (state.courseId) void invoke('overlay:setConversation', { courseId: state.courseId, conversationId })
+        if (state.courseId) void invoke('overlay:openInApp', { courseId: state.courseId, conversationId })
       }} />
   </div>
 }

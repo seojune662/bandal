@@ -94,7 +94,7 @@ export function AgentConfirmCard({
   response,
   isResponding = false,
   hasResponseError = false,
-  autoFocusReject = true,
+  autoFocusReject = false,
   shouldAutoFocusReject,
   onRespond,
   resolution
@@ -179,9 +179,7 @@ export function AgentConfirmCard({
       </header>
 
       {request.details.length > 0 && (
-        <p className="chat-agent-confirm__details">
-          {request.details.join(' · ')}
-        </p>
+        <div><p className="chat-agent-confirm__target" title={request.details[0]}>{request.details[0]}</p><details className="chat-agent-confirm__details"><summary>세부 내용</summary><pre>{request.details.join('\n')}</pre></details></div>
       )}
 
       {isResponding && (

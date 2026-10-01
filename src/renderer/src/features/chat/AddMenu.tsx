@@ -1,3 +1,5 @@
+import { prepareQuickAction } from '../assistant/OrbQuickMenu'
+import { showToast } from '../../app/toast'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentProvider } from '../../../../shared/types/agent-events'
 import { CREATION_KINDS, CREATION_LABELS, type ChatSkill } from '../../../../shared/types/chatCapabilities'
@@ -50,7 +52,8 @@ export function AddMenu({ courseId, conversationId, provider, disabled, screenAv
         <button className="chat-add-item" type="button" onClick={() => void pickFiles()}><span aria-hidden="true"><Icon name="plus" /></span><span>사진 및 파일<small>기기에서 선택</small></span></button>
         <button className="chat-add-item" type="button" onClick={() => setSection('files')}><span aria-hidden="true"><Icon name="folder" /></span><span>과목 자료<small>현재 과목의 파일 연결</small></span></button>
         <button className="chat-add-item" type="button" onClick={() => { updateComposerDraft(conversationId, { browser: !draft.browser }); finish() }}><span aria-hidden="true"><Icon name="link" /></span><span>현재 브라우저 페이지</span></button>
-        <button className="chat-add-item" type="button" disabled={!screenAvailable} onClick={() => { updateComposerDraft(conversationId, { screen: !draft.screen }); finish() }}><span aria-hidden="true"><Icon name="layoutRight" /></span><span>현재 화면<small>{screenAvailable ? '화면 접근 권한에 따라 사용' : '데스크톱 오브에서 사용'}</small></span></button>
+        <button className="chat-add-item" type="button" disabled={!screenAvailable} onClick={() => { close(); void prepareQuickAction('screen', conversationId).catch(error => showToast(error instanceof Error ? error.message : String(error), 'danger')) }}><span aria-hidden="true"><Icon name="layoutRight" /></span><span>현재 화면<small>{screenAvailable ? '미리 확인한 뒤 전송' : '데스크톱 앱에서 사용'}</small></span></button>
+        <button className="chat-add-item" type="button" disabled={!screenAvailable} onClick={() => { close(); void prepareQuickAction('region', conversationId).catch(error => showToast(error instanceof Error ? error.message : String(error), 'danger')) }}><span aria-hidden="true">⌗</span><span>영역 선택해서 질문</span></button>
         <div className="chat-menu-heading">만들기</div>
         {CREATION_KINDS.map((kind) => {
           const skill = skills.find((item) => item.creationKinds.includes(kind))

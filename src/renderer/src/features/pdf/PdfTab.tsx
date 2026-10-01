@@ -1,3 +1,4 @@
+import { registerDocumentContext } from '../agent/documentContext'
 /**
  * [M3-D] PDF viewer tab — dockview panel component for TabKind 'pdf'.
  *
@@ -213,6 +214,14 @@ function PdfViewer({
     () => pdfScrollMemory.get(courseId, relPath)?.zoom ?? 1
   )
   const [currentPage, setCurrentPage] = useState(1)
+  const aiPageText = useRef('')
+  useEffect(() => {
+    let live = true; aiPageText.current = ''
+    if (pdfProxy) void pdfProxy.getPage(currentPage).then(page => page.getTextContent()).then(content => { if (live) aiPageText.current = content.items.map(item => 'str' in item ? item.str : '').join(' ').slice(0, 10000) }).catch(() => {})
+    const off = registerDocumentContext(`pdf:${courseId}:${relPath}`, () => ({ courseId, kind: 'pdf', title: relPath.split('/').pop() ?? relPath, relPath, page: currentPage, text: aiPageText.current }))
+    return () => { live = false; off() }
+  }, [courseId, relPath, currentPage, pdfProxy])
+
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [isRailOpen, setIsRailOpen] = useState(false)
   const [isPageNoteDialogOpen, setIsPageNoteDialogOpen] = useState(false)

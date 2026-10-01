@@ -234,3 +234,7 @@ SmartScreen 이 "알 수 없는 게시자" 경고를 띄운다. 웹사이트가 
 (Azure Trusted Signing, 월 $9.99) 또는 `certificateFile` 을 추가하면 되고, 다른
 건 바뀌지 않는다. Azure Trusted Signing 개인 개발자 가입은 2025-10 기준 미국·
 캐나다 거주자만 가능하다.
+
+## v0.60.0 AI 연결 변경
+
+새 로고, 오브 빠른 메뉴, 독립 대화창, 메시지 문맥과 공통 승인 처리의 구현·검증 범위는 [AI 대화 개편 기록](ai-experience-v0.60.md)에 정리했다. Codex App Server는 CLI 0.158.0 이상, Gemini ACP는 0.58.0 이상을 요구한다. Gemini OAuth 계정의 서버 지원 여부와 API 키 연결은 설치 여부와 별도로 확인한다.

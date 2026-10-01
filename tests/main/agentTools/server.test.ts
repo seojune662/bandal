@@ -112,7 +112,7 @@ describe('agent tools MCP server', () => {
         httpUrl: 'https://mcp.example/docs',
         headers: { Authorization: 'Bearer user-secret' },
         trust: true,
-        timeout: 60_000
+        timeout: 300_000
       }
     })
 
@@ -152,7 +152,20 @@ describe('agent tools MCP server', () => {
       body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })
     })
     expect(listed.status).toBe(200)
-    expect(await listed.text()).toContain('list_courses')
+    const listing = await listed.text()
+    expect(listing).toContain('list_courses')
+    expect(listing).toContain('"readOnlyHint":false')
+    const call = async (name: string): Promise<string> => {
+      const response = await fetch(config.mcpServers.bandal.url, {
+        method: 'POST', headers: { ...headers, 'mcp-session-id': mcpSessionId as string },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'create_course', arguments: { name } } })
+      })
+      expect(response.status).toBe(200)
+      return response.text()
+    }
+    expect(await call('One execution')).toContain('One execution')
+    expect(await call('Must not execute a replay')).toContain('One execution')
+    expect(coursesRepo.list({ includeArchived: true }).map(course => course.name)).toEqual(['MCP', 'One execution'])
 
     await handle.close()
     expect(existsSync(handle.mcpConfigPath)).toBe(false)

@@ -1,119 +1,30 @@
-import { EventEmitter } from 'node:events'
-import { mkdirSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
-import { PassThrough } from 'node:stream'
-import type { ChildProcess } from 'node:child_process'
-import { afterEach, describe, expect, test, vi } from 'vitest'
-import {
-  buildGeminiArgs,
-  createGeminiAdapter
-} from '../../../src/main/features/agent/gemini/GeminiAdapter'
-import type { BinaryLocator } from '../../../src/main/features/agent/binaryLocator'
-import { createTestDb, type TestDb } from '../helpers/testDb'
+import { expect, test } from 'vitest'
+import { buildGeminiArgs } from '../../../src/main/features/agent/gemini/GeminiAdapter'
+test('uses ACP instead of discarding image inputs in headless prompts', () => {
+  expect(buildGeminiArgs({ model: 'gemini-3-pro' })).toEqual(['--acp', '-m', 'gemini-3-pro'])
+  expect(buildGeminiArgs({})).toEqual(['--acp'])
+})
 
-describe('Gemini adapter', () => {
-  let ctx: TestDb
-
-  afterEach(() => ctx?.cleanup())
-
-  test('builds new and resumed headless arguments', () => {
-    expect(buildGeminiArgs({
-      prompt: 'hi',
-      sessionId: 'session-1',
-      resume: false,
-      model: 'flash'
-    })).toEqual([
-      '-p', 'hi', '-o', 'stream-json', '--session-id', 'session-1', '-m', 'flash'
-    ])
-    expect(buildGeminiArgs({
-      prompt: 'again',
-      sessionId: 'session-1',
-      resume: true,
-      model: 'auto'
-    })).toEqual([
-      '-p', 'again', '-o', 'stream-json', '--resume', 'session-1', '-m', 'auto'
-    ])
-  })
-
-  test('closes stdin, writes private settings and resumes the reported id', async () => {
-    ctx = createTestDb()
-    const userDataPath = join(ctx.dir, 'user-data')
-    mkdirSync(userDataPath)
-    const children: Array<EventEmitter & Partial<ChildProcess>> = []
-    const spawnImpl = vi.fn(() => {
-      const child = Object.assign(new EventEmitter(), {
-        pid: undefined,
-        stdout: new PassThrough(),
-        stderr: new PassThrough(),
-        stdin: null
-      }) as EventEmitter & Partial<ChildProcess>
-      children.push(child)
-      return child as ChildProcess
-    })
-    const locator: BinaryLocator = {
-      locate: async () => ({ path: '/bin/gemini', version: '0.58.0' }),
-      availability: async () => ({ installed: true, loggedIn: true }),
-      loginShellPath: async () => '/bin',
-      reset: () => undefined
-    }
-    let storedApiKey: string | null = 'gemini-test-key-1234567890'
-    const adapter = createGeminiAdapter({
-      userDataPath,
-      locator,
-      spawnImpl,
-      apiKey: () => storedApiKey
-    })
-    const session = await adapter.startSession({
-      courseId: 'course',
-      cwd: '/course',
-      model: 'flash',
-      systemPromptAppend: 'system context',
-      mcpHttp: { url: 'http://127.0.0.1:1234/mcp', token: 'secret' }
-    })
-
-    session.sendMessage('one', [{ mediaType: 'image/png', dataBase64: 'AA==' }])
-    const first = spawnImpl.mock.calls[0]
-    expect(first?.[2]?.stdio).toEqual(['ignore', 'pipe', 'pipe'])
-    expect(first?.[1]).toEqual(expect.arrayContaining([
-      '-p',
-      expect.stringContaining('[첨부 이미지 1개는 이 제공자에서 지원되지 않음]'),
-      '--session-id',
-      expect.any(String),
-      '-m',
-      'flash'
-    ]))
-    const settingsPath = join(userDataPath, 'gemini', 'settings.json')
-    expect(first?.[2]?.env).toMatchObject({
-      GEMINI_CLI_SYSTEM_SETTINGS_PATH: settingsPath,
-      BANDAL_MCP_TOKEN: 'secret',
-      GEMINI_API_KEY: 'gemini-test-key-1234567890',
-      TERM: expect.any(String)
-    })
-    expect(statSync(settingsPath).mode & 0o777).toBe(0o600)
-    expect(readFileSync(settingsPath, 'utf8')).toContain(
-      'Bearer ${BANDAL_MCP_TOKEN}'
-    )
-    expect(readFileSync(settingsPath, 'utf8')).toContain(
-      '"selectedType":"gemini-api-key"'
-    )
-    expect(readFileSync(settingsPath, 'utf8')).not.toContain(
-      'gemini-test-key-1234567890'
-    )
-
-    ;(children[0]?.stdout as PassThrough).write(
-      '{"type":"init","session_id":"actual-session","model":"flash"}\n' +
-      '{"type":"result","status":"success","stats":{"input_tokens":1,"output_tokens":1}}\n'
-    )
-    children[0]?.emit('close', 0, null)
-    await expect(session.sessionId).resolves.toBe('actual-session')
-
-    storedApiKey = null
-    session.sendMessage('two')
-    expect(spawnImpl.mock.calls[1]?.[1]).toEqual(expect.arrayContaining([
-      '--resume', 'actual-session'
-    ]))
-    expect(spawnImpl.mock.calls[1]?.[2]?.env?.['GEMINI_API_KEY']).toBeUndefined()
-    expect(readFileSync(settingsPath, 'utf8')).not.toContain('selectedType')
-    session.dispose()
-  })
+test('isolates concurrent session settings and removes only the disposed session files', async () => {
+  const { mkdtempSync, readdirSync, readFileSync, existsSync, rmSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const { tmpdir } = await import('node:os')
+  const { createGeminiAdapter } = await import('../../../src/main/features/agent/gemini/GeminiAdapter')
+  const directory = mkdtempSync(join(tmpdir(), 'bandal-gemini-isolation-'))
+  const adapter = createGeminiAdapter({ userDataPath: directory, apiKey: () => 'private-key', locator: { locate: async () => ({ path: '/mock/gemini', version: '0.58.0' }), loginShellPath: async () => '/usr/bin' } as any })
+  try {
+    const a = await adapter.startSession({ courseId: 'a', cwd: directory, mcpHttp: { url: 'http://localhost:1001/mcp', token: 'secret-a' } })
+    const first = readdirSync(join(directory, 'gemini-sessions'))[0]!
+    const b = await adapter.startSession({ courseId: 'b', cwd: directory, mcpHttp: { url: 'http://localhost:1002/mcp', token: 'secret-b' } })
+    const dirs = readdirSync(join(directory, 'gemini-sessions'))
+    expect(dirs).toHaveLength(2)
+    const contents = dirs.map(d => readFileSync(join(directory, 'gemini-sessions', d, 'gemini/settings.json'), 'utf8'))
+    expect(contents.some(s => s.includes('1001/mcp'))).toBe(true)
+    expect(contents.some(s => s.includes('1002/mcp'))).toBe(true)
+    expect(contents.join('')).not.toMatch(/private-key|secret-a|secret-b/)
+    a.dispose()
+    expect(existsSync(join(directory, 'gemini-sessions', first))).toBe(false)
+    expect(readdirSync(join(directory, 'gemini-sessions'))).toHaveLength(1)
+    b.dispose()
+  } finally { rmSync(directory, { recursive: true, force: true }) }
 })

@@ -47,7 +47,7 @@ describe('workspaceSyncPayload', () => {
     })
 
     expect(payload?.tabs).toEqual([
-      { kind: 'pdf', title: 'lecture.pdf', active: false }
+      { kind: 'pdf', title: 'lecture.pdf', active: false, courseId: 'ds', documentId: 'pdf:ds:lecture.pdf', relPath: 'lecture.pdf' }
     ])
   })
 
@@ -64,8 +64,8 @@ describe('workspaceSyncPayload', () => {
     })
 
     expect(payload?.tabs).toEqual([
-      { kind: 'pdf', title: 'lecture.pdf', active: false },
-      { kind: 'note', title: 'week-1', active: true }
+      { kind: 'pdf', title: 'lecture.pdf', active: false, courseId: 'ds', documentId: 'pdf:ds:lecture.pdf', relPath: 'lecture.pdf' },
+      { kind: 'note', title: 'week-1', active: true, courseId: 'ds', documentId: 'note:ds:week-1.md', relPath: 'week-1.md' }
     ])
     expect(payload?.tabs.filter((tab) => tab.active)).toHaveLength(1)
   })

@@ -199,3 +199,16 @@ describe('conversation isolation', () => {
     ).toBeUndefined()
   })
 })
+
+test('an equal revision cannot re-enable a button while its response is in flight', async () => {
+  const calls: string[] = []
+  const handlers = installAdapter(async channel => { calls.push(channel); if (channel === 'agentTools:confirmations') return []; return new Promise(() => {}) })
+  releases.push(acquireAgentToolActivity('equal-revision'))
+  const request = { requestId: 'request', conversationId: 'equal-revision', courseId: 'course', tool: 'delete_note', summary: 'Delete', details: [] }
+  handlers.get('agentTools:confirmationChanged')?.({ request, status: 'pending', revision: 1 } as never)
+  respondToAgentConfirm('equal-revision', 'request', true)
+  handlers.get('agentTools:confirmationChanged')?.({ request, status: 'pending', revision: 1 } as never)
+  respondToAgentConfirm('equal-revision', 'request', true)
+  expect(calls.filter(c => c === 'agentTools:respondConfirm')).toHaveLength(1)
+  expect(useAgentToolActivityStore.getState().conversations['equal-revision']?.items[0]).toMatchObject({ isResponding: true })
+})

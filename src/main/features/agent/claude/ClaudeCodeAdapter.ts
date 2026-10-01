@@ -47,7 +47,7 @@ const SIGKILL_DELAY_MS = 3000
  * project-relative) and that this glob covers nested subdirectories.
  */
 export const CLAUDE_ALLOWED_TOOLS = [
-  'Read',
+  'Read(./**)',
   'Glob',
   'Grep',
   'Edit(./**)',
@@ -61,7 +61,7 @@ export const CLAUDE_CAPABILITIES: AgentCapabilities = {
   interactivePermissions: true, // verified: can_use_tool works in -p mode
   streamingInput: false, // one turn at a time; queueing handled upstream
   partialText: true,
-  cancel: true
+  cancel: true, imageInput: true, resume: true
 }
 
 /** Root pids of live sessions, for the synchronous exit-time sweep. */
@@ -97,6 +97,7 @@ export function transcriptDirFor(cwd: string): string {
 }
 
 export function buildClaudeArgs(opts: {
+  accessPolicy?: import('../../../../shared/types/aiAccess').AiAccessPolicy
   effort?: string
   selectedSkills?: string[]
   resumeCliSessionId?: string
@@ -126,7 +127,7 @@ export function buildClaudeArgs(opts: {
     // accepting the splatted form, the extras would silently become positional
     // arguments in `-p` mode and the allowlist would collapse.
     '--allowedTools',
-    [...CLAUDE_ALLOWED_TOOLS, ...(opts.extraAllowedTools ?? [])].join(','),
+    [...CLAUDE_ALLOWED_TOOLS.filter(tool => !opts.accessPolicy || (opts.accessPolicy.scope.course && (opts.accessPolicy.mode === 'full' || !/^(Edit|Write)/.test(tool))) && !/^(WebSearch|WebFetch|Glob|Grep)/.test(tool)), ...(opts.extraAllowedTools ?? [])].join(','),
     '--disallowedTools',
     'Bash',
     '--disable-slash-commands',

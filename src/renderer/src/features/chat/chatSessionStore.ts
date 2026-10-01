@@ -54,6 +54,7 @@ interface ConversationRuntime {
   lastSeq: number | null
   queue: AgentEvent[]
   raf: number | null
+  hydrationBatches: { sessionId: string; seq: number; events: AgentEvent[] }[]
   hydrating: boolean
   openVersion: number
   modelsPromise: Promise<void> | null
@@ -86,6 +87,7 @@ function runtimeFor(courseId: string, conversationId: string): ConversationRunti
       lastSeq: null,
       queue: [],
       raf: null,
+      hydrationBatches: [],
       hydrating: false,
       openVersion: 0,
       modelsPromise: null,
@@ -183,7 +185,9 @@ async function openConversation(
   runtime.hydrating = true
   if (opts.discardQueue) {
     runtime.queue = []
+    runtime.hydrationBatches = []
   }
+  let checkpoint: number | undefined
   try {
     const result = await invoke('chat:open', {
       courseId,
@@ -193,6 +197,7 @@ async function openConversation(
     if (version !== runtime.openVersion) {
       return
     }
+    checkpoint = result.eventSeq
     updateSnapshot(conversationId, (current) => ({
       ...current,
       provider: result.sessionInfo?.provider ?? current.provider,
@@ -220,6 +225,9 @@ async function openConversation(
   } finally {
     if (version === runtime.openVersion) {
       runtime.hydrating = false
+      if (checkpoint !== undefined) runtime.lastSeq = checkpoint
+      const frames = runtime.hydrationBatches.splice(0)
+      for (const frame of frames) handleBatch(courseId, conversationId, frame)
       scheduleFlush(courseId, conversationId)
     }
   }
@@ -234,6 +242,7 @@ function handleBatch(
     return
   }
   const runtime = runtimeFor(courseId, conversationId)
+  if (runtime.hydrating) { runtime.hydrationBatches.push(batch); return }
   const check = checkBatchSeq(runtime.lastSeq, batch.seq)
   if (check === 'stale') {
     return
@@ -275,7 +284,10 @@ export function acquireChatSession(
       flushQueue(courseId, conversationId)
       updateSnapshot(conversationId, (current) => {
         if (current.state.messages.some((message) => message.id === event.message.id)) return current
-        const messages = [...current.state.messages, ...hydrateFromHistory([event.message], null).messages]
+        const incoming = hydrateFromHistory([event.message], null).messages[0]!
+        const userText = incoming.blocks.find(block => block.kind === 'text')
+        const optimistic = incoming.role === 'user' ? current.state.messages.findIndex(message => message.role === 'user' && message.id.startsWith('local-') && message.blocks.some(block => block.kind === 'text' && userText?.kind === 'text' && block.text === userText.text)) : -1
+        const messages = optimistic >= 0 ? current.state.messages.map((message, index) => index === optimistic ? incoming : message) : [...current.state.messages, incoming]
         messages.sort((a, b) => (a.turnSeq ?? Infinity) - (b.turnSeq ?? Infinity))
         return { ...current, state: { ...current.state, messages } }
       })
@@ -362,11 +374,9 @@ export function respondToChatPermission(
   if (snapshotFor(conversationId).permissionResponses?.[requestId] === 'pending') return
   updateSnapshot(conversationId, (current) => ({ ...current, permissionResponses: { ...current.permissionResponses, [requestId]: 'pending' } }))
   void invoke('chat:respondPermission', { courseId, sessionId: conversationId, requestId, response })
-    .then(() => updateSnapshot(conversationId, (current) => {
-      const responses = { ...current.permissionResponses }; delete responses[requestId]
-      return { ...current, permissionResponses: responses }
-    }))
-    .catch(() => updateSnapshot(conversationId, (current) => ({ ...current, permissionResponses: { ...current.permissionResponses, [requestId]: 'error' } })))
+    // Keep the latch until the authoritative permission-resolved event. A slow
+    // push must not make a successfully submitted button clickable again.
+    .catch(() => updateSnapshot(conversationId, (current) => current.state.pendingPermissionId !== requestId ? current : ({ ...current, permissionResponses: { ...current.permissionResponses, [requestId]: 'error' } })))
 }
 
 export async function setChatConfiguration(courseId: string, conversationId: string, model: string, effort: string | null): Promise<void> {

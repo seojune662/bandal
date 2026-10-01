@@ -10,6 +10,8 @@ export interface ChatSkill {
   creationKinds: CreationKind[]
 }
 export interface ChatContext {
+  snapshot?: import('./chatContext').MessageContextSnapshot
+  excludeCurrentMaterial?: boolean
   outputDir?: string
   files?: { relPath: string; name: string }[]
   skillIds?: string[]

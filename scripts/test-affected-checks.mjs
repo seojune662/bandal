@@ -163,3 +163,9 @@ test('only the known browser import dev hook and version are exempt from runtime
   assert.ok(runtime.e2e.includes('e2e/browserCompatibility.spec.ts'))
   assert.ok(runtime.e2e.includes('e2e/browserImport.spec.ts'))
 })
+
+test('AI transport and brand updates select chat/context/orb package checks without unrelated theme tests', () => {
+  const plan = planChecks(['src/main/features/agent/rpcSession.ts', 'src/renderer/src/components/BandalMark.tsx'])
+  assert.deepEqual(plan.e2e, ['e2e/chatUx.spec.ts', 'e2e/desktopOrb.spec.ts', 'e2e/aiContext.spec.ts'])
+  assert.equal(plan.full, false)
+})

@@ -71,10 +71,10 @@ describe('brand icon palettes', () => {
 
   it('pins bandal-dark to the released literal colors', () => {
     expect(BANDAL_DARK_COLORS).toEqual({
-      bg: '#09101e',
-      bgTop: '#18223c',
-      bgMid: '#0d1526',
-      accent: '#f5c97b',
+      bg: '#161616',
+      bgTop: '#161616',
+      bgMid: '#161616',
+      accent: '#fafafa',
       accentLight: '#fbe3ae',
       accentDark: '#dda255',
       craterDark: '#c99a4e',

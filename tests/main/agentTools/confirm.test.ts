@@ -95,3 +95,29 @@ describe('createAgentConfirmer', () => {
     await expect(second).resolves.toBe(false)
   })
 })
+
+test('coalesces concurrent operations, and never re-prompts a denied operation in the same turn', async () => {
+  const { confirmer, requests } = setup()
+  const input = { ...INPUT, conversationId: 'chat', turnId: 'chat:1' }
+  const first = confirmer.confirm(input), duplicate = confirmer.confirm(input)
+  expect(requests).toHaveLength(1)
+  expect(first).toBe(duplicate)
+  confirmer.resolve({ requestId: requests[0]!.requestId, approved: false })
+  await expect(first).resolves.toBe(false)
+  await expect(confirmer.confirm(input)).resolves.toBe(false)
+  expect(requests).toHaveLength(1)
+  const next = confirmer.confirm({ ...input, turnId: 'chat:2' })
+  expect(requests).toHaveLength(2)
+  confirmer.cancelConversation('chat')
+  await expect(next).resolves.toBe(false)
+})
+
+test('provider-side resolution cancels only the correlated request', async () => {
+  const { confirmer } = setup()
+  const first = confirmer.confirm({ ...INPUT, providerRequestId: 'one' })
+  const other = confirmer.confirm({ ...INPUT, providerRequestId: 'two' })
+  confirmer.cancelProviderRequest(INPUT.conversationId, 'one')
+  await expect(first).resolves.toBe(false)
+  expect(confirmer.list(INPUT.conversationId).map(s => s.status)).toEqual(['cancelled', 'pending'])
+  confirmer.disposeAll(); await expect(other).resolves.toBe(false)
+})

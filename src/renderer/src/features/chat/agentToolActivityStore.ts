@@ -196,14 +196,16 @@ function fetchTurnChanges(conversationId: string, turnId: string): void {
     })
 }
 
-function syncConfirmation(state: AgentConfirmationState): void {
+export function syncConfirmation(state: AgentConfirmationState): void {
   const existing = snapshotFor(state.request.conversationId).items.find((item) => item.kind === 'confirmation' && item.request.requestId === state.request.requestId)
-  if (existing?.kind === 'confirmation' && (existing.revision ?? 0) > state.revision) return
+  // Reconnect snapshots and duplicate pushes must not undo a local response.
+  if (existing?.kind === 'confirmation' && existing.revision !== undefined && existing.revision >= state.revision) return
   recordAgentConfirmation(state.request)
   updateConfirmation(state.request.conversationId, state.request.requestId, (item) => ({
     ...item, revision: state.revision, resolution: state.status,
     response: state.status === 'pending' ? null : state.status === 'approved',
-    isResponding: false, hasResponseError: false
+    isResponding: state.status === 'pending' ? item.isResponding : false,
+    hasResponseError: state.status === 'pending' ? item.hasResponseError : false
   }))
 }
 
@@ -290,7 +292,7 @@ export function respondToAgentConfirm(
     // `exactOptionalPropertyTypes`: the key must be absent, not undefined.
     ...(scope === undefined ? {} : { scope })
   })
-    .then(() => invoke('agentTools:confirmations', { conversationId }))
+    .then(result => result.state ? [result.state] : invoke('agentTools:confirmations', { conversationId }))
     .then((states) => {
       states.forEach(syncConfirmation)
       if (!states.some((state) => state.request.requestId === requestId)) {

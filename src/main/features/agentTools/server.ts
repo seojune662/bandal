@@ -74,7 +74,7 @@ function buildGeminiMcpServers(
         ...(server.args === undefined ? {} : { args: [...server.args] }),
         ...(server.env === undefined ? {} : { env: { ...server.env } }),
         trust: true,
-        timeout: 60_000
+        timeout: 300_000
       }
     } else if (server.transport === 'http' && server.url !== undefined) {
       result[server.name] = {
@@ -83,7 +83,7 @@ function buildGeminiMcpServers(
           ? {}
           : { headers: { ...server.headers } }),
         trust: true,
-        timeout: 60_000
+        timeout: 300_000
       }
     }
   }
@@ -95,26 +95,19 @@ function makeMcpServer(agentTools: AgentTools): McpServer {
     { name: 'bandal', version: '1.0.0' },
     { capabilities: { tools: {} } }
   )
-  server.server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: agentTools.definitions.map((tool) => ({
-      ...tool,
-      // Served as auto-approvable ON PURPOSE. This server is its own gate:
-      // destructive tools block on the in-app confirm dialog (agentConfirmer),
-      // every call is journalled, and per-turn caps bound the blast radius.
-      // Codex exec has no interactive approver and auto-CANCELS any MCP tool
-      // whose readOnlyHint is not true — honest annotations would make every
-      // mutating tool dead under Codex while adding nothing under Claude
-      // (whose --allowedTools already pre-approves the full set).
-      annotations: {
-        ...tool.annotations,
-        readOnlyHint: true,
-        destructiveHint: false
-      }
-    }))
-  }))
-  server.server.setRequestHandler(CallToolRequestSchema, (request) =>
-    agentTools.call(request.params.name, request.params.arguments)
-  )
+  // App Server supports interactive approval; keep the real tool annotations.
+  // Bandal's own gate still checks the conversation policy before executing.
+  server.server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: agentTools.definitions }))
+  const calls = new Map<string, ReturnType<AgentTools['call']>>()
+  server.server.setRequestHandler(CallToolRequestSchema, (request, extra) => {
+    const key = `${typeof extra.requestId}:${extra.requestId}`
+    const previous = calls.get(key)
+    if (previous) return previous
+    const result = agentTools.call(request.params.name, request.params.arguments)
+    calls.set(key, result)
+    if (calls.size > 1000) calls.delete(calls.keys().next().value!)
+    return result
+  })
   return server
 }
 

@@ -1,3 +1,27 @@
+import geometry from './moonGeometry.json' with { type: 'json' }
+
+export const MOON_SHAPES = geometry.shapes.map(shape => ({
+  name: shape.name, pivot: shape.pivot,
+  path: `M ${shape.points.map(point => point.join(' ')).join(' L ')} Z`
+}))
+export const MOON_SCALE = geometry.motion.scale
+export const MOON_VIEWBOX = '0 0 452 448'
+export const MOON_LOOP_MS = 4000
+export const MOON_INTRO_MS = 2000
+export function moonPose(progress) {
+  const t = Math.max(0, Math.min(1, progress)) * (geometry.motion.poses.length - 1)
+  const index = Math.floor(t)
+  const a = geometry.motion.poses[index], b = geometry.motion.poses[Math.min(index + 1, geometry.motion.poses.length - 1)]
+  return [a[0] + (b[0] - a[0]) * (t - index), a[1] + (b[1] - a[1]) * (t - index)]
+}
+export function moonTransform(index, angle = 0) {
+  const [x, y] = MOON_SHAPES[index].pivot
+  return `translate(${x} ${y}) rotate(${angle}) scale(${MOON_SCALE}) translate(${-x} ${-y})`
+}
+export function moonSvgPaths(fill = 'currentColor') {
+  return MOON_SHAPES.map((shape, index) => `<path d="${shape.path}" transform="${moonTransform(index)}" fill="${fill}"/>`).join('')
+}
+
 /**
  * Geometry shared by the build-time icon generator and the React mark.
  *

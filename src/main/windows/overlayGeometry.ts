@@ -15,8 +15,8 @@ export const ORB_VISUAL_CENTER_Y = 120
 export const ORB_DEFAULT_MARGIN = 24
 /** Window size persisted by releases before desktop charms were supported. */
 export const LEGACY_ORB_WINDOW_SIZE = 64
-export const POPUP_DEFAULT_SIZE = { width: 400, height: 560 }
-export const POPUP_MIN_SIZE = { width: 320, height: 400 }
+export const POPUP_DEFAULT_SIZE = { width: 420, height: 600 }
+export const POPUP_MIN_SIZE = { width: 360, height: 420 }
 
 function clamp(value: number, lower: number, upper: number): number {
   return Math.min(Math.max(value, lower), Math.max(lower, upper))

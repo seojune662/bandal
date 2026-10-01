@@ -1,3 +1,5 @@
+import { ScreenSelectionApp } from './features/overlay/ScreenSelectionApp'
+import { ApprovalApp } from './features/chat/ApprovalApp'
 import { bootstrapAppearance } from './app/bootstrapAppearance'
 import { useEffect } from 'react'
 import React from 'react'
@@ -13,7 +15,7 @@ import { useLocale } from './i18n'
 import { useUiStore } from './stores/uiStore'
 
 const requestedView = new URLSearchParams(location.search).get('view')
-const view =
+const view = requestedView === 'capture' ? 'capture' : requestedView === 'approval' ? 'approval' :
   requestedView === 'assistant'
     ? 'assistant'
     : requestedView === 'popup'
@@ -37,7 +39,7 @@ function OverlayEntry(): JSX.Element {
     document.documentElement.lang = locale
   }, [locale])
 
-  return view === 'assistant' ? (
+  return view === 'capture' ? <ScreenSelectionApp /> : view === 'approval' ? <ApprovalApp /> : view === 'assistant' ? (
     <NativeAssistantApp />
   ) : view === 'popup' ? (
     <OverlayPopupApp />

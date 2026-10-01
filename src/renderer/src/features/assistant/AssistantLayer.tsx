@@ -1,3 +1,5 @@
+import { prepareQuickAction } from './OrbQuickMenu'
+import { showToast } from '../../app/toast'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { OverlayState } from '../../../../shared/types/overlay'
 import { AssistantPopup } from './AssistantPopup'
@@ -63,6 +65,8 @@ function InAppAssistant({
   onOpenConversation
 }: InAppAssistantProps): JSX.Element {
   const [popupOpen, setPopupOpen] = useState(false)
+  const pinnedContext = useRef({ courseId: selectedCourseId, conversationId: popupConversationId })
+  if (!popupOpen || pinnedContext.current.conversationId === null) pinnedContext.current = { courseId: selectedCourseId, conversationId: popupConversationId }
   const pendingPromptRef = useRef<ChatPromptPayload | null>(null)
   const orbRef = useRef<HTMLButtonElement>(null)
   const activity = useAssistantActivity({
@@ -83,8 +87,8 @@ function InAppAssistant({
   useEffect(() => {
     if (window.bandal.platform === 'web') return
     let geometry: { x: number; y: number; width: number; height: number } | undefined
-    try { geometry = JSON.parse(localStorage.getItem('bandal:assistant-popup-geometry:v1') ?? 'null') ?? undefined } catch { /* default */ }
-    void invoke('assistant:window', { action: 'sync', state: { visible: popupOpen, courseId: selectedCourseId, conversationId: popupConversationId }, ...(geometry ? { geometry } : {}) }).catch(console.error)
+    try { geometry = JSON.parse(localStorage.getItem('bandal:assistant-popup-geometry:v2') ?? 'null') ?? undefined } catch { /* default */ }
+    void invoke('assistant:window', { action: 'sync', state: { visible: popupOpen, courseId: pinnedContext.current.courseId, conversationId: pinnedContext.current.conversationId }, ...(geometry ? { geometry } : {}) }).catch(console.error)
   }, [popupOpen, selectedCourseId, popupConversationId])
 
   const togglePopup = useCallback((): void => {
@@ -94,9 +98,15 @@ function InAppAssistant({
 
 
 
+  const openSelectedConversation = useCallback((): void => {
+    pinnedContext.current = { courseId: selectedCourseId, conversationId: popupConversationId }
+    setPopupOpen(true)
+    if (window.bandal.platform !== 'web') void invoke('assistant:window', { action: 'sync', state: { visible: true, ...pinnedContext.current } }).catch(console.error)
+  }, [selectedCourseId, popupConversationId])
+
   const pickSelection = useCallback(
     (picked: AnchoredSelection): void => {
-      setPopupOpen(true)
+      openSelectedConversation()
       activity.clearAlert()
       const payload = quotePayload(picked)
       if (popupConversationId === null) pendingPromptRef.current = payload
@@ -105,7 +115,7 @@ function InAppAssistant({
       window.getSelection()?.removeAllRanges()
       clearSelection()
     },
-    [activity, clearSelection, popupConversationId]
+    [activity, clearSelection, popupConversationId, openSelectedConversation]
   )
 
   const orbState: BandalOrbState = orbStateForActivity(activity)
@@ -126,6 +136,11 @@ function InAppAssistant({
         open={popupOpen}
         state={orbState}
         onToggle={togglePopup}
+        onAction={action => {
+          if (!popupConversationId) { openSelectedConversation(); return }
+          if (action === 'current' && selection) { pickSelection(selection); return }
+          void prepareQuickAction(action, popupConversationId).then(ready => { if (ready) openSelectedConversation() }).catch(error => showToast(error instanceof Error ? error.message : '동작을 시작하지 못했어요.', 'danger'))
+        }}
       />
     </>
   )
@@ -159,6 +174,7 @@ export function AssistantLayer(): JSX.Element {
   useEffect(() => {
     if (
       selectedCourseId === null ||
+      overlayState.popupOpen ||
       overlayState.courseId === selectedCourseId
     ) {
       return
@@ -174,7 +190,7 @@ export function AssistantLayer(): JSX.Element {
     return () => {
       active = false
     }
-  }, [overlayState.courseId, selectedCourseId])
+  }, [overlayState.courseId, overlayState.popupOpen, selectedCourseId])
 
   return (
     <div className="assistant-layer" data-assistant-layer="true">

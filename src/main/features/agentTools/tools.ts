@@ -58,6 +58,7 @@ export type AgentJournalEntry = Omit<
 
 /** The repository-only seam the IPC orchestrator wires into this feature. */
 export interface AgentToolsDeps {
+  accessMode?: () => 'ask' | 'auto' | 'full'
   /** Course whose chat owns the current agent session and confirmation UI. */
   courseId: string
   /** Must return the active app turn; a changed id resets per-turn limits. */
@@ -315,6 +316,7 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
     summary: string,
     details: string[]
   ): Promise<boolean> {
+    if (deps.accessMode?.() === 'ask') return true // the exact call was confirmed before dispatch
     return deps.confirm({
       courseId: context.courseId,
       tool,
@@ -516,6 +518,10 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
         return failure(name, new ValidationError(`unknown tool "${name}"`))
       }
       try {
+        if (deps.accessMode?.() === 'ask' && AGENT_MUTATING_TOOL_NAMES.has(name)) {
+          const allowed = await deps.confirm({ courseId: deps.courseId, tool: name, summary: `${name} 작업 확인`, details: [JSON.stringify(args).slice(0, 4000)] })
+          if (!allowed) return failure(name, new Error('학생이 이 작업을 허용하지 않았어요. 같은 요청을 반복하지 마세요.'))
+        }
         const result = await handler(inputObject(args))
         return result instanceof RawToolResult ? result.result : success(result)
       } catch (error) {

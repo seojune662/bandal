@@ -27,7 +27,8 @@ test.describe('shared chat composer and approvals', () => {
         for (const window of BrowserWindow.getAllWindows()) window.webContents.send('chat:event-batch', batch)
         return { turnSeq: 1 }
       })
-      handle('agentTools:confirmations', () => [])
+      handle('agentTools:confirmations', (req) => ((state as any).confirmations ?? []).filter((item: any) => item.request.conversationId === req.conversationId))
+      handle('agentTools:respondConfirm', req => { state.permissionCalls++; if (state.permissionCalls === 1) throw new Error('테스트 승인 전송 오류'); const item = (state as any).confirmations.find((item: any) => item.request.requestId === req.requestId); item.status = req.approved ? 'approved' : 'denied'; item.revision += 10; for (const window of BrowserWindow.getAllWindows()) window.webContents.send('agentTools:confirmationChanged', item); return { ok: true, state: item } })
       handle('chat:respondPermission', (req) => {
         state.permissionCalls++
         if (state.permissionCalls === 1) throw new Error('테스트 승인 전송 오류')
@@ -45,9 +46,28 @@ test.describe('shared chat composer and approvals', () => {
   })
   test.afterAll(async () => { await bandal?.close() })
 
+  test('orb finishes the current revolution after hover, including after its first loop', async () => {
+    const page = bandal.page, orb = page.locator('.assistant-orb')
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    const path = orb.locator('svg path').first()
+    await orb.hover()
+    await page.waitForTimeout(4800)
+    const rotating = await path.getAttribute('transform')
+    expect(rotating).not.toContain('rotate(0)')
+    await page.mouse.move(500, 100)
+    await page.waitForTimeout(400)
+    expect(await path.getAttribute('transform')).not.toContain('rotate(0)')
+    await expect(path).toHaveAttribute('transform', /rotate\(0\)/, { timeout: 4500 })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await orb.hover(); await page.waitForTimeout(200)
+    await expect(path).toHaveAttribute('transform', /rotate\(0\)/)
+    await page.mouse.move(500, 100)
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+  })
+
   test('model and supported Effort are inside the composer and survive reopening', async ({}, info) => {
     const page = bandal.page
-    const composer = page.locator('.chat-composer')
+    const composer = page.locator('.chat-composer-zone')
     await composer.getByRole('button', { name: '모델 및 Effort 설정' }).click()
     await page.getByRole('combobox', { name: 'AI Effort 선택' }).selectOption('high')
     await expect(composer.getByRole('button', { name: '모델 및 Effort 설정' })).toContainText('high')
@@ -68,7 +88,7 @@ test.describe('shared chat composer and approvals', () => {
     await expect(page.getByRole('button', { name: /이미지 만들기/ })).toBeDisabled()
     await page.screenshot({ path: info.outputPath('chat-add-light.png') })
     await page.getByRole('button', { name: /PDF 만들기/ }).click()
-    await expect(page.locator('.chat-context-chips')).toContainText('PDF 만들기')
+    await expect(page.locator('.chat-context-chips:not(.chat-context-auto)')).toContainText('PDF 만들기')
     await page.getByRole('button', { name: '추가', exact: true }).click()
     await page.getByRole('button', { name: /^과목 자료/ }).click()
     await page.getByRole('dialog', { name: '대화에 추가' }).getByRole('button', { name: /강의 메모.md/ }).click()
@@ -77,7 +97,7 @@ test.describe('shared chat composer and approvals', () => {
     await page.getByRole('button', { name: '메시지 보내기' }).click()
     await expect(page.getByRole('alert')).toContainText('테스트 연결 오류')
     await expect(input).toHaveValue('요약 문서를 만들어줘')
-    await expect(page.locator('.chat-context-chips')).toContainText('강의 메모.md')
+    await expect(page.locator('.chat-context-chips:not(.chat-context-auto)')).toContainText('강의 메모.md')
     await page.getByRole('button', { name: '메시지 보내기' }).click()
     await expect(input).toHaveValue('')
     await expect(page.locator('.chat-composer-zone .chat-context-chip')).toHaveCount(0)
@@ -87,52 +107,53 @@ test.describe('shared chat composer and approvals', () => {
     expect(sent.context.files[0].relPath).toBe('강의 메모.md')
   })
 
-  test('permission failures can be retried; expiry clears queued approvals without taking typing focus', async ({}, info) => {
+  test('small side approvals preserve typing focus, retry safely, and handle expiry across windows', async ({}, info) => {
     const { page, app } = bandal
     const input = page.getByRole('textbox', { name: '메시지 입력' })
     await input.fill('계속 입력하는 메모')
     await app.evaluate(({ BrowserWindow }) => {
       const state = (globalThis as any).__chatUx
       const request = { requestId: 'site-request', courseId: state.courseId, conversationId: state.sessionId, turnId: `${state.sessionId}:2`, tool: 'browser_access', summary: '학교 사이트의 강의자료를 읽을까요?', details: ['https://example.edu'], scopes: ['once', 'site'] }
-      state.request = request
-      state.nextRequest = { ...request, requestId: 'next-site-request', summary: '다음 페이지를 읽을까요?' }
-      const page = BrowserWindow.getAllWindows().find((window) => window.webContents.getURL().includes('index.html'))!
-      page.webContents.send('agentTools:confirmationChanged', { request, status: 'pending', revision: 1 })
-      page.webContents.send('agentTools:confirmationChanged', { request: state.nextRequest, status: 'pending', revision: 2 })
-      page.webContents.send('chat:event-batch', { courseId: state.courseId, sessionId: state.sessionId, seq: ++state.seq, events: [{ type: 'turn-started', turnSeq: 2 }, { type: 'permission-request', requestId: 'cli-request', toolName: 'Read', input: { file_path: '강의 메모.md' } }] })
+      state.confirmations = [ { request, status: 'pending', revision: 1 }, { request: { ...request, requestId: 'next-site-request', summary: '다음 페이지를 읽을까요?' }, status: 'pending', revision: 2 } ]
+      for (const window of BrowserWindow.getAllWindows()) for (const confirmation of state.confirmations) window.webContents.send('agentTools:confirmationChanged', confirmation)
     })
+    await expect.poll(() => app.windows().some(w => w.url().includes('view=approval'))).toBe(true)
+    const approval = app.windows().find(w => w.url().includes('view=approval'))!
+    await expect(approval.getByText('학교 사이트의 강의자료를 읽을까요?')).toBeVisible()
     await expect(input).toBeFocused()
-    await expect(page.locator('.chat-approval-dock')).toContainText('승인 대기 3개')
-    await page.getByRole('button', { name: '이번만 허용', exact: true }).click()
-    await expect(page.locator('.chat-approval-dock').getByRole('alert')).toContainText('응답을 보내지 못했어요')
-    await page.getByRole('button', { name: '이번만 허용', exact: true }).click()
-    await expect(page.locator('.chat-approval-dock')).toContainText('학교 사이트')
-    await page.screenshot({ path: info.outputPath('chat-approval-light.png') })
-    await page.getByRole('combobox', { name: '허용 범위' }).selectOption('site')
-    await app.evaluate(({ BrowserWindow }) => {
-      const state = (globalThis as any).__chatUx
-      for (const page of BrowserWindow.getAllWindows()) page.webContents.send('agentTools:confirmationChanged', { request: state.request, status: 'expired', revision: 3 })
-    })
-    await expect(page.locator('.chat-approval-dock')).toContainText('다음 페이지')
-    await expect(page.getByRole('combobox', { name: '허용 범위' })).toHaveValue('once')
-    await app.evaluate(({ BrowserWindow }) => {
-      const state = (globalThis as any).__chatUx
-      for (const page of BrowserWindow.getAllWindows()) page.webContents.send('agentTools:confirmationChanged', { request: state.nextRequest, status: 'expired', revision: 4 })
-    })
+    expect(await approval.evaluate(() => innerWidth)).toBeLessThanOrEqual(300)
     await expect(page.locator('.chat-approval-dock')).toHaveCount(0)
-    await page.getByText('작업 기록', { exact: true }).last().click()
-    await expect(page.getByText('시간 초과', { exact: true }).first()).toBeVisible()
+    await approval.getByRole('button', { name: '이번만 허용', exact: true }).click()
+    await expect(approval.getByRole('alert')).toContainText('응답을 보내지 못했어요')
+    await approval.getByRole('button', { name: '이번만 허용', exact: true }).click()
+    await expect(approval.getByText('다음 페이지를 읽을까요?')).toBeVisible()
+    await expect(approval.getByRole('combobox', { name: '허용 범위' })).toHaveValue('once')
+    await approval.screenshot({ path: info.outputPath('approval-companion.png') })
+    await app.evaluate(({ BrowserWindow }) => {
+      const state = (globalThis as any).__chatUx, item = state.confirmations[1]
+      item.status = 'expired'; item.revision = 20
+      for (const window of BrowserWindow.getAllWindows()) window.webContents.send('agentTools:confirmationChanged', item)
+    })
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('view=approval'))?.isVisible())).toBe(false)
     await expect(input).toHaveValue('계속 입력하는 메모')
   })
 
   test('in-app and desktop orb menus stay in bounds and Escape closes only the menu', async ({}, info) => {
     const { page, app } = bandal
     await page.evaluate(() => window.bandal.invoke('settings:set', { theme: 'dark' }))
+    await page.locator('.assistant-orb').hover()
+    await expect(page.getByRole('menu', { name: 'AI 빠른 동작' })).toBeVisible()
+    await page.getByRole('menuitem', { name: '영역 선택해서 질문' }).hover()
+    await expect(page.getByRole('menu', { name: 'AI 빠른 동작' })).toBeVisible()
+    await page.mouse.move(10, 10)
+    await expect(page.getByRole('menu', { name: 'AI 빠른 동작' })).toHaveCount(0)
     await page.locator('.assistant-orb').click()
     await expect.poll(() => app.windows().some(candidate => candidate.url().includes('overlay.html?view=assistant'))).toBe(true)
     const assistant = app.windows().find(candidate => candidate.url().includes('overlay.html?view=assistant'))!
     const popup = assistant.locator('.assistant-popup')
     await expect(popup).toBeVisible()
+    expect(await assistant.evaluate(() => [innerWidth, innerHeight])).toEqual([420, 600])
+    await expect(popup.getByRole('slider')).toHaveCount(0)
     await expect(assistant.locator('html')).toHaveAttribute('data-theme', 'dark')
     await popup.getByRole('button', { name: '모델 및 Effort 설정' }).click()
     await expect(assistant.getByRole('dialog', { name: 'AI 실행 설정' })).toBeVisible()
@@ -145,6 +166,7 @@ test.describe('shared chat composer and approvals', () => {
     await expect(assistant.getByRole('dialog', { name: 'AI 실행 설정' })).toHaveCount(0)
     await expect(popup).toBeVisible()
     await popup.getByRole('textbox', { name: '메시지 입력' }).fill('@')
+    await expect(popup.getByRole('textbox', { name: '메시지 입력' })).toHaveValue('@')
     await expect(popup.getByRole('listbox', { name: '과목 파일' })).toBeVisible()
     await assistant.keyboard.press('Escape')
     await expect(popup.getByRole('listbox')).toHaveCount(0)
@@ -171,5 +193,10 @@ test.describe('shared chat composer and approvals', () => {
     await page.evaluate((ids) => window.bandal.invoke('chat:setConfiguration', { ...ids, model: 'model-a', effort: 'high' }), { courseId, sessionId })
     await expect(desktop.getByRole('button', { name: '모델 및 Effort 설정' })).toContainText('high')
     await expect(page.locator('.chat-tab[data-variant="tab"]').getByRole('button', { name: '모델 및 Effort 설정' })).toContainText('high')
+    await desktop.getByRole('textbox', { name: '메시지 입력' }).fill('창을 옮겨도 이어지는 초안')
+    await expect(page.locator('.chat-tab[data-variant="tab"]').getByRole('textbox', { name: '메시지 입력' })).toHaveValue('창을 옮겨도 이어지는 초안')
+    await desktop.getByRole('button', { name: '앱에서 열기', exact: true }).click()
+    await expect(page.getByRole('textbox', { name: '메시지 입력' })).toHaveValue('창을 옮겨도 이어지는 초안')
+
   })
 })

@@ -2,7 +2,9 @@
 
 import { useEffect } from 'react'
 import type { TabDescriptor } from '../../../../shared/tabs'
-import { invoke } from '../../lib/ipc'
+import { readDocumentContexts } from './documentContext'
+import type { MaterialContext } from '../../../../shared/types/chatContext'
+import { invoke, onPush } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import {
@@ -15,11 +17,18 @@ export interface AgentWorkspaceTab {
   kind: string
   title: string
   active: boolean
+  courseId?: string
+  relPath?: string
+  documentId?: string
 }
 
 export interface AgentWorkspaceSyncPayload {
+  activeKind?: string
   selectedCourseId: string | null
   tabs: AgentWorkspaceTab[]
+  documents?: MaterialContext[]
+  selection?: string
+  refreshId?: string
 }
 
 export interface WorkspaceSyncSources {
@@ -52,6 +61,9 @@ export function workspaceSyncPayload(
     if (active) activeFound = true
 
     tabs.push({
+      ...('courseId' in descriptor.payload && descriptor.payload.courseId ? { courseId: descriptor.payload.courseId } : {}),
+      ...('relPath' in descriptor.payload ? { relPath: descriptor.payload.relPath } : {}),
+      documentId: tabPanelId(descriptor),
       kind: descriptor.kind,
       title: tabTitle(descriptor),
       active
@@ -59,6 +71,7 @@ export function workspaceSyncPayload(
   }
 
   return {
+    ...(sources.activeDescriptor ? { activeKind: sources.activeDescriptor.kind } : {}),
     selectedCourseId: sources.selectedCourseId,
     tabs
   }
@@ -82,10 +95,14 @@ export function useAgentWorkspaceSync(): void {
     let timer: number | null = null
     let lastSent = ''
 
-    const publish = (): void => {
+    const publish = (refreshId?: string): void => {
       timer = null
       const payload = currentPayload()
       if (payload === null) return
+      payload.documents = readDocumentContexts()
+      const selected = window.getSelection()?.toString().trim()
+      if (selected && !document.activeElement?.closest('.chat-tab,.assistant-layer')) payload.selection = selected.slice(0, 8000)
+      if (refreshId) payload.refreshId = refreshId
       const serialized = JSON.stringify(payload)
       if (serialized === lastSent) return
 
@@ -93,7 +110,7 @@ export function useAgentWorkspaceSync(): void {
         const request = invoke('agent:syncWorkspace', payload)
         lastSent = serialized
         void request.catch(() => {
-          // The agent simply will not see this snapshot; do not disturb the student.
+          if (lastSent === serialized) lastSent = ''
         })
       } catch {
         // A synchronous transport failure must not escape a store notification.
@@ -102,17 +119,25 @@ export function useAgentWorkspaceSync(): void {
 
     const schedule = (): void => {
       if (timer !== null) window.clearTimeout(timer)
-      timer = window.setTimeout(publish, SYNC_DEBOUNCE_MS)
+      timer = window.setTimeout(() => publish(), SYNC_DEBOUNCE_MS)
     }
 
+    const selectionChanged = (): void => { if (window.getSelection()?.toString().trim()) publish() }
+    document.addEventListener('selectionchange', selectionChanged)
+    const blurred = (): void => publish()
+    window.addEventListener('blur', blurred)
     schedule()
     const unsubWorkspace = useWorkspaceStore.subscribe(schedule)
     // Course selection is also the context used by plugin commands. Publishing
     // it immediately avoids a freshly-created/selected course briefly looking
     // like "no course" when a command is invoked inside the debounce window.
-    const unsubCourses = useCoursesStore.subscribe(publish)
+    const unsubCourses = useCoursesStore.subscribe(() => publish())
+    const offRefresh = onPush('assistant:contextRefresh', ({ requestId }) => publish(requestId))
     return () => {
       if (timer !== null) window.clearTimeout(timer)
+      document.removeEventListener('selectionchange', selectionChanged)
+      window.removeEventListener('blur', blurred)
+      offRefresh()
       unsubWorkspace()
       unsubCourses()
     }

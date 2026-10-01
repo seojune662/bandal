@@ -93,6 +93,9 @@ const PUSH_CHANNELS = [
   'agentTools:unavailable',
   'agentTools:changed',
   // -- desktop overlay ------------------------------------------------------
+  'assistant:contextChanged',
+  'assistant:contextRefresh',
+  'assistant:approval',
   'assistant:state',
   'assistant:prompt',
   'overlay:state',

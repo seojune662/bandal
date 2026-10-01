@@ -596,6 +596,14 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
 
   // -- chat -----------------------------------------------------------------
   /** Opens (or resumes) one conversation of a course. */
+  'chat:context': { req: { courseId: string }; res: import('../types/chatContext').MessageContextSnapshot }
+  'assistant:capture': { req: { region: boolean }; res: import('../types/chat').ChatAttachment | null }
+  'assistant:selection': { req: { action: 'get' | 'cancel' | 'select'; rect?: { x: number; y: number; width: number; height: number } }; res: { image?: string } }
+  'assistant:approval': { req: { conversationId: string; visible: boolean }; res: { ok: true } }
+  'chat:accessPolicy': {
+    req: { courseId: string; sessionId: string; policy?: import('../types/aiAccess').AiAccessPolicy }
+    res: import('../types/aiAccess').AiAccessPolicy
+  }
   'chat:open': {
     req: { courseId: string; sessionId: string; surface?: ChatSurface }
     res: ChatOpenResult
@@ -1038,8 +1046,12 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
    */
   'agent:syncWorkspace': {
     req: {
+      activeKind?: string
       selectedCourseId: string | null
-      tabs: { kind: string; title: string; active: boolean }[]
+      tabs: { kind: string; title: string; active: boolean; courseId?: string; relPath?: string; documentId?: string }[]
+      documents?: import('../types/chatContext').MaterialContext[]
+      selection?: string
+      refreshId?: string
     }
     res: { ok: true }
   }
@@ -1506,7 +1518,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   /** Answer to a destructive tool waiting for the student. */
   'agentTools:respondConfirm': {
     req: AgentConfirmResponse
-    res: { ok: true }
+    res: { ok: true; state?: import('../types/agentTools').AgentConfirmationState | null }
   }
 
   // -- settings -------------------------------------------------------------
@@ -1936,6 +1948,11 @@ export const IPC_CHANNELS = [
   'board:updateTask',
   'board:reorderTasks',
   'board:deleteTask',
+  'chat:context',
+  'assistant:capture',
+  'assistant:selection',
+  'assistant:approval',
+  'chat:accessPolicy',
   'chat:open',
   'chat:send',
   'chat:cancel',

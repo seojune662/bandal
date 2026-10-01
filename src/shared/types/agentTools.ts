@@ -46,9 +46,7 @@ export interface AgentTurnChanges {
 /**
  * A destructive tool waiting on the student.
  *
- * Deliberately NOT the CLI's own permission flow: Codex has no interactive
- * approval at all (`respondPermission` is a no-op there), so relying on it
- * would leave that provider unguarded.
+ * CLI and Bandal tool requests share the main-process confirmation queue.
  */
 /**
  * What the student is looking at in Bandal right now.
@@ -101,6 +99,8 @@ export type AgentConfirmScope =
 
 export interface AgentConfirmRequest {
   turnId?: string
+  operationKey?: string
+  providerRequestId?: string
   requestId: string
   courseId: string
   /**

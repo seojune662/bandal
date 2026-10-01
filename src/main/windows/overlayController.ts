@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { screen, type BrowserWindow } from 'electron'
+import { screen, BrowserWindow, app } from 'electron'
 import type { PushChannel, PushPayload } from '../../shared/ipc/events'
 import type { OverlayState } from '../../shared/types/overlay'
 import type { Settings } from '../../shared/types/settings'
@@ -132,6 +132,8 @@ export function createOverlayController(
 
   const mainWindowIsActive = (): boolean => {
     const main = deps.getMainWindow()
+    const focused = BrowserWindow.getFocusedWindow?.()
+    if (focused && /[?&]view=(assistant|approval|popup)/.test(focused.webContents.getURL())) return true
     return (
       liveWindow(main) &&
       main === observedMainWindow &&
@@ -142,7 +144,7 @@ export function createOverlayController(
   }
 
   const setDesktopVisible = (visible: boolean): boolean => {
-    const next = visible && settings.assistantMode === 'desktop' && liveWindow(orb)
+    const next = visible && captureConcealments === 0 && settings.assistantMode === 'desktop' && liveWindow(orb)
     if (liveWindow(orb)) {
       if (next) {
         if (!orb.isVisible()) orb.showInactive()
@@ -185,7 +187,7 @@ export function createOverlayController(
     main.on('focus', () => setFocused(true))
     main.on('show', refreshFocused)
     main.on('restore', refreshFocused)
-    main.on('blur', () => setFocused(false))
+    main.on('blur', () => { mainFocused = false; setTimeout(syncMainWindowVisibility, 100) })
     main.on('minimize', () => setFocused(false))
     main.on('hide', () => setFocused(false))
     main.on('closed', () => {
@@ -475,6 +477,8 @@ export function createOverlayController(
     }
     if (courseChanged) broadcastState()
   })
+  app.on('browser-window-focus', syncMainWindowVisibility)
+  app.on('browser-window-blur', () => setTimeout(syncMainWindowVisibility, 100))
   screen.on('display-removed', reclampOrb)
   screen.on('display-metrics-changed', reclampOrb)
 
@@ -511,13 +515,13 @@ export function createOverlayController(
     },
     concealForCapture(): () => void {
       captureConcealments += 1
-      if (captureConcealments === 1) setOverlayContentProtection(true)
+      if (captureConcealments === 1) { setOverlayContentProtection(true); syncMainWindowVisibility() }
       let restored = false
       return (): void => {
         if (restored) return
         restored = true
         captureConcealments = Math.max(0, captureConcealments - 1)
-        if (captureConcealments === 0) setOverlayContentProtection(false)
+        if (captureConcealments === 0) { setOverlayContentProtection(false); syncMainWindowVisibility() }
       }
     }
   }

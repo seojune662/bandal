@@ -9,7 +9,8 @@
  *    block starts or the turn completes.
  *  - `text-final` REPLACES all accumulated text-delta content for a blockId.
  *  - The user's own message is never echoed by the stream — the hook appends
- *    it locally via `appendLocalUserMessage`.
+ *    it locally via `appendLocalUserMessage`; a main-process message push
+ *    reconciles that optimistic message and synchronizes other windows.
  */
 
 import { isAgentProvider } from '../../../../shared/types/agent-events'

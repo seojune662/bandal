@@ -37,7 +37,7 @@ describe('Gemini managed settings', () => {
     expect(path).toBe(join(userDataPath, 'gemini', 'settings.json'))
     expect(statSync(path).mode & 0o777).toBe(0o600)
     expect(settings.security.folderTrust.enabled).toBe(false)
-    expect(settings.tools.core).toEqual([...GEMINI_READ_ONLY_TOOLS])
+    expect(settings.tools.core).toEqual([...GEMINI_READ_ONLY_TOOLS, 'write_file', 'replace'])
     expect(settings.mcpServers['bandal']).toMatchObject({
       headers: { Authorization: 'Bearer ${BANDAL_MCP_TOKEN}' },
       trust: true

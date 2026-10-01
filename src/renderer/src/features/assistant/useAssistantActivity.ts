@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { onPush } from '../../lib/ipc'
 import {
   recordAgentConfirmation,
+  syncConfirmation,
   useAgentToolActivityStore
 } from '../chat/agentToolActivityStore'
 import { useChatSessionStore } from '../chat/chatSessionStore'
@@ -28,6 +29,7 @@ export function useAssistantActivity({
   const answerWhileClosedRef = useRef(false)
   const pendingPermissionSessionsRef = useRef(new Map<string, string>())
   const storeObservedPermissionSessionsRef = useRef(new Set<string>())
+  const busySessions = useRef(new Set<string>())
   const [eventBusy, setEventBusy] = useState(false)
   const [surfaceBusy, setSurfaceBusy] = useState(false)
   const [alert, setAlert] = useState(false)
@@ -40,6 +42,7 @@ export function useAssistantActivity({
   }, [popupOpen])
 
   useEffect(() => {
+    busySessions.current.clear()
     setEventBusy(false)
     setAlert(false)
     setNeedsV1Approval(false)
@@ -78,6 +81,7 @@ export function useAssistantActivity({
 
       for (const event of batch.events) {
         if (
+          event.type === 'turn-started' ||
           event.type === 'text-delta' ||
           event.type === 'text-final' ||
           event.type === 'thinking-delta' ||
@@ -86,6 +90,7 @@ export function useAssistantActivity({
         ) {
           startsActivity = true
         }
+        if (event.type === 'permission-resolved' && pendingPermissionSessionsRef.current.get(batch.sessionId) === event.requestId) { pendingPermissionSessionsRef.current.delete(batch.sessionId); approvalStateChanged = true }
         if (event.type === 'permission-request') {
           const previousRequest =
             pendingPermissionSessionsRef.current.get(batch.sessionId)
@@ -115,7 +120,7 @@ export function useAssistantActivity({
         }
       }
 
-      if (startsActivity) setEventBusy(true)
+      if (startsActivity) { busySessions.current.add(batch.sessionId); setEventBusy(true) }
       if (approvalStateChanged) {
         setNeedsV1Approval(pendingPermissionSessionsRef.current.size > 0)
       }
@@ -123,7 +128,8 @@ export function useAssistantActivity({
         answerWhileClosedRef.current = true
       }
       if (endsActivity) {
-        setEventBusy(false)
+        busySessions.current.delete(batch.sessionId)
+        setEventBusy(busySessions.current.size > 0)
         if (answerWhileClosedRef.current && !popupOpenRef.current) {
           setAlert(true)
         }
@@ -157,12 +163,14 @@ export function useAssistantActivity({
     const unsubscribeStore = useAgentToolActivityStore.subscribe(
       updateFromStore
     )
+    const unsubscribeResolution = onPush('agentTools:confirmationChanged', state => { if (state.request.courseId === courseId) syncConfirmation(state) })
     const unsubscribeConfirm = onPush('agentTools:confirm', (request) => {
       if (request.courseId !== courseId) return
       recordAgentConfirmation(request)
     })
     updateFromStore()
     return () => {
+      unsubscribeResolution()
       unsubscribeConfirm()
       unsubscribeStore()
     }

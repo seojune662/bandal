@@ -1,3 +1,4 @@
+import { registerDocumentContext } from '../../agent/documentContext'
 import { memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { PptxPresentation } from '@silurus/ooxml/pptx'
 import { DrawingLayer } from '../../pdf/tools/DrawingLayer'
@@ -84,6 +85,10 @@ export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onF
   const pageSyncScroll = useRef(new PageSyncScroll())
   const cache = useMemo(() => presentation ? new SlideRenderCache(presentation) : null, [presentation])
   useEffect(() => () => cache?.dispose(), [cache])
+  useEffect(() => registerDocumentContext(`slides:${courseId}:${relPath}`, () => ({
+    courseId, relPath, kind: 'presentation', title: fileName, page: currentPage,
+    text: scroller.current?.querySelector(`[data-slide-index="${currentPage - 1}"] .presentation-page__text`)?.textContent?.slice(0, 10000) ?? ''
+  })), [courseId, relPath, fileName, currentPage])
   const drawings = useDrawings(courseId, relPath)
   const connections = useMaterialConnections(courseId, relPath)
   const pageConnections = connections.outgoing.filter((entry) => entry.kind === 'pdf-page-note')

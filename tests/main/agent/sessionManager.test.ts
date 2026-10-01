@@ -510,7 +510,7 @@ describe('SessionManager', () => {
     })
   })
 
-  test('permission-request with a stored grant is auto-allowed silently', async () => {
+  test('legacy unscoped grants do not authorize new write access', async () => {
     repo.addGrant(courseId, 'Write')
     await manager.send(courseId, conversationId, 'write something')
     const session = fake.sessions[0]!
@@ -520,12 +520,8 @@ describe('SessionManager', () => {
       toolName: 'Write',
       input: { file_path: 'x.txt' }
     })
-    expect(session.permissionResponses).toEqual([
-      { requestId: 'req-1', response: { behavior: 'allow' } }
-    ])
-    expect(
-      emitted.filter(({ event }) => event.type === 'permission-request')
-    ).toHaveLength(0)
+    expect(session.permissionResponses).toEqual([])
+    expect(emitted.filter(({ event }) => event.type === 'permission-request')).toHaveLength(1)
   })
 
   test('respondPermission with remember=true persists a grant', async () => {
@@ -608,6 +604,26 @@ describe('SessionManager', () => {
       true
     )
   })
+
+  test('opening mid-turn retains provider block IDs so the next delta appends to the same block', async () => {
+    await manager.send(courseId, conversationId, 'Question')
+    fake.sessions[0]!.emit({ type: 'text-delta', blockId: 'provider-block', text: 'Partial answer' })
+    const opened = await manager.open(courseId, conversationId)
+    expect(opened.sessionInfo?.status).toBe('running')
+    expect(opened.history.at(-1)).toMatchObject({ role: 'assistant', blocks: [{ id: 'provider-block', payload: { text: 'Partial answer' } }] })
+  })
+  test('unchanged material content is not repeated in a warm conversation, but edited content is', async () => {
+    const snapshot = { id: 'first', courseId, courseName: 'Course', capturedAt: '', refresh: 'fresh' as const, material: { courseId, kind: 'note', title: 'Note', text: 'Private unique passage' } }
+    await manager.send(courseId, conversationId, 'First question', [], { snapshot })
+    fake.sessions[0]!.emit({ type: 'turn-complete', stopReason: 'success' })
+    await manager.send(courseId, conversationId, 'Follow up', [], { snapshot })
+    expect(fake.sessions[0]!.sentMessages[0]).toContain('Private unique passage')
+    expect(fake.sessions[0]!.sentMessages[1]).not.toContain('Private unique passage')
+    fake.sessions[0]!.emit({ type: 'turn-complete', stopReason: 'success' })
+    await manager.send(courseId, conversationId, 'After edit', [], { snapshot: { ...snapshot, id: 'edited', material: { ...snapshot.material, text: 'Updated passage' } } })
+    expect(fake.sessions[0]!.sentMessages[2]).toContain('Updated passage')
+  })
+
 })
 
 describe('chatRepo conversations', () => {
@@ -692,7 +708,7 @@ describe('buildStudyPrompt', () => {
     const desktop = buildStudyPrompt('OS', { surface: 'desktop' })
 
     expect(app).not.toContain('desktop_screenshot')
-    expect(desktop).toContain('먼저 `desktop_screenshot`을 부른 뒤 답하세요')
+    expect(desktop).toContain('데스크톱 화면을 임의로 캡처하지 마세요')
     expect(desktop).toContain('한 턴에 6장까지예요')
     expect(desktop).toContain('아직 클릭이나 입력은 못 해요')
     expect(Buffer.byteLength(desktop.slice(app.length), 'utf8'))
@@ -747,4 +763,5 @@ describe('chatRepo.markDanglingInterrupted', () => {
     ).status
     expect(status).toBe('idle')
   })
+
 })

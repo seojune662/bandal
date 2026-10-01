@@ -355,3 +355,14 @@ html[data-overlay-view='assistant'], html[data-overlay-view='assistant'] body, h
 .assistant-native .assistant-popup { position:absolute; inset:0; width:100%; height:100%; min-width:0; min-height:0; max-width:none; max-height:none; box-shadow:none; }
 .assistant-native .assistant-popup__header { -webkit-app-region:drag; }
 .assistant-native .assistant-popup__controls, .assistant-native .assistant-popup__opacity, .assistant-native button { -webkit-app-region:no-drag; }
+/* Compact independent assistant, shared across both entry points. */
+.assistant-layer { --assistant-popup-width: 420px; --assistant-popup-height: 600px; --assistant-popup-min-height: 420px; }
+.assistant-popup { min-width: min(360px, 100vw); background: var(--bg-app); backdrop-filter: none; border-radius: 16px; box-shadow: 0 12px 40px #00000020; }
+.assistant-popup__header { background: var(--bg-app); min-height: 48px; padding: 8px 12px; }
+.assistant-popup__body { background: var(--bg-app); }
+.assistant-popup__opacity { display: none; }
+.assistant-orb { background: var(--bg-app); color: var(--text-primary); box-shadow: 0 3px 16px #00000018; }
+.assistant-native .assistant-popup { border-radius: 0; }
+
+.assistant-popup__resize[data-corner="top-left"] { opacity: 0; }
+.assistant-popup__resize[data-corner="top-left"]:hover, .assistant-popup__resize[data-corner="top-left"]:focus-visible { opacity: .7; }

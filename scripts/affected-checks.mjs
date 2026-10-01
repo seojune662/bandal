@@ -63,7 +63,7 @@ export function planChecks(files, full = false) {
   if (has(/^scripts\/(upload-release-assets|lib\/release-assets|test-release-assets)\.mjs$/)) scriptTests.add('scripts/test-release-assets.mjs')
   const e2e = new Set(files.filter((f) => /^e2e\/[^/]+\.spec\.ts$/.test(f)))
   const browserSettings = /^src\/renderer\/src\/features\/settings\/(browser\/|(?:SavedLoginsSettings|BrowsingDataPanel)\.tsx$)/
-  const sharedAppearance = files.some(file => !browserSettings.test(file) && /^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/.test(file))
+  const sharedAppearance = files.some(file => !browserSettings.test(file) && file !== 'src/renderer/src/components/BandalMark.tsx' && /^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/.test(file))
   if (sharedAppearance) {
     for (const spec of ['theme', 'sidebars', 'settingsShell', 'uiRedesign', 'tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus']) e2e.add(`e2e/${spec}.spec.ts`)
     scriptTests.add('scripts/check-contrast.mjs')
@@ -100,6 +100,7 @@ export function planChecks(files, full = false) {
     }
   }
   // At least one launch for an installer with no feature-specific E2E coverage.
+  if (has(/src\/(main\/(features\/(agent|agentTools|browserAgent|desktopAgent)|windows\/(assistantWindow|approvalWindow|screenSelection|overlay))|renderer\/src\/features\/(chat|assistant|overlay)|shared\/(types\/(chat|aiAccess)|moonGeometry|brandMark|screenGeometry))/)) { e2e.add('e2e/chatUx.spec.ts'); e2e.add('e2e/desktopOrb.spec.ts'); e2e.add('e2e/aiContext.spec.ts') }
   if (e2e.size === 0) e2e.add('e2e/startup.spec.ts')
   const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f))
   if (sharedAppearance) unitInputs.push('src/shared/theme.ts', 'src/renderer/src/features/courses/CourseSidebar.tsx', 'src/renderer/src/features/settings/AppearancePanel.tsx')

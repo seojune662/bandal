@@ -103,7 +103,7 @@ export function installTray(deps: TrayDeps): {
   }
 
   function sync(settings = deps.getSettings()): void {
-    if (settings.assistantMode !== 'desktop') {
+    if (process.platform !== 'darwin' && settings.assistantMode !== 'desktop') {
       destroy()
       return
     }

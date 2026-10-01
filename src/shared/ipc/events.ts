@@ -320,6 +320,9 @@ export interface PushEvents {
   // -- group whiteboard -----------------------------------------------------
   'whiteboard:changed': WhiteboardChanged
   // -- desktop overlay ------------------------------------------------------
+  'assistant:contextChanged': { courseId: string }
+  'assistant:contextRefresh': { requestId: string }
+  'assistant:approval': { conversationId: string }
   'assistant:state': import('../types/assistantWindow').AssistantWindowState
   'assistant:prompt': { conversationId: string; prompt: import('../types/assistantWindow').AssistantPrompt }
   'overlay:state': OverlayState

@@ -1,3 +1,8 @@
+import { createHash } from 'node:crypto'
+import type { MaterialContext, MessageContextSnapshot } from '../../shared/types/chatContext'
+import { selectScreen, screenSelectionRequest } from '../windows/screenSelection'
+import { approvalWindowRequest, dismissApprovalWhenResolved } from '../windows/approvalWindow'
+import { DEFAULT_AI_ACCESS, parseAiAccess } from '../../shared/types/aiAccess'
 import { registerBrowserImportHandlers } from './browserImportHandlers'
 import { writeFileAtomic, quarantineFile } from '../lib/atomicWrite'
 import { createQuitDrain } from '../lib/quitDrain'
@@ -1166,8 +1171,15 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // caps stop a poisoned document from creating hundreds of anything.
   const agentJournal = createAgentJournal(db)
   const agentConfirmer = createAgentConfirmer({
+    allow: request => {
+      const policy = chatRepo.getSession(request.conversationId)?.accessPolicy ?? DEFAULT_AI_ACCESS
+      if (policy.mode !== 'full' || request.tool.startsWith('cli:')) return false
+      if (/^(browser_|lms_)/.test(request.tool)) return policy.scope.browser
+      if (/^(desktop_|clipboard)/.test(request.tool)) return policy.scope.screen
+      return policy.scope.course && request.courseId === chatRepo.getSession(request.conversationId)?.courseId
+    },
     emit: (request) => broadcast('agentTools:confirm', request),
-    changed: (state) => broadcast('agentTools:confirmationChanged', state)
+    changed: (state) => { broadcast('agentTools:confirmationChanged', state); if (state.status !== 'pending') dismissApprovalWhenResolved(state.request.conversationId, agentConfirmer.list(state.request.conversationId).some(item => item.status === 'pending')) }
   })
   const packStore = createPackStore({ userDataPath: deps.userDataPath })
   // One guard is shared by every MCP server and the pack runner. Creating a
@@ -1579,9 +1591,33 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
    * why an instruction about the sidebar was resolved against the portal.
    */
   let workspaceSnapshot: {
+    activeKind?: string
     selectedCourseId: string | null
     tabs: { kind: string; title: string; active: boolean }[]
   } = { selectedCourseId: null, tabs: [] }
+
+  const lastMaterials = new Map<string, MaterialContext>()
+  const updateMaterial = (courseId: string, material: MaterialContext): void => {
+    const previous = lastMaterials.get(courseId)
+    if (JSON.stringify(previous) === JSON.stringify(material)) return
+    lastMaterials.set(courseId, material)
+    broadcast('assistant:contextChanged', { courseId })
+  }
+  const contextRefreshes = new Map<string, () => void>()
+  const refreshWorkspace = async (): Promise<boolean> => {
+    const requestId = randomUUID()
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { contextRefreshes.delete(requestId); resolve(false) }, 1000)
+      contextRefreshes.set(requestId, () => { clearTimeout(timer); contextRefreshes.delete(requestId); resolve(true) })
+      broadcast('assistant:contextRefresh', { requestId })
+    })
+  }
+  const snapshotContext = async (courseId: string): Promise<MessageContextSnapshot> => {
+    const fresh = await refreshWorkspace()
+    const material = lastMaterials.get(courseId)
+    return { id: createHash('sha256').update(JSON.stringify([courseId, material])).digest('hex').slice(0, 20), courseId, courseName: coursesRepo.getById(courseId).name, capturedAt: new Date().toISOString(), refresh: fresh ? 'fresh' : 'cached', ...(material ? { material: { ...material } } : {}) }
+  }
+  handle('chat:context', req => snapshotContext(req.courseId))
 
   const appStateSnapshot = (): AgentAppState => {
     const groups = courseGroupsRepo.list()
@@ -1636,15 +1672,33 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('agent:syncWorkspace', (req) => {
     const previousCourseId = workspaceSnapshot.selectedCourseId
     workspaceSnapshot = {
+      ...(req.activeKind ? { activeKind: req.activeKind } : {}),
       selectedCourseId: req.selectedCourseId,
       tabs: req.tabs.map((tab) => ({ ...tab }))
     }
+    const active = req.tabs.find(tab => tab.active && !['chat', 'group-chat', 'friends'].includes(tab.kind) && tab.courseId)
+    if (active?.courseId) {
+      const detail = req.documents?.find(doc => doc.courseId === active.courseId && doc.relPath === active.relPath)
+      updateMaterial(active.courseId, { courseId: active.courseId, kind: active.kind, title: active.title, ...(active.relPath ? { relPath: active.relPath } : {}), ...(active.documentId ? { documentId: active.documentId } : {}), ...detail, ...(req.selection ? { selection: req.selection.slice(0, 8000) } : {}) })
+    }
+    for (const doc of req.documents ?? []) {
+      const last = lastMaterials.get(doc.courseId)
+      if (last?.relPath && last.relPath === doc.relPath) updateMaterial(doc.courseId, { ...last, ...doc })
+    }
+    if (req.activeKind === 'browser' && req.selectedCourseId === openBrowserTabs.courseId) {
+      const tab = openBrowserTabs.tabs.find(tab => tab.tabId === openBrowserTabs.activeTabId)
+      if (tab) updateMaterial(openBrowserTabs.courseId, { courseId: openBrowserTabs.courseId, kind: 'browser', title: tab.title, browserTabId: tab.tabId, url: tab.url, ...(req.selection ? { selection: req.selection } : {}) })
+    }
+    if (req.refreshId) contextRefreshes.get(req.refreshId)?.()
     if (previousCourseId !== req.selectedCourseId) {
       emitPluginEvent('course:changed', { courseId: req.selectedCourseId })
     }
     return OK
   })
   handle('browserAgent:syncTabs', (req) => {
+    const current = req.tabs.find(tab => tab.tabId === req.activeTabId)
+    if (current && workspaceSnapshot.selectedCourseId === req.courseId && workspaceSnapshot.activeKind === 'browser') updateMaterial(req.courseId, { courseId: req.courseId, kind: 'browser', title: current.title, browserTabId: current.tabId, url: current.url })
+
     openBrowserTabs = {
       courseId: req.courseId,
       tabs: req.tabs.map((tab) => ({ ...tab })),
@@ -1719,6 +1773,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         boardRepo,
         canvasRepo,
         packRunGuard,
+        accessMode: () => chatRepo.getSession(sessionKey)?.accessPolicy?.mode ?? 'auto',
         confirm: async (request) =>
           (await agentConfirmer.confirm({ ...request, conversationId: sessionKey, turnId: `${sessionKey}:${getTurnSeq()}` })) !==
           false,
@@ -1727,7 +1782,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
           sessionKey,
           () => `${sessionKey}:${getTurnSeq()}`
         ),
-        ...(surface === 'desktop'
+        ...(true
           ? {
               desktop: createDesktopTools({
                 courseId,
@@ -1847,6 +1902,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const sessionManager = createSessionManager({
     adapter: claudeAdapter,
     repo: chatRepo,
+    requestPermission: (request) => agentConfirmer.confirm(request),
+    onPermissionResolved: (sessionId, requestId) => agentConfirmer.cancelProviderRequest(sessionId, requestId),
+    eventCheckpoint: sessionId => eventBatcher.checkpoint(sessionId),
+    onUserMessage: message => broadcast('chat:message', { sessionId: message.sessionId, message }),
     getCourse: (courseId) => ({
       folder: coursesRepo.getFolder(courseId),
       name: coursesRepo.getById(courseId).name
@@ -1885,6 +1944,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const codexSessionManager = createSessionManager({
     adapter: codexAdapter,
     repo: chatRepo,
+    requestPermission: (request) => agentConfirmer.confirm(request),
+    onPermissionResolved: (sessionId, requestId) => agentConfirmer.cancelProviderRequest(sessionId, requestId),
+    eventCheckpoint: sessionId => eventBatcher.checkpoint(sessionId),
+    onUserMessage: message => broadcast('chat:message', { sessionId: message.sessionId, message }),
     getCourse: (courseId) => ({
       folder: coursesRepo.getFolder(courseId),
       name: coursesRepo.getById(courseId).name
@@ -1904,6 +1967,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const geminiSessionManager = createSessionManager({
     adapter: geminiAdapter,
     repo: chatRepo,
+    requestPermission: (request) => agentConfirmer.confirm(request),
+    onPermissionResolved: (sessionId, requestId) => agentConfirmer.cancelProviderRequest(sessionId, requestId),
+    eventCheckpoint: sessionId => eventBatcher.checkpoint(sessionId),
+    onUserMessage: message => broadcast('chat:message', { sessionId: message.sessionId, message }),
     getCourse: (courseId) => ({
       folder: coursesRepo.getFolder(courseId),
       name: coursesRepo.getById(courseId).name
@@ -2068,7 +2135,11 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       const manager = resolveManager(req.sessionId)
       const opened = await manager.open(req.courseId, req.sessionId)
       if (opened.sessionInfo?.status === 'running') throw new Error('진행 중인 응답이 끝난 뒤 보내 주세요.')
-      const context = req.context ? { ...req.context } : undefined
+      const context = { ...req.context, snapshot: await snapshotContext(req.courseId) }
+      if (req.context?.excludeCurrentMaterial) delete context.snapshot.material
+      try { contextWriter.rebuild(req.courseId, true) } catch { context.snapshot.refresh = 'failed' }
+      // Only the attached page/selection is inline. The rest remains in the course file.
+      if (context.snapshot.material?.relPath) materialsRepo.absolutePathFor(req.courseId, context.snapshot.material.relPath)
       if (context) delete context.outputDir
       if (context?.files && context.files.length > 20) throw new Error('파일은 한 번에 20개까지 첨부할 수 있어요.')
       for (const file of context?.files ?? []) materialsRepo.absolutePathFor(req.courseId, file.relPath)
@@ -2241,8 +2312,21 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   )
   handle('agentTools:confirmations', (req) => agentConfirmer.list(req.conversationId))
   handle('agentTools:respondConfirm', (req) => {
-    agentConfirmer.resolve(req)
-    return OK
+    return { ok: true as const, state: agentConfirmer.resolve(req) }
+  })
+
+  handle('chat:accessPolicy', async (req) => {
+    const existing = chatRepo.getSession(req.sessionId)
+    if (existing && existing.courseId !== req.courseId) throw new Error('대화가 이 과목에 속하지 않아요.')
+    if (!req.policy) return existing?.accessPolicy ?? structuredClone(DEFAULT_AI_ACCESS)
+    const manager = resolveManager(req.sessionId)
+    const opened = await manager.open(req.courseId, req.sessionId)
+    if (opened.sessionInfo?.status === 'running') throw new Error('진행 중인 응답을 마친 뒤 허용 모드를 바꿔 주세요.')
+    if (!existing) chatRepo.createSession(req.sessionId, req.courseId, opened.sessionInfo?.provider ?? getSettings().agentProvider)
+    const policy = parseAiAccess(req.policy)
+    chatRepo.setAccessPolicy(req.sessionId, policy)
+    manager.close(req.courseId, req.sessionId)
+    return policy
   })
 
   handle('chat:respondPermission', (req) => {
@@ -2443,6 +2527,12 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // `resolve()` deliberately has no channel. The password is read here, put
   // straight into the guest page, and never travels back to the renderer.
   initializeBrowserProfiles(db)
+  handle('assistant:capture', async req => {
+    const restore = deps.overlay.concealForCapture()
+    try { const image = await selectScreen(req.region); if (image) deps.overlay.setScreenPermission('granted'); return image } finally { restore() }
+  })
+  handle('assistant:selection', (req, event) => screenSelectionRequest(event, req))
+  handle('assistant:approval', (req, event) => { approvalWindowRequest(event, req); return OK })
   handle('assistant:window', (req, event) => assistantWindowRequest(event, req))
   handle('browser:profiles', () => listBrowserProfiles())
   handle('browser:saveProfile', (req) => saveBrowserProfile(req))

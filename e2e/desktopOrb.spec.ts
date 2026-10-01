@@ -150,7 +150,8 @@ test.describe('desktop assistant orb', () => {
       await expect.poll(() => isOverlayVisible(app, 'popup')).toBe(true)
       await expect
         .poll(() => visibleWindowCount(app))
-        .toBe(visibleBeforeClick + 1)
+        .toBe(visibleBeforeClick)
+      await expect.poll(() => isOverlayVisible(app, 'orb')).toBe(false)
       await expect
         .poll(() =>
           app.evaluate(

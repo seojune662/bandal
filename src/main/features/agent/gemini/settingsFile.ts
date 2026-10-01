@@ -29,6 +29,7 @@ export interface GeminiMcpServerSettings {
 interface GeminiSettingsOptions {
   userDataPath: string
   useApiKey?: boolean
+  accessPolicy?: import('../../../../shared/types/aiAccess').AiAccessPolicy
   mcpHttp?: { url: string; token: string }
   externalServers?: Record<string, GeminiMcpServerSettings>
 }
@@ -47,7 +48,7 @@ export function writeGeminiSettings(options: GeminiSettingsOptions): string {
         Authorization: `Bearer \${${GEMINI_MCP_TOKEN_ENV_VAR}}`
       },
       trust: true,
-      timeout: 60_000
+      timeout: 300_000
     }
   }
   const settings = {
@@ -58,7 +59,7 @@ export function writeGeminiSettings(options: GeminiSettingsOptions): string {
         : {})
     },
     mcpServers,
-    tools: { core: [...GEMINI_READ_ONLY_TOOLS] }
+    tools: { core: [...GEMINI_READ_ONLY_TOOLS.filter(tool => !options.accessPolicy || options.accessPolicy.scope.browser || !['web_fetch', 'google_web_search'].includes(tool)), 'write_file', 'replace'], shell: { enableInteractiveShell: false } }
   }
 
   mkdirSync(directory, { recursive: true, mode: 0o700 })

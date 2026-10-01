@@ -13,3 +13,11 @@ export function litHalfPath(
   tilt: number,
   bulge: number
 ): string
+export const MOON_SHAPES: { name: string; pivot: number[]; path: string }[]
+export const MOON_SCALE: number
+export const MOON_VIEWBOX: string
+export const MOON_LOOP_MS: number
+export const MOON_INTRO_MS: number
+export function moonPose(progress: number): [number, number]
+export function moonTransform(index: number, angle?: number): string
+export function moonSvgPaths(fill?: string): string

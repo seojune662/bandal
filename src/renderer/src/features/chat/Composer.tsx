@@ -1,3 +1,5 @@
+import { ContextChips } from './ContextChips'
+import { AccessPolicyMenu } from './AccessPolicyMenu'
 import {
   forwardRef,
   useCallback,
@@ -414,6 +416,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
         })
         updateComposerDraft(conversationId, (current) => ({ files: [...current.files, ...files].slice(0, 20) }))
       }}>
+        <ContextChips courseId={courseId} conversationId={conversationId} />
         {hasContext && <div className="chat-context-chips" aria-label="첨부한 맥락">
           {draftState.files.map((file, index) => <span className="chat-context-chip" key={file.relPath ?? file.path}>{file.name}<button type="button" aria-label={`${file.name} 제거`} disabled={submitting} onClick={() => updateComposerDraft(conversationId, (current) => ({ files: current.files.filter((_, i) => i !== index) }))}>×</button></span>)}
           {draftState.skills.map((skill) => <span className="chat-context-chip" key={skill.id}>{draftState.creation ? `${CREATION_LABELS[draftState.creation]} 만들기 · ` : ''}{skill.name}<button type="button" aria-label={`${skill.name} 제거`} disabled={submitting} onClick={() => updateComposerDraft(conversationId, (current) => ({ skills: current.skills.filter((item) => item.id !== skill.id), creation: null }))}>×</button></span>)}
@@ -549,7 +552,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
             }
           />
           <div className="chat-composer-controls">
-          {modelControl}
           {isStreaming ? (
             <button
               type="button"
@@ -584,10 +586,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
           )}
           </div>
         </div>
+        <div className="chat-composer-toolbar"><AccessPolicyMenu courseId={courseId} conversationId={conversationId} disabled={isStreaming || submitting} />{modelControl}</div>
         <div className="chat-composer__hint" aria-live="polite">
           {isWaitingPermission ? (
             <span className="chat-composer__hint-waiting">
-              도구 실행 허용을 기다리는 중이에요 — 위 카드에서 응답해 주세요.
+              도구 실행 허용을 기다리는 중이에요 — 옆의 승인창에서 응답해 주세요.
             </span>
           ) : isStreaming ? (
             <span>답변을 작성하고 있어요…</span>

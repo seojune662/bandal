@@ -1,7 +1,8 @@
+import { prepareQuickAction, useOrbMenu } from '../assistant/OrbQuickMenu'
+import { showToast } from '../../app/toast'
 import {
   useEffect,
   useRef,
-  useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent
 } from 'react'
@@ -72,12 +73,15 @@ export function OverlayOrbApp(): JSX.Element {
     courseId: state.courseId,
     popupOpen: state.popupOpen
   })
-  const [hovered, setHovered] = useState(false)
   const gestureRef = useRef<OrbPointerGesture | null>(null)
   const orbRef = useRef<HTMLButtonElement>(null)
+  const menu = useOrbMenu(orbRef, action => {
+    if (!state.conversationId) { void invoke('overlay:togglePopup', { open: true }); return }
+    void prepareQuickAction(action, state.conversationId).then(ready => { if (ready) return invoke('overlay:togglePopup', { open: true }); return undefined }).catch(error => showToast(error instanceof Error ? error.message : '동작을 시작하지 못했어요.', 'danger'))
+  }, true)
   const lastHitRef = useRef<boolean | null>(null)
 
-  const markState: BandalOrbState = orbStateForActivity(activity, hovered)
+  const markState: BandalOrbState = orbStateForActivity(activity, menu.hovered)
 
   useEffect(() => {
     const updateHitTest = (hit: boolean): void => {
@@ -90,7 +94,7 @@ export function OverlayOrbApp(): JSX.Element {
         '.assistant-charm__character'
       )
       updateHitTest(
-        isOverlayOrbHit(
+        document.querySelector('.orb-quick-menu') !== null || isOverlayOrbHit(
           { x: event.clientX, y: event.clientY },
           orbRef.current?.getBoundingClientRect() ?? null,
           charm?.getBoundingClientRect() ?? null
@@ -111,6 +115,7 @@ export function OverlayOrbApp(): JSX.Element {
 
   const beginDrag = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     if (event.button !== 0) return
+    menu.close()
     gestureRef.current = {
       pointerId: event.pointerId,
       screenX: event.screenX,
@@ -157,14 +162,15 @@ export function OverlayOrbApp(): JSX.Element {
 
   return (
     <>
+      {menu.menu}
       <CharmLayer orbRef={orbRef} orbState={markState} />
       <button
         ref={orbRef}
         type="button"
         className="overlay-orb"
         aria-label="반달 AI"
-        onPointerEnter={() => setHovered(true)}
-        onPointerLeave={() => setHovered(false)}
+        onPointerEnter={menu.enter} onFocus={menu.enter}
+        onPointerLeave={menu.leave} onBlur={menu.leave}
         onPointerDown={beginDrag}
         onPointerUp={(event) => finishDrag(event, false)}
         onPointerCancel={(event) => finishDrag(event, true)}

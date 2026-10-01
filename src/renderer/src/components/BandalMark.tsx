@@ -1,112 +1,58 @@
-import { useId } from 'react'
-import {
-  MARK_CX as CX,
-  MARK_CY as CY,
-  MARK_RADIUS as R,
-  MOON_TILT as TILT,
-  TERMINATOR_BULGE,
-  litHalfPath
-} from '../../../shared/brandMark'
-
-/**
- * The 반달 mark — a lit spherical half held inside its complete, shadowed rim.
- * Geometry follows the app icon: radius 9, a -14° axis, and a terminator that
- * bows 15% of the radius into the unlit side.
- */
-
-const TERMINATOR_RX = R * TERMINATOR_BULGE
-
-/** Lit hemisphere, closed by the curved terminator rather than a diameter. */
-const LIT_HALF = litHalfPath(CX, CY, R, TILT, TERMINATOR_BULGE)
-
-const LIT_LIMB = `M ${CX} ${CY - R} A ${R} ${R} 0 0 1 ${CX} ${CY + R}`
-const TERMINATOR = `M ${CX} ${CY + R} A ${TERMINATOR_RX} ${R} 0 0 1 ${CX} ${CY - R}`
+import { useEffect, useRef } from 'react'
+import { MOON_SHAPES, MOON_VIEWBOX, MOON_LOOP_MS, MOON_INTRO_MS, moonPose, moonTransform } from '../../../shared/brandMark'
 
 interface BandalMarkProps {
-  /** Rendered box in px. Legible down to 14. */
   size?: number
   className?: string
-  /**
-   * Accessible name. Omit for decorative use — the mark is then hidden from
-   * assistive tech instead of announcing a meaningless graphic.
-   */
   title?: string
+  motion?: 'idle' | 'loop' | 'intro'
 }
 
-export function BandalMark({
-  size = 18,
-  className,
-  title
-}: BandalMarkProps): JSX.Element {
-  const surfaceId = `bandal-surface-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
-  const isCompact = size <= 18
-
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      className={className}
-      role={title !== undefined ? 'img' : undefined}
-      aria-hidden={title === undefined ? true : undefined}
-      focusable="false"
-      shapeRendering="geometricPrecision"
-    >
-      {title !== undefined && <title>{title}</title>}
-      {!isCompact && (
-        <defs>
-          <linearGradient id={surfaceId} x1="4" y1="4" x2="20" y2="20">
-            <stop offset="0" stopColor="currentColor" stopOpacity={0.84} />
-            <stop offset="0.52" stopColor="currentColor" />
-            <stop offset="1" stopColor="currentColor" stopOpacity={0.88} />
-          </linearGradient>
-        </defs>
-      )}
-      <g transform={`rotate(${TILT} ${CX} ${CY})`}>
-        {/* The low-alpha body keeps the shadow side spherical on every theme. */}
-        <circle
-          cx={CX}
-          cy={CY}
-          r={R}
-          fill="currentColor"
-          opacity={isCompact ? 0.14 : 0.1}
-        />
-        <path
-          d={LIT_HALF}
-          fill={isCompact ? 'currentColor' : `url(#${surfaceId})`}
-        />
-        <circle
-          cx={CX}
-          cy={CY}
-          r={R}
-          fill="none"
-          stroke="currentColor"
-          strokeOpacity={isCompact ? 0.5 : 0.4}
-          strokeWidth={0.9}
-          vectorEffect="non-scaling-stroke"
-        />
-        {!isCompact && (
-          <>
-            <path
-              d={LIT_LIMB}
-              fill="none"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeOpacity={0.92}
-              strokeWidth={0.8}
-              vectorEffect="non-scaling-stroke"
-            />
-            <path
-              d={TERMINATOR}
-              fill="none"
-              stroke="currentColor"
-              strokeOpacity={0.16}
-              strokeWidth={0.7}
-              vectorEffect="non-scaling-stroke"
-            />
-          </>
-        )}
-      </g>
-    </svg>
-  )
+/** Both moons rotate around their own fixed centres along the approved path. */
+export function BandalMark({ size = 18, className, title, motion = size >= 48 ? 'intro' : 'idle' }: BandalMarkProps): JSX.Element {
+  const svg = useRef<SVGSVGElement>(null)
+  const desired = useRef(motion)
+  const wake = useRef<() => void>(() => {})
+  desired.current = motion
+  useEffect(() => {
+    const element = svg.current
+    if (!element) return
+    const paths = element.querySelectorAll('path')
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
+    let frame = 0, elapsed = 0, last = 0, inView = true, finishedIntro = false
+    const paint = (progress: number): void => { const pose = moonPose(progress); paths.forEach((path, i) => path.setAttribute('transform', moonTransform(i, pose[i]))) }
+    const tick = (now: number): void => {
+      frame = 0
+      if (document.hidden || !inView || reduced.matches) { last = 0; return }
+      if (last) elapsed += Math.min(now - last, 100)
+      last = now
+      const intro = desired.current === 'intro' && !finishedIntro
+      const duration = intro ? MOON_INTRO_MS : MOON_LOOP_MS
+      if (elapsed >= duration && (intro || desired.current === 'idle')) {
+        paint(0); elapsed = 0; last = 0; finishedIntro = intro || finishedIntro; return
+      }
+      if (desired.current === 'loop') elapsed %= duration
+      let t = (elapsed % duration) / duration
+      if (intro) t = t * t * t * (t * (t * 6 - 15) + 10)
+      paint(t)
+      if (desired.current === 'loop' || elapsed > 0 || intro) frame = requestAnimationFrame(tick)
+    }
+    const start = (): void => {
+      if (reduced.matches) { cancelAnimationFrame(frame); frame = 0; elapsed = 0; last = 0; paint(0); return }
+      if (!frame && !document.hidden && inView && (elapsed > 0 || desired.current === 'loop' || (desired.current === 'intro' && !finishedIntro))) frame = requestAnimationFrame(tick)
+    }
+    wake.current = start
+    const visibility = (): void => { if (document.hidden) { cancelAnimationFrame(frame); frame = 0; last = 0 } else start() }
+    const observer = new IntersectionObserver(([entry]) => { inView = entry?.isIntersecting ?? false; if (!inView) { cancelAnimationFrame(frame); frame = 0; last = 0 } else start() })
+    observer.observe(element)
+    document.addEventListener('visibilitychange', visibility)
+    reduced.addEventListener('change', start)
+    start()
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); document.removeEventListener('visibilitychange', visibility); reduced.removeEventListener('change', start); wake.current = () => {} }
+  }, [])
+  useEffect(() => { wake.current() }, [motion])
+  return <svg ref={svg} width={size} height={size} viewBox={MOON_VIEWBOX} className={className} role={title ? 'img' : undefined} aria-hidden={title ? undefined : true} focusable="false" fill="currentColor">
+    {title && <title>{title}</title>}
+    {MOON_SHAPES.map((shape, i) => <path key={shape.name} d={shape.path} transform={moonTransform(i)} />)}
+  </svg>
 }

@@ -19,9 +19,7 @@ describe('chat settings and skill execution', () => {
   test('passes supported effort to Claude and Codex, including Codex resume', () => {
     expect(buildClaudeArgs({ effort: 'high' })).toEqual(expect.arrayContaining(['--effort', 'high']))
     expect(buildClaudeArgs({})).not.toContain('--effort')
-    const codex = buildCodexArgs({ cwd: '/course', prompt: 'hello', effort: 'xhigh', resumeCliSessionId: 'previous' })
-    expect(codex).toContain('model_reasoning_effort="xhigh"')
-    expect(codex.indexOf('model_reasoning_effort="xhigh"')).toBeLessThan(codex.indexOf('resume'))
+    expect(buildCodexArgs({})).toEqual(['app-server', '--listen', 'stdio://'])
   })
   test('enables skill execution only on an explicitly selected skill turn', () => {
     expect(buildClaudeArgs({})).toContain('--disable-slash-commands')

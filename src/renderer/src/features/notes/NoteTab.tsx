@@ -1,3 +1,4 @@
+import { registerDocumentContext } from '../agent/documentContext'
 import {
   Editor,
   EditorStatus,
@@ -912,6 +913,8 @@ function NoteSession({
   /** Remote markdown waiting for focus to leave before it can remount the editor. */
   const pendingEditorMarkdownRef = useRef<string | null>(null)
   const pendingScrollTopRef = useRef<number | null>(null)
+  useEffect(() => registerDocumentContext(`note:${courseId}:${currentRelPath}`, () => ({ courseId, kind: 'note', title: currentRelPath.split('/').pop() ?? currentRelPath, relPath: currentRelPath, text: currentMarkdownRef.current.slice(0, 12000), unsaved: currentMarkdownRef.current !== persistedMarkdownRef.current })), [courseId, currentRelPath])
+
 
   useEffect(() => {
     if (pageNoteDocument === null) {

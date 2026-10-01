@@ -23,13 +23,7 @@ import {
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  ICON_MOON_CX,
-  ICON_MOON_CY,
-  MOON_TILT,
-  TERMINATOR_BULGE,
-  litHalfPath
-} from '../src/shared/brandMark.mjs'
+import { moonSvgPaths, MOON_VIEWBOX } from '../src/shared/brandMark.mjs'
 import {
   contrast,
   oklchToHex,
@@ -65,10 +59,10 @@ const CORNER_RADIUS = 185
  * CSS swatches: the legacy bandal-dark outputs must stay pixel-identical.
  */
 export const BANDAL_DARK_COLORS = Object.freeze({
-  bg: '#09101e',
-  bgTop: '#18223c',
-  bgMid: '#0d1526',
-  accent: '#f5c97b',
+  bg: '#161616',
+  bgTop: '#161616',
+  bgMid: '#161616',
+  accent: '#fafafa',
   accentLight: '#fbe3ae',
   accentDark: '#dda255',
   craterDark: '#c99a4e',
@@ -222,7 +216,7 @@ export function iconVariantsFromSwatches(swatches) {
         id,
         palette,
         base,
-        colors: id === 'bandal-dark' ? BANDAL_DARK_COLORS : derived
+        colors: { ...derived, bg: base === 'dark' ? '#161616' : '#fafafa', accent: base === 'dark' ? '#fafafa' : '#161616' }
       }
     })
   )
@@ -240,7 +234,7 @@ export function hashIconColors(colors) {
 
 export function createIconManifest(variants) {
   return {
-    version: 1,
+    version: 2,
     variants: Object.fromEntries(
       variants.map(({ id, colors }) => [
         id,
@@ -263,163 +257,13 @@ export function compareIconManifest(expected, actual) {
   )
 }
 
-/** Detail tiers — see the size-threshold table in the original icon design. */
-const TIERS = {
-  minimal: {
-    radius: 268,
-    ring: 24,
-    ringOpacity: 0.55,
-    darkFillIndex: 0,
-    stars: false,
-    craters: false,
-    glow: false,
-    innerLight: false
-  },
-  medium: {
-    radius: 252,
-    ring: 14,
-    ringOpacity: 0.45,
-    darkFillIndex: 1,
-    stars: false,
-    craters: false,
-    glow: true,
-    innerLight: true
-  },
-  detailed: {
-    radius: 240,
-    ring: 8,
-    ringOpacity: 0.36,
-    darkFillIndex: 2,
-    stars: false,
-    craters: true,
-    glow: true,
-    innerLight: true
-  },
-  full: {
-    radius: 236,
-    ring: 6,
-    ringOpacity: 0.32,
-    darkFillIndex: 2,
-    stars: true,
-    craters: true,
-    glow: true,
-    innerLight: true
-  }
-}
-
-function tierFor(size) {
-  if (size <= 32) return TIERS.minimal
-  if (size <= 64) return TIERS.medium
-  if (size <= 128) return TIERS.detailed
-  return TIERS.full
-}
-
-/** Deterministic star field (hand-placed — no RNG, stable output). */
-const STARS = [
-  { x: 318, y: 262, r: 6, o: 0.5 },
-  { x: 730, y: 236, r: 4.5, o: 0.4 },
-  { x: 232, y: 468, r: 4, o: 0.32 },
-  { x: 792, y: 424, r: 3.4, o: 0.28 },
-  { x: 264, y: 700, r: 4, o: 0.3 },
-  { x: 758, y: 706, r: 5, o: 0.38 }
-]
-
-/** Craters on the lit half, in canvas units and before moon rotation. */
-const CRATERS = [
-  { x: 592, y: 414, r: 33 },
-  { x: 646, y: 542, r: 23 },
-  { x: 562, y: 618, r: 17 }
-]
-
-function starsSvg(colors) {
-  return STARS.map(
-    (star) =>
-      `<circle cx="${star.x}" cy="${star.y}" r="${star.r}" fill="${colors.star}" opacity="${star.o}"/>`
-  ).join('\n    ')
-}
-
-function cratersSvg(colors) {
-  return CRATERS.map(
-    (crater) =>
-      `<circle cx="${crater.x}" cy="${crater.y}" r="${crater.r}" fill="${colors.craterDark}" opacity="0.28"/>
-      <circle cx="${crater.x - crater.r * 0.18}" cy="${crater.y - crater.r * 0.18}" r="${crater.r * 0.78}" fill="${colors.craterLight}" opacity="0.3"/>`
-  ).join('\n      ')
-}
-
-/** The app tile as SVG; `size` selects its optical detail tier. */
+/** Monochrome brand is independent of the student's workspace theme. */
 export function iconSvg(size, colors) {
-  const tier = tierFor(size)
-  const radius = tier.radius
-  const darkFill = colors.darkFill[tier.darkFillIndex]
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${CANVAS} ${CANVAS}">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="${colors.bgTop}"/>
-      <stop offset="0.55" stop-color="${colors.bgMid}"/>
-      <stop offset="1" stop-color="${colors.bg}"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="0.56" cy="0.48" r="0.52">
-      <stop offset="0" stop-color="${colors.accent}" stop-opacity="0.3"/>
-      <stop offset="0.55" stop-color="${colors.accent}" stop-opacity="0.09"/>
-      <stop offset="1" stop-color="${colors.accent}" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="moonLit" x1="0.15" y1="0" x2="0.7" y2="1">
-      <stop offset="0" stop-color="${colors.accentLight}"/>
-      <stop offset="0.5" stop-color="${colors.accent}"/>
-      <stop offset="1" stop-color="${colors.accentDark}"/>
-    </linearGradient>
-    <linearGradient id="innerLight" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.1"/>
-      <stop offset="0.18" stop-color="#ffffff" stop-opacity="0"/>
-      <stop offset="0.82" stop-color="#000000" stop-opacity="0"/>
-      <stop offset="1" stop-color="#000000" stop-opacity="0.22"/>
-    </linearGradient>
-    <clipPath id="shape">
-      <rect x="${INSET}" y="${INSET}" width="${SHAPE}" height="${SHAPE}" rx="${CORNER_RADIUS}"/>
-    </clipPath>
-  </defs>
-
-  <g clip-path="url(#shape)">
-    <rect x="${INSET}" y="${INSET}" width="${SHAPE}" height="${SHAPE}" fill="url(#bg)"/>
-${tier.stars ? `    ${starsSvg(colors)}` : '    <!-- stars: sub-pixel below 256px -->'}
-${tier.glow ? `    <rect x="${INSET}" y="${INSET}" width="${SHAPE}" height="${SHAPE}" fill="url(#glow)"/>` : '    <!-- glow: dropped below 33px -->'}
-
-    <!-- The mark: a whole disc, half of it finished -->
-    <g transform="rotate(${MOON_TILT} ${ICON_MOON_CX} ${ICON_MOON_CY})">
-      <!-- unfinished half: barely-there body + the ring that closes the circle -->
-      <circle cx="${ICON_MOON_CX}" cy="${ICON_MOON_CY}" r="${radius}" fill="${darkFill}"/>
-      <circle cx="${ICON_MOON_CX}" cy="${ICON_MOON_CY}" r="${radius}" fill="none"
-              stroke="${colors.accent}" stroke-opacity="${tier.ringOpacity}" stroke-width="${tier.ring}"/>
-
-      <!-- finished half -->
-      <path d="${litHalfPath(ICON_MOON_CX, ICON_MOON_CY, radius, MOON_TILT, TERMINATOR_BULGE)}" fill="url(#moonLit)"/>
-${tier.craters ? `      ${cratersSvg(colors)}` : '      <!-- craters: dropped below 65px -->'}
-    </g>
-
-${tier.innerLight ? `    <rect x="${INSET}" y="${INSET}" width="${SHAPE}" height="${SHAPE}" rx="${CORNER_RADIUS}" fill="url(#innerLight)"/>` : '    <!-- inner shading: dropped below 33px -->'}
-  </g>
-
-  <!-- Hairline edge so the tile reads on pure-black backgrounds -->
-  <rect x="${INSET + 1.5}" y="${INSET + 1.5}" width="${SHAPE - 3}" height="${SHAPE - 3}" rx="${CORNER_RADIUS - 1.5}" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="3"/>
-</svg>
-`
+  const dark = colors.bg === '#161616'
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024"><rect x="100" y="100" width="824" height="824" rx="185" fill="${dark ? '#161616' : '#fafafa'}"/><svg x="148" y="142" width="728" height="728" viewBox="${MOON_VIEWBOX}">${moonSvgPaths(dark ? '#fafafa' : '#161616')}</svg></svg>`
 }
-
-/** Tray-sized mark; templates remain system tintable black + alpha. */
 export function traySvg(size, template, colors) {
-  const darkFill = template ? '#000000' : colors.darkFill[2]
-  const darkOpacity = template ? 0.16 : 1
-  const markFill = template ? '#000000' : colors.accent
-  const ring = template ? '#000000' : colors.accent
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 64 64">
-  <g transform="rotate(${MOON_TILT} 32 32)">
-    <circle cx="32" cy="32" r="25.5" fill="${darkFill}" fill-opacity="${darkOpacity}"/>
-    <circle cx="32" cy="32" r="25.5" fill="none" stroke="${ring}" stroke-width="3"/>
-    <path d="${litHalfPath(32, 32, 25.5, MOON_TILT, TERMINATOR_BULGE)}" fill="${markFill}"/>
-  </g>
-</svg>
-`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${MOON_VIEWBOX}">${moonSvgPaths(template ? '#000000' : colors.accent)}</svg>`
 }
 
 function canvasApi() {

@@ -15,6 +15,7 @@ export const BATCH_MAX_WAIT_MS = 250
 
 export interface EventBatcher {
   push(courseId: string, sessionId: string, event: AgentEvent): void
+  checkpoint(sessionId: string): number
   flush(sessionId: string): void
   dispose(): void
 }
@@ -137,6 +138,12 @@ export function createEventBatcher(deps: EventBatcherDeps): EventBatcher {
           maxWaitMs
         )
       }
+    },
+    checkpoint: (sessionId) => {
+      const buffer = buffers.get(sessionId)
+      if (!buffer) return 0
+      flushBuffer(sessionId, buffer)
+      return buffer.seq
     },
     flush: (sessionId) => {
       const buffer = buffers.get(sessionId)

@@ -196,6 +196,8 @@ export interface AgentAvailability {
 }
 
 export interface AgentCapabilities {
+  imageInput?: boolean
+  resume?: boolean
   /** Can surface interactive permission prompts (vs. pre-approved only). */
   interactivePermissions: boolean
   /** Can accept additional user input while a turn is streaming. */
@@ -207,6 +209,7 @@ export interface AgentCapabilities {
 }
 
 export interface AgentStartSessionOptions {
+  accessPolicy?: import('./aiAccess').AiAccessPolicy
   effort?: string
   selectedSkills?: string[]
   courseId: string
