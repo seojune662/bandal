@@ -1,8 +1,15 @@
 import { expect, test } from '@playwright/test'
-import type { Locator } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+
+async function selectTextTool(page: Page): Promise<void> {
+  const toggle = page.getByRole('button', { name: '주석 도구', exact: true })
+  if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click()
+  await page.getByRole('button', { name: '도형 및 텍스트 도구', exact: true }).click()
+  await page.getByRole('dialog', { name: '도형 및 텍스트 도구' }).getByRole('button', { name: '텍스트', exact: true }).click()
+}
 
 async function expectSameBounds(
   left: Locator,
@@ -51,7 +58,7 @@ test.describe('pdf textbox', () => {
     await expect(page.locator('.pdf-page').first()).toBeVisible({
       timeout: 30_000
     })
-    await page.locator('.pdf-tool-rail__button[aria-label="텍스트"]').click()
+    await selectTextTool(page)
     // is-loading 동안은 레이어가 pointer-events:none — 클릭이 그냥 통과한다.
     await expect(
       page.locator('.pdf-page[data-pdf-page="1"] .pdf-drawing-layer')
@@ -331,7 +338,7 @@ test.describe('pdf textbox', () => {
 
   test('clicking the format row while editing keeps the rich editor focused', async () => {
     const { page } = bandal
-    await page.locator('.pdf-tool-rail__button[aria-label="텍스트"]').click()
+    await selectTextTool(page)
     const boxObject = page.locator('.ink-layer__textbox-object', {
       hasText: 'committed here'
     })
@@ -408,7 +415,7 @@ test.describe('pdf textbox', () => {
 
   test('zooming in and back preserves normalized geometry and updatedAt', async () => {
     const { page } = bandal
-    await page.locator('.pdf-tool-rail__button[aria-label="텍스트"]').click()
+    await selectTextTool(page)
     const surface = page.locator(
       '.pdf-page[data-pdf-page="1"] .pdf-drawing-layer'
     )
@@ -518,7 +525,7 @@ test.describe('pdf textbox', () => {
 
   test('a one-pixel text-box jitter is treated as an edit click', async () => {
     const { page } = bandal
-    await page.locator('.pdf-tool-rail__button[aria-label="텍스트"]').click()
+    await selectTextTool(page)
     const boxObject = page.locator('.ink-layer__textbox-object', {
       hasText: 'zoom invariant'
     })
@@ -563,7 +570,7 @@ test.describe('pdf textbox', () => {
     await page.reload()
     await page.locator('[data-material-path="slides.pdf"]').click()
     await expect(page.locator('.pdf-page').first()).toBeVisible({ timeout: 30_000 })
-    await page.locator('.pdf-tool-rail__button[aria-label="텍스트"]').click()
+    await selectTextTool(page)
     await expect(
       page.locator('.pdf-page[data-pdf-page="1"] .pdf-drawing-layer')
     ).not.toHaveClass(/is-loading/)
@@ -592,54 +599,32 @@ test.describe('pdf textbox', () => {
 
     try {
       const toolbar = page.getByRole('toolbar', { name: 'PDF 뷰어 도구' })
-      const shell = toolbar.locator('.pdf-tool-rail-shell')
-      const rail = toolbar.getByRole('group', { name: '자유 필기 도구' })
-      const exportButton = toolbar.getByRole('button', {
-        name: '주석 포함 PDF 내보내기'
-      })
+      const toggle = toolbar.getByRole('button', { name: '주석 도구', exact: true })
+      if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click()
       await expect(toolbar.getByRole('button', { name: '축소' })).toBeVisible()
       await expect(toolbar.getByRole('button', { name: '확대' })).toBeVisible()
-      await expect(toolbar.getByRole('button', { name: '페이지 미리보기' })).toBeVisible()
-
-      const layout = await toolbar.evaluate((element) => {
-        const strip = element.querySelector('.pdf-tool-rail-shell')
-        if (!(strip instanceof HTMLElement)) return null
-        const outer = element.getBoundingClientRect()
-        const inner = strip.getBoundingClientRect()
-        return {
-          toolbarTop: outer.top,
-          stripTop: inner.top,
-          toolbarWidth: outer.width,
-          stripWidth: inner.width
-        }
-      })
-      expect(layout).not.toBeNull()
-      expect(layout!.stripTop).toBeGreaterThan(layout!.toolbarTop + 20)
-      expect(layout!.stripWidth).toBeGreaterThan(layout!.toolbarWidth * 0.9)
-
-      const nextTools = toolbar.getByRole('button', { name: '다음 필기 도구' })
-      await expect(nextTools).toBeVisible()
-      await expect(nextTools).toBeEnabled()
-      await expect(shell).toHaveAttribute('data-overflow', 'true')
-
-      const isExportReachable = async (): Promise<boolean> => {
-        const [railBounds, exportBounds] = await Promise.all([
-          rail.boundingBox(),
-          exportButton.boundingBox()
-        ])
-        return railBounds !== null && exportBounds !== null &&
-          exportBounds.x >= railBounds.x &&
-          exportBounds.x + exportBounds.width <= railBounds.x + railBounds.width
+      const zoom = toolbar.locator('.pdf-toolbar__zoom-value')
+      const value = await zoom.textContent()
+      await toolbar.getByRole('button', { name: '도형 및 텍스트 도구', exact: true }).click()
+      const tools = page.getByRole('dialog', { name: '도형 및 텍스트 도구' })
+      for (const label of ['텍스트', '사각형', '타원', '화살표', '직선', '주석 포함 PDF 내보내기']) {
+        await expect(tools.getByRole('button', { name: label, exact: true })).toBeVisible()
       }
+      expect(await tools.evaluate(node => {
+        const rect = node.getBoundingClientRect()
+        return rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight
+      })).toBe(true)
+      await page.keyboard.press('Escape')
+      await expect(toolbar.getByRole('button', { name: '도형 및 텍스트 도구', exact: true })).toBeFocused()
+      await toolbar.getByRole('button', { name: '필기 스타일', exact: true }).click()
+      const style = page.getByRole('dialog', { name: '필기 스타일' })
+      await expect(style.getByRole('button', { name: '보라' })).toBeVisible()
+      await expect(style.getByRole('slider', { name: '선 굵기' })).toBeVisible()
+      await expect(style.getByRole('slider', { name: '불투명도' })).toBeVisible()
+      await expect(zoom).toHaveText(value!)
+      await page.keyboard.press('Escape')
+      expect(await toolbar.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
 
-      for (let step = 0; step < 8 && !(await isExportReachable()); step += 1) {
-        const before = await rail.evaluate((element) => element.scrollLeft)
-        await nextTools.click()
-        await expect.poll(
-          () => rail.evaluate((element) => element.scrollLeft)
-        ).toBeGreaterThan(before)
-      }
-      await expect.poll(isExportReachable).toBe(true)
     } finally {
       await pdfTab.evaluate((element) => {
         element.style.removeProperty('width')

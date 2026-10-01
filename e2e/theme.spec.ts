@@ -1,126 +1,131 @@
-import { expect, test } from '@playwright/test'
-import { join } from 'node:path'
-import type { Page } from '@playwright/test'
-import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+import { expect, test, type Page } from '@playwright/test'
+import { launchBandal } from './helpers/launch'
 
-const SCREENSHOT_DIR = join(__dirname, '__screenshots__')
-const VIEWPORT = { width: 1024, height: 640 }
-
-interface BandalBridgeWindow {
-  bandal: {
-    invoke: (channel: string, req: unknown) => Promise<unknown>
-  }
+async function expectTheme(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--bg-app')
+          .trim()
+      )
+    )
+    .toBe(theme === 'light' ? '#ffffff' : '#212121')
+  expect(await page.locator('html').getAttribute('data-palette')).toBeNull()
 }
 
-/** The resolved `--bg-app` — the one token both axes can move. */
-async function readBgApp(page: Page): Promise<string> {
-  return page.evaluate(() =>
-    getComputedStyle(document.documentElement)
-      .getPropertyValue('--bg-app')
-      .trim()
-  )
-}
-
-async function assertNoHorizontalOverflow(page: Page): Promise<void> {
-  const overflow = await page.evaluate(() => ({
-    scrollWidth: document.documentElement.scrollWidth,
-    clientWidth: document.documentElement.clientWidth
-  }))
-  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth)
-}
-
-test.describe('theme', () => {
-  let bandal: BandalApp
-
-  test.beforeAll(async () => {
-    bandal = await launchBandal()
-    await createCourse(bandal.page, '자료구조')
-
-    // Deterministic screenshot geometry: 1024×640 content area.
-    await bandal.app.evaluate(({ BrowserWindow }, size) => {
-      const win = BrowserWindow.getAllWindows()[0]
-      win?.setContentSize(size.width, size.height)
-    }, VIEWPORT)
-    await expect
-      .poll(() => bandal.page.evaluate(() => window.innerWidth))
-      .toBe(VIEWPORT.width)
+test('system is the installation default and synchronizes the main and assistant windows', async () => {
+  const bandal = await launchBandal({
+    extraSettings: { theme: undefined, assistantMode: 'desktop' }
   })
-
-  test.afterAll(async () => {
+  try {
+    const { app, page } = bandal
+    const settings = await page.evaluate(() =>
+      window.bandal.invoke('settings:get', {})
+    )
+    expect(settings.theme).toBe('system')
+    const popup =
+      app
+        .windows()
+        .find((page) => page.url().includes('overlay.html?view=popup')) ??
+      (await app.waitForEvent('window', {
+        predicate: (page) => page.url().includes('overlay.html?view=popup')
+      }))
+    for (const window of app.windows())
+      await window.emulateMedia({ colorScheme: null })
+    for (const theme of ['light', 'dark', 'light'] as const) {
+      await app.evaluate(({ nativeTheme }, theme) => {
+        nativeTheme.themeSource = theme
+      }, theme)
+      await expectTheme(page, theme)
+      await expectTheme(popup, theme)
+      const backgrounds = await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()
+          .filter((win) =>
+            /index.html|overlay.html\?view=popup/.test(win.webContents.getURL())
+          )
+          .map((win) => win.getBackgroundColor().toLowerCase())
+      )
+      expect(backgrounds).toEqual([
+        theme === 'light' ? '#ffffff' : '#212121',
+        theme === 'light' ? '#ffffff' : '#212121'
+      ])
+    }
+    await page.evaluate(() =>
+      window.bandal.invoke('settings:set', { theme: 'dark' })
+    )
+    await expectTheme(page, 'dark')
+    await expectTheme(popup, 'dark')
+    await app.evaluate(({ nativeTheme }) => {
+      nativeTheme.themeSource = 'light'
+    })
+    await expectTheme(page, 'dark')
+    await expectTheme(popup, 'dark')
+  } finally {
     await bandal.close()
-  })
+  }
+})
 
-  test('renders dark theme without horizontal overflow', async () => {
-    const { page } = bandal
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-    await assertNoHorizontalOverflow(page)
-    await page.screenshot({
-      path: join(SCREENSHOT_DIR, 'theme-dark.png'),
-      animations: 'disabled'
-    })
-  })
-
-  test('switches to light theme via the settings bridge', async () => {
-    const { page } = bandal
-    await page.evaluate(async () => {
-      const bridge = (window as unknown as BandalBridgeWindow).bandal
-      await bridge.invoke('settings:set', { theme: 'light' })
-    })
-
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-    await assertNoHorizontalOverflow(page)
-    await page.screenshot({
-      path: join(SCREENSHOT_DIR, 'theme-light.png'),
-      animations: 'disabled'
-    })
-
-    // Round-trip back to dark: the broadcast keeps working both ways.
-    await page.evaluate(async () => {
-      const bridge = (window as unknown as BandalBridgeWindow).bandal
-      await bridge.invoke('settings:set', { theme: 'dark' })
-    })
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  })
-
-  test('layers a palette over the mode without changing it', async () => {
-    const { page } = bandal
-    await expect(page.locator('html')).toHaveAttribute('data-palette', 'bandal')
-    const bandalBg = await readBgApp(page)
-
-    await page.evaluate(async () => {
-      const bridge = (window as unknown as BandalBridgeWindow).bandal
-      await bridge.invoke('settings:set', { palette: 'moss' })
-    })
-
-    // The mode is untouched; only the color family moved.
-    await expect(page.locator('html')).toHaveAttribute('data-palette', 'moss')
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-    expect(await readBgApp(page)).not.toBe(bandalBg)
-    await assertNoHorizontalOverflow(page)
-    await page.screenshot({
-      path: join(SCREENSHOT_DIR, 'palette-moss-dark.png'),
-      animations: 'disabled'
-    })
-
-    // A flat mode: 이끼 re-tints the accent but must inherit 흑연's gray surfaces.
-    await page.evaluate(async () => {
-      const bridge = (window as unknown as BandalBridgeWindow).bandal
-      await bridge.invoke('settings:set', { theme: 'graphite' })
-    })
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
-    const mossGraphite = await readBgApp(page)
-
-    await page.evaluate(async () => {
-      const bridge = (window as unknown as BandalBridgeWindow).bandal
-      await bridge.invoke('settings:set', { palette: 'bandal' })
-    })
-    await expect(page.locator('html')).toHaveAttribute('data-palette', 'bandal')
-    expect(await readBgApp(page)).toBe(mossGraphite)
-
-    await page.evaluate(async () => {
-      const bridge = (window as unknown as BandalBridgeWindow).bandal
-      await bridge.invoke('settings:set', { theme: 'dark' })
-    })
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  })
+test('legacy themes migrate by brightness and stored palettes cannot override the application', async () => {
+  const bandal = await launchBandal({ keepProfileOnClose: true })
+  const profileDir = bandal.profileDir
+  try {
+    for (const [legacy, theme] of [
+      ['midnight', 'dark'],
+      ['graphite', 'dark'],
+      ['sepia', 'light'],
+      ['high-contrast', 'light']
+    ] as const) {
+      await bandal.page.evaluate(async (theme) => {
+        await (
+          window.bandal.invoke as (
+            channel: string,
+            req: unknown
+          ) => Promise<unknown>
+        )('settings:set', {
+          theme,
+          palette: 'moss',
+          pluginTheme: 'example-theme:green',
+          fontScale: 1.1,
+          editorFont: 'serif',
+          density: 'compact'
+        })
+      }, legacy)
+      await expectTheme(bandal.page, theme)
+      expect(
+        (
+          await bandal.page.evaluate(() =>
+            window.bandal.invoke('settings:get', {})
+          )
+        ).theme
+      ).toBe(theme)
+    }
+  } finally {
+    await bandal.close()
+  }
+  const restored = await launchBandal({ reuseProfileDir: profileDir })
+  try {
+    await expectTheme(restored.page, 'light')
+    await expect(restored.page.locator('html')).toHaveAttribute(
+      'data-editor-font',
+      'serif'
+    )
+    await expect(restored.page.locator('html')).toHaveAttribute(
+      'data-density',
+      'compact'
+    )
+    await restored.page
+      .getByRole('button', { name: '설정', exact: true })
+      .click()
+    await restored.page.locator('[data-category="appearance"]').click()
+    const choices = restored.page.getByRole('radiogroup', { name: '테마 선택' })
+    await expect(choices.getByRole('radio')).toHaveCount(3)
+    await choices.getByRole('radio', { name: /^라이트/ }).focus()
+    await restored.page.keyboard.press('ArrowRight')
+    await expectTheme(restored.page, 'dark')
+    await expect(choices.getByRole('radio', { name: /^다크/ })).toBeFocused()
+  } finally {
+    await restored.close()
+  }
 })

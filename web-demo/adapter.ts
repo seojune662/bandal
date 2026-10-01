@@ -51,7 +51,7 @@ const handlers: Handlers = {
   'settings:set': patch => {
     Object.assign(settings, patch)
     emit('settings:changed', { settings })
-    if (patch.theme || patch.palette) window.parent.postMessage({ type: 'bandal-demo-appearance', palette: settings.palette, theme: settings.theme }, location.origin)
+    if (patch.theme) window.parent.postMessage({ type: 'bandal-demo-appearance', theme: settings.theme }, location.origin)
     return structuredClone(settings)
   },
   'courses:list': ({ includeArchived }) => data.courses.filter(c => includeArchived || !c.archived),

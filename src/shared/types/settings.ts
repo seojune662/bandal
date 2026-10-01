@@ -282,11 +282,7 @@ export const DEFAULT_MILESTONES: Milestones = {
 export interface Settings {
   tabs: TabPreferences
   theme: ThemePreference
-  /**
-   * The color family layered over `theme` (src/shared/theme.ts). Independent
-   * of `system`: the OS picks the mode, this picks the hue. Absent in files
-   * written before v0.15, which sanitize to the 반달 default.
-   */
+  /** Legacy value retained when reading existing settings; no longer applied. */
   palette: PaletteId
   /** Root font-size multiplier (settings > 화면 > 글자 크기). */
   fontScale: FontScale

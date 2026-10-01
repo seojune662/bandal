@@ -46,7 +46,12 @@ test.describe('note toolbar commands', () => {
     await editor.getByText('본문 문단').click()
 
     // 인용 — the button the user reported dead.
-    await page.getByRole('button', { name: '인용' }).first().click()
+    const quote = page.getByRole('button', { name: '인용', exact: true })
+    if (await quote.isVisible()) await quote.click()
+    else {
+      await page.getByRole('button', { name: '더 많은 서식' }).click()
+      await page.getByRole('menuitemcheckbox', { name: '인용', exact: true }).click()
+    }
     await expect(editor.locator('blockquote', { hasText: '본문 문단' })).toBeVisible()
 
     // H2 — a second, independent command path.

@@ -1,0 +1,11 @@
+/* Build-time source colors for existing application icons; not UI themes. */
+:root {
+  --swatch-moss-dark-bg: oklch(17% 0.014 160);
+  --swatch-moss-dark-surface: oklch(20% 0.017 158);
+  --swatch-moss-dark-text: oklch(93% 0.01 140);
+  --swatch-moss-dark-accent: oklch(80% 0.09 125);
+  --swatch-moss-light-bg: oklch(96.8% 0.008 140);
+  --swatch-moss-light-surface: oklch(98.3% 0.005 140);
+  --swatch-moss-light-text: oklch(23% 0.02 150);
+  --swatch-moss-light-accent: oklch(46% 0.1 140);
+}

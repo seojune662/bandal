@@ -1,3 +1,4 @@
+import { usePdfToolStore } from './tools/toolStore'
 /**
  * Viewer chrome above the page scroller: page indicator with jump-to-page
  * input, zoom controls (fit-width is 100%), and the annotation-rail toggle.
@@ -36,7 +37,10 @@ function PageJump({
   currentPage,
   numPages,
   onJumpToPage
-}: Pick<PdfToolbarProps, 'currentPage' | 'numPages' | 'onJumpToPage'>): JSX.Element {
+}: Pick<
+  PdfToolbarProps,
+  'currentPage' | 'numPages' | 'onJumpToPage'
+>): JSX.Element {
   const [draft, setDraft] = useState(String(currentPage))
   const [isEditing, setIsEditing] = useState(false)
 
@@ -68,7 +72,9 @@ function PageJump({
           setIsEditing(true)
           event.target.select()
         }}
-        onBlur={() => { if (isEditing) submit() }}
+        onBlur={() => {
+          if (isEditing) submit()
+        }}
         onChange={(event) => setDraft(event.target.value)}
       />
       <span className="pdf-toolbar__page-total">/ {numPages}</span>
@@ -77,6 +83,11 @@ function PageJump({
 }
 
 export function PdfToolbar(props: PdfToolbarProps): JSX.Element {
+  const activeTool = usePdfToolStore((state) => state.activeTool)
+  const [toolsOpen, setToolsOpen] = useState(activeTool !== 'select')
+  useEffect(() => {
+    if (activeTool !== 'select') setToolsOpen(true)
+  }, [activeTool])
   const {
     zoomPercent,
     isPreviewOpen,
@@ -123,7 +134,9 @@ export function PdfToolbar(props: PdfToolbarProps): JSX.Element {
       >
         <Icon name="fileText" />
         <span className="pdf-toolbar__label">페이지 필기</span>
-        {pageNoteCount > 0 && <span className="pdf-toolbar__badge">{pageNoteCount}</span>}
+        {pageNoteCount > 0 && (
+          <span className="pdf-toolbar__badge">{pageNoteCount}</span>
+        )}
       </button>
 
       {pageNotePaired && (
@@ -142,7 +155,22 @@ export function PdfToolbar(props: PdfToolbarProps): JSX.Element {
         </button>
       )}
 
+      <button
+        className="pdf-toolbar__annotation-toggle"
+        aria-label="주석 도구"
+        aria-expanded={toolsOpen}
+        aria-pressed={toolsOpen}
+        title="주석 도구"
+        onClick={() => {
+          if (toolsOpen) usePdfToolStore.getState().setActiveTool('select')
+          setToolsOpen((open) => !open)
+        }}
+      >
+        <Icon name="pencil" />
+        <span className="pdf-toolbar__label">주석</span>
+      </button>
       <PdfToolRail
+        expanded={toolsOpen}
         courseId={props.courseId}
         relPath={props.relPath}
         drawingsApi={props.drawingsApi}

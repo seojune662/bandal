@@ -86,7 +86,7 @@
   padding-inline: var(--space-3);
   color: var(--on-accent);
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: 500;
   background: var(--accent);
   border: thin solid var(--accent);
   border-radius: var(--radius-sm);
@@ -190,7 +190,7 @@
   height: var(--space-8);
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 700;
+  font-weight: 500;
   background: var(--accent-muted);
   border: thin solid var(--border-subtle);
   border-radius: var(--radius-md);
@@ -280,7 +280,7 @@
   flex: 0 0 auto;
   color: var(--status-done);
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .settings-catalog-card__installed .icon {

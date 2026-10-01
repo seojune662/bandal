@@ -1,3 +1,4 @@
+import { bootstrapAppearance } from './app/bootstrapAppearance'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { SettingsApp } from './features/settings/SettingsApp'
@@ -11,8 +12,10 @@ if (rootElement === null) {
   throw new Error('Root element #root not found')
 }
 
-ReactDOM.createRoot(rootElement).render(
-  <React.StrictMode>
-    <SettingsApp />
-  </React.StrictMode>
+void bootstrapAppearance().then(() =>
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <SettingsApp />
+    </React.StrictMode>
+  )
 )

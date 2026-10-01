@@ -1,6 +1,6 @@
+import { useDismissableMenu } from '../../components/useDismissableMenu'
 import { useViewportBounds } from '../../lib/useViewportBounds'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { friendAttentionCount as countFriendAttention } from '../../../../shared/group/friendAttention'
 import type {
   Course,
   CourseGroup,
@@ -10,17 +10,8 @@ import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
 import { BandalMark } from '../../components/BandalMark'
 import { Tooltip } from '../../components/Tooltip'
-import { useAuthStore } from '../../stores/authStore'
 import { useCoursesStore } from '../../stores/coursesStore'
-import { useFriendsStore } from '../../stores/friendsStore'
-import { useUiStore } from '../../stores/uiStore'
-import { useWorkspaceStore } from '../../stores/workspaceStore'
-import { SidebarAccountEntry } from '../account/SidebarAccountEntry'
-import { TogetherFooter } from '../group/TogetherFooter'
-import { HelpHub } from '../help/HelpHub'
 import { UniversityShortcuts } from '../university/UniversityShortcuts'
-import { descriptorFor } from '../workspace/tabIdentity'
-import { TabKindIcon } from '../workspace/workspaceIcons'
 import {
   ArchiveCourseDialog,
   CourseFormDialog,
@@ -31,21 +22,13 @@ import {
   DeleteCourseGroupDialog
 } from './CourseGroupDialogs'
 import { CourseGroupRow } from './CourseGroupRow'
-import { FavoritesSection } from './FavoritesSection'
 import {
   persistCollapsedCourseIds,
   readCollapsedCourseIds,
   selectAndExpandCourse
 } from './courseCollapse'
-import {
-  canAcceptCourseDrag,
-  clearCurrentCourseDrag,
-  COURSE_DRAG_MIME,
-  getCurrentCourseDrag,
-  parseCourseDrag,
-  serializeCourseDrag,
-  setCurrentCourseDrag
-} from './courseDrag'
+import { useCourseDrag } from './useCourseDrag'
+import { CourseListItem } from './CourseListItem'
 import {
   persistCollapsedGroupIds,
   readCollapsedGroupIds
@@ -80,39 +63,6 @@ interface GroupContextMenuState {
   alignEnd: boolean
 }
 
-type CourseDropTarget =
-  | { kind: 'before'; courseId: string }
-  | { kind: 'group'; groupId: string }
-  | { kind: 'ungrouped'; position: 'top' | 'bottom' }
-
-/** Closes a floating menu on outside pointerdown, Escape or window blur. */
-function useDismissableMenu(
-  active: boolean,
-  ref: React.RefObject<HTMLElement>,
-  dismiss: () => void
-): void {
-  useEffect(() => {
-    if (!active) return
-    const frame = window.requestAnimationFrame(() => {
-      ref.current?.querySelector<HTMLElement>('button')?.focus()
-    })
-    const closeOnPointerDown = (event: PointerEvent): void => {
-      if (!ref.current?.contains(event.target as Node)) dismiss()
-    }
-    const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') dismiss()
-    }
-    window.addEventListener('pointerdown', closeOnPointerDown)
-    window.addEventListener('keydown', closeOnEscape)
-    window.addEventListener('blur', dismiss)
-    return () => {
-      window.cancelAnimationFrame(frame)
-      window.removeEventListener('pointerdown', closeOnPointerDown)
-      window.removeEventListener('keydown', closeOnEscape)
-      window.removeEventListener('blur', dismiss)
-    }
-  }, [active, dismiss, ref])
-}
 
 export function CourseSidebar(): JSX.Element {
   const courses = useCoursesStore((state) => state.courses)
@@ -125,7 +75,6 @@ export function CourseSidebar(): JSX.Element {
   const createGroup = useCoursesStore((state) => state.createGroup)
   const renameGroup = useCoursesStore((state) => state.renameGroup)
   const deleteGroup = useCoursesStore((state) => state.deleteGroup)
-  const organizeCourse = useCoursesStore((state) => state.organizeCourse)
   const createCourse = useCoursesStore((state) => state.createCourse)
   const pickFolder = useCoursesStore((state) => state.pickFolder)
   const addCourseFromFolder = useCoursesStore((state) => state.addCourseFromFolder)
@@ -136,17 +85,6 @@ export function CourseSidebar(): JSX.Element {
   const deleteCourse = useCoursesStore((state) => state.deleteCourse)
   const clearError = useCoursesStore((state) => state.clearError)
   const loadCourses = useCoursesStore((state) => state.loadCourses)
-
-  const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
-  const toggleBoardOverlay = useUiStore((state) => state.toggleBoardOverlay)
-  const isLinkGraphOpen = useUiStore((state) => state.isLinkGraphOpen)
-  const toggleLinkGraph = useUiStore((state) => state.toggleLinkGraph)
-  const toggleLeftRail = useUiStore((state) => state.toggleLeftRail)
-  const openSettings = useUiStore((state) => state.openSettings)
-  const authPhase = useAuthStore((state) => state.auth.phase)
-  const friends = useFriendsStore((state) => state.friends)
-  const initFriends = useFriendsStore((state) => state.init)
-  const openTab = useWorkspaceStore((state) => state.openTab)
 
   const [query, setQuery] = useState('')
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -165,8 +103,6 @@ export function CourseSidebar(): JSX.Element {
   )
   const [groupContextMenu, setGroupContextMenu] =
     useState<GroupContextMenuState | null>(null)
-  const [dropTarget, setDropTarget] = useState<CourseDropTarget | null>(null)
-  const [draggingCourseId, setDraggingCourseId] = useState<string | null>(null)
   const [collapsedCourseIds, setCollapsedCourseIds] = useState(
     readCollapsedCourseIds
   )
@@ -188,21 +124,9 @@ export function CourseSidebar(): JSX.Element {
     return () => window.removeEventListener('focus', refreshAfterSettingsChange)
   }, [loadCourses])
 
-  useEffect(
-    () => () => {
-      clearCurrentCourseDrag()
-    },
-    []
-  )
-
-  useEffect(() => {
-    if (authPhase === 'signed-in') void initFriends()
-  }, [authPhase, initFriends])
-
-  const friendAttentionCount = countFriendAttention(friends)
-
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const isSearching = query.length > 0
+  const { dropTarget, setDropTarget, draggingCourseId, rowDragProps, handleGroupDragOver, handleGroupDrop, handleUngroupedDragOver, handleUngroupedDrop } = useCourseDrag(isSearching)
 
   const visibleCourses = useMemo(() => {
     if (normalizedQuery.length === 0) return courses
@@ -244,13 +168,6 @@ export function CourseSidebar(): JSX.Element {
     groupContextMenuRef,
     closeGroupContextMenu
   )
-
-  useEffect(() => {
-    if (!isSearching) return
-    clearCurrentCourseDrag()
-    setDraggingCourseId(null)
-    setDropTarget(null)
-  }, [isSearching])
 
   const setCourseExpanded = useCallback(
     (courseId: string, expanded: boolean): void => {
@@ -405,279 +322,26 @@ export function CourseSidebar(): JSX.Element {
     })
   }
 
-  const finishCourseDrag = (): void => {
-    clearCurrentCourseDrag()
-    setDraggingCourseId(null)
-    setDropTarget(null)
-  }
-
-  const startCourseDrag = (
-    event: React.DragEvent<HTMLDivElement>,
-    courseId: string
-  ): void => {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData(COURSE_DRAG_MIME, serializeCourseDrag(courseId))
-    setCurrentCourseDrag({ version: 1, courseId })
-    setDraggingCourseId(courseId)
-    setDropTarget(null)
-  }
-
-  const courseIdFromDrop = (
-    event: React.DragEvent<HTMLElement>
-  ): string | null => {
-    if (!canAcceptCourseDrag(event.dataTransfer.types)) return null
-    const current = getCurrentCourseDrag()
-    const parsed = parseCourseDrag(
-      event.dataTransfer.getData(COURSE_DRAG_MIME)
-    )
-    if (current === null || parsed?.courseId !== current.courseId) return null
-    return parsed.courseId
-  }
-
-  const isUpperCourseRowHalf = (
-    event: React.DragEvent<HTMLDivElement>
-  ): boolean => {
-    const bounds = event.currentTarget.getBoundingClientRect()
-    return bounds.height === 0 || event.clientY <= bounds.top + bounds.height / 2
-  }
-
-  const organizeDroppedCourse = (
-    courseId: string,
-    groupId: string | null,
-    beforeCourseId: string | null
-  ): void => {
-    if (beforeCourseId === courseId) return
-    finishCourseDrag()
-    void organizeCourse(courseId, groupId, beforeCourseId).catch(() => {
-      // The store owns the persistent error shown above the list.
-    })
-  }
-
   const renderCourse = (course: Course, dragEnabled: boolean): JSX.Element => {
-    const selected = course.id === selectedCourseId
-    const pending = course.id === pendingCourseId
     const expanded = !collapsedCourseIds.has(course.id)
-    const menuOpen = contextMenu?.course.id === course.id
-    const dropBefore =
-      dropTarget?.kind === 'before' && dropTarget.courseId === course.id
-
-    return (
-      <li key={course.id}>
-        <div
-          className="course-row"
-          data-selected={selected}
-          data-missing={course.missing || undefined}
-          data-drop-before={dropBefore || undefined}
-          data-dragging={draggingCourseId === course.id || undefined}
-          draggable={dragEnabled}
-          onContextMenu={(event) => handleContextMenu(event, course)}
-          onDragStart={
-            dragEnabled
-              ? (event) => startCourseDrag(event, course.id)
-              : undefined
-          }
-          onDragEnd={dragEnabled ? finishCourseDrag : undefined}
-          onDragOver={
-            dragEnabled
-              ? (event) => {
-                  const current = getCurrentCourseDrag()
-                  const accepts = canAcceptCourseDrag(event.dataTransfer.types)
-                  if (
-                    !accepts ||
-                    current === null ||
-                    current.courseId === course.id ||
-                    !isUpperCourseRowHalf(event)
-                  ) {
-                    setDropTarget((target) =>
-                      target?.kind === 'before' &&
-                      target.courseId === course.id
-                        ? null
-                        : target
-                    )
-                    return
-                  }
-                  event.preventDefault()
-                  event.stopPropagation()
-                  setDropTarget({ kind: 'before', courseId: course.id })
-                }
-              : undefined
-          }
-          onDragLeave={
-            dragEnabled
-              ? (event) => {
-                  if (
-                    event.relatedTarget instanceof Node &&
-                    event.currentTarget.contains(event.relatedTarget)
-                  ) {
-                    return
-                  }
-                  setDropTarget((target) =>
-                    target?.kind === 'before' && target.courseId === course.id
-                      ? null
-                      : target
-                  )
-                }
-              : undefined
-          }
-          onDrop={
-            dragEnabled
-              ? (event) => {
-                  const current = getCurrentCourseDrag()
-                  if (
-                    current === null ||
-                    current.courseId === course.id ||
-                    !isUpperCourseRowHalf(event)
-                  ) {
-                    return
-                  }
-                  const draggedCourseId = courseIdFromDrop(event)
-                  if (draggedCourseId === null || draggedCourseId === course.id) {
-                    return
-                  }
-                  event.preventDefault()
-                  event.stopPropagation()
-                  organizeDroppedCourse(
-                    draggedCourseId,
-                    course.groupId,
-                    course.id
-                  )
-                }
-              : undefined
-          }
-        >
-          <button
-            type="button"
-            className="course-row__toggle"
-            aria-label={`${course.name} ${expanded ? '접기' : '펼치기'}`}
-            aria-expanded={expanded}
-            disabled={pending}
-            onClick={() => {
-              setCourseExpanded(course.id, !expanded)
-            }}
-          >
-            <Icon name="chevronRight" />
-          </button>
-          <button
-            type="button"
-            className="course-row__select"
-            aria-current={selected ? 'page' : undefined}
-            disabled={pending}
-            onClick={() =>
-              selectAndExpandCourse(
-                course.id,
-                expanded,
-                selectCourse,
-                setCourseExpanded
-              )
-            }
-          >
-            <span
-              className="course-dot"
-              data-course-color={normalizeCourseColor(course.color)}
-            />
-            <span className="course-row__name">{course.name}</span>
-            {course.missing ? (
-              <span className="course-row__badge">연결 끊김</span>
-            ) : null}
-          </button>
-          <button
-            type="button"
-            className="course-row__menu-button"
-            aria-label={`${course.name} 과목 메뉴`}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            disabled={pending}
-            onClick={(event) => openCourseMenu(event, course)}
-          >
-            <span aria-hidden="true">⋯</span>
-          </button>
-        </div>
-        {expanded && (
-          <div className="course-row__children">
-            <FavoritesSection courseId={course.id} />
-          </div>
-        )}
-      </li>
-    )
-  }
-
-  const handleGroupDragOver = (
-    event: React.DragEvent<HTMLDivElement>,
-    groupId: string
-  ): void => {
-    if (
-      !canAcceptCourseDrag(event.dataTransfer.types) ||
-      getCurrentCourseDrag() === null
-    ) {
-      return
-    }
-    event.preventDefault()
-    event.stopPropagation()
-    setDropTarget({ kind: 'group', groupId })
-  }
-
-  const handleGroupDrop = (
-    event: React.DragEvent<HTMLDivElement>,
-    groupId: string
-  ): void => {
-    if (getCurrentCourseDrag() === null) return
-    const draggedCourseId = courseIdFromDrop(event)
-    if (draggedCourseId === null) return
-    event.preventDefault()
-    event.stopPropagation()
-    organizeDroppedCourse(draggedCourseId, groupId, null)
-  }
-
-  const handleUngroupedDragOver = (
-    event: React.DragEvent<HTMLLIElement>,
-    position: 'top' | 'bottom'
-  ): void => {
-    if (
-      !canAcceptCourseDrag(event.dataTransfer.types) ||
-      getCurrentCourseDrag() === null
-    ) {
-      return
-    }
-    event.preventDefault()
-    event.stopPropagation()
-    setDropTarget({ kind: 'ungrouped', position })
-  }
-
-  const handleUngroupedDrop = (
-    event: React.DragEvent<HTMLLIElement>
-  ): void => {
-    if (getCurrentCourseDrag() === null) return
-    const draggedCourseId = courseIdFromDrop(event)
-    if (draggedCourseId === null) return
-    event.preventDefault()
-    event.stopPropagation()
-    organizeDroppedCourse(draggedCourseId, null, null)
+    return <CourseListItem key={course.id} course={course}
+      selected={course.id === selectedCourseId} pending={course.id === pendingCourseId}
+      expanded={expanded} menuOpen={contextMenu?.course.id === course.id}
+      dropBefore={dropTarget?.kind === 'before' && dropTarget.courseId === course.id}
+      dragging={draggingCourseId === course.id} dragProps={rowDragProps(course, dragEnabled)}
+      onContextMenu={event => handleContextMenu(event, course)}
+      onOpenMenu={event => openCourseMenu(event, course)}
+      onToggle={() => setCourseExpanded(course.id, !expanded)}
+      onSelect={() => selectAndExpandCourse(course.id, expanded, selectCourse, setCourseExpanded)}
+    />
   }
 
   return (
     <aside className="app-rail app-rail--left" aria-label="과목 목록">
-      <div className="course-sidebar-chrome">
-        <span className="course-sidebar-chrome__traffic" aria-hidden="true" />
-        <Tooltip label="과목 사이드바 접기" placement="bottom">
-          <button
-            type="button"
-            className="titlebar-button course-sidebar-chrome__toggle"
-            aria-label="과목 사이드바 접기"
-            aria-pressed={true}
-            onClick={toggleLeftRail}
-          >
-            <Icon name="layoutLeft" />
-          </button>
-        </Tooltip>
-      </div>
-
-      {/* [M8] 학교 학사 사이트 바로가기 — above 과목 because it is the same
-          "where do I go" question, answered once per school. */}
       <UniversityShortcuts />
 
       <div className="rail-heading">
         <div>
-          <p className="eyebrow">LIBRARY</p>
           <h2>과목</h2>
         </div>
         <Tooltip label="과목 추가" placement="bottom">
@@ -857,91 +521,6 @@ export function CourseSidebar(): JSX.Element {
           </ul>
         )}
       </div>
-
-      <TogetherFooter />
-
-      <footer className="rail-footer">
-        <nav className="rail-nav" aria-label="앱 메뉴">
-          <SidebarAccountEntry />
-          <Tooltip label="설정" placement="top">
-            <button
-              type="button"
-              className="rail-nav__item"
-              aria-label="설정"
-              onClick={() => openSettings()}
-            >
-              <Icon name="settings" />
-            </button>
-          </Tooltip>
-          <HelpHub />
-          {authPhase === 'signed-in' && (
-            <Tooltip
-              label={
-                friendAttentionCount > 0
-                  ? `친구 · 새 소식 ${friendAttentionCount}개`
-                  : '친구'
-              }
-              placement="top"
-            >
-              <button
-                type="button"
-                className="rail-nav__item"
-                aria-label={
-                  friendAttentionCount > 0
-                    ? `친구, 새 소식 ${friendAttentionCount}개`
-                    : '친구'
-                }
-                onClick={() => openTab(descriptorFor('friends', {}))}
-              >
-                <TabKindIcon kind="friends" />
-                {friendAttentionCount > 0 && (
-                  <span className="rail-nav__badge" aria-hidden="true">
-                    {friendAttentionCount > 99 ? '99+' : friendAttentionCount}
-                  </span>
-                )}
-              </button>
-            </Tooltip>
-          )}
-          <span className="rail-nav__spacer" aria-hidden="true" />
-          <Tooltip
-            label={
-              selectedCourseId === null
-                ? '연결 그래프 (과목을 먼저 선택)'
-                : isLinkGraphOpen
-                  ? '연결 그래프 닫기'
-                  : '연결 그래프'
-            }
-            placement="top"
-          >
-            <button
-              type="button"
-              className="rail-nav__item"
-              data-active={isLinkGraphOpen || undefined}
-              aria-pressed={isLinkGraphOpen}
-              aria-label="연결 그래프"
-              disabled={selectedCourseId === null}
-              onClick={toggleLinkGraph}
-            >
-              <Icon name="graph" />
-            </button>
-          </Tooltip>
-          <Tooltip
-            label={isBoardOverlayOpen ? '학업 보드 닫기' : '학업 보드 열기'}
-            placement="top"
-          >
-            <button
-              type="button"
-              className="rail-nav__item"
-              data-active={isBoardOverlayOpen || undefined}
-              aria-pressed={isBoardOverlayOpen}
-              aria-label={isBoardOverlayOpen ? '학업 보드 닫기' : '학업 보드 열기'}
-              onClick={toggleBoardOverlay}
-            >
-              <TabKindIcon kind="board" />
-            </button>
-          </Tooltip>
-        </nav>
-      </footer>
 
       {addMenu !== null && (
         <div

@@ -1,7 +1,6 @@
 .help-menu {
   width: calc(var(--context-menu-width) + var(--space-7));
-  transform: translateY(-100%);
-  transform-origin: bottom left;
+  transform-origin: top left;
 }
 
 .help-menu button {
@@ -146,7 +145,7 @@
 
 .help-panel__error button {
   flex: 0 0 auto;
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .help-panel__empty {

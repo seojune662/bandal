@@ -1,0 +1,95 @@
+.shell-chrome {
+  grid-area: chrome;
+  position: relative;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  min-width: 144px;
+  height: var(--chrome-height);
+  gap: 8px;
+  padding-inline: 12px;
+  background: var(--bg-surface);
+  -webkit-app-region: drag;
+}
+.app-shell[data-settings='open'] > .shell-chrome {
+  z-index: 230;
+}
+.app-shell[data-settings='open'] > .global-navigation {
+  z-index: 210;
+}
+.shell-chrome button {
+  -webkit-app-region: no-drag;
+}
+.shell-chrome__traffic {
+  display: none;
+}
+:root[data-platform='darwin'] .shell-chrome__traffic {
+  display: block;
+  flex: 0 0 76px;
+}
+.global-navigation {
+  grid-area: navigation;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 4px 12px;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-subtle);
+}
+.global-navigation .rail-nav__item {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 20px;
+}
+.global-navigation__bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+}
+.global-navigation__together {
+  position: relative;
+}
+.navigation-popover {
+  position: absolute;
+  left: 44px;
+  top: 0;
+  width: 280px;
+  max-height: min(440px, 75vh);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  background: var(--bg-overlay);
+  box-shadow: var(--shadow-lg);
+}
+.navigation-popover h2 {
+  margin-bottom: 12px;
+  font-size: var(--text-base);
+  font-weight: 500;
+}
+.navigation-popover p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.navigation-popover__action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+.navigation-popover__action:hover {
+  background: var(--bg-raised);
+}
+.navigation-popover .together-footer {
+  padding: 0;
+  margin-top: 8px;
+  border: 0;
+}

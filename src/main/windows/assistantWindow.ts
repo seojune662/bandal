@@ -8,6 +8,8 @@ import type { AssistantWindowRequest, AssistantWindowState } from '../../shared/
 let parent: BrowserWindow | null = null
 let popup: BrowserWindow | null = null
 let ready = false
+let quitting = false
+export function markAssistantQuitting(): void { quitting = true; stopResize() }
 let state: AssistantWindowState = { visible: false, courseId: null, conversationId: null }
 let pendingPrompt: Extract<AssistantWindowRequest, { action: 'prompt' }> | null = null
 let relative = { x: 100, y: 120, width: 760, height: 660 }
@@ -75,7 +77,7 @@ function create(geometry?: typeof relative): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', e => e.preventDefault())
   win.on('blur', stopResize)
-  win.on('close', e => { stopResize(); e.preventDefault(); saveBounds(); state = { ...state, visible: false }; win.hide(); publish() })
+  win.on('close', e => { stopResize(); if (quitting) return; e.preventDefault(); saveBounds(); state = { ...state, visible: false }; win.hide(); publish() })
   win.on('moved', saveBounds)
   win.on('resized', saveBounds)
   win.webContents.once('did-finish-load', () => {

@@ -6,7 +6,6 @@
   align-items: center;
   align-self: stretch;
   min-width: 0;
-  border-inline: 1px solid var(--border-subtle);
 }
 
 .pdf-tool-rail {
@@ -22,37 +21,6 @@
   touch-action: pan-x;
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
-}
-
-.pdf-tool-rail__scroll-button {
-  display: none;
-  place-items: center;
-  flex: 0 0 auto;
-  width: var(--control-height);
-  height: 100%;
-  color: var(--text-secondary);
-  background: var(--bg-raised);
-  border-inline-end: 1px solid var(--border-subtle);
-}
-
-.pdf-tool-rail__scroll-button:last-child {
-  border-inline: 0;
-  border-inline-start: 1px solid var(--border-subtle);
-}
-
-.pdf-tool-rail__scroll-button[data-visible='true'] {
-  display: grid;
-}
-
-.pdf-tool-rail__scroll-button:hover:not(:disabled),
-.pdf-tool-rail__scroll-button:focus-visible {
-  color: var(--accent);
-  background: var(--accent-muted);
-}
-
-.pdf-tool-rail__scroll-button:disabled {
-  color: var(--text-muted);
-  opacity: 0.38;
 }
 
 .pdf-tool-rail::-webkit-scrollbar {
@@ -73,7 +41,6 @@
 
 .pdf-tool-rail__group + .pdf-tool-rail__group {
   padding-inline-start: var(--space-2);
-  border-inline-start: 1px solid var(--border-subtle);
 }
 
 .pdf-tool-rail__button {
@@ -81,7 +48,7 @@
   place-items: center;
   flex: 0 0 auto;
   width: calc(var(--icon-button-size) - var(--space-1));
-  height: calc(var(--icon-button-size) - var(--space-2));
+  height: var(--icon-button-size);
   font-size: var(--icon-size);
   line-height: 1;
   color: var(--text-muted);
@@ -179,11 +146,6 @@
   accent-color: var(--accent);
 }
 
-.pdf-tool-rail__export {
-  color: var(--accent);
-  border: 1px solid var(--border-strong);
-}
-
 .pdf-tool-rail__export:hover,
 .pdf-tool-rail__export:focus-visible {
   background: var(--accent-muted);
@@ -215,18 +177,20 @@
   pointer-events: none;
 }
 
-.pdf-tab[data-tool='select'] .pdf-drawing-layer :is(
-  .ink-layer__mark--selectable,
-  .ink-layer__image-el,
-  .ink-layer__image-object,
-  .ink-layer__clip-object,
-  .ink-layer__textbox-object,
-  .ink-layer__selection-frame,
-  .ink-layer__image-resize,
-  .ink-layer__clip-resize,
-  .ink-layer__shape-resize,
-  .ink-layer__textbox-resize
-) {
+.pdf-tab[data-tool='select']
+  .pdf-drawing-layer
+  :is(
+    .ink-layer__mark--selectable,
+    .ink-layer__image-el,
+    .ink-layer__image-object,
+    .ink-layer__clip-object,
+    .ink-layer__textbox-object,
+    .ink-layer__selection-frame,
+    .ink-layer__image-resize,
+    .ink-layer__clip-resize,
+    .ink-layer__shape-resize,
+    .ink-layer__textbox-resize
+  ) {
   pointer-events: auto;
 }
 
@@ -277,4 +241,48 @@
 .pdf-tab[data-tool='arrow'] .pdf-drawing-layer,
 .pdf-tab[data-tool='line'] .pdf-drawing-layer {
   cursor: crosshair;
+}
+
+.pdf-tool-rail-shell[hidden] {
+  display: none;
+}
+.pdf-tool-popover {
+  position: fixed;
+  z-index: 250;
+  width: 232px;
+  padding: 12px;
+  display: grid;
+  gap: 16px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+.pdf-tool-popover__tools {
+  display: grid;
+  gap: 4px;
+}
+.pdf-tool-popover__tools .pdf-tool-rail__button {
+  display: flex;
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding-inline: 8px;
+  font-size: var(--text-sm);
+}
+.pdf-tool-popover .pdf-tool-rail__range {
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--text-xs);
+}
+.pdf-tool-popover__export {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px;
+  font-size: var(--text-sm);
+  border-radius: var(--radius-md);
+}
+.pdf-tool-popover__export:hover {
+  background: var(--bg-raised);
 }

@@ -1,0 +1,11 @@
+/* Build-time source colors for existing application icons; not UI themes. */
+:root {
+  --swatch-lavender-dark-bg: oklch(14.5% 0.018 290);
+  --swatch-lavender-dark-surface: oklch(17.5% 0.022 288);
+  --swatch-lavender-dark-text: oklch(93% 0.01 290);
+  --swatch-lavender-dark-accent: oklch(76% 0.09 295);
+  --swatch-lavender-light-bg: oklch(97% 0.006 300);
+  --swatch-lavender-light-surface: oklch(98.5% 0.004 300);
+  --swatch-lavender-light-text: oklch(23% 0.02 295);
+  --swatch-lavender-light-accent: oklch(48% 0.13 295);
+}

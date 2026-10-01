@@ -1,9 +1,12 @@
 .app-shell {
   position: relative;
   display: grid;
-  grid-template-rows: minmax(0, 1fr);
-  grid-template-columns: var(--rail-left-width) minmax(0, 1fr) var(--rail-right-width);
-  grid-template-areas: 'left center right';
+  grid-template-rows: var(--chrome-height) minmax(0, 1fr);
+  grid-template-columns: var(--navigation-width) var(--rail-left-width) minmax(
+      0,
+      1fr
+    ) var(--rail-right-width);
+  grid-template-areas: 'chrome chrome center right' 'navigation left center right';
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -23,7 +26,7 @@
 }
 
 .rail-resizer--left {
-  left: var(--rail-left-width);
+  left: var(--sidebar-inset);
   transform: translateX(-50%);
 }
 
@@ -49,18 +52,23 @@
 }
 
 .app-shell[data-left-rail='closed'] {
-  grid-template-columns: minmax(0, 1fr) var(--rail-right-width);
-  grid-template-areas: 'center right';
+  grid-template-columns: var(--navigation-width) minmax(0, 1fr) var(
+      --rail-right-width
+    );
+  grid-template-areas: 'chrome center right' 'navigation center right';
 }
 
 .app-shell[data-right-rail='closed'] {
-  grid-template-columns: var(--rail-left-width) minmax(0, 1fr);
-  grid-template-areas: 'left center';
+  grid-template-columns: var(--navigation-width) var(--rail-left-width) minmax(
+      0,
+      1fr
+    );
+  grid-template-areas: 'chrome chrome center' 'navigation left center';
 }
 
 .app-shell[data-left-rail='closed'][data-right-rail='closed'] {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: 'center';
+  grid-template-columns: var(--navigation-width) minmax(0, 1fr);
+  grid-template-areas: 'chrome center' 'navigation center';
 }
 
 /* Shared icon buttons */
@@ -82,7 +90,6 @@
 .bare-icon-button:hover {
   color: var(--text-primary);
   background: var(--bg-raised);
-  border-color: var(--border-subtle);
 }
 
 .titlebar-button[aria-pressed='true'] {
@@ -136,7 +143,7 @@
 
 .rail-heading h2 {
   font-size: var(--text-base);
-  font-weight: 650;
+  font-weight: 500;
   letter-spacing: var(--tracking-tight);
   color: var(--text-primary);
 }
@@ -156,9 +163,9 @@
   height: var(--control-height);
   margin: 0 var(--space-3) var(--space-3);
   color: var(--text-muted);
-  background: var(--bg-app);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
 }
 
 .rail-search:hover {
@@ -217,23 +224,7 @@
   padding-bottom: var(--space-4);
 }
 
-.rail-footer {
-  flex: 0 0 auto;
-  padding: var(--space-2) var(--space-3);
-  border-top: 1px solid var(--border-subtle);
-}
-
-/* Bottom nav of the left rail: one icon row — labels live in tooltips. */
-
-.rail-nav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.rail-nav__spacer {
-  flex: 1;
-}
+/* Global navigation buttons; labels are also available to assistive technology. */
 
 .rail-nav__item {
   position: relative;
@@ -277,11 +268,10 @@
   background: var(--bg-raised);
 }
 
-/* "지금 열려 있음" — the overlay is up. Accent says state, not decoration. */
+/* Selection is a quiet background; keyboard focus uses the shared focus ring. */
 .rail-nav__item[data-active] {
   color: var(--accent);
   background: var(--accent-muted);
-  border-color: var(--border-strong);
 }
 
 .rail-nav__item:active {
@@ -311,7 +301,7 @@
 .rail-error button {
   flex: 0 0 auto;
   padding: var(--space-1);
-  font-weight: 650;
+  font-weight: 500;
   border-radius: var(--radius-sm);
 }
 

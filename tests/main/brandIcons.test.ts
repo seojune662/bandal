@@ -19,7 +19,7 @@ import {
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const PALETTES_DIR = join(
   ROOT,
-  'src/renderer/src/styles/palettes'
+  'scripts/icon-palettes'
 )
 
 describe('brand icon palettes', () => {

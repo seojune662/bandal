@@ -83,7 +83,7 @@ function SignInCard({
 }
 
 /** Global Together controls plus the course-unassigned group bucket. */
-export function TogetherFooter(): JSX.Element | null {
+export function TogetherFooter({ onNavigate }: { onNavigate?: () => void } = {}): JSX.Element | null {
   const auth = useAuthStore((state) => state.auth)
   const hydrated = useAuthStore((state) => state.hydrated)
   const initAuth = useAuthStore((state) => state.init)
@@ -118,8 +118,9 @@ export function TogetherFooter(): JSX.Element | null {
           view: 'chat'
         })
       )
+      onNavigate?.()
     },
-    [openTab]
+    [openTab, onNavigate]
   )
 
   const openWhiteboard = useCallback(
@@ -131,8 +132,9 @@ export function TogetherFooter(): JSX.Element | null {
           view: 'whiteboard'
         })
       )
+      onNavigate?.()
     },
-    [openTab]
+    [openTab, onNavigate]
   )
 
   if (!hydrated) {

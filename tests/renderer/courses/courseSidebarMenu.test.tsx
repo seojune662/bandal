@@ -15,7 +15,10 @@ const uiState = vi.hoisted(() => ({
   isLinkGraphOpen: false,
   toggleLinkGraph: vi.fn(),
   toggleLeftRail: vi.fn(),
-  openSettings: vi.fn()
+  openSettings: vi.fn(),
+  closeBoardOverlay: vi.fn(),
+  closeLinkGraph: vi.fn(),
+  closeSettings: vi.fn()
 }))
 const authState = vi.hoisted(() => ({ phase: 'unconfigured' }))
 const friendsState = vi.hoisted(() => ({
@@ -25,20 +28,19 @@ const friendsState = vi.hoisted(() => ({
 const workspaceState = vi.hoisted(() => ({ openTab: vi.fn() }))
 
 vi.mock('../../../src/renderer/src/stores/uiStore', () => ({
-  useUiStore: (selector: (state: typeof uiState) => unknown) => selector(uiState)
+  useUiStore: Object.assign((selector: (state: typeof uiState) => unknown) => selector(uiState), { getState: () => uiState })
 }))
 vi.mock('../../../src/renderer/src/stores/authStore', () => ({
-  useAuthStore: (
-    selector: (state: { auth: typeof authState }) => unknown
-  ) => selector({ auth: authState })
+  useAuthStore: Object.assign((selector: (state: { auth: typeof authState }) => unknown) => selector({ auth: authState }), { getState: () => ({ init: async () => undefined }) })
 }))
 vi.mock('../../../src/renderer/src/stores/friendsStore', () => ({
-  useFriendsStore: (selector: (state: typeof friendsState) => unknown) =>
-    selector(friendsState)
+  useFriendsStore: Object.assign((selector: (state: typeof friendsState) => unknown) => selector(friendsState), { getState: () => friendsState })
 }))
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
-  useWorkspaceStore: (selector: (state: typeof workspaceState) => unknown) =>
-    selector(workspaceState)
+  useWorkspaceStore: Object.assign((selector: (state: typeof workspaceState) => unknown) => selector(workspaceState), { getState: () => workspaceState })
+}))
+vi.mock('../../../src/renderer/src/stores/groupsStore', () => ({
+  useGroupsStore: Object.assign((selector: (state: { pendingInvites: unknown[] }) => unknown) => selector({ pendingInvites: [] }), { getState: () => ({ init: async () => undefined }) })
 }))
 vi.mock('../../../src/renderer/src/features/account/SidebarAccountEntry', () => ({
   SidebarAccountEntry: () => (
@@ -50,7 +52,7 @@ vi.mock('../../../src/renderer/src/features/group/TogetherFooter', () => ({
 }))
 vi.mock('../../../src/renderer/src/features/help/HelpHub', () => ({
   HelpHub: () => (
-    <button type="button" className="rail-nav__item" aria-label="도움말" />
+    <button type="button" className="rail-nav__item" aria-label="더 보기" />
   )
 }))
 vi.mock('../../../src/renderer/src/features/university/UniversityShortcuts', () => ({
@@ -72,6 +74,7 @@ vi.mock('../../../src/renderer/src/features/courses/CourseGroupDialogs', () => (
   DeleteCourseGroupDialog: () => null
 }))
 
+import { GlobalNavigation } from '../../../src/renderer/src/app/GlobalNavigation'
 import { CourseSidebar } from '../../../src/renderer/src/features/courses/CourseSidebar'
 import {
   setIpcAdapter,
@@ -139,12 +142,13 @@ afterEach(() => {
 })
 
 describe('CourseSidebar course menu', () => {
-  test('puts the friends entry in the bottom icon navigation', () => {
+  test('opens friends from the global Together menu', () => {
     authState.phase = 'signed-in'
-    act(() => root.render(<CourseSidebar />))
+    act(() => root.render(<><GlobalNavigation /><CourseSidebar /></>))
 
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="함께하기"]')?.click())
     const button = container.querySelector<HTMLButtonElement>(
-      '.rail-footer [aria-label="친구"]'
+      '.navigation-popover__action'
     )
     expect(button).not.toBeNull()
     expect(container.querySelector('.together-friends')).toBeNull()
@@ -155,21 +159,16 @@ describe('CourseSidebar course menu', () => {
     )
   })
 
-  test('keeps profile, settings, help, friends, graph and board in that order', () => {
+  test('keeps primary navigation above account and settings', () => {
     authState.phase = 'signed-in'
-    act(() => root.render(<CourseSidebar />))
+    act(() => root.render(<><GlobalNavigation /><CourseSidebar /></>))
 
     const labels = Array.from(
-      container.querySelectorAll<HTMLElement>('.rail-nav > .rail-nav__item')
+      container.querySelectorAll<HTMLElement>('.global-navigation .rail-nav__item')
     ).map((item) => item.getAttribute('aria-label'))
 
     expect(labels).toEqual([
-      '내 프로필',
-      '설정',
-      '도움말',
-      '친구',
-      '연결 그래프',
-      '학업 보드 열기'
+      '과목', '학업 보드 열기', '함께하기', '더 보기', '내 프로필', '설정'
     ])
   })
 

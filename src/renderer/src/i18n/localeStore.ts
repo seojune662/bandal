@@ -1,3 +1,4 @@
+import { ensureSettingsLoaded } from '../stores/settingsSnapshot'
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import { invoke, onPush } from '../lib/ipc'
@@ -42,7 +43,7 @@ function initializeLocale(): Promise<void> {
       subscribed = true
     }
 
-    const settings = await invoke('settings:get', {})
+    const settings = await ensureSettingsLoaded()
     if (sequenceAtStart === writeSequence) {
       useLocaleStore.setState({ locale: normalizeLocale(settings.locale) })
     }

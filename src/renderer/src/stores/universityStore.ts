@@ -1,3 +1,4 @@
+import { ensureSettingsLoaded } from './settingsSnapshot'
 /**
  * [M8] The chosen school and its shortcut list.
  *
@@ -117,7 +118,7 @@ export const useUniversityStore = create<UniversityStore>()((set, get) => {
       })
 
       try {
-        const settings = await invoke('settings:get', {})
+        const settings = await ensureSettingsLoaded()
         set({ ...derive(settings.university), loaded: true })
       } catch (error) {
         console.error('[Bandal] 학교 설정을 불러오지 못했습니다.', error)

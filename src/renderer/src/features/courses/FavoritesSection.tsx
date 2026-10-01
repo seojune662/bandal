@@ -426,13 +426,6 @@ export function FavoritesSection({
         </ul>
       ) : (
         <div className="favorites-section__empty">
-          <svg
-            className="favorites-section__empty-icon"
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-          >
-            <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z" />
-          </svg>
           <span>{t('favorites.emptyHelp')}</span>
         </div>
       )}

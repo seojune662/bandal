@@ -46,9 +46,9 @@ describe('applyAppearanceKnobs', () => {
 })
 
 describe('appearance helpers', () => {
-  test('pickAppearance keeps only the five appearance keys', () => {
+  test('pickAppearance keeps only the four appearance keys', () => {
     expect(Object.keys(pickAppearance(DEFAULT_SETTINGS)).sort()).toEqual(
-      ['density', 'editorFont', 'fontScale', 'palette', 'theme']
+      ['density', 'editorFont', 'fontScale', 'theme']
     )
   })
 

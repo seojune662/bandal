@@ -47,7 +47,7 @@ const MANIFEST_FILE = join(ICONS_DIR, 'manifest.json')
 const ICONSET_DIR = join(RESOURCES_DIR, 'bandal.iconset')
 const PALETTES_DIR = join(
   ROOT,
-  'src/renderer/src/styles/palettes'
+  'scripts/icon-palettes'
 )
 
 export const ICON_PALETTES = ['bandal', 'ink', 'lavender', 'moss']

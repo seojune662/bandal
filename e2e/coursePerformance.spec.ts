@@ -107,7 +107,7 @@ test('100 course switches retain the visible PDF and evict only older workspaces
     expect(afterHeap - beforeHeap).toBeLessThan(32 * 1024 * 1024)
     await info.attach('warm-course-memory', { body: JSON.stringify({ beforeHeap, afterHeap }), contentType: 'application/json' })
     await info.attach('warm-course-timing', { body: JSON.stringify(timings), contentType: 'application/json' })
-    console.log('Warm course timing:', timings)
+    console.log('Warm course timing:', { ...timings, beforeHeap, afterHeap, heapGrowthMB: (afterHeap - beforeHeap) / 1024 / 1024 })
     expect(timings.p95).toBeLessThan(150)
     expect(timings.missing).toEqual([])
     await expect(page.locator('[data-retained-proof="original"]')).toBeVisible()

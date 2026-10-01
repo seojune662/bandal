@@ -27,7 +27,7 @@
 .settings-usage-tile > strong {
   color: var(--text-primary);
   font-size: var(--text-xl);
-  font-weight: 680;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -40,7 +40,7 @@
   margin-bottom: var(--space-3);
   color: var(--text-primary);
   font-size: var(--text-base);
-  font-weight: 680;
+  font-weight: 500;
 }
 
 .settings-usage-provider-grid {
@@ -100,7 +100,7 @@
 .settings-usage-token-rows dd {
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 620;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 

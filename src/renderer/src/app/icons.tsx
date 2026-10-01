@@ -1,6 +1,7 @@
 import type { SVGProps } from 'react'
 
 export type IconName =
+  | 'user'
   | 'archive'
   | 'chevronLeft'
   | 'chevronRight'
@@ -52,6 +53,10 @@ export function Icon({ name, ...props }: IconProps): JSX.Element {
 }
 
 const paths: Record<IconName, JSX.Element> = {
+  user: (<>
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M5 21v-2a7 7 0 0 1 14 0v2" />
+  </>),
   archive: (
     <>
       <path d="M4 7.5h16v11a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z" />

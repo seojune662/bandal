@@ -1,3 +1,4 @@
+import { ensureSettingsLoaded } from '../../stores/settingsSnapshot'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TASK_COLORS } from '../../../../shared/types/board'
 import type {
@@ -67,7 +68,7 @@ function useLiveSettings(): Settings {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS)
   useEffect(() => {
     let alive = true
-    void invoke('settings:get', {}).then((next) => {
+    void ensureSettingsLoaded().then((next) => {
       if (alive) setSettings(next)
     })
     const stop = onPush('settings:changed', ({ settings: next }) => setSettings(next))

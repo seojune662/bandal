@@ -23,11 +23,11 @@ const settings: Settings = {
 describe('locale store', () => {
   test('hydrates from settings and applies pushed changes without reopening', async () => {
     const existingWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
-    let settingsChanged: ((payload: { settings: Settings }) => void) | undefined
+    const settingsChanged: Array<(payload: { settings: Settings }) => void> = []
     ipc.invoke.mockResolvedValue(settings)
     ipc.onPush.mockImplementation(
       (_channel, callback: (payload: { settings: Settings }) => void) => {
-        settingsChanged = callback
+        settingsChanged.push(callback)
         return () => undefined
       }
     )
@@ -51,9 +51,7 @@ describe('locale store', () => {
         'General'
       )
 
-      settingsChanged?.({
-        settings: { ...settings, locale: 'ko-KR' }
-      })
+      for (const callback of settingsChanged) callback({ settings: { ...settings, locale: 'ko-KR' } })
 
       expect(getLocale()).toBe('ko-KR')
       expect(translate(getLocale(), 'settings.category.general.label')).toBe(

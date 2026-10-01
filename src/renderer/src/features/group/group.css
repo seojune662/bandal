@@ -71,7 +71,7 @@
 .group-head__title h2 {
   overflow: hidden;
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -529,7 +529,7 @@
 
 .group-empty__title {
   font-size: var(--text-lg);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
 }
 
@@ -593,7 +593,7 @@
 
 .group-join__title {
   font-size: var(--text-lg);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
 }
 
@@ -764,7 +764,7 @@
 
 .invite-code__label {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-muted);
   letter-spacing: var(--tracking-wide);
 }

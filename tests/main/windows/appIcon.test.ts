@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BrowserWindow } from 'electron'
 import {
-  PALETTES,
   THEMES,
   type PaletteId,
   type ThemeId
@@ -66,7 +65,7 @@ describe('resolveIconVariant', () => {
     const themes: Settings['theme'][] = [...THEMES.map(({ id }) => id), 'system']
     let combinations = 0
 
-    for (const palette of PALETTES.map(({ id }) => id)) {
+    for (const palette of (['bandal', 'ink', 'lavender', 'moss', 'catppuccin', 'minimal'] as const)) {
       for (const theme of themes) {
         for (const prefersDark of [false, true]) {
           const resolvedTheme =
@@ -78,24 +77,20 @@ describe('resolveIconVariant', () => {
             : 'light'
 
           expect(resolveIconVariant(settings(theme, palette), prefersDark)).toBe(
-            `${palette}-${expectedBase}`
+            `bandal-${expectedBase}`
           )
           combinations += 1
         }
       }
     }
 
-    expect(combinations).toBe(6 * 7 * 2)
+    expect(combinations).toBe(6 * 3 * 2)
   })
 
   test.each<[ThemeId, 'dark' | 'light']>([
     ['dark', 'dark'],
-    ['midnight', 'dark'],
-    ['graphite', 'dark'],
-    ['light', 'light'],
-    ['sepia', 'light'],
-    ['high-contrast', 'light']
-  ])('%s uses the %s icon base', (theme, base) => {
+            ['light', 'light'],
+          ])('%s uses the %s icon base', (theme, base) => {
     expect(resolveIconVariant(settings(theme, 'bandal'), false)).toBe(
       `bandal-${base}`
     )
@@ -127,7 +122,7 @@ describe('resolveIconDir', () => {
 describe('createAppIconApplier', () => {
   test('updates every Windows window and tray only once per variant', async () => {
     const root = await temporaryRoot()
-    const dir = await createAssets(root, 'ink-dark', [
+    const dir = await createAssets(root, 'bandal-dark', [
       'icon-256.png',
       'tray.ico'
     ])
@@ -138,7 +133,7 @@ describe('createAppIconApplier', () => {
     const dock = { setIcon: vi.fn() }
     const finder = { apply: vi.fn(async () => undefined) }
     const applier = createAppIconApplier({
-      getSettings: () => settings('graphite', 'ink'),
+      getSettings: () => settings('dark', 'ink'),
       prefersDark: () => false,
       platform: 'win32',
       isPackaged: true,
@@ -153,7 +148,7 @@ describe('createAppIconApplier', () => {
     await applier.apply()
     await applier.apply()
 
-    expect(applier.current()).toBe('ink-dark')
+    expect(applier.current()).toBe('bandal-dark')
     expect(firstWindow.setIcon).toHaveBeenCalledOnce()
     expect(firstWindow.setIcon).toHaveBeenCalledWith(join(dir, 'icon-256.png'))
     expect(secondWindow.setIcon).toHaveBeenCalledWith(join(dir, 'icon-256.png'))
@@ -166,7 +161,7 @@ describe('createAppIconApplier', () => {
 
   test('updates the macOS dock, Finder metadata, and template tray icon', async () => {
     const root = await temporaryRoot()
-    const dir = await createAssets(root, 'lavender-light', [
+    const dir = await createAssets(root, 'bandal-light', [
       'icon-512.png',
       'trayTemplate.png'
     ])
@@ -175,7 +170,7 @@ describe('createAppIconApplier', () => {
     const tray = { setIconVariant: vi.fn() }
     const windows = vi.fn(() => [] as BrowserWindow[])
     const applier = createAppIconApplier({
-      getSettings: () => settings('sepia', 'lavender'),
+      getSettings: () => settings('light', 'lavender'),
       prefersDark: () => true,
       platform: 'darwin',
       isPackaged: true,
@@ -257,7 +252,7 @@ describe('createAppIconApplier', () => {
 
     await expect(applier.apply()).resolves.toBeUndefined()
 
-    expect(applier.current()).toBe('moss-light')
+    expect(applier.current()).toBe('bandal-light')
     expect(warn).toHaveBeenCalledTimes(2)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('icon-256.png'))
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('tray.ico'))

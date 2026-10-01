@@ -26,7 +26,6 @@ import {
   pickAppearance,
 } from "../../../../shared/appearance";
 import type { AppearanceSettings } from "../../../../shared/appearance";
-import type { PaletteId } from "../../../../shared/theme";
 import {
   isSettingsCategoryId,
   SETTINGS_CATEGORIES,
@@ -79,7 +78,6 @@ import { useTourStore } from "../onboarding/tour/tourStore";
 import "../help/help.css";
 import "./settings-app.css";
 import "./settings-panels.css";
-import { subscribePluginThemes } from '../plugins/pluginThemes';
 
 interface Category {
   id: SettingsCategoryId;
@@ -123,7 +121,6 @@ export function SettingsApp({
   initialCategory = null,
 }: SettingsAppProps = {}): JSX.Element {
   const t = useT();
-  useEffect(() => embedded ? undefined : subscribePluginThemes(), [embedded]);
   const locale = useLocale();
   const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(() =>
     isSettingsCategoryId(initialCategory) ? initialCategory : "general",
@@ -388,7 +385,7 @@ export function SettingsApp({
     if (themeSaving) return;
     const previous = appearance;
     const next = { ...previous, ...patch };
-    if (isSameAppearance(next, previous) && !(settings?.pluginTheme && (patch.theme !== undefined || patch.palette !== undefined))) return;
+    if (isSameAppearance(next, previous)) return;
     setAppearance(next);
     if (!embedded) applyTheme(next);
     setThemeSaving(true);
@@ -416,9 +413,6 @@ export function SettingsApp({
     saveAppearance({ theme });
   };
 
-  const handlePaletteSelect = (palette: PaletteId): void => {
-    saveAppearance({ palette });
-  };
 
   const handleFontScaleSelect = (fontScale: FontScale): void => {
     saveAppearance({ fontScale });
@@ -553,7 +547,6 @@ export function SettingsApp({
     appearance: (
       <AppearancePanel
         theme={appearance.theme}
-        palette={appearance.palette}
         fontScale={appearance.fontScale}
         editorFont={appearance.editorFont}
         density={appearance.density}
@@ -562,7 +555,6 @@ export function SettingsApp({
         saving={themeSaving}
         error={themeErrorKey === null ? null : t(themeErrorKey)}
         onSelect={handleThemeSelect}
-        onSelectPalette={handlePaletteSelect}
         onSelectFontScale={handleFontScaleSelect}
         onSelectEditorFont={handleEditorFontSelect}
         onSelectDensity={handleDensitySelect}
@@ -773,9 +765,6 @@ export function SettingsApp({
               <button type="button" className="secondary-button" onClick={() => setSettingsAttempt((n) => n + 1)}>{t('settings.plugins.action.retry')}</button>
             </div>}
             <header className="content-heading">
-              <span className="content-heading__eyebrow">
-                {t("settings.eyebrow")}
-              </span>
               <h1>{active.label}</h1>
               <p>{active.description}</p>
             </header>

@@ -1,6 +1,7 @@
 /* PDF and slide canvases keep their paper colors in every app theme.
    Match the exported document palette; dark UI text is otherwise white on paper. */
 .pdf-tab,
+.pdf-tool-popover,
 .presentation-viewer {
   --drawing-color-ink: rgb(20 23 31);
   --drawing-color-red: rgb(214 36 46);
@@ -92,31 +93,59 @@ div.ink-layer__textbox {
 /* style.fill — 글자색과 독립인 배경 틴트(알파 = TEXT_FILL_OPACITY). 변수로
    두어 편집 중(.is-editing)에도 같은 틴트가 보인다. */
 .ink-layer__textbox[data-fill='ink'] {
-  --textbox-fill: color-mix(in oklch, var(--drawing-color-ink) 18%, transparent);
+  --textbox-fill: color-mix(
+    in oklch,
+    var(--drawing-color-ink) 18%,
+    transparent
+  );
 }
 
 .ink-layer__textbox[data-fill='red'] {
-  --textbox-fill: color-mix(in oklch, var(--drawing-color-red) 18%, transparent);
+  --textbox-fill: color-mix(
+    in oklch,
+    var(--drawing-color-red) 18%,
+    transparent
+  );
 }
 
 .ink-layer__textbox[data-fill='orange'] {
-  --textbox-fill: color-mix(in oklch, var(--drawing-color-orange) 18%, transparent);
+  --textbox-fill: color-mix(
+    in oklch,
+    var(--drawing-color-orange) 18%,
+    transparent
+  );
 }
 
 .ink-layer__textbox[data-fill='yellow'] {
-  --textbox-fill: color-mix(in oklch, var(--drawing-color-yellow) 18%, transparent);
+  --textbox-fill: color-mix(
+    in oklch,
+    var(--drawing-color-yellow) 18%,
+    transparent
+  );
 }
 
 .ink-layer__textbox[data-fill='green'] {
-  --textbox-fill: color-mix(in oklch, var(--drawing-color-green) 18%, transparent);
+  --textbox-fill: color-mix(
+    in oklch,
+    var(--drawing-color-green) 18%,
+    transparent
+  );
 }
 
 .ink-layer__textbox[data-fill='blue'] {
-  --textbox-fill: color-mix(in oklch, var(--drawing-color-blue) 18%, transparent);
+  --textbox-fill: color-mix(
+    in oklch,
+    var(--drawing-color-blue) 18%,
+    transparent
+  );
 }
 
 .ink-layer__textbox[data-fill='violet'] {
-  --textbox-fill: color-mix(in oklch, var(--drawing-color-violet) 18%, transparent);
+  --textbox-fill: color-mix(
+    in oklch,
+    var(--drawing-color-violet) 18%,
+    transparent
+  );
 }
 
 textarea.ink-layer__textbox {
@@ -140,7 +169,9 @@ textarea.ink-layer__textbox {
 }
 
 .ink-layer__textbox-editor-content:empty::before,
-.ink-layer__textbox-editor-content:has(> br.ProseMirror-trailingBreak:only-child)::before {
+.ink-layer__textbox-editor-content:has(
+    > br.ProseMirror-trailingBreak:only-child
+  )::before {
   color: var(--text-muted);
   content: attr(data-placeholder);
   pointer-events: none;

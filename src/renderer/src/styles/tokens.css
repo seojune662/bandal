@@ -1,46 +1,11 @@
-/* Every theme, in one import. Must stay first — CSS @import has to precede
- * rules. Entry points only need `styles/tokens.css`; adding a theme never
- * touches main.tsx / settings-main.tsx. See themes/index.css. */
 @import './themes/index.css';
-@import './palettes/index.css';
 
-/* [C4] Semantic design tokens.
- * Color values live in themes/<id>.css — one self-contained file per theme,
- * registered in src/shared/theme.ts. This file defines the theme-independent
- * scale tokens and documents the full set of semantic color tokens every
- * surface must use.
- *
- * Color tokens (every theme MUST define all of these):
- *   --bg-app --bg-surface --bg-raised --bg-overlay
- *   --text-primary --text-secondary --text-muted
- *   --accent --accent-muted --on-accent
- *   --danger --danger-muted --on-danger --backdrop
- *   --border-subtle --border-strong
- *   --course-gold --course-green --course-blue
- *   --course-pink --course-violet --course-orange
- *   --highlight-yellow --highlight-green --highlight-pink --highlight-blue
- *   --status-todo --status-progress --status-done
- *   --shadow-sm --shadow-md --shadow-lg   (shadows carry theme-tinted color)
- *
- * --on-accent / --on-danger are the label colors for a filled accent/danger
- * surface (primary button, danger confirm). Use them instead of reaching for
- * --bg-app: they are the pair the contrast audit measures. Every theme also
- * guarantees --bg-app on --accent ≥ 4.5:1 so pre-existing call sites pass.
- *
- * Contrast contract for a new theme (measured, not eyeballed —
- * docs/STYLEGUIDE.md §1.2):
- *   - all three --text-* on all three surfaces ≥ 4.5:1
- *   - --on-accent/--on-danger on their fills ≥ 4.5:1
- *   - --course-* and --status-* on --bg-app ≥ 3:1
- *   - black text on every --highlight-* over a WHITE page ≥ 4.5:1
- *     (the PDF canvas is paper-white in every theme)
- */
-
+/* Shared layout, type and control tokens. Colors live in the two neutral themes. */
 :root {
   /* Radii */
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
   --radius-pill: 999px;
 
   /* Spacing scale (4px base) */
@@ -55,11 +20,11 @@
 
   /* Typography */
   --font-sans:
-    'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
-    'Apple SD Gothic Neo', 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo',
+    'Pretendard Variable', Pretendard, 'Noto Sans KR', sans-serif;
   --font-mono:
-    ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
-    'Liberation Mono', monospace;
+    ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono',
+    monospace;
   /* Note editor only (설정 > 화면 > 필기 글꼴); the chrome never uses it. */
   --font-serif:
     'Noto Serif KR', 'Apple SD Gothic Neo', Georgia, 'Times New Roman', serif;
@@ -69,17 +34,20 @@
    * every rem token above and below scales like browser zoom. */
   --font-scale: 1;
 
-  --text-xs: 0.6875rem;
+  --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
-  --text-base: 0.9375rem;
+  --text-base: 0.875rem;
   --text-lg: 1.125rem;
   --text-xl: 1.5rem;
 
   --tracking-tight: -0.015em;
-  --tracking-wide: 0.08em;
+  --tracking-wide: 0.015em;
 
   /* Shell and controls */
-  --chrome-height: 2.75rem;
+  --chrome-height: 44px;
+  --navigation-width: 48px;
+  --sidebar-inset: calc(var(--navigation-width) + var(--rail-left-width));
+  --focus-ring: #3981f7;
   --rail-left-width: 15rem;
   --rail-right-width: 18rem;
   --control-height: 2rem;
@@ -117,6 +85,39 @@
   --space-4: 0.75rem;
   --control-height: 1.75rem;
   --button-height: 2rem;
-  --chrome-height: 2.5rem;
-  --rail-left-width: 13rem;
+}
+
+:root {
+  --preview-light-bg: #ffffff;
+  --preview-light-surface: #f3f3f3;
+  --preview-light-text: #686868;
+  --preview-light-accent: #171717;
+  --preview-dark-bg: #212121;
+  --preview-dark-surface: #181818;
+  --preview-dark-text: #b0b0b0;
+  --preview-dark-accent: #ececec;
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --border-subtle: var(--text-muted);
+    --border-strong: var(--text-secondary);
+  }
+}
+@media (forced-colors: active) {
+  :root {
+    --bg-app: Canvas;
+    --bg-surface: Canvas;
+    --bg-raised: ButtonFace;
+    --bg-overlay: Canvas;
+    --text-primary: CanvasText;
+    --text-secondary: CanvasText;
+    --text-muted: CanvasText;
+    --accent: Highlight;
+    --accent-muted: ButtonFace;
+    --on-accent: HighlightText;
+    --focus-ring: Highlight;
+    --border-subtle: GrayText;
+    --border-strong: ButtonText;
+  }
 }

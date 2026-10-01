@@ -1,6 +1,6 @@
 {
   "name": "bandal",
-  "version": "0.57.0",
+  "version": "0.58.0",
   "description": "Bandal (반달) — a study IDE for university students",
   "main": "./out/main/index.js",
   "author": "Bandal",
@@ -97,8 +97,13 @@
   },
   "pnpm": {
     "supportedArchitectures": {
-      "os": ["current"],
-      "cpu": ["x64", "arm64"]
+      "os": [
+        "current"
+      ],
+      "cpu": [
+        "x64",
+        "arm64"
+      ]
     },
     "overrides": {
       "@milkdown/core": "7.22.0",

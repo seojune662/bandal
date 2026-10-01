@@ -196,7 +196,6 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
   if (course === null) {
     return (
       <div className="workspace-watermark">
-        <ExpandLeftRail />
         <ToggleRightRail />
         <BandalMark size={56} className="workspace-watermark__moon" />
       </div>
@@ -208,10 +207,8 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
       data-drop-active={isDropActive || undefined}
       {...dropProps}
     >
-      <ExpandLeftRail />
       <ToggleRightRail />
       <BandalMark size={56} className="workspace-watermark__moon" />
-      <p className="eyebrow">CURRENT COURSE</p>
       <h1>{course.name}</h1>
       <p className="workspace-watermark__hint">{ko ? '읽고, 기록하고, 연결하는 나만의 학습 공간' : 'A space to read, write, and connect your ideas.'}</p>
       <div className="workspace-start-actions" aria-label={ko ? '학습 시작' : 'Start studying'}>
@@ -242,40 +239,10 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
   )
 }
 
-/**
- * The way back to a collapsed course sidebar. It has to appear everywhere the
- * sidebar can be collapsed from, which is why it is not simply a tab-bar
- * action: dockview renders the tab bar only when a group exists, so with no
- * tabs open there was no button anywhere and the sidebar could only be
- * recovered by restarting the app.
- */
-function ExpandLeftRail(): JSX.Element | null {
-  const leftRailOpen = useUiStore((state) => state.leftRailOpen)
-  const toggleLeftRail = useUiStore((state) => state.toggleLeftRail)
-
-  if (leftRailOpen) return null
-
-  return (
-    <div className="workspace-chrome">
-      {/* Keeps the button clear of the macOS window controls. */}
-      <span className="workspace-chrome__traffic" aria-hidden="true" />
-      <Tooltip label="과목 사이드바 펼치기" placement="bottom">
-        <button
-          type="button"
-          className="titlebar-button"
-          aria-label="과목 사이드바 펼치기"
-          aria-pressed={false}
-          onClick={toggleLeftRail}
-        >
-          <Icon name="layoutLeft" />
-        </button>
-      </Tooltip>
-    </div>
-  )
-}
-
-function ChromeLeft(_props: IDockviewHeaderActionsProps): JSX.Element | null {
-  return <ExpandLeftRail />
+/** Reserve fixed window controls when the sidebar is closed. */
+function ChromeLeft(): JSX.Element | null {
+  const open = useUiStore(state => state.leftRailOpen)
+  return open ? null : <div className="workspace-chrome-spacer" aria-hidden="true" />
 }
 
 function AddTabAction(_props: IDockviewHeaderActionsProps): JSX.Element {

@@ -39,7 +39,8 @@ import { showToast, ToastHost } from './toast'
 import { PresentationProgress } from '../features/file/pptx/presentationJobs'
 import { usePluginsStore } from '../stores/pluginsStore'
 import { subscribePluginEditor } from '../features/plugins/pluginEditor'
-import { subscribePluginThemes } from '../features/plugins/pluginThemes'
+import { ShellChrome } from './ShellChrome'
+import { GlobalNavigation } from './GlobalNavigation'
 import './app-shell.css'
 
 const AssistantLayer = lazy(() =>
@@ -113,8 +114,7 @@ export function AppShell(): JSX.Element {
   const initTheme = useUiStore((state) => state.initTheme)
   const leftRailOpen = useUiStore((state) => state.leftRailOpen)
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
-  // [M7] The 보드 entry point lives at the bottom of the left rail
-  // (CourseSidebar) — this shell only owns the overlay itself.
+  // GlobalNavigation owns the board entry point; the shell owns its overlay.
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
   const closeBoardOverlay = useUiStore((state) => state.closeBoardOverlay)
   const isLinkGraphOpen = useUiStore((state) => state.isLinkGraphOpen)
@@ -138,7 +138,6 @@ export function AppShell(): JSX.Element {
   // Auto-update toasts. Inert in `pnpm dev` (main reports phase 'unsupported').
   useUpdateNotifications()
   useEffect(subscribePluginEditor, [])
-  useEffect(subscribePluginThemes, [])
 
   useEffect(() => {
     void initTheme().catch((error: unknown) => {
@@ -386,18 +385,12 @@ export function AppShell(): JSX.Element {
   return (
     <div
       className="app-shell"
+      data-settings={isSettingsOpen ? 'open' : 'closed'}
       data-left-rail={leftRailOpen ? 'open' : 'closed'}
       data-right-rail={rightRailOpen ? 'open' : 'closed'}
     >
-      {/* [M9] No dedicated titlebar row — that buys back a full
-          --chrome-height of vertical space. The chrome is split by who owns
-          the window's top-left corner:
-            - rail OPEN  → CourseSidebar reserves the traffic-light inset and
-              owns the collapse toggle. School identity lives directly below.
-            - rail CLOSED → WorkspaceHost's ChromeLeft takes over with the
-              inset + an expand toggle, so the rail is never unrecoverable.
-          WorkspaceHost also owns `+` (after the last tab) and the right
-          rail toggle. */}
+      <ShellChrome />
+      <GlobalNavigation />
       {leftRailOpen && <CourseSidebar />}
       {leftRailOpen && <RailResizer side="left" />}
 

@@ -1,3 +1,6 @@
+import { useEffect } from 'react'
+import { useUiStore } from './stores/uiStore'
+import { bootstrapAppearance } from './app/bootstrapAppearance'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css'
@@ -10,8 +13,6 @@ import { PipToolbarApp } from './features/pip/PipToolbarApp'
 const params = new URLSearchParams(location.search)
 const view = params.get('view') === 'toolbar' ? 'toolbar' : 'player'
 
-document.documentElement.dataset['theme'] = 'dark'
-document.documentElement.dataset['palette'] = 'bandal'
 document.documentElement.dataset['pipView'] = view
 
 function playerTitle(relPath: string): string {
@@ -19,6 +20,9 @@ function playerTitle(relPath: string): string {
 }
 
 function PipEntry(): JSX.Element {
+  useEffect(() => {
+    void useUiStore.getState().initTheme().catch(console.error)
+  }, [])
   if (view === 'toolbar') return <PipToolbarApp />
 
   const courseId = params.get('course') ?? ''
@@ -37,8 +41,10 @@ if (rootElement === null) {
   throw new Error('Root element #root not found')
 }
 
-ReactDOM.createRoot(rootElement).render(
-  <React.StrictMode>
-    <PipEntry />
-  </React.StrictMode>
+void bootstrapAppearance().then(() =>
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <PipEntry />
+    </React.StrictMode>
+  )
 )

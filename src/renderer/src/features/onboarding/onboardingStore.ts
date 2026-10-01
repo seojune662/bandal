@@ -1,3 +1,4 @@
+import { ensureSettingsLoaded } from '../../stores/settingsSnapshot'
 /**
  * [M6-A] Onboarding visibility + persistence glue.
  *
@@ -65,7 +66,7 @@ export const useOnboardingStore = create<OnboardingStore>()((set, get) => ({
     })
 
     try {
-      const settings = await invoke('settings:get', {})
+      const settings = await ensureSettingsLoaded()
       const state = settings.onboarding
       set({ persisted: state })
       if (shouldShowOnboarding(state)) {

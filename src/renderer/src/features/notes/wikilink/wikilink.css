@@ -61,7 +61,10 @@
   text-decoration: none;
 }
 
-.note-tab .milkdown p:has(> .note-wikilink:only-child) > .note-wikilink::before {
+.note-tab
+  .milkdown
+  p:has(> .note-wikilink:only-child)
+  > .note-wikilink::before {
   margin-inline-end: var(--space-2);
   color: var(--accent);
   content: '↗';
@@ -73,7 +76,7 @@
   padding: 0 0.35em;
   color: var(--text-secondary);
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: 500;
   letter-spacing: var(--tracking-wide);
   text-decoration: none;
   text-transform: uppercase;

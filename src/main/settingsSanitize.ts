@@ -6,7 +6,7 @@
 
 import { isOrbCharmId } from '../shared/orbCharm'
 import { sanitizeTabPreferences } from '../shared/tabPreferences'
-import { isPaletteId, isThemeId } from '../shared/theme'
+import { isPaletteId, normalizeThemePreference } from '../shared/theme'
 import { isSearchEngineId } from '../shared/search'
 import { parseChord, SHORTCUT_SPECS } from '../shared/keymap'
 import { sanitizeUniversitySettings } from '../shared/universities/sanitize'
@@ -55,13 +55,7 @@ const CUSTOMIZABLE_SHORTCUT_IDS: ReadonlySet<string> = new Set(
   SHORTCUT_SPECS.filter((spec) => spec.customizable).map((spec) => spec.id)
 )
 
-/** Any registered theme id, or `system`. Unknown ids fall back to the default
- * (a settings.json written by a newer build must not brick an older one). */
-function isTheme(value: unknown): value is Settings['theme'] {
-  return value === 'system' || isThemeId(value)
-}
-
-/** Any registered palette id. Same fall-back rule as `isTheme`. */
+/** Accept old palette settings for compatibility without applying them. */
 function isPalette(value: unknown): value is Settings['palette'] {
   return isPaletteId(value)
 }
@@ -330,7 +324,7 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
   }
   const record = raw as Record<string, unknown>
   return {
-    theme: isTheme(record.theme) ? record.theme : defaults.theme,
+    theme: normalizeThemePreference(record.theme, defaults.theme),
     palette: isPalette(record.palette) ? record.palette : defaults.palette,
     pluginTheme: typeof record.pluginTheme === 'string' && record.pluginTheme.length <= 180 && /^[a-z0-9.-]+:[a-z0-9-]+$/.test(record.pluginTheme) ? record.pluginTheme : null,
     // Only the registered steps: an arbitrary multiplier from disk (1.05, '1',

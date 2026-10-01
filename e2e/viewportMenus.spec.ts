@@ -37,7 +37,7 @@ test.describe('menus in short and zoomed windows', () => {
     const menu = page.getByRole('dialog', { name: '새 탭 열기' })
     await expectInside(menu)
     await page.keyboard.press('Escape')
-    await page.getByRole('button', { name: '도움말', exact: true }).click()
+    await page.getByRole('button', { name: '더 보기', exact: true }).click()
     await expectInside(page.locator('.help-menu'))
     const last = page.locator('.help-menu').getByRole('menuitem').last()
     await last.scrollIntoViewIfNeeded()

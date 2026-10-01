@@ -120,7 +120,8 @@
 }
 
 .note-save-status[data-status='saving'] .note-save-status__dot {
-  animation: note-save-pulse calc(var(--dur-base) * 4) var(--ease-out) infinite alternate;
+  animation: note-save-pulse calc(var(--dur-base) * 4) var(--ease-out) infinite
+    alternate;
 }
 
 @keyframes note-save-pulse {
@@ -232,7 +233,8 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-md);
-  transition: border-color var(--dur-fast) var(--ease-out),
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
 }
 
@@ -339,7 +341,10 @@
 }
 
 .page-note-recovery {
-  width: min(calc(100% - var(--space-6) * 2), calc(var(--rail-left-width) * 2.5));
+  width: min(
+    calc(100% - var(--space-6) * 2),
+    calc(var(--rail-left-width) * 2.5)
+  );
   margin: var(--space-7) auto;
   padding: var(--space-6);
   color: var(--text-secondary);
@@ -551,7 +556,7 @@
 }
 
 .note-format-button--strong {
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .note-format-button--emphasis {
@@ -780,7 +785,7 @@
 
 .note-slash-menu__label {
   font-size: var(--text-sm);
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .note-slash-menu__description,

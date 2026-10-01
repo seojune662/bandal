@@ -5,20 +5,19 @@
 
 import type { SettingsCategoryId } from '../../../shared/settingsCategories'
 import { create } from 'zustand'
-import { applyAppearanceKnobs, pickAppearance } from '../../../shared/appearance'
+import { pickAppearance } from '../../../shared/appearance'
 import type { AppearanceSettings } from '../../../shared/appearance'
 import type { OrbCharmId } from '../../../shared/orbCharm'
-import { SYSTEM_THEME } from '../../../shared/theme'
-import type { PaletteId, ResolvedTheme } from '../../../shared/theme'
+import { applyTheme, resolveRendererTheme } from '../features/settings/settingsTheme'
+import type { ResolvedTheme } from '../../../shared/theme'
 import { DEFAULT_SETTINGS } from '../../../shared/types/settings'
 import type { ThemePreference } from '../../../shared/types/settings'
 import { invoke, onPush } from '../lib/ipc'
+import { ensureSettingsLoaded } from './settingsSnapshot'
 
 interface UiState {
   themePreference: ThemePreference
   resolvedTheme: ResolvedTheme
-  /** The color family layered over `resolvedTheme` (`<html data-palette>`). */
-  palette: PaletteId
   /** Charm hanging off the assistant orb (src/shared/orbCharm.ts). */
   orbCharm: OrbCharmId
   leftRailOpen: boolean
@@ -35,8 +34,6 @@ interface UiState {
   initTheme: () => Promise<void>
   /** Persist a new preference (round-trips through main). */
   setThemePreference: (pref: ThemePreference) => Promise<void>
-  /** Persist a new color family (round-trips through main). */
-  setPalette: (palette: PaletteId) => Promise<void>
   /** Persist a new orb charm (round-trips through main). */
   setOrbCharm: (orbCharm: OrbCharmId) => Promise<void>
   toggleLeftRail: () => void
@@ -51,38 +48,17 @@ interface UiState {
 
 let themeInitialization: Promise<void> | null = null
 
-/** `system` follows the OS between the two 반달 defaults; any other
- * preference is already a registered theme id. */
-function resolve(pref: ThemePreference): ResolvedTheme {
-  if (pref === 'system') {
-    return window.matchMedia('(prefers-color-scheme: light)').matches
-      ? SYSTEM_THEME.light
-      : SYSTEM_THEME.dark
-  }
-  return pref
-}
-
 /** The last appearance painted, so a single-axis change can re-apply the rest. */
 let currentAppearance: AppearanceSettings = pickAppearance(DEFAULT_SETTINGS)
 
-/**
- * Paints every appearance axis on `<html>`: `data-theme` (resolved mode),
- * `data-palette`, and the three knobs (src/shared/appearance.ts).
- */
 function applyToDocument(appearance: AppearanceSettings): ResolvedTheme {
   currentAppearance = pickAppearance(appearance)
-  const resolved = resolve(appearance.theme)
-  const root = document.documentElement
-  root.dataset['theme'] = resolved
-  root.dataset['palette'] = appearance.palette
-  applyAppearanceKnobs(root, appearance)
-  return resolved
+  return applyTheme(appearance)
 }
 
 export const useUiStore = create<UiState>()((set, get) => ({
   themePreference: DEFAULT_SETTINGS.theme,
-  resolvedTheme: resolve(DEFAULT_SETTINGS.theme),
-  palette: DEFAULT_SETTINGS.palette,
+  resolvedTheme: resolveRendererTheme(DEFAULT_SETTINGS.theme),
   orbCharm: DEFAULT_SETTINGS.orbCharm,
   leftRailOpen: true,
   rightRailOpen: true,
@@ -100,12 +76,11 @@ export const useUiStore = create<UiState>()((set, get) => ({
   initTheme: async () => {
     if (themeInitialization === null) {
       themeInitialization = (async () => {
-        const settings = await invoke('settings:get', {})
+        const settings = await ensureSettingsLoaded()
         const resolved = applyToDocument(settings)
         set({
           themePreference: settings.theme,
           resolvedTheme: resolved,
-          palette: settings.palette,
           orbCharm: settings.orbCharm
         })
 
@@ -114,13 +89,12 @@ export const useUiStore = create<UiState>()((set, get) => ({
           set({
             themePreference: next.theme,
             resolvedTheme: nextResolved,
-            palette: next.palette,
             orbCharm: next.orbCharm
           })
         })
 
         window
-          .matchMedia('(prefers-color-scheme: light)')
+          .matchMedia('(prefers-color-scheme: dark)')
           .addEventListener('change', () => {
             if (get().themePreference === 'system') {
               const nextResolved = applyToDocument(currentAppearance)
@@ -143,12 +117,6 @@ export const useUiStore = create<UiState>()((set, get) => ({
     const resolved = applyToDocument({ ...currentAppearance, theme: pref })
     set({ themePreference: pref, resolvedTheme: resolved })
     await invoke('settings:set', { theme: pref })
-  },
-
-  setPalette: async (palette) => {
-    applyToDocument({ ...currentAppearance, palette })
-    set({ palette })
-    await invoke('settings:set', { palette })
   },
 
   setOrbCharm: async (orbCharm) => {

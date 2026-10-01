@@ -1,0 +1,11 @@
+/* Build-time source colors for existing application icons; not UI themes. */
+:root {
+  --swatch-bandal-dark-bg: oklch(17.5% 0.032 262);
+  --swatch-bandal-dark-surface: oklch(21.5% 0.036 260);
+  --swatch-bandal-dark-text: oklch(92% 0.012 250);
+  --swatch-bandal-dark-accent: oklch(85% 0.095 82);
+  --swatch-bandal-light-bg: oklch(97% 0.012 85);
+  --swatch-bandal-light-surface: oklch(98.5% 0.007 90);
+  --swatch-bandal-light-text: oklch(25% 0.02 70);
+  --swatch-bandal-light-accent: oklch(52% 0.105 75);
+}

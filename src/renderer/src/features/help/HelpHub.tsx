@@ -32,34 +32,6 @@ type FocusTarget = 'favorites-section' | 'assistant-orb' | 'together-footer'
 
 export const HELP_FOCUS_TARGET_EVENT = 'bandal:help-focus-target'
 
-let helpEventBridgeInstalled = false
-const pendingEventReplays = new Set<string>()
-
-/**
- * CourseSidebar is unmounted while the left rail is collapsed. Re-open the
- * rail and replay global help events after React has mounted their receiver.
- */
-export function installCollapsedRailHelpBridge(): void {
-  if (helpEventBridgeInstalled || typeof window === 'undefined') return
-  helpEventBridgeInstalled = true
-  for (const eventName of [SHORTCUT_HELP_EVENT, OPEN_FEEDBACK_EVENT]) {
-    window.addEventListener(eventName, () => {
-      const ui = useUiStore.getState()
-      if (ui.leftRailOpen || pendingEventReplays.has(eventName)) return
-      pendingEventReplays.add(eventName)
-      ui.toggleLeftRail()
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          pendingEventReplays.delete(eventName)
-          window.dispatchEvent(new CustomEvent(eventName))
-        })
-      })
-    })
-  }
-}
-
-installCollapsedRailHelpBridge()
-
 export function milestoneDestination(
   id: MilestoneId
 ):
@@ -105,6 +77,9 @@ function focusTarget(target: FocusTarget): void {
     element.focus()
   }
 
+  if (target === 'together-footer') {
+    document.querySelector<HTMLButtonElement>('.global-navigation [aria-label="함께하기"][aria-expanded="false"]')?.click()
+  }
   if (target === 'favorites-section') {
     const toggle = document.querySelector<HTMLButtonElement>(
       '.course-row[data-selected="true"] .course-row__toggle[aria-expanded="false"]'
@@ -260,25 +235,25 @@ export function HelpHub(): JSX.Element {
 
   return (
     <>
-      <Tooltip label={t('help.menu.button')} placement="top">
+      <Tooltip label="더 보기" placement="top">
         <button
           ref={triggerRef}
           type="button"
           className="rail-nav__item"
           aria-haspopup="menu"
           aria-expanded={menu !== null}
-          aria-label={t('help.menu.button')}
+          aria-label="더 보기"
           onClick={(event) => {
             if (menu !== null) {
               closeMenu()
               return
             }
             const rect = event.currentTarget.getBoundingClientRect()
-            setMenu({ left: rect.left, top: rect.top })
+            setMenu({ left: rect.right + 8, top: rect.top })
             void refreshMilestones(selectedCourseId)
           }}
         >
-          <Icon name="help" />
+          <span aria-hidden="true">⋯</span>
         </button>
       </Tooltip>
 
@@ -290,6 +265,10 @@ export function HelpHub(): JSX.Element {
           aria-label={t('help.menu.label')}
           style={{ left: menu.left, top: menu.top }}
         >
+          <button type="button" role="menuitem" disabled={selectedCourseId === null} onClick={() => { closeMenu(); useUiStore.getState().closeSettings(); useUiStore.getState().closeBoardOverlay(); useUiStore.getState().toggleLinkGraph() }}>
+            <Icon name="graph" /> 연결 그래프
+          </button>
+          <span className="context-menu__separator" role="separator" />
           <button
             type="button"
             role="menuitem"

@@ -7,7 +7,7 @@
 .settings-privacy-statement strong {
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 680;
+  font-weight: 500;
 }
 
 .settings-privacy-statement p {
@@ -26,7 +26,7 @@
 .settings-privacy-diagnostics h3 {
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .settings-privacy-diagnostics ul {

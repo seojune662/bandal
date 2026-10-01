@@ -32,7 +32,7 @@
 
 .help-feedback__header h2 {
   font-size: var(--text-lg);
-  font-weight: 650;
+  font-weight: 500;
   letter-spacing: var(--tracking-tight);
 }
 
@@ -48,7 +48,7 @@
 .help-feedback__body-label {
   color: var(--text-secondary);
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .help-feedback__segments {

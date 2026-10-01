@@ -1,5 +1,5 @@
 /**
- * The appearance knobs that are not theme × palette, applied as attributes /
+ * The text and density preferences, applied as attributes /
  * a custom property on `<html>` so CSS can switch on them:
  *
  * - `--font-scale` → `html { font-size: calc(100% * var(--font-scale)) }`
@@ -17,16 +17,15 @@ import type { Settings } from './types/settings'
 
 export type AppearanceKnobs = Pick<Settings, 'fontScale' | 'editorFont' | 'density'>
 
-/** The five settings keys the Appearance panel saves as one unit. */
+/** The four settings keys the Appearance panel saves as one unit. */
 export type AppearanceSettings = Pick<
   Settings,
-  'theme' | 'palette' | 'fontScale' | 'editorFont' | 'density'
+  'theme' | 'fontScale' | 'editorFont' | 'density'
 >
 
 export function pickAppearance(settings: AppearanceSettings): AppearanceSettings {
   return {
     theme: settings.theme,
-    palette: settings.palette,
     fontScale: settings.fontScale,
     editorFont: settings.editorFont,
     density: settings.density
@@ -39,7 +38,6 @@ export function isSameAppearance(
 ): boolean {
   return (
     a.theme === b.theme &&
-    a.palette === b.palette &&
     a.fontScale === b.fontScale &&
     a.editorFont === b.editorFont &&
     a.density === b.density

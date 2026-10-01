@@ -24,7 +24,7 @@
   margin: 0;
   color: var(--text-primary);
   font-size: var(--text-lg);
-  font-weight: 680;
+  font-weight: 500;
   letter-spacing: var(--tracking-tight);
 }
 
@@ -48,7 +48,7 @@
   color: var(--text-secondary);
   font: inherit;
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: 500;
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -146,7 +146,7 @@
   overflow: hidden;
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 680;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -175,7 +175,7 @@
 
 .settings-mcp-status {
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .settings-mcp-status--unknown {
@@ -228,10 +228,7 @@
 
 .settings-mcp-switch--checked span {
   background: var(--on-accent);
-  transform: translate(
-      calc(var(--icon-button-size) - var(--icon-size)),
-      -50%
-    );
+  transform: translate(calc(var(--icon-button-size) - var(--icon-size)), -50%);
 }
 
 .settings-mcp-switch:disabled {
@@ -302,7 +299,7 @@
   gap: var(--space-2);
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .settings-mcp-field input,
@@ -349,7 +346,7 @@
   margin-bottom: var(--space-2);
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .settings-mcp-transport {
@@ -381,7 +378,7 @@
 
 .settings-mcp-transport input:checked + span {
   color: var(--text-primary);
-  font-weight: 680;
+  font-weight: 500;
 }
 
 .settings-mcp-secret-list {
@@ -510,7 +507,7 @@
   margin: 0;
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .settings-mcp-preset code {
@@ -538,7 +535,7 @@
   gap: var(--space-1);
   color: var(--text-secondary);
   font-size: var(--text-xs);
-  font-weight: 620;
+  font-weight: 500;
 }
 
 .settings-mcp-preset__fields input {
@@ -579,7 +576,7 @@
 .settings-mcp-manual > summary span {
   color: var(--text-primary);
   font-size: var(--text-sm);
-  font-weight: 680;
+  font-weight: 500;
 }
 
 .settings-mcp-manual > summary small {

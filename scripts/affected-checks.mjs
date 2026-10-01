@@ -48,6 +48,15 @@ export function planChecks(files, full = false) {
   if (has(/^(scripts\/(affected-checks|reuse-ci)\.mjs|\.github\/workflows\/)/)) scriptTests.add('scripts/test-affected-checks.mjs')
   if (has(/^scripts\/(upload-release-assets|lib\/release-assets|test-release-assets)\.mjs$/)) scriptTests.add('scripts/test-release-assets.mjs')
   const e2e = new Set(files.filter((f) => /^e2e\/[^/]+\.spec\.ts$/.test(f)))
+  const sharedAppearance = has(/^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/)
+  if (sharedAppearance) {
+    for (const spec of ['theme', 'sidebars', 'settingsShell', 'uiRedesign', 'tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus']) e2e.add(`e2e/${spec}.spec.ts`)
+    scriptTests.add('scripts/check-contrast.mjs')
+  }
+  if (has(/^src\/renderer\/src\/features\/pdf\/(PdfToolbar|tools\/)/)) {
+    for (const spec of ['pdfTextbox', 'eraser']) e2e.add(`e2e/${spec}.spec.ts`)
+  }
+
   if (has(/^(src\/main\/features\/(pdf\/|canvas\/|presentation\/|pdfText|textboxPdfLayout)|src\/shared\/(types\/drawing|textBoxMetrics)|resources\/fonts\/|e2e\/helpers\/renderPdf)/)) e2e.add('e2e/pdfExport.spec.ts')
   if (has(/^src\/renderer\/src\/features\/(pdf|ink)\//)) e2e.add('e2e/pdfTextbox.spec.ts')
   if (has(/(renderInkSnapshot|pageImage)/i)) e2e.add('e2e/pageImageCopy.spec.ts')
@@ -69,6 +78,7 @@ export function planChecks(files, full = false) {
   // At least one launch for an installer with no feature-specific E2E coverage.
   if (e2e.size === 0) e2e.add('e2e/startup.spec.ts')
   const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f))
+  if (sharedAppearance) unitInputs.push('src/shared/theme.ts', 'src/renderer/src/features/courses/CourseSidebar.tsx', 'src/renderer/src/features/settings/AppearancePanel.tsx')
   // Runtime font files are loaded from disk, outside the TS import graph.
   if (has(/^resources\/fonts\//)) unitInputs.push('src/main/features/pdf/exportPdf.ts', 'src/main/features/canvas/exportBoardPdf.ts')
   const pdfChanges = files.filter(f => /^src\/renderer\/src\/features\/(pdf|ink)\//.test(f))

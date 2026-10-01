@@ -1,3 +1,4 @@
+import { bootstrapAppearance } from './app/bootstrapAppearance'
 import { useEffect } from 'react'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
@@ -12,7 +13,12 @@ import { useLocale } from './i18n'
 import { useUiStore } from './stores/uiStore'
 
 const requestedView = new URLSearchParams(location.search).get('view')
-const view = requestedView === 'assistant' ? 'assistant' : requestedView === 'popup' ? 'popup' : 'orb'
+const view =
+  requestedView === 'assistant'
+    ? 'assistant'
+    : requestedView === 'popup'
+      ? 'popup'
+      : 'orb'
 
 document.documentElement.dataset['overlayView'] = view
 document.documentElement.dataset['platform'] = window.bandal.platform
@@ -31,7 +37,13 @@ function OverlayEntry(): JSX.Element {
     document.documentElement.lang = locale
   }, [locale])
 
-  return view === 'assistant' ? <NativeAssistantApp /> : view === 'popup' ? <OverlayPopupApp /> : <OverlayOrbApp />
+  return view === 'assistant' ? (
+    <NativeAssistantApp />
+  ) : view === 'popup' ? (
+    <OverlayPopupApp />
+  ) : (
+    <OverlayOrbApp />
+  )
 }
 
 const rootElement = document.getElementById('root')
@@ -39,8 +51,10 @@ if (rootElement === null) {
   throw new Error('Root element #root not found')
 }
 
-ReactDOM.createRoot(rootElement).render(
-  <React.StrictMode>
-    <OverlayEntry />
-  </React.StrictMode>
+void bootstrapAppearance().then(() =>
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <OverlayEntry />
+    </React.StrictMode>
+  )
 )

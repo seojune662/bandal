@@ -1,3 +1,4 @@
+import { ensureSettingsLoaded } from '../../../stores/settingsSnapshot'
 import { create } from 'zustand'
 import {
   TUTORIAL_VERSION,
@@ -315,7 +316,7 @@ export const useTourStore = create<TourStore>()((set, get) => {
       })
 
       try {
-        const settings = await invoke('settings:get', {})
+        const settings = await ensureSettingsLoaded()
         const leakedCourseId = settings.tutorial.activeCourseId
         if (leakedCourseId !== null) {
           try {

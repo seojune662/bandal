@@ -113,7 +113,8 @@
   transition: transform var(--dur-fast) var(--ease-out);
 }
 
-.settings-pack-card__summary[aria-expanded='true'] .settings-pack-card__chevron {
+.settings-pack-card__summary[aria-expanded='true']
+  .settings-pack-card__chevron {
   transform: rotate(180deg);
 }
 
@@ -131,7 +132,7 @@
   color: var(--text-secondary);
   font: inherit;
   font-size: var(--text-xs);
-  font-weight: 650;
+  font-weight: 500;
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);

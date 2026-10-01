@@ -110,7 +110,7 @@ export async function launchBandal(
 
   const app = await _electron.launch({
     executablePath: process.env['BANDAL_E2E_EXECUTABLE'] ?? ELECTRON_BINARY,
-    args: process.env['BANDAL_E2E_EXECUTABLE'] ? [] : [MAIN_ENTRY],
+    args: process.env['BANDAL_E2E_EXECUTABLE'] ? [] : [process.env['BANDAL_E2E_ENTRY'] ?? MAIN_ENTRY],
     env
   })
 

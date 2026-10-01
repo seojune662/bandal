@@ -1,5 +1,9 @@
 import type { ReactElement, ReactNode } from 'react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+// Layout and help are exercised through real React in the navigation/Electron tests.
+vi.mock('../../../src/renderer/src/components/Tooltip', () => ({ Tooltip: ({ children }: { children: ReactNode }) => children }))
+vi.mock('../../../src/renderer/src/lib/useViewportBounds', () => ({ useViewportBounds: () => undefined }))
+vi.mock('../../../src/renderer/src/features/help/HelpHub', () => ({ HelpHub: () => null }))
 vi.mock('../../../src/renderer/src/features/file/pptx/presentationJobs', () => ({ PresentationProgress: () => null, convertPresentationToPdf: vi.fn() }))
 
 const harness = vi.hoisted(() => ({

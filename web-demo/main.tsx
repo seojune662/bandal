@@ -8,7 +8,7 @@ import { setIpcAdapter } from '../src/renderer/src/lib/ipc'
 import { useWorkspaceStore } from '../src/renderer/src/stores/workspaceStore'
 import { useUiStore } from '../src/renderer/src/stores/uiStore'
 import { setLocale } from '../src/renderer/src/i18n'
-import { THEMES, PALETTES } from '../src/shared/theme'
+import { THEMES } from '../src/shared/theme'
 import { adapter, emit, exportNotes } from './adapter'
 import { data, commit, settings, courseId, PDF, NOTE, PAGE_NOTE, pdfDescriptor, pageNoteDescriptor, mode, ko, resetDemo, storageLabel } from './state'
 import '../src/renderer/src/styles/tokens.css'
@@ -24,11 +24,9 @@ if (!window.requestIdleCallback) {
   window.requestIdleCallback = callback => window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 15 }), 1)
   window.cancelIdleCallback = window.clearTimeout
 }
-function appearance(value: { palette?: string; theme?: string }) {
-  if (!PALETTES.some(p => p.id === value.palette) || !THEMES.some(t => t.id === value.theme)) return
-  settings.palette = value.palette as typeof settings.palette
+function appearance(value: { theme?: string }) {
+  if (!THEMES.some(t => t.id === value.theme)) return
   settings.theme = value.theme as typeof settings.theme
-  document.documentElement.dataset.palette = settings.palette
   document.documentElement.dataset.theme = settings.theme
   emit('settings:changed', { settings })
 }

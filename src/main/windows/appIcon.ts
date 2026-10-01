@@ -7,8 +7,7 @@ import {
 } from 'electron'
 import {
   getTheme,
-  resolveThemeId,
-  type PaletteId
+  resolveThemeId
 } from '../../shared/theme'
 import type { Settings } from '../../shared/types/settings'
 
@@ -17,9 +16,9 @@ export type IconBase = 'dark' | 'light'
 export function resolveIconVariant(
   settings: Pick<Settings, 'theme' | 'palette'>,
   prefersDark: boolean
-): `${PaletteId}-${IconBase}` {
+): `bandal-${IconBase}` {
   const theme = getTheme(resolveThemeId(settings.theme, prefersDark))
-  return `${settings.palette}-${theme.base}`
+  return `bandal-${theme.base}`
 }
 
 export function resolveIconDir(

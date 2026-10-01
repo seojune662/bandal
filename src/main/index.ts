@@ -1,3 +1,4 @@
+import { markAssistantQuitting } from './windows/assistantWindow'
 import { registerEarlyMediaProtocol } from './features/materials/mediaRegistration'
 import { markStartup } from './performanceTrace'
 import { createBackgroundClient } from './background/client'
@@ -331,6 +332,13 @@ if (!app.requestSingleInstanceLock()) {
 
     const refreshAppearance = (): void => {
       void appIcon.apply()
+      // Transparent orb/assistant and embedded websites own their backgrounds.
+      for (const win of BrowserWindow.getAllWindows()) {
+        const url = win.webContents.getURL()
+        if (/\/(?:index|settings)\.html(?:$|[?#])|\/overlay\.html\?view=popup|\/pip\.html\?view=player/.test(url)) {
+          win.setBackgroundColor(resolveWindowBackground())
+        }
+      }
       const main = getMainWindow()
       if (main !== null && !main.isDestroyed()) {
         refreshTitleBarOverlay(
@@ -384,6 +392,7 @@ if (!app.requestSingleInstanceLock()) {
     })
 
     app.on('before-quit', () => {
+      markAssistantQuitting()
       overlay.markQuitting()
       router.miniPlayer.markQuitting()
     })

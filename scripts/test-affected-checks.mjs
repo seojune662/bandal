@@ -80,3 +80,12 @@ test('isolated browser gesture entry does not expand into unrelated checks', asy
   assert.deepEqual(plan.e2e, ['e2e/browserCompatibility.spec.ts'])
   assert.ok(plan.types.includes('tsconfig.web.json'))
 })
+
+test('CSS-only appearance edits select the shell regressions without backend checks', () => {
+  const plan = planChecks(['src/renderer/src/styles/tokens.css'])
+  assert.equal(plan.full, false)
+  for (const spec of ['theme', 'sidebars', 'settingsShell', 'uiRedesign']) assert.ok(plan.e2e.includes(`e2e/${spec}.spec.ts`))
+  assert.ok(plan.scriptTests.includes('scripts/check-contrast.mjs'))
+  assert.ok(plan.unitInputs.includes('src/shared/theme.ts'))
+  assert.ok(!plan.e2e.includes('e2e/appleCalendar.spec.ts'))
+})

@@ -361,7 +361,7 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  font-weight: 650;
+  font-weight: 500;
   color: var(--text-secondary);
   text-align: center;
   background: var(--bg-raised);
