@@ -48,7 +48,7 @@ test.describe('cold launch', () => {
     // The app-rendered start page was retired in the Quiet Chrome redesign;
     // a new tab is now an ordinary guest with the toolbar over it.
     const { page } = bandal
-    await page.keyboard.press('Shift+Meta+KeyB')
+    await page.keyboard.press('ControlOrMeta+Shift+KeyB')
 
     await expect(page.locator('.browser-toolbar').first()).toBeVisible({
       timeout: 15_000
