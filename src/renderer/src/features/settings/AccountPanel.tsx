@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import {
   isValidNickname,
   NICKNAME_MAX_LENGTH
-} from '../../../../shared/group/nickname'
+} from '../../../../shared/account/nickname'
 import type { AuthState } from '../../../../shared/types/auth'
 import { AccountAvatar } from '../account/AccountAvatar'
 import {
@@ -10,10 +10,10 @@ import {
   ACCOUNT_AVATAR_EMOJIS
 } from '../account/accountOptions'
 import { useT } from '../../i18n'
-import { invoke } from '../../lib/ipc'
+import { invoke, onPush } from '../../lib/ipc'
 import './account-panel.css'
 
-type PendingAction = 'nickname' | 'avatar' | 'sign-out'
+type PendingAction = 'nickname' | 'avatar' | 'sign-out' | 'sign-in'
 
 interface Feedback {
   tone: 'success' | 'error'
@@ -59,8 +59,10 @@ export function AccountPanel(): JSX.Element {
   useEffect(() => {
     mountedRef.current = true
     loadAuth()
+    const off = onPush('auth:changed', next => setAuth(next))
     return () => {
       mountedRef.current = false
+      off()
     }
   }, [loadAuth])
 
@@ -119,6 +121,10 @@ export function AccountPanel(): JSX.Element {
     return (
       <div className="account-panel-state">
         <strong>{t('settings.account.signedOut')}</strong>
+        {auth?.phase !== 'unconfigured' && <div className="account-sign-in-actions">
+          {(['google', 'kakao'] as const).map(provider => <button key={provider} type="button" className="secondary-button" disabled={pending !== null} onClick={() => void runMutation('sign-in', async () => { const result = await invoke('auth:signIn', { provider }); if (!result.ok) throw new Error('로그인 실패') }, '브라우저에서 로그인을 완료해 주세요.', '로그인을 시작하지 못했어요.')}>{provider === 'google' ? 'Google' : 'Kakao'}로 로그인</button>)}
+        </div>}
+        {feedback && <p role={feedback.tone === 'error' ? 'alert' : 'status'}>{feedback.message}</p>}
       </div>
     )
   }
@@ -148,8 +154,7 @@ export function AccountPanel(): JSX.Element {
       return
     }
     if (!nicknameChanged) return
-    // A rename orphans the old name: invites are addressed by nickname, and
-    // the freed name becomes claimable by anyone. First-time setup skips this.
+    // A renamed account frees the old nickname. First-time setup skips confirmation.
     if (profile.nickname !== null) {
       setConfirmingNickname(true)
       return

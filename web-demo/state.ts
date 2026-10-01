@@ -63,7 +63,7 @@ function restore(): DemoData {
 export let data = restore()
 export const settings: Settings = { ...structuredClone(DEFAULT_SETTINGS), locale: ko ? 'ko-KR' : 'en-US', restoreLastCourse: true, lastActiveCourseId: courseId,
   university: { ...DEFAULT_SETTINGS.university, universityId: 'snu' },
-  onboarding: { flowVersion: 2, closedAt: stamp(), lastCompletedStep: 3 }, tutorial: { seenVersion: 1, activeCourseId: null }, assistantMode: 'in-app' }
+  onboarding: { flowVersion: 2, closedAt: stamp(), lastCompletedStep: 3 }, tutorial: { seenVersion: 1, activeCourseId: null } }
 export function commit(update: (next: DemoData) => void): void {
   const next = structuredClone(data)
   update(next)

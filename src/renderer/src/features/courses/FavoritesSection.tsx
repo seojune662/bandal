@@ -385,7 +385,6 @@ export function FavoritesSection({
                 title={favorite.label}
                 onClick={(event) => {
                   const newInstance =
-                    favorite.descriptor.kind !== 'group-chat' &&
                     favorite.descriptor.kind !== 'board' &&
                     (window.bandal?.platform === 'darwin'
                       ? event.metaKey

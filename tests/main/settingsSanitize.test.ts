@@ -68,48 +68,6 @@ describe('sanitizeSettings — R3 tab/course fields', () => {
   })
 })
 
-describe('sanitizeSettings — desktop orb', () => {
-  test('falls back from an unknown assistant mode to in-app', () => {
-    expect(sanitizeSettings({ assistantMode: 'unknown' }, defaults).assistantMode)
-      .toBe('in-app')
-  })
-
-  test('falls back from a garbage desktopOrb value to defaults', () => {
-    expect(sanitizeSettings({ desktopOrb: 'garbage' }, defaults).desktopOrb)
-      .toEqual({ keepAliveOnClose: true })
-  })
-
-  test('falls back from a non-boolean keepAliveOnClose to true', () => {
-    expect(
-      sanitizeSettings(
-        { desktopOrb: { keepAliveOnClose: 'yes' } },
-        defaults
-      ).desktopOrb.keepAliveOnClose
-    ).toBe(true)
-  })
-})
-
-describe('sanitizeSettings — orbCharm', () => {
-  test('accepts every registered charm id', () => {
-    for (const id of ['none', 'spider', 'balloon', 'cat', 'chain', 'windchime', 'yoyo']) {
-      expect(sanitizeSettings({ orbCharm: id }, defaults).orbCharm).toBe(id)
-    }
-  })
-
-  test.each([['spiderman'], [3], [null], [{}]])(
-    'falls back to the default for %p',
-    (value) => {
-      expect(sanitizeSettings({ orbCharm: value }, defaults).orbCharm).toBe(
-        'none'
-      )
-    }
-  )
-
-  test('missing key (pre-charm settings file) → none', () => {
-    expect(sanitizeSettings({}, defaults).orbCharm).toBe('none')
-  })
-})
-
 describe('sanitizeSettings — appearance knobs', () => {
   test('accepts every registered font scale step', () => {
     for (const scale of [0.9, 1, 1.1, 1.2]) {
@@ -311,7 +269,7 @@ describe('sanitizeSettings — v0.37 notifications / browser / shortcutPriority 
       { experimental: { extensionRuntime: false, retiredFlag: true } },
       defaults
     )
-    expect(result.experimental).toEqual({ extensionRuntime: false, orbCharms: true })
+    expect(result.experimental).toEqual({ extensionRuntime: false })
     expect('retiredFlag' in result.experimental).toBe(false)
   })
 })
@@ -386,4 +344,14 @@ describe('sanitizeSettings — sidebar widgets', () => {
     expect(invalid.mailUrl).toBe('')
     expect(invalid.lastMailOpenedAt).toBeNull()
   })
+})
+
+ test('v0.61 discards retired preferences without changing the rest of the profile', () => {
+  const result = sanitizeSettings({ ...defaults, assistantMode: 'desktop', desktopOrb: { x: 42, keepAliveOnClose: true }, orbCharm: 'cat', experimental: { extensionRuntime: true, orbCharms: true }, widgets: { ...defaults.widgets, enabled: ['mail', 'todo'], collapsed: ['mail'], heightRatio: 0.45 } }, defaults)
+  expect(result).not.toHaveProperty('assistantMode')
+  expect(result).not.toHaveProperty('desktopOrb')
+  expect(result).not.toHaveProperty('orbCharm')
+  expect(result.experimental).toEqual({ extensionRuntime: true })
+  expect(result.widgets).toMatchObject({ enabled: ['mail', 'todo'], collapsed: ['mail'], heightRatio: 0.45 })
+  expect(result.dataRoot).toBe(defaults.dataRoot)
 })

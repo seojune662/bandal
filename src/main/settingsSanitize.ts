@@ -4,7 +4,6 @@
  * settingsStore supplies the environment-dependent defaults.
  */
 
-import { isOrbCharmId } from '../shared/orbCharm'
 import { sanitizeTabPreferences } from '../shared/tabPreferences'
 import { isPaletteId, normalizeThemePreference } from '../shared/theme'
 import { isSearchEngineId } from '../shared/search'
@@ -27,7 +26,6 @@ import {
   isPopupBehavior,
   isTrackingProtection,
   isShortcutPriority,
-  DEFAULT_DESKTOP_ORB,
   DEFAULT_MILESTONES,
   DEFAULT_ONBOARDING,
   DEFAULT_TUTORIAL,
@@ -38,10 +36,8 @@ import {
   isFontScale
 } from '../shared/types/settings'
 import type {
-  AssistantMode,
   BrowserSettings,
   DeadlineLeadDays,
-  DesktopOrbSettings,
   ExperimentalSettings,
   NotificationSettings,
   Milestones,
@@ -63,23 +59,6 @@ function isPalette(value: unknown): value is Settings['palette'] {
 /** Only renderer locales shipped by this build are accepted from disk/IPC. */
 function isLocale(value: unknown): value is Settings['locale'] {
   return value === 'ko-KR' || value === 'en-US'
-}
-
-export function isAssistantMode(value: unknown): value is AssistantMode {
-  return value === 'in-app' || value === 'desktop'
-}
-
-export function sanitizeDesktopOrb(raw: unknown): DesktopOrbSettings {
-  if (typeof raw !== 'object' || raw === null) {
-    return { ...DEFAULT_DESKTOP_ORB }
-  }
-  const record = raw as Record<string, unknown>
-  return {
-    keepAliveOnClose:
-      typeof record.keepAliveOnClose === 'boolean'
-        ? record.keepAliveOnClose
-        : DEFAULT_DESKTOP_ORB.keepAliveOnClose
-  }
 }
 
 /** [M6-A] Validates the persisted onboarding record, key by key. */
@@ -278,6 +257,7 @@ export function sanitizeWidgets(raw: unknown): WidgetSettings {
       : d.heightRatio
   return {
     enabled,
+    collapsed: Array.isArray(r.collapsed) ? [...new Set(r.collapsed.filter(isWidgetId))] : [],
     active,
     heightRatio: ratio,
     mailServiceId:
@@ -342,10 +322,6 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
     agentProvider: isAgentProvider(record.agentProvider)
       ? record.agentProvider
       : defaults.agentProvider,
-    assistantMode: isAssistantMode(record.assistantMode)
-      ? record.assistantMode
-      : 'in-app',
-    desktopOrb: sanitizeDesktopOrb(record.desktopOrb),
     dataRoot:
       typeof record.dataRoot === 'string' && record.dataRoot.length > 0
         ? record.dataRoot
@@ -369,7 +345,6 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
       record.lastActiveCourseId !== ''
         ? record.lastActiveCourseId
         : null,
-    orbCharm: isOrbCharmId(record.orbCharm) ? record.orbCharm : defaults.orbCharm,
     notifications: sanitizeNotifications(record.notifications),
     browser: sanitizeBrowserSettings(record.browser),
     shortcutPriority: isShortcutPriority(record.shortcutPriority)

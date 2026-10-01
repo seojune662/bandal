@@ -56,13 +56,16 @@ export function createAppIconApplier(deps: AppIconDeps): {
   const assetExists = (path: string): boolean => {
     if (existsSync(path)) return true
     console.warn(`[app-icon] icon asset not found; skipping: ${path}`)
+    failed = true
     return false
   }
 
+  let failed = false
   const safely = (surface: string, apply: () => void): void => {
     try {
       apply()
     } catch (error) {
+      failed = true
       console.warn(`[app-icon] failed to update ${surface}; skipping:`, error)
     }
   }
@@ -71,7 +74,7 @@ export function createAppIconApplier(deps: AppIconDeps): {
     async apply(): Promise<void> {
       const variant = resolveIconVariant(deps.getSettings(), deps.prefersDark())
       if (variant === currentVariant) return
-      currentVariant = variant
+      failed = false
 
       const dir = resolveIconDir(variant, deps)
       const icon512 = join(dir, 'icon-512.png')
@@ -80,7 +83,9 @@ export function createAppIconApplier(deps: AppIconDeps): {
         const hasIcon512 = assetExists(icon512)
         if (hasIcon512 && deps.dock !== undefined) {
           safely('dock icon', () => {
-            deps.dock?.setIcon(nativeImage.createFromPath(icon512))
+            const icon = nativeImage.createFromPath(icon512)
+            if (icon.isEmpty()) throw new Error('Empty app icon')
+            deps.dock?.setIcon(icon)
           })
         }
 
@@ -92,6 +97,7 @@ export function createAppIconApplier(deps: AppIconDeps): {
             try {
               await deps.finder.apply(finderPath)
             } catch (error) {
+              failed = true
               console.warn('[app-icon] failed to update Finder icon; skipping:', error)
             }
           }
@@ -114,6 +120,7 @@ export function createAppIconApplier(deps: AppIconDeps): {
           safely('tray icon', () => deps.tray?.setIconVariant(dir))
         }
       }
+      if (!failed) currentVariant = variant
     },
 
     current(): string {

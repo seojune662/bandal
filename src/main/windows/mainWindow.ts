@@ -1,4 +1,3 @@
-import { registerAssistantParent } from './assistantWindow'
 import { registerBrowserHost } from '../features/browser/nativeTabs'
 import { app, BrowserWindow, nativeTheme, shell } from 'electron'
 import { join } from 'node:path'
@@ -141,12 +140,12 @@ export function createMainWindow(): BrowserWindow {
   // Must be attached before the renderer loads so no webview can slip past.
   hardenWindowWebviews(mainWindow)
   registerBrowserHost(mainWindow)
-  registerAssistantParent(mainWindow)
   windowStateStore.track(mainWindow)
 
   if (windowState.maximized) mainWindow.maximize()
 
   mainWindow.on('ready-to-show', () => {
+    ensureRegularAppPresence()
     mainWindow?.show()
   })
 

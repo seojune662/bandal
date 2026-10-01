@@ -1,7 +1,7 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import type { ScreenPermissionState } from '../../../src/shared/types/overlay'
+import type { ScreenPermissionState } from '../../../src/shared/types/screenCapture'
 import { DEFAULT_SETTINGS } from '../../../src/shared/types/settings'
 
 const hookState = vi.hoisted(() => ({

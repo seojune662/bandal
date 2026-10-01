@@ -1,3 +1,4 @@
+import { ensureRegularAppPresence } from './mainWindow'
 import { BrowserWindow, desktopCapturer, screen, systemPreferences, dialog, shell, type NativeImage, type IpcMainInvokeEvent } from 'electron'
 import { join } from 'node:path'
 import type { ChatAttachment } from '../../shared/types/chat'
@@ -31,7 +32,7 @@ export async function selectScreen(region: boolean): Promise<ChatAttachment | nu
   try {
     await ensureScreenPermission()
   } catch (error) { capturing = false; throw error }
-  const hidden = BrowserWindow.getAllWindows().filter(window => window.isVisible() && /[?&]view=(orb|assistant|popup|approval)/.test(window.webContents.getURL()))
+  const hidden = BrowserWindow.getAllWindows().filter(window => window.isVisible() && /[?&]view=(capture)/.test(window.webContents.getURL()))
   const focused = BrowserWindow.getFocusedWindow()
   hidden.forEach(window => window.hide())
   const restore = (): void => { hidden.forEach(window => { if (!window.isDestroyed()) window.showInactive() }); if (focused && !focused.isDestroyed()) focused.focus() }
@@ -49,7 +50,7 @@ export async function selectScreen(region: boolean): Promise<ChatAttachment | nu
       for (const { display, image } of captures) {
         const window = new BrowserWindow({ ...display.bounds, frame: false, show: false, resizable: false, movable: false, skipTaskbar: true, alwaysOnTop: true, backgroundColor: '#161616', enableLargerThanScreen: true,
           webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: true, contextIsolation: true, nodeIntegration: false } })
-        window.setAlwaysOnTop(true, 'screen-saver'); window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+        window.setAlwaysOnTop(true, 'screen-saver'); window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
         windows.set(window.webContents.id, { window, image: image!, width: display.bounds.width, height: display.bounds.height })
         window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
         window.webContents.on('will-navigate', e => e.preventDefault())
@@ -60,7 +61,7 @@ export async function selectScreen(region: boolean): Promise<ChatAttachment | nu
         else void window.loadFile(join(__dirname, '../renderer/overlay.html'), { query: { view: 'capture' } }).catch(() => finish(null))
       }
     })
-  } finally { capturing = false; restore() }
+  } finally { capturing = false; restore(); ensureRegularAppPresence() }
 }
 export function screenSelectionRequest(event: IpcMainInvokeEvent, req: { action: 'get' | 'cancel' | 'select'; rect?: { x: number; y: number; width: number; height: number } }): { image?: string } {
   const entry = active?.windows.get(event.sender.id)

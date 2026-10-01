@@ -15,7 +15,7 @@ import {
 
 const electronMocks = vi.hoisted(() => ({
   nativeImage: {
-    createFromPath: vi.fn((path: string) => ({ path }))
+    createFromPath: vi.fn((path: string) => ({ path, isEmpty: () => false }))
   }
 }))
 
@@ -186,7 +186,7 @@ describe('createAppIconApplier', () => {
 
     const png = join(dir, 'icon-512.png')
     expect(electronMocks.nativeImage.createFromPath).toHaveBeenCalledWith(png)
-    expect(dock.setIcon).toHaveBeenCalledWith({ path: png })
+    expect(dock.setIcon).toHaveBeenCalledWith(expect.objectContaining({ path: png }))
     expect(finder.apply).toHaveBeenCalledWith(png)
     expect(tray.setIconVariant).toHaveBeenCalledWith(dir)
     expect(windows).not.toHaveBeenCalled()
@@ -252,11 +252,15 @@ describe('createAppIconApplier', () => {
 
     await expect(applier.apply()).resolves.toBeUndefined()
 
-    expect(applier.current()).toBe('bandal-light')
+    expect(applier.current()).toBe('')
     expect(warn).toHaveBeenCalledTimes(2)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('icon-256.png'))
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('tray.ico'))
     expect(win.setIcon).not.toHaveBeenCalled()
     expect(tray.setIconVariant).not.toHaveBeenCalled()
+    await createAssets(root, 'bandal-light', ['icon-256.png', 'tray.ico'])
+    await applier.apply()
+    expect(applier.current()).toBe('bandal-light')
+    expect(win.setIcon).toHaveBeenCalledOnce()
   })
 })

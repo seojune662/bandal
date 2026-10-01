@@ -1,6 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { join } from 'node:path'
-import { macPanelOptions } from './overlayWindow'
+import { macPanelOptions } from './panelOptions'
 
 export const MINI_PLAYER_TOOLBAR_HEIGHT = 36
 

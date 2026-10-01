@@ -6,12 +6,10 @@ import {
   type MenuItemConstructorOptions
 } from 'electron'
 import { join } from 'node:path'
-import type { Settings, SettingsPatch } from '../../shared/types/settings'
 import { buildTrayMenu, type TrayAction } from './trayMenu'
 
 export interface TrayDeps {
-  getSettings(): Settings
-  setSettings(patch: SettingsPatch): Settings
+  shouldShow(): boolean
   openMain(): void
   quit(): void
 }
@@ -50,21 +48,14 @@ export function installTray(deps: TrayDeps): {
       case 'open':
         deps.openMain()
         break
-      case 'toggleDesktopOrb': {
-        const assistantMode =
-          deps.getSettings().assistantMode === 'desktop' ? 'in-app' : 'desktop'
-        const next = deps.setSettings({ assistantMode })
-        sync(next)
-        break
-      }
       case 'quit':
         deps.quit()
         break
     }
   }
 
-  const menuTemplate = (settings: Settings): MenuItemConstructorOptions[] =>
-    buildTrayMenu({ desktopOrbEnabled: settings.assistantMode === 'desktop' }).map(
+  const menuTemplate = (): MenuItemConstructorOptions[] =>
+    buildTrayMenu().map(
       (item) => {
         if (item.type === 'separator') return { type: 'separator' }
         if (item.id === undefined || item.label === undefined) {
@@ -102,8 +93,8 @@ export function installTray(deps: TrayDeps): {
     }
   }
 
-  function sync(settings = deps.getSettings()): void {
-    if (process.platform !== 'darwin' && settings.assistantMode !== 'desktop') {
+  function sync(): void {
+    if (!deps.shouldShow()) {
       destroy()
       return
     }
@@ -127,7 +118,7 @@ export function installTray(deps: TrayDeps): {
       if (process.platform === 'win32') tray.on('click', deps.openMain)
       if (iconVariantDir !== null) setIconVariant(iconVariantDir)
     }
-    tray.setContextMenu(Menu.buildFromTemplate(menuTemplate(settings)))
+    tray.setContextMenu(Menu.buildFromTemplate(menuTemplate()))
   }
 
   sync()

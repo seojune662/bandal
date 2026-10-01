@@ -6,7 +6,6 @@ export type TourAnchorKey =
   | 'tab-strip'
   | 'favorites-section'
   | 'assistant-panel'
-  | 'assistant-orb'
 
 export type TourPlacement = 'top' | 'right' | 'bottom' | 'left'
 

@@ -7,7 +7,6 @@ import type { SettingsCategoryId } from '../../../shared/settingsCategories'
 import { create } from 'zustand'
 import { pickAppearance } from '../../../shared/appearance'
 import type { AppearanceSettings } from '../../../shared/appearance'
-import type { OrbCharmId } from '../../../shared/orbCharm'
 import { applyTheme, resolveRendererTheme } from '../features/settings/settingsTheme'
 import type { ResolvedTheme } from '../../../shared/theme'
 import { DEFAULT_SETTINGS } from '../../../shared/types/settings'
@@ -18,8 +17,6 @@ import { ensureSettingsLoaded } from './settingsSnapshot'
 interface UiState {
   themePreference: ThemePreference
   resolvedTheme: ResolvedTheme
-  /** Charm hanging off the assistant orb (src/shared/orbCharm.ts). */
-  orbCharm: OrbCharmId
   leftRailOpen: boolean
   rightRailOpen: boolean
   /** [M5] Study-board overlay above the workspace (board tab stays too). */
@@ -34,8 +31,6 @@ interface UiState {
   initTheme: () => Promise<void>
   /** Persist a new preference (round-trips through main). */
   setThemePreference: (pref: ThemePreference) => Promise<void>
-  /** Persist a new orb charm (round-trips through main). */
-  setOrbCharm: (orbCharm: OrbCharmId) => Promise<void>
   toggleLeftRail: () => void
   toggleRightRail: () => void
   toggleBoardOverlay: () => void
@@ -59,7 +54,6 @@ function applyToDocument(appearance: AppearanceSettings): ResolvedTheme {
 export const useUiStore = create<UiState>()((set, get) => ({
   themePreference: DEFAULT_SETTINGS.theme,
   resolvedTheme: resolveRendererTheme(DEFAULT_SETTINGS.theme),
-  orbCharm: DEFAULT_SETTINGS.orbCharm,
   leftRailOpen: true,
   rightRailOpen: true,
   isBoardOverlayOpen: false,
@@ -81,7 +75,6 @@ export const useUiStore = create<UiState>()((set, get) => ({
         set({
           themePreference: settings.theme,
           resolvedTheme: resolved,
-          orbCharm: settings.orbCharm
         })
 
         onPush('settings:changed', ({ settings: next }) => {
@@ -89,7 +82,6 @@ export const useUiStore = create<UiState>()((set, get) => ({
           set({
             themePreference: next.theme,
             resolvedTheme: nextResolved,
-            orbCharm: next.orbCharm
           })
         })
 
@@ -119,10 +111,6 @@ export const useUiStore = create<UiState>()((set, get) => ({
     await invoke('settings:set', { theme: pref })
   },
 
-  setOrbCharm: async (orbCharm) => {
-    set({ orbCharm })
-    await invoke('settings:set', { orbCharm })
-  },
 
   toggleLeftRail: () => {
     set((state) => ({ leftRailOpen: !state.leftRailOpen }))

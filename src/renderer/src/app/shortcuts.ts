@@ -369,6 +369,7 @@ function passthroughAction(
     case 'new-recording-tab':
     case 'new-whiteboard':
     case 'open-study-board':
+    case 'toggle-left-rail':
       return { type: action }
     case 'new-tab':
       return { type: 'new-tab' }

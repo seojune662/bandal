@@ -10,20 +10,16 @@ import type { AgentEvent } from '../types/agent-events'
 import type { AgentConfirmRequest } from '../types/agentTools'
 import type { Settings } from '../types/settings'
 import type { AuthState } from '../types/auth'
-import type { GroupsInvalidationReason } from '../types/group'
-import type { GroupEvent } from '../types/group-events'
 import type { UpdateStatus } from '../types/update'
 import type { PipState } from '../types/pip'
 import type { PluginSummary } from '../types/plugin'
 import type {
-  OverlayPrompt,
-  OverlayState,
   ScreenPermissionState
-} from '../types/overlay'
+} from '../types/screenCapture'
 
 /** Ordered batch of streaming agent events for ONE conversation. */
 export interface ChatEventBatch {
-  /** Kept alongside sessionId — AssistantLayer filters on the course. */
+  /** Course identity, alongside the independent conversation identity. */
   courseId: string
   /** Conversation id (agent_sessions.id) this batch belongs to. */
   sessionId: string
@@ -43,15 +39,6 @@ export interface AgentInstallProgress {
   ok: boolean
 }
 
-/**
- * [M13] A shape someone else drew on the group whiteboard, or a removal.
- * The payload carries the whole shape so the receiver draws it without a
- * follow-up query.
- */
-export interface WhiteboardChanged {
-  groupId: string
-  event: unknown
-}
 
 /** Fired when the course folder changed on disk (watcher). */
 export interface MaterialsChanged {
@@ -147,6 +134,7 @@ export interface ShortcutPassthrough {
     | 'new-recording-tab'
     | 'new-whiteboard'
     | 'open-study-board'
+    | 'toggle-left-rail'
     | 'close-tab'
     | 'activate-last-tab'
     | 'activate-tab-1'
@@ -178,29 +166,6 @@ export interface ShortcutPassthrough {
    * student is typing into.
    */
   webContentsId: number
-}
-
-/**
- * [P2-C / C8] Ordered batch of group-chat events for ONE group.
- *
- * Structurally identical to ChatEventBatch on purpose: the renderer reuses
- * the same seq-gap → rehydrate strategy (§4.3).
- */
-export interface GroupEventBatch {
-  groupId: string
-  /** Monotonic per-group sequence number for ordering / gap detection. */
-  seq: number
-  events: GroupEvent[]
-}
-
-/**
- * [P2-C] Something changed that invalidates a cached list in the renderer
- * (membership, pending invites, unread badges, profiles). Carries no payload
- * by design — the renderer refetches the affected slice, which keeps the
- * local cache the single projection of truth.
- */
-export interface GroupsInvalidated {
-  reason: GroupsInvalidationReason
 }
 
 export interface PushEvents {
@@ -306,8 +271,6 @@ export interface PushEvents {
   'shortcut:passthrough': ShortcutPassthrough
   // -- groups (P2-C) --------------------------------------------------------
   'auth:changed': AuthState
-  'group:event-batch': GroupEventBatch
-  'groups:invalidated': GroupsInvalidated
   // -- auto update ----------------------------------------------------------
   /**
    * Every auto-update state transition, including ones the renderer never
@@ -318,15 +281,9 @@ export interface PushEvents {
   // -- agent setup ----------------------------------------------------------
   'agent:install-progress': AgentInstallProgress
   // -- group whiteboard -----------------------------------------------------
-  'whiteboard:changed': WhiteboardChanged
   // -- desktop overlay ------------------------------------------------------
   'assistant:contextChanged': { courseId: string }
   'assistant:contextRefresh': { requestId: string }
-  'assistant:approval': { conversationId: string }
-  'assistant:state': import('../types/assistantWindow').AssistantWindowState
-  'assistant:prompt': { conversationId: string; prompt: import('../types/assistantWindow').AssistantPrompt }
-  'overlay:state': OverlayState
-  'overlay:prompt': OverlayPrompt
   'ui:openChat': { courseId: string; conversationId: string }
   'desktopAgent:run-state': {
     conversationId: string

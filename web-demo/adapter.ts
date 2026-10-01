@@ -1,3 +1,4 @@
+import { readDocumentContexts } from '../src/renderer/src/features/agent/documentContext'
 import { taskCalendarInterval } from '../src/shared/taskSchedule'
 import { localDateValue } from '../src/renderer/src/features/calendar/calendarDate'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../src/shared/ipc/contract'
@@ -140,6 +141,10 @@ const handlers: Handlers = {
   'agent:models': ({ provider }) => ({ models: provider === 'codex' ? [{ id: 'gpt-5.4', displayName: 'GPT-5.4 · 예시', isDefault: true, supportedEfforts: ['low', 'medium', 'high', 'xhigh'] }] : provider === 'gemini' ? [{ id: 'gemini-3.1-pro-preview', displayName: 'Gemini Pro · 예시', isDefault: true }] : [{ id: 'sonnet', displayName: 'Sonnet · 예시', isDefault: true, supportedEfforts: ['low', 'medium', 'high'] }, { id: 'opus', displayName: 'Opus · 예시', isDefault: false, supportedEfforts: ['low', 'medium', 'high', 'max'] }] }),
   'agentTools:confirmations': () => [],
   'chat:grants': () => ({ grants: [] }),
+  'chat:context': ({ courseId, sourcePanelId }) => {
+    const material = readDocumentContexts().find(doc => doc.courseId === courseId && (!sourcePanelId || doc.documentId === sourcePanelId))
+    return { id: id(), courseId, courseName: data.courses.find(course => course.id === courseId)?.name ?? '체험 과목', capturedAt: stamp(), refresh: sourcePanelId && !material ? 'failed' : 'fresh', ...(material ? { material } : {}) }
+  },
   'chat:conversations': ({ courseId }) => ({ conversations: Object.values(data.chats).filter(c => c.session.courseId === courseId).map(c => ({ ...c.session, createdAt: c.session.lastUsedAt ?? stamp(), messageCount: c.messages.length })) }),
   'chat:open': ({ courseId, sessionId }) => {
     const chat = session(courseId, sessionId)
@@ -167,11 +172,8 @@ const handlers: Handlers = {
   'chat:cancel': ({ courseId, sessionId }) => { clearTimeout(pending.get(sessionId)); pending.delete(sessionId); emit('chat:event-batch', { courseId, sessionId, seq: ++sequence, events: [{ type: 'turn-complete', stopReason: 'interrupted' }] }); return ok },
   'chat:close': () => ok,
   'chat:deleteConversation': ({ sessionId }) => { commit(next => { delete next.chats[sessionId] }); return ok },
-  'overlay:getState': () => ({ mode: 'in-app', courseId, conversationId: null, popupOpen: false, desktopVisible: false, screenPermission: 'unsupported' }),
   'mcp:list': () => ({ servers: [], availability: { available: false, reason: '웹 체험에서는 계정과 외부 도구를 연결하지 않습니다.' } }),
   'agentTools:changes': ({ turnId }) => ({ turnId, actions: [] }),
-  'overlay:setCourse': ({ courseId }) => ({ mode: 'in-app', courseId, conversationId: null, popupOpen: false, desktopVisible: false, screenPermission: 'unsupported' }),
-  'overlay:setConversation': ({ courseId, conversationId }) => ({ mode: 'in-app', courseId, conversationId, popupOpen: false, desktopVisible: false, screenPermission: 'unsupported' }),
   'search:indexPdfPages': () => ok,
   'search:query': ({ courseId, query }) => ({ hits: Object.values(data.notes).filter(n => n.courseId === courseId && n.markdown.includes(query)).map(n => ({ kind: 'note' as const, relPath: n.relPath, page: null, snippet: n.markdown.slice(0, 180), score: 1 })) })
 }

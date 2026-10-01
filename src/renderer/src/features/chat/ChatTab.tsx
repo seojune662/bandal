@@ -1,3 +1,4 @@
+import { usePanelActive } from '../workspace/usePanelActive'
 import { useEffect, useState } from 'react'
 import type { IDockviewPanelProps } from 'dockview'
 import type { TabDescriptor } from '../../../../shared/tabs'
@@ -67,6 +68,7 @@ function useResolvedConversationId(
 export default function ChatTab(props: IDockviewPanelProps): JSX.Element {
   const hasBeenShown = useHasBeenShown(props.api)
   const descriptor = descriptorFromParams(props.params)
+  const active = usePanelActive(props.api)
   const isChat = descriptor !== null && descriptor.kind === 'chat'
   const courseId = isChat ? descriptor.payload.courseId : null
   const conversationId = useResolvedConversationId(
@@ -110,7 +112,9 @@ export default function ChatTab(props: IDockviewPanelProps): JSX.Element {
     <ChatSurface
       courseId={courseId}
       conversationId={conversationId}
+      sourcePanelId={descriptor.payload.sourcePanelId}
       variant="tab"
+      active={active}
     />
   )
 }

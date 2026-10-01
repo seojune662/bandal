@@ -16,10 +16,6 @@ const FLAG_MESSAGES: Record<
   extensionRuntime: {
     label: 'settings.experimental.extensionRuntime.label',
     description: 'settings.experimental.extensionRuntime.description'
-  },
-  orbCharms: {
-    label: 'settings.experimental.orbCharms.label',
-    description: 'settings.experimental.orbCharms.description'
   }
 }
 

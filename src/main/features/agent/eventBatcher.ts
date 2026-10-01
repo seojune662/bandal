@@ -27,7 +27,7 @@ export interface EventBatcherDeps {
 }
 
 interface SessionBuffer {
-  /** Carried on every frame so AssistantLayer can filter by course. */
+  /** Carried on every frame so conversation subscribers can filter by course. */
   courseId: string
   seq: number
   pending: AgentEvent[]

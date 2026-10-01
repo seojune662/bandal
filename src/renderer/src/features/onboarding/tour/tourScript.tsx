@@ -79,21 +79,10 @@ export const TOUR_STEPS = [
     body: (
       <p>
         현재 과목의 자료를 바탕으로 질문에 답해요. 새 대화를 시작하거나 대화
-        목록에서 이전 공부를 이어갈 수 있어요.
+        목록에서 이전 생각을 정리할 수 있어요.
       </p>
     ),
     before: 'open-assistant',
-    nextLabel: null
-  },
-  {
-    id: 'assistant-orb',
-    target: 'assistant-orb',
-    placement: 'left',
-    title: '어디서든 반달 AI를 불러보세요',
-    body: (
-      <p>어디서든 떠 있는 반달을 누르면 AI를 바로 부를 수 있어요.</p>
-    ),
-    before: null,
     nextLabel: null
   },
   {
@@ -117,8 +106,8 @@ export const TOUR_STEPS = [
     title: '준비가 끝났어요',
     body: (
       <p>
-        앱 안 브라우저의 로그인은 자동으로 유지되고, 함께하기에서 친구들과
-        공부를 이어갈 수 있어요. 임시 과목은 지금 정리할게요.
+        앱 안 브라우저의 로그인은 자동으로 유지되고, 개인 화이트보드로
+        생각을 정리할 수 있어요. 임시 과목은 지금 정리할게요.
       </p>
     ),
     before: null,

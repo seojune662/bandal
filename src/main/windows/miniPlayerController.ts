@@ -7,7 +7,7 @@ import type {
   PipSource,
   PipState
 } from '../../shared/types/pip'
-import { clampToArea, type Rect } from './overlayGeometry'
+import { clampToArea, type Rect } from './windowGeometry'
 import {
   createLocalPipWindow,
   createWebPipWindow,

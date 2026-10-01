@@ -43,10 +43,6 @@ const DESCRIPTORS: TabDescriptor[] = [
   { kind: 'chat', payload: { courseId: 'c1' } },
   { kind: 'board', payload: {} },
   { kind: 'whiteboard', payload: { courseId: 'c1', boardId: 'wb1' } },
-  {
-    kind: 'group-chat',
-    payload: { courseId: 'c1', groupId: 'group1', view: 'chat' }
-  }
 ]
 
 describe('tab → favorites drag seam', () => {

@@ -1,0 +1,28 @@
+import { createContext, useContext } from 'react'
+export interface AssistantPanelState {
+  courseId?: string
+  conversationId: string
+  open: boolean
+  section: 'ai' | 'highlights'
+  width: number
+}
+export function normalizeAssistantPanel(value: unknown): AssistantPanelState {
+  const r = value && typeof value === 'object' ? value as Partial<AssistantPanelState> : {}
+  return {
+    ...(typeof r.courseId === 'string' && r.courseId ? { courseId: r.courseId } : {}),
+    conversationId: typeof r.conversationId === 'string' && r.conversationId ? r.conversationId : crypto.randomUUID(),
+    open: r.open === true,
+    section: r.section === 'highlights' ? 'highlights' : 'ai',
+    width: typeof r.width === 'number' && Number.isFinite(r.width) ? Math.min(480, Math.max(280, r.width)) : 320
+  }
+}
+export const PanelAssistantContext = createContext<{
+  panelId: string
+  highlightHost: HTMLElement | null
+  section: 'ai' | 'highlights'
+  open: boolean
+  show: (section?: 'ai' | 'highlights') => void
+  close: () => void
+  ask: (text: string) => void
+} | null>(null)
+export const usePanelAssistant = () => useContext(PanelAssistantContext)

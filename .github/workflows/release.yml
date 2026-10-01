@@ -178,7 +178,7 @@ jobs:
           # packages. They were attached to the packaging step from f990637
           # until v0.2.0, so every shipped build had an empty Supabase config,
           # readSupabaseConfig() returned null, auth phase stayed
-          # 'unconfigured' and 함께하기 DISAPPEARED from the app entirely —
+          # 'unconfigured' and account features DISAPPEARED entirely —
           # silently, with a green build.
           MAIN_VITE_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
           MAIN_VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.MAIN_VITE_SUPABASE_PUBLISHABLE_KEY }}
@@ -205,7 +205,7 @@ jobs:
           node -e "
             const url = (process.env.MAIN_VITE_SUPABASE_URL || '').trim();
             if (url === '') {
-              console.error('::error::secret MAIN_VITE_SUPABASE_URL is empty - 함께하기 would be absent from this build.');
+              console.error('::error::secret MAIN_VITE_SUPABASE_URL is empty - account login would be unavailable in this build.');
               process.exit(1);
             }
             const s = require('fs').readFileSync('out/main/index.js','utf8');

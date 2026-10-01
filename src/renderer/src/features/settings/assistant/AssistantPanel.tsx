@@ -1,16 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { KeyboardEvent } from 'react'
-import type { ScreenPermissionState } from '../../../../../shared/types/overlay'
+import type { ScreenPermissionState } from '../../../../../shared/types/screenCapture'
 import type { Settings } from '../../../../../shared/types/settings'
 import { useT } from '../../../i18n'
 import { invoke, onPush } from '../../../lib/ipc'
 import { useUiStore } from '../../../stores/uiStore'
-import { SettingsCard, ToggleRow } from '../primitives'
+import { SettingsCard } from '../primitives'
 import './assistant-panel.css'
-import { savePreference } from '../savePreference'
-
-const ASSISTANT_MODES = ['in-app', 'desktop'] as const
-type AssistantMode = Settings['assistantMode']
 
 function useScreenPermission(): {
   isDarwin: boolean
@@ -91,110 +86,6 @@ export function DesktopPermissionsSlot(
   )
 }
 
-function modeForKey(key: string, current: AssistantMode): AssistantMode | null {
-  if (
-    key === 'ArrowLeft' ||
-    key === 'ArrowUp' ||
-    key === 'ArrowRight' ||
-    key === 'ArrowDown'
-  ) {
-    return current === 'in-app' ? 'desktop' : 'in-app'
-  }
-  if (key === 'Home') return 'in-app'
-  if (key === 'End') return 'desktop'
-  return null
-}
-
-function OrbModePicker({
-  settings
-}: {
-  settings: Settings | null
-}): JSX.Element {
-  const t = useT()
-  const selectMode = (assistantMode: AssistantMode): void => {
-    if (settings === null || settings.assistantMode === assistantMode) return
-    void savePreference({ assistantMode })
-  }
-  const handleModeKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (settings === null) return
-    const next = modeForKey(event.key, settings.assistantMode)
-    if (next === null) return
-    event.preventDefault()
-    event.currentTarget
-      .querySelector<HTMLButtonElement>(`[data-mode="${next}"]`)
-      ?.focus()
-    selectMode(next)
-  }
-
-  return (
-    <div
-      className="segmented settings-assistant-mode"
-      role="radiogroup"
-      aria-label={t('settings.ai.orb.mode.selectLabel')}
-      aria-disabled={settings === null}
-      onKeyDown={handleModeKeyDown}
-    >
-      {ASSISTANT_MODES.map((option) => {
-        const selected = settings?.assistantMode === option
-        return (
-          <button
-            key={option}
-            type="button"
-            role="radio"
-            data-mode={option}
-            aria-checked={selected}
-            disabled={settings === null}
-            tabIndex={selected ? 0 : -1}
-            className={`segmented__option${
-              selected ? ' segmented__option--selected' : ''
-            }`}
-            onClick={() => selectMode(option)}
-          >
-            {t(
-              `settings.ai.orb.mode.${
-                option === 'in-app' ? 'inApp' : 'desktop'
-              }`
-            )}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-function OrbCard({ settings }: { settings: Settings | null }): JSX.Element {
-  const t = useT()
-  const toggleKeepAlive = (keepAliveOnClose: boolean): void => {
-    if (settings === null) return
-    void savePreference({ desktopOrb: { keepAliveOnClose } })
-  }
-
-  return (
-    <SettingsCard
-      title={t('settings.ai.orb.title')}
-      description={t('settings.ai.orb.description')}
-    >
-      <div className="settings-card__rows">
-        <div className="setting-row">
-          <div className="setting-row__copy">
-            <OrbModePicker settings={settings} />
-            <span className="setting-row__description">
-              {t('settings.ai.orb.mode.desktopDescription')}
-            </span>
-          </div>
-        </div>
-        <ToggleRow
-          label={t('settings.ai.orb.keepAlive')}
-          description={t('settings.ai.orb.keepAliveDescription')}
-          checked={settings?.desktopOrb.keepAliveOnClose ?? false}
-          disabled={settings?.assistantMode !== 'desktop'}
-          onChange={toggleKeepAlive}
-        />
-      </div>
-    </SettingsCard>
-  )
-}
-
 function ScreenReadingCard({
   settings
 }: {
@@ -229,7 +120,6 @@ export function AssistantPanel({
 }): JSX.Element {
   return (
     <div className="settings-stack">
-      <OrbCard settings={settings} />
       <ScreenReadingCard settings={settings} />
     </div>
   )

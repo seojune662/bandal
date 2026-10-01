@@ -7,7 +7,7 @@ test.describe('AI material context and screen selection', () => {
   test.describe.configure({ mode: 'serial' })
   let bandal: BandalApp, courseId: string
   test.beforeAll(async () => {
-    bandal = await launchBandal({ extraSettings: { assistantMode: 'desktop', theme: 'light' } })
+    bandal = await launchBandal({ extraSettings: { theme: 'light' } })
     await bandal.app.evaluate(({ ipcMain }) => {
       // Provider accounts are covered separately; keep the real context/capture IPC.
       ipcMain.removeHandler('chat:open')
@@ -35,6 +35,8 @@ test.describe('AI material context and screen selection', () => {
     await page.getByRole('textbox', { name: '페이지 이동' }).press('Enter')
     await expect.poll(async () => (await snapshot()).material?.text).toContain('angular momentum')
     expect((await snapshot()).material).toMatchObject({ page: 2, relPath: 'context.pdf' })
+    const missing = await page.evaluate(id => window.bandal.invoke('chat:context', { courseId: id, sourcePanelId: 'closed-source-panel' }), courseId)
+    expect(missing.refresh).toBe('failed'); expect(missing.material).toBeUndefined()
     await page.keyboard.press('ControlOrMeta+Shift+A')
     await expect(page.getByRole('textbox', { name: '메시지 입력' })).toBeVisible()
     expect((await snapshot()).material).toMatchObject({ page: 2, relPath: 'context.pdf' })
@@ -67,6 +69,7 @@ test.describe('AI material context and screen selection', () => {
       const capture = await next; await expect(capture.locator('.screen-selection')).toBeVisible(); return capture
     }
     const cancelled = await openCapture(); await cancelled.keyboard.press('Escape').catch(error => { if (!cancelled.isClosed()) throw error })
+    if (process.platform === 'darwin') expect(await bandal.app.evaluate(({ app }) => app.dock?.isVisible())).toBe(true)
     await expect(input).toHaveValue('선택한 그림 설명해줘')
     expect(await page.locator('.chat-attachment img').count()).toBe(0)
     const capture = await openCapture()
@@ -74,6 +77,7 @@ test.describe('AI material context and screen selection', () => {
     await expect(page.locator('.chat-attachment img').first()).toBeVisible()
     const dimensions = await page.locator('.chat-attachment img').first().evaluate((image: HTMLImageElement) => ({ width: image.naturalWidth, height: image.naturalHeight }))
     expect(dimensions).toEqual({ width: 400, height: 300 })
+    if (process.platform === 'darwin') expect(await bandal.app.evaluate(({ app }) => app.dock?.isVisible())).toBe(true)
     await expect(input).toHaveValue('선택한 그림 설명해줘')
     await page.screenshot({ path: info.outputPath('capture-preview.png') })
   })

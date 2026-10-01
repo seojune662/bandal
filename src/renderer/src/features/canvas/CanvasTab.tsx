@@ -57,7 +57,7 @@ import {
   clipboardImageFiles,
   normalizeWhiteboardImage,
   WHITEBOARD_IMAGE_MAX_FILES
-} from '../whiteboard/imageImport'
+} from '../ink/imageImport'
 import './canvas.css'
 
 type LoadState =

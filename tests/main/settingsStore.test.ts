@@ -89,10 +89,10 @@ describe('settings store recovery', () => {
     store.setSettings({ browser: { homePage: 'https://example.com/' } })
     store.setSettings({ browser: { agentUse: true } })
     store.setSettings({ experimental: { extensionRuntime: true } })
-    store.setSettings({ experimental: { orbCharms: true } })
+    store.setSettings({ widgets: { collapsed: ['todo'] } })
     const reloaded = await loadSettingsStore()
     expect(reloaded.getSettings().browser).toMatchObject({ homePage: 'https://example.com/', agentUse: true })
-    expect(reloaded.getSettings().experimental).toMatchObject({ extensionRuntime: true, orbCharms: true })
+    expect(reloaded.getSettings().experimental).toMatchObject({ extensionRuntime: true })
   })
   test('quarantines malformed JSON and returns defaults without losing the bytes', async () => {
     const userDataPath = temporaryUserData()

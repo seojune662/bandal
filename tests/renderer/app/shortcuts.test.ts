@@ -134,7 +134,7 @@ describe('resolveShortcut — chords', () => {
 
   test('resolves the new app actions from the shared defaults', () => {
     expect(
-      resolveShortcut(input({ key: 'b', metaKey: true }))
+      resolveShortcut(input({ key: 's', metaKey: true }))
     ).toEqual({ type: 'toggle-left-rail' })
     expect(
       resolveShortcut(

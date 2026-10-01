@@ -1,5 +1,5 @@
 /**
- * Shared whiteboard for a 함께하기 group.
+ * Legacy shared-whiteboard data shapes, retained for saved-data compatibility.
  *
  * Scope decision: "같이 보고 각자 그리기" — a completed stroke is persisted and
  * shows up for everyone within a second or two. There is no per-point op

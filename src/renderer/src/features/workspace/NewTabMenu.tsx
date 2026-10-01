@@ -20,7 +20,6 @@ import { Icon } from '../../app/icons'
 import { createBrowserTab, createMarkdownTab, createStudyTab } from '../../app/tabCommands'
 import { showToast } from '../../app/toast'
 import { useFavoritesStore } from '../../stores/favoritesStore'
-import { useGroupsStore } from '../../stores/groupsStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import {
   ensureSettingsLoaded,
@@ -93,7 +92,6 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
   const tree = useMaterialsStore((state) => state.tree)
   // [P2-D] Empty array when signed out or unconfigured, so the group entries
   // simply do not exist rather than appearing disabled.
-  const groups = useGroupsStore((state) => state.groups)
   const plugins = usePluginsStore((state) => state.plugins)
   const refreshPlugins = usePluginsStore((state) => state.refresh)
   const [query, setQuery] = useState('')
@@ -273,36 +271,6 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
     }
     const order = ['open-url', 'new-note', 'new-browser', 'chat', 'recording', 'new-whiteboard', 'board']
     result.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
-    // One course-scoped tab owns the in-panel group switcher. Keep the entry
-    // hidden when the course has no groups, and carry the matching group only
-    // when search entered through a group name.
-    const courseGroups = groups.filter((group) => group.courseId === course.id)
-    const matchingGroup =
-      trimmed.length > 0
-        ? courseGroups.find((group) => matches(group.name))
-        : undefined
-    if (
-      courseGroups.length > 0 &&
-      (matches('함께하기', '그룹') || matchingGroup !== undefined)
-    ) {
-      result.push({
-        id: `group-chat:${course.id}`,
-        label: '함께하기',
-        hint: course.name,
-        icon: <TabKindIcon kind="group-chat" />,
-        run: () => {
-          openTab(
-            descriptorFor('group-chat', {
-              courseId: course.id,
-              ...(matchingGroup !== undefined
-                ? { groupId: matchingGroup.id }
-                : {})
-            })
-          )
-        }
-      })
-    }
-
     const activePanelItems = [...pluginPanelsById({ plugins }).values()].filter(
       (item) => item.plugin.enabled && item.plugin.state === 'active'
     )
@@ -367,7 +335,6 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
   }, [
     query,
     tree,
-    groups,
     course.id,
     course.name,
     openTab,

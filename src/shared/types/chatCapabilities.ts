@@ -10,6 +10,7 @@ export interface ChatSkill {
   creationKinds: CreationKind[]
 }
 export interface ChatContext {
+  sourcePanelId?: string
   snapshot?: import('./chatContext').MessageContextSnapshot
   excludeCurrentMaterial?: boolean
   outputDir?: string

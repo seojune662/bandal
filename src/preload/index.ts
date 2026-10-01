@@ -77,12 +77,9 @@ const PUSH_CHANNELS = [
   'shortcut:passthrough',
   // -- groups (P2-C) --------------------------------------------------------
   'auth:changed',
-  'group:event-batch',
-  'groups:invalidated',
   // -- auto update ----------------------------------------------------------
   'update:changed',
   'agent:install-progress',
-  'whiteboard:changed',
   // -- surfaces the assistant can now change --------------------------------
   'courses:changed',
   'board:changed',
@@ -95,11 +92,6 @@ const PUSH_CHANNELS = [
   // -- desktop overlay ------------------------------------------------------
   'assistant:contextChanged',
   'assistant:contextRefresh',
-  'assistant:approval',
-  'assistant:state',
-  'assistant:prompt',
-  'overlay:state',
-  'overlay:prompt',
   'ui:openChat',
   'desktopAgent:run-state',
   'desktopAgent:permission',

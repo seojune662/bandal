@@ -8,7 +8,7 @@ import type { SVGProps } from 'react'
 import type { TabKind } from '../../../../shared/tabs'
 import { Icon } from '../../app/icons'
 
-type LocalKind = 'browser' | 'chat' | 'board' | 'group-chat' | 'whiteboard' | 'friends' | 'recording'
+type LocalKind = 'browser' | 'chat' | 'board' | 'whiteboard' | 'recording'
 
 const localPaths: Record<LocalKind, JSX.Element> = {
   recording: <><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M6 10v2a6 6 0 0 0 12 0v-2M12 18v3M9 21h6" /></>,
@@ -30,27 +30,12 @@ const localPaths: Record<LocalKind, JSX.Element> = {
       <path d="M9.2 4v16M14.8 4v16M5.8 7.5h1M11.5 7.5h1M17.2 7.5h1" />
     </>
   ),
-  // [P2] Two overlapping bubbles — deliberately distinct from `chat` (one
-  // bubble), because the AI tutor tab and a group tab can be open side by side
-  // and the tab strip is the only thing telling them apart.
-  'group-chat': (
-    <>
-      <path d="M3.5 5.5h12v8H8l-4.5 3.5V13.5z" />
-      <path d="M8 17h8l4.5 3.5V17h0V9h-4.5" />
-    </>
-  ),
   whiteboard: (
     <>
       <rect x="3.5" y="4" width="17" height="14" rx="2" />
       <path d="m7 14 3-3 2.5 2 4-5M8 21h8M12 18v3" />
     </>
   ),
-  friends: (
-    <>
-      <circle cx="9" cy="8" r="3" />
-      <path d="M3.5 19c0-3 2.5-4.5 5.5-4.5s5.5 1.5 5.5 4.5M16 5.5a3 3 0 0 1 0 5M18 19c0-2-.7-3.3-2.2-4" />
-    </>
-  )
 }
 
 function LocalIcon({
@@ -98,9 +83,7 @@ export function TabKindIcon({ kind, ...props }: TabKindIconProps): JSX.Element {
     case 'recording':
     case 'chat':
     case 'board':
-    case 'group-chat':
     case 'whiteboard':
-    case 'friends':
       return <LocalIcon kind={kind} {...props} />
   }
 }

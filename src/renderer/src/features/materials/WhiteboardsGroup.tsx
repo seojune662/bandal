@@ -62,6 +62,7 @@ function enabledMenuItems(menu: HTMLElement): HTMLButtonElement[] {
 
 export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
   const { courseId } = props
+  const [expanded, setExpanded] = useState(true)
   const [boards, setBoards] = useState<PersonalBoard[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -286,7 +287,7 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
   return (
     <section className="whiteboards-group" aria-label="화이트보드">
       <div className="materials-group-heading">
-        <span>화이트보드</span>
+        <button className="materials-section-toggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}><span aria-hidden="true">{expanded ? '⌄' : '›'}</span>화이트보드 <small>{boards?.length ?? 0}</small></button>
         <Tooltip label="새 화이트보드 만들기">
           <button
             type="button"
@@ -300,6 +301,7 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
         </Tooltip>
       </div>
 
+      <div hidden={!expanded}>
       {boards === null && (
         <p className="whiteboards-group__status" role="status">
           불러오는 중…
@@ -355,6 +357,7 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
         </p>
       )}
 
+      </div>
       {menu !== null && (
         <div
           ref={menuRef}

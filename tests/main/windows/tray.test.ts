@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { DEFAULT_SETTINGS, type Settings } from '../../../src/shared/types/settings'
 
 const electronMocks = vi.hoisted(() => {
   const trayInstances: Array<{
@@ -91,14 +90,9 @@ describe('installTray', () => {
         return instance
       })
 
-    const settings: Settings = {
-      ...DEFAULT_SETTINGS,
-      assistantMode: 'desktop'
-    }
     expect(() =>
       installTray({
-        getSettings: () => settings,
-        setSettings: () => settings,
+        shouldShow: () => true,
         openMain: vi.fn(),
         quit: vi.fn()
       })
@@ -114,13 +108,8 @@ describe('installTray', () => {
   })
 
   test('updates an installed tray with a palette icon variant', () => {
-    const settings: Settings = {
-      ...DEFAULT_SETTINGS,
-      assistantMode: 'desktop'
-    }
     const installed = installTray({
-      getSettings: () => settings,
-      setSettings: () => settings,
+      shouldShow: () => true,
       openMain: vi.fn(),
       quit: vi.fn()
     })
@@ -143,22 +132,16 @@ describe('installTray', () => {
   })
 
   test('remembers a palette icon while the tray is disabled', () => {
-    let settings: Settings = {
-      ...DEFAULT_SETTINGS,
-      assistantMode: 'in-app'
-    }
     const installed = installTray({
-      getSettings: () => settings,
-      setSettings: () => settings,
+      shouldShow: () => true,
       openMain: vi.fn(),
       quit: vi.fn()
     })
 
     installed.setIconVariant('/resources/icons/moss-light')
     if (process.platform === 'darwin') expect(electronMocks.nativeImage.createFromPath).toHaveBeenCalled()
-    else expect(electronMocks.nativeImage.createFromPath).not.toHaveBeenCalled()
+    else expect(electronMocks.nativeImage.createFromPath).toHaveBeenCalled()
 
-    settings = { ...settings, assistantMode: 'desktop' }
     installed.refresh()
     expect(electronMocks.trayInstances[0]?.setImage).toHaveBeenCalledWith(
       electronMocks.templateImage
@@ -171,15 +154,10 @@ describe('installTray', () => {
     electronMocks.Tray.mockImplementation(() => {
       throw new Error('tray unavailable')
     })
-    const settings: Settings = {
-      ...DEFAULT_SETTINGS,
-      assistantMode: 'desktop'
-    }
 
     expect(() =>
       installTray({
-        getSettings: () => settings,
-        setSettings: () => settings,
+        shouldShow: () => true,
         openMain: vi.fn(),
         quit: vi.fn()
       })

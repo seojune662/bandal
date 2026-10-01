@@ -3,14 +3,10 @@ import { Tooltip } from '../../components/Tooltip'
 import { useT } from '../../i18n'
 import { useAuthStore } from '../../stores/authStore'
 import { useUiStore } from '../../stores/uiStore'
-import { GroupIcon } from '../group/groupIcons'
+import { AccountIcon } from './accountIcons'
 import { AccountAvatar } from './AccountAvatar'
 
-/**
- * Nickname editing intentionally lives in Settings only — the nickname is the
- * identifier friends invite by, so changing it deserves the settings surface
- * with its confirmation step, not a quick inline field.
- */
+/** Account menu; profile editing lives in Settings. */
 export function SidebarAccountEntry(): JSX.Element | null {
   const t = useT()
   const auth = useAuthStore((state) => state.auth)
@@ -142,7 +138,7 @@ export function SidebarAccountEntry(): JSX.Element | null {
             disabled={pending}
             onClick={() => void handleSignOut()}
           >
-            <GroupIcon name="logOut" />
+            <AccountIcon name="logOut" />
             {pending ? '로그아웃 중…' : '로그아웃'}
           </button>
         </div>

@@ -21,10 +21,6 @@ const uiState = vi.hoisted(() => ({
   closeSettings: vi.fn()
 }))
 const authState = vi.hoisted(() => ({ phase: 'unconfigured' }))
-const friendsState = vi.hoisted(() => ({
-  friends: [] as unknown[],
-  init: vi.fn(async () => undefined)
-}))
 const workspaceState = vi.hoisted(() => ({ openTab: vi.fn() }))
 
 vi.mock('../../../src/renderer/src/stores/uiStore', () => ({
@@ -33,22 +29,13 @@ vi.mock('../../../src/renderer/src/stores/uiStore', () => ({
 vi.mock('../../../src/renderer/src/stores/authStore', () => ({
   useAuthStore: Object.assign((selector: (state: { auth: typeof authState }) => unknown) => selector({ auth: authState }), { getState: () => ({ init: async () => undefined }) })
 }))
-vi.mock('../../../src/renderer/src/stores/friendsStore', () => ({
-  useFriendsStore: Object.assign((selector: (state: typeof friendsState) => unknown) => selector(friendsState), { getState: () => friendsState })
-}))
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   useWorkspaceStore: Object.assign((selector: (state: typeof workspaceState) => unknown) => selector(workspaceState), { getState: () => workspaceState })
-}))
-vi.mock('../../../src/renderer/src/stores/groupsStore', () => ({
-  useGroupsStore: Object.assign((selector: (state: { pendingInvites: unknown[] }) => unknown) => selector({ pendingInvites: [] }), { getState: () => ({ init: async () => undefined }) })
 }))
 vi.mock('../../../src/renderer/src/features/account/SidebarAccountEntry', () => ({
   SidebarAccountEntry: () => (
     <button type="button" className="rail-nav__item" aria-label="내 프로필" />
   )
-}))
-vi.mock('../../../src/renderer/src/features/group/TogetherFooter', () => ({
-  TogetherFooter: () => null
 }))
 vi.mock('../../../src/renderer/src/features/help/HelpHub', () => ({
   HelpHub: () => (
@@ -112,8 +99,6 @@ beforeEach(() => {
   })
   invokeMock.mockReset()
   authState.phase = 'unconfigured'
-  friendsState.friends = []
-  friendsState.init.mockClear()
   workspaceState.openTab.mockClear()
   setIpcAdapter({
     invoke: invokeMock,
@@ -142,22 +127,6 @@ afterEach(() => {
 })
 
 describe('CourseSidebar course menu', () => {
-  test('opens friends from the global Together menu', () => {
-    authState.phase = 'signed-in'
-    act(() => root.render(<><GlobalNavigation /><CourseSidebar /></>))
-
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="함께하기"]')?.click())
-    const button = container.querySelector<HTMLButtonElement>(
-      '.navigation-popover__action'
-    )
-    expect(button).not.toBeNull()
-    expect(container.querySelector('.together-friends')).toBeNull()
-
-    act(() => button?.click())
-    expect(workspaceState.openTab).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'friends' })
-    )
-  })
 
   test('keeps primary navigation above account and settings', () => {
     authState.phase = 'signed-in'
@@ -168,7 +137,7 @@ describe('CourseSidebar course menu', () => {
     ).map((item) => item.getAttribute('aria-label'))
 
     expect(labels).toEqual([
-      '과목', '학업 보드 열기', '함께하기', '더 보기', '내 프로필', '설정'
+      '과목', '학업 보드 열기', '더 보기', '내 프로필', '설정'
     ])
   })
 

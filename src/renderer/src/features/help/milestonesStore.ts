@@ -11,7 +11,6 @@ export type MilestoneId =
   | 'tutorial'
   | 'favorite'
   | 'question'
-  | 'group'
   | 'pip'
 
 export interface MilestoneFacts {
@@ -22,8 +21,6 @@ export interface MilestoneFacts {
   tutorial: boolean
   favorite: boolean
   question: boolean
-  communityAvailable: boolean
-  group: boolean
   pip: boolean
 }
 
@@ -40,8 +37,6 @@ export const EMPTY_MILESTONE_FACTS: MilestoneFacts = {
   tutorial: false,
   favorite: false,
   question: false,
-  communityAvailable: false,
-  group: false,
   pip: false
 }
 
@@ -55,9 +50,6 @@ export function deriveMilestones(facts: MilestoneFacts): MilestoneItem[] {
     { id: 'favorite', completed: facts.favorite },
     { id: 'question', completed: facts.question }
   ]
-  if (facts.communityAvailable) {
-    items.push({ id: 'group', completed: facts.group })
-  }
   items.push({ id: 'pip', completed: facts.pip })
   return items
 }
@@ -106,16 +98,15 @@ export const useMilestones = create<MilestonesState>()((set) => ({
     const sequence = ++refreshSequence
     set({ loading: true, error: null })
     try {
-      const [settings, courses, auth] = await Promise.all([
+      const [settings, courses] = await Promise.all([
         invoke('settings:get', {}),
-        invoke('courses:list', {}),
-        invoke('auth:getState', {})
+        invoke('courses:list', {})
       ])
       const selectedCourse = courses.find(
         (course) => course.id === selectedCourseId && !course.missing
       )
       const favoriteScopes = [null, ...courses.map((course) => course.id)]
-      const [availability, materialTree, favoriteLists, activityLists, groups] =
+      const [availability, materialTree, favoriteLists, activityLists] =
         await Promise.all([
           invoke('agent:availability', { provider: settings.agentProvider }),
           selectedCourse === undefined
@@ -130,10 +121,7 @@ export const useMilestones = create<MilestonesState>()((set) => ({
             courses.map((course) =>
               invoke('activity:recent', { courseId: course.id, limit: 50 })
             )
-          ),
-          auth.phase === 'unconfigured'
-            ? Promise.resolve(null)
-            : invoke('groups:list', {})
+          )
         ])
       if (sequence !== refreshSequence) return
 
@@ -147,8 +135,6 @@ export const useMilestones = create<MilestonesState>()((set) => ({
         question: activityLists.some((events) =>
           events.some((event) => event.kind === 'question-asked')
         ),
-        communityAvailable: auth.phase !== 'unconfigured',
-        group: (groups?.length ?? 0) > 0,
         pip: settings.milestones.pipUsedAt !== null
       }
       updateFacts(set, facts)

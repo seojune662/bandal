@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom'
+import { usePanelAssistant } from '../assistantPanel/panelContext'
 import { registerDocumentContext } from '../agent/documentContext'
 /**
  * [M3-D] PDF viewer tab — dockview panel component for TabKind 'pdf'.
@@ -49,7 +51,7 @@ import {
   WhiteboardPickerPopover,
   type ContentPoint
 } from './popovers'
-import { askAiAboutAnnotation } from './askAi'
+import { askAiAboutAnnotation, buildAnnotationPrompt } from './askAi'
 import {
   PDF_ANNOTATION_JUMP_EVENT,
   type PdfAnnotationJumpDetail
@@ -177,6 +179,7 @@ function PdfViewer({
   panelId: string
   pageNotePair: PdfPageNotePairContext | null
 }): JSX.Element {
+  const assistant = usePanelAssistant()
   // 문서 소스는 bandal-media:// URL — pdf.js 가 Range 요청으로 필요한
   // 페이지만 가져온다. base64-over-IPC 시절의 64MB 캡·메모리 상주가 없다.
   const fileSource = useMemo(
@@ -218,12 +221,16 @@ function PdfViewer({
   useEffect(() => {
     let live = true; aiPageText.current = ''
     if (pdfProxy) void pdfProxy.getPage(currentPage).then(page => page.getTextContent()).then(content => { if (live) aiPageText.current = content.items.map(item => 'str' in item ? item.str : '').join(' ').slice(0, 10000) }).catch(() => {})
-    const off = registerDocumentContext(`pdf:${courseId}:${relPath}`, () => ({ courseId, kind: 'pdf', title: relPath.split('/').pop() ?? relPath, relPath, page: currentPage, text: aiPageText.current }))
+    const off = registerDocumentContext(panelId, () => ({ courseId, kind: 'pdf', title: relPath.split('/').pop() ?? relPath, relPath, page: currentPage, text: aiPageText.current }))
     return () => { live = false; off() }
-  }, [courseId, relPath, currentPage, pdfProxy])
+  }, [courseId, relPath, currentPage, pdfProxy, panelId])
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
-  const [isRailOpen, setIsRailOpen] = useState(false)
+  const isRailOpen = assistant?.open === true
+  const setIsRailOpen = (open: boolean | ((value: boolean) => boolean)): void => {
+    const next = typeof open === 'function' ? open(isRailOpen) : open
+    if (next) assistant?.show(); else assistant?.close()
+  }
   const [isPageNoteDialogOpen, setIsPageNoteDialogOpen] = useState(false)
   const [pendingSelection, setPendingSelection] =
     useState<PendingSelection | null>(null)
@@ -828,9 +835,10 @@ function PdfViewer({
   // -- [M5] annotation → AI tutor -------------------------------------------
   const askAi = useCallback(
     (annotation: Annotation): void => {
-      askAiAboutAnnotation(courseId, annotation)
+      if (assistant) assistant.ask(buildAnnotationPrompt(annotation))
+      else askAiAboutAnnotation(courseId, annotation)
     },
-    [courseId]
+    [courseId, assistant]
   )
 
   const sendToNote = useCallback(
@@ -1156,7 +1164,7 @@ function PdfViewer({
           </div>
         </div>
 
-        {isRailOpen && (
+        {assistant?.highlightHost && createPortal(
           <AnnotationRail
             annotations={annotations}
             staleIds={staleIds}
@@ -1164,8 +1172,8 @@ function PdfViewer({
             error={annotationsApi.error}
             onJump={jumpToAnnotation}
             onAskAi={askAi}
-            onClose={() => setIsRailOpen(false)}
-          />
+            onClose={() => assistant.close()}
+          />, assistant.highlightHost
         )}
       </div>
       {pageImageCopy.overlay}

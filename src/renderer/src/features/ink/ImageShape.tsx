@@ -105,10 +105,8 @@ export function loadSharedDrawingImage(
     touchCache(key, cached)
     return cached
   }
-  const pending = invoke('whiteboard:readAsset', {
-    boardId,
-    assetId: source.assetId
-  }).then((content) => imageDataUrl('.webp', content)).catch(() => null)
+  // Legacy shared-board assets remain in storage; this app no longer fetches them.
+  const pending = Promise.resolve<string | null>(null)
   touchCache(key, pending)
   void pending.then((url) => {
     if (url === null && imageCache.get(key) === pending) imageCache.delete(key)

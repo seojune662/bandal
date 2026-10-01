@@ -38,7 +38,6 @@ const disabledSettings: Settings = {
   ...DEFAULT_SETTINGS,
   experimental: {
     extensionRuntime: false,
-    orbCharms: true
   }
 }
 
@@ -94,12 +93,9 @@ describe('advanced and experimental settings', () => {
     act(() => mountedRoot?.render(<ExperimentalPanel settings={disabledSettings} />))
 
     const switches = container.querySelectorAll<HTMLButtonElement>('[role="switch"]')
-    expect(switches).toHaveLength(2)
+    expect(switches).toHaveLength(1)
     expect(switches[0]?.getAttribute('aria-label')).toBe(
       'settings.experimental.extensionRuntime.label'
-    )
-    expect(switches[1]?.getAttribute('aria-label')).toBe(
-      'settings.experimental.orbCharms.label'
     )
 
     act(() => switches[0]?.click())

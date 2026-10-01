@@ -247,23 +247,14 @@ test('global menus, course drag, resizing and enlarged text remain reachable', a
     await handle.dblclick({ position: { x: 3, y: 300 } })
     await expect.poll(async () => (await rail.boundingBox())!.width).toBe(240)
     await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
+    await expect(page.locator('.global-navigation')).toHaveCount(0)
+    await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
     await page.getByRole('button', { name: '더 보기', exact: true }).click()
     await expect(
       page.getByRole('menuitem', { name: '연결 그래프', exact: true })
     ).toBeVisible()
     await page.keyboard.press('Escape')
-    await page.getByRole('button', { name: '함께하기', exact: true }).click()
-    const together = page.getByRole('dialog', { name: '함께하기 메뉴' })
-    await expect(together).toBeVisible()
-    expect(
-      await together.evaluate(
-        (node) => node.getBoundingClientRect().right <= innerWidth
-      )
-    ).toBe(true)
-    await page.keyboard.press('Escape')
-    await expect(
-      page.getByRole('button', { name: '함께하기', exact: true })
-    ).toBeFocused()
+    await expect(page.getByRole('button', { name: '함께하기', exact: true })).toHaveCount(0)
     await page.evaluate(() =>
       window.bandal.invoke('settings:set', { fontScale: 1.2 })
     )

@@ -201,8 +201,10 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
   }
 
   const list = [...visible].sort(byDue)
+  const pending = list.filter(task => task.status !== 'done')
   return (
     <div className="widget-task">
+      <p className="widget-summary"><strong>{pending.length}</strong>개의 할 일{pending[0]?.dueAt ? ` · 가까운 일정 ${taskDateLabel(pending[0])}` : ''}</p>
       <div className="widget-toolbar">
         <TaskScope currentOnly={currentOnly} onChange={setCurrentOnly} />
         <button type="button" className="widget-open-board" onClick={toggleBoard}>전체 보드</button>
@@ -212,7 +214,7 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
           <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="할 일 추가" aria-label="할 일 추가" />
           <button type="submit" disabled={draft.trim() === '' || saving} aria-label="추가"><Icon name="plus" /></button>
         </div>
-        <div className="widget-quick-add__options">
+        <details className="widget-quick-options"><summary>날짜 · 색상</summary><div className="widget-quick-add__options">
           <label className="widget-date-field">
             <span>날짜</span>
             <input
@@ -223,13 +225,13 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
             />
           </label>
           <TaskColorPicker value={draftColor} onChange={setDraftColor} />
-        </div>
+        </div></details>
       </form>
       {loading ? (
         <p className="widget-empty">불러오는 중…</p>
       ) : mode === 'todo' ? (
         <ul className="widget-todo-list">
-          {list.filter((task) => task.status !== 'done').map((task) => (
+          {pending.slice(0, 5).map((task) => (
             <li key={task.id} data-color={task.color} data-expanded={editingId === task.id || undefined}>
               <div className="widget-todo-row">
                 <button type="button" className="widget-check" aria-label={`${task.title} 완료`} onClick={() => updateStatus(task, 'done')} />
@@ -274,11 +276,7 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
           {(['todo', 'in-progress', 'done'] as const).map((status) => (
             <section key={status}>
               <h4>{status === 'todo' ? '할 일' : status === 'in-progress' ? '진행 중' : '완료'} <span>{list.filter((task) => task.status === status).length}</span></h4>
-              {list.filter((task) => task.status === status).slice(0, 5).map((task) => (
-                <button key={task.id} type="button" data-color={task.color} title="다음 상태로 이동" onClick={() => updateStatus(task, status === 'todo' ? 'in-progress' : status === 'in-progress' ? 'done' : 'todo')}>
-                  {task.title}
-                </button>
-              ))}
+              <button type="button" onClick={toggleBoard}>보드에서 보기 ↗</button>
             </section>
           ))}
         </div>
@@ -320,7 +318,7 @@ export function WidgetDock(): JSX.Element | null {
     const rect = rail.getBoundingClientRect()
     const move = (moveEvent: PointerEvent): void => {
       const ratio = Math.min(0.65, Math.max(0.25, (rect.bottom - moveEvent.clientY) / rect.height))
-      if (dockRef.current !== null) dockRef.current.style.height = `${ratio * 100}%`
+      if (dockRef.current !== null) dockRef.current.style.maxHeight = `${ratio * 100}%`
     }
     const end = (upEvent: PointerEvent): void => {
       const ratio = Math.min(0.65, Math.max(0.25, (rect.bottom - upEvent.clientY) / rect.height))
@@ -335,15 +333,17 @@ export function WidgetDock(): JSX.Element | null {
   return (
     <>
       <div className="widget-divider" role="separator" aria-orientation="horizontal" onPointerDown={beginResize} />
-      <section ref={dockRef} className="widget-dock" style={{ height: `${widgets.heightRatio * 100}%` }} aria-label="위젯">
-        <header className="widget-tabs" role="tablist">
-          {widgets.enabled.map((id) => (
-            <button key={id} type="button" role="tab" aria-selected={widgets.active === id} onClick={() => void invoke('settings:set', { widgets: { active: id } })}>{LABELS[id]}</button>
-          ))}
-        </header>
-        <div className="widget-content" role="tabpanel">
-          {widgets.active === 'mail' ? <MailWidget settings={settings} /> : <TaskWidget mode={widgets.active} />}
-        </div>
+      <section ref={dockRef} className="widget-dock" style={{ maxHeight: `${widgets.heightRatio * 100}%` }} aria-label="위젯">
+        {widgets.enabled.map(id => {
+          const collapsed = widgets.collapsed?.includes(id) ?? false
+          return <section className="widget-card" key={id} data-widget={id}>
+            <header className="widget-card__header"><button type="button" aria-label={`${LABELS[id]} 위젯 ${collapsed ? '펼치기' : '접기'}`} aria-expanded={!collapsed} onClick={() => {
+              const next = new Set(widgets.collapsed ?? []); if (collapsed) next.delete(id); else next.add(id)
+              void invoke('settings:set', { widgets: { collapsed: [...next] } })
+            }}><span className="widget-card__icon" aria-hidden="true">{id === 'todo' ? '✓' : id === 'board' ? '▦' : '✉'}</span><strong>{LABELS[id]}</strong><span className="widget-card__chevron">{collapsed ? '⌄' : '⌃'}</span></button></header>
+            <div className="widget-card__body" hidden={collapsed}>{id === 'mail' ? <MailWidget settings={settings} /> : <TaskWidget mode={id} />}</div>
+          </section>
+        })}
       </section>
     </>
   )

@@ -21,26 +21,26 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove() })
 async function mount(): Promise<void> { await act(async () => root.render(<NativeMailWidget fallback={null} />)) }
 async function click(text: string): Promise<void> {
-  const button = Array.from(host.querySelectorAll('button')).find((node) => node.textContent?.includes(text))!
+  const button = Array.from(document.body.querySelectorAll('button')).find((node) => node.textContent?.includes(text))!
   expect(button).toBeDefined()
   await act(async () => button.click())
 }
 
 test('native mailbox reads, replies and archives with no embedded website', async () => {
   await mount()
-  expect(host.querySelector('webview, iframe')).toBeNull()
-  expect(host.textContent).toContain('수업 안내')
+  expect(document.body.querySelector('webview, iframe')).toBeNull()
+  expect(document.body.textContent).toContain('수업 안내')
   await click('수업 안내')
-  expect(host.textContent).toContain('강의실이 변경됐어요.')
+  expect(document.body.textContent).toContain('강의실이 변경됐어요.')
   expect(invoke).toHaveBeenCalledWith('mail:modify', { id: '1', action: 'read' })
-  const textarea = host.querySelector('textarea')!
+  const textarea = document.body.querySelector('textarea')!
   await act(async () => { Simulate.change(textarea, { target: { value: '확인했습니다.' } } as never) })
-  await act(async () => Simulate.submit(host.querySelector('.mail-mini__reply')!))
+  await act(async () => Simulate.submit(document.body.querySelector('.mail-mini__reply')!))
   expect(invoke).toHaveBeenCalledWith('mail:reply', { messageId: '1', text: '확인했습니다.' })
-  expect(host.textContent).toContain('답장을 보냈어요.')
+  expect(document.body.textContent).toContain('답장을 보냈어요.')
   await click('보관')
   expect(invoke).toHaveBeenCalledWith('mail:modify', { id: '1', action: 'archive' })
-  expect(host.querySelector('.mail-mini__list')?.textContent).not.toContain('수업 안내')
+  expect(document.body.querySelector('.mail-mini__list')?.textContent).not.toContain('수업 안내')
 })
 
 test('a failed read stops the spinner and offers a working retry', async () => {
@@ -51,11 +51,11 @@ test('a failed read stops the spinner and offers a working retry', async () => {
     return original(channel, input)
   })
   await mount(); await click('수업 안내')
-  expect(host.textContent).not.toContain('메일을 불러오는 중')
-  expect(host.textContent).toContain('다시 시도')
+  expect(document.body.textContent).not.toContain('메일을 불러오는 중')
+  expect(document.body.textContent).toContain('다시 시도')
   fails = false
   await click('다시 시도')
-  expect(host.textContent).toContain('강의실이 변경됐어요.')
+  expect(document.body.textContent).toContain('강의실이 변경됐어요.')
 })
 
 test('provider HTML never mounts scripts, images, iframes, or decoded tags', () => {
@@ -63,13 +63,13 @@ test('provider HTML never mounts scripts, images, iframes, or decoded tags', () 
   expect(value).toContain('안녕 & 반달')
   expect(value).not.toContain('hidden')
   expect(value).not.toContain('tracker.test')
-  expect(host.querySelector('img,script,iframe')).toBeNull()
+  expect(document.body.querySelector('img,script,iframe')).toBeNull()
 })
 
 test('unconfigured builds offer an honest fallback, not a broken login', async () => {
   invoke.mockResolvedValue({ status: 'unconfigured', email: null, experimental: true })
   await mount()
-  expect(host.textContent).toContain('연결을 준비하고 있어요')
-  expect(host.textContent).toContain('전체 Gmail')
+  expect(document.body.textContent).toContain('연결을 준비하고 있어요')
+  expect(document.body.textContent).toContain('전체 Gmail')
   expect(invoke).not.toHaveBeenCalledWith('mail:list', expect.anything())
 })

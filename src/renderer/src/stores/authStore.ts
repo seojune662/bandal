@@ -7,7 +7,7 @@
  * session is a lie the UI would then act on (docs/phase2-community.md §1.3).
  *
  * Before hydration, `phase === 'unconfigured'` is only a neutral placeholder;
- * after hydration it means the 함께하기 UI must be absent because this build
+ * after hydration it means the account sign-in is unavailable because this build
  * cannot provide it. `hydrated` deliberately distinguishes those two states.
  */
 
@@ -69,7 +69,7 @@ export const useAuthStore = create<AuthStoreState>()((set, get) => ({
     } catch (error) {
       if (initialization === pending) initialization = null
       // A failure here must never break the app: stay unconfigured, which
-      // hides the community UI and leaves Phase 1 untouched.
+      // leaves local study features available.
       console.error('[Bandal] 로그인 상태를 불러오지 못했습니다.', error)
       set({ hydrated: true, initializing: false })
     }
@@ -98,20 +98,6 @@ export const useAuthStore = create<AuthStoreState>()((set, get) => ({
     return profile
   }
 }))
-
-/** The community surface exists at all only when the build has keys. */
-export function selectCommunityAvailable(state: AuthStoreState): boolean {
-  return state.auth.phase !== 'unconfigured'
-}
-
-export function selectSignedIn(state: AuthStoreState): boolean {
-  return state.auth.phase === 'signed-in'
-}
-
-/** Signed in but the nickname step has not been completed yet. */
-export function selectNeedsNickname(state: AuthStoreState): boolean {
-  return state.auth.phase === 'signed-in' && state.auth.profile?.nickname == null
-}
 
 /** Test-only: drop the memoized init so a fresh store can hydrate again. */
 export function resetAuthStoreForTests(): void {

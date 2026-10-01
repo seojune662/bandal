@@ -1,12 +1,10 @@
 import { useMaterialContext } from './ContextChips'
-import { invoke } from '../../lib/ipc'
 import {
   useCallback,
   useEffect,
   useRef,
   type ReactNode
 } from 'react'
-import { createPortal } from 'react-dom'
 import type { AgentProvider } from '../../../../shared/types/agent-events'
 import type {
   ChatAttachment,
@@ -108,27 +106,27 @@ function isPendingConfirmation(
 
 export interface ChatSurfaceProps {
   courseId: string
-  /** Conversation id; surfaces without one (popup) fall back to courseId. */
+  /** Conversation identity shared by the sidebar and expanded tab. */
   conversationId?: string
-  variant?: 'tab' | 'popup' | 'overlay'
+  variant?: 'tab' | 'sidebar'
+  sourcePanelId?: string | undefined
+  active?: boolean
   surface?: ChatSurfaceKind
   onOpenConversation?: (conversationId: string) => void
   headerExtra?: ReactNode
-  /**
-   * 인앱 오브 팝업의 헤더 슬롯 — 있으면 제공자/모델 셀렉터를 그 DOM 으로
-   * 포탈하고 자체 .chat-header 를 렌더하지 않는다(헤더 1줄 통합).
-   */
-  headerControlsHost?: HTMLElement | null
+
 }
 
 function EmptyState({
   courseId,
+  sourcePanelId,
   onPick
 }: {
   onPick: (prompt: string) => void
+  sourcePanelId?: string | undefined
   courseId: string
 }): JSX.Element {
-  const { snapshot } = useMaterialContext(courseId)
+  const { snapshot } = useMaterialContext(courseId, sourcePanelId)
   return (
     <div className="chat-empty">
       <BandalMark size={56} className="chat-empty__moon" motion="intro" />
@@ -176,7 +174,8 @@ export function ChatSurface({
   surface = 'app',
   onOpenConversation,
   headerExtra,
-  headerControlsHost
+  sourcePanelId,
+  active = true
 }: ChatSurfaceProps): JSX.Element {
   const nativeSurface = typeof window !== 'undefined' && !!window.bandal && window.bandal.platform !== 'web'
   const conversationKey = conversationId ?? courseId
@@ -213,10 +212,6 @@ export function ChatSurface({
   const hasPendingApprovals =
     pendingPermission !== null || pendingAgentConfirmations.length > 0
 
-  useEffect(() => {
-    if (window.bandal.platform === 'web') return
-    void invoke('assistant:approval', { conversationId: conversationKey, visible: pendingAgentConfirmations.length > 0 }).catch(console.error)
-  }, [conversationKey, pendingAgentConfirmations.length])
 
   useEffect(() => {
     const owner = approvalTitleOwnerRef.current
@@ -266,12 +261,12 @@ export function ChatSurface({
       if (text === '' && attachments.length === 0 && !context) {
         return
       }
-      await session.send(text, attachments, context)
+      await session.send(text, attachments, { ...context, ...(sourcePanelId ? { sourcePanelId } : {}) })
       setDraft((current) => current === draft ? '' : current)
       setPendingQuotes([])
       isPinnedRef.current = true
     },
-    [draft, pendingQuotes, session.send, setDraft]
+    [draft, pendingQuotes, session.send, setDraft, sourcePanelId]
   )
 
   const removeQuote = useCallback((index: number) => {
@@ -294,11 +289,12 @@ export function ChatSurface({
       openTab(
         descriptorFor('chat', {
           courseId,
-          conversationId: nextConversationId
+          conversationId: nextConversationId,
+          ...(sourcePanelId ? { sourcePanelId } : {})
         })
       )
     },
-    [courseId, onOpenConversation, openTab]
+    [courseId, onOpenConversation, openTab, sourcePanelId]
   )
 
   const handleNewConversation = useCallback(() => {
@@ -316,8 +312,7 @@ export function ChatSurface({
   const root = (children: ReactNode): JSX.Element => (
     <div
       className="chat-tab"
-      data-variant={variant === 'overlay' ? 'popup' : variant}
-      data-overlay={variant === 'overlay' ? 'true' : undefined}
+      data-variant={variant}
       data-tour="assistant-panel"
     >
       {children}
@@ -396,16 +391,8 @@ export function ChatSurface({
     </>
   )
 
-  // 인앱 오브 팝업은 자체 헤더가 있다 — 셀렉터를 그 헤더 슬롯으로 포탈해
-  // 헤더 2줄(반달 AI + 제공자/모델)을 1줄로 합친다.
-  const portalsHeaderControls =
-    variant === 'popup' && headerControlsHost != null
-
   return root(
     <>
-      {portalsHeaderControls
-        ? createPortal(selectorControls, headerControlsHost)
-        : (
         <header className="chat-header">
           {headerExtra}
           {hasSessionUsage && (
@@ -417,13 +404,8 @@ export function ChatSurface({
               )}
             </div>
           )}
-          {variant === 'overlay' ? (
-            <div className="chat-header__selectors">{selectorControls}</div>
-          ) : (
-            selectorControls
-          )}
+          {selectorControls}
         </header>
-          )}
       {state.notice !== null && state.notice.code !== 'version-too-old' && (
         <div
           className="chat-banner chat-banner--error"
@@ -447,7 +429,7 @@ export function ChatSurface({
         onScroll={handleScroll}
       >
         {isEmpty ? (
-          <EmptyState courseId={courseId} onPick={handlePickStarter} />
+          <EmptyState sourcePanelId={sourcePanelId} courseId={courseId} onPick={handlePickStarter} />
         ) : (
           <>
             <MessageList
@@ -466,7 +448,7 @@ export function ChatSurface({
           </>
         )}
       </div>
-      {(pendingPermission !== null || (!nativeSurface && hasPendingApprovals)) && (
+      {(active && hasPendingApprovals) && (
         <div
           className="chat-approval-dock chat-approval-side"
           role="region"
@@ -498,6 +480,7 @@ export function ChatSurface({
       )}
       <Composer
         ref={composerRef}
+        sourcePanelId={sourcePanelId}
         courseId={courseId}
         conversationId={conversationKey}
         provider={provider}

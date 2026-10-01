@@ -1,62 +1,8 @@
-import { ScreenSelectionApp } from './features/overlay/ScreenSelectionApp'
-import { ApprovalApp } from './features/chat/ApprovalApp'
-import { bootstrapAppearance } from './app/bootstrapAppearance'
-import { useEffect } from 'react'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css'
+import { ScreenSelectionApp } from './features/overlay/ScreenSelectionApp'
 import './styles/tokens.css'
 import './styles/base.css'
-import './features/overlay/overlay.css'
-import { NativeAssistantApp } from './features/assistant/NativeAssistantApp'
-import { OverlayOrbApp } from './features/overlay/OverlayOrbApp'
-import { OverlayPopupApp } from './features/overlay/OverlayPopupApp'
-import { useLocale } from './i18n'
-import { useUiStore } from './stores/uiStore'
-
-const requestedView = new URLSearchParams(location.search).get('view')
-const view = requestedView === 'capture' ? 'capture' : requestedView === 'approval' ? 'approval' :
-  requestedView === 'assistant'
-    ? 'assistant'
-    : requestedView === 'popup'
-      ? 'popup'
-      : 'orb'
-
-document.documentElement.dataset['overlayView'] = view
-document.documentElement.dataset['platform'] = window.bandal.platform
-
-function OverlayEntry(): JSX.Element {
-  const initTheme = useUiStore((state) => state.initTheme)
-  const locale = useLocale()
-
-  useEffect(() => {
-    void initTheme().catch((error: unknown) => {
-      console.error('[Bandal] 오버레이 테마를 불러오지 못했습니다.', error)
-    })
-  }, [initTheme])
-
-  useEffect(() => {
-    document.documentElement.lang = locale
-  }, [locale])
-
-  return view === 'capture' ? <ScreenSelectionApp /> : view === 'approval' ? <ApprovalApp /> : view === 'assistant' ? (
-    <NativeAssistantApp />
-  ) : view === 'popup' ? (
-    <OverlayPopupApp />
-  ) : (
-    <OverlayOrbApp />
-  )
-}
-
-const rootElement = document.getElementById('root')
-if (rootElement === null) {
-  throw new Error('Root element #root not found')
-}
-
-void bootstrapAppearance().then(() =>
-  ReactDOM.createRoot(rootElement).render(
-    <React.StrictMode>
-      <OverlayEntry />
-    </React.StrictMode>
-  )
-)
+const root = document.getElementById('root')
+if (!root) throw new Error('Missing capture root')
+ReactDOM.createRoot(root).render(<React.StrictMode><ScreenSelectionApp /></React.StrictMode>)

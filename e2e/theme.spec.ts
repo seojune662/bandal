@@ -15,9 +15,9 @@ async function expectTheme(page: Page, theme: 'light' | 'dark'): Promise<void> {
   expect(await page.locator('html').getAttribute('data-palette')).toBeNull()
 }
 
-test('system is the installation default and synchronizes the main and assistant windows', async () => {
+test('system is the installation default and synchronizes the main window', async () => {
   const bandal = await launchBandal({
-    extraSettings: { theme: undefined, assistantMode: 'desktop' }
+    extraSettings: { theme: undefined }
   })
   try {
     const { app, page } = bandal
@@ -25,13 +25,6 @@ test('system is the installation default and synchronizes the main and assistant
       window.bandal.invoke('settings:get', {})
     )
     expect(settings.theme).toBe('system')
-    const popup =
-      app
-        .windows()
-        .find((page) => page.url().includes('overlay.html?view=popup')) ??
-      (await app.waitForEvent('window', {
-        predicate: (page) => page.url().includes('overlay.html?view=popup')
-      }))
     for (const window of app.windows())
       await window.emulateMedia({ colorScheme: null })
     for (const theme of ['light', 'dark', 'light'] as const) {
@@ -39,16 +32,14 @@ test('system is the installation default and synchronizes the main and assistant
         nativeTheme.themeSource = theme
       }, theme)
       await expectTheme(page, theme)
-      await expectTheme(popup, theme)
       const backgrounds = await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()
           .filter((win) =>
-            /index.html|overlay.html\?view=popup/.test(win.webContents.getURL())
+            /index.html/.test(win.webContents.getURL())
           )
           .map((win) => win.getBackgroundColor().toLowerCase())
       )
       expect(backgrounds).toEqual([
-        theme === 'light' ? '#ffffff' : '#212121',
         theme === 'light' ? '#ffffff' : '#212121'
       ])
     }
@@ -56,12 +47,10 @@ test('system is the installation default and synchronizes the main and assistant
       window.bandal.invoke('settings:set', { theme: 'dark' })
     )
     await expectTheme(page, 'dark')
-    await expectTheme(popup, 'dark')
     await app.evaluate(({ nativeTheme }) => {
       nativeTheme.themeSource = 'light'
     })
     await expectTheme(page, 'dark')
-    await expectTheme(popup, 'dark')
   } finally {
     await bandal.close()
   }

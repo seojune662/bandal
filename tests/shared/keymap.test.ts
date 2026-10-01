@@ -112,7 +112,7 @@ describe('shared keymap contract', () => {
         ["browser-zoom-in", "mod+=", true],
         ["browser-zoom-out", "mod+-", true],
         ["browser-zoom-reset", "mod+0", true],
-        ["toggle-left-rail", "mod+b", false],
+        ["toggle-left-rail", "mod+s", true],
         ["toggle-right-rail", "mod+alt+b", false],
         ["toggle-board", "mod+shift+d", false],
         ["add-course", "mod+shift+n", false],

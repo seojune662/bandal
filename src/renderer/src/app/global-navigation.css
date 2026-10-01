@@ -17,7 +17,8 @@
 .app-shell[data-settings='open'] > .global-navigation {
   z-index: 210;
 }
-.shell-chrome button {
+.shell-chrome button,
+.shell-chrome button * {
   -webkit-app-region: no-drag;
 }
 .shell-chrome__traffic {
@@ -50,46 +51,6 @@
   gap: 8px;
   margin-top: auto;
 }
-.global-navigation__together {
-  position: relative;
-}
-.navigation-popover {
-  position: absolute;
-  left: 44px;
-  top: 0;
-  width: 280px;
-  max-height: min(440px, 75vh);
-  overflow: auto;
-  padding: 16px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  color: var(--text-primary);
-  background: var(--bg-overlay);
-  box-shadow: var(--shadow-lg);
-}
-.navigation-popover h2 {
-  margin-bottom: 12px;
-  font-size: var(--text-base);
-  font-weight: 500;
-}
-.navigation-popover p {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-}
-.navigation-popover__action {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px;
-  border-radius: var(--radius-md);
-  text-align: left;
-}
-.navigation-popover__action:hover {
-  background: var(--bg-raised);
-}
-.navigation-popover .together-footer {
-  padding: 0;
-  margin-top: 8px;
-  border: 0;
-}
+
+.shell-chrome { --window-controls-width: 144px; }
+.app-shell:has(.workspace-watermark) > .shell-chrome { background: var(--bg-app); }

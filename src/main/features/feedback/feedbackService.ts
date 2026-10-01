@@ -7,7 +7,7 @@ import {
   createRateGuard,
   type RateGuard,
   type RateRule
-} from '../group/rateGuard'
+} from './rateGuard'
 
 export const FEEDBACK_RATE_ACTION = 'feedback:send'
 export const FEEDBACK_BODY_LIMIT = 4_000

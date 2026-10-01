@@ -1,4 +1,4 @@
-import { prepareQuickAction } from '../assistant/OrbQuickMenu'
+import { prepareQuickAction } from './quickActions'
 import { showToast } from '../../app/toast'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentProvider } from '../../../../shared/types/agent-events'

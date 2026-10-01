@@ -10,7 +10,6 @@ import { useCoursesStore } from '../../stores/coursesStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { normalizeCourseColor } from '../courses/courseColors'
-import { CourseGroupsSection } from '../group/CourseGroupsSection'
 import { LinkPickerDialog } from '../links/LinkPickerDialog'
 import { requestOpenPdfPageNote } from '../links/pdfPageNoteNavigation'
 import {
@@ -191,6 +190,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   const toggleFolder = useMaterialsStore((state) => state.toggleFolder)
   const pickFolder = useCoursesStore((state) => state.pickFolder)
   const relinkCourse = useCoursesStore((state) => state.relinkCourse)
+  const [filesOpen, setFilesOpen] = useState(true)
   const [query, setQuery] = useState('')
   const [isDebouncing, setIsDebouncing] = useState(false)
   const [isRelinking, setIsRelinking] = useState(false)
@@ -833,7 +833,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         <div className="materials-heading__text">
           <h2>자료</h2>
           {course !== null && (
-            <span className="materials-heading__course">
+            <span className="materials-heading__course" title={course.name}>
               <span
                 className="course-dot"
                 data-course-color={normalizeCourseColor(course.color)}
@@ -906,7 +906,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         <input
           id="material-search"
           type="search"
-          placeholder="Find files"
+          placeholder="자료 검색"
           value={query}
           disabled={course === null}
           onChange={(event) => setQuery(event.target.value)}
@@ -1018,7 +1018,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
               onContextMenu={(event) => handleContextMenu(event, null)}
             >
               <div className="materials-group-heading">
-                <span>파일</span>
+                <button className="materials-section-toggle" aria-expanded={filesOpen || searching} onClick={() => setFilesOpen(!filesOpen)}><span aria-hidden="true">{filesOpen || searching ? '⌄' : '›'}</span>파일</button>
                 {downloadingDirRelPath === '' && (
                   <span className="materials-download-status" role="status">
                     <Icon name="refresh" className="is-spinning" />
@@ -1026,6 +1026,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
                   </span>
                 )}
               </div>
+              <div hidden={!filesOpen && !searching}>
               {course.missing ? (
                 <div className="empty-state empty-state--materials">
                   <Icon name="folder" className="empty-state__folder" />
@@ -1107,8 +1108,8 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
                   }}
                 />
               )}
+              </div>
             </section>
-            <CourseGroupsSection courseId={course.id} />
           </>
         )}
       </div>

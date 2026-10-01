@@ -1,4 +1,5 @@
 export interface MaterialContext {
+  unavailable?: boolean
   courseId: string
   kind: string
   title: string

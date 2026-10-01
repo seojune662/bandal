@@ -1,3 +1,4 @@
+import { usePanelAssistant } from '../../assistantPanel/panelContext'
 import { registerDocumentContext } from '../../agent/documentContext'
 import { memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { PptxPresentation } from '@silurus/ooxml/pptx'
@@ -14,7 +15,7 @@ import { convertPresentationToPdf, decodePresentation, loadSlidePresentation, sl
 import { openHttpLink } from '../../../app/openHttpLink'
 import { invoke } from '../../../lib/ipc'
 import { showToast } from '../../../app/toast'
-import { normalizeWhiteboardImage, clipboardImageFiles } from '../../whiteboard/imageImport'
+import { normalizeWhiteboardImage, clipboardImageFiles } from '../../ink/imageImport'
 import type { DrawingsApi } from '../../pdf/tools/useDrawings'
 import { PageSyncScroll } from '../../links/pageSyncScroll'
 import { usePageImageCopy } from '../../pageImageCopy/usePageImageCopy'
@@ -66,6 +67,7 @@ const SlideSurface = memo(function SlideSurface({ presentation, cache, index, wi
 })
 
 export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onFallback }: { base64: string; fileName: string; courseId: string; relPath: string; onFallback: (message: string) => void }): JSX.Element {
+  const assistant = usePanelAssistant()
   const workspace = useContext(PresentationContext)
   const [presentation, setPresentation] = useState<PptxPresentation | null>(null)
   const [fingerprint, setFingerprint] = useState('')
@@ -85,10 +87,10 @@ export function AnnotatedSlidesViewer({ base64, fileName, courseId, relPath, onF
   const pageSyncScroll = useRef(new PageSyncScroll())
   const cache = useMemo(() => presentation ? new SlideRenderCache(presentation) : null, [presentation])
   useEffect(() => () => cache?.dispose(), [cache])
-  useEffect(() => registerDocumentContext(`slides:${courseId}:${relPath}`, () => ({
+  useEffect(() => registerDocumentContext(assistant?.panelId ?? `slides:${courseId}:${relPath}`, () => ({
     courseId, relPath, kind: 'presentation', title: fileName, page: currentPage,
     text: scroller.current?.querySelector(`[data-slide-index="${currentPage - 1}"] .presentation-page__text`)?.textContent?.slice(0, 10000) ?? ''
-  })), [courseId, relPath, fileName, currentPage])
+  })), [courseId, relPath, fileName, currentPage, assistant?.panelId])
   const drawings = useDrawings(courseId, relPath)
   const connections = useMaterialConnections(courseId, relPath)
   const pageConnections = connections.outgoing.filter((entry) => entry.kind === 'pdf-page-note')

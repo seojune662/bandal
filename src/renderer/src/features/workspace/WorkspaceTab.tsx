@@ -35,7 +35,6 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
   const descriptor = isTabDescriptor(rawDescriptor) ? rawDescriptor : null
   const canOpenNewInstance =
     descriptor !== null &&
-    descriptor.kind !== 'group-chat' &&
     descriptor.kind !== 'board'
 
   useEffect(() => {

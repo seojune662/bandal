@@ -4,8 +4,7 @@
  * manages the group rows themselves. Deleting a group un-groups its member
  * courses — it NEVER deletes a course.
  *
- * ⚠ IPC prefix is `courseGroups:` — `groups:*` belongs to the Phase-2 social
- * 함께하기 feature and must not be reused here.
+ * `courseGroups:` manages local sidebar sections.
  */
 
 import { randomUUID } from 'node:crypto'

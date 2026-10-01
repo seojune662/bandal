@@ -42,7 +42,7 @@ const hardeningMocks = vi.hoisted(() => ({
 
 vi.mock('electron', () => ({ BrowserWindow: electronMocks.BrowserWindow }))
 vi.mock('../../../src/main/features/browser/hardenWebviews', () => hardeningMocks)
-vi.mock('../../../src/main/windows/overlayWindow', () => ({
+vi.mock('../../../src/main/windows/panelOptions', () => ({
   macPanelOptions: vi.fn(() => ({}))
 }))
 

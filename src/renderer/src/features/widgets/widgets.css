@@ -580,3 +580,25 @@
     animation: none;
   }
 }
+
+/* Independent glanceable cards, with one scroll area for the whole collection. */
+.widget-dock { height: auto; min-height: 0; overflow: auto; padding: 8px 10px 12px; gap: 10px; background: var(--bg-surface); }
+.widget-card { flex: none; min-width: 0; border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--bg-raised); box-shadow: var(--shadow-sm); overflow: hidden; }
+.widget-card__header > button { display: flex; width: 100%; align-items: center; gap: 8px; padding: 10px 12px; text-align: left; color: var(--text-primary); }
+.widget-card__header strong { font-size: 12px; font-weight: 600; }
+.widget-card__icon { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--accent-muted); color: var(--accent); }
+.widget-card__chevron { margin-left: auto; color: var(--text-muted); }
+.widget-card__body[hidden] { display: none; }
+.widget-summary { padding: 0 12px 4px; color: var(--text-muted); font-size: 11px; }
+.widget-summary strong { font-size: 24px; font-weight: 600; color: var(--text-primary); }
+.widget-task { min-height: 0; }
+.widget-quick-options > summary { width: fit-content; padding: 3px 0; font-size: 10px; color: var(--text-muted); cursor: pointer; }
+.widget-quick-options[open] > summary { margin-bottom: 8px; }
+.widget-board-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.widget-board-columns h4 { display: flex; flex-direction: column; gap: 6px; }
+.widget-board-columns h4 span { font-size: 22px; }
+.widget-card .mail-mini:not(.mail-mini--expanded) { min-height: 0; background: transparent; }
+.widget-card .mail-mini__body { overflow: visible; }
+.widget-card .mail-mini__connect { padding: 12px; gap: 7px; }
+.widget-card .mail-mini__connect > svg { display: none; }
+.widget-card .mail-mini__search, .widget-card .mail-mini__filters { display: none; }

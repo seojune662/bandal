@@ -477,11 +477,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         existing = undefined
       }
       if (existing !== undefined) {
-        // Refresh the params before focusing. The panel id does not always
-        // capture the whole payload: a 함께하기 tab is keyed by course but
-        // also carries the selected `groupId`, so focusing without updating
-        // would re-show whichever group was open and silently ignore the one
-        // the user just clicked.
+        // An expanded AI tab keeps its conversation ID while its source link
+        // can change, so refresh the descriptor before focusing it.
         existing.api.updateParameters({ descriptor })
         if (options?.background !== true) existing.api.setActive()
         return

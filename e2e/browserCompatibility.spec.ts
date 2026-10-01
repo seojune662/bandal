@@ -236,38 +236,26 @@ test('profiles isolate logins and history, switch a live tab and inherit popup s
   } finally { await bandal.close(); await site.close() }
 })
 
-test('floating assistant stays above native pages while browser remains interactive', async () => {
+test('tab assistant stays beside native pages while browser remains interactive', async () => {
   const site = await fixture(), bandal = await launchBandal()
   try {
     await createCourse(bandal.page, '채팅 겹침 검증')
     const root = await openTab(bandal, `${site.origin}/lecture`)
-    await bandal.page.evaluate(async () => {
-      const overlay = await window.bandal.invoke('overlay:getState', {})
-      await window.bandal.invoke('assistant:window', { action: 'sync', state: { visible: true, courseId: overlay.courseId, conversationId: overlay.conversationId } })
-    })
-    await expect.poll(() => bandal.app.windows().some(p => p.url().includes('view=assistant'))).toBe(true)
-    const popup = bandal.app.windows().find(p => p.url().includes('view=assistant'))!
-    await expect(popup.locator('#assistant-popup')).toBeVisible()
-    expect(await bandal.app.evaluate(({ BrowserWindow }, id) => {
-      const main = BrowserWindow.getAllWindows().find(w => w.contentView.children.some(v => 'webContents' in v && (v as Electron.WebContentsView).webContents.id === id))!
-      const assistant = main.getChildWindows().find(w => w.webContents.getURL().includes('view=assistant'))!
-      return { visible: assistant.isVisible(), top: assistant.isAlwaysOnTop(), browserVisible: main.contentView.children.some(v => 'webContents' in v && (v as Electron.WebContentsView).webContents.id === id && v.getVisible()) }
-    }, root)).toEqual({ visible: true, top: false, browserVisible: true })
-    const initialWidth = await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('view=assistant'))!.getBounds().width)
-    const grip = popup.getByRole('button', { name: '오른쪽 아래에서 채팅창 크기 조절' })
-    await grip.hover()
-    await popup.mouse.down()
-    // CDP pointer events do not move the OS cursor read by native window resizing.
-    // Leave time for the pointerdown IPC, then move that cursor by 40 px.
-    await popup.waitForTimeout(100)
-    await bandal.app.evaluate(({ screen }) => {
-      const point = screen.getCursorScreenPoint()
-      screen.getCursorScreenPoint = () => ({ x: point.x + 40, y: point.y })
-    })
-    await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('view=assistant'))!.getBounds().width)).toBe(initialWidth + 40)
-    await popup.mouse.up()
-    await popup.getByRole('button', { name: '반달 AI 채팅 닫기' }).click()
+    await bandal.page.getByRole('button', { name: 'AI 보조 사이드바 펼치기' }).click()
+    await expect(bandal.page.locator('.tab-assistant')).toBeVisible()
+    await bandal.app.evaluate(({ webContents }, id) => {
+      const guest = webContents.fromId(id)!
+      guest.focus(); guest.sendInputEvent({ type: 'keyDown', keyCode: 'S', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] }); guest.sendInputEvent({ type: 'keyUp', keyCode: 'S', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] })
+    }, root)
+    await expect(bandal.page.locator('.global-navigation')).toHaveCount(0)
+    await bandal.app.evaluate(({ webContents }, id) => {
+      const guest = webContents.fromId(id)!
+      guest.focus(); guest.sendInputEvent({ type: 'keyDown', keyCode: 'S', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] }); guest.sendInputEvent({ type: 'keyUp', keyCode: 'S', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] })
+    }, root)
+    await expect(bandal.page.locator('.global-navigation')).toBeVisible()
     expect(await run(bandal, root, 'document.querySelector("h1").textContent')).toBe('Lecture page')
+    await bandal.page.locator('.tab-assistant-header').getByRole('button', { name: 'AI 보조 사이드바 접기' }).click()
+    await expect(bandal.page.locator('.tab-assistant')).toBeHidden()
   } finally { await bandal.close(); await site.close() }
 })
 
@@ -308,7 +296,7 @@ test('profile session and tab identity survive restart without replacing the def
     await expect.poll(() => run(bandal, id, 'location.pathname')).toBe('/after-login')
     await run(bandal, id, `document.cookie='account=retained;max-age=86400';localStorage.setItem('profile','retained')`)
     // Layout writes are debounced; wait for the actual descriptor to be persisted.
-    await expect.poll(() => bandal.page.evaluate(async () => { const state = await window.bandal.invoke('overlay:getState', {}); return state.courseId ? JSON.stringify(await window.bandal.invoke('layout:get', { courseId: state.courseId })) : '' })).toContain(profile.id)
+    await expect.poll(() => bandal.page.evaluate(async () => { const courses = await window.bandal.invoke('courses:list', {}); return courses[0] ? JSON.stringify(await window.bandal.invoke('layout:get', { courseId: courses[0].id })) : '' })).toContain(profile.id)
     const directory = bandal.profileDir
     await bandal.close()
     bandal = await launchBandal({ reuseProfileDir: directory })
@@ -452,37 +440,9 @@ test('closing a dirty tab can be cancelled without removing its tab or native pa
     expect(await run(bandal, id, 'document.body.textContent')).toBe('Draft')
     await bandal.app.evaluate(({ app }) => { app.quit() })
     await expect.poll(() => bandal.app.evaluate(() => (globalThis as any).quitPrompts)).toBe(2)
-    await bandal.page.evaluate(async () => {
-      const overlay = await window.bandal.invoke('overlay:getState', {})
-      await window.bandal.invoke('assistant:window', { action: 'sync', state: {
-        visible: true, courseId: overlay.courseId, conversationId: overlay.conversationId
-      } })
-    })
-    let assistantWindowId: number | null = null
-    await expect.poll(async () => {
-      assistantWindowId = await bandal.app.evaluate(({ BrowserWindow }) =>
-        BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('view=assistant'))?.id ?? null)
-      return assistantWindowId
-    }).not.toBeNull()
-    // Check the native window and its rendered document together. Keep its ID
-    // fixed so an obsolete quit continuation cannot destroy it and let a
-    // replacement window accidentally satisfy this lifecycle regression.
-    await expect.poll(() => bandal.app.evaluate(async ({ BrowserWindow }, id) => {
-      const window = BrowserWindow.fromId(id)
-      if (!window || window.isDestroyed()) throw new Error('Assistant window was destroyed after cancelling quit')
-      if (!window.isVisible() || window.webContents.isLoadingMainFrame()) return false
-      return window.webContents.executeJavaScript(`(() => {
-        const popup = document.getElementById('assistant-popup')
-        if (!popup) return false
-        const bounds = popup.getBoundingClientRect(), style = getComputedStyle(popup)
-        return bounds.width > 0 && bounds.height > 0 && style.visibility !== 'hidden'
-      })()`)
-    }, assistantWindowId!)).toBe(true)
-    expect(await bandal.app.evaluate(({ BrowserWindow }, id) => {
-      const window = BrowserWindow.fromId(id)!
-      window.close()
-      return { alive: !window.isDestroyed(), visible: window.isVisible() }
-    }, assistantWindowId!)).toEqual({ alive: true, visible: false })
+    await bandal.page.getByRole('button', { name: 'AI 보조 사이드바 펼치기' }).click()
+    await expect(bandal.page.locator('.tab-assistant')).toBeVisible()
+    await bandal.page.locator('.tab-assistant-header').getByRole('button', { name: 'AI 보조 사이드바 접기' }).click()
     // Cancelling quit must keep the background material watcher running.
     const course = (await bandal.page.evaluate(() => window.bandal.invoke('courses:list', {})))[0]!
     writeFileSync(join(course.folderPath, '종료 취소 후 새 자료.md'), '# 종료 취소 뒤 작성한 자료\n')

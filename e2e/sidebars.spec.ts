@@ -38,6 +38,8 @@ test.describe('sidebars', () => {
 
     await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
     await expect(page.locator('aside.app-rail--left')).toBeHidden()
+    await expect(page.locator('.global-navigation')).toHaveCount(0)
+    await expect(page.locator('.rail-resizer--left')).toHaveCount(0)
 
     const expand = page.getByRole('button', { name: '과목 사이드바 펼치기' })
     // Exactly one: the watermark's button must not double up with the tab bar's.
@@ -84,4 +86,27 @@ test.describe('sidebars', () => {
       page.getByRole('button', { name: '자료 사이드바 접기' })
     ).toHaveCount(1)
   })
+  test('Cmd/Ctrl+S toggles the entire rail once and widgets keep independent cards', async ({}, info) => {
+    const { page } = bandal
+    await page.keyboard.press('ControlOrMeta+s')
+    await expect(page.locator('.global-navigation')).toBeVisible()
+    await page.keyboard.press('ControlOrMeta+s')
+    await expect(page.locator('.global-navigation')).toHaveCount(0)
+    await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
+    await page.evaluate(() => window.bandal.invoke('settings:set', { widgets: { enabled: ['todo', 'board', 'mail'], collapsed: [], heightRatio: 0.6 } }))
+    await expect(page.locator('.widget-card')).toHaveCount(3)
+    await expect(page.locator('.widget-card').first()).toHaveAttribute('data-widget', 'todo')
+    const todo = page.locator('.widget-card[data-widget="todo"]')
+    await expect(todo.getByRole('textbox', { name: '할 일 추가' })).toBeVisible()
+    await expect(todo.locator('input[type="date"]')).toBeHidden()
+    await todo.locator('summary').click()
+    await expect(todo.locator('input[type="date"]')).toBeVisible()
+    await todo.locator('summary').click()
+    await page.getByRole('button', { name: '투두 위젯 접기' }).click()
+    await expect(todo.locator('.widget-card__body')).toBeHidden()
+    await expect(page.locator('.widget-card[data-widget="board"] .widget-card__body')).toBeVisible()
+    await page.getByRole('button', { name: '투두 위젯 펼치기' }).click()
+    await page.screenshot({ path: info.outputPath('widget-cards.png') })
+  })
+
 })

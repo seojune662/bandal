@@ -2,9 +2,7 @@
  * App settings persisted by the main process (JSON in userData).
  */
 
-import { DEFAULT_ORB_CHARM } from '../orbCharm'
 import { DEFAULT_TAB_PREFERENCES, type TabPreferences } from '../tabPreferences'
-import type { OrbCharmId } from '../orbCharm'
 import type { AgentProvider } from './agent-events'
 import { DEFAULT_PALETTE_ID, DEFAULT_THEME_ID } from '../theme'
 import { DEFAULT_SEARCH_ENGINE, type SearchEngineId } from '../search'
@@ -19,7 +17,6 @@ import type { UniversitySettings } from './university'
  */
 export type ThemePreference = ThemeId | 'system'
 
-export type AssistantMode = 'in-app' | 'desktop'
 
 export const WIDGET_IDS = ['todo', 'board', 'mail'] as const
 export type WidgetId = (typeof WIDGET_IDS)[number]
@@ -30,6 +27,7 @@ export function isWidgetId(value: unknown): value is WidgetId {
 
 /** Global right-rail widget dock preferences. */
 export interface WidgetSettings {
+  collapsed: readonly WidgetId[]
   /** Enabled widgets in tab order. An empty list hides the dock. */
   enabled: readonly WidgetId[]
   active: WidgetId
@@ -43,21 +41,13 @@ export interface WidgetSettings {
 }
 
 export const DEFAULT_WIDGETS: WidgetSettings = {
+  collapsed: [],
   enabled: [],
   active: 'todo',
   heightRatio: 0.38,
   mailServiceId: null,
   mailUrl: '',
   lastMailOpenedAt: null
-}
-
-/** 데스크톱 오브 동작. 나중에 hotkey 등을 덧붙일 수 있게 객체로 둔다. */
-export interface DesktopOrbSettings {
-  keepAliveOnClose: boolean
-}
-
-export const DEFAULT_DESKTOP_ORB: DesktopOrbSettings = {
-  keepAliveOnClose: true
 }
 
 /**
@@ -259,15 +249,13 @@ export function isShortcutPriority(value: unknown): value is ShortcutPriority {
  * 여기서 지우고 sanitizer 가 옛 키를 버린다.
  * - `extensionRuntime`: 확장 플러그인 런타임(utilityProcess 호스트). false면
  *   런타임을 띄우지 않고 플러그인 패널이 안내만 보여 준다.
- * - `orbCharms`: 오브 참(장식) 선택 UI. false면 외관 패널에서 숨기고 none 으로 그린다.
  */
-export const EXPERIMENTAL_FLAGS = ['extensionRuntime', 'orbCharms'] as const
+export const EXPERIMENTAL_FLAGS = ['extensionRuntime'] as const
 export type ExperimentalFlag = (typeof EXPERIMENTAL_FLAGS)[number]
 export type ExperimentalSettings = Record<ExperimentalFlag, boolean>
 
 export const DEFAULT_EXPERIMENTAL: ExperimentalSettings = {
   extensionRuntime: true,
-  orbCharms: true
 }
 
 export interface Milestones {
@@ -293,9 +281,6 @@ export interface Settings {
   /** Preferred AI agent provider. */
   agentProvider: AgentProvider
   /** Where the assistant is presented. */
-  assistantMode: AssistantMode
-  /** Desktop assistant-orb behavior. */
-  desktopOrb: DesktopOrbSettings
   /** Root folder for course data. Defaults to ~/Documents/Bandal. */
   dataRoot: string
   /** UI language (BCP 47). */
@@ -324,8 +309,6 @@ export interface Settings {
    * 자동으로 동기화된다(설정 UI에는 노출하지 않는다). null = 기록 없음.
    */
   lastActiveCourseId: string | null
-  /** 반달 AI 오브에 매달리는 장식 테마(src/shared/orbCharm.ts). 기본 none. */
-  orbCharm: OrbCharmId
   /** [v0.37] OS 알림. */
   notifications: NotificationSettings
   /** [v0.37] 브라우저 동작(홈페이지·기본 줌·링크 라우팅·에이전트 사용). */
@@ -353,8 +336,6 @@ export const DEFAULT_SETTINGS: Settings = {
   editorFont: DEFAULT_EDITOR_FONT,
   density: DEFAULT_DENSITY,
   agentProvider: 'claude-code',
-  assistantMode: 'in-app',
-  desktopOrb: DEFAULT_DESKTOP_ORB,
   dataRoot: '',
   locale: 'ko-KR',
   onboarding: DEFAULT_ONBOARDING,
@@ -366,7 +347,6 @@ export const DEFAULT_SETTINGS: Settings = {
   restoreLastCourse: true,
   browserSearchEngine: DEFAULT_SEARCH_ENGINE,
   lastActiveCourseId: null,
-  orbCharm: DEFAULT_ORB_CHARM,
   notifications: DEFAULT_NOTIFICATIONS,
   browser: DEFAULT_BROWSER_SETTINGS,
   shortcutPriority: 'bandal',
@@ -378,12 +358,11 @@ export const DEFAULT_SETTINGS: Settings = {
 
 /** Preference groups accept field patches; maps (e.g. keybindings) replace. */
 export type SettingsPatch = Partial<Omit<Settings,
-  'browser' | 'notifications' | 'experimental' | 'desktopOrb' | 'widgets' | 'tabs'
+  'browser' | 'notifications' | 'experimental' | 'widgets' | 'tabs'
 >> & {
   tabs?: Partial<TabPreferences>
   browser?: Partial<BrowserSettings>
   notifications?: Partial<NotificationSettings>
   experimental?: Partial<ExperimentalSettings>
-  desktopOrb?: Partial<DesktopOrbSettings>
   widgets?: Partial<WidgetSettings>
 }

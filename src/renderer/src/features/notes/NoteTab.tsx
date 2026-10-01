@@ -1,3 +1,4 @@
+import { usePanelAssistant } from '../assistantPanel/panelContext'
 import { registerDocumentContext } from '../agent/documentContext'
 import {
   Editor,
@@ -867,6 +868,7 @@ function NoteSession({
   const [statusDetail, setStatusDetail] = useState<string | null>(null)
   const [conflictBusy, setConflictBusy] = useState(false)
   const [recoveryBusy, setRecoveryBusy] = useState(false)
+  const assistant = usePanelAssistant()
   const [presentedMarkdown, setPresentedMarkdown] = useState('')
   const [viewMode, setViewMode] = useState<NoteViewMode>('edit')
   const [currentRelPath, setCurrentRelPath] = useState(relPath)
@@ -913,7 +915,7 @@ function NoteSession({
   /** Remote markdown waiting for focus to leave before it can remount the editor. */
   const pendingEditorMarkdownRef = useRef<string | null>(null)
   const pendingScrollTopRef = useRef<number | null>(null)
-  useEffect(() => registerDocumentContext(`note:${courseId}:${currentRelPath}`, () => ({ courseId, kind: 'note', title: currentRelPath.split('/').pop() ?? currentRelPath, relPath: currentRelPath, text: currentMarkdownRef.current.slice(0, 12000), unsaved: currentMarkdownRef.current !== persistedMarkdownRef.current })), [courseId, currentRelPath])
+  useEffect(() => registerDocumentContext(assistant?.panelId ?? `note:${courseId}:${currentRelPath}`, () => ({ courseId, kind: 'note', title: currentRelPath.split('/').pop() ?? currentRelPath, relPath: currentRelPath, text: currentMarkdownRef.current.slice(0, 12000), unsaved: currentMarkdownRef.current !== persistedMarkdownRef.current })), [courseId, currentRelPath, assistant?.panelId])
 
 
   useEffect(() => {

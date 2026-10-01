@@ -1,6 +1,4 @@
 import { CalendarSettingsPanel } from "../calendar/CalendarSettingsPanel";
-import { DEFAULT_ORB_CHARM } from "../../../../shared/orbCharm";
-import type { OrbCharmId } from "../../../../shared/orbCharm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { showToast, ToastHost } from "../../app/toast";
@@ -63,7 +61,6 @@ import { UsagePanel } from "./usage/UsagePanel";
 import { Icon } from "./SettingsIcon";
 import { searchSettings } from "./settingsSearchIndex";
 import { applyTheme } from "./settingsTheme";
-import { savePreference } from "./savePreference";
 import { UniversitySettingsPanel } from "./UniversitySettingsPanel";
 import { WidgetSettingsPanel } from "./WidgetSettingsPanel";
 import { TabsSettingsPanel } from "./TabsSettingsPanel";
@@ -426,11 +423,6 @@ export function SettingsApp({
     saveAppearance({ density });
   };
 
-  const handleCharmSelect = (orbCharm: OrbCharmId): void => {
-    if (settings === null || orbCharm === settings.orbCharm) return;
-    // The settings:changed broadcast updates both this panel and the orb.
-    void savePreference({ orbCharm });
-  };
 
   const handleAgentProviderSelect = (nextProvider: AgentProvider): void => {
     autoProviderCheckedRef.current = true;
@@ -550,15 +542,12 @@ export function SettingsApp({
         fontScale={appearance.fontScale}
         editorFont={appearance.editorFont}
         density={appearance.density}
-        orbCharm={settings?.orbCharm ?? DEFAULT_ORB_CHARM}
-        charmsEnabled={settings?.experimental.orbCharms ?? true}
         saving={themeSaving}
         error={themeErrorKey === null ? null : t(themeErrorKey)}
         onSelect={handleThemeSelect}
         onSelectFontScale={handleFontScaleSelect}
         onSelectEditorFont={handleEditorFontSelect}
         onSelectDensity={handleDensitySelect}
-        onSelectCharm={handleCharmSelect}
       />
     ),
     widgets: <WidgetSettingsPanel settings={settings} />,

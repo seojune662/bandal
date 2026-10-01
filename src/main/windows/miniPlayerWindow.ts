@@ -5,8 +5,8 @@ import {
   attachNavigationPolicies,
   popupWebPreferences
 } from '../features/browser/hardenWebviews'
-import type { Rect } from './overlayGeometry'
-import { macPanelOptions } from './overlayWindow'
+import type { Rect } from './windowGeometry'
+import { macPanelOptions } from './panelOptions'
 
 export const MINI_PLAYER_MIN_SIZE = { width: 240, height: 135 }
 export const MINI_PLAYER_DEFAULT_SIZE = { width: 480, height: 270 }

@@ -52,23 +52,25 @@
 }
 
 .app-shell[data-left-rail='closed'] {
-  grid-template-columns: var(--navigation-width) minmax(0, 1fr) var(
-      --rail-right-width
-    );
-  grid-template-areas: 'chrome center right' 'navigation center right';
+  grid-template-columns: minmax(0, 1fr) var(--rail-right-width);
+  grid-template-areas: 'center right' 'center right';
 }
-
 .app-shell[data-right-rail='closed'] {
-  grid-template-columns: var(--navigation-width) var(--rail-left-width) minmax(
-      0,
-      1fr
-    );
+  grid-template-columns: var(--navigation-width) var(--rail-left-width) minmax(0, 1fr);
   grid-template-areas: 'chrome chrome center' 'navigation left center';
 }
-
 .app-shell[data-left-rail='closed'][data-right-rail='closed'] {
-  grid-template-columns: var(--navigation-width) minmax(0, 1fr);
-  grid-template-areas: 'chrome center' 'navigation center';
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'center' 'center';
+}
+.app-shell[data-left-rail='closed'] > .shell-chrome {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: var(--window-controls-width, 144px);
+  background: transparent;
+}
+.app-shell:has(.workspace-watermark) > .shell-chrome {
+  background: var(--bg-app);
 }
 
 /* Shared icon buttons */

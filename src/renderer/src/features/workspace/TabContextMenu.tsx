@@ -76,7 +76,7 @@ export function TabContextMenu({
   const isFileTab = descriptor.kind === 'pdf' || descriptor.kind === 'note'
   const isBrowserTab = descriptor.kind === 'browser'
   const canOpenNewInstance =
-    descriptor.kind !== 'group-chat' && descriptor.kind !== 'board'
+    descriptor.kind !== 'board'
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {

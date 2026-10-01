@@ -123,23 +123,14 @@ import type {
   SavedLoginSummary
 } from '../types/credentials'
 import type {
-  AddWhiteboardShapeInput,
   CreatePersonalBoardInput,
   OpenPersonalBoardResult,
-  OpenWhiteboardResult,
   PersonalBoard,
   PutPersonalShapeInput,
   RemovePersonalShapesInput,
-  RemoveWhiteboardShapesInput,
-  PutWhiteboardAssetInput,
-  ReadWhiteboardAssetInput,
-  ReadWhiteboardAssetResult,
   RenamePersonalBoardInput,
   SetBoardBackgroundInput,
   SetBoardPageCountInput,
-  UpdateWhiteboardShapeInput,
-  WhiteboardAssetSource,
-  WhiteboardShape
 } from '../types/whiteboard'
 import type {
   AgentAvailability,
@@ -147,7 +138,7 @@ import type {
   PermissionResponse
 } from '../types/agent-events'
 import type { Settings, SettingsPatch } from '../types/settings'
-import type { OverlayState, ScreenPermissionState } from '../types/overlay'
+import type { ScreenPermissionState } from '../types/screenCapture'
 import type {
   McpAvailability,
   McpServerInput,
@@ -162,22 +153,6 @@ import type {
   AuthState,
   MyProfile
 } from '../types/auth'
-import type {
-  FriendEntry,
-  DirectChatOpenResult,
-  GroupChatOpenResult,
-  GroupCreateResult,
-  GroupMember,
-  GroupMessage,
-  GroupSummary,
-  InviteByNicknameResult,
-  InviteCodeInfo,
-  JoinGroupResult,
-  PendingGroupInvite,
-  PublishedCourse,
-  ProfileLookupResult,
-  ReportTargetType
-} from '../types/group'
 
 /** Pack metadata projected into the existing study-tool menu. */
 export interface WorkflowPackToolDefinition
@@ -275,8 +250,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   }
 
   // -- course groups (과목 그룹/학기) ----------------------------------------
-  // ⚠ Prefix is `courseGroups:` — `groups:*` is TAKEN by the Phase-2 social
-  // 함께하기 feature below. These are purely local sidebar sections.
+  // Course groups are local sidebar sections.
   'courseGroups:list': {
     req: Record<string, never>
     res: CourseGroup[]
@@ -596,10 +570,9 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
 
   // -- chat -----------------------------------------------------------------
   /** Opens (or resumes) one conversation of a course. */
-  'chat:context': { req: { courseId: string }; res: import('../types/chatContext').MessageContextSnapshot }
+  'chat:context': { req: { courseId: string; sourcePanelId?: string }; res: import('../types/chatContext').MessageContextSnapshot }
   'assistant:capture': { req: { region: boolean }; res: import('../types/chat').ChatAttachment | null }
   'assistant:selection': { req: { action: 'get' | 'cancel' | 'select'; rect?: { x: number; y: number; width: number; height: number } }; res: { image?: string } }
-  'assistant:approval': { req: { conversationId: string; visible: boolean }; res: { ok: true } }
   'chat:accessPolicy': {
     req: { courseId: string; sessionId: string; policy?: import('../types/aiAccess').AiAccessPolicy }
     res: import('../types/aiAccess').AiAccessPolicy
@@ -676,44 +649,6 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   }
   'chat:revokeGrant': {
     req: { id: string }
-    res: { ok: true }
-  }
-
-  // -- desktop overlay -----------------------------------------------------
-  'overlay:getState': {
-    req: Record<string, never>
-    res: OverlayState
-  }
-  'overlay:setCourse': {
-    req: { courseId: string }
-    res: OverlayState
-  }
-  'overlay:setConversation': {
-    req: { courseId: string; conversationId: string }
-    res: OverlayState
-  }
-  'overlay:togglePopup': {
-    req: { open?: boolean }
-    res: { open: boolean }
-  }
-  'overlay:orbDragBegin': {
-    req: { grabX: number; grabY: number }
-    res: { ok: true }
-  }
-  'overlay:orbDragEnd': {
-    req: Record<string, never>
-    res: { ok: true }
-  }
-  'overlay:setOrbHitTest': {
-    req: { hit: boolean }
-    res: { ok: true }
-  }
-  'overlay:prompt': {
-    req: { prompt: string }
-    res: { ok: true }
-  }
-  'overlay:openInApp': {
-    req: { courseId: string; conversationId: string | null }
     res: { ok: true }
   }
   'desktopAgent:permissionStatus': {
@@ -905,7 +840,6 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     res: { ok: true }
   }
   'browser:prepareProfileSwitch': { req: { tabId: string }; res: { allowed: boolean } }
-  'assistant:window': { req: import('../types/assistantWindow').AssistantWindowRequest; res: import('../types/assistantWindow').AssistantWindowState }
   'browser:profiles': { req: {}; res: import('../types/browserProfile').BrowserProfile[] }
   'browser:saveProfile': { req: { id?: string; name: string; color: string; icon: string }; res: import('../types/browserProfile').BrowserProfile }
   'browser:deleteProfile': { req: { id: string }; res: { ok: true } }
@@ -1126,46 +1060,6 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   'packs:setEnabled': {
     req: { id: string; enabled: boolean }
     res: { ok: true }
-  }
-
-  // -- group whiteboard ------------------------------------------------------
-  /** Opens (or lazily creates) the group's board and returns every live shape. */
-  'whiteboard:open': {
-    req: { groupId: string }
-    res: OpenWhiteboardResult
-  }
-  'whiteboard:addShape': {
-    req: AddWhiteboardShapeInput
-    res: WhiteboardShape
-  }
-  /** Edits a shape in place. RLS allows this only for shapes you drew. */
-  'whiteboard:updateShape': {
-    req: UpdateWhiteboardShapeInput
-    res: WhiteboardShape
-  }
-  /** Drops the realtime channel and polling for a board nobody is watching. */
-  'whiteboard:close': {
-    req: { groupId: string }
-    res: { ok: true }
-  }
-  'whiteboard:removeShapes': {
-    req: RemoveWhiteboardShapesInput
-    res: { ok: true }
-  }
-  /** Pulls shapes drawn since `since` — the catch-up path for a stale board. */
-  'whiteboard:sync': {
-    req: { boardId: string; since: string | null }
-    res: { shapes: WhiteboardShape[]; removedIds: string[]; syncedAt: string }
-  }
-  /** Stores an optimized image locally first, then mirrors it to group storage. */
-  'whiteboard:putAsset': {
-    req: PutWhiteboardAssetInput
-    res: WhiteboardAssetSource
-  }
-  /** Reads from the durable local cache and downloads on a cache miss. */
-  'whiteboard:readAsset': {
-    req: ReadWhiteboardAssetInput
-    res: ReadWhiteboardAssetResult
   }
 
   // -- personal whiteboards (local only) -------------------------------------
@@ -1432,22 +1326,6 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     res: SendHighlightToNoteResult
   }
 
-  // -- sharing material into a group ------------------------------------------
-  /**
-   * Posts a note's contents into the group chat so classmates can save their
-   * own copy. Text, not a file: the project has no object storage, and a
-   * shared study note is small enough that a message carries it fine.
-   */
-  'group:shareNote': {
-    req: { groupId: string; courseId: string; relPath: string }
-    res: { ok: true }
-  }
-  /** Saves a shared note from a chat message into my own course folder. */
-  'group:saveSharedNote': {
-    req: { courseId: string; title: string; markdown: string }
-    res: { relPath: string }
-  }
-
   // -- saved site logins ------------------------------------------------------
   'credentials:availability': {
     req: { profileId?: string }
@@ -1635,12 +1513,6 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     res: { ok: true }
   }
 
-  // == Phase 2 (P2-C) — auth / groups / group chat / safety =================
-  // ADDITIVE ONLY. Everything above is Phase 1 and must keep working with
-  // `phase: 'unconfigured'` or 'signed-out' (docs/phase2-community.md §1.4).
-  // Every handler below is served by the LAZILY constructed GroupService —
-  // nothing here runs on the boot path.
-
   // -- auth -----------------------------------------------------------------
   /** Projected auth state. Never contains a token or an e-mail address. */
   'auth:getState': {
@@ -1669,159 +1541,6 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   'auth:setAvatar': {
     req: { color?: string; emoji?: string }
     res: MyProfile
-  }
-
-  // -- groups ---------------------------------------------------------------
-  // Local-cache-first: these succeed offline, serving `course_group_links`
-  // and friends, then reconcile in the background (§3.1).
-  'groups:list': {
-    req: Record<string, never>
-    res: GroupSummary[]
-  }
-  /**
-   * §5.1 one-step creation: no dialog. `name`/`color` default to the course's
-   * on the renderer side; the invite code comes back in the same round trip so
-   * it can be copied to the clipboard immediately.
-   */
-  'groups:create': {
-    req: { name: string; color: string; courseId?: string }
-    res: GroupCreateResult
-  }
-  /**
-   * ⚠ Returns `{ ok: false }` for rejections — it does NOT throw
-   * (supabase/README.md §8-②). Check `ok`, not try/catch.
-   */
-  'groups:joinWithCode': {
-    req: { code: string }
-    res: JoinGroupResult
-  }
-  /** Admin-only. `null` when the live code expired → offer regeneration. */
-  'groups:currentCode': {
-    req: { groupId: string }
-    res: InviteCodeInfo | null
-  }
-  'groups:regenerateCode': {
-    req: { groupId: string; maxUses?: number }
-    res: InviteCodeInfo
-  }
-  /** Pins (or unpins, with `courseId: null`) a group under a local course. */
-  'groups:linkCourse': {
-    req: { groupId: string; courseId: string | null }
-    res: GroupSummary
-  }
-  'groups:leave': {
-    req: { groupId: string }
-    res: { ok: true }
-  }
-  'groups:members': {
-    req: { groupId: string }
-    res: GroupMember[]
-  }
-  'groups:kick': {
-    req: { groupId: string; userId: string }
-    res: { ok: true }
-  }
-
-  // -- invites / friends ----------------------------------------------------
-  /** Any member may invite — narrowing this to admins would kill §5.3. */
-  'groups:inviteByNickname': {
-    req: { groupId: string; nickname: string }
-    res: InviteByNicknameResult
-  }
-  /** Exact-match only; prefix autocomplete is served from the local cache. */
-  'groups:findProfile': {
-    req: { nickname: string }
-    res: ProfileLookupResult | null
-  }
-  'invites:listPending': {
-    req: Record<string, never>
-    res: PendingGroupInvite[]
-  }
-  'invites:respond': {
-    req: { inviteId: string; accept: boolean }
-    res: { status: 'accepted' | 'declined' }
-  }
-  'friends:list': {
-    req: Record<string, never>
-    res: FriendEntry[]
-  }
-  'friends:request': {
-    req: { nickname: string }
-    res: { status: 'pending' | 'accepted'; userId: string }
-  }
-  'friends:respond': {
-    req: { requesterId: string; accept: boolean }
-    res: { status: 'accepted' | 'declined' }
-  }
-  'friends:remove': {
-    req: { userId: string }
-    res: { ok: true }
-  }
-  'friends:publishedCourses': {
-    req: { userId: string }
-    res: PublishedCourse[]
-  }
-  'friends:courseVisibility': {
-    req: Record<string, never>
-    res: { courseIds: string[] }
-  }
-  'friends:setCourseVisibility': {
-    req: { courseId: string; visible: boolean }
-    res: { visible: boolean }
-  }
-  'directChat:open': {
-    req: { friendUserId: string }
-    res: DirectChatOpenResult
-  }
-
-  // -- group chat -----------------------------------------------------------
-  /**
-   * Hydrates from the SQLite mirror (network 0), subscribes the realtime
-   * channel, then reconciles in the background via `group:event-batch`.
-   */
-  'groupChat:open': {
-    req: { groupId: string }
-    res: GroupChatOpenResult
-  }
-  /** Enqueues into the outbox and echoes locally; returns the outbox id. */
-  'groupChat:send': {
-    req: { groupId: string; body: string; replyTo?: string }
-    res: { localId: string }
-  }
-  /** Keyset pagination — `seq < beforeSeq`, newest-first window (§4.3). */
-  'groupChat:loadOlder': {
-    req: { groupId: string; beforeSeq: number; limit?: number }
-    res: GroupMessage[]
-  }
-  'groupChat:markRead': {
-    req: { groupId: string; seq: number }
-    res: { ok: true }
-  }
-  /** Re-arms a `failed` outbox row (the 빨간 느낌표 retry). */
-  'groupChat:retry': {
-    req: { localId: string }
-    res: { ok: true }
-  }
-  /** Author or group admin; soft delete via the `delete_message()` RPC. */
-  'groupChat:deleteMessage': {
-    req: { messageId: string }
-    res: { ok: true }
-  }
-  'groupChat:close': {
-    req: { groupId: string }
-    res: { ok: true }
-  }
-
-  // -- safety ---------------------------------------------------------------
-  /** `blocked: false` unblocks. Blocking is never revealed to the blockee. */
-  'safety:block': {
-    req: { userId: string; blocked: boolean }
-    res: { ok: true }
-  }
-  /** Accepted and stored; there is no moderation queue in P2 (§6.4). */
-  'safety:report': {
-    req: { targetType: ReportTargetType; targetId: string; reason: string }
-    res: { ok: true }
   }
 
   // -- auto update ----------------------------------------------------------
@@ -1951,7 +1670,6 @@ export const IPC_CHANNELS = [
   'chat:context',
   'assistant:capture',
   'assistant:selection',
-  'assistant:approval',
   'chat:accessPolicy',
   'chat:open',
   'chat:send',
@@ -1965,17 +1683,7 @@ export const IPC_CHANNELS = [
   'chat:conversations',
   'chat:deleteConversation',
   'chat:grants',
-  'chat:revokeGrant',
-  'overlay:getState',
-  'overlay:setCourse',
-  'overlay:setConversation',
-  'overlay:togglePopup',
-  'overlay:orbDragBegin',
-  'overlay:orbDragEnd',
-  'overlay:setOrbHitTest',
-  'overlay:prompt',
-  'overlay:openInApp',
-  'desktopAgent:permissionStatus',
+  'chat:revokeGrant','desktopAgent:permissionStatus',
   'desktopAgent:openPermissionSettings',
   'plugins:list',
   'plugins:devFolders',
@@ -2037,9 +1745,7 @@ export const IPC_CHANNELS = [
   'browserAgent:auditTail',
   'browser:controlDownload',
   'browser:downloadFile',
-  'browser:prepareProfileSwitch',
-  'assistant:window',
-  'browser:profiles',
+  'browser:prepareProfileSwitch','browser:profiles',
   'browser:saveProfile',
   'browser:deleteProfile',
   'browser:createPage',
@@ -2091,36 +1797,6 @@ export const IPC_CHANNELS = [
   'auth:signOut',
   'auth:setNickname',
   'auth:setAvatar',
-  'groups:list',
-  'groups:create',
-  'groups:joinWithCode',
-  'groups:currentCode',
-  'groups:regenerateCode',
-  'groups:linkCourse',
-  'groups:leave',
-  'groups:members',
-  'groups:kick',
-  'groups:inviteByNickname',
-  'groups:findProfile',
-  'invites:listPending',
-  'invites:respond',
-  'friends:list',
-  'friends:request',
-  'friends:respond',
-  'friends:remove',
-  'friends:publishedCourses',
-  'friends:courseVisibility',
-  'friends:setCourseVisibility',
-  'directChat:open',
-  'groupChat:open',
-  'groupChat:send',
-  'groupChat:loadOlder',
-  'groupChat:markRead',
-  'groupChat:retry',
-  'groupChat:deleteMessage',
-  'groupChat:close',
-  'safety:block',
-  'safety:report',
   'update:status',
   'update:check',
   'update:download',
@@ -2134,14 +1810,7 @@ export const IPC_CHANNELS = [
   'packs:list',
   'packs:importText',
   'packs:remove',
-  'packs:setEnabled',
-  'whiteboard:open',
-  'whiteboard:addShape',
-  'whiteboard:removeShapes',
-  'whiteboard:sync',
-  'whiteboard:putAsset',
-  'whiteboard:readAsset',
-  'canvas:list',
+  'packs:setEnabled','canvas:list',
   'canvas:create',
   'canvas:rename',
   'canvas:remove',
@@ -2161,10 +1830,7 @@ export const IPC_CHANNELS = [
   'calendar:range',
   'calendar:upcoming',
   'search:query',
-  'search:indexPdfPages',
-  'whiteboard:updateShape',
-  'whiteboard:close',
-  'links:create',
+  'search:indexPdfPages','links:create',
   'links:updatePageNote',
   'links:remove',
   'links:listFor',
@@ -2172,10 +1838,7 @@ export const IPC_CHANNELS = [
   'links:forMaterial',
   'links:graph',
   'link:sendHighlightToNote',
-  'link:sendWebClipToNote',
-  'group:shareNote',
-  'group:saveSharedNote',
-  'credentials:availability',
+  'link:sendWebClipToNote','credentials:availability',
   'credentials:list',
   'credentials:save',
   'credentials:capture',

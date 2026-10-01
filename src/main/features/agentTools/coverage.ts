@@ -16,13 +16,12 @@
  * fails `coverage.test.ts` with the channel name in the message. The point is
  * not the mapping — it is that forgetting becomes loud.
  *
- * Out of scope on purpose: identity and social (`auth:*`, `groups:*`,
- * `friends:*`, `invites:*`, `safety:*`), secrets (`credentials:*`), the
+ * Out of scope on purpose: identity (`auth:*`), secrets (`credentials:*`), the
  * assistant's own plumbing (`chat:*`, `agent:*`, `agentTools:*`,
  * `browserAgent:*`), and app/system surfaces (`settings:*`, `update:*`,
  * `window:*`, `shell:*`, `print:*`, `layout:*`, `media:*`, `context:*`). Those
- * are not the study workspace. `overlay:*` is desktop-window plumbing and
- * `mcp:*` manages external tool configuration, so neither prefix belongs in
+ * are not the study workspace. `mcp:*` manages external tool configuration,
+ * so it does not belong in
  * WORKSPACE_PREFIXES either. An agent that could sign the student out or read
  * the credential store is a different product.
  */
@@ -134,19 +133,12 @@ export const NOT_FOR_AGENT: Readonly<Record<string, string>> = {
   'activity:record': '텔레메트리. 에이전트가 자기 활동을 위조할 자리가 아니다.',
   'pdf:setViewState':
     '학생이 보던 페이지의 기록. 에이전트가 학생의 시점을 바꿔칠 자리가 아니다.',
-  'whiteboard:open': '공유 화이트보드 세션 수명. 렌더러가 관리한다.',
-  'whiteboard:close': '공유 세션을 닫는 짝. 위와 같은 이유로 렌더러 소관이다.',
-  'whiteboard:sync': '실시간 동기화 배관.',
   'canvas:open': '캔버스 세션 수명. 렌더러가 관리한다.',
   'search:indexPdfPages': '색인 배관. 검색이 알아서 부른다.',
   'study:tools': '학습 계획 러너의 내부 표면.',
   'study:run': '위와 같음 — 에이전트가 자기를 재귀 호출할 자리다.',
 
   // -- shared/group surfaces, which are a different product ------------------
-  'whiteboard:addShape': '공유 화이트보드는 다른 사람과 같이 쓰는 면이다. 개인 보드는 add_shapes 가 있다.',
-  'whiteboard:removeShapes': '공유 화이트보드는 다른 사람과 같이 쓰는 면이다.',
-  'whiteboard:updateShape': '공유 화이트보드는 다른 사람과 같이 쓰는 면이다.',
-  'whiteboard:putAsset': '사용자가 고른 로컬 이미지 바이트를 공유 보드에 올리는 렌더러 전용 단계다.',
 
   // -- the agent cannot compute what these need -----------------------------
   'annotations:create':

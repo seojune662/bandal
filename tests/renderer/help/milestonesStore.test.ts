@@ -14,18 +14,12 @@ const COMPLETE: MilestoneFacts = {
   tutorial: true,
   favorite: true,
   question: true,
-  communityAvailable: true,
-  group: true,
   pip: true
 }
 
 describe('milestone derivation', () => {
-  test('hides only the group milestone for an unconfigured community build', () => {
-    const items = deriveMilestones({
-      ...COMPLETE,
-      communityAvailable: false,
-      group: false
-    })
+  test('keeps the personal learning milestones', () => {
+    const items = deriveMilestones(COMPLETE)
 
     expect(items.map((item) => item.id)).not.toContain('group')
     expect(items).toHaveLength(8)
@@ -39,8 +33,8 @@ describe('milestone derivation', () => {
       agent: false
     })
 
-    expect(items).toHaveLength(9)
-    expect(milestoneProgress(items)).toBe(78)
+    expect(items).toHaveLength(8)
+    expect(milestoneProgress(items)).toBe(75)
   })
 
   test('finds files recursively but does not count empty folders', () => {

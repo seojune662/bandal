@@ -1,14 +1,4 @@
-/**
- * Two things about a cold launch.
- *
- * 1. The macOS keychain prompt was reported FOUR times. Decrypting a stored
- *    group session is legitimate — but it was happening at startup, for every
- *    student, including ones who never open 함께하기. Restoring the session is
- *    now tied to actually using it, so a plain launch must never ask.
- * 2. A fresh browser tab shows the app's own start page. It used to be named
- *    after the placeholder URL, so the tab said "www.google.com" while the
- *    student was looking at 어디로 갈까요?.
- */
+/** Cold launch must not reinitialize account authentication when navigating. */
 
 import { expect, test } from '@playwright/test'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
@@ -24,7 +14,7 @@ test.describe('cold launch', () => {
     await bandal.close()
   })
 
-  test('does not restore the auth session until it is used', async () => {
+  test('does not repeatedly restore the account session when creating a course', async () => {
     const { page } = bandal
     await page.evaluate(() => {
       const w = window as unknown as {
@@ -40,13 +30,8 @@ test.describe('cold launch', () => {
     })
     await createCourse(page, '고체역학')
 
-    // The signed-out card is the stable post-create DOM state. Waiting for it
-    // replaces a clock delay and verifies the real entry point students see.
-    const together = page.getByRole('region', { name: '함께하기' })
-    await expect(together).toContainText('친구들과 같이 하려면 로그인해요')
-    await expect(
-      together.getByRole('button', { name: '로그인', exact: true })
-    ).toBeVisible()
+    await expect(page.locator('.app-rail--right')).toBeVisible()
+    await expect(page.getByRole('region', { name: '함께하기' })).toHaveCount(0)
 
     // Every one of these would open the keychain on a signed-in machine.
     const calls = await page.evaluate(

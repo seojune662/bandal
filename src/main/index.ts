@@ -1,4 +1,3 @@
-import { markAssistantQuitting } from './windows/assistantWindow'
 import { onBrowserQuitCancelled } from './features/browser/nativeTabs'
 import { registerEarlyMediaProtocol } from './features/materials/mediaRegistration'
 import { markStartup } from './performanceTrace'
@@ -13,8 +12,8 @@ import { resolveKeymap } from '../shared/keymap'
 import type { Settings, SettingsPatch } from '../shared/types/settings'
 import { initDatabase, closeDatabase } from './db/database'
 import { createDeepLinkQueue } from './deepLinkQueue'
-import { findDeepLinkArg } from './features/group/authCallbackUrl'
-import { broadcast, registerHandlers } from './ipc/registerHandlers'
+import { findDeepLinkArg } from './features/account/authCallbackUrl'
+import { registerHandlers } from './ipc/registerHandlers'
 import { installApplicationMenu } from './menu'
 import { getSettings, setSettings as persistSettings } from './settingsStore'
 import {
@@ -26,7 +25,6 @@ import {
   refreshTitleBarOverlay,
   resolveWindowBackground
 } from './windows/mainWindow'
-import { createOverlayController } from './windows/overlayController'
 import { openSettingsInApp } from './windows/settingsWindow'
 import { installTray } from './windows/tray'
 import { createAppIconApplier } from './windows/appIcon'
@@ -171,24 +169,11 @@ if (!app.requestSingleInstanceLock()) {
       return
     }
 
-    const overlay = createOverlayController({
-      getSettings,
-      onSettingsChanged,
-      broadcast,
-      getMainWindow,
-      createMainWindow,
-      preloadPath: join(__dirname, '../preload/index.js'),
-      windowBackground: resolveWindowBackground,
-      userDataPath: app.getPath('userData')
-    })
-
     const openMain = (): void => {
       const existing = getMainWindow()
       const main = existing ?? createMainWindow()
       if (existing !== null) {
         revealMainWindow(main)
-      } else {
-        overlay.syncMainWindowVisibility()
       }
     }
 
@@ -214,7 +199,6 @@ if (!app.requestSingleInstanceLock()) {
           target.channel === 'ui:openMaterial'
             ? { ...(pendingOpen ?? {}), material: target.payload }
             : { ...(pendingOpen ?? {}), url: target.payload }
-        overlay.syncMainWindowVisibility()
         return
       }
       revealMainWindow(existing)
@@ -234,7 +218,6 @@ if (!app.requestSingleInstanceLock()) {
     let miniPlayerOpen = false
     let syncMiniPlayerTray = (): void => undefined
     const router = registerHandlers({
-      overlay,
       setSettings,
       preloadPath: join(__dirname, '../preload/index.js'),
       pluginPanelPreloadPath: join(__dirname, '../preload/pluginPanel.js'),
@@ -256,48 +239,13 @@ if (!app.requestSingleInstanceLock()) {
     })
 
     const trayDeps = {
-      getSettings,
-      setSettings,
+      shouldShow: () => process.platform === 'darwin' || miniPlayerOpen,
       openMain,
       quit: () => app.quit()
     }
     const tray = installTray(trayDeps)
-    let miniPlayerTray: ReturnType<typeof installTray> | null = null
-    let iconVariantDir: string | null = null
-
-    syncMiniPlayerTray = (): void => {
-      const temporaryTrayNeeded =
-        miniPlayerOpen && getSettings().assistantMode === 'in-app'
-      if (!temporaryTrayNeeded) {
-        miniPlayerTray?.destroy()
-        miniPlayerTray = null
-        return
-      }
-      if (miniPlayerTray !== null) return
-
-      miniPlayerTray = installTray({
-        getSettings: () => ({ ...getSettings(), assistantMode: 'desktop' }),
-        setSettings: (patch) =>
-          setSettings(
-            patch.assistantMode === 'in-app'
-              ? { ...patch, assistantMode: 'desktop' }
-              : patch
-          ),
-        openMain,
-        quit: () => app.quit()
-      })
-      if (iconVariantDir !== null) {
-        miniPlayerTray.setIconVariant(iconVariantDir)
-      }
-    }
-
-    const trayIconTarget = {
-      setIconVariant(dir: string): void {
-        iconVariantDir = dir
-        tray.setIconVariant(dir)
-        miniPlayerTray?.setIconVariant(dir)
-      }
-    }
+    syncMiniPlayerTray = (): void => tray.refresh()
+    const trayIconTarget = { setIconVariant: (dir: string): void => tray.setIconVariant(dir) }
 
     const appBundlePath = resolveAppBundlePath(app.getPath('exe'))
     const finder =
@@ -333,10 +281,10 @@ if (!app.requestSingleInstanceLock()) {
 
     const refreshAppearance = (): void => {
       void appIcon.apply()
-      // Transparent orb/assistant and embedded websites own their backgrounds.
+      // Capture windows and embedded websites own their backgrounds.
       for (const win of BrowserWindow.getAllWindows()) {
         const url = win.webContents.getURL()
-        if (/\/(?:index|settings)\.html(?:$|[?#])|\/overlay\.html\?view=popup|\/pip\.html\?view=player/.test(url)) {
+        if (/\/(?:index|settings)\.html(?:$|[?#])|\/pip\.html\?view=player/.test(url)) {
           win.setBackgroundColor(resolveWindowBackground())
         }
       }
@@ -371,21 +319,12 @@ if (!app.requestSingleInstanceLock()) {
     markStartup('services-ready')
     resolveStartup()
     const window = createMainWindow()
-    overlay.start()
     tray.refresh()
     refreshAppearance()
 
     onMainWindowClosed(() => {
-      const settings = getSettings()
-      if (
-        settings.assistantMode === 'desktop' &&
-        !settings.desktopOrb.keepAliveOnClose
-      ) {
-        overlay.stop()
-      }
       if (
         process.platform !== 'darwin' &&
-        !overlay.isActive() &&
         !router.miniPlayer.isAlive()
       ) {
         app.quit()
@@ -393,20 +332,15 @@ if (!app.requestSingleInstanceLock()) {
     })
 
     app.on('before-quit', () => {
-      markAssistantQuitting()
-      overlay.markQuitting()
       router.miniPlayer.markQuitting()
     })
     onBrowserQuitCancelled(() => {
-      markAssistantQuitting(false)
-      overlay.markQuitting(false)
       router.miniPlayer.markQuitting(false)
     })
 
     app.on('window-all-closed', () => {
       if (
         process.platform !== 'darwin' &&
-        !overlay.isActive() &&
         !router.miniPlayer.isAlive()
       ) {
         app.quit()
@@ -429,7 +363,6 @@ if (!app.requestSingleInstanceLock()) {
       const existing = getMainWindow()
       if (existing === null) {
         createMainWindow()
-        overlay.syncMainWindowVisibility()
       } else {
         revealMainWindow(existing)
       }

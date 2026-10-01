@@ -233,14 +233,10 @@ describe('IPC channel coverage', () => {
     expect(relink).toContain('return courseListChanged(result)')
   })
 
-  test('group auth transitions reset whiteboard realtime state', () => {
-    const source = mainRouterSource()
-    expect(source).toMatch(
-      /groupRuntime\.onAuthChanged\(\(\) => \{\s*whiteboardService\.resetForAuthChange\(\)/
-    )
-    expect(source).toMatch(
-      /app\.on\('will-quit', \(\) => \{\s*stopWhiteboardAuthReset\(\)\s*whiteboardService\.dispose\(\)/
-    )
+  test('retired social and floating assistant channels are absent', () => {
+    expect(IPC_CHANNELS.filter(channel => /^(groups?|friends|invites|directChat|groupChat|safety|whiteboard|overlay):/.test(channel))).toEqual([])
+    expect(IPC_CHANNELS).not.toContain('assistant:window')
+    expect(mainRouterSource()).not.toContain('createGroupRuntime')
   })
 
   test('cancelling browser quit leaves app services alive until will-quit', () => {
@@ -265,8 +261,7 @@ describe('IPC channel coverage', () => {
       'materialsWatcher.dispose()', 'sessionManager.disposeAll()', 'codexSessionManager.disposeAll()',
       'geminiSessionManager.disposeAll()', 'eventBatcher.dispose()', 'stopPluginPanels()',
       'pluginDevelopment.dispose()', 'pluginEditor.dispose()', 'pluginRuntime.dispose()',
-      'stopWhiteboardAuthReset()', 'whiteboardService.dispose()', 'whiteboardAssetService.dispose()',
-      'groupRuntime.dispose()', 'updater.dispose()', 'deadlineScheduler.dispose()'
+      'account.dispose()', 'updater.dispose()', 'deadlineScheduler.dispose()'
     ]) {
       expect(callbacks['before-quit'].join('\n'), cleanup).not.toContain(cleanup)
       expect(callbacks['will-quit'].join('\n'), cleanup).toContain(cleanup)
@@ -279,7 +274,7 @@ describe('IPC channel coverage', () => {
     expect(source).not.toMatch(/app\.on\('(?:before-quit|will-quit)', \(\) => \{\s*closeDatabase\(\)/)
   })
 
-  test('feedback uses the lazy group client and runtime app metadata', () => {
+  test('feedback uses the lazy account client and runtime app metadata', () => {
     const source = mainRouterSource()
     const feedbackStart = source.indexOf(
       'const feedback = createFeedbackService'
@@ -288,7 +283,7 @@ describe('IPC channel coverage', () => {
       feedbackStart,
       source.indexOf('assertEveryChannelHandled()', feedbackStart)
     )
-    expect(feedback).toContain('getClient: () => groupRuntime.getClient()')
+    expect(feedback).toContain('getClient: () => account.getClient()')
     expect(feedback).toContain('rateGuard: createFeedbackRateGuard()')
     expect(feedback).toContain('appVersion: resolveAppVersion(')
     expect(feedback).toContain('platform: process.platform')

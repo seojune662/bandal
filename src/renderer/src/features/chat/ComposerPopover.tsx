@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 
-/** A viewport-bounded popup. Escape is consumed before an orb's window handler. */
+/** A viewport-bounded popup. Escape closes the active menu. */
 export function ComposerPopover({ anchor, label, onClose, children }: {
   anchor: RefObject<HTMLElement>; label: string; onClose: () => void; children: ReactNode
 }): JSX.Element {

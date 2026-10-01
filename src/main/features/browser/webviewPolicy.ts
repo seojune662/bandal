@@ -107,6 +107,7 @@ const GUEST_ALLOWED: ReadonlySet<ShortcutActionId> = new Set(
 
 function isTabLifetimeAction(action: ShortcutActionId): boolean {
   return (
+    action === 'toggle-left-rail' ||
     action === 'new-tab' ||
     action === 'new-markdown' || action === 'new-browser-tab' ||
     action === 'new-ai-tab' || action === 'new-recording-tab' ||
@@ -133,6 +134,7 @@ function passthroughActionFor(
     case 'new-recording-tab':
     case 'new-whiteboard':
     case 'open-study-board':
+    case 'toggle-left-rail':
     case 'new-tab':
     case 'close-tab':
     case 'activate-last-tab':

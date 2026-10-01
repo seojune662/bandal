@@ -13,7 +13,6 @@ import { usePrintRequests } from '../features/print/usePrintRequests'
 import { useAgentWorkspaceSync } from '../features/agent/workspaceSync'
 import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { MaterialsSidebar } from '../features/materials/MaterialsSidebar'
-import { NicknameGate } from '../features/group/NicknameGate'
 import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
 import { useOnboardingStore } from '../features/onboarding/onboardingStore'
 import { TourOverlay } from '../features/onboarding/tour/TourOverlay'
@@ -24,7 +23,7 @@ import { RecordingIndicator } from '../features/recordings/RecordingIndicator'
 import { RailResizer } from './RailResizer'
 import { applyStoredRailWidths } from './railWidth'
 import { descriptorFor } from '../features/workspace/tabIdentity'
-import { selectNeedsNickname, useAuthStore } from '../stores/authStore'
+import { useAuthStore } from '../stores/authStore'
 import { useCoursesStore } from '../stores/coursesStore'
 import { useUiStore } from '../stores/uiStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
@@ -43,11 +42,6 @@ import { ShellChrome } from './ShellChrome'
 import { GlobalNavigation } from './GlobalNavigation'
 import './app-shell.css'
 
-const AssistantLayer = lazy(() =>
-  import('../features/assistant').then((module) => ({
-    default: module.AssistantLayer
-  }))
-)
 const BoardOverlay = lazy(() =>
   import('../features/board/BoardPanel').then((module) => ({
     default: module.BoardOverlay
@@ -124,10 +118,6 @@ export function AppShell(): JSX.Element {
   const openSettings = useUiStore((state) => state.openSettings)
   const closeSettings = useUiStore((state) => state.closeSettings)
   const isOnboardingVisible = useOnboardingStore((state) => state.visible)
-  // [P2-D] Signed in, but the account still carries the trigger's placeholder
-  // handle. Never mounted before sign-in, so an unconfigured or signed-out
-  // build never sees it (§1.4).
-  const needsNickname = useAuthStore(selectNeedsNickname)
 
   const selectedCourse =
     courses.find((course) => course.id === selectedCourseId) ?? null
@@ -140,6 +130,7 @@ export function AppShell(): JSX.Element {
   useEffect(subscribePluginEditor, [])
 
   useEffect(() => {
+    void useAuthStore.getState().init()
     void initTheme().catch((error: unknown) => {
       console.error('[Bandal] 테마 설정을 불러오지 못했습니다.', error)
     })
@@ -390,7 +381,7 @@ export function AppShell(): JSX.Element {
       data-right-rail={rightRailOpen ? 'open' : 'closed'}
     >
       <ShellChrome />
-      <GlobalNavigation />
+      {leftRailOpen && <GlobalNavigation />}
       {leftRailOpen && <CourseSidebar />}
       {leftRailOpen && <RailResizer side="left" />}
 
@@ -414,20 +405,7 @@ export function AppShell(): JSX.Element {
         )}
         <QuickFileSearch />
       </Suspense>
-      {/* One modal at a time: first-run onboarding outranks the nickname step,
-          which waits for the wizard to close. */}
-      {isOnboardingVisible ? (
-        <OnboardingOverlay />
-      ) : (
-        needsNickname && <NicknameGate />
-      )}
-      {/* [M9] The 반달 orb, its popup chat and the selection-following orb.
-          Mounted at shell level (not inside a panel) so the conversation
-          survives tab switches — the session itself lives in chatSessionStore,
-          keyed by course, so the tab and the popup share one dialogue. */}
-      <Suspense fallback={null}>
-        <AssistantLayer />
-      </Suspense>
+      {isOnboardingVisible && <OnboardingOverlay />}
       <ToastHost />
       <PresentationProgress />
       {isSettingsOpen && (

@@ -1,3 +1,4 @@
+import { withAssistantPanel } from '../assistantPanel/TabAssistantPanel'
 import { useHasBeenShown } from './useHasBeenShown'
 /**
  * Tab registry: single place mapping TabKind → panel component + metadata.
@@ -63,14 +64,12 @@ const ChatTab = deferredPanel(() => import('../chat/ChatTab'))
 const PdfTab = deferredPanel(() => import('../pdf/PdfTab'))
 const ImageTab = deferredPanel(() => import('../image/ImageTab'))
 const FileTab = deferredPanel(() => import('../file/FileTab'))
-const GroupChatTab = deferredPanel(() => import('../group/GroupChatTab'))
 const CanvasTab = deferredPanel(() => import('../canvas/CanvasTab'))
 const PluginPanelTab = deferredPanel(() =>
   import('../plugins/PluginPanelTab').then((module) => ({
     default: module.PluginPanelTab
   }))
 )
-const FriendsTab = deferredPanel(() => import('../group/FriendsTab'))
 const RecordingTab = deferredPanel(() => import('../recordings/RecordingTab'))
 
 export interface TabRegistryEntry {
@@ -119,16 +118,6 @@ export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
     icon: null,
     defaultTitle: tabTitle
   },
-  friends: {
-    component: FriendsTab,
-    icon: null,
-    defaultTitle: tabTitle
-  },
-  'group-chat': {
-    component: GroupChatTab,
-    icon: null,
-    defaultTitle: tabTitle
-  },
   whiteboard: {
     component: CanvasTab,
     icon: null,
@@ -157,6 +146,6 @@ function visiblePanel(Component: DockPanel): DockPanel {
 
 export const dockviewComponents: Record<string, DockPanel> = Object.fromEntries(
   Object.entries(tabRegistry).map(([kind, entry]) => [kind,
-    visiblePanel(kind === 'plugin-panel' ? entry.component : withMaterialSequence(entry.component))
+    visiblePanel(withAssistantPanel(kind === 'plugin-panel' ? entry.component : withMaterialSequence(entry.component)))
   ])
 )

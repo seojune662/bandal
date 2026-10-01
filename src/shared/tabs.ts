@@ -3,7 +3,7 @@
  *
  * A tab is what lives inside a dockview panel. Payloads must stay
  * JSON-serializable — they are persisted as part of the dockview layout
- * (`layout:save`). Designed for Phase-2 extension (e.g. 'group-chat'):
+ * (`layout:save`). For extension:
  * add a new kind + payload and extend TabPayloadMap; never repurpose an
  * existing kind.
  */
@@ -15,8 +15,6 @@ export type TabKind =
   | 'browser'
   | 'chat'
   | 'board'
-  | 'group-chat'
-  | 'friends'
   | 'whiteboard'
   | 'image'
   | 'file'
@@ -57,6 +55,7 @@ export interface BrowserTabPayload {
 }
 
 export interface ChatTabPayload {
+  sourcePanelId?: string
   courseId: string
   /**
    * Conversation id (renderer-minted uuid, becomes agent_sessions.id on the
@@ -69,50 +68,9 @@ export interface ChatTabPayload {
 
 /** The board is a per-window singleton; it carries no payload. */
 export type BoardTabPayload = Record<string, never>
-export interface FriendsTabPayload {
-  /** Optionally open this accepted friend's conversation immediately. */
-  friendUserId?: string
-}
-
-/**
- * [P2 · M11] Remote study-group chat — ONE tab per course.
- *
- * Identity moved from groupId to courseId: keying by group meant N groups
- * opened N tabs, and because dockview layouts are persisted per course the
- * same group could also occupy a tab in every course's layout. The panel now
- * carries its own group switcher instead, matching how the AI tutor tab is a
- * `chat:${courseId}` singleton.
- *
- * `courseId: null` is the "과목 미지정" bucket — a group joined by invite code
- * before it was linked to any course. Joining deliberately does not ask which
- * course (docs/phase2-community §661).
- *
- * NOTE: a group belongs to at most ONE course. `course_group_links` has a
- * UNIQUE `remote_group_id`, so the old "zero or many courses" comment here
- * contradicted the schema.
- */
-/**
- * [M14] A personal whiteboard — the student's own canvas for organising ideas
- * or sketching a mind map. Local only: it never leaves the machine, so it
- * needs no account and works offline.
- *
- * A course can hold several, unlike the group board which is one per group.
- */
 export interface WhiteboardTabPayload {
   courseId: string
   boardId: string
-}
-
-export interface GroupChatTabPayload {
-  courseId: string | null
-  /** Initially selected group; the panel switches among the course's groups. */
-  groupId?: string
-  /**
-   * [M14] Which surface to show. 함께하기 is ONE tab per course that switches
-   * between talking and drawing — a second tab per group is exactly the
-   * proliferation the single-tab rule exists to prevent.
-   */
-  view?: 'chat' | 'whiteboard'
 }
 
 export interface TabPayloadMap {
@@ -122,8 +80,6 @@ export interface TabPayloadMap {
   browser: BrowserTabPayload
   chat: ChatTabPayload
   board: BoardTabPayload
-  'group-chat': GroupChatTabPayload
-  friends: FriendsTabPayload
   whiteboard: WhiteboardTabPayload
   image: ImageTabPayload
   file: FileTabPayload
@@ -177,8 +133,6 @@ export const TAB_KINDS = [
   'browser',
   'chat',
   'board',
-  'group-chat',
-  'friends',
   'whiteboard',
   'image',
   'file',
@@ -229,13 +183,12 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
     case 'chat':
       return (
         isNonEmptyString(payload['courseId']) &&
+        (payload['sourcePanelId'] === undefined || isNonEmptyString(payload['sourcePanelId'])) &&
         (payload['conversationId'] === undefined ||
           isNonEmptyString(payload['conversationId']))
       )
     case 'board':
       return true
-    case 'friends':
-      return payload['friendUserId'] === undefined || isNonEmptyString(payload['friendUserId'])
     case 'whiteboard':
       return (
         isNonEmptyString(payload['courseId']) &&
@@ -252,13 +205,6 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
         isNonEmptyString(payload['pluginId']) &&
         isNonEmptyString(payload['panelId'])
       )
-    case 'group-chat': {
-      const courseId = payload['courseId']
-      if (courseId !== null && !isNonEmptyString(courseId)) return false
-      const groupId = payload['groupId']
-      if (groupId !== undefined && !isNonEmptyString(groupId)) return false
-      const view = payload['view']
-      return view === undefined || view === 'chat' || view === 'whiteboard'
-    }
+
   }
 }

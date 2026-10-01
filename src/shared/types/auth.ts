@@ -1,18 +1,4 @@
-/**
- * [P2-A/C6] Auth state projected from main → renderer.
- *
- * The renderer NEVER sees tokens or e-mail addresses (docs/phase2-community
- * §1.3): main owns the Supabase client and hands over this shape only.
- *
- * `phase` drives the entire 함께하기 surface:
- *   'unconfigured' → the community UI is ABSENT (not disabled) — §1.4-4
- *   'signed-out'   → login card
- *   'signing-in'   → system browser was opened, waiting for the deep link
- *   'signed-in'    → full UI; `profile.nickname === null` means the user still
- *                    has to pick a nickname before joining anything
- *   'error'        → `errorCode` explains why
- */
-
+/** Account authentication projected from main to renderer. Tokens stay in main. */
 export type AuthPhase =
   | 'unconfigured'
   | 'signed-out'

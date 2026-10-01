@@ -70,6 +70,7 @@ export interface ComposerHandle {
 const RECENT_TYPING_WINDOW_MS = 1_500
 
 export interface ComposerProps {
+  sourcePanelId?: string | undefined
   conversationId?: string
   provider?: AgentProvider
   modelControl?: ReactNode
@@ -136,6 +137,7 @@ function readImage(file: File): Promise<ChatAttachment> {
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(
   function Composer(
     {
+      sourcePanelId,
       courseId,
       conversationId = courseId,
       provider = 'claude-code',
@@ -416,7 +418,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
         })
         updateComposerDraft(conversationId, (current) => ({ files: [...current.files, ...files].slice(0, 20) }))
       }}>
-        <ContextChips courseId={courseId} conversationId={conversationId} />
+        <ContextChips sourcePanelId={sourcePanelId} courseId={courseId} conversationId={conversationId} />
         {hasContext && <div className="chat-context-chips" aria-label="첨부한 맥락">
           {draftState.files.map((file, index) => <span className="chat-context-chip" key={file.relPath ?? file.path}>{file.name}<button type="button" aria-label={`${file.name} 제거`} disabled={submitting} onClick={() => updateComposerDraft(conversationId, (current) => ({ files: current.files.filter((_, i) => i !== index) }))}>×</button></span>)}
           {draftState.skills.map((skill) => <span className="chat-context-chip" key={skill.id}>{draftState.creation ? `${CREATION_LABELS[draftState.creation]} 만들기 · ` : ''}{skill.name}<button type="button" aria-label={`${skill.name} 제거`} disabled={submitting} onClick={() => updateComposerDraft(conversationId, (current) => ({ skills: current.skills.filter((item) => item.id !== skill.id), creation: null }))}>×</button></span>)}

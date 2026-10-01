@@ -28,7 +28,7 @@ interface MenuPosition {
   top: number
 }
 
-type FocusTarget = 'favorites-section' | 'assistant-orb' | 'together-footer'
+type FocusTarget = 'favorites-section' | 'assistant-panel-toggle'
 
 export const HELP_FOCUS_TARGET_EVENT = 'bandal:help-focus-target'
 
@@ -56,30 +56,23 @@ export function milestoneDestination(
     case 'favorite':
       return 'favorites-section'
     case 'question':
-      return 'assistant-orb'
-    case 'group':
-      return 'together-footer'
+      return 'assistant-panel-toggle'
     case 'pip':
       return 'pip'
   }
 }
 
 function focusTarget(target: FocusTarget): void {
-  const selector =
-    target === 'together-footer'
-      ? '.together-footer'
-      : `[data-tour="${target}"]`
+  const selector = `[data-tour="${target}"]`
   const reveal = (): void => {
     const element = document.querySelector<HTMLElement>(selector)
     if (element === null) return
     element.scrollIntoView({ block: 'nearest' })
     if (!element.hasAttribute('tabindex')) element.tabIndex = -1
     element.focus()
+    if (target === 'assistant-panel-toggle' && element.getAttribute('aria-expanded') !== 'true') element.click()
   }
 
-  if (target === 'together-footer') {
-    document.querySelector<HTMLButtonElement>('.global-navigation [aria-label="함께하기"][aria-expanded="false"]')?.click()
-  }
   if (target === 'favorites-section') {
     const toggle = document.querySelector<HTMLButtonElement>(
       '.course-row[data-selected="true"] .course-row__toggle[aria-expanded="false"]'

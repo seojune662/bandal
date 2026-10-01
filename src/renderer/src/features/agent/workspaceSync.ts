@@ -51,7 +51,7 @@ export function workspaceSyncPayload(
   let activeFound = false
   const tabs: AgentWorkspaceTab[] = []
 
-  for (const descriptor of Object.values(sources.openTabs)) {
+  for (const [panelId, descriptor] of Object.entries(sources.openTabs)) {
     if (!isTabDescriptor(descriptor) || descriptor.kind === 'browser') continue
 
     const active =
@@ -63,7 +63,7 @@ export function workspaceSyncPayload(
     tabs.push({
       ...('courseId' in descriptor.payload && descriptor.payload.courseId ? { courseId: descriptor.payload.courseId } : {}),
       ...('relPath' in descriptor.payload ? { relPath: descriptor.payload.relPath } : {}),
-      documentId: tabPanelId(descriptor),
+      documentId: panelId,
       kind: descriptor.kind,
       title: tabTitle(descriptor),
       active
@@ -101,7 +101,7 @@ export function useAgentWorkspaceSync(): void {
       if (payload === null) return
       payload.documents = readDocumentContexts()
       const selected = window.getSelection()?.toString().trim()
-      if (selected && !document.activeElement?.closest('.chat-tab,.assistant-layer')) payload.selection = selected.slice(0, 8000)
+      if (selected && !document.activeElement?.closest('.chat-tab')) payload.selection = selected.slice(0, 8000)
       if (refreshId) payload.refreshId = refreshId
       const serialized = JSON.stringify(payload)
       if (serialized === lastSent) return

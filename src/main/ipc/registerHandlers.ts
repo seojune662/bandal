@@ -1,12 +1,10 @@
 import { createHash } from 'node:crypto'
 import type { MaterialContext, MessageContextSnapshot } from '../../shared/types/chatContext'
 import { selectScreen, screenSelectionRequest } from '../windows/screenSelection'
-import { approvalWindowRequest, dismissApprovalWhenResolved } from '../windows/approvalWindow'
 import { DEFAULT_AI_ACCESS, parseAiAccess } from '../../shared/types/aiAccess'
 import { registerBrowserImportHandlers } from './browserImportHandlers'
 import { writeFileAtomic, quarantineFile } from '../lib/atomicWrite'
 import { createQuitDrain } from '../lib/quitDrain'
-import { assistantWindowRequest } from '../windows/assistantWindow'
 import { existsSync, readFileSync } from 'node:fs'
 import { initializeBrowserProfiles, listBrowserProfiles, saveBrowserProfile, deleteBrowserProfile, browserProfileResources, guestProfile, onBrowserSession, ensureProfileSession, profileDirectory, onBrowserProfileDeleted } from '../features/browser/profiles'
 import { hardenBrowsingSession, useProfilePermissions, forgetProfilePermissions } from '../features/browser/hardenWebviews'
@@ -92,7 +90,7 @@ import type {
   Usage
 } from '../../shared/types/agent-events'
 import { isUsageWindowDays } from '../../shared/types/usage'
-import type { ScreenPermissionState } from '../../shared/types/overlay'
+import type { ScreenPermissionState } from '../../shared/types/screenCapture'
 import {
   firstConnectedProvider,
   providerPreferenceOrder
@@ -178,22 +176,14 @@ import {
   createPackRunGuard,
   createPackStore
 } from '../features/workflowPacks'
-import {
-  createWhiteboardAssetService,
-  createWhiteboardRepo,
-  createWhiteboardService
-} from '../features/whiteboard'
 import { createBoardPdfExporter, createCanvasRepo } from '../features/canvas'
 import { createInsights } from '../features/insights'
 import { createLinkService } from '../features/link'
 import { createLinkIndex } from '../features/links'
 import { createMaterialLinksRepo } from '../features/links/materialLinksRepo'
 import { repointMaterialPath } from '../features/links/renameRepoint'
-import {
-  createGroupNoteSharingService,
-  createGroupRuntime
-} from '../features/group'
-import { isAuthCallbackUrl } from '../features/group/authCallbackUrl'
+import { createAccountRuntime } from '../features/account/accountRuntime'
+import { isAuthCallbackUrl } from '../features/account/authCallbackUrl'
 import {
   createFeedbackRateGuard,
   createFeedbackService
@@ -241,7 +231,6 @@ import {
   createDeadlineScheduler,
   createSystemNotifier
 } from '../features/notifications'
-import type { OverlayController } from '../windows/overlayController'
 import {
   createMiniPlayerController,
   type MiniPlayerController
@@ -261,7 +250,6 @@ export interface IpcRouter {
 }
 
 export interface RegisterHandlersDeps {
-  overlay: OverlayController
   /** Bootstrap wrapper that fans persisted settings changes out to main UI. */
   setSettings?: (patch: SettingsPatch) => Settings
   preloadPath: string
@@ -383,17 +371,12 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     emit: (payload) => broadcast('desktopAgent:run-state', payload)
   })
   const desktopSurface = createDesktopSurface(
-    createElectronDesktopDeps({
-      concealOverlay: () => deps.overlay.concealForCapture()
-    })
+    createElectronDesktopDeps()
   )
   const mcpRegistry = createMcpRegistry({
     safeStorage: runtimeSafeStorage(),
     userDataPath: app.getPath('userData')
   })
-  deps.overlay.setScreenPermission(
-    screenPermissionState(desktopSurface.access())
-  )
   const coursesRepo = createCoursesRepo({
     db,
     folderMissing: createFolderAvailability(() => broadcast('courses:changed', {})),
@@ -606,16 +589,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   handle('courses:rename', (req) => {
     const course = courseListChanged(coursesRepo.rename(req))
-    if (
-      groupRuntime.isStarted() &&
-      groups().listPublishedCourseIds().includes(course.id)
-    ) {
-      void groups()
-        .setCourseVisibility(course.id, course.name, true)
-        .catch((error: unknown) => {
-          console.error('[friends] shared course rename sync failed', error)
-        })
-    }
     return course
   })
   handle('courses:setColor', (req) =>
@@ -647,7 +620,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('courses:organize', (req) => courseListChanged(coursesRepo.organize(req)))
 
   // -- course groups (과목 그룹/학기) ----------------------------------------
-  // ⚠ `courseGroups:` prefix — `groups:*` is the Phase-2 social feature.
   const courseGroupsRepo = createCourseGroupsRepo(db)
   handle('courseGroups:list', () => courseGroupsRepo.list())
   handle('courseGroups:create', (req) =>
@@ -1179,7 +1151,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       return policy.scope.course && request.courseId === chatRepo.getSession(request.conversationId)?.courseId
     },
     emit: (request) => broadcast('agentTools:confirm', request),
-    changed: (state) => { broadcast('agentTools:confirmationChanged', state); if (state.status !== 'pending') dismissApprovalWhenResolved(state.request.conversationId, agentConfirmer.list(state.request.conversationId).some(item => item.status === 'pending')) }
+    changed: (state) => broadcast('agentTools:confirmationChanged', state)
   })
   const packStore = createPackStore({ userDataPath: deps.userDataPath })
   // One guard is shared by every MCP server and the pack runner. Creating a
@@ -1596,6 +1568,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     tabs: { kind: string; title: string; active: boolean }[]
   } = { selectedCourseId: null, tabs: [] }
 
+  const panelMaterials = new Map<string, MaterialContext>()
   const lastMaterials = new Map<string, MaterialContext>()
   const updateMaterial = (courseId: string, material: MaterialContext): void => {
     const previous = lastMaterials.get(courseId)
@@ -1612,12 +1585,29 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       broadcast('assistant:contextRefresh', { requestId })
     })
   }
-  const snapshotContext = async (courseId: string): Promise<MessageContextSnapshot> => {
+  const snapshotContext = async (courseId: string, sourcePanelId?: string): Promise<MessageContextSnapshot> => {
     const fresh = await refreshWorkspace()
-    const material = lastMaterials.get(courseId)
-    return { id: createHash('sha256').update(JSON.stringify([courseId, material])).digest('hex').slice(0, 20), courseId, courseName: coursesRepo.getById(courseId).name, capturedAt: new Date().toISOString(), refresh: fresh ? 'fresh' : 'cached', ...(material ? { material: { ...material } } : {}) }
+    const candidate = sourcePanelId ? panelMaterials.get(sourcePanelId) : lastMaterials.get(courseId)
+    let material = candidate?.courseId === courseId && !candidate.unavailable && (!sourcePanelId || fresh) ? { ...candidate } : undefined
+    let failed = !!sourcePanelId && !material
+    if (material?.browserTabId) {
+      const guest = guestRegistry.resolve(material.browserTabId)
+      const contents = guest ? webContents.fromId(guest.id) : null
+      if (!contents || contents.isDestroyed()) { failed = true; material = undefined }
+      else {
+        try {
+          const selection = await Promise.race([
+            contents.executeJavaScript('window.getSelection()?.toString().slice(0, 8000) || ""'),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('문맥 읽기 시간 초과')), 1500))
+          ])
+          if (sourcePanelId && !panelMaterials.has(sourcePanelId)) { failed = true; material = undefined }
+          else material = { ...material, url: contents.getURL(), title: contents.getTitle() || material.title, ...(typeof selection === 'string' && selection ? { selection } : {}) }
+        } catch { failed = true; material = undefined }
+      }
+    }
+    return { id: createHash('sha256').update(JSON.stringify([courseId, sourcePanelId, material])).digest('hex').slice(0, 20), courseId, courseName: coursesRepo.getById(courseId).name, capturedAt: new Date().toISOString(), refresh: failed ? 'failed' : fresh ? 'fresh' : 'cached', ...(material ? { material } : {}) }
   }
-  handle('chat:context', req => snapshotContext(req.courseId))
+  handle('chat:context', req => snapshotContext(req.courseId, req.sourcePanelId))
 
   const appStateSnapshot = (): AgentAppState => {
     const groups = courseGroupsRepo.list()
@@ -1670,15 +1660,17 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
   handle('agent:syncWorkspace', (req) => {
+    panelMaterials.clear()
+    for (const doc of req.documents ?? []) if (doc.documentId) panelMaterials.set(doc.documentId, doc)
     const previousCourseId = workspaceSnapshot.selectedCourseId
     workspaceSnapshot = {
       ...(req.activeKind ? { activeKind: req.activeKind } : {}),
       selectedCourseId: req.selectedCourseId,
       tabs: req.tabs.map((tab) => ({ ...tab }))
     }
-    const active = req.tabs.find(tab => tab.active && !['chat', 'group-chat', 'friends'].includes(tab.kind) && tab.courseId)
+    const active = req.tabs.find(tab => tab.active && tab.kind !== 'chat' && tab.courseId)
     if (active?.courseId) {
-      const detail = req.documents?.find(doc => doc.courseId === active.courseId && doc.relPath === active.relPath)
+      const detail = req.documents?.find(doc => doc.documentId === active.documentId)
       updateMaterial(active.courseId, { courseId: active.courseId, kind: active.kind, title: active.title, ...(active.relPath ? { relPath: active.relPath } : {}), ...(active.documentId ? { documentId: active.documentId } : {}), ...detail, ...(req.selection ? { selection: req.selection.slice(0, 8000) } : {}) })
     }
     for (const doc of req.documents ?? []) {
@@ -1801,7 +1793,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
                 run: desktopRun,
                 onPermission: (payload) => {
                   broadcast('desktopAgent:permission', payload)
-                  deps.overlay.setScreenPermission(payload.state)
                 }
               })
             }
@@ -2135,7 +2126,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       const manager = resolveManager(req.sessionId)
       const opened = await manager.open(req.courseId, req.sessionId)
       if (opened.sessionInfo?.status === 'running') throw new Error('진행 중인 응답이 끝난 뒤 보내 주세요.')
-      const context = { ...req.context, snapshot: await snapshotContext(req.courseId) }
+      const context = { ...req.context, snapshot: await snapshotContext(req.courseId, req.context?.sourcePanelId) }
       if (req.context?.excludeCurrentMaterial) delete context.snapshot.material
       try { contextWriter.rebuild(req.courseId, true) } catch { context.snapshot.refresh = 'failed' }
       // Only the attached page/selection is inline. The rest remains in the course file.
@@ -2172,10 +2163,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
   handle('chat:conversations', (req) => ({
-    conversations: chatRepo.listConversations(
-      req.courseId,
-      req.surface ?? 'app'
-    )
+    conversations: [...chatRepo.listConversations(req.courseId, 'app'), ...chatRepo.listConversations(req.courseId, 'desktop')].sort((a, b) => (b.lastUsedAt ?? b.createdAt).localeCompare(a.lastUsedAt ?? a.createdAt))
   }))
   handle('chat:grants', (req) => ({
     grants: chatRepo.listGrantDetails(req.courseId)
@@ -2185,33 +2173,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
 
-  // -- desktop overlay -----------------------------------------------------
-  handle('overlay:getState', () => deps.overlay.getState())
-  handle('overlay:setCourse', (req) => deps.overlay.setCourse(req.courseId))
-  handle('overlay:setConversation', (req) =>
-    deps.overlay.setConversation(req.courseId, req.conversationId)
-  )
-  handle('overlay:togglePopup', (req) => deps.overlay.togglePopup(req.open))
-  handle('overlay:orbDragBegin', (req) => {
-    deps.overlay.orbDragBegin(req)
-    return OK
-  })
-  handle('overlay:orbDragEnd', () => {
-    deps.overlay.orbDragEnd()
-    return OK
-  })
-  handle('overlay:setOrbHitTest', (req) => {
-    deps.overlay.setOrbHitTest(req.hit)
-    return OK
-  })
-  handle('overlay:prompt', (req) => {
-    deps.overlay.prompt(req.prompt)
-    return OK
-  })
-  handle('overlay:openInApp', (req) => {
-    deps.overlay.openInApp(req)
-    return OK
-  })
   handle('desktopAgent:permissionStatus', () => ({
     state: screenPermissionState(desktopSurface.access()),
     platform: process.platform
@@ -2527,13 +2488,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // `resolve()` deliberately has no channel. The password is read here, put
   // straight into the guest page, and never travels back to the renderer.
   initializeBrowserProfiles(db)
-  handle('assistant:capture', async req => {
-    const restore = deps.overlay.concealForCapture()
-    try { const image = await selectScreen(req.region); if (image) deps.overlay.setScreenPermission('granted'); return image } finally { restore() }
-  })
+  handle('assistant:capture', req => selectScreen(req.region))
   handle('assistant:selection', (req, event) => screenSelectionRequest(event, req))
-  handle('assistant:approval', (req, event) => { approvalWindowRequest(event, req); return OK })
-  handle('assistant:window', (req, event) => assistantWindowRequest(event, req))
   handle('browser:profiles', () => listBrowserProfiles())
   handle('browser:saveProfile', (req) => saveBrowserProfile(req))
   handle('browser:deleteProfile', async (req) => {
@@ -2814,40 +2770,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   for (const profile of listBrowserProfiles()) extensionManagerFor(profile.id)
   handle('browser:clearSession', (req) => browserProfileResources(req.profileId).cookies.clear(req.origin))
 
-  // -- group whiteboard ------------------------------------------------------
-  // Borrows the group runtime's Supabase client: a second client would carry a
-  // second session and the two could disagree about who is signed in.
-  const whiteboardRepo = createWhiteboardRepo(db)
-  const whiteboardAssetService = createWhiteboardAssetService({
-    db,
-    repo: whiteboardRepo,
-    userDataPath: deps.userDataPath,
-    getClient: () => groupRuntime.getClient(),
-    getUserId: () => groupRuntime.getUserId()
-  })
-  const whiteboardService = createWhiteboardService({
-    repo: whiteboardRepo,
-    getClient: () => groupRuntime.getClient(),
-    getUserId: () => groupRuntime.getUserId(),
-    emit: (groupId, event) => broadcast('whiteboard:changed', { groupId, event }),
-    isAssetSynced: (assetId) => whiteboardAssetService.isSynced(assetId)
-  })
-  handle('whiteboard:open', (req) => whiteboardService.open(req.groupId))
-  handle('whiteboard:addShape', (req) => whiteboardService.addShape(req))
-  handle('whiteboard:updateShape', (req) => whiteboardService.updateShape(req))
-  handle('whiteboard:close', (req) => {
-    whiteboardService.close(req.groupId)
-    return OK
-  })
-  handle('whiteboard:removeShapes', (req) =>
-    whiteboardService.removeShapes(req)
-  )
-  handle('whiteboard:sync', (req) =>
-    whiteboardService.sync(req.boardId, req.since)
-  )
-  handle('whiteboard:putAsset', (req) => whiteboardAssetService.put(req))
-  handle('whiteboard:readAsset', (req) => whiteboardAssetService.read(req))
-
   // -- personal whiteboards (local only) -------------------------------------
   // `canvas:` and not `board:` — the latter already means the study TASK board.
   const canvasRepo = createCanvasRepo(db)
@@ -2970,7 +2892,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     appVersion: () => resolveAppVersion(app.isPackaged, app.getVersion(), __APP_VERSION__)
   })
   const pluginData = createPluginDataStore({ userDataDir: deps.userDataPath })
-  const marketplace = createMarketplaceClient({ getClient: () => groupRuntime.getClient(), fetch: (url, init) => net.fetch(url instanceof URL ? url.href : url, init) })
+  const marketplace = createMarketplaceClient({ getClient: () => account.getClient(), fetch: (url, init) => net.fetch(url instanceof URL ? url.href : url, init) })
   handle('marketplace:dashboard', () => marketplace.dashboard())
   handle('marketplace:release', (req) => marketplace.release(req.id))
   handle('marketplace:resolveReport', async (req) => { await marketplace.resolveReport(req.id, req.reason); return OK })
@@ -3350,26 +3272,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('layout:get', (req) => layoutRepo.get(req.courseId))
   handle('layout:save', (req) => layoutRepo.save(req.courseId, req.layout))
 
-  // -- groups (P2-C) --------------------------------------------------------
-  // Everything above this line is Phase 1 and is UNCHANGED by Phase 2 — that
-  // is a hard rule, not a convention (docs/phase2-community.md §1.4-1).
-  //
-  // `groupRuntime` is a factory, not an instance: the Supabase client, the
-  // encrypted session file and the realtime channels are built on the first
-  // invoke below and never on the boot path. An app that is logged out,
-  // offline or built without keys behaves exactly as it did in Phase 1.
-  const groupRuntime = createGroupRuntime({
-    db,
-    broadcastAuth: (state) => broadcast('auth:changed', state),
-    broadcastBatch: (batch) => broadcast('group:event-batch', batch),
-    broadcastInvalidated: (reason) => broadcast('groups:invalidated', { reason })
-  })
-  const stopWhiteboardAuthReset = groupRuntime.onAuthChanged(() => {
-    whiteboardService.resetForAuthChange()
-    whiteboardAssetService.resetForAuthChange()
-  })
-  const groups = (): ReturnType<typeof groupRuntime.service> =>
-    groupRuntime.service()
+  const account = createAccountRuntime(state => broadcast('auth:changed', state))
 
   // Give queued IPC one turn of the event loop before the process goes away.
   //
@@ -3386,152 +3289,25 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   app.on('before-quit', quitDrain.beforeQuit)
   onBrowserQuitCancelled(quitDrain.reset)
 
-  // Lazy `getGroupService` on purpose: building the router must not wake the
-  // group runtime, which would open the OS keychain at launch.
-  const noteSharing = createGroupNoteSharingService({
-    notesRepo,
-    getGroupService: () => groupRuntime.service(),
-    getCourseName: (courseId) => coursesRepo.getById(courseId).name
-  })
-  handle('group:shareNote', (req) => noteSharing.shareNote(req))
-  handle('group:saveSharedNote', (req) => noteSharing.saveSharedNote(req))
-
-  app.on('will-quit', () => {
-    stopWhiteboardAuthReset()
-    whiteboardService.dispose()
-    whiteboardAssetService.dispose()
-    groupRuntime.dispose()
-  })
-  app.on('browser-window-blur', () => {
-    if (groupRuntime.isStarted()) groups().setWindowFocused(false)
-  })
-  app.on('browser-window-focus', () => {
-    if (groupRuntime.isStarted()) groups().setWindowFocused(true)
-  })
+  app.on('will-quit', () => account.dispose())
 
   // auth
-  handle('auth:getState', () => groups().getAuthState())
-  handle('auth:signIn', (req) => groups().signIn(req.provider))
+  handle('auth:getState', () => account.auth().getState())
+  handle('auth:signIn', (req) => account.auth().signIn(req.provider))
   handle('auth:signOut', async () => {
-    await groups().signOut()
+    await account.auth().signOut()
     return OK
   })
-  handle('auth:setNickname', (req) => groups().setNickname(req.nickname))
+  handle('auth:setNickname', (req) => account.auth().setNickname(req.nickname))
   handle('auth:setAvatar', (req) => {
     const patch: { color?: string; emoji?: string } = {}
     if (req.color !== undefined) patch.color = req.color
     if (req.emoji !== undefined) patch.emoji = req.emoji
-    return groups().setAvatar(patch)
-  })
-
-  // groups
-  handle('groups:list', () => groups().listGroups())
-  handle('groups:create', (req) => {
-    const input: { name: string; color: string; courseId?: string } = {
-      name: req.name,
-      color: req.color
-    }
-    if (req.courseId !== undefined) input.courseId = req.courseId
-    return groups().createGroup(input)
-  })
-  // ⚠ join returns `{ ok: false }` for rejections instead of throwing — the
-  // rate-limit rows have to COMMIT, and a raise would roll them back
-  // (supabase/README.md §8-②).
-  handle('groups:joinWithCode', (req) => groups().joinWithCode(req.code))
-  handle('groups:currentCode', (req) => groups().currentCode(req.groupId))
-  handle('groups:regenerateCode', (req) =>
-    groups().regenerateCode(req.groupId, req.maxUses ?? 0)
-  )
-  handle('groups:linkCourse', (req) =>
-    groups().linkCourse(req.groupId, req.courseId)
-  )
-  handle('groups:leave', async (req) => {
-    await groups().leaveGroup(req.groupId)
-    return OK
-  })
-  handle('groups:members', (req) => groups().members(req.groupId))
-  handle('groups:kick', async (req) => {
-    await groups().kick(req.groupId, req.userId)
-    return OK
-  })
-
-  // invites / friends
-  handle('groups:inviteByNickname', (req) =>
-    groups().inviteByNickname(req.groupId, req.nickname)
-  )
-  handle('groups:findProfile', (req) => groups().findProfile(req.nickname))
-  handle('invites:listPending', () => groups().listPendingInvites())
-  handle('invites:respond', async (req) => ({
-    status: await groups().respondInvite(req.inviteId, req.accept)
-  }))
-  handle('friends:list', () => groups().listFriends())
-  handle('friends:request', (req) => groups().requestFriend(req.nickname))
-  handle('friends:respond', async (req) => ({
-    status: await groups().respondFriend(req.requesterId, req.accept)
-  }))
-  handle('friends:remove', async (req) => {
-    await groups().removeFriend(req.userId)
-    return OK
-  })
-  handle('friends:publishedCourses', (req) =>
-    groups().listPublishedCourses(req.userId)
-  )
-  handle('friends:courseVisibility', () => ({
-    courseIds: groups().listPublishedCourseIds()
-  }))
-  handle('friends:setCourseVisibility', async (req) => {
-    const course = coursesRepo.getById(req.courseId)
-    return {
-      visible: await groups().setCourseVisibility(
-        course.id,
-        course.name,
-        req.visible
-      )
-    }
-  })
-  handle('directChat:open', (req) => groups().openDirectChat(req.friendUserId))
-
-  // group chat
-  handle('groupChat:open', (req) => groups().openChat(req.groupId))
-  handle('groupChat:send', (req) =>
-    groups().send(req.groupId, req.body, req.replyTo)
-  )
-  handle('groupChat:loadOlder', (req) =>
-    groups().loadOlder(req.groupId, req.beforeSeq, req.limit)
-  )
-  handle('groupChat:markRead', async (req) => {
-    await groups().markRead(req.groupId, req.seq)
-    return OK
-  })
-  handle('groupChat:retry', (req) => {
-    groups().retry(req.localId)
-    return OK
-  })
-  handle('groupChat:deleteMessage', async (req) => {
-    await groups().deleteMessage(req.messageId)
-    return OK
-  })
-  handle('groupChat:close', (req) => {
-    groups().closeChat(req.groupId)
-    return OK
-  })
-
-  // safety
-  handle('safety:block', async (req) => {
-    await groups().block(req.userId, req.blocked)
-    return OK
-  })
-  handle('safety:report', async (req) => {
-    await groups().report({
-      targetType: req.targetType,
-      targetId: req.targetId,
-      reason: req.reason
-    })
-    return OK
+    return account.auth().setAvatar(patch)
   })
 
   // -- auto update ----------------------------------------------------------
-  // Constructed eagerly (unlike groupRuntime): it owns the periodic check, and
+  // Constructed eagerly (unlike account authentication): it owns the periodic check, and
   // in an unpackaged build the factory returns an inert stub anyway.
   const updater = createUpdaterRuntime({
     broadcast: (status) => broadcast('update:changed', status)
@@ -3546,10 +3322,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('update:install', () => ({ ok: updater.install() }))
 
   // -- feedback -------------------------------------------------------------
-  // Uses the group runtime's lazy client so boot stays offline and feedback
+  // Uses the account runtime's lazy client so boot stays offline and feedback
   // remains available before sign-in when the Supabase project is configured.
   const feedback = createFeedbackService({
-    getClient: () => groupRuntime.getClient(),
+    getClient: () => account.getClient(),
     rateGuard: createFeedbackRateGuard(),
     appVersion: resolveAppVersion(
       app.isPackaged,
@@ -3575,7 +3351,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       // Checked HERE so an unrelated `bandal://` route never constructs the
       // Supabase client — the laziness rule (§1.4-2) survives deep links.
       if (!isAuthCallbackUrl(url)) return
-      void groups()
+      void account.auth()
         .handleDeepLink(url)
         .catch((error: unknown) => {
           console.error('[ipc] deep link handling failed', error)

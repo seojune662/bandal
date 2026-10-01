@@ -121,7 +121,7 @@ export const SHORTCUT_SPECS = [
   { id: 'browser-zoom-in', labelKo: '확대', labelEn: 'Zoom in', defaultChord: 'mod+=', scope: 'browser', customizable: CUSTOM, guestAllowed: GUEST },
   { id: 'browser-zoom-out', labelKo: '축소', labelEn: 'Zoom out', defaultChord: 'mod+-', scope: 'browser', customizable: CUSTOM, guestAllowed: GUEST },
   { id: 'browser-zoom-reset', labelKo: '확대/축소 초기화', labelEn: 'Reset zoom', defaultChord: 'mod+0', scope: 'browser', customizable: CUSTOM, guestAllowed: GUEST },
-  { id: 'toggle-left-rail', labelKo: '왼쪽 레일 전환', labelEn: 'Toggle left rail', defaultChord: 'mod+b', scope: 'global', customizable: CUSTOM, guestAllowed: HOST_ONLY },
+  { id: 'toggle-left-rail', labelKo: '왼쪽 사이드바 접기/펼치기', labelEn: 'Toggle left sidebar', defaultChord: 'mod+s', scope: 'global', customizable: CUSTOM, guestAllowed: GUEST },
   { id: 'toggle-right-rail', labelKo: '오른쪽 레일 전환', labelEn: 'Toggle right rail', defaultChord: 'mod+alt+b', scope: 'global', customizable: CUSTOM, guestAllowed: HOST_ONLY },
   { id: 'toggle-board', labelKo: '보드 전환', labelEn: 'Toggle board', defaultChord: 'mod+shift+d', scope: 'global', customizable: CUSTOM, guestAllowed: HOST_ONLY },
   { id: 'add-course', labelKo: '과목 추가', labelEn: 'Add course', defaultChord: 'mod+shift+n', scope: 'global', customizable: CUSTOM, guestAllowed: HOST_ONLY },

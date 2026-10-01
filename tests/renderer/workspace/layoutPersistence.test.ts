@@ -164,18 +164,16 @@ describe('validateLayout', () => {
     expect(result!.droppedPanelIds).toEqual([legacyPanelId])
   })
 
-  test('accepts a course-scoped group-chat descriptor', () => {
-    const groupChat = descriptorFor('group-chat', { courseId: 'c1' })
-    const groupChatPanelId = tabPanelId(groupChat)
-    const doc = layoutDoc(leaf('g1', [groupChatPanelId]), {
-      [groupChatPanelId]: panelState(groupChat)
+  test('drops retired social tabs while preserving the personal material and its AI state', () => {
+    const oldId = 'group-chat:c1'
+    const doc = layoutDoc(leaf('g1', [oldId, idA]), {
+      [idA]: { ...panelState(pdfA), params: { descriptor: pdfA, assistant: { conversationId: 'kept', open: true, section: 'ai', width: 380 } } },
+      [oldId]: { contentComponent: 'group-chat', params: { descriptor: { kind: 'group-chat', payload: { courseId: 'c1' } } } }
     })
-
-    const result = validateLayout(doc)
-
-    expect(result).not.toBeNull()
-    expect(result!.tabs).toEqual({ [groupChatPanelId]: groupChat })
-    expect(result!.droppedPanelIds).toEqual([])
+    const result = validateLayout(doc)!
+    expect(result.tabs).toEqual({ [idA]: pdfA })
+    expect(result.droppedPanelIds).toEqual([oldId])
+    expect(result.layout.panels[idA]!.params.assistant.conversationId).toBe('kept')
   })
 
   test('keeps an explicit duplicate view of the same descriptor', () => {

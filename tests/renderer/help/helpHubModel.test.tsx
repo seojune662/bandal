@@ -21,8 +21,7 @@ describe('help hub entry points', () => {
     expect(milestoneDestination('agent')).toBe('settings-ai')
     expect(milestoneDestination('tutorial')).toBe('tour')
     expect(milestoneDestination('favorite')).toBe('favorites-section')
-    expect(milestoneDestination('question')).toBe('assistant-orb')
-    expect(milestoneDestination('group')).toBe('together-footer')
+    expect(milestoneDestination('question')).toBe('assistant-panel-toggle')
     expect(milestoneDestination('pip')).toBe('pip')
   })
 
