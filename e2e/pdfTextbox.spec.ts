@@ -152,7 +152,7 @@ test.describe('pdf textbox', () => {
     await page.keyboard.press('Enter')
     await page.keyboard.type('second line')
     await expect(editor.locator('br')).not.toHaveCount(0)
-    await page.keyboard.press('Meta+Enter')
+    await page.keyboard.press('ControlOrMeta+Enter')
 
     await expect.poll(async () => page.evaluate(async () => {
       const bridge = (window as unknown as {
@@ -181,7 +181,7 @@ test.describe('pdf textbox', () => {
     const textarea = page.locator('.ink-layer__textbox.is-editing')
     await expect(textarea).toBeVisible()
     await page.keyboard.type('reflow test with quite a few words inside the box')
-    await page.keyboard.press('Meta+Enter')
+    await page.keyboard.press('ControlOrMeta+Enter')
 
     const boxObject = page.locator('.ink-layer__textbox-object', {
       hasText: 'reflow test'
@@ -389,7 +389,7 @@ test.describe('pdf textbox', () => {
     await expect(editor.locator('[data-font-size-pt="16"]')).toHaveText('committed')
     await expect(editor.locator('[data-text-color="red"]')).toHaveText('committed')
     await expect(editor).toContainText('committed here')
-    await page.keyboard.press('Meta+Enter')
+    await page.keyboard.press('ControlOrMeta+Enter')
 
     await expect.poll(async () => page.evaluate(async () => {
       const bridge = (window as unknown as {
@@ -427,7 +427,7 @@ test.describe('pdf textbox', () => {
     const textarea = page.locator('.ink-layer__textbox.is-editing')
     await expect(textarea).toBeVisible()
     await page.keyboard.type('zoom invariant')
-    await page.keyboard.press('Meta+Enter')
+    await page.keyboard.press('ControlOrMeta+Enter')
 
     const boxObject = page.locator('.ink-layer__textbox-object', {
       hasText: 'zoom invariant'

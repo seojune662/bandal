@@ -39,7 +39,7 @@ test.describe('settings shell', () => {
 
   test('every category opens from the sidebar', async () => {
     const { page } = bandal
-    await page.keyboard.press('Meta+,')
+    await page.keyboard.press('ControlOrMeta+,')
     const nav = page.locator('.settings-nav')
     await expect(nav).toBeVisible()
     await expect(nav.locator('.settings-nav__group-label')).toHaveCount(SETTINGS_GROUPS.length)
@@ -73,7 +73,7 @@ test.describe('settings shell', () => {
   test('row search surfaces the category that holds the setting', async () => {
     const { page } = bandal
     if ((await page.locator('.settings-nav').count()) === 0) {
-      await page.keyboard.press('Meta+,')
+      await page.keyboard.press('ControlOrMeta+,')
     }
     const search = page.locator('.settings-search input')
     await search.fill('기본 줌')
@@ -91,7 +91,7 @@ test.describe('settings shell', () => {
     const { page } = bandal
     await page.keyboard.press('Escape')
     await expect(page.locator('.settings-nav')).toHaveCount(0)
-    await page.keyboard.press('Meta+/')
+    await page.keyboard.press('ControlOrMeta+/')
     await expect(
       page.locator('.settings-nav [data-category="shortcuts"]')
     ).toHaveAttribute('aria-current', 'page')
