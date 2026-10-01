@@ -39,13 +39,19 @@ function declaredChannels(): string[] {
 
 /** Channels registered via `handle('...')` in the main process. */
 function handledChannels(): string[] {
-  const source = mainRouterSource()
+  const source = [mainRouterSource(), readFileSync(join(process.cwd(), 'src/main/ipc/browserImportHandlers.ts'), 'utf8')].join('\n')
   return [...source.matchAll(/\bhandle\(\s*'([^']+)'/g)].map(
     (match) => match[1] as string
   )
 }
 
 describe('IPC channel coverage', () => {
+  test('the browser import module is connected to the main registration path', () => {
+    const source = mainRouterSource()
+    expect(source).toContain("import { registerBrowserImportHandlers } from './browserImportHandlers'")
+    expect(source).toContain('registerBrowserImportHandlers(handle, favoritesRepo)')
+  })
+
   test('IPC_CHANNELS lists exactly what IpcContract declares', () => {
     expect([...IPC_CHANNELS].sort()).toEqual(declaredChannels().sort())
   })
