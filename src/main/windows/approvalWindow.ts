@@ -10,7 +10,7 @@ function hide(): void { wanted = false; win?.hide() }
 function place(): void {
   if (!win || win.isDestroyed() || !owner || owner.isDestroyed()) return
   const b = owner.getBounds(), area = screen.getDisplayMatching(b).workArea
-  const width = Math.min(300, area.width), height = Math.min(230, Math.max(180, b.height - 170))
+  const width = Math.min(300, area.width), height = Math.min(230, Math.max(140, b.height - 230))
   const right = b.x + b.width + 10, left = b.x - width - 10
   const x = right + width <= area.x + area.width ? right : left >= area.x ? left : b.x + b.width - width - 12
   win.setBounds({ x: Math.max(area.x, Math.min(x, area.x + area.width - width)), y: Math.max(area.y, Math.min(b.y + 50, area.y + area.height - height)), width, height })

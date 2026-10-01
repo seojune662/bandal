@@ -165,6 +165,23 @@ test.describe('shared chat composer and approvals', () => {
     await assistant.keyboard.press('Escape')
     await expect(assistant.getByRole('dialog', { name: 'AI 실행 설정' })).toHaveCount(0)
     await expect(popup).toBeVisible()
+    await app.evaluate(({ BrowserWindow, screen }) => {
+      const win = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('view=assistant'))!
+      const area = screen.getDisplayMatching(win.getBounds()).workArea
+      win.setBounds({ x: area.x, y: area.y, width: 360, height: 420 })
+    })
+    expect(await assistant.evaluate(() => [innerWidth, innerHeight])).toEqual([360, 420])
+    const inputBounds = await popup.getByRole('textbox', { name: '메시지 입력' }).boundingBox()
+    expect(inputBounds!.width).toBeGreaterThan(160)
+    await popup.getByRole('button', { name: 'AI 허용 모드' }).click()
+    const policyBounds = await assistant.getByRole('dialog', { name: 'AI 허용 범위' }).boundingBox()
+    expect(policyBounds!.x).toBeGreaterThanOrEqual(0)
+    expect(policyBounds!.y).toBeGreaterThanOrEqual(0)
+    expect(policyBounds!.x + policyBounds!.width).toBeLessThanOrEqual(360)
+    expect(policyBounds!.y + policyBounds!.height).toBeLessThanOrEqual(420)
+    await assistant.screenshot({ path: info.outputPath('narrow-policy.png') })
+    await assistant.keyboard.press('Escape')
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('view=assistant'))!.setSize(420, 600))
     await popup.getByRole('textbox', { name: '메시지 입력' }).fill('@')
     await expect(popup.getByRole('textbox', { name: '메시지 입력' })).toHaveValue('@')
     await expect(popup.getByRole('listbox', { name: '과목 파일' })).toBeVisible()
