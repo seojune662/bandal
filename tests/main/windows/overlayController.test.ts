@@ -216,6 +216,19 @@ function desktopSettings(courseId: string | null = 'course-a'): Settings {
 }
 
 describe('createOverlayController', () => {
+  test('cancelling quit restores the overlay close and hide behavior', () => {
+    const subject = setup(desktopSettings())
+    subject.controller.start()
+    subject.controller.markQuitting()
+    subject.controller.markQuitting(false)
+    const orbEvent = { preventDefault: vi.fn() }
+    const popupEvent = { preventDefault: vi.fn() }
+    subject.orb.emit('close', orbEvent)
+    subject.popup.emit('close', popupEvent)
+    expect(orbEvent.preventDefault).toHaveBeenCalledOnce()
+    expect(popupEvent.preventDefault).toHaveBeenCalledOnce()
+    expect(subject.controller.isQuitting()).toBe(false)
+  })
   test('returns a stable conversation id per selected course before start', () => {
     const subject = setup(desktopSettings('course-a'))
 

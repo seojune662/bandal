@@ -19,6 +19,11 @@ const resources = new Map<string, ReturnType<typeof buildResources>>()
 const listeners = new Set<(partition: string, profileId: string) => void>()
 const activeDownloads = new Map<string, number>()
 const initialized = new Map<string, string>()
+const downloadListeners = new Map<string, (event: Electron.Event, item: Electron.DownloadItem) => void>()
+const deletedListeners = new Set<(id: string, partitions: readonly string[]) => void>()
+const privateDownloads = new Map<string, number>()
+const privateCleanup = new Map<string, Promise<void>>()
+const deleting = new Set<string>()
 const guestProfiles = new Map<number, { profileId: string; isPrivate: boolean }>()
 const file = (): string => join(app.getPath('userData'), 'browser-profiles.json')
 export const profileDirectory = (id: string): string => join(app.getPath('userData'), 'browser-profiles', requireProfile(id).id)
@@ -48,6 +53,7 @@ export function listBrowserProfiles(): BrowserProfile[] {
   return profiles.map(p => ({ ...p }))
 }
 export function requireProfile(id = 'default'): BrowserProfile {
+  if (deleting.has(id)) throw new Error('삭제 중인 브라우저 프로필입니다.')
   const p = listBrowserProfiles().find(p => p.id === id)
   if (!p) throw new Error('삭제되었거나 존재하지 않는 브라우저 프로필입니다.')
   return p
@@ -78,12 +84,21 @@ export function ensureProfileSession(id = 'default', isPrivate = false): Session
   const partition = profilePartition(id, isPrivate)
   if (!initialized.has(partition)) {
     initialized.set(partition, id)
-    session.fromPartition(partition).on('will-download', (_event, item) => {
+    const trackDownload = (_event: Electron.Event, item: Electron.DownloadItem): void => {
       activeDownloads.set(id, (activeDownloads.get(id) ?? 0) + 1)
-      item.once('done', () => activeDownloads.set(id, Math.max(0, (activeDownloads.get(id) ?? 1) - 1)))
-    })
+      if (isPrivate) privateDownloads.set(id, (privateDownloads.get(id) ?? 0) + 1)
+      item.once('done', () => {
+        activeDownloads.set(id, Math.max(0, (activeDownloads.get(id) ?? 1) - 1))
+        if (isPrivate) {
+          privateDownloads.set(id, Math.max(0, (privateDownloads.get(id) ?? 1) - 1))
+          clearUnusedPrivateSession(id)
+        }
+      })
+    }
     try { for (const callback of listeners) callback(partition, id) }
     catch (error) { initialized.delete(partition); throw error }
+    session.fromPartition(partition).on('will-download', trackDownload)
+    downloadListeners.set(partition, trackDownload)
   }
   return session.fromPartition(partition)
 }
@@ -114,8 +129,43 @@ export function browserProfileResources(id = 'default'): ReturnType<typeof build
   if (!resources.has(id)) resources.set(id, buildResources(id))
   return resources.get(id)!
 }
+export function resetBrowserProfileQuit(): void {
+  for (const resource of resources.values()) resource.cookies.resetQuitState()
+}
+/** Called before a native page is created, so reopening cannot race private cleanup. */
+export async function prepareProfileSession(id = 'default', isPrivate = false): Promise<Session> {
+  requireProfile(id)
+  if (isPrivate) await privateCleanup.get(id)
+  return ensureProfileSession(id, isPrivate)
+}
+export function onBrowserProfileDeleted(callback: (id: string, partitions: readonly string[]) => void): () => void {
+  deletedListeners.add(callback)
+  return () => deletedListeners.delete(callback)
+}
+function clearUnusedPrivateSession(profileId: string): void {
+  if (deleting.has(profileId) || privateCleanup.has(profileId) || (privateDownloads.get(profileId) ?? 0) > 0 ||
+    [...guestProfiles.values()].some(p => p.profileId === profileId && p.isPrivate)) return
+  const ses = session.fromPartition(profilePartition(profileId, true))
+  const operation = (async () => {
+    await ses.closeAllConnections()
+    await ses.clearStorageData()
+    await ses.clearCache()
+    await ses.clearAuthCache()
+  })().catch(() => {
+    // Keep a rejected cleanup barrier: a fresh private page must never reuse old data.
+    throw new Error('시크릿 세션을 정리하지 못했습니다. 앱을 다시 시작해 주세요.')
+  })
+  privateCleanup.set(profileId, operation)
+  void operation.then(() => {
+    if (privateCleanup.get(profileId) === operation) privateCleanup.delete(profileId)
+  }, () => undefined)
+}
 export function registerGuestProfile(id: number, profileId: string, isPrivate: boolean): void { guestProfiles.set(id, { profileId, isPrivate }) }
-export function forgetGuestProfile(id: number): void { guestProfiles.delete(id) }
+export function forgetGuestProfile(id: number): void {
+  const previous = guestProfiles.get(id)
+  guestProfiles.delete(id)
+  if (previous?.isPrivate) clearUnusedPrivateSession(previous.profileId)
+}
 export function guestProfile(id: number): { profileId: string; isPrivate: boolean } {
   const value = guestProfiles.get(id)
   if (!value) throw new Error('브라우저 탭을 찾을 수 없습니다.')
@@ -126,24 +176,39 @@ export async function deleteBrowserProfile(id: string): Promise<void> {
   if (id === 'default') throw new Error('기본 프로필은 삭제할 수 없습니다.')
   if ((activeDownloads.get(id) ?? 0) > 0) throw new Error('다운로드가 끝난 뒤 프로필을 삭제해 주세요.')
   if ([...guestProfiles.values()].some(p => p.profileId === id)) throw new Error('이 프로필의 탭을 먼저 닫아 주세요. 진행 중인 다운로드도 완료한 뒤 삭제해 주세요.')
-  for (const privateMode of [false, true]) {
-    const ses = session.fromPartition(profilePartition(id, privateMode))
-    for (const extension of ses.extensions.getAllExtensions()) ses.extensions.removeExtension(extension.id)
-    await ses.clearStorageData()
-    await ses.clearCache()
-    await ses.clearAuthCache()
-    await ses.closeAllConnections()
-  }
+  const partitions = [profilePartition(id), profilePartition(id, true)]
   const data = browserProfileResources(id)
-  data.cookies.dispose()
-  data.history.clear(null)
-  data.permissions.forgetAll()
-  for (const login of data.credentials.list()) data.credentials.forget(login.origin)
-  databases.get(id)?.close()
-  databases.delete(id)
-  resources.delete(id)
-  rmSync(profileDirectory(id), { recursive: true, force: true })
-  const next = listBrowserProfiles().filter(p => p.id !== id)
-  writeFileAtomic(file(), JSON.stringify(next))
-  profiles = next
+  deleting.add(id)
+  try {
+    await privateCleanup.get(id)
+    for (const partition of partitions) {
+      const ses = session.fromPartition(partition)
+      for (const extension of ses.extensions.getAllExtensions()) ses.extensions.removeExtension(extension.id)
+      await ses.clearStorageData()
+      await ses.clearCache()
+      await ses.clearAuthCache()
+      await ses.closeAllConnections()
+    }
+
+    data.cookies.dispose()
+    data.history.clear(null)
+    data.permissions.forgetAll()
+    databases.get(id)?.close()
+    databases.delete(id)
+    resources.delete(id)
+    rmSync(join(app.getPath('userData'), 'browser-profiles', id), { recursive: true, force: true })
+    const next = listBrowserProfiles().filter(p => p.id !== id)
+    writeFileAtomic(file(), JSON.stringify(next))
+    profiles = next
+    for (const partition of partitions) {
+      const listener = downloadListeners.get(partition)
+      if (listener) session.fromPartition(partition).removeListener('will-download', listener)
+      downloadListeners.delete(partition)
+      initialized.delete(partition)
+    }
+    activeDownloads.delete(id)
+    privateDownloads.delete(id)
+    privateCleanup.delete(id)
+    for (const callback of deletedListeners) callback(id, partitions)
+  } finally { deleting.delete(id) }
 }

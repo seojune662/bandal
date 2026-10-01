@@ -9,7 +9,7 @@ import {
   useBrowserGuests,
   type BrowserLoginState
 } from './browserGuestsStore'
-import type { WebviewTag } from './webviewTypes'
+import type { BrowserPageHandle } from './browserPageTypes'
 
 export const LOGIN_REPORT_PREFIX = '__bandal_login_form__'
 
@@ -151,7 +151,7 @@ export interface StagedPromptCandidate {
   prompted: boolean
 }
 
-const elements = new Map<string, WebviewTag>()
+const elements = new Map<string, BrowserPageHandle>()
 const autoFilledOrigins = new Map<string, string>()
 const navigationGenerations = new Map<string, number>()
 const stagedLogins = new Map<string, StagedPromptCandidate>()
@@ -283,7 +283,7 @@ export function consumeStagedPrompt(
   return true
 }
 
-function liveOrigin(element: WebviewTag): string | null {
+function liveOrigin(element: BrowserPageHandle): string | null {
   try {
     return httpsOrigin(element.getURL())
   } catch {
@@ -295,7 +295,7 @@ function update(tabId: string, patch: Partial<BrowserLoginState>): void {
   useBrowserGuests.getState().updateLogin(tabId, patch)
 }
 
-function guestId(element: WebviewTag): number | null {
+function guestId(element: BrowserPageHandle): number | null {
   try {
     return element.getWebContentsId()
   } catch {
@@ -327,7 +327,7 @@ function maybeShowPrompt(tabId: string): void {
   })
 }
 
-async function fill(tabId: string, origin: string): Promise<boolean> {
+async function fill(tabId: string, origin: string, credentialId?: string): Promise<boolean> {
   const element = elements.get(tabId)
   if (element === undefined || liveOrigin(element) !== origin) return false
   const guestWebContentsId = guestId(element)
@@ -336,7 +336,8 @@ async function fill(tabId: string, origin: string): Promise<boolean> {
   try {
     const result = await invoke('credentials:fill', {
       origin,
-      guestWebContentsId
+      guestWebContentsId,
+      ...(credentialId === undefined ? {} : { credentialId })
     })
     return result.filled
   } catch {
@@ -385,7 +386,7 @@ async function stageSubmittedLogin(
     if (candidate.kind === 'save') {
       try {
         const logins = await invoke('credentials:list', { profileId: useBrowserGuests.getState().liveGuests.find(g => g.tabId === tabId)?.profileId ?? 'default' })
-        if (logins.some((login) => login.origin === summary.origin)) {
+        if (logins.some((login) => login.origin === summary.origin && login.username === summary.username)) {
           candidate.kind = 'update'
         }
       } catch {
@@ -422,6 +423,7 @@ async function applyFormReport(
     hasLoginForm: report.hasLoginForm,
     usernameFocused: report.usernameFocused,
     savedLogin: null,
+    savedLogins: [],
     pending: report.hasLoginForm,
     message: null
   })
@@ -432,9 +434,11 @@ async function applyFormReport(
   }
 
   let saved: SavedLoginSummary | undefined
+  let accounts: SavedLoginSummary[] = []
   try {
     const logins = await invoke('credentials:list', { profileId: useBrowserGuests.getState().liveGuests.find(g => g.tabId === tabId)?.profileId ?? 'default' })
-    saved = logins.find((login) => login.origin === report.origin)
+    accounts = logins.filter((login) => login.origin === report.origin)
+    saved = accounts.length === 1 ? accounts[0] : undefined
   } catch {
     update(tabId, { pending: false, message: 'failed' })
     return
@@ -445,12 +449,12 @@ async function applyFormReport(
   ) {
     return
   }
-  update(tabId, { savedLogin: saved ?? null, pending: false })
+  update(tabId, { savedLogin: saved ?? null, savedLogins: accounts, pending: false })
 
   if (saved !== undefined && autoFilledOrigins.get(tabId) !== report.origin) {
     autoFilledOrigins.set(tabId, report.origin)
     update(tabId, { pending: true })
-    const filled = await fill(tabId, report.origin)
+    const filled = await fill(tabId, report.origin, saved.id)
     update(tabId, { pending: false, message: filled ? 'filled' : 'failed' })
   }
 }
@@ -523,24 +527,24 @@ export async function discardStagedLoginForTab(
   }
 }
 
-export async function fillLoginForTab(tabId: string): Promise<void> {
+export async function fillLoginForTab(tabId: string, credentialId?: string): Promise<void> {
   const state = useBrowserGuests.getState().login[tabId]
   if (
     state === undefined ||
     state.origin === null ||
-    state.savedLogin === null ||
+    (state.savedLogin === null && credentialId === undefined) ||
     state.pending
   ) {
     return
   }
   update(tabId, { pending: true, message: null })
-  const filled = await fill(tabId, state.origin)
+  const filled = await fill(tabId, state.origin, credentialId ?? state.savedLogin?.id)
   update(tabId, { pending: false, message: filled ? 'filled' : 'failed' })
 }
 
-export function useWebviewLoginBridge(
+export function useBrowserLoginBridge(
   tabId: string,
-  webviewRef: RefObject<WebviewTag | null>,
+  webviewRef: RefObject<BrowserPageHandle | null>,
   enabled = true
 ): void {
   useEffect(() => {
@@ -589,6 +593,7 @@ export function useWebviewLoginBridge(
         hasLoginForm: false,
         usernameFocused: false,
         savedLogin: null,
+        savedLogins: [],
         savePrompt: null,
         pending: false,
         message: null

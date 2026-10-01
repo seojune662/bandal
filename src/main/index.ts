@@ -1,4 +1,5 @@
 import { markAssistantQuitting } from './windows/assistantWindow'
+import { onBrowserQuitCancelled } from './features/browser/nativeTabs'
 import { registerEarlyMediaProtocol } from './features/materials/mediaRegistration'
 import { markStartup } from './performanceTrace'
 import { createBackgroundClient } from './background/client'
@@ -395,6 +396,11 @@ if (!app.requestSingleInstanceLock()) {
       markAssistantQuitting()
       overlay.markQuitting()
       router.miniPlayer.markQuitting()
+    })
+    onBrowserQuitCancelled(() => {
+      markAssistantQuitting(false)
+      overlay.markQuitting(false)
+      router.miniPlayer.markQuitting(false)
     })
 
     app.on('window-all-closed', () => {

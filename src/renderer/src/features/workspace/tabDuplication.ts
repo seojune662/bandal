@@ -4,6 +4,22 @@ import { tabPanelId } from './tabIdentity'
 
 const DUPLICATE_PANEL_MARKER = '::duplicate::'
 
+/** Documents share their data; browser copies must own a distinct native page. */
+export function duplicateTabDescriptor(
+  descriptor: TabDescriptor,
+  browserUrl?: string
+): TabDescriptor {
+  if (descriptor.kind !== 'browser') return descriptor
+  return {
+    kind: 'browser',
+    payload: {
+      ...descriptor.payload,
+      tabId: uuidv4(),
+      initialUrl: browserUrl ?? descriptor.payload.initialUrl
+    }
+  }
+}
+
 /** Creates a persisted, unique dockview id for another view of the same tab. */
 export function createDuplicatePanelId(descriptor: TabDescriptor): string {
   return `${tabPanelId(descriptor)}${DUPLICATE_PANEL_MARKER}${uuidv4()}`

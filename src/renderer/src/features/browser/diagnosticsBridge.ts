@@ -19,7 +19,7 @@
  */
 
 import { useEffect, type RefObject } from 'react'
-import type { WebviewTag } from './webviewTypes'
+import type { BrowserPageHandle } from './browserPageTypes'
 
 const CONSOLE_PREFIX = '__bandal_diag__'
 /** Enough to see a failure and its aftermath; small enough to paste. */
@@ -159,9 +159,9 @@ function parse(
   }
 }
 
-export function useWebviewDiagnosticsBridge(
+export function useBrowserDiagnosticsBridge(
   tabId: string,
-  webviewRef: RefObject<WebviewTag | null>
+  webviewRef: RefObject<BrowserPageHandle | null>
 ): void {
   useEffect(() => {
     const webview = webviewRef.current

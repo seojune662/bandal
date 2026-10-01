@@ -14,14 +14,11 @@ vi.mock('../../../src/renderer/src/lib/ipc', () => ({
 }))
 
 import {
-  connectBrowserTabs,
-  disconnectBrowserTab,
   initialNavState,
   MAX_RECENT_VISITS,
   resetBrowserGuestsForTests,
   useBrowserGuests
 } from '../../../src/renderer/src/features/browser/browserGuestsStore'
-import { MAX_LIVE_GUESTS } from '../../../src/renderer/src/features/browser/guestLru'
 import { invoke } from '../../../src/renderer/src/lib/ipc'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
 
@@ -39,7 +36,7 @@ describe('ensureGuest', () => {
     store().ensureGuest('t1', 'https://example.com')
 
     expect(store().liveGuests).toEqual([
-      { tabId: 't1', src: 'https://example.com', isPrivate: false, profileId: 'default' }
+      { tabId: 't1', src: 'https://example.com', isPrivate: false, profileId: 'default', courseId: null }
     ])
     expect(store().nav['t1']).toMatchObject({
       url: 'https://example.com',
@@ -57,17 +54,17 @@ describe('ensureGuest', () => {
     expect(store().liveGuests).toHaveLength(2)
   })
 
-  test('evicts the oldest hidden guest beyond the cap, never the newcomer', () => {
-    for (let i = 0; i < MAX_LIVE_GUESTS; i += 1) {
+  test('retains hidden pages and their navigation state beyond five tabs', () => {
+    for (let i = 0; i < 8; i += 1) {
       store().ensureGuest(`t${i}`, `https://site${i}.com`)
     }
     store().ensureGuest('fresh', 'https://fresh.com')
 
     const ids = store().liveGuests.map((g) => g.tabId)
-    expect(ids).toHaveLength(MAX_LIVE_GUESTS)
-    expect(ids).not.toContain('t0')
+    expect(ids).toHaveLength(9)
+    expect(ids).toContain('t0')
     expect(ids).toContain('fresh')
-    expect(store().nav['t0']).toBeUndefined()
+    expect(store().nav['t0']).toBeDefined()
   })
 
   test('recreates just that tab when switching between normal and private mode', () => {
@@ -78,7 +75,7 @@ describe('ensureGuest', () => {
     expect(store().liveGuests).toEqual([{
       tabId: 't1',
       src: 'https://example.com/account',
-      isPrivate: true, profileId: 'default'
+      isPrivate: true, profileId: 'default', courseId: null
     }])
     expect(store().nav['t1']).toEqual(initialNavState('https://example.com/account'))
   })
@@ -104,7 +101,7 @@ describe('anchor overlay (host DOM shown instead of the guest)', () => {
     store().setOverlay('t1', failure)
 
     expect(store().liveGuests).toEqual([
-      { tabId: 't1', src: 'https://example.invalid', isPrivate: false, profileId: 'default' }
+      { tabId: 't1', src: 'https://example.invalid', isPrivate: false, profileId: 'default', courseId: null }
     ])
     expect(store().overlay['t1']).toEqual(failure)
   })
@@ -155,15 +152,15 @@ describe('nav state + URL restore', () => {
     expect(store().nav['ghost']).toBeUndefined()
   })
 
-  test('a re-created guest restores its last committed URL', () => {
+  test('an explicitly closed page does not leak an old URL into a new page', () => {
     store().ensureGuest('t1', 'https://start.com')
     store().updateNav('t1', { url: 'https://deep.com/page' })
     store().removeGuest('t1')
     expect(store().liveGuests).toEqual([])
 
     store().ensureGuest('t1', 'https://start.com')
-    expect(store().liveGuests[0]?.src).toBe('https://deep.com/page')
-    expect(store().nav['t1']?.url).toBe('https://deep.com/page')
+    expect(store().liveGuests[0]?.src).toBe('https://start.com')
+    expect(store().nav['t1']?.url).toBe('https://start.com')
   })
 
   test('keeps recent visits in tab memory, deduplicated and bounded', () => {
@@ -194,9 +191,10 @@ describe('nav state + URL restore', () => {
     ])
   })
 
-  test('records a visit against the immediately selected course', () => {
+  test('records background navigation against the owning course', () => {
     useCoursesStore.setState({ selectedCourseId: 'course-current' })
     store().ensureGuest('t1', 'https://example.com')
+    useCoursesStore.setState({ selectedCourseId: 'different-course' })
 
     store().updateNav('t1', {
       url: 'https://example.com/course',
@@ -252,15 +250,4 @@ describe('removeGuest', () => {
     store().removeGuest('nope')
     expect(store().liveGuests).toEqual([])
   })
-})
-
-test('opener connections survive LRU pressure and release their pins after closing', () => {
-  store().ensureGuest('parent', 'https://parent.example')
-  store().ensureGuest('child', 'https://auth.example')
-  connectBrowserTabs('parent', 'child')
-  for (let i = 0; i < MAX_LIVE_GUESTS + 2; i++) store().ensureGuest(`pressure-${i}`, 'https://example.com')
-  expect(store().liveGuests.map(g => g.tabId)).toEqual(expect.arrayContaining(['parent', 'child']))
-  disconnectBrowserTab('child')
-  store().ensureGuest('after-close', 'https://example.com')
-  expect(store().liveGuests.map(g => g.tabId)).not.toContain('parent')
 })

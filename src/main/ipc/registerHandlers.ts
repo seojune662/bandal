@@ -1,9 +1,10 @@
+import { registerBrowserImportHandlers } from './browserImportHandlers'
 import { writeFileAtomic, quarantineFile } from '../lib/atomicWrite'
 import { assistantWindowRequest } from '../windows/assistantWindow'
 import { existsSync, readFileSync } from 'node:fs'
-import { initializeBrowserProfiles, listBrowserProfiles, saveBrowserProfile, deleteBrowserProfile, browserProfileResources, guestProfile, onBrowserSession, ensureProfileSession, profileDirectory } from '../features/browser/profiles'
-import { hardenBrowsingSession, useProfilePermissions } from '../features/browser/hardenWebviews'
-import { browserSessionForTab, prepareProfileSwitch, createBrowserPage, setBrowserPageBounds, browserPageAction, destroyBrowserPage } from '../features/browser/nativeTabs'
+import { initializeBrowserProfiles, listBrowserProfiles, saveBrowserProfile, deleteBrowserProfile, browserProfileResources, guestProfile, onBrowserSession, ensureProfileSession, profileDirectory, onBrowserProfileDeleted } from '../features/browser/profiles'
+import { hardenBrowsingSession, useProfilePermissions, forgetProfilePermissions } from '../features/browser/hardenWebviews'
+import { browserSessionForTab, prepareProfileSwitch, createBrowserPage, setBrowserPageBounds, browserPageAction, destroyBrowserPage, prepareBrowserPageClose } from '../features/browser/nativeTabs'
 import { isManagedBrowserPage } from '../features/browser/managedPages'
 import { beginClipboardCopy, writeImageClipboard } from '../features/systemClipboard'
 import { copyFile } from 'node:fs/promises'
@@ -158,13 +159,10 @@ import {
   useSitePermissions,
   createFaviconFetcher,
   createHistoryRepo,
-  parseBookmarkHtml,
-  parsePasswordCsv,
   fetchLinkForMaterials
 } from '../features/browser'
 import { createFavoritesRepo } from '../features/favorites'
 import {
-  createCredentialStore,
   createLoginCapturer,
   createLoginFiller
 } from '../features/credentials'
@@ -1570,14 +1568,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     string,
     (outcome: 'resumed' | 'stopped') => void
   >()
-  /** Resolvers waiting for an evicted guest to mount again. */
+  /** Resolvers waiting for a restored tab's page to be created lazily. */
   const pendingTabWakes = new Map<string, (woke: boolean) => void>()
-  /**
-   * The browser tabs the renderer says the student can see.
-   *
-   * The renderer is the authority here, not `guestRegistry`: hidden guests
-   * beyond MAX_LIVE_GUESTS are destroyed while their tabs stay on screen.
-   */
   /**
    * What the student is looking at in Bandal, published by the renderer.
    *
@@ -2453,11 +2445,14 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('browser:profiles', () => listBrowserProfiles())
   handle('browser:saveProfile', (req) => saveBrowserProfile(req))
   handle('browser:deleteProfile', async (req) => {
+    if (browserImportService.isProfileBusy(req.id)) throw new Error('가져오기가 진행 중인 프로필은 삭제할 수 없습니다.')
     const answer = await dialog.showMessageBox({ type: 'warning', message: '이 브라우저 프로필과 로그인·방문 기록을 삭제할까요?', buttons: ['취소', '삭제'], defaultId: 0, cancelId: 0 })
-    if (answer.response === 1) await deleteBrowserProfile(req.id)
+    if (answer.response === 1) {
+      if (browserImportService.isProfileBusy(req.id)) throw new Error('가져오기가 진행 중인 프로필은 삭제할 수 없습니다.')
+      await deleteBrowserProfile(req.id)
+    }
     return OK
   })
-  const credentialStore = createCredentialStore()
   const loginBridges = new Map<string, { fill: ReturnType<typeof createLoginFiller>; capture: ReturnType<typeof createLoginCapturer> }>()
   function loginBridgeFor(id: number) {
     const profile = guestProfile(id)
@@ -2468,39 +2463,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     }
     return loginBridges.get(profile.profileId)!
   }
-  handle('credentials:availability', () => credentialStore.availability())
+  handle('credentials:availability', (req) => browserProfileResources(req.profileId).credentials.availability())
   handle('credentials:list', (req) => browserProfileResources(req.profileId).credentials.list())
   handle('credentials:save', (req) => browserProfileResources(req.profileId).credentials.save(req))
   handle('credentials:capture', (req) => loginBridgeFor(req.guestWebContentsId).capture(req))
-  handle('credentials:forget', (req) => browserProfileResources(req.profileId).credentials.forget(req.origin))
+  handle('credentials:forget', (req) => browserProfileResources(req.profileId).credentials.forget(req.origin, req.credentialId))
   handle('credentials:fill', (req) => loginBridgeFor(req.guestWebContentsId).fill(req))
-  handle('credentials:importCsv', async (req) => {
-    const credentialStore = browserProfileResources(req.profileId).credentials
-    const owner = BrowserWindow.getFocusedWindow()
-    const options: Electron.OpenDialogOptions = {
-      title: '브라우저 비밀번호 CSV 가져오기',
-      properties: ['openFile'],
-      filters: [{ name: 'CSV', extensions: ['csv'] }]
-    }
-    const picked = owner === null
-      ? await dialog.showOpenDialog(options)
-      : await dialog.showOpenDialog(owner, options)
-    const file = picked.filePaths[0]
-    if (picked.canceled || file === undefined) {
-      return { imported: 0, skipped: 0, cancelled: true }
-    }
-    const info = await stat(file)
-    if (info.size > 5 * 1024 * 1024) {
-      throw new ValidationError('비밀번호 CSV는 5MB 이하여야 합니다.')
-    }
-    const parsed = parsePasswordCsv(await readFile(file, 'utf8'))
-    const result = credentialStore.importMany(parsed.logins)
-    return {
-      imported: result.imported,
-      skipped: parsed.skipped + result.skipped,
-      cancelled: false
-    }
-  })
+
 
   // -- favorites (left-rail pins for any TabDescriptor) ---------------------
   const favoritesRepo = createFavoritesRepo(db)
@@ -2515,52 +2484,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     favoritesRepo.reorder(req)
     return OK
   })
-  handle('browser:importBookmarks', async () => {
-    const owner = BrowserWindow.getFocusedWindow()
-    const options: Electron.OpenDialogOptions = {
-      title: '브라우저 북마크 HTML 가져오기',
-      properties: ['openFile'],
-      filters: [{ name: '북마크 HTML', extensions: ['html', 'htm'] }]
-    }
-    const picked = owner === null
-      ? await dialog.showOpenDialog(options)
-      : await dialog.showOpenDialog(owner, options)
-    const file = picked.filePaths[0]
-    if (picked.canceled || file === undefined) {
-      return { imported: 0, skipped: 0, cancelled: true }
-    }
-    const info = await stat(file)
-    if (info.size > 20 * 1024 * 1024) {
-      throw new ValidationError('북마크 파일은 20MB 이하여야 합니다.')
-    }
-    const bookmarks = parseBookmarkHtml(await readFile(file, 'utf8'))
-    const existing = new Set(
-      favoritesRepo.list(null).flatMap((favorite) =>
-        favorite.descriptor.kind === 'browser'
-          ? [favorite.descriptor.payload.initialUrl]
-          : []
-      )
-    )
-    let imported = 0
-    let skipped = 0
-    for (const bookmark of bookmarks) {
-      if (existing.has(bookmark.url)) {
-        skipped += 1
-        continue
-      }
-      favoritesRepo.add({
-        courseId: null,
-        label: bookmark.title,
-        descriptor: {
-          kind: 'browser',
-          payload: { tabId: randomUUID(), initialUrl: bookmark.url }
-        }
-      })
-      existing.add(bookmark.url)
-      imported += 1
-    }
-    return { imported, skipped, cancelled: false }
-  })
+  const browserImportService = registerBrowserImportHandlers(handle, favoritesRepo)
 
   // -- browser session ------------------------------------------------------
   // Restore / auto-persist / before-quit are already wired inside
@@ -2704,6 +2628,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
   const faviconFetchers = new Map<string, ReturnType<typeof createFaviconFetcher>>()
+  onBrowserProfileDeleted((profileId, partitions) => {
+    loginBridges.delete(profileId)
+    extensionManagers.delete(profileId)
+    extensionPreferences.delete(profileId)
+    for (const key of faviconFetchers.keys()) if (key.startsWith(`${profileId}:`)) faviconFetchers.delete(key)
+    forgetProfilePermissions(partitions)
+  })
   handle('browser:favicon', async (req) => {
     const profileId = req.profileId ?? 'default'
     const id = `${profileId}:${req.isPrivate === true}`
@@ -2726,10 +2657,11 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   }))
 
   handle('browser:prepareProfileSwitch', (req, event) => prepareProfileSwitch(event, req.tabId))
+  handle('browser:prepareClose', (req, event) => prepareBrowserPageClose(event, req.tabId))
   handle('browser:createPage', (req, event) => createBrowserPage(event, req))
   handle('browser:pageBounds', (req, event) => setBrowserPageBounds(event, req))
   handle('browser:pageAction', (req, event) => browserPageAction(event, req))
-  handle('browser:destroyPage', (req, event) => { destroyBrowserPage(event, req.tabId); return OK })
+  handle('browser:destroyPage', (req, event) => { destroyBrowserPage(event, req.tabId, req.expectedWebContentsId); return OK })
   handle('clipboard:beginCopy', () => ({ token: beginClipboardCopy() }))
   handle('clipboard:writeImage', writeImageClipboard)
 

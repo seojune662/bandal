@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
   createHistoryRepo,
+  HISTORY_MAX_ROWS,
   hostOf,
   isRecordableUrl,
   type HistoryRepo
@@ -75,6 +76,50 @@ describe('historyRepo', () => {
     expect(hits).toHaveLength(1)
     expect(hits[0]?.visitCount).toBe(2)
     expect(hits[0]?.title).toBe('나중')
+  })
+
+  test('history imports preserve real counts, skip old entries and never add visits on retry', () => {
+    const at = new Date('2026-10-01T00:00:00Z')
+    const rows = [{ url: 'https://school.test/lecture', title: '강의', visitCount: 20, lastVisitedAt: '2026-09-20T00:00:00Z' },
+      { url: 'https://school.test/old', title: '이전', visitCount: 9, lastVisitedAt: '2020-01-01T00:00:00Z' }]
+    expect(repo.importMany(rows, 'keep', at)).toEqual({ imported: 1, kept: 0, unsupported: 1, failed: 0 })
+    expect(repo.importMany(rows, 'keep', at).kept).toBe(1)
+    expect(repo.importMany(rows, 'replace', at).kept).toBe(1)
+    expect(repo.search('school')[0]?.visitCount).toBe(20)
+    repo.recordVisit({ url: rows[0]!.url, title: '변경', courseId: 'my-course' }, at)
+    repo.importMany(rows, 'replace', at)
+    expect(repo.search('school')[0]).toMatchObject({ visitCount: 21, courseId: 'my-course', lastVisitedAt: at.toISOString() })
+  })
+
+  test('import counts only URLs surviving the combined history ceiling, including retries and duplicates', () => {
+    const at = new Date('2026-10-01T00:00:00Z')
+    const insert = ctx.db.prepare('INSERT INTO browser_history (url,title,host,course_id,visit_count,last_visited_at) VALUES (?,?,?,NULL,?,?)')
+    ctx.db.transaction(() => {
+      for (let index = 0; index < HISTORY_MAX_ROWS; index++) {
+        insert.run(`https://existing.test/${index}`, 'Existing', 'existing.test', 1, '2026-09-30T00:00:00.000Z')
+      }
+    })()
+    const recent = { url: 'https://import.test/recent', title: 'Newest title', visitCount: 3, lastVisitedAt: at.toISOString() }
+    const dropped = { url: 'https://import.test/older', title: 'Older', visitCount: 2, lastVisitedAt: '2026-09-20T00:00:00Z' }
+    const rows = [recent, dropped, { ...recent, title: 'Previous title', visitCount: 8, lastVisitedAt: '2026-09-29T00:00:00Z' }, dropped, recent]
+    expect(repo.importMany(rows, 'replace', at)).toEqual({ imported: 1, kept: 2, unsupported: 2, failed: 0 })
+    expect(ctx.db.prepare('SELECT COUNT(*) AS total FROM browser_history').get()).toEqual({ total: HISTORY_MAX_ROWS })
+    expect(repo.search('import.test')).toEqual([expect.objectContaining({ url: recent.url, title: recent.title, visitCount: 8, lastVisitedAt: recent.lastVisitedAt })])
+    for (const conflict of ['keep', 'replace'] as const) {
+      expect(repo.importMany(rows, conflict, at)).toEqual({ imported: 0, kept: 3, unsupported: 2, failed: 0 })
+      expect(ctx.db.prepare('SELECT COUNT(*) AS total FROM browser_history').get()).toEqual({ total: HISTORY_MAX_ROWS })
+    }
+  })
+
+  test('expired destination rows do not block a valid keep-mode history import', () => {
+    const at = new Date('2026-10-01T00:00:00Z')
+    const url = 'https://school.test/renewed'
+    visit(url, 'Expired', 'c1', new Date('2026-01-01T00:00:00Z'))
+    visit('https://school.test/still-expired', 'Expired', 'c1', new Date('2026-01-01T00:00:00Z'))
+    const incoming = { url, title: 'Recent', visitCount: 5, lastVisitedAt: at.toISOString() }
+    expect(repo.importMany([incoming, incoming], 'keep', at)).toEqual({ imported: 1, kept: 1, unsupported: 0, failed: 0 })
+    expect(repo.search('school.test')).toEqual([expect.objectContaining({ url, title: 'Recent', visitCount: 5 })])
+    expect(repo.importMany([incoming, incoming], 'replace', at)).toEqual({ imported: 0, kept: 2, unsupported: 0, failed: 0 })
   })
 
   test('a momentarily empty title does not wipe a good one', () => {

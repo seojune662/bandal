@@ -7,7 +7,9 @@ macOS·Windows 설치 파일을 만들고, 새 버전이 나오면 앱이 스스
 
 v0.26.0부터 macOS 12 이상과 Electron 43을 지원한다.
 
-v0.51.0부터 `beforePack`에서 `scripts/build-calendar.mjs`가 대상 아키텍처의 EventKit 도구를 Swift로 컴파일한다. `Contents/Resources/calendar/bandal-calendar`는 앱과 함께 서명·공증하며, 도구와 앱 양쪽에 캘린더 권한 설명을 포함한다. 개발 모드는 `pnpm dev`가 도구를 먼저 빌드한다.
+v0.59.0부터 `beforePack`의 `scripts/build-native.mjs`가 캘린더와 브라우저 가져오기 도우미를 대상 아키텍처로 빌드한다. 캘린더 EventKit 도구는 `Contents/Resources/calendar/bandal-calendar`에, 브라우저 도구는 `Contents/Resources/browser-import/bandal-browser-import`에 포함한다. 두 도구는 macOS 앱과 함께 서명·공증한다. Windows에는 OS DPAPI를 사용하는 `resources/browser-import/bandal-browser-import.exe`를 포함한다. 개발 모드도 `pnpm dev`가 먼저 도우미를 빌드한다.
+
+릴리스는 `scripts/verify-browser-import.mjs`로 도우미의 아키텍처, 앱과 같은 서명 팀(macOS), 실행 가능 여부를 검사한다. 자체 검사는 개인 프로필이나 Keychain·DPAPI 데이터에 접근하지 않는다. 실제 사용자의 OS 접근 허용은 별도 수동 검증 대상이다.
 
 ---
 

@@ -322,6 +322,15 @@ jobs:
         if: matrix.os == 'macos-14'
         run: node scripts/verify-calendar-signing.mjs release/mac*/Bandal.app
 
+      - name: Verify bundled browser import helper
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            node scripts/verify-browser-import.mjs release/mac*/Bandal.app
+          else
+            node scripts/verify-browser-import.mjs release/win-unpacked
+          fi
+
       - name: Verify affected features in the packaged app
         shell: bash
         run: |

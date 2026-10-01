@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore, type RefObject } from 'react'
 import { invoke } from '../../lib/ipc'
-import type { WebviewTag } from './webviewTypes'
+import type { BrowserPageHandle } from './browserPageTypes'
 
 export const VIDEO_REPORT_PREFIX = '__bandal_video__'
 
@@ -153,7 +153,7 @@ export const VIDEO_PAUSE_SOURCE = `(() => {
 
 const reports = new Map<string, WebVideoReport>()
 const listeners = new Map<string, Set<() => void>>()
-const elements = new Map<string, WebviewTag>()
+const elements = new Map<string, BrowserPageHandle>()
 const readyTabs = new Set<string>()
 const pendingResumes = new Map<string, WebVideoResumeRequest>()
 
@@ -247,7 +247,7 @@ function resumeSource(request: WebVideoResumeRequest): string {
   })()`
 }
 
-function applyPendingResume(tabId: string, webview: WebviewTag): void {
+function applyPendingResume(tabId: string, webview: BrowserPageHandle): void {
   const request = pendingResumes.get(tabId)
   if (request === undefined || !readyTabs.has(tabId)) return
   pendingResumes.delete(tabId)
@@ -309,9 +309,9 @@ export async function openWebVideoInPip(
   })
 }
 
-export function useWebviewVideoBridge(
+export function useBrowserVideoBridge(
   tabId: string,
-  webviewRef: RefObject<WebviewTag | null>
+  webviewRef: RefObject<BrowserPageHandle | null>
 ): void {
   useEffect(() => {
     const webview = webviewRef.current

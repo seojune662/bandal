@@ -48,5 +48,6 @@ test-results/
 
 # Compiled and signed during macOS packaging
 resources/native/calendar/
+resources/native/browser-import/
 
 web-demo/dist/

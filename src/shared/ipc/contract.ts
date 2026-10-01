@@ -1,4 +1,5 @@
 import type { BrowserPageState, BrowserPageAction } from '../types/browserNative'
+import type { BrowserImportSource, BrowserImportFileKind, BrowserImportRequest, BrowserImportJob } from '../types/browserImport'
 import type { AppleCalendarState, AppleCalendarEvent, AppleCalendarPreferences } from '../types/appleCalendar'
 /**
  * [C1] The single source of truth for request/response IPC.
@@ -912,7 +913,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     req: { tabId: string; action: BrowserPageAction; args: unknown[] }
     res: unknown
   }
-  'browser:destroyPage': { req: { tabId: string }; res: { ok: true } }
+  'browser:destroyPage': { req: { tabId: string; expectedWebContentsId?: number }; res: { ok: true } }
   'clipboard:beginCopy': { req: {}; res: { token: number } }
   'clipboard:writeImage': {
     req: { token: number; png: string | null; html: string; text: string }
@@ -994,9 +995,8 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   /**
    * Renderer tells main which guest belongs to which browser tab.
    *
-   * Main only ever sees a WebContents id (that is all `did-attach-webview`
-   * gives it), while everything the agent addresses is a tabId. Pushed on
-   * every `dom-ready`, so it is self-healing after a crash or a reattach.
+   * Agent actions address a stable tabId while page events carry a WebContents
+   * id. Pushed on every `dom-ready`, so recovery can refresh the association.
    */
   'browserAgent:registerTab': {
     req: {
@@ -1010,12 +1010,9 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   /**
    * Renderer publishes the browser tabs the student can actually see.
    *
-   * NOT derived from the guest registry on purpose: live guests are capped at
-   * MAX_LIVE_GUESTS and hidden ones are destroyed by the LRU, keeping only
-   * their last URL in the renderer store. A tab the student is looking at
-   * would then be missing from the agent's list, which is the one thing this
-   * must never do. Pushed whenever the set changes; self-healing like
-   * `registerTab`.
+   * Restored tabs are listed before their pages are lazily created, so the
+   * native page registry alone cannot describe the complete workspace.
+   * Pushed whenever the set changes; self-healing like `registerTab`.
    */
   'browserAgent:syncTabs': {
     req: {
@@ -1024,7 +1021,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
         tabId: string
         title: string
         url: string
-        /** The guest was evicted; reading it has to wake it first. */
+        /** The page has not been created yet; reading it must wake it first. */
         asleep: boolean
       }[]
       activeTabId: string | null
@@ -1441,7 +1438,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
 
   // -- saved site logins ------------------------------------------------------
   'credentials:availability': {
-    req: Record<string, never>
+    req: { profileId?: string }
     res: CredentialsAvailability
   }
   /** Summaries only — a stored password is never returned to the renderer. */
@@ -1460,11 +1457,11 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
    * `null` means nothing was typed, so there is nothing to offer saving.
    */
   'credentials:capture': {
-    req: { origin: string; guestWebContentsId: number; autoSubmit?: boolean }
+    req: { origin: string; guestWebContentsId: number; autoSubmit?: boolean; mode?: 'save' | 'stage' | 'commit' | 'discard' }
     res: SavedLoginSummary | null
   }
   'credentials:forget': {
-    req: { profileId?: string; origin: string }
+    req: { profileId?: string; origin: string; credentialId?: string }
     res: { ok: true }
   }
   /** Imports Chrome/Edge/Arc/Firefox CSV via a native picker; bytes stay in main. */
@@ -1477,12 +1474,18 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     req: Record<string, never>
     res: { imported: number; skipped: number; cancelled: boolean }
   }
+  'browser:importSources': { req: Record<string, never>; res: BrowserImportSource[] }
+  'browser:importFile': { req: { kind: BrowserImportFileKind }; res: BrowserImportSource | null }
+  'browser:importStart': { req: BrowserImportRequest; res: BrowserImportJob }
+  'browser:importJob': { req: { jobId: string }; res: BrowserImportJob | null }
+  'browser:importCancel': { req: { jobId: string }; res: { cancelled: boolean } }
+  'browser:prepareClose': { req: { tabId: string }; res: { allowed: boolean } }
   /**
    * Fills the login form in the browser guest showing `origin`. Main resolves
    * the secret and injects it; the renderer only ever names the origin.
    */
   'credentials:fill': {
-    req: { origin: string; guestWebContentsId: number }
+    req: { origin: string; guestWebContentsId: number; credentialId?: string }
     res: FillLoginResult
   }
 
@@ -2162,6 +2165,12 @@ export const IPC_CHANNELS = [
   'credentials:forget',
   'credentials:importCsv',
   'browser:importBookmarks',
+  'browser:importSources',
+  'browser:importFile',
+  'browser:importStart',
+  'browser:importJob',
+  'browser:importCancel',
+  'browser:prepareClose',
   'credentials:fill'
 ] as const satisfies readonly IpcChannel[]
 

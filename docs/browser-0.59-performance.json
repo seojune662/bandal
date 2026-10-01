@@ -1,0 +1,43 @@
+{
+  "environment": {
+    "os": "macOS 26.2",
+    "architecture": "arm64",
+    "electron": "43.4.1",
+    "viewport": "1440x900",
+    "workload": "four local synthetic pages, 100 verified pointer switches, sustained native HTML drag, isolated fresh profile, CDP GC"
+  },
+  "baselineVersion": "0.58.0",
+  "currentVersion": "0.59.0",
+  "baseline": {
+    "verifiedSwitches": 100,
+    "p95Ms": 15.100000023841858,
+    "maxMs": 15.600000023841858,
+    "heapBeforeMB": 8.459644317626953,
+    "heapAfterMB": 8.932205200195312,
+    "heapGrowthMB": 0.4725608825683594,
+    "boundsIpc": 200,
+    "livePages": 4,
+    "dragOverEvents": 123,
+    "dragFrames": 124,
+    "dragFrameP95Ms": 8.700000000000728,
+    "dragFrameMaxMs": 9.199999999999818,
+    "dragBoundsIpc": 10,
+    "workingSetMB": 1063.9375
+  },
+  "current": {
+    "verifiedSwitches": 100,
+    "p95Ms": 14.600000023841858,
+    "maxMs": 15.5,
+    "heapBeforeMB": 8.508106231689453,
+    "heapAfterMB": 8.960472106933594,
+    "heapGrowthMB": 0.4523658752441406,
+    "boundsIpc": 200,
+    "livePages": 4,
+    "dragOverEvents": 123,
+    "dragFrames": 123,
+    "dragFrameP95Ms": 8.5,
+    "dragFrameMaxMs": 9.300000000000182,
+    "dragBoundsIpc": 10,
+    "workingSetMB": 1155.40625
+  }
+}

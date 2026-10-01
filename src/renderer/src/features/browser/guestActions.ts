@@ -1,22 +1,20 @@
 /**
- * [M3-F] Imperative handle registry for live <webview> elements.
+ * Imperative handle registry for live native browser pages.
  *
  * Kept outside React state (mirrors the workspace's DockviewApi pattern):
- * BrowserGuestView registers its element, BrowserPanel chrome drives
- * navigation through `guestActions`. Webview methods throw while the guest
- * is detached/booting, so every call is guarded.
+ * BrowserGuestView registers its page, BrowserPanel chrome drives navigation
+ * through `guestActions`. Commands wait for page creation and handle failures.
  */
 
 import { invoke } from '../../lib/ipc'
-import type { FindInPageOptions, WebviewTag } from './webviewTypes'
+import type { FindInPageOptions, BrowserPageHandle } from './browserPageTypes'
 
-const elements = new Map<string, WebviewTag>()
+const elements = new Map<string, BrowserPageHandle>()
 
 /**
  * webContentsId -> tabId. Main identifies a guest by its WebContents id (that
  * is all it has when a chord is swallowed mid-page), while everything in the
- * renderer is keyed by tabId. Filled on `dom-ready`: `getWebContentsId()`
- * throws before the guest attaches.
+ * renderer is keyed by tabId. Filled on `dom-ready`, after native creation.
  */
 const tabIdByWebContents = new Map<number, string>()
 
@@ -32,12 +30,12 @@ export function rememberOpenRequest(tabId: string, requestId: string): void {
   openRequestByTab.set(tabId, requestId)
 }
 
-export function registerGuestElement(tabId: string, element: WebviewTag): void {
+export function registerGuestElement(tabId: string, element: BrowserPageHandle): void {
   elements.set(tabId, element)
 }
 
 /** Call once the guest has attached, when its WebContents id exists. */
-export function registerGuestWebContents(tabId: string, element: WebviewTag): void {
+export function registerGuestWebContents(tabId: string, element: BrowserPageHandle): void {
   try {
     const webContentsId = element.getWebContentsId()
     tabIdByWebContents.set(webContentsId, tabId)
@@ -64,7 +62,7 @@ export function tabIdForWebContents(webContentsId: number): string | null {
 
 export function unregisterGuestElement(
   tabId: string,
-  element: WebviewTag
+  element: BrowserPageHandle
 ): void {
   if (elements.get(tabId) === element) elements.delete(tabId)
   for (const [webContentsId, mapped] of tabIdByWebContents) {
@@ -72,11 +70,13 @@ export function unregisterGuestElement(
   }
 }
 
-function withGuest(tabId: string, action: (element: WebviewTag) => void): void {
+function withGuest(tabId: string, action: (element: BrowserPageHandle) => void | Promise<unknown>): void {
   const element = elements.get(tabId)
   if (element === undefined) return
   try {
-    action(element)
+    void Promise.resolve(action(element)).catch(() => {
+      console.warn('[Bandal] 브라우저 탭 동작을 실행하지 못했습니다.')
+    })
   } catch (error) {
     console.error('[Bandal] 브라우저 탭 동작을 실행하지 못했습니다.', error)
   }
@@ -184,7 +184,7 @@ export const guestActions = {
   },
 
   openDevTools: (tabId: string): void => {
-    withGuest(tabId, (element) => element.openDevTools({ mode: 'detach' }))
+    withGuest(tabId, (element) => element.openDevTools())
   },
 
   copyImageAt: (tabId: string, x: number, y: number): void => {

@@ -46,9 +46,15 @@
   --dv-active-sash-color: var(--accent);
   --dv-border-radius: var(--radius-sm);
 
-  --dv-drag-over-background-color: var(--accent-muted);
-  --dv-drag-over-border-color: var(--accent);
-  --dv-drag-over-border: 1px solid var(--accent);
+  --workspace-drop-fill: color-mix(in srgb, var(--focus-ring) 12%, transparent);
+  --workspace-drop-stroke: color-mix(
+    in srgb,
+    var(--focus-ring) 30%,
+    transparent
+  );
+  --dv-drag-over-background-color: var(--workspace-drop-fill);
+  --dv-drag-over-border-color: var(--workspace-drop-stroke);
+  --dv-drag-over-border: 1px solid var(--workspace-drop-stroke);
 
   --dv-icon-hover-background-color: var(--bg-raised);
   --dv-scrollbar-background-color: var(--border-strong);
@@ -85,6 +91,100 @@
 .bandal-dockview button,
 .bandal-dockview a {
   -webkit-app-region: no-drag;
+}
+
+/* Content remains readable underneath the destination. Dockview owns geometry. */
+.bandal-dockview .dv-drop-target-anchor,
+.bandal-dockview .dv-drop-target-selection {
+  border-radius: var(--radius-md);
+  --dv-transition-duration: 100ms;
+}
+
+.workspace-course {
+  --drop-left-label: '← Move to the left';
+  --drop-right-label: 'Move to the right →';
+  --drop-top-label: '↑ Move above';
+  --drop-bottom-label: '↓ Move below';
+  --drop-center-label: 'Move to this group';
+}
+.workspace-course[data-drop-language='ko'] {
+  --drop-left-label: '← 왼쪽으로 이동';
+  --drop-right-label: '오른쪽으로 이동 →';
+  --drop-top-label: '↑ 위로 이동';
+  --drop-bottom-label: '↓ 아래로 이동';
+  --drop-center-label: '이 그룹으로 이동';
+}
+.workspace-course[data-drop-kind='content'],
+.workspace-course[data-drop-kind='edge'] {
+  .dv-drop-target-left {
+    --drop-label: var(--drop-left-label);
+  }
+  .dv-drop-target-right {
+    --drop-label: var(--drop-right-label);
+  }
+  .dv-drop-target-top {
+    --drop-label: var(--drop-top-label);
+  }
+  .dv-drop-target-bottom {
+    --drop-label: var(--drop-bottom-label);
+  }
+  .dv-drop-target-center {
+    --drop-label: var(--drop-center-label);
+  }
+  .dv-drop-target-anchor::after,
+  .dv-drop-target-selection::after {
+    content: var(--drop-label);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: var(--space-2) var(--space-3);
+    width: max-content;
+    max-width: calc(100% - 16px);
+    color: var(--text-primary);
+    background: var(--bg-overlay);
+    border-radius: var(--radius-pill);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    white-space: normal;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    text-align: center;
+    line-height: 1.35;
+    box-shadow: var(--shadow-sm);
+  }
+}
+.workspace-course[data-drop-kind='tab'] .dv-drop-target-anchor,
+.workspace-course[data-drop-kind='header_space'] .dv-drop-target-anchor {
+  border: 0;
+  border-inline-start: 2px solid var(--focus-ring);
+  background: transparent;
+  border-radius: 0;
+}
+.workspace-course[data-drop-kind='tab']
+  .dv-drop-target-anchor.dv-drop-target-right {
+  border-inline-start: 0;
+  border-inline-end: 2px solid var(--focus-ring);
+}
+.workspace-tab-drag-preview {
+  position: fixed;
+  top: -9999px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 240px;
+  padding: 10px 14px;
+  color: var(--text-primary);
+  background: var(--bg-overlay);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font: 500 var(--text-sm) var(--font-sans);
+  pointer-events: none;
+}
+.workspace-tab-drag-preview > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* -- window chrome prefix ----------------------------------------------- */

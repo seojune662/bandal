@@ -1,54 +1,50 @@
 /**
- * Browser page controls shared by the DOM anchor and native WebContentsView.
- * The historical type name is retained for the selection/login/video bridges;
- * browser pages are owned by main, not mounted as Electron webview tags.
+ * Explicit asynchronous transport for a page owned by main.
+ * EventTarget carries browser events; element is only its DOM position anchor.
  */
 
-export interface WebviewTag extends HTMLElement {
-  src: string
-  partition: string
+export interface BrowserPageHandle extends EventTarget {
+  /** Position/snapshot anchor only. No browser API is attached to the DOM. */
+  readonly element: HTMLElement
   loadURL(url: string): Promise<void>
   getURL(): string
-  goBack(): void
-  goForward(): void
-  reload(): void
-  reloadIgnoringCache(): void
-  stop(): void
+  goBack(): Promise<void>
+  goForward(): Promise<void>
+  reload(): Promise<void>
+  reloadIgnoringCache(): Promise<void>
+  stop(): Promise<void>
+  /** Reapply the stored zoom after navigation creates a new page context. */
+  setZoomLevel(level: number): Promise<void>
   /**
-   * Zoom is per RENDER PROCESS, not per guest: a cross-origin navigation
-   * spawns a new process and silently drops the level. The store is the source
-   * of truth and re-applies it — never read the level back from here.
-   */
-  setZoomLevel(level: number): void
-  /**
-   * Returns a request id SYNCHRONOUSLY; matches arrive later as a DOM
+   * Resolves the Chromium request id; matches arrive later as a page
    * `found-in-page` event. Call with NO options to start a fresh search and
    * `{ findNext: true, forward }` to step — an explicit `{ findNext: false }`
    * silently emits no event at all (measured).
    */
-  findInPage(text: string, options?: FindInPageOptions): number
+  findInPage(text: string, options?: FindInPageOptions): Promise<number>
   /** Must be called when the bar closes or the highlight stays forever. */
-  stopFindInPage(action: 'clearSelection' | 'keepSelection' | 'activateSelection'): void
+  stopFindInPage(action: 'clearSelection' | 'keepSelection' | 'activateSelection'): Promise<void>
   canGoBack(): boolean
   isLoadingMainFrame(): boolean
   canGoForward(): boolean
   getWebContentsId(): number
   executeJavaScript(code: string, userGesture?: boolean): Promise<unknown>
   /** Same `will-download` path a real click takes — cookies, redirects, name. */
-  downloadURL(url: string): void
-  copy(): void
-  cut(): void
-  paste(): void
-  selectAll(): void
-  undo(): void
-  redo(): void
-  copyImageAt(x: number, y: number): void
+  downloadURL(url: string): Promise<void>
+  focus(): Promise<void>
+  copy(): Promise<void>
+  cut(): Promise<void>
+  paste(): Promise<void>
+  selectAll(): Promise<void>
+  undo(): Promise<void>
+  redo(): Promise<void>
+  copyImageAt(x: number, y: number): Promise<void>
   /**
    * The only way to find out why a site is broken from inside a release
    * build. `browserAgent/cdp.ts` already expects a student to have DevTools
    * attached and yields the debugger to them, so nothing else has to change.
    */
-  openDevTools(options?: { mode?: 'detach' | 'right' | 'bottom' }): void
+  openDevTools(): Promise<void>
   /** Resolves with the page rendered to PDF bytes. */
   printToPDF(options: Record<string, unknown>): Promise<Uint8Array>
 }

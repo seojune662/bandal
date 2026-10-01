@@ -1,7 +1,7 @@
 import { installSwipeNavigation } from './swipeNavigation'
-import { ensureProfileSession, profilePartition, registerGuestProfile, forgetGuestProfile } from './profiles'
+import { ensureProfileSession, prepareProfileSession, profilePartition, registerGuestProfile, forgetGuestProfile, resetBrowserProfileQuit } from './profiles'
 import { randomUUID } from 'node:crypto'
-import { BrowserWindow, WebContentsView, dialog } from 'electron'
+import { app, BrowserWindow, WebContentsView, dialog } from 'electron'
 import type { WebContents, IpcMainInvokeEvent } from 'electron'
 import type { BrowserPageAction, BrowserPageState, BrowserPageEvent } from '../../../shared/types/browserNative'
 import { attachGuestInput, attachNavigationPolicies, popupWebPreferences } from './hardenWebviews'
@@ -9,6 +9,7 @@ import { isNavigationAllowed } from './webviewPolicy'
 import { browsingContext, registerBrowsingContext, setBrowsingCourse } from './browsingContext'
 import { registerManagedPage, forgetManagedPage } from './managedPages'
 import { trackTabDownload } from './popupLifecycle'
+import { closePage } from './pageClose'
 
 interface Tab {
   tabId: string
@@ -25,10 +26,47 @@ const hosts = new Set<WebContents>()
 const tabs = new Map<string, Tab>()
 const responseCodes = new WeakMap<WebContents, number>()
 const closedSiteTabs = new Set<string>()
+const quitCancelledListeners = new Set<() => void>()
+let quitRequested = false
+app.on('before-quit', () => { quitRequested = true })
+
+export function onBrowserQuitCancelled(listener: () => void): () => void {
+  quitCancelledListeners.add(listener)
+  return () => quitCancelledListeners.delete(listener)
+}
 
 export function registerBrowserHost(host: BrowserWindow): void {
   const hostContents = host.webContents
   hosts.add(hostContents)
+  let closing = false
+  host.on('close', event => {
+    const pages = [...tabs.values()].filter(tab => tab.host === host)
+    if (!pages.length) return
+    event.preventDefault()
+    if (closing) return
+    closing = true
+    // Closing the application keeps workspace descriptors for next launch.
+    // Only an interrupted close should remove pages that already accepted.
+    for (const tab of pages) tab.switching = true
+    void (async () => {
+      for (const tab of pages) {
+        if (!await closePage(tab.view.webContents, 'tab')) {
+          quitRequested = false
+          resetBrowserProfileQuit()
+          for (const listener of quitCancelledListeners) listener()
+          for (const page of pages) {
+            if (!page.view.webContents.isDestroyed()) page.switching = false
+            else if (!hostContents.isDestroyed()) hostContents.send('browser:close-tab', { tabId: page.tabId })
+          }
+          return
+        }
+      }
+      // preventDefault also cancels app.quit(), which must be resumed on macOS
+      // after the browser pages have accepted their unload requests.
+      if (quitRequested) app.quit()
+      else if (!host.isDestroyed()) host.close()
+    })().finally(() => { closing = false })
+  })
   host.once('closed', () => {
     hosts.delete(hostContents)
     for (const tab of [...tabs.values()]) if (tab.host === host) destroy(tab)
@@ -138,10 +176,11 @@ function install(tab: Tab, parent?: Tab): void {
   })
   if (parent) trackTabDownload(wc, () => wc.close())
 }
-export function createBrowserPage(event: IpcMainInvokeEvent, req: { tabId: string; isPrivate: boolean; courseId: string | null; profileId?: string }) {
+export async function createBrowserPage(event: IpcMainInvokeEvent, req: { tabId: string; isPrivate: boolean; courseId: string | null; profileId?: string }) {
   const host = owner(event)
   const profileId = req.profileId ?? 'default'
-  ensureProfileSession(profileId, req.isPrivate)
+  await prepareProfileSession(profileId, req.isPrivate)
+  if (host.isDestroyed()) throw new Error('Browser host closed')
   if (closedSiteTabs.has(req.tabId)) throw new Error('Browser tab already closed')
   const existing = tabs.get(req.tabId)
   if (existing) {
@@ -173,9 +212,9 @@ export async function setBrowserPageBounds(event: IpcMainInvokeEvent, req: { tab
   tab.view.setVisible(true)
   return { snapshot: null }
 }
-export function destroyBrowserPage(event: IpcMainInvokeEvent, tabId: string): void {
+export function destroyBrowserPage(event: IpcMainInvokeEvent, tabId: string, expectedWebContentsId?: number): void {
   const host = owner(event), tab = tabs.get(tabId)
-  if (tab?.host === host) destroy(tab)
+  if (tab?.host === host && (expectedWebContentsId === undefined || tab.view.webContents.id === expectedWebContentsId)) destroy(tab)
 }
 export async function browserPageAction(event: IpcMainInvokeEvent, req: { tabId: string; action: BrowserPageAction; args: unknown[] }): Promise<unknown> {
   const wc = owned(event, req.tabId).view.webContents, a = req.args
@@ -205,27 +244,30 @@ export async function browserPageAction(event: IpcMainInvokeEvent, req: { tabId:
   }
 }
 
-/** Close with Chromium beforeunload; a cancelled form stays in its original session. */
+/** A close request is completed before the renderer removes the corresponding tab. */
+export async function prepareBrowserPageClose(event: IpcMainInvokeEvent, tabId: string): Promise<{ allowed: boolean }> {
+  owner(event)
+  if (!tabs.has(tabId)) return { allowed: true }
+  const tab = owned(event, tabId)
+  tab.switching = true
+  const allowed = await closePage(tab.view.webContents, 'tab')
+  if (!allowed) tab.switching = false
+  return { allowed }
+}
+
+/** The original page survives a cancelled profile switch. */
 export async function prepareProfileSwitch(event: IpcMainInvokeEvent, tabId: string): Promise<{ allowed: boolean }> {
   owner(event)
   if (!tabs.has(tabId)) return { allowed: true }
   const tab = owned(event, tabId)
-  const descendants = (id: string): Tab[] => [...tabs.values()].filter(t => t.parentId === id).flatMap(t => [t, ...descendants(t.tabId)])
+  const descendants = (id: string): Tab[] => [...tabs.values()].filter(t => t.parentId === id).flatMap(t => [...descendants(t.tabId), t])
   const children = descendants(tabId)
   if (children.length && dialog.showMessageBoxSync(tab.host, { type: 'question', message: '연결된 로그인·팝업 탭을 닫고 프로필을 전환할까요?', detail: '작성 중인 내용과 로그인 진행 상태는 새 프로필로 옮겨지지 않습니다.', buttons: ['취소', '전환'], defaultId: 0, cancelId: 0 }) !== 1) return { allowed: false }
-  const wc = tab.view.webContents
-  const allowed = await new Promise<boolean>(resolve => {
-    tab.switching = true
-    const blocked = (e: Electron.Event): void => {
-      if (dialog.showMessageBoxSync(tab.host, { type: 'question', message: '작성 중인 내용이 사라질 수 있습니다. 프로필을 바꿀까요?', buttons: ['취소', '전환'], defaultId: 0, cancelId: 0 }) === 1) e.preventDefault()
-      else { tab.switching = false; wc.removeListener('destroyed', closed); resolve(false) }
-    }
-    const closed = (): void => { resolve(true) }
-    wc.once('will-prevent-unload', blocked)
-    wc.once('destroyed', closed)
-    wc.close({ waitForBeforeUnload: true })
-  })
-  if (allowed) for (const child of children) if (!child.view.webContents.isDestroyed()) child.view.webContents.close()
+  // Descendants close first so their cancellation never destroys the original page.
+  for (const child of children) if (!await closePage(child.view.webContents, 'profile')) return { allowed: false }
+  tab.switching = true
+  const allowed = await closePage(tab.view.webContents, 'profile')
+  if (!allowed) tab.switching = false
   return { allowed }
 }
 

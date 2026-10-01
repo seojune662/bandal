@@ -15,7 +15,7 @@ import type {
 import type { BrowserExtensionSummary } from '../../../../../shared/types/browserExtension'
 import { useT } from '../../../i18n'
 import { invoke } from '../../../lib/ipc'
-import { useFavoritesStore } from '../../../stores/favoritesStore'
+import { BrowserImportDialog } from '../../browser/BrowserImportDialog'
 import { savePreference } from '../savePreference'
 import { AgentAccessPanel } from '../AgentAccessPanel'
 import { BrowsingDataPanel } from '../BrowsingDataPanel'
@@ -333,68 +333,11 @@ function PopupCard({ settings }: { settings: Settings | null }): JSX.Element {
 
 function BrowserImportCard({ profileId }: { profileId: string }): JSX.Element {
   const t = useT()
-  const [busy, setBusy] = useState<'bookmarks' | 'passwords' | null>(null)
-  const [feedback, setFeedback] = useState('')
-
-  const importBookmarks = (): void => {
-    setBusy('bookmarks')
-    setFeedback('')
-    void invoke('browser:importBookmarks', {})
-      .then((result) => {
-        if (result.cancelled) return
-        setFeedback(t('settings.browser.import.result')
-          .replace('{imported}', String(result.imported))
-          .replace('{skipped}', String(result.skipped)))
-        void useFavoritesStore.getState().load(null)
-      })
-      .catch(() => setFeedback(t('settings.browser.import.error')))
-      .finally(() => setBusy(null))
-  }
-
-  const importPasswords = (): void => {
-    setBusy('passwords')
-    setFeedback('')
-    void invoke('credentials:importCsv', { profileId })
-      .then((result) => {
-        if (result.cancelled) return
-        setFeedback(t('settings.browser.import.result')
-          .replace('{imported}', String(result.imported))
-          .replace('{skipped}', String(result.skipped)))
-      })
-      .catch(() => setFeedback(t('settings.browser.import.passwordError')))
-      .finally(() => setBusy(null))
-  }
-
-  return (
-    <SettingsCard
-      title={t('settings.browser.import.title')}
-      description={t('settings.browser.import.description')}
-    >
-      <div className="settings-browser__import-actions">
-        <button
-          type="button"
-          className="secondary-button"
-          disabled={busy !== null}
-          onClick={importBookmarks}
-        >
-          {busy === 'bookmarks'
-            ? t('settings.browser.import.loading')
-            : t('settings.browser.import.bookmarks')}
-        </button>
-        <button
-          type="button"
-          className="secondary-button"
-          disabled={busy !== null}
-          onClick={importPasswords}
-        >
-          {busy === 'passwords'
-            ? t('settings.browser.import.loading')
-            : t('settings.browser.import.passwords')}
-        </button>
-      </div>
-      <p className="settings-feedback" aria-live="polite">{feedback}</p>
-    </SettingsCard>
-  )
+  const [open, setOpen] = useState(false)
+  return <SettingsCard title={t('settings.browser.import.title')} description="Chrome · Edge · Firefox · Safari">
+    <button type="button" className="secondary-button" onClick={() => setOpen(true)}>{t('settings.browser.import.title')}</button>
+    {open && <BrowserImportDialog profileId={profileId} onClose={() => setOpen(false)} />}
+  </SettingsCard>
 }
 
 function WebExtensionsCard({ profileId }: { profileId: string }): JSX.Element {

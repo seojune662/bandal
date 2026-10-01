@@ -17,7 +17,7 @@ export interface LoginCaptureRequest {
   origin: string
   guestWebContentsId: number
   autoSubmit?: boolean
-  /** Local extension while the shared IPC contract is read-only. */
+  /** Submitted credentials stay in main until the student confirms saving. */
   mode?: 'save' | 'stage' | 'commit' | 'discard'
 }
 
@@ -107,7 +107,7 @@ export function isRelatedLoginOrigin(left: string, right: string): boolean {
  */
 export function createLoginCapturer(
   store: Pick<CredentialStore, 'save'> &
-    Partial<Pick<CredentialStore, 'availability' | 'resolve'>>,
+    Partial<Pick<CredentialStore, 'availability' | 'resolve' | 'list'>>,
   deps?: LoginCaptureDeps
 ): (request: LoginCaptureRequest) => Promise<SavedLoginSummary | null> {
   const resolved = deps ?? { fromId: defaultFromId }
@@ -139,7 +139,8 @@ export function createLoginCapturer(
   ): SavedLoginSummary | null => {
     let existing: ResolvedLogin | null = null
     try {
-      existing = store.resolve?.(origin) ?? null
+      const account = store.list?.().find(login => login.origin === origin && login.username === captured.username)
+      existing = store.resolve?.(origin, account?.id) ?? null
     } catch {
       return null
     }
@@ -167,6 +168,7 @@ export function createLoginCapturer(
     })
     guest.once?.('destroyed', () => discard(request.guestWebContentsId))
     return {
+      id: `staged:${request.guestWebContentsId}`,
       origin,
       username: captured.username,
       autoSubmit: false,

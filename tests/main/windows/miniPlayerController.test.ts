@@ -231,6 +231,16 @@ describe('createMiniPlayerController', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  test('cancelling quit restores native close protection for the active player', () => {
+    const window = new FakeWindow()
+    const subject = setup([window])
+    subject.controller.open({ source: LOCAL_SOURCE, positionSec: 0, playbackRate: 1 })
+    subject.controller.markQuitting()
+    subject.controller.markQuitting(false)
+    expect(window.attemptClose().preventDefault).toHaveBeenCalledOnce()
+    expect(subject.controller.isAlive()).toBe(true)
+  })
+
   test('blocks incidental closes but lets close() pass', () => {
     const window = new FakeWindow()
     const subject = setup([window])

@@ -9,7 +9,7 @@ let parent: BrowserWindow | null = null
 let popup: BrowserWindow | null = null
 let ready = false
 let quitting = false
-export function markAssistantQuitting(): void { quitting = true; stopResize() }
+export function markAssistantQuitting(value = true): void { quitting = value; if (value) stopResize() }
 let state: AssistantWindowState = { visible: false, courseId: null, conversationId: null }
 let pendingPrompt: Extract<AssistantWindowRequest, { action: 'prompt' }> | null = null
 let relative = { x: 100, y: 120, width: 760, height: 660 }

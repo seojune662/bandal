@@ -18,7 +18,7 @@
  */
 
 import { create } from 'zustand'
-import type { DockviewApi } from 'dockview'
+import type { DockviewApi, IDockviewPanel } from 'dockview'
 import { isTabDescriptor } from '../../../shared/tabs'
 import type { TabDescriptor } from '../../../shared/tabs'
 import { isPageNoteSource } from '../../../shared/pdfPageNote'
@@ -28,8 +28,10 @@ import { settingsSnapshot } from './settingsSnapshot'
 import { tabPanelId, tabTitle } from '../features/workspace/tabIdentity'
 import {
   createDuplicatePanelId,
+  duplicateTabDescriptor,
   panelIdMatchesDescriptor
 } from '../features/workspace/tabDuplication'
+import { canCloseTab } from '../features/workspace/tabCloseGuard'
 import {
   LAYOUT_SAVE_DEBOUNCE_MS,
   persistentLayout,
@@ -72,11 +74,13 @@ interface WorkspaceState {
   ) => void
   /** Closes the canonical tab and all its duplicate views. */
   closeTabsMatching: (descriptor: TabDescriptor) => void
-  closeTab: (panelId: string) => void
+  closeTab: (panelId: string) => Promise<void>
   saveRetainedLayout: (courseId: string | null, layout: ReturnType<DockviewApi['toJSON']>) => void
-  closeOthers: (panelId: string) => void
+  rememberDetachedBrowserPage: (tabId: string, url: string, title: string) => void
+  closeOthers: (panelId: string, scope?: 'group' | 'workspace') => Promise<void>
+  closeTabs: (panelIds: readonly string[]) => Promise<void>
   /** [M6-A] ⌘W: close the focused tab; no tab → no-op (never the window). */
-  closeActiveTab: () => void
+  closeActiveTab: () => Promise<void>
   /** [M6-A] ⌘1..8: activate the nth open tab (0-based); out of range → no-op. */
   activateTabAt: (index: number) => void
   /** ⌘9: the LAST tab, following browser convention rather than the 9th. */
@@ -123,20 +127,30 @@ const courseApis = new Map<string | null, DockviewApi>()
 const hydratedCourses = new Set<string>()
 const pendingOpens = new Map<string, (() => void)[]>()
 
-/**
- * ⌘⇧T stack. Bounded, and cleared on course switch — reopening a tab from a
- * different course would open a file that is not in the course on screen.
- */
+/** Recent user closures retain their location; private pages never enter history. */
 const CLOSED_TAB_LIMIT = 10
-let closedTabs: TabDescriptor[] = []
+interface ClosedTab {
+  courseId: string | null
+  panelId: string
+  descriptor: TabDescriptor
+  title: string
+  params: Record<string, unknown>
+  groupId: string | undefined
+  index: number
+}
+let closedTabs: ClosedTab[] = []
 /** Full, unfiltered layouts for course switching inside this renderer run. */
 const runtimeLayouts = new Map<string, unknown>()
+const discardedCourses = new Set<string>()
 
-function rememberClosed(params: unknown): void {
-  const descriptor = (params as { descriptor?: unknown } | undefined)?.descriptor
-  if (!isTabDescriptor(descriptor)) return
-  if (descriptor.kind === 'browser' && descriptor.payload.isPrivate === true) return
-  closedTabs = [...closedTabs, descriptor].slice(-CLOSED_TAB_LIMIT)
+function closedSnapshot(panel: IDockviewPanel, courseId: string | null): ClosedTab | null {
+  const descriptor = panel.params?.descriptor
+  if (!isTabDescriptor(descriptor) || (descriptor.kind === 'browser' && descriptor.payload.isPrivate)) return null
+  return {
+    courseId, panelId: panel.id, descriptor, title: panel.title ?? tabTitle(descriptor),
+    params: { ...panel.params }, groupId: panel.group?.id,
+    index: panel.group?.panels.findIndex(entry => entry.id === panel.id) ?? -1
+  }
 }
 let switchSerial = 0
 let suppressLayoutEvents = false
@@ -169,6 +183,34 @@ function clearSaveTimer(): void {
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
+  const pendingCloses = new Map<IDockviewPanel, Promise<void>>()
+  const requestClose = (target: DockviewApi, panel: IDockviewPanel, courseId: string | null): Promise<void> => {
+    const pending = pendingCloses.get(panel)
+    if (pending) return pending
+    const snapshot = closedSnapshot(panel, courseId)
+    const close = (allowed: boolean): void => {
+      if (!allowed || target.getPanel(panel.id) !== panel) return
+      if (snapshot) closedTabs = [...closedTabs, snapshot].slice(-CLOSED_TAB_LIMIT)
+      panel.api.close()
+      if (get().activeCourseId !== courseId && courseId !== null) get().saveRetainedLayout(courseId, target.toJSON())
+    }
+    try {
+      const descriptor = panel.params?.descriptor
+      const result = isTabDescriptor(descriptor) ? canCloseTab(descriptor) : true
+      if (typeof result === 'boolean') { close(result); return Promise.resolve() }
+      const job = result.then(close).catch(error => {
+        console.error('[Bandal] 탭을 닫지 못했습니다.', error)
+        showToast('탭을 닫지 못했어요. 다시 시도해 주세요.', 'danger')
+      }).finally(() => pendingCloses.delete(panel))
+      pendingCloses.set(panel, job)
+      return job
+    } catch (error) {
+      console.error('[Bandal] 탭을 닫지 못했습니다.', error)
+      showToast('탭을 닫지 못했어요. 다시 시도해 주세요.', 'danger')
+      return Promise.resolve()
+    }
+  }
+
   const queueDuringHydration = (open: () => void): boolean => {
     const { activeCourseId, hydration } = get()
     if (activeCourseId === null || hydration !== 'loading') return false
@@ -348,6 +390,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 
     attachCourseApi: (courseId, nextApi) => {
       retainedMode = true
+      if (courseId !== null) discardedCourses.delete(courseId)
       courseApis.set(courseId, nextApi)
       if (get().activeCourseId !== courseId) return
       api = nextApi
@@ -395,8 +438,6 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         runtimeLayouts.set(outgoingCourseId, live)
         replacePendingSave(outgoingCourseId, persistentLayout(live))
       }
-      // A tab closed in the previous course must not reopen into this one.
-      closedTabs = []
       flush() // persist the outgoing course's layout before swapping
       set({
         activeCourseId: courseId,
@@ -426,13 +467,13 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       if (api === null) return
       // newInstance: 같은 파일의 새 뷰를 하나 더 연다 (⌘클릭/분할 열기).
       // 복제 패널 id 규칙은 탭 복제와 동일 — validateLayout이 이미 수용한다.
-      let panelId =
-        options?.newInstance === true
-          ? createDuplicatePanelId(descriptor)
-          : tabPanelId(descriptor)
+      if (options?.newInstance) descriptor = duplicateTabDescriptor(descriptor)
+      let panelId = options?.newInstance && descriptor.kind !== 'browser'
+        ? createDuplicatePanelId(descriptor) : tabPanelId(descriptor)
       let existing = api.getPanel(panelId)
       if (options?.beside && existing && existing.group === api.activePanel?.group) {
-        panelId = createDuplicatePanelId(descriptor)
+        descriptor = duplicateTabDescriptor(descriptor)
+        panelId = descriptor.kind === 'browser' ? tabPanelId(descriptor) : createDuplicatePanelId(descriptor)
         existing = undefined
       }
       if (existing !== undefined) {
@@ -555,12 +596,41 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       set({ openTabs: { ...get().openTabs } })
     },
 
+    rememberDetachedBrowserPage: (tabId, url, title) => {
+      if (!url || url === 'about:blank') return
+      for (const [courseId, raw] of runtimeLayouts) {
+        if (courseApis.has(courseId)) continue
+        const match = Object.entries(tabsFromLayout(raw)).find(([, descriptor]) =>
+          descriptor.kind === 'browser' && descriptor.payload.tabId === tabId)
+        if (!match) continue
+        const [panelId, descriptor] = match
+        if (descriptor.kind !== 'browser') continue
+        const layout = structuredClone(raw) as RetainedLayout
+        const panel = layout.panels[panelId]!
+        panel.params = { ...panel.params, descriptor: { ...descriptor, payload: { ...descriptor.payload, initialUrl: url } } }
+        if (title) panel.title = title
+        runtimeLayouts.set(courseId, layout)
+        // Navigation is decorative: park the latest URL for the next normal
+        // save/quit, without starting a write timer for each background event.
+        replacePendingSave(courseId, persistentLayout(layout))
+      }
+    },
+
     closeTab: (panelId) => {
-      if (api === null) return
-      const panel = api.getPanel(panelId)
-      if (panel === undefined) return
-      rememberClosed(panel.params)
-      panel.api.close()
+      const target = api
+      const panel = target?.getPanel(panelId)
+      if (!target || !panel) return Promise.resolve()
+      return requestClose(target, panel, get().activeCourseId)
+    },
+
+    closeTabs: async (panelIds) => {
+      const target = api
+      const courseId = get().activeCourseId
+      if (!target) return
+      for (const id of panelIds) {
+        const panel = target.getPanel(id)
+        if (panel) await requestClose(target, panel, courseId)
+      }
     },
 
     closeTabsMatching: (descriptor) => {
@@ -572,19 +642,16 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       }
     },
 
-    closeOthers: (panelId) => {
-      if (api === null) return
-      for (const panel of [...api.panels]) {
-        if (panel.id !== panelId) panel.api.close()
-      }
+    closeOthers: (panelId, scope = 'group') => {
+      const panel = api?.getPanel(panelId)
+      if (!panel || !api) return Promise.resolve()
+      const panels = scope === 'workspace' ? api.panels : panel.group?.panels ?? api.panels
+      return get().closeTabs(panels.filter(entry => entry.id !== panelId).map(entry => entry.id))
     },
 
     closeActiveTab: () => {
-      if (api === null) return
-      const panel = api.activePanel
-      if (panel === undefined || panel === null) return
-      rememberClosed(panel.params)
-      panel.api.close()
+      const panel = api?.activePanel
+      return panel ? get().closeTab(panel.id) : Promise.resolve()
     },
 
     activateTabAt: (index) => {
@@ -610,9 +677,19 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     reopenClosedTab: () => {
-      const descriptor = closedTabs.pop()
-      if (descriptor === undefined) return
-      get().openTab(descriptor)
+      if (!api) return
+      const index = closedTabs.findLastIndex(tab => tab.courseId === get().activeCourseId)
+      if (index < 0) return
+      const [closed] = closedTabs.splice(index, 1)
+      if (!closed) return
+      const existing = api.getPanel(closed.panelId)
+      if (existing) { existing.api.setActive(); return }
+      const group = closed.groupId ? api.groups?.find(group => group.id === closed.groupId) : undefined
+      api.addPanel({
+        id: closed.panelId, component: closed.descriptor.kind, title: closed.title,
+        params: closed.params,
+        ...(group ? { position: { referenceGroup: group, index: Math.max(0, Math.min(closed.index, group.panels.length)) } } : {})
+      })
     },
 
     activeTabDescriptor: () => {
@@ -662,7 +739,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     discardPendingSave: (courseId) => {
+      discardedCourses.add(courseId)
       pendingOpens.delete(courseId)
+      closedTabs = closedTabs.filter(tab => tab.courseId !== courseId)
       runtimeLayouts.delete(courseId)
       hydratedCourses.delete(courseId)
       const previousLength = pendingSaves.length
@@ -670,6 +749,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       if (pendingSaves.length !== previousLength && pendingSaves.length === 0) {
         clearSaveTimer()
       }
+      set({ openTabs: { ...get().openTabs } })
     }
   }
 })
@@ -683,6 +763,7 @@ export function resetWorkspaceStoreForTests(): void {
   api = null
   retainedMode = false
   courseApis.clear()
+  closedTabs = []
   hydratedCourses.clear()
   pendingOpens.clear()
   switchSerial = 0
@@ -690,6 +771,7 @@ export function resetWorkspaceStoreForTests(): void {
   lastStructuralKey = ''
   pendingSaves = []
   runtimeLayouts.clear()
+  discardedCourses.clear()
   activeSave = null
   flushAfterActiveSave = false
   useWorkspaceStore.setState({
@@ -701,28 +783,82 @@ export function resetWorkspaceStoreForTests(): void {
 
 export function retainedTabDescriptors(courseId?: string): TabDescriptor[] {
   const state = useWorkspaceStore.getState()
-  const descriptors = courseId === undefined || state.activeCourseId === courseId ? Object.values(state.openTabs) : []
-  for (const id of courseApis.keys()) {
-    if (id === null || id === state.activeCourseId || (courseId !== undefined && id !== courseId)) continue
-    const layout = runtimeLayouts.get(id)
-    if (layout) descriptors.push(...Object.values(tabsFromLayout(layout)))
+  const activeIsRetained = state.activeCourseId === null || !discardedCourses.has(state.activeCourseId)
+  const descriptors = activeIsRetained && (courseId === undefined || state.activeCourseId === courseId) ? Object.values(state.openTabs) : []
+  // Native browser pages outlive the small cache of mounted course Dockviews.
+  for (const [id, layout] of runtimeLayouts) {
+    if (id === state.activeCourseId || (courseId !== undefined && id !== courseId)) continue
+    descriptors.push(...Object.values(tabsFromLayout(layout)))
   }
   return descriptors
 }
 
-/** Site-created pages belong to their opener even while its course is hidden. */
-export function openBrowserTabInCourse(descriptor: TabDescriptor, courseId: string | null | undefined, background: boolean): void {
+/** Resolve ownership independently of whichever course is currently selected. */
+export function browserTabCourseId(tabId: string): string | null {
+  const ownsTab = (descriptor: unknown): boolean =>
+    isTabDescriptor(descriptor) && descriptor.kind === 'browser' && descriptor.payload.tabId === tabId
+  // A newly adopted popup can mount before its retained layout snapshot updates.
+  for (const [courseId, courseApi] of courseApis) {
+    if (courseId !== null && discardedCourses.has(courseId)) continue
+    if (courseApi.panels.some(panel => ownsTab(panel.params?.descriptor))) return courseId
+  }
   const state = useWorkspaceStore.getState()
+  if ((state.activeCourseId === null || !discardedCourses.has(state.activeCourseId)) && Object.values(state.openTabs).some(ownsTab)) return state.activeCourseId
+  for (const [courseId, layout] of runtimeLayouts) {
+    if (Object.values(tabsFromLayout(layout)).some(ownsTab)) return courseId
+  }
+  return null
+}
+
+/** Site-created pages belong to their opener even while its course is hidden. */
+export function openBrowserTabInCourse(descriptor: TabDescriptor, courseId: string | null | undefined, background: boolean): boolean {
+  const state = useWorkspaceStore.getState()
+  if (courseId !== undefined && courseId !== null && discardedCourses.has(courseId)) return false
   const target = courseId === undefined ? undefined : courseApis.get(courseId)
-  if (courseId === undefined || courseId === state.activeCourseId || !target) {
+  if (courseId === undefined || courseId === state.activeCourseId) {
     state.openTab(descriptor, { background })
-    return
+    return true
+  }
+  if (!target) {
+    // A popup from an evicted course stays with its opener. Never silently
+    // route an explicitly owned page into the currently selected course.
+    if (courseId === null || !runtimeLayouts.has(courseId)) return false
+    const layout = appendRetainedBrowserTab(runtimeLayouts.get(courseId), descriptor)
+    state.saveRetainedLayout(courseId, layout)
+    return true
   }
   const previous = target.activePanel
   target.addPanel({ id: tabPanelId(descriptor), component: descriptor.kind, title: tabTitle(descriptor), params: { descriptor } })
   previous?.api.setActive()
   const layout = target.toJSON()
   state.saveRetainedLayout(courseId!, layout)
+  return true
+}
+
+type RetainedLayout = ReturnType<DockviewApi['toJSON']>
+function appendRetainedBrowserTab(raw: unknown, descriptor: TabDescriptor): RetainedLayout {
+  const restored = validateLayout(raw)?.layout
+  const layout: RetainedLayout = restored ? structuredClone(restored) : {
+    grid: { root: { type: 'branch', data: [] }, width: 0, height: 0, orientation: 'HORIZONTAL' as RetainedLayout['grid']['orientation'] },
+    panels: {}
+  }
+  const id = tabPanelId(descriptor)
+  if (layout.panels[id]) return layout
+  layout.panels[id] = { id, contentComponent: descriptor.kind, title: tabTitle(descriptor), params: { descriptor } }
+  const groups: Array<{ id: string; views: string[]; activeView?: string }> = []
+  const visit = (node: RetainedLayout['grid']['root']): void => {
+    if (Array.isArray(node.data)) node.data.forEach(visit)
+    else groups.push(node.data)
+  }
+  visit(layout.grid.root)
+  const group = groups.find(group => group.id === layout.activeGroup) ?? groups[0]
+  if (group) group.views.push(id)
+  else {
+    const groupId = `browser-${id}`
+    layout.grid.root = { type: 'branch', data: [{ type: 'leaf', data: { id: groupId, views: [id], activeView: id } }] }
+    layout.activeGroup = groupId
+  }
+  return layout
 }
 
 export function closeBrowserTab(tabId: string): void {
@@ -738,7 +874,23 @@ export function closeBrowserTab(tabId: string): void {
       }
     }
     if (changed) for (const [courseId, courseApi] of courseApis) {
-      if (courseApi === target && courseId !== state.activeCourseId) state.saveRetainedLayout(courseId, target.toJSON())
+      if (courseApi === target) {
+        if (courseId === state.activeCourseId) state.notifyLayoutChanged()
+        else state.saveRetainedLayout(courseId, target.toJSON())
+      }
     }
+  }
+  // Site-created tabs can close themselves while their course has no Dockview.
+  for (const [courseId, raw] of runtimeLayouts) {
+    if (courseApis.has(courseId)) continue
+    const ids = Object.entries(tabsFromLayout(raw)).filter(([, descriptor]) =>
+      descriptor.kind === 'browser' && descriptor.payload.tabId === tabId).map(([id]) => id)
+    if (!ids.length) continue
+    const layout = structuredClone(raw) as RetainedLayout
+    for (const id of ids) delete layout.panels[id]
+    const remaining = validateLayout(layout)?.layout ?? {
+      ...layout, panels: {}, grid: { ...layout.grid, root: { type: 'branch' as const, data: [] } }
+    }
+    state.saveRetainedLayout(courseId, remaining)
   }
 }

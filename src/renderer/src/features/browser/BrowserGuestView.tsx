@@ -1,6 +1,7 @@
 import { attachNativePage } from './nativePageHandle'
+import { overlapsNativePage } from './useNativePageOcclusion'
 /**
- * [M3-F] One native browser page, positioned over its stable DOM panel anchor.
+ * One native browser page, positioned over its stable DOM panel anchor.
  *
  * Lives in the fixed BrowserWebviewLayer — never inside the dockview panel
  * DOM — so tab drags/splits re-parent only the lightweight anchor while the
@@ -16,8 +17,6 @@ import {
 } from '../workspace/panels/browserAnchor'
 import { useBrowserGuests, type BrowserNavState } from './browserGuestsStore'
 import { invoke } from '../../lib/ipc'
-import { retainedTabDescriptors, useWorkspaceStore } from '../../stores/workspaceStore'
-import { useCoursesStore } from '../../stores/coursesStore'
 import { ABORTED_ERROR_CODE } from './loadError'
 import {
   BrowserContextMenu,
@@ -33,11 +32,11 @@ import {
   registerGuestWebContents,
   unregisterGuestElement
 } from './guestActions'
-import { useWebviewSelectionBridge } from './selectionBridge'
-import { useWebviewLoginBridge } from './loginBridge'
-import { useWebviewDiagnosticsBridge, recordHttpResponse } from './diagnosticsBridge'
+import { useBrowserSelectionBridge } from './selectionBridge'
+import { useBrowserLoginBridge } from './loginBridge'
+import { useBrowserDiagnosticsBridge, recordHttpResponse } from './diagnosticsBridge'
 import {
-  useWebviewVideoBridge,
+  useBrowserVideoBridge,
   videoReportForTab
 } from './videoBridge'
 import type {
@@ -48,10 +47,8 @@ import type {
   DidNavigateEvent,
   DidNavigateInPageEvent,
   PageTitleUpdatedEvent,
-  WebviewTag
-} from './webviewTypes'
-
-/** The only partition main-side hardening allows guests to attach with. */
+  BrowserPageHandle
+} from './browserPageTypes'
 
 interface BrowserGuestViewProps {
   tabId: string
@@ -59,6 +56,7 @@ interface BrowserGuestViewProps {
   isPrivate: boolean
   profileId: string
   suppressed: boolean
+  occlusions: readonly AnchorRect[]
 }
 
 function guestStyle(rect: AnchorRect | null): CSSProperties {
@@ -76,36 +74,38 @@ export function BrowserGuestView({
   src,
   isPrivate,
   profileId,
-  suppressed
+  suppressed,
+  occlusions
 }: BrowserGuestViewProps): JSX.Element {
-  const webviewRef = useRef<WebviewTag | null>(null)
+  const anchorRef = useRef<HTMLDivElement | null>(null)
+  const pageRef = useRef<BrowserPageHandle | null>(null)
   const nativeRef = useRef<ReturnType<typeof attachNativePage> | null>(null)
-  const [ownerCourse] = useState(() =>
-    useCoursesStore.getState().courses.find((course) =>
-      retainedTabDescriptors(course.id).some((tab) => tab.kind === 'browser' && tab.payload.tabId === tabId)
-    )?.id ?? useWorkspaceStore.getState().activeCourseId
+  const ownerCourse = useBrowserGuests(state =>
+    state.liveGuests.find(guest => guest.tabId === tabId)?.courseId ?? null
   )
   const [rect, setRect] = useState<AnchorRect | null>(() =>
     getBrowserAnchorRect(tabId)
   )
+  const obscured = suppressed || overlapsNativePage(rect, occlusions)
   const [contextMenu, setContextMenu] =
     useState<BrowserContextMenuState | null>(null)
   const overlayVisible = useBrowserGuests(
     (state) => (state.overlay[tabId] ?? null) !== null
   )
   useEffect(() => {
-    if (!webviewRef.current) return
-    const native = attachNativePage(webviewRef.current, tabId, isPrivate, ownerCourse, profileId)
+    if (!anchorRef.current) return
+    const native = attachNativePage(anchorRef.current, tabId, isPrivate, ownerCourse, profileId)
     nativeRef.current = native
-    return () => { native.dispose(); nativeRef.current = null }
+    pageRef.current = native.handle
+    return () => { native.dispose(); nativeRef.current = null; pageRef.current = null }
   }, [tabId, isPrivate, ownerCourse, profileId])
   useEffect(() => {
-    nativeRef.current?.bounds(overlayVisible || suppressed || contextMenu ? null : rect, rect !== null && !overlayVisible && (suppressed || contextMenu !== null))
-  }, [rect, overlayVisible, suppressed, contextMenu])
-  useWebviewSelectionBridge(webviewRef)
-  useWebviewLoginBridge(tabId, webviewRef, !isPrivate)
-  useWebviewDiagnosticsBridge(tabId, webviewRef)
-  useWebviewVideoBridge(tabId, webviewRef)
+    nativeRef.current?.bounds(overlayVisible || obscured || contextMenu ? null : rect, rect !== null && !overlayVisible && (obscured || contextMenu !== null))
+  }, [rect, overlayVisible, obscured, contextMenu])
+  useBrowserSelectionBridge(pageRef)
+  useBrowserLoginBridge(tabId, pageRef, !isPrivate)
+  useBrowserDiagnosticsBridge(tabId, pageRef)
+  useBrowserVideoBridge(tabId, pageRef)
 
   useEffect(
     () =>
@@ -115,14 +115,14 @@ export function BrowserGuestView({
     [tabId]
   )
 
-  // Becoming visible counts as "used" for LRU purposes.
+  // Keep visit order without discarding hidden page state.
   const isVisible = rect !== null && !overlayVisible
   useEffect(() => {
     if (isVisible) useBrowserGuests.getState().touchGuest(tabId)
   }, [isVisible, tabId])
 
   useEffect(() => {
-    const element = webviewRef.current
+    const element = pageRef.current
     if (element === null) return
     registerGuestElement(tabId, element)
     let initialNavigationStarted = false
@@ -135,7 +135,7 @@ export function BrowserGuestView({
       const level = useBrowserGuests.getState().zoom[tabId]
       if (level === undefined || isDefaultZoom(level)) return
       try {
-        element.setZoomLevel(level)
+        void element.setZoomLevel(level).catch(() => undefined)
       } catch {
         // Detached; the next dom-ready re-applies it.
       }
@@ -281,7 +281,7 @@ export function BrowserGuestView({
         ((event: ContextMenuEvent) => {
           // Guest-viewport coordinates: the menu is host DOM, so shift them by
           // where the guest actually sits on screen.
-          const rect = element.getBoundingClientRect()
+          const rect = element.element.getBoundingClientRect()
           setContextMenu({
             x: rect.left + event.params.x,
             y: rect.top + event.params.y,
@@ -297,7 +297,7 @@ export function BrowserGuestView({
               useBrowserGuests.getState().nav[tabId]?.title ?? '',
             hasPlayingVideo:
               videoReportForTab(tabId)?.hasPlayingVideo === true,
-            courseId: useCoursesStore.getState().selectedCourseId
+            courseId: ownerCourse
           })
         }) as EventListener
       ],
@@ -369,9 +369,7 @@ export function BrowserGuestView({
       data-tab-id={tabId}
       style={guestStyle(overlayVisible ? null : rect)}
     >
-      <div className="browser-native-anchor" ref={(element) => {
-        webviewRef.current = element as WebviewTag | null
-      }} />
+      <div className="browser-native-anchor" ref={anchorRef} />
       {contextMenu !== null && (
         <BrowserContextMenu
           tabId={tabId}

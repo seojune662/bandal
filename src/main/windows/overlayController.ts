@@ -57,7 +57,7 @@ export interface OverlayController {
   orbDragEnd(): void
   prompt(prompt: string): void
   openInApp(req: { courseId: string; conversationId: string | null }): void
-  markQuitting(): void
+  markQuitting(value?: boolean): void
   isQuitting(): boolean
   setScreenPermission(state: OverlayState['screenPermission']): void
   setOrbHitTest(hit: boolean): void
@@ -490,8 +490,8 @@ export function createOverlayController(
     orbDragEnd,
     prompt,
     openInApp,
-    markQuitting(): void {
-      quitting = true
+    markQuitting(value = true): void {
+      quitting = value
     },
     isQuitting(): boolean {
       return quitting

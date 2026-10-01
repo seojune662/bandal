@@ -53,7 +53,7 @@ export interface MiniPlayerController {
   report(p: MiniPlayerReport): void
   moveBy(dx: number, dy: number): void
   isAlive(): boolean
-  markQuitting(): void
+  markQuitting(value?: boolean): void
 }
 
 interface ActivePlayer {
@@ -443,9 +443,9 @@ export function createMiniPlayerController(
   const isAlive = (): boolean =>
     active !== null && !active.window.isDestroyed()
 
-  const markQuitting = (): void => {
-    quitting = true
-    if (active !== null) active.allowClose = true
+  const markQuitting = (value = true): void => {
+    quitting = value
+    if (active !== null) active.allowClose = value
   }
 
   return {

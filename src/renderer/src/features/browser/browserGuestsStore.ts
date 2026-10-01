@@ -1,17 +1,7 @@
-import { useAgentRuns } from './AgentRunBanner'
 /**
- * [M3-F] Store of live webview guests + their navigation state.
- *
- * Lifecycle (see browserAnchor.ts for the anchor contract):
- *  - `ensureGuest` — BrowserPanel mount. Creates the guest (or bumps LRU),
- *    evicting the oldest HIDDEN guests beyond MAX_LIVE_GUESTS.
- *  - `touchGuest` — a guest's anchor became visible again.
- *  - `removeGuest` — the workspace no longer has the tab open (closeTab /
- *    course switch) or LRU eviction. The guest's last URL is remembered for
- *    the whole renderer session so a re-created guest restores where it was.
- *
- * Main forwards native-page events through BrowserGuestView. Related opener
- * and child pages stay resident until their connection is closed.
+ * Pages are created lazily when visited, then retained until explicitly closed.
+ * Hidden pages keep forms, navigation history and active transfers intact;
+ * Chromium's background throttling controls their idle work.
  */
 
 import { create } from 'zustand'
@@ -28,15 +18,14 @@ export interface BrowserFindState {
 }
 import { invoke } from '../../lib/ipc'
 import { useCoursesStore } from '../../stores/coursesStore'
-import { getBrowserAnchorRect } from '../workspace/panels/browserAnchor'
-import { MAX_LIVE_GUESTS, pickEvictions, touchOrder } from './guestLru'
 
 export interface LiveGuest {
   tabId: string
-  /** URL the <webview> element is created with; never changes afterwards. */
+  /** Initial native page URL; subsequent navigation lives in nav[tabId]. */
   src: string
   isPrivate: boolean
   profileId: string
+  courseId: string | null
 }
 
 export interface BrowserNavState {
@@ -55,25 +44,13 @@ export interface BrowserVisit {
   title: string
 }
 
-const connectedBrowserTabs = new Set<string>()
-const browserOpeners = new Map<string, string>()
-export function connectBrowserTabs(opener: string, child: string): void {
-  browserOpeners.set(child, opener)
-  connectedBrowserTabs.add(opener)
-  connectedBrowserTabs.add(child)
-}
-export function disconnectBrowserTab(tabId: string): void {
-  for (const [child, parent] of browserOpeners) if (child === tabId || parent === tabId) browserOpeners.delete(child)
-  connectedBrowserTabs.clear()
-  for (const [child, parent] of browserOpeners) { connectedBrowserTabs.add(child); connectedBrowserTabs.add(parent) }
-}
-
 export const MAX_RECENT_VISITS = 6
 
 export interface BrowserLoginState {
   origin: string | null
   hasLoginForm: boolean
   usernameFocused: boolean
+  savedLogins: SavedLoginSummary[]
   savedLogin: SavedLoginSummary | null
   savePrompt: {
     origin: string
@@ -84,7 +61,7 @@ export interface BrowserLoginState {
 }
 
 interface BrowserGuestsState {
-  /** Live guests in LRU order (oldest first). */
+  /** Live pages in visit order (oldest first). */
   liveGuests: LiveGuest[]
   nav: Record<string, BrowserNavState>
   login: Record<string, BrowserLoginState>
@@ -115,7 +92,7 @@ interface BrowserGuestsState {
   authFallback: Record<string, string | undefined>
   setFavicon: (tabId: string, dataUrl: string | null) => void
   setAuthFallback: (tabId: string, url: string | null) => void
-  ensureGuest: (tabId: string, initialUrl: string, isPrivate?: boolean, profileId?: string) => void
+  ensureGuest: (tabId: string, initialUrl: string, isPrivate?: boolean, profileId?: string, courseId?: string | null) => void
   requestAddressFocus: (tabId: string) => void
   openFind: (tabId: string) => void
   closeFind: (tabId: string) => void
@@ -147,15 +124,13 @@ export function initialLoginState(): BrowserLoginState {
     origin: null,
     hasLoginForm: false,
     usernameFocused: false,
+    savedLogins: [],
     savedLogin: null,
     savePrompt: null,
     pending: false,
     message: null
   }
 }
-
-/** Last committed URL per tab — survives eviction/destruction for restore. */
-const lastKnownUrls = new Map<string, string>()
 
 function visitLabel(url: string, title: string): string {
   const trimmedTitle = title.trim()
@@ -223,7 +198,7 @@ function recordVisitFrom(
     profileId: useBrowserGuests.getState().liveGuests.find(g => g.tabId === tabId)?.profileId ?? 'default',
     url,
     title,
-    courseId: useCoursesStore.getState().selectedCourseId
+    courseId: useBrowserGuests.getState().liveGuests.find(g => g.tabId === tabId)?.courseId ?? null
   }).catch(() => {
     // History is a convenience; never let it surface as an error.
   })
@@ -250,7 +225,7 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
     })
   },
 
-  ensureGuest: (tabId, initialUrl, isPrivate = false, profileId = 'default') => {
+  ensureGuest: (tabId, initialUrl, isPrivate = false, profileId = 'default', courseId = useCoursesStore.getState().selectedCourseId) => {
     const { liveGuests, nav, login, recent, authFallback } = get()
     const currentGuest = liveGuests.find((guest) => guest.tabId === tabId)
     if (currentGuest !== undefined && currentGuest.isPrivate === isPrivate && currentGuest.profileId === profileId) {
@@ -258,26 +233,20 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
       return
     }
     const changedProfile = currentGuest !== undefined && currentGuest.profileId !== profileId
-    const src = changedProfile ? initialUrl : lastKnownUrls.get(tabId) ?? initialUrl
+    const src = initialUrl
     const grown = [
       ...liveGuests.filter((guest) => guest.tabId !== tabId),
-      { tabId, src, isPrivate, profileId }
+      { tabId, src, isPrivate, profileId, courseId }
     ]
-    const evicted = pickEvictions(
-      grown.map((guest) => guest.tabId),
-      MAX_LIVE_GUESTS,
-      (id) => !connectedBrowserTabs.has(id) && id !== tabId && getBrowserAnchorRect(id) === null && useAgentRuns.getState().byTab[id] === undefined
-    )
-    const evictedSet = new Set(evicted)
     set({
-      liveGuests: grown.filter((guest) => !evictedSet.has(guest.tabId)),
-      favicon: withoutKeys(get().favicon, [tabId, ...evicted]),
+      liveGuests: grown,
+      favicon: withoutKeys(get().favicon, [tabId]),
       nav: {
-        ...withoutKeys(nav, evicted),
+        ...nav,
         [tabId]: initialNavState(src)
       },
       login: {
-        ...withoutKeys(login, evicted),
+        ...login,
         [tabId]: initialLoginState()
       },
       recent: {
@@ -366,24 +335,12 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
   touchGuest: (tabId) => {
     const { liveGuests } = get()
     if (!liveGuests.some((guest) => guest.tabId === tabId)) return
-    const order = touchOrder(
-      liveGuests.map((guest) => guest.tabId),
-      tabId
-    )
-    const byId = new Map(liveGuests.map((guest) => [guest.tabId, guest]))
-    set({
-      liveGuests: order
-        .map((id) => byId.get(id))
-        .filter((guest): guest is LiveGuest => guest !== undefined)
-    })
+    if (liveGuests.at(-1)?.tabId === tabId) return
+    set({ liveGuests: [...liveGuests.filter(guest => guest.tabId !== tabId), liveGuests.find(guest => guest.tabId === tabId)!] })
   },
 
   removeGuest: (tabId) => {
-    disconnectBrowserTab(tabId)
     const { liveGuests, nav, login, recent, overlay, zoom } = get()
-    if (liveGuests.some((guest) => guest.tabId === tabId && guest.isPrivate)) {
-      lastKnownUrls.delete(tabId)
-    }
     set({
       liveGuests: liveGuests.filter((guest) => guest.tabId !== tabId),
       nav: withoutKeys(nav, [tabId]),
@@ -407,9 +364,6 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
     )
     recordVisitFrom(tabId, current, patch)
     const next = { ...current, ...patch }
-    if (typeof patch.url === 'string' && patch.url.length > 0) {
-      lastKnownUrls.set(tabId, patch.url)
-    }
 
     let nextRecent = isPrivate ? [] : (recent[tabId] ?? [])
     if (!isPrivate && typeof patch.url === 'string' && patch.url.length > 0) {
@@ -434,11 +388,8 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
 
 }))
 
-/** Test-only: reset the store and the session URL-restore map. */
+/** Test-only: reset retained page state. */
 export function resetBrowserGuestsForTests(): void {
-  browserOpeners.clear()
-  connectedBrowserTabs.clear()
-  lastKnownUrls.clear()
   useBrowserGuests.setState({
     liveGuests: [],
     nav: {},

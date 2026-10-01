@@ -44,7 +44,7 @@ import {
 import { browsingContext, registerBrowsingContext, forgetBrowsingContext } from './browsingContext'
 import { trackPopupDownload } from './popupLifecycle'
 import { browsingUserAgent } from './userAgent'
-import { createBrowserSessionStore } from './sessionStore'
+import { confirmPageUnload } from './pageClose'
 import { getSettings } from '../../settingsStore'
 import {
   attachPluginPanelGuest,
@@ -87,6 +87,9 @@ export function forwardBrowserSwipe(
  */
 const profilePermissions = new Map<string, PermissionsRepo>()
 export function useProfilePermissions(partition: string, repo: PermissionsRepo): void { profilePermissions.set(partition, repo) }
+export function forgetProfilePermissions(partitions: readonly string[]): void {
+  for (const partition of partitions) { profilePermissions.delete(partition); hardenedBrowsingSessions.delete(partition) }
+}
 function permissionsFor(partition: string): PermissionsRepo | null { return profilePermissions.get(partition) ?? (partition === BROWSING_PARTITION ? sitePermissions : null) }
 let sitePermissions: PermissionsRepo | null = null
 
@@ -146,9 +149,6 @@ export function hardenBrowsingSession(partition: string): void {
   const browsingSession = session.fromPartition(partition)
   installGestureSession(browsingSession)
   const persistent = partition.startsWith('persist:')
-  // The persist: partition lets Chromium retain persistent cookies itself.
-  // Flush cookies and DOM storage on graceful quit without changing expiry.
-  if (persistent) createBrowserSessionStore().startFlushOnQuit()
   browsingSession.setUserAgent(
     browsingUserAgent(browsingSession.getUserAgent(), app.getName())
   )
@@ -272,6 +272,7 @@ export function popupWebPreferences(
     sandbox: true,
     webSecurity: true,
     webviewTag: false,
+    backgroundThrottling: true,
     // A blob: PDF popup is a common 고지서 path; without this it downloads.
     plugins: true
   }
@@ -581,24 +582,7 @@ export function attachNavigationPolicies(
    * nothing at all. The page looked frozen and nothing was logged.
    */
   webContents.on('will-prevent-unload', (event) => {
-    const host = navigationHost(webContents)
-    const owner = BrowserWindow.fromWebContents(host)
-    const options: Electron.MessageBoxSyncOptions = {
-      type: 'question',
-      noLink: true,
-      buttons: ['머무르기', '나가기'],
-      defaultId: 0,
-      cancelId: 0,
-      message: '이 페이지에서 나가시겠습니까?',
-      detail: '작성 중인 내용이 저장되지 않을 수 있습니다.'
-    }
-    const choice =
-      owner === null
-        ? dialog.showMessageBoxSync(options)
-        : dialog.showMessageBoxSync(owner, options)
-    // preventDefault here means "let the navigation proceed" — it cancels the
-    // page's cancellation.
-    if (choice === 1) event.preventDefault()
+    confirmPageUnload(webContents, event, navigationHost(webContents))
   })
 }
 

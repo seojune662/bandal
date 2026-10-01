@@ -45,6 +45,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor, isTabDescriptor } from '../workspace/tabIdentity'
 import { requestMaterialConnectionsRefresh } from '../links/useMaterialConnections'
 import { nativeHistoryGuard } from './nativeHistoryGuard'
+import { canAutoFocusNote } from './noteAutoFocus'
 import { createMentionMenuPlugin } from './mentionMenuPlugin'
 import { openMaterialLink, resolveNoteLink } from './materialLinkNavigation'
 import {
@@ -371,6 +372,7 @@ export function MilkdownNoteEditor({
       const attempt = editorAttemptRef.current + 1
       editorAttemptRef.current = attempt
       setEditorInitialization('initializing')
+      const initialFocus = root.ownerDocument.activeElement
 
       const editor = Editor.make()
         .onStatusChange((status) => {
@@ -379,7 +381,13 @@ export function MilkdownNoteEditor({
             status === EditorStatus.Created
           ) {
             setEditorInitialization('ready')
-            if (autoFocus) requestAnimationFrame(() => focusNoteBody(editor))
+            if (autoFocus) requestAnimationFrame(() => {
+              if (
+                editorAttemptRef.current === attempt &&
+                editor.status === EditorStatus.Created &&
+                canAutoFocusNote(root, initialFocus)
+              ) focusNoteBody(editor)
+            })
           }
         })
         .config((context) => {

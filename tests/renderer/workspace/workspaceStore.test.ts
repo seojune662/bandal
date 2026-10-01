@@ -12,12 +12,22 @@ vi.mock('../../../src/renderer/src/app/toast', () => ({
   showToast: vi.fn()
 }))
 
+import { registerTabCloseGuard } from '../../../src/renderer/src/features/workspace/tabCloseGuard'
 import { showToast } from '../../../src/renderer/src/app/toast'
 import { invoke } from '../../../src/renderer/src/lib/ipc'
 import {
+  browserTabCourseId,
+  closeBrowserTab,
+  openBrowserTabInCourse,
+  retainedTabDescriptors,
   resetWorkspaceStoreForTests,
   useWorkspaceStore
 } from '../../../src/renderer/src/stores/workspaceStore'
+import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
+import {
+  resetBrowserGuestsForTests,
+  useBrowserGuests
+} from '../../../src/renderer/src/features/browser/browserGuestsStore'
 import {
   descriptorFor,
   tabPanelId
@@ -531,6 +541,102 @@ test('retained courses reuse their own Dockview without clearing or hydrating ag
   expect(invokeMock.mock.calls.filter(([channel]) => channel === 'layout:get')).toHaveLength(2)
 })
 
+test('a delayed browser profile switch and hidden popup keep their original course', async () => {
+  resetBrowserGuestsForTests()
+  const first = new FakeDockview(), second = new FakeDockview()
+  const state = useWorkspaceStore.getState()
+  const initialUrl = 'https://example.com'
+  const browser = descriptorFor('browser', { tabId: 'owner-tab', initialUrl })
+  state.setActiveCourse('c1')
+  state.attachCourseApi('c1', first.asApi())
+  await settle()
+  first.json = singleLeafLayout([browser])
+  state.notifyLayoutChanged()
+  const owner = browserTabCourseId('owner-tab')
+  expect(owner).toBe('c1')
+  useBrowserGuests.getState().ensureGuest('owner-tab', initialUrl, false, 'default', owner)
+
+  // Native beforeunload/profile confirmation finishes after the user changes course.
+  state.attachCourseApi('c2', second.asApi())
+  state.setActiveCourse('c2')
+  useCoursesStore.setState({ selectedCourseId: 'c2' })
+  await settle()
+  expect(browserTabCourseId('owner-tab')).toBe('c1')
+  useBrowserGuests.getState().ensureGuest('owner-tab', initialUrl, false, 'school', owner)
+  useBrowserGuests.getState().updateNav('owner-tab', { url: 'https://example.com/late', title: 'Late navigation' })
+  expect(invokeMock).toHaveBeenCalledWith('browser:recordVisit', {
+    profileId: 'school', url: 'https://example.com/late', title: 'Late navigation', courseId: 'c1'
+  })
+
+  // Adopted popups can be present in a hidden Dockview before its snapshot refreshes.
+  const popup = descriptorFor('browser', { tabId: 'hidden-popup', initialUrl: 'https://example.com/popup' })
+  Object.assign(first.addPanel({ id: tabPanelId(popup) }), { params: { descriptor: popup } })
+  expect(browserTabCourseId('hidden-popup')).toBe('c1')
+  expect(browserTabCourseId('unknown-tab')).toBeNull()
+  resetBrowserGuestsForTests()
+  useCoursesStore.setState({ selectedCourseId: null })
+})
+
+test('browser ownership and navigation survive eviction of the course Dockview', async () => {
+  const first = new FakeDockview(), second = new FakeDockview()
+  const state = useWorkspaceStore.getState()
+  const browser = descriptorFor('browser', { tabId: 'retained-page', initialUrl: 'https://example.com/start' })
+  const privatePage = descriptorFor('browser', { tabId: 'private-page', initialUrl: 'https://example.com/private', isPrivate: true })
+  state.setActiveCourse('c1')
+  state.attachCourseApi('c1', first.asApi())
+  await settle()
+  first.json = singleLeafLayout([browser, privatePage])
+  state.notifyLayoutChanged()
+  state.attachCourseApi('c2', second.asApi())
+  state.setActiveCourse('c2')
+  await settle()
+  state.detachCourseApi('c1')
+  expect(retainedTabDescriptors('c1')).toEqual([browser, privatePage])
+  expect(browserTabCourseId('retained-page')).toBe('c1')
+  state.rememberDetachedBrowserPage('retained-page', 'https://example.com/next', 'Next page')
+  const updated = retainedTabDescriptors('c1')[0]!
+  expect(updated).toMatchObject({ payload: { initialUrl: 'https://example.com/next' } })
+  state.setActiveCourse('c1')
+  const restored = new FakeDockview()
+  state.attachCourseApi('c1', restored.asApi())
+  await settle()
+  expect(useWorkspaceStore.getState().openTabs[tabPanelId(browser)]).toEqual(updated)
+  expect(useWorkspaceStore.getState().openTabs[tabPanelId(privatePage)]).toEqual(privatePage)
+  expect(invokeMock.mock.calls.filter(([channel]) => channel === 'layout:get')).toHaveLength(2)
+})
+
+test('popups and site close requests update their evicted course without touching the current course', async () => {
+  const first = new FakeDockview(), second = new FakeDockview()
+  const state = useWorkspaceStore.getState()
+  const browser = descriptorFor('browser', { tabId: 'opener', initialUrl: 'https://example.com' })
+  const popup = descriptorFor('browser', { tabId: 'late-popup', initialUrl: 'https://example.com/popup' })
+  state.setActiveCourse('c1')
+  state.attachCourseApi('c1', first.asApi())
+  await settle()
+  first.json = singleLeafLayout([browser])
+  state.notifyLayoutChanged()
+  state.attachCourseApi('c2', second.asApi())
+  state.setActiveCourse('c2')
+  await settle()
+  state.detachCourseApi('c1')
+  expect(openBrowserTabInCourse(popup, 'c1', false)).toBe(true)
+  expect(retainedTabDescriptors('c1')).toEqual([browser, popup])
+  expect(browserTabCourseId('late-popup')).toBe('c1')
+  expect(second.addPanelCalls).toHaveLength(0)
+  expect(useWorkspaceStore.getState().activeCourseId).toBe('c2')
+  closeBrowserTab('late-popup')
+  expect(retainedTabDescriptors('c1')).toEqual([browser])
+  closeBrowserTab('opener')
+  expect(retainedTabDescriptors('c1')).toEqual([])
+  expect(openBrowserTabInCourse(popup, 'c1', true)).toBe(true)
+  expect(retainedTabDescriptors('c1')).toEqual([popup])
+  state.discardPendingSave('c1')
+  expect(retainedTabDescriptors('c1')).toEqual([])
+  expect(openBrowserTabInCourse(browser, 'c1', false)).toBe(false)
+  expect(openBrowserTabInCourse(browser, 'unknown-course', false)).toBe(false)
+  expect(second.addPanelCalls).toHaveLength(0)
+})
+
 test('a file selected during hydration opens after restore instead of being discarded', async () => {
   let resolve!: (value: { layout: unknown }) => void
   invokeMock.mockImplementation((channel: string) => channel === 'layout:get'
@@ -544,4 +650,110 @@ test('a file selected during hydration opens after restore instead of being disc
   await settle()
   expect(dock.addPanelCalls).toHaveLength(1)
   expect(dock.addPanelCalls[0]?.id).toBe(tabPanelId(pdfB))
+})
+
+
+describe('consistent user tab closure and restoration', () => {
+  async function ready() {
+    const dock = new FakeDockview()
+    const state = useWorkspaceStore.getState()
+    state.attachApi(dock.asApi())
+    state.setActiveCourse('c1')
+    await settle()
+    state.openTab(pdfA)
+    state.openTab(pdfB)
+    for (const [index, panel] of dock.panels.entries()) {
+      Object.assign(panel, { params: { descriptor: index === 0 ? pdfA : pdfB }, title: index === 0 ? 'A document' : 'B document' })
+    }
+    return { dock, state }
+  }
+
+  test('a close veto preserves the tab and does not create a restore entry', async () => {
+    const { dock, state } = await ready()
+    const unregister = registerTabCloseGuard(async () => false)
+    try {
+      await state.closeTab(dock.panels[0]!.id)
+      expect(dock.panels[0]!.api.close).not.toHaveBeenCalled()
+      state.reopenClosedTab()
+      expect(dock.addPanelCalls).toHaveLength(2)
+    } finally { unregister() }
+  })
+
+  test('repeated closes share the pending native decision and restore the same panel and location', async () => {
+    const { dock, state } = await ready()
+    const panel = dock.panels[0]!
+    const group = { id: 'original-group', panels: dock.panels }
+    Object.assign(panel, { group })
+    Object.assign(dock, { groups: [group] })
+    panel.api.close.mockImplementation(() => dock.removePanel(panel))
+    let resolve!: (allowed: boolean) => void
+    const guard = vi.fn(() => new Promise<boolean>(done => { resolve = done }))
+    const unregister = registerTabCloseGuard(guard)
+    try {
+      const first = state.closeTab(panel.id)
+      const second = state.closeTab(panel.id)
+      expect(guard).toHaveBeenCalledOnce()
+      resolve(true)
+      await Promise.all([first, second])
+      expect(panel.api.close).toHaveBeenCalledOnce()
+      state.reopenClosedTab()
+      expect(dock.addPanelCalls.at(-1)).toMatchObject({ id: panel.id, title: 'A document', params: { descriptor: pdfA }, position: { referenceGroup: group, index: 0 } })
+    } finally { unregister() }
+  })
+
+  test('group closure leaves other split groups open; workspace closure reaches them', async () => {
+    const { dock, state } = await ready()
+    const [first, second] = dock.panels
+    Object.assign(first!, { group: { panels: [first] } })
+    await state.closeOthers(first!.id)
+    expect(second!.api.close).not.toHaveBeenCalled()
+    await state.closeOthers(first!.id, 'workspace')
+    expect(second!.api.close).toHaveBeenCalledOnce()
+  })
+
+  test('batch closures wait for each decision and retain only vetoed tabs', async () => {
+    const { dock, state } = await ready()
+    const [first, second] = dock.panels
+    const guard = vi.fn(async (descriptor: TabDescriptor) => descriptor !== pdfA)
+    const unregister = registerTabCloseGuard(guard)
+    try {
+      await state.closeTabs([first!.id, second!.id])
+      expect(guard.mock.calls.map(([descriptor]) => descriptor)).toEqual([pdfA, pdfB])
+      expect(first!.api.close).not.toHaveBeenCalled()
+      expect(second!.api.close).toHaveBeenCalledOnce()
+    } finally { unregister() }
+  })
+
+  test('closed tabs remain scoped to their course after switching away and back', async () => {
+    const { dock, state } = await ready()
+    const first = dock.panels[0]!
+    await state.closeTab(first.id)
+    state.setActiveCourse('c2')
+    await settle()
+    state.reopenClosedTab()
+    expect(dock.addPanelCalls).toHaveLength(2)
+    state.setActiveCourse('c1')
+    await settle()
+    state.reopenClosedTab()
+    expect(dock.addPanelCalls).toHaveLength(3)
+    expect(dock.addPanelCalls.at(-1)).toMatchObject({ id: first.id, params: { descriptor: pdfA } })
+  })
+
+  test('private pages do not enter closed history', async () => {
+    const { dock, state } = await ready()
+    const panel = dock.panels[0]!
+    Object.assign(panel, { params: { descriptor: descriptorFor('browser', { tabId: 'secret', initialUrl: 'https://example.test', isPrivate: true }) } })
+    await state.closeTab(panel.id)
+    state.reopenClosedTab()
+    expect(dock.addPanelCalls).toHaveLength(2)
+  })
+
+  test('the modifier new-instance path allocates a distinct browser page', async () => {
+    const { dock, state } = await ready()
+    const descriptor = descriptorFor('browser', { tabId: 'source', initialUrl: 'https://example.test/current', profileId: 'school' })
+    state.openTab(descriptor, { newInstance: true })
+    const params = dock.addPanelCalls.at(-1)!.params as { descriptor: typeof descriptor }
+    expect(params.descriptor.payload.tabId).not.toBe('source')
+    expect(params.descriptor.payload.profileId).toBe('school')
+  })
 })

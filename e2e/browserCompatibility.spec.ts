@@ -308,7 +308,11 @@ test('cancelled beforeunload keeps the current profile and its page alive', asyn
     const id = await openTab(bandal, `${site.origin}/lecture`)
     await run(bandal, id, `addEventListener('beforeunload',e=>{e.preventDefault();e.returnValue='unsaved'});document.body.innerHTML='<button style="position:fixed;inset:0">Edit</button>'`)
     await bandal.app.evaluate(({ webContents, dialog }, id) => {
-      dialog.showMessageBoxSync = () => 0
+      ;(globalThis as unknown as { unloadPrompts: number }).unloadPrompts = 0
+      dialog.showMessageBoxSync = () => {
+        ;(globalThis as unknown as { unloadPrompts: number }).unloadPrompts++
+        return 0
+      }
       const wc = webContents.fromId(id)!
       wc.sendInputEvent({ type: 'mouseDown', x: 80, y: 80, button: 'left', clickCount: 1 })
       wc.sendInputEvent({ type: 'mouseUp', x: 80, y: 80, button: 'left', clickCount: 1 })
@@ -319,6 +323,7 @@ test('cancelled beforeunload keeps the current profile and its page alive', asyn
     expect(tabId).toBeTruthy()
     const result = await bandal.page.evaluate(tabId => window.bandal.invoke('browser:prepareProfileSwitch', { tabId: tabId! }), tabId)
     expect(result.allowed).toBe(false)
+    expect(await bandal.app.evaluate(() => (globalThis as unknown as { unloadPrompts: number }).unloadPrompts)).toBe(1)
     expect(await run(bandal, id, 'document.body.textContent')).toBe('Edit')
     await run(bandal, id, 'onbeforeunload=null')
     await bandal.app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1 })
@@ -349,5 +354,160 @@ test('two-finger history works inside a cross-origin iframe', async () => {
       await bandal.page.waitForTimeout(40)
     }
     await expect.poll(() => run(bandal, id, 'location.pathname')).toBe('/lecture')
+  } finally { await bandal.close(); await site.close() }
+})
+
+test('visiting more than five pages preserves the original form and navigation history', async () => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '브라우저 상태 보존')
+    const original = await openTab(bandal, `${site.origin}/lecture`)
+    await run(bandal, original, `location.href='${site.origin}/draft'`)
+    await expect.poll(() => run(bandal, original, 'location.pathname')).toBe('/draft')
+    await run(bandal, original, `document.body.innerHTML='<input id="draft" value="unsaved lecture notes">';window.liveDraft='retained'`)
+    for (let index = 0; index < 7; index++) await openTab(bandal, `${site.origin}/page-${index}`)
+    expect(await run(bandal, original, 'document.querySelector("#draft").value')).toBe('unsaved lecture notes')
+    expect(await run(bandal, original, 'window.liveDraft')).toBe('retained')
+    expect(await bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id)!.navigationHistory.canGoBack(), original)).toBe(true)
+    await bandal.page.locator('.dv-tab').first().click()
+    await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }, id) => {
+      const host = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('index.html'))!
+      return host.contentView.children.some(view => 'webContents' in view && (view as Electron.WebContentsView).webContents.id === id && view.getVisible())
+    }, original)).toBe(true)
+  } finally { await bandal.close(); await site.close() }
+})
+
+test('browser pages and popup ownership survive eviction of their course workspace', async () => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    const page = bandal.page
+    await createCourse(page, '보존할 브라우저 과목')
+    const owner = (await page.evaluate(() => window.bandal.invoke('courses:list', {})))[0]!
+    const original = await openTab(bandal, `${site.origin}/retained-form`)
+    await run(bandal, original, `document.body.innerHTML='<input id="draft" value="unsaved across courses">';window.savedFormIdentity='original-context'`)
+    for (let index = 0; index < 4; index++) await createCourse(page, `다른 과목 ${index}`)
+    await expect(page.locator(`[data-workspace-course="${owner.id}"]`)).toHaveCount(0)
+    await expect(page.locator('.workspace-course')).toHaveCount(3)
+    expect(await run(bandal, original, 'window.savedFormIdentity')).toBe('original-context')
+    expect(await run(bandal, original, 'document.querySelector("#draft").value')).toBe('unsaved across courses')
+
+    // Both native popup events arrive while the opener has no mounted Dockview.
+    await run(bandal, original, `window.open('${site.origin}/closed-hidden-popup','hidden-close');undefined`)
+    const closedPopup = await childAt(bandal, `${site.origin}/closed-hidden-popup`)
+    await expect(page.locator('.workspace-course:not([hidden]) .dv-tab')).toHaveCount(0)
+    await run(bandal, closedPopup, 'window.close()')
+    await expect.poll(() => bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id) == null, closedPopup)).toBe(true)
+    await run(bandal, original, `window.open('${site.origin}/retained-hidden-popup','hidden-retain');undefined`)
+    const retainedPopup = await childAt(bandal, `${site.origin}/retained-hidden-popup`)
+    await expect(page.locator('.workspace-course:not([hidden]) .dv-tab')).toHaveCount(0)
+    await page.locator('.course-row__name', { hasText: /^보존할 브라우저 과목$/ }).click()
+    const restored = page.locator(`[data-workspace-course="${owner.id}"]`)
+    await expect(restored.locator('.dv-tab')).toHaveCount(2)
+    expect(await run(bandal, original, 'document.querySelector("#draft").value')).toBe('unsaved across courses')
+    const visibleId = (): Promise<number[]> => bandal.app.evaluate(({ BrowserWindow }, origin) =>
+      BrowserWindow.getAllWindows().flatMap(window => window.contentView.children)
+        .filter(view => 'webContents' in view && view.getVisible() && (view as Electron.WebContentsView).webContents.getURL().startsWith(origin))
+        .map(view => (view as Electron.WebContentsView).webContents.id), site.origin)
+    await restored.locator('.dv-tab').last().click()
+    await expect.poll(visibleId).toEqual([retainedPopup])
+    await restored.locator('.dv-tab').first().click()
+    await expect.poll(visibleId).toEqual([original])
+  } finally { await bandal.close(); await site.close() }
+})
+
+test('closing a dirty tab can be cancelled without removing its tab or native page', async () => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '탭 닫기 취소')
+    const id = await openTab(bandal, `${site.origin}/draft`)
+    await run(bandal, id, `onbeforeunload=e=>{e.preventDefault();e.returnValue='unsaved'};document.body.innerHTML='<button style="position:fixed;inset:0">Draft</button>'`)
+    bandal.app.context().pages().find(page => page.url() === `${site.origin}/draft`)?.on('dialog', () => {})
+    await bandal.app.evaluate(({ webContents, dialog }, id) => {
+      ;(globalThis as any).quitPrompts = 0
+      dialog.showMessageBoxSync = () => { (globalThis as any).quitPrompts++; return 0 }
+      const wc = webContents.fromId(id)!
+      wc.sendInputEvent({ type: 'mouseDown', x: 80, y: 80, button: 'left', clickCount: 1 })
+      wc.sendInputEvent({ type: 'mouseUp', x: 80, y: 80, button: 'left', clickCount: 1 })
+    }, id)
+    await bandal.app.evaluate(({ app }) => { app.quit() })
+    await expect.poll(() => bandal.app.evaluate(() => (globalThis as any).quitPrompts)).toBe(1)
+    expect(await run(bandal, id, 'document.body.textContent')).toBe('Draft')
+    await bandal.app.evaluate(({ app }) => { app.quit() })
+    await expect.poll(() => bandal.app.evaluate(() => (globalThis as any).quitPrompts)).toBe(2)
+    await bandal.page.evaluate(async () => {
+      const overlay = await window.bandal.invoke('overlay:getState', {})
+      await window.bandal.invoke('assistant:window', { action: 'sync', state: {
+        visible: true, courseId: overlay.courseId, conversationId: overlay.conversationId
+      } })
+    })
+    await expect.poll(() => bandal.app.windows().some(page => page.url().includes('view=assistant'))).toBe(true)
+    const assistant = bandal.app.windows().find(page => page.url().includes('view=assistant'))!
+    await expect(assistant.locator('#assistant-popup')).toBeVisible()
+    expect(await bandal.app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('view=assistant'))!
+      window.close()
+      return { alive: !window.isDestroyed(), visible: window.isVisible() }
+    })).toEqual({ alive: true, visible: false })
+    await bandal.page.locator('.workspace-tab__close').click()
+    await expect(bandal.page.locator('.dv-tab')).toHaveCount(1)
+    expect(await run(bandal, id, 'document.body.textContent')).toBe('Draft')
+    await bandal.app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1 })
+    await bandal.page.locator('.workspace-tab__close').click()
+    await expect(bandal.page.locator('.dv-tab')).toHaveCount(0)
+    expect(await bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id) == null, id)).toBe(true)
+  } finally {
+    await bandal.app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1 }).catch(() => {})
+    await bandal.close(); await site.close()
+  }
+})
+
+test('the final private page clears its cookies before another private page opens', async () => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '시크릿 종료')
+    await openTab(bandal, `${site.origin}/lecture`)
+    await bandal.page.getByRole('button', { name: '시크릿 모드 켜기' }).click()
+    await expect(bandal.page.getByRole('button', { name: '시크릿 모드 끄기' })).toBeVisible()
+    const privateId = await childAt(bandal, `${site.origin}/lecture`)
+    await run(bandal, privateId, "document.cookie='private_value=old; path=/';localStorage.setItem('private_value','old')")
+    await bandal.page.getByRole('button', { name: '시크릿 모드 끄기' }).click()
+    await expect(bandal.page.getByRole('button', { name: '시크릿 모드 켜기' })).toBeVisible()
+    await bandal.page.getByRole('button', { name: '시크릿 모드 켜기' }).click()
+    await expect(bandal.page.getByRole('button', { name: '시크릿 모드 끄기' })).toBeVisible()
+    const freshId = await childAt(bandal, `${site.origin}/lecture`)
+    expect(freshId).not.toBe(privateId)
+    expect(await run(bandal, freshId, 'document.cookie')).not.toContain('private_value')
+    expect(await run(bandal, freshId, "localStorage.getItem('private_value')")).toBeNull()
+  } finally { await bandal.close(); await site.close() }
+})
+
+test('browser duplicate, split and modified click create independent pages in the same profile', async () => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '브라우저 복제')
+    await openTab(bandal, `${site.origin}/lecture`)
+    const profile = await bandal.page.evaluate(() => window.bandal.invoke('browser:saveProfile', { name: '분리 계정', color: '#9757b0', icon: '●' }))
+    await bandal.page.getByRole('button', { name: '브라우저 프로필', exact: true }).click()
+    await bandal.page.getByRole('dialog').getByRole('button', { name: '● 분리 계정', exact: true }).click()
+    await expect(bandal.page.getByRole('button', { name: '브라우저 프로필', exact: true })).toContainText('분리 계정')
+    const source = await childAt(bandal, `${site.origin}/lecture`)
+    await run(bandal, source, `location.href='${site.origin}/current'`)
+    await expect.poll(() => run(bandal, source, 'location.pathname')).toBe('/current')
+    const currentPages = () => bandal.app.evaluate(({ webContents, session }, { url, profileId }) => {
+      const expected = session.fromPartition(`persist:bandal-profile-${profileId}`)
+      return webContents.getAllWebContents().filter(page => page.getURL() === url).map(page => ({ id: page.id, sameProfile: page.session === expected }))
+    }, { url: `${site.origin}/current`, profileId: profile.id })
+    await bandal.page.locator('.workspace-tab').first().click({ button: 'right' })
+    await bandal.page.getByRole('menuitem', { name: '탭 복제', exact: true }).click()
+    await expect.poll(async () => (await currentPages()).length).toBe(2)
+    await bandal.page.locator('.workspace-tab').first().click({ button: 'right' })
+    await bandal.page.getByRole('menuitem', { name: '오른쪽에 분할해서 열기', exact: true }).click()
+    await expect.poll(async () => (await currentPages()).length).toBe(3)
+    const platform = await bandal.page.evaluate(() => window.bandal.platform)
+    await bandal.page.locator('.workspace-tab').first().click({ modifiers: [platform === 'darwin' ? 'Meta' : 'Control'] })
+    await expect.poll(async () => (await currentPages()).length).toBe(4)
+    const pages = await currentPages()
+    expect(new Set(pages.map(page => page.id)).size).toBe(4)
+    expect(pages.every(page => page.sameProfile)).toBe(true)
   } finally { await bandal.close(); await site.close() }
 })

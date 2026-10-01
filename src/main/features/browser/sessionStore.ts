@@ -41,6 +41,7 @@ export interface BrowserSessionStoreDeps {
 export interface BrowserSessionStore {
   flush(): Promise<void>
   startFlushOnQuit(): void
+  resetQuitState(): void
   dispose(): void
   listSites(): Promise<{ origin: string; cookieCount: number }[]>
   clear(origin: string | null): Promise<{ ok: true }>
@@ -121,6 +122,7 @@ function buildBrowserSessionStore(
   let listeningForQuit = false
   let finalizingQuit = false
   let allowQuit = false
+  let quitGeneration = 0
 
   // Previous versions copied session cookies into an encrypted file and
   // restored them with a synthetic expiry. Never restore that file: doing so
@@ -150,7 +152,9 @@ function buildBrowserSessionStore(
     if (finalizingQuit) return
 
     finalizingQuit = true
+    const generation = quitGeneration
     void flush().finally(() => {
+      if (generation !== quitGeneration) return
       allowQuit = true
       deps.app?.quit()
     })
@@ -164,6 +168,12 @@ function buildBrowserSessionStore(
         deps.app.on('before-quit', beforeQuit)
         listeningForQuit = true
       }
+    },
+
+    resetQuitState(): void {
+      quitGeneration++
+      finalizingQuit = false
+      allowQuit = false
     },
 
     dispose(): void {

@@ -1,17 +1,19 @@
 import { useNativePageOcclusion } from './useNativePageOcclusion'
 /**
- * [M3-F] Fixed layer hosting every live <webview> guest OUTSIDE the dockview
- * DOM. Mounted once at shell level (AppShell).
+ * Fixed layer hosting native browser page anchors outside the dockview DOM.
+ * Mounted once at shell level (AppShell).
  *
  * Also owns the cross-cutting wiring:
  *  - guest destruction when the workspace closes a browser tab
- *  - `browser:open-url` pushes (denied window.open) → new Bandal browser tab
+ *  - `browser:open-url` pushes → adopted popup or new Bandal browser tab
  *  - `browser:external-auth` pushes → short-lived in-panel notice
  *  - pointer passthrough while dockview drags / the new-tab menu / any
  *    external overlay (webviewPassthrough tokens) are active
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import { tabDragSession } from '../workspace/tabDragSession'
+import { registerTabCloseGuard } from '../workspace/tabCloseGuard'
 import { v4 as uuidv4 } from 'uuid'
 import { invoke, onPush } from '../../lib/ipc'
 import { showToast, showToastWithAction } from '../../app/toast'
@@ -19,7 +21,7 @@ import { useWorkspaceStore, retainedTabDescriptors, openBrowserTabInCourse } fro
 import { descriptorFor } from '../workspace/tabIdentity'
 import { useNewTabMenu } from '../workspace/newTabMenuController'
 import { BrowserGuestView } from './BrowserGuestView'
-import { useBrowserGuests, connectBrowserTabs } from './browserGuestsStore'
+import { useBrowserGuests } from './browserGuestsStore'
 import {
   useActivateTabRequests,
   useAgentTabSync,
@@ -32,7 +34,7 @@ import {
 } from './webviewPassthrough'
 import './browser.css'
 
-/** Release guests whose tab is no longer open (closeTab / course switch). */
+/** Release pages whose tabs have closed; cached courses keep their pages. */
 function useGuestReaper(): void {
   useEffect(
     () =>
@@ -61,18 +63,17 @@ function useGuestReaper(): void {
   )
 }
 
-/** window.open from a guest, denied in main → open as a new browser tab. */
+/** Adopt native popups and route requested URLs into workspace tabs. */
 function useOpenUrlForwarding(): void {
   useEffect(
     () =>
-      onPush('browser:open-url', ({ url, background, requestId, isPrivate, profileId, tabId: adoptedTabId, courseId, openerTabId }) => {
+      onPush('browser:open-url', ({ url, background, requestId, isPrivate, profileId, tabId: adoptedTabId, courseId }) => {
         const tabId = adoptedTabId ?? uuidv4()
-        if (openerTabId) connectBrowserTabs(openerTabId, tabId)
         // Main matched the new tab to the agent's request by URL prefix, which
         // a redirect breaks. Remember which request this tab belongs to so the
         // guest can say so when it registers.
         if (requestId !== undefined) rememberOpenRequest(tabId, requestId)
-        openBrowserTabInCourse(
+        const retained = openBrowserTabInCourse(
             descriptorFor('browser', {
               tabId,
               initialUrl: url,
@@ -81,6 +82,14 @@ function useOpenUrlForwarding(): void {
             }),
             courseId, background === true
           )
+        if (!retained && adoptedTabId) {
+          void invoke('browser:destroyPage', { tabId: adoptedTabId }).catch(() => undefined)
+        } else if (retained && adoptedTabId) {
+          // Chromium already created this page. Track its lifetime and events
+          // even when its owning course no longer has a mounted Dockview.
+          useBrowserGuests.getState().ensureGuest(tabId, url, isPrivate === true,
+            profileId ?? 'default', courseId === undefined ? useWorkspaceStore.getState().activeCourseId : courseId)
+        }
       }),
     []
   )
@@ -147,72 +156,25 @@ function useBlockedNotices(): void {
   }, [])
 }
 
-/**
- * True while a dockview interaction owns the pointer: HTML5 dnd (tab/group
- * drags) or a sash resize drag started on a `.dv-sash`.
- */
-function useDockviewDragActive(): boolean {
-  const [isDragActive, setDragActive] = useState(false)
-  useEffect(() => {
-    const start = (event?: Event): void => {
-      // Material file rows, including images, promote to a native OS drag (dragstart is
-      // cancelled, so no dragend ever fires) and their whole point is
-      // dropping INTO a guest page (mail attach, LMS upload). Passthrough
-      // would remove every guest from drag hit-testing — skip it.
-      const target = event?.target
-      if (target instanceof Element) {
-        const row = target.closest('[data-material-row]')
-        const kind = row?.getAttribute('data-kind')
-        if (row !== null && kind !== 'dir') return
-      }
-      setDragActive(true)
-    }
-    const end = (): void => setDragActive(false)
-    const onSashRelease = (): void => {
-      end()
-      window.removeEventListener('pointerup', onSashRelease, true)
-      window.removeEventListener('pointercancel', onSashRelease, true)
-    }
-    const onPointerDown = (event: PointerEvent): void => {
-      const target = event.target
-      if (!(target instanceof Element) || target.closest('.dv-sash') === null) {
-        return
-      }
-      start()
-      window.addEventListener('pointerup', onSashRelease, true)
-      window.addEventListener('pointercancel', onSashRelease, true)
-    }
-    window.addEventListener('dragstart', start, true)
-    window.addEventListener('dragend', end, true)
-    window.addEventListener('drop', end, true)
-    window.addEventListener('pointerdown', onPointerDown, true)
-    // Safety net: a cancelled dragstart never emits dragend, which used to
-    // leave passthrough stuck on (guests unclickable until the next drop).
-    window.addEventListener('mouseup', end, true)
-    window.addEventListener('blur', end)
-    return () => {
-      window.removeEventListener('dragstart', start, true)
-      window.removeEventListener('dragend', end, true)
-      window.removeEventListener('drop', end, true)
-      window.removeEventListener('pointerdown', onPointerDown, true)
-      window.removeEventListener('mouseup', end, true)
-      window.removeEventListener('blur', end)
-      window.removeEventListener('pointerup', onSashRelease, true)
-      window.removeEventListener('pointercancel', onSashRelease, true)
-    }
-  }, [])
-  return isDragActive
-}
-
 export function BrowserWebviewLayer(): JSX.Element {
   const liveGuests = useBrowserGuests((state) => state.liveGuests)
   const isMenuOpen = useNewTabMenu((state) => state.isOpen)
-  const isDragActive = useDockviewDragActive()
+  const isDragActive = useSyncExternalStore(tabDragSession.subscribe, tabDragSession.getSnapshot) !== null
+  useEffect(() => registerTabCloseGuard(async descriptor => {
+    if (descriptor.kind !== 'browser') return true
+    try { return (await invoke('browser:prepareClose', { tabId: descriptor.payload.tabId })).allowed }
+    catch { showToast('페이지를 닫지 못했어요. 다시 시도해 주세요.'); return false }
+  }), [])
   const [hasExternalToken, setExternalToken] = useState(
     isPointerPassthroughActive
   )
   useEffect(() => onPointerPassthrough(setExternalToken), [])
   useGuestReaper()
+  useEffect(() => onPush('browser:page-event', event => {
+    if (event.name === 'did-navigate' || event.name === 'did-navigate-in-page' || event.name === 'page-title-updated') {
+      useWorkspaceStore.getState().rememberDetachedBrowserPage(event.tabId, event.state.url, event.state.title)
+    }
+  }), [])
   useOpenUrlForwarding()
   useAuthFallbackForwarding()
   useBlockedNotices()
@@ -220,8 +182,8 @@ export function BrowserWebviewLayer(): JSX.Element {
   useActivateTabRequests()
   useCloseTabRequests()
 
-  const occluded = useNativePageOcclusion()
-  const isPassthrough = isDragActive || isMenuOpen || hasExternalToken || occluded
+  const occlusions = useNativePageOcclusion()
+  const isPassthrough = isDragActive || isMenuOpen || hasExternalToken
 
   return (
     <div
@@ -236,6 +198,7 @@ export function BrowserWebviewLayer(): JSX.Element {
           isPrivate={guest.isPrivate}
           profileId={guest.profileId}
           suppressed={isPassthrough}
+          occlusions={occlusions}
         />
       ))}
     </div>

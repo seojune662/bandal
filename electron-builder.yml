@@ -1,4 +1,4 @@
-beforePack: scripts/build-calendar.mjs
+beforePack: scripts/build-native.mjs
 # Packaging config for Bandal (electron-builder).
 #
 # productName stays ASCII ("Bandal") on purpose: non-ASCII bundle/executable
@@ -116,8 +116,11 @@ mac:
   extraResources:
     - from: resources/native/calendar/${arch}/bandal-calendar
       to: calendar/bandal-calendar
+    - from: resources/native/browser-import/${arch}/bandal-browser-import
+      to: browser-import/bandal-browser-import
   binaries:
     - Contents/Resources/calendar/bandal-calendar
+    - Contents/Resources/browser-import/bandal-browser-import
   extendInfo:
     CFBundleDisplayName: Bandal
     NSCalendarsUsageDescription: 선택한 캘린더의 일정을 반달에서 보고, 직접 선택한 과제와 일정을 캘린더에 저장합니다.
@@ -130,6 +133,9 @@ mac:
   artifactName: ${productName}-${arch}-mac.${ext}
 
 win:
+  extraResources:
+    - from: resources/native/browser-import/${arch}/bandal-browser-import.exe
+      to: browser-import/bandal-browser-import.exe
   target:
     - target: nsis
       arch:

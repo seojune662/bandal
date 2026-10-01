@@ -7,13 +7,13 @@
 사이트가 만든 창은 `setWindowOpenHandler.createWindow`의 `options.webContents`를
 그대로 받아 반달 탭으로 표시한다. URL을 다시 열어 POST, referrer, 이름 있는 창,
 opener/postMessage 연결을 잃지 않도록 한다. Chromium이 페이지 생성을 미루는
-background-tab 링크만 원래 referrer로 최초 탐색한다. 연결 중인 부모·자식 탭은
-LRU 정리에서 제외하고 연결이 끝나면 해제한다. 일반/시크릿 세션은 계속 분리한다.
+background-tab 링크만 원래 referrer로 최초 탐색한다. v0.59.0부터는 방문한 페이지를
+탭 이동 때문에 파괴하지 않으며, 복원한 미방문 탭만 지연 생성한다. 일반/시크릿 세션은 계속 분리한다.
 
 다운로드는 요청 과목을 유지한다. 파일 전송이 끝난 뒤 빈 다운로드 탭만 닫으며,
 `mainFrame.executeJavaScript`로 현재 문서를 검사한다. `webContents.executeJavaScript`는
 문서 로드 완료를 기다리므로 문서를 만들지 않는 다운로드 탐색에서 멈출 수 있다.
-메뉴·대화상자 동안에는 네이티브 페이지를 숨기고 마지막 캡처 화면을 표시한다.
+겹치는 메뉴·대화상자 및 탭 드래그 동안에는 네이티브 페이지를 숨기고 마지막 캡처 화면을 표시한다.
 
 HTTP 오류 문서는 그대로 표시하고 상태 코드를 안내한다. 진단에는 URL의
 쿼리/프래그먼트, 콘솔 인수, 인증 요청 본문을 수집하지 않는다. 로그인 POST를

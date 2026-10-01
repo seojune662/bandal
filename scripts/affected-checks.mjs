@@ -13,13 +13,15 @@ export function changedFiles(base) {
     ...git('diff', '--name-only', '-z', base).split('\0'),
     ...git('ls-files', '--others', '--exclude-standard', '-z').split('\0')
   ].filter(Boolean))
-  // Version-only releases do not change runtime dependencies.
+  // Version bumps and the isolated import-helper dev hook do not change runtime dependencies.
   if (files.has('package.json')) {
     const before = JSON.parse(git('show', `${base}:package.json`))
     const after = JSON.parse(readFileSync('package.json', 'utf8'))
-    delete before.version
-    delete after.version
-    if (JSON.stringify(before) === JSON.stringify(after)) files.delete('package.json')
+    if (onlyVersionOrBrowserImportHookChanged(before, after)) {
+      files.delete('package.json')
+      // Keep this feature covered even when its already-existing helper was not edited.
+      if (before.scripts?.dev !== after.scripts?.dev) files.add('scripts/build-browser-import.mjs')
+    }
   }
   // Adding this isolated browser preload leaves the app's build pipeline intact.
   if (files.has('electron.vite.config.ts')) {
@@ -28,6 +30,18 @@ export function changedFiles(base) {
     if (onlyBrowserGestureEntryChanged(before, after)) files.delete('electron.vite.config.ts')
   }
   return { base, files: [...files] }
+}
+
+export function onlyVersionOrBrowserImportHookChanged(before, after) {
+  const normalize = value => {
+    const copy = structuredClone(value)
+    delete copy.version
+    if (copy.scripts?.dev === 'node scripts/build-calendar.mjs && node scripts/build-browser-import.mjs && electron-vite dev') {
+      copy.scripts.dev = 'node scripts/build-calendar.mjs && electron-vite dev'
+    }
+    return copy
+  }
+  return JSON.stringify(normalize(before)) === JSON.stringify(normalize(after))
 }
 
 export function onlyBrowserGestureEntryChanged(before, after) {
@@ -48,7 +62,8 @@ export function planChecks(files, full = false) {
   if (has(/^(scripts\/(affected-checks|reuse-ci)\.mjs|\.github\/workflows\/)/)) scriptTests.add('scripts/test-affected-checks.mjs')
   if (has(/^scripts\/(upload-release-assets|lib\/release-assets|test-release-assets)\.mjs$/)) scriptTests.add('scripts/test-release-assets.mjs')
   const e2e = new Set(files.filter((f) => /^e2e\/[^/]+\.spec\.ts$/.test(f)))
-  const sharedAppearance = has(/^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/)
+  const browserSettings = /^src\/renderer\/src\/features\/settings\/(browser\/|(?:SavedLoginsSettings|BrowsingDataPanel)\.tsx$)/
+  const sharedAppearance = files.some(file => !browserSettings.test(file) && /^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/.test(file))
   if (sharedAppearance) {
     for (const spec of ['theme', 'sidebars', 'settingsShell', 'uiRedesign', 'tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus']) e2e.add(`e2e/${spec}.spec.ts`)
     scriptTests.add('scripts/check-contrast.mjs')
@@ -63,6 +78,15 @@ export function planChecks(files, full = false) {
   if (has(/(systemClipboard|noteImagePlugin|BufferedPdfCanvas|zoomInput)/)) e2e.add('e2e/interactionFixes.spec.ts')
   if (has(/(BrowserAddress|browserSearch|urlInput|useAddressSuggestions)/)) e2e.add('e2e/browserAddress.spec.ts')
   if (has(/^src\/.*\/browser\/|src\/preload\/browser|src\/main\/windows\/assistantWindow|src\/renderer\/src\/features\/assistant\//)) e2e.add('e2e/browserCompatibility.spec.ts')
+  const browserImport = has(/^(src\/main\/features\/(browser\/(import\/|(?:profiles|historyRepo)\.ts$)|credentials\/)|src\/main\/ipc\/browserImportHandlers\.ts$|src\/renderer\/src\/features\/browser\/(BrowserImportDialog\.tsx|BrowserPanel\.tsx|browserImport\.css|loginBridge\.ts|browserFavorite\.ts|browserStartPageModel\.ts)$|src\/shared\/types\/(browserImport|browserProfile|credentials)\.ts$|(?:native|resources\/native)\/browser-import\/|scripts\/(build-browser-import|verify-browser-import|build-native)\.mjs$)/) || has(browserSettings)
+  if (browserImport) {
+    e2e.add('e2e/browserImport.spec.ts')
+    e2e.add('e2e/browserCompatibility.spec.ts')
+  }
+  const workspace = has(/^(src\/renderer\/src\/(features\/workspace\/|stores\/workspaceStore\.ts$)|src\/shared\/tabs\.ts$)/)
+  if (workspace) {
+    for (const spec of ['tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance']) e2e.add(`e2e/${spec}.spec.ts`)
+  }
   if (has(/^src\/.*(calendar\/|appleCalendar\/|board\/|taskSchedule|calendarDate|types\/board)/)) {
     e2e.add('e2e/taskSchedule.spec.ts')
     e2e.add('e2e/appleCalendar.spec.ts')
@@ -71,7 +95,7 @@ export function planChecks(files, full = false) {
   if (has(/^src\/(main\/(background\/|db\/|index\.ts|features\/materials\/)|preload\/index\.ts|renderer\/src\/(features\/workspace\/|stores\/workspaceStore))/)) e2e.add('e2e/coursePerformance.spec.ts')
   if (has(/^src\/renderer\/src\/features\/notes\/(NoteTab|NoteToolbar|noteEditorPlugins|noteFormatting|nativeHistoryGuard)/)) e2e.add('e2e/noteToolbar.spec.ts')
   if (full) {
-    for (const spec of ['pdfExport', 'browserAddress', 'pageImageCopy', 'taskSchedule', 'appleCalendar', 'viewportMenus', 'coursePerformance']) {
+    for (const spec of ['pdfExport', 'browserAddress', 'browserCompatibility', 'browserImport', 'tabDrag', 'favoritesDrag', 'materialsDrag', 'pageImageCopy', 'taskSchedule', 'appleCalendar', 'viewportMenus', 'coursePerformance']) {
       e2e.add(`e2e/${spec}.spec.ts`)
     }
   }
@@ -79,6 +103,8 @@ export function planChecks(files, full = false) {
   if (e2e.size === 0) e2e.add('e2e/startup.spec.ts')
   const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f))
   if (sharedAppearance) unitInputs.push('src/shared/theme.ts', 'src/renderer/src/features/courses/CourseSidebar.tsx', 'src/renderer/src/features/settings/AppearancePanel.tsx')
+  if (has(/^(?:native|resources\/native)\/browser-import\/|^scripts\/(build-browser-import|verify-browser-import|build-native)\.mjs$/)) unitInputs.push('src/main/features/browser/import/index.ts')
+  if (has(/^src\/renderer\/src\/features\/workspace\/.*\.css$/)) unitInputs.push('src/renderer/src/features/workspace/tabDrag.ts', 'src/renderer/src/features/workspace/tabDragSession.ts', 'src/renderer/src/features/workspace/tabDuplication.ts')
   // Runtime font files are loaded from disk, outside the TS import graph.
   if (has(/^resources\/fonts\//)) unitInputs.push('src/main/features/pdf/exportPdf.ts', 'src/main/features/canvas/exportBoardPdf.ts')
   const pdfChanges = files.filter(f => /^src\/renderer\/src\/features\/(pdf|ink)\//.test(f))

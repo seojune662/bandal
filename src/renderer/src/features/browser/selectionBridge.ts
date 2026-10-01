@@ -1,9 +1,9 @@
 import { useEffect, type RefObject } from 'react'
-import type { WebviewTag } from './webviewTypes'
+import type { BrowserPageHandle } from './browserPageTypes'
 
 const CONSOLE_PREFIX = '__bandal_sel__'
 export const BROWSER_SELECTION_EVENT = 'bandal:browser-selection'
-let selectionOwner: WebviewTag | null = null
+let selectionOwner: BrowserPageHandle | null = null
 
 export interface BrowserSelectionRect {
   left: number
@@ -26,7 +26,7 @@ interface GuestSelectionPayload {
   url: string
 }
 
-interface SelectionWebview extends WebviewTag {
+interface SelectionWebview extends BrowserPageHandle {
   executeJavaScript(code: string, userGesture?: boolean): Promise<unknown>
 }
 
@@ -132,7 +132,7 @@ function parsePayload(message: string): GuestSelectionPayload | null {
 }
 
 function announce(
-  source: WebviewTag,
+  source: BrowserPageHandle,
   detail: BrowserSelectionDetail | null
 ): void {
   if (detail === null) {
@@ -152,8 +152,8 @@ function announce(
  * Injects a console-only reporter after each guest navigation. No preload,
  * Electron API, Node integration, or sandbox relaxation is involved.
  */
-export function useWebviewSelectionBridge(
-  webviewRef: RefObject<WebviewTag | null>
+export function useBrowserSelectionBridge(
+  webviewRef: RefObject<BrowserPageHandle | null>
 ): void {
   useEffect(() => {
     const webview = webviewRef.current as SelectionWebview | null
@@ -178,7 +178,7 @@ export function useWebviewSelectionBridge(
         announce(webview, null)
         return
       }
-      const guestRect = webview.getBoundingClientRect()
+      const guestRect = webview.element.getBoundingClientRect()
       announce(webview, {
         text: payload.text,
         rect: {

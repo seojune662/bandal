@@ -122,6 +122,36 @@ describe('cookieUrl', () => {
 })
 
 describe('native persistent cookie storage', () => {
+  test('a cancelled quit flushes new browser state on the next attempt', async () => {
+    const fake = fakeSession([])
+    const app = fakeApp()
+    const store = createBrowserSessionStore({ session: fake.session, app })
+    store.startFlushOnQuit()
+    const event = { preventDefault: vi.fn() } as unknown as ElectronEvent
+    app.beforeQuit()?.(event)
+    await vi.waitFor(() => expect(app.quit).toHaveBeenCalledTimes(1))
+    store.resetQuitState()
+    app.beforeQuit()?.(event)
+    await vi.waitFor(() => expect(app.quit).toHaveBeenCalledTimes(2))
+    expect(fake.flushStore).toHaveBeenCalledTimes(2)
+    expect(event.preventDefault).toHaveBeenCalledTimes(2)
+  })
+
+  test('cancellation during a flush cannot resume an obsolete quit request', async () => {
+    const fake = fakeSession([])
+    let finish!: () => void
+    fake.flushStore.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve }))
+    const app = fakeApp()
+    const store = createBrowserSessionStore({ session: fake.session, app })
+    store.startFlushOnQuit()
+    app.beforeQuit()?.({ preventDefault: vi.fn() } as unknown as ElectronEvent)
+    await vi.waitFor(() => expect(fake.flushStore).toHaveBeenCalledTimes(1))
+    store.resetQuitState()
+    finish()
+    await store.flush()
+    expect(app.quit).not.toHaveBeenCalled()
+  })
+
   test('flushes Chromium cookies and site storage before allowing a graceful quit', async () => {
     const fake = fakeSession([])
     const app = fakeApp()

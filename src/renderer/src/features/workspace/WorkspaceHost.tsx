@@ -14,7 +14,6 @@ import {
   type DockviewReadyEvent,
   type DockviewTheme,
   type IDockviewHeaderActionsProps,
-  type IDockviewPanelHeaderProps,
   type IWatermarkPanelProps
 } from 'dockview'
 import 'dockview/dist/styles/dockview.css'
@@ -22,16 +21,16 @@ import { Icon } from '../../app/icons'
 import { createBrowserTab, createMarkdownTab } from '../../app/tabCommands'
 import { BandalMark } from '../../components/BandalMark'
 import { Tooltip } from '../../components/Tooltip'
-import { useLocale, useT } from '../../i18n'
+import { useLocale } from '../../i18n'
 import { flushLastActiveCoursePersist, useCoursesStore } from '../../stores/coursesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useWorkspaceStore, retainedTabDescriptors } from '../../stores/workspaceStore'
 import { useFileDropTarget } from '../materials/useFileDropTarget'
 import { NewTabMenu } from './NewTabMenu'
-import { TabContextMenu } from './TabContextMenu'
+import { WorkspaceTab } from './WorkspaceTab'
 import { openNewTabMenu, useNewTabMenu } from './newTabMenuController'
-import { descriptorFor, isTabDescriptor, tabTitle } from './tabIdentity'
-import { writeWorkspaceTabDragData } from './tabDrag'
+import { descriptorFor } from './tabIdentity'
+import { installWorkspaceDragSession } from './tabDragSession'
 import { dockviewComponents } from './tabRegistry'
 import { installTabDragScrolling } from './tabDragScroll'
 import { installTabStripWheelScrolling } from './tabStripScroll'
@@ -46,143 +45,10 @@ const bandalTheme: DockviewTheme = {
   dndPanelOverlay: 'content'
 }
 
-function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
-  const t = useT()
-  const [title, setTitle] = useState(props.api.title ?? '')
-  const [contextMenu, setContextMenu] = useState<{
-    x: number
-    y: number
-    placement: 'top' | 'bottom'
-    align: 'start' | 'end'
-    rightPanelIds: string[]
-  } | null>(null)
-  const tabRef = useRef<HTMLDivElement>(null)
-  const courses = useCoursesStore((state) => state.courses)
-  const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
-  const course = courses.find((entry) => entry.id === selectedCourseId) ?? null
-  useEffect(() => {
-    const disposable = props.api.onDidTitleChange((event) => {
-      setTitle(event.title)
-    })
-    return () => disposable.dispose()
-  }, [props.api])
-
-  const rawDescriptor = (props.params as Record<string, unknown>)['descriptor']
-  const descriptor = isTabDescriptor(rawDescriptor) ? rawDescriptor : null
-  const canOpenNewInstance =
-    descriptor !== null &&
-    descriptor.kind !== 'group-chat' &&
-    descriptor.kind !== 'board'
-
-  useEffect(() => {
-    const dockviewTab = tabRef.current?.closest('.dv-tab')
-    if (!(dockviewTab instanceof HTMLElement) || descriptor === null) return
-    const handleDragStart = (event: DragEvent): void => {
-      if (event.dataTransfer === null) return
-      writeWorkspaceTabDragData(
-        event.dataTransfer,
-        descriptor,
-        tabTitle(descriptor)
-      )
-    }
-    dockviewTab.addEventListener('dragstart', handleDragStart)
-    return () => dockviewTab.removeEventListener('dragstart', handleDragStart)
-  }, [descriptor])
-
-  return (
-    <>
-      <Tooltip
-        label={
-          canOpenNewInstance
-            ? t('workspace.tab.newInstanceTooltip', { title })
-            : title
-        }
-        placement="bottom"
-      >
-        <div
-          ref={tabRef}
-          className="workspace-tab"
-          onContextMenu={(event) => {
-            if (descriptor === null || course === null) return
-            event.preventDefault()
-            event.stopPropagation()
-            props.api.setActive()
-            const panels = props.api.group.panels
-            const index = panels.findIndex((panel) => panel.id === props.api.id)
-            setContextMenu({
-              x: event.clientX,
-              y: event.clientY,
-              placement:
-                event.clientY > window.innerHeight / 2 ? 'top' : 'bottom',
-              align: event.clientX > window.innerWidth / 2 ? 'end' : 'start',
-              rightPanelIds:
-                index < 0
-                  ? []
-                  : panels.slice(index + 1).map((panel) => panel.id)
-            })
-          }}
-          onMouseDown={(event) => {
-            if (event.button === 1) {
-              event.preventDefault()
-              props.api.close()
-            }
-          }}
-          onClick={(event) => {
-            if (
-              descriptor === null ||
-              !canOpenNewInstance ||
-              !(window.bandal?.platform === 'darwin'
-                ? event.metaKey
-                : event.ctrlKey)
-            ) {
-              return
-            }
-            event.preventDefault()
-            event.stopPropagation()
-            useWorkspaceStore
-              .getState()
-              .openTab(descriptor, { newInstance: true })
-          }}
-        >
-          {descriptor !== null && (
-            <TabKindIcon
-              kind={descriptor.kind}
-              className="workspace-tab__kind"
-            />
-          )}
-          <span className="workspace-tab__title">{title}</span>
-          <button
-            type="button"
-            className="workspace-tab__close"
-            aria-label={`${title} 탭 닫기`}
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation()
-              props.api.close()
-            }}
-          >
-            <Icon name="x" />
-          </button>
-        </div>
-      </Tooltip>
-      {contextMenu !== null && descriptor !== null && course !== null && (
-        <TabContextMenu
-          descriptor={descriptor}
-          label={title}
-          course={course}
-          panelId={props.api.id}
-          rightPanelIds={contextMenu.rightPanelIds}
-          containerApi={props.containerApi}
-          x={contextMenu.x}
-          y={contextMenu.y}
-          placement={contextMenu.placement}
-          align={contextMenu.align}
-          returnFocus={tabRef.current}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
-    </>
-  )
+// The hit zone stays narrow; the preview shows the space the new split receives.
+const workspaceDragEdges = {
+  activationSize: { value: 12, type: 'pixels' as const },
+  size: { value: 50, type: 'percentage' as const }
 }
 
 function Watermark(_props: IWatermarkPanelProps): JSX.Element {
@@ -293,6 +159,8 @@ function HeaderActions(_props: IDockviewHeaderActionsProps): JSX.Element {
 }
 
 function CourseWorkspace({ courseId, active }: { courseId: string | null; active: boolean }): JSX.Element {
+  const ko = useLocale() === 'ko-KR'
+  const rootRef = useRef<HTMLDivElement>(null)
   const layoutSubscription = useRef<{ dispose: () => void } | null>(null)
   const frame = useRef<number | null>(null)
   useEffect(() => () => {
@@ -302,7 +170,7 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
   }, [courseId])
   const onReady = (event: DockviewReadyEvent): void => {
     useWorkspaceStore.getState().attachCourseApi(courseId, event.api)
-    layoutSubscription.current = event.api.onDidLayoutChange(() => {
+    const layout = event.api.onDidLayoutChange(() => {
       if (frame.current !== null) return
       frame.current = requestAnimationFrame(() => {
         frame.current = null
@@ -310,11 +178,16 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
         if (store.activeCourseId === courseId) store.notifyLayoutChanged()
       })
     })
+    const overlay = event.api.onWillShowOverlay((event) => {
+      if (rootRef.current) rootRef.current.dataset.dropKind = event.kind
+    })
+    layoutSubscription.current = { dispose: () => { layout.dispose(); overlay.dispose() } }
   }
   return <CourseActivity.Provider value={active}>
-    <div className="workspace-course" hidden={!active} aria-hidden={!active} data-workspace-course={courseId ?? ''}>
+    <div ref={rootRef} className="workspace-course" hidden={!active} aria-hidden={!active} data-workspace-course={courseId ?? ''} data-drop-language={ko ? 'ko' : 'en'}>
       <DockviewReact
         theme={bandalTheme}
+        dndEdges={workspaceDragEdges}
         scrollbars="native"
         components={dockviewComponents}
         defaultTabComponent={WorkspaceTab}
@@ -366,6 +239,7 @@ export function WorkspaceHost(): JSX.Element {
     const host = hostRef.current
     if (!host) return
     const stopWheel = installTabStripWheelScrolling(host)
+    const stopSession = installWorkspaceDragSession(host)
     const stopDrag = installTabDragScrolling(host)
     const flush = (): void => {
       useWorkspaceStore.getState().notifyLayoutChanged()
@@ -373,7 +247,7 @@ export function WorkspaceHost(): JSX.Element {
       flushLastActiveCoursePersist()
     }
     window.addEventListener('beforeunload', flush)
-    return () => { stopWheel(); stopDrag(); window.removeEventListener('beforeunload', flush); flush() }
+    return () => { stopWheel(); stopDrag(); stopSession(); window.removeEventListener('beforeunload', flush); flush() }
   }, [])
 
   return <div ref={hostRef} className="workspace-host" data-tour="tab-strip">

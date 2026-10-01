@@ -2,7 +2,7 @@ import { BrowserProfileSelect } from '../browser/BrowserProfileSelect'
 import { useEffect, useRef, useState } from 'react'
 import type {
   CredentialsAvailability,
-  SavedLoginSummary
+  SavedLoginSummary,
 } from '../../../../shared/types/credentials'
 import { useLocale } from '../../i18n'
 import { invoke } from '../../lib/ipc'
@@ -12,14 +12,19 @@ function formatUpdatedAt(value: string, locale: string): string {
   return Number.isFinite(date.getTime())
     ? new Intl.DateTimeFormat(locale, {
         dateStyle: 'medium',
-        timeStyle: 'short'
+        timeStyle: 'short',
       }).format(date)
     : value
 }
 
 export function SavedLoginsSettings(): JSX.Element {
   const [profileId, setProfileId] = useState('default')
-  return <><BrowserProfileSelect value={profileId} onChange={setProfileId} /><ProfileSavedLogins key={profileId} profileId={profileId} /></>
+  return (
+    <>
+      <BrowserProfileSelect value={profileId} onChange={setProfileId} />
+      <ProfileSavedLogins key={profileId} profileId={profileId} />
+    </>
+  )
 }
 function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
   const locale = useLocale()
@@ -36,8 +41,8 @@ function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
     setLoading(true)
     setError(false)
     void Promise.all([
-      invoke('credentials:availability', {}),
-      invoke('credentials:list', { profileId })
+      invoke('credentials:availability', { profileId }),
+      invoke('credentials:list', { profileId }),
     ])
       .then(([nextAvailability, nextLogins]) => {
         if (!mountedRef.current) return
@@ -62,22 +67,24 @@ function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
 
   const toggleAutoSubmit = async (
     login: SavedLoginSummary,
-    autoSubmit: boolean
+    autoSubmit: boolean,
   ): Promise<void> => {
     if (pendingOrigin !== null) return
-    setPendingOrigin(login.origin)
+    setPendingOrigin(login.id)
     try {
       // Main treats an empty password as metadata-only only when this exact
       // origin already exists. The password never returns to this window.
-      const saved = await invoke('credentials:save', { profileId,
+      const saved = await invoke('credentials:save', {
+        profileId,
+        id: login.id,
         origin: login.origin,
         username: login.username,
         password: '',
-        autoSubmit
+        autoSubmit,
       })
       if (mountedRef.current) {
         setLogins((current) =>
-          current.map((item) => item.origin === saved.origin ? saved : item)
+          current.map((item) => (item.id === saved.id ? saved : item)),
         )
       }
     } catch {
@@ -92,17 +99,19 @@ function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
     const confirmed = window.confirm(
       korean
         ? `${login.origin}의 저장된 로그인을 삭제할까요?`
-        : `Delete the saved login for ${login.origin}?`
+        : `Delete the saved login for ${login.origin}?`,
     )
     if (!confirmed) return
 
-    setPendingOrigin(login.origin)
+    setPendingOrigin(login.id)
     try {
-      await invoke('credentials:forget', { profileId, origin: login.origin })
+      await invoke('credentials:forget', {
+        profileId,
+        origin: login.origin,
+        credentialId: login.id,
+      })
       if (mountedRef.current) {
-        setLogins((current) =>
-          current.filter((item) => item.origin !== login.origin)
-        )
+        setLogins((current) => current.filter((item) => item.id !== login.id))
       }
     } catch {
       if (mountedRef.current) setError(true)
@@ -128,14 +137,19 @@ function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
       </div>
 
       {loading ? (
-        <div className="saved-login-loading" aria-label={korean ? '불러오는 중' : 'Loading'}>
+        <div
+          className="saved-login-loading"
+          aria-label={korean ? '불러오는 중' : 'Loading'}
+        >
           <span />
           <span />
         </div>
       ) : availability?.state === 'unavailable' ? (
         <div className="saved-login-unavailable" role="status">
           <strong>
-            {korean ? '암호화를 사용할 수 없어 기능이 꺼져 있습니다.' : 'Saved logins are disabled.'}
+            {korean
+              ? '암호화를 사용할 수 없어 기능이 꺼져 있습니다.'
+              : 'Saved logins are disabled.'}
           </strong>
           <span>
             {korean
@@ -145,7 +159,9 @@ function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
         </div>
       ) : logins.length === 0 ? (
         <div className="saved-login-empty">
-          <strong>{korean ? '저장된 로그인이 없습니다.' : 'No saved logins.'}</strong>
+          <strong>
+            {korean ? '저장된 로그인이 없습니다.' : 'No saved logins.'}
+          </strong>
           <span>
             {korean
               ? '내장 브라우저에서 로그인 폼을 직접 작성한 뒤 저장할 수 있습니다.'
@@ -155,7 +171,7 @@ function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
       ) : (
         <div className="saved-login-list">
           {logins.map((login) => (
-            <div className="saved-login-item" key={login.origin}>
+            <div className="saved-login-item" key={login.id}>
               <div className="saved-login-item__copy">
                 <strong>{login.origin}</strong>
                 <span>{login.username}</span>

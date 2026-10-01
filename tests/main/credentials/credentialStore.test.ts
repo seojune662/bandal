@@ -116,6 +116,7 @@ describe('credential encryption boundary', () => {
     })
 
     expect(saved).toEqual({
+      id: expect.any(String),
       origin: 'https://portal.example.edu',
       username: 'student-number',
       autoSubmit: false,
@@ -196,6 +197,7 @@ describe('credential parsing and summaries', () => {
     expect(listed).toHaveLength(1)
     expect(listed[0]).not.toHaveProperty('password')
     expect(Object.keys(listed[0] ?? {})).toEqual([
+      'id',
       'origin',
       'username',
       'autoSubmit',
@@ -215,6 +217,7 @@ describe('credential parsing and summaries', () => {
     })
 
     const updated = store.save({
+      id: store.list()[0]!.id,
       origin: 'https://portal.example.edu/path-is-ignored',
       username: 'student',
       password: '',
@@ -234,5 +237,47 @@ describe('credential parsing and summaries', () => {
       'https://example.edu:8443'
     )
     expect(() => normalizeCredentialOrigin('http://example.edu')).toThrow()
+  })
+})
+
+describe('multiple saved accounts and migration', () => {
+  test('keeps distinct accounts, resolves by ID and refuses ambiguous origin-only operations', () => {
+    const store = createCredentialStore({ userDataPath: temporaryUserData(), safeStorage: fakeSafeStorage() })
+    const first = store.save({ origin: 'https://school.test', username: 'one', password: 'first' })
+    const second = store.save({ origin: 'https://school.test', username: 'two', password: 'second' })
+    expect(store.list()).toHaveLength(2)
+    expect(store.resolve(first.origin)).toBeNull()
+    expect(store.resolve(first.origin, second.id)?.password).toBe('second')
+    expect(store.resolve('https://other.test', first.id)).toBeNull()
+    store.forget(first.origin)
+    expect(store.list()).toHaveLength(2)
+    store.forget(first.origin, first.id)
+    expect(store.list().map(login => login.id)).toEqual([second.id])
+  })
+
+  test('migrates an encrypted v1 account atomically and keeps its identity after restart', () => {
+    const userDataPath = temporaryUserData(), safeStorage = fakeSafeStorage()
+    writeFileSync(credentialPath(userDataPath), safeStorage.encryptString(JSON.stringify({
+      format: 'bandal-saved-logins', version: 1,
+      logins: [{ origin: 'https://school.test', username: 'student', password: 'legacy-secret', autoSubmit: true, updatedAt: '2026-01-01T00:00:00Z' }]
+    })))
+    const store = createCredentialStore({ userDataPath, safeStorage })
+    const account = store.list()[0]!
+    expect(store.resolve(account.origin, account.id)?.password).toBe('legacy-secret')
+    expect(JSON.parse(safeStorage.decryptString(readFileSync(credentialPath(userDataPath)))).version).toBe(2)
+    expect(createCredentialStore({ userDataPath, safeStorage }).list()[0]!.id).toBe(account.id)
+  })
+
+  test('imports multiple accounts once and preserves conflicts unless replace is selected', () => {
+    const store = createCredentialStore({ userDataPath: temporaryUserData(), safeStorage: fakeSafeStorage() })
+    const rows = [{ origin: 'https://school.test', username: 'one', password: 'first' }, { origin: 'https://school.test', username: 'two', password: 'second' }]
+    expect(store.importMany(rows)).toMatchObject({ added: 2, imported: 2 })
+    expect(store.importMany(rows)).toMatchObject({ imported: 0, unchanged: 2 })
+    const changed = [{ ...rows[0]!, password: 'new' }]
+    expect(store.importMany(changed)).toMatchObject({ conflicts: 1, imported: 0 })
+    const id = store.list().find(login => login.username === 'one')!.id
+    expect(store.resolve('https://school.test', id)?.password).toBe('first')
+    expect(store.importMany(changed, { conflict: 'replace' })).toMatchObject({ updated: 1 })
+    expect(store.resolve('https://school.test', id)?.password).toBe('new')
   })
 })

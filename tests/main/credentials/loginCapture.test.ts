@@ -184,6 +184,25 @@ describe('saving a login reads the password inside main', () => {
 })
 
 describe('staging a submitted login', () => {
+  test('matches the submitted account before checking an unchanged password', async () => {
+    const origin = 'https://portal.example.edu'
+    const store = {
+      ...fakeStore(),
+      availability: () => ({ state: 'ready' as const }),
+      list: () => [
+        { id: 'personal', origin, username: 'personal', autoSubmit: false, updatedAt: '' },
+        { id: 'school', origin, username: TYPED.username, autoSubmit: false, updatedAt: '' }
+      ],
+      resolve: vi.fn((_origin: string, id?: string) => id === 'school' ? { ...TYPED, autoSubmit: false } : null)
+    }
+    const capture = createLoginCapturer(store, {
+      fromId: () => fakeGuest(`${origin}/login`)
+    })
+    await expect(capture({ origin, guestWebContentsId: 11, mode: 'stage' })).resolves.toBeNull()
+    expect(store.resolve).toHaveBeenCalledWith(origin, 'school')
+    expect(store.save).not.toHaveBeenCalled()
+  })
+
   test('expires the main-only staged password after 60 seconds', async () => {
     vi.useFakeTimers()
     try {

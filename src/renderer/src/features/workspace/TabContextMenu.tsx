@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import type { DockviewApi } from 'dockview'
-import { v4 as uuidv4 } from 'uuid'
 import type { TabDescriptor } from '../../../../shared/tabs'
 import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
@@ -15,7 +14,7 @@ import { absoluteMaterialPath } from '../materials/materialPaths'
 import { invoke } from '../../lib/ipc'
 import { useFavoritesStore } from '../../stores/favoritesStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
-import { createDuplicatePanelId } from './tabDuplication'
+import { createDuplicatePanelId, duplicateTabDescriptor } from './tabDuplication'
 import { descriptorFor, tabPanelId, tabTitle } from './tabIdentity'
 import { TabKindIcon } from './workspaceIcons'
 
@@ -106,70 +105,19 @@ export function TabContextMenu({
     void action()
   }
 
-  const duplicateTab = (): void => {
+  const duplicateTab = (split = false): void => {
     const sourcePanel = containerApi.getPanel(panelId)
-    const sourceIndex = sourcePanel?.group.panels.findIndex(
-      (panel) => panel.id === panelId
-    )
-    const position =
-      sourcePanel !== undefined && sourceIndex !== undefined && sourceIndex >= 0
-        ? { position: { referencePanel: sourcePanel, index: sourceIndex + 1 } }
-        : {}
-
-    if (descriptor.kind === 'browser') {
-      const duplicateDescriptor = descriptorFor('browser', {
-        tabId: uuidv4(),
-        initialUrl: currentBrowserUrl(descriptor) ?? descriptor.payload.initialUrl,
-        ...(descriptor.payload.isPrivate === true ? { isPrivate: true } : {})
-      })
-      containerApi.addPanel({
-        id: tabPanelId(duplicateDescriptor),
-        component: duplicateDescriptor.kind,
-        title: label,
-        params: { descriptor: duplicateDescriptor },
-        ...position
-      })
-      return
-    }
-
+    if (!sourcePanel || (split && !canOpenNewInstance)) return
+    const copy = duplicateTabDescriptor(descriptor, currentBrowserUrl(descriptor) ?? undefined)
+    const index = sourcePanel.group.panels.findIndex(panel => panel.id === panelId)
     containerApi.addPanel({
-      id: createDuplicatePanelId(descriptor),
-      component: descriptor.kind,
+      id: copy.kind === 'browser' ? tabPanelId(copy) : createDuplicatePanelId(copy),
+      component: copy.kind,
       title: label,
-      params: { descriptor },
-      ...position
-    })
-  }
-
-  const openSplitRight = (): void => {
-    const sourcePanel = containerApi.getPanel(panelId)
-    if (sourcePanel === undefined || !canOpenNewInstance) return
-    const position = {
-      position: { referencePanel: sourcePanel, direction: 'right' as const }
-    }
-
-    if (descriptor.kind === 'browser') {
-      const duplicateDescriptor = descriptorFor('browser', {
-        tabId: uuidv4(),
-        initialUrl: currentBrowserUrl(descriptor) ?? descriptor.payload.initialUrl,
-        ...(descriptor.payload.isPrivate === true ? { isPrivate: true } : {})
-      })
-      containerApi.addPanel({
-        id: tabPanelId(duplicateDescriptor),
-        component: duplicateDescriptor.kind,
-        title: label,
-        params: { descriptor: duplicateDescriptor },
-        ...position
-      })
-      return
-    }
-
-    containerApi.addPanel({
-      id: createDuplicatePanelId(descriptor),
-      component: descriptor.kind,
-      title: label,
-      params: { descriptor },
-      ...position
+      params: { descriptor: copy },
+      position: split
+        ? { referencePanel: sourcePanel, direction: 'right' }
+        : { referencePanel: sourcePanel, index: index + 1 }
     })
   }
 
@@ -274,16 +222,21 @@ export function TabContextMenu({
         role="menuitem"
         onClick={() => activate(() => useWorkspaceStore.getState().closeOthers(panelId))}
       >
-        <Icon name="x" />다른 탭 모두 닫기
+        <Icon name="x" />이 그룹의 다른 탭 닫기
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => activate(() => useWorkspaceStore.getState().closeOthers(panelId, 'workspace'))}
+      >
+        <Icon name="x" />전체 작업 공간의 다른 탭 닫기
       </button>
       <button
         type="button"
         role="menuitem"
         disabled={rightPanelIds.length === 0}
         onClick={() =>
-          activate(() => {
-            for (const id of rightPanelIds) useWorkspaceStore.getState().closeTab(id)
-          })
+          activate(() => useWorkspaceStore.getState().closeTabs(rightPanelIds))
         }
       >
         <Icon name="chevronRight" />오른쪽 탭 모두 닫기
@@ -302,7 +255,7 @@ export function TabContextMenu({
         <button
           type="button"
           role="menuitem"
-          onClick={() => activate(openSplitRight)}
+          onClick={() => activate(() => duplicateTab(true))}
         >
           <Icon name="layoutRight" />
           {t('workspace.tab.context.openSplitRight')}

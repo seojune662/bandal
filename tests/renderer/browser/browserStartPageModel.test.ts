@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import type { Favorite } from '../../../src/shared/types/favorite'
 import {
   LEGACY_NEW_TAB_URL,
+  browserFavoriteMatches,
   browserFavoriteShortcuts,
   hostnameForUrl,
   initialForUrl,
@@ -51,5 +52,21 @@ describe('browser start-page model', () => {
         url: 'https://docs.example/path'
       }
     ])
+  })
+
+  test('filters imported bookmarks by profile and deduplicates global/course URLs', () => {
+    const legacy = favorite({ id: 'legacy' })
+    const school = favorite({ id: 'school-course', label: '과목 바로가기', descriptor: { kind: 'browser', payload: { tabId: 'school-tab', initialUrl: 'https://docs.example/path', profileId: 'school' } } })
+    const imported = { ...school, id: 'school-global', courseId: null, label: '가져온 북마크' }
+    const second = favorite({ id: 'school-extra', courseId: null, descriptor: { kind: 'browser', payload: { tabId: 'extra-tab', initialUrl: 'https://second.example', profileId: 'school' } } })
+    expect(browserFavoriteShortcuts([legacy, school, imported, second], 'school')).toEqual([
+      { id: 'school-course', label: '과목 바로가기', url: 'https://docs.example/path' },
+      { id: 'school-extra', label: '강의 자료', url: 'https://second.example' }
+    ])
+    expect(browserFavoriteShortcuts([legacy, school, imported], 'default').map(item => item.id)).toEqual(['legacy'])
+    expect(browserFavoriteShortcuts([legacy, school]).map(item => item.id)).toEqual(['legacy', 'school-course'])
+    expect(browserFavoriteMatches(legacy, 'https://docs.example/path', 'default')).toBe(true)
+    expect(browserFavoriteMatches(legacy, 'https://docs.example/path', 'school')).toBe(false)
+    expect(browserFavoriteMatches(school, 'https://docs.example/path', 'school')).toBe(true)
   })
 })

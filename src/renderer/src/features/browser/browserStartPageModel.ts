@@ -35,18 +35,27 @@ export function toneForUrl(url: string): string {
 }
 
 export function browserFavoriteShortcuts(
-  favorites: readonly Favorite[] | undefined
+  favorites: readonly Favorite[] | undefined,
+  profileId?: string
 ): BrowserShortcut[] {
   if (favorites === undefined) return []
-  return favorites.flatMap((favorite) =>
-    favorite.descriptor.kind === 'browser'
-      ? [
-          {
-            id: favorite.id,
-            label: favorite.label,
-            url: favorite.descriptor.payload.initialUrl
-          }
-        ]
-      : []
-  )
+  const seen = new Set<string>()
+  return favorites.flatMap((favorite) => {
+    if (favorite.descriptor.kind !== 'browser') return []
+    const payload = favorite.descriptor.payload
+    const favoriteProfile = payload.profileId ?? 'default'
+    if (profileId !== undefined && favoriteProfile !== profileId) return []
+    // A course can pin an imported global bookmark too. Keep its course label
+    // and ordering without showing the same profile/URL twice.
+    const key = JSON.stringify([favoriteProfile, payload.initialUrl])
+    if (seen.has(key)) return []
+    seen.add(key)
+    return [{ id: favorite.id, label: favorite.label, url: payload.initialUrl }]
+  })
+}
+
+export function browserFavoriteMatches(favorite: Favorite, url: string, profileId: string): boolean {
+  return favorite.descriptor.kind === 'browser' &&
+    favorite.descriptor.payload.initialUrl === url &&
+    (favorite.descriptor.payload.profileId ?? 'default') === profileId
 }

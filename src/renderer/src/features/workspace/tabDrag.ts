@@ -2,6 +2,25 @@ import type { TabDescriptor } from '../../../../shared/tabs'
 
 export const BANDAL_TAB_DRAG_MIME = 'application/x-bandal-tab'
 
+/** A drag preview is a label, not a copy of the tab's interactive controls. */
+export function setWorkspaceTabDragImage(
+  dataTransfer: DataTransfer,
+  source: HTMLElement,
+  title: string
+): void {
+  const preview = document.createElement('div')
+  preview.className = 'workspace-tab-drag-preview'
+  preview.setAttribute('aria-hidden', 'true')
+  const icon = source.querySelector('.workspace-tab__kind')?.cloneNode(true)
+  if (icon) preview.append(icon)
+  const label = document.createElement('span')
+  label.textContent = title
+  preview.append(label)
+  document.body.append(preview)
+  dataTransfer.setDragImage(preview, 24, 18)
+  setTimeout(() => preview.remove(), 0)
+}
+
 /** Adds Bandal's cross-feature payload without clearing dockview's DnD data. */
 export function writeWorkspaceTabDragData(
   dataTransfer: DataTransfer,

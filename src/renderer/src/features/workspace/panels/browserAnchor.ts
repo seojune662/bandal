@@ -1,89 +1,80 @@
-import { useCourseActive } from '../courseActivity'
-/**
- * Heavy-pane decoupling prep (docs/orca-analysis.md §6).
- *
- * CONTRACT for M3-F:
- *  - The browser placeholder panel renders a stable positioned container
- *    `<div data-browser-anchor={tabId}>` and reports its bounding rect here.
- *  - The real `<webview>` guest is owned at the workspace/window level and
- *    is positioned over the anchor from these rect reports. It is NOT a
- *    child of the dockview panel DOM.
- *  - Panel unmount must NOT be assumed to destroy the guest: dockview
- *    unmounts panel content when tabs are hidden, moved between groups, or
- *    re-parented during drag. A `null` rect report means "anchor currently
- *    unmounted → hide the guest", never "destroy the guest". Guest
- *    destruction is an explicit `closeTab` concern.
- */
-
 import { useEffect, type RefObject } from 'react'
+import { useCourseActive } from '../courseActivity'
+import { tabDragSession } from '../tabDragSession'
 
-export interface AnchorRect {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
+export interface AnchorRect { x: number; y: number; width: number; height: number }
 type AnchorListener = (tabId: string, rect: AnchorRect | null) => void
-
 const anchorRects = new Map<string, AnchorRect>()
+const anchors = new Map<string, HTMLElement>()
 const listeners = new Set<AnchorListener>()
+let frame = 0
+let stopObserving: (() => void) | null = null
 
+function sameRect(a: AnchorRect | undefined, b: AnchorRect | null): boolean {
+  return b === null ? a === undefined : a?.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
+}
 function publish(tabId: string, rect: AnchorRect | null): void {
+  if (sameRect(anchorRects.get(tabId), rect)) return
   if (rect === null) anchorRects.delete(tabId)
   else anchorRects.set(tabId, rect)
   for (const listener of listeners) listener(tabId, rect)
 }
-
-/** Latest known rect for a browser anchor, if currently mounted. */
-export function getBrowserAnchorRect(tabId: string): AnchorRect | null {
-  return anchorRects.get(tabId) ?? null
-}
-
-/** Subscribe to anchor rect changes (M3-F: drives the webview guest bounds). */
+export function getBrowserAnchorRect(tabId: string): AnchorRect | null { return anchorRects.get(tabId) ?? null }
 export function onBrowserAnchorRect(listener: AnchorListener): () => void {
   listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
+  return () => { listeners.delete(listener) }
+}
+function measureAll(): void {
+  frame = 0
+  for (const [tabId, element] of anchors) {
+    const rect = element.getBoundingClientRect()
+    const visible = element.isConnected && rect.width > 0 && rect.height > 0 && element.getClientRects().length > 0
+    publish(tabId, visible ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null)
+  }
+  // A drag can translate a group without resizing its page.
+  if (tabDragSession.getSnapshot() !== null && anchors.size) frame = requestAnimationFrame(measureAll)
+}
+/** One layout read batch per frame, including translations that ResizeObserver misses. */
+export function scheduleBrowserAnchorLayout(): void {
+  if (!frame && anchors.size) frame = requestAnimationFrame(measureAll)
+}
+function observeLayout(): void {
+  stopObserving?.()
+  if (!anchors.size) { stopObserving = null; return }
+  const resize = new ResizeObserver(scheduleBrowserAnchorLayout)
+  const mutation = new MutationObserver(scheduleBrowserAnchorLayout)
+  const observed = new Set<Element>()
+  for (const anchor of anchors.values()) for (let element: Element | null = anchor; element; element = element.parentElement) {
+    if (observed.has(element)) continue
+    observed.add(element)
+    resize.observe(element)
+    mutation.observe(element, { attributes: true, attributeFilter: ['style', 'class', 'hidden', 'data-left-rail', 'data-right-rail'] })
+  }
+  const unsubscribeDrag = tabDragSession.subscribe(scheduleBrowserAnchorLayout)
+  window.addEventListener('resize', scheduleBrowserAnchorLayout)
+  window.addEventListener('scroll', scheduleBrowserAnchorLayout, true)
+  stopObserving = () => {
+    resize.disconnect(); mutation.disconnect(); unsubscribeDrag()
+    window.removeEventListener('resize', scheduleBrowserAnchorLayout)
+    window.removeEventListener('scroll', scheduleBrowserAnchorLayout, true)
   }
 }
 
-function measure(element: HTMLElement): AnchorRect {
-  const rect = element.getBoundingClientRect()
-  return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
-}
-
-/**
- * Report the element's bounding rect for a browser tab, re-measuring on
- * element resize and window resize. Reports `null` on unmount (hide, not
- * destroy — see the module contract above).
- */
-export function useBrowserAnchorRect(
-  tabId: string,
-  ref: RefObject<HTMLElement>
-): void {
+/** Hiding or reparenting an anchor never destroys its native page. */
+export function useBrowserAnchorRect(tabId: string, ref: RefObject<HTMLElement>): void {
   const courseActive = useCourseActive()
   useEffect(() => {
-    if (!courseActive) { publish(tabId, null); return }
     const element = ref.current
-    if (tabId === '' || element === null) return
-
-    const report = (): void => {
-      const rect = measure(element)
-      publish(tabId, rect.width > 0 && rect.height > 0 ? rect : null)
-    }
-    report()
-
-    // ResizeObserver covers panel resize/split; window resize covers rail
-    // toggles that translate the workspace without resizing the panel.
-    const observer = new ResizeObserver(report)
-    observer.observe(element)
-    window.addEventListener('resize', report)
-
+    if (!courseActive || !tabId || !element) { publish(tabId, null); return }
+    anchors.set(tabId, element)
+    observeLayout()
+    scheduleBrowserAnchorLayout()
     return () => {
-      observer.disconnect()
-      window.removeEventListener('resize', report)
+      if (anchors.get(tabId) !== element) return
+      anchors.delete(tabId)
       publish(tabId, null)
+      observeLayout()
+      if (!anchors.size) { cancelAnimationFrame(frame); frame = 0 }
     }
   }, [tabId, ref, courseActive])
 }

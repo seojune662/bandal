@@ -26,7 +26,7 @@ import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 import { favoriteScopeKey, useFavoritesStore } from '../../stores/favoritesStore'
 import { settingsSnapshot } from '../../stores/settingsSnapshot'
-import { useWorkspaceStore } from '../../stores/workspaceStore'
+import { browserTabCourseId, useWorkspaceStore } from '../../stores/workspaceStore'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { useBrowserAnchorRect } from '../workspace/panels/browserAnchor'
 import { BrowserIcon } from './browserIcons'
@@ -59,6 +59,7 @@ import {
   saveStagedLoginForTab
 } from './loginBridge'
 import { BrowserProfilePicker } from './BrowserProfilePicker'
+import { BrowserImportBanner } from './BrowserImportDialog'
 import { BrowserAddressInput } from './BrowserAddressInput'
 import { scheduleProgressVisibility } from './loadingIndicator'
 import { openWebVideoInPip, useWebVideoReport } from './videoBridge'
@@ -107,22 +108,22 @@ function usePanelVisible(api: IDockviewPanelProps['api']): boolean {
   return courseActive && visible
 }
 
-function useBrowserFavoriteShortcuts(): BrowserShortcut[] {
+function useBrowserFavoriteShortcuts(profileId: string): BrowserShortcut[] {
   const courseId = useWorkspaceStore((state) => state.activeCourseId)
   const key = favoriteScopeKey(courseId)
   const stored = useFavoritesStore((state) => state.byCourse[key])
-  const loading = useFavoritesStore(
-    (state) => state.loadingByCourse[key] === true
-  )
+  const global = useFavoritesStore((state) => state.byCourse[favoriteScopeKey(null)])
   const load = useFavoritesStore((state) => state.load)
 
   useEffect(() => {
-    if (courseId !== null && stored === undefined && !loading) {
-      void load(courseId)
+    for (const scope of courseId === null ? [null] : [courseId, null]) {
+      const state = useFavoritesStore.getState()
+      const scopeKey = favoriteScopeKey(scope)
+      if (state.byCourse[scopeKey] === undefined && !state.loadingByCourse[scopeKey]) void load(scope)
     }
-  }, [courseId, load, loading, stored])
+  }, [courseId, load])
 
-  return useMemo(() => browserFavoriteShortcuts(stored), [stored])
+  return useMemo(() => browserFavoriteShortcuts([...(stored ?? []), ...(courseId === null ? [] : global ?? [])], profileId), [stored, global, courseId, profileId])
 }
 
 function BrowserSiteMark({ url }: { url: string }): JSX.Element {
@@ -301,7 +302,7 @@ function BrowserToolbar({
     window.addEventListener(OPEN_DIAGNOSTICS_EVENT, onOpen)
     return () => window.removeEventListener(OPEN_DIAGNOSTICS_EVENT, onOpen)
   }, [tabId])
-  const starred = useBrowserFavorite(nav.url)
+  const starred = useBrowserFavorite(nav.url, profileId)
   const favicon = useBrowserGuests((state) => state.favicon[tabId])
   const findState = useBrowserGuests((state) => state.find[tabId])
   const loginTooltip =
@@ -473,8 +474,24 @@ function BrowserToolbar({
           {login?.hasLoginForm === true &&
             login.usernameFocused &&
             login.origin !== null &&
-            login.savedLogin !== null && (
+            login.savedLogins.length > 0 && (
             <div className="browser-login-action">
+              {login.savedLogins.length > 1 ? (
+                <select
+                  aria-label="저장된 로그인 계정 선택"
+                  className="browser-login-account"
+                  value=""
+                  disabled={login.pending}
+                  onChange={(event) => {
+                    if (event.target.value) void fillLoginForTab(tabId, event.target.value)
+                  }}
+                >
+                  <option value="">계정을 선택해 채우기</option>
+                  {login.savedLogins.map((account) => (
+                    <option key={account.id} value={account.id}>{account.username || account.origin}</option>
+                  ))}
+                </select>
+              ) : (
               <Tooltip label={loginTooltip} placement="bottom">
                 <button
                   type="button"
@@ -488,6 +505,7 @@ function BrowserToolbar({
                     : '저장된 로그인 채우기'}
                 </button>
               </Tooltip>
+              )}
               {login.message !== null && (
                 <span className="browser-login-message" role="status">
                   {login.message === 'saved'
@@ -521,6 +539,8 @@ function BrowserToolbar({
 export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   const payload = browserPayloadFromParams(props.params)
   const tabId = payload?.tabId ?? ''
+  // This owner survives a course change while a native profile decision awaits.
+  const [ownerCourse] = useState(() => browserTabCourseId(tabId))
   const initialUrl = payload?.initialUrl ?? ''
   const initialPrivate = payload?.isPrivate === true
   const [isPrivate, setPrivate] = useState(initialPrivate)
@@ -538,7 +558,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   const login = useBrowserGuests((state) => state.login[tabId])
   const authFallback = useBrowserGuests((state) => state.authFallback[tabId])
   const navState = nav ?? initialNavState(initialUrl)
-  const favorites = useBrowserFavoriteShortcuts()
+  const favorites = useBrowserFavoriteShortcuts(profileId)
 
   const navigate = useCallback(
     (url: string): void => {
@@ -547,20 +567,20 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
       if (state.liveGuests.some((guest) => guest.tabId === tabId)) {
         guestActions.navigate(tabId, url)
       } else {
-        state.ensureGuest(tabId, url, isPrivate, profileId)
+        state.ensureGuest(tabId, url, isPrivate, profileId, ownerCourse)
       }
       // A fresh address dismisses whatever the last load left on screen.
       state.setOverlay(tabId, null)
     },
-    [isPrivate, tabId, profileId]
+    [isPrivate, tabId, profileId, ownerCourse]
   )
 
-  // Every browser tab loads its URL in a guest, including the default new tab.
+  // Unvisited background tabs stay cheap; a visited page remains alive when hidden.
   useEffect(() => {
-    if (tabId !== '') {
-      useBrowserGuests.getState().ensureGuest(tabId, initialUrl, isPrivate, profileId)
+    if (tabId !== '' && isPanelVisible) {
+      useBrowserGuests.getState().ensureGuest(tabId, initialUrl, isPrivate, profileId, ownerCourse)
     }
-  }, [isPrivate, tabId, initialUrl, profileId])
+  }, [isPrivate, tabId, initialUrl, profileId, isPanelVisible, ownerCourse])
 
   const togglePrivate = useCallback((): void => {
     if (tabId === '') return
@@ -581,10 +601,10 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
           }
         }
       })
-      useBrowserGuests.getState().ensureGuest(tabId, url, next, profileId)
+      useBrowserGuests.getState().ensureGuest(tabId, url, next, profileId, ownerCourse)
       useWorkspaceStore.getState().notifyLayoutChanged()
     })().catch(console.error)
-  }, [initialUrl, isPrivate, navState.url, props.api, tabId, profileId])
+  }, [initialUrl, isPrivate, navState.url, props.api, tabId, profileId, ownerCourse])
 
   const changeProfile = useCallback(async (id: string): Promise<void> => {
     if (id === profileId) return
@@ -593,9 +613,9 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
     const url = navState.url || initialUrl
     props.api.updateParameters({ descriptor: { kind: 'browser', payload: { tabId, initialUrl: url, isPrivate, profileId: id } } })
     setProfileId(id)
-    useBrowserGuests.getState().ensureGuest(tabId, url, isPrivate, id)
+    useBrowserGuests.getState().ensureGuest(tabId, url, isPrivate, id, ownerCourse)
     useWorkspaceStore.getState().notifyLayoutChanged()
-  }, [profileId, tabId, navState.url, initialUrl, props.api, isPrivate])
+  }, [profileId, tabId, navState.url, initialUrl, props.api, isPrivate, ownerCourse])
 
   // Reflect the page title into the dockview tab.
   const { api } = props
@@ -674,6 +694,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
           />
         )}
       <BrowserBookmarksBar favorites={favorites} onNavigate={navigate} />
+      {isPanelVisible && !isPrivate && (navState.url === DEFAULT_BROWSER_URL || navState.url === `${DEFAULT_BROWSER_URL}/` || navState.url === 'about:blank') && <BrowserImportBanner key={profileId} profileId={profileId} />}
       {isPanelVisible && (navState.httpStatus ?? 0) >= 400 && (
         <div className="browser-external-auth" role="status">
           <span className="browser-external-auth__message">{`사이트에서 HTTP ${navState.httpStatus} 응답을 보냈어요. 로그인 요청은 자동으로 다시 보내지 않습니다.`}</span>

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   createDuplicatePanelId,
+  duplicateTabDescriptor,
   panelIdMatchesDescriptor
 } from '../../../src/renderer/src/features/workspace/tabDuplication'
 import {
@@ -38,4 +39,15 @@ describe('duplicate tab panel ids', () => {
       false
     )
   })
+})
+
+
+test('browser duplication owns a new page and preserves profile and private state', () => {
+  const original = descriptorFor('browser', { tabId: 'source', initialUrl: 'https://example.test/old', profileId: 'school', isPrivate: true })
+  const first = duplicateTabDescriptor(original, 'https://example.test/current')
+  const second = duplicateTabDescriptor(original)
+  expect(first).toMatchObject({ kind: 'browser', payload: { initialUrl: 'https://example.test/current', profileId: 'school', isPrivate: true } })
+  expect(first.payload).not.toHaveProperty('tabId', 'source')
+  expect(first.payload).not.toEqual(second.payload)
+  expect(original.payload.tabId).toBe('source')
 })

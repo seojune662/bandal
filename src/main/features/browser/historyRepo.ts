@@ -35,6 +35,8 @@ export interface RecordVisitInput {
 }
 
 export interface HistoryRepo {
+  /** Import preserves timestamps/counts; retrying never manufactures visits. */
+  importMany(entries: readonly { url: string; title: string; visitCount: number; lastVisitedAt: string }[], conflict?: 'keep' | 'replace', at?: Date): { imported: number; kept: number; unsupported: number; failed: number }
   /** Upserts: a revisit bumps the count and the timestamp, never appends. */
   recordVisit(input: RecordVisitInput, at?: Date): void
   /** Empty input returns recent visits; otherwise host prefix, count, recency. */
@@ -98,6 +100,58 @@ export function isRecordableUrl(url: string): boolean {
 
 export function createHistoryRepo(db: Database): HistoryRepo {
   return {
+    importMany(entries, conflict = 'keep', at = new Date()) {
+      const result = { imported: 0, kept: 0, unsupported: 0, failed: 0 }
+      const cutoff = at.getTime() - HISTORY_RETENTION_DAYS * 86_400_000
+      const find = db.prepare('SELECT * FROM browser_history WHERE url = ?')
+      const upsert = db.prepare(`INSERT INTO browser_history (url,title,host,course_id,visit_count,last_visited_at)
+        VALUES (?,?,?,NULL,?,?) ON CONFLICT(url) DO UPDATE SET title=excluded.title,
+        visit_count=MAX(browser_history.visit_count,excluded.visit_count),
+        last_visited_at=MAX(browser_history.last_visited_at,excluded.last_visited_at)`)
+      db.transaction(() => {
+        const cutoffDate = new Date(cutoff).toISOString()
+        // Expired destination rows must not turn a valid incoming visit into a
+        // keep-conflict that is immediately pruned away.
+        db.prepare('DELETE FROM browser_history WHERE last_visited_at < ?').run(cutoffDate)
+        const candidates = new Map<string, {
+          title: string; visits: number; date: string; count: number; changed: boolean
+        }>()
+        for (const entry of entries) {
+          const timestamp = Date.parse(entry.lastVisitedAt)
+          if (!Number.isFinite(timestamp) || !Number.isFinite(entry.visitCount) || entry.visitCount < 0) { result.failed++; continue }
+          if (!isRecordableUrl(entry.url) || timestamp < cutoff || timestamp > at.getTime() + 86_400_000) { result.unsupported++; continue }
+          const date = new Date(timestamp).toISOString()
+          const visits = Math.max(1, Math.floor(entry.visitCount))
+          const previous = candidates.get(entry.url)
+          if (previous) {
+            previous.count++
+            previous.visits = Math.max(previous.visits, visits)
+            if (date > previous.date) {
+              previous.date = date
+              previous.title = entry.title.slice(0, 1000)
+            }
+          } else {
+            candidates.set(entry.url, { title: entry.title.slice(0, 1000), visits, date, count: 1, changed: false })
+          }
+        }
+        for (const [url, entry] of candidates) {
+          const current = find.get(url) as HistoryRow | undefined
+          if (current && (conflict === 'keep' || (current.title === entry.title && current.visit_count >= entry.visits && current.last_visited_at >= entry.date))) continue
+          upsert.run(url, entry.title, hostOf(url), entry.visits, entry.date)
+          entry.changed = true
+        }
+        // The ceiling includes both existing and incoming URLs. Count success
+        // only after retention, so pruned imports never appear as saved rows.
+        db.prepare('DELETE FROM browser_history WHERE url IN (SELECT url FROM browser_history ORDER BY last_visited_at DESC, url ASC LIMIT -1 OFFSET ?)').run(HISTORY_MAX_ROWS)
+        const retained = new Set((db.prepare('SELECT url FROM browser_history').all() as { url: string }[]).map(row => row.url))
+        for (const [url, entry] of candidates) {
+          if (!retained.has(url)) result.unsupported += entry.count
+          else if (entry.changed) { result.imported++; result.kept += entry.count - 1 }
+          else result.kept += entry.count
+        }
+      })()
+      return result
+    },
     recordVisit(input, at = new Date()) {
       const url = requireNonEmptyString(input.url, 'url')
       if (!isRecordableUrl(url)) return
@@ -161,7 +215,7 @@ export function createHistoryRepo(db: Database): HistoryRepo {
       db.prepare(
         `DELETE FROM browser_history WHERE url IN (
            SELECT url FROM browser_history
-             ORDER BY last_visited_at DESC
+             ORDER BY last_visited_at DESC, url ASC
              LIMIT -1 OFFSET ?
          )`
       ).run(HISTORY_MAX_ROWS)

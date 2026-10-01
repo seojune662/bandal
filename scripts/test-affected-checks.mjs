@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { planChecks } from './affected-checks.mjs'
+import { onlyVersionOrBrowserImportHookChanged, planChecks } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
 
 test('PDF export changes skip unrelated browser/calendar/performance checks', () => {
@@ -88,4 +88,78 @@ test('CSS-only appearance edits select the shell regressions without backend che
   assert.ok(plan.scriptTests.includes('scripts/check-contrast.mjs'))
   assert.ok(plan.unitInputs.includes('src/shared/theme.ts'))
   assert.ok(!plan.e2e.includes('e2e/appleCalendar.spec.ts'))
+})
+
+test('browser import boundaries select import and compatibility regressions', () => {
+  for (const file of [
+    'src/main/features/browser/import/crypto.ts',
+    'src/main/ipc/browserImportHandlers.ts',
+    'src/main/features/credentials/credentialStore.ts',
+    'src/shared/types/browserImport.ts',
+    'src/shared/types/credentials.ts',
+    'src/renderer/src/features/browser/BrowserImportDialog.tsx',
+    'src/renderer/src/features/browser/browserImport.css',
+    'src/renderer/src/features/browser/browserFavorite.ts',
+    'src/renderer/src/features/browser/browserStartPageModel.ts',
+    'native/browser-import/main.swift',
+    'native/browser-import/Program.cs',
+    'scripts/build-browser-import.mjs',
+    'scripts/build-native.mjs',
+    'scripts/verify-browser-import.mjs'
+  ]) {
+    const plan = planChecks([file])
+    assert.equal(plan.full, false, file)
+    assert.deepEqual(new Set(plan.e2e), new Set(['e2e/browserImport.spec.ts', 'e2e/browserCompatibility.spec.ts']), file)
+    assert.ok(!plan.scriptTests.includes('scripts/check-contrast.mjs'), file)
+  }
+})
+
+test('browser settings avoid unrelated global appearance checks', () => {
+  for (const file of [
+    'src/renderer/src/features/settings/browser/BrowserSettingsPanel.tsx',
+    'src/renderer/src/features/settings/browser/browser-settings.css',
+    'src/renderer/src/features/settings/SavedLoginsSettings.tsx',
+    'src/renderer/src/features/settings/BrowsingDataPanel.tsx'
+  ]) {
+    const plan = planChecks([file])
+    assert.deepEqual(new Set(plan.e2e), new Set(['e2e/browserImport.spec.ts', 'e2e/browserCompatibility.spec.ts']), file)
+    assert.ok(!plan.unitInputs.includes('src/shared/theme.ts'), file)
+  }
+  const mixed = planChecks(['src/renderer/src/features/settings/browser/browser-settings.css', 'src/renderer/src/styles/tokens.css'])
+  assert.ok(mixed.e2e.includes('e2e/theme.spec.ts'))
+  assert.ok(mixed.e2e.includes('e2e/browserImport.spec.ts'))
+  assert.ok(planChecks(['src/renderer/src/features/settings/AppearancePanel.tsx']).e2e.includes('e2e/uiRedesign.spec.ts'))
+})
+
+test('workspace styles, state and tab types cover dragging across app surfaces', () => {
+  for (const file of ['src/renderer/src/features/workspace/workspace.css', 'src/renderer/src/features/workspace/tabDragSession.ts', 'src/renderer/src/stores/workspaceStore.ts', 'src/shared/tabs.ts']) {
+    const plan = planChecks([file])
+    assert.deepEqual(new Set(plan.e2e), new Set(['tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance'].map(spec => `e2e/${spec}.spec.ts`)), file)
+    assert.equal(plan.full, false, file)
+  }
+  const css = planChecks(['src/renderer/src/features/workspace/workspace.css'])
+  assert.ok(css.unitInputs.includes('src/renderer/src/features/workspace/tabDragSession.ts'))
+})
+
+test('native helper changes retain unit coverage outside the static TS graph', () => {
+  const plan = planChecks(['native/browser-import/main.swift', 'scripts/build-native.mjs'])
+  assert.deepEqual(plan.unitInputs, ['src/main/features/browser/import/index.ts'])
+})
+
+test('only the known browser import dev hook and version are exempt from runtime-wide checks', () => {
+  const before = { version: '0.58.0', scripts: { dev: 'node scripts/build-calendar.mjs && electron-vite dev', build: 'electron-vite build' }, dependencies: { electron: '43.4.1' } }
+  const after = structuredClone(before)
+  after.version = '0.59.0'
+  after.scripts.dev = 'node scripts/build-calendar.mjs && node scripts/build-browser-import.mjs && electron-vite dev'
+  assert.equal(onlyVersionOrBrowserImportHookChanged(before, after), true)
+  assert.equal(onlyVersionOrBrowserImportHookChanged(before, { ...before, version: '0.58.1' }), true)
+  assert.equal(before.version, '0.58.0')
+  assert.equal(after.scripts.dev.includes('build-browser-import'), true)
+  assert.equal(onlyVersionOrBrowserImportHookChanged(before, { ...after, dependencies: { electron: '44.0.0' } }), false)
+  assert.equal(onlyVersionOrBrowserImportHookChanged(before, { ...after, scripts: { ...after.scripts, build: 'another-build' } }), false)
+  assert.equal(onlyVersionOrBrowserImportHookChanged(before, { ...after, scripts: { ...after.scripts, dev: `${after.scripts.dev} --inspect` } }), false)
+  const runtime = planChecks(['package.json'])
+  assert.equal(runtime.full, true)
+  assert.ok(runtime.e2e.includes('e2e/browserCompatibility.spec.ts'))
+  assert.ok(runtime.e2e.includes('e2e/browserImport.spec.ts'))
 })

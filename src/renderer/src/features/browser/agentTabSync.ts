@@ -1,14 +1,9 @@
-import { disconnectBrowserTab } from './browserGuestsStore'
 import { closeBrowserTab } from '../../stores/workspaceStore'
 /**
  * Publishes the browser tabs the student can see to main, for the agent.
  *
- * Main cannot work this out on its own. It knows guests through
- * `guestRegistry`, and live guests are capped at `MAX_LIVE_GUESTS` — a hidden
- * guest beyond the cap is destroyed while its tab stays right there on screen,
- * keeping only its last URL in `browserGuestsStore`. An agent listing built
- * from the registry would therefore omit tabs the student is looking at, which
- * is the one thing "what do I have open?" must never do.
+ * Unvisited tabs do not yet own a native page, so a registry-only list would
+ * omit tabs the student can see. The workspace remains the tab-list authority.
  *
  * So the renderer, which owns the tab strip, is the authority. It pushes the
  * list whenever it changes and main just caches it — the same self-healing
@@ -27,7 +22,7 @@ export interface AgentTab {
   tabId: string
   title: string
   url: string
-  /** The guest was evicted; reading this tab has to wake it first. */
+  /** The page has not been visited yet; reading it has to wake it first. */
   asleep: boolean
 }
 
@@ -135,8 +130,8 @@ export function useAgentTabSync(): void {
 }
 
 /**
- * Brings a tab forward when the agent needs to read one whose guest the LRU
- * dropped. Focusing the existing panel remounts the guest, which re-registers
+ * Brings an unvisited tab forward when the agent needs to read it.
+ * Focusing the existing panel creates its page, which registers
  * itself and unblocks the waiting tool call.
  */
 /** Closes a tab the agent opened and is finished with. */
@@ -144,7 +139,6 @@ export function useCloseTabRequests(): void {
   useEffect(
     () =>
       onPush('browser:close-tab', ({ tabId }) => {
-        disconnectBrowserTab(tabId)
         closeBrowserTab(tabId)
       }),
     []

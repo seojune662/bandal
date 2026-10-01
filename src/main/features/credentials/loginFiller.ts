@@ -7,6 +7,7 @@ import { runGuestScript } from '../browserAgent/pageDriver'
 export interface LoginFillRequest {
   origin: string
   guestWebContentsId: number
+  credentialId?: string
 }
 
 export interface LoginGuestWebContents {
@@ -145,7 +146,7 @@ export function createLoginFiller(
 
     let login: ReturnType<typeof store.resolve>
     try {
-      login = store.resolve(requestedOrigin)
+      login = store.resolve(requestedOrigin, request.credentialId)
     } catch {
       return failed()
     }

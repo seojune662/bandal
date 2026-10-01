@@ -20,6 +20,8 @@
  */
 
 export interface SavedLoginSummary {
+  /** Stable account identity within its browser profile. */
+  id: string
   /** `https://portal.example.ac.kr` — scheme + host, no path. */
   origin: string
   username: string
@@ -29,6 +31,8 @@ export interface SavedLoginSummary {
 }
 
 export interface SaveLoginInput {
+  /** Required for metadata edits; never changes the account's origin. */
+  id?: string
   origin: string
   username: string
   /**

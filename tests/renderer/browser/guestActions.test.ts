@@ -14,15 +14,15 @@ import {
   tabIdForWebContents,
   unregisterGuestElement
 } from '../../../src/renderer/src/features/browser/guestActions'
-import type { WebviewTag } from '../../../src/renderer/src/features/browser/webviewTypes'
+import type { BrowserPageHandle } from '../../../src/renderer/src/features/browser/browserPageTypes'
 
-function fakeGuest(webContentsId: number | Error): WebviewTag {
+function fakeGuest(webContentsId: number | Error): BrowserPageHandle {
   return {
     getWebContentsId: () => {
       if (webContentsId instanceof Error) throw webContentsId
       return webContentsId
     }
-  } as unknown as WebviewTag
+  } as unknown as BrowserPageHandle
 }
 
 describe('guest webContents registry', () => {
