@@ -15,7 +15,7 @@
  *    instance multiplied by every user
  *  - window blurred for 5 minutes → unsubscribe everything (battery, and hand
  *    the connection slot back); resubscribe + catch up on focus
- *  - `before-quit` → dispose()
+ *  - `will-quit` → dispose() after every window accepts quit
  *
  * ⚠ `realtime.setAuth()` must have been called before subscribing, or a
  * private channel silently delivers nothing (supabase/README.md §5.3). The

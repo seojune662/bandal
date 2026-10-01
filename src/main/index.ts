@@ -441,7 +441,9 @@ if (!app.requestSingleInstanceLock()) {
     reportFatalStartupError('앱 초기화', error)
   })
 
-  app.on('will-quit', () => {
+  // Service teardown runs on will-quit and can still use the database.
+  // Close it only after that phase, regardless of listener registration order.
+  app.on('quit', () => {
     closeDatabase()
   })
 }

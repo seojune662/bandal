@@ -58,7 +58,7 @@ export interface GroupRuntime {
   getUserId(): string | null
   /** Subscribe a sibling service to auth transitions. */
   onAuthChanged(listener: (state: AuthState) => void): () => void
-  /** Safe to call unconditionally from `before-quit`. */
+  /** Call from `will-quit`, after cancellable browser pages accept quit. */
   dispose(): void
 }
 

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { createServer } from 'node:http'
-import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { launchBandal, createCourse, type BandalApp } from './helpers/launch'
 
@@ -440,14 +440,36 @@ test('closing a dirty tab can be cancelled without removing its tab or native pa
         visible: true, courseId: overlay.courseId, conversationId: overlay.conversationId
       } })
     })
-    await expect.poll(() => bandal.app.windows().some(page => page.url().includes('view=assistant'))).toBe(true)
-    const assistant = bandal.app.windows().find(page => page.url().includes('view=assistant'))!
-    await expect(assistant.locator('#assistant-popup')).toBeVisible()
-    expect(await bandal.app.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('view=assistant'))!
+    let assistantWindowId: number | null = null
+    await expect.poll(async () => {
+      assistantWindowId = await bandal.app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('view=assistant'))?.id ?? null)
+      return assistantWindowId
+    }).not.toBeNull()
+    // Check the native window and its rendered document together. Keep its ID
+    // fixed so an obsolete quit continuation cannot destroy it and let a
+    // replacement window accidentally satisfy this lifecycle regression.
+    await expect.poll(() => bandal.app.evaluate(async ({ BrowserWindow }, id) => {
+      const window = BrowserWindow.fromId(id)
+      if (!window || window.isDestroyed()) throw new Error('Assistant window was destroyed after cancelling quit')
+      if (!window.isVisible() || window.webContents.isLoadingMainFrame()) return false
+      return window.webContents.executeJavaScript(`(() => {
+        const popup = document.getElementById('assistant-popup')
+        if (!popup) return false
+        const bounds = popup.getBoundingClientRect(), style = getComputedStyle(popup)
+        return bounds.width > 0 && bounds.height > 0 && style.visibility !== 'hidden'
+      })()`)
+    }, assistantWindowId!)).toBe(true)
+    expect(await bandal.app.evaluate(({ BrowserWindow }, id) => {
+      const window = BrowserWindow.fromId(id)!
       window.close()
       return { alive: !window.isDestroyed(), visible: window.isVisible() }
-    })).toEqual({ alive: true, visible: false })
+    }, assistantWindowId!)).toEqual({ alive: true, visible: false })
+    // Cancelling quit must keep the background material watcher running.
+    const course = (await bandal.page.evaluate(() => window.bandal.invoke('courses:list', {})))[0]!
+    writeFileSync(join(course.folderPath, '종료 취소 후 새 자료.md'), '# 종료 취소 뒤 작성한 자료\n')
+    await expect(bandal.page.locator('.material-row', { hasText: '종료 취소 후 새 자료.md' })).toBeVisible()
+    expect(await bandal.app.evaluate(() => (globalThis as any).quitPrompts)).toBe(2)
     await bandal.page.locator('.workspace-tab__close').click()
     await expect(bandal.page.locator('.dv-tab')).toHaveCount(1)
     expect(await run(bandal, id, 'document.body.textContent')).toBe('Draft')

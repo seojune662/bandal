@@ -1,10 +1,11 @@
 import { registerBrowserImportHandlers } from './browserImportHandlers'
 import { writeFileAtomic, quarantineFile } from '../lib/atomicWrite'
+import { createQuitDrain } from '../lib/quitDrain'
 import { assistantWindowRequest } from '../windows/assistantWindow'
 import { existsSync, readFileSync } from 'node:fs'
 import { initializeBrowserProfiles, listBrowserProfiles, saveBrowserProfile, deleteBrowserProfile, browserProfileResources, guestProfile, onBrowserSession, ensureProfileSession, profileDirectory, onBrowserProfileDeleted } from '../features/browser/profiles'
 import { hardenBrowsingSession, useProfilePermissions, forgetProfilePermissions } from '../features/browser/hardenWebviews'
-import { browserSessionForTab, prepareProfileSwitch, createBrowserPage, setBrowserPageBounds, browserPageAction, destroyBrowserPage, prepareBrowserPageClose } from '../features/browser/nativeTabs'
+import { browserSessionForTab, prepareProfileSwitch, createBrowserPage, setBrowserPageBounds, browserPageAction, destroyBrowserPage, prepareBrowserPageClose, onBrowserQuitCancelled } from '../features/browser/nativeTabs'
 import { isManagedBrowserPage } from '../features/browser/managedPages'
 import { beginClipboardCopy, writeImageClipboard } from '../features/systemClipboard'
 import { copyFile } from 'node:fs/promises'
@@ -492,7 +493,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   )
   if (process.platform === 'darwin')
     recordingService.setThermalState(powerMonitor.getCurrentThermalState())
-  app.on('before-quit', () => recordingService.dispose())
+  // A browser page can cancel quit. Keep services usable until all windows accept.
+  app.on('will-quit', () => recordingService.dispose())
   const courseLinksRepo = createCourseLinksRepo(db)
   const materialLinksRepo = createMaterialLinksRepo(db)
   const annotationsRepo = createAnnotationsRepo(db)
@@ -1861,7 +1863,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     onRequestsCancelled: (sessionId) => agentConfirmer.cancelConversation(sessionId),
     onUsage: recordUsage
   })
-  app.on('before-quit', () => {
+  app.on('will-quit', () => {
     agentConfirmer.disposeAll()
     browserRuns.disposeAll()
     materialsWatcher.dispose()
@@ -3007,7 +3009,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   }
   syncEnabledPlugins()
 
-  app.on('before-quit', () => {
+  app.on('will-quit', () => {
     stopPluginPanels()
     void pluginDevelopment.dispose()
     pluginEditor.dispose()
@@ -3290,15 +3292,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // This is a mitigation, not a guarantee — it does not survive SIGKILL or a
   // crash. It does cover the ordinary "⌘Q right after typing" case, which is
   // the one students actually hit.
-  let quitDrained = false
-  app.on('before-quit', (event) => {
-    if (quitDrained) return
-    quitDrained = true
-    event.preventDefault()
-    setTimeout(() => {
-      app.quit()
-    }, QUIT_DRAIN_MS)
-  })
+  const quitDrain = createQuitDrain(() => app.quit(), QUIT_DRAIN_MS)
+  app.on('before-quit', quitDrain.beforeQuit)
+  onBrowserQuitCancelled(quitDrain.reset)
 
   // Lazy `getGroupService` on purpose: building the router must not wake the
   // group runtime, which would open the OS keychain at launch.
@@ -3310,7 +3306,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('group:shareNote', (req) => noteSharing.shareNote(req))
   handle('group:saveSharedNote', (req) => noteSharing.saveSharedNote(req))
 
-  app.on('before-quit', () => {
+  app.on('will-quit', () => {
     stopWhiteboardAuthReset()
     whiteboardService.dispose()
     whiteboardAssetService.dispose()
@@ -3450,7 +3446,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const updater = createUpdaterRuntime({
     broadcast: (status) => broadcast('update:changed', status)
   })
-  app.on('before-quit', () => {
+  app.on('will-quit', () => {
     updater.dispose()
   })
 
@@ -3481,7 +3477,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   } catch (error) {
     console.error('[notifications] deadline scheduler startup failed', error)
   }
-  app.on('before-quit', () => deadlineScheduler.dispose())
+  app.on('will-quit', () => deadlineScheduler.dispose())
 
   return {
     miniPlayer,

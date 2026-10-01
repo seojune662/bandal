@@ -14,6 +14,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
+import ts from 'typescript'
 import { IPC_CHANNELS } from '../../src/shared/ipc/contract'
 
 const CONTRACT_SRC = join(process.cwd(), 'src/shared/ipc/contract.ts')
@@ -238,8 +239,44 @@ describe('IPC channel coverage', () => {
       /groupRuntime\.onAuthChanged\(\(\) => \{\s*whiteboardService\.resetForAuthChange\(\)/
     )
     expect(source).toMatch(
-      /app\.on\('before-quit', \(\) => \{\s*stopWhiteboardAuthReset\(\)\s*whiteboardService\.dispose\(\)/
+      /app\.on\('will-quit', \(\) => \{\s*stopWhiteboardAuthReset\(\)\s*whiteboardService\.dispose\(\)/
     )
+  })
+
+  test('cancelling browser quit leaves app services alive until will-quit', () => {
+    const source = mainRouterSource()
+    const parsed = ts.createSourceFile('registerHandlers.ts', source, ts.ScriptTarget.Latest, true)
+    const callbacks = { 'before-quit': [] as string[], 'will-quit': [] as string[] }
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.expression.getText(parsed) === 'app' &&
+          ['on', 'once'].includes(node.expression.name.text)) {
+        const [event, callback] = node.arguments
+        if (event && ts.isStringLiteral(event) && callback &&
+            (event.text === 'before-quit' || event.text === 'will-quit')) {
+          callbacks[event.text].push(callback.getText(parsed))
+        }
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(parsed)
+    for (const cleanup of [
+      'recordingService.dispose()', 'agentConfirmer.disposeAll()', 'browserRuns.disposeAll()',
+      'materialsWatcher.dispose()', 'sessionManager.disposeAll()', 'codexSessionManager.disposeAll()',
+      'geminiSessionManager.disposeAll()', 'eventBatcher.dispose()', 'stopPluginPanels()',
+      'pluginDevelopment.dispose()', 'pluginEditor.dispose()', 'pluginRuntime.dispose()',
+      'stopWhiteboardAuthReset()', 'whiteboardService.dispose()', 'whiteboardAssetService.dispose()',
+      'groupRuntime.dispose()', 'updater.dispose()', 'deadlineScheduler.dispose()'
+    ]) {
+      expect(callbacks['before-quit'].join('\n'), cleanup).not.toContain(cleanup)
+      expect(callbacks['will-quit'].join('\n'), cleanup).toContain(cleanup)
+    }
+  })
+
+  test('database closure runs on final quit after will-quit service cleanup', () => {
+    const source = readFileSync(MAIN_INDEX_SRC, 'utf8')
+    expect(source).toMatch(/app\.on\('quit', \(\) => \{\s*closeDatabase\(\)/)
+    expect(source).not.toMatch(/app\.on\('(?:before-quit|will-quit)', \(\) => \{\s*closeDatabase\(\)/)
   })
 
   test('feedback uses the lazy group client and runtime app metadata', () => {
