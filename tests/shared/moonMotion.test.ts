@@ -13,7 +13,11 @@ test('approved 80% moons keep separate fixed pivots with no overlap through the 
       const [x,y]=shape.pivot; ctx.translate(x!,y!); ctx.rotate(pose[index]! * Math.PI/180); ctx.scale(.8,.8); ctx.translate(-x!,-y!); ctx.beginPath()
       shape.points.forEach(([px,py],i) => i ? ctx.lineTo(px!,py!) : ctx.moveTo(px!,py!)); ctx.closePath(); ctx.fill(); ctx.restore(); masks.push(ctx.getImageData(0,0,226,224).data)
     })
-    for(let pixel=3;pixel<masks[0]!.length;pixel+=4) if(masks[0]![pixel]! > 128) expect(masks[1]![pixel]).toBeLessThan(128)
+    let overlappingPixels = 0
+    for (let pixel = 3; pixel < masks[0]!.length; pixel += 4) {
+      if (masks[0]![pixel]! > 128 && masks[1]![pixel]! >= 128) overlappingPixels++
+    }
+    expect(overlappingPixels, `overlap at frame ${frame}`).toBe(0)
   }
   const start = moonPose(.0001), end = moonPose(.9999)
   expect(Math.abs(start[0]/.0001-(360-end[0])/.0001)).toBeLessThan(1)
