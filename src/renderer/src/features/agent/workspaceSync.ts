@@ -123,7 +123,7 @@ export function useAgentWorkspaceSync(): void {
     }
 
     const selectionChanged = (): void => { if (window.getSelection()?.toString().trim()) publish() }
-    document.addEventListener('selectionchange', selectionChanged)
+    if (typeof document !== 'undefined') document.addEventListener('selectionchange', selectionChanged)
     const blurred = (): void => publish()
     window.addEventListener('blur', blurred)
     schedule()
@@ -135,7 +135,7 @@ export function useAgentWorkspaceSync(): void {
     const offRefresh = onPush('assistant:contextRefresh', ({ requestId }) => publish(requestId))
     return () => {
       if (timer !== null) window.clearTimeout(timer)
-      document.removeEventListener('selectionchange', selectionChanged)
+      if (typeof document !== 'undefined') document.removeEventListener('selectionchange', selectionChanged)
       window.removeEventListener('blur', blurred)
       offRefresh()
       unsubWorkspace()

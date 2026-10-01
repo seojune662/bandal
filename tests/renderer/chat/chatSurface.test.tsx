@@ -87,7 +87,7 @@ describe('ChatSurface approval dock', () => {
       />
     )
 
-    expect(html).toContain('class="chat-approval-dock"')
+    expect(html).toContain('class="chat-approval-dock chat-approval-side"')
     expect(html).toContain('role="region"')
     expect(html).toContain('aria-live="polite"')
     expect(html).toContain('aria-label="승인 요청"')
@@ -96,9 +96,9 @@ describe('ChatSurface approval dock', () => {
     expect(html).not.toContain('과목을 삭제할까요?')
     expect(html).toContain('aria-label="대화 목록"')
     expect(html.indexOf('class="chat-scroll"')).toBeLessThan(
-      html.indexOf('class="chat-approval-dock"')
+      html.indexOf('class="chat-approval-dock chat-approval-side"')
     )
-    expect(html.indexOf('class="chat-approval-dock"')).toBeLessThan(
+    expect(html.indexOf('class="chat-approval-dock chat-approval-side"')).toBeLessThan(
       html.indexOf('class="chat-composer-zone"')
     )
   })
@@ -110,7 +110,7 @@ describe('ChatSurface approval dock', () => {
       <ChatSurface courseId="course-1" conversationId={conversationId} />
     )
 
-    expect(html).not.toContain('class="chat-approval-dock"')
+    expect(html).not.toContain('class="chat-approval-dock chat-approval-side"')
     expect(html).toContain('class="chat-approval-rail"')
     expect(html).toContain('data-behavior="deny">거부함')
     expect(html).toContain('data-resolved="true"')

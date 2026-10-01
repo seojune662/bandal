@@ -178,6 +178,7 @@ export function ChatSurface({
   headerExtra,
   headerControlsHost
 }: ChatSurfaceProps): JSX.Element {
+  const nativeSurface = typeof window !== 'undefined' && !!window.bandal && window.bandal.platform !== 'web'
   const conversationKey = conversationId ?? courseId
   const session = useChatSession(courseId, conversationKey, surface)
   const agentToolActivity = useAgentToolActivity(conversationKey)
@@ -465,7 +466,7 @@ export function ChatSurface({
           </>
         )}
       </div>
-      {(pendingPermission !== null || (window.bandal.platform === 'web' && hasPendingApprovals)) && (
+      {(pendingPermission !== null || (!nativeSurface && hasPendingApprovals)) && (
         <div
           className="chat-approval-dock chat-approval-side"
           role="region"
@@ -500,7 +501,7 @@ export function ChatSurface({
         courseId={courseId}
         conversationId={conversationKey}
         provider={provider}
-        screenAvailable={window.bandal.platform !== 'web'}
+        screenAvailable={nativeSurface}
         modelControl={<ModelMenu provider={provider} models={models} model={state.model} effort={session.effort ?? null} disabled={state.streaming || hasPendingApprovals} saving={session.configuring ?? false} error={session.configurationError ?? null} onProvider={handleProviderChange} onChange={session.setConfiguration} />}
         value={draft}
         quotes={pendingQuotes}
