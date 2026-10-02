@@ -24,7 +24,7 @@ export function ContextChips({ courseId, conversationId, sourcePanelId }: { cour
   const { snapshot, error } = useMaterialContext(courseId, sourcePanelId)
   const draft = useComposerDraft(conversationId)
   const material = snapshot?.material
-  return <div className="chat-context-chips chat-context-auto" aria-label="자동 연결 자료">
+  return <div className="chat-context-chips chat-context-auto" aria-label="자동 연결 자료" data-error={error || snapshot?.refresh === 'failed' || undefined}>
     <span className="chat-context-course">{snapshot?.courseName ?? '이 과목'}{error || snapshot?.refresh === 'failed' ? ' · 원본 자료를 확인할 수 없어요' : ''}</span>
     {material && !draft.excludeCurrentMaterial && <span className="chat-context-chip" title={`${material.relPath ?? material.url ?? material.title}${material.selection ? '\n선택한 글을 우선 참고해요.' : ''}`}>
       {material.title}{material.page ? ` · ${material.page}쪽` : ''}{material.unsaved ? ' · 저장 전 필기' : ''}{material.selection ? ' · 선택한 글' : ''}

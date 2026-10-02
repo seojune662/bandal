@@ -281,6 +281,7 @@
 /* -- scroller + pages ------------------------------------------------------ */
 
 .pdf-tab__main {
+  position: relative;
   display: flex;
   flex: 1;
   min-width: 0;
@@ -793,7 +794,7 @@
   flex: 0 0 var(--rail-right-width);
   min-height: 0;
   background: var(--bg-surface);
-  border-left: 1px solid var(--border-subtle);
+  border-left: 1px solid var(--shell-divider);
   animation: pdf-rail-in var(--dur-base) var(--ease-out);
 }
 
@@ -1177,4 +1178,14 @@
 .pdf-page .react-pdf__Page__canvas {
   width: 100%;
   height: 100%;
+}
+
+@container pdf-viewer (max-width: 580px) {
+  .pdf-tab__main > .pdf-rail {
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: min(var(--rail-right-width), 100%);
+    z-index: 12;
+    box-shadow: -8px 0 24px rgb(0 0 0 / 0.06);
+  }
 }

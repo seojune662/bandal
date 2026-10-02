@@ -114,28 +114,31 @@ export interface ChatSurfaceProps {
   surface?: ChatSurfaceKind
   onOpenConversation?: (conversationId: string) => void
   headerExtra?: ReactNode
+  hideHeader?: boolean
 
 }
 
 function EmptyState({
   courseId,
   sourcePanelId,
-  onPick
+  onPick,
+  variant
 }: {
   onPick: (prompt: string) => void
+  variant: 'tab' | 'sidebar'
   sourcePanelId?: string | undefined
   courseId: string
 }): JSX.Element {
   const { snapshot } = useMaterialContext(courseId, sourcePanelId)
   return (
     <div className="chat-empty">
-      <BandalMark size={56} className="chat-empty__moon" motion="intro" />
+      <BandalMark size={56} className="chat-empty__moon" motion="periodic" />
       <h2 className="chat-empty__title">
-        {snapshot?.courseName ? `${snapshot.courseName}, 함께 공부해요` : '무엇이 궁금한가요?'}
+        {variant === 'sidebar' ? '이 자료, 함께 살펴볼까요?' : snapshot?.courseName ? `${snapshot.courseName}, 함께 공부해요` : '무엇이 궁금한가요?'}
       </h2>
       <p className="chat-empty__desc">{snapshot?.material ? `${snapshot.material.title}${snapshot.material.page ? ` ${snapshot.material.page}쪽` : ''}을 함께 보고 있어요.` : '강의자료를 읽고 필기도 도와줘요.'}</p>
       <div className="chat-empty__chips">
-        {STARTER_PROMPTS.map((prompt) => (
+        {(variant === 'sidebar' ? ['핵심 내용 요약해줘', '어려운 개념 쉽게 설명해줘', '이 자료로 연습문제 만들어줘'] : STARTER_PROMPTS).map((prompt) => (
           <button
             key={prompt}
             type="button"
@@ -174,6 +177,7 @@ export function ChatSurface({
   surface = 'app',
   onOpenConversation,
   headerExtra,
+  hideHeader = false,
   sourcePanelId,
   active = true
 }: ChatSurfaceProps): JSX.Element {
@@ -393,7 +397,7 @@ export function ChatSurface({
 
   return root(
     <>
-        <header className="chat-header">
+        {!hideHeader && <header className="chat-header">
           {headerExtra}
           {hasSessionUsage && (
             <div className="chat-session-usage" title={sessionUsageTitle}>
@@ -405,7 +409,7 @@ export function ChatSurface({
             </div>
           )}
           {selectorControls}
-        </header>
+        </header>}
       {state.notice !== null && state.notice.code !== 'version-too-old' && (
         <div
           className="chat-banner chat-banner--error"
@@ -429,7 +433,7 @@ export function ChatSurface({
         onScroll={handleScroll}
       >
         {isEmpty ? (
-          <EmptyState sourcePanelId={sourcePanelId} courseId={courseId} onPick={handlePickStarter} />
+          <EmptyState variant={variant} sourcePanelId={sourcePanelId} courseId={courseId} onPick={handlePickStarter} />
         ) : (
           <>
             <MessageList

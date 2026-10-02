@@ -1,4 +1,3 @@
-import { createPortal } from 'react-dom'
 import { usePanelAssistant } from '../assistantPanel/panelContext'
 import { registerDocumentContext } from '../agent/documentContext'
 /**
@@ -226,10 +225,12 @@ function PdfViewer({
   }, [courseId, relPath, currentPage, pdfProxy, panelId])
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
-  const isRailOpen = assistant?.open === true
+  const [localRailOpen, setLocalRailOpen] = useState(false)
+  const isRailOpen = assistant?.highlightsOpen ?? localRailOpen
   const setIsRailOpen = (open: boolean | ((value: boolean) => boolean)): void => {
     const next = typeof open === 'function' ? open(isRailOpen) : open
-    if (next) assistant?.show(); else assistant?.close()
+    if (assistant) assistant.setHighlightsOpen(next)
+    else setLocalRailOpen(next)
   }
   const [isPageNoteDialogOpen, setIsPageNoteDialogOpen] = useState(false)
   const [pendingSelection, setPendingSelection] =
@@ -1164,7 +1165,7 @@ function PdfViewer({
           </div>
         </div>
 
-        {assistant?.highlightHost && createPortal(
+        {isRailOpen && (
           <AnnotationRail
             annotations={annotations}
             staleIds={staleIds}
@@ -1172,8 +1173,8 @@ function PdfViewer({
             error={annotationsApi.error}
             onJump={jumpToAnnotation}
             onAskAi={askAi}
-            onClose={() => assistant.close()}
-          />, assistant.highlightHost
+            onClose={() => setIsRailOpen(false)}
+          />
         )}
       </div>
       {pageImageCopy.overlay}

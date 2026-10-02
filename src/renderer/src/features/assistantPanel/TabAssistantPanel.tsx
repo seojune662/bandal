@@ -6,11 +6,11 @@ import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { usePanelActive } from '../workspace/usePanelActive'
 import { PanelAssistantContext, normalizeAssistantPanel, type AssistantPanelState } from './panelContext'
 import { updateComposerDraft } from '../chat/composerDraftStore'
-import { invoke } from '../../lib/ipc'
-import { showToast } from '../../app/toast'
 import { Icon } from '../../app/icons'
 import { registerDocumentContext } from '../agent/documentContext'
 import { useBrowserGuests } from '../browser/browserGuestsStore'
+import { ConversationListMenu } from '../chat/ConversationListMenu'
+import { Tooltip } from '../../components/Tooltip'
 import './assistant-panel.css'
 const ChatSurface = lazy(() => import('../chat/ChatSurface').then(m => ({ default: m.ChatSurface })))
 export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelProps>): FunctionComponent<IDockviewPanelProps> {
@@ -18,20 +18,14 @@ export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelPr
     const descriptor = isTabDescriptor(props.params.descriptor) ? props.params.descriptor : null
     const selectedCourseId = useCoursesStore(s => s.selectedCourseId)
     const active = usePanelActive(props.api)
-    const [state, setState] = useState(() => {
-      const saved = normalizeAssistantPanel(props.params.assistant)
-      return descriptor?.kind === 'pdf' ? saved : { ...saved, section: 'ai' as const }
-    })
+    const [state, setState] = useState(() => normalizeAssistantPanel(props.params.assistant))
     const [ownerCourseId] = useState(() => state.courseId ?? selectedCourseId)
     const courseId = descriptor && 'courseId' in descriptor.payload ? descriptor.payload.courseId : ownerCourseId
     const [initialized, setInitialized] = useState(state.open)
     const resizeCleanup = useRef<(() => void) | null>(null)
     const stateRef = useRef(state); stateRef.current = state
-    const mounted = useRef(true)
     const root = useRef<HTMLDivElement>(null)
     const [availableWidth, setAvailableWidth] = useState(1000)
-    const [highlightHost, setHighlightHost] = useState<HTMLDivElement | null>(null)
-    const [busy, setBusy] = useState(false)
     const selection = useRef('')
     const update = useCallback((patch: Partial<AssistantPanelState>) => {
       const next = { ...stateRef.current, ...(courseId ? { courseId } : {}), ...patch }
@@ -39,10 +33,7 @@ export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelPr
       props.api.updateParameters({ assistant: next })
       useWorkspaceStore.getState().notifyLayoutChanged()
     }, [props.api, courseId])
-    useEffect(() => {
-      mounted.current = true
-      return () => { mounted.current = false; resizeCleanup.current?.() }
-    }, [])
+    useEffect(() => () => resizeCleanup.current?.(), [])
     useEffect(() => {
       if (!root.current) return
       const observer = new ResizeObserver(([entry]) => { if (entry) setAvailableWidth(entry.contentRect.width) })
@@ -67,35 +58,14 @@ export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelPr
       document.addEventListener('selectionchange', saveSelection)
       return () => document.removeEventListener('selectionchange', saveSelection)
     }, [])
-    const show = useCallback((section: 'ai' | 'highlights' = 'ai') => { setInitialized(true); update({ open: true, section }) }, [update])
+    const show = useCallback(() => { setInitialized(true); update({ open: true }) }, [update])
     const close = useCallback(() => update({ open: false }), [update])
     const ask = useCallback((text: string) => {
       updateComposerDraft(stateRef.current.conversationId, draft => ({ text: draft.text ? `${draft.text}\n\n${text}` : text }))
-      show('ai')
+      show()
     }, [show])
-    const context = useMemo(() => ({ panelId: props.api.id, highlightHost, section: state.section, open: state.open, show, close, ask }), [props.api.id, highlightHost, state.section, state.open, show, close, ask])
-    const [action, setAction] = useState('current')
-    const quickAction = async (action: string) => {
-      const id = stateRef.current.conversationId
-      setBusy(true)
-      try {
-        if (action === 'region' || action === 'screen') {
-          const image = await invoke('assistant:capture', { region: action === 'region' })
-          if (image && !mounted.current) showToast('원본 탭이 닫혀 캡처를 대화에 추가하지 않았어요.')
-          if (image && mounted.current) updateComposerDraft(id, draft => ({ images: [...draft.images, image].slice(-5) }))
-        } else if (action === 'file') {
-          const { paths } = await invoke('chat:pickAttachments', {})
-          if (!mounted.current && paths.length) showToast('원본 탭이 닫혀 파일을 대화에 추가하지 않았어요.')
-          if (mounted.current) updateComposerDraft(id, draft => ({ files: [...draft.files, ...paths.map(path => ({ path, name: path.split(/[\\/]/).pop() || path }))].slice(0, 20) }))
-        } else if (courseId) {
-          const snapshot = await invoke('chat:context', { courseId, sourcePanelId: props.api.id })
-          if (snapshot.refresh === 'failed') throw new Error('원본 자료를 읽지 못했어요. 자료 탭을 확인해 주세요.')
-          const selected = snapshot.material?.selection || selection.current
-          if (mounted.current) updateComposerDraft(id, draft => ({ excludeCurrentMaterial: false, ...(selected ? { quotes: [...(draft.quotes ?? []), { text: selected, source: snapshot.material?.title ?? '현재 자료' }].slice(-5) } : {}) }))
-        }
-      } catch (error) { showToast(error instanceof Error ? error.message : '질문 자료를 준비하지 못했어요.', 'danger') }
-      finally { if (mounted.current) setBusy(false) }
-    }
+    const setHighlightsOpen = useCallback((highlightsOpen: boolean) => update({ highlightsOpen }), [update])
+    const context = useMemo(() => ({ panelId: props.api.id, highlightsOpen: state.highlightsOpen, setHighlightsOpen, ask }), [props.api.id, state.highlightsOpen, setHighlightsOpen, ask])
     if (descriptor?.kind === 'chat') return <Component {...props} />
     const overlay = availableWidth < state.width + 360
     return <PanelAssistantContext.Provider value={context}>
@@ -118,26 +88,25 @@ export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelPr
               window.addEventListener('pointermove', move); window.addEventListener('pointerup', end, { once: true }); window.addEventListener('pointercancel', end, { once: true })
             }} />}
           <header className="tab-assistant-header">
-            <div role="tablist" aria-label="보조 사이드바 보기">
-              <button role="tab" aria-selected={state.section === 'ai'} onClick={() => show()}>✦ AI</button>
-              {descriptor?.kind === 'pdf' && <button role="tab" aria-selected={state.section === 'highlights'} onClick={() => show('highlights')}>하이라이트</button>}
+            <span className="tab-assistant-title">✦ <span>AI</span></span>
+            <div className="tab-assistant-header-actions">
+              {courseId && <ConversationListMenu courseId={courseId} currentConversationId={state.conversationId}
+                onNewConversation={() => update({ conversationId: crypto.randomUUID() })}
+                onOpenConversation={conversationId => update({ conversationId })} />}
+              <Tooltip label="대화 크게 열기" placement="bottom">
+                <button className="bare-icon-button" aria-label="AI 대화 크게 열기" disabled={!courseId} onClick={() => {
+                  if (!courseId) return
+                  close()
+                  useWorkspaceStore.getState().openTab(descriptorFor('chat', { courseId, conversationId: state.conversationId, sourcePanelId: props.api.id }))
+                }}><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-8 8M10 20H4v-6M4 20l8-8" /></svg></button>
+              </Tooltip>
+              <Tooltip label="AI 닫기" placement="bottom">
+                <button className="bare-icon-button" aria-label="AI 보조 사이드바 접기" onClick={close}><Icon name="x" /></button>
+              </Tooltip>
             </div>
-            <button className="bare-icon-button" aria-label="AI 보조 사이드바 접기" onClick={close}><Icon name="x" /></button>
           </header>
-          <div ref={setHighlightHost} className="tab-assistant-highlights" hidden={state.section !== 'highlights'} />
-          <div className="tab-assistant-ai" role="tabpanel" hidden={state.section !== 'ai'}>
-            <div className="tab-assistant-actions">
-              <select aria-label="AI 질문 방식" value={action} disabled={busy} onChange={e => setAction(e.target.value)}>
-                <option value="current">현재 자료 · 선택한 내용</option><option value="region">영역 선택해서 질문</option><option value="screen">현재 화면 질문</option><option value="file">파일 첨부해서 질문</option>
-              </select>
-              <button disabled={busy} onClick={() => void quickAction(action)} aria-label="질문 자료 준비">{busy ? '…' : '담기'}</button>
-              <button aria-label="AI 대화 크게 열기" disabled={!courseId} onClick={() => {
-                if (!courseId) return
-                update({ open: false })
-                useWorkspaceStore.getState().openTab(descriptorFor('chat', { courseId, conversationId: state.conversationId, sourcePanelId: props.api.id }))
-              }}>↗</button>
-            </div>
-            {courseId ? <Suspense fallback={<p role="status">AI를 준비하는 중…</p>}><ChatSurface courseId={courseId} conversationId={state.conversationId} sourcePanelId={props.api.id} variant="sidebar" active={active && state.open && state.section === 'ai'} onOpenConversation={conversationId => update({ conversationId })} /></Suspense> : <p className="tab-assistant-empty">과목을 선택하면 AI와 대화할 수 있어요.</p>}
+          <div className="tab-assistant-ai">
+            {courseId ? <Suspense fallback={<p className="tab-assistant-empty" role="status">AI를 준비하는 중…</p>}><ChatSurface courseId={courseId} conversationId={state.conversationId} sourcePanelId={props.api.id} variant="sidebar" hideHeader active={active && state.open} onOpenConversation={conversationId => update({ conversationId })} /></Suspense> : <p className="tab-assistant-empty">과목을 선택하면 AI와 대화할 수 있어요.</p>}
           </div>
         </aside>}
       </div>

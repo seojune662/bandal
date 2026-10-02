@@ -392,11 +392,11 @@ export function AppShell(): JSX.Element {
     <div
       className="app-shell"
       data-settings={settingsPresent ? 'open' : 'closed'}
+      data-board={isBoardOverlayOpen ? 'open' : 'closed'}
       data-left-rail={leftRailOpen ? 'open' : 'closed'}
       data-course-rail={leftRailOpen && courseRailOpen ? 'open' : 'closed'}
       data-right-rail={rightRailOpen ? 'open' : 'closed'}
     >
-      <ShellChrome />
       <GlobalNavigation />
       <div id="course-rail" className="shell-course-rail" aria-hidden={!leftRailOpen || !courseRailOpen || settingsPresent}
         {...{ inert: !leftRailOpen || !courseRailOpen || settingsPresent ? '' : undefined }}>
@@ -448,6 +448,7 @@ export function AppShell(): JSX.Element {
           </Suspense>
         </div>
       )}
+      <ShellChrome />
       <TourOverlay />
     </div>
   )

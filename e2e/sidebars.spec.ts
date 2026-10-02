@@ -180,3 +180,47 @@ test.describe('sidebars', () => {
   })
 
 })
+
+test('shell controls remain reachable over the academic board and retained tab chrome', async () => {
+  const bandal = await launchBandal()
+  try {
+    const { page } = bandal
+    await page.getByRole('button', { name: '학업 보드 열기', exact: true }).click()
+    await expect(page.locator('.board-overlay')).toBeVisible()
+    const toggle = page.locator('.shell-chrome button')
+    expect(await toggle.evaluate(button => {
+      const rect = button.getBoundingClientRect()
+      return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2))
+    })).toBe(true)
+    await toggle.click()
+    await expect(page.locator('.app-shell')).toHaveAttribute('data-left-rail', 'closed')
+    await expect(page.locator('.board-overlay')).toBeVisible()
+    await toggle.click()
+    await page.getByRole('button', { name: '설정', exact: true }).click()
+    await expect(page.locator('.settings-sidebar')).toBeVisible()
+    const courseButton = page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true })
+    expect(await courseButton.evaluate(button => {
+      const rect = button.getBoundingClientRect()
+      return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2))
+    })).toBe(true)
+    await toggle.click()
+    await expect(page.locator('.settings-sidebar')).toBeHidden()
+    await toggle.click()
+    await expect(page.locator('.settings-sidebar')).toBeVisible()
+    await page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true }).click()
+    await expect(page.locator('.shell-settings-overlay')).toHaveCount(0)
+    await expect(page.locator('.board-overlay')).toHaveCount(0)
+    await expect(page.locator('aside.app-rail--left')).toBeVisible()
+    await createCourse(page, '첫 과목')
+    await page.locator('.whiteboards-group').getByRole('button', { name: '새 화이트보드 만들기' }).click()
+    await expect(page.locator('.ink-layer')).toBeVisible()
+    await createCourse(page, '두 번째 과목')
+    const inactiveHeaders = page.locator('.workspace-course[hidden] .dv-tabs-and-actions-container')
+    expect(await inactiveHeaders.count()).toBeGreaterThan(0)
+    expect(await inactiveHeaders.evaluateAll(elements => elements.every(element => getComputedStyle(element).getPropertyValue('-webkit-app-region') !== 'drag'))).toBe(true)
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  } finally { await bandal.close() }
+})

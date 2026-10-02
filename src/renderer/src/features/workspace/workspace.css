@@ -41,7 +41,7 @@
   --dv-inactivegroup-hiddenpanel-tab-color: var(--text-muted);
   --dv-tab-divider-color: transparent;
 
-  --dv-separator-border: var(--border-subtle);
+  --dv-separator-border: var(--shell-divider);
   --dv-sash-color: transparent;
   --dv-active-sash-color: var(--accent);
   --dv-border-radius: var(--radius-sm);
@@ -823,4 +823,11 @@
   inset: 0;
   visibility: hidden;
   pointer-events: none;
+}
+
+/* Retained tab strips must not leave native window-drag hit regions behind. */
+.workspace-chrome-spacer,
+.workspace-course[hidden] .dv-tabs-and-actions-container,
+.workspace-course[hidden] .dv-tabs-and-actions-container * {
+  -webkit-app-region: no-drag;
 }

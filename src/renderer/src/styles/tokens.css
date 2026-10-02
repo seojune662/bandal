@@ -49,6 +49,7 @@
   --navigation-width: 48px;
   --sidebar-inset: calc(var(--navigation-width) + var(--rail-left-width));
   --focus-ring: #3981f7;
+  --shell-divider: color-mix(in srgb, var(--border-subtle) 55%, transparent);
   --rail-left-width: 15rem;
   --rail-right-width: 18rem;
   --control-height: 2rem;
@@ -101,6 +102,7 @@
 
 @media (prefers-contrast: more) {
   :root {
+    --shell-divider: var(--text-muted);
     --border-subtle: var(--text-muted);
     --border-strong: var(--text-secondary);
   }
@@ -118,6 +120,7 @@
     --accent-muted: ButtonFace;
     --on-accent: HighlightText;
     --focus-ring: Highlight;
+    --shell-divider: GrayText;
     --border-subtle: GrayText;
     --border-strong: ButtonText;
   }

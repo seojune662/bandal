@@ -75,7 +75,7 @@
   padding: var(--space-4) var(--space-3) var(--space-3);
   overflow: hidden;
   background: var(--bg-surface);
-  border-right: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--shell-divider);
 }
 
 .back-button {
