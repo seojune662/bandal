@@ -272,3 +272,59 @@ test('global menus, course drag, resizing and enlarged text remain reachable', a
     await bandal.close()
   }
 })
+
+test('library surfaces keep course colors quiet and document actions reachable', async ({}, info) => {
+  const bandal = await launchBandal({ extraSettings: { theme: 'light', university: { universityId: 'snu', customUniversity: null, hiddenServiceIds: [], customServices: [], openExternallyOverrides: {}, serviceOrder: [], secondaryOverrides: {} } } })
+  const { page, app } = bandal
+  try {
+    const courses = await page.evaluate(async () => {
+      const group = await window.bandal.invoke('courseGroups:create', { name: '2026년 2학기' })
+      const courses = []
+      for (const [name, color] of [['개인 프로젝트', 'violet'], ['대학 글쓰기', 'pink'], ['선형대수학', 'blue'], ['운동체역학', 'orange'], ['항공역학', 'green']]) {
+        const course = await window.bandal.invoke('courses:create', { name: name!, color: color! })
+        if (courses.length) await window.bandal.invoke('courses:organize', { courseId: course.id, groupId: group.id, beforeCourseId: null })
+        courses.push(course)
+      }
+      return courses
+    })
+    const course = courses.at(-1)!
+    for (const name of ['01. 유체의 성질.pdf', '02. 연속 방정식.pdf', '03. 운동량 방정식.pdf']) copyFileSync(join(__dirname, '../web-demo/public/sample.pdf'), join(course.folderPath, name))
+    writeFileSync(join(course.folderPath, '수업 노트.md'), '# 항공역학\n\n유체의 움직임을 기록합니다.\n')
+    writeFileSync(join(course.folderPath, '날개 단면.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aC3sAAAAASUVORK5CYII=', 'base64'))
+    mkdirSync(join(course.folderPath, '참고 자료'))
+    await page.reload()
+    await page.locator('.university-section__heading[aria-expanded="true"]').click()
+    await page.locator('.course-row__select').filter({ hasText: '항공역학' }).click()
+    for (const other of courses.slice(0, -1)) {
+      const toggle = page.getByRole('button', { name: `${other.name} 접기`, exact: true })
+      if (await toggle.count()) await toggle.click()
+    }
+    await expect(page.locator('.material-row')).toHaveCount(6)
+    for (const theme of ['light', 'dark'] as const) {
+      await page.evaluate(theme => window.bandal.invoke('settings:set', { theme }), theme)
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+      for (const width of [1440, 1024]) {
+        await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setContentSize(width, width === 1440 ? 900 : 640), width)
+        await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width)
+        await page.mouse.move(500, 10)
+        await page.screenshot({ path: info.outputPath(`library-${theme}-${width}.png`), animations: 'disabled' })
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+        const lastAction = page.locator('.workspace-watermark__cta:visible')
+        await expect(lastAction).toBeInViewport()
+        await lastAction.focus()
+        await page.keyboard.press('Enter')
+        await expect(page.locator('.new-tab-menu')).toBeVisible()
+        await page.keyboard.press('Escape')
+      }
+      const colors = await page.locator('.material-row:not([data-kind="dir"]) .material-row__type').evaluateAll(icons => icons.map(icon => getComputedStyle(icon).color))
+      expect(new Set(colors).size).toBe(1)
+    }
+    const search = page.locator('aside.app-rail--right input[type="search"]')
+    await search.fill('수업')
+    await expect(page.locator('.material-result')).toHaveCount(1)
+    await page.locator('.material-result').click()
+    await expect(page.locator('.milkdown .ProseMirror:visible')).toContainText('유체의 움직임')
+    await expect(page.locator('.course-row[data-selected="true"] .course-mark')).toHaveAttribute('data-course-color', 'green')
+    expect((await page.evaluate(() => window.bandal.invoke('courses:list', {}))).find(entry => entry.id === course.id)?.color).toBe('green')
+  } finally { await bandal.close() }
+})

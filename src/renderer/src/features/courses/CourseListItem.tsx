@@ -2,7 +2,7 @@ import type { HTMLAttributes, MouseEventHandler } from 'react'
 import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
 import { FavoritesSection } from './FavoritesSection'
-import { normalizeCourseColor } from './courseColors'
+import { CourseMark } from './CourseMark'
 
 interface CourseListItemProps {
   course: Course
@@ -63,10 +63,7 @@ export function CourseListItem({
           disabled={pending}
           onClick={onSelect}
         >
-          <span
-            className="course-dot"
-            data-course-color={normalizeCourseColor(course.color)}
-          />
+          <CourseMark color={course.color} />
           <span className="course-row__name">{course.name}</span>
           {course.missing ? (
             <span className="course-row__badge">연결 끊김</span>

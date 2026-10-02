@@ -4,7 +4,8 @@ import type {
   MaterialNode,
   MaterialSearchHit
 } from '../../../../shared/types/materials'
-import { Icon, type IconName } from '../../app/icons'
+import { Icon } from '../../app/icons'
+import { MaterialFileIcon } from './materialIcons'
 import { startMaterialDrag as startNativeMaterialDrag } from '../../lib/ipc'
 import { openMaterialInWorkspace } from '../workspace/openMaterial'
 import {
@@ -23,21 +24,6 @@ import {
   type MaterialMoveDragPayload
 } from './materialMoveDrag'
 import { canAcceptUrlDrop } from './urlDrop'
-
-function iconForKind(kind: MaterialKind | 'dir', expanded = false): IconName {
-  switch (kind) {
-    case 'dir':
-      return expanded ? 'folderOpen' : 'folder'
-    case 'pdf':
-      return 'filePdf'
-    case 'note':
-      return 'fileText'
-    case 'image':
-      return 'fileImage'
-    default:
-      return 'file'
-  }
-}
 
 /** pdf/md/video open as tabs; everything else opens in Finder (tooltip says so). */
 function rowTitle(kind: MaterialKind | 'dir', relPath: string): string {
@@ -267,7 +253,7 @@ function TreeNode({
       >
         <Icon name="chevronRight" />
       </span>
-      <Icon name={iconForKind(node.kind, expanded)} className="material-row__type" />
+      <MaterialFileIcon kind={node.kind} expanded={expanded} />
       {editing ? (
         <InlineNameEditor
           node={node}
@@ -698,7 +684,7 @@ export function MaterialSearchResults({
                 if (event.key === 'ArrowUp') focusAdjacentRow(event, -1)
               }}
             >
-              <Icon name={iconForKind(result.kind)} className="material-row__type" />
+              <MaterialFileIcon kind={result.kind} />
               <span>
                 <strong>{result.name}</strong>
                 <small>{result.relPath}</small>

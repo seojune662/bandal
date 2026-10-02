@@ -74,33 +74,38 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
       {...dropProps}
     >
       <ToggleRightRail />
-      <BandalMark size={56} className="workspace-watermark__moon" />
-      <h1>{course.name}</h1>
-      <p className="workspace-watermark__hint">{ko ? '읽고, 기록하고, 연결하는 나만의 학습 공간' : 'A space to read, write, and connect your ideas.'}</p>
-      <div className="workspace-start-actions" aria-label={ko ? '학습 시작' : 'Start studying'}>
-        <button type="button" onClick={() => void createMarkdownTab()}>
-          <TabKindIcon kind="note" /><strong>{ko ? '새 필기' : 'New note'}</strong>
-          <span>{ko ? '생각을 기록하세요' : 'Capture an idea'}</span>
+      <section className="workspace-welcome" aria-label={ko ? '학습 공간' : 'Your workspace'}>
+        <BandalMark size={48} className="workspace-watermark__moon" />
+        <h1>{course.name}</h1>
+        <p className="workspace-watermark__hint">{ko ? '읽고, 기록하고, 연결하는 나만의 학습 공간' : 'A space to read, write, and connect your ideas.'}</p>
+        <div className="workspace-start-actions" aria-label={ko ? '학습 시작' : 'Start studying'}>
+          <button type="button" onClick={() => void createMarkdownTab()}>
+            <span className="workspace-start-actions__icon"><TabKindIcon kind="note" /></span>
+            <span className="workspace-start-actions__copy"><strong>{ko ? '새 필기' : 'New note'}</strong><span>{ko ? '생각을 기록하세요' : 'Capture an idea'}</span></span>
+            <Icon name="chevronRight" className="workspace-start-actions__arrow" />
+          </button>
+          <button type="button" onClick={() => createBrowserTab()}>
+            <span className="workspace-start-actions__icon"><TabKindIcon kind="browser" /></span>
+            <span className="workspace-start-actions__copy"><strong>{ko ? '웹 탐색' : 'Browse the web'}</strong><span>{ko ? '자료를 찾아보세요' : 'Find your sources'}</span></span>
+            <Icon name="chevronRight" className="workspace-start-actions__arrow" />
+          </button>
+          <button type="button" onClick={() => useWorkspaceStore.getState().openTab(descriptorFor('chat', { courseId: course.id, conversationId: crypto.randomUUID() }))}>
+            <span className="workspace-start-actions__icon"><TabKindIcon kind="chat" /></span>
+            <span className="workspace-start-actions__copy"><strong>{ko ? 'AI와 공부' : 'Study with AI'}</strong><span>{ko ? '질문에서 시작하세요' : 'Start with a question'}</span></span>
+            <Icon name="chevronRight" className="workspace-start-actions__arrow" />
+          </button>
+        </div>
+        <button
+          type="button"
+          className="workspace-watermark__cta"
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect()
+            openNewTabMenu({ x: rect.left, y: rect.bottom + 8 })
+          }}
+        >
+          <Icon name="plus" />{ko ? '새 탭 열기' : 'Open new tab'}
         </button>
-        <button type="button" onClick={() => createBrowserTab()}>
-          <TabKindIcon kind="browser" /><strong>{ko ? '웹 탐색' : 'Browse the web'}</strong>
-          <span>{ko ? '자료를 찾아보세요' : 'Find your sources'}</span>
-        </button>
-        <button type="button" onClick={() => useWorkspaceStore.getState().openTab(descriptorFor('chat', { courseId: course.id, conversationId: crypto.randomUUID() }))}>
-          <TabKindIcon kind="chat" /><strong>{ko ? 'AI와 공부' : 'Study with AI'}</strong>
-          <span>{ko ? '질문에서 시작하세요' : 'Start with a question'}</span>
-        </button>
-      </div>
-      <button
-        type="button"
-        className="workspace-watermark__cta"
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect()
-          openNewTabMenu({ x: rect.left, y: rect.bottom + 8 })
-        }}
-      >
-        <Icon name="plus" />{ko ? '새 탭 열기' : 'Open new tab'}
-      </button>
+      </section>
     </div>
   )
 }

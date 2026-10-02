@@ -260,6 +260,7 @@ export function FavoritesSection({
     <section
       className="favorites-section"
       data-tour="favorites-section"
+      data-empty={favorites?.length === 0 || undefined}
       data-drag-over={dragOver || undefined}
       aria-label="즐겨찾기"
       onDragEnter={handleDragEnter}
@@ -268,10 +269,12 @@ export function FavoritesSection({
       onDrop={handleDrop}
     >
       <div className="favorites-section__heading">
-        <span>즐겨찾기</span>
+        <span>{favorites?.length === 0 && !isAddingLink ? t('favorites.emptyHelp') : '즐겨찾기'}</span>
         <button
           type="button"
           className="favorites-section__add-link"
+          aria-label="링크 추가"
+          title="링크 추가"
           aria-expanded={isAddingLink}
           disabled={isSavingLink}
           onClick={() => {
@@ -282,8 +285,7 @@ export function FavoritesSection({
             }
           }}
         >
-          <Icon name="link" />
-          링크 추가
+          <Icon name="plus" />
         </button>
       </div>
 
@@ -423,11 +425,7 @@ export function FavoritesSection({
             </li>
           ))}
         </ul>
-      ) : (
-        <div className="favorites-section__empty">
-          <span>{t('favorites.emptyHelp')}</span>
-        </div>
-      )}
+      ) : null}
 
       {renameDraft !== null && (
         <form

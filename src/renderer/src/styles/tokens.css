@@ -49,6 +49,8 @@
   --navigation-width: 48px;
   --sidebar-inset: calc(var(--navigation-width) + var(--rail-left-width));
   --focus-ring: #3981f7;
+  --sidebar-selection: color-mix(in srgb, var(--text-primary) 5.5%, var(--bg-surface));
+  --sidebar-hover: color-mix(in srgb, var(--text-primary) 3%, var(--bg-surface));
   --shell-divider: color-mix(in srgb, var(--border-subtle) 55%, transparent);
   --rail-left-width: 15rem;
   --rail-right-width: 18rem;

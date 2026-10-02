@@ -9,7 +9,7 @@ import { showToast } from '../../app/toast'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
-import { normalizeCourseColor } from '../courses/courseColors'
+import { CourseMark } from '../courses/CourseMark'
 import { LinkPickerDialog } from '../links/LinkPickerDialog'
 import { requestOpenPdfPageNote } from '../links/pdfPageNoteNavigation'
 import {
@@ -834,10 +834,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           <h2>자료</h2>
           {course !== null && (
             <span className="materials-heading__course" title={course.name}>
-              <span
-                className="course-dot"
-                data-course-color={normalizeCourseColor(course.color)}
-              />
+              <CourseMark color={course.color} />
               {course.name}
             </span>
           )}

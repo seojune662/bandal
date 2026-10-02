@@ -311,7 +311,7 @@ export const enUS: Record<MessageKey, string> = {
   'university.drop.secondaryEnd': 'Move to end of More shortcuts',
   'university.drop.sendToMore': 'Send to More',
 
-  'favorites.emptyHelp': 'Drag a file or tab here',
+  'favorites.emptyHelp': 'Drag items here',
   'materials.favorite.add': 'Add to favorites',
   'materials.favorite.added': 'Added to favorites.',
   'materials.favorite.addFailed': 'Could not add the favorite.',

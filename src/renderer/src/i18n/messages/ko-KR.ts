@@ -309,7 +309,7 @@ export const koKR = {
   'university.drop.secondaryEnd': '더보기 목록 끝으로 이동',
   'university.drop.sendToMore': '더보기로 보내기',
 
-  'favorites.emptyHelp': '자료나 탭을 끌어 놓으세요',
+  'favorites.emptyHelp': '자료·탭 끌어 놓기',
   'materials.favorite.add': '즐겨찾기에 추가',
   'materials.favorite.added': '즐겨찾기에 추가했어요.',
   'materials.favorite.addFailed': '즐겨찾기를 추가하지 못했어요.',
