@@ -173,6 +173,7 @@ test.describe('sidebars', () => {
       await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
       await expect(page.locator('.global-navigation')).toBeHidden()
       await expect(page.locator('.shell-course-rail')).toHaveCSS('width', '0px')
+      await expect(page.locator('.global-navigation')).toHaveCSS('transition-delay', '0s')
       await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
       await expect(page.locator('aside.app-rail--left')).toBeVisible()
     } finally { await page.emulateMedia({ reducedMotion: 'no-preference' }) }
