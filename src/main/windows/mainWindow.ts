@@ -141,13 +141,14 @@ export function createMainWindow(): BrowserWindow {
   hardenWindowWebviews(mainWindow)
   registerBrowserHost(mainWindow)
   const win = mainWindow
-  const publishWindowState = (): void => {
+  const publishWindowState = (fullscreen: boolean): void => {
     if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
-      win.webContents.send('window:stateChanged', { fullscreen: win.isFullScreen() })
+      win.webContents.send('window:stateChanged', { fullscreen })
     }
   }
-  win.on('enter-full-screen', publishWindowState)
-  win.on('leave-full-screen', publishWindowState)
+  // Windows emits these events before isFullScreen() reflects the change.
+  win.on('enter-full-screen', () => publishWindowState(true))
+  win.on('leave-full-screen', () => publishWindowState(false))
   windowStateStore.track(mainWindow)
 
   if (windowState.maximized) mainWindow.maximize()
