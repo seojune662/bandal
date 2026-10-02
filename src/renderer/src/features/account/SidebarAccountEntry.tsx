@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Tooltip } from '../../components/Tooltip'
-import { useT } from '../../i18n'
 import { useAuthStore } from '../../stores/authStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AccountIcon } from './accountIcons'
@@ -8,7 +7,6 @@ import { AccountAvatar } from './AccountAvatar'
 
 /** Account menu; profile editing lives in Settings. */
 export function SidebarAccountEntry(): JSX.Element | null {
-  const t = useT()
   const auth = useAuthStore((state) => state.auth)
   const signOut = useAuthStore((state) => state.signOut)
   const [open, setOpen] = useState(false)
@@ -50,16 +48,7 @@ export function SidebarAccountEntry(): JSX.Element | null {
 
   const openAccountSettings = (): void => {
     setOpen(false)
-    useUiStore.getState().openSettings()
-    const categoryLabel = t('settings.category.account.label')
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        const category = [
-          ...document.querySelectorAll<HTMLButtonElement>('.settings-nav__item')
-        ].find((button) => button.textContent?.trim() === categoryLabel)
-        category?.click()
-      })
-    })
+    useUiStore.getState().openSettings('account')
   }
 
   const handleSignOut = async (): Promise<void> => {
@@ -88,8 +77,7 @@ export function SidebarAccountEntry(): JSX.Element | null {
           onClick={() => setOpen((current) => !current)}
         >
           <AccountAvatar
-            color={profile.avatarColor}
-            emoji={profile.avatarEmoji}
+            avatarUrl={auth.avatarUrl}
             nickname={displayName}
             size="sm"
           />
@@ -105,8 +93,7 @@ export function SidebarAccountEntry(): JSX.Element | null {
         >
           <div className="sidebar-account__profile">
             <AccountAvatar
-              color={profile.avatarColor}
-              emoji={profile.avatarEmoji}
+              avatarUrl={auth.avatarUrl}
               nickname={displayName}
             />
             <div>
@@ -123,7 +110,7 @@ export function SidebarAccountEntry(): JSX.Element | null {
             className="sidebar-account__manage"
             onClick={openAccountSettings}
           >
-            설정에서 프로필 변경
+            계정 설정
           </button>
 
           {error !== null && (

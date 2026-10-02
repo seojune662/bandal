@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState
 } from 'react'
@@ -40,6 +41,9 @@ import { usePluginsStore } from '../stores/pluginsStore'
 import { subscribePluginEditor } from '../features/plugins/pluginEditor'
 import { ShellChrome } from './ShellChrome'
 import { GlobalNavigation } from './GlobalNavigation'
+import { useWindowState } from './useWindowState'
+import { usePresence } from '../components/usePresence'
+import { acquirePointerPassthrough } from '../features/browser/webviewPassthrough'
 import './app-shell.css'
 
 const BoardOverlay = lazy(() =>
@@ -85,6 +89,7 @@ function scheduleAfterFirstPaint(task: () => void): () => void {
 }
 
 export function AppShell(): JSX.Element {
+  useWindowState()
   usePrintRequests()
   useAgentWorkspaceSync()
   const courses = useCoursesStore((state) => state.courses)
@@ -107,6 +112,7 @@ export function AppShell(): JSX.Element {
   const consumedPendingOpen = useRef(false)
   const initTheme = useUiStore((state) => state.initTheme)
   const leftRailOpen = useUiStore((state) => state.leftRailOpen)
+  const courseRailOpen = useUiStore((state) => state.courseRailOpen)
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
   // GlobalNavigation owns the board entry point; the shell owns its overlay.
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
@@ -114,10 +120,19 @@ export function AppShell(): JSX.Element {
   const isLinkGraphOpen = useUiStore((state) => state.isLinkGraphOpen)
   const closeLinkGraph = useUiStore((state) => state.closeLinkGraph)
   const isSettingsOpen = useUiStore((state) => state.isSettingsOpen)
+  const settingsPresent = usePresence(isSettingsOpen, 160)
+  useLayoutEffect(() => settingsPresent ? acquirePointerPassthrough() : undefined, [settingsPresent])
   const settingsCategory = useUiStore((state) => state.settingsCategory)
   const openSettings = useUiStore((state) => state.openSettings)
   const closeSettings = useUiStore((state) => state.closeSettings)
   const isOnboardingVisible = useOnboardingStore((state) => state.visible)
+
+  useLayoutEffect(() => {
+    const active = document.activeElement
+    if (active instanceof HTMLElement && active.closest('[inert]')) {
+      document.querySelector<HTMLButtonElement>('.shell-chrome button')?.focus()
+    }
+  }, [leftRailOpen, courseRailOpen, rightRailOpen, settingsPresent])
 
   const selectedCourse =
     courses.find((course) => course.id === selectedCourseId) ?? null
@@ -349,7 +364,7 @@ export function AppShell(): JSX.Element {
   useEffect(() => {
     if (!isSettingsOpen) return
     const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || event.defaultPrevented) return
       event.preventDefault()
       closeSettings()
     }
@@ -376,22 +391,29 @@ export function AppShell(): JSX.Element {
   return (
     <div
       className="app-shell"
-      data-settings={isSettingsOpen ? 'open' : 'closed'}
+      data-settings={settingsPresent ? 'open' : 'closed'}
       data-left-rail={leftRailOpen ? 'open' : 'closed'}
+      data-course-rail={leftRailOpen && courseRailOpen ? 'open' : 'closed'}
       data-right-rail={rightRailOpen ? 'open' : 'closed'}
     >
       <ShellChrome />
-      {leftRailOpen && <GlobalNavigation />}
-      {leftRailOpen && <CourseSidebar />}
-      {leftRailOpen && <RailResizer side="left" />}
+      <GlobalNavigation />
+      <div id="course-rail" className="shell-course-rail" aria-hidden={!leftRailOpen || !courseRailOpen || settingsPresent}
+        {...{ inert: !leftRailOpen || !courseRailOpen || settingsPresent ? '' : undefined }}>
+        <CourseSidebar />
+      </div>
+      {leftRailOpen && courseRailOpen && !settingsPresent && <RailResizer side="left" />}
 
-      <main className="app-workspace" aria-label="작업 공간">
+      <main className="app-workspace" aria-label="작업 공간" {...{ inert: settingsPresent ? '' : undefined }}>
         <WorkspaceHost />
         <RecordingIndicator />
       </main>
 
-      {rightRailOpen && <MaterialsSidebar course={selectedCourse} />}
-      {rightRailOpen && <RailResizer side="right" />}
+      <div className="shell-materials-rail" aria-hidden={!rightRailOpen || settingsPresent}
+        {...{ inert: !rightRailOpen || settingsPresent ? '' : undefined }}>
+        <MaterialsSidebar course={selectedCourse} />
+      </div>
+      {rightRailOpen && !settingsPresent && <RailResizer side="right" />}
 
       <Suspense fallback={null}>
         <BrowserWebviewLayer />
@@ -408,8 +430,9 @@ export function AppShell(): JSX.Element {
       {isOnboardingVisible && <OnboardingOverlay />}
       <ToastHost />
       <PresentationProgress />
-      {isSettingsOpen && (
-        <div className="settings-overlay">
+      {settingsPresent && (
+        <div className="settings-overlay shell-settings-overlay" data-open={isSettingsOpen}
+          {...{ inert: !isSettingsOpen ? '' : undefined }}>
           <Suspense
             fallback={
               <div className="settings-load-state" role="status">

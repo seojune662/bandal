@@ -21,6 +21,7 @@
  * `describeAuthCallback()` is the only log-safe rendering.
  */
 
+import { accountAvatarUrl } from '../../../shared/account/avatar'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   AuthProvider,
@@ -69,7 +70,6 @@ export interface AuthService {
   handleDeepLink(url: string): Promise<void>
   signOut(): Promise<void>
   setNickname(nickname: string): Promise<MyProfile>
-  setAvatar(patch: { color?: string; emoji?: string }): Promise<MyProfile>
   /** Current access token for `realtime.setAuth()`. */
   accessToken(): string | null
   userId(): string | null
@@ -106,7 +106,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     : { ...UNCONFIGURED_AUTH_STATE }
   let token: string | null = null
   let uid: string | null = null
-  let email: string | null = null
+  let sessionVersion = 0
   let unsubscribe: (() => void) | null = null
   /** The code currently being exchanged — the re-entrancy guard (§handleDeepLink). */
   let exchangingCode: string | null = null
@@ -124,6 +124,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       phase: 'error',
       profile: null,
       email: null,
+      avatarUrl: null,
       online: state.online,
       errorCode
     })
@@ -145,7 +146,8 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       void adoptSession(
         session.access_token,
         session.user.id,
-        session.user.email ?? null
+        session.user.email ?? null,
+        session.user.user_metadata
       )
     })
     unsubscribe = () => {
@@ -169,17 +171,21 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   async function adoptSession(
     accessToken: string,
     userId: string,
-    userEmail: string | null
+    userEmail: string | null,
+    metadata?: Record<string, unknown>
   ): Promise<AuthState> {
+    const version = ++sessionVersion
+    const avatarUrl = accountAvatarUrl(metadata)
     token = accessToken
     uid = userId
-    email = userEmail
     try {
       const profile = await loadProfile(userId)
+      if (version !== sessionVersion) return state
       return publish({
         phase: 'signed-in',
         profile,
-        email,
+        email: userEmail,
+        avatarUrl,
         online: true,
         errorCode: null
       })
@@ -187,11 +193,13 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       // Signed in but the profile row is unreachable (offline right after a
       // restore). That is not a sign-in failure: keep the session, show the
       // user as signed-in-but-offline and let the next fetch fill it in.
+      if (version !== sessionVersion) return state
       console.error('[account] failed to load profile', error)
       return publish({
         phase: 'signed-in',
         profile: { id: userId, nickname: null, avatarColor: 'moon', avatarEmoji: '🌙' },
-        email,
+        email: userEmail,
+        avatarUrl,
         online: false,
         errorCode: null
       })
@@ -201,7 +209,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   function clearSession(): void {
     token = null
     uid = null
-    email = null
+    sessionVersion += 1
   }
 
   async function updateProfile(
@@ -210,10 +218,12 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     if (deps.client === null || uid === null) {
       throw new Error('not-signed-in')
     }
+    const userId = uid
+    const version = sessionVersion
     const { data, error } = await deps.client
       .from('profiles')
       .update(patch)
-      .eq('id', uid)
+      .eq('id', userId)
       .select('id, nickname, avatar_color, avatar_emoji')
       .single()
     // The DB is the authority on nicknames (unique index + CHECK). Translating
@@ -227,7 +237,8 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       if (error.code === '23514') throw new Error(NICKNAME_RULE_TEXT)
       throw error
     }
-    const profile = profileFromRow(data, uid)
+    if (version !== sessionVersion) throw new Error('account-changed')
+    const profile = profileFromRow(data, userId)
     publish({ ...state, profile })
     return profile
   }
@@ -247,7 +258,8 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         return await adoptSession(
           data.session.access_token,
           data.session.user.id,
-          data.session.user.email ?? null
+          data.session.user.email ?? null,
+          data.session.user.user_metadata
         )
       } catch (error) {
         // Corrupt session file, expired refresh token, no network — all
@@ -291,6 +303,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           phase: 'signing-in',
           profile: null,
           email: null,
+          avatarUrl: null,
           online: state.online,
           errorCode: null
         })
@@ -384,7 +397,8 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         await adoptSession(
           data.session.access_token,
           data.session.user.id,
-          data.session.user.email ?? null
+          data.session.user.email ?? null,
+          data.session.user.user_metadata
         )
       } catch (error) {
         console.error('[account] code exchange threw', error)
@@ -419,16 +433,6 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         return Promise.reject(new Error(NICKNAME_RULE_TEXT))
       }
       return updateProfile({ nickname: trimmed })
-    },
-
-    setAvatar(patch) {
-      const update: Record<string, string> = {}
-      if (patch.color !== undefined) update['avatar_color'] = patch.color
-      if (patch.emoji !== undefined) update['avatar_emoji'] = patch.emoji
-      if (Object.keys(update).length === 0) {
-        return Promise.reject(new Error('변경할 항목이 없어요.'))
-      }
-      return updateProfile(update)
     },
 
     accessToken: () => token,

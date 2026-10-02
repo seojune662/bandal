@@ -439,7 +439,7 @@ export function useGlobalShortcuts(): void {
     const pendingFrames = new Set<number>()
     const clickButton = (selector: string): boolean => {
       const button = document.querySelector<HTMLButtonElement>(selector)
-      if (button === null || button.disabled) return false
+      if (button === null || button.disabled || button.closest('[inert]')) return false
       button.click()
       return true
     }
@@ -454,7 +454,7 @@ export function useGlobalShortcuts(): void {
       const selector = '[aria-label="과목 추가"][aria-haspopup="menu"]'
       if (clickButton(selector)) return
       const ui = useUiStore.getState()
-      if (!ui.leftRailOpen) ui.toggleLeftRail()
+      ui.showCourses()
       clickOnNextFrame(selector)
     }
     const onImportMaterials = (): void => {

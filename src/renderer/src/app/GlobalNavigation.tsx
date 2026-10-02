@@ -11,18 +11,24 @@ export function GlobalNavigation(): JSX.Element {
   const phase = useAuthStore((state) => state.auth.phase)
   const boardOpen = useUiStore((state) => state.isBoardOverlayOpen)
   const settingsOpen = useUiStore((state) => state.isSettingsOpen)
+  const graphOpen = useUiStore((state) => state.isLinkGraphOpen)
+  const courseOpen = useUiStore((state) => state.courseRailOpen)
+  const leftOpen = useUiStore((state) => state.leftRailOpen)
   const openCourses = (): void => {
     const ui = useUiStore.getState()
-    ui.closeSettings(); ui.closeBoardOverlay(); ui.closeLinkGraph()
-    if (!ui.leftRailOpen) ui.toggleLeftRail()
+    if (ui.isSettingsOpen || ui.isBoardOverlayOpen || ui.isLinkGraphOpen) ui.showCourses()
+    else ui.toggleCourseRail()
   }
   return (
-    <nav className="global-navigation" aria-label="앱 메뉴">
+    <nav className="global-navigation" aria-label="앱 메뉴" aria-hidden={!leftOpen}
+      {...{ inert: !leftOpen ? '' : undefined }}>
       <Tooltip label="과목" placement="right">
         <button
           className="rail-nav__item"
           aria-label="과목"
-          data-active={(!boardOpen && !settingsOpen) || undefined}
+          aria-expanded={courseOpen && !boardOpen && !settingsOpen && !graphOpen}
+          aria-controls="course-rail"
+          data-active={(!boardOpen && !settingsOpen && !graphOpen && courseOpen) || undefined}
           onClick={openCourses}
         >
           <Icon name="folder" />

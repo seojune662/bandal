@@ -285,7 +285,7 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
   )
 }
 
-function MailWidget({ settings }: { settings: Settings }): JSX.Element {
+function MailWidget({ settings, active }: { settings: Settings; active: boolean }): JSX.Element {
   const services = useUniversityStore((state) => state.services)
   const init = useUniversityStore((state) => state.init)
   useEffect(() => void init(), [init])
@@ -301,13 +301,15 @@ function MailWidget({ settings }: { settings: Settings }): JSX.Element {
         url: selected.url
       }
 
-  return <NativeMailWidget fallback={target} />
+  return <NativeMailWidget fallback={target} active={active} />
 }
 
 
 export function WidgetDock(): JSX.Element | null {
   const settings = useLiveSettings()
   const widgets = settings.widgets
+  const rightRailOpen = useUiStore(state => state.rightRailOpen)
+  const settingsOpen = useUiStore(state => state.isSettingsOpen)
   const dockRef = useRef<HTMLElement>(null)
   if (widgets.enabled.length === 0) return null
 
@@ -341,7 +343,7 @@ export function WidgetDock(): JSX.Element | null {
               const next = new Set(widgets.collapsed ?? []); if (collapsed) next.delete(id); else next.add(id)
               void invoke('settings:set', { widgets: { collapsed: [...next] } })
             }}><span className="widget-card__icon" aria-hidden="true">{id === 'todo' ? '✓' : id === 'board' ? '▦' : '✉'}</span><strong>{LABELS[id]}</strong><span className="widget-card__chevron">{collapsed ? '⌄' : '⌃'}</span></button></header>
-            <div className="widget-card__body" hidden={collapsed}>{id === 'mail' ? <MailWidget settings={settings} /> : <TaskWidget mode={id} />}</div>
+            <div className="widget-card__body" data-collapsed={collapsed} aria-hidden={collapsed} {...{ inert: collapsed ? '' : undefined }}><div className="widget-card__content">{id === 'mail' ? <MailWidget settings={settings} active={!collapsed && rightRailOpen && !settingsOpen} /> : <TaskWidget mode={id} />}</div></div>
           </section>
         })}
       </section>

@@ -84,7 +84,7 @@ function revealTourSurfaces(): void {
   const ui = useUiStore.getState()
   ui.closeSettings()
   ui.closeBoardOverlay()
-  if (!ui.leftRailOpen) ui.toggleLeftRail()
+  ui.showCourses()
   if (!ui.rightRailOpen) ui.toggleRightRail()
 }
 
@@ -127,7 +127,7 @@ async function waitForPaint(): Promise<void> {
 
 async function revealFavorites(courseId: string): Promise<void> {
   const ui = useUiStore.getState()
-  if (!ui.leftRailOpen) ui.toggleLeftRail()
+  ui.showCourses()
   useCoursesStore.getState().selectCourse(courseId)
   await waitForWorkspaceCourse(courseId)
 

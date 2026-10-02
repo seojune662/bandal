@@ -30,6 +30,7 @@ function focusFixture(): FocusFixture {
   const last = makeItem()
   const container = {
     ownerDocument,
+    closest: () => null,
     querySelectorAll: () => items,
     contains: (element: unknown) => items.includes(element as HTMLElement),
     focus: vi.fn(() => {
@@ -51,6 +52,13 @@ function tabEvent(shiftKey = false): {
 }
 
 describe('useFocusTrap', () => {
+  test('a dialog retained in a collapsed sidebar does not trap keyboard focus', () => {
+    const fixture = focusFixture()
+    fixture.container.closest = () => fixture.container
+    const { event, preventDefault } = tabEvent()
+    handleFocusTrapKeyDown(event, fixture.container)
+    expect(preventDefault).not.toHaveBeenCalled()
+  })
   test('cycles Tab from the last item to the first item', () => {
     const fixture = focusFixture()
     fixture.document.activeElement = fixture.last

@@ -110,7 +110,9 @@
   height: var(--icon-button-size);
   font-size: var(--text-base);
   line-height: 1;
-  background: var(--course-color, var(--accent));
+  color: var(--text-muted);
+  background: var(--bg-raised);
+  overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
   box-shadow: var(--shadow-sm);
@@ -128,26 +130,5 @@
   font-size: var(--text-xl);
 }
 
-.account-avatar[data-avatar-color='gold'] {
-  --course-color: var(--course-gold);
-}
 
-.account-avatar[data-avatar-color='green'] {
-  --course-color: var(--course-green);
-}
-
-.account-avatar[data-avatar-color='blue'] {
-  --course-color: var(--course-blue);
-}
-
-.account-avatar[data-avatar-color='pink'] {
-  --course-color: var(--course-pink);
-}
-
-.account-avatar[data-avatar-color='violet'] {
-  --course-color: var(--course-violet);
-}
-
-.account-avatar[data-avatar-color='orange'] {
-  --course-color: var(--course-orange);
-}
+.account-avatar img { width: 100%; height: 100%; object-fit: cover; }

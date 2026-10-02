@@ -41,6 +41,7 @@ export function handleFocusTrapKeyDown(
   container: HTMLElement
 ): void {
   if (event.key !== 'Tab' || event.defaultPrevented) return
+  if (container.closest('[hidden], [inert], [aria-hidden="true"]')) return
 
   const items = focusableElements(container)
   const first = items[0]
@@ -120,7 +121,8 @@ export function useFocusTrap<T extends HTMLElement>(
     activeTraps.set(ownerDocument, traps)
 
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (traps.at(-1) !== container) return
+      const current = traps.findLast(trap => !trap.closest('[hidden], [inert], [aria-hidden="true"]'))
+      if (current !== container) return
       if (event.key === 'Escape' && !event.defaultPrevented) {
         const escape = onEscapeRef.current
         if (escape !== undefined) {

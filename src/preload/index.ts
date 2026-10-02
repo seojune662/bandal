@@ -73,6 +73,7 @@ const PUSH_CHANNELS = [
   'browser:download',
   'browserAgent:run-state',
   'settings:changed',
+  'window:stateChanged',
   'ui:openSettings',
   'shortcut:passthrough',
   // -- groups (P2-C) --------------------------------------------------------

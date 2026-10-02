@@ -1,13 +1,14 @@
 .shell-chrome {
   grid-area: chrome;
-  position: relative;
+  position: absolute;
+  inset: 0 auto auto 0;
   z-index: 45;
   display: flex;
   align-items: center;
-  min-width: 144px;
+  width: var(--window-controls-width);
   height: var(--chrome-height);
   gap: 8px;
-  padding-inline: 12px;
+  padding-inline: 8px;
   background: var(--bg-surface);
   -webkit-app-region: drag;
 }
@@ -24,12 +25,13 @@
 .shell-chrome__traffic {
   display: none;
 }
-:root[data-platform='darwin'] .shell-chrome__traffic {
+:root[data-platform='darwin']:not([data-fullscreen='true']) .shell-chrome__traffic {
   display: block;
   flex: 0 0 76px;
 }
 .global-navigation {
   grid-area: navigation;
+  width: var(--navigation-width);
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -52,5 +54,5 @@
   margin-top: auto;
 }
 
-.shell-chrome { --window-controls-width: 144px; }
+
 .app-shell:has(.workspace-watermark) > .shell-chrome { background: var(--bg-app); }

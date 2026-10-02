@@ -247,7 +247,7 @@ test('global menus, course drag, resizing and enlarged text remain reachable', a
     await handle.dblclick({ position: { x: 3, y: 300 } })
     await expect.poll(async () => (await rail.boundingBox())!.width).toBe(240)
     await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
-    await expect(page.locator('.global-navigation')).toHaveCount(0)
+    await expect(page.locator('.global-navigation')).toBeHidden()
     await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
     await page.getByRole('button', { name: '더 보기', exact: true }).click()
     await expect(

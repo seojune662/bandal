@@ -9,6 +9,7 @@ const anchors = new Map<string, HTMLElement>()
 const listeners = new Set<AnchorListener>()
 let frame = 0
 let stopObserving: (() => void) | null = null
+const moving = new Set<Element>()
 
 function sameRect(a: AnchorRect | undefined, b: AnchorRect | null): boolean {
   return b === null ? a === undefined : a?.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
@@ -32,7 +33,8 @@ function measureAll(): void {
     publish(tabId, visible ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null)
   }
   // A drag can translate a group without resizing its page.
-  if (tabDragSession.getSnapshot() !== null && anchors.size) frame = requestAnimationFrame(measureAll)
+  for (const element of moving) if (!element.isConnected || !element.getAnimations().some(animation => animation.playState === 'running')) moving.delete(element)
+  if ((tabDragSession.getSnapshot() !== null || moving.size > 0) && anchors.size) frame = requestAnimationFrame(measureAll)
 }
 /** One layout read batch per frame, including translations that ResizeObserver misses. */
 export function scheduleBrowserAnchorLayout(): void {
@@ -48,8 +50,17 @@ function observeLayout(): void {
     if (observed.has(element)) continue
     observed.add(element)
     resize.observe(element)
-    mutation.observe(element, { attributes: true, attributeFilter: ['style', 'class', 'hidden', 'data-left-rail', 'data-right-rail'] })
+    mutation.observe(element, { attributes: true, attributeFilter: ['style', 'class', 'hidden', 'data-left-rail', 'data-course-rail', 'data-right-rail', 'data-fullscreen'] })
   }
+  const transitionStart = (event: TransitionEvent): void => {
+    if (event.target instanceof Element && observed.has(event.target)) { moving.add(event.target); scheduleBrowserAnchorLayout() }
+  }
+  const transitionEnd = (event: TransitionEvent): void => {
+    if (event.target instanceof Element && observed.has(event.target)) { moving.delete(event.target); scheduleBrowserAnchorLayout() }
+  }
+  document.addEventListener('transitionrun', transitionStart)
+  document.addEventListener('transitionend', transitionEnd)
+  document.addEventListener('transitioncancel', transitionEnd)
   const unsubscribeDrag = tabDragSession.subscribe(scheduleBrowserAnchorLayout)
   window.addEventListener('resize', scheduleBrowserAnchorLayout)
   window.addEventListener('scroll', scheduleBrowserAnchorLayout, true)
@@ -57,6 +68,10 @@ function observeLayout(): void {
     resize.disconnect(); mutation.disconnect(); unsubscribeDrag()
     window.removeEventListener('resize', scheduleBrowserAnchorLayout)
     window.removeEventListener('scroll', scheduleBrowserAnchorLayout, true)
+    document.removeEventListener('transitionrun', transitionStart)
+    document.removeEventListener('transitionend', transitionEnd)
+    document.removeEventListener('transitioncancel', transitionEnd)
+    moving.clear()
   }
 }
 

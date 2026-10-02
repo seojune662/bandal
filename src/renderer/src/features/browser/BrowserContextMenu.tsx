@@ -25,7 +25,6 @@ import { descriptorFor } from '../workspace/tabIdentity'
 import { guestActions } from './guestActions'
 import { openDiagnostics } from './diagnosticsBridge'
 import { usePrintStore } from '../print/printStore'
-import { acquirePointerPassthrough } from './webviewPassthrough'
 import { resolveAddressInput } from './urlInput'
 import { v4 as uuidv4 } from 'uuid'
 import { openWebVideoInPip } from './videoBridge'
@@ -141,7 +140,6 @@ export function BrowserContextMenu({
   useViewportBounds(menuRef)
 
   useEffect(() => {
-    const release = acquirePointerPassthrough()
     const dismiss = (): void => onClose()
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
@@ -154,7 +152,6 @@ export function BrowserContextMenu({
       window.removeEventListener('pointerdown', dismiss, true)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('blur', dismiss)
-      release()
     }
   }, [onClose])
 

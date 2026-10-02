@@ -107,8 +107,7 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
 
 /** Reserve fixed window controls when the sidebar is closed. */
 function ChromeLeft(): JSX.Element | null {
-  const open = useUiStore(state => state.leftRailOpen)
-  return open ? null : <div className="workspace-chrome-spacer" aria-hidden="true" />
+  return <div className="workspace-chrome-spacer" aria-hidden="true" />
 }
 
 function AddTabAction(_props: IDockviewHeaderActionsProps): JSX.Element {

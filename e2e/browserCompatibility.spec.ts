@@ -253,7 +253,7 @@ test('tab assistant stays beside native pages while browser remains interactive'
       const guest = webContents.fromId(id)!
       guest.focus(); guest.sendInputEvent({ type: 'keyDown', keyCode: 'S', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] }); guest.sendInputEvent({ type: 'keyUp', keyCode: 'S', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] })
     }, root)
-    await expect(bandal.page.locator('.global-navigation')).toHaveCount(0)
+    await expect(bandal.page.locator('.global-navigation')).toBeHidden()
     await bandal.app.evaluate(({ webContents }, id) => {
       const guest = webContents.fromId(id)!
       guest.focus(); guest.sendInputEvent({ type: 'keyDown', keyCode: 'S', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] }); guest.sendInputEvent({ type: 'keyUp', keyCode: 'S', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] })
@@ -515,5 +515,93 @@ test('browser duplicate, split and modified click create independent pages in th
     const pages = await currentPages()
     expect(new Set(pages.map(page => page.id)).size).toBe(4)
     expect(pages.every(page => page.sameProfile)).toBe(true)
+  } finally { await bandal.close(); await site.close() }
+})
+
+function visibleNativePages(bandal: BandalApp): Promise<number[]> {
+  return bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
+    .filter(window => window.webContents.getURL().includes('index.html'))
+    .flatMap(window => window.contentView.children)
+    .filter(view => 'webContents' in view && view.getVisible())
+    .map(view => (view as Electron.WebContentsView).webContents.id).sort((a, b) => a - b))
+}
+
+test('settings occlusion survives late bounds, nested dialogs and newly created pages', async ({}, info) => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    const { page } = bandal
+    await createCourse(page, '설정 브라우저 겹침')
+    const root = await openTab(bandal, `${site.origin}/lecture`)
+    await run(bandal, root, "document.body.insertAdjacentHTML('beforeend','<input id=draft>');document.querySelector('#draft').value='keep my draft';window.savedIdentity=123")
+    await expect.poll(() => visibleNativePages(bandal)).toEqual([root])
+    const tabId = (await page.locator('.browser-anchor').getAttribute('data-browser-anchor'))!
+    const settings = page.locator('.global-navigation').getByRole('button', { name: '설정', exact: true })
+    for (let i = 0; i < 3; i++) {
+      await settings.click()
+      await expect(page.locator('.settings-sidebar')).toBeVisible()
+      await expect.poll(() => visibleNativePages(bandal)).toEqual([])
+      // A stale renderer position must not overcome the host's full-window block.
+      await page.evaluate(tabId => window.bandal.invoke('browser:pageBounds', { tabId, bounds: { x: 300, y: 90, width: 500, height: 450 } }), tabId)
+      expect(await visibleNativePages(bandal)).toEqual([])
+      if (i === 0) {
+        await page.getByRole('button', { name: '시작 체크리스트' }).click()
+        await expect(page.locator('.help-milestones')).toBeVisible()
+        expect(await visibleNativePages(bandal)).toEqual([])
+        await page.locator('.help-milestones').getByRole('button', { name: '닫기', exact: true }).click()
+        expect(await visibleNativePages(bandal)).toEqual([])
+        const newcomer = await page.evaluate(() => window.bandal.invoke('browser:createPage', { tabId: 'occluded-test-page', isPrivate: false, courseId: null }))
+        await page.evaluate(() => window.bandal.invoke('browser:pageBounds', { tabId: 'occluded-test-page', bounds: { x: 10, y: 10, width: 500, height: 400 } }))
+        expect(await visibleNativePages(bandal)).not.toContain(newcomer.state.id)
+        await page.evaluate(() => window.bandal.invoke('browser:destroyPage', { tabId: 'occluded-test-page' }))
+      }
+      await page.screenshot({ path: info.outputPath(`settings-over-browser-${i}.png`) })
+      await page.getByRole('button', { name: '앱으로 돌아가기' }).click()
+      await expect(page.locator('.shell-settings-overlay')).toHaveCount(0)
+      await expect.poll(() => visibleNativePages(bandal)).toEqual([root])
+      expect(await run(bandal, root, "[document.querySelector('#draft').value,window.savedIdentity]")).toEqual(['keep my draft', 123])
+    }
+    // Retained rails must release expanded widget overlays when they are hidden.
+    await page.evaluate(() => window.bandal.invoke('settings:set', { widgets: { enabled: ['mail'], collapsed: [] } }))
+    await page.getByRole('button', { name: '메일함 넓히기' }).click()
+    await expect(page.getByRole('dialog', { name: '메일함' })).toBeVisible()
+    await expect.poll(() => visibleNativePages(bandal)).toEqual([])
+    await page.evaluate(() => document.querySelector<HTMLButtonElement>('button[aria-label="자료 사이드바 접기"]')!.click())
+    await expect(page.getByRole('dialog', { name: '메일함' })).toHaveCount(0)
+    await expect.poll(() => visibleNativePages(bandal)).toEqual([root])
+  } finally { await bandal.close(); await site.close() }
+})
+
+test('split native pages follow sidebar motion and only overlapping popovers hide a pane', async ({}, info) => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    const { page } = bandal
+    await createCourse(page, '브라우저 패널 모션')
+    await openTab(bandal, `${site.origin}/lecture`)
+    await page.locator('.workspace-tab').first().click({ button: 'right' })
+    await page.getByRole('menuitem', { name: '오른쪽에 분할해서 열기', exact: true }).click()
+    await expect.poll(async () => (await visibleNativePages(bandal)).length).toBe(2)
+    const pages = await visibleNativePages(bandal)
+    await page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true }).click()
+    await expect(page.locator('aside.app-rail--left')).toBeHidden()
+    const anchors = await page.locator('.browser-anchor').evaluateAll(elements => elements.map(element => {
+      const { x, y, width, height } = element.getBoundingClientRect(); return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) }
+    }).sort((a, b) => a.x - b.x))
+    await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
+      .flatMap(window => window.contentView.children).filter(view => view.getVisible())
+      .map(view => view.getBounds()).sort((a, b) => a.x - b.x))).toEqual(anchors)
+    // A real tooltip crossing only the first native pane must leave the other live.
+    await page.evaluate(rect => {
+      const tooltip = document.createElement('div'); tooltip.id = 'occlusion-test-tooltip'; tooltip.role = 'tooltip'
+      tooltip.textContent = '메뉴 도움말'; tooltip.style.cssText = `position:fixed;left:${rect.x + 8}px;top:${rect.y + 8}px;width:100px;height:40px;background:white;z-index:9999`
+      document.body.append(tooltip)
+    }, anchors[0]!)
+    await expect.poll(async () => (await visibleNativePages(bandal)).length).toBe(1)
+    await page.evaluate(() => document.getElementById('occlusion-test-tooltip')!.remove())
+    await expect.poll(() => visibleNativePages(bandal)).toEqual(pages)
+    await page.locator('.global-navigation').getByRole('button', { name: '설정', exact: true }).click()
+    await expect.poll(() => visibleNativePages(bandal)).toEqual([])
+    await page.screenshot({ path: info.outputPath('settings-over-split-browser.png') })
+    await page.getByRole('button', { name: '앱으로 돌아가기' }).click()
+    await expect.poll(() => visibleNativePages(bandal)).toEqual(pages)
   } finally { await bandal.close(); await site.close() }
 })

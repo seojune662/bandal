@@ -9,7 +9,7 @@ import { overlapsNativePage } from './useNativePageOcclusion'
  * guest (visibility, not unmount), per the browserAnchor contract.
  */
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   getBrowserAnchorRect,
   onBrowserAnchorRect,
@@ -92,16 +92,16 @@ export function BrowserGuestView({
   const overlayVisible = useBrowserGuests(
     (state) => (state.overlay[tabId] ?? null) !== null
   )
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!anchorRef.current) return
     const native = attachNativePage(anchorRef.current, tabId, isPrivate, ownerCourse, profileId)
     nativeRef.current = native
     pageRef.current = native.handle
     return () => { native.dispose(); nativeRef.current = null; pageRef.current = null }
   }, [tabId, isPrivate, ownerCourse, profileId])
-  useEffect(() => {
+  useLayoutEffect(() => {
     nativeRef.current?.bounds(overlayVisible || obscured || contextMenu ? null : rect, rect !== null && !overlayVisible && (obscured || contextMenu !== null))
-  }, [rect, overlayVisible, obscured, contextMenu])
+  }, [rect, overlayVisible, obscured, contextMenu, tabId, isPrivate, ownerCourse, profileId])
   useBrowserSelectionBridge(pageRef)
   useBrowserLoginBridge(tabId, pageRef, !isPrivate)
   useBrowserDiagnosticsBridge(tabId, pageRef)
@@ -121,7 +121,7 @@ export function BrowserGuestView({
     if (isVisible) useBrowserGuests.getState().touchGuest(tabId)
   }, [isVisible, tabId])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = pageRef.current
     if (element === null) return
     registerGuestElement(tabId, element)

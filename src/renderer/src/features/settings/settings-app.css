@@ -685,3 +685,24 @@
 .settings-app .toast:hover {
   border-color: var(--accent);
 }
+
+/* Embedded navigation follows the same whole-left toggle as the app menu. */
+.shell-settings-overlay {
+  left: var(--shell-navigation-width);
+  opacity: 1;
+  transform: translateY(0);
+  transition: left var(--dur-base) var(--ease-out), opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+.shell-settings-overlay[data-open='false'] { opacity: 0; transform: translateY(6px); pointer-events: none; }
+@starting-style { .shell-settings-overlay[data-open='true'] { opacity: 0; transform: translateY(6px); } }
+.settings-app--embedded .settings-layout {
+  grid-template-columns: 232px minmax(0, 1fr);
+  transition: grid-template-columns var(--dur-base) var(--ease-out);
+}
+.settings-app--embedded .settings-sidebar { width: 232px; transition: transform var(--dur-base) var(--ease-out), visibility 0s; }
+.app-shell[data-left-rail='closed'] .settings-app--embedded .settings-layout { grid-template-columns: 0px minmax(0, 1fr); }
+.app-shell[data-left-rail='closed'] .settings-app--embedded .settings-sidebar {
+  transform: translateX(-100%); visibility: hidden;
+  transition: transform var(--dur-base) var(--ease-out), visibility 0s var(--dur-base);
+}
+.settings-content__back { width: fit-content; margin-top: var(--chrome-height); margin-bottom: var(--space-3); }

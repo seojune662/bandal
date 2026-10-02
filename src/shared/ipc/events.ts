@@ -264,6 +264,7 @@ export interface PushEvents {
   /** An in-app authentication page explicitly reported an embedded refusal. */
   'browser:external-auth': BrowserOpenUrl
   'settings:changed': SettingsChanged
+  'window:stateChanged': { fullscreen: boolean }
   /** Open the in-app settings overlay (app menu ⌘, or legacy callers). */
   'ui:openSettings': { category?: SettingsCategoryId }
   'browser:download': BrowserDownloadUpdate

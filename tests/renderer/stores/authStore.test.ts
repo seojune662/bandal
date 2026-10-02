@@ -15,6 +15,8 @@ import {
 
 const signedIn: AuthState = {
   phase: 'signed-in',
+  email: 'learner@example.test',
+  avatarUrl: 'https://lh3.googleusercontent.com/photo',
   profile: {
     id: 'user-1',
     nickname: '반달이',

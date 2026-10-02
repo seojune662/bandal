@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { MailAccountState, MailList, MailMessage, MailModify, MailSummary } from '../../../../shared/types/mail'
 import { Icon } from '../../app/icons'
@@ -25,7 +25,7 @@ function time(date: string): string {
     : value.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
 }
 
-export function NativeMailWidget({ fallback }: { fallback: { url: string; label: string } | null }): JSX.Element {
+export function NativeMailWidget({ fallback, active = true }: { fallback: { url: string; label: string } | null; active?: boolean }): JSX.Element {
   const [account, setAccount] = useState<MailAccountState | null>(null)
   const [page, setPage] = useState<MailList>({ messages: [], nextPageToken: null })
   const [selected, setSelected] = useState<MailMessage | null>(null)
@@ -40,6 +40,7 @@ export function NativeMailWidget({ fallback }: { fallback: { url: string; label:
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
+  useLayoutEffect(() => { if (!active) setExpanded(false) }, [active])
   const [reply, setReply] = useState('')
   const readVersion = useRef(0), listVersion = useRef(0)
   const previousEmail = useRef<string | null>(null)
@@ -52,8 +53,8 @@ export function NativeMailWidget({ fallback }: { fallback: { url: string; label:
     setReply(''); setNotice(null); setSearch(''); setQuery('')
   }, [account?.email])
   const containerRef = useRef<HTMLDivElement>(null)
-  useFocusTrap(containerRef, { active: expanded, onEscape: () => setExpanded(false) })
-  useEffect(() => expanded ? acquirePointerPassthrough() : undefined, [expanded])
+  useFocusTrap(containerRef, { active: expanded && active, onEscape: () => setExpanded(false) })
+  useEffect(() => expanded && active ? acquirePointerPassthrough() : undefined, [expanded, active])
   const failure = useCallback((cause: unknown): void => {
     setError(cause instanceof Error ? cause.message : '메일을 불러오지 못했어요.')
     void invoke('mail:state', {}).then(setAccount).catch(() => {})

@@ -38,7 +38,7 @@ test.describe('sidebars', () => {
 
     await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
     await expect(page.locator('aside.app-rail--left')).toBeHidden()
-    await expect(page.locator('.global-navigation')).toHaveCount(0)
+    await expect(page.locator('.global-navigation')).toBeHidden()
     await expect(page.locator('.rail-resizer--left')).toHaveCount(0)
 
     const expand = page.getByRole('button', { name: '과목 사이드바 펼치기' })
@@ -91,7 +91,7 @@ test.describe('sidebars', () => {
     await page.keyboard.press('ControlOrMeta+s')
     await expect(page.locator('.global-navigation')).toBeVisible()
     await page.keyboard.press('ControlOrMeta+s')
-    await expect(page.locator('.global-navigation')).toHaveCount(0)
+    await expect(page.locator('.global-navigation')).toBeHidden()
     await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
     await page.evaluate(() => window.bandal.invoke('settings:set', { widgets: { enabled: ['todo', 'board', 'mail'], collapsed: [], heightRatio: 0.6 } }))
     await expect(page.locator('.widget-card')).toHaveCount(3)
@@ -107,6 +107,75 @@ test.describe('sidebars', () => {
     await expect(page.locator('.widget-card[data-widget="board"] .widget-card__body')).toBeVisible()
     await page.getByRole('button', { name: '투두 위젯 펼치기' }).click()
     await page.screenshot({ path: info.outputPath('widget-cards.png') })
+  })
+
+  test('course button collapses only the list and whole-left toggle also controls settings', async () => {
+    const { page } = bandal
+    const menu = page.locator('.global-navigation')
+    const course = page.locator('aside.app-rail--left')
+    const search = course.getByRole('searchbox')
+    await search.fill('알고')
+    await page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true }).click()
+    await expect(menu).toBeVisible()
+    await expect(course).toBeHidden()
+    await page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true }).click()
+    await expect(course).toBeVisible()
+    await expect(search).toHaveValue('알고')
+    await search.fill('')
+    await page.getByRole('button', { name: '설정', exact: true }).click()
+    await expect(page.locator('.settings-sidebar')).toBeVisible()
+    await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
+    await expect(menu).toBeHidden()
+    await expect(page.locator('.settings-sidebar')).toBeHidden()
+    await expect(page.getByRole('button', { name: '앱으로 돌아가기' })).toBeVisible()
+    await page.keyboard.press('ControlOrMeta+s')
+    await expect(page.locator('.settings-sidebar')).toBeVisible()
+    await page.locator('.global-navigation').getByRole('button', { name: '과목', exact: true }).click()
+    await expect(page.locator('.shell-settings-overlay')).toHaveCount(0)
+    await expect(course).toBeVisible()
+  })
+
+  test('native fullscreen shifts chrome and the collapsed workspace spacer together', async ({}, info) => {
+    const { page, app } = bandal
+    if (await page.locator('.workspace-chrome-spacer').count() === 0) {
+      await createCourse(page, '전체화면')
+      await page.locator('.whiteboards-group').getByRole('button', { name: '새 화이트보드 만들기' }).click()
+    }
+    await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
+    const chrome = page.locator('.shell-chrome')
+    const normalWidth = await chrome.evaluate(element => element.getBoundingClientRect().width)
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.setFullScreen(true))
+    try {
+      await expect(page.locator('html')).toHaveAttribute('data-fullscreen', 'true')
+      await expect(chrome).toHaveCSS('width', '48px')
+      await expect(page.locator('.workspace-chrome-spacer').first()).toHaveCSS('width', '48px')
+      await page.screenshot({ path: info.outputPath('fullscreen-collapsed.png') })
+    } finally {
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.setFullScreen(false))
+    }
+    await expect(page.locator('html')).toHaveAttribute('data-fullscreen', 'false')
+    await expect(chrome).toHaveCSS('width', `${normalWidth}px`)
+    await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
+  })
+
+  test('rapid sidebar reversal preserves state and reduced motion settles immediately', async () => {
+    const { page } = bandal
+    await page.evaluate(async () => {
+      const button = document.querySelector<HTMLButtonElement>('.shell-chrome button')!
+      button.click()
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      button.click()
+    })
+    await expect(page.locator('.app-shell')).toHaveAttribute('data-left-rail', 'open')
+    await expect(page.locator('aside.app-rail--left')).toBeVisible()
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    try {
+      await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
+      await expect(page.locator('.global-navigation')).toBeHidden()
+      await expect(page.locator('.shell-course-rail')).toHaveCSS('width', '0px')
+      await page.getByRole('button', { name: '과목 사이드바 펼치기' }).click()
+      await expect(page.locator('aside.app-rail--left')).toBeVisible()
+    } finally { await page.emulateMedia({ reducedMotion: 'no-preference' }) }
   })
 
 })

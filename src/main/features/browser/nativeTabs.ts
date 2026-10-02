@@ -21,8 +21,11 @@ interface Tab {
   partition: string
   profileId: string
   isPrivate: boolean
+  bounds?: Electron.Rectangle | null
+  preview?: Promise<string | null>
 }
 const hosts = new Set<WebContents>()
+const occludedHosts = new Set<WebContents>()
 const tabs = new Map<string, Tab>()
 const responseCodes = new WeakMap<WebContents, number>()
 const closedSiteTabs = new Set<string>()
@@ -69,9 +72,11 @@ export function registerBrowserHost(host: BrowserWindow): void {
   })
   host.once('closed', () => {
     hosts.delete(hostContents)
+    occludedHosts.delete(hostContents)
     for (const tab of [...tabs.values()]) if (tab.host === host) destroy(tab)
   })
   host.webContents.on('render-process-gone', () => {
+    occludedHosts.delete(hostContents)
     for (const tab of [...tabs.values()]) if (tab.host === host) destroy(tab)
   })
 }
@@ -198,19 +203,45 @@ export async function setBrowserPageBounds(event: IpcMainInvokeEvent, req: { tab
   const tab = owned(event, req.tabId)
   const b = req.bounds, factor = event.sender.getZoomFactor()
   if (!b || Object.values(b).some(v => !Number.isFinite(v)) || b.width <= 0 || b.height <= 0) {
-    const capture = req.preview && tab.view.getVisible()
-      ? tab.view.webContents.capturePage(undefined, { stayHidden: true }) : null
+    tab.bounds = null
+    if (req.preview) capturePreview(tab)
     tab.view.setVisible(false)
-    if (!capture) return { snapshot: null }
-    const image = await capture.catch(() => null)
-    return { snapshot: image && !image.isEmpty() ? image.toDataURL() : null }
+    return { snapshot: req.preview ? await (tab.preview ?? null) : null }
   }
   const [hostWidth = 0, hostHeight = 0] = tab.host.getContentSize()
   const x = Math.max(0, Math.round(b.x * factor)), y = Math.max(0, Math.round(b.y * factor))
-  tab.view.setBounds({ x, y, width: Math.max(0, Math.min(hostWidth - x, Math.round(b.width * factor))),
-    height: Math.max(0, Math.min(hostHeight - y, Math.round(b.height * factor))) })
-  tab.view.setVisible(true)
+  tab.bounds = { x, y, width: Math.max(0, Math.min(hostWidth - x, Math.round(b.width * factor))),
+    height: Math.max(0, Math.min(hostHeight - y, Math.round(b.height * factor))) }
+  applyPageVisibility(tab)
   return { snapshot: null }
+}
+
+function applyPageVisibility(tab: Tab): void {
+  const bounds = tab.bounds
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0 || occludedHosts.has(tab.host.webContents)) {
+    if (occludedHosts.has(tab.host.webContents)) capturePreview(tab)
+    tab.view.setVisible(false)
+    return
+  }
+  delete tab.preview
+  tab.view.setBounds(bounds)
+  tab.view.setVisible(true)
+}
+
+function capturePreview(tab: Tab): void {
+  if (!tab.view.getVisible()) return
+  tab.preview = tab.view.webContents.capturePage(undefined, { stayHidden: true })
+    .then(image => image.isEmpty() ? null : image.toDataURL()).catch(() => null)
+}
+
+export function setBrowserHostOccluded(event: IpcMainInvokeEvent, occluded: boolean): { ok: true } {
+  const host = owner(event)
+  const hadPageFocus = occluded && [...tabs.values()].some(tab => tab.host === host && !tab.view.webContents.isDestroyed() && tab.view.webContents.isFocused())
+  if (occluded) occludedHosts.add(host.webContents)
+  else occludedHosts.delete(host.webContents)
+  for (const tab of tabs.values()) if (tab.host === host && !tab.view.webContents.isDestroyed()) applyPageVisibility(tab)
+  if (hadPageFocus) host.webContents.focus()
+  return { ok: true }
 }
 export function destroyBrowserPage(event: IpcMainInvokeEvent, tabId: string, expectedWebContentsId?: number): void {
   const host = owner(event), tab = tabs.get(tabId)

@@ -8,7 +8,7 @@ import { createQuitDrain } from '../lib/quitDrain'
 import { existsSync, readFileSync } from 'node:fs'
 import { initializeBrowserProfiles, listBrowserProfiles, saveBrowserProfile, deleteBrowserProfile, browserProfileResources, guestProfile, onBrowserSession, ensureProfileSession, profileDirectory, onBrowserProfileDeleted } from '../features/browser/profiles'
 import { hardenBrowsingSession, useProfilePermissions, forgetProfilePermissions } from '../features/browser/hardenWebviews'
-import { browserSessionForTab, prepareProfileSwitch, createBrowserPage, setBrowserPageBounds, browserPageAction, destroyBrowserPage, prepareBrowserPageClose, onBrowserQuitCancelled } from '../features/browser/nativeTabs'
+import { browserSessionForTab, prepareProfileSwitch, createBrowserPage, setBrowserPageBounds, setBrowserHostOccluded, browserPageAction, destroyBrowserPage, prepareBrowserPageClose, onBrowserQuitCancelled } from '../features/browser/nativeTabs'
 import { isManagedBrowserPage } from '../features/browser/managedPages'
 import { beginClipboardCopy, writeImageClipboard } from '../features/systemClipboard'
 import { copyFile } from 'node:fs/promises'
@@ -964,6 +964,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     setPrintMenuEnabled(req.enabled)
     return OK
   })
+  handle('window:getState', (_req, event) => ({ fullscreen: BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false }))
 
   handle('pdf:exportAnnotated', async (req) => {
     const baseName = req.relPath.split('/').pop() ?? 'document.pdf'
@@ -2708,6 +2709,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('browser:prepareClose', (req, event) => prepareBrowserPageClose(event, req.tabId))
   handle('browser:createPage', (req, event) => createBrowserPage(event, req))
   handle('browser:pageBounds', (req, event) => setBrowserPageBounds(event, req))
+  handle('browser:setHostOccluded', (req, event) => setBrowserHostOccluded(event, req.occluded))
   handle('browser:pageAction', (req, event) => browserPageAction(event, req))
   handle('browser:destroyPage', (req, event) => { destroyBrowserPage(event, req.tabId, req.expectedWebContentsId); return OK })
   handle('clipboard:beginCopy', () => ({ token: beginClipboardCopy() }))
@@ -3299,13 +3301,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
   handle('auth:setNickname', (req) => account.auth().setNickname(req.nickname))
-  handle('auth:setAvatar', (req) => {
-    const patch: { color?: string; emoji?: string } = {}
-    if (req.color !== undefined) patch.color = req.color
-    if (req.emoji !== undefined) patch.emoji = req.emoji
-    return account.auth().setAvatar(patch)
-  })
-
   // -- auto update ----------------------------------------------------------
   // Constructed eagerly (unlike account authentication): it owns the periodic check, and
   // in an unpackaged build the factory returns an inert stub anyway.

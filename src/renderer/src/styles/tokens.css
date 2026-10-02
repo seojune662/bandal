@@ -45,6 +45,7 @@
 
   /* Shell and controls */
   --chrome-height: 44px;
+  --window-controls-width: 48px;
   --navigation-width: 48px;
   --sidebar-inset: calc(var(--navigation-width) + var(--rail-left-width));
   --focus-ring: #3981f7;
@@ -121,3 +122,6 @@
     --border-strong: ButtonText;
   }
 }
+
+:root[data-platform='darwin']:not([data-fullscreen='true']) { --window-controls-width: 144px; }
+:root[data-fullscreen='true'] { --window-controls-inset: 0px; }

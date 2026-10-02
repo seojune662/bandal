@@ -33,6 +33,8 @@ export interface AuthState {
    * shown to other members (their view goes through MyProfile).
    */
   email: string | null
+  /** Login-provider photo for the owner's account UI; never a custom avatar. */
+  avatarUrl: string | null
   online: boolean
   errorCode: AuthErrorCode | null
 }
@@ -65,6 +67,7 @@ export const SIGNED_OUT_AUTH_STATE: AuthState = {
   phase: 'signed-out',
   profile: null,
   email: null,
+  avatarUrl: null,
   online: false,
   errorCode: null
 }
@@ -73,6 +76,7 @@ export const UNCONFIGURED_AUTH_STATE: AuthState = {
   phase: 'unconfigured',
   profile: null,
   email: null,
+  avatarUrl: null,
   online: false,
   errorCode: null
 }

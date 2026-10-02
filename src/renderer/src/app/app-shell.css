@@ -2,11 +2,12 @@
   position: relative;
   display: grid;
   grid-template-rows: var(--chrome-height) minmax(0, 1fr);
-  grid-template-columns: var(--navigation-width) var(--rail-left-width) minmax(
-      0,
-      1fr
-    ) var(--rail-right-width);
+  --shell-navigation-width: var(--navigation-width);
+  --shell-course-width: var(--rail-left-width);
+  --shell-materials-width: var(--rail-right-width);
+  grid-template-columns: var(--shell-navigation-width) var(--shell-course-width) minmax(0, 1fr) var(--shell-materials-width);
   grid-template-areas: 'chrome chrome center right' 'navigation left center right';
+  transition: grid-template-columns var(--dur-base) var(--ease-out);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -51,27 +52,35 @@
   background: var(--accent);
 }
 
-.app-shell[data-left-rail='closed'] {
-  grid-template-columns: minmax(0, 1fr) var(--rail-right-width);
-  grid-template-areas: 'center right' 'center right';
+.app-shell[data-left-rail='closed'] { --shell-navigation-width: 0px; }
+.app-shell[data-course-rail='closed'] { --shell-course-width: 0px; }
+.app-shell[data-right-rail='closed'] { --shell-materials-width: 0px; }
+.shell-course-rail, .shell-materials-rail {
+  min-width: 0;
+  min-height: 0;
+  overflow: clip;
 }
-.app-shell[data-right-rail='closed'] {
-  grid-template-columns: var(--navigation-width) var(--rail-left-width) minmax(0, 1fr);
-  grid-template-areas: 'chrome chrome center' 'navigation left center';
+.shell-course-rail { grid-area: left; }
+.shell-materials-rail { grid-area: right; }
+.shell-course-rail > .app-rail { width: var(--rail-left-width); height: 100%; }
+.shell-materials-rail > .app-rail { width: var(--rail-right-width); height: 100%; }
+.shell-course-rail > .app-rail, .shell-materials-rail > .app-rail, .global-navigation {
+  transition: transform var(--dur-base) var(--ease-out), visibility 0s;
 }
-.app-shell[data-left-rail='closed'][data-right-rail='closed'] {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: 'center' 'center';
+.app-shell[data-course-rail='closed'] .shell-course-rail > .app-rail,
+.app-shell[data-left-rail='closed'] > .global-navigation {
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition: transform var(--dur-base) var(--ease-out), visibility 0s var(--dur-base);
 }
-.app-shell[data-left-rail='closed'] > .shell-chrome {
-  position: absolute;
-  inset: 0 auto auto 0;
-  width: var(--window-controls-width, 144px);
-  background: transparent;
+.app-shell[data-right-rail='closed'] .shell-materials-rail > .app-rail {
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform var(--dur-base) var(--ease-out), visibility 0s var(--dur-base);
 }
-.app-shell:has(.workspace-watermark) > .shell-chrome {
-  background: var(--bg-app);
-}
+:root[data-rail-resizing] .app-shell,
+:root[data-rail-resizing] .app-shell * { transition: none !important; }
+.app-shell:has(.workspace-watermark) > .shell-chrome { background: var(--bg-app); }
 
 /* Shared icon buttons */
 

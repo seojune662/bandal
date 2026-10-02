@@ -851,6 +851,8 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     req: { tabId: string; bounds: { x: number; y: number; width: number; height: number } | null; preview?: boolean }
     res: { snapshot: string | null }
   }
+  /** Blocks every native page owned by this window, including pages created later. */
+  'browser:setHostOccluded': { req: { occluded: boolean }; res: { ok: true } }
   'browser:pageAction': {
     req: { tabId: string; action: BrowserPageAction; args: unknown[] }
     res: unknown
@@ -1247,6 +1249,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     req: { enabled: boolean }
     res: { ok: true }
   }
+  'window:getState': { req: {}; res: { fullscreen: boolean } }
 
   // -- note ↔ material links --------------------------------------------------
   'links:create': {
@@ -1538,10 +1541,6 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     req: { nickname: string }
     res: MyProfile
   }
-  'auth:setAvatar': {
-    req: { color?: string; emoji?: string }
-    res: MyProfile
-  }
 
   // -- auto update ----------------------------------------------------------
   /** Current state, for a freshly mounted UI. Never triggers a network call. */
@@ -1750,6 +1749,7 @@ export const IPC_CHANNELS = [
   'browser:deleteProfile',
   'browser:createPage',
   'browser:pageBounds',
+  'browser:setHostOccluded',
   'browser:pageAction',
   'browser:destroyPage',
   'clipboard:beginCopy',
@@ -1766,6 +1766,7 @@ export const IPC_CHANNELS = [
   'print:savePdfAs',
   'print:pdfFromUrl',
   'window:setPrintEnabled',
+  'window:getState',
   'browserAgent:registerTab',
   'browserAgent:syncTabs',
   'agent:syncWorkspace',
@@ -1796,7 +1797,6 @@ export const IPC_CHANNELS = [
   'auth:signIn',
   'auth:signOut',
   'auth:setNickname',
-  'auth:setAvatar',
   'update:status',
   'update:check',
   'update:download',

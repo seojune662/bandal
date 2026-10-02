@@ -1,28 +1,29 @@
-import { normalizeCourseColor } from '../courses/courseColors'
+import { useState } from 'react'
+import { Icon } from '../../app/icons'
 import './account.css'
 
 interface AccountAvatarProps {
-  color: string
-  emoji: string
+  avatarUrl: string | null
   nickname: string
   size?: 'sm' | 'md' | 'lg'
 }
 
 export function AccountAvatar({
-  color,
-  emoji,
+  avatarUrl,
   nickname,
   size = 'md'
 }: AccountAvatarProps): JSX.Element {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
   return (
     <span
       className="account-avatar"
-      data-avatar-color={normalizeCourseColor(color === 'moon' ? 'gold' : color)}
       data-size={size}
       aria-hidden="true"
       title={nickname}
     >
-      {emoji}
+      {avatarUrl && failedUrl !== avatarUrl
+        ? <img key={avatarUrl} src={avatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setFailedUrl(avatarUrl)} />
+        : <Icon name="user" />}
     </span>
   )
 }

@@ -31,7 +31,6 @@ interface AuthStoreState {
   signIn: (provider: AuthProvider) => Promise<AuthSignInResult>
   signOut: () => Promise<void>
   setNickname: (nickname: string) => Promise<MyProfile>
-  setAvatar: (patch: { color?: string; emoji?: string }) => Promise<MyProfile>
 }
 
 const INITIAL: AuthState = {
@@ -40,6 +39,7 @@ const INITIAL: AuthState = {
   phase: 'unconfigured',
   profile: null,
   email: null,
+  avatarUrl: null,
   online: false,
   errorCode: null
 }
@@ -83,18 +83,13 @@ export const useAuthStore = create<AuthStoreState>()((set, get) => ({
 
   signOut: async () => {
     await invoke('auth:signOut', {})
-    set({ auth: { ...get().auth, phase: 'signed-out', profile: null } })
+    set({ auth: { ...get().auth, phase: 'signed-out', profile: null, email: null, avatarUrl: null } })
   },
 
   setNickname: async (nickname) => {
     const profile = await invoke('auth:setNickname', { nickname })
-    set({ auth: { ...get().auth, profile } })
-    return profile
-  },
-
-  setAvatar: async (patch) => {
-    const profile = await invoke('auth:setAvatar', patch)
-    set({ auth: { ...get().auth, profile } })
+    const auth = get().auth
+    if (auth.phase === 'signed-in' && auth.profile?.id === profile.id) set({ auth: { ...auth, profile } })
     return profile
   }
 }))

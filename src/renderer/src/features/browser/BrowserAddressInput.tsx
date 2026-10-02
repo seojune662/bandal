@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom'
 import { BrowserIcon } from './browserIcons'
 import { addressDisplayParts, resolveAddressInput, type AddressSuggestion } from './urlInput'
 import { searchEngine, useAddressSuggestions } from './useAddressSuggestions'
-import { acquirePointerPassthrough } from './webviewPassthrough'
 
 const SOURCE_LABELS: Record<AddressSuggestion['kind'], string> = {
   url: '이동', search: '검색', history: '방문 기록', favorite: '즐겨찾기', tab: '열린 탭'
@@ -64,12 +63,10 @@ export function BrowserAddressInput({ value, onNavigate, focusSeq, favicon, isPr
     observer.observe(form)
     window.addEventListener('resize', place)
     window.addEventListener('scroll', place, true)
-    const release = acquirePointerPassthrough()
     return () => {
       observer.disconnect()
       window.removeEventListener('resize', place)
       window.removeEventListener('scroll', place, true)
-      release()
     }
   }, [open])
 

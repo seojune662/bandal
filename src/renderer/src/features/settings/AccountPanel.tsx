@@ -5,15 +5,11 @@ import {
 } from '../../../../shared/account/nickname'
 import type { AuthState } from '../../../../shared/types/auth'
 import { AccountAvatar } from '../account/AccountAvatar'
-import {
-  ACCOUNT_AVATAR_COLORS,
-  ACCOUNT_AVATAR_EMOJIS
-} from '../account/accountOptions'
 import { useT } from '../../i18n'
 import { invoke, onPush } from '../../lib/ipc'
 import './account-panel.css'
 
-type PendingAction = 'nickname' | 'avatar' | 'sign-out' | 'sign-in'
+type PendingAction = 'nickname' | 'sign-out' | 'sign-in'
 
 interface Feedback {
   tone: 'success' | 'error'
@@ -32,8 +28,6 @@ export function AccountPanel(): JSX.Element {
   const mountedRef = useRef(true)
   const nicknameInputRef = useRef<HTMLInputElement>(null)
   const nicknameId = useId()
-  const emojiGroupId = useId()
-  const colorGroupId = useId()
 
   const readAuth = useCallback(async (): Promise<AuthState> => {
     const next = await invoke('auth:getState', {})
@@ -162,21 +156,11 @@ export function AccountPanel(): JSX.Element {
     saveNickname()
   }
 
-  const setAvatar = (patch: { color?: string; emoji?: string }): void => {
-    void runMutation(
-      'avatar',
-      () => invoke('auth:setAvatar', patch),
-      t('settings.account.avatar.saved'),
-      t('settings.account.avatar.saveFailed')
-    )
-  }
-
   return (
     <div className="settings-stack account-panel">
       <section className="settings-card account-profile-card">
         <AccountAvatar
-          color={profile.avatarColor}
-          emoji={profile.avatarEmoji}
+          avatarUrl={auth?.avatarUrl ?? null}
           nickname={displayName}
           size="lg"
         />
@@ -260,75 +244,6 @@ export function AccountPanel(): JSX.Element {
             </div>
           )}
         </form>
-      </section>
-
-      <section className="settings-card">
-        <div className="settings-card__header">
-          <h2>{t('settings.account.avatar.title')}</h2>
-          <p>{t('settings.account.avatar.description')}</p>
-        </div>
-        <fieldset className="account-avatar-picker" disabled={pending !== null}>
-          <legend className="sr-only">{t('settings.account.avatar.title')}</legend>
-          <div
-            className="account-avatar-picker__group"
-            role="group"
-            aria-labelledby={emojiGroupId}
-          >
-            <span id={emojiGroupId} className="account-avatar-picker__label">
-              {t('settings.account.avatar.emojiLabel')}
-            </span>
-            <div className="account-avatar-options">
-              {ACCOUNT_AVATAR_EMOJIS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  className="account-emoji-option"
-                  aria-label={t('settings.account.avatar.emojiOption', { emoji })}
-                  aria-pressed={profile.avatarEmoji === emoji}
-                  onClick={() => {
-                    if (profile.avatarEmoji !== emoji) setAvatar({ emoji })
-                  }}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div
-            className="account-avatar-picker__group"
-            role="group"
-            aria-labelledby={colorGroupId}
-          >
-            <span id={colorGroupId} className="account-avatar-picker__label">
-              {t('settings.account.avatar.colorLabel')}
-            </span>
-            <div className="account-avatar-options">
-              {ACCOUNT_AVATAR_COLORS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  className="account-color-option"
-                  aria-label={t(`settings.account.avatar.color.${color}`)}
-                  aria-pressed={
-                    profile.avatarColor === color ||
-                    (profile.avatarColor === 'moon' && color === 'gold')
-                  }
-                  onClick={() => {
-                    if (profile.avatarColor !== color) setAvatar({ color })
-                  }}
-                >
-                  <AccountAvatar
-                    color={color}
-                    emoji={profile.avatarEmoji}
-                    nickname={displayName}
-                    size="sm"
-                  />
-                </button>
-              ))}
-            </div>
-          </div>
-        </fieldset>
       </section>
 
       {feedback !== null && (

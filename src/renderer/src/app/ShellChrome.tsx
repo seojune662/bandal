@@ -15,6 +15,7 @@ export function ShellChrome(): JSX.Element {
           className="titlebar-button"
           aria-label={label}
           aria-pressed={open}
+          aria-expanded={open}
           onClick={toggle}
         >
           <Icon name="layoutLeft" />

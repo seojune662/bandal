@@ -9,6 +9,8 @@
  * without importing anything browser-specific beyond this module.
  */
 
+import { setNativeHostBlocked } from './nativeHostVisibility'
+
 type PassthroughListener = (active: boolean) => void
 
 let tokenCount = 0
@@ -16,6 +18,7 @@ const listeners = new Set<PassthroughListener>()
 
 function notify(): void {
   const active = tokenCount > 0
+  setNativeHostBlocked('passthrough', active)
   for (const listener of listeners) listener(active)
 }
 

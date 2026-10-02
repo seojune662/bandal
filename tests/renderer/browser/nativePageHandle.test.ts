@@ -34,3 +34,29 @@ test('failed native creation rejects commands and reports a visible error once',
   expect(mocks.invoke).toHaveBeenCalledTimes(1)
   page.dispose()
 })
+
+test('only the latest bounds waiting on page creation reach main', async () => {
+  let resolve!: (value: unknown) => void
+  mocks.invoke.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  const page = attachNativePage(document.createElement('div'), 'tab', false, null)
+  page.bounds({ x: 1, y: 2, width: 300, height: 400 })
+  page.bounds(null, true)
+  resolve({ state: { id: 41 }, adopted: false })
+  await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('browser:pageBounds', { tabId: 'tab', bounds: null, preview: true }))
+  expect(mocks.invoke.mock.calls.filter(call => call[0] === 'browser:pageBounds')).toHaveLength(1)
+  page.dispose()
+})
+test('a late preview cannot cover a page that has already been shown again', async () => {
+  let resolve!: (value: unknown) => void
+  const element = document.createElement('div')
+  const page = attachNativePage(element, 'tab', false, null)
+  await page.handle.focus()
+  mocks.invoke.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  page.bounds(null, true)
+  await vi.waitFor(() => expect(resolve).toBeTypeOf('function'))
+  page.bounds({ x: 0, y: 0, width: 100, height: 100 })
+  resolve({ snapshot: 'data:image/png;base64,old' })
+  await Promise.resolve(); await Promise.resolve()
+  expect(element.style.backgroundImage).toBe('')
+  page.dispose()
+})

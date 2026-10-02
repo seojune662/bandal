@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import {
   RAIL_WIDTH_LIMITS,
@@ -19,6 +19,7 @@ interface RailResizerProps {
  */
 export function RailResizer({ side }: RailResizerProps): JSX.Element {
   const dragRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
+  useEffect(() => () => { delete document.documentElement.dataset.railResizing }, [])
 
   const applyWidth = useCallback((px: number): number => {
     const clamped = clampRailWidth(side, px)
@@ -41,6 +42,7 @@ export function RailResizer({ side }: RailResizerProps): JSX.Element {
     const drag = dragRef.current
     if (drag === null || drag.pointerId !== event.pointerId) return
     dragRef.current = null
+    delete document.documentElement.dataset.railResizing
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
@@ -60,6 +62,7 @@ export function RailResizer({ side }: RailResizerProps): JSX.Element {
       onPointerDown={(event) => {
         if (event.button !== 0) return
         event.preventDefault()
+        document.documentElement.dataset.railResizing = 'true'
         event.currentTarget.setPointerCapture(event.pointerId)
         dragRef.current = {
           pointerId: event.pointerId,

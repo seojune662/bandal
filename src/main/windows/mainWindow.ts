@@ -140,6 +140,14 @@ export function createMainWindow(): BrowserWindow {
   // Must be attached before the renderer loads so no webview can slip past.
   hardenWindowWebviews(mainWindow)
   registerBrowserHost(mainWindow)
+  const win = mainWindow
+  const publishWindowState = (): void => {
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send('window:stateChanged', { fullscreen: win.isFullScreen() })
+    }
+  }
+  win.on('enter-full-screen', publishWindowState)
+  win.on('leave-full-screen', publishWindowState)
   windowStateStore.track(mainWindow)
 
   if (windowState.maximized) mainWindow.maximize()

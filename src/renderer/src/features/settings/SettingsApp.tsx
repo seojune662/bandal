@@ -118,10 +118,14 @@ export function SettingsApp({
   initialCategory = null,
 }: SettingsAppProps = {}): JSX.Element {
   const t = useT();
+  const leftRailOpen = useUiStore((state) => state.leftRailOpen);
   const locale = useLocale();
   const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(() =>
     isSettingsCategoryId(initialCategory) ? initialCategory : "general",
   );
+  useEffect(() => {
+    if (isSettingsCategoryId(initialCategory)) setActiveCategory(initialCategory);
+  }, [initialCategory]);
   const [query, setQuery] = useState("");
   const [searchTarget, setSearchTarget] = useState<string | null>(null);
   const [settingsAttempt, setSettingsAttempt] = useState(0);
@@ -624,6 +628,8 @@ export function SettingsApp({
       <div className="settings-layout">
         <aside
           className="settings-sidebar"
+          aria-hidden={embedded && !leftRailOpen}
+          {...{ inert: embedded && !leftRailOpen ? '' : undefined }}
           aria-label={t("settings.navigation.label")}
         >
           <button
@@ -748,6 +754,9 @@ export function SettingsApp({
         </aside>
 
         <main className="settings-content" tabIndex={-1}>
+          {embedded && !leftRailOpen && <button type="button" className="back-button settings-content__back" onClick={onClose}>
+            <Icon name="arrow-left" size={17} /><span>{t("settings.back")}</span>
+          </button>}
           <div className="settings-content__inner">
             {settingsLoadError && <div role="alert" className="settings-extension-feedback">
               {t('settings.appearance.loadFailed')}

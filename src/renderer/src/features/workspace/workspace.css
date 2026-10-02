@@ -214,9 +214,10 @@
   display: none;
 }
 .workspace-chrome-spacer {
-  width: 144px;
+  width: max(0px, calc(var(--window-controls-width) - var(--shell-navigation-width) - var(--shell-course-width)));
   height: var(--chrome-height);
-  flex: 0 0 144px;
+  flex: 0 0 auto;
+  transition: width var(--dur-base) var(--ease-out);
 }
 
 .workspace-tab {
