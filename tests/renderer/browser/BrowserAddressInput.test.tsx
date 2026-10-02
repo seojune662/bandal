@@ -76,7 +76,8 @@ describe('browser address interaction', () => {
     expect(list.textContent).toContain('바로가기')
     expect(list.textContent).toContain('자료구조 강의실')
     expect(input.getAttribute('aria-activedescendant')).toBeNull()
-    expect(isPointerPassthroughActive()).toBe(true)
+    // The listbox is a partial occlusion: unrelated split panes remain live.
+    expect(isPointerPassthroughActive()).toBe(false)
     act(() => (list.querySelector('[role=option]') as HTMLButtonElement).click())
     expect(navigate).toHaveBeenCalledWith(historyHit.url)
     expect(isPointerPassthroughActive()).toBe(false)
