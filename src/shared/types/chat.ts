@@ -7,7 +7,7 @@ import type { AgentAvailability, AgentProvider } from './agent-events'
 
 export type MessageRole = 'user' | 'assistant'
 
-export type ChatSurface = 'app' | 'desktop'
+export type ChatSurface = 'app' | 'desktop' | 'study'
 
 export type MessageBlockKind =
   | 'text'

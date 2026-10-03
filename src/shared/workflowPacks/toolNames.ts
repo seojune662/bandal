@@ -8,6 +8,8 @@
  * silently make the sanitizer stale.
  */
 export const WORKFLOW_PACK_ALLOWED_TOOL_NAMES = [
+  'learning_verify_article',
+  'learning_submit_result',
   'app_state',
   'list_courses',
   'list_course_groups',

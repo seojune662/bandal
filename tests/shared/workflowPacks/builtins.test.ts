@@ -3,7 +3,7 @@ import {
   AGENT_TOOL_NAMES,
   BROWSER_TOOL_NAMES
 } from '../../../src/main/features/agentTools/schemas'
-import { BUILTIN_PACKS } from '../../../src/shared/workflowPacks/builtins'
+import { BUILTIN_PACKS, LEGACY_BUILTIN_PACKS, getLegacyPack } from '../../../src/shared/workflowPacks/builtins'
 import { sanitizeWorkflowPack } from '../../../src/shared/workflowPacks/sanitize'
 import { WORKFLOW_PACK_ALLOWED_TOOL_NAMES } from '../../../src/shared/workflowPacks/toolNames'
 
@@ -49,7 +49,7 @@ describe('BUILTIN_PACKS', () => {
   })
 
   test('keeps legacy packs local, Korean, and on the existing output contract', () => {
-    for (const pack of BUILTIN_PACKS.slice(0, 7)) {
+    for (const pack of LEGACY_BUILTIN_PACKS.slice(0, 7)) {
       expect(pack.author).toBe('Bandal')
       expect(pack.version).toBe('1.0.0')
       expect(pack.locale).toBe('ko-KR')
@@ -64,7 +64,7 @@ describe('BUILTIN_PACKS', () => {
   })
 
   test('preserves the vocab chain recipe and follow-up verbatim', () => {
-    const pack = BUILTIN_PACKS.find((candidate) => candidate.id === 'vocab-chain-en')
+    const pack = LEGACY_BUILTIN_PACKS.find((candidate) => candidate.id === 'vocab-chain-en')
 
     expect(pack?.recipe).toBe(VOCAB_CHAIN_RECIPE)
     expect(pack).toMatchObject({
@@ -87,5 +87,17 @@ describe('BUILTIN_PACKS', () => {
           '이번 실행은 어휘 사슬의 다음 회차다. 대상 파일은 이전 회차가 저장한 기사 노트다. 노트에 적힌 원문 URL 을 WebFetch 로 다시 읽고, 위 1~6단계를 그대로 반복하라. 단어장은 같은 `영어 학습/단어장.md` 에 이어 붙이고, 새 기사 노트의 링크(5단계)는 이번 대상 노트를 출발 문서로 가리키게 하라. 리포트에는 사슬이 몇 번째 회차인지도 적어라.'
       }
     })
+  })
+
+  test('promotes only the three native experiences and preserves their v1 adapters', () => {
+    expect(BUILTIN_PACKS.filter(pack => pack.schemaVersion === 2).map(pack => [pack.id, pack.experience]))
+      .toEqual([['quiz', 'quiz'], ['flashcards', 'flashcards'], ['vocab-chain-en', 'article-vocabulary']])
+    for (const pack of BUILTIN_PACKS) {
+      const legacy = getLegacyPack(pack)
+      expect(legacy.schemaVersion).toBe(1)
+      expect(legacy).toEqual(LEGACY_BUILTIN_PACKS.find(candidate => candidate.id === pack.id))
+    }
+    const native = BUILTIN_PACKS.find(pack => pack.schemaVersion === 2)!
+    expect(() => getLegacyPack({ ...native, id: 'custom:native' })).toThrow('requires the learning runtime')
   })
 })

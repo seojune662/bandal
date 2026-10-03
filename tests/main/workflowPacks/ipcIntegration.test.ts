@@ -29,8 +29,10 @@ describe('workflow pack IPC integration', () => {
     expect(source).toContain('const packRunGuard = createPackRunGuard()')
     expect(toolServer).toContain('packRunGuard,')
     expect(study).toContain('const packRunner = createPackRunner({')
-    expect(study).toContain('store: packStore,')
-    expect(study).toContain('runGuard: packRunGuard,')
+    expect(study).toContain('const pack = packStore.resolve(id)')
+    expect(study).toContain('getLegacyPack(pack)')
+    expect(study).toContain('packRunGuard.arm(sessionId, restriction)')
+    expect(study).toContain('packRunGuard.clear(sessionId)')
   })
 
   test('delegates pack IPC and study runs without dropping follow-up metadata', () => {

@@ -13,6 +13,7 @@ import { invoke, onPush } from '../lib/ipc'
 import { usePrintRequests } from '../features/print/usePrintRequests'
 import { useAgentWorkspaceSync } from '../features/agent/workspaceSync'
 import { CourseSidebar } from '../features/courses/CourseSidebar'
+import { LearningDialogsHost } from '../features/learning/LearningDialogsHost'
 import { MaterialsSidebar } from '../features/materials/MaterialsSidebar'
 import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
 import { useOnboardingStore } from '../features/onboarding/onboardingStore'
@@ -429,6 +430,7 @@ export function AppShell(): JSX.Element {
       </Suspense>
       {isOnboardingVisible && <OnboardingOverlay />}
       <ToastHost />
+      <LearningDialogsHost />
       <PresentationProgress />
       {settingsPresent && (
         <div className="settings-overlay shell-settings-overlay" data-open={isSettingsOpen}

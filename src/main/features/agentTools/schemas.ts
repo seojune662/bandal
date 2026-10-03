@@ -146,6 +146,18 @@ const confirms = {
 
 export const AGENT_TOOL_DEFINITIONS = [
   {
+    name: 'learning_verify_article',
+    description: '현재 학습 실행에 사용할 공개 영어 기사 URL을 실제 본문으로 검증합니다. 기사 ID, 길이, 재등장 표현과 근거 문장을 반환합니다.',
+    inputSchema: objectSchema({ url: string('검증할 공개 기사 URL') }, ['url']),
+    annotations: { ...readOnly, openWorldHint: true }
+  },
+  {
+    name: 'learning_submit_result',
+    description: '현재 학습 실행의 구조화 결과 초안을 검증해 제출합니다. 파일에 직접 쓰지 말고 이 도구를 사용하세요. 완료는 응답의 정상 종료 후 앱이 확정합니다.',
+    inputSchema: objectSchema({ draft: { type: 'object', description: 'version:1, articles(검증된 id), artifacts(quiz/cards/summary), wordUpdates. 현재 작업에 요청된 결과만 제출.', additionalProperties: true } }, ['draft']),
+    annotations: creates
+  },
+  {
     name: 'app_state',
     description:
       '학생이 지금 반달에서 보고 있는 것을 봅니다. 입력이 없습니다. 어느 과목이 선택돼 있는지, 사이드바에 어떤 학기 그룹이 있는지, 어떤 탭이 열려 있는지(웹·PDF·필기·보드)를 돌려줍니다. **지시가 앱에 대한 것인지 웹페이지에 대한 것인지 헷갈리면 여기서 시작하세요.**',

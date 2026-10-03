@@ -40,7 +40,7 @@ describe('parsePackImportText', () => {
   test('rejects an unsupported schema version', () => {
     const result = parsePackImportText(JSON.stringify({
       ...validPack(),
-      schemaVersion: 2
+      schemaVersion: 3
     }))
 
     expect(result.pack).toBeUndefined()
@@ -53,6 +53,12 @@ describe('parsePackImportText', () => {
     expect(result.errors).toEqual([])
     expect(result.pack?.name).toBe('시험 복습')
     expect(result.pack?.outputs.dir).toBe('AI 학습자료/복습')
+  })
+
+  test('previews a native v2 pack while retaining v1 import support', () => {
+    const result = parsePackImportText(JSON.stringify({ ...validPack(), schemaVersion: 2, experience: 'quiz' }))
+    expect(result.errors).toEqual([])
+    expect(result.pack).toMatchObject({ schemaVersion: 2, experience: 'quiz', name: '시험 복습' })
   })
 
   test('keeps a usable preview and reports sanitizer adjustments', () => {

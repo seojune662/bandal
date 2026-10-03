@@ -4,7 +4,7 @@ import {
   buildStudyToolPrompt,
   STUDY_TOOLS
 } from '../../../src/main/features/study/studyTools'
-import { BUILTIN_STUDY_PACKS } from '../../../src/shared/workflowPacks/builtins'
+import { LEGACY_STUDY_PACKS as BUILTIN_STUDY_PACKS } from '../../../src/shared/workflowPacks/builtins'
 
 const COURSE_ID = 'course-1'
 

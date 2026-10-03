@@ -71,6 +71,7 @@ const PluginPanelTab = deferredPanel(() =>
   }))
 )
 const RecordingTab = deferredPanel(() => import('../recordings/RecordingTab'))
+const LearningTab = deferredPanel(() => import('../learning/LearningTab'))
 
 export interface TabRegistryEntry {
   component: FunctionComponent<IDockviewPanelProps>
@@ -82,6 +83,7 @@ export interface TabRegistryEntry {
 // `tabPanelId` is the sole dedupe key; registry metadata does not participate
 // in deciding whether an existing panel is focused or a new panel is opened.
 export const tabRegistry: Record<TabKind, TabRegistryEntry> = {
+  learning: { component: LearningTab, icon: 'graph', defaultTitle: tabTitle },
   recording: { component: RecordingTab, icon: null, defaultTitle: tabTitle },
   pdf: {
     component: PdfTab,
@@ -146,6 +148,6 @@ function visiblePanel(Component: DockPanel): DockPanel {
 
 export const dockviewComponents: Record<string, DockPanel> = Object.fromEntries(
   Object.entries(tabRegistry).map(([kind, entry]) => [kind,
-    visiblePanel(withAssistantPanel(kind === 'plugin-panel' ? entry.component : withMaterialSequence(entry.component)))
+    visiblePanel(withAssistantPanel(kind === 'plugin-panel' || kind === 'learning' ? entry.component : withMaterialSequence(entry.component)))
   ])
 )

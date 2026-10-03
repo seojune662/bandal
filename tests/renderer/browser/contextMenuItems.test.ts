@@ -21,6 +21,7 @@ describe('contextMenuItems', () => {
   test('a bare page still offers something useful', () => {
     // Right-clicking blank space used to do literally nothing.
     expect(contextMenuItems(EMPTY)).toEqual([
+      'add-to-learning',
       'reload',
       'copy-page-url',
       'print',
@@ -88,6 +89,7 @@ describe('contextMenuItems', () => {
     })
     expect(items).toContain('copy-selection')
     expect(items).not.toContain('clip-to-note')
+    expect(items).not.toContain('add-to-learning')
   })
 
   test('a whitespace-only selection is not a selection', () => {

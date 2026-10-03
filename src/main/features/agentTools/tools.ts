@@ -180,6 +180,14 @@ export interface AgentToolsDeps {
   desktop?: DesktopToolsPort
   /** Active workflow-pack allowlist for this course's shared agent session. */
   packRunGuard?: Pick<PackRunGuard, 'restrictionFor'>
+  packGuardKey?: string
+  /** Dedicated native-study sessions are bound by the host, never by model arguments. */
+  learning?: {
+    verifyArticle(url: string): Promise<unknown>
+    submitResult(draft: unknown): Promise<unknown>
+    restriction(): ReadonlySet<string> | null
+    readMaterial?(courseId: string, relPath: string, maxChars: number): Promise<unknown>
+  }
 }
 
 export interface AgentTools {
@@ -347,6 +355,14 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
   }
 
   const handlers: ToolHandlerMap = {
+    learning_verify_article: (input) => {
+      if (!deps.learning) throw new ValidationError('현재 실행은 학습 작업이 아닙니다.')
+      return deps.learning.verifyArticle(stringField(input, 'url', { nonEmpty: true }))
+    },
+    learning_submit_result: (input) => {
+      if (!deps.learning) throw new ValidationError('현재 실행은 학습 작업이 아닙니다.')
+      return deps.learning.submitResult(input['draft'])
+    },
     ...courseTools(context),
     ...materialTools(context),
     ...linkTools(context),
@@ -357,6 +373,16 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
   }
 
   const browser = deps.browser
+  if (deps.learning?.readMaterial) {
+    const readMaterial = handlers.read_material
+    handlers.read_material = input => {
+      if (!deps.learning?.restriction()) return readMaterial(input)
+      const requested = input['maxChars'] ?? 20_000
+      if (typeof requested !== 'number' || !Number.isInteger(requested) || requested < 1) throw new ValidationError('maxChars에 올바른 숫자가 필요합니다.')
+      return deps.learning.readMaterial!(stringField(input, 'courseId', { nonEmpty: true }),
+        stringField(input, 'relPath', { nonEmpty: true }), Math.min(requested, 200_000))
+    }
+  }
   if (browser !== undefined) {
     const browserHandlers: Record<
       string,
@@ -491,15 +517,17 @@ export function createAgentTools(deps: AgentToolsDeps): AgentTools {
       ...(desktop === undefined ? [] : DESKTOP_TOOL_NAMES)
     ],
     async call(name, args = {}) {
-      const restriction = deps.packRunGuard?.restrictionFor(deps.courseId)
+      const learningRestriction = deps.learning?.restriction()
+      if (learningRestriction && !learningRestriction.has(name)) {
+        return failure(name, new Error('이 학습 작업에서 사용할 수 없는 도구입니다.'))
+      }
+      const restriction = deps.packRunGuard?.restrictionFor(deps.packGuardKey ?? deps.courseId)
       const isPackRestricted =
         AGENT_MUTATING_TOOL_NAMES.has(name) ||
+        name.startsWith('learning_') ||
         name.startsWith('browser_') ||
         name.startsWith('desktop_')
-      // The guard is intentionally course-scoped rather than conversation-
-      // scoped. A manual turn started concurrently in the same course can
-      // inherit this restriction until the pack's ask promise settles (or the
-      // 15-minute backstop expires).
+      // Production bindings use conversation ids; legacy test callers retain course keys.
       if (
         restriction !== undefined &&
         restriction !== null &&

@@ -15,7 +15,7 @@ describe('workspace tab strip CSS', () => {
     expect(css).toMatch(
       /\.dv-tabs-container\.dv-horizontal::\-webkit-scrollbar\s*\{[^}]*display:\s*none;/s
     )
-    expect(css).toContain('box-shadow: inset 0 -1px 0 var(--border-subtle);')
+    expect(css).toContain('--dv-separator-border: var(--shell-divider);')
     expect(css).not.toContain('border-bottom: 1px solid var(--border-subtle);')
   })
 })

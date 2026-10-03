@@ -1,11 +1,14 @@
 import type { StudyToolId } from '../types/study'
 import {
   WORKFLOW_PACK_SCHEMA_VERSION,
+  LEGACY_WORKFLOW_PACK_SCHEMA_VERSION,
   type WorkflowPack,
+  type WorkflowPackV1,
+  type WorkflowPackV2,
   type WorkflowPackScope
 } from '../types/workflowPack'
 
-interface BuiltinStudyPack extends WorkflowPack {
+interface LegacyStudyPack extends WorkflowPackV1 {
   id: StudyToolId
 }
 
@@ -32,9 +35,9 @@ function studyPack(input: {
   description: string
   worksOnCourse: boolean
   recipe: string
-}): BuiltinStudyPack {
+}): LegacyStudyPack {
   return {
-    schemaVersion: WORKFLOW_PACK_SCHEMA_VERSION,
+    schemaVersion: LEGACY_WORKFLOW_PACK_SCHEMA_VERSION,
     id: input.id,
     name: input.name,
     description: input.description,
@@ -57,7 +60,7 @@ function studyPack(input: {
  * ids and recipes unchanged; user packs with the same id are resolved by the
  * persistence layer before this catalog is exposed.
  */
-export const BUILTIN_STUDY_PACKS: readonly BuiltinStudyPack[] = [
+export const LEGACY_STUDY_PACKS: readonly LegacyStudyPack[] = [
   studyPack({
     id: 'summary',
     name: '요약',
@@ -158,8 +161,8 @@ export const BUILTIN_STUDY_PACKS: readonly BuiltinStudyPack[] = [
   })
 ]
 
-const VOCAB_CHAIN_EN: WorkflowPack = {
-  schemaVersion: WORKFLOW_PACK_SCHEMA_VERSION,
+const LEGACY_VOCAB_CHAIN_EN: WorkflowPackV1 = {
+  schemaVersion: LEGACY_WORKFLOW_PACK_SCHEMA_VERSION,
   id: 'vocab-chain-en',
   name: '영어 단어 사슬',
   description:
@@ -196,7 +199,44 @@ const VOCAB_CHAIN_EN: WorkflowPack = {
   }
 }
 
+export const LEGACY_BUILTIN_PACKS: readonly WorkflowPackV1[] = [
+  ...LEGACY_STUDY_PACKS,
+  LEGACY_VOCAB_CHAIN_EN
+]
+
+function nativePack(pack: WorkflowPackV1, experience: WorkflowPackV2['experience']): WorkflowPackV2 {
+  const recipe = experience === 'article-vocabulary'
+    ? '사용자가 정한 관심 주제와 직접 체크한 단어를 바탕으로 짧은 영어 기사를 찾아라. 현재 제공자의 웹 검색 도구를 사용하고, 없으면 반달 브라우저에서 검색하라. 후보 기사 본문은 learning_verify_article로 확인하고, 실제 등장 단어와 출처가 확인된 결과만 learning_submit_result로 제출하라. 사용자가 모르는 단어를 임의로 추가하거나 원문을 지어내지 마라.'
+    : experience === 'quiz'
+      ? '자료에 근거한 객관식과 단답형 퀴즈를 생성하라. 각 문제의 정답, 해설, 출처 근거를 함께 구조화하여 learning_submit_result로 제출하라. 자료에서 확인하지 못한 사실로 문제를 만들지 마라.'
+      : '자료에 근거한 플래시카드를 생성하라. 한 카드에서 한 개념을 묻고, 앞면 질문과 뒷면 답, 출처 근거를 함께 구조화하여 learning_submit_result로 제출하라. 중복 카드를 만들지 마라.'
+  return {
+    ...pack,
+    schemaVersion: WORKFLOW_PACK_SCHEMA_VERSION,
+    experience,
+    recipe,
+    ...(experience === 'article-vocabulary' ? { followUp: { label: '다음 기사 찾기', recipe: '현재 학습 프로젝트의 사용자 선택 단어와 읽은 기사 기록을 이어받아 다음 기사를 찾아라. 본문이 확인된 새 기사만 제출하라.' } } : {}),
+    allowedTools: experience === 'article-vocabulary'
+      ? ['learning_verify_article', 'learning_submit_result', 'browser_open', 'browser_snapshot', 'browser_read']
+      : ['read_material', 'list_materials', 'learning_submit_result']
+  }
+}
+
+export const BUILTIN_STUDY_PACKS: readonly (WorkflowPack & { id: StudyToolId })[] = LEGACY_STUDY_PACKS.map(pack =>
+  pack.id === 'quiz' || pack.id === 'flashcards'
+    ? { ...nativePack(pack, pack.id), id: pack.id }
+    : pack
+)
+
 export const BUILTIN_PACKS: readonly WorkflowPack[] = [
   ...BUILTIN_STUDY_PACKS,
-  VOCAB_CHAIN_EN
+  nativePack(LEGACY_VOCAB_CHAIN_EN, 'article-vocabulary')
 ]
+
+/** Keeps study:run and v1 callers on their original Markdown contract. */
+export function getLegacyPack(pack: WorkflowPack): WorkflowPackV1 {
+  if (pack.schemaVersion === 1) return pack
+  const legacy = LEGACY_BUILTIN_PACKS.find(candidate => candidate.id === pack.id)
+  if (legacy === undefined) throw new TypeError(`Native workflow pack ${pack.id} requires the learning runtime`)
+  return legacy
+}

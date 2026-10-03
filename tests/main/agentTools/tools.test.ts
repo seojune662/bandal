@@ -126,6 +126,8 @@ describe('agent app tools', () => {
 
   test('exposes only the contracted app tools', () => {
     expect(harness.tools.names).toEqual([
+      'learning_verify_article',
+      'learning_submit_result',
       'app_state',
       'list_courses',
       'list_course_groups',
@@ -174,6 +176,37 @@ describe('agent app tools', () => {
       'send_highlight_to_note',
       'send_web_clip_to_note'
     ])
+  })
+
+  test('native learning tools only operate inside the host-bound execution allowlist', async () => {
+    const verifyArticle = vi.fn().mockResolvedValue({ id: 'verified' })
+    const submitResult = vi.fn().mockResolvedValue({ accepted: true, completed: false })
+    let restriction: ReadonlySet<string> = new Set(['learning_verify_article', 'learning_submit_result'])
+    const tools = createAgentTools({ ...harness.deps, learning: { verifyArticle, submitResult, restriction: () => restriction } })
+    expect((await tools.call('learning_verify_article', { url: 'https://example.com/story' })).isError).not.toBe(true)
+    expect(verifyArticle).toHaveBeenCalledWith('https://example.com/story')
+    expect((await tools.call('create_note', { courseId: harness.courseId, title: 'injected' })).isError).toBe(true)
+    expect((await tools.call('learning_submit_result', { draft: { version: 1 } })).isError).not.toBe(true)
+    expect(submitResult).toHaveBeenCalledWith({ version: 1 })
+    restriction = new Set()
+    expect((await tools.call('learning_submit_result', { draft: { version: 1 } })).isError).toBe(true)
+    expect(submitResult).toHaveBeenCalledTimes(1)
+    expect((await harness.tools.call('learning_verify_article', { url: 'https://example.com/story' })).isError).toBe(true)
+  })
+
+  test('native read_material extracts PDF evidence through its bound service while ordinary chat keeps the legacy reader', async () => {
+    const readMaterial = vi.fn().mockResolvedValue({ supported: true, text: '## 페이지 1\nVerified PDF sentence.' })
+    let restriction: ReadonlySet<string> | null = new Set(['read_material'])
+    const tools = createAgentTools({ ...harness.deps, learning: {
+      readMaterial, restriction: () => restriction, verifyArticle: async () => ({}), submitResult: async () => ({})
+    } })
+    const result = await tools.call('read_material', { courseId: harness.courseId, relPath: 'source.pdf', maxChars: 500_000 })
+    expect(result.isError).not.toBe(true)
+    expect(readMaterial).toHaveBeenCalledWith(harness.courseId, 'source.pdf', 200_000)
+    expect((await tools.call('read_material', { courseId: harness.courseId, relPath: 'source.pdf', maxChars: -1 })).isError).toBe(true)
+    restriction = null
+    expect(JSON.stringify((await tools.call('read_material', { courseId: harness.courseId, relPath: 'missing.pdf' })).content)).toContain('파일을 직접 읽으세요')
+    expect(readMaterial).toHaveBeenCalledTimes(1)
   })
 
   describe('read_material', () => {

@@ -105,7 +105,7 @@ describe('PacksPanel', () => {
     expect(html).toContain('JSON 내보내기')
     expect(html).toContain('>삭제</button>')
     expect(html).toContain('웹 검색 사용')
-    expect(html).toContain('이 기사로 이어가기')
+    expect(html).toContain('다음 기사 찾기')
   })
 
   test('renders stable empty messages for both sections', async () => {

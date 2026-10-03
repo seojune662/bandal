@@ -13,6 +13,8 @@ import {
   useStudyToolsStore
 } from './studyToolsStore'
 import './study.css'
+import { requestLearningCreation } from '../learning/LearningDialogsHost'
+import { openLearning } from '../learning/learningNavigation'
 
 const TREE_REFRESH_DELAY_MS = 800
 
@@ -47,7 +49,7 @@ export function isPackFollowUpAvailable(
   tool: PackStudyToolDefinition,
   relPath: string | null
 ): boolean {
-  if (relPath === null || tool.enabled === false || followUpLabel(tool) === null) {
+  if (tool.experience || relPath === null || tool.enabled === false || followUpLabel(tool) === null) {
     return false
   }
   const directory = outputDirectory(tool)
@@ -106,6 +108,7 @@ export function StudyToolMenu(props: StudyToolMenuProps): JSX.Element {
   const running = useStudyToolsStore((state) => state.running)
   const loadTools = useStudyToolsStore((state) => state.loadTools)
   const run = useStudyToolsStore((state) => state.run)
+  const generate = useStudyToolsStore((state) => state.generate)
 
   useEffect(() => {
     void loadTools()
@@ -195,12 +198,23 @@ export function StudyToolMenu(props: StudyToolMenuProps): JSX.Element {
   }
 
   const runTool = (tool: PackStudyToolDefinition, followUp = false): void => {
+    if (tool.experience === 'article-vocabulary') {
+      requestLearningCreation(courseId)
+      onClose()
+      return
+    }
     const input: RunPackStudyToolInput = {
       courseId,
       tool: tool.id,
       relPath,
       ...(selection === undefined ? {} : { selection }),
       ...(followUp ? { followUpOf: tool.id } : {})
+    }
+
+    if (tool.experience === 'quiz' || tool.experience === 'flashcards') {
+      void generate(input).then(result => { openLearning(result.binding, 'review'); showToast('학습 자료를 준비하고 있어요. 완료되면 이곳에 나타납니다.') }).catch(() => showToast('학습 자료 생성을 시작하지 못했어요.', 'danger'))
+      onClose()
+      return
     }
 
     void run(input)
@@ -227,7 +241,7 @@ export function StudyToolMenu(props: StudyToolMenuProps): JSX.Element {
     tool: PackStudyToolDefinition,
     followUp: boolean
   ): JSX.Element => {
-    const targetEnabled = followUp || isStudyToolEnabled(tool, relPath)
+    const targetEnabled = tool.enabled !== false && (tool.experience === 'article-vocabulary' || followUp || isStudyToolEnabled(tool, relPath))
     const isRunning = (running[tool.id] ?? 0) > 0
     const disabled = !targetEnabled || isRunning
     const reason = targetEnabled

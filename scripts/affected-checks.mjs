@@ -83,6 +83,7 @@ export function planChecks(files, full = false) {
     e2e.add('e2e/browserImport.spec.ts')
     e2e.add('e2e/browserCompatibility.spec.ts')
   }
+  if (has(/^src\/(main\/(features\/(learning|workflowPacks)\/|ipc\/learningHandlers\.ts$)|renderer\/src\/features\/learning\/|shared\/(workflowPacks\/|types\/(learning|workflowPack)\.ts$|ipc\/learningContract\.ts$))/)) e2e.add('e2e/learning.spec.ts')
   const workspace = has(/^(src\/renderer\/src\/(features\/workspace\/|stores\/workspaceStore\.ts$)|src\/shared\/tabs\.ts$)/)
   if (workspace) {
     for (const spec of ['tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance']) e2e.add(`e2e/${spec}.spec.ts`)
@@ -95,7 +96,7 @@ export function planChecks(files, full = false) {
   if (has(/^src\/(main\/(background\/|db\/|index\.ts|features\/materials\/)|preload\/index\.ts|renderer\/src\/(features\/workspace\/|stores\/workspaceStore))/)) e2e.add('e2e/coursePerformance.spec.ts')
   if (has(/^src\/renderer\/src\/features\/notes\/(NoteTab|NoteToolbar|noteEditorPlugins|noteFormatting|nativeHistoryGuard)/)) e2e.add('e2e/noteToolbar.spec.ts')
   if (full) {
-    for (const spec of ['pdfExport', 'browserAddress', 'browserCompatibility', 'browserImport', 'tabDrag', 'favoritesDrag', 'materialsDrag', 'pageImageCopy', 'taskSchedule', 'appleCalendar', 'viewportMenus', 'coursePerformance']) {
+    for (const spec of ['pdfExport', 'browserAddress', 'browserCompatibility', 'browserImport', 'learning', 'tabDrag', 'favoritesDrag', 'materialsDrag', 'pageImageCopy', 'taskSchedule', 'appleCalendar', 'viewportMenus', 'coursePerformance']) {
       e2e.add(`e2e/${spec}.spec.ts`)
     }
   }

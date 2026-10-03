@@ -94,6 +94,8 @@ export interface SessionManagerDeps {
   reportToolsUnavailable?: (courseId: string, sessionId: string) => void
   onRequestsCancelled?: (sessionId: string) => void
   onTurnComplete?: (info: { courseId: string; sessionId: string; turnSeq?: number }) => void
+  /** A real terminal event, including crashes/close/cancel; never dispatch completion. */
+  onTurnSettled?: (info: { courseId: string; sessionId: string; turnSeq: number; reason: 'success' | 'error' | 'interrupted' }) => void
   onUsage?: (info: {
     courseId: string
     sessionId: string
@@ -155,6 +157,7 @@ interface CourseChat {
   sending: boolean
   unsubscribe: (() => void) | null
   turnSeq: number
+  settledTurnSeq?: number
   turnBlocks: Map<string, TurnBlock>
   lastContextId?: string | undefined
   selectedSkills?: string[]
@@ -263,7 +266,16 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
     return entry
   }
 
+  function settleTurn(entry: CourseChat, reason: 'success' | 'error' | 'interrupted'): void {
+    if (entry.turnSeq === 0 || entry.settledTurnSeq === entry.turnSeq) return
+    entry.settledTurnSeq = entry.turnSeq
+    try {
+      deps.onTurnSettled?.({ courseId: entry.courseId, sessionId: entry.sessionId, turnSeq: entry.turnSeq, reason })
+    } catch (error) { console.error('[agent] turn settlement failed', error) }
+  }
+
   function dropSession(entry: CourseChat): void {
+    settleTurn(entry, 'interrupted')
     entry.generation += 1
     deps.onRequestsCancelled?.(entry.sessionId)
     for (const requestId of entry.pendingPermissions.keys()) deps.emit(entry.courseId, entry.sessionId, { type: 'permission-resolved', requestId, behavior: 'deny' })
@@ -517,6 +529,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         entry.info = { ...entry.info, status: 'idle' }
         deps.repo.setStatus(entry.info.id, 'idle')
         scheduleIdleReap(entry)
+        settleTurn(entry, event.stopReason === 'success' ? 'success' : event.stopReason === 'error' ? 'error' : 'interrupted')
         try {
           deps.onTurnComplete?.({
             courseId: entry.courseId,
@@ -543,6 +556,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         return true
       case 'error':
         if (event.fatal) {
+          settleTurn(entry, 'error')
           entry.info = { ...entry.info, status: 'error' }
           deps.repo.setStatus(entry.info.id, 'error')
           commitTurn(entry, 'interrupted')
@@ -717,12 +731,21 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         ].join('\n')
         const outgoing = contextText ? `${content}\n\n<user-selected-context>\n${contextText}\n</user-selected-context>` : content
         deps.emit(courseId, sessionId, { type: 'turn-started', turnSeq })
-        session.sendMessage(
-          priming !== null && priming.text !== ''
-            ? buildCarryoverPrompt(priming, outgoing)
-            : outgoing,
-          attachments
-        )
+        try {
+          session.sendMessage(
+            priming !== null && priming.text !== ''
+              ? buildCarryoverPrompt(priming, outgoing)
+              : outgoing,
+            attachments
+          )
+        } catch (error) {
+          settleTurn(entry, 'error')
+          entry.info = { ...entry.info, status: 'error' }
+          deps.repo.setStatus(entry.info.id, 'error')
+          commitTurn(entry, 'interrupted')
+          dropSession(entry)
+          throw error
+        }
         entry.lastContextId = snapshot?.id
         return { turnSeq }
       } finally { entry.sending = false }
@@ -748,6 +771,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       const entry = chats.get(sessionId)
       if (!entry) return
       if (entry.courseId !== courseId) throw new Error('대화가 이 과목에 속하지 않아요.')
+      settleTurn(entry, 'interrupted')
       if (entry.sending && !entry.session) dropSession(entry)
       else entry.session?.cancel()
     },

@@ -29,6 +29,8 @@ export { isTabDescriptor } from '../../../../shared/tabs'
  */
 export function tabPanelId(descriptor: TabDescriptor): string {
   switch (descriptor.kind) {
+    case 'learning':
+      return `learning:${descriptor.payload.courseId}:${descriptor.payload.rootRelPath === undefined ? 'overview' : `project:${descriptor.payload.rootRelPath}`}`
     case 'recording':
       return `recording:${descriptor.payload.courseId}${descriptor.payload.sessionId ? `:${descriptor.payload.sessionId}` : ''}`
     case 'pdf':
@@ -67,6 +69,8 @@ function stripExtension(name: string): string {
 /** Default tab title derived from the payload. */
 export function tabTitle(descriptor: TabDescriptor): string {
   switch (descriptor.kind) {
+    case 'learning':
+      return descriptor.payload.rootRelPath ? baseName(descriptor.payload.rootRelPath) : '학습 공간'
     case 'recording':
       return descriptor.payload.title || '녹음'
     case 'pdf':

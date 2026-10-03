@@ -101,6 +101,7 @@ describe('SessionManager', () => {
   let emitted: { courseId: string; sessionId: string; event: AgentEvent }[]
   let manager: SessionManager
   let repo: ReturnType<typeof createChatRepo>
+  let settled: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     ctx = createTestDb()
@@ -114,9 +115,11 @@ describe('SessionManager', () => {
     fake = createFakeAdapter()
     emitted = []
     repo = createChatRepo(ctx.db)
+    settled = vi.fn()
     manager = createSessionManager({
       adapter: fake.adapter,
       repo,
+      onTurnSettled: settled,
       getCourse: () => ({ folder: course.folderPath, name: course.name }),
       emit: (id, sessionId, event) => emitted.push({ courseId: id, sessionId, event })
     })
@@ -125,6 +128,36 @@ describe('SessionManager', () => {
   afterEach(() => {
     manager.disposeAll()
     ctx.cleanup()
+  })
+
+  test('study dispatch stays hidden and settles only once after a real terminal event', async () => {
+    await manager.open(courseId, conversationId, 'study')
+    await manager.send(courseId, conversationId, 'generate learning material')
+    expect(settled).not.toHaveBeenCalled()
+    expect(repo.listConversations(courseId)).toEqual([])
+    fake.sessions[0]!.emit({ type: 'turn-complete', stopReason: 'success' })
+    manager.close(courseId, conversationId)
+    expect(settled).toHaveBeenCalledTimes(1)
+    expect(settled).toHaveBeenCalledWith({ courseId, sessionId: conversationId, turnSeq: 1, reason: 'success' })
+  })
+
+  test.each(['cancel', 'close'] as const)('%s settles an active generation as interrupted', async action => {
+    await manager.send(courseId, conversationId, 'hello')
+    manager[action](courseId, conversationId)
+    expect(settled).toHaveBeenCalledTimes(1)
+    expect(settled).toHaveBeenCalledWith(expect.objectContaining({ reason: 'interrupted' }))
+  })
+
+  test('fatal provider errors and throwing sends settle failures', async () => {
+    await manager.send(courseId, conversationId, 'hello')
+    fake.sessions[0]!.emit({ type: 'error', code: 'process-crashed', message: 'crashed', fatal: true })
+    expect(settled).toHaveBeenCalledTimes(1)
+    expect(settled).toHaveBeenCalledWith(expect.objectContaining({ reason: 'error' }))
+    await manager.send(courseId, conversationId, 'retry')
+    fake.sessions[1]!.emit({ type: 'turn-complete', stopReason: 'success' })
+    fake.sessions[1]!.sendMessage = () => { throw new Error('send failed') }
+    await expect(manager.send(courseId, conversationId, 'failure')).rejects.toThrow('send failed')
+    expect(settled.mock.calls.map(call => call[0].reason)).toEqual(['error', 'success', 'error'])
   })
 
   test('persists effort before the first turn and forwards it after reopening', async () => {

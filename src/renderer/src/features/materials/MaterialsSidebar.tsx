@@ -61,6 +61,7 @@ import { canAcceptUrlDrop } from './urlDrop'
 import { useMaterialsPaste } from './useMaterialsPaste'
 import { WhiteboardsGroup } from './WhiteboardsGroup'
 import { WidgetDock } from '../widgets/WidgetDock'
+import { LearningSidebar } from '../learning/LearningProjects'
 import './materials.css'
 
 const SEARCH_DEBOUNCE_MS = 240
@@ -1009,6 +1010,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         ) : (
           <>
             <WhiteboardsGroup courseId={course.id} />
+            <LearningSidebar courseId={course.id} compact />
             <section
               className="materials-files-group"
               aria-label="자료 파일"

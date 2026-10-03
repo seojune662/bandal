@@ -28,6 +28,7 @@ import { usePrintStore } from '../print/printStore'
 import { resolveAddressInput } from './urlInput'
 import { v4 as uuidv4 } from 'uuid'
 import { openWebVideoInPip } from './videoBridge'
+import { requestLearningArticleImport } from '../learning/LearningDialogsHost'
 
 export interface BrowserContextMenuState {
   /** Host-viewport coordinates, already offset. */
@@ -64,6 +65,7 @@ export type ContextMenuItemId =
   | 'select-all'
   | 'search-selection'
   | 'clip-to-note'
+  | 'add-to-learning'
   | 'reload'
   | 'copy-page-url'
   | 'open-external'
@@ -107,6 +109,7 @@ export function contextMenuItems(
     // otherwise, and a disabled row would just be noise.
     if (state.courseId !== null) items.push('clip-to-note')
   }
+  if (state.courseId) items.push('add-to-learning')
   // Always available, so a right-click anywhere does something useful.
   // 검사 is here rather than behind a dev flag because a broken Korean portal
   // is only diagnosable from a real login on a real machine — which is a
@@ -239,6 +242,10 @@ export function BrowserContextMenu({
             showToast('필기에 담지 못했어요.', 'danger')
           })
       }
+    },
+    'add-to-learning': {
+      label: '이 글을 학습에 추가',
+      run: () => { if (state.courseId) requestLearningArticleImport({ courseId: state.courseId, url: state.pageURL, tabId }) }
     },
     'search-selection': {
       label: `\u201c${trimmed}\u201d 검색`,

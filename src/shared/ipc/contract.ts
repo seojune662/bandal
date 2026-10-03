@@ -1,3 +1,4 @@
+import { LEARNING_CHANNELS, type LearningIpcContract } from './learningContract'
 import type { BrowserPageState, BrowserPageAction } from '../types/browserNative'
 import type { BrowserImportSource, BrowserImportFileKind, BrowserImportRequest, BrowserImportJob } from '../types/browserImport'
 import type { AppleCalendarState, AppleCalendarEvent, AppleCalendarPreferences } from '../types/appleCalendar'
@@ -162,6 +163,7 @@ export interface WorkflowPackToolDefinition
   source: WorkflowPackSummary['source']
   enabled: boolean
   usesWeb: boolean
+  experience?: import('../types/workflowPack').NativeStudyExperience
   outputs: WorkflowPack['outputs']
   followUp?: NonNullable<WorkflowPack['followUp']>
 }
@@ -172,7 +174,7 @@ export type RunWorkflowPackStudyInput = Omit<RunStudyToolInput, 'tool'> & {
   followUpOf?: string
 }
 
-export interface IpcContract extends MailIpcContract, PresentationIpcContract, RecordingIpcContract {
+export interface IpcContract extends MailIpcContract, PresentationIpcContract, RecordingIpcContract, LearningIpcContract {
   // -- courses --------------------------------------------------------------
   'courses:list': {
     req: { includeArchived?: boolean }
@@ -1600,6 +1602,7 @@ export type IpcResponse<K extends IpcChannel> = IpcContract[K]['res']
  * here actually got a handler.
  */
 export const IPC_CHANNELS = [
+  ...LEARNING_CHANNELS,
   ...RECORDING_CHANNELS,
   'presentation:runtime', 'presentation:installRuntime', 'presentation:cancelRuntime',
   'presentation:prepare', 'presentation:cancelPrepare', 'presentation:pdfStart',

@@ -19,6 +19,7 @@ export type TabKind =
   | 'image'
   | 'file'
   | 'plugin-panel'
+  | 'learning'
 
 export interface PdfTabPayload {
   courseId: string
@@ -84,6 +85,19 @@ export interface TabPayloadMap {
   image: ImageTabPayload
   file: FileTabPayload
   'plugin-panel': PluginPanelTabPayload
+  learning: LearningTabPayload
+}
+
+export type LearningView = 'home' | 'reader' | 'vocabulary' | 'articles' | 'review'
+
+/** Folder binding distinguishes copied projects even when their manifest ids match. */
+export interface LearningTabPayload {
+  courseId: string
+  rootRelPath?: string
+  /** Recovery hint only; copied projects are still identified by their folder binding. */
+  projectId?: string
+  view?: LearningView
+  itemId?: string
 }
 
 /**
@@ -136,7 +150,8 @@ export const TAB_KINDS = [
   'whiteboard',
   'image',
   'file',
-  'plugin-panel'
+  'plugin-panel',
+  'learning'
 ] as const satisfies readonly TabKind[]
 
 type MissingTabKind = Exclude<TabKind, (typeof TAB_KINDS)[number]>
@@ -205,6 +220,12 @@ export function isTabDescriptor(value: unknown): value is TabDescriptor {
         isNonEmptyString(payload['pluginId']) &&
         isNonEmptyString(payload['panelId'])
       )
+    case 'learning':
+      return isNonEmptyString(payload['courseId']) &&
+        (payload['rootRelPath'] === undefined || typeof payload['rootRelPath'] === 'string') &&
+        (payload['projectId'] === undefined || isNonEmptyString(payload['projectId'])) &&
+        (payload['view'] === undefined || (typeof payload['view'] === 'string' && ['home', 'reader', 'vocabulary', 'articles', 'review'].includes(payload['view']))) &&
+        (payload['itemId'] === undefined || isNonEmptyString(payload['itemId']))
 
   }
 }

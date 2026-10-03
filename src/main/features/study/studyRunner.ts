@@ -5,7 +5,7 @@ import type {
 } from '../../../shared/types/study'
 import type { AgentConfirmScope } from '../../../shared/types/agentTools'
 import type { WorkflowPackSummary } from '../../../shared/types/workflowPack'
-import { BUILTIN_STUDY_PACKS } from '../../../shared/workflowPacks/builtins'
+import { LEGACY_STUDY_PACKS, LEGACY_BUILTIN_PACKS, getLegacyPack } from '../../../shared/workflowPacks/builtins'
 import type { PackStore } from '../workflowPacks/packStore'
 import {
   createPackRunner,
@@ -34,7 +34,7 @@ export interface StudyRunnerDeps {
 }
 
 function builtinSummary(): WorkflowPackSummary[] {
-  return BUILTIN_STUDY_PACKS.map((pack) => ({
+  return LEGACY_STUDY_PACKS.map((pack) => ({
     pack,
     source: 'builtin',
     enabled: true,
@@ -45,7 +45,7 @@ function builtinSummary(): WorkflowPackSummary[] {
 function builtinStore(): Pick<PackStore, 'resolve' | 'list' | 'approve'> {
   return {
     resolve(id) {
-      return BUILTIN_STUDY_PACKS.find((pack) => pack.id === id) ?? null
+      return LEGACY_STUDY_PACKS.find((pack) => pack.id === id) ?? null
     },
     list: builtinSummary,
     approve() {
@@ -60,7 +60,17 @@ export function createStudyRunner(deps: StudyRunnerDeps): {
   tools(): StudyToolDefinition[]
 } {
   const packRunner = createPackRunner({
-    store: deps.packStore ?? builtinStore(),
+    store: deps.packStore === undefined ? builtinStore() : {
+      ...deps.packStore,
+      resolve: (id) => {
+        const pack = deps.packStore!.resolve(id)
+        return pack === null ? null : getLegacyPack(pack)
+      },
+      list: () => deps.packStore!.list().flatMap(summary =>
+        summary.pack.schemaVersion === 1 || LEGACY_BUILTIN_PACKS.some(pack => pack.id === summary.pack.id)
+          ? [{ ...summary, pack: getLegacyPack(summary.pack) }]
+          : [])
+    },
     runGuard: deps.packRunGuard ?? createPackRunGuard(),
     getCourse: deps.getCourse,
     ask: deps.ask,

@@ -167,6 +167,9 @@ test.describe('page image clipboard', () => {
     const second = await jump(2)
     const drawings = async (): Promise<number> => page.evaluate(async () => (await window.bandal.invoke('drawings:listForFile', { courseId: (await window.bandal.invoke('courses:list', {}))[0]!.id, relPath: 'copy.pdf' })).length)
     const before = await drawings()
+    if (!await page.getByRole('button', { name: '펜', exact: true }).isVisible()) {
+      await page.getByRole('button', { name: '주석 도구', exact: true }).click()
+    }
     await page.getByRole('button', { name: '펜', exact: true }).click()
     await second.click({ button: 'right', position: { x: 25, y: 25 } })
     await expect(page.getByRole('menuitem', { name: '이미지로 복사', exact: true })).toBeFocused()

@@ -169,3 +169,24 @@ test('AI transport and brand updates select chat/context/orb package checks with
   assert.deepEqual(plan.e2e, ['e2e/chatUx.spec.ts', 'e2e/assistantSidebar.spec.ts', 'e2e/aiContext.spec.ts'])
   assert.equal(plan.full, false)
 })
+
+test('learning experience changes select their native package regression including CSS and contracts', () => {
+  for (const file of [
+    'src/main/features/learning/articleExtractor.ts',
+    'src/main/features/learning/materialSource.ts',
+    'src/main/features/workflowPacks/packStore.ts',
+    'src/main/ipc/learningHandlers.ts',
+    'src/renderer/src/features/learning/LearningTab.tsx',
+    'src/renderer/src/features/learning/learning.css',
+    'src/shared/types/learning.ts',
+    'src/shared/types/workflowPack.ts',
+    'src/shared/workflowPacks/builtins.ts',
+    'src/shared/ipc/learningContract.ts'
+  ]) {
+    const plan = planChecks([file])
+    assert.equal(plan.full, false, file)
+    assert.deepEqual(plan.e2e, ['e2e/learning.spec.ts'], file)
+  }
+  assert.ok(planChecks(['pnpm-lock.yaml']).e2e.includes('e2e/learning.spec.ts'))
+  assert.ok(!planChecks(['src/main/features/materials/materialsRepo.ts']).e2e.includes('e2e/learning.spec.ts'))
+})

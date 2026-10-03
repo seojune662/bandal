@@ -69,6 +69,22 @@ describe('packStore', () => {
     })
   })
 
+  test('loads mixed v1/v2 packs without losing disabled builtin ids or approvals', () => {
+    let sequence = 0
+    const store = createPackStore({ userDataPath, randomUUID: () => `mixed-${++sequence}` })
+    const legacy = store.importText(packJson('기존 마크다운 팩')).pack
+    const native = store.importText(JSON.stringify({ ...JSON.parse(packJson('새 퀴즈 팩')), schemaVersion: 2, experience: 'quiz' })).pack
+    store.approve(legacy.id, '2026-10-04T00:00:00.000Z')
+    store.setEnabled('quiz', false)
+    const restored = createPackStore({ userDataPath })
+    expect(restored.resolve(legacy.id)).toMatchObject({ schemaVersion: 1, recipe: '자료를 정리하라.' })
+    expect(restored.resolve(native.id)).toMatchObject({ schemaVersion: 2, experience: 'quiz' })
+    expect(restored.list().find(summary => summary.pack.id === legacy.id)?.approvedAt).toBe('2026-10-04T00:00:00.000Z')
+    expect(restored.resolve('quiz')).toBeNull()
+    restored.setEnabled('quiz', true)
+    expect(restored.resolve('quiz')).toMatchObject({ schemaVersion: 2, experience: 'quiz' })
+  })
+
   test(`refuses more than ${MAX_CUSTOM_WORKFLOW_PACKS} custom packs`, () => {
     let sequence = 0
     const store = createPackStore({

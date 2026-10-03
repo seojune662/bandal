@@ -1,3 +1,10 @@
+import { createLearningRepo, normalizeLearningDraft } from '../features/learning'
+import { createLearningCache } from '../features/learning/learningCache'
+import { createLearningRuntime } from '../features/learning/learningRuntime'
+import { createArticleExtractor, matchArticleWords } from '../features/learning/articleExtractor'
+import { createLearningGrounding } from '../features/learning/learningGrounding'
+import { registerLearningHandlers } from './learningHandlers'
+import { getLegacyPack } from '../../shared/workflowPacks/builtins'
 import { createHash } from 'node:crypto'
 import type { MaterialContext, MessageContextSnapshot } from '../../shared/types/chatContext'
 import { selectScreen, screenSelectionRequest } from '../windows/screenSelection'
@@ -382,6 +389,28 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     folderMissing: createFolderAvailability(() => broadcast('courses:changed', {})),
     getDataRoot: () => getSettings().dataRoot
   })
+  const legacyPackSettlers = new Map<string, { resolve(): void; reject(error: Error): void }>()
+  const legacyGuardSessions = new Map<string, string>()
+  const settleStudyTurn = (info: { sessionId: string; reason: 'success' | 'error' | 'interrupted' }): void => {
+    learningRuntime?.settle(info.sessionId, info.reason)
+    const pending = legacyPackSettlers.get(info.sessionId)
+    if (pending) {
+      legacyPackSettlers.delete(info.sessionId)
+      if (info.reason === 'success') pending.resolve()
+      else pending.reject(new Error(info.reason === 'error' ? 'AI 학습 작업에 실패했습니다.' : 'AI 학습 작업이 중단되었습니다.'))
+    }
+  }
+  let learningRuntime: ReturnType<typeof createLearningRuntime> | undefined
+  const learningCache = createLearningCache(db)
+  const learningRepo = createLearningRepo({
+    getCourseFolder: courseId => coursesRepo.getFolder(courseId),
+    onChanged: binding => {
+      broadcast('learning:changed', { binding })
+      materialsRepo.invalidateTree(binding.courseId)
+      broadcast('materials:changed', { courseId: binding.courseId })
+      void learningRepo.read(binding).then(snapshot => learningCache.index(snapshot)).catch(error => console.warn('[learning] cache rebuild failed', error))
+    }
+  })
   const onMaterialPathChanged = (change: {
     courseId: string
     fromRelPath: string
@@ -394,6 +423,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       courseFolder: coursesRepo.getFolder(change.courseId)
     })
     recordings.repoint(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory)
+    void learningRepo.repoint(change).catch(error => console.error('[learning] path update failed', error))
     // Notes bypass materialsRepo, and a rewritten backlink can change more
     // than the renamed path. Invalidate before telling renderers to re-read.
     materialsRepo.invalidateTree(change.courseId)
@@ -1151,7 +1181,16 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       if (/^(desktop_|clipboard)/.test(request.tool)) return policy.scope.screen
       return policy.scope.course && request.courseId === chatRepo.getSession(request.conversationId)?.courseId
     },
-    emit: (request) => broadcast('agentTools:confirm', request),
+    emit: (request) => {
+      broadcast('agentTools:confirm', request)
+      // Dedicated study conversations have no chat panel to show approval cards.
+      if (learningRuntime?.isStudySession(request.conversationId)) {
+        void dialog.showMessageBox({ type: 'question', message: request.summary,
+          detail: request.details.join('\n'), buttons: ['취소', '이번만 허용'], defaultId: 0, cancelId: 0 })
+          .then(answer => agentConfirmer.resolve({ requestId: request.requestId, approved: answer.response === 1, scope: 'once' }))
+          .catch(() => agentConfirmer.resolve({ requestId: request.requestId, approved: false }))
+      }
+    },
     changed: (state) => broadcast('agentTools:confirmationChanged', state)
   })
   const packStore = createPackStore({ userDataPath: deps.userDataPath })
@@ -1734,7 +1773,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     courseId: string,
     sessionKey: string,
     getTurnSeq: () => number,
-    surface: 'app' | 'desktop'
+    surface: 'app' | 'desktop' | 'study'
   ): Promise<Awaited<ReturnType<typeof startAgentToolsServer>>> =>
     startAgentToolsServer({
       sessionId: sessionKey,
@@ -1766,6 +1805,25 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         boardRepo,
         canvasRepo,
         packRunGuard,
+        packGuardKey: sessionKey,
+        learning: {
+          restriction: () => learningRuntime?.restrictionFor(sessionKey) ?? null,
+          verifyArticle: async url => {
+            if (!learningRuntime) throw new Error('학습 실행을 준비 중입니다.')
+            return learningRuntime.verifyArticle(sessionKey, url)
+          },
+          submitResult: async draft => {
+            if (!learningRuntime) throw new Error('학습 실행을 준비 중입니다.')
+            return learningRuntime.submitResult(sessionKey, draft)
+          },
+          readMaterial: async (requestedCourseId, relPath, maxChars) => {
+            if (requestedCourseId !== courseId) throw new Error('이 학습 공간의 과목 자료만 사용할 수 있어요.')
+            const source = await grounding.material({ courseId, rootRelPath: '' }, relPath)
+            return { relPath, pathScope: 'course', supported: true, contentHash: source.contentHash,
+              text: source.text.slice(0, maxChars),
+              truncated: source.truncated || source.text.length > maxChars }
+          }
+        },
         accessMode: () => chatRepo.getSession(sessionKey)?.accessPolicy?.mode ?? 'auto',
         confirm: async (request) =>
           (await agentConfirmer.confirm({ ...request, conversationId: sessionKey, turnId: `${sessionKey}:${getTurnSeq()}` })) !==
@@ -1836,6 +1894,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     turnSeq?: number
   }): void => {
     agentConfirmer.cancelConversation(info.sessionId)
+    if (learningRuntime?.isStudySession(info.sessionId)) return
     const job = artifactJobs.get(info.sessionId)
     if (job) {
       artifactJobs.delete(info.sessionId)
@@ -1911,6 +1970,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       broadcast('agentTools:unavailable', { courseId, sessionId })
     },
     onTurnComplete: notifyTurnComplete,
+    onTurnSettled: settleStudyTurn,
     onRequestsCancelled: (sessionId) => agentConfirmer.cancelConversation(sessionId),
     onUsage: recordUsage
   })
@@ -1918,6 +1978,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     agentConfirmer.disposeAll()
     browserRuns.disposeAll()
     materialsWatcher.dispose()
+    learningRuntime?.dispose()
+    articleExtractor.dispose()
     sessionManager.disposeAll()
     codexSessionManager.disposeAll()
     geminiSessionManager.disposeAll()
@@ -1953,6 +2015,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       broadcast('agentTools:unavailable', { courseId, sessionId })
     },
     onTurnComplete: notifyTurnComplete,
+    onTurnSettled: settleStudyTurn,
     onRequestsCancelled: (sessionId) => agentConfirmer.cancelConversation(sessionId),
     onUsage: recordUsage
   })
@@ -1976,6 +2039,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       broadcast('agentTools:unavailable', { courseId, sessionId })
     },
     onTurnComplete: notifyTurnComplete,
+    onTurnSettled: settleStudyTurn,
     onRequestsCancelled: (sessionId) => agentConfirmer.cancelConversation(sessionId),
     onUsage: recordUsage
   })
@@ -2081,6 +2145,92 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     }
     return managerFor(getSettings().agentProvider)
   }
+
+  const articleExtractor = createArticleExtractor({
+    resolveSourceTab: tabId => {
+      const guest = guestRegistry.resolve(tabId)
+      return guest ? webContents.fromId(guest.id) ?? null : null
+    }
+  })
+  const grounding = createLearningGrounding(courseId => coursesRepo.getFolder(courseId))
+  learningRuntime = createLearningRuntime({
+    repo: learningRepo,
+    extractUrl: (url, signal) => articleExtractor.extractUrl(url, signal),
+    matchWords: matchArticleWords,
+    validateDraft: async (draft, state) => {
+      const result = await normalizeLearningDraft(draft, state,
+        id => learningRepo.readArticle(state.binding, id),
+        grounding.validator(state.binding))
+      const refs = [...(result.words?.map(word => word.sourceRef) ?? []), ...(result.artifacts?.flatMap(artifact => [
+        ...(artifact.sourceRefs ?? []),
+        ...(artifact.kind === 'quiz' ? artifact.questions.flatMap(question => question.sourceRefs) :
+          artifact.kind === 'cards' ? artifact.cards.flatMap(card => card.sourceRefs) : [])
+      ]) ?? [])]
+      if (refs.some(ref => ref.kind === 'web')) throw new Error('웹 출처는 가져온 기사 본문의 근거 문장으로 연결하세요.')
+      return result
+    },
+    provider: () => getSettings().agentProvider,
+    recipe: (packId, kind) => {
+      const id = packId ?? (kind === 'find-articles' ? 'vocab-chain-en' : kind === 'create-quiz' ? 'quiz' : kind === 'create-cards' ? 'flashcards' : undefined)
+      if (!id) return ''
+      const pack = packStore.resolve(id)
+      if (!pack || pack.schemaVersion !== 2) throw new Error('학습 팩을 사용할 수 없어요. 플러그인 설정을 확인하세요.')
+      return pack.recipe
+    },
+    tools: packId => packId ? packStore.resolve(packId)?.allowedTools ?? [] : [
+      'learning_verify_article', 'learning_submit_result', 'read_material', 'list_materials', 'app_state',
+      'browser_tabs', 'browser_open', 'browser_snapshot', 'browser_read', 'browser_scroll', 'browser_handoff'
+    ],
+    close: (courseId, sessionId, provider) => managerFor(provider).close(courseId, sessionId),
+    sourceText: async (binding, source) => {
+      if (source?.kind !== 'material') return source?.selection ?? ''
+      if (!source.relPath) throw new Error('대상 자료를 선택하세요.')
+      const material = await grounding.material(binding, source.relPath)
+      if (source.selection && !material.text.replace(/\s+/gu, ' ').includes(source.selection.replace(/\s+/gu, ' ').trim())) throw new Error('선택한 내용이 원본 자료와 일치하지 않아요.')
+      return JSON.stringify({ relPath: source.relPath, pathScope: 'course', contentHash: material.contentHash,
+        text: source.selection ?? material.text, truncated: material.truncated })
+    },
+    send: async (courseId, sessionId, provider, prompt) => {
+      const manager = managerFor(provider)
+      try { rebuildContextCoalesced(courseId) } catch (error) { console.warn('[learning] context rebuild failed', error) }
+      await manager.open(courseId, sessionId, 'study')
+      return manager.send(courseId, sessionId, prompt)
+    },
+    cancel: (courseId, sessionId, provider) => {
+      agentConfirmer.cancelConversation(sessionId)
+      managerFor(provider).cancel(courseId, sessionId)
+    }
+  })
+  registerLearningHandlers(handle, {
+    repo: learningRepo, runtime: learningRuntime, extractor: articleExtractor, cache: learningCache,
+    courses: coursesRepo,
+    resolvePack: id => packStore.resolve(id),
+    approvePack: async (id, courseId) => {
+      const summary = packStore.list().find(item => item.pack.id === id)
+      if (!summary || !summary.enabled) throw new Error('학습 팩을 사용할 수 없어요.')
+      if (summary.source === 'builtin' || summary.approvedAt) return
+      coursesRepo.getById(courseId)
+      const answer = await dialog.showMessageBox({ type: 'question', message: `사용자 설치 팩 «${summary.pack.name}»을 실행할까요?`,
+        detail: `버전: ${summary.pack.version}\n${summary.pack.description}`, buttons: ['취소', '이번만 허용', '항상 허용'], defaultId: 0, cancelId: 0 })
+      if (answer.response === 0) throw new Error('학습 팩 실행이 취소되었습니다.')
+      if (answer.response === 2) packStore.approve(id, new Date().toISOString())
+    },
+    changedCourse: () => broadcast('courses:changed', {}),
+    assertSourceTab: (courseId, tabId, url) => {
+      coursesRepo.getById(courseId)
+      const guest = guestRegistry.resolve(tabId)
+      if (!guest || guest.getURL() !== url) throw new Error('열린 원문 탭을 선택하세요.')
+    },
+    resolveSource: (binding, ref) => grounding.resolve(binding, ref),
+    validateDraft: async (binding, draft) => {
+      const state = await learningRepo.read(binding)
+      const result = await normalizeLearningDraft(draft, state, id => learningRepo.readArticle(binding, id), grounding.validator(binding))
+      if (result.articles?.length || result.wordUpdates?.length) throw new Error('가져오기에서는 퀴즈·카드·학습노트만 저장할 수 있어요.')
+      const refs = [...(result.words?.map(word => word.sourceRef) ?? []), ...(result.artifacts?.flatMap(artifact => [...(artifact.sourceRefs ?? []), ...(artifact.kind === 'quiz' ? artifact.questions.flatMap(question => question.sourceRefs) : artifact.kind === 'cards' ? artifact.cards.flatMap(card => card.sourceRefs) : [])]) ?? [])]
+      if (refs.some(ref => ref.kind === 'web')) throw new Error('원본 자료에서 확인한 출처 문장을 사용하세요.')
+      return result
+    }
+  })
 
   // Refresh the dossier the agent reads at session start.
   // Best-effort: a context failure must not stop the student from chatting.
@@ -2390,8 +2540,22 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     }
   }
   const packRunner = createPackRunner({
-    store: packStore,
-    runGuard: packRunGuard,
+    store: {
+      resolve: id => { const pack = packStore.resolve(id); return pack ? getLegacyPack(pack) : null },
+      list: () => packStore.list().map(summary => summary.source === 'builtin' ? { ...summary, pack: getLegacyPack(summary.pack) } : summary),
+      approve: (id, at) => packStore.approve(id, at)
+    },
+    runGuard: {
+      arm(courseId, restriction) {
+        const sessionId = workflowSessionIdFor(courseId)
+        legacyGuardSessions.set(courseId, sessionId)
+        packRunGuard.arm(sessionId, restriction)
+      },
+      clear(courseId) {
+        const sessionId = legacyGuardSessions.get(courseId)
+        if (sessionId) { packRunGuard.clear(sessionId); legacyGuardSessions.delete(courseId) }
+      }
+    },
     getCourse: (courseId) => ({
       name: coursesRepo.getById(courseId).name,
       folder: coursesRepo.getFolder(courseId)
@@ -2401,9 +2565,18 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       // lands where the student is already talking; a course with no
       // conversations yet gets a fresh one.
       const sessionId = workflowSessionIdFor(courseId)
+      const completed = new Promise<void>((resolve, reject) => legacyPackSettlers.set(sessionId, { resolve, reject }))
+      void completed.catch(() => undefined)
+      // Attach before dispatch: a provider can complete synchronously during sendMessage.
+      const manager = resolveManager(sessionId)
+      const timer = setTimeout(() => { manager.cancel(courseId, sessionId); legacyPackSettlers.get(sessionId)?.reject(new Error('학습 작업 시간이 초과되었습니다.')) }, 15 * 60 * 1000)
+      timer.unref()
       try {
-        await resolveManager(sessionId).send(courseId, sessionId, prompt)
+        await manager.send(courseId, sessionId, prompt)
+        await completed
       } finally {
+        clearTimeout(timer)
+        legacyPackSettlers.delete(sessionId)
         releaseWorkflowSession(courseId, sessionId)
       }
     },
@@ -2458,6 +2631,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       source,
       enabled,
       usesWeb: pack.usesWeb,
+      ...(pack.schemaVersion === 2 ? { experience: pack.experience } : {}),
       outputs: { ...pack.outputs },
       ...(pack.followUp === undefined
         ? {}

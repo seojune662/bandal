@@ -38,8 +38,10 @@ describe('appearance knob tokens', () => {
     for (const [, name] of block!.matchAll(/(--[\w-]+)\s*:/g)) {
       expect(rootBlock, `${name} is not a base token`).toContain(`${name}:`)
     }
-    for (const name of ['--chrome-height', '--control-height', '--radius-md', '--space-3']) {
+    for (const name of ['--button-height', '--control-height', '--radius-md', '--space-3']) {
       expect(block).toContain(`${name}:`)
     }
+    // Retained tab strips keep their height across density changes.
+    expect(block).not.toContain('--chrome-height:')
   })
 })

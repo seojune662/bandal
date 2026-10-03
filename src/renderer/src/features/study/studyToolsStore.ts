@@ -7,6 +7,8 @@ import type {
   WorkflowPackFollowUp,
   WorkflowPackOutputs
 } from '../../../../shared/types/workflowPack'
+import type { NativeStudyExperience } from '../../../../shared/types/workflowPack'
+import type { LearningRunResult } from '../../../../shared/ipc/learningContract'
 import { invoke } from '../../lib/ipc'
 
 /** Renderer bridge for the pack-derived study tool response. */
@@ -23,6 +25,7 @@ export interface PackStudyToolDefinition {
   outputsDir?: string
   followUp?: WorkflowPackFollowUp
   followUpLabel?: string
+  experience?: NativeStudyExperience
 }
 
 export interface RunPackStudyToolInput {
@@ -44,6 +47,7 @@ interface StudyToolsState {
   runError: string | null
   loadTools: () => Promise<void>
   run: (input: RunPackStudyToolInput) => Promise<RunStudyToolResult>
+  generate: (input: RunPackStudyToolInput) => Promise<LearningRunResult>
 }
 
 let toolsRequest: Promise<void> | null = null
@@ -117,6 +121,17 @@ export const useStudyToolsStore = create<StudyToolsState>()((set, get) => ({
         else running[input.tool] = remaining
         return { running }
       })
+    }
+  },
+
+  generate: async (input) => {
+    set(state => ({ running: { ...state.running, [input.tool]: (state.running[input.tool] ?? 0) + 1 }, runError: null }))
+    try {
+      return await invoke('study:generate', { courseId: input.courseId, packId: input.tool, source: input.relPath === null ? { kind: 'course' } : { kind: 'material', relPath: input.relPath, ...(input.selection ? { selection: input.selection } : {}) } })
+    } catch (error) {
+      set({ runError: errorMessage(error, '학습 자료 생성을 시작하지 못했어요.') }); throw error
+    } finally {
+      set(state => { const running = { ...state.running }; const remaining = (running[input.tool] ?? 1) - 1; if (remaining > 0) running[input.tool] = remaining; else delete running[input.tool]; return { running } })
     }
   }
 }))

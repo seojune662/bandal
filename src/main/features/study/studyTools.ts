@@ -2,7 +2,7 @@ import type {
   RunStudyToolInput,
   StudyToolDefinition
 } from '../../../shared/types/study'
-import { BUILTIN_STUDY_PACKS } from '../../../shared/workflowPacks/builtins'
+import { LEGACY_STUDY_PACKS } from '../../../shared/workflowPacks/builtins'
 import {
   buildWorkflowPackPrompt,
   type StudyPlanningContext
@@ -11,7 +11,7 @@ import {
 export type { StudyPlanningContext }
 
 export const STUDY_TOOLS: readonly StudyToolDefinition[] =
-  BUILTIN_STUDY_PACKS.map((pack) => ({
+  LEGACY_STUDY_PACKS.map((pack) => ({
     id: pack.id,
     label: pack.outputs.primary,
     description: pack.description,
@@ -30,7 +30,7 @@ export function buildStudyToolPrompt(
   } & StudyPlanningContext,
   options: { destinationRelPath?: string } = {}
 ): string {
-  const pack = BUILTIN_STUDY_PACKS.find((candidate) => candidate.id === input.tool)
+  const pack = LEGACY_STUDY_PACKS.find((candidate) => candidate.id === input.tool)
   if (pack === undefined) {
     // RunStudyToolInput is a closed union, but keep this runtime boundary
     // honest for IPC values that arrive as plain JavaScript.

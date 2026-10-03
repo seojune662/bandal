@@ -32,7 +32,7 @@ function declaredChannels(): string[] {
     source.indexOf('export interface IpcContract'),
     source.indexOf('export const IPC_CHANNELS')
   )
-  const extensions = ['types/mail', 'types/presentation', 'recording'].map((name) => readFileSync(join(process.cwd(), `src/shared/${name}.ts`), 'utf8')).join('\n')
+  const extensions = ['types/mail', 'types/presentation', 'recording', 'ipc/learningContract'].map((name) => readFileSync(join(process.cwd(), `src/shared/${name}.ts`), 'utf8')).join('\n')
   return [...`${body}\n${extensions}`.matchAll(/^ {2}'([a-z][A-Za-z]*:[A-Za-z]+)': \{/gm)].map(
     (match) => match[1] as string
   )
@@ -40,7 +40,7 @@ function declaredChannels(): string[] {
 
 /** Channels registered via `handle('...')` in the main process. */
 function handledChannels(): string[] {
-  const source = [mainRouterSource(), readFileSync(join(process.cwd(), 'src/main/ipc/browserImportHandlers.ts'), 'utf8')].join('\n')
+  const source = [mainRouterSource(), ...['browserImportHandlers', 'learningHandlers'].map(name => readFileSync(join(process.cwd(), `src/main/ipc/${name}.ts`), 'utf8'))].join('\n')
   return [...source.matchAll(/\bhandle\(\s*'([^']+)'/g)].map(
     (match) => match[1] as string
   )

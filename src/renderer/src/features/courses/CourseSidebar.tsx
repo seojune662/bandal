@@ -41,6 +41,7 @@ import {
   type CourseColor
 } from './courseColors'
 import './courses.css'
+import { LearningSidebar } from '../learning/LearningProjects'
 
 interface ContextMenuState {
   course: Course
@@ -339,6 +340,7 @@ export function CourseSidebar(): JSX.Element {
   return (
     <aside className="app-rail app-rail--left" aria-label="과목 목록">
       <UniversityShortcuts />
+      <LearningSidebar />
 
       <div className="rail-heading">
         <div>

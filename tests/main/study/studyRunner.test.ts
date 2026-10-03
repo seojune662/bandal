@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { RunStudyToolInput, StudyToolId } from '../../../src/shared/types/study'
 import { PathTraversalError, ValidationError } from '../../../src/main/db/errors'
 import { createStudyRunner } from '../../../src/main/features/study/studyRunner'
+import { createPackStore } from '../../../src/main/features/workflowPacks/packStore'
+import { LEGACY_STUDY_PACKS } from '../../../src/shared/workflowPacks/builtins'
 
 const COURSE_ID = 'course-1'
 const ALL_TOOL_IDS: StudyToolId[] = [
@@ -80,6 +82,19 @@ describe('studyRunner', () => {
 
     expect(result.relPath).toBe('AI 학습자료/퀴즈 - Chap1 2026-08-07-2.md')
     expect(capturedPrompt).toContain('./AI 학습자료/퀴즈 - Chap1 2026-08-07-2.md')
+  })
+
+  test('adapts the native builtin catalog to its original study contract and honors disabling', async () => {
+    const store = createPackStore({ userDataPath: testDir })
+    const ask = vi.fn(async () => undefined)
+    const runner = createStudyRunner({ getCourse: () => ({ name: '운영체제', folder: courseFolder }), packStore: store, ask })
+    expect(store.resolve('quiz')?.schemaVersion).toBe(2)
+    await runner.run({ courseId: COURSE_ID, tool: 'quiz', relPath: 'Chap1.pdf' })
+    expect(ask.mock.calls[0]?.[1]).toContain(LEGACY_STUDY_PACKS.find(pack => pack.id === 'quiz')!.recipe)
+    expect(ask.mock.calls[0]?.[1]).not.toContain('learning_submit_result')
+    store.setEnabled('quiz', false)
+    await expect(runner.run({ courseId: COURSE_ID, tool: 'quiz', relPath: 'Chap1.pdf' })).rejects.toThrow('비활성화')
+    expect(ask).toHaveBeenCalledOnce()
   })
 
   test('reserves a dispatched path while the agent is still writing it', async () => {

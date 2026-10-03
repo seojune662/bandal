@@ -169,6 +169,8 @@ export interface ShortcutPassthrough {
 }
 
 export interface PushEvents {
+  'learning:changed': { binding: import('../types/learning').LearningBinding }
+
   'recordings:event': RecordingEvent
   'recordings:modelsChanged': SpeechModelState[]
   'chat:event-batch': ChatEventBatch

@@ -269,7 +269,10 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         }
       })
     }
-    const order = ['open-url', 'new-note', 'new-browser', 'chat', 'recording', 'new-whiteboard', 'board']
+    if (matches('학습 공간', '영어', '단어장', '플래시카드', '퀴즈')) {
+      result.push({ id: 'learning', label: '학습 공간', hint: '읽기 · 단어장 · 복습', icon: <TabKindIcon kind="learning" />, run: () => openTab(descriptorFor('learning', { courseId: course.id })) })
+    }
+    const order = ['open-url', 'new-note', 'new-browser', 'chat', 'learning', 'recording', 'new-whiteboard', 'board']
     result.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
     const activePanelItems = [...pluginPanelsById({ plugins }).values()].filter(
       (item) => item.plugin.enabled && item.plugin.state === 'active'

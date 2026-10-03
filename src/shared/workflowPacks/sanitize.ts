@@ -1,6 +1,8 @@
 import {
   WORKFLOW_PACK_SCHEMA_VERSION,
+  LEGACY_WORKFLOW_PACK_SCHEMA_VERSION,
   type WorkflowPack,
+  type WorkflowPackExperience,
   type WorkflowPackFollowUp,
   type WorkflowPackScope
 } from '../types/workflowPack'
@@ -178,13 +180,22 @@ export function sanitizeWorkflowPack(raw: unknown): {
   if (!isRecord(raw)) {
     return { pack: null, warnings: ['workflow pack must be an object.'] }
   }
-  if (raw['schemaVersion'] !== WORKFLOW_PACK_SCHEMA_VERSION) {
+  const schemaVersion = raw['schemaVersion']
+  if (schemaVersion !== WORKFLOW_PACK_SCHEMA_VERSION && schemaVersion !== LEGACY_WORKFLOW_PACK_SCHEMA_VERSION) {
     return {
       pack: null,
       warnings: [
-        `schemaVersion must be ${WORKFLOW_PACK_SCHEMA_VERSION}; received ${warningValue(raw['schemaVersion'])}.`
+        `schemaVersion must be 1 or ${WORKFLOW_PACK_SCHEMA_VERSION}; received ${warningValue(schemaVersion)}.`
       ]
     }
+  }
+
+  const experiences: readonly WorkflowPackExperience[] = ['article-vocabulary', 'quiz', 'flashcards']
+  const experience = experiences.includes(raw['experience'] as WorkflowPackExperience)
+    ? raw['experience'] as WorkflowPackExperience
+    : null
+  if (schemaVersion === 2 && experience === null) {
+    return { pack: null, warnings: ['experience must be "article-vocabulary", "quiz", or "flashcards" for schemaVersion 2.'] }
   }
 
   const id = requiredString(raw['id'], 'id', warnings)
@@ -232,7 +243,7 @@ export function sanitizeWorkflowPack(raw: unknown): {
   }
 
   const pack: WorkflowPack = {
-    schemaVersion: WORKFLOW_PACK_SCHEMA_VERSION,
+    ...(schemaVersion === 2 ? { schemaVersion: 2 as const, experience: experience! } : { schemaVersion: 1 as const }),
     id,
     name: name.value,
     description,

@@ -27,13 +27,20 @@
     "@milkdown/exception"
   ],
   "ignoreBinaries": [
-    "initdb",
-    "pg_ctl",
-    "psql",
+    "swift",
+    "lipo",
     "supabase",
     "iconutil",
     "plutil",
     "where.exe"
   ],
-  "ignoreExportsUsedInFile": true
+  "ignoreExportsUsedInFile": true,
+  "ignoreIssues": {
+    "src/main/features/browser/index.ts": ["exports"],
+    "src/renderer/src/features/ink/ImageShape.tsx": ["exports"],
+    "src/renderer/src/features/ink/index.ts": ["exports"],
+    "src/shared/account/nickname.ts": ["exports"],
+    "src/shared/types/browserProfile.ts": ["exports"],
+    "src/shared/types/whiteboard.ts": ["types"]
+  }
 }

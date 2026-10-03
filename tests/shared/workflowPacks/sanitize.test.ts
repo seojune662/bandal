@@ -30,8 +30,20 @@ describe('sanitizeWorkflowPack', () => {
     for (const raw of [null, undefined, 42, 'pack', []]) {
       expect(sanitizeWorkflowPack(raw).pack).toBeNull()
     }
-    const wrongVersion = { ...validPack(), schemaVersion: 2 }
+    const wrongVersion = { ...validPack(), schemaVersion: 3 }
     expect(sanitizeWorkflowPack(wrongVersion).pack).toBeNull()
+  })
+
+  test('round-trips v2 native metadata while preserving imported v1 recipes', () => {
+    for (const experience of ['article-vocabulary', 'quiz', 'flashcards']) {
+      const native = { ...validPack(), schemaVersion: 2, experience }
+      expect(sanitizeWorkflowPack(native)).toEqual({ pack: native, warnings: [] })
+    }
+    expect(sanitizeWorkflowPack({ ...validPack(), experience: 'quiz' }).pack)
+      .toEqual(validPack())
+    for (const experience of [undefined, null, 'html', 'Quiz']) {
+      expect(sanitizeWorkflowPack({ ...validPack(), schemaVersion: 2, experience }).pack).toBeNull()
+    }
   })
 
   test('drops each unknown tool and preserves known agent and browser tools', () => {
