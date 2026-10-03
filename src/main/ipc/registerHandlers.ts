@@ -1,4 +1,5 @@
 import { createLearningRepo, normalizeLearningDraft } from '../features/learning'
+import { createLearningApprovalDialogs } from '../features/learning/approvalDialogs'
 import { createLearningCache } from '../features/learning/learningCache'
 import { createLearningRuntime } from '../features/learning/learningRuntime'
 import { createArticleExtractor, matchArticleWords } from '../features/learning/articleExtractor'
@@ -1174,6 +1175,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // here: destructive tools confirm, every call is journalled, and per-turn
   // caps stop a poisoned document from creating hundreds of anything.
   const agentJournal = createAgentJournal(db)
+  const learningApprovals = createLearningApprovalDialogs({
+    getOwner: getMainWindow,
+    show: (owner, options) => dialog.showMessageBox(owner, options)
+  })
   const agentConfirmer = createAgentConfirmer({
     allow: request => {
       const policy = chatRepo.getSession(request.conversationId)?.accessPolicy ?? DEFAULT_AI_ACCESS
@@ -1186,13 +1191,15 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       broadcast('agentTools:confirm', request)
       // Dedicated study conversations have no chat panel to show approval cards.
       if (learningRuntime?.isStudySession(request.conversationId)) {
-        void dialog.showMessageBox({ type: 'question', message: request.summary,
+        void learningApprovals.request(request.requestId, { type: 'question', message: request.summary,
           detail: request.details.join('\n'), buttons: ['취소', '이번만 허용'], defaultId: 0, cancelId: 0 })
-          .then(answer => agentConfirmer.resolve({ requestId: request.requestId, approved: answer.response === 1, scope: 'once' }))
-          .catch(() => agentConfirmer.resolve({ requestId: request.requestId, approved: false }))
+          .then(answer => agentConfirmer.resolve({ requestId: request.requestId, approved: answer?.response === 1, scope: 'once' }))
       }
     },
-    changed: (state) => broadcast('agentTools:confirmationChanged', state)
+    changed: (state) => {
+      if (state.status !== 'pending') learningApprovals.cancel(state.request.requestId)
+      broadcast('agentTools:confirmationChanged', state)
+    }
   })
   const packStore = createPackStore({ userDataPath: deps.userDataPath })
   // One guard is shared by every MCP server and the pack runner. Creating a
@@ -1977,6 +1984,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   app.on('will-quit', () => {
     agentConfirmer.disposeAll()
+    learningApprovals.dispose()
     browserRuns.disposeAll()
     materialsWatcher.dispose()
     learningRuntime?.dispose()
@@ -2211,9 +2219,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       if (!summary || !summary.enabled) throw new Error('학습 팩을 사용할 수 없어요.')
       if (summary.source === 'builtin' || summary.approvedAt) return
       coursesRepo.getById(courseId)
-      const answer = await dialog.showMessageBox({ type: 'question', message: `사용자 설치 팩 «${summary.pack.name}»을 실행할까요?`,
+      const answer = await learningApprovals.request(randomUUID(), { type: 'question', message: `사용자 설치 팩 «${summary.pack.name}»을 실행할까요?`,
         detail: `버전: ${summary.pack.version}\n${summary.pack.description}`, buttons: ['취소', '이번만 허용', '항상 허용'], defaultId: 0, cancelId: 0 })
-      if (answer.response === 0) throw new Error('학습 팩 실행이 취소되었습니다.')
+      if (!answer || (answer.response !== 1 && answer.response !== 2)) throw new Error('학습 팩 실행이 취소되었습니다.')
       if (answer.response === 2) packStore.approve(id, new Date().toISOString())
     },
     changedCourse: () => broadcast('courses:changed', {}),

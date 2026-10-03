@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { LearningBinding, LearningSourceRef } from '../src/shared/types/learning'
 import { createLearningRepo } from '../src/main/features/learning/learningRepo'
 import { learningHash, splitLearningParagraphs } from '../src/main/features/learning/model'
+import { BUILTIN_PACKS } from '../src/shared/workflowPacks/builtins'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 
 /** Keep provider authentication/network out of these native storage/UI checks. */
@@ -205,5 +206,44 @@ test('creates a named learning subfolder in a short zoomed window with reachable
     const relocated = await bandal.page.evaluate(async courseId => (await window.bandal.invoke('learning:list', { courseId })).projects, projects[0]!.binding.courseId)
     expect(relocated).toHaveLength(1)
     expect(relocated[0]!.binding.rootRelPath).toBe('Archive/Library/Science')
+  } finally { await bandal.close() }
+})
+
+test('native learning pack approval keeps app IPC responsive until its actual dialog is canceled', async () => {
+  const bandal = await launchBandal()
+  try {
+    await isolateProvider(bandal)
+    const project = await bandal.page.evaluate(() => window.bandal.invoke('learning:create', { placement: 'standalone', name: '승인 응답성', topic: 'Science' }))
+    const quiz = BUILTIN_PACKS.find(pack => pack.id === 'quiz')!
+    const imported = await bandal.page.evaluate(json => window.bandal.invoke('packs:importText', { json }), JSON.stringify({ ...quiz, name: '승인 응답성 검증 팩' }))
+    await bandal.app.evaluate(({ dialog, BrowserWindow }) => {
+      const native = dialog.showMessageBox.bind(dialog)
+      const probe = { waiting: false, parented: false, signal: null as AbortSignal | null, controller: new AbortController() }
+      ;(globalThis as unknown as { learningApprovalProbe: typeof probe }).learningApprovalProbe = probe
+      dialog.showMessageBox = ((owner: Electron.BrowserWindow, options: Electron.MessageBoxOptions) => {
+        probe.parented = owner instanceof BrowserWindow && !owner.isDestroyed()
+        if (!probe.parented || !options?.signal) throw new Error('Learning approval requires a live parent and abort signal')
+        probe.signal = options.signal
+        options.signal.addEventListener('abort', () => probe.controller.abort(), { once: true })
+        probe.waiting = true
+        // Delegate to the real native dialog. A watchdog bounds failures without approving anything.
+        const timer = setTimeout(() => probe.controller.abort(), 10_000)
+        return native(owner, { ...options, signal: probe.controller.signal }).finally(() => { clearTimeout(timer); probe.waiting = false })
+      }) as typeof dialog.showMessageBox
+    })
+    const generating = bandal.page.evaluate(async input => {
+      try { await window.bandal.invoke('study:generate', input); return 'unexpectedly allowed' }
+      catch (error) { return String(error) }
+    }, { courseId: project.binding.courseId, rootRelPath: project.binding.rootRelPath, packId: imported.pack.id, source: { kind: 'course' as const } })
+    await expect.poll(() => bandal.app.evaluate(() => (globalThis as unknown as { learningApprovalProbe: { waiting: boolean } }).learningApprovalProbe.waiting)).toBe(true)
+    const state = await bandal.page.evaluate(binding => window.bandal.invoke('learning:get', { binding }), project.binding)
+    expect(state.name).toBe('승인 응답성')
+    expect((await bandal.page.evaluate(() => window.bandal.invoke('courses:list', {}))).map(course => course.name)).toContain('승인 응답성')
+    expect(await bandal.app.evaluate(() => (globalThis as unknown as { learningApprovalProbe: { waiting: boolean; parented: boolean; signal: AbortSignal } }).learningApprovalProbe.waiting)).toBe(true)
+    await bandal.app.evaluate(() => (globalThis as unknown as { learningApprovalProbe: { controller: AbortController } }).learningApprovalProbe.controller.abort())
+    expect(await generating).toContain('학습 팩 실행이 취소되었습니다')
+    const packs = await bandal.page.evaluate(() => window.bandal.invoke('packs:list', {}))
+    expect(packs.packs.find(item => item.pack.id === imported.pack.id)?.approvedAt).toBeNull()
+    expect((await bandal.page.evaluate(binding => window.bandal.invoke('learning:get', { binding }), project.binding)).runs).toHaveLength(0)
   } finally { await bandal.close() }
 })

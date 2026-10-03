@@ -173,6 +173,7 @@ test('AI transport and brand updates select chat/context/orb package checks with
 test('learning experience changes select their native package regression including CSS and contracts', () => {
   for (const file of [
     'src/main/features/learning/articleExtractor.ts',
+    'src/main/features/learning/approvalDialogs.ts',
     'src/main/features/learning/materialSource.ts',
     'src/main/features/workflowPacks/packStore.ts',
     'src/main/ipc/learningHandlers.ts',
