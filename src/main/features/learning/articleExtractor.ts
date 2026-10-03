@@ -169,13 +169,19 @@ async function createPublicPage(partition: string, validateUrl: (url: string) =>
   anonymousSession.setPermissionCheckHandler(() => false)
   let closed = false
   const proxy = await createPinnedArticleProxy()
-  let contents: WebContents | undefined
+  // Electron destroys a WebContentsView's contents when the unattached view is
+  // collected. Keep the owning view alive until this page is explicitly closed.
+  let view: WebContentsView | undefined
   const close = async (): Promise<void> => {
     if (closed) return
     closed = true
     anonymousSession.webRequest.onBeforeRequest(null)
-    if (contents && !contents.isDestroyed()) contents.close({ waitForBeforeUnload: false })
+    const ownedView = view
+    view = undefined
     const cleanup = await Promise.allSettled([
+      Promise.resolve().then(() => {
+        if (ownedView && !ownedView.webContents.isDestroyed()) ownedView.webContents.close({ waitForBeforeUnload: false })
+      }),
       proxy.close(), anonymousSession.closeAllConnections(),
       anonymousSession.clearStorageData(), anonymousSession.clearCache()
     ])
@@ -197,10 +203,10 @@ async function createPublicPage(partition: string, validateUrl: (url: string) =>
       void approval.then(() => callback({ cancel: closed }), () => callback({ cancel: true }))
     })
     anonymousSession.on('will-download', (event) => event.preventDefault())
-    const view = new WebContentsView({ webPreferences: { session: anonymousSession, nodeIntegration: false,
+    view = new WebContentsView({ webPreferences: { session: anonymousSession, nodeIntegration: false,
       contextIsolation: true, sandbox: true, webSecurity: true, allowRunningInsecureContent: false,
       backgroundThrottling: false, autoplayPolicy: 'user-gesture-required' } })
-    contents = view.webContents
+    const contents = view.webContents
     contents.setWindowOpenHandler(() => ({ action: 'deny' }))
     contents.setWebRTCIPHandlingPolicy('disable_non_proxied_udp')
     contents.on('login', (event, _details, _auth, callback) => { event.preventDefault(); callback() })

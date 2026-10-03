@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { join } from 'node:path'
 import type { LearningBinding, LearningSourceRef } from '../src/shared/types/learning'
 import { createLearningRepo } from '../src/main/features/learning/learningRepo'
@@ -246,4 +247,89 @@ test('native learning pack approval keeps app IPC responsive until its actual di
     expect(packs.packs.find(item => item.pack.id === imported.pack.id)?.approvedAt).toBeNull()
     expect((await bandal.page.evaluate(binding => window.bandal.invoke('learning:get', { binding }), project.binding)).runs).toHaveLength(0)
   } finally { await bandal.close() }
+})
+
+test('anonymous article extraction retains its native view through main-process garbage collection and closes it afterward', async () => {
+  const host = 'learning-gc-fixture.example.org'
+  const publicIp = '93.184.216.34'
+  const url = `http://${host}/article`
+  const paragraph = 'The city is changing as people work together to build a better future. They have new ideas for energy and transport, and the local community can learn from the experience. A careful article explains how the change will affect their daily lives. We are looking at the results with scientists who study the climate and share their findings with the public.'
+  let requests = 0
+  let releaseResponse: (() => void) | undefined
+  const server = createServer((request, response) => {
+    if (request.url !== '/article') { response.writeHead(404); response.end(); return }
+    requests++
+    const watchdog = setTimeout(() => { response.writeHead(504); response.end() }, 20_000)
+    response.once('close', () => clearTimeout(watchdog))
+    releaseResponse = () => {
+      clearTimeout(watchdog)
+      if (response.writableEnded || response.destroyed) return
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+      response.end(`<html lang="en"><head><title>Article lifetime fixture</title></head><body><article><h1>Article lifetime fixture</h1>${Array.from({ length: 4 }, () => `<p>${paragraph}</p>`).join('')}</article></body></html>`)
+    }
+  })
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('Article fixture did not listen')
+  const bandal = await launchBandal()
+  try {
+    // Substitute only this test's public DNS answer and pinned numeric socket.
+    // The product URL guard, anonymous session, proxy and native view stay real.
+    await bandal.app.evaluate(({ app }, { host, publicIp, port, url }) => {
+      type BuiltinFunction = (...args: unknown[]) => unknown
+      const dns = process.getBuiltinModule('node:dns/promises') as unknown as { lookup: BuiltinFunction }
+      const net = process.getBuiltinModule('node:net') as unknown as { createConnection: BuiltinFunction }
+      const v8 = process.getBuiltinModule('node:v8') as unknown as { setFlagsFromString(flags: string): void }
+      const vm = process.getBuiltinModule('node:vm') as unknown as { runInNewContext(code: string): unknown }
+      const lookup = dns.lookup, connect = net.createConnection
+      v8.setFlagsFromString('--expose-gc')
+      const gc = vm.runInNewContext('gc') as () => void
+      if (typeof gc !== 'function') throw new Error('Main-process GC is unavailable')
+      const probe = { gc, contents: undefined as import('electron').WebContents | undefined, targets: [] as { host: string; port: number }[], restore: () => {} }
+      dns.lookup = (...args) => args[0] === host ? Promise.resolve([{ address: publicIp, family: 4 }]) : lookup(...args)
+      net.createConnection = (...args) => {
+        const target = args[0] as { host?: string; port?: number } | undefined
+        if (target?.host === publicIp && target.port === 80) {
+          probe.targets.push({ host: target.host, port: target.port })
+          return connect({ host: '127.0.0.1', port })
+        }
+        return connect(...args)
+      }
+      const created = (_event: unknown, contents: import('electron').WebContents): void => {
+        contents.on('did-start-navigation', details => {
+          if (details.url === url && details.isMainFrame) probe.contents = contents
+        })
+      }
+      app.on('web-contents-created', created)
+      probe.restore = () => { dns.lookup = lookup; net.createConnection = connect; app.removeListener('web-contents-created', created) }
+      ;(globalThis as unknown as { learningGcProbe: typeof probe }).learningGcProbe = probe
+    }, { host, publicIp, port: address.port, url })
+    const project = await bandal.page.evaluate(() => window.bandal.invoke('learning:create', { placement: 'standalone', name: 'Article lifetime', topic: 'Cities', readingMinutes: 4 }))
+    const reading = bandal.page.evaluate(async ({ binding, url }) => {
+      try { return { snapshot: await window.bandal.invoke('learning:addArticle', { binding, url }), error: null } }
+      catch (error) { return { snapshot: null, error: error instanceof Error ? error.message : String(error) } }
+    }, { binding: project.binding, url })
+    await expect.poll(() => requests).toBe(1)
+    const duringLoad = await bandal.app.evaluate(async () => {
+      const probe = (globalThis as unknown as { learningGcProbe: { gc(): void; contents?: import('electron').WebContents; targets: { host: string; port: number }[] } }).learningGcProbe
+      // Observe contents only. Retaining the owning view here would mask the bug.
+      for (let index = 0; index < 10; index++) { probe.gc(); await new Promise(resolve => setTimeout(resolve, 60)) }
+      return { destroyed: probe.contents?.isDestroyed() ?? true, targets: probe.targets, loading: probe.contents?.isDestroyed() ? false : probe.contents?.isLoading() }
+    })
+    expect(duringLoad).toEqual({ destroyed: false, loading: true, targets: [{ host: publicIp, port: 80 }] })
+    releaseResponse!()
+    const result = await reading
+    expect(result.error).toBeNull()
+    expect(result.snapshot?.articles).toHaveLength(1)
+    const article = await bandal.page.evaluate(({ binding, id }) => window.bandal.invoke('learning:getArticle', { binding, id }), { binding: project.binding, id: result.snapshot!.articles[0]!.id })
+    expect(article).toMatchObject({ title: 'Article lifetime fixture', access: 'public', sourceUrl: url })
+    expect(article.wordCount).toBeGreaterThan(200)
+    await expect.poll(() => bandal.app.evaluate(() => (globalThis as unknown as { learningGcProbe: { contents?: import('electron').WebContents } }).learningGcProbe.contents?.isDestroyed() ?? false)).toBe(true)
+  } finally {
+    releaseResponse?.()
+    await bandal.app.evaluate(() => (globalThis as unknown as { learningGcProbe?: { restore(): void } }).learningGcProbe?.restore()).catch(() => {})
+    await bandal.close()
+    server.closeAllConnections()
+    await new Promise<void>(resolve => server.close(() => resolve()))
+  }
 })
