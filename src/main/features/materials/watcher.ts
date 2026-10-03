@@ -21,6 +21,8 @@ export interface MaterialsWatcher {
   /** Idempotent: re-watching an already-watched course is a no-op. */
   watch(courseId: string): void
   unwatch(courseId: string): void
+  /** Close the course's native handles until the last returned token resumes. */
+  pause(courseId: string): Promise<() => Promise<void>>
   dispose(): void
 }
 
@@ -53,6 +55,9 @@ export function createMaterialsWatcher(
 ): MaterialsWatcher {
   const debounceMs = deps.debounceMs ?? MATERIALS_WATCH_DEBOUNCE_MS
   const entries = new Map<string, WatchEntry>()
+  const requested = new Set<string>()
+  const closing = new Map<string, Promise<void>>()
+  const paused = new Map<string, { count: number; ready: Promise<void> }>()
 
   function scheduleChange(courseId: string, structural = true, relPath?: string): void {
     const entry = entries.get(courseId)
@@ -70,58 +75,90 @@ export function createMaterialsWatcher(
     }, debounceMs)
   }
 
-  function stop(courseId: string): void {
+  function stop(courseId: string): Promise<void> {
     const entry = entries.get(courseId)
-    if (entry === undefined) return
+    if (entry === undefined) return closing.get(courseId) ?? Promise.resolve()
     entries.delete(courseId)
     if (entry.timer !== null) clearTimeout(entry.timer)
-    void entry.watcher.close().catch((error: unknown) => {
-      console.warn(`[materials] failed to close watcher for ${courseId}:`, error)
+    const task = entry.watcher.close().finally(() => {
+      if (closing.get(courseId) === task) closing.delete(courseId)
     })
+    closing.set(courseId, task)
+    return task
+  }
+
+  async function start(courseId: string): Promise<void> {
+    await closing.get(courseId)
+    if (!requested.has(courseId) || paused.has(courseId) || entries.has(courseId)) return
+    const folder = deps.getCourseFolder(courseId)
+    const watcher = watch(folder, {
+      ignoreInitial: true,
+      ignored: isHidden,
+      // The folder itself may be renamed/removed while watched; polling for
+      // existence is unnecessary — missing paths simply stop emitting.
+      ignorePermissionErrors: true
+    })
+    const entry = { watcher, timer: null, structural: false, paths: new Set<string>() }
+    entries.set(courseId, entry)
+    watcher.on('ready', () => { if (entries.get(courseId) === entry) deps.onReady?.(courseId) })
+    watcher.on('all', (event, path) => {
+      if (entries.get(courseId) !== entry) return
+      const relPath = relative(folder, path).split(sep).join('/')
+      if (
+        event === 'change' &&
+        deps.ignoreContentChange?.(courseId, relPath)
+      ) return
+      scheduleChange(courseId, event !== 'change', relPath)
+    })
+    watcher.on('error', (error) => {
+      // e.g. the folder disappeared mid-scan. Keep the watcher; surface a
+      // change so the renderer refreshes to the (possibly empty) tree.
+      if (entries.get(courseId) !== entry) return
+      console.warn(`[materials] watcher error for ${courseId}:`, error)
+      scheduleChange(courseId)
+    })
+  }
+
+  const warn = (courseId: string, error: unknown): void => {
+    console.warn(`[materials] watcher transition failed for ${courseId}:`, error)
   }
 
   return {
     watch(courseId) {
-      if (entries.has(courseId)) return
-      let folder: string
-      try {
-        folder = deps.getCourseFolder(courseId)
-      } catch (error) {
-        console.warn(`[materials] cannot watch unknown course ${courseId}:`, error)
-        return
-      }
-      const watcher = watch(folder, {
-        ignoreInitial: true,
-        ignored: isHidden,
-        // The folder itself may be renamed/removed while watched; polling for
-        // existence is unnecessary — missing paths simply stop emitting.
-        ignorePermissionErrors: true
-      })
-      entries.set(courseId, { watcher, timer: null, structural: false, paths: new Set() })
-      watcher.on('ready', () => deps.onReady?.(courseId))
-      watcher.on('all', (event, path) => {
-        const relPath = relative(folder, path).split(sep).join('/')
-        if (
-          event === 'change' &&
-          deps.ignoreContentChange?.(courseId, relPath)
-        ) return
-        scheduleChange(courseId, event !== 'change', relPath)
-      })
-      watcher.on('error', (error) => {
-        // e.g. the folder disappeared mid-scan. Keep the watcher; surface a
-        // change so the renderer refreshes to the (possibly empty) tree.
-        console.warn(`[materials] watcher error for ${courseId}:`, error)
-        scheduleChange(courseId)
-      })
+      requested.add(courseId)
+      void start(courseId).catch(error => warn(courseId, error))
     },
 
     unwatch(courseId) {
-      stop(courseId)
+      requested.delete(courseId)
+      void stop(courseId).catch(error => warn(courseId, error))
+    },
+
+    async pause(courseId) {
+      let state = paused.get(courseId)
+      if (!state) {
+        state = { count: 0, ready: stop(courseId) }
+        paused.set(courseId, state)
+      }
+      state.count += 1
+      try { await state.ready } catch (error) {
+        if (--state.count === 0) paused.delete(courseId)
+        throw error
+      }
+      let resumed = false
+      return async () => {
+        if (resumed) return
+        resumed = true
+        if (--state.count > 0) return
+        paused.delete(courseId)
+        await start(courseId)
+      }
     },
 
     dispose() {
+      requested.clear()
       for (const courseId of [...entries.keys()]) {
-        stop(courseId)
+        void stop(courseId).catch(error => warn(courseId, error))
       }
     }
   }

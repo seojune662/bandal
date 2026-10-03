@@ -192,9 +192,16 @@ test('learning experience changes select their native package regression includi
 })
 
 test('Windows rename recovery verifies learning folder rebinding and material moves', () => {
-  const plan = planChecks(['src/main/features/materials/renameWithRetry.ts'])
-  assert.equal(plan.full, false)
-  assert.ok(plan.e2e.includes('e2e/learning.spec.ts'))
-  assert.ok(plan.e2e.includes('e2e/materialsDrag.spec.ts'))
-  assert.ok(plan.e2e.includes('e2e/coursePerformance.spec.ts'))
+  for (const file of [
+    'src/main/features/materials/renameWithRetry.ts',
+    'src/main/features/materials/watcher.ts',
+    'src/main/background/materialsWatcher.ts',
+    'src/main/background/watcherHost.ts'
+  ]) {
+    const plan = planChecks([file])
+    assert.equal(plan.full, false)
+    assert.ok(plan.e2e.includes('e2e/learning.spec.ts'), file)
+    assert.ok(plan.e2e.includes('e2e/materialsDrag.spec.ts'), file)
+    assert.ok(plan.e2e.includes('e2e/coursePerformance.spec.ts'), file)
+  }
 })

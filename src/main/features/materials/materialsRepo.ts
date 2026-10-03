@@ -80,6 +80,8 @@ export interface MaterialsRepoDeps {
   scanLimits?: MaterialsScanLimits
   onIndexBuilt?: () => void
   onPathChanged?: (change: { courseId: string; fromRelPath: string; toRelPath: string; isDirectory: boolean }) => void
+  /** Await native watcher close before a path mutation; restore it afterwards. */
+  pauseWatching?: (courseId: string) => Promise<() => Promise<void>>
 }
 
 export interface MaterialsScanLimits {
@@ -255,6 +257,9 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
   const treeCache = new Map<string, { folder: string; nodes: MaterialNode[] }>()
   const generations = new Map<string, number>()
   const scans = new Map<string, Promise<MaterialNode[]>>()
+  const scanWork = new Map<string, Promise<MaterialNode[] | null>>()
+  const mutationTails = new Map<string, Promise<unknown>>()
+  const scanGates = new Map<string, Promise<void>>()
   db.exec(`CREATE TABLE IF NOT EXISTS material_tree_snapshots (
     course_id TEXT PRIMARY KEY REFERENCES courses(id) ON DELETE CASCADE,
     folder TEXT NOT NULL, tree TEXT NOT NULL
@@ -267,6 +272,33 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
   function notifyPathChanged(courseId: string, fromRelPath: string, toRelPath: string, isDirectory: boolean): void {
     try { deps.onPathChanged?.({ courseId, fromRelPath, toRelPath, isDirectory }) }
     catch (error) { console.warn(`[materials] path-change hook failed for "${fromRelPath}" -> "${toRelPath}"`, error) }
+  }
+
+  function mutatePath<T>(courseId: string, operation: () => Promise<T>): Promise<T> {
+    const id = requireId(courseId, 'courseId')
+    const previous = mutationTails.get(id) ?? Promise.resolve()
+    const task = previous.catch(() => undefined).then(async () => {
+      let release!: () => void
+      const gate = new Promise<void>(resolve => { release = resolve })
+      scanGates.set(id, gate)
+      let resume: (() => Promise<void>) | undefined
+      try {
+        resume = await deps.pauseWatching?.(id)
+        // Drain the real walk/index work, not scans' invalidation continuation:
+        // that continuation may need to rescan and therefore await our gate.
+        await scanWork.get(id)?.catch(() => undefined)
+        return await operation()
+      } finally {
+        try { await resume?.() } catch (error) {
+          console.error(`[materials] watcher restoration failed for ${id}:`, error)
+        }
+        scanGates.delete(id)
+        release()
+      }
+    })
+    mutationTails.set(id, task)
+    void task.finally(() => { if (mutationTails.get(id) === task) mutationTails.delete(id) }).catch(() => undefined)
+    return task
   }
 
   function requireCourseFolder(courseId: string): { id: string; folder: string } {
@@ -332,13 +364,15 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
   }
 
   async function cachedTree(courseId: string, folder: string): Promise<MaterialNode[]> {
+    const gate = scanGates.get(courseId)
+    if (gate) { await gate; return cachedTree(courseId, getCourseFolder(courseId)) }
     const cached = treeCache.get(courseId)
     if (cached?.folder === folder) return cached.nodes
     const pending = scans.get(courseId)
     if (pending) return pending
     const generation = generations.get(courseId) ?? 0
     const current = (): boolean => (generations.get(courseId) ?? 0) === generation && getCourseFolder(courseId) === folder
-    const task = (async () => {
+    const work = (async () => {
       let scan: MaterialWalk
       try { scan = await (deps.scan ?? scanMaterialTree)(folder, scanLimits) }
       catch (error) {
@@ -359,7 +393,10 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         .run(courseId, folder, JSON.stringify(scan.nodes)))
       deps.onIndexBuilt?.()
       return scan.nodes
-    })().then(async result => {
+    })()
+    scanWork.set(courseId, work)
+    void work.finally(() => { if (scanWork.get(courseId) === work) scanWork.delete(courseId) }).catch(() => undefined)
+    const task = work.then(async result => {
       scans.delete(courseId)
       return result ?? cachedTree(courseId, getCourseFolder(courseId))
     }, error => { scans.delete(courseId); throw error })
@@ -535,23 +572,25 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           ? targetName
           : posix.join(input.toDirRelPath, targetName)
       const destAbs = resolveCoursePath(folder, relPath)
-      await renameWithRetry(sourceAbs, destAbs, () => {
-        assertRealInside(folder, sourceAbs)
-        assertRealInside(folder, destDirAbs)
-        assertRealInside(folder, destAbs)
-        assertFileOrDirectory(sourceAbs, input.fromRelPath)
-        if (!existsSync(destDirAbs) || !lstatSync(destDirAbs).isDirectory()) {
-          throw new NotFoundError('material directory', input.toDirRelPath)
-        }
-        if (destDirAbs === sourceAbs || destDirAbs.startsWith(sourceAbs + sep)) {
-          throw new ValidationError('폴더를 자기 안으로 옮길 수 없습니다')
-        }
-        if (existsSync(destAbs)) throw new ConflictError(`material "${relPath}" already exists`)
+      return mutatePath(input.courseId, async () => {
+        await renameWithRetry(sourceAbs, destAbs, () => {
+          assertRealInside(folder, sourceAbs)
+          assertRealInside(folder, destDirAbs)
+          assertRealInside(folder, destAbs)
+          assertFileOrDirectory(sourceAbs, input.fromRelPath)
+          if (!existsSync(destDirAbs) || !lstatSync(destDirAbs).isDirectory()) {
+            throw new NotFoundError('material directory', input.toDirRelPath)
+          }
+          if (destDirAbs === sourceAbs || destDirAbs.startsWith(sourceAbs + sep)) {
+            throw new ValidationError('폴더를 자기 안으로 옮길 수 없습니다')
+          }
+          if (existsSync(destAbs)) throw new ConflictError(`material "${relPath}" already exists`)
+        })
+        const courseId = requireId(input.courseId, 'courseId')
+        invalidate(courseId)
+        notifyPathChanged(courseId, input.fromRelPath, relPath, sourceKind === 'dir')
+        return { relPath }
       })
-      const courseId = requireId(input.courseId, 'courseId')
-      invalidate(courseId)
-      notifyPathChanged(courseId, input.fromRelPath, relPath, sourceKind === 'dir')
-      return { relPath }
     },
 
     async readFile(courseId, relPath) {
@@ -601,16 +640,18 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       if (existsSync(destinationAbs)) {
         throw new ConflictError(`material "${destinationRelPath}" already exists`)
       }
-      await renameWithRetry(sourceAbs, destinationAbs, () => {
-        assertRealInside(folder, sourceAbs)
-        assertRealInside(folder, destinationAbs)
-        assertFileOrDirectory(sourceAbs, input.relPath)
-        if (existsSync(destinationAbs)) throw new ConflictError(`material "${destinationRelPath}" already exists`)
+      return mutatePath(input.courseId, async () => {
+        await renameWithRetry(sourceAbs, destinationAbs, () => {
+          assertRealInside(folder, sourceAbs)
+          assertRealInside(folder, destinationAbs)
+          assertFileOrDirectory(sourceAbs, input.relPath)
+          if (existsSync(destinationAbs)) throw new ConflictError(`material "${destinationRelPath}" already exists`)
+        })
+        const courseId = requireId(input.courseId, 'courseId')
+        invalidate(courseId)
+        notifyPathChanged(courseId, input.relPath, destinationRelPath, sourceKind === 'dir')
+        return { relPath: destinationRelPath }
       })
-      const courseId = requireId(input.courseId, 'courseId')
-      invalidate(courseId)
-      notifyPathChanged(courseId, input.relPath, destinationRelPath, sourceKind === 'dir')
-      return { relPath: destinationRelPath }
     },
 
     async softDelete(input) {

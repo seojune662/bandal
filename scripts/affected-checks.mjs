@@ -84,7 +84,7 @@ export function planChecks(files, full = false) {
     e2e.add('e2e/browserCompatibility.spec.ts')
   }
   if (has(/^src\/(main\/(features\/(learning|workflowPacks)\/|ipc\/learningHandlers\.ts$)|renderer\/src\/features\/learning\/|shared\/(workflowPacks\/|types\/(learning|workflowPack)\.ts$|ipc\/learningContract\.ts$))/)) e2e.add('e2e/learning.spec.ts')
-  if (has(/^src\/main\/features\/materials\/renameWithRetry\.ts$/)) {
+  if (has(/^src\/main\/(features\/materials\/(renameWithRetry|watcher)\.ts|background\/(materialsWatcher|watcherHost)\.ts)$/)) {
     e2e.add('e2e/learning.spec.ts')
     e2e.add('e2e/materialsDrag.spec.ts')
   }

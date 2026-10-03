@@ -141,6 +141,64 @@ describe('SessionManager', () => {
     expect(settled).toHaveBeenCalledWith({ courseId, sessionId: conversationId, turnSeq: 1, reason: 'success' })
   })
 
+  test.each([
+    ['Bash', { command: 'cat .bandal/COURSE.md' }],
+    ['fileChange', { path: 'notes.md' }],
+    ['Read', { file_path: 'notes.md' }],
+    ['Write', { file_path: 'notes.md' }],
+    ['추가 접근', { permissions: { network: { enabled: true } } }]
+  ])('study denies native %s before course grants or approval UI and can finish with guarded tools', async (toolName, input) => {
+    manager.disposeAll()
+    repo.createSession(conversationId, courseId, 'claude-code', 'study')
+    repo.setAccessPolicy(conversationId, { mode: 'full', scope: { course: true, browser: true, screen: true } })
+    const requestPermission = vi.fn(async () => 'once' as const)
+    const onPermissionResolved = vi.fn()
+    manager = createSessionManager({
+      adapter: fake.adapter, repo, requestPermission, onPermissionResolved,
+      onTurnSettled: settled,
+      getCourse: () => ({ folder: ctx.dir, name: 'Linear Algebra' }),
+      emit: (id, sessionId, event) => emitted.push({ courseId: id, sessionId, event })
+    })
+    // Reopening a persisted study session must retain its background policy.
+    await manager.open(courseId, conversationId)
+    await manager.send(courseId, conversationId, 'find articles')
+    const session = fake.sessions[0]!
+    const respondPermission = session.respondPermission
+    session.respondPermission = (requestId, response) => {
+      respondPermission(requestId, response)
+      session.emit({ type: 'permission-resolved', requestId, behavior: response.behavior })
+    }
+    session.emit({ type: 'permission-request', requestId: 'study-native', toolName, input })
+    expect(session.permissionResponses).toEqual([{ requestId: 'study-native', response: { behavior: 'deny' } }])
+    expect(requestPermission).not.toHaveBeenCalled()
+    expect(onPermissionResolved).toHaveBeenCalledTimes(1)
+    expect((await manager.open(courseId, conversationId)).pendingPermissions).toEqual([])
+    expect(emitted.filter(({ event }) => event.type === 'permission-request')).toEqual([])
+    expect(emitted.filter(({ event }) => event.type === 'permission-resolved')).toHaveLength(1)
+    session.emit({ type: 'tool-start', toolCallId: 'verified', toolName: 'learning_verify_article', label: 'verify article', input: { url: 'https://example.com/article' } })
+    session.emit({ type: 'tool-end', toolCallId: 'verified', ok: true })
+    session.emit({ type: 'turn-complete', stopReason: 'success' })
+    expect(settled).toHaveBeenCalledWith({ courseId, sessionId: conversationId, turnSeq: 1, reason: 'success' })
+    expect(repo.historyTail(conversationId).flatMap(message => message.blocks).some(block => block.kind === 'permission')).toBe(false)
+  })
+
+  test.each(['app', 'desktop'] as const)('%s still routes native command requests through ordinary approval', async surface => {
+    manager.disposeAll()
+    const requestPermission = vi.fn(async () => 'once' as const)
+    manager = createSessionManager({
+      adapter: fake.adapter, repo, requestPermission,
+      getCourse: () => ({ folder: ctx.dir, name: 'Linear Algebra' }),
+      emit: (id, sessionId, event) => emitted.push({ courseId: id, sessionId, event })
+    })
+    await manager.open(courseId, conversationId, surface)
+    await manager.send(courseId, conversationId, 'read course context')
+    const session = fake.sessions[0]!
+    session.emit({ type: 'permission-request', requestId: 'interactive-native', toolName: 'Bash', input: { command: 'cat .bandal/COURSE.md' } })
+    await Promise.resolve()
+    expect(requestPermission).toHaveBeenCalledWith(expect.objectContaining({ conversationId, tool: 'cli:Bash' }))
+    expect(session.permissionResponses).toEqual([{ requestId: 'interactive-native', response: { behavior: 'allow' } }])
+  })
+
   test.each(['cancel', 'close'] as const)('%s settles an active generation as interrupted', async action => {
     await manager.send(courseId, conversationId, 'hello')
     manager[action](courseId, conversationId)
@@ -736,6 +794,19 @@ describe('chatRepo conversations', () => {
 })
 
 describe('buildStudyPrompt', () => {
+  test('background learning uses supplied context and guarded tools without an initial shell read', () => {
+    const prompt = buildStudyPrompt('OS', { surface: 'study', mcpHint: 'Bandal MCP is available' })
+    expect(prompt).not.toContain('READ `.bandal/COURSE.md` FIRST')
+    expect(prompt).not.toContain('app_state')
+    expect(prompt).toContain('Do not read or write files directly, run shell commands')
+    expect(prompt).toContain('read_material')
+    expect(prompt).toContain('learning_verify_article')
+    expect(prompt).toContain('learning_submit_result')
+    expect(prompt).toContain('requires denied permission')
+    expect(prompt).toMatch(/\n\nBandal MCP is available$/u)
+    expect(buildStudyPrompt('OS')).toContain('READ `.bandal/COURSE.md` FIRST')
+  })
+
   test('adds desktop guidance only for desktop conversations', () => {
     const app = buildStudyPrompt('OS')
     const desktop = buildStudyPrompt('OS', { surface: 'desktop' })

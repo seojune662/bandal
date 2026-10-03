@@ -445,6 +445,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     // Trash, never unlink: these are the student's lecture materials and a
     // mis-click must stay recoverable.
     trashItem: (absPath) => shell.trashItem(absPath),
+    pauseWatching: (courseId) => materialsWatcher.pause(courseId),
     onPathChanged: onMaterialPathChanged
   })
   const notesRepo = createNotesRepo({
