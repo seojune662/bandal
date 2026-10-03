@@ -8,6 +8,31 @@ const PAINT = [
   'box-sizing', 'padding', 'border-width', 'border-style', 'border-color',
   'border-radius', 'display', 'vertical-align'
 ]
+const TEXT_PIXEL_LENGTHS = ['font-size', 'line-height', 'letter-spacing', 'padding', 'border-width', 'border-radius', 'width', 'height']
+
+/** Lay out exported HTML at output resolution, never at the viewer's zoom. */
+function normalizeTextObjects(svg: SVGSVGElement, outputWidth: number): void {
+  for (const object of Array.from(svg.querySelectorAll<SVGForeignObjectElement>('.ink-layer__textbox-object'))) {
+    const transform = /^scale\(([^)]+)\)$/.exec(object.getAttribute('transform') ?? '')
+    const [scaleX, scaleY] = transform?.[1]?.trim().split(/[\s,]+/).map(Number) ?? []
+    if (!scaleX || !scaleY || !Number.isFinite(scaleX) || !Number.isFinite(scaleY)) continue
+    const factor = outputWidth * scaleX
+    for (const attribute of ['x', 'y', 'width', 'height']) {
+      const value = Number(object.getAttribute(attribute))
+      if (Number.isFinite(value)) object.setAttribute(attribute, String(value * factor))
+    }
+    object.setAttribute('transform', `scale(${scaleX / factor} ${scaleY / factor})`)
+    for (const element of Array.from(object.querySelectorAll<HTMLElement>('*'))) {
+      for (const property of TEXT_PIXEL_LENGTHS) {
+        const value = element.style.getPropertyValue(property)
+        element.style.setProperty(property, value.replace(/(-?(?:\d*\.)?\d+(?:e[+-]?\d+)?)px/gi,
+          (_, pixels: string) => `${Number(pixels) * factor}px`))
+      }
+    }
+    const content = object.querySelector<HTMLElement>('.ink-layer__textbox')
+    if (content) { content.style.width = '100%'; content.style.height = '100%' }
+  }
+}
 
 function blobUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -108,6 +133,11 @@ export function captureInkSnapshot(page: HTMLElement): ((paper: HTMLCanvasElemen
       copy.style.height = style.height
     }
     if (original.matches('.ink-layer__textbox')) {
+      // CSS resolves a subpixel border to a device pixel on Windows. Keep the
+      // authored em inset so exporting does not amplify that zoom rounding.
+      const inline = (original as HTMLElement).style
+      if (inline.padding) copy.style.padding = inline.padding
+      if (inline.borderWidth) copy.style.borderWidth = inline.borderWidth
       copy.style.borderColor = 'transparent'
       copy.style.boxShadow = 'none'
       // Editing adds a panel-colored background, which is not part of the note.
@@ -144,6 +174,7 @@ export function captureInkSnapshot(page: HTMLElement): ((paper: HTMLCanvasElemen
     clone.setAttribute('width', String(paper.width))
     clone.setAttribute('height', String(paper.height))
     clone.style.cssText = 'overflow:hidden'
+    normalizeTextObjects(clone, paper.width)
     const [fonts] = await Promise.all([embedFonts(text, families, signal), Promise.all(images.map((load) => load(signal)))])
     signal.throwIfAborted()
     const blob = await new Promise<Blob>((resolve, reject) => paper.toBlob((value) => value ? resolve(value) : reject(new Error('페이지를 읽지 못했어요. 다시 시도해 주세요.')), 'image/png'))

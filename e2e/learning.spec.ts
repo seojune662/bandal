@@ -157,19 +157,36 @@ test('native learning keeps article evidence, quiz results, card schedules and e
   } finally { await bandal.close(); rmSync(profileDir, { recursive: true, force: true }) }
 })
 
-test('creates a named learning subfolder inside an existing course', async () => {
+test('creates a named learning subfolder in a short zoomed window with reachable actions', async ({}, info) => {
   const bandal = await launchBandal({ extraSettings: { theme: 'light' } })
   try {
     await isolateProvider(bandal)
     await createCourse(bandal.page, '영어 자료')
     await bandal.page.locator('.learning-sidebar--compact').getByRole('button', { name: '새 영어 학습 공간' }).click()
     const dialog = bandal.page.getByRole('dialog', { name: '영어 읽기 시작하기' })
+    await bandal.app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find(candidate => candidate.webContents.getURL().includes('index.html'))!
+      window.setContentSize(1024, 640)
+      window.webContents.setZoomFactor(1.25)
+    })
+    const createButton = dialog.getByRole('button', { name: '학습 공간 만들기', exact: true })
+    const expectInside = async (): Promise<void> => {
+      await expect.poll(() => createButton.evaluate(button => {
+        const bounds = button.getBoundingClientRect()
+        return bounds.top >= 0 && bounds.left >= 0 && bounds.bottom <= innerHeight && bounds.right <= innerWidth
+      })).toBe(true)
+    }
+    await expectInside()
+    await expect.poll(() => dialog.locator('.learning-dialog-body').evaluate(body => body.scrollHeight > body.clientHeight)).toBe(true)
     await dialog.getByLabel('학습 공간 이름').fill('과학 기사 읽기')
     await dialog.getByLabel('관심 주제').fill('Science')
     await dialog.getByLabel('폴더 이름').fill('Reading/Science')
-    await dialog.getByRole('button', { name: '학습 공간 만들기', exact: true }).click()
+    await expectInside()
+    await bandal.page.screenshot({ path: info.outputPath('learning-create-small-window.png') })
+    await createButton.click()
     await expect(dialog).toBeHidden()
     await expect(bandal.page.locator('.learning-topbar')).toContainText('과학 기사 읽기')
+    await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.webContents.setZoomFactor(1))
     const projects = await bandal.page.evaluate(async () => (await window.bandal.invoke('learning:list', {})).projects)
     expect(projects).toHaveLength(1)
     expect(projects[0]!.binding.rootRelPath).toBe('Reading/Science')

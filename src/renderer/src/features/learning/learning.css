@@ -85,7 +85,13 @@
 .learning-sidebar__project > small { color: var(--accent); font-size: 10px; }
 .learning-sidebar__retry { border: 0; background: transparent; color: var(--text-muted); font-size: 10px; cursor: pointer; padding: 6px 0; }
 .learning-sidebar--compact { padding: 8px 12px; }
-.learning-create { max-width: 560px; }
+.learning-create { max-width: 560px; max-height: calc(100dvh - var(--space-5) - var(--space-5)); overflow: auto; }
+.learning-create--form { display: flex; flex-direction: column; overflow: hidden; }
+.learning-create--form .course-dialog__header { flex-shrink: 0; }
+.learning-create__form { display: flex; flex-direction: column; min-height: 0; }
+.learning-dialog-body { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.learning-dialog-body > .learning-muted:first-child { margin-top: 0; }
+.learning-create__form > .dialog-actions { flex-shrink: 0; position: sticky; bottom: 0; margin-top: 0; padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); background: var(--bg-overlay); }
 .learning-import-url { overflow-wrap: anywhere; }
 .learning-placement { padding: 0; border: 0; margin: 24px 0 12px; }
 .learning-placement legend { font-size: 12px; margin-bottom: 8px; color: var(--text-secondary); }
