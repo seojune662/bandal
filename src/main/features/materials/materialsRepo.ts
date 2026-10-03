@@ -16,6 +16,7 @@ import type { Database } from 'better-sqlite3'
 import type { ImportResult, MaterialFileContent, MaterialKind,
   MaterialNode, MaterialSearchHit } from '../../../shared/types/materials'
 import { scanMaterialTree, type MaterialWalk, type ScanTruncation } from './scanMaterialTree'
+import { renameWithRetry } from './renameWithRetry'
 import { ConflictError, NotFoundError, ValidationError } from '../../db/errors'
 import { assertRealInside, nowIso, requireId, requireNonEmptyString,
   resolveInside } from '../../db/validate'
@@ -36,10 +37,10 @@ export interface MaterialsRepo {
   /** `dirRelPath` ''/생략 = 과목 폴더 루트. */
   import(courseId: string, paths: string[], dirRelPath?: string): ImportResult
   /** 파일/폴더를 다른 과목-상대 디렉터리로 옮긴다 ('' = 루트). */
-  move(input: { courseId: string; fromRelPath: string; toDirRelPath: string }): { relPath: string }
+  move(input: { courseId: string; fromRelPath: string; toDirRelPath: string }): Promise<{ relPath: string }>
   readFile(courseId: string, relPath: string): Promise<MaterialFileContent>
   reveal(courseId: string, relPath: string): { ok: true }
-  rename(input: { courseId: string; relPath: string; newName: string }): { relPath: string }
+  rename(input: { courseId: string; relPath: string; newName: string }): Promise<{ relPath: string }>
   softDelete(input: { courseId: string; relPath: string }): Promise<{ ok: true }>
   duplicate(input: { courseId: string; relPath: string }): { relPath: string }
   createFolder(input: { courseId: string; dirRelPath: string; name: string }): { relPath: string }
@@ -503,7 +504,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       return { imported, failed }
     },
 
-    move(input) {
+    async move(input) {
       const { abs: sourceAbs, folder } = resolveMaterial(
         input.courseId,
         input.fromRelPath
@@ -534,9 +535,19 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           ? targetName
           : posix.join(input.toDirRelPath, targetName)
       const destAbs = resolveCoursePath(folder, relPath)
-      assertRealInside(folder, sourceAbs)
-      assertRealInside(folder, destAbs)
-      renameSync(sourceAbs, destAbs)
+      await renameWithRetry(sourceAbs, destAbs, () => {
+        assertRealInside(folder, sourceAbs)
+        assertRealInside(folder, destDirAbs)
+        assertRealInside(folder, destAbs)
+        assertFileOrDirectory(sourceAbs, input.fromRelPath)
+        if (!existsSync(destDirAbs) || !lstatSync(destDirAbs).isDirectory()) {
+          throw new NotFoundError('material directory', input.toDirRelPath)
+        }
+        if (destDirAbs === sourceAbs || destDirAbs.startsWith(sourceAbs + sep)) {
+          throw new ValidationError('폴더를 자기 안으로 옮길 수 없습니다')
+        }
+        if (existsSync(destAbs)) throw new ConflictError(`material "${relPath}" already exists`)
+      })
       const courseId = requireId(input.courseId, 'courseId')
       invalidate(courseId)
       notifyPathChanged(courseId, input.fromRelPath, relPath, sourceKind === 'dir')
@@ -573,7 +584,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       return { ok: true }
     },
 
-    rename(input) {
+    async rename(input) {
       const { abs: sourceAbs, folder } = resolveMaterial(
         input.courseId,
         input.relPath
@@ -590,9 +601,12 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       if (existsSync(destinationAbs)) {
         throw new ConflictError(`material "${destinationRelPath}" already exists`)
       }
-      assertRealInside(folder, sourceAbs)
-      assertRealInside(folder, destinationAbs)
-      renameSync(sourceAbs, destinationAbs)
+      await renameWithRetry(sourceAbs, destinationAbs, () => {
+        assertRealInside(folder, sourceAbs)
+        assertRealInside(folder, destinationAbs)
+        assertFileOrDirectory(sourceAbs, input.relPath)
+        if (existsSync(destinationAbs)) throw new ConflictError(`material "${destinationRelPath}" already exists`)
+      })
       const courseId = requireId(input.courseId, 'courseId')
       invalidate(courseId)
       notifyPathChanged(courseId, input.relPath, destinationRelPath, sourceKind === 'dir')

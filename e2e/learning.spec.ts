@@ -196,5 +196,14 @@ test('creates a named learning subfolder in a short zoomed window with reachable
     await expect(bandal.page.locator('.learning-topbar')).toContainText('과학 기사 읽기')
     await expect.poll(async () => JSON.stringify(await bandal.page.evaluate(courseId => window.bandal.invoke('layout:get', { courseId }), projects[0]!.binding.courseId))).toContain('Library/Science')
     await expect(bandal.page.getByRole('navigation', { name: '학습 화면' }).getByRole('button', { name: '퀴즈 · 카드' })).toHaveAttribute('aria-current', 'page')
+    await bandal.page.evaluate(async courseId => {
+      await window.bandal.invoke('materials:createFolder', { courseId, dirRelPath: '', name: 'Archive' })
+      await window.bandal.invoke('materials:move', { courseId, fromRelPath: 'Library', toDirRelPath: 'Archive' })
+    }, projects[0]!.binding.courseId)
+    await expect.poll(async () => JSON.stringify(await bandal.page.evaluate(courseId => window.bandal.invoke('layout:get', { courseId }), projects[0]!.binding.courseId))).toContain('Archive/Library/Science')
+    await expect(bandal.page.getByRole('navigation', { name: '학습 화면' }).getByRole('button', { name: '퀴즈 · 카드' })).toHaveAttribute('aria-current', 'page')
+    const relocated = await bandal.page.evaluate(async courseId => (await window.bandal.invoke('learning:list', { courseId })).projects, projects[0]!.binding.courseId)
+    expect(relocated).toHaveLength(1)
+    expect(relocated[0]!.binding.rootRelPath).toBe('Archive/Library/Science')
   } finally { await bandal.close() }
 })

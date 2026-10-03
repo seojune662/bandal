@@ -726,7 +726,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return result
   })
   // 이동 후 트리 갱신은 폴더 watcher 가 materials:changed 로 밀어준다.
-  handle('materials:move', (req) => materialsRepo.move(req))
+  handle('materials:move', async (req) => await materialsRepo.move(req))
   handle('materials:reveal', (req) => materialsRepo.reveal(req.courseId, req.relPath))
   handle('materials:preview', (req) => {
     // 앱이 렌더링하지 못하는 형식(.ppt 등) — macOS 는 Quick Look, 그 외는
@@ -742,7 +742,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   handle('materials:readFile', (req) => materialsRepo.readFile(req.courseId, req.relPath))
   handle('materials:writeFile', (req) => materialsRepo.writeFile(req))
-  handle('materials:rename', (req) => materialsRepo.rename(req))
+  handle('materials:rename', async (req) => await materialsRepo.rename(req))
   handle('materials:delete', (req) => materialsRepo.softDelete(req))
   handle('materials:duplicate', (req) => materialsRepo.duplicate(req))
   handle('materials:createFolder', (req) => materialsRepo.createFolder(req))

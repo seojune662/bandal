@@ -84,6 +84,10 @@ export function planChecks(files, full = false) {
     e2e.add('e2e/browserCompatibility.spec.ts')
   }
   if (has(/^src\/(main\/(features\/(learning|workflowPacks)\/|ipc\/learningHandlers\.ts$)|renderer\/src\/features\/learning\/|shared\/(workflowPacks\/|types\/(learning|workflowPack)\.ts$|ipc\/learningContract\.ts$))/)) e2e.add('e2e/learning.spec.ts')
+  if (has(/^src\/main\/features\/materials\/renameWithRetry\.ts$/)) {
+    e2e.add('e2e/learning.spec.ts')
+    e2e.add('e2e/materialsDrag.spec.ts')
+  }
   const workspace = has(/^(src\/renderer\/src\/(features\/workspace\/|stores\/workspaceStore\.ts$)|src\/shared\/tabs\.ts$)/)
   if (workspace) {
     for (const spec of ['tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance']) e2e.add(`e2e/${spec}.spec.ts`)

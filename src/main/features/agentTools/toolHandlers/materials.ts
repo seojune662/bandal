@@ -119,7 +119,7 @@ export function materialTools(ctx: ToolContext) {
         `자료 «${relPath}»의 이름을 «${newName}»(으)로 바꿉니다.`,
         [relPath, newName]
       )) return cancelled('rename_material')
-      const result = deps.materialsRepo.rename({ courseId, relPath, newName })
+      const result = await deps.materialsRepo.rename({ courseId, relPath, newName })
       record(context, courseId, 'rename_material', 'material', result.relPath, `자료 «${result.relPath}»`, false)
       return result
     },
@@ -153,7 +153,7 @@ export function materialTools(ctx: ToolContext) {
         `자료 «${fromRelPath}»을(를) «${toDirRelPath || '과목 루트'}»로 옮깁니다.`,
         [fromRelPath, toDirRelPath || '과목 루트']
       )) return cancelled('move_material')
-      const result = deps.materialsRepo.move({ courseId, fromRelPath, toDirRelPath })
+      const result = await deps.materialsRepo.move({ courseId, fromRelPath, toDirRelPath })
       record(context, courseId, 'move_material', 'material', result.relPath, `자료 «${result.relPath}»`, false)
       return result
     },

@@ -143,7 +143,7 @@ describe('rename path repointing', () => {
       .get(id) as { source_json: string; target_json: string }
   }
 
-  test('a file rename keeps SQL rows, JSON descriptors, and note hrefs alive', () => {
+  test('a file rename keeps SQL rows, JSON descriptors, and note hrefs alive', async () => {
     writeFileSync(join(courseFolder, 'old.pdf'), 'pdf')
     writeFileSync(
       join(courseFolder, 'study.md'),
@@ -168,7 +168,7 @@ describe('rename path repointing', () => {
     })
 
     expect(
-      materials.rename({ courseId: COURSE_ID, relPath: 'old.pdf', newName: 'new.pdf' })
+      await materials.rename({ courseId: COURSE_ID, relPath: 'old.pdf', newName: 'new.pdf' })
     ).toEqual({ relPath: 'new.pdf' })
 
     expect(repointed?.updatedRows).toEqual({
@@ -193,7 +193,7 @@ describe('rename path repointing', () => {
     ])
   })
 
-  test('a folder move rewrites child prefixes and a moved self-reference', () => {
+  test('a folder move rewrites child prefixes and a moved self-reference', async () => {
     mkdirSync(join(courseFolder, 'unit%_'))
     mkdirSync(join(courseFolder, 'archive'))
     writeFileSync(join(courseFolder, 'unit%_', 'paper.pdf'), 'pdf')
@@ -217,7 +217,7 @@ describe('rename path repointing', () => {
     })
 
     expect(
-      materials.move({
+      await materials.move({
         courseId: COURSE_ID,
         fromRelPath: 'unit%_',
         toDirRelPath: 'archive'
@@ -241,7 +241,7 @@ describe('rename path repointing', () => {
     )
   })
 
-  test('renaming a placed image keeps the PDF drawing source alive', () => {
+  test('renaming a placed image keeps the PDF drawing source alive', async () => {
     writeFileSync(join(courseFolder, 'lecture.pdf'), 'pdf')
     writeFileSync(join(courseFolder, 'diagram.jpg'), 'image')
     ctx.db.prepare(
@@ -268,7 +268,7 @@ describe('rename path repointing', () => {
       }
     })
 
-    expect(materials.rename({
+    expect(await materials.rename({
       courseId: COURSE_ID,
       relPath: 'diagram.jpg',
       newName: 'system-diagram.jpg'
@@ -512,7 +512,7 @@ describe('rename path repointing', () => {
     expect(payloadRelPath(materialLinkJson('link-1').target_json)).toBe('old.pdf')
   })
 
-  test('repository hook exceptions are warned without falsifying renames', () => {
+  test('repository hook exceptions are warned without falsifying renames', async () => {
     writeFileSync(join(courseFolder, 'material.pdf'), 'pdf')
     writeFileSync(join(courseFolder, 'note.md'), '# Note\n')
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -531,7 +531,7 @@ describe('rename path repointing', () => {
       onPathChanged: failingHook
     })
 
-    expect(materials.rename({
+    expect(await materials.rename({
       courseId: COURSE_ID,
       relPath: 'material.pdf',
       newName: 'renamed.pdf'

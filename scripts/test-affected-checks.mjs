@@ -190,3 +190,11 @@ test('learning experience changes select their native package regression includi
   assert.ok(planChecks(['pnpm-lock.yaml']).e2e.includes('e2e/learning.spec.ts'))
   assert.ok(!planChecks(['src/main/features/materials/materialsRepo.ts']).e2e.includes('e2e/learning.spec.ts'))
 })
+
+test('Windows rename recovery verifies learning folder rebinding and material moves', () => {
+  const plan = planChecks(['src/main/features/materials/renameWithRetry.ts'])
+  assert.equal(plan.full, false)
+  assert.ok(plan.e2e.includes('e2e/learning.spec.ts'))
+  assert.ok(plan.e2e.includes('e2e/materialsDrag.spec.ts'))
+  assert.ok(plan.e2e.includes('e2e/coursePerformance.spec.ts'))
+})

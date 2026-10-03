@@ -169,7 +169,7 @@ describe('materialsRepo', () => {
       expect(flattenTree((await repo.tree(courseId)))).toContain('clip.md')
 
       await repo.tree(courseId)
-      repo.rename({ courseId, relPath: 'syllabus.pdf', newName: 'outline.pdf' })
+      await repo.rename({ courseId, relPath: 'syllabus.pdf', newName: 'outline.pdf' })
       expect(flattenTree((await repo.tree(courseId)))).toContain('outline.pdf')
 
       await repo.tree(courseId)
@@ -177,7 +177,7 @@ describe('materialsRepo', () => {
       expect(flattenTree((await repo.tree(courseId)))).toContain('outline-2.pdf')
 
       await repo.tree(courseId)
-      repo.move({ courseId, fromRelPath: 'outline.pdf', toDirRelPath: 'notes' })
+      await repo.move({ courseId, fromRelPath: 'outline.pdf', toDirRelPath: 'notes' })
       expect(flattenTree((await repo.tree(courseId)))).toContain('notes/outline.pdf')
 
       const source = join(ctx.dir, 'imported.pdf')
@@ -314,17 +314,17 @@ describe('materialsRepo', () => {
   })
 
   describe('move', () => {
-    test('moves a root file into a folder and back, returning posix relPaths', () => {
+    test('moves a root file into a folder and back, returning posix relPaths', async () => {
       // Act — root → folder.
       expect(
-        repo.move({ courseId, fromRelPath: 'syllabus.pdf', toDirRelPath: 'notes' })
+        await repo.move({ courseId, fromRelPath: 'syllabus.pdf', toDirRelPath: 'notes' })
       ).toEqual({ relPath: 'notes/syllabus.pdf' })
       expect(existsSync(join(courseFolder, 'notes', 'syllabus.pdf'))).toBe(true)
       expect(existsSync(join(courseFolder, 'syllabus.pdf'))).toBe(false)
 
       // Act — folder → root ('' = course root).
       expect(
-        repo.move({
+        await repo.move({
           courseId,
           fromRelPath: 'notes/syllabus.pdf',
           toDirRelPath: ''
@@ -333,12 +333,12 @@ describe('materialsRepo', () => {
       expect(existsSync(join(courseFolder, 'syllabus.pdf'))).toBe(true)
     })
 
-    test('auto-renames on collision with the import (n) convention', () => {
+    test('auto-renames on collision with the import (n) convention', async () => {
       // Arrange
       writeFileSync(join(courseFolder, 'notes', 'syllabus.pdf'), 'occupied')
 
       // Act
-      const result = repo.move({
+      const result = await repo.move({
         courseId,
         fromRelPath: 'syllabus.pdf',
         toDirRelPath: 'notes'
@@ -354,10 +354,10 @@ describe('materialsRepo', () => {
       ).toBe('pdf-bytes')
     })
 
-    test('is a no-op when the destination equals the current parent', () => {
+    test('is a no-op when the destination equals the current parent', async () => {
       // Act — same parent, even with a same-named sibling: nothing is renamed.
       expect(
-        repo.move({
+        await repo.move({
           courseId,
           fromRelPath: 'notes/week1.md',
           toDirRelPath: 'notes'
@@ -367,42 +367,42 @@ describe('materialsRepo', () => {
       expect(existsSync(join(courseFolder, 'notes', 'week1 (2).md'))).toBe(false)
     })
 
-    test('rejects moving a folder into itself or a descendant', () => {
+    test('rejects moving a folder into itself or a descendant', async () => {
       // Act / Assert
-      expect(() =>
+      await expect(
         repo.move({ courseId, fromRelPath: 'notes', toDirRelPath: 'notes' })
-      ).toThrow(ValidationError)
-      expect(() =>
+      ).rejects.toThrow(ValidationError)
+      await expect(
         repo.move({ courseId, fromRelPath: 'notes', toDirRelPath: 'notes/img' })
-      ).toThrow(ValidationError)
+      ).rejects.toThrow(ValidationError)
       // The tree is untouched.
       expect(existsSync(join(courseFolder, 'notes', 'img', 'diagram.png'))).toBe(true)
     })
 
-    test('rejects traversal on either side and unknown destinations', () => {
+    test('rejects traversal on either side and unknown destinations', async () => {
       // Act / Assert
-      expect(() =>
+      await expect(
         repo.move({ courseId, fromRelPath: '../outside.pdf', toDirRelPath: '' })
-      ).toThrow(PathTraversalError)
-      expect(() =>
+      ).rejects.toThrow(PathTraversalError)
+      await expect(
         repo.move({ courseId, fromRelPath: 'syllabus.pdf', toDirRelPath: '../out' })
-      ).toThrow(PathTraversalError)
-      expect(() =>
+      ).rejects.toThrow(PathTraversalError)
+      await expect(
         repo.move({ courseId, fromRelPath: 'syllabus.pdf', toDirRelPath: 'ghost' })
-      ).toThrow(NotFoundError)
-      expect(() =>
+      ).rejects.toThrow(NotFoundError)
+      await expect(
         repo.move({ courseId, fromRelPath: 'ghost.pdf', toDirRelPath: 'notes' })
-      ).toThrow(NotFoundError)
+      ).rejects.toThrow(NotFoundError)
       expect(existsSync(join(courseFolder, 'syllabus.pdf'))).toBe(true)
     })
 
-    test('moves directories with their contents', () => {
+    test('moves directories with their contents', async () => {
       // Arrange
       mkdirSync(join(courseFolder, 'archive'))
 
       // Act
       expect(
-        repo.move({ courseId, fromRelPath: 'notes/img', toDirRelPath: 'archive' })
+        await repo.move({ courseId, fromRelPath: 'notes/img', toDirRelPath: 'archive' })
       ).toEqual({ relPath: 'archive/img' })
 
       // Assert
@@ -442,9 +442,9 @@ describe('materialsRepo', () => {
   })
 
   describe('rename', () => {
-    test('renames files and folders and returns a course-relative path', () => {
+    test('renames files and folders and returns a course-relative path', async () => {
       expect(
-        repo.rename({
+        await repo.rename({
           courseId,
           relPath: 'syllabus.pdf',
           newName: 'course-outline.pdf'
@@ -453,37 +453,37 @@ describe('materialsRepo', () => {
       expect(existsSync(join(courseFolder, 'course-outline.pdf'))).toBe(true)
 
       expect(
-        repo.rename({ courseId, relPath: 'notes/img', newName: 'figures' })
+        await repo.rename({ courseId, relPath: 'notes/img', newName: 'figures' })
       ).toEqual({ relPath: 'notes/figures' })
       expect(existsSync(join(courseFolder, 'notes', 'figures', 'diagram.png'))).toBe(
         true
       )
     })
 
-    test('rejects collisions and basename path separators', () => {
+    test('rejects collisions and basename path separators', async () => {
       writeFileSync(join(courseFolder, 'already.pdf'), 'occupied')
 
-      expect(() =>
+      await expect(
         repo.rename({
           courseId,
           relPath: 'syllabus.pdf',
           newName: 'already.pdf'
         })
-      ).toThrow(ConflictError)
-      expect(() =>
+      ).rejects.toThrow(ConflictError)
+      await expect(
         repo.rename({
           courseId,
           relPath: 'syllabus.pdf',
           newName: '../escaped.pdf'
         })
-      ).toThrow(ValidationError)
-      expect(() =>
+      ).rejects.toThrow(ValidationError)
+      await expect(
         repo.rename({
           courseId,
           relPath: 'syllabus.pdf',
           newName: 'sub\\escaped.pdf'
         })
-      ).toThrow(ValidationError)
+      ).rejects.toThrow(ValidationError)
     })
   })
 
@@ -655,9 +655,9 @@ describe('materialsRepo', () => {
 
   describe('mutation path validation', () => {
     test('rejects traversal, absolute paths, and null bytes before mutations', async () => {
-      expect(() =>
+      await expect(
         repo.rename({ courseId, relPath: '../outside', newName: 'safe' })
-      ).toThrow(PathTraversalError)
+      ).rejects.toThrow(PathTraversalError)
       expect(() =>
         repo.duplicate({ courseId, relPath: '/tmp/outside' })
       ).toThrow(PathTraversalError)
