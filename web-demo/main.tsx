@@ -40,8 +40,11 @@ useUiStore.setState({ leftRailOpen: !compact, rightRailOpen: !compact && innerWi
 
 type Experience = 'workspace' | 'linked' | 'board' | 'ai'
 let demoWorkspace: DockviewApi | null = null
-const attachWorkspace = useWorkspaceStore.getState().attachApi
-useWorkspaceStore.setState({ attachApi: api => { demoWorkspace = api; attachWorkspace(api) } })
+const attachWorkspace = useWorkspaceStore.getState().attachCourseApi
+useWorkspaceStore.setState({ attachCourseApi: (id, api) => {
+  if (id === courseId) demoWorkspace = api
+  attachWorkspace(id, api)
+} })
 function openExperience(view: Experience) {
   commit(next => { next.scene = view })
   const store = useWorkspaceStore.getState()
