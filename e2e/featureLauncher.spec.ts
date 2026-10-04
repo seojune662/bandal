@@ -165,9 +165,9 @@ test('same learning panel refreshes article and vocabulary targets without reope
     await repo.addArticle({ binding, article: { id: 'context-article', title: 'Resilient communities', sourceUrl: 'https://example.org/context-article', paragraphs: splitLearningParagraphs(sentence) } })
     for (const surface of ['Resilient', 'adapt']) {
       const start = sentence.indexOf(surface)
-      await repo.saveWord({ binding, surface, sentence, sourceRef: { kind: 'article', articleId: 'context-article', paragraphId: 'p1', sentenceId: 'p1-s1', quote: surface, start, end: start + surface.length } })
+      await page.evaluate(input => window.bandal.invoke('learning:saveWord', input), { binding, surface, sentence, sourceRef: { kind: 'article', articleId: 'context-article', paragraphId: 'p1', sentenceId: 'p1-s1', quote: surface, start, end: start + surface.length } })
     }
-    const wordIds = (await repo.read(binding)).words.map(word => word.id)
+    const wordIds = await page.evaluate(async binding => (await window.bandal.invoke('learning:get', { binding })).words.map(word => word.id), binding)
     await isolateAi(bandal, binding)
     await bandal.app.evaluate(({ BrowserWindow }, binding) => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('learning:changed', { binding }) }, binding)
     await openLauncher(page)

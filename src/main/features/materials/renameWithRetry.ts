@@ -12,7 +12,7 @@ interface RenameRetryOptions {
 export async function renameWithRetry(
   sourcePath: string,
   destinationPath: string,
-  beforeAttempt: () => void,
+  beforeAttempt: () => void | Promise<void>,
   options: RenameRetryOptions = {}
 ): Promise<void> {
   const operation = options.rename ?? rename
@@ -20,7 +20,7 @@ export async function renameWithRetry(
   const windows = (options.platform ?? process.platform) === 'win32'
   for (let attempt = 0; ; attempt += 1) {
     // An external change during the wait must not bypass path/collision guards.
-    beforeAttempt()
+    await beforeAttempt()
     try {
       await operation(sourcePath, destinationPath)
       return

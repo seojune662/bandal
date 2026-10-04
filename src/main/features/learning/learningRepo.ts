@@ -15,6 +15,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../../db/errors'
 import { assertRealInside, resolveInside } from '../../db/validate'
 import { articleMarkdown, gradeLearningAnswer, learningHash, normalizeLearningAnswer,
   normalizeLearningLemma, scheduleLearningCard } from './model'
+import { renameWithRetry } from '../materials/renameWithRetry'
 import { learningArray, learningId, learningNumber, learningObject, learningString,
   normalizeLearningArticle, normalizeLearningDraft, validateLearningArtifact,
   validateLearningRun, validateLearningWordDraft, validateLearningState,
@@ -69,12 +70,22 @@ interface Transaction {
 }
 
 /** fsync before rename; preserves the old file if writing fails. */
-async function atomicWrite(path: string, bytes: string): Promise<void> {
+async function atomicWrite(path: string, bytes: string, beforePublish?: () => Promise<void>): Promise<void> {
+  const originalDirectory = realpathSync.native(dirname(path))
+  const readExisting = async (): Promise<string | null> => {
+    try { return await readFile(path, 'utf8') }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error }
+  }
+  const originalBytes = await readExisting()
   const temporary = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`)
   const file = await open(temporary, 'wx', 0o600)
   try {
     await file.writeFile(bytes, 'utf8'); await file.sync(); await file.close()
-    await rename(temporary, path)
+    await renameWithRetry(temporary, path, async () => {
+      if (realpathSync.native(dirname(path)) !== originalDirectory) throw new ConflictError('학습 자료를 저장할 폴더가 변경되었습니다.')
+      if (await readExisting() !== originalBytes) throw new ConflictError('학습 자료가 저장 중에 변경되었습니다.')
+      await beforePublish?.()
+    })
   } catch (error) {
     await file.close().catch(() => undefined)
     await rm(temporary, { force: true }).catch(() => undefined)
@@ -302,16 +313,24 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
     if (loaded.recovery === 'previous' && existsSync(pathInside(tx.root, STATE))) {
       await rename(pathInside(tx.root, STATE), pathInside(tx.root, `${STATE}.corrupt-${randomUUID()}`))
     }
-    await atomicWrite(pathInside(tx.root, STATE), json(tx.state))
+    await atomicWrite(pathInside(tx.root, STATE), json(tx.state), async () => {
+      const path = pathInside(tx.root, STATE)
+      if (loaded.recovery === 'none' && await readFile(path, 'utf8') !== loaded.bytes) throw new ConflictError('학습 프로젝트가 다른 곳에서 변경되었습니다. 다시 열어 주세요.')
+      if (loaded.recovery === 'previous' && existsSync(path)) throw new ConflictError('학습 프로젝트가 복원 중에 변경되었습니다. 다시 열어 주세요.')
+    })
     const warnings = [...loaded.warnings]
     for (const entry of tx.exports) {
       try {
         const path = pathInside(tx.root, entry.relPath)
-        if (existsSync(path)) {
-          if (entry.expectedHash === null || learningHash(await readFile(path)) !== entry.expectedHash) throw new ConflictError('자료가 저장 중에 변경되었습니다.')
-        } else if (entry.expectedHash !== null) throw new ConflictError('자료가 저장 중에 이동되었습니다.')
+        const validateExport = async (): Promise<void> => {
+          const currentPath = pathInside(tx.root, entry.relPath)
+          if (existsSync(currentPath)) {
+            if (entry.expectedHash === null || learningHash(await readFile(currentPath)) !== entry.expectedHash) throw new ConflictError('자료가 저장 중에 변경되었습니다.')
+          } else if (entry.expectedHash !== null) throw new ConflictError('자료가 저장 중에 이동되었습니다.')
+        }
+        await validateExport()
         await mkdir(dirname(path), { recursive: true }); assertRealInside(tx.root, path)
-        await atomicWrite(path, entry.markdown)
+        await atomicWrite(path, entry.markdown, validateExport)
       } catch { warnings.push(`«${entry.relPath}» 자료 내보내기에 실패했습니다. 학습 기록은 저장되었습니다.`) }
     }
     try { deps.onChanged?.(binding) } catch { /* A UI notification cannot undo durable learning data. */ }
