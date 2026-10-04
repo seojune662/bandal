@@ -11,7 +11,7 @@ import { useMaterialsStore } from '../../stores/materialsStore'
 import { learningError, notifyLearningChanged, openLearning } from './learningNavigation'
 import './learning.css'
 
-export function LearningCreateDialog({ courseId, onClose, onCreated }: { courseId?: string; onClose: () => void; onCreated?: (binding: LearningBinding) => void }): JSX.Element {
+export function LearningCreateDialog({ courseId, packId, onClose, onCreated }: { courseId?: string; packId?: string; onClose: () => void; onCreated?: (binding: LearningBinding) => void }): JSX.Element {
   const courses = useCoursesStore(state => state.courses)
   const [placement, setPlacement] = useState<'standalone' | 'in-course'>(courseId ? 'in-course' : 'standalone')
   const [selectedCourse, setSelectedCourse] = useState(courseId ?? courses[0]?.id ?? '')
@@ -39,7 +39,7 @@ export function LearningCreateDialog({ courseId, onClose, onCreated }: { courseI
       void useMaterialsStore.getState().loadTree(project.binding.courseId)
       notifyLearningChanged()
       onCreated?.(project.binding)
-      void invoke('learning:run', { binding: project.binding, kind: 'find-articles' }).catch(caught => showToast(learningError(caught), 'danger'))
+      void invoke('learning:run', { binding: project.binding, kind: 'find-articles', ...(packId ? { packId } : {}) }).catch(caught => showToast(learningError(caught), 'danger'))
       onClose()
     } catch (caught) { setError(learningError(caught)); setPending(false) }
   }

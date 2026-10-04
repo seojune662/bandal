@@ -14,6 +14,7 @@ import { usePrintRequests } from '../features/print/usePrintRequests'
 import { useAgentWorkspaceSync } from '../features/agent/workspaceSync'
 import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { LearningDialogsHost } from '../features/learning/LearningDialogsHost'
+import { FeatureLauncherPanel } from '../features/launcher/FeatureLauncherPanel'
 import { MaterialsSidebar } from '../features/materials/MaterialsSidebar'
 import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
 import { useOnboardingStore } from '../features/onboarding/onboardingStore'
@@ -114,6 +115,9 @@ export function AppShell(): JSX.Element {
   const initTheme = useUiStore((state) => state.initTheme)
   const leftRailOpen = useUiStore((state) => state.leftRailOpen)
   const courseRailOpen = useUiStore((state) => state.courseRailOpen)
+  const leftRailPanel = useUiStore((state) => state.leftRailPanel)
+  const [launcherMounted, setLauncherMounted] = useState(false)
+  useEffect(() => { if (leftRailPanel === 'plugins') setLauncherMounted(true) }, [leftRailPanel])
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
   // GlobalNavigation owns the board entry point; the shell owns its overlay.
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
@@ -133,7 +137,7 @@ export function AppShell(): JSX.Element {
     if (active instanceof HTMLElement && active.closest('[inert]')) {
       document.querySelector<HTMLButtonElement>('.shell-chrome button')?.focus()
     }
-  }, [leftRailOpen, courseRailOpen, rightRailOpen, settingsPresent])
+  }, [leftRailOpen, courseRailOpen, leftRailPanel, rightRailOpen, settingsPresent])
 
   const selectedCourse =
     courses.find((course) => course.id === selectedCourseId) ?? null
@@ -396,12 +400,14 @@ export function AppShell(): JSX.Element {
       data-board={isBoardOverlayOpen ? 'open' : 'closed'}
       data-left-rail={leftRailOpen ? 'open' : 'closed'}
       data-course-rail={leftRailOpen && courseRailOpen ? 'open' : 'closed'}
+      data-left-panel={leftRailPanel}
       data-right-rail={rightRailOpen ? 'open' : 'closed'}
     >
       <GlobalNavigation />
       <div id="course-rail" className="shell-course-rail" aria-hidden={!leftRailOpen || !courseRailOpen || settingsPresent}
         {...{ inert: !leftRailOpen || !courseRailOpen || settingsPresent ? '' : undefined }}>
-        <CourseSidebar />
+        <CourseSidebar hidden={leftRailPanel !== 'courses'} />
+        {launcherMounted && <FeatureLauncherPanel hidden={leftRailPanel !== 'plugins'} />}
       </div>
       {leftRailOpen && courseRailOpen && !settingsPresent && <RailResizer side="left" />}
 

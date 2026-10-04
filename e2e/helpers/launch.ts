@@ -121,7 +121,7 @@ export async function launchBandal(
     (await app.waitForEvent('window', { predicate: isMainWindow }))
   await page.waitForLoadState('domcontentloaded')
   // The shell is up once the course rail exists and the theme is applied.
-  await expect(page.locator('aside.app-rail--left')).toBeVisible()
+  await expect(page.locator('aside.app-rail--left:visible')).toBeVisible()
   await expect(page.locator('html[data-theme]')).toBeAttached()
 
   const close = async (): Promise<void> => {
@@ -144,7 +144,7 @@ async function chooseAddAction(
   page: Page,
   label: '폴더에서 추가' | '새 과목 만들기'
 ): Promise<void> {
-  const sidebar = page.locator('aside.app-rail--left')
+  const sidebar = page.getByRole('complementary', { name: '과목 목록' })
   const emptyState = sidebar.locator('.empty-state--courses')
   if (await emptyState.isVisible()) {
     await emptyState.getByRole('button', { name: label }).click()
@@ -156,7 +156,7 @@ async function chooseAddAction(
 
 /** Creates a managed course (folder under the data root) through the real UI. */
 export async function createCourse(page: Page, name: string): Promise<void> {
-  const sidebar = page.locator('aside.app-rail--left')
+  const sidebar = page.getByRole('complementary', { name: '과목 목록' })
   await chooseAddAction(page, '새 과목 만들기')
 
   const dialog = page.getByRole('dialog', { name: '새 과목' })

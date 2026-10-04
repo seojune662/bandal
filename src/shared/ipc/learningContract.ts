@@ -23,7 +23,7 @@ export interface LearningIpcContract {
   'learning:getArticle': { req: LearningMaterialRequest; res: LearningArticleSnapshot }
   'learning:getArtifact': { req: LearningMaterialRequest; res: LearningArtifact }
   'learning:resolveSource': { req: { binding: LearningBinding; sourceRef: LearningSourceRef }; res: { relPath: string | null; missing: boolean } }
-  'learning:addArticle': { req: { binding: LearningBinding; url: string; tabId?: string }; res: LearningProjectSnapshot }
+  'learning:addArticle': { req: { binding: LearningBinding; url: string; tabId?: string }; res: LearningProjectSnapshot & { addedArticleId: string } }
   'learning:saveWord': { req: SaveLearningWordInput; res: LearningProjectSnapshot }
   'learning:updateWord': { req: UpdateLearningWordInput; res: LearningProjectSnapshot }
   'learning:updateOccurrence': { req: { binding: LearningBinding; occurrenceId: string; meaning: string; expectedRevision?: number }; res: LearningProjectSnapshot }

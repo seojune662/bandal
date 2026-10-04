@@ -90,6 +90,17 @@ test('CSS-only appearance edits select the shell regressions without backend che
   assert.ok(!plan.e2e.includes('e2e/appleCalendar.spec.ts'))
 })
 
+test('launcher entries select context and rail checks without unrelated appearance or calendar suites', () => {
+  const feature = planChecks(['src/renderer/src/features/launcher/featureActions.ts', 'src/renderer/src/stores/workflowPacksStore.ts'])
+  assert.deepEqual(feature.e2e, ['e2e/featureLauncher.spec.ts'])
+  const shell = planChecks(['src/renderer/src/app/GlobalNavigation.tsx', 'src/renderer/src/app/AppShell.tsx'])
+  assert.deepEqual(new Set(shell.e2e), new Set(['e2e/featureLauncher.spec.ts', 'e2e/sidebars.spec.ts', 'e2e/settingsShell.spec.ts']))
+  assert.ok(!shell.scriptTests.includes('scripts/check-contrast.mjs'))
+  assert.deepEqual(planChecks(['src/renderer/src/features/settings/PacksPanel.tsx']).e2e, ['e2e/featureLauncher.spec.ts'])
+  const mixed = planChecks(['src/renderer/src/app/GlobalNavigation.tsx', 'src/renderer/src/styles/tokens.css'])
+  assert.ok(mixed.e2e.includes('e2e/theme.spec.ts'))
+})
+
 test('browser import boundaries select import and compatibility regressions', () => {
   for (const file of [
     'src/main/features/browser/import/crypto.ts',

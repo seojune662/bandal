@@ -4,69 +4,14 @@ import { useT } from '../../i18n'
 import { invoke } from '../../lib/ipc'
 import { parsePackImportText } from './packImport'
 import './settings-packs.css'
-
-interface PacksSnapshot {
-  packs: WorkflowPackSummary[]
-  loading: boolean
-  error: boolean
-}
-
-const INITIAL_SNAPSHOT: PacksSnapshot = {
-  packs: [],
-  loading: true,
-  error: false
-}
-
-let packsSnapshot = INITIAL_SNAPSHOT
-let loadGeneration = 0
-const listeners = new Set<() => void>()
-
-function publish(next: PacksSnapshot): void {
-  packsSnapshot = next
-  for (const listener of listeners) listener()
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
-}
-
-function getSnapshot(): PacksSnapshot {
-  return packsSnapshot
-}
+import { resetWorkflowPacksStoreForTests, useWorkflowPacksStore } from '../../stores/workflowPacksStore'
 
 export async function loadPacks(): Promise<void> {
-  const generation = ++loadGeneration
-  publish({ ...packsSnapshot, loading: true, error: false })
-  try {
-    const result = await invoke('packs:list', {})
-    if (generation !== loadGeneration) return
-    publish({ packs: result.packs, loading: false, error: false })
-  } catch {
-    if (generation !== loadGeneration) return
-    publish({ ...packsSnapshot, loading: false, error: true })
-  }
+  await useWorkflowPacksStore.getState().refresh()
 }
 
 export function resetPacksPanelForTests(): void {
-  loadGeneration += 1
-  publish(INITIAL_SNAPSHOT)
-}
-
-function setPackEnabled(id: string, enabled: boolean): void {
-  publish({
-    ...packsSnapshot,
-    packs: packsSnapshot.packs.map((summary) =>
-      summary.pack.id === id ? { ...summary, enabled } : summary
-    )
-  })
-}
-
-function removePack(id: string): void {
-  publish({
-    ...packsSnapshot,
-    packs: packsSnapshot.packs.filter((summary) => summary.pack.id !== id)
-  })
+  resetWorkflowPacksStoreForTests()
 }
 
 function PackBadges({ pack }: { pack: WorkflowPack }): JSX.Element {
@@ -308,7 +253,7 @@ export function PacksPanel({
   initialExpandedIds?: readonly string[]
 } = {}): JSX.Element {
   const t = useT()
-  const registry = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+  const registry = useSyncExternalStore(useWorkflowPacksStore.subscribe, useWorkflowPacksStore.getState, useWorkflowPacksStore.getState)
   const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(
     () => new Set(initialExpandedIds)
   )
@@ -327,8 +272,7 @@ export function PacksPanel({
     if (pendingId !== null) return
     setPendingId(summary.pack.id)
     setFeedback(null)
-    void invoke('packs:setEnabled', { id: summary.pack.id, enabled })
-      .then(() => setPackEnabled(summary.pack.id, enabled))
+    void registry.setEnabled(summary.pack.id, enabled)
       .catch(() => setFeedback(t('settings.packs.error.toggle')))
       .finally(() => setPendingId(null))
   }
@@ -337,8 +281,7 @@ export function PacksPanel({
     if (pendingId !== null) return
     setPendingId(summary.pack.id)
     setFeedback(null)
-    void invoke('packs:remove', { id: summary.pack.id })
-      .then(() => removePack(summary.pack.id))
+    void registry.remove(summary.pack.id)
       .catch(() => setFeedback(t('settings.packs.error.remove')))
       .finally(() => setPendingId(null))
   }

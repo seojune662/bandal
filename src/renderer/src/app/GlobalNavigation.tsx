@@ -3,6 +3,8 @@ import { useUiStore } from '../stores/uiStore'
 import { SidebarAccountEntry } from '../features/account/SidebarAccountEntry'
 import { HelpHub } from '../features/help/HelpHub'
 import { TabKindIcon } from '../features/workspace/workspaceIcons'
+import { openActiveAssistant, useActiveAssistantOpen } from '../features/assistantPanel/assistantController'
+import { captureLauncherContext } from '../features/launcher/launcherContext'
 import { Tooltip } from '../components/Tooltip'
 import { Icon } from './icons'
 import './global-navigation.css'
@@ -13,10 +15,12 @@ export function GlobalNavigation(): JSX.Element {
   const settingsOpen = useUiStore((state) => state.isSettingsOpen)
   const graphOpen = useUiStore((state) => state.isLinkGraphOpen)
   const courseOpen = useUiStore((state) => state.courseRailOpen)
+  const leftPanel = useUiStore((state) => state.leftRailPanel)
+  const assistantOpen = useActiveAssistantOpen()
   const leftOpen = useUiStore((state) => state.leftRailOpen)
   const openCourses = (): void => {
     const ui = useUiStore.getState()
-    if (ui.isSettingsOpen || ui.isBoardOverlayOpen || ui.isLinkGraphOpen) ui.showCourses()
+    if (ui.isSettingsOpen || ui.isBoardOverlayOpen || ui.isLinkGraphOpen || ui.leftRailPanel !== 'courses') ui.showCourses()
     else ui.toggleCourseRail()
   }
   return (
@@ -26,9 +30,9 @@ export function GlobalNavigation(): JSX.Element {
         <button
           className="rail-nav__item"
           aria-label="과목"
-          aria-expanded={courseOpen && !boardOpen && !settingsOpen && !graphOpen}
+          aria-expanded={courseOpen && leftPanel === 'courses' && !boardOpen && !settingsOpen && !graphOpen}
           aria-controls="course-rail"
-          data-active={(!boardOpen && !settingsOpen && !graphOpen && courseOpen) || undefined}
+          data-active={(!boardOpen && !settingsOpen && !graphOpen && courseOpen && leftPanel === 'courses') || undefined}
           onClick={openCourses}
         >
           <Icon name="folder" />
@@ -46,6 +50,26 @@ export function GlobalNavigation(): JSX.Element {
           }}
         >
           <TabKindIcon kind="board" />
+        </button>
+      </Tooltip>
+      <Tooltip label="AI" placement="right">
+        <button className="rail-nav__item" aria-label="AI" aria-pressed={assistantOpen}
+          data-active={assistantOpen && !boardOpen && !settingsOpen && !graphOpen || undefined}
+          onPointerDown={event => { if (event.button === 0) event.preventDefault() }}
+          onClick={() => {
+            const ui = useUiStore.getState()
+            ui.closeSettings(); ui.closeBoardOverlay(); ui.closeLinkGraph()
+            void openActiveAssistant()
+          }}><span aria-hidden="true">✦</span></button>
+      </Tooltip>
+      <Tooltip label="플러그인" placement="right">
+        <button className="rail-nav__item" aria-label="플러그인"
+          aria-expanded={courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen}
+          aria-controls="plugins-panel"
+          data-active={courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen || undefined}
+          onPointerDown={event => { if (event.button === 0) { event.preventDefault(); void captureLauncherContext() } }}
+          onClick={event => { if (event.detail === 0) void captureLauncherContext(); useUiStore.getState().togglePluginsPanel() }}>
+          <Icon name="puzzle" />
         </button>
       </Tooltip>
       <HelpHub />

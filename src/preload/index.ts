@@ -101,6 +101,7 @@ const PUSH_CHANNELS = [
   'mcp:changed',
   // -- extensions -----------------------------------------------------------
   'plugins:changed',
+  'packs:changed',
   'plugins:notice',
   'plugins:openPanel',
   'plugins:closePanel',

@@ -36,6 +36,8 @@ export interface PackStoreDeps {
   builtins?: readonly WorkflowPack[]
   now?: () => Date
   randomUUID?: () => string
+  /** Every persisted mutation, including catalog imports and approvals. */
+  onChanged?: () => void
 }
 
 export interface PackStore {
@@ -173,6 +175,7 @@ export function createPackStore(deps: PackStoreDeps): PackStore {
     writeFileAtomic(filePath, JSON.stringify(next, null, 2), { mode: 0o600 })
     chmodSync(filePath, 0o600)
     cache = next
+    deps.onChanged?.()
   }
 
   function findKnown(id: string): WorkflowPack | undefined {

@@ -65,13 +65,13 @@ test.describe('plugin API v2', () => {
     const editor = page.getByLabel('마크다운 필기 편집기')
     await expect(editor).toBeVisible()
     await editor.locator('[contenteditable="true"]').click()
-    await page.keyboard.press('Meta+A')
+    await page.keyboard.press('ControlOrMeta+A')
     await invoke(page, 'plugins:runCommand', {
       pluginId: 'bandal.selection-tools',
       commandId: 'transform',
     })
     await expect(editor).toHaveText('ALPHA BETA')
-    await page.keyboard.press('Meta+z')
+    await page.keyboard.press('ControlOrMeta+z')
     await expect(editor).toHaveText('Alpha Beta')
     // The following test starts from a settled disk revision, not an in-flight undo save.
     await expect.poll(async () => (await invoke<{ markdown: string }>(page, 'notes:read', note)).markdown.trim()).toBe('Alpha Beta')
@@ -80,7 +80,7 @@ test.describe('plugin API v2', () => {
 
   test('settings UI persists schema fields and changes subsequent commands', async () => {
     const { page } = bandal
-    await page.keyboard.press('Meta+,')
+    await page.keyboard.press('ControlOrMeta+,')
     await page.locator('.settings-nav [data-category="packs"]').click()
     await page
       .locator('.plugin-center-nav')
@@ -219,44 +219,34 @@ test.describe('plugin API v2', () => {
     await invoke(page, 'plugins:uninstall', { id: manifest.id })
   })
 
-  test('theme applies, falls back when disabled and restores after restart', async () => {
+  test('legacy theme plugins remain installable while neutral appearance and plugin settings survive restart', async () => {
     const { page } = bandal
     await install(page, 'study-theme')
-    await page.keyboard.press('Meta+,')
+    await invoke(page, 'settings:set', { theme: 'dark', pluginTheme: 'bandal.study-theme:study' })
+    expect(await invoke(page, 'settings:get', {})).toMatchObject({ pluginTheme: 'bandal.study-theme:study' })
+    const expectNeutralTheme = async (target: Page, theme: 'light' | 'dark'): Promise<void> => {
+      await expect(target.locator('html')).toHaveAttribute('data-theme', theme)
+      await expect(target.locator('html')).not.toHaveAttribute('data-plugin-theme')
+      await expect.poll(() => target.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg-app').trim()))
+        .toBe(theme === 'light' ? '#ffffff' : '#212121')
+      expect(await target.evaluate(() => document.documentElement.style.getPropertyValue('--bg-app'))).toBe('')
+    }
+    await expectNeutralTheme(page, 'dark')
+    await page.keyboard.press('ControlOrMeta+,')
     await page.locator('.settings-nav [data-category="appearance"]').click()
-    await page
-      .getByLabel('플러그인 테마', { exact: true })
-      .selectOption('bandal.study-theme:study')
-    await expect(page.locator('html')).toHaveAttribute(
-      'data-plugin-theme',
-      'bandal.study-theme:study',
-    )
-    await page.getByRole('radio', { name: /^다크 / }).click()
-    await expect(page.locator('html')).not.toHaveAttribute('data-plugin-theme')
-    await page
-      .getByLabel('플러그인 테마', { exact: true })
-      .selectOption('bandal.study-theme:study')
-    await expect
-      .poll(() =>
-        page.evaluate(() =>
-          getComputedStyle(document.documentElement)
-            .getPropertyValue('--bg-app')
-            .trim(),
-        ),
-      )
-      .toBe('#101820')
+    await expect(page.getByLabel('플러그인 테마', { exact: true })).toHaveCount(0)
+    await expect(page.locator('.appearance-note')).toContainText('플러그인 테마는 적용되지 않습니다.')
+    await page.getByRole('radio', { name: /^라이트 / }).click()
+    await expectNeutralTheme(page, 'light')
+    await expect.poll(() => invoke(page, 'settings:get', {})).toMatchObject({ theme: 'light', pluginTheme: null })
+    // The stored compatibility key is accepted, but a theme plugin cannot
+    // override the application's neutral colors, including after restart.
+    await invoke(page, 'settings:set', { pluginTheme: 'bandal.study-theme:study' })
     await invoke(page, 'plugins:setEnabled', {
       id: 'bandal.study-theme',
       enabled: false,
     })
-    await expect(page.locator('html')).not.toHaveAttribute('data-plugin-theme')
-    await expect
-      .poll(() =>
-        page.evaluate(() =>
-          document.documentElement.style.getPropertyValue('--bg-app'),
-        ),
-      )
-      .toBe('')
+    await expectNeutralTheme(page, 'light')
     await invoke(page, 'plugins:setEnabled', {
       id: 'bandal.study-theme',
       enabled: true,
@@ -264,10 +254,9 @@ test.describe('plugin API v2', () => {
     const profileDir = bandal.profileDir
     await bandal.close()
     bandal = await launchBandal({ reuseProfileDir: profileDir })
-    await expect(bandal.page.locator('html')).toHaveAttribute(
-      'data-plugin-theme',
-      'bandal.study-theme:study',
-    )
+    await expectNeutralTheme(bandal.page, 'light')
+    expect(await invoke(bandal.page, 'settings:get', {})).toMatchObject({ theme: 'light', pluginTheme: 'bandal.study-theme:study' })
+    await expect.poll(() => invoke(bandal.page, 'plugins:list', {})).toMatchObject({ plugins: expect.arrayContaining([expect.objectContaining({ manifest: expect.objectContaining({ id: 'bandal.study-theme' }), state: 'active' })]) })
     expect(
       await invoke(bandal.page, 'plugins:getSettings', {
         id: 'bandal.selection-tools',

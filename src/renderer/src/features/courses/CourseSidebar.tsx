@@ -65,7 +65,7 @@ interface GroupContextMenuState {
 }
 
 
-export function CourseSidebar(): JSX.Element {
+export function CourseSidebar({ hidden = false }: { hidden?: boolean }): JSX.Element {
   const courses = useCoursesStore((state) => state.courses)
   const groups = useCoursesStore((state) => state.groups)
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
@@ -338,7 +338,7 @@ export function CourseSidebar(): JSX.Element {
   }
 
   return (
-    <aside className="app-rail app-rail--left" aria-label="과목 목록">
+    <aside className="app-rail app-rail--left" aria-label="과목 목록" hidden={hidden}>
       <UniversityShortcuts />
       <LearningSidebar />
 

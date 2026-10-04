@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import type { LearningProjectSummary } from '../../../../shared/types/learning'
 import { Icon } from '../../app/icons'
 import { invoke } from '../../lib/ipc'
 import { useFocusTrap } from '../../components/useFocusTrap'
@@ -11,26 +12,43 @@ import { learningError, notifyLearningChanged, openLearning } from './learningNa
 
 const CREATE_EVENT = 'bandal:learning-create'
 const IMPORT_EVENT = 'bandal:learning-import'
-interface ArticleImportRequest { courseId: string; url: string; tabId?: string }
+const PICK_EVENT = 'bandal:learning-pick'
+interface ArticleImportRequest { courseId: string; url: string; tabId?: string; packId?: string }
 
-export function requestLearningCreation(courseId?: string): void {
-  window.dispatchEvent(new CustomEvent(CREATE_EVENT, { detail: { courseId } }))
+export function requestLearningCreation(courseId?: string, packId?: string): void {
+  window.dispatchEvent(new CustomEvent(CREATE_EVENT, { detail: { ...(courseId ? { courseId } : {}), ...(packId ? { packId } : {}) } }))
 }
 export function requestLearningArticleImport(input: ArticleImportRequest): void {
   window.dispatchEvent(new CustomEvent(IMPORT_EVENT, { detail: input }))
 }
+export function requestLearningProjectPicker(projects: LearningProjectSummary[]): void {
+  window.dispatchEvent(new CustomEvent(PICK_EVENT, { detail: projects }))
+}
 
 export function LearningDialogsHost(): JSX.Element | null {
-  const [creating, setCreating] = useState<{ courseId?: string } | null>(null)
+  const [creating, setCreating] = useState<{ courseId?: string; packId?: string } | null>(null)
   const [importing, setImporting] = useState<ArticleImportRequest | null>(null)
+  const [picking, setPicking] = useState<LearningProjectSummary[] | null>(null)
   useEffect(() => {
-    const create = (event: Event): void => { if (event instanceof CustomEvent) setCreating(event.detail as { courseId?: string }) }
+    const create = (event: Event): void => { if (event instanceof CustomEvent) setCreating(event.detail as { courseId?: string; packId?: string }) }
     const importArticle = (event: Event): void => { if (event instanceof CustomEvent) setImporting(event.detail as ArticleImportRequest) }
-    window.addEventListener(CREATE_EVENT, create); window.addEventListener(IMPORT_EVENT, importArticle)
-    return () => { window.removeEventListener(CREATE_EVENT, create); window.removeEventListener(IMPORT_EVENT, importArticle) }
+    const pick = (event: Event): void => { if (event instanceof CustomEvent) setPicking(event.detail as LearningProjectSummary[]) }
+    window.addEventListener(CREATE_EVENT, create); window.addEventListener(IMPORT_EVENT, importArticle); window.addEventListener(PICK_EVENT, pick)
+    return () => { window.removeEventListener(CREATE_EVENT, create); window.removeEventListener(IMPORT_EVENT, importArticle); window.removeEventListener(PICK_EVENT, pick) }
   }, [])
-  useEffect(() => { if (!creating && !importing) return; return acquirePointerPassthrough() }, [creating, importing])
-  return creating ? <LearningCreateDialog {...creating} onClose={() => setCreating(null)} /> : importing ? <ArticleImportDialog input={importing} onClose={() => setImporting(null)} /> : null
+  useEffect(() => { if (!creating && !importing && !picking) return; return acquirePointerPassthrough() }, [creating, importing, picking])
+  return creating ? <LearningCreateDialog {...creating} onClose={() => setCreating(null)} /> : importing ? <ArticleImportDialog input={importing} onClose={() => setImporting(null)} /> : picking ? <ProjectPicker projects={picking} onClose={() => setPicking(null)} /> : null
+}
+
+function ProjectPicker({ projects, onClose }: { projects: LearningProjectSummary[]; onClose: () => void }): JSX.Element {
+  const root = useRef<HTMLElement>(null)
+  useFocusTrap(root, { active: true, onEscape: onClose })
+  return createPortal(<div className="dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+    <section ref={root} className="course-dialog learning-create" role="dialog" aria-modal="true" aria-label="이어갈 학습 공간 선택">
+      <header className="course-dialog__header"><h2>어디서 이어갈까요?</h2><button type="button" className="bare-icon-button" aria-label="닫기" onClick={onClose}><Icon name="x" /></button></header>
+      <div className="learning-project-grid">{projects.map(project => <button type="button" className="learning-project-card" key={`${project.binding.courseId}:${project.binding.rootRelPath}`} onClick={() => { openLearning(project.binding); onClose() }}><strong>{project.name}</strong><span>{project.topic}</span></button>)}</div>
+    </section>
+  </div>, document.body)
 }
 
 function ArticleImportDialog({ input, onClose }: { input: ArticleImportRequest; onClose: () => void }): JSX.Element {
@@ -47,9 +65,13 @@ function ArticleImportDialog({ input, onClose }: { input: ArticleImportRequest; 
   const add = async (): Promise<void> => {
     if (!selected) return
     setPending(true); setError(null)
-    try { const project = await invoke('learning:addArticle', { binding: selected.binding, url: input.url, ...(input.tabId ? { tabId: input.tabId } : {}) }); notifyLearningChanged(); const article = project.articles.find(item => item.sourceUrl === input.url) ?? project.articles.at(-1); openLearning(project.binding, 'reader', article?.id); onClose() }
+    try {
+      const project = await invoke('learning:addArticle', { binding: selected.binding, url: input.url, ...(input.tabId ? { tabId: input.tabId } : {}) })
+      if (!project.articles.some(item => item.id === project.addedArticleId)) throw new Error('저장한 기사 식별자를 찾지 못했어요.')
+      notifyLearningChanged(); openLearning(project.binding, 'reader', project.addedArticleId); onClose()
+    }
     catch (caught) { setError(learningError(caught)); setPending(false) }
   }
-  if (creating) return <LearningCreateDialog courseId={input.courseId} onCreated={binding => setSelectedKey(projectKey(binding))} onClose={() => setCreating(false)} />
+  if (creating) return <LearningCreateDialog courseId={input.courseId} {...(input.packId ? { packId: input.packId } : {})} onCreated={binding => setSelectedKey(projectKey(binding))} onClose={() => setCreating(false)} />
   return createPortal(<div className="dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !pending) onClose() }}><section ref={root} className="course-dialog learning-create" role="dialog" aria-modal="true" aria-label="기사를 학습에 추가"><header className="course-dialog__header"><div><p className="eyebrow">READ IT YOUR WAY</p><h2>이 글을 학습에 추가하기</h2></div><button className="bare-icon-button" type="button" aria-label="닫기" disabled={pending} onClick={onClose}><Icon name="x" /></button></header><p className="learning-muted">원문을 읽기 화면에 보관하고, 모르는 단어와 예문을 쌓아갈 수 있어요.</p><p className="learning-import-url">{input.url}</p>{loading ? <p role="status">학습 공간 불러오는 중…</p> : projects.length > 0 ? <label className="learning-field"><span>자료를 쌓을 학습 공간</span><select value={selected ? projectKey(selected.binding) : ''} disabled={pending} onChange={event => setSelectedKey(event.target.value)}>{projects.map(project => <option value={projectKey(project.binding)} key={projectKey(project.binding)}>{project.name}{project.binding.courseId !== input.courseId ? ` · ${courses.find(course => course.id === project.binding.courseId)?.name ?? '다른 과목'}` : ''}</option>)}</select></label> : <p className="learning-muted">먼저 이 글을 담을 학습 공간을 만들어 주세요.</p>}<button className="learning-text-button" type="button" disabled={pending} onClick={() => setCreating(true)}><Icon name="plus" /> 새 학습 공간 만들기</button>{error && <p className="learning-error" role="alert">{error}</p>}<footer className="dialog-actions"><button className="button button--secondary" type="button" disabled={pending} onClick={onClose}>취소</button><button className="button button--primary" type="button" disabled={pending || !selected} onClick={() => void add()}>{pending ? '글을 읽기 화면에 담는 중…' : '학습에 추가'}</button></footer></section></div>, document.body)
 }

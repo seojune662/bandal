@@ -31,8 +31,13 @@ const request = (
 describe('live editor plugin transactions', () => {
   let view: EditorView
   let relPath: string
+  let sourcePanelId: string | null
+  let extraViews: EditorView[]
   beforeEach(() => {
     relPath = 'note.md'
+    sourcePanelId = null
+    extraViews = []
+    useWorkspaceStore.setState({ activePanelId: null })
     const manifest = sanitizePluginManifest({
       manifestVersion: 2,
       id: 'test.editor',
@@ -63,6 +68,16 @@ describe('live editor plugin transactions', () => {
       kind: 'note',
       payload: { courseId: 'course', relPath },
     }))
+    vi.spyOn(
+      useWorkspaceStore.getState(),
+      'activePanelSource',
+    ).mockImplementation(() => sourcePanelId ? {
+      panelId: sourcePanelId,
+      descriptor: {
+        kind: 'note',
+        payload: { courseId: 'course', relPath },
+      },
+    } : null)
     const doc = schema.node('doc', null, [
       schema.node('paragraph', null, schema.text('Hello world')),
     ])
@@ -70,7 +85,10 @@ describe('live editor plugin transactions', () => {
       schema,
       doc,
       selection: TextSelection.create(doc, 1, 6),
-      plugins: [history(), createPluginEditorAccess('course', () => relPath)],
+      plugins: [
+        history(),
+        createPluginEditorAccess('course', () => relPath, 'original'),
+      ],
     })
     view = new EditorView(document.body, { state })
     vi.spyOn(view.dom, 'getClientRects').mockReturnValue([
@@ -81,8 +99,79 @@ describe('live editor plugin transactions', () => {
   })
   afterEach(() => {
     view.destroy()
+    for (const extra of extraViews) extra.destroy()
     vi.restoreAllMocks()
     usePluginsStore.setState({ plugins: [] })
+    useWorkspaceStore.setState({ activePanelId: null })
+  })
+  const duplicate = (
+    panelId?: string,
+    from = 7,
+    to = 12,
+  ): EditorView => {
+    const state = EditorState.create({
+      schema,
+      doc: view.state.doc,
+      selection: TextSelection.create(view.state.doc, from, to),
+      plugins: [createPluginEditorAccess('course', () => relPath, panelId)],
+    })
+    const result = new EditorView(document.body, { state })
+    extraViews.push(result)
+    vi.spyOn(result.dom, 'getClientRects').mockReturnValue([
+      { width: 100 },
+    ] as unknown as DOMRectList)
+    vi.spyOn(result, 'scrollToSelection').mockImplementation(() => undefined)
+    return result
+  }
+  test('the exact active duplicate wins over the most recently focused note', () => {
+    const other = duplicate('duplicate')
+    sourcePanelId = 'original'
+    other.dom.dispatchEvent(new Event('focus'))
+    expect(handlePluginEditorRequest(request())?.text).toBe('Hello')
+
+    sourcePanelId = 'duplicate'
+    view.dom.dispatchEvent(new Event('focus'))
+    const selection = handlePluginEditorRequest(request())!
+    expect(selection.text).toBe('world')
+    handlePluginEditorRequest(request({
+      action: 'replaceSelection',
+      token: selection.token,
+      text: 'Bandal',
+    }))
+    expect(other.state.doc.textContent).toBe('Hello Bandal')
+    expect(view.state.doc.textContent).toBe('Hello world')
+  })
+  test('a token cannot cross duplicate panels with identical documents and selections', () => {
+    const other = duplicate('duplicate', 1, 6)
+    sourcePanelId = 'original'
+    const selection = handlePluginEditorRequest(request())!
+    sourcePanelId = 'duplicate'
+    expect(() => handlePluginEditorRequest(request({
+      action: 'replaceSelection',
+      token: selection.token,
+      text: 'Unexpected',
+    }))).toThrow('changed')
+    expect(other.state.doc.textContent).toBe('Hello world')
+    expect(view.state.doc.textContent).toBe('Hello world')
+  })
+  test('a real panel ID never falls back to another visible duplicate', () => {
+    duplicate()
+    sourcePanelId = 'missing-panel'
+    expect(handlePluginEditorRequest(request())).toBeNull()
+    expect(() => handlePluginEditorRequest(request({
+      action: 'replaceSelection',
+      token: 'missing-token',
+      text: 'Unexpected',
+    }))).toThrow('no longer active')
+
+    sourcePanelId = null
+    useWorkspaceStore.setState({ activePanelId: 'missing-panel' })
+    expect(handlePluginEditorRequest(request())).toBeNull()
+  })
+  test('older adapters without panel IDs retain their active-note fallback', () => {
+    const other = duplicate()
+    other.dom.dispatchEvent(new Event('focus'))
+    expect(handlePluginEditorRequest(request())?.text).toBe('world')
   })
   test('replacement is one undoable edit and its token is single-use', () => {
     const selection = handlePluginEditorRequest(request())!

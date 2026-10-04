@@ -6,6 +6,7 @@ import { createArticleExtractor, matchArticleWords } from '../features/learning/
 import { createLearningGrounding } from '../features/learning/learningGrounding'
 import { registerLearningHandlers } from './learningHandlers'
 import { getLegacyPack } from '../../shared/workflowPacks/builtins'
+import { assertLiveStudyBrowserSource } from '../features/workflowPacks/browserStudySource'
 import { createHash } from 'node:crypto'
 import type { MaterialContext, MessageContextSnapshot } from '../../shared/types/chatContext'
 import { selectScreen, screenSelectionRequest } from '../windows/screenSelection'
@@ -1201,7 +1202,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       broadcast('agentTools:confirmationChanged', state)
     }
   })
-  const packStore = createPackStore({ userDataPath: deps.userDataPath })
+  const packStore: ReturnType<typeof createPackStore> = createPackStore({ userDataPath: deps.userDataPath,
+    onChanged: () => broadcast('packs:changed', { packs: packStore.list() }) })
   // One guard is shared by every MCP server and the pack runner. Creating a
   // guard per conversation would make the runner arm an instance no tool can
   // see, silently defeating a pack's declared tool allowlist.
@@ -2647,19 +2649,22 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         : { followUp: { ...pack.followUp } })
     }))
   }))
-  handle('study:run', (req) =>
-    packRunner.run({
+  handle('study:run', (req) => {
+    const sourceGuest = req.browserTabId ? guestRegistry.resolve(req.browserTabId) : null
+    assertLiveStudyBrowserSource(req, sourceGuest, browsingContext(sourceGuest?.id ?? null))
+    return packRunner.run({
       courseId: req.courseId,
       packId: req.tool,
       ...(req.relPath === null ? {} : { targetRelPath: req.relPath }),
       ...(req.selection === undefined
         ? {}
         : { selectionText: req.selection }),
+      ...(req.browserTabUrl === undefined ? {} : { browserTabUrl: req.browserTabUrl }),
       ...(req.followUpOf === undefined
         ? {}
         : { followUpOf: req.followUpOf })
     })
-  )
+  })
 
   handle('agent:installCommand', (req) => agentInstaller.commandFor(req.provider))
   handle('agent:install', (req) => agentInstaller.install(req.provider))

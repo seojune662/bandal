@@ -9,6 +9,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import type { WorkflowPackSummary } from '../../../src/shared/types/workflowPack'
 import {
   createPackStore,
   MAX_CUSTOM_WORKFLOW_PACKS,
@@ -67,6 +68,25 @@ describe('packStore', () => {
       disabledIds: [],
       approvals: {}
     })
+  })
+
+  test('publishes the committed registry for imports, updates, approval, enable and removal only after successful persistence', () => {
+    const published: WorkflowPackSummary[][] = []
+    const store: ReturnType<typeof createPackStore> = createPackStore({ userDataPath, randomUUID: () => 'live',
+      onChanged: () => published.push(store.list()) })
+    const imported = store.importText(packJson()).pack
+    expect(published[0]?.find(item => item.pack.id === imported.id)?.pack.name).toBe('내 팩')
+    store.approve(imported.id, '2026-10-05T00:00:00.000Z')
+    expect(published[1]?.find(item => item.pack.id === imported.id)?.approvedAt).toBe('2026-10-05T00:00:00.000Z')
+    store.setEnabled(imported.id, false)
+    expect(published[2]?.find(item => item.pack.id === imported.id)?.enabled).toBe(false)
+    store.importText(packJson('수정한 팩'), imported.id)
+    expect(published[3]?.find(item => item.pack.id === imported.id)).toMatchObject({ enabled: false, approvedAt: null, pack: { name: '수정한 팩' } })
+    store.remove(imported.id)
+    expect(published[4]?.some(item => item.pack.id === imported.id)).toBe(false)
+    expect(() => store.importText('invalid')).toThrow()
+    expect(() => store.setEnabled('unknown', true)).toThrow()
+    expect(published).toHaveLength(5)
   })
 
   test('loads mixed v1/v2 packs without losing disabled builtin ids or approvals', () => {

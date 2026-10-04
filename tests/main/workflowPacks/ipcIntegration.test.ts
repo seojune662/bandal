@@ -23,9 +23,8 @@ describe('workflow pack IPC integration', () => {
       source.indexOf("handle('agent:installCommand'")
     )
 
-    expect(source).toContain(
-      'const packStore = createPackStore({ userDataPath: deps.userDataPath })'
-    )
+    expect(source).toContain('createPackStore({ userDataPath: deps.userDataPath,')
+    expect(source).toContain("onChanged: () => broadcast('packs:changed', { packs: packStore.list() })")
     expect(source).toContain('const packRunGuard = createPackRunGuard()')
     expect(toolServer).toContain('packRunGuard,')
     expect(study).toContain('const packRunner = createPackRunner({')

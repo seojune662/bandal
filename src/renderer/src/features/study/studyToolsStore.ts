@@ -10,6 +10,8 @@ import type {
 import type { NativeStudyExperience } from '../../../../shared/types/workflowPack'
 import type { LearningRunResult } from '../../../../shared/ipc/learningContract'
 import { invoke } from '../../lib/ipc'
+import { useWorkflowPacksStore, type WorkflowPacksState } from '../../stores/workflowPacksStore'
+import type { WorkflowPackSummary, WorkflowPackScope } from '../../../../shared/types/workflowPack'
 
 /** Renderer bridge for the pack-derived study tool response. */
 export interface PackStudyToolDefinition {
@@ -26,6 +28,8 @@ export interface PackStudyToolDefinition {
   followUp?: WorkflowPackFollowUp
   followUpLabel?: string
   experience?: NativeStudyExperience
+  worksOn?: readonly WorkflowPackScope[]
+  schemaVersion?: 1 | 2
 }
 
 export interface RunPackStudyToolInput {
@@ -50,15 +54,13 @@ interface StudyToolsState {
   generate: (input: RunPackStudyToolInput) => Promise<LearningRunResult>
 }
 
-let toolsRequest: Promise<void> | null = null
-
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim().length > 0
     ? error.message
     : fallback
 }
 
-export const useStudyToolsStore = create<StudyToolsState>()((set, get) => ({
+export const useStudyToolsStore = create<StudyToolsState>()((set) => ({
   tools: [],
   hasLoaded: false,
   isLoading: false,
@@ -66,27 +68,7 @@ export const useStudyToolsStore = create<StudyToolsState>()((set, get) => ({
   running: {},
   runError: null,
 
-  loadTools: () => {
-    if (get().hasLoaded) return Promise.resolve()
-    if (toolsRequest !== null) return toolsRequest
-
-    set({ isLoading: true, error: null })
-    toolsRequest = invoke('study:tools', {})
-      .then(({ tools }) => {
-        set({ tools, hasLoaded: true, isLoading: false, error: null })
-      })
-      .catch((error: unknown) => {
-        set({
-          isLoading: false,
-          error: errorMessage(error, 'AI 학습 도구를 불러오지 못했어요.')
-        })
-      })
-      .finally(() => {
-        toolsRequest = null
-      })
-
-    return toolsRequest
-  },
+  loadTools: () => useWorkflowPacksStore.getState().load(),
 
   run: async (input) => {
     set((state) => ({
@@ -135,3 +117,18 @@ export const useStudyToolsStore = create<StudyToolsState>()((set, get) => ({
     }
   }
 }))
+
+export function studyToolFromPack({ pack, source, enabled }: WorkflowPackSummary): PackStudyToolDefinition {
+  return { id: pack.id, label: pack.name, description: pack.description,
+    worksOnCourse: pack.worksOn.includes('course'), worksOn: pack.worksOn, schemaVersion: pack.schemaVersion,
+    source, enabled, usesWeb: pack.usesWeb, outputs: pack.outputs,
+    ...(pack.schemaVersion === 2 ? { experience: pack.experience } : {}),
+    ...(pack.followUp ? { followUp: pack.followUp } : {}) }
+}
+
+function mirrorPacks(state: WorkflowPacksState): void {
+  useStudyToolsStore.setState({ tools: state.packs.map(studyToolFromPack), hasLoaded: state.hasLoaded,
+    isLoading: state.loading, error: state.error })
+}
+useWorkflowPacksStore.subscribe(mirrorPacks)
+mirrorPacks(useWorkflowPacksStore.getState())

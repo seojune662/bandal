@@ -1,8 +1,13 @@
 import { describe, expect, test, vi } from 'vitest'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { registerLearningHandlers } from '../../../src/main/ipc/learningHandlers'
 import type { LearningIpcContract } from '../../../src/shared/ipc/learningContract'
 import type { LearningRun } from '../../../src/shared/types/learning'
 import type { WorkflowPack, WorkflowPackV2 } from '../../../src/shared/types/workflowPack'
+import { createLearningRepo } from '../../../src/main/features/learning/learningRepo'
+import { splitLearningParagraphs } from '../../../src/main/features/learning/model'
 
 const binding = { courseId: 'course-1', rootRelPath: '학습' }
 const pack = (overrides: Partial<WorkflowPackV2> = {}): WorkflowPackV2 => ({
@@ -73,4 +78,25 @@ describe('native learning pack authorization', () => {
       expect(h.start).not.toHaveBeenCalled(); expect(h.approve).not.toHaveBeenCalled()
     }
   })
+})
+
+test.each(['canonical', 'content-hash'] as const)('article import returns the actual %s duplicate ID instead of the last stored article', async duplicate => {
+  const directory = await mkdtemp(join(tmpdir(), 'bandal-import-id-'))
+  try {
+    const repo = createLearningRepo({ getCourseFolder: () => directory })
+    await repo.create({ binding, name: 'Reading', topic: 'Science' })
+    const paragraphs = splitLearningParagraphs('Scientists study the climate carefully. Evidence helps people adapt.')
+    await repo.addArticle({ binding, article: { id: 'retained-original', title: 'Original', sourceUrl: 'https://example.com/original', paragraphs } })
+    await repo.addArticle({ binding, article: { id: 'unrelated-last', title: 'Other', sourceUrl: 'https://example.com/other', paragraphs: splitLearningParagraphs('The telescope reveals distant stars.') } })
+    const sourceUrl = duplicate === 'canonical' ? 'https://example.com/original' : 'https://mirror.example.com/story'
+    const article = { title: 'Imported', sourceUrl, canonicalUrl: sourceUrl, paragraphs: duplicate === 'canonical' ? splitLearningParagraphs('An updated article at the original address.') : paragraphs }
+    const handlers = new Map<keyof LearningIpcContract, (input: unknown) => unknown>()
+    registerLearningHandlers((channel, handler) => handlers.set(channel, handler as (input: unknown) => unknown), {
+      repo, extractor: { extractUrl: async () => article }
+    } as unknown as Parameters<typeof registerLearningHandlers>[1])
+    const result = await handlers.get('learning:addArticle')!({ binding, url: `${sourceUrl}?utm_source=test#section` }) as LearningIpcContract['learning:addArticle']['res']
+    expect(result.addedArticleId).toBe('retained-original')
+    expect(result.articles.map(item => item.id)).toEqual(['retained-original', 'unrelated-last'])
+    expect(result.articles.find(item => item.id === result.addedArticleId)?.sourceUrl).toBe('https://example.com/original')
+  } finally { await rm(directory, { recursive: true, force: true }) }
 })

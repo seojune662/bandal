@@ -12,6 +12,7 @@ import { usePluginsStore } from '../../stores/pluginsStore'
 interface Session {
   view: EditorView
   courseId: string
+  panelId: string | undefined
   relPath(): string
   touched: number
 }
@@ -31,10 +32,11 @@ let touch = 0
 export function createPluginEditorAccess(
   courseId: string,
   relPath: () => string,
+  panelId?: string,
 ): Plugin {
   return new Plugin({
     view(view) {
-      const session = { view, courseId, relPath, touched: ++touch }
+      const session = { view, courseId, panelId, relPath, touched: ++touch }
       sessions.add(session)
       const focus = (): void => {
         session.touched = ++touch
@@ -69,13 +71,20 @@ export function handlePluginEditorRequest(
     throw new Error('Plugin editor access is no longer approved')
   for (const [token, entry] of snapshots)
     if (entry.expires < Date.now()) snapshots.delete(token)
-  const tab = useWorkspaceStore.getState().activeTabDescriptor()
+  const workspace = useWorkspaceStore.getState()
+  const source = workspace.activePanelSource?.()
+  const panelId = source?.panelId ?? workspace.activePanelId
+  // Older adapters do not identify panels. A real panel must never fall back
+  // to the most recently focused duplicate of the same note.
+  const tab = source?.descriptor ??
+    (panelId ? null : workspace.activeTabDescriptor())
   const session =
     tab?.kind === 'note'
       ? [...sessions]
           .filter(
             (s) =>
               s.courseId === tab.payload.courseId &&
+              (!panelId || s.panelId === panelId) &&
               s.relPath() === tab.payload.relPath &&
               s.view.dom.getClientRects().length > 0,
           )

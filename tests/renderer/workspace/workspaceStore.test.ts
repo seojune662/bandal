@@ -40,6 +40,7 @@ const showToastMock = vi.mocked(showToast)
 
 interface FakePanel {
   id: string
+  params?: { descriptor: TabDescriptor }
   api: {
     setActive: ReturnType<typeof vi.fn>
     close: ReturnType<typeof vi.fn>
@@ -64,10 +65,22 @@ function emptyLayout(): Record<string, unknown> {
 
 class FakeDockview {
   panels: FakePanel[] = []
+  activePanel: FakePanel | undefined
+  activeListeners = new Set<() => void>()
   json: unknown = emptyLayout()
   fromJSONCalls: unknown[] = []
   addPanelCalls: Record<string, unknown>[] = []
   clearCount = 0
+
+  onDidActivePanelChange(listener: () => void): { dispose(): void } {
+    this.activeListeners.add(listener)
+    return { dispose: () => { this.activeListeners.delete(listener) } }
+  }
+
+  activate(panelId?: string): void {
+    this.activePanel = panelId ? this.getPanel(panelId) : undefined
+    for (const listener of this.activeListeners) listener()
+  }
 
   getPanel(id: string): FakePanel | undefined {
     return this.panels.find((panel) => panel.id === id)
@@ -90,6 +103,7 @@ class FakeDockview {
   clear(): void {
     this.clearCount += 1
     this.panels = []
+    this.activate()
     this.json = emptyLayout()
   }
 
@@ -99,6 +113,7 @@ class FakeDockview {
     const panels = (data as { panels: Record<string, unknown> }).panels
     this.panels = Object.keys(panels).map((id) => ({
       id,
+      params: (panels[id] as { params: { descriptor: TabDescriptor } }).params,
       api: { setActive: vi.fn(), close: vi.fn(), updateParameters: vi.fn() }
     }))
   }
@@ -172,6 +187,60 @@ beforeEach(() => {
   invokeMock.mockImplementation((channel: string) => {
     if (channel === 'layout:get') return Promise.resolve({ layout: null })
     return Promise.resolve({ ok: true })
+  })
+})
+
+describe('active panel source identity', () => {
+  test('focus events publish the exact duplicate without starting a layout save', async () => {
+    const dock = new FakeDockview()
+    const state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachApi(dock.asApi()); await settle()
+    const original = Object.assign(dock.addPanel({ id: tabPanelId(pdfA) }), { params: { descriptor: pdfA } })
+    const duplicate = Object.assign(dock.addPanel({ id: `${tabPanelId(pdfA)}:duplicate:one` }), { params: { descriptor: pdfA } })
+    dock.activate(original.id)
+    expect(useWorkspaceStore.getState().activePanelSource()).toEqual({ panelId: original.id, descriptor: pdfA })
+    dock.activate(duplicate.id)
+    expect(useWorkspaceStore.getState().activePanelId).toBe(duplicate.id)
+    expect(useWorkspaceStore.getState().activePanelSource()).toEqual({ panelId: duplicate.id, descriptor: pdfA })
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(savesFor('c1')).toHaveLength(0)
+    dock.activate()
+    expect(useWorkspaceStore.getState().activePanelId).toBeNull()
+    expect(useWorkspaceStore.getState().activePanelSource()).toBeNull()
+  })
+
+  test('retained inactive courses cannot change the current source and listeners are disposed', async () => {
+    const first = new FakeDockview(), second = new FakeDockview()
+    const state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachCourseApi('c1', first.asApi()); await settle()
+    Object.assign(first.addPanel({ id: 'first' }), { params: { descriptor: pdfA } }); first.activate('first')
+    state.attachCourseApi('c2', second.asApi()); state.setActiveCourse('c2'); await settle()
+    const other = descriptorFor('note', { courseId: 'c2', relPath: 'note.md' })
+    Object.assign(second.addPanel({ id: 'second' }), { params: { descriptor: other } }); second.activate('second')
+    expect(first.activeListeners.size).toBe(0)
+    first.activate()
+    expect(useWorkspaceStore.getState().activePanelSource()).toEqual({ panelId: 'second', descriptor: other })
+    state.detachCourseApi('c2')
+    expect(second.activeListeners.size).toBe(0)
+    expect(useWorkspaceStore.getState().activePanelSource()).toBeNull()
+  })
+
+  test('hydration hides stale sources then publishes the restored active panel', async () => {
+    let resolve!: (value: { layout: unknown }) => void
+    invokeMock.mockImplementation((channel: string) => channel === 'layout:get'
+      ? new Promise(r => { resolve = r }) : Promise.resolve({ ok: true }))
+    const dock = new FakeDockview(), state = useWorkspaceStore.getState()
+    const restore = dock.fromJSON.bind(dock)
+    dock.fromJSON = layout => { restore(layout); dock.activate(tabPanelId(pdfA)) }
+    state.setActiveCourse('c1'); state.attachApi(dock.asApi())
+    Object.assign(dock.addPanel({ id: 'stale' }), { params: { descriptor: pdfB } }); dock.activate('stale')
+    expect(useWorkspaceStore.getState().activePanelId).toBeNull()
+    expect(useWorkspaceStore.getState().activePanelSource()).toBeNull()
+    resolve({ layout: singleLeafLayout([pdfA]) }); await settle()
+    expect(useWorkspaceStore.getState().activePanelSource()).toEqual({ panelId: tabPanelId(pdfA), descriptor: pdfA })
+    state.detachApi()
+    expect(dock.activeListeners.size).toBe(0)
+    expect(useWorkspaceStore.getState().activePanelId).toBeNull()
   })
 })
 

@@ -94,4 +94,11 @@ describe('pluginsStore', () => {
       commandId: 'summarize'
     })
   })
+
+  test('passes an explicit launcher file target through the command helper', async () => {
+    const invoke = vi.fn(async () => ({ ok: true }))
+    setIpcAdapter({ invoke, on: vi.fn(() => () => undefined) } as unknown as IpcAdapter)
+    await usePluginsStore.getState().runCommand('study.tools', 'summarize', { courseId: 'origin-course', relPath: 'notes/origin.md' })
+    expect(invoke).toHaveBeenCalledWith('plugins:runCommand', { pluginId: 'study.tools', commandId: 'summarize', context: { courseId: 'origin-course', relPath: 'notes/origin.md' } })
+  })
 })

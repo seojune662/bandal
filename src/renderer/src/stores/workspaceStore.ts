@@ -45,6 +45,8 @@ export type WorkspaceHydration = 'idle' | 'loading' | 'ready'
 interface WorkspaceState {
   /** Course whose layout is (being) mounted; null = no course selected. */
   activeCourseId: string | null
+  /** Actual Dockview identity, including duplicate instances. */
+  activePanelId: string | null
   hydration: WorkspaceHydration
   /** Mirror of the descriptors currently open in dockview, by panel id. */
   openTabs: Record<string, TabDescriptor>
@@ -83,6 +85,7 @@ interface WorkspaceState {
   closeActiveTab: () => Promise<void>
   /** [M6-A] ⌘1..8: activate the nth open tab (0-based); out of range → no-op. */
   activateTabAt: (index: number) => void
+  activatePanel: (panelId: string) => void
   /** ⌘9: the LAST tab, following browser convention rather than the 9th. */
   activateLastTab: () => void
   /** ⌃Tab / ⌘⇧[ ] — wraps at both ends. */
@@ -96,6 +99,7 @@ interface WorkspaceState {
   activeBrowserTabId: () => string | null
   /** The descriptor of whatever tab is focused, for ⌘P and the like. */
   activeTabDescriptor: () => TabDescriptor | null
+  activePanelSource: () => { panelId: string; descriptor: TabDescriptor } | null
   /** Wired to dockview's onDidLayoutChange by WorkspaceHost. */
   notifyLayoutChanged: () => void
   /** Send any pending save immediately (course switch / beforeunload). */
@@ -122,6 +126,7 @@ interface ActiveSave {
 
 // Imperative, non-reactive internals.
 let api: DockviewApi | null = null
+let activePanelSubscription: { dispose(): void } | null = null
 let retainedMode = false
 const courseApis = new Map<string | null, DockviewApi>()
 const hydratedCourses = new Set<string>()
@@ -183,6 +188,18 @@ function clearSaveTimer(): void {
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
+  const syncActivePanel = (): void => {
+    const activePanelId = get().hydration === 'ready' ? api?.activePanel?.id ?? null : null
+    if (get().activePanelId !== activePanelId) set({ activePanelId })
+  }
+  const bindApi = (nextApi: DockviewApi | null): void => {
+    activePanelSubscription?.dispose()
+    activePanelSubscription = null
+    api = nextApi
+    // The optional call also supports lightweight, older test adapters.
+    activePanelSubscription = api?.onDidActivePanelChange?.(syncActivePanel) ?? null
+    syncActivePanel()
+  }
   const pendingCloses = new Map<IDockviewPanel, Promise<void>>()
   const requestClose = (target: DockviewApi, panel: IDockviewPanel, courseId: string | null): Promise<void> => {
     const pending = pendingCloses.get(panel)
@@ -337,7 +354,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 
   const hydrate = async (courseId: string, serial: number): Promise<void> => {
     if (api === null) return // attachApi re-runs hydration once ready
-    set({ hydration: 'loading' })
+    set({ hydration: 'loading', activePanelId: null })
 
     let raw: unknown = runtimeLayouts.get(courseId) ?? null
     if (raw === null) {
@@ -373,7 +390,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     runtimeLayouts.set(courseId, live)
     lastStructuralKey = structuralKey(live)
     hydratedCourses.add(courseId)
-    set({ openTabs: tabsFromLayout(live), hydration: 'ready' })
+    set({ openTabs: tabsFromLayout(live), hydration: 'ready', activePanelId: api.activePanel?.id ?? null })
 
     // Persist the cleaned document when validation dropped anything, so the
     // next hydration starts from a healthy file.
@@ -385,6 +402,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 
   return {
     activeCourseId: null,
+    activePanelId: null,
     hydration: 'idle',
     openTabs: {},
 
@@ -393,8 +411,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       if (courseId !== null) discardedCourses.delete(courseId)
       courseApis.set(courseId, nextApi)
       if (get().activeCourseId !== courseId) return
-      api = nextApi
-      if (courseId === null) set({ hydration: 'ready', openTabs: {} })
+      bindApi(nextApi)
+      if (courseId === null) set({ hydration: 'ready', openTabs: {}, activePanelId: nextApi.activePanel?.id ?? null })
       else void hydrate(courseId, ++switchSerial)
     },
 
@@ -408,16 +426,16 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       }
       courseApis.delete(courseId)
       if (courseId !== null) hydratedCourses.delete(courseId)
-      if (api === outgoing) api = null
+      if (api === outgoing) bindApi(null)
       set({ openTabs: { ...get().openTabs } })
     },
 
     attachApi: (nextApi) => {
-      api = nextApi
+      bindApi(nextApi)
       lastStructuralKey = ''
       const { activeCourseId } = get()
       if (activeCourseId === null) {
-        set({ hydration: 'ready', openTabs: {} })
+        set({ hydration: 'ready', openTabs: {}, activePanelId: nextApi.activePanel?.id ?? null })
         return
       }
       void hydrate(activeCourseId, ++switchSerial)
@@ -425,8 +443,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 
     detachApi: () => {
       flush()
-      api = null
-      set({ hydration: 'idle', openTabs: {} })
+      bindApi(null)
+      set({ hydration: 'idle', openTabs: {}, activePanelId: null })
     },
 
     setActiveCourse: (courseId) => {
@@ -441,16 +459,17 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       flush() // persist the outgoing course's layout before swapping
       set({
         activeCourseId: courseId,
+        activePanelId: null,
         openTabs: {},
         hydration: courseId === null ? 'ready' : 'loading'
       })
       lastStructuralKey = ''
       if (retainedMode) {
-        api = courseApis.get(courseId) ?? null
+        bindApi(courseApis.get(courseId) ?? null)
         if (api && courseId !== null && hydratedCourses.has(courseId)) {
           const live = api.toJSON()
           lastStructuralKey = structuralKey(live)
-          set({ openTabs: tabsFromLayout(live), hydration: 'ready' })
+          set({ openTabs: tabsFromLayout(live), hydration: 'ready', activePanelId: api.activePanel?.id ?? null })
           replayOpens(courseId)
           return
         }
@@ -656,6 +675,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       api.panels[index]?.api.setActive()
     },
 
+    activatePanel: (panelId) => {
+      api?.getPanel(panelId)?.api.setActive()
+    },
+
     activateLastTab: () => {
       if (api === null) return
       api.panels[api.panels.length - 1]?.api.setActive()
@@ -697,6 +720,13 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       return isTabDescriptor(descriptor) ? descriptor : null
     },
 
+    activePanelSource: () => {
+      const panel = api?.activePanel
+      if (get().hydration !== 'ready' || !panel || panel.id !== get().activePanelId) return null
+      const descriptor = panel.params?.descriptor
+      return isTabDescriptor(descriptor) ? { panelId: panel.id, descriptor } : null
+    },
+
     activeBrowserTabId: () => {
       if (api === null) return null
       const descriptor = (
@@ -710,6 +740,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 
     notifyLayoutChanged: () => {
       if (suppressLayoutEvents || api === null) return
+      syncActivePanel()
       const { activeCourseId, hydration, openTabs } = get()
       if (activeCourseId === null || hydration !== 'ready') return
 
@@ -757,6 +788,8 @@ export function resetWorkspaceStoreForTests(): void {
   if (activeSave?.retryTimer !== null && activeSave?.retryTimer !== undefined) {
     clearTimeout(activeSave.retryTimer)
   }
+  activePanelSubscription?.dispose()
+  activePanelSubscription = null
   api = null
   retainedMode = false
   courseApis.clear()
@@ -773,6 +806,7 @@ export function resetWorkspaceStoreForTests(): void {
   flushAfterActiveSave = false
   useWorkspaceStore.setState({
     activeCourseId: null,
+    activePanelId: null,
     hydration: 'idle',
     openTabs: {}
   })

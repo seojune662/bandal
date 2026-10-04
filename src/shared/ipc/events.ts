@@ -13,6 +13,7 @@ import type { AuthState } from '../types/auth'
 import type { UpdateStatus } from '../types/update'
 import type { PipState } from '../types/pip'
 import type { PluginSummary } from '../types/plugin'
+import type { WorkflowPackSummary } from '../types/workflowPack'
 import type {
   ScreenPermissionState
 } from '../types/screenCapture'
@@ -301,6 +302,7 @@ export interface PushEvents {
   'mcp:changed': Record<string, never>
   // -- extensions -----------------------------------------------------------
   'plugins:changed': { plugins: PluginSummary[] }
+  'packs:changed': { packs: WorkflowPackSummary[] }
   'plugins:settingsChanged': { pluginId: string; values: Record<string, unknown> }
   'plugins:editorRequest': import('../types/pluginEditor').PluginEditorRequest
   /** `bandal.notices.show` from a plugin; renderer prefixes the plugin name. */

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { posix } from 'node:path'
 import type { LearningIpcContract, LearningGenerationSource } from '../../shared/ipc/learningContract'
 import type { LearningBinding, LearningSourceRef, StartLearningRunInput } from '../../shared/types/learning'
@@ -5,7 +6,7 @@ import type { WorkflowPack, WorkflowPackV2, WorkflowPackScope } from '../../shar
 import type { Course } from '../../shared/types/course'
 import { ValidationError } from '../db/errors'
 import { requireId, requireNonEmptyString, resolveInside } from '../db/validate'
-import { learningString, learningNumber } from '../features/learning/validation'
+import { learningString, learningNumber, normalizeLearningArticle } from '../features/learning/validation'
 import type { LearningRepo } from '../features/learning/learningRepo'
 import type { createLearningRuntime } from '../features/learning/learningRuntime'
 import type { createArticleExtractor } from '../features/learning/articleExtractor'
@@ -97,7 +98,13 @@ export function registerLearningHandlers(handle: Handler, deps: LearningHandlerD
     const state = await deps.repo.read(input.binding)
     article.matchedWordIds = [...new Set(matchArticleWords(article, state.words.map(word => ({ id: word.id, surface: word.surface, forms: [word.lemma,
       ...state.occurrences.filter(occurrence => occurrence.wordId === word.id).map(occurrence => occurrence.surface)] }))).map(match => match.wordId))]
-    return deps.repo.addArticle({ binding: input.binding, article })
+    const normalized = normalizeLearningArticle(article, article.id ?? randomUUID(), new Date().toISOString())
+    const snapshot = await deps.repo.addArticle({ binding: input.binding, article: { ...article, ...normalized } })
+    // Resolve the exact repository deduplication identity, including a mirrored
+    // article already retained under another source URL.
+    const added = snapshot.articles.find(item => item.canonicalUrl === normalized.canonicalUrl || item.contentHash === normalized.contentHash)
+    if (!added) throw new Error('저장한 기사 식별자를 찾지 못했습니다.')
+    return { ...snapshot, addedArticleId: added.id }
   })
   handle('learning:saveWord', input => deps.repo.saveWord(input))
   handle('learning:updateWord', input => deps.repo.updateWord(input))

@@ -74,6 +74,9 @@ export interface RunStudyToolInput {
   relPath: string | null
   /** Optional selected text to focus on (e.g. a highlighted passage). */
   selection?: string
+  /** Validated live browser source, mutually exclusive with a file target. */
+  browserTabUrl?: string
+  browserTabId?: string
 }
 
 export interface RunStudyToolResult {

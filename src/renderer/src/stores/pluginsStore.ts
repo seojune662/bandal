@@ -31,7 +31,7 @@ export interface PluginsState {
   loading: boolean
   error: string | null
   refresh: () => Promise<void>
-  runCommand: (pluginId: string, commandId: string) => Promise<void>
+  runCommand: (pluginId: string, commandId: string, context?: { courseId: string; relPath: string }) => Promise<void>
 }
 
 let unsubscribe: (() => void) | null = null
@@ -166,8 +166,8 @@ export const usePluginsStore = create<PluginsState>()((set) => ({
     }
   },
 
-  runCommand: async (pluginId, commandId) => {
-    await invoke('plugins:runCommand', { pluginId, commandId })
+  runCommand: async (pluginId, commandId, context) => {
+    await invoke('plugins:runCommand', { pluginId, commandId, ...(context ? { context } : {}) })
   }
 }))
 

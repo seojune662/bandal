@@ -215,7 +215,7 @@ function nativePack(pack: WorkflowPackV1, experience: WorkflowPackV2['experience
     schemaVersion: WORKFLOW_PACK_SCHEMA_VERSION,
     experience,
     recipe,
-    ...(experience === 'article-vocabulary' ? { followUp: { label: '다음 기사 찾기', recipe: '현재 학습 프로젝트의 사용자 선택 단어와 읽은 기사 기록을 이어받아 다음 기사를 찾아라. 본문이 확인된 새 기사만 제출하라.' } } : {}),
+    ...(experience === 'article-vocabulary' ? { name: '영어 이어읽기', description: '관심 있는 영어 글을 읽고 표현을 모아 다음 글에서 다시 만나요.', followUp: { label: '다음 기사 찾기', recipe: '현재 학습 프로젝트의 사용자 선택 단어와 읽은 기사 기록을 이어받아 다음 기사를 찾아라. 본문이 확인된 새 기사만 제출하라.' } } : {}),
     allowedTools: experience === 'article-vocabulary'
       ? ['learning_verify_article', 'learning_submit_result', 'browser_open', 'browser_snapshot', 'browser_read']
       : ['read_material', 'list_materials', 'learning_submit_result']

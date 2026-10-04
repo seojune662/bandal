@@ -329,6 +329,7 @@ export function MilkdownNoteEditor({
   autoFocus?: boolean
 }): JSX.Element {
   const t = useT()
+  const assistant = usePanelAssistant()
   // rename 이 에디터를 재생성하지 않도록 relPath 는 ref 로만 플러그인에 전달.
   const relPathRef = useRef(relPath)
   relPathRef.current = relPath
@@ -416,7 +417,11 @@ export function MilkdownNoteEditor({
           context.update(prosePluginsCtx, (plugins) => [
             ...plugins,
             createNoteImagePlugin(courseId),
-            createPluginEditorAccess(courseId, () => relPathRef.current),
+            createPluginEditorAccess(
+              courseId,
+              () => relPathRef.current,
+              assistant?.panelId
+            ),
             createMentionMenuPlugin({
               courseId,
               getSelfRelPath: () => relPathRef.current

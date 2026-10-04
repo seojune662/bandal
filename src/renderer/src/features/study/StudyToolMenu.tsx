@@ -1,22 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import type { StudyToolId } from '../../../../shared/types/study'
 import { showToast } from '../../app/toast'
-import { useMaterialsStore } from '../../stores/materialsStore'
-import {
-  isStudyToolEnabled,
-  studyToolDisabledReason
-} from './studyToolAvailability'
 import { StudyToolIcon, StudyToolsIcon } from './StudyToolIcons'
 import {
   type PackStudyToolDefinition,
-  type RunPackStudyToolInput,
   useStudyToolsStore
 } from './studyToolsStore'
 import './study.css'
-import { requestLearningCreation } from '../learning/LearningDialogsHost'
-import { openLearning } from '../learning/learningNavigation'
-
-const TREE_REFRESH_DELAY_MS = 800
+import { requestLearningProjectPicker } from '../learning/LearningDialogsHost'
+import { executeFeatureAction, featureActionDisabledReason, studyToolFeatureEntry } from '../launcher/featureActions'
+import { studyTargetContext } from '../launcher/launcherContext'
 
 interface MenuPosition {
   left: number
@@ -107,8 +100,6 @@ export function StudyToolMenu(props: StudyToolMenuProps): JSX.Element {
   const error = useStudyToolsStore((state) => state.error)
   const running = useStudyToolsStore((state) => state.running)
   const loadTools = useStudyToolsStore((state) => state.loadTools)
-  const run = useStudyToolsStore((state) => state.run)
-  const generate = useStudyToolsStore((state) => state.generate)
 
   useEffect(() => {
     void loadTools()
@@ -198,37 +189,13 @@ export function StudyToolMenu(props: StudyToolMenuProps): JSX.Element {
   }
 
   const runTool = (tool: PackStudyToolDefinition, followUp = false): void => {
-    if (tool.experience === 'article-vocabulary') {
-      requestLearningCreation(courseId)
-      onClose()
-      return
-    }
-    const input: RunPackStudyToolInput = {
-      courseId,
-      tool: tool.id,
-      relPath,
-      ...(selection === undefined ? {} : { selection }),
-      ...(followUp ? { followUpOf: tool.id } : {})
-    }
-
-    if (tool.experience === 'quiz' || tool.experience === 'flashcards') {
-      void generate(input).then(result => { openLearning(result.binding, 'review'); showToast('학습 자료를 준비하고 있어요. 완료되면 이곳에 나타납니다.') }).catch(() => showToast('학습 자료 생성을 시작하지 못했어요.', 'danger'))
-      onClose()
-      return
-    }
-
-    void run(input)
-      .then((result) => {
-        showToast(`AI 학습 자료를 만들었어요: ${result.relPath}`)
-        window.setTimeout(() => {
-          void useMaterialsStore.getState().loadTree(courseId)
-        }, TREE_REFRESH_DELAY_MS)
-      })
-      .catch(() => {
-        showToast('AI 학습 자료를 만들지 못했어요.', 'danger')
-      })
-
-    showToast('AI가 만드는 중이에요. 자료에 곧 나타납니다.')
+    const context = studyTargetContext(courseId, relPath, selection)
+    const scope = selection?.trim() ? 'selection' : relPath === null ? 'course' : 'material'
+    void executeFeatureAction(studyToolFeatureEntry(tool), context, scope, { followUp }).then(result => {
+      if (result.status === 'needs-project-picker') requestLearningProjectPicker(result.projects)
+      showToast(result.message, result.status === 'failed' || result.status === 'needs-course' ? 'danger' : 'info')
+    })
+    if (!tool.experience) showToast('AI가 만드는 중이에요. 자료에 곧 나타납니다.')
     onClose()
   }
 
@@ -241,14 +208,15 @@ export function StudyToolMenu(props: StudyToolMenuProps): JSX.Element {
     tool: PackStudyToolDefinition,
     followUp: boolean
   ): JSX.Element => {
-    const targetEnabled = tool.enabled !== false && (tool.experience === 'article-vocabulary' || followUp || isStudyToolEnabled(tool, relPath))
+    const targetReason = featureActionDisabledReason(studyToolFeatureEntry(tool), studyTargetContext(courseId, relPath, selection), selection?.trim() ? 'selection' : relPath === null ? 'course' : 'material')
+    const targetEnabled = targetReason === null
     const isRunning = (running[tool.id] ?? 0) > 0
     const disabled = !targetEnabled || isRunning
     const reason = targetEnabled
       ? isRunning
         ? '이미 만들고 있어요.'
         : null
-      : studyToolDisabledReason(tool, relPath)
+      : targetReason
     const label = followUp ? (followUpLabel(tool) ?? tool.label) : tool.label
     const description = followUp
       ? '이 팩의 후속 레시피를 실행해요.'

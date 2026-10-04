@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FunctionComponent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FunctionComponent } from 'react'
 import type { IDockviewPanelProps } from 'dockview'
 import { isTabDescriptor, tabTitle, descriptorFor } from '../workspace/tabIdentity'
 import { useCoursesStore } from '../../stores/coursesStore'
@@ -12,6 +12,7 @@ import { useBrowserGuests } from '../browser/browserGuestsStore'
 import { ConversationListMenu } from '../chat/ConversationListMenu'
 import { Tooltip } from '../../components/Tooltip'
 import './assistant-panel.css'
+import { registerAssistantController } from './assistantController'
 const ChatSurface = lazy(() => import('../chat/ChatSurface').then(m => ({ default: m.ChatSurface })))
 export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelProps>): FunctionComponent<IDockviewPanelProps> {
   return function AssistantPanel(props) {
@@ -20,8 +21,10 @@ export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelPr
     const active = usePanelActive(props.api)
     const [state, setState] = useState(() => normalizeAssistantPanel(props.params.assistant))
     const [ownerCourseId] = useState(() => state.courseId ?? selectedCourseId)
+    const [workspaceCourseId] = useState(() => useWorkspaceStore.getState().activeCourseId)
     const courseId = descriptor && 'courseId' in descriptor.payload ? descriptor.payload.courseId : ownerCourseId
     const [initialized, setInitialized] = useState(state.open)
+    const [focusRequested, setFocusRequested] = useState(false)
     const resizeCleanup = useRef<(() => void) | null>(null)
     const stateRef = useRef(state); stateRef.current = state
     const root = useRef<HTMLDivElement>(null)
@@ -60,13 +63,48 @@ export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelPr
     }, [])
     const show = useCallback(() => { setInitialized(true); update({ open: true }) }, [update])
     const close = useCallback(() => update({ open: false }), [update])
+    const focus = useCallback(() => setFocusRequested(true), [])
+    const isChat = descriptor?.kind === 'chat'
+    useLayoutEffect(() => registerAssistantController(props.api.id, {
+      courseId,
+      open: isChat || state.open,
+      show: isChat ? () => {} : show,
+      focus
+    }, workspaceCourseId), [props.api.id, courseId, workspaceCourseId, isChat, state.open, show, focus])
+    useEffect(() => {
+      if (!focusRequested) return
+      if (!active || (!isChat && !state.open)) { setFocusRequested(false); return }
+      const element = root.current
+      if (!element) return
+      const target = isChat ? element : element.querySelector('.tab-assistant')
+      if (!target) return
+      const tryFocus = (): boolean => {
+        const workspace = useWorkspaceStore.getState()
+        if (workspace.activeCourseId !== workspaceCourseId || workspace.activePanelSource()?.panelId !== props.api.id) return false
+        const composer = target.querySelector<HTMLTextAreaElement>('.chat-composer__input')
+        if (!composer?.isConnected || composer.closest('[inert], [hidden]')) return false
+        composer.focus()
+        if (document.activeElement !== composer) return false
+        setFocusRequested(false)
+        return true
+      }
+      if (tryFocus()) return
+      // ChatSurface is lazy: focus once the real composer has mounted, without
+      // stealing focus if the user switches to another panel meanwhile.
+      const observer = new MutationObserver(() => { if (tryFocus()) observer.disconnect() })
+      // Settings fades out before its ancestor inert attribute is released.
+      // Observe ancestors too, so opening AI during that fade still focuses.
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true,
+        attributeFilter: ['inert', 'hidden', 'aria-hidden', 'class', 'style'] })
+      return () => observer.disconnect()
+    }, [focusRequested, active, isChat, state.open, props.api.id, workspaceCourseId])
     const ask = useCallback((text: string) => {
       updateComposerDraft(stateRef.current.conversationId, draft => ({ text: draft.text ? `${draft.text}\n\n${text}` : text }))
       show()
     }, [show])
     const setHighlightsOpen = useCallback((highlightsOpen: boolean) => update({ highlightsOpen }), [update])
     const context = useMemo(() => ({ panelId: props.api.id, highlightsOpen: state.highlightsOpen, setHighlightsOpen, ask }), [props.api.id, state.highlightsOpen, setHighlightsOpen, ask])
-    if (descriptor?.kind === 'chat') return <Component {...props} />
+    if (isChat) return <div className="tab-assistant-chat-host" ref={root}><Component {...props} /></div>
     const overlay = availableWidth < state.width + 360
     return <PanelAssistantContext.Provider value={context}>
       <div className="tab-with-assistant" ref={root} data-assistant-open={state.open} data-assistant-overlay={overlay}>
