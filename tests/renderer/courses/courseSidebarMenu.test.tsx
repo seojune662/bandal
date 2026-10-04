@@ -137,7 +137,7 @@ describe('CourseSidebar course menu', () => {
     ).map((item) => item.getAttribute('aria-label'))
 
     expect(labels).toEqual([
-      '과목', '학업 보드 열기', '더 보기', '내 프로필', '설정'
+      '과목', '학업 보드 열기', 'AI', '플러그인', '더 보기', '내 프로필', '설정'
     ])
   })
 
