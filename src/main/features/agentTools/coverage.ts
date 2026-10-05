@@ -140,6 +140,7 @@ export const NOT_FOR_AGENT: Readonly<Record<string, string>> = {
   'study:run': '위와 같음 — 에이전트가 자기를 재귀 호출할 자리다.',
   'study:generate': '학습 실행의 시작은 사용자 UI가 담당하며 에이전트가 자기를 재귀 호출하지 않는다.',
   'learning:create': '학습 공간의 위치·관심 주제는 사용자 시작 화면에서 결정한다.',
+  'learning:updateSettings': '학습 공간 종류·관심 주제·연결 과목과 AI 제공자·모델은 사용자가 설정 화면에서 확인하고 선택한다.',
   'learning:addArticle': '네이티브 실행은 learning_verify_article와 learning_submit_result로 검증된 기사만 제출한다.',
   'learning:saveWord': '모르는 표현은 학습자가 원문에서 직접 선택하고 저장한다.',
   'learning:updateWord': '표현의 익숙함과 사용자 수정은 학습자의 판단을 보존한다.',
