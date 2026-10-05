@@ -1,11 +1,31 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-const { invokeMock } = vi.hoisted(() => ({
-  invokeMock: vi.fn()
+const { invokeMock, openTabMock, selectCourseMock, showCourseWorkspaceMock, showToastMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+  openTabMock: vi.fn(),
+  selectCourseMock: vi.fn(),
+  showCourseWorkspaceMock: vi.fn(),
+  showToastMock: vi.fn()
 }))
 
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({
   invoke: invokeMock
+}))
+
+vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({
+  useCoursesStore: {
+    getState: () => ({ courses: [{ id: 'course-activity' }], selectCourse: selectCourseMock })
+  }
+}))
+
+vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
+  useWorkspaceStore: {
+    getState: () => ({ openTab: openTabMock, showCourseWorkspace: showCourseWorkspaceMock })
+  }
+}))
+
+vi.mock('../../../src/renderer/src/app/toast', () => ({
+  showToast: showToastMock
 }))
 
 import {
@@ -16,6 +36,7 @@ import {
 
 describe('material-opened activity deduplication', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     invokeMock.mockReset()
     invokeMock.mockResolvedValue({ ok: true })
   })
@@ -44,6 +65,10 @@ describe('material-opened activity deduplication', () => {
     openMaterialInCourse('course-activity', 'note', 'quiz/activity-test.md')
     openMaterialInCourse('course-activity', 'note', 'quiz/activity-test.md')
 
+    expect(selectCourseMock).toHaveBeenCalledWith('course-activity')
+    expect(showCourseWorkspaceMock).toHaveBeenCalledWith('course-activity')
+    expect(openTabMock).toHaveBeenCalledTimes(2)
+    expect(showToastMock).not.toHaveBeenCalled()
     expect(invokeMock).toHaveBeenCalledTimes(1)
     expect(invokeMock).toHaveBeenCalledWith('activity:record', {
       courseId: 'course-activity',
@@ -60,5 +85,10 @@ describe('material-opened activity deduplication', () => {
       openMaterialInCourse('course-activity', 'note', 'quiz/failure-test.md')
     ).not.toThrow()
     await Promise.resolve()
+    expect(openTabMock).toHaveBeenCalledWith({
+      kind: 'note',
+      payload: { courseId: 'course-activity', relPath: 'quiz/failure-test.md' }
+    })
+    expect(showToastMock).not.toHaveBeenCalled()
   })
 })
