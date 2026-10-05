@@ -22,6 +22,7 @@ test.describe('plugin catalog', () => {
     const { page } = bandal
     await page.keyboard.press('Meta+,')
     await page.locator('.settings-nav [data-category="packs"]').click()
+    await page.getByRole('button', { name: '플러그인 찾아보기', exact: true }).click()
     const card = page.locator('.settings-catalog-card').first()
     try {
       await expect(card).toBeVisible({ timeout: 20_000 })

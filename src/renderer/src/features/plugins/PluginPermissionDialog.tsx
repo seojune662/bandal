@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+import { useFocusTrap } from '../../components/useFocusTrap'
 import type { PluginSummary } from '../../../../shared/types/plugin'
 import { describePermission } from '../../../../shared/plugins/permissions'
 import { useLocale, useT } from '../../i18n'
@@ -6,6 +8,8 @@ import './plugins.css'
 export interface PluginPermissionDialogProps {
   plugin: PluginSummary
   pending?: boolean
+  notice?: string | undefined
+  approveLabel?: string | undefined
   onApprove: () => void
   onCancel: () => void
 }
@@ -13,9 +17,13 @@ export interface PluginPermissionDialogProps {
 export function PluginPermissionDialog({
   plugin,
   pending = false,
+  notice,
+  approveLabel,
   onApprove,
   onCancel
 }: PluginPermissionDialogProps): JSX.Element {
+  const dialogRef = useRef<HTMLElement>(null)
+  useFocusTrap(dialogRef, { active: true, onEscape: pending ? undefined : onCancel })
   const locale = useLocale()
   const t = useT()
 
@@ -28,6 +36,7 @@ export function PluginPermissionDialog({
       }}
     >
       <section
+        ref={dialogRef}
         className="plugin-permission-dialog"
         role="dialog"
         aria-modal="true"
@@ -47,6 +56,7 @@ export function PluginPermissionDialog({
         <p className="plugin-permission-dialog__description">
           {t('settings.plugins.permission.description')}
         </p>
+        {notice && <p className="plugin-permission-dialog__description">{notice}</p>}
         {plugin.manifest.permissions.length === 0 ? (
           <p className="plugin-permission-dialog__empty">
             {t('settings.plugins.permission.none')}
@@ -71,7 +81,7 @@ export function PluginPermissionDialog({
             disabled={pending}
             onClick={onApprove}
           >
-            {t(
+            {(!pending && approveLabel) || t(
               pending
                 ? 'settings.plugins.permission.approving'
                 : 'settings.plugins.permission.approve'

@@ -8,6 +8,10 @@ describe('searchSettings', () => {
       { category: 'browser', matches: ['Default zoom'] }
     ])
   })
+  test('MCP and connection queries route to the unified plugin category', () => {
+    expect(searchSettings('MCP', 'ko-KR').map(hit => hit.category)).toEqual(['packs'])
+    expect(searchSettings('Notion', 'en-US').map(hit => hit.category)).toEqual(['packs'])
+  })
   test('includes installed plugin schema titles without duplicate hits', () => {
     const manifest = sanitizePluginManifest({ manifestVersion: 2, id: 'test.search', name: 'Test', version: '1.0.0', minAppVersion: '0.41.2',
       contributes: { settings: [{ key: 'case', title: '변환 방식', type: 'boolean', default: true }] } }).manifest!

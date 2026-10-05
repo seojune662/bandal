@@ -8,12 +8,16 @@ import { showToast } from '../../../app/toast'
 import { invoke, onPush } from '../../../lib/ipc'
 import { useCoursesStore } from '../../../stores/coursesStore'
 import { useUiStore } from '../../../stores/uiStore'
-import { useWorkspaceStore } from '../../../stores/workspaceStore'
+import { useWorkspaceStore, type WorkspaceSurface } from '../../../stores/workspaceStore'
 import { COURSE_COLORS } from '../../courses/courseColors'
 import { descriptorFor } from '../../workspace/tabIdentity'
 import { shouldShowOnboarding } from '../onboardingModel'
 import { TOUR_STEP_COUNT, TOUR_STEPS } from './tourScript'
 import type { TourBeforeAction } from './tourTypes'
+import { onboardingCopy } from '../onboardingCopy'
+import { captureLauncherContext } from '../../launcher/launcherContext'
+import { tabPanelId } from '../../workspace/tabIdentity'
+import samplePdf from '../../../../../../web-demo/public/sample.pdf?inline'
 
 export type TourStatus =
   | 'idle'
@@ -28,32 +32,68 @@ interface TourStore {
   stepIndex: number
   courseId: string | null
   seedNotePath: string | null
-  assistantConversationId: string | null
+  seedPdfPath: string | null
   transitioning: boolean
   init: () => Promise<void>
   start: () => Promise<void>
-  later: () => Promise<void>
+  later: () => Promise<boolean>
   next: () => void
   back: () => void
   skip: () => void
   finish: () => void
 }
 
-const TOUR_COURSE_NAME = '반달 튜토리얼'
-const SEED_NOTE_NAME = '환영해요.md'
-const SEED_NOTE = `# 반달에 오신 걸 환영해요
-
-이 노트는 둘러보기를 위해 만든 임시 자료예요.
-
-- 과목마다 자료와 필기를 한 폴더에 모을 수 있어요.
-- PDF, 브라우저, AI 튜터를 탭으로 함께 열 수 있어요.
-- 둘러보기를 마치거나 건너뛰면 이 과목과 노트는 자동으로 정리돼요.
-`
-
 let initialized = false
+let lastSeenVersion = 0
+let unsubscribeSettings: (() => void) | null = null
+
+// Invalidates asynchronous step setup before any cleanup or new tour.
+let tourGeneration = 0
+
+type TourLocation = {
+  selectedCourseId: string | null
+  activeCourseId: string | null
+  activePanelId: string | null
+  surface: WorkspaceSurface
+  ui: Pick<ReturnType<typeof useUiStore.getState>, 'leftRailOpen' | 'courseRailOpen' | 'leftRailPanel' | 'rightRailOpen' | 'isSettingsOpen' | 'settingsCategory' | 'isBoardOverlayOpen' | 'isLinkGraphOpen'>
+}
+let previousLocation: TourLocation | null = null
+
+function captureLocation(): TourLocation {
+  const workspace = useWorkspaceStore.getState()
+  const ui = useUiStore.getState()
+  return {
+    selectedCourseId: useCoursesStore.getState().selectedCourseId,
+    activeCourseId: workspace.activeCourseId, activePanelId: workspace.activePanelId,
+    surface: workspace.surface,
+    ui: { leftRailOpen: ui.leftRailOpen, courseRailOpen: ui.courseRailOpen, leftRailPanel: ui.leftRailPanel,
+      rightRailOpen: ui.rightRailOpen, isSettingsOpen: ui.isSettingsOpen, settingsCategory: ui.settingsCategory,
+      isBoardOverlayOpen: ui.isBoardOverlayOpen, isLinkGraphOpen: ui.isLinkGraphOpen }
+  }
+}
+
+async function restoreLocation(): Promise<void> {
+  const previous = previousLocation
+  if (!previous) return
+  const courses = useCoursesStore.getState()
+  const available = (id: string | null): string | null => id && courses.courses.some(course => course.id === id) ? id : null
+  const active = available(previous.activeCourseId)
+  courses.selectCourse(available(previous.selectedCourseId))
+  const workspace = useWorkspaceStore.getState()
+  workspace.showCourseWorkspace(active)
+  if (active) {
+    await waitForWorkspaceCourse(active)
+    if (previous.activePanelId && useWorkspaceStore.getState().openTabs[previous.activePanelId]) {
+      useWorkspaceStore.getState().activatePanel(previous.activePanelId)
+    }
+  }
+  if (previous.surface === 'learning-home') workspace.showLearningHome()
+  useUiStore.setState(previous.ui)
+  previousLocation = null
+}
 
 function tutorialSettings(courseId: string | null): Settings['tutorial'] {
-  return { seenVersion: TUTORIAL_VERSION, activeCourseId: courseId }
+  return { seenVersion: Math.max(lastSeenVersion, TUTORIAL_VERSION), activeCourseId: courseId }
 }
 
 function chooseTourColor(): string {
@@ -73,11 +113,10 @@ function descriptorCourseId(
     : null
 }
 
-function closeCourseTabs(courseId: string): void {
+async function closeCourseTabs(courseId: string): Promise<void> {
   const workspace = useWorkspaceStore.getState()
-  for (const [panelId, descriptor] of Object.entries(workspace.openTabs)) {
-    if (descriptorCourseId(descriptor) === courseId) workspace.closeTab(panelId)
-  }
+  await workspace.closeTabs(Object.entries(workspace.openTabs)
+    .filter(([, descriptor]) => descriptorCourseId(descriptor) === courseId).map(([panelId]) => panelId))
 }
 
 function revealTourSurfaces(): void {
@@ -125,54 +164,45 @@ async function waitForPaint(): Promise<void> {
   })
 }
 
-async function revealFavorites(courseId: string): Promise<void> {
-  const ui = useUiStore.getState()
-  ui.showCourses()
-  useCoursesStore.getState().selectCourse(courseId)
-  await waitForWorkspaceCourse(courseId)
-
-  // Let the rail mount and the selected course render before checking the
-  // local collapse state owned by CourseSidebar.
-  await waitForPaint()
-  await waitForPaint()
-  const toggle = document.querySelector<HTMLButtonElement>(
-    '.course-row[data-selected="true"] .course-row__toggle'
-  )
-  if (toggle?.getAttribute('aria-expanded') === 'false') {
-    toggle.click()
-    await waitForPaint()
-  }
-}
-
 async function prepareStep(
   action: TourBeforeAction | null,
   courseId: string,
   seedNotePath: string,
-  assistantConversationId: string
+  seedPdfPath: string,
+  isCurrent: () => boolean
 ): Promise<void> {
-  if (action === null) return
-
-  if (action === 'reveal-favorites') {
-    await revealFavorites(courseId)
-    return
-  }
-
-  useCoursesStore.getState().selectCourse(courseId)
+  if (action === null || !isCurrent()) return
+  const ui = useUiStore.getState()
+  ui.showCourses()
+  const courses = useCoursesStore.getState()
+  courses.selectCourse(courseId)
+  const workspace = useWorkspaceStore.getState()
+  workspace.showCourseWorkspace(courseId)
   await waitForWorkspaceCourse(courseId)
-
-  if (action === 'open-seed-note') {
-    useWorkspaceStore
-      .getState()
-      .openTab(descriptorFor('note', { courseId, relPath: seedNotePath }))
+  if (!isCurrent() || useWorkspaceStore.getState().activeCourseId !== courseId) return
+  if (action === 'show-materials') return
+  const pdf = descriptorFor('pdf', { courseId, relPath: seedPdfPath })
+  if (action === 'open-reading') {
+    workspace.openTab(pdf)
+    workspace.openTab(descriptorFor('note', { courseId, relPath: seedNotePath }), { beside: true })
     return
   }
-
-  useWorkspaceStore.getState().openTab(
-    descriptorFor('chat', {
-      courseId,
-      conversationId: assistantConversationId
-    })
-  )
+  workspace.openTab(pdf)
+  await waitForPaint()
+  if (!isCurrent()) return
+  await waitForPaint()
+  if (!isCurrent()) return
+  if (action === 'open-assistant') {
+    // Open only this document's actual sidebar. Never fall back to a new chat
+    // or dispatch a prompt if the document is still mounting.
+    const panel = document.querySelector<HTMLElement>(`[data-tour-panel="${CSS.escape(tabPanelId(pdf))}"]`)
+    const toggle = panel?.querySelector<HTMLButtonElement>('.tab-assistant-toggle')
+    if (toggle?.getAttribute('aria-expanded') === 'false') toggle.click()
+    return
+  }
+  await captureLauncherContext()
+  if (!isCurrent()) return
+  useUiStore.setState({ leftRailOpen: true, courseRailOpen: true, leftRailPanel: 'plugins' })
 }
 
 /**
@@ -184,7 +214,7 @@ async function cleanupCourse(
   courseId: string,
   clearMarker: boolean
 ): Promise<void> {
-  closeCourseTabs(courseId)
+  await closeCourseTabs(courseId)
 
   try {
     await useCoursesStore.getState().loadCourses()
@@ -193,9 +223,8 @@ async function cleanupCourse(
   }
 
   const coursesState = useCoursesStore.getState()
-  const otherCourse = coursesState.courses.find(
-    (course) => course.id !== courseId
-  )
+  const otherCourse = coursesState.courses.find(course => course.id === previousLocation?.activeCourseId && course.id !== courseId)
+    ?? coursesState.courses.find(course => course.id !== courseId)
   if (otherCourse !== undefined) {
     coursesState.selectCourse(otherCourse.id)
     useWorkspaceStore.getState().setActiveCourse(otherCourse.id)
@@ -244,27 +273,31 @@ export const useTourStore = create<TourStore>()((set, get) => {
       state.transitioning ||
       state.courseId === null ||
       state.seedNotePath === null ||
-      state.assistantConversationId === null
+      state.seedPdfPath === null
     ) {
       return
     }
     const step = TOUR_STEPS[stepIndex]
     if (step === undefined) return
 
+    const generation = tourGeneration
+    const isCurrent = (): boolean => generation === tourGeneration &&
+      get().status === 'running' && get().courseId === state.courseId
     set({ transitioning: true })
     try {
       await prepareStep(
         step.before,
         state.courseId,
         state.seedNotePath,
-        state.assistantConversationId
+        state.seedPdfPath,
+        isCurrent
       )
     } catch (error) {
       // Step setup is presentational. A missing/failed surface must never
       // make the narration impossible to finish.
       console.error('[Bandal] 튜토리얼 화면을 준비하지 못했습니다.', error)
     }
-    if (get().status === 'running') {
+    if (isCurrent()) {
       set({ stepIndex, transitioning: false })
     }
   }
@@ -272,20 +305,22 @@ export const useTourStore = create<TourStore>()((set, get) => {
   const endTour = async (): Promise<void> => {
     const state = get()
     if (state.status !== 'running' || state.courseId === null) return
+    tourGeneration += 1
     set({ status: 'cleaning', transitioning: false })
     try {
       await cleanupCourse(state.courseId, true)
+      await restoreLocation()
       set({
         status: 'idle',
         stepIndex: 0,
         courseId: null,
         seedNotePath: null,
-        assistantConversationId: null
+        seedPdfPath: null
       })
     } catch (error) {
       console.error('[Bandal] 튜토리얼 임시 과목을 정리하지 못했습니다.', error)
       showToast(
-        '임시 과목을 정리하지 못했어요. 다시 한 번 끝내기를 눌러주세요.',
+        onboardingCopy().cleanupFailed,
         'danger'
       )
       set({ status: 'running' })
@@ -297,26 +332,23 @@ export const useTourStore = create<TourStore>()((set, get) => {
     stepIndex: 0,
     courseId: null,
     seedNotePath: null,
-    assistantConversationId: null,
+    seedPdfPath: null,
     transitioning: false,
 
     init: async () => {
       if (initialized) return
       initialized = true
 
-      onPush('settings:changed', ({ settings }) => {
-        if (
-          get().status === 'idle' &&
-          settings.tutorial.activeCourseId === null &&
-          settings.tutorial.seenVersion < TUTORIAL_VERSION &&
-          !shouldShowOnboarding(settings.onboarding)
-        ) {
-          void get().start()
-        }
+      unsubscribeSettings = onPush('settings:changed', ({ settings }) => {
+        const replayRequested = lastSeenVersion > 0 && settings.tutorial.seenVersion === 0
+        lastSeenVersion = settings.tutorial.seenVersion
+        if (replayRequested && get().status === 'idle' &&
+            !shouldShowOnboarding(settings.onboarding)) void get().start()
       })
 
       try {
         const settings = await ensureSettingsLoaded()
+        lastSeenVersion = settings.tutorial.seenVersion
         const leakedCourseId = settings.tutorial.activeCourseId
         if (leakedCourseId !== null) {
           try {
@@ -343,22 +375,37 @@ export const useTourStore = create<TourStore>()((set, get) => {
     start: async () => {
       const previousStatus = get().status
       if (previousStatus !== 'idle' && previousStatus !== 'offer') return
+      tourGeneration += 1
+      previousLocation = captureLocation()
       set({ status: 'starting', transitioning: false })
 
       let createdCourseId: string | null = null
       let markerWritten = false
       try {
         const settings = await invoke('settings:get', {})
+        lastSeenVersion = settings.tutorial.seenVersion
+        const copy = onboardingCopy()
         if (settings.dataRoot.trim().length === 0) {
-          showToast('과목 저장 위치를 먼저 설정해주세요.', 'danger')
+          showToast(copy.dataRoot, 'danger')
+          previousLocation = null
           set({ status: previousStatus })
           return
         }
 
+        // Never overwrite a recovery marker with a second sample course.
+        // A previous interrupted cleanup must succeed before a fresh tour.
+        if (settings.tutorial.activeCourseId !== null) {
+          if (settings.tutorial.seenVersion === 0) {
+            // Consume the replay request without discarding its recovery
+            // marker, so another replay can retry after a failed purge.
+            await invoke('settings:set', { tutorial: tutorialSettings(settings.tutorial.activeCourseId) })
+          }
+          await cleanupCourse(settings.tutorial.activeCourseId, true)
+        }
         revealTourSurfaces()
 
         const course = await useCoursesStore.getState().createCourse({
-          name: TOUR_COURSE_NAME,
+          name: copy.courseName,
           color: chooseTourColor()
         })
         createdCourseId = course.id
@@ -371,27 +418,24 @@ export const useTourStore = create<TourStore>()((set, get) => {
         const seed = await invoke('materials:writeFile', {
           courseId: course.id,
           dirRelPath: '',
-          fileName: SEED_NOTE_NAME,
+          fileName: copy.noteName,
           encoding: 'utf8',
-          data: SEED_NOTE
+          data: copy.seedNote
         })
-        const assistantConversationId = crypto.randomUUID()
-
+        const pdf = await invoke('materials:writeFile', {
+          courseId: course.id, dirRelPath: '', fileName: copy.pdfName,
+          encoding: 'base64', data: samplePdf.slice(samplePdf.indexOf(',') + 1)
+        })
         useCoursesStore.getState().selectCourse(course.id)
+        useWorkspaceStore.getState().showCourseWorkspace(course.id)
         await waitForWorkspaceCourse(course.id)
-        useWorkspaceStore.getState().openTab(
-          descriptorFor('note', {
-            courseId: course.id,
-            relPath: seed.relPath
-          })
-        )
 
         set({
           status: 'running',
           stepIndex: 0,
           courseId: course.id,
           seedNotePath: seed.relPath,
-          assistantConversationId,
+          seedPdfPath: pdf.relPath,
           transitioning: false
         })
       } catch (error) {
@@ -406,13 +450,14 @@ export const useTourStore = create<TourStore>()((set, get) => {
             )
           }
         }
-        showToast('둘러보기를 시작하지 못했어요. 잠시 후 다시 시도해주세요.', 'danger')
+        await restoreLocation()
+        showToast(onboardingCopy().startFailed, 'danger')
         set({
           status: 'idle',
           stepIndex: 0,
           courseId: null,
           seedNotePath: null,
-          assistantConversationId: null,
+          seedPdfPath: null,
           transitioning: false
         })
       }
@@ -420,15 +465,25 @@ export const useTourStore = create<TourStore>()((set, get) => {
 
     later: async () => {
       const status = get().status
-      if (status !== 'idle' && status !== 'offer') return
+      if (status !== 'idle' && status !== 'offer') return false
       set({ status: 'acknowledging' })
       try {
+        const settings = await invoke('settings:get', {})
+        lastSeenVersion = settings.tutorial.seenVersion
+        if (settings.tutorial.activeCourseId !== null) {
+          previousLocation = captureLocation()
+          await cleanupCourse(settings.tutorial.activeCourseId, false)
+          await restoreLocation()
+        }
         await invoke('settings:set', { tutorial: tutorialSettings(null) })
         set({ status: 'idle' })
+        return true
       } catch (error) {
         console.error('[Bandal] 튜토리얼 제안 상태를 저장하지 못했습니다.', error)
-        showToast('둘러보기 선택을 저장하지 못했어요.', 'danger')
+        await restoreLocation()
+        showToast(onboardingCopy().saveFailed, 'danger')
         set({ status })
+        return false
       }
     },
 
@@ -464,3 +519,14 @@ export const useTourStore = create<TourStore>()((set, get) => {
     }
   }
 })
+
+/** Reset module subscriptions and recovery state between lifecycle tests. */
+export function resetTourForTests(): void {
+  unsubscribeSettings?.()
+  unsubscribeSettings = null
+  initialized = false
+  lastSeenVersion = 0
+  previousLocation = null
+  tourGeneration += 1
+  useTourStore.setState({ status: 'idle', stepIndex: 0, courseId: null, seedNotePath: null, seedPdfPath: null, transitioning: false })
+}

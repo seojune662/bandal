@@ -65,14 +65,17 @@ export function planChecks(files, full = false) {
   const browserSettings = /^src\/renderer\/src\/features\/settings\/(browser\/|(?:SavedLoginsSettings|BrowsingDataPanel)\.tsx$)/
   const launcherShell = /^src\/renderer\/src\/app\/(AppShell|GlobalNavigation|RailResizer)\.tsx$/
   const packSettings = /^src\/renderer\/src\/features\/settings\/PacksPanel\.tsx$/
-  const settingsShell = /^src\/renderer\/src\/features\/settings\/SettingsApp\.tsx$/
-  const sharedAppearance = files.some(file => !browserSettings.test(file) && !launcherShell.test(file) && !packSettings.test(file) && !settingsShell.test(file) && file !== 'src/renderer/src/components/BandalMark.tsx' && file !== 'src/renderer/src/app/tabCommands.ts' && /^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/.test(file))
+  const settingsShell = /^src\/renderer\/src\/features\/settings\/(?:SettingsApp|SettingsPanels)\.tsx$/
+  const pluginSettings = /^src\/renderer\/src\/features\/settings\/(?:catalog\/|pluginCenter\/|(?:PluginsCategoryPanel|PluginConfiguration|PluginDevelopmentPanel|ExtensionsPanel|PacksPanel|McpServersPanel|McpQuickAdd|MarketplacePanel|PluginFeatureMark|pluginCenterModel|mcpPresets|mcpImport|packImport)\.tsx?$|settings-(?:plugins|packs|mcp)\.css$|plugin-center)/
+  const sharedAppearance = files.some(file => !browserSettings.test(file) && !launcherShell.test(file) && !packSettings.test(file) && !settingsShell.test(file) && !pluginSettings.test(file) && file !== 'src/renderer/src/features/settings/settingsSearchIndex.ts' && file !== 'src/renderer/src/components/BandalMark.tsx' && file !== 'src/renderer/src/app/tabCommands.ts' && /^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/.test(file))
   if (has(launcherShell) || has(/^src\/renderer\/src\/(features\/launcher\/|stores\/(workflowPacksStore|uiStore)\.ts$)/) || has(packSettings)) e2e.add('e2e/featureLauncher.spec.ts')
   if (has(launcherShell)) {
     e2e.add('e2e/sidebars.spec.ts')
     e2e.add('e2e/settingsShell.spec.ts')
   }
-  if (has(settingsShell)) e2e.add('e2e/settingsShell.spec.ts')
+  if (has(settingsShell) || has(/^src\/(?:shared\/settingsCategories\.ts$|renderer\/src\/features\/settings\/settingsSearchIndex\.ts$)/)) e2e.add('e2e/settingsShell.spec.ts')
+  if (has(pluginSettings) || has(/^src\/(?:shared\/settingsCategories\.ts$|main\/features\/mcpRegistry\/)/)) e2e.add('e2e/pluginCenter.spec.ts')
+  if (has(/^src\/renderer\/src\/features\/onboarding\//) || has(/^src\/renderer\/src\/features\/settings\/SettingsPanels\.tsx$/)) e2e.add('e2e/onboarding.spec.ts')
   if (has(/^src\/renderer\/src\/features\/plugins\/(pluginCommands|PluginMenuItems)\.tsx?$/)) e2e.add('e2e/pluginsV2.spec.ts')
   if (sharedAppearance) {
     for (const spec of ['theme', 'sidebars', 'settingsShell', 'uiRedesign', 'tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus']) e2e.add(`e2e/${spec}.spec.ts`)

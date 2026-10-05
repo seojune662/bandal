@@ -26,9 +26,10 @@ import {
 import type { AppearanceSettings } from "../../../../shared/appearance";
 import {
   isSettingsCategoryId,
+  normalizeSettingsCategoryId,
   SETTINGS_CATEGORIES,
   SETTINGS_GROUPS,
-  type SettingsCategoryId,
+  type SettingsPanelId,
   type SettingsGroupId,
 } from "../../../../shared/settingsCategories";
 import {
@@ -50,7 +51,6 @@ import {
   AppearancePanel,
   CoursesPanel,
   GeneralPanel,
-  McpServersPanel,
 } from "./SettingsPanels";
 import { PluginsCategoryPanel } from "./PluginsCategoryPanel";
 import { NotificationsPanel } from "./notifications/NotificationsPanel";
@@ -77,7 +77,7 @@ import "./settings-app.css";
 import "./settings-panels.css";
 
 interface Category {
-  id: SettingsCategoryId;
+  id: SettingsPanelId;
   group: SettingsGroupId;
   label: string;
   description: string;
@@ -120,11 +120,11 @@ export function SettingsApp({
   const t = useT();
   const leftRailOpen = useUiStore((state) => state.leftRailOpen);
   const locale = useLocale();
-  const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(() =>
-    isSettingsCategoryId(initialCategory) ? initialCategory : "general",
+  const [activeCategory, setActiveCategory] = useState<SettingsPanelId>(() =>
+    isSettingsCategoryId(initialCategory) ? normalizeSettingsCategoryId(initialCategory) : "general",
   );
   useEffect(() => {
-    if (isSettingsCategoryId(initialCategory)) setActiveCategory(initialCategory);
+    if (isSettingsCategoryId(initialCategory)) setActiveCategory(normalizeSettingsCategoryId(initialCategory));
   }, [initialCategory]);
   const [query, setQuery] = useState("");
   const [searchTarget, setSearchTarget] = useState<string | null>(null);
@@ -536,7 +536,7 @@ export function SettingsApp({
     }
   };
 
-  const panel: Record<SettingsCategoryId, ReactNode> = {
+  const panel: Record<SettingsPanelId, ReactNode> = {
     tabs: null,
     account: <AccountPanel />,
     general: <GeneralPanel settings={settings} />,
@@ -555,8 +555,7 @@ export function SettingsApp({
       />
     ),
     widgets: <WidgetSettingsPanel settings={settings} />,
-    mcp: <McpServersPanel />,
-    packs: <PluginsCategoryPanel searchTarget={searchTarget} />,
+    packs: <PluginsCategoryPanel searchTarget={searchTarget} initialFilter={initialCategory === "mcp" ? "external" : "all"} />,
     ai: (
       <AiPanel
         provider={settings?.agentProvider ?? "claude-code"}
@@ -599,8 +598,8 @@ export function SettingsApp({
       />
     ),
     about: <AboutPanel />,
-  } satisfies Record<SettingsCategoryId, ReactNode>;
-  panel.tabs = <TabsSettingsPanel settings={settings} aiPanel={panel.ai} browserPanel={panel.browser} onNavigate={setActiveCategory} />;
+  } satisfies Record<SettingsPanelId, ReactNode>;
+  panel.tabs = <TabsSettingsPanel settings={settings} aiPanel={panel.ai} browserPanel={panel.browser} onNavigate={(category) => setActiveCategory(normalizeSettingsCategoryId(category))} />;
 
   return (
     <div

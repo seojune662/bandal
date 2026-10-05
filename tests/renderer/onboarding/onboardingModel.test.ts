@@ -35,12 +35,12 @@ describe('shouldShowOnboarding', () => {
     expect(shouldShowOnboarding(closedState())).toBe(false)
   })
 
-  test('reopens once when the flow version advanced past the dismissal', () => {
+  test('keeps an older acknowledged welcome closed', () => {
     expect(
       shouldShowOnboarding(
         closedState({ flowVersion: ONBOARDING_FLOW_VERSION - 1 })
       )
-    ).toBe(true)
+    ).toBe(false)
   })
 
   test('a future flow version never re-triggers', () => {
@@ -58,13 +58,13 @@ describe('initialStep', () => {
     expect(initialStep(DEFAULT_ONBOARDING)).toBe(0)
   })
 
-  test('resumes after the last completed step', () => {
+  test('opens the single welcome regardless of old progress', () => {
     expect(
       initialStep({ ...DEFAULT_ONBOARDING, lastCompletedStep: 1 })
-    ).toBe(1)
+    ).toBe(0)
     expect(
       initialStep({ ...DEFAULT_ONBOARDING, lastCompletedStep: 2 })
-    ).toBe(2)
+    ).toBe(0)
   })
 
   test('clamps fully-completed progress to the last step', () => {
@@ -98,12 +98,11 @@ describe('completeStep', () => {
   test('is monotonic — revisiting an earlier step never regresses', () => {
     const advanced = { ...DEFAULT_ONBOARDING, lastCompletedStep: 2 }
     expect(completeStep(advanced, 0).lastCompletedStep).toBe(2)
-    expect(completeStep(advanced, 2).lastCompletedStep).toBe(3)
   })
 
   test('returns a new object (no mutation)', () => {
     const before = { ...DEFAULT_ONBOARDING }
-    const next = completeStep(before, 1)
+    const next = completeStep(before, 0)
     expect(next).not.toBe(before)
     expect(before.lastCompletedStep).toBe(0)
   })

@@ -20,7 +20,6 @@ export const SETTINGS_CATEGORIES = [
   { id: 'assistant', group: 'ai' },
   { id: 'account', group: 'setup' },
   { id: 'general', group: 'setup' },
-  { id: 'mcp', group: 'setup' },
   { id: 'university', group: 'setup' },
   { id: 'packs', group: 'workflows' },
   { id: 'calendar', group: 'workflows' },
@@ -39,8 +38,14 @@ export const SETTINGS_CATEGORIES = [
   { id: 'about', group: 'info' }
 ] as const satisfies readonly { id: string; group: SettingsGroupId }[]
 
-export type SettingsCategoryId = (typeof SETTINGS_CATEGORIES)[number]['id']
+export type SettingsPanelId = (typeof SETTINGS_CATEGORIES)[number]['id']
+/** Accept the former Connections destination for older IPC callers. */
+export type SettingsCategoryId = SettingsPanelId | 'mcp'
 
 export function isSettingsCategoryId(value: unknown): value is SettingsCategoryId {
-  return SETTINGS_CATEGORIES.some((category) => category.id === value)
+  return value === 'mcp' || SETTINGS_CATEGORIES.some((category) => category.id === value)
+}
+
+export function normalizeSettingsCategoryId(value: SettingsCategoryId): SettingsPanelId {
+  return value === 'mcp' ? 'packs' : value
 }

@@ -94,7 +94,7 @@ export function resetMcpServersPanelForTests(): void {
   publishRegistry(INITIAL_REGISTRY_SNAPSHOT)
 }
 
-function summaryInput(server: McpServerSummary, enabled: boolean): McpServerInput {
+export function summaryInput(server: McpServerSummary, enabled: boolean): McpServerInput {
   const input: McpServerInput = {
     id: server.id,
     name: server.name,
@@ -283,17 +283,21 @@ function secretRowsValid(rows: SecretRow[]): boolean {
 function validHttpUrl(value: string): boolean {
   try {
     const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
+    return url.protocol === 'https:' || (url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '[::1]' || url.hostname === '0.0.0.0' || /^127(?:\.\d{1,3}){3}$/u.test(url.hostname)))
   } catch {
     return false
   }
 }
 
-function McpServerEditor({
+export function McpServerEditor({
   server,
   onCancel,
-  onSaved
+  onSaved,
+  disableOnSave = false,
+  submitLabel
 }: {
+  disableOnSave?: boolean
+  submitLabel?: string
   server: McpServerSummary | null
   onCancel: () => void
   onSaved: (server: McpServerSummary) => void
@@ -348,7 +352,7 @@ function McpServerEditor({
       name: trimmedName,
       description: description.trim(),
       transport,
-      enabled: server?.enabled ?? true
+      enabled: disableOnSave ? false : server?.enabled ?? false
     }
     if (server !== null) input.id = server.id
     if (transport === 'stdio') {
@@ -372,7 +376,7 @@ function McpServerEditor({
         updateServer(saved)
         onSaved(saved)
       })
-      .catch(() => setError(t('settings.mcp.error.save')))
+      .catch((error: unknown) => setError(error instanceof Error ? error.message : t('settings.mcp.error.save')))
       .finally(() => setSaving(false))
   }
 
@@ -508,7 +512,7 @@ function McpServerEditor({
           className="settings-mcp-button settings-mcp-button--primary"
           disabled={saving}
         >
-          {t(saving ? 'settings.mcp.action.saving' : 'settings.mcp.action.save')}
+          {saving ? t('settings.mcp.action.saving') : submitLabel ?? t('settings.mcp.action.save')}
         </button>
       </footer>
     </form>
@@ -797,4 +801,14 @@ export function McpServersPanel({
       </details>
     </div>
   )
+}
+
+export function useMcpRegistry(): RegistrySnapshot {
+  const registry = useSyncExternalStore(subscribeRegistry, getRegistrySnapshot, getRegistrySnapshot)
+  useEffect(() => {
+    const stop = onPush('mcp:changed', () => { void loadMcpServers() })
+    void loadMcpServers()
+    return stop
+  }, [])
+  return registry
 }

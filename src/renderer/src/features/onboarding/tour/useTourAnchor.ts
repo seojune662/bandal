@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import type { TourAnchorKey, TourAnchorRect } from './tourTypes'
 
 const POLL_INTERVAL_MS = 150
-const MISSING_TIMEOUT_MS = 4_000
 const RAF_MEASURE_INTERVAL_MS = 100
 
 function rectOf(element: HTMLElement): TourAnchorRect {
@@ -58,23 +57,16 @@ function findRenderedAnchor(target: TourAnchorKey): HTMLElement | null {
 
 /**
  * Tracks a live `data-tour` anchor without ever trapping the tour on a UI
- * variant that does not render it. Missing anchors are polled briefly and
- * then advance through the supplied callback.
+ * variant that does not render it. A missing anchor leaves the explanation
+ * centered; every one of the five steps remains available to read.
  */
 export function useTourAnchor(
   target: TourAnchorKey | null,
-  onMissingTimeout: () => void,
   fallbackTarget: TourAnchorKey | null = null
 ): TourAnchorRect | null {
   const [rect, setRect] = useState<TourAnchorRect | null>(null)
   const elementRef = useRef<HTMLElement | null>(null)
   const observerRef = useRef<ResizeObserver | null>(null)
-  const missingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const timeoutCallbackRef = useRef(onMissingTimeout)
-
-  useEffect(() => {
-    timeoutCallbackRef.current = onMissingTimeout
-  }, [onMissingTimeout])
 
   useEffect(() => {
     setRect(null)
@@ -89,22 +81,6 @@ export function useTourAnchor(
     let loopFrame: number | null = null
     let lastLoopMeasure = 0
     let primaryMisses = 0
-
-    const clearMissingTimer = (): void => {
-      if (missingTimerRef.current === null) return
-      clearTimeout(missingTimerRef.current)
-      missingTimerRef.current = null
-    }
-
-    const startMissingTimer = (): void => {
-      if (missingTimerRef.current !== null) return
-      missingTimerRef.current = setTimeout(() => {
-        missingTimerRef.current = null
-        if (!disposed && elementRef.current === null) {
-          timeoutCallbackRef.current()
-        }
-      }, MISSING_TIMEOUT_MS)
-    }
 
     const measure = (): void => {
       const element = elementRef.current
@@ -133,11 +109,9 @@ export function useTourAnchor(
 
       if (element === null) {
         setRect(null)
-        startMissingTimer()
         return
       }
 
-      clearMissingTimer()
       if (typeof ResizeObserver !== 'undefined') {
         const observer = new ResizeObserver(scheduleMeasure)
         observer.observe(element)
@@ -155,8 +129,8 @@ export function useTourAnchor(
         return
       }
 
-      // Favorites can disappear while the selected course/rail is rendering.
-      // Give that surface one polling interval before falling back to the rail.
+      // Allow the primary surface one polling interval to mount before
+      // choosing an optional fallback.
       if (fallbackTarget !== null && primaryMisses === 0) {
         primaryMisses += 1
         connect(null)
@@ -168,7 +142,6 @@ export function useTourAnchor(
           ? null
           : findRenderedAnchor(fallbackTarget)
       connect(fallback)
-      if (fallback === null) startMissingTimer()
     }
 
     const loop = (now: number): void => {
@@ -191,7 +164,6 @@ export function useTourAnchor(
     return () => {
       disposed = true
       window.clearInterval(pollTimer)
-      clearMissingTimer()
       observerRef.current?.disconnect()
       observerRef.current = null
       elementRef.current = null

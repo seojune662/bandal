@@ -104,6 +104,101 @@ describe('MCP registry persistence', () => {
     expect(existsSync(join(userDataPath, MCP_REGISTRY_FILE_NAME))).toBe(false)
   })
 
+  test('resolves a disabled server with authentication only inside main', () => {
+    const store = registry()
+    const saved = store.save(stdioInput('disabled', {
+      enabled: false,
+      headers: { Authorization: 'Bearer private-header' }
+    }))
+
+    const resolved = store.resolve(saved.id)
+    expect(resolved).toMatchObject({
+      enabled: false,
+      env: { PRIVATE_TOKEN: 'disabled-secret' },
+      headers: { Authorization: 'Bearer private-header' }
+    })
+    expect(store.resolveEnabled()).toEqual([])
+    expect(store.resolve('missing')).toBeUndefined()
+    expect(saved).not.toHaveProperty('env')
+    expect(saved).not.toHaveProperty('headers')
+
+    resolved!.env!.PRIVATE_TOKEN = 'changed outside registry'
+    resolved!.headers!.Authorization = 'changed outside registry'
+    resolved!.args!.push('changed outside registry')
+    expect(store.resolve(saved.id)).toMatchObject({
+      args: ['node'],
+      env: { PRIVATE_TOKEN: 'disabled-secret' },
+      headers: { Authorization: 'Bearer private-header' }
+    })
+    expect(JSON.stringify(store.list())).not.toContain('disabled-secret')
+    expect(JSON.stringify(store.list())).not.toContain('private-header')
+  })
+
+  test('preserves a connection result for metadata, toggles, and equivalent secrets', () => {
+    const store = registry()
+    const saved = store.save({
+      name: 'remote', description: '처음', transport: 'http',
+      url: 'https://mcp.example.test/api', enabled: false,
+      env: { PRIVATE_TOKEN: 'hidden', OTHER: 'other' },
+      headers: { Authorization: 'Bearer hidden', 'X-Tenant': 'student' }
+    })
+    store.recordTest(saved.id, { ok: true, tools: ['search'], durationMs: 5 })
+    const lastTest = store.list()[0]!.lastTest
+
+    const updated = store.save({ ...saved, name: 'renamed', description: '수정', enabled: true })
+    expect(updated.lastTest).toEqual(lastTest)
+    const reordered = store.save({
+      ...updated, enabled: false,
+      env: { OTHER: 'other', PRIVATE_TOKEN: 'hidden' },
+      headers: { 'X-Tenant': 'student', Authorization: 'Bearer hidden' }
+    })
+    expect(reordered.lastTest).toEqual(lastTest)
+    expect(store.resolve(saved.id)?.headers).toEqual({
+      Authorization: 'Bearer hidden', 'X-Tenant': 'student'
+    })
+  })
+
+  test('records a guarded probe after metadata and enabled changes to the same connection', () => {
+    const store = registry()
+    const saved = store.save(stdioInput('guarded', { enabled: false }))
+    const source = store.resolve(saved.id)!
+    store.save({ ...saved, name: 'renamed', description: 'updated metadata', enabled: true })
+
+    expect(store.recordTest(saved.id, { ok: true, tools: ['search'], durationMs: 5 }, source)).toBe(true)
+    expect(store.list()[0]).toMatchObject({
+      name: 'renamed', description: 'updated metadata', enabled: true,
+      lastTest: { ok: true, tools: ['search'] }
+    })
+    expect(store.resolve(saved.id)?.env).toEqual(source.env)
+  })
+
+  test('treats absent and empty arguments as the same connection', () => {
+    const store = registry()
+    const saved = store.save(stdioInput('empty-args', { args: undefined }))
+    store.recordTest(saved.id, { ok: true, tools: ['search'], durationMs: 5 })
+    expect(store.save({ ...saved, args: [] }).lastTest?.ok).toBe(true)
+  })
+
+  test.each([
+    ['command', stdioInput('changed'), { command: '/usr/bin/node' }],
+    ['arguments', stdioInput('changed'), { args: ['different'] }],
+    ['environment authentication', stdioInput('changed'), { env: { PRIVATE_TOKEN: 'new-secret' } }],
+    ['environment removal', stdioInput('changed'), { env: {} }],
+    ['transport', stdioInput('changed'), { transport: 'http', url: 'https://mcp.example.test/api' }],
+    ['HTTP URL', stdioInput('changed', { transport: 'http', url: 'https://mcp.example.test/api' }), { url: 'https://mcp.example.test/v2' }],
+    ['HTTP authentication', stdioInput('changed', { transport: 'http', url: 'https://mcp.example.test/api', headers: { Authorization: 'Bearer old' } }), { headers: { Authorization: 'Bearer new' } }],
+    ['HTTP header removal', stdioInput('changed', { transport: 'http', url: 'https://mcp.example.test/api', headers: { Authorization: 'Bearer old' } }), { headers: {} }]
+  ] satisfies [string, McpServerInput, Partial<McpServerInput>][])(
+    'clears a connection result after changing %s', (_field, input, change) => {
+      const store = registry()
+      const saved = store.save(input)
+      store.recordTest(saved.id, { ok: true, tools: ['search'], durationMs: 5 })
+
+      expect(store.save({ ...input, id: saved.id, ...change }).lastTest).toBeUndefined()
+      expect(store.resolve(saved.id)?.lastTest).toBeUndefined()
+    }
+  )
+
   test('writes an encrypted 0600 envelope without plaintext secrets', () => {
     const userDataPath = temporaryUserData()
     registry(userDataPath).save(stdioInput('private'))
@@ -326,6 +421,7 @@ describe('MCP registry encryption availability', () => {
       reason: expect.any(String)
     })
     expect(store.list()).toEqual([])
+    expect(store.resolve('missing')).toBeUndefined()
     expect(() => store.save(stdioInput('blocked'))).toThrow(/보안 저장소/u)
     expect(existsSync(join(userDataPath, MCP_REGISTRY_FILE_NAME))).toBe(false)
   })

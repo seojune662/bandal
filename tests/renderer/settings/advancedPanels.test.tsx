@@ -26,14 +26,6 @@ vi.mock('../../../src/renderer/src/app/toast', () => ({
   showToast: vi.fn()
 }))
 
-vi.mock('../../../src/renderer/src/features/settings/PacksPanel', () => ({
-  PacksPanel: () => 'packs mounted'
-}))
-
-vi.mock('../../../src/renderer/src/features/settings/ExtensionsPanel', () => ({
-  ExtensionsPanel: () => 'extensions mounted'
-}))
-
 const disabledSettings: Settings = {
   ...DEFAULT_SETTINGS,
   experimental: {
@@ -106,57 +98,23 @@ describe('advanced and experimental settings', () => {
     })
   })
 
-  test('plugin-system switch mirrors extensionRuntime and follows settings changes', async () => {
-    let publishSettings = (_settings: Settings): void => undefined
+  test('plugin center shows a single list without a global runtime switch', async () => {
     const invoke = vi.fn(async (channel: string) => {
-      if (channel === 'settings:get' || channel === 'settings:set') return disabledSettings
+      if (channel === 'settings:get') return disabledSettings
       if (channel === 'plugins:list') return { plugins: [] }
       if (channel === 'packs:list') return { packs: [] }
-      if (channel === 'plugins:catalog') return { sources: [], entries: [], fetchedAt: null }
+      if (channel === 'mcp:list') return { servers: [], availability: { available: false, reason: '안전한 저장소를 사용할 수 없습니다.' } }
       return undefined
     })
-    setIpcAdapter({
-      invoke,
-      on: vi.fn(
-        (
-          channel: string,
-          callback: (payload: { settings: Settings }) => void
-        ) => {
-          if (channel === 'settings:changed') {
-            publishSettings = (settings) => callback({ settings })
-          }
-          return () => undefined
-        }
-      )
-    } as unknown as IpcAdapter)
-
+    setIpcAdapter({ invoke, on: vi.fn(() => () => undefined) } as unknown as IpcAdapter)
     const container = document.createElement('div')
     mountedRoot = createRoot(container)
-    await act(async () => {
-      mountedRoot?.render(<PluginsCategoryPanel />)
-      await Promise.resolve()
-    })
-
-    // Installed extensions and workflow packs share the Installed destination.
-    act(() => container.querySelector<HTMLButtonElement>('.plugin-center-nav button:nth-child(2)')?.click())
-    expect(container.textContent).toContain('packs mounted')
-    expect(container.textContent).toContain('extensions mounted')
-
-    const master = container.querySelector<HTMLButtonElement>('[role="switch"]')
-    expect(master?.getAttribute('aria-checked')).toBe('false')
-    act(() => master?.click())
-    expect(invoke).toHaveBeenCalledWith('settings:set', {
-      experimental: { extensionRuntime: true }
-    })
-
-    act(() => {
-      publishSettings({
-        ...disabledSettings,
-        experimental: { ...disabledSettings.experimental, extensionRuntime: true }
-      })
-    })
-    expect(
-      container.querySelector<HTMLButtonElement>('[role="switch"]')?.getAttribute('aria-checked')
-    ).toBe('true')
+    await act(async () => { mountedRoot?.render(<PluginsCategoryPanel />) })
+    expect(container.querySelectorAll('.plugin-center-list')).toHaveLength(1)
+    expect(container.querySelectorAll('.plugin-center-row')).toHaveLength(6)
+    expect(container.querySelector('[role="switch"]')).toBeNull()
+    expect(container.querySelector('.plugin-center-nav')).toBeNull()
+    expect(container.querySelector('input[type="password"]')).toBeNull()
+    expect(invoke).not.toHaveBeenCalledWith('settings:set', expect.anything())
   })
 })

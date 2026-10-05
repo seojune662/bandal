@@ -5,11 +5,7 @@
  * in settings.json and this module owns every transition on it. The overlay
  * component only renders steps and calls these functions.
  *
- * Steps (0-based):
- *   0 — 반달 소개
- *   1 — 학교 고르기          [M8, flow v2]
- *   2 — 첫 과목 만들기
- *   3 — AI 준비 상태 (라이브 프로브)
+ * One welcome screen; existing completion records remain acknowledged.
  */
 
 import {
@@ -17,13 +13,13 @@ import {
   type OnboardingState
 } from '../../../../shared/types/settings'
 
-export const ONBOARDING_STEP_COUNT = 4
-export type OnboardingStep = 0 | 1 | 2 | 3
+export const ONBOARDING_STEP_COUNT = 1
+export type OnboardingStep = 0
 
 /**
  * Should the wizard show for this persisted state?
  *  - never dismissed (`closedAt === null`) → show
- *  - dismissed an OLDER flow version → show once more (versioned reopen)
+ *  - any dismissed state → stay closed, including older flow versions
  *  - anything else → stay closed; the wizard never auto-reopens
  */
 export function shouldShowOnboarding(
@@ -31,7 +27,7 @@ export function shouldShowOnboarding(
 ): boolean {
   if (state === null || state === undefined) return true
   if (state.closedAt === null) return true
-  return state.flowVersion < ONBOARDING_FLOW_VERSION
+  return false
 }
 
 /** Step the wizard opens on: resume after the last completed step. */

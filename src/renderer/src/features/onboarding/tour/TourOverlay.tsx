@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -17,6 +16,8 @@ import type {
   TourPlacement,
   TourStep
 } from './tourTypes'
+import { useLocale } from '../../../i18n'
+import { onboardingCopy } from '../onboardingCopy'
 import './tour.css'
 
 interface CardSize {
@@ -160,6 +161,7 @@ function dimStyles(hole: TourAnchorRect): readonly CSSProperties[] {
 }
 
 function BusyCard({ status }: { status: 'starting' | 'cleaning' }): JSX.Element {
+  const copy = onboardingCopy(useLocale())
   return (
     <div className="tour-overlay" role="presentation">
       <div className="tour-dim tour-dim--full" />
@@ -167,8 +169,8 @@ function BusyCard({ status }: { status: 'starting' | 'cleaning' }): JSX.Element 
         <span className="tour-spinner" aria-hidden="true" />
         <p className="tour-busy-copy">
           {status === 'starting'
-            ? '둘러보기를 준비하는 중…'
-            : '임시 과목을 정리하는 중…'}
+            ? copy.preparing
+            : copy.cleaning}
         </p>
       </div>
     </div>
@@ -179,15 +181,15 @@ function TourOffer(): JSX.Element {
   const start = useTourStore((state) => state.start)
   const later = useTourStore((state) => state.later)
   const titleId = useId()
+  const copy = onboardingCopy(useLocale())
 
   return (
     <aside className="tour-offer" role="dialog" aria-labelledby={titleId}>
-      <p className="tour-eyebrow">NEW TOUR</p>
       <h2 id={titleId} className="tour-offer__title">
-        새로워진 둘러보기가 준비됐어요
+        {copy.offer}
       </h2>
       <p className="tour-offer__body">
-        임시 과목으로 실제 화면을 짚으며 핵심 기능을 살펴보세요.
+        {copy.tourDescription}
       </p>
       <div className="tour-offer__actions">
         <button
@@ -195,14 +197,14 @@ function TourOffer(): JSX.Element {
           className="button button--secondary"
           onClick={() => void later()}
         >
-          나중에
+          {copy.later}
         </button>
         <button
           type="button"
           className="button button--primary"
           onClick={() => void start()}
         >
-          시작
+          {copy.tour}
         </button>
       </div>
     </aside>
@@ -228,6 +230,7 @@ function StepCard({
   const skip = useTourStore((state) => state.skip)
   const finish = useTourStore((state) => state.finish)
   const titleId = useId()
+  const copy = onboardingCopy(useLocale())
   const isLast = stepIndex === TOUR_STEP_COUNT - 1
   const style: CSSProperties | undefined =
     position === null ? undefined : { top: position.top, left: position.left }
@@ -244,14 +247,14 @@ function StepCard({
       aria-modal="true"
       aria-labelledby={titleId}
     >
-      <div className="tour-card__progress" aria-label="둘러보기 진행 단계">
+      <div className="tour-card__progress" aria-label={copy.progress}>
         {TOUR_STEPS.map((tourStep, index) => (
           <span
             key={tourStep.id}
             className="tour-card__dot"
             data-active={index === stepIndex || undefined}
             data-done={index < stepIndex || undefined}
-            aria-label={`${index + 1}단계${index === stepIndex ? ', 현재 단계' : ''}`}
+            aria-label={`${index + 1}${index === stepIndex ? `, ${copy.current}` : ''}`}
           />
         ))}
       </div>
@@ -259,32 +262,17 @@ function StepCard({
         {stepIndex + 1} / {TOUR_STEP_COUNT}
       </p>
       <h2 id={titleId} className="tour-card__title">
-        {step.title}
+        {copy[step.titleKey]}
       </h2>
-      <div className="tour-card__body">{step.body}</div>
-      {step.id === 'favorites' && (
-        <div className="tour-favorite-demo" aria-hidden="true">
-          <div className="tour-favorite-demo__strip" />
-          <div className="tour-favorite-demo__tab">
-            <span className="tour-favorite-demo__tab-mark" />
-            열린 탭
-          </div>
-          <div className="tour-favorite-demo__target">
-            <svg viewBox="0 0 24 24">
-              <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z" />
-            </svg>
-            <span>즐겨찾기에 고정</span>
-          </div>
-        </div>
-      )}
+      <div className="tour-card__body"><p>{copy[step.bodyKey]}</p></div>
       {anchorMissing && (
         <p className="tour-card__anchor-status" role="status">
-          안내할 화면을 찾는 중이에요. 계속 보이지 않으면 자동으로 넘어가요.
+          {copy.missing}
         </p>
       )}
       <div className="tour-card__footer">
         <button type="button" className="tour-skip" onClick={skip}>
-          건너뛰기
+          {copy.skip}
         </button>
         <div className="tour-card__nav">
           <button
@@ -293,7 +281,7 @@ function StepCard({
             disabled={stepIndex === 0 || transitioning}
             onClick={back}
           >
-            이전
+            {copy.previous}
           </button>
           <button
             type="button"
@@ -301,7 +289,7 @@ function StepCard({
             disabled={transitioning}
             onClick={isLast ? finish : next}
           >
-            {transitioning ? '이동 중…' : (step.nextLabel ?? '다음')}
+            {transitioning ? copy.moving : isLast ? copy.finish : copy.next}
           </button>
         </div>
       </div>
@@ -315,18 +303,11 @@ function ActiveTourOverlay({
   status: Exclude<TourStatus, 'idle' | 'acknowledging'>
 }): JSX.Element {
   const stepIndex = useTourStore((state) => state.stepIndex)
-  const next = useTourStore((state) => state.next)
   const step = TOUR_STEPS[stepIndex] ?? TOUR_STEPS[0]
   const cardRef = useRef<HTMLDivElement>(null)
   const [cardSize, setCardSize] = useState<CardSize>({ width: 352, height: 240 })
   const [layout, setLayout] = useState<TourLayout>(currentLayout)
-  const onMissingTimeout = useCallback(() => next(), [next])
-  const fallbackTarget = step.id === 'favorites' ? 'course-sidebar' : null
-  const anchorRect = useTourAnchor(
-    step.target,
-    onMissingTimeout,
-    fallbackTarget
-  )
+  const anchorRect = useTourAnchor(step.target)
   const hole = useMemo(
     () => (anchorRect === null ? null : paddedRect(anchorRect, layout)),
     [anchorRect, layout]
@@ -397,7 +378,7 @@ function ActiveTourOverlay({
           />
         </>
       )}
-      <StepCard
+      <StepCard key={step.id}
         step={step}
         stepIndex={stepIndex}
         anchorMissing={anchorMissing}

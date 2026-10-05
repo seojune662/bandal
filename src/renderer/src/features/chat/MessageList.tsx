@@ -1,11 +1,12 @@
 /**
  * Ordered message stream: user bubbles on the right, assistant turns as
  * full-width block sequences (text / thinking / tool / permission) with the
- * half-moon avatar, 중단됨 treatment and a subtle usage footnote per turn.
+ * shared two-moon avatar, 중단됨 treatment and a subtle usage footnote per turn.
  */
 
 import { Fragment, memo, type ReactNode } from 'react'
 import { invoke } from '../../lib/ipc'
+import { BandalMark } from '../../components/BandalMark'
 import { CREATION_LABELS } from '../../../../shared/types/chatCapabilities'
 import type {
   PermissionResponse,
@@ -241,7 +242,7 @@ const AssistantMessage = memo(function AssistantMessage({
       data-interrupted={message.interrupted || undefined}
       data-streaming={message.streaming || undefined}
     >
-      <span className="chat-avatar" aria-hidden="true" />
+      <BandalMark size={22} className="chat-avatar" />
       <div className="chat-msg__content">
         {message.blocks.map((block) => (
           <BlockRenderer

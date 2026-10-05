@@ -82,14 +82,8 @@ test.describe('plugin API v2', () => {
     const { page } = bandal
     await page.keyboard.press('ControlOrMeta+,')
     await page.locator('.settings-nav [data-category="packs"]').click()
-    await page
-      .locator('.plugin-center-nav')
-      .getByRole('button', { name: '설치됨', exact: true })
-      .click()
-    const card = page.locator('.settings-extension-card', {
-      hasText: '선택 텍스트 도구',
-    })
-    await card.locator('summary', { hasText: '플러그인 설정' }).click()
+    await page.locator('[data-feature-id="plugin:bandal.selection-tools"] .plugin-center-row__open').click()
+    const card = page.locator('.plugin-center')
     await card.getByLabel('변환 방식').selectOption('lowercase')
     await expect
       .poll(() =>

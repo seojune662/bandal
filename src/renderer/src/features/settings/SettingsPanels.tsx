@@ -36,9 +36,12 @@ export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.E
   }
 
   const handleReplayTutorial = (): void => {
-    void invoke('settings:set', {
-      tutorial: { seenVersion: 0, activeCourseId: null }
-    })
+    // Fetch the current marker: an interrupted tour still needs guarded
+    // cleanup before a replay can create another sample course.
+    void invoke('settings:get', {})
+      .then(current => invoke('settings:set', {
+        tutorial: { ...current.tutorial, seenVersion: 0 }
+      }))
       .then(() => setTutorialReset('done'))
       .catch(() => setTutorialReset('failed'))
   }

@@ -112,12 +112,12 @@ export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelPr
     if (isChat) return <div className="tab-assistant-chat-host" ref={root}><Component {...props} /></div>
     const overlay = availableWidth < state.width + 360
     return <PanelAssistantContext.Provider value={context}>
-      <div className="tab-with-assistant" ref={root} data-assistant-open={state.open} data-assistant-overlay={overlay}>
+      <div className="tab-with-assistant" data-tour-panel={props.api.id} ref={root} data-assistant-open={state.open} data-assistant-overlay={overlay}>
         <div className="tab-document">
           <div className="tab-assistant-launchbar"><span>{descriptor?.kind === 'learning' ? panelTitle || '학습 공간' : descriptor ? tabTitle(descriptor) : '현재 자료'}</span><button type="button" className="tab-assistant-toggle" data-tour="assistant-panel-toggle" aria-expanded={state.open} aria-label={state.open ? 'AI 보조 사이드바 접기' : 'AI 보조 사이드바 펼치기'} onClick={() => state.open ? close() : show()}>✦ <span>AI</span></button></div>
           <div className="tab-document-content"><Component {...props} /></div>
         </div>
-        {initialized && <aside hidden={!state.open} className="tab-assistant" role={overlay ? 'dialog' : 'complementary'} aria-label="탭 보조 사이드바" style={{ width: Math.min(state.width, availableWidth) }}>
+        {initialized && <aside hidden={!state.open} className="tab-assistant" data-tour={active && state.open ? "document-assistant" : undefined} role={overlay ? 'dialog' : 'complementary'} aria-label="탭 보조 사이드바" style={{ width: Math.min(state.width, availableWidth) }}>
           {!overlay && <div className="tab-assistant-resize" role="separator" aria-label="AI 사이드바 너비" aria-orientation="vertical" tabIndex={0}
             onKeyDown={e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); update({ width: Math.max(280, Math.min(480, state.width + (e.key === 'ArrowLeft' ? 16 : -16))) }) } }}
             onPointerDown={e => {

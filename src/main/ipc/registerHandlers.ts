@@ -2369,17 +2369,21 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
   handle('mcp:test', async (req) => {
-    // Enabled entries retain their secret env/header values. A disabled entry
-    // can still be probed with its public transport fields; the registry
-    // intentionally never exposes its secrets through list().
-    const config =
-      mcpRegistry.resolveEnabled().find((server) => server.id === req.id) ??
-      mcpRegistry.list().find((server) => server.id === req.id)
+    // Probe the saved authentication before enabling the server. Secrets stay
+    // in main; the connection result and renderer summaries are redacted.
+    const config = mcpRegistry.resolve(req.id)
     if (config === undefined) {
       throw new ValidationError('테스트할 MCP 서버를 찾을 수 없습니다.')
     }
     const result = await testMcpServer(config)
-    mcpRegistry.recordTest(req.id, result)
+    if (!mcpRegistry.recordTest(req.id, result, config)) {
+      return {
+        ok: false,
+        tools: [],
+        durationMs: result.durationMs,
+        error: '연결 검사 중 MCP 서버 설정이 바뀌거나 삭제되었습니다. 설정을 확인한 뒤 다시 연결을 확인해 주세요.'
+      }
+    }
     broadcast('mcp:changed', {})
     return result
   })

@@ -96,7 +96,7 @@ test('launcher entries select context and rail checks without unrelated appearan
   const shell = planChecks(['src/renderer/src/app/GlobalNavigation.tsx', 'src/renderer/src/app/AppShell.tsx'])
   assert.deepEqual(new Set(shell.e2e), new Set(['e2e/featureLauncher.spec.ts', 'e2e/sidebars.spec.ts', 'e2e/settingsShell.spec.ts', 'e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts']))
   assert.ok(!shell.scriptTests.includes('scripts/check-contrast.mjs'))
-  assert.deepEqual(planChecks(['src/renderer/src/features/settings/PacksPanel.tsx']).e2e, ['e2e/featureLauncher.spec.ts'])
+  assert.deepEqual(planChecks(['src/renderer/src/features/settings/PacksPanel.tsx']).e2e, ['e2e/featureLauncher.spec.ts', 'e2e/pluginCenter.spec.ts'])
   const mixed = planChecks(['src/renderer/src/app/GlobalNavigation.tsx', 'src/renderer/src/styles/tokens.css'])
   assert.ok(mixed.e2e.includes('e2e/theme.spec.ts'))
 })
@@ -243,4 +243,29 @@ test('Windows rename recovery verifies learning folder rebinding and material mo
     assert.ok(plan.e2e.includes('e2e/materialsDrag.spec.ts'), file)
     assert.ok(plan.e2e.includes('e2e/coursePerformance.spec.ts'), file)
   }
+})
+
+
+test('onboarding and plugin management select their own regressions without global appearance checks', () => {
+  for (const file of [
+    'src/renderer/src/features/settings/PluginsCategoryPanel.tsx',
+    'src/renderer/src/features/settings/McpQuickAdd.tsx',
+    'src/renderer/src/features/settings/ExtensionsPanel.tsx',
+    'src/renderer/src/features/settings/pluginCenterModel.ts',
+    'src/renderer/src/features/settings/PluginFeatureMark.tsx',
+    'src/renderer/src/features/settings/mcpPresets.ts',
+    'src/renderer/src/features/settings/settings-plugins.css',
+    'src/renderer/src/features/settings/catalog/CatalogPanel.tsx',
+    'src/main/features/mcpRegistry/registryStore.ts'
+  ]) {
+    const plan = planChecks([file])
+    assert.deepEqual(plan.e2e, ['e2e/pluginCenter.spec.ts'], file)
+    assert.ok(!plan.scriptTests.includes('scripts/check-contrast.mjs'), file)
+  }
+  assert.deepEqual(planChecks(['src/renderer/src/features/onboarding/tour/tourStore.ts']).e2e, ['e2e/onboarding.spec.ts'])
+  assert.deepEqual(planChecks(['src/renderer/src/features/settings/SettingsPanels.tsx']).e2e, ['e2e/settingsShell.spec.ts', 'e2e/onboarding.spec.ts'])
+  assert.deepEqual(planChecks(['src/shared/settingsCategories.ts']).e2e, ['e2e/settingsShell.spec.ts', 'e2e/pluginCenter.spec.ts'])
+  const mixed = planChecks(['src/renderer/src/features/settings/settings-plugins.css', 'src/renderer/src/styles/tokens.css'])
+  assert.ok(mixed.e2e.includes('e2e/theme.spec.ts'))
+  assert.ok(mixed.e2e.includes('e2e/pluginCenter.spec.ts'))
 })

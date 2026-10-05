@@ -167,7 +167,7 @@ function PackSection({
   )
 }
 
-function ImportDialog({ onClose }: { onClose: () => void }): JSX.Element {
+export function ImportDialog({ onClose }: { onClose: () => void }): JSX.Element {
   const t = useT()
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)

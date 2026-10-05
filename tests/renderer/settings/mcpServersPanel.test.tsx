@@ -140,25 +140,6 @@ afterEach(() => {
 })
 
 describe('McpServersPanel', () => {
-  test('puts paste import and six recommended presets before manual entry', async () => {
-    installListFake([])
-    await loadMcpServers()
-
-    const html = renderToStaticMarkup(<McpServersPanel />)
-
-    expect(html.match(/class="settings-mcp-preset"/g)).toHaveLength(6)
-    expect(html).toContain('@notionhq/notion-mcp-server')
-    expect(html).toContain('@modelcontextprotocol/server-github')
-    expect(html).toContain('@modelcontextprotocol/server-gdrive')
-    expect(html).toContain('@modelcontextprotocol/server-slack')
-    expect(html).toContain('@modelcontextprotocol/server-filesystem')
-    expect(html).toContain('mcp-server-fetch (Python)')
-    expect(html.indexOf('settings-mcp-import')).toBeLessThan(
-      html.indexOf('settings-mcp-gallery')
-    )
-    expect(html).toContain('<summary><span>직접 입력</span>')
-  })
-
   test('renders an empty registry', async () => {
     installListFake([])
     await loadMcpServers()

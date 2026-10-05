@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { TourCopyKey } from './tourScript'
 
 export type TourAnchorKey =
   | 'course-sidebar'
@@ -6,22 +6,25 @@ export type TourAnchorKey =
   | 'tab-strip'
   | 'favorites-section'
   | 'assistant-panel'
+  | 'document-assistant'
+  | 'quiz-tools'
+  | 'english-tool'
 
 export type TourPlacement = 'top' | 'right' | 'bottom' | 'left'
 
 export type TourBeforeAction =
-  | 'open-seed-note'
-  | 'reveal-favorites'
+  | 'show-materials'
+  | 'open-reading'
+  | 'show-launcher'
   | 'open-assistant'
 
 export interface TourStep {
   id: string
   target: TourAnchorKey | null
   placement: TourPlacement
-  title: string
-  body: ReactNode
+  titleKey: TourCopyKey
+  bodyKey: TourCopyKey
   before: TourBeforeAction | null
-  nextLabel: string | null
 }
 
 export interface TourAnchorRect {

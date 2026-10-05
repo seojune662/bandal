@@ -54,11 +54,14 @@ export interface McpRegistryDeps {
 export interface McpRegistry {
   availability(): McpAvailability
   list(): McpServerSummary[]
+  /** main 전용 — 연결 테스트용 비밀값 포함. 활성화 여부와 무관. */
+  resolve(id: string): McpServerConfig | undefined
   /** main 전용 — 비밀값 포함. enabled 만. */
   resolveEnabled(): McpServerConfig[]
   save(input: McpServerInput): McpServerSummary
   delete(id: string): void
-  recordTest(id: string, result: McpTestResult): void
+  /** main 전용 source — 검사 도중 연결이 바뀌거나 삭제되면 기록하지 않는다. */
+  recordTest(id: string, result: McpTestResult, source?: McpServerConfig): boolean
 }
 
 interface McpRegistryEnvelope {
@@ -231,6 +234,25 @@ function cloneConfig(config: McpServerConfig): McpServerConfig {
           }
         })
   }
+}
+
+function sameConnection(left: McpServerConfig, right: McpServerConfig): boolean {
+  const sameMap = (
+    first: Record<string, string> | undefined,
+    second: Record<string, string> | undefined
+  ): boolean => {
+    const keys = Object.keys(first ?? {})
+    return keys.length === Object.keys(second ?? {}).length &&
+      keys.every((key) => first?.[key] === second?.[key])
+  }
+  const leftArgs = left.args ?? []
+  const rightArgs = right.args ?? []
+  return left.transport === right.transport &&
+    left.command === right.command &&
+    left.url === right.url &&
+    leftArgs.length === rightArgs.length &&
+    leftArgs.every((argument, index) => argument === rightArgs[index]) &&
+    sameMap(left.env, right.env) && sameMap(left.headers, right.headers)
 }
 
 export function toSummary(config: McpServerConfig): McpServerSummary {
@@ -484,6 +506,13 @@ export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
         .sort((left, right) => left.name.localeCompare(right.name))
     },
 
+    resolve(id: string): McpServerConfig | undefined {
+      if (!existsSync(filePath) && cache === undefined) return undefined
+      if (!canEncrypt()) return undefined
+      const server = load().find((item) => item.id === id)
+      return server === undefined ? undefined : cloneConfig(server)
+    },
+
     resolveEnabled(): McpServerConfig[] {
       if (!existsSync(filePath) && cache === undefined) return []
       if (!canEncrypt()) return []
@@ -529,10 +558,10 @@ export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
             }
           : { url: input.url as string }),
         ...(env === undefined ? {} : { env }),
-        ...(headers === undefined ? {} : { headers }),
-        ...(existing?.lastTest === undefined
-          ? {}
-          : { lastTest: { ...existing.lastTest, tools: [...existing.lastTest.tools] } })
+        ...(headers === undefined ? {} : { headers })
+      }
+      if (existing?.lastTest !== undefined && sameConnection(existing, server)) {
+        server.lastTest = { ...existing.lastTest, tools: [...existing.lastTest.tools] }
       }
       persist([
         ...current.filter((item) => item.id !== server.id),
@@ -548,12 +577,16 @@ export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
       if (next.length !== current.length) persist(next)
     },
 
-    recordTest(id: string, result: McpTestResult): void {
+    recordTest(id: string, result: McpTestResult, source?: McpServerConfig): boolean {
       if (!canEncrypt()) throw new Error(ENCRYPTION_UNAVAILABLE_REASON)
       const current = load()
       const existing = current.find((server) => server.id === id)
       if (existing === undefined) {
+        if (source !== undefined) return false
         throw new Error('테스트 결과를 기록할 MCP 서버를 찾을 수 없습니다.')
+      }
+      if (source !== undefined && (source.id !== id || !sameConnection(source, existing))) {
+        return false
       }
       const timestamp = now().toISOString()
       const updated: McpServerConfig = {
@@ -570,6 +603,7 @@ export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
         ...current.filter((server) => server.id !== id),
         updated
       ])
+      return true
     }
   }
 }

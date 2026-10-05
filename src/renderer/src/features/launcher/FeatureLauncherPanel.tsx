@@ -49,7 +49,7 @@ export function FeatureLauncherPanel({ hidden }: { hidden: boolean }): JSX.Eleme
   const input = useRef<HTMLInputElement>(null)
   const pendingActions = useRef(new Set<string>())
   useEffect(() => {
-    if (hidden || !railOpen || settingsOpen) return
+    if (hidden || !railOpen || settingsOpen || document.querySelector('.tour-overlay')) return
     const element = input.current
     if (!element) return
     const focus = (): boolean => {
@@ -135,7 +135,7 @@ export function FeatureLauncherPanel({ hidden }: { hidden: boolean }): JSX.Eleme
     const status = statuses[entry.id]
     const reason = entry.unavailableReason || (!entry.enabled ? '이 기능이 비활성화되어 있어요.' : null)
     const busy = status?.phase === 'pending' || status?.phase === 'started'
-    return <article className="launcher-feature" key={entry.id} data-kind={entry.kind}>
+    return <article className="launcher-feature" key={entry.id} data-kind={entry.kind} data-tour={entry.kind === 'pack' ? entry.packId === 'quiz' ? 'quiz-tools' : entry.packId === 'vocab-chain-en' ? 'english-tool' : undefined : undefined}>
       <button type="button" className="launcher-feature__action" disabled={!!reason || busy || contextLoading}
         title={reason ?? entry.description} onClick={() => void run(entry)}>
         <span className="launcher-feature__icon" aria-hidden="true">{entry.kind === 'pack' ? entry.experience === 'article-vocabulary' ? 'Aa' : entry.experience === 'quiz' ? '?' : entry.experience === 'flashcards' ? '▤' : '✦' : <Icon name="puzzle" />}</span>
