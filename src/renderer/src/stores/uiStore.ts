@@ -19,7 +19,7 @@ interface UiState {
   resolvedTheme: ResolvedTheme
   leftRailOpen: boolean
   courseRailOpen: boolean
-  leftRailPanel: 'courses' | 'plugins'
+  leftRailPanel: 'courses' | 'learning' | 'plugins'
   rightRailOpen: boolean
   /** [M5] Study-board overlay above the workspace (board tab stays too). */
   isBoardOverlayOpen: boolean
@@ -36,6 +36,7 @@ interface UiState {
   toggleLeftRail: () => void
   toggleCourseRail: () => void
   showCourses: () => void
+  toggleLearningPanel: () => void
   togglePluginsPanel: () => void
   toggleRightRail: () => void
   toggleBoardOverlay: () => void
@@ -127,6 +128,13 @@ export const useUiStore = create<UiState>()((set, get) => ({
   toggleCourseRail: () => set(state => ({ courseRailOpen: !state.courseRailOpen })),
   showCourses: () => set({ leftRailOpen: true, courseRailOpen: true, leftRailPanel: 'courses',
     isSettingsOpen: false, isBoardOverlayOpen: false, isLinkGraphOpen: false }),
+  toggleLearningPanel: () => set(state => ({
+    leftRailOpen: true,
+    courseRailOpen: !(state.courseRailOpen && state.leftRailPanel === 'learning' &&
+      !state.isSettingsOpen && !state.isBoardOverlayOpen && !state.isLinkGraphOpen),
+    leftRailPanel: 'learning',
+    isSettingsOpen: false, isBoardOverlayOpen: false, isLinkGraphOpen: false
+  })),
   togglePluginsPanel: () => set(state => ({
     leftRailOpen: true,
     courseRailOpen: !(state.courseRailOpen && state.leftRailPanel === 'plugins' &&

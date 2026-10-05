@@ -120,7 +120,8 @@ export function createRpcSession(options: AgentStartSessionOptions, provider: 'c
     if (provider === 'codex') {
       await rpc.request('initialize', { clientInfo: { name: 'bandal', title: 'Bandal', version: '0.60.0' }, capabilities: {} })
       rpc.notify('initialized')
-      const common = { cwd: options.cwd, model: options.model, approvalPolicy: 'untrusted', approvalsReviewer: 'user', sandbox: options.accessPolicy?.mode === 'ask' ? 'read-only' : 'workspace-write', developerInstructions: options.systemPromptAppend ?? null }
+      const common = { cwd: options.cwd, model: options.model, approvalPolicy: 'untrusted', approvalsReviewer: 'user', sandbox: options.accessPolicy?.mode === 'ask' ? 'read-only' : 'workspace-write', developerInstructions: options.systemPromptAppend ?? null,
+        ...(options.webSearch ? { config: { web_search: options.webSearch } } : {}) }
       const result = await rpc.request(options.resumeCliSessionId ? 'thread/resume' : 'thread/start', { ...common, ...(options.resumeCliSessionId ? { threadId: options.resumeCliSessionId } : {}) })
       sessionKey = result.thread.id
     } else {

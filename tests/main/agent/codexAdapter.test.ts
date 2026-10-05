@@ -7,3 +7,7 @@ test('uses bidirectional App Server and keeps MCP credentials out of argv', () =
   expect(args.join(' ')).toContain('tool_timeout_sec=300')
   expect(CODEX_CAPABILITIES).toMatchObject({ interactivePermissions: true, imageInput: true, resume: true })
 })
+test('enables native live search only when the isolated session requests it', () => {
+  expect(buildCodexArgs({})).toEqual(['app-server', '--listen', 'stdio://'])
+  expect(buildCodexArgs({ webSearch: 'live', mcpExtraArgs: ['-c', 'web_search="disabled"'] }).slice(-2)).toEqual(['-c', 'web_search="live"'])
+})

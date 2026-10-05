@@ -155,6 +155,8 @@ export interface AgentErrorEvent {
   fatal: boolean
 }
 
+export type AgentTurnFailure = Pick<AgentErrorEvent, 'code' | 'message'>
+
 export type AgentEvent =
   | { type: 'turn-started'; turnSeq: number }
   | { type: 'permission-resolved'; requestId: string; behavior: 'allow' | 'deny' }
@@ -216,6 +218,8 @@ export interface AgentStartSessionOptions {
   /** Working directory for the CLI process (the course folder). */
   cwd: string
   model?: string
+  /** Public provider search explicitly enabled for an isolated learning session. */
+  webSearch?: 'live'
   /** Resume a previous CLI session when supported. */
   resumeCliSessionId?: string
   systemPromptAppend?: string

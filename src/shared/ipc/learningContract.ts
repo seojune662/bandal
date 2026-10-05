@@ -2,28 +2,32 @@ import type {
   LearningBinding, LearningProjectSnapshot, LearningProjectSummary, LearningArticleSnapshot,
   LearningArtifact, LearningLevel, LearningSourceRef, SaveLearningWordInput, UpdateLearningWordInput,
   SaveLearningProgressInput, CompleteLearningArticleInput, SaveLearningQuizAnswerInput,
-  FinishLearningQuizInput, ReviewLearningCardInput, StartLearningRunInput, ImportLearningDraftInput, LearningMaterialRequest
+  FinishLearningQuizInput, ReviewLearningCardInput, StartLearningRunInput, ImportLearningDraftInput, LearningMaterialRequest,
+  LearningProjectSettings, LearningAiSettings, UpdateLearningSettingsInput
 } from '../types/learning'
 
 export interface LearningGenerationSource {
   kind: 'course' | 'material' | 'article' | 'vocabulary'
   relPath?: string
   selection?: string
+  page?: number
   articleIds?: string[]
   wordIds?: string[]
+  sourceCourseId?: string
 }
 export interface LearningRunResult { runId: string; binding: LearningBinding }
 export interface LearningIpcContract {
   'learning:list': { req: { courseId?: string }; res: { projects: LearningProjectSummary[] } }
   'learning:create': {
-    req: { placement: 'standalone' | 'in-course'; courseId?: string; rootRelPath?: string; name: string; topic: string; level?: LearningLevel; readingMinutes?: number }
+    req: Partial<LearningProjectSettings> & { placement: 'standalone' | 'in-course'; courseId?: string; rootRelPath?: string; name: string; topic: string; level?: LearningLevel; readingMinutes?: number }
     res: LearningProjectSnapshot
   }
   'learning:get': { req: { binding: LearningBinding }; res: LearningProjectSnapshot }
+  'learning:updateSettings': { req: UpdateLearningSettingsInput; res: LearningProjectSnapshot }
   'learning:getArticle': { req: LearningMaterialRequest; res: LearningArticleSnapshot }
   'learning:getArtifact': { req: LearningMaterialRequest; res: LearningArtifact }
-  'learning:resolveSource': { req: { binding: LearningBinding; sourceRef: LearningSourceRef }; res: { relPath: string | null; missing: boolean } }
-  'learning:addArticle': { req: { binding: LearningBinding; url: string; tabId?: string }; res: LearningProjectSnapshot & { addedArticleId: string } }
+  'learning:resolveSource': { req: { binding: LearningBinding; sourceRef: LearningSourceRef }; res: { relPath: string | null; missing: boolean; sourceCourseId?: string } }
+  'learning:addArticle': { req: { binding: LearningBinding; url: string; tabId?: string; sourceCourseId?: string }; res: LearningProjectSnapshot & { addedArticleId: string } }
   'learning:saveWord': { req: SaveLearningWordInput; res: LearningProjectSnapshot }
   'learning:updateWord': { req: UpdateLearningWordInput; res: LearningProjectSnapshot }
   'learning:updateOccurrence': { req: { binding: LearningBinding; occurrenceId: string; meaning: string; expectedRevision?: number }; res: LearningProjectSnapshot }
@@ -35,16 +39,16 @@ export interface LearningIpcContract {
   'learning:run': { req: StartLearningRunInput; res: LearningRunResult }
   'learning:runCancel': { req: { binding: LearningBinding; runId: string }; res: LearningProjectSnapshot }
   'learning:runRetry': { req: { binding: LearningBinding; runId: string }; res: LearningRunResult }
-  'learning:importPreview': { req: { binding: LearningBinding; relPath: string }; res: LearningRunResult }
+  'learning:importPreview': { req: { binding: LearningBinding; relPath: string; sourceCourseId?: string }; res: LearningRunResult }
   'learning:importSave': { req: ImportLearningDraftInput; res: LearningProjectSnapshot }
   'study:generate': {
-    req: { courseId: string; packId: string; rootRelPath?: string; source?: LearningGenerationSource }
+    req: { courseId: string; packId: string; binding?: LearningBinding; rootRelPath?: string; source?: LearningGenerationSource; ai?: LearningAiSettings }
     res: LearningRunResult
   }
 }
 
 export const LEARNING_CHANNELS = [
-  'learning:list', 'learning:create', 'learning:get', 'learning:getArticle', 'learning:getArtifact',
+  'learning:list', 'learning:create', 'learning:get', 'learning:updateSettings', 'learning:getArticle', 'learning:getArtifact',
   'learning:resolveSource', 'learning:addArticle', 'learning:saveWord', 'learning:updateWord', 'learning:updateOccurrence', 'learning:saveProgress',
   'learning:completeArticle', 'learning:saveQuizAnswer', 'learning:finishQuiz', 'learning:reviewCard',
   'learning:run', 'learning:runCancel', 'learning:runRetry', 'learning:importPreview', 'learning:importSave', 'study:generate'

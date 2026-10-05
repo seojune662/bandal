@@ -7,9 +7,11 @@ import { createLearningRepo } from '../src/main/features/learning/learningRepo'
 import { learningHash, splitLearningParagraphs } from '../src/main/features/learning/model'
 import { BUILTIN_PACKS } from '../src/shared/workflowPacks/builtins'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+import { configureEnglishForm, installLearningAiFixture, ENGLISH_FIXTURE_SETTINGS } from './helpers/learning'
 
 /** Keep provider authentication/network out of these native storage/UI checks. */
 async function isolateProvider(bandal: BandalApp): Promise<void> {
+  await installLearningAiFixture(bandal)
   await bandal.app.evaluate(({ ipcMain }) => {
     const requests: unknown[] = []
     ;(globalThis as unknown as { learningTestRuns: unknown[] }).learningTestRuns = requests
@@ -33,15 +35,15 @@ test('native learning keeps article evidence, quiz results, card schedules and e
   try {
     await isolateProvider(bandal)
     let page = bandal.page
-    await page.getByRole('button', { name: '새 영어 학습 공간' }).first().click()
-    const dialog = page.getByRole('dialog', { name: '영어 읽기 시작하기' })
+    await page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: '학습', exact: true }).click()
+    await page.getByRole('complementary', { name: '학습 공간 목록' }).getByRole('button', { name: '영어 이어읽기 시작하기', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '영어 이어읽기 시작하기' })
     await expect(dialog).toBeVisible()
-    await dialog.getByLabel('학습 공간 이름').fill('도시의 회복력')
-    await dialog.getByLabel('관심 주제').fill('Resilient cities')
-    await expect(dialog.getByLabel('한 편의 읽기 시간')).toHaveValue('4')
+    await expect(dialog.getByLabel('한 편의 읽기 시간')).toHaveValue('')
+    await configureEnglishForm(dialog, '도시의 회복력', '사회·문화')
     await dialog.getByRole('button', { name: '학습 공간 만들기', exact: true }).click()
     await expect(dialog).toBeHidden()
-    await expect(page.locator('.learning-topbar')).toContainText('도시의 회복력')
+    await expect(page.locator('.learning-topbar:visible')).toContainText('도시의 회복력')
     const course = await page.evaluate(async () => (await window.bandal.invoke('courses:list', {})).find(item => item.name === '도시의 회복력')!)
     const binding = { courseId: course.id, rootRelPath: '' }
     const repo = createLearningRepo({ getCourseFolder: () => course.folderPath })
@@ -150,7 +152,7 @@ test('native learning keeps article evidence, quiz results, card schedules and e
     await bandal.close()
     bandal = await launchBandal({ reuseProfileDir: profileDir })
     page = bandal.page
-    await expect(page.locator('.learning-topbar')).toContainText('도시의 회복력')
+    await expect(page.locator('.learning-topbar:visible')).toContainText('도시의 회복력')
     await expect(page.locator('.learning-vocabulary-word').filter({ hasText: 'resilient' }).locator('summary')).toContainText('익숙함 · 2개 문맥')
     const restored = await page.evaluate(value => window.bandal.invoke('learning:get', { binding: value }), binding)
     expect(restored.quizAttempts[0]!.score).toBe(2)
@@ -159,13 +161,14 @@ test('native learning keeps article evidence, quiz results, card schedules and e
   } finally { await bandal.close(); rmSync(profileDir, { recursive: true, force: true }) }
 })
 
-test('creates a named learning subfolder in a short zoomed window with reachable actions', async ({}, info) => {
+test('creates a standalone space in a short zoomed window and preserves renamed legacy subfolder bindings', async ({}, info) => {
   const bandal = await launchBandal({ extraSettings: { theme: 'light' } })
   try {
     await isolateProvider(bandal)
     await createCourse(bandal.page, '영어 자료')
-    await bandal.page.locator('.learning-sidebar--compact').getByRole('button', { name: '새 영어 학습 공간' }).click()
-    const dialog = bandal.page.getByRole('dialog', { name: '영어 읽기 시작하기' })
+    await bandal.page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: '학습', exact: true }).click()
+    await bandal.page.getByRole('complementary', { name: '학습 공간 목록' }).getByRole('button', { name: '영어 이어읽기 시작하기', exact: true }).click()
+    const dialog = bandal.page.getByRole('dialog', { name: '영어 이어읽기 시작하기' })
     await bandal.app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows().find(candidate => candidate.webContents.getURL().includes('index.html'))!
       window.setContentSize(1024, 640)
@@ -180,22 +183,25 @@ test('creates a named learning subfolder in a short zoomed window with reachable
     }
     await expectInside()
     await expect.poll(() => dialog.locator('.learning-dialog-body').evaluate(body => body.scrollHeight > body.clientHeight)).toBe(true)
-    await dialog.getByLabel('학습 공간 이름').fill('과학 기사 읽기')
-    await dialog.getByLabel('관심 주제').fill('Science')
-    await dialog.getByLabel('폴더 이름').fill('Reading/Science')
+    await configureEnglishForm(dialog, '새 과학 기사 읽기', '과학')
     await expectInside()
     await bandal.page.screenshot({ path: info.outputPath('learning-create-small-window.png') })
     await createButton.click()
     await expect(dialog).toBeHidden()
-    await expect(bandal.page.locator('.learning-topbar')).toContainText('과학 기사 읽기')
+    await expect(bandal.page.locator('.learning-topbar:visible')).toContainText('새 과학 기사 읽기')
     await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.webContents.setZoomFactor(1))
-    const projects = await bandal.page.evaluate(async () => (await window.bandal.invoke('learning:list', {})).projects)
-    expect(projects).toHaveLength(1)
-    expect(projects[0]!.binding.rootRelPath).toBe('Reading/Science')
-    expect(await bandal.page.evaluate(async () => (await window.bandal.invoke('courses:list', {})).map(course => course.name))).toEqual(['영어 자료'])
+    const standalone = await bandal.page.evaluate(async () => (await window.bandal.invoke('learning:list', {})).projects)
+    expect(standalone).toHaveLength(1)
+    expect(standalone[0]!.binding.rootRelPath).toBe('')
+    const sourceCourse = await bandal.page.evaluate(async () => (await window.bandal.invoke('courses:list', {})).find(course => course.name === '영어 자료')!)
+    expect(await bandal.page.evaluate(async id => (await window.bandal.invoke('courses:list', {})).find(course => course.id === id)?.workspaceKind, standalone[0]!.binding.courseId)).toBe('study-space')
+    const legacy = await bandal.page.evaluate(courseId => window.bandal.invoke('learning:create', { placement: 'in-course', courseId, rootRelPath: 'Reading/Science', name: '과학 기사 읽기', topic: 'Science' }), sourceCourse.id)
+    await publishChange(bandal, legacy.binding)
+    await bandal.page.getByRole('complementary', { name: '학습 공간 목록' }).getByRole('button').filter({ has: bandal.page.locator('strong').filter({ hasText: /^과학 기사 읽기$/ }) }).click()
+    const projects = [{ binding: legacy.binding }]
     await bandal.page.getByRole('navigation', { name: '학습 화면' }).getByRole('button', { name: '퀴즈 · 카드' }).click()
     await bandal.page.evaluate(courseId => window.bandal.invoke('materials:rename', { courseId, relPath: 'Reading', newName: 'Library' }), projects[0]!.binding.courseId)
-    await expect(bandal.page.locator('.learning-topbar')).toContainText('과학 기사 읽기')
+    await expect(bandal.page.locator('.learning-topbar:visible')).toContainText('과학 기사 읽기')
     await expect.poll(async () => JSON.stringify(await bandal.page.evaluate(courseId => window.bandal.invoke('layout:get', { courseId }), projects[0]!.binding.courseId))).toContain('Library/Science')
     await expect(bandal.page.getByRole('navigation', { name: '학습 화면' }).getByRole('button', { name: '퀴즈 · 카드' })).toHaveAttribute('aria-current', 'page')
     await bandal.page.evaluate(async courseId => {
@@ -214,7 +220,7 @@ test('native learning pack approval keeps app IPC responsive until its actual di
   const bandal = await launchBandal()
   try {
     await isolateProvider(bandal)
-    const project = await bandal.page.evaluate(() => window.bandal.invoke('learning:create', { placement: 'standalone', name: '승인 응답성', topic: 'Science' }))
+    const project = await bandal.page.evaluate(settings => window.bandal.invoke('learning:create', { placement: 'standalone', name: '승인 응답성', topic: 'Science', ...settings }), ENGLISH_FIXTURE_SETTINGS)
     const quiz = BUILTIN_PACKS.find(pack => pack.id === 'quiz')!
     const imported = await bandal.page.evaluate(json => window.bandal.invoke('packs:importText', { json }), JSON.stringify({ ...quiz, name: '승인 응답성 검증 팩' }))
     await bandal.app.evaluate(({ dialog, BrowserWindow }) => {

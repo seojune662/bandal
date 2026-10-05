@@ -12,7 +12,7 @@ export function LearningSources({ sources, binding, onArticle }: { sources: Lear
     if (source.kind === 'article' && source.articleId) onArticle(source.articleId)
     else if (source.relPath) void invoke('learning:resolveSource', { binding, sourceRef: source }).then(result => {
       if (result.missing || result.relPath === null) { showToast('원문 자료를 찾을 수 없어요. 저장된 예문은 계속 볼 수 있습니다.', 'danger'); return }
-      openMaterialInCourse(binding.courseId, kindForMaterialName(result.relPath), result.relPath)
+      openMaterialInCourse(result.sourceCourseId ?? source.sourceCourseId ?? binding.courseId, kindForMaterialName(result.relPath), result.relPath)
     }).catch(() => showToast('원문 자료를 열지 못했어요.', 'danger'))
     else if (source.url) createBrowserTab(source.url)
   }}><Icon name="link" />{source.title ?? source.relPath ?? '원문 예문'}{source.page ? ` · ${source.page}쪽` : ''}{source.availability === 'missing' ? ' · 원문 없음' : source.availability === 'changed' ? ' · 원문 변경됨' : ''}</button>)}</div>

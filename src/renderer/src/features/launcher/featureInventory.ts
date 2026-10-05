@@ -12,6 +12,7 @@ interface FeatureEntryBase {
   description: string
   source: 'builtin' | 'user' | 'extension'
   enabled: boolean
+  category?: 'native-study' | 'document-pack' | 'extension'
   /** Installed/runtime availability; target-specific scope is resolved separately. */
   unavailableReason: string | null
 }
@@ -54,7 +55,7 @@ function pluginUnavailable(plugin: PluginSummary, permission: 'commands' | 'pane
 export function buildFeatureInventory(packs: readonly WorkflowPackSummary[], plugins: readonly PluginSummary[], extensionRuntime: boolean): FeatureEntry[] {
   const entries: FeatureEntry[] = packs.map(({ pack, source, enabled }): PackFeatureEntry => ({
     kind: 'pack', id: `pack:${pack.id}`, packId: pack.id, label: pack.name,
-    description: pack.description, source, enabled,
+    description: pack.description, source, enabled, category: pack.schemaVersion === 2 ? 'native-study' : 'document-pack',
     unavailableReason: enabled ? null : '학습 팩이 비활성화되어 있어요.',
     schemaVersion: pack.schemaVersion, worksOn: pack.worksOn, usesWeb: pack.usesWeb, outputs: pack.outputs,
     ...(pack.schemaVersion === 2 ? { experience: pack.experience } : {}),

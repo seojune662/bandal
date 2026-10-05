@@ -2,6 +2,9 @@ import { createLearningRepo, normalizeLearningDraft } from '../features/learning
 import { createLearningApprovalDialogs } from '../features/learning/approvalDialogs'
 import { createLearningCache } from '../features/learning/learningCache'
 import { createLearningRuntime } from '../features/learning/learningRuntime'
+import { sendLearningWithSession, validateConnectedLearningAi } from '../features/learning/learningAgent'
+import { rejectAgentModel, resolveLearningAi, validateLearningAi } from '../features/agent/agentModels'
+import type { AgentTurnFailure } from '../../shared/types/agent-events'
 import { createArticleExtractor, matchArticleWords } from '../features/learning/articleExtractor'
 import { createLearningGrounding } from '../features/learning/learningGrounding'
 import { registerLearningHandlers } from './learningHandlers'
@@ -393,19 +396,20 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   const legacyPackSettlers = new Map<string, { resolve(): void; reject(error: Error): void }>()
   const legacyGuardSessions = new Map<string, string>()
-  const settleStudyTurn = (info: { sessionId: string; reason: 'success' | 'error' | 'interrupted' }): void => {
-    learningRuntime?.settle(info.sessionId, info.reason)
+  const settleStudyTurn = (info: { sessionId: string; reason: 'success' | 'error' | 'interrupted'; error?: AgentTurnFailure }): void => {
+    void learningRuntime?.settle(info.sessionId, info.reason, info.error)
     const pending = legacyPackSettlers.get(info.sessionId)
     if (pending) {
       legacyPackSettlers.delete(info.sessionId)
       if (info.reason === 'success') pending.resolve()
-      else pending.reject(new Error(info.reason === 'error' ? 'AI 학습 작업에 실패했습니다.' : 'AI 학습 작업이 중단되었습니다.'))
+      else pending.reject(new Error(info.error?.message ?? (info.reason === 'error' ? 'AI 학습 작업에 실패했습니다.' : 'AI 학습 작업이 중단되었습니다.')))
     }
   }
   let learningRuntime: ReturnType<typeof createLearningRuntime> | undefined
   const learningCache = createLearningCache(db)
   const learningRepo = createLearningRepo({
     getCourseFolder: courseId => coursesRepo.getFolder(courseId),
+    listCourseIds: () => coursesRepo.list({ includeArchived: true }).map(course => course.id),
     onChanged: binding => {
       broadcast('learning:changed', { binding })
       materialsRepo.invalidateTree(binding.courseId)
@@ -2171,7 +2175,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     validateDraft: async (draft, state) => {
       const result = await normalizeLearningDraft(draft, state,
         id => learningRepo.readArticle(state.binding, id),
-        grounding.validator(state.binding))
+        grounding.validator(state.binding, state.linkedCourseId))
       const refs = [...(result.words?.map(word => word.sourceRef) ?? []), ...(result.artifacts?.flatMap(artifact => [
         ...(artifact.sourceRefs ?? []),
         ...(artifact.kind === 'quiz' ? artifact.questions.flatMap(question => question.sourceRefs) :
@@ -2180,7 +2184,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       if (refs.some(ref => ref.kind === 'web')) throw new Error('웹 출처는 가져온 기사 본문의 근거 문장으로 연결하세요.')
       return result
     },
-    provider: () => getSettings().agentProvider,
+    modelRejected: rejectAgentModel,
+    resolveAi: ai => validateConnectedLearningAi(ai, provider => agentLocators[provider].availability(), resolveLearningAi),
     recipe: (packId, kind) => {
       const id = packId ?? (kind === 'find-articles' ? 'vocab-chain-en' : kind === 'create-quiz' ? 'quiz' : kind === 'create-cards' ? 'flashcards' : undefined)
       if (!id) return ''
@@ -2196,16 +2201,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     sourceText: async (binding, source) => {
       if (source?.kind !== 'material') return source?.selection ?? ''
       if (!source.relPath) throw new Error('대상 자료를 선택하세요.')
-      const material = await grounding.material(binding, source.relPath)
+      const material = await grounding.material(binding, source.relPath, source.sourceCourseId, source.selection ? source.page : undefined)
       if (source.selection && !material.text.replace(/\s+/gu, ' ').includes(source.selection.replace(/\s+/gu, ' ').trim())) throw new Error('선택한 내용이 원본 자료와 일치하지 않아요.')
-      return JSON.stringify({ relPath: source.relPath, pathScope: 'course', contentHash: material.contentHash,
+      return JSON.stringify({ relPath: source.relPath, pathScope: 'course', ...(source.sourceCourseId ? { sourceCourseId: source.sourceCourseId } : {}), ...(source.page === undefined ? {} : { page: source.page }), contentHash: material.contentHash,
         text: source.selection ?? material.text, truncated: material.truncated })
     },
-    send: async (courseId, sessionId, provider, prompt) => {
-      const manager = managerFor(provider)
-      try { rebuildContextCoalesced(courseId) } catch (error) { console.warn('[learning] context rebuild failed', error) }
-      await manager.open(courseId, sessionId, 'study')
-      return manager.send(courseId, sessionId, prompt)
+    send: async (courseId, sessionId, provider, prompt, ai) => {
+      return sendLearningWithSession(managerFor(provider), courseId, sessionId, prompt, ai, validateLearningAi)
     },
     cancel: (courseId, sessionId, provider) => {
       agentConfirmer.cancelConversation(sessionId)
@@ -2214,6 +2216,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   registerLearningHandlers(handle, {
     repo: learningRepo, runtime: learningRuntime, extractor: articleExtractor, cache: learningCache,
+    validateAi: ai => validateConnectedLearningAi(ai, provider => agentLocators[provider].availability(), validateLearningAi),
     courses: coursesRepo,
     resolvePack: id => packStore.resolve(id),
     approvePack: async (id, courseId) => {
@@ -2230,12 +2233,12 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     assertSourceTab: (courseId, tabId, url) => {
       coursesRepo.getById(courseId)
       const guest = guestRegistry.resolve(tabId)
-      if (!guest || guest.getURL() !== url) throw new Error('열린 원문 탭을 선택하세요.')
+      assertLiveStudyBrowserSource({ courseId, relPath: null, browserTabUrl: url, browserTabId: tabId }, guest, browsingContext(guest?.id ?? null))
     },
-    resolveSource: (binding, ref) => grounding.resolve(binding, ref),
+    resolveSource: async (binding, ref) => grounding.resolve(binding, ref, (await learningRepo.read(binding)).linkedCourseId),
     validateDraft: async (binding, draft) => {
       const state = await learningRepo.read(binding)
-      const result = await normalizeLearningDraft(draft, state, id => learningRepo.readArticle(binding, id), grounding.validator(binding))
+      const result = await normalizeLearningDraft(draft, state, id => learningRepo.readArticle(binding, id), grounding.validator(binding, state.linkedCourseId))
       if (result.articles?.length || result.wordUpdates?.length) throw new Error('가져오기에서는 퀴즈·카드·학습노트만 저장할 수 있어요.')
       const refs = [...(result.words?.map(word => word.sourceRef) ?? []), ...(result.artifacts?.flatMap(artifact => [...(artifact.sourceRefs ?? []), ...(artifact.kind === 'quiz' ? artifact.questions.flatMap(question => question.sourceRefs) : artifact.kind === 'cards' ? artifact.cards.flatMap(card => card.sourceRefs) : [])]) ?? [])]
       if (refs.some(ref => ref.kind === 'web')) throw new Error('원본 자료에서 확인한 출처 문장을 사용하세요.')
@@ -2669,7 +2672,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('agent:installCommand', (req) => agentInstaller.commandFor(req.provider))
   handle('agent:install', (req) => agentInstaller.install(req.provider))
   handle('agent:login', (req) => loginLauncher.login(req.provider))
-  handle('agent:models', (req) => getAgentModels(req.provider))
+  handle('agent:models', (req) => getAgentModels(req.provider, req.refresh))
   handle('agent:geminiApiKey', () => geminiApiKeyStore.get())
   handle('agent:setGeminiApiKey', (req) => geminiApiKeyStore.set(req.key))
 

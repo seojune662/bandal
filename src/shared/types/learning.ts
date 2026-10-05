@@ -1,5 +1,27 @@
 /** Portable learning records. Persisted paths are relative to the project root. */
+import type { AgentProvider } from './agent-events'
+import type { WorkspaceKind } from './course'
+
 export interface LearningBinding { courseId: string; rootRelPath: string }
+export type LearningPurpose = 'english-reading' | 'course-review' | 'unclassified'
+export const LEARNING_TOPICS = [
+  { id: 'science', label: '과학' }, { id: 'space', label: '우주' },
+  { id: 'technology-ai', label: '기술·AI' }, { id: 'environment', label: '환경' },
+  { id: 'health', label: '건강' }, { id: 'psychology', label: '심리' },
+  { id: 'business-economy', label: '경제·비즈니스' }, { id: 'society-culture', label: '사회·문화' },
+  { id: 'history', label: '역사' }, { id: 'arts-design', label: '예술·디자인' },
+  { id: 'sports', label: '스포츠' }, { id: 'travel', label: '여행' },
+  { id: 'food', label: '음식' }, { id: 'career', label: '커리어' }
+] as const
+export interface LearningAiSettings { provider: AgentProvider; model: string; effort: string | null }
+export interface LearningProjectSettings {
+  purpose: LearningPurpose
+  topicIds: string[]
+  readingSetupConfirmed: boolean
+  ai: LearningAiSettings
+  linkedCourseId?: string
+  packId?: string
+}
 export type LearningLevel = 'beginner' | 'intermediate' | 'advanced'
 export interface LearningSentence { id: string; text: string; start: number; end: number }
 export interface LearningParagraph { id: string; text: string; sentences: LearningSentence[] }
@@ -56,6 +78,8 @@ export interface LearningSourceRef {
   end?: number
   relPath?: string
   pathScope?: 'project' | 'course'
+  /** Original course for sources retained in an independent review workspace. */
+  sourceCourseId?: string
   contentHash?: string
   /** Computed by the host when resolving a citation; never replaces the retained quote. */
   availability?: 'available' | 'missing' | 'changed'
@@ -118,6 +142,8 @@ export type LearningRunKind = 'find-articles' | 'explain-word' | 'create-quiz' |
 export interface LearningRunSource {
   kind: 'course' | 'material' | 'article' | 'vocabulary'
   relPath?: string; selection?: string; articleIds?: string[]; wordIds?: string[]
+  page?: number
+  sourceCourseId?: string
 }
 export interface LearningWordDraft {
   surface: string; lemma?: string; meaning?: string; pronunciation?: string; partOfSpeech?: string
@@ -133,8 +159,15 @@ export interface LearningDraft {
 export interface LearningRun {
   id: string; kind: LearningRunKind
   packId?: string
+  purpose?: LearningPurpose
+  topicIds?: string[]
+  readingSetupConfirmed?: boolean
   status: 'queued' | 'running' | 'validating' | 'interrupted' | 'awaiting-confirmation' | 'complete' | 'failed' | 'cancelled'
   provider: string; articleIds: string[]; wordIds: string[]
+  model?: string; effort?: string | null; sessionId?: string
+  errorCode?: string
+  errorCategory?: 'connection' | 'model' | 'quota' | 'network' | 'tool' | 'source' | 'validation' | 'timeout' | 'cancelled' | 'unknown'
+  actionable?: string
   source?: LearningRunSource
   message: string; error: string | null; draft: LearningDraft | null
   createdAt: string; updatedAt: string
@@ -143,7 +176,7 @@ export interface LearningHistoryEntry {
   id: string; kind: 'article-added' | 'article-completed' | 'word-saved' | 'artifact-created' | 'quiz-completed' | 'card-reviewed'
   entityId: string; createdAt: string; summary: string; resultRelPath?: string
 }
-export interface LearningProjectState {
+export interface LearningProjectState extends Partial<LearningProjectSettings> {
   schemaVersion: 1; projectId: string; revision: number
   name: string; topic: string; level: LearningLevel; readingMinutes: number
   createdAt: string; updatedAt: string
@@ -152,22 +185,27 @@ export interface LearningProjectState {
   runs: LearningRun[]; history: LearningHistoryEntry[]
   exports: Array<{ relPath: string; contentHash: string }>
   /** Immutable source citations resolve through subsequent filesystem moves. */
-  pathAliases?: Array<{ fromRelPath: string; toRelPath: string; isDirectory: boolean; scope: 'project' | 'course' }>
+  pathAliases?: Array<{ fromRelPath: string; toRelPath: string; isDirectory: boolean; scope: 'project' | 'course'; sourceCourseId?: string }>
 }
 export interface LearningProjectSnapshot extends LearningProjectState {
   binding: LearningBinding
   recovery: 'none' | 'previous'
   warnings: string[]
 }
-export interface LearningProjectSummary {
+export interface LearningProjectSummary extends Partial<LearningProjectSettings> {
   binding: LearningBinding; projectId: string; name: string; topic: string
   level: LearningLevel; readingMinutes: number; articleCount: number; completedArticleCount: number
   wordCount: number; knownWordCount: number; dueCardCount: number; updatedAt: string
   warning: string | null
 }
 export interface LearningMutation { binding: LearningBinding; expectedRevision?: number }
-export interface CreateLearningProjectInput extends LearningMutation {
+export interface CreateLearningProjectInput extends LearningMutation, Partial<LearningProjectSettings> {
   name: string; topic: string; level?: LearningLevel; readingMinutes?: number
+}
+export interface UpdateLearningSettingsInput extends LearningMutation, Partial<LearningProjectSettings> {
+  /** Explicitly confirmed container classification; never inferred from purpose. */
+  workspaceKind?: WorkspaceKind
+  name?: string; topic?: string; level?: LearningLevel; readingMinutes?: number
 }
 export interface AddLearningArticleInput extends LearningMutation { article: LearningArticleInput }
 export interface SaveLearningWordInput extends LearningMutation, LearningWordDraft {}

@@ -21,6 +21,12 @@ function allowedRules(args: readonly string[]): string[] {
 
 describe('buildClaudeArgs — write containment', () => {
   const args = buildClaudeArgs({})
+  test('background learning permits native public web search without native filesystem or shell grants', () => {
+    const study = buildClaudeArgs({ webSearch: 'live', accessPolicy: { mode: 'full', scope: { course: true, browser: true, screen: true } }, extraAllowedTools: ['mcp__bandal__learning_verify_article'] })
+    expect(allowedRules(study)).toEqual(['WebSearch', 'WebFetch', 'mcp__bandal__learning_verify_article'])
+    expect(valueOf(study, '--disallowedTools')).toBe('Bash')
+    expect(allowedRules(buildClaudeArgs({ accessPolicy: { mode: 'auto', scope: { course: true, browser: false, screen: false } } }))).not.toContain('WebSearch')
+  })
 
   test('scopes Edit and Write to the working directory', () => {
     const rules = allowedRules(args)

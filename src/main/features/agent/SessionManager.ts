@@ -17,6 +17,7 @@ import type {
   AgentSession,
   AgentStartSessionOptions,
   AgentProvider,
+  AgentTurnFailure,
   Usage,
   PermissionResponse
 } from '../../../shared/types/agent-events'
@@ -95,7 +96,7 @@ export interface SessionManagerDeps {
   onRequestsCancelled?: (sessionId: string) => void
   onTurnComplete?: (info: { courseId: string; sessionId: string; turnSeq?: number }) => void
   /** A real terminal event, including crashes/close/cancel; never dispatch completion. */
-  onTurnSettled?: (info: { courseId: string; sessionId: string; turnSeq: number; reason: 'success' | 'error' | 'interrupted' }) => void
+  onTurnSettled?: (info: { courseId: string; sessionId: string; turnSeq: number; reason: 'success' | 'error' | 'interrupted'; error?: AgentTurnFailure }) => void
   onUsage?: (info: {
     courseId: string
     sessionId: string
@@ -158,6 +159,7 @@ interface CourseChat {
   unsubscribe: (() => void) | null
   turnSeq: number
   settledTurnSeq?: number
+  turnError?: AgentTurnFailure
   turnBlocks: Map<string, TurnBlock>
   lastContextId?: string | undefined
   selectedSkills?: string[]
@@ -282,7 +284,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
     if (entry.turnSeq === 0 || entry.settledTurnSeq === entry.turnSeq) return
     entry.settledTurnSeq = entry.turnSeq
     try {
-      deps.onTurnSettled?.({ courseId: entry.courseId, sessionId: entry.sessionId, turnSeq: entry.turnSeq, reason })
+      deps.onTurnSettled?.({ courseId: entry.courseId, sessionId: entry.sessionId, turnSeq: entry.turnSeq, reason,
+        ...(reason !== 'success' && entry.turnError ? { error: entry.turnError } : {}) })
     } catch (error) { console.error('[agent] turn settlement failed', error) }
   }
 
@@ -349,6 +352,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       courseId: entry.courseId,
       cwd: course.folder
     }
+    if (entry.surface === 'study' && deps.adapter.provider !== 'gemini') startOptions.webSearch = 'live'
     let mcpHint = ''
     if (deps.startToolServer !== undefined) {
       // A failure here must not cost the student their tutor: fall back to the
@@ -570,6 +574,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         }
         return true
       case 'error':
+        entry.turnError = { code: event.code, message: event.message }
         if (event.fatal) {
           settleTurn(entry, 'error')
           entry.info = { ...entry.info, status: 'error' }
@@ -577,6 +582,9 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
           commitTurn(entry, 'interrupted')
           dropSession(entry)
         }
+        return true
+      case 'limit':
+        entry.turnError = { code: 'usage-limit', message: event.message }
         return true
       default:
         return true
@@ -725,6 +733,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         }
         const turnSeq = deps.repo.nextTurnSeq(sessionId)
         entry.turnSeq = turnSeq
+        delete entry.turnError
         entry.turnBlocks = new Map()
         const userMessage = deps.repo.appendMessage(courseId, entry.info.id, 'user', turnSeq, [
           {
@@ -766,6 +775,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
             attachments
           )
         } catch (error) {
+          entry.turnError = { code: error instanceof AgentUnavailableError ? error.code : 'unknown', message: error instanceof Error ? error.message : 'AI 메시지 전송에 실패했습니다.' }
           settleTurn(entry, 'error')
           entry.info = { ...entry.info, status: 'error' }
           deps.repo.setStatus(entry.info.id, 'error')

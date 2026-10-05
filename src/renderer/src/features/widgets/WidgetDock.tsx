@@ -127,11 +127,11 @@ function taskDateLabel(task: BoardTask): string | null {
   }).format(date)
 }
 
-function TaskScope({ currentOnly, onChange }: { currentOnly: boolean; onChange: (next: boolean) => void }): JSX.Element {
+function TaskScope({ currentOnly, currentAvailable, onChange }: { currentOnly: boolean; currentAvailable: boolean; onChange: (next: boolean) => void }): JSX.Element {
   return (
     <div className="widget-scope" role="group" aria-label="태스크 범위">
-      <button type="button" aria-pressed={!currentOnly} onClick={() => onChange(false)}>전체</button>
-      <button type="button" aria-pressed={currentOnly} onClick={() => onChange(true)}>현재 과목</button>
+      <button type="button" aria-pressed={!currentOnly || !currentAvailable} onClick={() => onChange(false)}>전체</button>
+      <button type="button" aria-pressed={currentOnly && currentAvailable} disabled={!currentAvailable} onClick={() => onChange(true)}>현재 과목</button>
     </div>
   )
 }
@@ -139,7 +139,8 @@ function TaskScope({ currentOnly, onChange }: { currentOnly: boolean; onChange: 
 function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
   const { tasks, loading } = useBoardTasks()
   const courses = useCoursesStore((state) => state.courses)
-  const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
+  const selectedWorkspaceId = useCoursesStore((state) => state.selectedCourseId)
+  const selectedCourseId = courses.find(course => course.id === selectedWorkspaceId && course.workspaceKind !== 'study-space')?.id ?? null
   const toggleBoard = useUiStore((state) => state.toggleBoardOverlay)
   const [currentOnly, setCurrentOnly] = useState(false)
   const [draft, setDraft] = useState('')
@@ -148,7 +149,7 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const visible = useMemo(
-    () => tasks.filter((task) => !currentOnly || task.courseId === selectedCourseId),
+    () => tasks.filter((task) => !currentOnly || !selectedCourseId || task.courseId === selectedCourseId),
     [currentOnly, selectedCourseId, tasks]
   )
   const courseNames = useMemo(() => new Map(courses.map((course) => [course.id, course.name])), [courses])
@@ -206,7 +207,7 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
     <div className="widget-task">
       <p className="widget-summary"><strong>{pending.length}</strong>개의 할 일{pending[0]?.dueAt ? ` · 가까운 일정 ${taskDateLabel(pending[0])}` : ''}</p>
       <div className="widget-toolbar">
-        <TaskScope currentOnly={currentOnly} onChange={setCurrentOnly} />
+        <TaskScope currentOnly={currentOnly} currentAvailable={selectedCourseId !== null} onChange={setCurrentOnly} />
         <button type="button" className="widget-open-board" onClick={toggleBoard}>전체 보드</button>
       </div>
       <form className="widget-quick-add" onSubmit={(event) => { event.preventDefault(); void add() }}>

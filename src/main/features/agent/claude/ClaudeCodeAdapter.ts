@@ -102,6 +102,7 @@ export function buildClaudeArgs(opts: {
   selectedSkills?: string[]
   resumeCliSessionId?: string
   model?: string
+  webSearch?: AgentStartSessionOptions['webSearch']
   systemPromptAppend?: string
   /** Bandal's own in-app MCP server; see features/agentTools. */
   mcpConfigPath?: string
@@ -127,7 +128,7 @@ export function buildClaudeArgs(opts: {
     // accepting the splatted form, the extras would silently become positional
     // arguments in `-p` mode and the allowlist would collapse.
     '--allowedTools',
-    [...CLAUDE_ALLOWED_TOOLS.filter(tool => !opts.accessPolicy || (opts.accessPolicy.scope.course && (opts.accessPolicy.mode === 'full' || !/^(Edit|Write)/.test(tool))) && !/^(WebSearch|WebFetch|Glob|Grep)/.test(tool)), ...(opts.extraAllowedTools ?? [])].join(','),
+    [...(opts.webSearch === 'live' ? ['WebSearch', 'WebFetch'] : CLAUDE_ALLOWED_TOOLS.filter(tool => !opts.accessPolicy || (opts.accessPolicy.scope.course && (opts.accessPolicy.mode === 'full' || !/^(Edit|Write)/.test(tool))) && !/^(WebSearch|WebFetch|Glob|Grep)/.test(tool))), ...(opts.extraAllowedTools ?? [])].join(','),
     '--disallowedTools',
     'Bash',
     '--disable-slash-commands',

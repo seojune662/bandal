@@ -1062,6 +1062,10 @@ export const migrations: Migration[] = [
   { version: 35, name: 'conversation-access-policy', up: (db) => {
     const columns = db.prepare('PRAGMA table_info(agent_sessions)').all() as { name: string }[]
     if (!columns.some(column => column.name === 'access_policy')) db.exec('ALTER TABLE agent_sessions ADD COLUMN access_policy TEXT')
+  } },
+  { version: 36, name: 'course-workspace-kind', up: (db) => {
+    const columns = db.prepare('PRAGMA table_info(courses)').all() as { name: string }[]
+    if (!columns.some(column => column.name === 'workspace_kind')) db.exec("ALTER TABLE courses ADD COLUMN workspace_kind TEXT NOT NULL DEFAULT 'course' CHECK (workspace_kind IN ('course','study-space'))")
   } }
 
 ]

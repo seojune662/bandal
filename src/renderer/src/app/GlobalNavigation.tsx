@@ -38,6 +38,17 @@ export function GlobalNavigation(): JSX.Element {
           <Icon name="folder" />
         </button>
       </Tooltip>
+      <Tooltip label="학습" placement="right">
+        <button className="rail-nav__item" aria-label="학습"
+          aria-expanded={courseOpen && leftPanel === 'learning' && !boardOpen && !settingsOpen && !graphOpen}
+          aria-controls="learning-spaces-panel"
+          data-active={courseOpen && leftPanel === 'learning' && !boardOpen && !settingsOpen && !graphOpen || undefined}
+          onClick={() => useUiStore.getState().toggleLearningPanel()}>
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5.5C9 3.5 5.5 3.5 3 4.5v14c2.5-1 6-1 9 1 3-2 6.5-2 9-1v-14c-2.5-1-6-1-9 1Z" /><path d="M12 5.5v14" />
+          </svg>
+        </button>
+      </Tooltip>
       <Tooltip label="학업 보드" placement="right">
         <button
           className="rail-nav__item"

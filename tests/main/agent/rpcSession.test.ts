@@ -3,8 +3,8 @@ import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import type { ChildProcess } from 'node:child_process'
 import { createRpcSession } from '../../../src/main/features/agent/rpcSession'
-import type { AgentEvent } from '../../../src/shared/types/agent-events'
-function fixture(provider: 'codex' | 'gemini', resume?: string) {
+import type { AgentEvent, AgentStartSessionOptions } from '../../../src/shared/types/agent-events'
+function fixture(provider: 'codex' | 'gemini', resume?: string, overrides: Partial<AgentStartSessionOptions> = {}) {
   const child = new EventEmitter() as ChildProcess
   child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.stderr = new PassThrough()
   const messages: any[] = [], events: AgentEvent[] = []
@@ -20,10 +20,29 @@ function fixture(provider: 'codex' | 'gemini', resume?: string) {
     if (msg.method === 'session/prompt') return
     queueMicrotask(() => send({ id: msg.id, result }))
   })
-  const session = createRpcSession({ courseId: 'course', cwd: '/tmp/course', ...(resume ? { resumeCliSessionId: resume } : {}) }, provider, () => child)
+  const session = createRpcSession({ courseId: 'course', cwd: '/tmp/course', ...(resume ? { resumeCliSessionId: resume } : {}), ...overrides }, provider, () => child)
   session.on(event => events.push(event))
   return { session, child, send, messages, events }
 }
+test.each([undefined, 'existing-study'])('Codex learning search stays native and preserves approval policy on thread %s', async resume => {
+  const f = fixture('codex', resume, { webSearch: 'live' })
+  f.session.sendMessage('find a public article')
+  await f.session.sessionId
+  const request = f.messages.find(message => message.method === (resume ? 'thread/resume' : 'thread/start'))
+  expect(request.params).toMatchObject({ config: { web_search: 'live' }, approvalPolicy: 'untrusted', approvalsReviewer: 'user' })
+  f.send({ method: 'item/started', params: { threadId: resume ?? 'thread-1', item: { id: 'search-1', type: 'webSearch', action: { type: 'search', query: 'NASA science' } } } })
+  f.send({ method: 'item/completed', params: { threadId: resume ?? 'thread-1', item: { id: 'search-1', type: 'webSearch', status: 'completed' } } })
+  expect(f.events).toContainEqual(expect.objectContaining({ type: 'tool-start', toolName: 'webSearch', toolCallId: 'search-1' }))
+  expect(f.events.filter(event => event.type === 'permission-request')).toHaveLength(0)
+  f.session.dispose()
+})
+test('ordinary Codex threads inherit their existing search configuration', async () => {
+  const f = fixture('codex')
+  f.session.sendMessage('ordinary chat')
+  await f.session.sessionId
+  expect(f.messages.find(message => message.method === 'thread/start').params).not.toHaveProperty('config')
+  f.session.dispose()
+})
 for (const provider of ['codex', 'gemini'] as const) describe(provider, () => {
   test('streams real image input and resolves each approval only once', async () => {
     const f = fixture(provider)

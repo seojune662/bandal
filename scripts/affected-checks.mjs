@@ -65,12 +65,14 @@ export function planChecks(files, full = false) {
   const browserSettings = /^src\/renderer\/src\/features\/settings\/(browser\/|(?:SavedLoginsSettings|BrowsingDataPanel)\.tsx$)/
   const launcherShell = /^src\/renderer\/src\/app\/(AppShell|GlobalNavigation|RailResizer)\.tsx$/
   const packSettings = /^src\/renderer\/src\/features\/settings\/PacksPanel\.tsx$/
-  const sharedAppearance = files.some(file => !browserSettings.test(file) && !launcherShell.test(file) && !packSettings.test(file) && file !== 'src/renderer/src/components/BandalMark.tsx' && /^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/.test(file))
+  const settingsShell = /^src\/renderer\/src\/features\/settings\/SettingsApp\.tsx$/
+  const sharedAppearance = files.some(file => !browserSettings.test(file) && !launcherShell.test(file) && !packSettings.test(file) && !settingsShell.test(file) && file !== 'src/renderer/src/components/BandalMark.tsx' && /^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/.test(file))
   if (has(launcherShell) || has(/^src\/renderer\/src\/(features\/launcher\/|stores\/(workflowPacksStore|uiStore)\.ts$)/) || has(packSettings)) e2e.add('e2e/featureLauncher.spec.ts')
   if (has(launcherShell)) {
     e2e.add('e2e/sidebars.spec.ts')
     e2e.add('e2e/settingsShell.spec.ts')
   }
+  if (has(settingsShell)) e2e.add('e2e/settingsShell.spec.ts')
   if (has(/^src\/renderer\/src\/features\/plugins\/(pluginCommands|PluginMenuItems)\.tsx?$/)) e2e.add('e2e/pluginsV2.spec.ts')
   if (sharedAppearance) {
     for (const spec of ['theme', 'sidebars', 'settingsShell', 'uiRedesign', 'tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus']) e2e.add(`e2e/${spec}.spec.ts`)
@@ -91,7 +93,13 @@ export function planChecks(files, full = false) {
     e2e.add('e2e/browserImport.spec.ts')
     e2e.add('e2e/browserCompatibility.spec.ts')
   }
-  if (has(/^src\/(main\/(features\/(learning|workflowPacks)\/|ipc\/learningHandlers\.ts$)|renderer\/src\/features\/learning\/|shared\/(workflowPacks\/|types\/(learning|workflowPack)\.ts$|ipc\/learningContract\.ts$))/)) e2e.add('e2e/learning.spec.ts')
+  const learning = has(/^src\/(main\/(features\/(learning|workflowPacks)\/|ipc\/learningHandlers\.ts$)|renderer\/src\/features\/learning\/|shared\/(learning\/|workflowPacks\/|types\/(learning|workflowPack)\.ts$|ipc\/learningContract\.ts$))/)
+  if (learning) {
+    e2e.add('e2e/learning.spec.ts')
+    e2e.add('e2e/learningSpaces.spec.ts')
+  }
+  if (has(/^src\/(main\/(features\/courses\/coursesRepo\.ts$|features\/agent\/(SessionManager|agentModels|codex\/modelCatalog)\.ts$|db\/migrations\.ts$)|shared\/types\/course\.ts$|renderer\/src\/features\/courses\/CourseSidebar\.tsx$)/)) e2e.add('e2e/learningSpaces.spec.ts')
+  if (has(/^src\/renderer\/src\/features\/widgets\/WidgetDock\.tsx$/)) e2e.add('e2e/taskSchedule.spec.ts')
   if (has(/^src\/main\/(features\/materials\/(renameWithRetry|watcher)\.ts|background\/(materialsWatcher|watcherHost)\.ts)$/)) {
     e2e.add('e2e/learning.spec.ts')
     e2e.add('e2e/materialsDrag.spec.ts')
@@ -100,7 +108,9 @@ export function planChecks(files, full = false) {
   if (workspace) {
     for (const spec of ['tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance']) e2e.add(`e2e/${spec}.spec.ts`)
   }
-  if (has(/^src\/.*(calendar\/|appleCalendar\/|board\/|taskSchedule|calendarDate|types\/board)/)) {
+  const boardCoursePicker = /^src\/renderer\/src\/features\/board\/BoardPanel\.tsx$/
+  if (has(boardCoursePicker)) e2e.add('e2e/taskSchedule.spec.ts')
+  if (files.some(file => !boardCoursePicker.test(file) && /^src\/.*(calendar\/|appleCalendar\/|board\/|taskSchedule|calendarDate|types\/board)/.test(file))) {
     e2e.add('e2e/taskSchedule.spec.ts')
     e2e.add('e2e/appleCalendar.spec.ts')
   }

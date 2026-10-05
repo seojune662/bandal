@@ -1,8 +1,10 @@
 import type {
   LearningArticleInput, LearningArticleSnapshot, LearningArtifactDraft,
   LearningCardDefinition, LearningDraft, LearningProjectState, LearningQuizQuestion,
-  LearningRun, LearningSourceRef, LearningWordDraft
+  LearningRun, LearningSourceRef, LearningWordDraft, LearningProjectSettings, LearningAiSettings, LearningBinding
 } from '../../../shared/types/learning'
+import { LEARNING_TOPICS } from '../../../shared/types/learning'
+import { isAgentProvider } from '../../../shared/types/agent-events'
 import { ValidationError } from '../../db/errors'
 import { learningHash } from './model'
 
@@ -26,6 +28,11 @@ export function learningArray(value: unknown, field: string, max = 100_000): unk
 export function learningNumber(value: unknown, field: string, min = 0, max = Number.MAX_SAFE_INTEGER): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) throw new ValidationError(`${field}에 올바른 숫자가 필요합니다.`)
   return value
+}
+export function learningPage(value: unknown, field = 'page'): number {
+  const page = learningNumber(value, field, 1, Number.MAX_SAFE_INTEGER)
+  if (!Number.isInteger(page)) throw new ValidationError('올바르지 않은 페이지입니다.')
+  return page
 }
 export function learningTime(value: unknown, field: string): string {
   const time = learningString(value, field, 64)
@@ -79,8 +86,44 @@ export function normalizeLearningArticle(value: unknown, id: string, now: string
   }
 }
 
+/** Validates saved preferences without silently selecting a provider or classifying legacy data. */
+export function validateLearningAi(value: unknown): LearningAiSettings {
+  const ai = learningObject(value, 'ai')
+  if (!isAgentProvider(ai['provider'])) throw new ValidationError('사용할 AI를 선택하세요.')
+  const model = learningString(ai['model'], 'ai.model', 300).trim()
+  const effort = ai['effort'] === null ? null : learningString(ai['effort'], 'ai.effort', 100)
+  return { provider: ai['provider'], model, effort }
+}
+export function validateLearningSettings(value: unknown): Partial<LearningProjectSettings> {
+  const input = learningObject(value, 'settings')
+  const settings: Partial<LearningProjectSettings> = {}
+  if (input['purpose'] !== undefined) {
+    if (!['english-reading', 'course-review', 'unclassified'].includes(String(input['purpose']))) throw new ValidationError('학습 공간의 용도를 선택하세요.')
+    settings.purpose = input['purpose'] as LearningProjectSettings['purpose']
+  }
+  if (input['topicIds'] !== undefined) {
+    const ids = learningArray(input['topicIds'], 'topicIds', 3).map(id => learningId(id, 'topicId'))
+    if (new Set(ids).size !== ids.length || ids.some(id => !LEARNING_TOPICS.some(topic => topic.id === id))) throw new ValidationError('관심 주제를 다시 선택하세요.')
+    settings.topicIds = ids
+  }
+  if (input['readingSetupConfirmed'] !== undefined) {
+    if (typeof input['readingSetupConfirmed'] !== 'boolean') throw new ValidationError('읽기 설정 확인 값이 올바르지 않습니다.')
+    settings.readingSetupConfirmed = input['readingSetupConfirmed']
+  }
+  if (input['ai'] !== undefined) settings.ai = validateLearningAi(input['ai'])
+  if (input['linkedCourseId'] !== undefined) settings.linkedCourseId = learningId(input['linkedCourseId'], 'linkedCourseId')
+  if (input['packId'] !== undefined) settings.packId = learningString(input['packId'], 'packId', 200)
+  return settings
+}
+export function requireEnglishReadingSettings(settings: Partial<LearningProjectSettings>, level: unknown, minutes: unknown): void {
+  if (settings.purpose !== 'english-reading' || settings.readingSetupConfirmed !== true || !settings.topicIds?.length || !settings.ai) throw new ValidationError('관심 주제와 AI를 선택하고 영어 읽기 설정을 확인하세요.')
+  if (!['beginner', 'intermediate', 'advanced'].includes(String(level))) throw new ValidationError('영어 읽기 수준을 선택하세요.')
+  learningNumber(minutes, 'readingMinutes', 1, 30)
+}
+
 export interface LearningValidationContext {
   state: LearningProjectState
+  binding?: LearningBinding
   readArticle(id: string): Promise<LearningArticleSnapshot>
   validateMaterial?(ref: LearningSourceRef): Promise<void>
 }
@@ -122,9 +165,13 @@ export async function validateLearningSource(value: unknown, context: LearningVa
       if (input['pathScope'] !== 'project' && input['pathScope'] !== 'course') throw new ValidationError('올바르지 않은 출처 경로 범위입니다.')
       ref.pathScope = input['pathScope']
     }
+    if (input['sourceCourseId'] !== undefined) {
+      ref.sourceCourseId = learningId(input['sourceCourseId'], 'sourceCourseId')
+      if (ref.pathScope !== 'course') throw new ValidationError('외부 과목 출처는 과목 경로를 사용해야 합니다.')
+      if (context.binding && ref.sourceCourseId !== context.binding.courseId && ref.sourceCourseId !== context.state.linkedCourseId) throw new ValidationError('연결되지 않은 과목의 출처입니다.')
+    }
     if (input['page'] !== undefined) {
-      ref.page = learningNumber(input['page'], 'page', 1)
-      if (!Number.isInteger(ref.page)) throw new ValidationError('올바르지 않은 페이지입니다.')
+      ref.page = learningPage(input['page'])
     }
     await context.validateMaterial?.(ref)
   } else ref.url = learningUrl(input['url'], 'url')
@@ -291,6 +338,10 @@ export function validateLearningRun(value: unknown): LearningRun {
   if (!['find-articles', 'explain-word', 'create-quiz', 'create-cards', 'create-summary', 'import-material'].includes(String(input['kind']))) throw new ValidationError('올바르지 않은 학습 실행 종류입니다.')
   if (!['queued', 'running', 'validating', 'interrupted', 'awaiting-confirmation', 'complete', 'failed', 'cancelled'].includes(String(input['status']))) throw new ValidationError('올바르지 않은 학습 실행 상태입니다.')
   learningString(input['provider'], 'provider', 100, true)
+  for (const field of ['model', 'sessionId', 'errorCode', 'actionable'] as const) if (input[field] !== undefined) learningString(input[field], field, field === 'actionable' ? 10_000 : 300, true)
+  if (input['effort'] !== undefined && input['effort'] !== null) learningString(input['effort'], 'effort', 100)
+  if (input['errorCategory'] !== undefined && !['connection', 'model', 'quota', 'network', 'tool', 'source', 'validation', 'timeout', 'cancelled', 'unknown'].includes(String(input['errorCategory']))) throw new ValidationError('올바르지 않은 오류 분류입니다.')
+  validateLearningSettings(input)
   learningString(input['message'], 'message', 10_000, true)
   optionalText(input['error'], 'error')
   learningTime(input['createdAt'], 'createdAt'); learningTime(input['updatedAt'], 'updatedAt')
@@ -299,7 +350,12 @@ export function validateLearningRun(value: unknown): LearningRun {
   if (input['source'] !== undefined) {
     const source = learningObject(input['source'], 'source')
     if (!['course', 'material', 'article', 'vocabulary'].includes(String(source['kind']))) throw new ValidationError('올바르지 않은 실행 출처입니다.')
+    if (source['page'] !== undefined) {
+      if (source['kind'] !== 'material') throw new ValidationError('페이지 출처는 원본 자료에서만 사용할 수 있습니다.')
+      learningPage(source['page'], 'source.page')
+    }
     if (source['relPath'] !== undefined) learningString(source['relPath'], 'source.relPath', 8_192)
+    if (source['sourceCourseId'] !== undefined) learningId(source['sourceCourseId'], 'sourceCourseId')
     if (source['selection'] !== undefined) learningString(source['selection'], 'source.selection', 100_000, true)
   }
   return structuredClone(input) as unknown as LearningRun
@@ -312,6 +368,7 @@ export function validateLearningState(value: unknown): LearningProjectState {
   learningId(state['projectId'], 'projectId')
   const revision = learningNumber(state['revision'], 'revision')
   if (!Number.isInteger(revision)) throw new ValidationError('올바르지 않은 데이터 버전입니다.')
+  const settings = validateLearningSettings(state)
   learningString(state['name'], 'name', 1_000); learningString(state['topic'], 'topic', 10_000)
   if (!['beginner', 'intermediate', 'advanced'].includes(String(state['level']))) throw new ValidationError('올바르지 않은 학습 난이도입니다.')
   learningNumber(state['readingMinutes'], 'readingMinutes', 1, 30)
@@ -336,6 +393,8 @@ export function validateLearningState(value: unknown): LearningProjectState {
       if (source['kind'] === 'article') learningId(source['articleId'], 'articleId')
       else if (source['kind'] === 'material') {
         learningString(source['relPath'], 'relPath', 8_192)
+        if (source['sourceCourseId'] !== undefined) learningId(source['sourceCourseId'], 'sourceCourseId')
+        if (source['page'] !== undefined) learningPage(source['page'])
         if (source['pathScope'] !== undefined && source['pathScope'] !== 'project' && source['pathScope'] !== 'course') throw new ValidationError('올바르지 않은 출처 경로 범위입니다.')
       } else if (source['kind'] === 'web') learningUrl(source['url'], 'url')
       else throw new ValidationError('올바르지 않은 출처입니다.')
@@ -417,8 +476,9 @@ export function validateLearningState(value: unknown): LearningProjectState {
   }
   if (state['pathAliases'] !== undefined) for (const entry of learningArray(state['pathAliases'], 'pathAliases')) {
     const alias = learningObject(entry, 'pathAlias')
+    if (alias['sourceCourseId'] !== undefined) learningId(alias['sourceCourseId'], 'sourceCourseId')
     learningString(alias['fromRelPath'], 'fromRelPath', 8_192); learningString(alias['toRelPath'], 'toRelPath', 8_192)
     if (typeof alias['isDirectory'] !== 'boolean' || !['project', 'course'].includes(String(alias['scope']))) throw new ValidationError('올바르지 않은 이동 경로입니다.')
   }
-  return structuredClone(state) as unknown as LearningProjectState
+  return { ...structuredClone(state), ...settings, purpose: settings.purpose ?? (state['name'] === 'AI 학습자료' && state['topic'] === '과목 자료' ? 'course-review' : 'unclassified'), topicIds: settings.topicIds ?? [], readingSetupConfirmed: settings.readingSetupConfirmed ?? false } as unknown as LearningProjectState
 }

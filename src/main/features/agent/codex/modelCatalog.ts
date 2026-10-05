@@ -82,6 +82,40 @@ interface CodexModelProbeOptions {
   configPath?: string
   env?: NodeJS.ProcessEnv
   exec?: typeof probeExec
+  cachePath?: string | null
+}
+
+export interface CodexModelDiscovery {
+  models: CliModel[]
+  source: 'live' | 'cache' | 'fallback'
+  status: 'ready' | 'unverified' | 'unavailable'
+  fetchedAt?: string
+  cliVersion?: string
+  error?: string
+}
+
+/** CLI refresh first; a local catalog remains explicitly unverified for this account. */
+export async function discoverCodexModels(options: CodexModelProbeOptions): Promise<CodexModelDiscovery> {
+  const configured = configuredModel(options.configPath ?? join(homedir(), '.codex', 'config.toml'))
+  try {
+    const { stdout } = await (options.exec ?? probeExec)(options.binaryPath, ['debug', 'models'], {
+      timeoutMs: PROBE_TIMEOUT_MS, ...(options.env === undefined ? {} : { env: options.env })
+    })
+    const models = parseCodexModelCatalog(stdout, configured)
+    if (models.some(model => model.value !== 'default')) return { models, source: 'live', status: 'ready', fetchedAt: new Date().toISOString() }
+  } catch { /* Older CLIs and offline connections can still offer cached candidates. */ }
+  if (options.cachePath !== null) {
+    try {
+      const raw = readFileSync(options.cachePath ?? join(homedir(), '.codex', 'models_cache.json'), 'utf8')
+      const models = parseCodexModelCatalog(raw, configured)
+      const metadata = JSON.parse(raw) as Record<string, unknown>
+      if (models.some(model => model.value !== 'default')) return { models, source: 'cache', status: 'unverified',
+        ...(typeof metadata['fetched_at'] === 'string' ? { fetchedAt: metadata['fetched_at'] } : {}),
+        ...(typeof metadata['client_version'] === 'string' ? { cliVersion: metadata['client_version'] } : {}),
+        error: '현재 연결에서 목록을 새로 받지 못했어요. 캐시의 모델은 이 계정에서 실행이 거절될 수 있어요.' }
+    } catch { /* Missing/malformed cache is not a usable explicit model. */ }
+  }
+  return { models: [...CODEX_FALLBACK_MODELS], source: 'fallback', status: 'unavailable', error: '선택할 모델 목록을 받지 못했어요. 연결을 확인하고 목록을 새로고침하세요.' }
 }
 
 export async function probeCodexModels(

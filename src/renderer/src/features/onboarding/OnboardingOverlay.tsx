@@ -11,7 +11,7 @@
  * 설정 > General > "온보딩 다시 보기".
  */
 
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Icon } from '../../app/icons'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
@@ -120,7 +120,8 @@ function SchoolStep(): JSX.Element {
 // -- step ③ 첫 과목 -----------------------------------------------------------
 
 function CourseStep(): JSX.Element {
-  const courses = useCoursesStore((state) => state.courses)
+  const allCourses = useCoursesStore((state) => state.courses)
+  const courses = useMemo(() => allCourses.filter(course => course.workspaceKind !== 'study-space'), [allCourses])
   const createCourse = useCoursesStore((state) => state.createCourse)
   const [name, setName] = useState('')
   const [color, setColor] = useState<CourseColor>('gold')

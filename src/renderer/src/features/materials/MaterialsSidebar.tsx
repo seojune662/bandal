@@ -61,7 +61,6 @@ import { canAcceptUrlDrop } from './urlDrop'
 import { useMaterialsPaste } from './useMaterialsPaste'
 import { WhiteboardsGroup } from './WhiteboardsGroup'
 import { WidgetDock } from '../widgets/WidgetDock'
-import { LearningSidebar } from '../learning/LearningProjects'
 import './materials.css'
 
 const SEARCH_DEBOUNCE_MS = 240
@@ -1004,13 +1003,12 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         {course === null ? (
           <div className="empty-state empty-state--materials">
             <Icon name="folder" className="empty-state__folder" />
-            <p className="empty-state__text">과목을 선택하세요</p>
-            <p className="empty-state__hint">선택한 과목의 자료가 여기에 표시됩니다.</p>
+            <p className="empty-state__text">과목이나 학습 공간을 선택하세요</p>
+            <p className="empty-state__hint">선택한 공간의 자료가 여기에 표시됩니다.</p>
           </div>
         ) : (
           <>
             <WhiteboardsGroup courseId={course.id} />
-            <LearningSidebar courseId={course.id} compact />
             <section
               className="materials-files-group"
               aria-label="자료 파일"

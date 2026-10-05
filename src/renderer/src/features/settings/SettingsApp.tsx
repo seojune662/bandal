@@ -239,7 +239,7 @@ export function SettingsApp({
     setCoursesError(null);
     void invoke("courses:list", { includeArchived: showArchived })
       .then((result) => {
-        if (mountedRef.current) setCourses(result);
+        if (mountedRef.current) setCourses(result.filter(course => course.workspaceKind !== 'study-space'));
       })
       .catch(() => {
         if (mountedRef.current) setCoursesError("courses-failed");

@@ -10,6 +10,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
 import { requestLearningArticleImport, requestLearningCreation } from '../learning/LearningDialogsHost'
 import { useLearningProjects } from '../learning/LearningProjects'
+import { isEnglishReading, learningPurposeLabel } from '../learning/learningPurpose'
 import { openLearning } from '../learning/learningNavigation'
 import { useFeatureInventory, type FeatureEntry } from './featureInventory'
 import { useLauncherContext, refreshLauncherContext, type LauncherContext } from './launcherContext'
@@ -164,7 +165,7 @@ export function FeatureLauncherPanel({ hidden }: { hidden: boolean }): JSX.Eleme
       <button type="button" className="launcher-feature__action" disabled={!!reason || busy || contextLoading}
         title={reason ?? entry.description} onClick={() => void run(entry)}>
         <span className="launcher-feature__icon" aria-hidden="true">{entry.kind === 'pack' ? entry.experience === 'article-vocabulary' ? 'Aa' : entry.experience === 'quiz' ? '?' : entry.experience === 'flashcards' ? '▤' : '✦' : <Icon name="puzzle" />}</span>
-        <span><strong>{entry.label}</strong><small>{entry.description}</small></span>
+        <span><strong>{entry.label}</strong><small className="launcher-feature__type">{entry.kind === 'pack' ? entry.schemaVersion === 1 ? '문서 생성 팩 · 기존 방식' : '앱 학습 기능' : '확장 플러그인'}</small><small>{entry.description}</small>{entry.kind === 'pack' && entry.experience === 'article-vocabulary' && <small>관심 주제와 영어 학습 공간으로 실행</small>}</span>
       </button>
       {reason && <p className="launcher-feature__reason">{reason}</p>}
       {status && <div className="launcher-feature__status" role="status" data-phase={status.phase}>
@@ -204,12 +205,12 @@ export function FeatureLauncherPanel({ hidden }: { hidden: boolean }): JSX.Eleme
       {error && <p className="launcher-error" role="alert">{error} <button type="button" onClick={() => void reload()}>다시 불러오기</button></p>}
       {loading && <p className="launcher-empty" role="status">기능을 불러오는 중…</p>}
       {quick.length > 0 && <section aria-label="학습 바로가기"><h3 className="launcher-section-label">학습 바로가기</h3>{quick.map(card)}</section>}
-      {picker && <section className="launcher-picker" aria-label="학습 공간 선택"><h3>어디에서 이어갈까요?</h3>{picker.projects.map(project => <button type="button" key={`${project.binding.courseId}:${project.binding.rootRelPath}`} onClick={() => void run(picker.entry, picker.context, picker.scope, project.binding)}><strong>{project.name}</strong><span>{project.topic || '학습 자료'}</span></button>)}<button type="button" onClick={() => { requestLearningCreation(picker.context.courseId ?? undefined, picker.entry.kind === 'pack' ? picker.entry.packId : undefined); setPicker(null) }}>새 학습 공간 만들기</button></section>}
+      {picker && <section className="launcher-picker" aria-label="학습 공간 선택"><h3>어디에서 이어갈까요?</h3>{picker.projects.map(project => <button type="button" key={`${project.binding.courseId}:${project.binding.rootRelPath}`} onClick={() => void run(picker.entry, picker.context, picker.scope, project.binding)}><strong>{project.name}</strong><span>{project.topic || '학습 자료'}{!isEnglishReading(project) ? ' · 설정 확인 필요' : ''}</span></button>)}<button type="button" onClick={() => { requestLearningCreation(undefined, picker.entry.kind === 'pack' ? picker.entry.packId : undefined); setPicker(null) }}>새 학습 공간 만들기</button></section>}
       {others.length > 0 && <section aria-label="전체 기능"><h3 className="launcher-section-label">전체 기능</h3>{others.map(card)}</section>}
       {!loading && filtered.length === 0 && <p className="launcher-empty">{query ? '검색한 기능이 없어요.' : '사용할 수 있는 기능이 없어요. 플러그인 관리에서 추가해 보세요.'}</p>}
-      {!query && <section className="launcher-projects" aria-label="이어갈 학습 공간"><div className="launcher-section-heading"><h3 className="launcher-section-label">이어갈 학습 공간</h3><button type="button" className="bare-icon-button" aria-label="새 학습 공간 만들기" onClick={() => requestLearningCreation(context.courseId ?? undefined)}><Icon name="plus" /></button></div>
-        {[...projects].sort((a, b) => Number(b.binding.courseId === context.courseId) - Number(a.binding.courseId === context.courseId)).map(project => <button type="button" className="launcher-project" key={`${project.binding.courseId}:${project.binding.rootRelPath}`} onClick={() => openLearning(project.binding)}><strong>{project.name}</strong><span>{project.topic || '학습 자료'}</span><small>읽은 글 {project.completedArticleCount} · 표현 {project.wordCount} · 복습 {project.dueCardCount}</small></button>)}
-        {projects.length === 0 && <button type="button" className="launcher-inline-action" onClick={() => requestLearningCreation(context.courseId ?? undefined)}>영어 읽기 시작하기 <Icon name="plus" /></button>}
+      {!query && <section className="launcher-projects" aria-label="이어갈 학습 공간"><div className="launcher-section-heading"><h3 className="launcher-section-label">이어갈 학습 공간</h3><button type="button" className="bare-icon-button" aria-label="새 학습 공간 만들기" onClick={() => requestLearningCreation()}><Icon name="plus" /></button></div>
+        {[...projects].sort((a, b) => Number(b.binding.courseId === context.courseId) - Number(a.binding.courseId === context.courseId)).map(project => <button type="button" className="launcher-project" key={`${project.binding.courseId}:${project.binding.rootRelPath}`} onClick={() => openLearning(project.binding)}><strong>{project.name}</strong><span>{learningPurposeLabel(project)} · {project.topic || '학습 자료'}</span><small>읽은 글 {project.completedArticleCount} · 표현 {project.wordCount} · 복습 {project.dueCardCount}</small></button>)}
+        {projects.length === 0 && <button type="button" className="launcher-inline-action" onClick={() => requestLearningCreation()}>영어 읽기 시작하기 <Icon name="plus" /></button>}
         {projectsError && <p role="alert">{projectsError}</p>}
       </section>}
     </div>

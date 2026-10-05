@@ -25,6 +25,18 @@ describe('coursesRepo', () => {
     ctx.cleanup()
   })
 
+  test('classifies containers explicitly without moving or deleting their files', () => {
+    const course = repo.create({ name: 'Existing course', color: 'blue' })
+    writeFileSync(join(course.folderPath, 'keep.md'), 'User notes')
+    expect(course.workspaceKind).toBe('course')
+    const classified = repo.setWorkspaceKind(course.id, 'study-space')
+    expect(classified.id).toBe(course.id); expect(classified.folderPath).toBe(course.folderPath)
+    expect(existsSync(join(course.folderPath, 'keep.md'))).toBe(true)
+    expect(repo.getById(course.id).workspaceKind).toBe('study-space')
+    const independent = repo.create({ name: 'Reading', color: 'blue', workspaceKind: 'study-space' })
+    expect(repo.getById(independent.id).workspaceKind).toBe('study-space')
+  })
+
   describe('create', () => {
     test('creates a row and the course folder under dataRoot/<slug>', () => {
       // Act

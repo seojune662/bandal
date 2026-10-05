@@ -65,7 +65,7 @@ import type {
   UpdateCourseLinkInput
 } from '../types/courseLink'
 import type {
-  AgentModelOption,
+  AgentModelCatalog,
   CarryoverStats,
   ChatConversationSummary,
   ChatOpenResult,
@@ -747,8 +747,8 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     res: { paths: string[] }
   }
   'agent:models': {
-    req: { provider: AgentProvider }
-    res: { models: AgentModelOption[] }
+    req: { provider: AgentProvider; refresh?: boolean }
+    res: AgentModelCatalog
   }
 
   // -- pdf drawings (free-form markup: pen, shapes, text boxes) --------------

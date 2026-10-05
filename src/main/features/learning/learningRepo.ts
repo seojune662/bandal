@@ -9,7 +9,7 @@ import type {
   LearningBinding, LearningDraft, LearningMutation, LearningProjectSnapshot,
   LearningProjectState, LearningProjectSummary, LearningSourceRef, LearningWordDraft, PutLearningArtifactInput,
   ReviewLearningCardInput, SaveLearningProgressInput, SaveLearningQuizAnswerInput,
-  SaveLearningWordInput, UpdateLearningRunInput, UpdateLearningWordInput, UpdateLearningOccurrenceInput
+  SaveLearningWordInput, UpdateLearningRunInput, UpdateLearningWordInput, UpdateLearningOccurrenceInput, UpdateLearningSettingsInput
 } from '../../../shared/types/learning'
 import { ConflictError, NotFoundError, ValidationError } from '../../db/errors'
 import { assertRealInside, resolveInside } from '../../db/validate'
@@ -18,7 +18,7 @@ import { articleMarkdown, gradeLearningAnswer, learningHash, normalizeLearningAn
 import { renameWithRetry } from '../materials/renameWithRetry'
 import { learningArray, learningId, learningNumber, learningObject, learningString,
   normalizeLearningArticle, normalizeLearningDraft, validateLearningArtifact,
-  validateLearningRun, validateLearningWordDraft, validateLearningState,
+  validateLearningRun, validateLearningWordDraft, validateLearningState, validateLearningSettings, requireEnglishReadingSettings,
   type LearningValidationContext } from './validation'
 
 export const LEARNING_DATA_DIR = '.bandal/learning'
@@ -30,6 +30,7 @@ const MAX_SOURCE_BYTES = 50 * 1024 * 1024
 
 export interface LearningRepoDeps {
   getCourseFolder(courseId: string): string
+  listCourseIds?: () => string[]
   now?: () => string
   onChanged?: (binding: LearningBinding) => void
   /** Testable storage boundary; invoked just before publishing state.json. */
@@ -40,6 +41,7 @@ export interface LearningRepointInput {
 }
 export interface LearningRepo {
   create(input: CreateLearningProjectInput): Promise<LearningProjectSnapshot>
+  updateSettings(input: UpdateLearningSettingsInput): Promise<LearningProjectSnapshot>
   read(binding: LearningBinding): Promise<LearningProjectSnapshot>
   discover(courseId: string): Promise<LearningProjectSummary[]>
   readArticle(binding: LearningBinding, id: string): Promise<LearningArticleSnapshot>
@@ -171,16 +173,17 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
       throw new ValidationError('학습 데이터를 읽지 못했습니다. 원본 파일을 보존했으니 백업을 복원해 주세요.')
     }
   }
-  async function resolveSourceAvailability(binding: LearningBinding, root: string, sources: LearningSourceRef[]): Promise<void> {
+  async function resolveSourceAvailability(binding: LearningBinding, root: string, sources: LearningSourceRef[], linkedCourseId?: string): Promise<void> {
     const availability = new Map<string, Promise<'available' | 'missing' | 'changed'>>()
     for (const source of sources) {
       if (source.kind !== 'material' || !source.relPath) continue
-      const key = `${source.pathScope ?? 'project'}:${source.relPath}:${source.contentHash ?? ''}`
+      const key = `${source.sourceCourseId ?? binding.courseId}:${source.pathScope ?? 'project'}:${source.relPath}:${source.contentHash ?? ''}`
       let result = availability.get(key)
       if (!result) {
         result = (async () => {
           try {
-            const path = pathInside(source.pathScope === 'course' ? courseFolder(binding) : root, source.relPath!)
+            if (source.sourceCourseId && (source.pathScope !== 'course' || (source.sourceCourseId !== binding.courseId && source.sourceCourseId !== linkedCourseId))) return 'missing'
+            const path = pathInside(source.pathScope === 'course' ? courseFolder({ ...binding, courseId: source.sourceCourseId ?? binding.courseId }) : root, source.relPath!)
             const info = await stat(path)
             if (!info.isFile()) return 'missing'
             if (source.contentHash && (info.size > MAX_SOURCE_BYTES || learningHash(await readFile(path)) !== source.contentHash)) return 'changed'
@@ -195,7 +198,7 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
   async function snapshot(binding: LearningBinding, loaded: Loaded): Promise<LearningProjectSnapshot> {
     const result = { ...structuredClone(loaded.state), binding: { ...binding }, recovery: loaded.recovery, warnings: [...loaded.warnings] }
     await resolveSourceAvailability(binding, loaded.root, [...result.occurrences.map((entry) => entry.sourceRef),
-      ...result.cards.flatMap((entry) => entry.sourceRefs), ...result.artifacts.flatMap((entry) => entry.sourceRefs)])
+      ...result.cards.flatMap((entry) => entry.sourceRefs), ...result.artifacts.flatMap((entry) => entry.sourceRefs)], result.linkedCourseId)
     return result
   }
   async function articleFrom(root: string, state: LearningProjectState, id: string): Promise<LearningArticleSnapshot> {
@@ -220,7 +223,7 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
     const artifact = structuredClone(raw) as unknown as LearningArtifact
     const moveSources = (refs: LearningArtifact['sourceRefs']): void => {
       for (const source of refs) if (source.kind === 'material' && source.relPath) {
-        for (const alias of state.pathAliases ?? []) if ((source.pathScope ?? 'project') === alias.scope) {
+        for (const alias of state.pathAliases ?? []) if ((source.pathScope ?? 'project') === alias.scope && (source.sourceCourseId ?? binding.courseId) === (alias.sourceCourseId ?? binding.courseId)) {
           source.relPath = replacePath(source.relPath, alias.fromRelPath, alias.toRelPath, alias.isDirectory)
         }
       }
@@ -230,15 +233,16 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
     if (artifact.kind === 'cards') artifact.cards.forEach((card) => moveSources(card.sourceRefs))
     await resolveSourceAvailability(binding, root, [...artifact.sourceRefs,
       ...(artifact.kind === 'quiz' ? artifact.questions.flatMap((question) => question.sourceRefs)
-        : artifact.kind === 'cards' ? artifact.cards.flatMap((card) => card.sourceRefs) : [])])
+        : artifact.kind === 'cards' ? artifact.cards.flatMap((card) => card.sourceRefs) : [])], state.linkedCourseId)
     return artifact
   }
   function context(tx: Transaction): LearningValidationContext {
     return {
-      state: tx.state,
+      state: tx.state, binding: tx.binding,
       readArticle: (id) => tx.articles.has(id) ? Promise.resolve(tx.articles.get(id)!) : articleFrom(tx.root, tx.state, id),
       async validateMaterial(ref) {
-        const sourceRoot = ref.pathScope === 'course' ? courseFolder(tx.binding) : tx.root
+        if (ref.sourceCourseId && (ref.pathScope !== 'course' || (ref.sourceCourseId !== tx.binding.courseId && ref.sourceCourseId !== tx.state.linkedCourseId))) throw new ValidationError('연결되지 않은 과목의 출처입니다.')
+        const sourceRoot = ref.pathScope === 'course' ? courseFolder({ ...tx.binding, courseId: ref.sourceCourseId ?? tx.binding.courseId }) : tx.root
         const path = pathInside(sourceRoot, ref.relPath!)
         const info = await stat(path)
         if (!info.isFile()) throw new ValidationError('출처 자료가 파일이 아닙니다.')
@@ -454,6 +458,8 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
         const level = input.level ?? 'intermediate'
         if (!['beginner', 'intermediate', 'advanced'].includes(level)) throw new ValidationError('올바르지 않은 학습 난이도입니다.')
         const readingMinutes = learningNumber(input.readingMinutes ?? 4, 'readingMinutes', 1, 30)
+        const settings = validateLearningSettings(input)
+        if (settings.purpose === 'english-reading') requireEnglishReadingSettings(settings, input.level, input.readingMinutes)
         await mkdir(root, { recursive: true }); assertRealInside(course, root)
         await mkdir(pathInside(root, LEARNING_DATA_DIR), { recursive: true })
         let state: LearningProjectState
@@ -463,6 +469,7 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
         } else {
           const timestamp = now()
           state = { schemaVersion: 1, projectId: randomUUID(), revision: 0, name, topic, level, readingMinutes,
+            purpose: 'unclassified', topicIds: [], readingSetupConfirmed: false, ...settings,
             createdAt: timestamp, updatedAt: timestamp, articles: [], words: [], occurrences: [], artifacts: [],
             cards: [], quizAttempts: [], runs: [], history: [], exports: [], pathAliases: [] }
           for (const [relPath, title] of [['단어장.md', '나의 단어장'], ['예문 모음.md', '예문 모음']] as const) {
@@ -481,6 +488,21 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
         return snapshot(input.binding, { root, state, bytes: json(state), recovery: 'none', warnings: [] })
       }, true)
     },
+    updateSettings(input) {
+      return mutate(input, tx => {
+        const settings = validateLearningSettings(input)
+        const merged = { ...tx.state, ...settings }
+        if (merged.purpose === 'english-reading') requireEnglishReadingSettings(merged, input.level ?? tx.state.level, input.readingMinutes ?? tx.state.readingMinutes)
+        Object.assign(tx.state, settings)
+        if (input.name !== undefined) tx.state.name = learningString(input.name, 'name', 1_000).trim()
+        if (input.topic !== undefined) tx.state.topic = learningString(input.topic, 'topic', 10_000).trim()
+        if (input.level !== undefined) {
+          if (!['beginner', 'intermediate', 'advanced'].includes(input.level)) throw new ValidationError('영어 읽기 수준을 선택하세요.')
+          tx.state.level = input.level
+        }
+        if (input.readingMinutes !== undefined) tx.state.readingMinutes = learningNumber(input.readingMinutes, 'readingMinutes', 1, 30)
+      })
+    },
     async read(binding) { return serial(binding, async () => snapshot(binding, await load(binding))) },
     async readArticle(binding, id) { return serial(binding, async () => { const loaded = await load(binding); return articleFrom(loaded.root, loaded.state, id) }) },
     async readArtifact(binding, id) { return serial(binding, async () => { const loaded = await load(binding); return artifactFrom(loaded.root, loaded.state, id, binding) }) },
@@ -497,13 +519,15 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
           try {
             const loaded = await load(projectBinding); const state = loaded.state
             found.push({ binding: projectBinding, projectId: state.projectId, name: state.name, topic: state.topic,
+              purpose: state.purpose ?? 'unclassified', topicIds: state.topicIds ?? [], readingSetupConfirmed: state.readingSetupConfirmed ?? false,
+              ...(state.ai ? { ai: state.ai } : {}), ...(state.linkedCourseId ? { linkedCourseId: state.linkedCourseId } : {}), ...(state.packId ? { packId: state.packId } : {}),
               level: state.level, readingMinutes: state.readingMinutes, articleCount: state.articles.length,
               completedArticleCount: state.articles.filter((article) => article.status === 'completed').length,
               wordCount: state.words.length, knownWordCount: state.words.filter((word) => word.status === 'known').length,
               dueCardCount: state.cards.filter((card) => Date.parse(card.dueAt) <= Date.parse(now())).length,
               updatedAt: state.updatedAt, warning: loaded.warnings[0] ?? null })
           } catch (error) {
-            found.push({ binding: projectBinding, projectId: '', name: basename(root), topic: '', level: 'intermediate',
+            found.push({ binding: projectBinding, projectId: '', name: basename(root), topic: '', purpose: 'unclassified', topicIds: [], readingSetupConfirmed: false, level: 'intermediate',
               readingMinutes: 5, articleCount: 0, completedArticleCount: 0, wordCount: 0, knownWordCount: 0,
               dueCardCount: 0, updatedAt: '', warning: error instanceof Error ? error.message : '학습 데이터를 읽지 못했습니다.' })
           }
@@ -680,8 +704,13 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
     },
     async repoint(input) {
       // Called after filesystem rename. Rediscovery naturally mounts a moved project root.
-      const projects = await repo.discover(input.courseId)
+      const projects: LearningProjectSummary[] = []
+      for (const courseId of new Set([input.courseId, ...(deps.listCourseIds?.() ?? [])])) {
+        try { projects.push(...await repo.discover(courseId)) } catch { /* Missing linked folders retain their records. */ }
+      }
       for (const project of projects) {
+        const ownsPaths = project.binding.courseId === input.courseId
+        if (!ownsPaths && project.linkedCourseId !== input.courseId) continue
         if (project.warning) continue
         const root = project.binding.rootRelPath
         const withinRoot = (path: string): string | null => {
@@ -691,7 +720,8 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
         const from = withinRoot(input.fromRelPath); const to = withinRoot(input.toRelPath)
         await mutate({ binding: project.binding }, (tx) => {
           let changed = false
-          const update = (path: string, scope: 'project' | 'course' = 'project'): string => {
+          const update = (path: string, scope: 'project' | 'course' = 'project', sourceCourseId = project.binding.courseId): string => {
+            if (sourceCourseId !== input.courseId || (scope === 'project' && !ownsPaths)) return path
             const next = scope === 'course' ? replacePath(path, input.fromRelPath, input.toRelPath, input.isDirectory)
               : from !== null && to !== null ? replacePath(path, from, to, input.isDirectory) : path
             changed ||= path !== next; return next
@@ -700,14 +730,14 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
           for (const artifact of tx.state.artifacts) if (artifact.exportRelPath) artifact.exportRelPath = update(artifact.exportRelPath)
           for (const exported of tx.state.exports) exported.relPath = update(exported.relPath)
           for (const occurrence of tx.state.occurrences) {
-            if (occurrence.sourceRef.relPath) occurrence.sourceRef.relPath = update(occurrence.sourceRef.relPath, occurrence.sourceRef.pathScope)
+            if (occurrence.sourceRef.relPath) occurrence.sourceRef.relPath = update(occurrence.sourceRef.relPath, occurrence.sourceRef.pathScope, occurrence.sourceRef.sourceCourseId)
           }
-          for (const card of tx.state.cards) for (const source of card.sourceRefs) if (source.relPath) source.relPath = update(source.relPath, source.pathScope)
-          for (const artifact of tx.state.artifacts) for (const source of artifact.sourceRefs) if (source.relPath) source.relPath = update(source.relPath, source.pathScope)
+          for (const card of tx.state.cards) for (const source of card.sourceRefs) if (source.relPath) source.relPath = update(source.relPath, source.pathScope, source.sourceCourseId)
+          for (const artifact of tx.state.artifacts) for (const source of artifact.sourceRefs) if (source.relPath) source.relPath = update(source.relPath, source.pathScope, source.sourceCourseId)
           for (const run of tx.state.runs) {
-            if (run.source?.relPath) run.source.relPath = update(run.source.relPath, 'course')
+            if (run.source?.relPath) run.source.relPath = update(run.source.relPath, 'course', run.source.sourceCourseId)
             const repointSources = (refs: LearningSourceRef[]): void => {
-              for (const source of refs) if (source.relPath) source.relPath = update(source.relPath, source.pathScope)
+              for (const source of refs) if (source.relPath) source.relPath = update(source.relPath, source.pathScope, source.sourceCourseId)
             }
             for (const word of run.draft?.words ?? []) repointSources([word.sourceRef])
             for (const artifact of run.draft?.artifacts ?? []) {
@@ -719,8 +749,8 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
           // Immutable artifact JSON retains its original citation. Resolve moved files at read time.
           tx.state.pathAliases ??= []
           tx.state.pathAliases.push({ fromRelPath: input.fromRelPath, toRelPath: input.toRelPath,
-            isDirectory: input.isDirectory, scope: 'course' })
-          if (from !== null && to !== null) tx.state.pathAliases.push({ fromRelPath: from, toRelPath: to,
+            isDirectory: input.isDirectory, scope: 'course', ...(ownsPaths ? {} : { sourceCourseId: input.courseId }) })
+          if (ownsPaths && from !== null && to !== null) tx.state.pathAliases.push({ fromRelPath: from, toRelPath: to,
             isDirectory: input.isDirectory, scope: 'project' })
           changed = true
           return changed

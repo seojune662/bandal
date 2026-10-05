@@ -212,7 +212,8 @@ function TaskCard({
 }
 
 function BoardSurface(): JSX.Element {
-  const courses = useCoursesStore((state) => state.courses)
+  const allCourses = useCoursesStore((state) => state.courses)
+  const courses = useMemo(() => allCourses.filter(course => course.workspaceKind !== 'study-space'), [allCourses])
   const [view, setView] = useState<'board' | 'calendar'>(() => settingsSnapshot().tabs.boardDefaultView)
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0)
   const [tasks, setTasks] = useState<BoardTask[]>([])

@@ -41,7 +41,6 @@ import {
   type CourseColor
 } from './courseColors'
 import './courses.css'
-import { LearningSidebar } from '../learning/LearningProjects'
 
 interface ContextMenuState {
   course: Course
@@ -66,7 +65,8 @@ interface GroupContextMenuState {
 
 
 export function CourseSidebar({ hidden = false }: { hidden?: boolean }): JSX.Element {
-  const courses = useCoursesStore((state) => state.courses)
+  const allCourses = useCoursesStore((state) => state.courses)
+  const courses = useMemo(() => allCourses.filter(course => course.workspaceKind !== 'study-space'), [allCourses])
   const groups = useCoursesStore((state) => state.groups)
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
   const isLoading = useCoursesStore((state) => state.isLoading)
@@ -340,7 +340,6 @@ export function CourseSidebar({ hidden = false }: { hidden?: boolean }): JSX.Ele
   return (
     <aside className="app-rail app-rail--left" aria-label="과목 목록" hidden={hidden}>
       <UniversityShortcuts />
-      <LearningSidebar />
 
       <div className="rail-heading">
         <div>

@@ -101,6 +101,29 @@ test('launcher entries select context and rail checks without unrelated appearan
   assert.ok(mixed.e2e.includes('e2e/theme.spec.ts'))
 })
 
+test('board course picker changes check schedules without exercising OS calendar connections', () => {
+  const result = planChecks(['src/renderer/src/features/board/BoardPanel.tsx'])
+  assert.ok(result.e2e.includes('e2e/taskSchedule.spec.ts'))
+  assert.equal(result.e2e.includes('e2e/appleCalendar.spec.ts'), false)
+})
+
+test('study workspace classification and AI execution select the learning setup regression', () => {
+  for (const file of [
+    'src/main/features/courses/coursesRepo.ts',
+    'src/main/db/migrations.ts',
+    'src/main/features/agent/SessionManager.ts',
+    'src/main/features/agent/agentModels.ts',
+    'src/main/features/agent/codex/modelCatalog.ts',
+    'src/shared/types/course.ts',
+    'src/renderer/src/features/courses/CourseSidebar.tsx'
+  ]) assert.ok(planChecks([file]).e2e.includes('e2e/learningSpaces.spec.ts'), file)
+  const catalog = planChecks(['src/shared/learning/configuration.ts'])
+  assert.deepEqual(catalog.e2e, ['e2e/learning.spec.ts', 'e2e/learningSpaces.spec.ts'])
+  const settings = planChecks(['src/renderer/src/features/settings/SettingsApp.tsx'])
+  assert.ok(settings.e2e.includes('e2e/settingsShell.spec.ts'))
+  assert.ok(!settings.e2e.includes('e2e/theme.spec.ts'))
+})
+
 test('browser import boundaries select import and compatibility regressions', () => {
   for (const file of [
     'src/main/features/browser/import/crypto.ts',
@@ -197,7 +220,7 @@ test('learning experience changes select their native package regression includi
   ]) {
     const plan = planChecks([file])
     assert.equal(plan.full, false, file)
-    assert.deepEqual(plan.e2e, ['e2e/learning.spec.ts'], file)
+    assert.deepEqual(plan.e2e, ['e2e/learning.spec.ts', 'e2e/learningSpaces.spec.ts'], file)
   }
   assert.ok(planChecks(['pnpm-lock.yaml']).e2e.includes('e2e/learning.spec.ts'))
   assert.ok(!planChecks(['src/main/features/materials/materialsRepo.ts']).e2e.includes('e2e/learning.spec.ts'))

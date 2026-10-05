@@ -21,14 +21,14 @@ describe('host-managed learning run lifecycle', () => {
   ] }] })
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'bandal-learning-runtime-')); const course = join(dir, 'course'); mkdirSync(course)
-    repo = createLearningRepo({ getCourseFolder: () => course })
-    await repo.create({ binding, name: 'Learning', topic: 'Climate', readingMinutes: 1 })
+    repo = createLearningRepo({ getCourseFolder: courseId => courseId === binding.courseId ? course : join(dir, courseId) })
+    await repo.create({ binding, name: 'Learning', topic: 'Climate', readingMinutes: 1, level: 'intermediate', purpose: 'english-reading', topicIds: ['environment'], readingSetupConfirmed: true, ai: { provider: 'codex', model: 'gpt-5.5', effort: 'high' } })
     await repo.addArticle({ binding, article: { id: 'article-1', sourceUrl: 'https://example.com/start', title: 'First article', paragraphs: splitLearningParagraphs('The climate is changing quickly.') } })
     await repo.saveWord({ binding, surface: 'climate', sentence: 'The climate is changing quickly.', sourceRef: source })
     await repo.saveWord({ binding, surface: 'changing', sentence: 'The climate is changing quickly.', sourceRef: { ...source, quote: 'changing' } })
     deps = { repo, extractUrl: vi.fn(async () => candidate()), matchWords: vi.fn((article, words) => words.filter(word => article.paragraphs.some(paragraph => paragraph.text.includes(word.surface))).map(word => ({ wordId: word.id }))),
       validateDraft: (draft) => repo.validateDraft(binding, draft), send: vi.fn(async () => undefined), cancel: vi.fn(),
-      close: vi.fn(), sourceText: vi.fn(async () => ''), provider: () => 'codex' }
+      close: vi.fn(), sourceText: vi.fn(async () => ''), modelRejected: vi.fn() }
     runtime = createLearningRuntime(deps)
   })
   afterEach(async () => {
@@ -49,6 +49,103 @@ describe('host-managed learning run lifecycle', () => {
     await expect(runtime.start({ binding, kind: 'unknown' as 'create-quiz' })).rejects.toThrow('작업')
     await expect(runtime.start({ binding, kind: 'create-quiz', articleIds: ['missing'] })).rejects.toThrow('찾지')
     expect(deps.send).not.toHaveBeenCalled(); expect((await repo.read(binding)).runs).toHaveLength(0)
+  })
+  test('persists explicit space AI and session ID, ignoring an obsolete caller provider', async () => {
+    const started = await runtime.start({ binding, kind: 'create-quiz', provider: 'claude-code' })
+    const sessionId = await waitSend()
+    expect(await run(started.runId)).toMatchObject({ provider: 'codex', model: 'gpt-5.5', effort: 'high', sessionId })
+    expect(deps.send).toHaveBeenCalledWith(binding.courseId, sessionId, 'codex', expect.any(String), { provider: 'codex', model: 'gpt-5.5', effort: 'high' })
+  })
+  test('requires an explicit model rather than delegating the default alias', async () => {
+    await repo.updateSettings({ binding, ai: { provider: 'codex', model: 'default', effort: null } })
+    await expect(runtime.start({ binding, kind: 'create-quiz' })).rejects.toThrow('모델')
+    expect(deps.send).not.toHaveBeenCalled()
+  })
+  test('records resolved model effort before dispatch instead of inheriting an external CLI default', async () => {
+    await repo.updateSettings({ binding, ai: { provider: 'codex', model: 'gpt-5.5', effort: null } })
+    deps.resolveAi = vi.fn(async ai => ({ ...ai, effort: 'medium' }))
+    const started = await runtime.start({ binding, kind: 'create-quiz' })
+    const sessionId = await waitSend()
+    expect(await run(started.runId)).toMatchObject({ model: 'gpt-5.5', effort: 'medium' })
+    expect(deps.send).toHaveBeenCalledWith(binding.courseId, sessionId, 'codex', expect.any(String), { provider: 'codex', model: 'gpt-5.5', effort: 'medium' })
+    expect((await repo.read(binding)).ai?.effort).toBeNull()
+  })
+  test('keeps provider model rejection and retries with current AI and the original source', async () => {
+    const originalSource = { kind: 'material' as const, relPath: 'original.pdf', selection: 'original quote', page: 5 }
+    const started = await runtime.start({ binding, kind: 'create-quiz', source: originalSource, articleIds: ['article-1'] })
+    const sessionId = await waitSend()
+    await runtime.settle(sessionId, 'error', { code: 'unknown', message: JSON.stringify({ error: { message: "The 'gpt-5.5' model is not supported when using Codex with a ChatGPT account." } }) })
+    expect(await run(started.runId)).toMatchObject({ status: 'failed', errorCode: 'model-unavailable', errorCategory: 'model', error: "The 'gpt-5.5' model is not supported when using Codex with a ChatGPT account.", actionable: expect.stringContaining('다른 모델') })
+    expect(deps.modelRejected).toHaveBeenCalledWith('codex', 'gpt-5.5')
+    await repo.updateSettings({ binding, ai: { provider: 'claude-code', model: 'sonnet', effort: null } })
+    const retried = await runtime.retry(binding, started.runId)
+    const retrySession = await waitSend(2)
+    expect(retried.runId).not.toBe(started.runId)
+    expect(await run(retried.runId)).toMatchObject({ provider: 'claude-code', model: 'sonnet', effort: null, sessionId: retrySession, source: originalSource, articleIds: ['article-1'] })
+  })
+  test('first reading uses selected topics without reading course or article sources', async () => {
+    const firstBinding = { courseId: 'first-reading', rootRelPath: '' }
+    mkdirSync(join(dir, firstBinding.courseId))
+    await repo.create({ binding: firstBinding, name: 'First', topic: 'Selected topics', level: 'intermediate', readingMinutes: 4, purpose: 'english-reading', topicIds: ['science', 'space'], readingSetupConfirmed: true, ai: { provider: 'codex', model: 'gpt-5.5', effort: null } })
+    const sourceRead = vi.spyOn(repo, 'readArticle')
+    const started = await runtime.start({ binding: firstBinding, kind: 'find-articles', source: { kind: 'course' } })
+    const sessionId = await waitSend()
+    const firstRun = (await repo.read(firstBinding)).runs.find(item => item.id === started.runId)!
+    expect(firstRun).toMatchObject({ wordIds: [], articleIds: [], readingSetupConfirmed: true })
+    expect(firstRun.topicIds).toHaveLength(1)
+    expect(['science', 'space']).toContain(firstRun.topicIds![0])
+    expect(sourceRead).not.toHaveBeenCalled(); expect(deps.sourceText).not.toHaveBeenCalled()
+    expect(runtime.restrictionFor(sessionId)).not.toContain('read_material')
+    expect(runtime.restrictionFor(sessionId)).not.toContain('list_materials')
+    expect(runtime.restrictionFor(sessionId)).not.toContain('app_state')
+    expect(vi.mocked(deps.send).mock.calls[0]![3]).toContain(firstRun.topicIds![0] === 'science' ? '과학' : '우주')
+    const duplicate = await runtime.start({ binding: firstBinding, kind: 'find-articles', source: { kind: 'course' } })
+    expect(duplicate.runId).toBe(firstRun.id)
+    await runtime.settle(sessionId, 'error')
+    await repo.updateSettings({ binding: firstBinding, topicIds: ['technology-ai'] })
+    const retried = await runtime.retry(firstBinding, firstRun.id)
+    const retrySession = await waitSend(2)
+    expect((await repo.read(firstBinding)).runs.find(run => run.id === retried.runId)?.topicIds).toEqual(firstRun.topicIds)
+    await runtime.settle(retrySession, 'error')
+  })
+  test('requires confirmed English settings for the reading loop while preserving saved-word explanation', async () => {
+    await repo.updateSettings({ binding, purpose: 'unclassified' })
+    await expect(runtime.start({ binding, kind: 'find-articles' })).rejects.toThrow('영어 읽기')
+    expect(deps.send).not.toHaveBeenCalled()
+    await runtime.start({ binding, kind: 'explain-word', wordIds: await words() })
+    await waitSend()
+  })
+  test('retrying a legacy run uses newly confirmed reading settings without inventing a model default', async () => {
+    const timestamp = new Date().toISOString()
+    await repo.updateRun({ binding, run: { id: 'legacy-failed', kind: 'find-articles', provider: 'claude-code', status: 'failed', wordIds: [], articleIds: [], message: '', error: 'legacy', draft: null, createdAt: timestamp, updatedAt: timestamp } })
+    const started = await runtime.retry(binding, 'legacy-failed')
+    const sessionId = await waitSend()
+    expect(await run(started.runId)).toMatchObject({ provider: 'codex', model: 'gpt-5.5', topicIds: ['environment'], purpose: 'english-reading', readingSetupConfirmed: true, sessionId })
+  })
+  test('rejects malformed page metadata and preserves source-page failures without dispatching AI', async () => {
+    await expect(runtime.start({ binding, kind: 'create-quiz', source: { kind: 'material', relPath: 'source.pdf', page: 1.5 } })).rejects.toThrow()
+    vi.mocked(deps.sourceText).mockRejectedValueOnce(new Error('선택한 내용이 원본 페이지와 일치하지 않아요.'))
+    const started = await runtime.start({ binding, kind: 'create-quiz', source: { kind: 'material', relPath: 'source.pdf', page: 2, selection: 'a changed quote' } })
+    await vi.waitFor(async () => expect(await run(started.runId)).toMatchObject({ status: 'failed', errorCategory: 'source', source: { page: 2 }, error: expect.stringContaining('원본 페이지') }))
+    expect(deps.send).not.toHaveBeenCalled()
+  })
+  test('independent review reads, cancels, closes and retries within the linked original course', async () => {
+    const reviewBinding = { courseId: 'independent-review', rootRelPath: '' }
+    mkdirSync(join(dir, reviewBinding.courseId))
+    await repo.create({ binding: reviewBinding, name: 'Review', topic: 'Original course', purpose: 'course-review', linkedCourseId: 'original-course', ai: { provider: 'codex', model: 'gpt-5.5', effort: 'high' } })
+    const originalSource = { kind: 'course' as const, sourceCourseId: 'original-course' }
+    const started = await runtime.start({ binding: reviewBinding, kind: 'create-quiz', source: originalSource })
+    const sessionId = await waitSend()
+    expect(deps.send).toHaveBeenCalledWith('original-course', sessionId, 'codex', expect.stringContaining('original-course'), expect.any(Object))
+    await runtime.cancel(reviewBinding, started.runId)
+    expect(deps.cancel).toHaveBeenCalledWith('original-course', sessionId, 'codex')
+    expect(deps.close).toHaveBeenCalledWith('original-course', sessionId, 'codex')
+    const retried = await runtime.retry(reviewBinding, started.runId)
+    const retrySession = await waitSend(2)
+    expect((await repo.read(reviewBinding)).runs.find(item => item.id === retried.runId)).toMatchObject({ source: originalSource, sessionId: retrySession })
+    await runtime.settle(retrySession, 'error', { code: 'process-crashed', message: 'process stopped' })
+    expect(deps.close).toHaveBeenCalledWith('original-course', retrySession, 'codex')
+    await expect(runtime.start({ binding: reviewBinding, kind: 'create-quiz', source: { kind: 'course', sourceCourseId: 'other-course' } })).rejects.toThrow('연결')
   })
   test('prioritizes the actual failed expressions, including self-checks, without boosting other quiz words', async () => {
     const expressions = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'struggle', 'insight']
@@ -120,6 +217,30 @@ describe('host-managed learning run lifecycle', () => {
     expect(writes).toEqual(['validating'])
     expect(deps.close).toHaveBeenCalledTimes(1)
     expect(runtime.restrictionFor(session)?.size).toBe(0)
+  })
+  test('reports actual rejected length and guides the next candidate without relaxing the configured reading window', async () => {
+    await repo.updateSettings({ binding, readingMinutes: 4 })
+    const started = await runtime.start({ binding, kind: 'find-articles' })
+    const session = await waitSend()
+    const prompt = vi.mocked(deps.send).mock.calls[0]![3]
+    expect(prompt).toContain('분당 150단어'); expect(prompt).toContain('4분(약 600단어)')
+    expect(prompt).toContain('3~5분'); expect(prompt).toContain('450~750단어')
+    const article = (words: number): LearningArticleInput => ({ sourceUrl: `https://example.com/length-${words}`, title: 'Candidate length', wordCount: words,
+      estimatedMinutes: Math.ceil(words / 150), paragraphs: splitLearningParagraphs(Array.from({ length: words }, () => 'climate').join(' ')) })
+    vi.mocked(deps.extractUrl).mockResolvedValueOnce(article(1500)).mockResolvedValueOnce(article(200)).mockResolvedValueOnce(article(600))
+    await expect(runtime.verifyArticle(session, 'https://example.com/length-1500')).rejects.toThrow('약 10분, 1500단어')
+    await expect(runtime.verifyArticle(session, 'https://example.com/length-200')).rejects.toThrow('더 긴 글')
+    const accepted = await runtime.verifyArticle(session, 'https://example.com/length-600')
+    expect(accepted).toMatchObject({ wordCount: 600, estimatedMinutes: 4 })
+    expect((await repo.read(binding)).readingMinutes).toBe(4)
+    expect((await run(started.runId)).status).toBe('running')
+  })
+  test('keeps the actual rejected submission reason when the provider ends without a corrected result', async () => {
+    const started = await runtime.start({ binding, kind: 'find-articles' })
+    const sessionId = await waitSend()
+    await expect(runtime.submitResult(sessionId, { version: 1, articles: [{ id: 'unverified-article' }] })).rejects.toThrow('확인하지 않은')
+    await runtime.settle(sessionId, 'success')
+    expect(await run(started.runId)).toMatchObject({ status: 'failed', errorCode: 'result-validation-failed', errorCategory: 'validation', error: '앱이 확인하지 않은 기사가 포함되어 있습니다.' })
   })
   test('cancellation wins a synchronous adapter settlement callback and rejects late results', async () => {
     const started = await runtime.start({ binding, kind: 'create-quiz' })

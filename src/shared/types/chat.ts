@@ -130,3 +130,15 @@ export interface AgentModelOption {
   supportedEfforts?: string[]
   defaultEffort?: string
 }
+
+/** Discovery is a list of candidates; account access is checked by the provider at execution. */
+export interface AgentModelCatalog {
+  models: AgentModelOption[]
+  source: 'live' | 'cache' | 'fallback'
+  status: 'ready' | 'unverified' | 'unavailable'
+  fetchedAt?: string
+  /** Catalog writer's CLI version, when supplied by cache metadata. */
+  cliVersion?: string
+  error?: string
+  blockedModelIds?: string[]
+}

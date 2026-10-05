@@ -1,11 +1,12 @@
-import type { LearningBinding, LearningProjectSummary } from '../../../../shared/types/learning'
+import type { LearningAiSettings, LearningBinding, LearningProjectSummary } from '../../../../shared/types/learning'
 import type { LearningGenerationSource } from '../../../../shared/ipc/learningContract'
 import type { WorkflowPackScope } from '../../../../shared/types/workflowPack'
 import { invoke } from '../../lib/ipc'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
-import { requestLearningCreation } from '../learning/LearningDialogsHost'
-import { openLearning } from '../learning/learningNavigation'
+import { requestLearningCreation, requestLearningGeneration } from '../learning/LearningDialogsHost'
+import { openLearning, rememberEnglishBinding, RECENT_ENGLISH_KEY } from '../learning/learningNavigation'
+import { isEnglishReading } from '../learning/learningPurpose'
 import { flushOpenNoteSession } from '../notes/noteSessionRegistry'
 import { openPluginPanel, runPluginCommand } from '../plugins/pluginCommands'
 import type { PackStudyToolDefinition } from '../study/studyToolsStore'
@@ -14,7 +15,7 @@ import type { FeatureEntry, PackFeatureEntry } from './featureInventory'
 import { refreshLauncherContext, type LauncherContext } from './launcherContext'
 
 export type FeatureActionScope = 'selection' | 'material' | 'course'
-export interface FeatureActionOptions { binding?: LearningBinding; followUp?: boolean }
+export interface FeatureActionOptions { binding?: LearningBinding; followUp?: boolean; ai?: LearningAiSettings }
 export type FeatureActionResult =
   | { status: 'opened'; message: string; binding?: LearningBinding }
   | { status: 'started'; message: string; binding: LearningBinding; runId: string }
@@ -71,31 +72,39 @@ async function flushSourceNote(context: LauncherContext): Promise<void> {
   if (!flushed && context.material.unsaved) throw new Error('저장 전 필기를 확인할 수 없어요. 필기를 저장한 뒤 다시 실행해 주세요.')
 }
 
-async function generationBinding(context: LauncherContext, override?: LearningBinding): Promise<LearningBinding> {
-  if (override) return override
-  if (context.binding) return context.binding
-  const courseId = context.courseId!
-  const { projects } = await invoke('learning:list', { courseId })
-  const project = projects.find(item => item.binding.rootRelPath === '') ?? projects.find(item => item.binding.rootRelPath === 'AI 학습자료')
-  if (project) return project.binding
-  return (await invoke('learning:create', { placement: 'in-course', courseId, rootRelPath: 'AI 학습자료', name: 'AI 학습자료', topic: '과목 자료' })).binding
-}
+function recentEnglish(): LearningBinding | null { try { const value: unknown = JSON.parse(localStorage.getItem(RECENT_ENGLISH_KEY) ?? 'null'); return value && typeof value === 'object' && 'courseId' in value && 'rootRelPath' in value && typeof value.courseId === 'string' && typeof value.rootRelPath === 'string' ? value as LearningBinding : null } catch { return null } }
+function sameBinding(left: LearningBinding, right: LearningBinding): boolean { return left.courseId === right.courseId && left.rootRelPath === right.rootRelPath }
 
 async function openEnglish(entry: PackFeatureEntry, context: LauncherContext, override?: LearningBinding): Promise<FeatureActionResult> {
-  let binding = override ?? context.binding
-  if (!binding && context.courseId) {
-    const { projects } = await invoke('learning:list', { courseId: context.courseId })
-    if (projects.length > 1) return { status: 'needs-project-picker', projects, message: '이어갈 학습 공간을 선택해 주세요.' }
-    binding = projects[0]?.binding ?? null
+  if (override ?? context.binding) {
+    const chosen = await invoke('learning:get', { binding: override ?? context.binding! })
+    if (!chosen.purpose || chosen.purpose === 'unclassified' || chosen.purpose === 'english-reading' && !isEnglishReading(chosen)) {
+      requestLearningCreation(undefined, entry.packId, chosen)
+      return { status: 'opened', message: '기존 공간의 종류와 영어 읽기 설정을 확인해 주세요.' }
+    }
+    if (isEnglishReading(chosen)) {
+      rememberEnglishBinding(chosen.binding)
+      const article = chosen.articles.find(item => item.status === 'reading') ?? chosen.articles.find(item => item.status === 'unread')
+      openLearning(chosen.binding, article ? 'reader' : 'home', article?.id)
+      return { status: 'opened', binding: chosen.binding, message: `${chosen.name}에서 영어 읽기를 이어가요.` }
+    }
+    if (override) return { status: 'failed', message: '영어 이어읽기 공간을 선택해 주세요.' }
   }
-  if (!binding) {
-    requestLearningCreation(context.courseId ?? undefined, entry.packId)
-    return { status: 'opened', message: '영어 읽기를 시작할 학습 공간을 만들어 주세요.' }
-  }
-  const project = await invoke('learning:get', { binding })
-  const article = project.articles.find(item => item.status === 'reading') ?? project.articles.find(item => item.status === 'unread')
-  openLearning(binding, article ? 'reader' : 'home', article?.id)
-  return { status: 'opened', binding, message: `${project.name}에서 영어 읽기를 이어가요.` }
+  const { projects } = await invoke('learning:list', {})
+  const english = projects.filter(project => project.purpose === 'english-reading')
+  const recent = recentEnglish()
+  const remembered = recent ? english.find(project => sameBinding(project.binding, recent) && isEnglishReading(project)) : undefined
+  const chosen = remembered ?? (english.length === 1 ? english[0] : undefined)
+  if (chosen) return openEnglish(entry, { ...context, binding: null }, chosen.binding)
+  if (english.length) return { status: 'needs-project-picker', projects: english, message: '이어갈 영어 읽기 공간을 선택해 주세요.' }
+  requestLearningCreation(undefined, entry.packId)
+  return { status: 'opened', message: '영어 읽기를 시작할 독립 학습 공간을 만들어 주세요.' }
+}
+
+async function reviewBinding(context: LauncherContext, override?: LearningBinding): Promise<LearningBinding | undefined> {
+  if (override ?? context.binding) return override ?? context.binding ?? undefined
+  const { projects } = await invoke('learning:list', { courseId: context.courseId! })
+  return projects.filter(project => project.purpose === 'course-review' && project.linkedCourseId === context.courseId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.binding
 }
 
 function generationSource(context: LauncherContext, scope: FeatureActionScope): LearningGenerationSource {
@@ -103,7 +112,7 @@ function generationSource(context: LauncherContext, scope: FeatureActionScope): 
   const selection = scope === 'selection' ? context.selection : ''
   if (context.binding && context.wordIds.length) return { kind: 'vocabulary', wordIds: context.wordIds, ...(selection ? { selection } : {}) }
   if (context.binding && context.articleIds.length) return { kind: 'article', articleIds: context.articleIds, ...(selection ? { selection } : {}) }
-  return { kind: 'material', relPath: context.material!.relPath!, ...(selection ? { selection } : {}) }
+  return { kind: 'material', relPath: context.material!.relPath!, ...(context.material?.page ? { page: context.material.page } : {}), ...(selection ? { selection } : {}) }
 }
 
 /** Existing hosts remain responsible for permissions, source validation and writes. */
@@ -116,8 +125,8 @@ export async function executeFeatureAction(entry: FeatureEntry, capturedContext:
       return { status: 'opened', message: `${entry.label}을 열었어요.` }
     }
     if (entry.kind === 'pack' && entry.experience === 'article-vocabulary') return await openEnglish(entry, capturedContext, options.binding)
-    if (entry.kind === 'pack' && options.binding && options.binding.courseId !== capturedContext.courseId) throw new Error('현재 자료와 같은 과목의 학습 공간을 선택해 주세요.')
-    const context = scope === 'course' || (entry.kind === 'plugin-command' && !capturedContext.material?.relPath)
+    if (entry.kind === 'pack' && options.binding && capturedContext.binding && !sameBinding(options.binding, capturedContext.binding)) throw new Error('이 기사와 단어가 저장된 학습 공간을 선택해 주세요.')
+    let context = scope === 'course' || (entry.kind === 'plugin-command' && !capturedContext.material?.relPath)
       ? capturedContext : await refreshLauncherContext(capturedContext)
     if (entry.kind === 'plugin-command') {
       const current = useWorkspaceStore.getState().activePanelSource()
@@ -126,22 +135,40 @@ export async function executeFeatureAction(entry: FeatureEntry, capturedContext:
         ? { courseId: context.courseId, relPath: context.material.relPath } : undefined, { notify: false })
       return { status: 'completed', message: `${entry.label}을 실행했어요.` }
     }
-    if (scope !== 'course') await flushSourceNote(context)
     if (entry.schemaVersion === 2) {
-      let binding = options.binding ?? context.binding ?? undefined
+      let binding = await reviewBinding(context, options.binding)
+      const project = binding ? await invoke('learning:get', { binding }) : null
+      if (project && (!project.purpose || project.purpose === 'unclassified')) {
+        requestLearningCreation(undefined, undefined, project)
+        return { status: 'opened', ...(binding ? { binding } : {}), message: '기존 학습 공간의 종류와 AI를 먼저 확인해 주세요.' }
+      }
+      if (!options.ai && !project?.ai?.model) {
+        requestLearningGeneration({ label: entry.label, sourceTitle: context.material?.title || context.browser?.title || context.courseName || '선택한 과목', onStart: async ai => {
+          const result = await executeFeatureAction(entry, capturedContext, scope, { ...options, ai })
+          if (result.status === 'failed' || result.status === 'needs-course') throw new Error(result.message)
+          if (result.status !== 'started') throw new Error('원본과 학습 설정을 다시 확인해 주세요.')
+        } })
+        return { status: 'opened', message: '이 자료로 복습할 AI를 선택해 주세요.' }
+      }
+      if (scope !== 'course') { context = await refreshLauncherContext(capturedContext); await flushSourceNote(context) }
       let source: LearningGenerationSource
       if (context.browser && scope !== 'course') {
-        binding = await generationBinding(context, binding)
-        const project = await invoke('learning:addArticle', { binding, url: context.browser.url, tabId: context.browser.tabId })
+        if (!binding) {
+          if (!options.ai) throw new Error('복습에 사용할 AI를 먼저 선택해 주세요.')
+          binding = (await invoke('learning:create', { placement: 'standalone', name: `${context.courseName || '과목'} 복습`, topic: '과목 자료', purpose: 'course-review', topicIds: [], readingSetupConfirmed: false, linkedCourseId: context.courseId!, ai: options.ai })).binding
+        }
+        const project = await invoke('learning:addArticle', { binding, url: context.browser.url, tabId: context.browser.tabId, sourceCourseId: context.courseId! })
         const article = project.articles.find(item => item.id === project.addedArticleId)
         if (!article) throw new Error('이 글을 학습 원문으로 보관하지 못했어요.')
         source = { kind: 'article', articleIds: [article.id], ...(scope === 'selection' ? { selection: context.selection } : {}) }
       } else source = generationSource(context, scope)
-      const result = await invoke('study:generate', { courseId: context.courseId!, packId: entry.packId,
-        ...(binding ? { rootRelPath: binding.rootRelPath } : {}), source })
+      const sourceCourseId = source.kind === 'course' && project?.purpose === 'course-review' && project.linkedCourseId ? project.linkedCourseId : source.kind === 'article' || source.kind === 'vocabulary' ? binding?.courseId ?? context.courseId! : context.courseId!
+      const result = await invoke('study:generate', { courseId: sourceCourseId, packId: entry.packId,
+        ...(binding ? { binding } : {}), source: { ...source, sourceCourseId }, ...(options.ai ? { ai: options.ai } : {}) })
       openLearning(result.binding, 'review')
       return { status: 'started', ...result, message: `${entry.label}을 준비하고 있어요. 학습 공간에서 진행 상황을 볼 수 있어요.` }
     }
+    if (scope !== 'course') await flushSourceNote(context)
     const result = context.browser && scope !== 'course'
       ? await invoke('study:run', { courseId: context.courseId!, tool: entry.packId, relPath: null,
           browserTabUrl: context.browser.url, browserTabId: context.browser.tabId,

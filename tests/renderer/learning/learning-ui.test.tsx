@@ -100,4 +100,26 @@ describe('native quiz and flashcards', () => {
     expect(element.textContent).toContain('단어장에 저장됐어요')
     expect(element.querySelector('[role="alert"]')).toBeNull()
   })
+
+  test('a preserved review reader explains saved expressions without its quiz recipe while English retains its custom recipe', async () => {
+    const article = { id: 'article', title: 'City', sourceUrl: 'https://example.test/city', siteName: 'Example', estimatedMinutes: 1, wordCount: 3, paragraphs: [{ id: 'p1', text: 'A city grows.', sentences: [{ id: 's1', text: 'A city grows.', start: 0, end: 13 }] }] } as LearningArticleSnapshot
+    const initial = project(); initial.purpose = 'course-review'; initial.packId = 'quiz'
+    initial.words = [{ id: 'word', surface: 'city', lemma: 'city', meaning: '도시', pronunciation: '', partOfSpeech: 'noun', status: 'new', createdAt: 'now', updatedAt: 'now' }]
+    initial.occurrences = [{ id: 'occurrence', wordId: 'word', surface: 'city', sentence: 'A city grows.', sourceRef: { kind: 'article', articleId: 'article', paragraphId: 'p1', sentenceId: 's1', quote: 'city', start: 2, end: 6 }, meaning: '', createdAt: 'now' }]
+    const invoke = vi.fn(async (channel: string) => channel === 'learning:run' ? { runId: 'run', binding } : initial)
+    setIpcAdapter({ invoke, on: () => () => {} } as unknown as IpcAdapter)
+    const props = { article, onUpdate: vi.fn(), onComplete: vi.fn(), onArticle: vi.fn() }
+    const element = render(<LearningReader {...props} project={initial} />)
+    act(() => element.querySelector<HTMLElement>('[aria-label="“city” 단어 선택"]')!.click())
+    await act(async () => { [...element.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '이 문맥도 단어장에 담기')!.click() })
+    const expected = { binding, kind: 'explain-word', articleIds: ['article'], wordIds: ['word'] }
+    expect(invoke).toHaveBeenCalledWith('learning:run', expected)
+    await act(async () => { [...element.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '이 글의 문맥 설명')!.click() })
+    expect(invoke).toHaveBeenLastCalledWith('learning:run', expected)
+    expect(element.querySelector('[role="alert"]')).toBeNull()
+
+    act(() => root!.render(<LearningReader {...props} project={{ ...initial, purpose: 'english-reading', packId: 'custom:reading' }} />))
+    await act(async () => { [...element.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '이 글의 문맥 설명')!.click() })
+    expect(invoke).toHaveBeenLastCalledWith('learning:run', { ...expected, packId: 'custom:reading' })
+  })
 })

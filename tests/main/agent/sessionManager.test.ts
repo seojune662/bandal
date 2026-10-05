@@ -140,6 +140,19 @@ describe('SessionManager', () => {
     expect(settled).toHaveBeenCalledTimes(1)
     expect(settled).toHaveBeenCalledWith({ courseId, sessionId: conversationId, turnSeq: 1, reason: 'success' })
   })
+  test.each(['codex', 'claude-code', 'gemini'] as const)('%s only enables native public search for study sessions that support it', async provider => {
+    manager.disposeAll()
+    manager = createSessionManager({ adapter: { ...fake.adapter, provider }, repo,
+      getCourse: () => ({ folder: ctx.dir, name: 'Linear Algebra' }), emit: () => {} })
+    await manager.open(courseId, conversationId, 'study')
+    await manager.send(courseId, conversationId, 'find a public article')
+    if (provider === 'gemini') expect(fake.startOptions[0]).not.toHaveProperty('webSearch')
+    else expect(fake.startOptions[0]).toMatchObject({ webSearch: 'live' })
+    const ordinaryId = `${conversationId}-ordinary`
+    await manager.open(courseId, ordinaryId, 'app')
+    await manager.send(courseId, ordinaryId, 'ordinary chat')
+    expect(fake.startOptions[1]).not.toHaveProperty('webSearch')
+  })
 
   test.each([
     ['Bash', { command: 'cat .bandal/COURSE.md' }],
@@ -211,11 +224,24 @@ describe('SessionManager', () => {
     fake.sessions[0]!.emit({ type: 'error', code: 'process-crashed', message: 'crashed', fatal: true })
     expect(settled).toHaveBeenCalledTimes(1)
     expect(settled).toHaveBeenCalledWith(expect.objectContaining({ reason: 'error' }))
+    expect(settled).toHaveBeenLastCalledWith(expect.objectContaining({ error: { code: 'process-crashed', message: 'crashed' } }))
     await manager.send(courseId, conversationId, 'retry')
     fake.sessions[1]!.emit({ type: 'turn-complete', stopReason: 'success' })
     fake.sessions[1]!.sendMessage = () => { throw new Error('send failed') }
     await expect(manager.send(courseId, conversationId, 'failure')).rejects.toThrow('send failed')
     expect(settled.mock.calls.map(call => call[0].reason)).toEqual(['error', 'success', 'error'])
+    expect(settled).toHaveBeenLastCalledWith(expect.objectContaining({ error: { code: 'unknown', message: 'send failed' } }))
+  })
+  test('propagates nonfatal provider errors at real settlement and clears them for a successful retry', async () => {
+    await manager.send(courseId, conversationId, 'unsupported model')
+    const session = fake.sessions[0]!
+    session.emit({ type: 'error', code: 'unknown', message: 'model is not supported', fatal: false })
+    expect(settled).not.toHaveBeenCalled()
+    session.emit({ type: 'turn-complete', stopReason: 'error' })
+    expect(settled).toHaveBeenCalledWith(expect.objectContaining({ reason: 'error', error: { code: 'unknown', message: 'model is not supported' } }))
+    await manager.send(courseId, conversationId, 'retry')
+    session.emit({ type: 'turn-complete', stopReason: 'success' })
+    expect(settled).toHaveBeenLastCalledWith({ courseId, sessionId: conversationId, turnSeq: 2, reason: 'success' })
   })
 
   test('persists effort before the first turn and forwards it after reopening', async () => {

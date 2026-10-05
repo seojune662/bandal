@@ -14,6 +14,7 @@ import { usePrintRequests } from '../features/print/usePrintRequests'
 import { useAgentWorkspaceSync } from '../features/agent/workspaceSync'
 import { CourseSidebar } from '../features/courses/CourseSidebar'
 import { LearningDialogsHost } from '../features/learning/LearningDialogsHost'
+import { LearningSpacesPanel } from '../features/learning/LearningSpacesPanel'
 import { FeatureLauncherPanel } from '../features/launcher/FeatureLauncherPanel'
 import { MaterialsSidebar } from '../features/materials/MaterialsSidebar'
 import { OnboardingOverlay } from '../features/onboarding/OnboardingOverlay'
@@ -117,7 +118,9 @@ export function AppShell(): JSX.Element {
   const courseRailOpen = useUiStore((state) => state.courseRailOpen)
   const leftRailPanel = useUiStore((state) => state.leftRailPanel)
   const [launcherMounted, setLauncherMounted] = useState(false)
+  const [learningMounted, setLearningMounted] = useState(false)
   useEffect(() => { if (leftRailPanel === 'plugins') setLauncherMounted(true) }, [leftRailPanel])
+  useEffect(() => { if (leftRailPanel === 'learning') setLearningMounted(true) }, [leftRailPanel])
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
   // GlobalNavigation owns the board entry point; the shell owns its overlay.
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
@@ -407,6 +410,7 @@ export function AppShell(): JSX.Element {
       <div id="course-rail" className="shell-course-rail" aria-hidden={!leftRailOpen || !courseRailOpen || settingsPresent}
         {...{ inert: !leftRailOpen || !courseRailOpen || settingsPresent ? '' : undefined }}>
         <CourseSidebar hidden={leftRailPanel !== 'courses'} />
+        {learningMounted && <LearningSpacesPanel hidden={leftRailPanel !== 'learning'} />}
         {launcherMounted && <FeatureLauncherPanel hidden={leftRailPanel !== 'plugins'} />}
       </div>
       {leftRailOpen && courseRailOpen && !settingsPresent && <RailResizer side="left" />}

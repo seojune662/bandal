@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LearningArticleSnapshot, LearningProjectSnapshot } from '../../../../shared/types/learning'
+import { showToast } from '../../app/toast'
 import { Icon } from '../../app/icons'
 import { createBrowserTab } from '../../app/tabCommands'
 import { invoke } from '../../lib/ipc'
@@ -20,6 +21,7 @@ export function LearningReader({ project, article, onUpdate, onComplete, onArtic
   const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const progress = useRef<{ paragraphId: string | null; scrollFraction: number } | null>(null)
   const onUpdateRef = useRef(onUpdate); onUpdateRef.current = onUpdate
+  const readingPackId = project.purpose === 'english-reading' ? project.packId : undefined
   const saved = project.occurrences.filter(item => item.sourceRef.articleId === article.id)
   const matches = useMemo(() => new Map(article.paragraphs.map(paragraph => [paragraph.id, readerVocabularyMatches(paragraph.text, project.words)])), [article.paragraphs, project.words])
   const selectedWord = selected ? learningWordForSurface(project.words, selected.surface) : undefined
@@ -50,7 +52,7 @@ export function LearningReader({ project, article, onUpdate, onComplete, onArtic
       const occurrence = [...next.occurrences].reverse().find(item => item.sourceRef.articleId === article.id && item.surface === selected.surface)
       if (occurrence && !meaning.trim()) {
         const surface = selected.surface
-        void invoke('learning:run', { binding: project.binding, kind: 'explain-word', articleIds: [article.id], wordIds: [occurrence.wordId] })
+        void invoke('learning:run', { binding: project.binding, kind: 'explain-word', ...(readingPackId ? { packId: readingPackId } : {}), articleIds: [article.id], wordIds: [occurrence.wordId] })
           .catch(() => setNotice(`“${surface}”은 단어장에 저장됐어요. 아래 문맥 설명 버튼으로 뜻 정리를 다시 시작할 수 있어요.`))
       }
     } catch (caught) { setError(learningError(caught)) }
@@ -58,7 +60,7 @@ export function LearningReader({ project, article, onUpdate, onComplete, onArtic
   }
   const explain = async (wordId: string): Promise<void> => {
     setPending(true); setError(null)
-    try { await invoke('learning:run', { binding: project.binding, kind: 'explain-word', articleIds: [article.id], wordIds: [wordId] }); setNotice('이 문장에서 쓰인 뜻과 표현을 정리하고 있어요.') }
+    try { await invoke('learning:run', { binding: project.binding, kind: 'explain-word', ...(readingPackId ? { packId: readingPackId } : {}), articleIds: [article.id], wordIds: [wordId] }); setNotice('이 문장에서 쓰인 뜻과 표현을 정리하고 있어요.') }
     catch (caught) { setError(learningError(caught)) }
     finally { setPending(false) }
   }
@@ -69,7 +71,7 @@ export function LearningReader({ project, article, onUpdate, onComplete, onArtic
       progress.current = null
       const next = await invoke('learning:completeArticle', { binding: project.binding, articleId: article.id })
       onUpdate(next); notifyLearningChanged(); onComplete()
-      await invoke('learning:run', { binding: project.binding, kind: 'find-articles', articleIds: [article.id] })
+      if (project.purpose === 'english-reading' && project.readingSetupConfirmed) await invoke('learning:run', { binding: project.binding, kind: 'find-articles', ...(readingPackId ? { packId: readingPackId } : {}), articleIds: [article.id] }).catch(caught => showToast(`읽은 기록은 저장됐어요. 다음 글을 찾지 못했습니다: ${learningError(caught)}`, 'danger'))
     } catch (caught) { setError(learningError(caught)) }
     finally { setPending(false) }
   }

@@ -1,23 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { LearningProjectSummary } from '../../../../shared/types/learning'
+import type { LearningProjectSnapshot, LearningProjectSummary } from '../../../../shared/types/learning'
 import { Icon } from '../../app/icons'
 import { invoke } from '../../lib/ipc'
 import { useFocusTrap } from '../../components/useFocusTrap'
+import { useUiStore } from '../../stores/uiStore'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
 import { LearningCreateDialog } from './LearningCreateDialog'
+import { LearningGenerationDialog, type LearningGenerationRequest } from './LearningGenerationDialog'
 import { useLearningProjects } from './LearningProjects'
 import { learningError, notifyLearningChanged, openLearning } from './learningNavigation'
 
 const CREATE_EVENT = 'bandal:learning-create'
 const IMPORT_EVENT = 'bandal:learning-import'
 const PICK_EVENT = 'bandal:learning-pick'
+const GENERATE_EVENT = 'bandal:learning-generate'
+interface CreationRequest { courseId?: string; packId?: string; project?: LearningProjectSnapshot }
 interface ArticleImportRequest { courseId: string; url: string; tabId?: string; packId?: string }
 
-export function requestLearningCreation(courseId?: string, packId?: string): void {
-  window.dispatchEvent(new CustomEvent(CREATE_EVENT, { detail: { ...(courseId ? { courseId } : {}), ...(packId ? { packId } : {}) } }))
+export function requestLearningCreation(courseId?: string, packId?: string, project?: LearningProjectSnapshot): void {
+  window.dispatchEvent(new CustomEvent(CREATE_EVENT, { detail: { ...(courseId ? { courseId } : {}), ...(packId ? { packId } : {}), ...(project ? { project } : {}) } }))
 }
+export function requestLearningGeneration(input: LearningGenerationRequest): void { window.dispatchEvent(new CustomEvent(GENERATE_EVENT, { detail: input })) }
 export function requestLearningArticleImport(input: ArticleImportRequest): void {
   window.dispatchEvent(new CustomEvent(IMPORT_EVENT, { detail: input }))
 }
@@ -26,18 +31,21 @@ export function requestLearningProjectPicker(projects: LearningProjectSummary[])
 }
 
 export function LearningDialogsHost(): JSX.Element | null {
-  const [creating, setCreating] = useState<{ courseId?: string; packId?: string } | null>(null)
+  const [creating, setCreating] = useState<CreationRequest | null>(null)
+  const [generating, setGenerating] = useState<LearningGenerationRequest | null>(null)
   const [importing, setImporting] = useState<ArticleImportRequest | null>(null)
   const [picking, setPicking] = useState<LearningProjectSummary[] | null>(null)
   useEffect(() => {
-    const create = (event: Event): void => { if (event instanceof CustomEvent) setCreating(event.detail as { courseId?: string; packId?: string }) }
+    const create = (event: Event): void => { if (event instanceof CustomEvent) setCreating(event.detail as CreationRequest) }
+    const generate = (event: Event): void => { if (event instanceof CustomEvent) setGenerating(event.detail as LearningGenerationRequest) }
     const importArticle = (event: Event): void => { if (event instanceof CustomEvent) setImporting(event.detail as ArticleImportRequest) }
     const pick = (event: Event): void => { if (event instanceof CustomEvent) setPicking(event.detail as LearningProjectSummary[]) }
-    window.addEventListener(CREATE_EVENT, create); window.addEventListener(IMPORT_EVENT, importArticle); window.addEventListener(PICK_EVENT, pick)
-    return () => { window.removeEventListener(CREATE_EVENT, create); window.removeEventListener(IMPORT_EVENT, importArticle); window.removeEventListener(PICK_EVENT, pick) }
+    window.addEventListener(GENERATE_EVENT, generate); window.addEventListener(CREATE_EVENT, create); window.addEventListener(IMPORT_EVENT, importArticle); window.addEventListener(PICK_EVENT, pick)
+    return () => { window.removeEventListener(GENERATE_EVENT, generate); window.removeEventListener(CREATE_EVENT, create); window.removeEventListener(IMPORT_EVENT, importArticle); window.removeEventListener(PICK_EVENT, pick) }
   }, [])
-  useEffect(() => { if (!creating && !importing && !picking) return; return acquirePointerPassthrough() }, [creating, importing, picking])
-  return creating ? <LearningCreateDialog {...creating} onClose={() => setCreating(null)} /> : importing ? <ArticleImportDialog input={importing} onClose={() => setImporting(null)} /> : picking ? <ProjectPicker projects={picking} onClose={() => setPicking(null)} /> : null
+  const settingsOpen = useUiStore(state => state.isSettingsOpen)
+  useEffect(() => { if (settingsOpen || (!creating && !importing && !picking && !generating)) return; return acquirePointerPassthrough() }, [creating, importing, picking, generating, settingsOpen])
+  return creating ? <LearningCreateDialog {...creating} onClose={() => setCreating(null)} /> : generating ? <LearningGenerationDialog request={generating} onClose={() => setGenerating(null)} /> : importing ? <ArticleImportDialog input={importing} onClose={() => setImporting(null)} /> : picking ? <ProjectPicker projects={picking} onClose={() => setPicking(null)} /> : null
 }
 
 function ProjectPicker({ projects, onClose }: { projects: LearningProjectSummary[]; onClose: () => void }): JSX.Element {
@@ -52,7 +60,8 @@ function ProjectPicker({ projects, onClose }: { projects: LearningProjectSummary
 }
 
 function ArticleImportDialog({ input, onClose }: { input: ArticleImportRequest; onClose: () => void }): JSX.Element {
-  const { projects, loading } = useLearningProjects()
+  const { projects: allProjects, loading } = useLearningProjects()
+  const projects = allProjects.filter(project => project.purpose === 'english-reading')
   const courses = useCoursesStore(state => state.courses)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const projectKey = (binding: { courseId: string; rootRelPath: string }): string => `${binding.courseId}:${binding.rootRelPath}`
@@ -66,7 +75,7 @@ function ArticleImportDialog({ input, onClose }: { input: ArticleImportRequest; 
     if (!selected) return
     setPending(true); setError(null)
     try {
-      const project = await invoke('learning:addArticle', { binding: selected.binding, url: input.url, ...(input.tabId ? { tabId: input.tabId } : {}) })
+      const project = await invoke('learning:addArticle', { binding: selected.binding, url: input.url, ...(input.tabId ? { tabId: input.tabId } : {}), sourceCourseId: input.courseId })
       if (!project.articles.some(item => item.id === project.addedArticleId)) throw new Error('저장한 기사 식별자를 찾지 못했어요.')
       notifyLearningChanged(); openLearning(project.binding, 'reader', project.addedArticleId); onClose()
     }

@@ -6,6 +6,7 @@ import { createLearningRepo } from '../src/main/features/learning/learningRepo'
 import { learningHash, splitLearningParagraphs } from '../src/main/features/learning/model'
 import type { LearningBinding, LearningSourceRef } from '../src/shared/types/learning'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+import { configureEnglishForm, installLearningAiFixture, ENGLISH_FIXTURE_SETTINGS } from './helpers/learning'
 
 const rail = (page: Page) => page.getByRole('navigation', { name: '앱 메뉴' })
 const launcher = (page: Page) => page.getByRole('complementary', { name: '플러그인 기능' })
@@ -18,6 +19,7 @@ async function openLauncher(page: Page): Promise<void> {
 }
 
 async function isolateAi(bandal: BandalApp, binding?: LearningBinding): Promise<void> {
+  await installLearningAiFixture(bandal)
   await bandal.app.evaluate(({ ipcMain, BrowserWindow }, binding) => {
     const probe = { sends: [] as any[], generations: [] as any[], runs: [] as any[] }
     ;(globalThis as any).launcherProbe = probe
@@ -25,7 +27,6 @@ async function isolateAi(bandal: BandalApp, binding?: LearningBinding): Promise<
       ipcMain.removeHandler(channel); ipcMain.handle(channel, (_event, input) => handler(input))
     }
     replace('chat:open', input => ({ history: [], availability: { installed: true, loggedIn: true }, sessionInfo: { id: input.sessionId, courseId: input.courseId, provider: 'claude-code', model: 'default', status: 'idle', title: null, surface: 'app', cliSessionId: null, lastUsedAt: null } }))
-    replace('agent:models', () => ({ models: [{ id: 'default', displayName: 'Default', isDefault: true }] }))
     replace('chat:send', input => {
       probe.sends.push(input)
       setTimeout(() => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('chat:event-batch', { courseId: input.courseId, sessionId: input.sessionId, seq: 1, events: [{ type: 'turn-started', turnSeq: 1 }, { type: 'text-final', blockId: 'fixture-answer', text: '현재 자료에 연결된 답변입니다.' }, { type: 'turn-complete', stopReason: 'success' }] }) }, 30)
@@ -45,9 +46,11 @@ test('thin-rail AI reuses the exact document draft and plugin actions use the ca
     const biology = '# Biology\n\nCells transform energy.\n'
     writeFileSync(join(course.folderPath, 'biology.md'), biology)
     writeFileSync(join(course.folderPath, 'other.md'), '# Other\n\nA different document.\n')
-    const project = await page.evaluate(courseId => window.bandal.invoke('learning:create', { placement: 'in-course', courseId, rootRelPath: 'AI 학습자료', name: 'AI 학습자료', topic: 'Biology' }), course.id)
-    const repo = createLearningRepo({ getCourseFolder: () => course.folderPath })
-    const source: LearningSourceRef = { kind: 'material', pathScope: 'course', relPath: 'biology.md', quote: 'Cells transform energy.', contentHash: learningHash(biology) }
+    await installLearningAiFixture(bandal)
+    const project = await page.evaluate(courseId => window.bandal.invoke('learning:create', { placement: 'standalone', name: 'AI 학습자료', topic: 'Biology', purpose: 'course-review', linkedCourseId: courseId, ai: { provider: 'gemini', model: 'pro', effort: null } }), course.id)
+    const projectCourse = await page.evaluate(async id => (await window.bandal.invoke('courses:list', {})).find(course => course.id === id)!, project.binding.courseId)
+    const repo = createLearningRepo({ getCourseFolder: id => id === course.id ? course.folderPath : projectCourse.folderPath })
+    const source: LearningSourceRef = { kind: 'material', pathScope: 'course', sourceCourseId: course.id, relPath: 'biology.md', quote: 'Cells transform energy.', contentHash: learningHash(biology) }
     await repo.putArtifact({ binding: project.binding, artifact: { id: 'rail-quiz', kind: 'quiz', title: '레일 퀴즈', questions: [{ id: 'q1', type: 'choice', prompt: 'What do cells transform?', options: [{ id: 'energy', text: 'Energy' }, { id: 'stone', text: 'Stone' }], answer: 'energy', explanation: 'Cells transform energy.', sourceRefs: [source] }] } })
     await repo.putArtifact({ binding: project.binding, artifact: { id: 'rail-cards', kind: 'cards', title: '레일 카드', cards: [{ id: 'card', front: 'Cells', back: 'They transform energy.', sourceRefs: [source] }] } })
     const now = new Date().toISOString()
@@ -98,7 +101,7 @@ test('thin-rail AI reuses the exact document draft and plugin actions use the ca
     await launcher(page).getByLabel('실행 범위').selectOption('course')
     await feature(page, '플래시카드').getByRole('button').first().click()
     await expect.poll(() => bandal.app.evaluate(() => (globalThis as any).launcherProbe.generations.length)).toBe(2)
-    expect(await bandal.app.evaluate(() => (globalThis as any).launcherProbe.generations[1])).toMatchObject({ packId: 'flashcards', rootRelPath: 'AI 학습자료', source: { kind: 'course' } })
+    expect(await bandal.app.evaluate(() => (globalThis as any).launcherProbe.generations[1])).toMatchObject({ courseId: course.id, packId: 'flashcards', binding: project.binding, source: { kind: 'course', sourceCourseId: course.id } })
     await expect(feature(page, '플래시카드').locator('[role="status"]')).toHaveAttribute('data-phase', 'complete')
     await page.locator('.learning-artifact-card').filter({ hasText: '레일 카드' }).click()
     await page.getByRole('button', { name: '카드 답 확인', exact: true }).click()
@@ -158,7 +161,9 @@ test('same learning panel refreshes article and vocabulary targets without reope
     const { page } = bandal
     await createCourse(page, '학습 화면 문맥')
     const course = await page.evaluate(async () => (await window.bandal.invoke('courses:list', {})).find(item => item.name === '학습 화면 문맥')!)
-    const project = await page.evaluate(courseId => window.bandal.invoke('learning:create', { placement: 'in-course', courseId, rootRelPath: 'Reading', name: '영어 화면 문맥', topic: 'Resilient cities' }), course.id)
+    await installLearningAiFixture(bandal)
+    const original = await page.evaluate(courseId => window.bandal.invoke('learning:create', { placement: 'in-course', courseId, rootRelPath: 'Reading', name: '영어 화면 문맥', topic: 'Resilient cities' }), course.id)
+    const project = await page.evaluate(input => window.bandal.invoke('learning:updateSettings', input), { binding: original.binding, ...ENGLISH_FIXTURE_SETTINGS })
     const binding = project.binding
     const repo = createLearningRepo({ getCourseFolder: () => course.folderPath })
     const sentence = 'Resilient communities adapt to change.'
@@ -189,7 +194,7 @@ test('same learning panel refreshes article and vocabulary targets without reope
     await expect.poll(panels).toEqual([{ id: panelId, view: 'vocabulary' }])
     await feature(page, '플래시카드').getByRole('button').first().click()
     await expect.poll(() => bandal.app.evaluate(() => (globalThis as any).launcherProbe.generations.length)).toBe(1)
-    expect(await bandal.app.evaluate(() => (globalThis as any).launcherProbe.generations[0])).toEqual({ courseId: course.id, packId: 'flashcards', rootRelPath: 'Reading', source: { kind: 'vocabulary', wordIds } })
+    expect(await bandal.app.evaluate(() => (globalThis as any).launcherProbe.generations[0])).toEqual({ courseId: course.id, packId: 'flashcards', binding: { courseId: course.id, rootRelPath: 'Reading' }, source: { kind: 'vocabulary', wordIds, sourceCourseId: course.id } })
     await navigation.getByRole('button', { name: '읽기', exact: true }).click()
     await expect(page.locator('.learning-reader h1')).toHaveText('Resilient communities')
     await expect(launcher(page).getByRole('region', { name: '현재 실행 대상' }).getByRole('option', { name: '현재 기사', exact: true })).toBeAttached()
@@ -197,7 +202,7 @@ test('same learning panel refreshes article and vocabulary targets without reope
     await expect.poll(panels).toEqual([{ id: panelId, view: 'reader' }])
     await feature(page, '퀴즈').getByRole('button').first().click()
     await expect.poll(() => bandal.app.evaluate(() => (globalThis as any).launcherProbe.generations.length)).toBe(2)
-    expect(await bandal.app.evaluate(() => (globalThis as any).launcherProbe.generations[1])).toEqual({ courseId: course.id, packId: 'quiz', rootRelPath: 'Reading', source: { kind: 'article', articleIds: ['context-article'] } })
+    expect(await bandal.app.evaluate(() => (globalThis as any).launcherProbe.generations[1])).toEqual({ courseId: course.id, packId: 'quiz', binding: { courseId: course.id, rootRelPath: 'Reading' }, source: { kind: 'article', articleIds: ['context-article'], sourceCourseId: course.id } })
   } finally { await bandal.close() }
 })
 
@@ -212,10 +217,9 @@ test('launcher starts and resumes English directly and captures the live browser
     await isolateAi(bandal)
     await openLauncher(page)
     await feature(page, '영어 이어읽기').getByRole('button').first().click()
-    const dialog = page.getByRole('dialog', { name: '영어 읽기 시작하기' })
+    const dialog = page.getByRole('dialog', { name: '영어 이어읽기 시작하기' })
     await expect(dialog).toBeVisible()
-    await dialog.getByLabel('학습 공간 이름').fill('레일 영어 읽기')
-    await dialog.getByLabel('관심 주제').fill('Space and science')
+    await configureEnglishForm(dialog, '레일 영어 읽기')
     await dialog.getByRole('button', { name: '학습 공간 만들기', exact: true }).click()
     await expect(dialog).toBeHidden()
     await expect(page.locator('.learning-topbar')).toContainText('레일 영어 읽기')
@@ -228,7 +232,7 @@ test('launcher starts and resumes English directly and captures the live browser
     await openLauncher(page)
     await feature(page, '영어 이어읽기').getByRole('button').first().click()
     await expect(page.locator('.learning-reader h1')).toHaveText('Saved English article')
-    await expect(page.getByRole('dialog', { name: '영어 읽기 시작하기' })).toHaveCount(0)
+    await expect(page.getByRole('dialog', { name: '영어 이어읽기 시작하기' })).toHaveCount(0)
     await launcher(page).getByRole('button', { name: '새 학습 공간 만들기', exact: true }).click()
     await expect(dialog).toBeVisible()
     await dialog.getByRole('button', { name: '취소', exact: true }).click()

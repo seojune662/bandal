@@ -4,6 +4,9 @@ import { useCoursesStore } from '../../stores/coursesStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
 
+export const RECENT_ENGLISH_KEY = 'bandal:lastEnglishBinding'
+export function rememberEnglishBinding(binding: LearningBinding): void { try { localStorage.setItem(RECENT_ENGLISH_KEY, JSON.stringify(binding)) } catch { /* The explicit picker remains available. */ } }
+
 export const LEARNING_CHANGED_EVENT = 'bandal:learning-changed'
 
 export function notifyLearningChanged(): void {

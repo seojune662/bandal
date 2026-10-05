@@ -43,3 +43,4 @@
 .launcher-footer button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 4px; border: 0; background: transparent; color: var(--text-secondary); font-size: 11px; }
 .launcher-footer button svg:last-child { margin-left: auto; }
 .launcher-footer button:hover { color: var(--text-primary); }
+.launcher-feature__type { color: var(--accent) !important; font-size: 9px !important; }

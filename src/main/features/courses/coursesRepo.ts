@@ -18,7 +18,7 @@ import type {
   CreateCourseInput,
   RelinkCourseInput,
   RenameCourseInput,
-  SetCourseColorInput
+  SetCourseColorInput, WorkspaceKind
 } from '../../../shared/types/course'
 import { NotFoundError, ValidationError } from '../../db/errors'
 import { nowIso, requireId, requireNonEmptyString } from '../../db/validate'
@@ -33,6 +33,7 @@ export interface CoursesRepo {
   relink(input: RelinkCourseInput): CourseFolderResult
   rename(input: RenameCourseInput): Course
   setColor(input: SetCourseColorInput): Course
+  setWorkspaceKind(courseId: string, kind: WorkspaceKind): Course
   archive(input: { courseId: string; archived: boolean }): Course
   /**
    * 한 번의 드래그 = 한 번의 원자적 호출. `groupId`(null = 그룹 해제)로
@@ -76,6 +77,7 @@ interface CourseRow {
   color: string
   folder_path: string
   source: string
+  workspace_kind: string
   archived: number
   group_id: string | null
   sort_order: number
@@ -96,6 +98,7 @@ function rowToCourse(row: CourseRow, missing = folderState(row.folder_path) !== 
     color: row.color,
     folderPath: row.folder_path,
     source: toSource(row.source),
+    workspaceKind: row.workspace_kind === 'study-space' ? 'study-space' : 'course',
     missing,
     archived: row.archived === 1,
     groupId: row.group_id ?? null,
@@ -181,9 +184,9 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
   function insertCourse(course: Course): Course {
     db.prepare(
       `INSERT INTO courses
-         (id, name, slug, color, folder_path, source, archived, sort_order,
+         (id, name, slug, color, folder_path, source, workspace_kind, archived, sort_order,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
     ).run(
       course.id,
       course.name,
@@ -191,6 +194,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
       course.color,
       course.folderPath,
       course.source,
+      course.workspaceKind ?? 'course',
       course.sortOrder,
       course.createdAt,
       course.updatedAt
@@ -226,9 +230,17 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
       return listCourses(input)
     },
 
+    setWorkspaceKind(courseId, kind) {
+      const row = getRowOrThrow(courseId)
+      if (kind !== 'course' && kind !== 'study-space') throw new ValidationError('올바른 공간 종류를 선택하세요.')
+      db.prepare('UPDATE courses SET workspace_kind = ?, updated_at = ? WHERE id = ?').run(kind, nowIso(), row.id)
+      return toCourse(getRowOrThrow(row.id))
+    },
+
     create(input) {
       const name = requireNonEmptyString(input.name, 'name').trim()
       const color = requireNonEmptyString(input.color, 'color').trim()
+      if (input.workspaceKind !== undefined && !['course', 'study-space'].includes(input.workspaceKind)) throw new ValidationError('올바른 공간 종류를 선택하세요.')
       const dataRoot = getDataRoot()
       if (dataRoot === '') {
         throw new ValidationError('dataRoot is not configured')
@@ -248,6 +260,7 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
           color,
           folderPath,
           source: 'managed',
+          workspaceKind: input.workspaceKind ?? 'course',
           missing: false,
           archived: false,
           // 새 과목은 그룹 없이 시작한다 (INSERT의 group_id 기본값 NULL과 일치).

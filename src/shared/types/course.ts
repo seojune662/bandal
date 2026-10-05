@@ -9,8 +9,11 @@
  */
 
 export type CourseSource = 'managed' | 'linked'
+export type WorkspaceKind = 'course' | 'study-space'
 
 export interface Course {
+  /** Missing on old clients; the default is an ordinary course. */
+  workspaceKind?: WorkspaceKind
   id: string
   name: string
   /** URL/filesystem-safe slug derived from the name. */
@@ -48,6 +51,7 @@ export interface CourseGroup {
 }
 
 export interface CreateCourseInput {
+  workspaceKind?: WorkspaceKind
   name: string
   color: string
 }

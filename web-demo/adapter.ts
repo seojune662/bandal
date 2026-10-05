@@ -140,7 +140,7 @@ const handlers: Handlers = {
   'ui:consumePendingOpen': () => null,
   'agent:availability': () => ({ installed: true, loggedIn: true }),
   'agent:skills': () => [],
-  'agent:models': ({ provider }) => ({ models: provider === 'codex' ? [{ id: 'gpt-5.4', displayName: 'GPT-5.4 · 예시', isDefault: true, supportedEfforts: ['low', 'medium', 'high', 'xhigh'] }] : provider === 'gemini' ? [{ id: 'gemini-3.1-pro-preview', displayName: 'Gemini Pro · 예시', isDefault: true }] : [{ id: 'sonnet', displayName: 'Sonnet · 예시', isDefault: true, supportedEfforts: ['low', 'medium', 'high'] }, { id: 'opus', displayName: 'Opus · 예시', isDefault: false, supportedEfforts: ['low', 'medium', 'high', 'max'] }] }),
+  'agent:models': ({ provider }) => ({ source: 'fallback', status: 'unverified', models: provider === 'codex' ? [{ id: 'gpt-5.4', displayName: 'GPT-5.4 · 예시', isDefault: true, supportedEfforts: ['low', 'medium', 'high', 'xhigh'] }] : provider === 'gemini' ? [{ id: 'gemini-3.1-pro-preview', displayName: 'Gemini Pro · 예시', isDefault: true }] : [{ id: 'sonnet', displayName: 'Sonnet · 예시', isDefault: true, supportedEfforts: ['low', 'medium', 'high'] }, { id: 'opus', displayName: 'Opus · 예시', isDefault: false, supportedEfforts: ['low', 'medium', 'high', 'max'] }] }),
   'agentTools:confirmations': () => [],
   'chat:grants': () => ({ grants: [] }),
   'chat:context': ({ courseId, sourcePanelId }) => {

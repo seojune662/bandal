@@ -128,6 +128,13 @@ afterEach(() => {
 
 describe('CourseSidebar course menu', () => {
 
+  test('keeps independent study workspaces out of course and semester lists', () => {
+    act(() => useCoursesStore.setState({ courses: [course, { ...course, id: 'study-1', name: '나의 영어 읽기', workspaceKind: 'study-space' }] }))
+    expect(container.querySelector('[aria-label="항공역학 과목 메뉴"]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="나의 영어 읽기 과목 메뉴"]')).toBeNull()
+    expect(container.querySelector('.learning-sidebar')).toBeNull()
+  })
+
   test('keeps primary navigation above account and settings', () => {
     authState.phase = 'signed-in'
     act(() => root.render(<><GlobalNavigation /><CourseSidebar /></>))
@@ -137,7 +144,7 @@ describe('CourseSidebar course menu', () => {
     ).map((item) => item.getAttribute('aria-label'))
 
     expect(labels).toEqual([
-      '과목', '학업 보드 열기', 'AI', '플러그인', '더 보기', '내 프로필', '설정'
+      '과목', '학습', '학업 보드 열기', 'AI', '플러그인', '더 보기', '내 프로필', '설정'
     ])
   })
 
