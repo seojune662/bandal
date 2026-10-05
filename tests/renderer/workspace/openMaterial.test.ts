@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-const { invokeMock, openTabMock } = vi.hoisted(() => ({
+const { invokeMock, openTabMock, selectCourseMock, showCourseWorkspaceMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
-  openTabMock: vi.fn()
+  openTabMock: vi.fn(), selectCourseMock: vi.fn(), showCourseWorkspaceMock: vi.fn()
 }))
 
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({
@@ -21,8 +21,11 @@ vi.mock('../../../src/renderer/src/stores/materialsStore', () => ({
 
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   useWorkspaceStore: {
-    getState: () => ({ openTab: openTabMock })
+    getState: () => ({ openTab: openTabMock, showCourseWorkspace: showCourseWorkspaceMock })
   }
+}))
+vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({
+  useCoursesStore: { getState: () => ({ courses: [{ id: 'course-1' }], selectCourse: selectCourseMock }) }
 }))
 
 import { openMaterialInCourse } from '../../../src/renderer/src/features/workspace/openMaterial'
@@ -31,6 +34,7 @@ describe('openMaterialInCourse', () => {
   beforeEach(() => {
     invokeMock.mockReset()
     openTabMock.mockReset()
+    selectCourseMock.mockReset(); showCourseWorkspaceMock.mockReset()
     invokeMock.mockResolvedValue({ ok: true })
   })
 
@@ -80,5 +84,12 @@ describe('openMaterialInCourse', () => {
       relPath: 'archive.zip',
       summary: 'archive.zip을(를) 열었습니다.'
     })
+  })
+
+  test('an original source first selects its owning course rather than opening inside the review workspace', () => {
+    openMaterialInCourse('course-1', 'pdf', 'original.pdf')
+    expect(selectCourseMock).toHaveBeenCalledWith('course-1')
+    expect(showCourseWorkspaceMock).toHaveBeenCalledWith('course-1')
+    expect(showCourseWorkspaceMock.mock.invocationCallOrder[0]).toBeLessThan(openTabMock.mock.invocationCallOrder[0]!)
   })
 })

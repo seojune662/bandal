@@ -93,19 +93,16 @@ test('legacy dispatch is a generation request, retains follow-up metadata and ne
   expect(invoke).toHaveBeenCalledWith('study:run', { courseId: 'course', tool: 'custom:quiz', relPath: 'lecture.pdf', followUpOf: 'custom:quiz' })
 })
 
-test('English resumes the sole project, asks for a choice among projects, and preserves pack identity on creation', async () => {
+test('English always starts a new space even with a current or remembered English space', async () => {
   const english = pack({ experience: 'article-vocabulary' })
-  const context = { ...EMPTY_LAUNCHER_CONTEXT, courseId: 'course' }
+  const context = { ...EMPTY_LAUNCHER_CONTEXT, courseId: 'course', binding }
   const create = vi.spyOn(dialogs, 'requestLearningCreation').mockImplementation(() => {})
-  const invoke = vi.fn(async (channel: string) => channel === 'learning:list' ? { projects: [] } : {}); adapter(invoke)
-  expect(await executeFeatureAction(english, context, 'course')).toMatchObject({ status: 'opened' })
+  const invoke = vi.fn(); adapter(invoke)
+  localStorage.setItem('bandal:lastEnglishBinding', JSON.stringify(binding))
+  expect(await executeFeatureAction(english, context, 'course', { binding })).toMatchObject({ status: 'opened' })
   expect(create).toHaveBeenCalledWith(undefined, 'custom:quiz')
-  invoke.mockImplementation(async (channel: string) => channel === 'learning:list' ? { projects: [{ ...configured, purpose: 'english-reading', readingSetupConfirmed: true, binding }, { ...configured, purpose: 'english-reading', readingSetupConfirmed: true, binding: { ...binding, rootRelPath: 'Second' } }] } : {})
-  expect(await executeFeatureAction(english, context, 'course')).toMatchObject({ status: 'needs-project-picker', projects: expect.any(Array) })
-  invoke.mockImplementation(async (channel: string) => channel === 'learning:list' ? { projects: [{ ...configured, purpose: 'english-reading', readingSetupConfirmed: true, binding }] } : { ...configured, purpose: 'english-reading', readingSetupConfirmed: true, name: 'Science', articles: [{ id: 'next', status: 'reading' }] })
-  expect(await executeFeatureAction(english, context, 'course')).toMatchObject({ status: 'opened', binding })
-  expect(learningNavigation.openLearning).toHaveBeenCalledWith(binding, 'reader', 'next')
-  expect(invoke.mock.calls.map(call => call[0])).not.toContain('learning:create')
+  expect(invoke).not.toHaveBeenCalled()
+  expect(learningNavigation.openLearning).not.toHaveBeenCalled()
 })
 
 test('scope mismatch and a different learning-source binding cannot launch generation', async () => {

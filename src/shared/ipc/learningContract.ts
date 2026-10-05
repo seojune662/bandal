@@ -3,7 +3,7 @@ import type {
   LearningArtifact, LearningLevel, LearningSourceRef, SaveLearningWordInput, UpdateLearningWordInput,
   SaveLearningProgressInput, CompleteLearningArticleInput, SaveLearningQuizAnswerInput,
   FinishLearningQuizInput, ReviewLearningCardInput, StartLearningRunInput, ImportLearningDraftInput, LearningMaterialRequest,
-  LearningProjectSettings, LearningAiSettings, UpdateLearningSettingsInput
+  LearningProjectSettings, LearningAiSettings, UpdateLearningSettingsInput, LearningMutation, RenameLearningProjectInput, DismissLearningRunInput
 } from '../types/learning'
 
 export interface LearningGenerationSource {
@@ -17,7 +17,11 @@ export interface LearningGenerationSource {
 }
 export interface LearningRunResult { runId: string; binding: LearningBinding }
 export interface LearningIpcContract {
-  'learning:list': { req: { courseId?: string }; res: { projects: LearningProjectSummary[] } }
+  'learning:list': { req: { courseId?: string; includeDeleted?: boolean }; res: { projects: LearningProjectSummary[] } }
+  'learning:rename': { req: RenameLearningProjectInput; res: LearningProjectSnapshot }
+  'learning:delete': { req: LearningMutation; res: { ok: true } }
+  'learning:restore': { req: LearningMutation; res: LearningProjectSnapshot }
+  'learning:dismissRun': { req: DismissLearningRunInput; res: LearningProjectSnapshot }
   'learning:create': {
     req: Partial<LearningProjectSettings> & { placement: 'standalone' | 'in-course'; courseId?: string; rootRelPath?: string; name: string; topic: string; level?: LearningLevel; readingMinutes?: number }
     res: LearningProjectSnapshot
@@ -48,7 +52,7 @@ export interface LearningIpcContract {
 }
 
 export const LEARNING_CHANNELS = [
-  'learning:list', 'learning:create', 'learning:get', 'learning:updateSettings', 'learning:getArticle', 'learning:getArtifact',
+  'learning:list', 'learning:rename', 'learning:delete', 'learning:restore', 'learning:dismissRun', 'learning:create', 'learning:get', 'learning:updateSettings', 'learning:getArticle', 'learning:getArtifact',
   'learning:resolveSource', 'learning:addArticle', 'learning:saveWord', 'learning:updateWord', 'learning:updateOccurrence', 'learning:saveProgress',
   'learning:completeArticle', 'learning:saveQuizAnswer', 'learning:finishQuiz', 'learning:reviewCard',
   'learning:run', 'learning:runCancel', 'learning:runRetry', 'learning:importPreview', 'learning:importSave', 'study:generate'

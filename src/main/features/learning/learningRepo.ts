@@ -9,7 +9,8 @@ import type {
   LearningBinding, LearningDraft, LearningMutation, LearningProjectSnapshot,
   LearningProjectState, LearningProjectSummary, LearningSourceRef, LearningWordDraft, PutLearningArtifactInput,
   ReviewLearningCardInput, SaveLearningProgressInput, SaveLearningQuizAnswerInput,
-  SaveLearningWordInput, UpdateLearningRunInput, UpdateLearningWordInput, UpdateLearningOccurrenceInput, UpdateLearningSettingsInput
+  SaveLearningWordInput, UpdateLearningRunInput, UpdateLearningWordInput, UpdateLearningOccurrenceInput, UpdateLearningSettingsInput,
+  RenameLearningProjectInput, DismissLearningRunInput
 } from '../../../shared/types/learning'
 import { ConflictError, NotFoundError, ValidationError } from '../../db/errors'
 import { assertRealInside, resolveInside } from '../../db/validate'
@@ -30,6 +31,8 @@ const MAX_SOURCE_BYTES = 50 * 1024 * 1024
 
 export interface LearningRepoDeps {
   getCourseFolder(courseId: string): string
+  /** Recovery paths only; ordinary reads and sources still require a live course. */
+  getCourseFolderIncludingDeleted?: (courseId: string) => string
   listCourseIds?: () => string[]
   now?: () => string
   onChanged?: (binding: LearningBinding) => void
@@ -42,8 +45,14 @@ export interface LearningRepointInput {
 export interface LearningRepo {
   create(input: CreateLearningProjectInput): Promise<LearningProjectSnapshot>
   updateSettings(input: UpdateLearningSettingsInput): Promise<LearningProjectSnapshot>
+  rename(input: RenameLearningProjectInput): Promise<LearningProjectSnapshot>
+  delete(input: LearningMutation): Promise<LearningProjectSnapshot>
+  restore(input: LearningMutation): Promise<LearningProjectSnapshot>
+  dismissRun(input: DismissLearningRunInput): Promise<LearningProjectSnapshot>
+  cancelPendingRuns(binding: LearningBinding): Promise<LearningProjectSnapshot>
   read(binding: LearningBinding): Promise<LearningProjectSnapshot>
-  discover(courseId: string): Promise<LearningProjectSummary[]>
+  readDeleted(binding: LearningBinding): Promise<LearningProjectSnapshot>
+  discover(courseId: string, input?: { includeDeleted?: boolean }): Promise<LearningProjectSummary[]>
   readArticle(binding: LearningBinding, id: string): Promise<LearningArticleSnapshot>
   readArtifact(binding: LearningBinding, id: string): Promise<LearningArtifact>
   addArticle(input: AddLearningArticleInput): Promise<LearningProjectSnapshot>
@@ -115,14 +124,14 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
   const queues = new Map<string, Promise<unknown>>()
   const now = deps.now ?? (() => new Date().toISOString())
 
-  function courseFolder(binding: LearningBinding): string {
+  function courseFolder(binding: LearningBinding, includeDeleted = false): string {
     learningString(binding.courseId, 'courseId', 1_000)
-    const folder = deps.getCourseFolder(binding.courseId)
+    const folder = includeDeleted && deps.getCourseFolderIncludingDeleted ? deps.getCourseFolderIncludingDeleted(binding.courseId) : deps.getCourseFolder(binding.courseId)
     if (!existsSync(folder)) throw new NotFoundError('course folder', folder)
     return folder
   }
-  function projectRoot(binding: LearningBinding, allowMissing = false): string {
-    const folder = courseFolder(binding)
+  function projectRoot(binding: LearningBinding, allowMissing = false, includeDeleted = false): string {
+    const folder = courseFolder(binding, includeDeleted)
     const root = assertRealInside(folder, resolveInside(folder, binding.rootRelPath, { allowRoot: true }))
     if (!allowMissing && !existsSync(root)) throw new NotFoundError('learning project', binding.rootRelPath)
     return root
@@ -130,8 +139,8 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
   function pathInside(root: string, relPath: string): string {
     return assertRealInside(root, resolveInside(root, relPath))
   }
-  async function serial<T>(binding: LearningBinding, work: () => Promise<T>, allowMissing = false): Promise<T> {
-    const root = projectRoot(binding, allowMissing)
+  async function serial<T>(binding: LearningBinding, work: () => Promise<T>, allowMissing = false, includeDeleted = false): Promise<T> {
+    const root = projectRoot(binding, allowMissing, includeDeleted)
     const key = existsSync(root) ? realpathSync.native(root) : root
     const previous = queues.get(key) ?? Promise.resolve()
     const task = previous.catch(() => undefined).then(work)
@@ -145,8 +154,8 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
     const bytes = await readFile(path, 'utf8')
     return { bytes, value: JSON.parse(bytes) as unknown }
   }
-  async function load(binding: LearningBinding): Promise<Loaded> {
-    const root = projectRoot(binding)
+  async function load(binding: LearningBinding, includeDeleted = false): Promise<Loaded> {
+    const root = projectRoot(binding, false, includeDeleted)
     let manifest: Record<string, unknown>
     try { manifest = learningObject((await readJsonFile(root, MANIFEST)).value, 'manifest') }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new NotFoundError('learning project', binding.rootRelPath); throw error }
@@ -172,6 +181,9 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
     } catch {
       throw new ValidationError('학습 데이터를 읽지 못했습니다. 원본 파일을 보존했으니 백업을 복원해 주세요.')
     }
+  }
+  function requireActive(state: LearningProjectState): void {
+    if (state.deletedAt) throw new ConflictError('삭제된 학습 공간입니다. 목록에서 복원한 뒤 다시 열어 주세요.')
   }
   async function resolveSourceAvailability(binding: LearningBinding, root: string, sources: LearningSourceRef[], linkedCourseId?: string): Promise<void> {
     const availability = new Map<string, Promise<'available' | 'missing' | 'changed'>>()
@@ -340,19 +352,20 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
     try { deps.onChanged?.(binding) } catch { /* A UI notification cannot undo durable learning data. */ }
     return snapshot(binding, { root: tx.root, state: tx.state, bytes: json(tx.state), recovery: loaded.recovery, warnings })
   }
-  async function mutate(input: LearningMutation, work: (tx: Transaction) => Promise<boolean | void> | boolean | void): Promise<LearningProjectSnapshot> {
+  async function mutate(input: LearningMutation, work: (tx: Transaction) => Promise<boolean | void> | boolean | void, includeDeleted = false): Promise<LearningProjectSnapshot> {
     return serial(input.binding, async () => {
-      const loaded = await load(input.binding)
+      const loaded = await load(input.binding, includeDeleted)
+      if (!includeDeleted) requireActive(loaded.state)
       if (input.expectedRevision !== undefined && input.expectedRevision !== loaded.state.revision) throw new ConflictError('학습 프로젝트가 변경되었습니다. 최신 상태를 불러와 주세요.')
       const tx: Transaction = { state: structuredClone(loaded.state), root: loaded.root, binding: input.binding, now: now(), exports: [], articles: new Map() }
       if (await work(tx) === false) return snapshot(input.binding, loaded)
       return commit(input.binding, loaded, tx)
-    })
+    }, false, includeDeleted)
   }
-  async function addArticle(tx: Transaction, input: LearningArticleInput): Promise<void> {
+  async function addArticle(tx: Transaction, input: LearningArticleInput): Promise<string> {
     let article = normalizeLearningArticle(input, input.id ?? randomUUID(), tx.now)
     const duplicate = tx.state.articles.find((entry) => entry.canonicalUrl === article.canonicalUrl || entry.contentHash === article.contentHash)
-    if (duplicate) return
+    if (duplicate) return duplicate.id
     if (tx.state.articles.some((entry) => entry.id === article.id)) throw new ConflictError('같은 식별자의 다른 기사가 이미 있습니다.')
     const snapshotRelPath = `${LEARNING_DATA_DIR}/articles/${article.id}.json`
     article = await immutable(tx.root, snapshotRelPath, article)
@@ -365,8 +378,9 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
       status: 'unread', progress: { paragraphId: null, scrollFraction: 0 }, completedAt: null, matchedWordIds: wordIds }
     tx.state.articles.push(ref); tx.articles.set(article.id, article)
     history(tx, 'article-added', article.id, `«${article.title}» 기사를 저장했습니다.`)
+    return article.id
   }
-  async function putArtifact(tx: Transaction, input: LearningArtifactDraft): Promise<void> {
+  async function putArtifact(tx: Transaction, input: LearningArtifactDraft): Promise<string> {
     const draft = await validateLearningArtifact(input, context(tx))
     const id = draft.id ?? randomUUID()
     const base = { id, schemaVersion: 1 as const, revision: 1, title: draft.title, createdAt: tx.now,
@@ -390,7 +404,7 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
     if (tx.state.artifacts.some((entry) => entry.id === id)) {
       const existing = await artifactFrom(tx.root, tx.state, id, tx.binding)
       if (contentIdentity(existing) !== contentIdentity(artifact)) throw new ConflictError('같은 식별자의 다른 학습 자료가 이미 있습니다.')
-      return
+      return id
     }
     const relPath = `${LEARNING_DATA_DIR}/artifacts/${id}.json`
     artifact = await immutable(tx.root, relPath, artifact)
@@ -401,9 +415,17 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
       ])].join('\n')
         : [`# ${artifact.title}`, '', ...artifact.cards.flatMap((card) => [`## ${card.front}`, '', card.back, ''])].join('\n')
     const exportRelPath = await exportMarkdown(tx, `복습/${safeName(artifact.title)}-${id.slice(0, 8)}.md`, markdown)
+    const individualSources = artifact.kind === 'quiz' ? artifact.questions.flatMap(question => question.sourceRefs)
+      : artifact.kind === 'cards' ? artifact.cards.flatMap(card => card.sourceRefs) : []
+    // The list needs all origins even when the model only cited individual questions/cards.
+    // Immutable artifact content keeps its original per-item and top-level citations.
+    const sourceRefs = [...new Map([...artifact.sourceRefs, ...individualSources].map(source => [
+      JSON.stringify(Object.entries(source).sort(([a], [b]) => a.localeCompare(b))), source
+    ])).values()]
     const ref: LearningArtifactRef = { id, kind: artifact.kind, title: artifact.title, relPath, exportRelPath, contentHash: learningHash(json(artifact)),
-      createdAt: tx.now, sourceRefs: artifact.sourceRefs, articleIds: artifact.articleIds, wordIds: artifact.wordIds }
+      createdAt: tx.now, sourceRefs, articleIds: artifact.articleIds, wordIds: artifact.wordIds }
     tx.state.artifacts.push(ref); history(tx, 'artifact-created', id, `«${artifact.title}» 학습 자료를 만들었습니다.`)
+    return id
   }
 
   async function saveWord(tx: Transaction, input: LearningWordDraft): Promise<boolean> {
@@ -447,7 +469,10 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
           if (existsSync(join(ancestor, MANIFEST))) throw new ConflictError('학습 프로젝트 안에 다른 프로젝트를 만들 수 없습니다.')
           if (ancestor === course) break
         }
-        if (existsSync(join(root, MANIFEST))) return snapshot(input.binding, await load(input.binding))
+        if (existsSync(join(root, MANIFEST))) {
+          const loaded = await load(input.binding); requireActive(loaded.state)
+          return snapshot(input.binding, loaded)
+        }
         if (existsSync(root)) {
           const descendants = await repo.discover(input.binding.courseId)
           if (descendants.some((entry) => entry.binding.rootRelPath !== input.binding.rootRelPath
@@ -472,7 +497,8 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
             purpose: 'unclassified', topicIds: [], readingSetupConfirmed: false, ...settings,
             createdAt: timestamp, updatedAt: timestamp, articles: [], words: [], occurrences: [], artifacts: [],
             cards: [], quizAttempts: [], runs: [], history: [], exports: [], pathAliases: [] }
-          for (const [relPath, title] of [['단어장.md', '나의 단어장'], ['예문 모음.md', '예문 모음']] as const) {
+          const initialExports: Array<[string, string]> = settings.purpose === 'course-review' ? [] : [['단어장.md', '나의 단어장'], ['예문 모음.md', '예문 모음']]
+          for (const [relPath, title] of initialExports) {
             const path = pathInside(root, relPath)
             if (existsSync(path)) continue
             const markdown = `# ${title}\n\n읽기 화면에서 모르는 표현을 저장하면 이곳에 함께 쌓입니다.\n`
@@ -482,7 +508,7 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
           await atomicWrite(pathInside(root, STATE), json(state))
           await atomicWrite(pathInside(root, PREVIOUS), json(state))
         }
-        for (const directory of ['기사', '학습노트', '복습']) await mkdir(pathInside(root, directory), { recursive: true })
+        for (const directory of settings.purpose === 'course-review' ? ['학습노트', '복습'] : ['기사', '학습노트', '복습']) await mkdir(pathInside(root, directory), { recursive: true })
         await atomicWrite(pathInside(root, MANIFEST), json({ format: 'bandal-learning', formatVersion: 1, projectId: state.projectId }))
         deps.onChanged?.(input.binding)
         return snapshot(input.binding, { root, state, bytes: json(state), recovery: 'none', warnings: [] })
@@ -503,21 +529,52 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
         if (input.readingMinutes !== undefined) tx.state.readingMinutes = learningNumber(input.readingMinutes, 'readingMinutes', 1, 30)
       })
     },
-    async read(binding) { return serial(binding, async () => snapshot(binding, await load(binding))) },
-    async readArticle(binding, id) { return serial(binding, async () => { const loaded = await load(binding); return articleFrom(loaded.root, loaded.state, id) }) },
-    async readArtifact(binding, id) { return serial(binding, async () => { const loaded = await load(binding); return artifactFrom(loaded.root, loaded.state, id, binding) }) },
-    async discover(courseId) {
+    rename(input) {
+      return mutate(input, tx => { tx.state.name = learningString(input.name, 'name', 1_000).trim(); if (!tx.state.name) throw new ValidationError('학습 공간 이름을 입력하세요.') })
+    },
+    delete(input) {
+      return mutate(input, tx => { if (tx.state.deletedAt) return false; tx.state.deletedAt = tx.now }, true)
+    },
+    restore(input) {
+      return mutate(input, tx => { if (!tx.state.deletedAt) return false; tx.state.deletedAt = null }, true)
+    },
+    dismissRun(input) {
+      return mutate(input, tx => {
+        const run = tx.state.runs.find(entry => entry.id === learningId(input.runId, 'runId'))
+        if (!run) throw new NotFoundError('learning run', input.runId)
+        if (!['failed', 'interrupted', 'cancelled'].includes(run.status)) throw new ConflictError('종료된 실패 알림만 숨길 수 있습니다.')
+        if (run.dismissedAt) return false
+        run.dismissedAt = tx.now
+      })
+    },
+    cancelPendingRuns(binding) {
+      return mutate({ binding }, tx => {
+        let changed = false
+        for (const run of tx.state.runs) if (['queued', 'running', 'validating', 'awaiting-confirmation'].includes(run.status)) {
+          Object.assign(run, { status: 'cancelled', draft: null, error: null, errorCode: 'cancelled', errorCategory: 'cancelled',
+            message: '학습 공간이 닫혀 작업을 중지했어요.', updatedAt: tx.now })
+          changed = true
+        }
+        return changed
+      }, true)
+    },
+    async read(binding) { return serial(binding, async () => { const loaded = await load(binding); requireActive(loaded.state); return snapshot(binding, loaded) }) },
+    async readDeleted(binding) { return serial(binding, async () => snapshot(binding, await load(binding, true)), false, true) },
+    async readArticle(binding, id) { return serial(binding, async () => { const loaded = await load(binding); requireActive(loaded.state); return articleFrom(loaded.root, loaded.state, id) }) },
+    async readArtifact(binding, id) { return serial(binding, async () => { const loaded = await load(binding); requireActive(loaded.state); return artifactFrom(loaded.root, loaded.state, id, binding) }) },
+    async discover(courseId, input = {}) {
       const binding = { courseId, rootRelPath: '' }
-      const course = courseFolder(binding)
+      const course = courseFolder(binding, input.includeDeleted)
       const found: LearningProjectSummary[] = []
       let count = 0
       async function walk(rootRelPath: string, depth: number): Promise<void> {
         if (depth > 12 || count >= 20_000) return
-        const root = projectRoot({ courseId, rootRelPath })
+        const root = projectRoot({ courseId, rootRelPath }, false, input.includeDeleted)
         if (existsSync(join(root, MANIFEST))) {
           const projectBinding = { courseId, rootRelPath }
           try {
-            const loaded = await load(projectBinding); const state = loaded.state
+            const loaded = await load(projectBinding, input.includeDeleted); const state = loaded.state
+            if (state.deletedAt && !input.includeDeleted) return
             found.push({ binding: projectBinding, projectId: state.projectId, name: state.name, topic: state.topic,
               purpose: state.purpose ?? 'unclassified', topicIds: state.topicIds ?? [], readingSetupConfirmed: state.readingSetupConfirmed ?? false,
               ...(state.ai ? { ai: state.ai } : {}), ...(state.linkedCourseId ? { linkedCourseId: state.linkedCourseId } : {}), ...(state.packId ? { packId: state.packId } : {}),
@@ -525,7 +582,7 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
               completedArticleCount: state.articles.filter((article) => article.status === 'completed').length,
               wordCount: state.words.length, knownWordCount: state.words.filter((word) => word.status === 'known').length,
               dueCardCount: state.cards.filter((card) => Date.parse(card.dueAt) <= Date.parse(now())).length,
-              updatedAt: state.updatedAt, warning: loaded.warnings[0] ?? null })
+              updatedAt: state.updatedAt, warning: loaded.warnings[0] ?? null, ...(state.deletedAt ? { deletedAt: state.deletedAt } : {}) })
           } catch (error) {
             found.push({ binding: projectBinding, projectId: '', name: basename(root), topic: '', purpose: 'unclassified', topicIds: [], readingSetupConfirmed: false, level: 'intermediate',
               readingMinutes: 5, articleCount: 0, completedArticleCount: 0, wordCount: 0, knownWordCount: 0,
@@ -676,9 +733,11 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
         if (run && !['validating', 'awaiting-confirmation'].includes(run.status)) throw new ConflictError('저장 가능한 학습 작업 상태가 아닙니다.')
         const validation = context(tx)
         const draft = await normalizeLearningDraft(input.draft, tx.state, validation.readArticle, validation.validateMaterial)
-        for (const article of draft.articles ?? []) await addArticle(tx, article)
+        const resultArticleIds: string[] = []
+        const resultArtifactIds: string[] = []
+        for (const article of draft.articles ?? []) resultArticleIds.push(await addArticle(tx, article))
         for (const word of draft.words ?? []) await saveWord(tx, word)
-        for (const artifact of draft.artifacts ?? []) await putArtifact(tx, artifact)
+        for (const artifact of draft.artifacts ?? []) resultArtifactIds.push(await putArtifact(tx, artifact))
         for (const update of draft.wordUpdates ?? []) {
           const word = tx.state.words.find((entry) => entry.id === update.wordId)!
           word.meaning = update.meaning
@@ -691,12 +750,14 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
         if (draft.wordUpdates?.length || draft.words?.length) await vocabularyExport(tx)
         if (run) {
           run.status = 'complete'; run.updatedAt = tx.now; run.draft = null; run.error = null; run.message = '학습 자료가 준비되었어요.'
+          run.resultArticleIds = [...new Set(resultArticleIds)]; run.resultArtifactIds = [...new Set(resultArtifactIds)]
         }
       })
     },
     async validateDraft(binding, draft) {
       return serial(binding, async () => {
         const loaded = await load(binding)
+        requireActive(loaded.state)
         const tx: Transaction = { state: loaded.state, root: loaded.root, binding, now: now(), articles: new Map(), exports: [] }
         const validation = context(tx)
         return normalizeLearningDraft(draft, loaded.state, validation.readArticle, validation.validateMaterial)
@@ -706,7 +767,7 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
       // Called after filesystem rename. Rediscovery naturally mounts a moved project root.
       const projects: LearningProjectSummary[] = []
       for (const courseId of new Set([input.courseId, ...(deps.listCourseIds?.() ?? [])])) {
-        try { projects.push(...await repo.discover(courseId)) } catch { /* Missing linked folders retain their records. */ }
+        try { projects.push(...await repo.discover(courseId, { includeDeleted: true })) } catch { /* Missing linked folders retain their records. */ }
       }
       for (const project of projects) {
         const ownsPaths = project.binding.courseId === input.courseId
@@ -754,7 +815,7 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
             isDirectory: input.isDirectory, scope: 'project' })
           changed = true
           return changed
-        })
+        }, true)
       }
     }
   }

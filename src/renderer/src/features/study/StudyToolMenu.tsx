@@ -8,7 +8,7 @@ import {
 } from './studyToolsStore'
 import './study.css'
 import { requestLearningProjectPicker } from '../learning/LearningDialogsHost'
-import { executeFeatureAction, featureActionDisabledReason, studyToolFeatureEntry } from '../launcher/featureActions'
+import { requestFeatureAction, featureActionDisabledReason, studyToolFeatureEntry } from '../launcher/featureActions'
 import { studyTargetContext } from '../launcher/launcherContext'
 
 interface MenuPosition {
@@ -191,7 +191,7 @@ export function StudyToolMenu(props: StudyToolMenuProps): JSX.Element {
   const runTool = (tool: PackStudyToolDefinition, followUp = false): void => {
     const context = studyTargetContext(courseId, relPath, selection)
     const scope = selection?.trim() ? 'selection' : relPath === null ? 'course' : 'material'
-    void executeFeatureAction(studyToolFeatureEntry(tool), context, scope, { followUp }).then(result => {
+    void requestFeatureAction(studyToolFeatureEntry(tool), context, { scope, followUp }).then(result => {
       if (result.status === 'needs-project-picker') requestLearningProjectPicker(result.projects)
       showToast(result.message, result.status === 'failed' || result.status === 'needs-course' ? 'danger' : 'info')
     })

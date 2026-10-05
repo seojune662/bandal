@@ -11,6 +11,7 @@ import { showToast } from '../../app/toast'
 import { invoke } from '../../lib/ipc'
 import { useMaterialsStore } from '../../stores/materialsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
+import { useCoursesStore } from '../../stores/coursesStore'
 import { descriptorFor } from './tabIdentity'
 import { isViewableFile } from '../file/fileFormats'
 
@@ -71,6 +72,13 @@ export function openMaterialInCourse(
   options?: OpenMaterialOptions
 ): void {
   const openTab = (descriptor: TabDescriptor): void => {
+    const courses = useCoursesStore.getState()
+    if (!courses.courses.some(course => course.id === courseId)) {
+      showToast('원본 과목을 찾을 수 없어요.', 'danger')
+      return
+    }
+    courses.selectCourse(courseId)
+    useWorkspaceStore.getState().showCourseWorkspace(courseId)
     if (options?.newInstance === true) {
       useWorkspaceStore.getState().openTab(descriptor, { newInstance: true })
       return

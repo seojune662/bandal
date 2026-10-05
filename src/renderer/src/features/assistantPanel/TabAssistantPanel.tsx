@@ -17,6 +17,11 @@ const ChatSurface = lazy(() => import('../chat/ChatSurface').then(m => ({ defaul
 export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelProps>): FunctionComponent<IDockviewPanelProps> {
   return function AssistantPanel(props) {
     const descriptor = isTabDescriptor(props.params.descriptor) ? props.params.descriptor : null
+    const [panelTitle, setPanelTitle] = useState(props.api.title ?? '')
+    useEffect(() => {
+      const subscription = props.api.onDidTitleChange?.(event => setPanelTitle(event.title))
+      return () => subscription?.dispose()
+    }, [props.api])
     const selectedCourseId = useCoursesStore(s => s.selectedCourseId)
     const active = usePanelActive(props.api)
     const [state, setState] = useState(() => normalizeAssistantPanel(props.params.assistant))
@@ -47,7 +52,7 @@ export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelPr
       if (!descriptor || !courseId || descriptor.kind === 'chat') return
       return registerDocumentContext(props.api.id, () => {
         const nav = descriptor.kind === 'browser' ? useBrowserGuests.getState().nav[descriptor.payload.tabId] : null
-        return { courseId, documentId: props.api.id, kind: descriptor.kind, title: nav?.title || tabTitle(descriptor),
+        return { courseId, documentId: props.api.id, kind: descriptor.kind, title: nav?.title || (descriptor.kind === 'learning' ? props.api.title || '학습 공간' : tabTitle(descriptor)),
           ...('relPath' in descriptor.payload ? { relPath: descriptor.payload.relPath } : {}),
           ...(descriptor.kind === 'browser' ? { browserTabId: descriptor.payload.tabId, url: nav?.url || descriptor.payload.initialUrl } : {}),
           ...(selection.current ? { selection: selection.current } : {}) }
@@ -109,7 +114,7 @@ export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelPr
     return <PanelAssistantContext.Provider value={context}>
       <div className="tab-with-assistant" ref={root} data-assistant-open={state.open} data-assistant-overlay={overlay}>
         <div className="tab-document">
-          <div className="tab-assistant-launchbar"><span>{descriptor ? tabTitle(descriptor) : '현재 자료'}</span><button type="button" className="tab-assistant-toggle" data-tour="assistant-panel-toggle" aria-expanded={state.open} aria-label={state.open ? 'AI 보조 사이드바 접기' : 'AI 보조 사이드바 펼치기'} onClick={() => state.open ? close() : show()}>✦ <span>AI</span></button></div>
+          <div className="tab-assistant-launchbar"><span>{descriptor?.kind === 'learning' ? panelTitle || '학습 공간' : descriptor ? tabTitle(descriptor) : '현재 자료'}</span><button type="button" className="tab-assistant-toggle" data-tour="assistant-panel-toggle" aria-expanded={state.open} aria-label={state.open ? 'AI 보조 사이드바 접기' : 'AI 보조 사이드바 펼치기'} onClick={() => state.open ? close() : show()}>✦ <span>AI</span></button></div>
           <div className="tab-document-content"><Component {...props} /></div>
         </div>
         {initialized && <aside hidden={!state.open} className="tab-assistant" role={overlay ? 'dialog' : 'complementary'} aria-label="탭 보조 사이드바" style={{ width: Math.min(state.width, availableWidth) }}>

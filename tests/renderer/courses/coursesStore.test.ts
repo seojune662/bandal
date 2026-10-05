@@ -2,13 +2,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Course } from '../../../src/shared/types/course'
 
 const workspaceMocks = vi.hoisted(() => ({
-  discardPendingSave: vi.fn()
+  discardPendingSave: vi.fn(), showCourseWorkspace: vi.fn(), setActiveCourse: vi.fn()
 }))
 
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   useWorkspaceStore: {
     getState: () => ({
-      discardPendingSave: workspaceMocks.discardPendingSave
+      discardPendingSave: workspaceMocks.discardPendingSave,
+      showCourseWorkspace: workspaceMocks.showCourseWorkspace,
+      setActiveCourse: workspaceMocks.setActiveCourse, surface: 'learning-home'
     })
   }
 }))
@@ -52,6 +54,8 @@ beforeEach(() => {
   } as unknown as IpcAdapter)
   resetSettingsSnapshotForTests()
   workspaceMocks.discardPendingSave.mockReset()
+  workspaceMocks.showCourseWorkspace.mockReset()
+  workspaceMocks.setActiveCourse.mockReset()
   useCoursesStore.setState({
     courses: [],
     groups: [],
@@ -70,6 +74,19 @@ afterEach(() => {
 })
 
 describe('coursesStore selection persistence', () => {
+  test('selecting the same course returns from global home even when its selected ID has not changed', () => {
+    useCoursesStore.setState({ courses: [course('c1', 0)], selectedCourseId: 'c1' })
+    useCoursesStore.getState().selectCourse('c1')
+    expect(workspaceMocks.showCourseWorkspace).toHaveBeenCalledWith('c1')
+  })
+  test('automatic repair after a deleted selected workspace preserves the global home surface', async () => {
+    useCoursesStore.setState({ courses: [], selectedCourseId: 'deleted' })
+    invokeMock.mockImplementation(async channel => channel === 'courses:list' ? [course('c1', 0)] : channel === 'courseGroups:list' ? [] : {})
+    await useCoursesStore.getState().loadCourses()
+    expect(useCoursesStore.getState().selectedCourseId).toBe('c1')
+    expect(workspaceMocks.setActiveCourse).toHaveBeenCalledWith('c1')
+    expect(workspaceMocks.showCourseWorkspace).not.toHaveBeenCalled()
+  })
   test('persists a newly created course through the selectCourse path', async () => {
     const created = course('c1', 0)
     invokeMock.mockResolvedValue(created)

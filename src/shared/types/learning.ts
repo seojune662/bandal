@@ -168,6 +168,11 @@ export interface LearningRun {
   errorCode?: string
   errorCategory?: 'connection' | 'model' | 'quota' | 'network' | 'tool' | 'source' | 'validation' | 'timeout' | 'cancelled' | 'unknown'
   actionable?: string
+  /** Hides a terminal failure notice without discarding the execution history. */
+  dismissedAt?: string | null
+  /** Exact host-published results, distinct from input/source IDs. */
+  resultArticleIds?: string[]
+  resultArtifactIds?: string[]
   source?: LearningRunSource
   message: string; error: string | null; draft: LearningDraft | null
   createdAt: string; updatedAt: string
@@ -180,6 +185,8 @@ export interface LearningProjectState extends Partial<LearningProjectSettings> {
   schemaVersion: 1; projectId: string; revision: number
   name: string; topic: string; level: LearningLevel; readingMinutes: number
   createdAt: string; updatedAt: string
+  /** List removal is portable and retains every article, result and export. */
+  deletedAt?: string | null
   articles: LearningArticleRef[]; words: LearningWord[]; occurrences: LearningOccurrence[]
   artifacts: LearningArtifactRef[]; cards: LearningCard[]; quizAttempts: LearningQuizAttempt[]
   runs: LearningRun[]; history: LearningHistoryEntry[]
@@ -197,8 +204,11 @@ export interface LearningProjectSummary extends Partial<LearningProjectSettings>
   level: LearningLevel; readingMinutes: number; articleCount: number; completedArticleCount: number
   wordCount: number; knownWordCount: number; dueCardCount: number; updatedAt: string
   warning: string | null
+  deletedAt?: string | null
 }
 export interface LearningMutation { binding: LearningBinding; expectedRevision?: number }
+export interface RenameLearningProjectInput extends LearningMutation { name: string }
+export interface DismissLearningRunInput extends LearningMutation { runId: string }
 export interface CreateLearningProjectInput extends LearningMutation, Partial<LearningProjectSettings> {
   name: string; topic: string; level?: LearningLevel; readingMinutes?: number
 }

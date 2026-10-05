@@ -67,6 +67,7 @@ export function resolveLauncherContext(input: ContextSources): LauncherContext {
 
 function currentContext(): LauncherContext {
   const workspace = useWorkspaceStore.getState()
+  if (workspace.surface === 'learning-home') return { ...EMPTY_LAUNCHER_CONTEXT, articleIds: [], wordIds: [] }
   const courses = useCoursesStore.getState()
   const source = workspace.activePanelSource()
   const browserNav = source?.descriptor.kind === 'browser' ? useBrowserGuests.getState().nav[source.descriptor.payload.tabId] : undefined
@@ -164,6 +165,7 @@ export function prepareLauncherContext(): void { void captureLauncherContext() }
 
 /** Refresh the pinned source; never substitute the tab focused after opening. */
 export async function refreshLauncherContext(context: LauncherContext): Promise<LauncherContext> {
+  if (useWorkspaceStore.getState().surface === 'learning-home' && context.sourcePanelId) throw new Error('자료가 숨겨졌어요. 원본 자료를 다시 열고 실행해 주세요.')
   if (context.sourceUnavailable) throw new Error('원본 자료를 확인할 수 없어요. 현재 자료를 다시 선택해 주세요.')
   if (context.sourcePanelId) {
     const workspace = useWorkspaceStore.getState()
@@ -185,6 +187,7 @@ export function useLauncherContext(): LauncherContextState {
   const state = useContextState()
   const panelId = useWorkspaceStore(workspace => workspace.activePanelId)
   const hydration = useWorkspaceStore(workspace => workspace.hydration)
+  const surface = useWorkspaceStore(workspace => workspace.surface)
   const descriptorKey = useWorkspaceStore(workspace => {
     const descriptor = workspace.activePanelId ? workspace.openTabs[workspace.activePanelId] : undefined
     return descriptor ? JSON.stringify(descriptor) : null
@@ -194,7 +197,7 @@ export function useLauncherContext(): LauncherContextState {
   const url = useBrowserGuests(guests => browserTabId ? guests.nav[browserTabId]?.url : undefined)
   useEffect(() => {
     if (!captured || state.context.sourcePanelId !== panelId || state.context.courseId !== courseId || (url && url !== state.context.browser?.url) || (descriptorKey !== null && descriptorKey !== JSON.stringify(state.context.descriptor))) prepareLauncherContext()
-  }, [panelId, hydration, courseId, url, descriptorKey])
+  }, [panelId, hydration, courseId, url, descriptorKey, surface])
   useEffect(() => onPush('learning:changed', event => {
     const binding = useContextState.getState().context.binding
     if (binding?.courseId === event.binding.courseId && binding.rootRelPath === event.binding.rootRelPath) prepareLauncherContext()

@@ -92,9 +92,9 @@ test('CSS-only appearance edits select the shell regressions without backend che
 
 test('launcher entries select context and rail checks without unrelated appearance or calendar suites', () => {
   const feature = planChecks(['src/renderer/src/features/launcher/featureActions.ts', 'src/renderer/src/stores/workflowPacksStore.ts'])
-  assert.deepEqual(feature.e2e, ['e2e/featureLauncher.spec.ts'])
+  assert.deepEqual(feature.e2e, ['e2e/featureLauncher.spec.ts', 'e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts'])
   const shell = planChecks(['src/renderer/src/app/GlobalNavigation.tsx', 'src/renderer/src/app/AppShell.tsx'])
-  assert.deepEqual(new Set(shell.e2e), new Set(['e2e/featureLauncher.spec.ts', 'e2e/sidebars.spec.ts', 'e2e/settingsShell.spec.ts']))
+  assert.deepEqual(new Set(shell.e2e), new Set(['e2e/featureLauncher.spec.ts', 'e2e/sidebars.spec.ts', 'e2e/settingsShell.spec.ts', 'e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts']))
   assert.ok(!shell.scriptTests.includes('scripts/check-contrast.mjs'))
   assert.deepEqual(planChecks(['src/renderer/src/features/settings/PacksPanel.tsx']).e2e, ['e2e/featureLauncher.spec.ts'])
   const mixed = planChecks(['src/renderer/src/app/GlobalNavigation.tsx', 'src/renderer/src/styles/tokens.css'])
@@ -168,7 +168,9 @@ test('browser settings avoid unrelated global appearance checks', () => {
 test('workspace styles, state and tab types cover dragging across app surfaces', () => {
   for (const file of ['src/renderer/src/features/workspace/workspace.css', 'src/renderer/src/features/workspace/tabDragSession.ts', 'src/renderer/src/stores/workspaceStore.ts', 'src/shared/tabs.ts']) {
     const plan = planChecks([file])
-    assert.deepEqual(new Set(plan.e2e), new Set(['tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance'].map(spec => `e2e/${spec}.spec.ts`)), file)
+    const specs = ['tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance']
+    if (file.endsWith('workspaceStore.ts')) specs.push('learningManagement', 'learningNavigation')
+    assert.deepEqual(new Set(plan.e2e), new Set(specs.map(spec => `e2e/${spec}.spec.ts`)), file)
     assert.equal(plan.full, false, file)
   }
   const css = planChecks(['src/renderer/src/features/workspace/workspace.css'])
@@ -220,7 +222,9 @@ test('learning experience changes select their native package regression includi
   ]) {
     const plan = planChecks([file])
     assert.equal(plan.full, false, file)
-    assert.deepEqual(plan.e2e, ['e2e/learning.spec.ts', 'e2e/learningSpaces.spec.ts'], file)
+    const expected = ['e2e/learning.spec.ts', 'e2e/learningSpaces.spec.ts']
+    if (file.includes('renderer/src/features/learning/') || file.endsWith('learningHandlers.ts')) expected.push('e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts')
+    assert.deepEqual(plan.e2e, expected, file)
   }
   assert.ok(planChecks(['pnpm-lock.yaml']).e2e.includes('e2e/learning.spec.ts'))
   assert.ok(!planChecks(['src/main/features/materials/materialsRepo.ts']).e2e.includes('e2e/learning.spec.ts'))

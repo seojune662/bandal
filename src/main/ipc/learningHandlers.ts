@@ -4,7 +4,7 @@ import type { LearningIpcContract, LearningGenerationSource } from '../../shared
 import type { LearningBinding, LearningSourceRef, StartLearningRunInput, LearningAiSettings } from '../../shared/types/learning'
 import type { WorkflowPack, WorkflowPackV2, WorkflowPackScope } from '../../shared/types/workflowPack'
 import type { Course, WorkspaceKind } from '../../shared/types/course'
-import { ValidationError } from '../db/errors'
+import { ConflictError, ValidationError } from '../db/errors'
 import { requireId, requireNonEmptyString, resolveInside } from '../db/validate'
 import { learningString, learningNumber, normalizeLearningArticle, validateLearningSettings, validateLearningAi, requireEnglishReadingSettings } from '../features/learning/validation'
 import type { LearningRepo } from '../features/learning/learningRepo'
@@ -19,11 +19,14 @@ interface LearningHandlerDeps {
   runtime: ReturnType<typeof createLearningRuntime>
   extractor: ReturnType<typeof createArticleExtractor>
   cache: ReturnType<typeof createLearningCache>
-  courses: { create(input: { name: string; color: string; workspaceKind?: WorkspaceKind }): Course; setWorkspaceKind(courseId: string, kind: WorkspaceKind): Course; list(input?: { includeArchived?: boolean }): Course[]; getById(id: string): Course }
+  courses: { create(input: { name: string; color: string; workspaceKind?: WorkspaceKind }): Course; setWorkspaceKind(courseId: string, kind: WorkspaceKind): Course; list(input?: { includeArchived?: boolean; includeDeleted?: boolean }): Course[]; getById(id: string): Course;
+    getByIdIncludingDeleted(id: string): Course; rename(input: { courseId: string; name: string }): Course;
+    softDelete(input: { courseId: string }): { ok: true }; restore(input: { courseId: string }): Course }
   resolvePack(id: string): WorkflowPack | null
   approvePack(id: string, courseId: string): Promise<void>
   validateAi?(ai: LearningAiSettings): Promise<LearningAiSettings>
   changedCourse(): void
+  deletedCourse?(courseId: string): void
   assertSourceTab(courseId: string, tabId: string, url: string): void
   resolveSource(binding: LearningBinding, ref: LearningSourceRef): Promise<{ relPath: string | null; missing: boolean; sourceCourseId?: string }>
   validateDraft?(binding: LearningBinding, draft: unknown): Promise<import('../../shared/types/learning').LearningDraft>
@@ -56,7 +59,9 @@ export function registerLearningHandlers(handle: Handler, deps: LearningHandlerD
     const task = (async () => {
       const original = deps.courses.getById(requireId(courseId, 'courseId'))
       if (original.workspaceKind === 'study-space') throw new ValidationError('복습할 원본 과목을 선택하세요.')
-      for (const course of deps.courses.list()) {
+      // An explicitly restored old space must not replace the newer default.
+      const spaces = deps.courses.list().sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.sortOrder - a.sortOrder)
+      for (const course of spaces) {
         if (course.missing || course.workspaceKind !== 'study-space') continue
         const projects = await deps.repo.discover(course.id)
         const existing = projects.find(project => !project.warning && project.purpose === 'course-review' && project.linkedCourseId === courseId && project.binding.rootRelPath === '')
@@ -84,17 +89,78 @@ export function registerLearningHandlers(handle: Handler, deps: LearningHandlerD
     deps.courses.getById(sourceCourseId)
   }
   handle('learning:list', async input => {
-    if (input.courseId) deps.courses.getById(input.courseId)
-    const courses = deps.courses.list()
+    if (input.courseId) input.includeDeleted ? deps.courses.getByIdIncludingDeleted(input.courseId) : deps.courses.getById(input.courseId)
+    const courses = deps.courses.list(input.includeDeleted ? { includeDeleted: true } : {})
     const projects = []
     for (const course of courses) {
-      if (course.missing) continue
-      const found = await deps.repo.discover(course.id)
-      deps.cache.replaceCourse(course.id, found)
+      if (course.missing || (course.deletedAt && course.workspaceKind !== 'study-space')) continue
+      const found = await deps.repo.discover(course.id, { includeDeleted: input.includeDeleted === true })
+      if (course.deletedAt) for (const project of found) project.deletedAt ??= course.deletedAt
+      deps.cache.replaceCourse(course.id, found.filter(project => !project.deletedAt))
       projects.push(...found.filter(project => !input.courseId || project.binding.courseId === input.courseId || project.linkedCourseId === input.courseId))
     }
     return { projects }
   })
+  function assertRevision(input: { expectedRevision?: number }, current: { revision: number }): void {
+    if (input.expectedRevision !== undefined && input.expectedRevision !== current.revision) throw new ConflictError('학습 공간이 변경되었습니다. 최신 상태를 불러와 주세요.')
+  }
+  const lifecycleRequests = new Map<string, Promise<unknown>>()
+  async function lifecycle<T>(binding: LearningBinding, work: () => Promise<T>): Promise<T> {
+    const key = JSON.stringify([binding.courseId, posix.normalize(binding.rootRelPath || '.')])
+    const previous = lifecycleRequests.get(key) ?? Promise.resolve()
+    const task = previous.catch(() => undefined).then(work)
+    lifecycleRequests.set(key, task)
+    try { return await task } finally { if (lifecycleRequests.get(key) === task) lifecycleRequests.delete(key) }
+  }
+  handle('learning:rename', input => lifecycle(input.binding, async () => {
+    const name = learningString(input.name, 'name', 1_000).trim()
+    if (!name) throw new ValidationError('학습 공간 이름을 입력하세요.')
+    const current = await deps.repo.read(input.binding)
+    assertRevision(input, current)
+    const course = deps.courses.getById(input.binding.courseId)
+    const saved = await deps.repo.rename({ ...input, name, expectedRevision: input.expectedRevision ?? current.revision })
+    if (input.binding.rootRelPath === '' && course.workspaceKind === 'study-space') {
+      deps.courses.rename({ courseId: course.id, name }); deps.changedCourse()
+    }
+    return saved
+  }))
+  handle('learning:delete', input => lifecycle(input.binding, async () => {
+    const current = await deps.repo.readDeleted(input.binding)
+    assertRevision(input, current)
+    return deps.runtime.withProjectPaused(input.binding, async () => {
+      const latest = await deps.repo.readDeleted(input.binding)
+      const course = deps.courses.getByIdIncludingDeleted(input.binding.courseId)
+      const saved = await deps.repo.delete({ binding: input.binding, expectedRevision: latest.revision })
+      deps.cache.index(saved)
+      if (input.binding.rootRelPath === '' && course.workspaceKind === 'study-space' && !course.deletedAt) {
+        deps.courses.softDelete({ courseId: course.id }); deps.deletedCourse?.(course.id); deps.changedCourse()
+      }
+      return { ok: true as const }
+    })
+  }))
+  handle('learning:restore', input => lifecycle(input.binding, async () => {
+    const current = await deps.repo.readDeleted(input.binding)
+    assertRevision(input, current)
+    return deps.runtime.withProjectPaused(input.binding, async () => {
+      const course = deps.courses.getByIdIncludingDeleted(input.binding.courseId)
+      const restoreCourse = input.binding.rootRelPath === '' && course.workspaceKind === 'study-space' && !!course.deletedAt
+      if (course.deletedAt && !restoreCourse) throw new ValidationError('원본 과목을 먼저 복원해야 합니다.')
+      if (restoreCourse) deps.courses.restore({ courseId: course.id })
+      try {
+        const latest = await deps.repo.readDeleted(input.binding)
+        const saved = await deps.repo.restore({ binding: input.binding, expectedRevision: latest.revision })
+        deps.cache.index(saved)
+        if (input.binding.rootRelPath === '' && course.workspaceKind === 'study-space') {
+          deps.courses.rename({ courseId: course.id, name: saved.name }); deps.changedCourse()
+        }
+        return saved
+      } catch (error) {
+        if (restoreCourse) { deps.courses.softDelete({ courseId: course.id }); deps.changedCourse() }
+        throw error
+      }
+    })
+  }))
+  handle('learning:dismissRun', input => deps.repo.dismissRun(input))
   handle('learning:create', async input => {
     if (!['standalone', 'in-course'].includes(input.placement)) throw new ValidationError('학습 공간 위치를 선택하세요.')
     const name = requireNonEmptyString(input.name, 'name')

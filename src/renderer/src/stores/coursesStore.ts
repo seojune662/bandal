@@ -23,7 +23,7 @@ interface CoursesState {
   pendingCourseId: string | null
   error: string | null
   loadCourses: () => Promise<void>
-  selectCourse: (courseId: string | null) => void
+  selectCourse: (courseId: string | null, options?: { preserveSurface?: boolean }) => void
   createGroup: (name: string) => Promise<CourseGroup>
   renameGroup: (groupId: string, name: string) => Promise<CourseGroup>
   /** 그룹만 지운다 — 멤버 과목은 그룹 해제될 뿐 삭제되지 않는다. */
@@ -156,7 +156,7 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
             courses.some((course) => course.id === settings.lastActiveCourseId)
               ? settings.lastActiveCourseId
               : null
-          get().selectCourse(remembered ?? courses[0]?.id ?? null)
+          get().selectCourse(remembered ?? courses[0]?.id ?? null, { preserveSurface: useWorkspaceStore.getState().surface === 'learning-home' })
         }
         // [Gap B] 부팅에서 고른 과목도 영속 — 안 그러면 과목을 한 번도
         // 전환하지 않은 사용자는 lastActiveCourseId 가 영영 비어 있다.
@@ -252,7 +252,7 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
       }
     },
 
-    selectCourse: (courseId) => {
+    selectCourse: (courseId, options) => {
       if (
         courseId !== null &&
         !get().courses.some((course) => course.id === courseId)
@@ -262,6 +262,8 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
       set((state) => {
         state.selectedCourseId = courseId
       })
+      if (options?.preserveSurface) useWorkspaceStore.getState().setActiveCourse(courseId)
+      else useWorkspaceStore.getState().showCourseWorkspace(courseId)
       // [R3] 다음 부팅의 복원용. 값이 같으면 쓰지 않는다(디바운스 내부 처리).
       if (courseId !== null) persistLastActiveCourse(courseId)
     },

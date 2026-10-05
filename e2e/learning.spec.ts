@@ -36,12 +36,13 @@ test('native learning keeps article evidence, quiz results, card schedules and e
     await isolateProvider(bandal)
     let page = bandal.page
     await page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: '학습', exact: true }).click()
-    await page.getByRole('complementary', { name: '학습 공간 목록' }).getByRole('button', { name: '영어 이어읽기 시작하기', exact: true }).click()
+    await page.getByRole('complementary', { name: '학습 공간 목록' }).getByRole('button', { name: '새 학습', exact: true }).click()
+    await page.getByRole('dialog', { name: '새 학습', exact: true }).getByRole('button', { name: '영어 글 읽기', exact: false }).click()
     const dialog = page.getByRole('dialog', { name: '영어 이어읽기 시작하기' })
     await expect(dialog).toBeVisible()
     await expect(dialog.getByLabel('한 편의 읽기 시간')).toHaveValue('')
     await configureEnglishForm(dialog, '도시의 회복력', '사회·문화')
-    await dialog.getByRole('button', { name: '학습 공간 만들기', exact: true }).click()
+    await dialog.getByRole('button', { name: '공간 만들고 첫 글 찾기', exact: true }).click()
     await expect(dialog).toBeHidden()
     await expect(page.locator('.learning-topbar:visible')).toContainText('도시의 회복력')
     const course = await page.evaluate(async () => (await window.bandal.invoke('courses:list', {})).find(item => item.name === '도시의 회복력')!)
@@ -167,14 +168,15 @@ test('creates a standalone space in a short zoomed window and preserves renamed 
     await isolateProvider(bandal)
     await createCourse(bandal.page, '영어 자료')
     await bandal.page.getByRole('navigation', { name: '앱 메뉴' }).getByRole('button', { name: '학습', exact: true }).click()
-    await bandal.page.getByRole('complementary', { name: '학습 공간 목록' }).getByRole('button', { name: '영어 이어읽기 시작하기', exact: true }).click()
+    await bandal.page.getByRole('complementary', { name: '학습 공간 목록' }).getByRole('button', { name: '새 학습', exact: true }).click()
+    await bandal.page.getByRole('dialog', { name: '새 학습', exact: true }).getByRole('button', { name: '영어 글 읽기', exact: false }).click()
     const dialog = bandal.page.getByRole('dialog', { name: '영어 이어읽기 시작하기' })
     await bandal.app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows().find(candidate => candidate.webContents.getURL().includes('index.html'))!
       window.setContentSize(1024, 640)
       window.webContents.setZoomFactor(1.25)
     })
-    const createButton = dialog.getByRole('button', { name: '학습 공간 만들기', exact: true })
+    const createButton = dialog.getByRole('button', { name: '공간 만들고 첫 글 찾기', exact: true })
     const expectInside = async (): Promise<void> => {
       await expect.poll(() => createButton.evaluate(button => {
         const bounds = button.getBoundingClientRect()

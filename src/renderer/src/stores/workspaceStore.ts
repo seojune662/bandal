@@ -21,6 +21,7 @@ import { create } from 'zustand'
 import type { DockviewApi, IDockviewPanel } from 'dockview'
 import { isTabDescriptor } from '../../../shared/tabs'
 import type { TabDescriptor } from '../../../shared/tabs'
+import type { LearningBinding } from '../../../shared/types/learning'
 import { isPageNoteSource } from '../../../shared/pdfPageNote'
 import { showToast } from '../app/toast'
 import { invoke } from '../lib/ipc'
@@ -41,8 +42,15 @@ import {
 } from '../features/workspace/layoutPersistence'
 
 export type WorkspaceHydration = 'idle' | 'loading' | 'ready'
+export type WorkspaceSurface = 'course' | 'learning-home'
 
 interface WorkspaceState {
+  /** Global home keeps the selected course and its live layout intact. */
+  surface: WorkspaceSurface
+  showLearningHome: () => void
+  showCourseWorkspace: (courseId: string | null) => void
+  prepareCloseLearningSpace: (binding: LearningBinding, standalone: boolean) => Promise<boolean>
+  closeLearningSpace: (binding: LearningBinding, standalone: boolean) => Promise<boolean>
   /** Course whose layout is (being) mounted; null = no course selected. */
   activeCourseId: string | null
   /** Actual Dockview identity, including duplicate instances. */
@@ -188,8 +196,9 @@ function clearSaveTimer(): void {
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
+  let replayingOpens = false
   const syncActivePanel = (): void => {
-    const activePanelId = get().hydration === 'ready' ? api?.activePanel?.id ?? null : null
+    const activePanelId = get().surface === 'course' && get().hydration === 'ready' ? api?.activePanel?.id ?? null : null
     if (get().activePanelId !== activePanelId) set({ activePanelId })
   }
   const bindApi = (nextApi: DockviewApi | null): void => {
@@ -239,7 +248,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
   const replayOpens = (courseId: string): void => {
     const queued = pendingOpens.get(courseId) ?? []
     pendingOpens.delete(courseId)
-    for (const open of queued) open()
+    replayingOpens = true
+    try { for (const open of queued) open() } finally { replayingOpens = false }
   }
 
   const saveIsPending = (save: PendingSave): boolean =>
@@ -328,6 +338,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
   }
 
   const replacePendingSave = (courseId: string, layout: unknown): void => {
+    if (discardedCourses.has(courseId)) return
     pendingSaves = pendingSaves.filter((save) => save.courseId !== courseId)
     pendingSaves.push({
       courseId,
@@ -390,7 +401,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     runtimeLayouts.set(courseId, live)
     lastStructuralKey = structuralKey(live)
     hydratedCourses.add(courseId)
-    set({ openTabs: tabsFromLayout(live), hydration: 'ready', activePanelId: api.activePanel?.id ?? null })
+    set({ openTabs: tabsFromLayout(live), hydration: 'ready', activePanelId: get().surface === 'course' ? api.activePanel?.id ?? null : null })
 
     // Persist the cleaned document when validation dropped anything, so the
     // next hydration starts from a healthy file.
@@ -401,6 +412,20 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
   }
 
   return {
+    surface: 'course',
+    prepareCloseLearningSpace: (binding, standalone) => prepareCloseLearningSpace(binding, standalone),
+    closeLearningSpace: (binding, standalone) => closeLearningSpace(binding, standalone),
+    showLearningHome: () => {
+      if (get().surface === 'learning-home') return
+      get().notifyLayoutChanged()
+      flush()
+      set({ surface: 'learning-home', activePanelId: null })
+    },
+    showCourseWorkspace: (courseId) => {
+      if (get().activeCourseId !== courseId) get().setActiveCourse(courseId)
+      set({ surface: 'course' })
+      syncActivePanel()
+    },
     activeCourseId: null,
     activePanelId: null,
     hydration: 'idle',
@@ -412,7 +437,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       courseApis.set(courseId, nextApi)
       if (get().activeCourseId !== courseId) return
       bindApi(nextApi)
-      if (courseId === null) set({ hydration: 'ready', openTabs: {}, activePanelId: nextApi.activePanel?.id ?? null })
+      if (courseId === null) set({ hydration: 'ready', openTabs: {}, activePanelId: get().surface === 'course' ? nextApi.activePanel?.id ?? null : null })
       else void hydrate(courseId, ++switchSerial)
     },
 
@@ -435,7 +460,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       lastStructuralKey = ''
       const { activeCourseId } = get()
       if (activeCourseId === null) {
-        set({ hydration: 'ready', openTabs: {}, activePanelId: nextApi.activePanel?.id ?? null })
+        set({ hydration: 'ready', openTabs: {}, activePanelId: get().surface === 'course' ? nextApi.activePanel?.id ?? null : null })
         return
       }
       void hydrate(activeCourseId, ++switchSerial)
@@ -469,7 +494,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         if (api && courseId !== null && hydratedCourses.has(courseId)) {
           const live = api.toJSON()
           lastStructuralKey = structuralKey(live)
-          set({ openTabs: tabsFromLayout(live), hydration: 'ready', activePanelId: api.activePanel?.id ?? null })
+          set({ openTabs: tabsFromLayout(live), hydration: 'ready', activePanelId: get().surface === 'course' ? api.activePanel?.id ?? null : null })
           replayOpens(courseId)
           return
         }
@@ -482,6 +507,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     openTab: (descriptor, options) => {
+      if (!replayingOpens && options?.background !== true && get().surface === 'learning-home') get().showCourseWorkspace(get().activeCourseId)
       if (queueDuringHydration(() => get().openTab(descriptor, options))) return
       if (api === null) return
       // newInstance: 같은 파일의 새 뷰를 하나 더 연다 (⌘클릭/분할 열기).
@@ -605,7 +631,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     saveRetainedLayout: (courseId, layout) => {
-      if (courseId === null) return
+      if (courseId === null || discardedCourses.has(courseId)) return
       runtimeLayouts.set(courseId, layout)
       scheduleSave(courseId, persistentLayout(layout))
       // Reaping must see closures in inactive retained workspaces too.
@@ -666,11 +692,13 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     closeActiveTab: () => {
+      if (get().surface !== 'course') return Promise.resolve()
       const panel = api?.activePanel
       return panel ? get().closeTab(panel.id) : Promise.resolve()
     },
 
     activateTabAt: (index) => {
+      if (get().surface !== 'course') return
       if (api === null || index < 0) return
       api.panels[index]?.api.setActive()
     },
@@ -680,11 +708,13 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     activateLastTab: () => {
+      if (get().surface !== 'course') return
       if (api === null) return
       api.panels[api.panels.length - 1]?.api.setActive()
     },
 
     activateRelativeTab: (delta) => {
+      if (get().surface !== 'course') return
       if (api === null) return
       const panels = api.panels
       if (panels.length === 0) return
@@ -697,6 +727,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     reopenClosedTab: () => {
+      if (get().surface !== 'course') return
       if (!api) return
       const index = closedTabs.findLastIndex(tab => tab.courseId === get().activeCourseId)
       if (index < 0) return
@@ -713,7 +744,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     activeTabDescriptor: () => {
-      if (api === null) return null
+      if (get().surface !== 'course' || api === null) return null
       const descriptor = (
         api.activePanel?.params as { descriptor?: unknown } | undefined
       )?.descriptor
@@ -722,13 +753,13 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 
     activePanelSource: () => {
       const panel = api?.activePanel
-      if (get().hydration !== 'ready' || !panel || panel.id !== get().activePanelId) return null
+      if (get().surface !== 'course' || get().hydration !== 'ready' || !panel || panel.id !== get().activePanelId) return null
       const descriptor = panel.params?.descriptor
       return isTabDescriptor(descriptor) ? { panelId: panel.id, descriptor } : null
     },
 
     activeBrowserTabId: () => {
-      if (api === null) return null
+      if (get().surface !== 'course' || api === null) return null
       const descriptor = (
         api.activePanel?.params as { descriptor?: unknown } | undefined
       )?.descriptor
@@ -742,7 +773,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       if (suppressLayoutEvents || api === null) return
       syncActivePanel()
       const { activeCourseId, hydration, openTabs } = get()
-      if (activeCourseId === null || hydration !== 'ready') return
+      if (activeCourseId === null || discardedCourses.has(activeCourseId) || hydration !== 'ready') return
 
       const layout = api.toJSON()
       runtimeLayouts.set(activeCourseId, layout)
@@ -805,6 +836,7 @@ export function resetWorkspaceStoreForTests(): void {
   activeSave = null
   flushAfterActiveSave = false
   useWorkspaceStore.setState({
+    surface: 'course',
     activeCourseId: null,
     activePanelId: null,
     hydration: 'idle',
@@ -924,4 +956,60 @@ export function closeBrowserTab(tabId: string): void {
     }
     state.saveRetainedLayout(courseId, remaining)
   }
+}
+
+function belongsToLearningSpace(descriptor: TabDescriptor, binding: LearningBinding, standalone: boolean): boolean {
+  if (standalone) return true
+  if (descriptor.kind === 'learning') return descriptor.payload.courseId === binding.courseId && descriptor.payload.rootRelPath === binding.rootRelPath
+  if (!binding.rootRelPath || !('courseId' in descriptor.payload) || descriptor.payload.courseId !== binding.courseId || !('relPath' in descriptor.payload)) return false
+  return descriptor.payload.relPath === binding.rootRelPath || descriptor.payload.relPath.startsWith(`${binding.rootRelPath}/`)
+}
+
+function learningSpaceApi(binding: LearningBinding): DockviewApi | null {
+  return courseApis.get(binding.courseId) ?? (useWorkspaceStore.getState().activeCourseId === binding.courseId ? api : null)
+}
+
+/** Check before list removal; a native page may still veto closing its tab. */
+export async function prepareCloseLearningSpace(binding: LearningBinding, standalone: boolean): Promise<boolean> {
+  const target = learningSpaceApi(binding)
+  const descriptors = target ? target.panels.flatMap(panel => isTabDescriptor(panel.params?.descriptor) ? [panel.params.descriptor] : [])
+    : Object.values(tabsFromLayout(runtimeLayouts.get(binding.courseId)))
+  try {
+    for (const descriptor of descriptors) if (belongsToLearningSpace(descriptor, binding, standalone) && !await canCloseTab(descriptor)) return false
+    return true
+  } catch {
+    showToast('학습 공간의 탭을 닫지 못했어요. 다시 시도해 주세요.', 'danger')
+    return false
+  }
+}
+
+/** Remove already-deleted resources from mounted, evicted and closed layouts. */
+export async function closeLearningSpace(binding: LearningBinding, standalone: boolean): Promise<boolean> {
+  const state = useWorkspaceStore.getState()
+  const target = learningSpaceApi(binding)
+  if (standalone) state.discardPendingSave(binding.courseId)
+  closedTabs = closedTabs.filter(tab => tab.courseId !== binding.courseId || !belongsToLearningSpace(tab.descriptor, binding, standalone))
+  if (target) {
+    for (const panel of [...target.panels]) {
+      const descriptor = panel.params?.descriptor
+      if (standalone || isTabDescriptor(descriptor) && belongsToLearningSpace(descriptor, binding, false)) panel.api.close()
+    }
+    if (!standalone) {
+      if (state.activeCourseId === binding.courseId) state.notifyLayoutChanged()
+      else state.saveRetainedLayout(binding.courseId, target.toJSON())
+    }
+  } else if (!standalone) {
+    const raw = runtimeLayouts.get(binding.courseId)
+    if (raw) {
+      const layout = structuredClone(raw) as RetainedLayout
+      for (const [panelId, descriptor] of Object.entries(tabsFromLayout(layout))) if (belongsToLearningSpace(descriptor, binding, false)) delete layout.panels[panelId]
+      const remaining = validateLayout(layout)?.layout ?? { ...layout, panels: {}, grid: { ...layout.grid, root: { type: 'branch' as const, data: [] } } }
+      state.saveRetainedLayout(binding.courseId, remaining)
+    }
+  }
+  if (standalone && state.activeCourseId === binding.courseId) {
+    useWorkspaceStore.setState({ openTabs: {}, activePanelId: null })
+    state.showLearningHome()
+  }
+  return true
 }

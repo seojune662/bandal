@@ -122,6 +122,9 @@ export function AppShell(): JSX.Element {
   useEffect(() => { if (leftRailPanel === 'plugins') setLauncherMounted(true) }, [leftRailPanel])
   useEffect(() => { if (leftRailPanel === 'learning') setLearningMounted(true) }, [leftRailPanel])
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
+  const workspaceSurface = useWorkspaceStore((state) => state.surface)
+  const activeTabKind = useWorkspaceStore((state) => state.activePanelSource()?.descriptor.kind ?? null)
+  const materialsRailVisible = rightRailOpen && workspaceSurface === 'course' && activeTabKind !== 'learning'
   // GlobalNavigation owns the board entry point; the shell owns its overlay.
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
   const closeBoardOverlay = useUiStore((state) => state.closeBoardOverlay)
@@ -140,7 +143,7 @@ export function AppShell(): JSX.Element {
     if (active instanceof HTMLElement && active.closest('[inert]')) {
       document.querySelector<HTMLButtonElement>('.shell-chrome button')?.focus()
     }
-  }, [leftRailOpen, courseRailOpen, leftRailPanel, rightRailOpen, settingsPresent])
+  }, [leftRailOpen, courseRailOpen, leftRailPanel, materialsRailVisible, settingsPresent, workspaceSurface])
 
   const selectedCourse =
     courses.find((course) => course.id === selectedCourseId) ?? null
@@ -404,7 +407,7 @@ export function AppShell(): JSX.Element {
       data-left-rail={leftRailOpen ? 'open' : 'closed'}
       data-course-rail={leftRailOpen && courseRailOpen ? 'open' : 'closed'}
       data-left-panel={leftRailPanel}
-      data-right-rail={rightRailOpen ? 'open' : 'closed'}
+      data-right-rail={materialsRailVisible ? 'open' : 'closed'}
     >
       <GlobalNavigation />
       <div id="course-rail" className="shell-course-rail" aria-hidden={!leftRailOpen || !courseRailOpen || settingsPresent}
@@ -420,11 +423,11 @@ export function AppShell(): JSX.Element {
         <RecordingIndicator />
       </main>
 
-      <div className="shell-materials-rail" aria-hidden={!rightRailOpen || settingsPresent}
-        {...{ inert: !rightRailOpen || settingsPresent ? '' : undefined }}>
+      <div className="shell-materials-rail" aria-hidden={!materialsRailVisible || settingsPresent}
+        {...{ inert: !materialsRailVisible || settingsPresent ? '' : undefined }}>
         <MaterialsSidebar course={selectedCourse} />
       </div>
-      {rightRailOpen && !settingsPresent && <RailResizer side="right" />}
+      {materialsRailVisible && !settingsPresent && <RailResizer side="right" />}
 
       <Suspense fallback={null}>
         <BrowserWebviewLayer />

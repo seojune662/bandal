@@ -8,7 +8,7 @@ import { useWorkspaceStore, resetWorkspaceStoreForTests } from '../../../src/ren
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
 import { useUiStore } from '../../../src/renderer/src/stores/uiStore'
 import { showToast } from '../../../src/renderer/src/app/toast'
-import { openActiveAssistant, registerAssistantController, resetAssistantControllersForTests, useActiveAssistantOpen } from '../../../src/renderer/src/features/assistantPanel/assistantController'
+import { openActiveAssistant, openChosenAssistant, registerAssistantController, resetAssistantControllersForTests, useActiveAssistantOpen } from '../../../src/renderer/src/features/assistantPanel/assistantController'
 import { withAssistantPanel } from '../../../src/renderer/src/features/assistantPanel/TabAssistantPanel'
 import { updateComposerDraft, useComposerDraft, useComposerDraftStore } from '../../../src/renderer/src/features/chat/composerDraftStore'
 
@@ -64,6 +64,29 @@ test('opens the exact duplicate controller without replacing its conversation', 
   expect(duplicate.show).toHaveBeenCalledOnce(); expect(duplicate.focus).toHaveBeenCalledOnce()
   expect(original.show).not.toHaveBeenCalled()
   expect(useWorkspaceStore.getState().openTab).not.toHaveBeenCalled()
+})
+
+test('home AI requests an explicit context picker and cannot reuse a hidden document controller or course chat', () => {
+  const hidden = controller('c1', true)
+  registerAssistantController('hidden-note', hidden); activate('hidden-note')
+  useWorkspaceStore.setState({ surface: 'learning-home', activePanelId: null })
+  const picker = vi.fn(); window.addEventListener('bandal:choose-ai-context', picker)
+  openActiveAssistant()
+  expect(picker).toHaveBeenCalledOnce()
+  expect(hidden.show).not.toHaveBeenCalled(); expect(hidden.focus).not.toHaveBeenCalled()
+  expect(useWorkspaceStore.getState().openTab).not.toHaveBeenCalled()
+  window.removeEventListener('bandal:choose-ai-context', picker)
+})
+
+test('choosing a learning space waits for that space controller instead of opening its course chat', async () => {
+  const binding = { courseId: 'c1', rootRelPath: 'Reading' }
+  vi.mocked(useWorkspaceStore.getState().openTab).mockImplementation(descriptor => { activate('learning:c1:project:Reading', descriptor) })
+  await openChosenAssistant({ courseId: 'c1', binding })
+  expect(useWorkspaceStore.getState().openTab).toHaveBeenCalledTimes(1)
+  expect(useWorkspaceStore.getState().openTab).toHaveBeenCalledWith({ kind: 'learning', payload: { ...binding, view: 'home' } })
+  const chosen = controller()
+  registerAssistantController('learning:c1:project:Reading', chosen)
+  expect(chosen.show).toHaveBeenCalledOnce(); expect(chosen.focus).toHaveBeenCalledOnce()
 })
 
 test('retained courses with the same singleton panel ID keep independent controllers', () => {

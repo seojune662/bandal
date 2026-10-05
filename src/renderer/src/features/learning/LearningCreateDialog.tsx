@@ -61,7 +61,7 @@ export function LearningCreateDialog({ packId, project, onClose, onCreated }: Le
       if (english) rememberEnglishBinding(saved.binding)
       openLearning(saved.binding)
       notifyLearningChanged(); onCreated?.(saved.binding)
-      if (english && (!editing || saved.articles.length === 0)) void invoke('learning:run', { binding: saved.binding, kind: 'find-articles', ...(saved.packId ? { packId: saved.packId } : {}) }).catch(caught => showToast(learningError(caught), 'danger'))
+      if (english && !editing) void invoke('learning:run', { binding: saved.binding, kind: 'find-articles', ...(saved.packId ? { packId: saved.packId } : {}) }).catch(caught => showToast(learningError(caught), 'danger'))
       onClose()
     } catch (caught) { setError(learningError(caught)); setPending(false) }
   }
@@ -82,7 +82,7 @@ export function LearningCreateDialog({ packId, project, onClose, onCreated }: Le
           <LearningAISelector value={ai} disabled={pending} onChange={setAi} onValidityChange={setAiValid} />
           {error && <p className="form-error" role="alert">{error}</p>}
         </div>
-        <footer className="dialog-actions"><button type="button" className="button button--secondary" disabled={pending} onClick={onClose}>취소</button><button type="submit" className="button button--primary" disabled={pending || !valid}>{pending ? '설정 저장 중…' : editing ? '설정 저장' : '학습 공간 만들기'}</button></footer>
+        <footer className="dialog-actions"><button type="button" className="button button--secondary" disabled={pending} onClick={onClose}>취소</button><button type="submit" className="button button--primary" disabled={pending || !valid}>{pending ? '설정 저장 중…' : editing ? '설정 저장' : '공간 만들고 첫 글 찾기'}</button></footer>
       </form>
     </section>
   </div>, document.body)

@@ -36,6 +36,7 @@ import { installTabDragScrolling } from './tabDragScroll'
 import { installTabStripWheelScrolling } from './tabStripScroll'
 import { TabKindIcon } from './workspaceIcons'
 import './workspace.css'
+import LearningHome from '../learning/LearningHome'
 
 const bandalTheme: DockviewTheme = {
   name: 'bandal',
@@ -136,10 +137,13 @@ function AddTabAction(_props: IDockviewHeaderActionsProps): JSX.Element {
 }
 
 /** Same reasoning as ExpandLeftRail: needed outside the tab bar too. */
-function ToggleRightRail(): JSX.Element {
+function ToggleRightRail(): JSX.Element | null {
+  const materialsAvailable = useWorkspaceStore(state => state.surface === 'course' && state.activePanelSource()?.descriptor.kind !== 'learning')
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
   const toggleRightRail = useUiStore((state) => state.toggleRightRail)
   const label = rightRailOpen ? '자료 사이드바 접기' : '자료 사이드바 펼치기'
+
+  if (!materialsAvailable) return null
 
   return (
     <div className="workspace-header-actions">
@@ -188,7 +192,7 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
     layoutSubscription.current = { dispose: () => { layout.dispose(); overlay.dispose() } }
   }
   return <CourseActivity.Provider value={active}>
-    <div ref={rootRef} className="workspace-course" hidden={!active} aria-hidden={!active} data-workspace-course={courseId ?? ''} data-drop-language={ko ? 'ko' : 'en'}>
+    <div ref={rootRef} className="workspace-course" hidden={!active} aria-hidden={!active} {...{ inert: !active ? '' : undefined }} data-workspace-course={courseId ?? ''} data-drop-language={ko ? 'ko' : 'en'}>
       <DockviewReact
         theme={bandalTheme}
         dndEdges={workspaceDragEdges}
@@ -206,6 +210,7 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
 }
 
 export function WorkspaceHost(): JSX.Element {
+  const surface = useWorkspaceStore(state => state.surface)
   const courses = useCoursesStore(state => state.courses)
   const selectedCourseId = useCoursesStore(state => state.selectedCourseId)
   const course = courses.find(entry => entry.id === selectedCourseId) ?? null
@@ -215,6 +220,21 @@ export function WorkspaceHost(): JSX.Element {
   const ids = courseId === null ? alive : [...alive.filter(id => id !== courseId), courseId]
   const isMenuOpen = useNewTabMenu(state => state.isOpen)
   const hostRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (surface !== 'learning-home') return
+    const focus = (): boolean => {
+      const heading = hostRef.current?.querySelector<HTMLElement>('.learning-global-home h1')
+      if (!heading || heading.closest('[inert], [hidden]')) return false
+      heading.tabIndex = -1
+      heading.focus({ preventScroll: true })
+      return document.activeElement === heading
+    }
+    if (focus()) return
+    const observer = new MutationObserver(() => { if (focus()) observer.disconnect() })
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['inert', 'hidden'] })
+    return () => observer.disconnect()
+  }, [surface])
 
   useLayoutEffect(() => {
     useWorkspaceStore.getState().setActiveCourse(courseId)
@@ -255,8 +275,9 @@ export function WorkspaceHost(): JSX.Element {
   }, [])
 
   return <div ref={hostRef} className="workspace-host" data-tour="tab-strip">
-    {[...ids].sort().map(id => <CourseWorkspace key={id} courseId={id} active={id === courseId} />)}
-    {courseId === null && <CourseWorkspace key="empty" courseId={null} active />}
-    {isMenuOpen && course !== null && <NewTabMenu course={course} />}
+    {[...ids].sort().map(id => <CourseWorkspace key={id} courseId={id} active={surface === 'course' && id === courseId} />)}
+    {courseId === null && <CourseWorkspace key="empty" courseId={null} active={surface === 'course'} />}
+    {surface === 'learning-home' && <LearningHome />}
+    {surface === 'course' && isMenuOpen && course !== null && <NewTabMenu course={course} />}
   </div>
 }

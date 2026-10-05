@@ -409,12 +409,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const learningCache = createLearningCache(db)
   const learningRepo = createLearningRepo({
     getCourseFolder: courseId => coursesRepo.getFolder(courseId),
-    listCourseIds: () => coursesRepo.list({ includeArchived: true }).map(course => course.id),
+    getCourseFolderIncludingDeleted: courseId => coursesRepo.getFolderIncludingDeleted(courseId),
+    listCourseIds: () => coursesRepo.list({ includeArchived: true, includeDeleted: true }).filter(course => !course.deletedAt || course.workspaceKind === 'study-space').map(course => course.id),
     onChanged: binding => {
       broadcast('learning:changed', { binding })
       materialsRepo.invalidateTree(binding.courseId)
       broadcast('materials:changed', { courseId: binding.courseId })
-      void learningRepo.read(binding).then(snapshot => learningCache.index(snapshot)).catch(error => console.warn('[learning] cache rebuild failed', error))
+      void learningRepo.readDeleted(binding).then(snapshot => learningCache.index(snapshot)).catch(error => console.warn('[learning] cache rebuild failed', error))
     }
   })
   const onMaterialPathChanged = (change: {
@@ -2230,6 +2231,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       if (answer.response === 2) packStore.approve(id, new Date().toISOString())
     },
     changedCourse: () => broadcast('courses:changed', {}),
+    deletedCourse: releaseCourseRuntime,
     assertSourceTab: (courseId, tabId, url) => {
       coursesRepo.getById(courseId)
       const guest = guestRegistry.resolve(tabId)

@@ -345,6 +345,8 @@ export function validateLearningRun(value: unknown): LearningRun {
   learningString(input['message'], 'message', 10_000, true)
   optionalText(input['error'], 'error')
   learningTime(input['createdAt'], 'createdAt'); learningTime(input['updatedAt'], 'updatedAt')
+  if (input['dismissedAt'] !== undefined && input['dismissedAt'] !== null) learningTime(input['dismissedAt'], 'dismissedAt')
+  for (const field of ['resultArticleIds', 'resultArtifactIds'] as const) if (input[field] !== undefined) learningArray(input[field], field, 10_000).forEach(id => learningId(id))
   learningArray(input['articleIds'], 'articleIds', 10_000).forEach((id) => learningId(id))
   learningArray(input['wordIds'], 'wordIds', 10_000).forEach((id) => learningId(id))
   if (input['source'] !== undefined) {
@@ -373,6 +375,7 @@ export function validateLearningState(value: unknown): LearningProjectState {
   if (!['beginner', 'intermediate', 'advanced'].includes(String(state['level']))) throw new ValidationError('올바르지 않은 학습 난이도입니다.')
   learningNumber(state['readingMinutes'], 'readingMinutes', 1, 30)
   learningTime(state['createdAt'], 'createdAt'); learningTime(state['updatedAt'], 'updatedAt')
+  if (state['deletedAt'] !== undefined && state['deletedAt'] !== null) learningTime(state['deletedAt'], 'deletedAt')
   for (const key of ['articles', 'words', 'occurrences', 'artifacts', 'cards', 'quizAttempts', 'runs', 'history'] as const) {
     const entries = learningArray(state[key], key)
     const seen = new Set<string>()

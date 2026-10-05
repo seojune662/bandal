@@ -33,11 +33,12 @@ export function requestLearningProjectPicker(projects: LearningProjectSummary[])
 export function LearningDialogsHost(): JSX.Element | null {
   const [creating, setCreating] = useState<CreationRequest | null>(null)
   const [generating, setGenerating] = useState<LearningGenerationRequest | null>(null)
+  const [generationKey, setGenerationKey] = useState(0)
   const [importing, setImporting] = useState<ArticleImportRequest | null>(null)
   const [picking, setPicking] = useState<LearningProjectSummary[] | null>(null)
   useEffect(() => {
     const create = (event: Event): void => { if (event instanceof CustomEvent) setCreating(event.detail as CreationRequest) }
-    const generate = (event: Event): void => { if (event instanceof CustomEvent) setGenerating(event.detail as LearningGenerationRequest) }
+    const generate = (event: Event): void => { if (event instanceof CustomEvent) { setGenerating(event.detail as LearningGenerationRequest); setGenerationKey(key => key + 1) } }
     const importArticle = (event: Event): void => { if (event instanceof CustomEvent) setImporting(event.detail as ArticleImportRequest) }
     const pick = (event: Event): void => { if (event instanceof CustomEvent) setPicking(event.detail as LearningProjectSummary[]) }
     window.addEventListener(GENERATE_EVENT, generate); window.addEventListener(CREATE_EVENT, create); window.addEventListener(IMPORT_EVENT, importArticle); window.addEventListener(PICK_EVENT, pick)
@@ -45,7 +46,7 @@ export function LearningDialogsHost(): JSX.Element | null {
   }, [])
   const settingsOpen = useUiStore(state => state.isSettingsOpen)
   useEffect(() => { if (settingsOpen || (!creating && !importing && !picking && !generating)) return; return acquirePointerPassthrough() }, [creating, importing, picking, generating, settingsOpen])
-  return creating ? <LearningCreateDialog {...creating} onClose={() => setCreating(null)} /> : generating ? <LearningGenerationDialog request={generating} onClose={() => setGenerating(null)} /> : importing ? <ArticleImportDialog input={importing} onClose={() => setImporting(null)} /> : picking ? <ProjectPicker projects={picking} onClose={() => setPicking(null)} /> : null
+  return creating ? <LearningCreateDialog {...creating} onClose={() => setCreating(null)} /> : generating ? <LearningGenerationDialog key={generationKey} request={generating} onClose={() => setGenerating(null)} /> : importing ? <ArticleImportDialog input={importing} onClose={() => setImporting(null)} /> : picking ? <ProjectPicker projects={picking} onClose={() => setPicking(null)} /> : null
 }
 
 function ProjectPicker({ projects, onClose }: { projects: LearningProjectSummary[]; onClose: () => void }): JSX.Element {

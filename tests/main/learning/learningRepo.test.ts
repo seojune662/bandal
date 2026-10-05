@@ -41,6 +41,29 @@ describe('portable learning projects', () => {
   async function create(): Promise<void> { await repo.create({ binding, name: '영어 읽기', topic: 'Climate' }) }
   async function seed(): Promise<void> { await create(); await repo.addArticle({ binding, article: article() }) }
 
+  test.each([
+    ['quiz', false], ['quiz', true], ['cards', false], ['cards', true]
+  ] as const)('indexes every %s item source with top-level sources present=%s without changing the immutable artifact', async (kind, hasTopLevel) => {
+    await seed()
+    const second: LearningSourceRef = { kind: 'article', articleId: 'article-1', paragraphId: 'p2', sentenceId: 'p2-s1', quote: 'People adapt' }
+    const reordered: LearningSourceRef = { end: 11, start: 4, quote: 'climate', sentenceId: 'p1-s1', paragraphId: 'p1', articleId: 'article-1', kind: 'article' }
+    const individual = [source, reordered, second]
+    const artifact: LearningArtifactDraft = kind === 'quiz'
+      ? { kind, title: 'Question-only sources', questions: [{ id: 'q1', type: 'cloze', prompt: 'The ___ is changing.', answer: 'climate', explanation: '', sourceRefs: individual }] }
+      : { kind, title: 'Card-only sources', cards: [{ id: 'c1', front: 'climate', back: '기후', sourceRefs: individual }] }
+    if (hasTopLevel) artifact.sourceRefs = [source]
+    const saved = await repo.putArtifact({ binding, artifact }), ref = saved.artifacts[0]!
+    expect(ref.sourceRefs).toHaveLength(2)
+    expect(ref.sourceRefs.map(ref => ref.quote)).toEqual(['climate', 'People adapt'])
+    const persisted = JSON.parse(readFileSync(statePath(), 'utf8'))
+    expect(persisted.artifacts[0].sourceRefs).toHaveLength(2)
+    const immutable = JSON.parse(readFileSync(join(course, binding.rootRelPath, ref.relPath), 'utf8'))
+    expect(immutable.sourceRefs).toHaveLength(hasTopLevel ? 1 : 0)
+    const items = kind === 'quiz' ? immutable.questions : immutable.cards
+    expect(items[0].sourceRefs).toHaveLength(3)
+    expect(items[0].sourceRefs.map((ref: LearningSourceRef) => ref.quote)).toEqual(['climate', 'climate', 'People adapt'])
+  })
+
   test('creates editable vocabulary documents immediately and preserves existing user text', async () => {
     await create()
     expect(readFileSync(join(course, binding.rootRelPath, '단어장.md'), 'utf8')).toContain('모르는 표현')

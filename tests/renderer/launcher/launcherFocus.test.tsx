@@ -5,9 +5,11 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { FeatureLauncherPanel } from '../../../src/renderer/src/features/launcher/FeatureLauncherPanel'
 import { useUiStore } from '../../../src/renderer/src/stores/uiStore'
 import { setIpcAdapter, type IpcAdapter } from '../../../src/renderer/src/lib/ipc'
+import type { FeatureEntry } from '../../../src/renderer/src/features/launcher/featureInventory'
 
+const inventory = vi.hoisted(() => ({ entries: [] as FeatureEntry[] }))
 vi.mock('../../../src/renderer/src/features/launcher/featureInventory', () => ({
-  useFeatureInventory: () => ({ entries: [], loading: false, error: null, reload: async () => {} }),
+  useFeatureInventory: () => ({ entries: inventory.entries, loading: false, error: null, reload: async () => {} }),
 }))
 vi.mock('../../../src/renderer/src/features/launcher/launcherContext', () => ({
   useLauncherContext: () => ({ context: {
@@ -25,6 +27,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root | null = null
 let parent: HTMLDivElement
 beforeEach(() => {
+  inventory.entries = []
   useUiStore.setState({ leftRailOpen: true, courseRailOpen: true, isSettingsOpen: false })
   setIpcAdapter({ invoke: vi.fn(), on: () => () => {} } as unknown as IpcAdapter)
   parent = document.createElement('div')
@@ -77,4 +80,16 @@ test('closing the rail cancels a pending focus while settings is fading out', as
   await act(async () => { useUiStore.setState({ courseRailOpen: false }); outside.focus() })
   await act(async () => { parent.removeAttribute('inert') })
   expect(document.activeElement).toBe(outside)
+})
+
+test('search finds each full action label shown on its tool card', async () => {
+  inventory.entries = ['vocab-chain-en', 'quiz', 'flashcards', 'summary'].map(packId => ({ kind: 'pack', id: `pack:${packId}`, packId, label: packId, description: '', source: 'builtin', enabled: true, unavailableReason: null, schemaVersion: 2, worksOn: ['course'], usesWeb: false, outputs: { dir: '복습', primary: packId }, ...(packId === 'vocab-chain-en' ? { experience: 'article-vocabulary' as const } : {}) }))
+  await act(async () => { root!.render(<FeatureLauncherPanel hidden={false} />) })
+  for (const label of ['영어 글 읽기', '퀴즈 만들기', '카드 만들기', '요약하기']) {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search(), label)
+      search().dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect([...document.querySelectorAll('.launcher-feature strong')].map(element => element.textContent)).toEqual([label])
+  }
 })

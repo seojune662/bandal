@@ -24,15 +24,19 @@ export function createLearningCache(db: Database) {
     replaceCourse(courseId: string, projects: LearningProjectSummary[]) {
       db.transaction(() => {
         db.prepare('DELETE FROM learning_projects_cache WHERE course_id=?').run(courseId)
-        for (const project of projects) upsert.run(cacheRow(project))
+        for (const project of projects) if (!project.deletedAt) upsert.run(cacheRow(project))
         db.prepare(`DELETE FROM learning_words_cache WHERE course_id=? AND NOT EXISTS
           (SELECT 1 FROM learning_projects_cache p WHERE p.course_id=learning_words_cache.course_id AND p.root_rel_path=learning_words_cache.root_rel_path)`).run(courseId)
       })()
     },
     index(snapshot: LearningProjectSnapshot) {
       db.transaction(() => {
-        upsert.run(cacheRow(snapshot))
         removeWords.run(snapshot.binding.courseId, snapshot.binding.rootRelPath)
+        if (snapshot.deletedAt) {
+          db.prepare('DELETE FROM learning_projects_cache WHERE course_id=? AND root_rel_path=?').run(snapshot.binding.courseId, snapshot.binding.rootRelPath)
+          return
+        }
+        upsert.run(cacheRow(snapshot))
         for (const word of snapshot.words) insertWord.run(snapshot.binding.courseId, snapshot.binding.rootRelPath, word.id, word.surface, word.meaning, word.status)
       })()
     }

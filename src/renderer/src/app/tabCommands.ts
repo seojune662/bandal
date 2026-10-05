@@ -25,6 +25,7 @@ export function defaultMarkdownTitle(now: Date): string {
 }
 
 function activeCourseId(): string | null {
+  if (useWorkspaceStore.getState().surface === 'learning-home') return null
   return useCoursesStore.getState().selectedCourseId
 }
 

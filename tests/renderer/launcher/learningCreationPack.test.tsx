@@ -20,7 +20,7 @@ function field(label: string): HTMLInputElement | HTMLSelectElement { return doc
 async function fill(label: string, value: string): Promise<void> { const element = field(label); await act(async () => { Object.getOwnPropertyDescriptor(element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype, 'value')!.set!.call(element, value); element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true })) }) }
 async function chooseAI(): Promise<void> { await fill('학습 AI 제공자', 'codex'); await fill('학습 AI 모델', 'real-model') }
 async function chooseReading(): Promise<void> { await fill('학습 공간 이름', '우주 읽기'); await act(async () => { field('주제 우주').click() }); await fill('편한 영어 수준', 'intermediate'); await fill('한 편의 읽기 시간', '4') }
-function saveButton(): HTMLButtonElement { return [...document.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === '학습 공간 만들기' || item.textContent === '설정 저장')! }
+function saveButton(): HTMLButtonElement { return [...document.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === '공간 만들고 첫 글 찾기' || item.textContent === '설정 저장')! }
 function adapter(options: { connected?: boolean; blocked?: string[] } = {}): ReturnType<typeof vi.fn> {
   const invoke = vi.fn(async (channel: string, input: any) => channel === 'agent:availability' ? { installed: true, loggedIn: options.connected !== false }
     : channel === 'agent:models' ? { ...catalog, blockedModelIds: options.blocked ?? [] }
@@ -95,14 +95,14 @@ test('changing a space purpose uses its matching recipe and preserves custom rec
   await fill('학습 공간 종류', 'english-reading'); await chooseReading()
   await act(async () => { saveButton().click() })
   expect(invoke).toHaveBeenCalledWith('learning:updateSettings', expect.objectContaining({ purpose: 'english-reading', packId: 'vocab-chain-en' }))
-  expect(invoke).toHaveBeenCalledWith('learning:run', { binding, kind: 'find-articles', packId: 'vocab-chain-en' })
+  expect(invoke.mock.calls.some(call => call[0] === 'learning:run')).toBe(false)
 
   const english = { ...review, purpose: 'english-reading', packId: 'custom:space-reading', topicIds: ['space'], readingSetupConfirmed: true, level: 'intermediate', readingMinutes: 4 } as LearningProjectSnapshot
   invoke.mockClear()
   await act(async () => { requestLearningCreation(undefined, undefined, english) })
   await act(async () => { saveButton().click() })
   expect(invoke).toHaveBeenCalledWith('learning:updateSettings', expect.objectContaining({ purpose: 'english-reading', packId: 'custom:space-reading' }))
-  expect(invoke).toHaveBeenCalledWith('learning:run', { binding, kind: 'find-articles', packId: 'custom:space-reading' })
+  expect(invoke.mock.calls.some(call => call[0] === 'learning:run')).toBe(false)
 
   invoke.mockClear()
   await act(async () => { requestLearningCreation(undefined, undefined, english) })

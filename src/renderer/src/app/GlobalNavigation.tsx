@@ -7,6 +7,8 @@ import { openActiveAssistant, useActiveAssistantOpen } from '../features/assista
 import { captureLauncherContext } from '../features/launcher/launcherContext'
 import { Tooltip } from '../components/Tooltip'
 import { Icon } from './icons'
+import { useWorkspaceStore } from '../stores/workspaceStore'
+import { openLearningHome, returnToCourseWorkspace } from '../features/learning/learningNavigation'
 import './global-navigation.css'
 
 export function GlobalNavigation(): JSX.Element {
@@ -18,8 +20,10 @@ export function GlobalNavigation(): JSX.Element {
   const leftPanel = useUiStore((state) => state.leftRailPanel)
   const assistantOpen = useActiveAssistantOpen()
   const leftOpen = useUiStore((state) => state.leftRailOpen)
+  const surface = useWorkspaceStore((state) => state.surface)
   const openCourses = (): void => {
     const ui = useUiStore.getState()
+    if (useWorkspaceStore.getState().surface === 'learning-home') { returnToCourseWorkspace(); return }
     if (ui.isSettingsOpen || ui.isBoardOverlayOpen || ui.isLinkGraphOpen || ui.leftRailPanel !== 'courses') ui.showCourses()
     else ui.toggleCourseRail()
   }
@@ -41,9 +45,9 @@ export function GlobalNavigation(): JSX.Element {
       <Tooltip label="학습" placement="right">
         <button className="rail-nav__item" aria-label="학습"
           aria-expanded={courseOpen && leftPanel === 'learning' && !boardOpen && !settingsOpen && !graphOpen}
-          aria-controls="learning-spaces-panel"
-          data-active={courseOpen && leftPanel === 'learning' && !boardOpen && !settingsOpen && !graphOpen || undefined}
-          onClick={() => useUiStore.getState().toggleLearningPanel()}>
+          aria-controls="learning-home"
+          data-active={surface === 'learning-home' && !boardOpen && !settingsOpen && !graphOpen || undefined}
+          onClick={openLearningHome}>
           <svg aria-hidden="true" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 5.5C9 3.5 5.5 3.5 3 4.5v14c2.5-1 6-1 9 1 3-2 6.5-2 9-1v-14c-2.5-1-6-1-9 1Z" /><path d="M12 5.5v14" />
           </svg>
@@ -73,8 +77,8 @@ export function GlobalNavigation(): JSX.Element {
             void openActiveAssistant()
           }}><span aria-hidden="true">✦</span></button>
       </Tooltip>
-      <Tooltip label="플러그인" placement="right">
-        <button className="rail-nav__item" aria-label="플러그인"
+      <Tooltip label="도구" placement="right">
+        <button className="rail-nav__item" aria-label="도구"
           aria-expanded={courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen}
           aria-controls="plugins-panel"
           data-active={courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen || undefined}

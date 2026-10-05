@@ -21,7 +21,7 @@ const uiState = vi.hoisted(() => ({
   closeSettings: vi.fn()
 }))
 const authState = vi.hoisted(() => ({ phase: 'unconfigured' }))
-const workspaceState = vi.hoisted(() => ({ openTab: vi.fn() }))
+const workspaceState = vi.hoisted(() => ({ openTab: vi.fn(), showCourseWorkspace: vi.fn(), surface: 'course', activePanelSource: () => null }))
 
 vi.mock('../../../src/renderer/src/stores/uiStore', () => ({
   useUiStore: Object.assign((selector: (state: typeof uiState) => unknown) => selector(uiState), { getState: () => uiState })
@@ -30,7 +30,7 @@ vi.mock('../../../src/renderer/src/stores/authStore', () => ({
   useAuthStore: Object.assign((selector: (state: { auth: typeof authState }) => unknown) => selector({ auth: authState }), { getState: () => ({ init: async () => undefined }) })
 }))
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
-  useWorkspaceStore: Object.assign((selector: (state: typeof workspaceState) => unknown) => selector(workspaceState), { getState: () => workspaceState })
+  useWorkspaceStore: Object.assign((selector: (state: typeof workspaceState) => unknown) => selector(workspaceState), { getState: () => workspaceState, subscribe: () => () => {} })
 }))
 vi.mock('../../../src/renderer/src/features/account/SidebarAccountEntry', () => ({
   SidebarAccountEntry: () => (
@@ -144,7 +144,7 @@ describe('CourseSidebar course menu', () => {
     ).map((item) => item.getAttribute('aria-label'))
 
     expect(labels).toEqual([
-      '과목', '학습', '학업 보드 열기', 'AI', '플러그인', '더 보기', '내 프로필', '설정'
+      '과목', '학습', '학업 보드 열기', 'AI', '도구', '더 보기', '내 프로필', '설정'
     ])
   })
 

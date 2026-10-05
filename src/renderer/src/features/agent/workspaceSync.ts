@@ -32,6 +32,7 @@ export interface AgentWorkspaceSyncPayload {
 }
 
 export interface WorkspaceSyncSources {
+  surface?: 'course' | 'learning-home'
   openTabs: Record<string, TabDescriptor>
   activeDescriptor: TabDescriptor | null
   selectedCourseId: string | null
@@ -42,6 +43,7 @@ export interface WorkspaceSyncSources {
 export function workspaceSyncPayload(
   sources: WorkspaceSyncSources
 ): AgentWorkspaceSyncPayload | null {
+  if (sources.surface === 'learning-home') return { selectedCourseId: null, tabs: [], documents: [], selection: '' }
   if (sources.hydration !== 'ready') return null
 
   const activePanelId =
@@ -80,6 +82,7 @@ export function workspaceSyncPayload(
 function currentPayload(): AgentWorkspaceSyncPayload | null {
   const workspace = useWorkspaceStore.getState()
   return workspaceSyncPayload({
+    surface: workspace.surface,
     openTabs: workspace.openTabs,
     activeDescriptor: workspace.activeTabDescriptor(),
     selectedCourseId: useCoursesStore.getState().selectedCourseId,
@@ -99,8 +102,9 @@ export function useAgentWorkspaceSync(): void {
       timer = null
       const payload = currentPayload()
       if (payload === null) return
-      payload.documents = readDocumentContexts()
-      const selected = window.getSelection()?.toString().trim()
+      const courseVisible = useWorkspaceStore.getState().surface === 'course'
+      payload.documents = courseVisible ? readDocumentContexts() : []
+      const selected = courseVisible ? window.getSelection()?.toString().trim() : ''
       if (selected && !document.activeElement?.closest('.chat-tab')) payload.selection = selected.slice(0, 8000)
       if (refreshId) payload.refreshId = refreshId
       const serialized = JSON.stringify(payload)

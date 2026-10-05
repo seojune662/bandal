@@ -66,7 +66,7 @@ export function planChecks(files, full = false) {
   const launcherShell = /^src\/renderer\/src\/app\/(AppShell|GlobalNavigation|RailResizer)\.tsx$/
   const packSettings = /^src\/renderer\/src\/features\/settings\/PacksPanel\.tsx$/
   const settingsShell = /^src\/renderer\/src\/features\/settings\/SettingsApp\.tsx$/
-  const sharedAppearance = files.some(file => !browserSettings.test(file) && !launcherShell.test(file) && !packSettings.test(file) && !settingsShell.test(file) && file !== 'src/renderer/src/components/BandalMark.tsx' && /^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/.test(file))
+  const sharedAppearance = files.some(file => !browserSettings.test(file) && !launcherShell.test(file) && !packSettings.test(file) && !settingsShell.test(file) && file !== 'src/renderer/src/components/BandalMark.tsx' && file !== 'src/renderer/src/app/tabCommands.ts' && /^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/.test(file))
   if (has(launcherShell) || has(/^src\/renderer\/src\/(features\/launcher\/|stores\/(workflowPacksStore|uiStore)\.ts$)/) || has(packSettings)) e2e.add('e2e/featureLauncher.spec.ts')
   if (has(launcherShell)) {
     e2e.add('e2e/sidebars.spec.ts')
@@ -98,6 +98,8 @@ export function planChecks(files, full = false) {
     e2e.add('e2e/learning.spec.ts')
     e2e.add('e2e/learningSpaces.spec.ts')
   }
+  const learningUx = has(/^src\/renderer\/src\/(features\/(learning\/|launcher\/|workspace\/(WorkspaceHost\.tsx|openMaterial\.ts)|assistantPanel\/assistantController\.ts|agent\/workspaceSync\.ts)|stores\/workspaceStore\.ts|app\/(GlobalNavigation\.tsx|tabCommands\.ts))|^src\/main\/(features\/learning\/(learningRepo|learningRuntime|learningCache)\.ts|ipc\/learningHandlers\.ts)$/)
+  if (learningUx) { e2e.add('e2e/learningManagement.spec.ts'); e2e.add('e2e/learningNavigation.spec.ts') }
   if (has(/^src\/(main\/(features\/courses\/coursesRepo\.ts$|features\/agent\/(SessionManager|agentModels|codex\/modelCatalog)\.ts$|db\/migrations\.ts$)|shared\/types\/course\.ts$|renderer\/src\/features\/courses\/CourseSidebar\.tsx$)/)) e2e.add('e2e/learningSpaces.spec.ts')
   if (has(/^src\/renderer\/src\/features\/widgets\/WidgetDock\.tsx$/)) e2e.add('e2e/taskSchedule.spec.ts')
   if (has(/^src\/main\/(features\/materials\/(renameWithRetry|watcher)\.ts|background\/(materialsWatcher|watcherHost)\.ts)$/)) {

@@ -13,7 +13,7 @@ import { setIpcAdapter, type IpcAdapter } from '../../../src/renderer/src/lib/ip
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root | null = null
 const cleanups: Array<() => void> = []
-beforeEach(() => { useWorkspaceStore.setState({ openTabs: {} }); setIpcAdapter({ invoke: vi.fn(), on: () => () => {} } as unknown as IpcAdapter) })
+beforeEach(() => { useWorkspaceStore.setState({ openTabs: {}, surface: 'course' }); setIpcAdapter({ invoke: vi.fn(), on: () => () => {} } as unknown as IpcAdapter) })
 afterEach(() => { if (root) act(() => root?.unmount()); root = null; cleanups.splice(0).forEach(cleanup => cleanup()); vi.restoreAllMocks(); setIpcAdapter(null); document.body.replaceChildren() })
 
 test('uses the exact duplicate panel reader and live URL rather than a canonical tab or initial address', () => {
@@ -39,6 +39,16 @@ test('a pointerdown capture remains available when the launcher hook mounts afte
   function Host(): JSX.Element { const { context } = useLauncherContext(); return <span>{context.sourcePanelId}:{context.selection}</span> }
   await act(async () => { root!.render(<Host />) })
   expect(element.textContent).toBe('actual-copy:Keep this quote')
+})
+
+test('home capture drops a retained source and a previously captured source cannot execute while hidden', async () => {
+  const descriptor: TabDescriptor = { kind: 'note', payload: { courseId: 'course', relPath: 'hidden.md' } }
+  vi.spyOn(useWorkspaceStore.getState(), 'activePanelSource').mockReturnValue({ panelId: 'hidden-panel', descriptor })
+  useCoursesStore.setState({ selectedCourseId: 'course' })
+  const pinned = resolveLauncherContext({ courseId: 'course', source: { panelId: 'hidden-panel', descriptor }, documents: [] })
+  useWorkspaceStore.setState({ surface: 'learning-home' })
+  expect(await captureLauncherContext()).toMatchObject({ courseId: null, sourcePanelId: null, material: null, binding: null, selection: '', browser: null })
+  await expect(refreshLauncherContext(pinned)).rejects.toThrow('숨겨졌어요')
 })
 
 test('late browser capture cannot overwrite a newer source or silently follow navigation', async () => {

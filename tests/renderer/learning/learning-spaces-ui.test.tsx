@@ -29,7 +29,7 @@ test('review home offers actual reviews and cross-course evidence without any En
   expect(host.textContent).toContain('내 자료를 다시 익혀요.'); expect(host.textContent).not.toContain('첫 영어 글 찾기')
   await act(async () => { [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('cells.md'))!.click() })
   expect(open).toHaveBeenCalledWith('source-course', 'note', 'cells.md')
-  act(() => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('최근 복습 자료 열기'))!.click())
+  act(() => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('Cells quiz'))!.click())
   expect(props.onNavigate).toHaveBeenCalledWith('review', 'quiz')
   expect(props.onRun).not.toHaveBeenCalled()
 })
@@ -37,7 +37,7 @@ test('review home offers actual reviews and cross-course evidence without any En
 test('unknown home requires an explicit purpose confirmation and preserves access to existing records', () => {
   const state = project(); state.purpose = 'unclassified'; delete state.ai
   const props = actions(); const host = render(<LearningProjectHome project={state} pending={false} running={false} {...props} />)
-  expect(host.textContent).toContain('기존 기사, 단어, 퀴즈와 카드는 보존')
+  expect(host.textContent).toContain('기존 자료와 기록은 그대로')
   act(() => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('학습 종류와 AI 확인하기'))!.click())
   expect(props.onSettings).toHaveBeenCalledOnce(); expect(props.onRun).not.toHaveBeenCalled()
 })

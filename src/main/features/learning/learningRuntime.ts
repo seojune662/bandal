@@ -12,6 +12,7 @@ interface RuntimeRepo {
   readArtifact(binding: LearningBinding, id: string): Promise<LearningArtifact>
   updateRun(input: { binding: LearningBinding; run: LearningRun }): Promise<LearningProjectSnapshot>
   importDraft(input: { binding: LearningBinding; draft: LearningDraft; runId?: string }): Promise<LearningProjectSnapshot>
+  cancelPendingRuns(binding: LearningBinding): Promise<LearningProjectSnapshot>
 }
 export interface LearningRuntimeDeps {
   repo: RuntimeRepo
@@ -35,6 +36,7 @@ interface Execution {
   settled: boolean; draft: LearningDraft | null; timer: ReturnType<typeof setTimeout> | null
   identity: string; allowedTools: ReadonlySet<string>
   writes: Promise<void>; finishing: Promise<void> | null
+  dispatching?: Promise<void>
   ready: boolean; hasSent: boolean
   validationFailure?: LearningFailure
 }
@@ -51,20 +53,40 @@ export function createLearningRuntime(deps: LearningRuntimeDeps) {
   const sessions = new Map<string, Execution>()
   const activeProjects = new Map<string, Execution>()
   const pendingProjects = new Map<string, Execution[]>()
+  const pausedProjects = new Map<string, number>()
+  const projectLifecycles = new Map<string, Promise<unknown>>()
+  const startingProjects = new Map<string, Set<Promise<unknown>>>()
+  const dispatchTasks = new Map<string, Set<Promise<void>>>()
   const endedSessions = new Set<string>()
   const now = deps.now ?? (() => new Date().toISOString())
   let disposed = false
 
   function pump(binding: LearningBinding): void {
     const key = keyFor(binding)
-    if (disposed || activeProjects.has(key)) return
+    if (disposed || pausedProjects.has(key) || activeProjects.has(key)) return
     const queued = pendingProjects.get(key)
     if (!queued?.[0]?.ready) return
     const next = queued.shift()!
     if (!queued.length) pendingProjects.delete(key)
     if (next.settled) { pump(binding); return }
     activeProjects.set(key, next)
-    void dispatch(next)
+    const tasks = dispatchTasks.get(key) ?? new Set<Promise<void>>()
+    dispatchTasks.set(key, tasks)
+    const task = dispatch(next)
+    next.dispatching = task; tasks.add(task)
+    void task.finally(() => { tasks.delete(task); if (!tasks.size) dispatchTasks.delete(key) })
+  }
+  function requireAvailable(binding: LearningBinding): void {
+    if (pausedProjects.has(keyFor(binding))) throw new Error('학습 공간을 삭제하거나 복원하고 있어요. 작업이 끝난 뒤 다시 시도하세요.')
+  }
+  async function trackStart<T>(binding: LearningBinding, work: () => Promise<T>): Promise<T> {
+    requireAvailable(binding)
+    const key = keyFor(binding)
+    const tasks = startingProjects.get(key) ?? new Set<Promise<unknown>>()
+    startingProjects.set(key, tasks)
+    const task = work()
+    tasks.add(task)
+    try { return await task } finally { tasks.delete(task); if (!tasks.size) startingProjects.delete(key) }
   }
 
   function persist(execution: Execution, changes: Partial<LearningRun>, allowSettled = false): Promise<void> {
@@ -211,11 +233,13 @@ export function createLearningRuntime(deps: LearningRuntimeDeps) {
 
   return {
     async start(input: StartLearningRunInput & { source?: LearningGenerationSource }, originalRun?: LearningRun) {
+      return trackStart(input.binding, async () => {
       if (disposed) throw new Error('학습 실행을 종료 중입니다.')
       if (!['find-articles', 'explain-word', 'create-quiz', 'create-cards', 'create-summary', 'import-material'].includes(input.kind)) throw new Error('지원하지 않는 학습 작업입니다.')
       if (input.provider !== undefined && !isAgentProvider(input.provider)) throw new Error('지원하지 않는 AI 제공자입니다.')
       if (input.packId !== undefined) learningString(input.packId, 'packId', 200)
       const state = await deps.repo.read(input.binding)
+      requireAvailable(input.binding)
       const readingContext = { purpose: originalRun?.purpose ?? state.purpose,
         topicIds: originalRun?.topicIds ?? state.topicIds,
         readingSetupConfirmed: originalRun?.readingSetupConfirmed ?? state.readingSetupConfirmed }
@@ -270,6 +294,7 @@ export function createLearningRuntime(deps: LearningRuntimeDeps) {
       const identity = JSON.stringify({ kind: input.kind, provider, model: ai.model, effort: ai.effort, topicIds: readingContext.topicIds, packId: input.packId ?? null,
         articleIds: [...new Set(articleIds)].sort(), wordIds: [...new Set(wordIds)].sort(), source: source ?? null })
       const key = keyFor(input.binding)
+      requireAvailable(input.binding)
       const existing = [activeProjects.get(key), ...(pendingProjects.get(key) ?? [])].find(item => item && !item.settled && item.identity === identity)
       if (existing) return { runId: existing.run.id, binding: input.binding }
       const timestamp = now()
@@ -299,6 +324,35 @@ export function createLearningRuntime(deps: LearningRuntimeDeps) {
       }
       pump(input.binding)
       return { runId: run.id, binding: input.binding }
+      })
+    },
+    /** Stops new dispatches, cancels queued work and waits for all durable writes before removal. */
+    async withProjectPaused<T>(binding: LearningBinding, work: () => Promise<T>): Promise<T> {
+      const key = keyFor(binding)
+      pausedProjects.set(key, (pausedProjects.get(key) ?? 0) + 1)
+      const previous = projectLifecycles.get(key) ?? Promise.resolve()
+      const task = previous.catch(() => undefined).then(async () => {
+        await Promise.allSettled([...(startingProjects.get(key) ?? [])])
+        const executions = [...sessions.values()].filter(item => keyFor(item.binding) === key)
+        await Promise.all(executions.map(async execution => {
+          if (execution.finishing) await execution.finishing
+          else if (!execution.settled) {
+            const completion = finish(execution, 'cancelled')
+            stopProvider(execution)
+            await completion
+          }
+          await execution.dispatching
+        }))
+        await Promise.allSettled([...(dispatchTasks.get(key) ?? [])])
+        await deps.repo.cancelPendingRuns(binding)
+        return work()
+      })
+      projectLifecycles.set(key, task)
+      try { return await task } finally {
+        if (projectLifecycles.get(key) === task) projectLifecycles.delete(key)
+        const count = (pausedProjects.get(key) ?? 1) - 1
+        if (count) pausedProjects.set(key, count); else { pausedProjects.delete(key); pump(binding) }
+      }
     },
     restrictionFor(sessionId: string) { const execution = sessions.get(sessionId); return !execution ? endedSessions.has(sessionId) ? new Set<string>() : null : execution.settled ? new Set<string>() : execution.allowedTools },
     isStudySession(sessionId: string) { return sessions.has(sessionId) || endedSessions.has(sessionId) },

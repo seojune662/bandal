@@ -18,6 +18,8 @@ import { invoke } from '../../../src/renderer/src/lib/ipc'
 import {
   browserTabCourseId,
   closeBrowserTab,
+  closeLearningSpace,
+  prepareCloseLearningSpace,
   openBrowserTabInCourse,
   retainedTabDescriptors,
   resetWorkspaceStoreForTests,
@@ -191,6 +193,38 @@ beforeEach(() => {
 })
 
 describe('active panel source identity', () => {
+  test('global home retains exact duplicate and live browser ownership while blocking hidden tab actions', async () => {
+    const dock = new FakeDockview(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachApi(dock.asApi()); await settle()
+    const browser = descriptorFor('browser', { tabId: 'live-page', initialUrl: 'https://example.com/' })
+    const duplicateId = `${tabPanelId(browser)}::duplicate::view`
+    const panel = Object.assign(dock.addPanel({ id: duplicateId }), { params: { descriptor: browser } })
+    dock.json = singleLeafLayout([browser]); state.notifyLayoutChanged(); dock.activate(duplicateId)
+    const clearCount = dock.clearCount
+    state.showLearningHome()
+    expect(useWorkspaceStore.getState()).toMatchObject({ surface: 'learning-home', activeCourseId: 'c1', activePanelId: null })
+    expect(dock.clearCount).toBe(clearCount)
+    expect(dock.activePanel).toBe(panel)
+    expect(state.activePanelSource()).toBeNull(); expect(state.activeTabDescriptor()).toBeNull(); expect(state.activeBrowserTabId()).toBeNull()
+    expect(browserTabCourseId('live-page')).toBe('c1')
+    await state.closeActiveTab(); state.activateTabAt(0); state.activateLastTab(); state.activateRelativeTab(1)
+    expect(panel.api.close).not.toHaveBeenCalled(); expect(panel.api.setActive).not.toHaveBeenCalled()
+    state.showCourseWorkspace('c1')
+    expect(state.activePanelSource()).toEqual({ panelId: duplicateId, descriptor: browser })
+    expect(dock.clearCount).toBe(clearCount)
+  })
+
+  test('late hydration and queued opens cannot pull the student away from global home', async () => {
+    let resolve!: (value: { layout: unknown }) => void
+    invokeMock.mockImplementation(channel => channel === 'layout:get' ? new Promise(r => { resolve = r }) : Promise.resolve({ ok: true }))
+    const dock = new FakeDockview(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachApi(dock.asApi())
+    state.openTab(pdfB); state.showLearningHome()
+    resolve({ layout: singleLeafLayout([pdfA]) }); await settle()
+    expect(useWorkspaceStore.getState()).toMatchObject({ surface: 'learning-home', hydration: 'ready', activePanelId: null })
+    expect(dock.addPanelCalls).toHaveLength(1)
+    expect(state.activePanelSource()).toBeNull()
+  })
   test('focus events publish the exact duplicate without starting a layout save', async () => {
     const dock = new FakeDockview()
     const state = useWorkspaceStore.getState()
@@ -241,6 +275,47 @@ describe('active panel source identity', () => {
     state.detachApi()
     expect(dock.activeListeners.size).toBe(0)
     expect(useWorkspaceStore.getState().activePanelId).toBeNull()
+  })
+})
+
+describe('deleted learning space tabs', () => {
+  test('root project deletion closes its own learning tab while preserving ordinary course materials', async () => {
+    const binding = { courseId: 'c1', rootRelPath: '' }
+    const learning = descriptorFor('learning', { ...binding, view: 'home' })
+    const dock = new FakeDockview()
+    const state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachCourseApi('c1', dock.asApi()); await settle()
+    for (const descriptor of [learning, pdfA]) {
+      const panel = Object.assign(dock.addPanel({ id: tabPanelId(descriptor) }), { params: { descriptor } })
+      panel.api.close.mockImplementation(() => dock.removePanel(panel))
+    }
+    dock.toJSON = () => singleLeafLayout(dock.panels.map(panel => panel.params!.descriptor))
+    await closeLearningSpace(binding, false)
+    expect(dock.panels.map(panel => panel.params!.descriptor)).toEqual([pdfA])
+  })
+
+  test('nested cleanup reaches an evicted layout and leaves sibling folders intact', async () => {
+    const binding = { courseId: 'c1', rootRelPath: 'Reading' }
+    const learning = descriptorFor('learning', { ...binding })
+    const owned = descriptorFor('note', { courseId: 'c1', relPath: 'Reading/단어장.md' })
+    const sibling = descriptorFor('note', { courseId: 'c1', relPath: 'Reading Other/note.md' })
+    useWorkspaceStore.getState().saveRetainedLayout('c1', singleLeafLayout([learning, owned, sibling]) as never)
+    await closeLearningSpace(binding, false)
+    expect(retainedTabDescriptors('c1')).toEqual([sibling])
+  })
+
+  test('close preflight respects native veto and standalone cleanup never saves its deleted course', async () => {
+    const binding = { courseId: 'c1', rootRelPath: '' }
+    const browser = descriptorFor('browser', { tabId: 'unsaved', initialUrl: 'https://example.com/' })
+    useWorkspaceStore.getState().saveRetainedLayout('c1', singleLeafLayout([browser]) as never)
+    const stop = registerTabCloseGuard(() => false)
+    expect(await prepareCloseLearningSpace(binding, true)).toBe(false)
+    expect(retainedTabDescriptors('c1')).toEqual([browser]); stop()
+    expect(await prepareCloseLearningSpace(binding, true)).toBe(true)
+    await closeLearningSpace(binding, true)
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(retainedTabDescriptors('c1')).toEqual([])
+    expect(savesFor('c1')).toEqual([])
   })
 })
 

@@ -25,7 +25,7 @@ import { nowIso, requireId, requireNonEmptyString } from '../../db/validate'
 import { folderDisplayName, folderState, normalizeFolderPath } from './courseFolder'
 
 export interface CoursesRepo {
-  list(input?: { includeArchived?: boolean }): Course[]
+  list(input?: { includeArchived?: boolean; includeDeleted?: boolean }): Course[]
   create(input: CreateCourseInput): Course
   /** Registers an existing folder on disk; creates/moves nothing. */
   addFromFolder(input: AddCourseFromFolderInput): CourseFolderResult
@@ -48,6 +48,8 @@ export interface CoursesRepo {
   }): Course[]
   /** Soft delete: the folder on disk is left untouched. */
   softDelete(input: { courseId: string }): { ok: true }
+  /** Restores the original identity; refuses folders now owned by another live course. */
+  restore(input: { courseId: string }): Course
   /**
    * Hard-deletes an already soft-deleted MANAGED course row and returns its
    * folder path so the caller can trash it. Double-guarded — tutorial
@@ -59,8 +61,10 @@ export interface CoursesRepo {
   purge(input: { courseId: string }): { ok: true; folderPath: string }
   /** Live (non-deleted) course by id; throws NotFoundError otherwise. */
   getById(courseId: string): Course
+  getByIdIncludingDeleted(courseId: string): Course
   /** Absolute course folder path; throws NotFoundError for unknown ids. */
   getFolder(courseId: string): string
+  getFolderIncludingDeleted(courseId: string): string
 }
 
 export interface CoursesRepoDeps {
@@ -101,6 +105,7 @@ function rowToCourse(row: CourseRow, missing = folderState(row.folder_path) !== 
     workspaceKind: row.workspace_kind === 'study-space' ? 'study-space' : 'course',
     missing,
     archived: row.archived === 1,
+    ...(row.deleted_at === null ? {} : { deletedAt: row.deleted_at }),
     groupId: row.group_id ?? null,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
@@ -150,6 +155,12 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
     if (row === undefined) {
       throw new NotFoundError('course', id)
     }
+    return row
+  }
+  function getAnyRowOrThrow(courseId: string): CourseRow {
+    const id = requireId(courseId, 'courseId')
+    const row = db.prepare('SELECT * FROM courses WHERE id = ?').get(id) as CourseRow | undefined
+    if (!row) throw new NotFoundError('course', id)
     return row
   }
 
@@ -213,12 +224,12 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
     return { ...row, archived: 0, updated_at: now }
   }
 
-  function listCourses(input: { includeArchived?: boolean } = {}): Course[] {
+  function listCourses(input: { includeArchived?: boolean; includeDeleted?: boolean } = {}): Course[] {
     const includeArchived = input.includeArchived === true
     const rows = db
       .prepare(
         `SELECT * FROM courses
-         WHERE deleted_at IS NULL ${includeArchived ? '' : 'AND archived = 0'}
+         WHERE ${input.includeDeleted === true ? '1 = 1' : 'deleted_at IS NULL'} ${includeArchived ? '' : 'AND archived = 0'}
          ORDER BY sort_order ASC, created_at ASC`
       )
       .all() as CourseRow[]
@@ -407,6 +418,19 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
       return { ok: true }
     },
 
+    restore(input) {
+      const row = getAnyRowOrThrow(input.courseId)
+      if (row.deleted_at === null) return toCourse(row)
+      if (folderState(row.folder_path) !== 'ok') throw new ValidationError('학습 폴더를 찾을 수 없습니다. 원래 폴더를 복원한 뒤 다시 시도하세요.')
+      const folderPath = normalizeFolderPath(row.folder_path)
+      const owner = (db.prepare('SELECT * FROM courses WHERE deleted_at IS NULL').all() as CourseRow[])
+        .find(candidate => candidate.id !== row.id && normalizeFolderPath(candidate.folder_path) === folderPath)
+      if (owner && owner.id !== row.id) throw new ValidationError('이 폴더가 다른 공간에 연결되어 있어 복원할 수 없습니다.')
+      const now = nowIso()
+      db.prepare('UPDATE courses SET deleted_at = NULL, archived = 0, updated_at = ? WHERE id = ?').run(now, row.id)
+      return toCourse({ ...row, deleted_at: null, archived: 0, updated_at: now })
+    },
+
     purge(input) {
       const id = requireId(input.courseId, 'courseId')
       const row = db
@@ -550,8 +574,15 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
       return toCourse(getRowOrThrow(courseId))
     },
 
+    getByIdIncludingDeleted(courseId) {
+      return toCourse(getAnyRowOrThrow(courseId))
+    },
+
     getFolder(courseId) {
       return getRowOrThrow(courseId).folder_path
+    },
+    getFolderIncludingDeleted(courseId) {
+      return getAnyRowOrThrow(courseId).folder_path
     }
   }
 }

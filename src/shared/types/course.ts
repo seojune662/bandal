@@ -31,6 +31,8 @@ export interface Course {
    */
   missing: boolean
   archived: boolean
+  /** Present for explicitly requested deleted-space recovery; normal lists omit these rows. */
+  deletedAt?: string | null
   /** 과목 그룹(학기) id, ungrouped일 때 null. */
   groupId: string | null
   sortOrder: number
