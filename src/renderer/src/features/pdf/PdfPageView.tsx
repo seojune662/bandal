@@ -84,6 +84,7 @@ export interface PdfPageViewProps {
   onDrawingUpdate: (input: UpdateDrawingInput) => Promise<Drawing | null>
   onDrawingRefine: (input: UpdateDrawingInput) => Promise<Drawing | null>
   onDrawingRemove: (ids: string[]) => Promise<boolean>
+  onDrawingResolveId?: ((id: string) => string) | undefined
 }
 
 function annotationAtPoint(
@@ -161,7 +162,8 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
     onDrawingCreate,
     onDrawingUpdate,
     onDrawingRefine,
-    onDrawingRemove
+    onDrawingRemove,
+    onDrawingResolveId
   } = props
 
   const wrapperRef = useRef<HTMLElement | null>(null)
@@ -437,6 +439,7 @@ function PdfPageViewInner(props: PdfPageViewProps): JSX.Element {
             update={onDrawingUpdate}
             refine={onDrawingRefine}
             remove={onDrawingRemove}
+            resolveId={onDrawingResolveId}
           />
         </>
       ) : (

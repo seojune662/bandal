@@ -444,6 +444,19 @@ describe('textbox reflow handles and formatting', () => {
     expect(html).toContain('font-weight:700')
   })
 
+  test('inline false overrides turn off inherited box decorations and weight', () => {
+    const html = renderLayer([savedShape({
+      kind: 'textbox',
+      data: { box, text: 'bold plain', textRuns: [{
+        from: 5, to: 10, style: { bold: false, italic: false, underline: false, strike: false }
+      }] },
+      style: { ...style, bold: true, italic: true, underline: true, strike: true }
+    })])
+    expect(html).toContain('font-weight:700;font-style:italic;text-decoration:underline line-through">bold ')
+    expect(html).toContain('font-weight:400;font-style:normal;text-decoration:none">plain')
+    expect(html).toContain('font-style:italic;text-decoration:none;text-align:left')
+  })
+
   test('the shared font ladder snaps legacy scales and clamps its ends', () => {
     expect(TEXT_FONT_SCALE_STEPS[nearestFontScaleIndex(1.37)]).toBe(1.25)
     expect(steppedFontScale(1, 1)).toBe(1.25)

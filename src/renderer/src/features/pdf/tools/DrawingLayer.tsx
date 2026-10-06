@@ -27,6 +27,7 @@ interface DrawingLayerProps {
   /** 무음 보정 — 손상 텍스트박스 힐링 채널 (undo 미기록). */
   refine: (input: UpdateDrawingInput) => Promise<Drawing | null>
   remove: (ids: string[]) => Promise<boolean>
+  resolveId?: ((id: string) => string) | undefined
 }
 
 type CreateShape = Omit<DrawingShape, 'id' | 'createdAt' | 'updatedAt'>
@@ -46,7 +47,8 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
     create,
     update,
     refine,
-    remove
+    remove,
+    resolveId
   } = props
   const activeTool = usePdfToolStore((state) => state.activeTool)
   const color = usePdfToolStore((state) => state.color)
@@ -77,6 +79,7 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
 
   return (
     <InkLayer
+      key={JSON.stringify([courseId, relPath, page])}
       courseId={courseId}
       aspect={aspect}
       baseWidthPx={pageWidth}
@@ -87,6 +90,7 @@ export function DrawingLayer(props: DrawingLayerProps): JSX.Element {
       onUpdate={handleUpdate}
       onRefineBox={handleRefineBox}
       onRemove={remove}
+      resolveShapeId={resolveId}
       clampToBounds
       interactive={interactive}
       ariaLabel={`${page} 페이지 필기 레이어`}

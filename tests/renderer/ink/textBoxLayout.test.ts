@@ -8,7 +8,7 @@ import {
 } from '../../../src/shared/textBoxMetrics'
 import {
   defaultTextBoxSize,
-  grownTextBoxHeight,
+  fittedTextBox,
   healedTextBox,
   textBoxAtClick
 } from '../../../src/renderer/src/features/ink/textBoxLayout'
@@ -141,28 +141,25 @@ describe('healedTextBox (손상 박스 자가 치유)', () => {
   })
 })
 
-describe('grownTextBoxHeight', () => {
-  const box = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
-
-  test('returns null while the content still fits', () => {
-    // 필요 높이 = 40 / (800·1) = 0.05 < 0.1
-    expect(grownTextBoxHeight(40, box, 800, 1)).toBeNull()
+describe('fittedTextBox', () => {
+  test('fits growth and shrinkage but ignores unchanged or unmeasurable heights', () => {
+    const box = { x: 0.1, y: 0.1, width: 0.3, height: 0.1 }
+    expect(fittedTextBox(80, box, 800, 1)).toBeNull()
+    expect(fittedTextBox(40, box, 800, 1)).toEqual({ ...box, height: 0.05 })
+    expect(fittedTextBox(120, box, 800, 1)).toEqual({ ...box, height: 0.15 })
+    expect(fittedTextBox(Number.NaN, box, 800, 1)).toBeNull()
+    expect(fittedTextBox(120, box, 0, 1)).toBeNull()
   })
-
-  test('grows to the content height when it overflows', () => {
-    // 필요 높이 = 120 / (800·1) = 0.15 > 0.1
-    expect(grownTextBoxHeight(120, box, 800, 1)).toBeCloseTo(0.15)
+  test('moves a growing bottom-edge box upwards so every line remains visible', () => {
+    const box = { x: 0.95, y: 0.9, width: 0.05, height: 0.05 }
+    expect(fittedTextBox(240, box, 800, 0.75)).toEqual({ ...box, y: 0.6, height: 0.4 })
   })
-
-  test('never grows past the page bottom', () => {
-    const nearBottom = { ...box, y: 0.95 }
-    const grown = grownTextBoxHeight(400, nearBottom, 800, 1)
-    expect(grown).not.toBeNull()
-    expect(grown!).toBeLessThanOrEqual(0.05 + 1e-9)
+  test('fits unbounded boards without moving the anchor or truncating long text', () => {
+    const box = { x: 0.2, y: 0.9, width: 0.3, height: 0.1 }
+    expect(fittedTextBox(1200, box, 800, 1, false)).toEqual({ ...box, height: 1.5 })
   })
-
-  test('ignores unmeasurable inputs', () => {
-    expect(grownTextBoxHeight(Number.NaN, box, 800, 1)).toBeNull()
-    expect(grownTextBoxHeight(120, box, 0, 1)).toBeNull()
+  test('keeps a click on the rightmost pixel inside the page', () => {
+    const box = textBoxAtClick({ x: 1, y: 0.9, p: 0.5 }, 0.75, 800, 1, true)
+    expect(box.x + box.width).toBeLessThanOrEqual(1)
   })
 })

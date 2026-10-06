@@ -1,6 +1,5 @@
 import {
   forwardRef,
-  useEffect,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
@@ -11,7 +10,14 @@ import {
 import { toggleMark } from '@milkdown/prose/commands'
 import { history, redo, undo } from '@milkdown/prose/history'
 import { keymap } from '@milkdown/prose/keymap'
-import { Mark, Schema, type MarkType, type Node as ProseNode } from '@milkdown/prose/model'
+import {
+  Fragment,
+  Mark,
+  Schema,
+  Slice,
+  type MarkType,
+  type Node as ProseNode
+} from '@milkdown/prose/model'
 import { EditorState, TextSelection, type Transaction } from '@milkdown/prose/state'
 import { EditorView } from '@milkdown/prose/view'
 import type {
@@ -48,6 +54,7 @@ function createSchema(): Schema {
         inline: true,
         group: 'inline',
         selectable: false,
+        leafText: () => '\n',
         parseDOM: [{ tag: 'br' }],
         toDOM: () => ['br']
       }
@@ -105,30 +112,104 @@ function marksForStyle(schema: Schema, style: DrawingInlineStyle): Mark[] {
 function initialDoc(
   schema: Schema,
   text: string,
-  sourceRuns: readonly DrawingTextRun[] | undefined
+  sourceRuns: readonly DrawingTextRun[] | undefined,
+  base: DrawingStyle
 ): ProseNode {
   const runs = normalizeTextRuns(text, sourceRuns)
   const nodes: ProseNode[] = []
   let offset = 0
 
-  const append = (value: string, marks: readonly Mark[]): void => {
-    for (const [index, part] of value.split('\n').entries()) {
-      if (index > 0) nodes.push(schema.nodes.hard_break!.create())
-      if (part.length > 0) nodes.push(schema.text(part, marks))
-    }
-  }
+  const baseMarks = marksForStyle(schema, booleanStyle(base))
 
   for (const run of runs) {
-    if (run.from > offset) append(text.slice(offset, run.from), [])
-    append(text.slice(run.from, run.to), marksForStyle(schema, run.style))
+    if (run.from > offset) nodes.push(...textNodes(schema, text.slice(offset, run.from), baseMarks))
+    nodes.push(...textNodes(
+      schema,
+      text.slice(run.from, run.to),
+      marksForStyle(schema, { ...booleanStyle(base), ...run.style })
+    ))
     offset = run.to
   }
-  if (offset < text.length) append(text.slice(offset), [])
+  if (offset < text.length) nodes.push(...textNodes(schema, text.slice(offset), baseMarks))
   return schema.topNodeType.create(null, nodes)
 }
 
+function booleanStyle(style: DrawingInlineStyle): DrawingInlineStyle {
+  return {
+    bold: style.bold === true,
+    italic: style.italic === true,
+    underline: style.underline === true,
+    strike: style.strike === true
+  }
+}
+
+function textNodes(schema: Schema, text: string, marks: readonly Mark[]): ProseNode[] {
+  const nodes: ProseNode[] = []
+  for (const [index, part] of text.split('\n').entries()) {
+    if (index > 0) nodes.push(schema.nodes.hard_break!.create(null, null, marks))
+    if (part.length > 0) nodes.push(schema.text(part, marks))
+  }
+  return nodes
+}
+
+const CLIPBOARD_BLOCKS = 'p, div, li, blockquote, h1, h2, h3, h4, h5, h6, tr'
+
+function clipboardInlineHtml(html: string): string {
+  // The textbox schema has one inline document. ProseMirror otherwise drops
+  // external paragraph wrappers and joins their text without a line break.
+  const template = document.createElement('template')
+  template.innerHTML = html
+  const root = template.content
+  for (const metadata of root.querySelectorAll('meta, script, style, link, head, title')) {
+    metadata.remove()
+  }
+  const meaningfulSibling = (node: Node, direction: 'nextSibling' | 'previousSibling'): Node | null => {
+    for (let current: Node | null = node; current !== null && current !== root; current = current.parentNode) {
+      let sibling = current[direction]
+      while (
+        sibling?.nodeType === Node.COMMENT_NODE ||
+        (sibling?.nodeType === Node.TEXT_NODE && !sibling.textContent?.trim())
+      ) {
+        sibling = sibling[direction]
+      }
+      if (sibling !== null) return sibling
+    }
+    return null
+  }
+  const endsWithBreak = (node: Node): boolean => {
+    let last: Node | null = node
+    while (last !== null && last.nodeType !== Node.TEXT_NODE) {
+      if (last instanceof HTMLElement && last.tagName === 'BR') return true
+      last = last.lastChild
+    }
+    return false
+  }
+  for (const block of [...root.querySelectorAll(CLIPBOARD_BLOCKS)].reverse()) {
+    for (const direction of ['previousSibling', 'nextSibling'] as const) {
+      while (block[direction]?.nodeType === Node.TEXT_NODE && !block[direction]?.textContent?.trim()) {
+        block[direction]?.parentNode?.removeChild(block[direction]!)
+      }
+    }
+    const before = meaningfulSibling(block, 'previousSibling')
+    if (
+      before !== null &&
+      !(before instanceof HTMLElement && before.matches(CLIPBOARD_BLOCKS)) &&
+      !endsWithBreak(before)
+    ) {
+      block.prepend(document.createElement('br'))
+    }
+    if (meaningfulSibling(block, 'nextSibling') !== null && !endsWithBreak(block)) {
+      block.append(document.createElement('br'))
+    }
+    block.replaceWith(...block.childNodes)
+  }
+  return template.innerHTML
+}
+
 function inlineStyleFromMarks(marks: readonly Mark[]): DrawingInlineStyle {
-  const result: DrawingInlineStyle = {}
+  // Marks describe the effective boolean format. Their absence must mean
+  // false, including when the box's saved base style is true.
+  const result: DrawingInlineStyle = booleanStyle({})
   for (const mark of marks) {
     if (mark.type.name === 'color') result.color = mark.attrs.color
     else if (mark.type.name === 'fontSize') result.fontSizePt = mark.attrs.pt
@@ -140,18 +221,18 @@ function inlineStyleFromMarks(marks: readonly Mark[]): DrawingInlineStyle {
   return result
 }
 
-function serializeDoc(doc: ProseNode): { text: string; runs: DrawingTextRun[] } {
+function serializeDoc(doc: ProseNode, base: DrawingStyle): { text: string; runs: DrawingTextRun[] } {
   let text = ''
   const runs: DrawingTextRun[] = []
   doc.forEach((node) => {
-    if (node.type.name === 'hard_break') {
-      text += '\n'
-      return
-    }
-    if (!node.isText || node.text === undefined) return
+    const value = node.type.name === 'hard_break' ? '\n' : node.text
+    if (value === undefined) return
     const from = text.length
-    text += node.text
+    text += value
     const style = inlineStyleFromMarks(node.marks)
+    for (const field of ['bold', 'italic', 'underline', 'strike'] as const) {
+      if (style[field] === (base[field] === true)) delete style[field]
+    }
     if (Object.keys(style).length > 0) {
       const previous = runs.at(-1)
       const to = text.length
@@ -177,7 +258,9 @@ function effectiveStyle(state: EditorState, base: DrawingStyle): DrawingStyle {
     samples.push(inlineStyleFromMarks(state.storedMarks ?? $from.marks()))
   } else {
     state.doc.nodesBetween(from, to, (node) => {
-      if (node.isText) samples.push(inlineStyleFromMarks(node.marks))
+      if (node.isText || node.type.name === 'hard_break') {
+        samples.push(inlineStyleFromMarks(node.marks))
+      }
     })
   }
   if (samples.length === 0) return base
@@ -327,7 +410,7 @@ export const TextBoxEditor = forwardRef<TextBoxEditorHandle, TextBoxEditorProps>
 
     useLayoutEffect(() => refreshFontSizes(), [baseWidthPx, surfaceWidthPt])
 
-    useEffect(() => {
+    useLayoutEffect(() => {
       const host = hostRef.current
       if (host === null) return
       const intrinsicHeight = (): number => {
@@ -346,7 +429,7 @@ export const TextBoxEditor = forwardRef<TextBoxEditorHandle, TextBoxEditorProps>
           effectiveStyle(view.state, baseStyleRef.current)
         )
         if (!changed) return
-        const serialized = serializeDoc(view.state.doc)
+        const serialized = serializeDoc(view.state.doc, baseStyleRef.current)
         // Commit/blur can follow the final keystroke immediately (especially
         // ⌘Enter). Publishing on the next frame made the parent commit its
         // previous, sometimes still-empty draft even though the glyphs were
@@ -360,7 +443,7 @@ export const TextBoxEditor = forwardRef<TextBoxEditorHandle, TextBoxEditorProps>
       const view = new EditorView(host, {
         state: EditorState.create({
           schema,
-          doc: initialDoc(schema, text, runs),
+          doc: initialDoc(schema, text, runs, baseStyleRef.current),
           plugins: [
             history(),
             keymap({
@@ -382,6 +465,16 @@ export const TextBoxEditor = forwardRef<TextBoxEditorHandle, TextBoxEditorProps>
           view.updateState(next)
           emit(view, transaction.docChanged)
         },
+        clipboardTextParser: (value, $context, _plain, currentView) => new Slice(
+          Fragment.from(textNodes(
+            schema,
+            value.replace(/\r\n?/g, '\n'),
+            currentView.state.storedMarks ?? $context.marks()
+          )),
+          0,
+          0
+        ),
+        transformPastedHTML: clipboardInlineHtml,
         handleKeyDown: (currentView, event) => {
           if (event.key === 'Escape') {
             event.preventDefault()
@@ -430,11 +523,15 @@ export const TextBoxEditor = forwardRef<TextBoxEditorHandle, TextBoxEditorProps>
       view.dom.setAttribute('data-placeholder', '텍스트를 입력하세요')
       view.dom.classList.add('ink-layer__textbox-editor-content')
       const end = view.state.doc.content.size
-      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)))
+      const selection = view.state.tr.setSelection(TextSelection.create(view.state.doc, end))
+      if (end === 0) selection.setStoredMarks(marksForStyle(schema, booleanStyle(baseStyleRef.current)))
+      view.dispatch(selection)
       emit(view, false)
+      // Focus before the pointer event finishes so immediate typing reaches
+      // this editor rather than the page or a previous text box.
+      if (autoFocus) view.focus()
       requestAnimationFrame(() => {
         if (viewRef.current !== view) return
-        if (autoFocus) view.focus()
         // The editor host sizes itself to its content instead of inheriting
         // the old foreignObject height. Publish that first intrinsic measure
         // so opening an existing box also removes stale extra whitespace.
@@ -449,13 +546,15 @@ export const TextBoxEditor = forwardRef<TextBoxEditorHandle, TextBoxEditorProps>
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [schema])
 
+    // Boolean typography lives on marks so removing a mark also removes
+    // formatting inherited from the saved box style.
     return (
       <div
         ref={hostRef}
         className="ink-layer__textbox ink-layer__textbox-editor is-editing"
         data-color={color}
         {...(fill === undefined ? {} : { 'data-fill': fill })}
-        style={contentStyle}
+        style={{ ...contentStyle, fontWeight: 400, fontStyle: 'normal', textDecoration: 'none' }}
       />
     )
   }

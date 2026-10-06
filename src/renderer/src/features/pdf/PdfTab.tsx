@@ -1103,6 +1103,7 @@ function PdfViewer({
                       onDrawingUpdate={drawingsApi.update}
                       onDrawingRefine={drawingsApi.refine}
                       onDrawingRemove={drawingsApi.remove}
+                      onDrawingResolveId={drawingsApi.resolveId}
                     />
                   )
                 })}

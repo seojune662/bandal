@@ -48,7 +48,7 @@
   place-items: center;
   flex: 0 0 auto;
   width: calc(var(--icon-button-size) - var(--space-1));
-  height: var(--icon-button-size);
+  height: min(var(--icon-button-size), calc(var(--button-height) - var(--space-1)));
   font-size: var(--icon-size);
   line-height: 1;
   color: var(--text-muted);
@@ -57,6 +57,11 @@
     transform var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out);
+}
+
+.pdf-tool-rail__scroll {
+  width: var(--space-6);
+  align-self: center;
 }
 
 .pdf-tool-rail__button:hover,
@@ -185,7 +190,6 @@
     .ink-layer__image-object,
     .ink-layer__clip-object,
     .ink-layer__textbox-object,
-    .ink-layer__selection-frame,
     .ink-layer__image-resize,
     .ink-layer__clip-resize,
     .ink-layer__shape-resize,
@@ -194,8 +198,10 @@
   pointer-events: auto;
 }
 
+/* `all` also hits the invisible default 1-unit stroke. In our normalized
+   viewBox that expands every box by half a page and lets newer boxes steal clicks. */
 .pdf-tab[data-tool='select'] .pdf-drawing-layer .ink-layer__textbox-hit-target {
-  pointer-events: all;
+  pointer-events: fill;
 }
 
 /* Once a native text selection starts, crossing an existing drawing must not
@@ -258,31 +264,8 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
 }
-.pdf-tool-popover__tools {
-  display: grid;
-  gap: 4px;
-}
-.pdf-tool-popover__tools .pdf-tool-rail__button {
-  display: flex;
-  justify-content: flex-start;
-  gap: 12px;
-  width: 100%;
-  padding-inline: 8px;
-  font-size: var(--text-sm);
-}
 .pdf-tool-popover .pdf-tool-rail__range {
   justify-content: space-between;
   gap: 12px;
   font-size: var(--text-xs);
-}
-.pdf-tool-popover__export {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 8px;
-  font-size: var(--text-sm);
-  border-radius: var(--radius-md);
-}
-.pdf-tool-popover__export:hover {
-  background: var(--bg-raised);
 }

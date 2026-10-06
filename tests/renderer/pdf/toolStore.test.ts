@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from 'vitest'
 import type { Drawing } from '../../../src/shared/types/drawing'
 import {
   drawingFileKey,
+  remapDrawingHistoryIds,
   usePdfToolStore
 } from '../../../src/renderer/src/features/pdf/tools/toolStore'
 
@@ -38,6 +39,23 @@ describe('pdf toolStore history', () => {
     const redo = usePdfToolStore.getState().beginRedo(key)
     expect(redo?.kind).toBe('restore')
     expect(usePdfToolStore.getState().histories[key]?.undo).toHaveLength(0)
+  })
+
+  test('remaps restored ids in both history stacks without replacing older text or touching another file', () => {
+    const key = drawingFileKey('course-1', 'first.pdf')
+    const otherKey = drawingFileKey('course-1', 'second.pdf')
+    const earlier = { ...drawing, kind: 'textbox' as const, data: { ...drawing.data, text: 'earlier text' } }
+    const later = { ...earlier, data: { ...earlier.data, text: 'later text' } }
+    usePdfToolStore.setState({ histories: {
+      [key]: { undo: [{ kind: 'update', drawings: [earlier] }], redo: [{ kind: 'remove', drawings: [later] }] },
+      [otherKey]: { undo: [{ kind: 'remove', drawings: [drawing] }], redo: [] }
+    } })
+    remapDrawingHistoryIds(key, new Map([[drawing.id, 'restored-id']]))
+    expect(usePdfToolStore.getState().histories[key]?.undo[0]?.drawings[0])
+      .toEqual({ ...earlier, id: 'restored-id' })
+    expect(usePdfToolStore.getState().histories[key]?.redo[0]?.drawings[0])
+      .toEqual({ ...later, id: 'restored-id' })
+    expect(usePdfToolStore.getState().histories[otherKey]?.undo[0]?.drawings[0]?.id).toBe(drawing.id)
   })
 
   test('new edits clear redo only for the edited file', () => {

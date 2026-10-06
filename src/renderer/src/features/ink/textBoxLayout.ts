@@ -69,7 +69,7 @@ export function textBoxAtClick(
   if (!clampToBounds) {
     return { x: rawX, y: rawY, width: size.width, height: size.height }
   }
-  const x = Math.max(0, rawX)
+  const x = Math.max(0, Math.min(rawX, 1 - MIN_BOX_WIDTH))
   const width = Math.max(MIN_BOX_WIDTH, Math.min(TEXT_BOX_WIDTH, 1 - x))
   const height = size.height
   const y = Math.max(0, Math.min(rawY, 1 - height))
@@ -106,42 +106,19 @@ export function healedTextBox(box: DrawingBox): DrawingBox | null {
   return changed ? { ...box, x, y, width, height } : null
 }
 
-/**
- * 타이핑으로 내용이 박스보다 길어지면 박스 높이를 내용에 맞춘다.
- * scrollHeightPx 는 foreignObject 내부 CSS px(= 정규화 × baseWidthPx·aspect).
- * 성장이 필요 없으면 null.
- */
-export function grownTextBoxHeight(
-  scrollHeightPx: number,
+/** Fit text without clipping it against the lower edge of a bounded page. */
+export function fittedTextBox(
+  contentHeightPx: number,
   box: DrawingBox,
   baseWidthPx: number,
-  aspect: number
-): number | null {
-  if (
-    !finitePositive(scrollHeightPx) ||
-    !finitePositive(baseWidthPx) ||
-    !finitePositive(aspect)
-  ) {
-    return null
-  }
-  const neededHeight = scrollHeightPx / (baseWidthPx * aspect)
-  if (neededHeight <= box.height) return null
-  return Math.min(neededHeight, Math.max(0, 1 - box.y))
-}
-
-/** Exact content-fit height. Unlike the legacy grow-only helper this shrinks. */
-export function fittedTextBoxHeight(
-  scrollHeightPx: number,
-  box: DrawingBox,
-  baseWidthPx: number,
-  aspect: number
-): number | null {
-  if (!finitePositive(scrollHeightPx) || !finitePositive(baseWidthPx) || !finitePositive(aspect)) {
-    return null
-  }
-  const needed = Math.min(
-    scrollHeightPx / (baseWidthPx * aspect),
-    Math.max(0, 1 - box.y)
-  )
-  return Math.abs(needed - box.height) < 0.0001 ? null : needed
+  aspect: number,
+  clampToBounds = true
+): DrawingBox | null {
+  if (!finitePositive(contentHeightPx) || !finitePositive(baseWidthPx) || !finitePositive(aspect)) return null
+  const needed = contentHeightPx / (baseWidthPx * aspect)
+  const height = clampToBounds ? Math.min(1, needed) : needed
+  const y = clampToBounds ? Math.max(0, Math.min(box.y, 1 - height)) : box.y
+  return Math.abs(height - box.height) < 0.0001 && Math.abs(y - box.y) < 0.0001
+    ? null
+    : { ...box, y, height }
 }
