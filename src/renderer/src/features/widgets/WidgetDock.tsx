@@ -64,20 +64,40 @@ function TaskColorPicker({
   )
 }
 
-function useLiveSettings(): Settings {
+function useLiveSettings(): { settings: Settings; error: boolean; loading: boolean; retry: () => void } {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS)
-  useEffect(() => {
-    let alive = true
+  const [error, setError] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const sequence = useRef(0)
+  const load = useCallback(() => {
+    const request = ++sequence.current
+    setLoading(true)
     void ensureSettingsLoaded().then((next) => {
-      if (alive) setSettings(next)
+      if (request !== sequence.current) return
+      setSettings(next)
+      setError(false)
+    }).catch((loadError: unknown) => {
+      if (request !== sequence.current) return
+      setError(true)
+      console.error('[Bandal] 위젯 설정을 불러오지 못했습니다.', loadError)
+    }).finally(() => {
+      if (request === sequence.current) setLoading(false)
     })
-    const stop = onPush('settings:changed', ({ settings: next }) => setSettings(next))
+  }, [])
+  useEffect(() => {
+    load()
+    const stop = onPush('settings:changed', ({ settings: next }) => {
+      sequence.current += 1
+      setSettings(next)
+      setError(false)
+      setLoading(false)
+    })
     return () => {
-      alive = false
+      sequence.current += 1
       stop()
     }
-  }, [])
-  return settings
+  }, [load])
+  return { settings, error, loading, retry: load }
 }
 
 function useBoardTasks(): { tasks: BoardTask[]; loading: boolean; error: boolean; retry: () => void } {
@@ -318,7 +338,7 @@ function MailWidget({ settings, active }: { settings: Settings; active: boolean 
 
 
 export function WidgetDock(): JSX.Element | null {
-  const settings = useLiveSettings()
+  const { settings, error: settingsError, loading: settingsLoading, retry: retrySettings } = useLiveSettings()
   const widgets = settings.widgets
   const rightRailOpen = useUiStore(state => state.rightRailOpen)
   const settingsOpen = useUiStore(state => state.isSettingsOpen)
@@ -458,6 +478,11 @@ export function WidgetDock(): JSX.Element | null {
     }
   }
 
+  if (settingsError) return (
+    <section className="widget-dock" aria-label="위젯">
+      <p className="widget-empty" role="alert">위젯 설정을 불러오지 못했어요. <button type="button" disabled={settingsLoading} onClick={retrySettings}>{settingsLoading ? '불러오는 중…' : '다시 불러오기'}</button></p>
+    </section>
+  )
   if (widgets.enabled.length === 0) return null
 
   return (

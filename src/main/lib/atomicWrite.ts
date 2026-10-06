@@ -32,7 +32,7 @@ function publishAtomicFile(temporaryPath: string, absPath: string): void {
 export function writeFileAtomic(
   absPath: string,
   data: string | Buffer,
-  opts?: { mode?: number }
+  opts?: { mode?: number; retryWindowsLocks?: boolean }
 ): void {
   const temporaryPath = join(
     dirname(absPath),
@@ -50,7 +50,10 @@ export function writeFileAtomic(
     fsyncSync(descriptor)
     closeSync(descriptor)
     descriptor = undefined
-    publishAtomicFile(temporaryPath, absPath)
+    // Async transactions restore their own state and yield before retrying.
+    // Avoid nesting a blocking wait inside that outer retry policy.
+    if (opts?.retryWindowsLocks === false) renameSync(temporaryPath, absPath)
+    else publishAtomicFile(temporaryPath, absPath)
   } catch (error) {
     if (descriptor !== undefined) {
       try {

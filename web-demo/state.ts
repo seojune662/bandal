@@ -61,6 +61,11 @@ function restore(): DemoData {
   return seed()
 }
 export let data = restore()
+/** Scene switching follows a renamed page note instead of its seed filename. */
+export function currentPageNoteDescriptor() {
+  const link = data.links.find(link => link.id === 'demo-pdf-note-link' && link.courseId === courseId)
+  return link?.target.kind === 'note' ? link.target : pageNoteDescriptor
+}
 export const settings: Settings = { ...structuredClone(DEFAULT_SETTINGS), locale: ko ? 'ko-KR' : 'en-US', restoreLastCourse: true, lastActiveCourseId: courseId,
   university: { ...DEFAULT_SETTINGS.university, universityId: 'snu' },
   onboarding: { flowVersion: 2, closedAt: stamp(), lastCompletedStep: 3 }, tutorial: { seenVersion: 1, activeCourseId: null } }

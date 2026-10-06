@@ -227,7 +227,7 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
         try {
           if (updated !== original) {
             assertRealInside(folder, nextAbs)
-            writeFileAtomic(nextAbs, updated)
+            writeFileAtomic(nextAbs, updated, { retryWindowsLocks: false })
           }
         } catch (error) {
           if (renamed) {

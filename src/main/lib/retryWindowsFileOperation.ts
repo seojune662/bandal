@@ -10,7 +10,7 @@ export interface WindowsFileRetryOptions {
   shouldRetry?: (error: unknown) => boolean
 }
 
-/** Yield for temporary Windows file locks; never retry permission/missing-file errors. */
+/** Yield only for Windows EPERM/EBUSY; EACCES and missing paths fail immediately. */
 export async function retryWindowsFileOperation<T>(
   operation: () => T | Promise<T>,
   options: WindowsFileRetryOptions = {}

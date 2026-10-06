@@ -23,6 +23,7 @@
 
 - `pnpm exec vitest run tests/main/rendererSender.test.ts tests/main/ipcCoverage.test.ts`: 2파일/34검사 통과.
 - `pnpm exec tsc --noEmit -p tsconfig.node.json`: 통과.
-- `e2e/ipcSender.spec.ts`: root 통합 새build에서 실행할 fixture 작성. 실제 guest·subframe·null frame event로 계약·설정 창·drag 경로가 요청 읽기 전 거절되는지 검사한다. 앱 preload를 가진 외부 data 문서에서 실제 settings:set 호출을 거절하고, 정상 settings/overlay/PiP 파일에서 settings:get은 허용하는지 확인한다.
+- `pnpm exec playwright test -c e2e e2e/ipcSender.spec.ts --output=/private/tmp/bandal-ipc-sender-audit`: 실제 Electron 1개 검사 통과. 실제 guest·subframe·null frame event로 계약·설정 창·drag 경로가 요청 읽기 전 거절된다. 앱 preload를 가진 외부 data 문서에서 실제 settings:set 호출을 거절하고, 정상 settings/overlay/PiP 파일에서 settings:get은 허용한다.
+- 첫 통합 실행 실패는 fixture가 `getLastWebPreferences().preload`를 사용한 것이 원인이었다. Electron은 이 반환값에서 preload 경로를 생략하므로 테스트 창의 bridge 자체가 없었다. 테스트 Node 환경에서 현재 앱 renderer URL의 sibling preload 파일 경로를 구해 전달하도록 수정했다. 런타임 허용명단을 완화하지 않았다.
 
 운영 OS renderer sandbox 자체의 취약점 유무, 모든 Chromium API와 OS exploit은 이 코드 감사가 증명하지 않는다. E2E는 로컬 임시 프로필에서 수행하며 실제 사용자 데이터/권한 허용은 사용하지 않는다.

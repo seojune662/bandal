@@ -40,6 +40,25 @@ test('a delayed save cannot recreate a deleted note and same-name rename remains
   await expect(adapter.invoke('notes:read', { courseId, relPath: NOTE })).rejects.toThrow('찾을 수')
 })
 
+test('renaming a note in another course preserves the default scene and returns the saved heading', async () => {
+  const { adapter, courseId, NOTE } = await fixture()
+  const renamed = await adapter.invoke('notes:rename', { courseId: 'demo-course-1', relPath: NOTE, newName: 'Operating systems.MD' })
+  const { data, key } = await import('../../web-demo/state')
+  expect(data.primaryNotePath).toBe(NOTE)
+  expect(data.notes[key(courseId, data.primaryNotePath!)]).toBeDefined()
+  expect(renamed.title).toBe('Operating systems')
+  expect(renamed.markdown.startsWith('# Operating systems\n')).toBe(true)
+  expect((await adapter.invoke('notes:read', { courseId: 'demo-course-1', relPath: renamed.relPath })).markdown).toBe(renamed.markdown)
+})
+
+test('switching back to linked notes follows their renamed path', async () => {
+  const { adapter, courseId } = await fixture()
+  const { PAGE_NOTE, currentPageNoteDescriptor } = await import('../../web-demo/state')
+  const renamed = await adapter.invoke('notes:rename', { courseId, relPath: PAGE_NOTE, newName: 'My linked notes' })
+  expect(currentPageNoteDescriptor().payload.relPath).toBe(renamed.relPath)
+  expect((await adapter.invoke('notes:read', currentPageNoteDescriptor().payload)).markdown).toBe(renamed.markdown)
+})
+
 test('a browser quota failure ends the pending demo turn with a visible error', async () => {
   const { adapter, courseId } = await fixture()
   const batches: ChatEventBatch[] = []

@@ -1,12 +1,13 @@
 import { readDocumentContexts } from '../src/renderer/src/features/agent/documentContext'
 import { taskCalendarInterval } from '../src/shared/taskSchedule'
+import { replaceNoteTitle } from '../src/shared/noteTitle'
 import { localDateValue } from '../src/renderer/src/features/calendar/calendarDate'
 import { readOpenNoteSnapshots } from '../src/renderer/src/features/notes/noteSessionRegistry'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../src/shared/ipc/contract'
 import type { ChatEventBatch, PushChannel, PushPayload } from '../src/shared/ipc/events'
 import type { IpcAdapter } from '../src/renderer/src/lib/ipc'
 import type { ChatMessage } from '../src/shared/types/chat'
-import { data, commit, settings, stamp, id, key, ko, PDF, NOTE } from './state'
+import { data, commit, settings, stamp, id, key, ko, PDF, NOTE, courseId as defaultCourseId } from './state'
 
 type Handlers = { [K in IpcChannel]?: (req: IpcRequest<K>) => IpcResponse<K> | Promise<IpcResponse<K>> }
 const listeners = new Map<string, Set<(value: never) => void>>()
@@ -93,16 +94,18 @@ const handlers: Handlers = {
   'notes:rename': ({ courseId, relPath, newName }) => {
     const nextPath = unusedName(courseId, newName, relPath)
     const note = readNote(courseId, relPath)
+    const title = nextPath.replace(/\.md$/i, '')
+    const markdown = replaceNoteTitle(note.markdown, title)
     commit(next => {
       delete next.notes[key(courseId, relPath)]
-      next.notes[key(courseId, nextPath)] = { ...note, relPath: nextPath, mtime: Date.now() }
-      if (relPath === (next.primaryNotePath ?? NOTE)) next.primaryNotePath = nextPath
+      next.notes[key(courseId, nextPath)] = { ...note, relPath: nextPath, markdown, mtime: Math.max(Date.now(), note.mtime + 1) }
+      if (courseId === defaultCourseId && relPath === (next.primaryNotePath ?? NOTE)) next.primaryNotePath = nextPath
       for (const link of next.links) for (const endpoint of [link.source, link.target]) {
         if (endpoint.kind === 'note' && endpoint.payload.courseId === courseId && endpoint.payload.relPath === relPath) endpoint.payload.relPath = nextPath
       }
     })
     materialChanged(courseId)
-    return { relPath: nextPath, mtime: data.notes[key(courseId, nextPath)]!.mtime, title: newName.replace(/\.md$/, ''), markdown: note.markdown }
+    return { relPath: nextPath, mtime: data.notes[key(courseId, nextPath)]!.mtime, title, markdown }
   },
   'pdf:getViewState': ({ courseId, relPath }) => data.views[key(courseId, relPath)] ?? null,
   'pdf:setViewState': req => { const view = { ...req, updatedAt: stamp() }; commit(next => { next.views[key(req.courseId, req.relPath)] = view }); return view },

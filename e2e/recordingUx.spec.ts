@@ -178,11 +178,12 @@ test('saved WAV opens its own tab; folding, scrolling and playback are independe
 })
 
 test('tab menu order, all shortcuts and tab defaults work together', async () => {
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   const bandal = await launchBandal()
   try {
     const { page } = bandal
     await createCourse(page, '탭 설정 검증')
-    await page.keyboard.press('Meta+t')
+    await page.keyboard.press(`${mod}+t`)
     const options = page.getByRole('option')
     expect(
       (await options.allTextContents())
@@ -198,9 +199,9 @@ test('tab menu order, all shortcuts and tab defaults work together', async () =>
       expect.stringContaining('학업 보드')
     ])
     for (const index of [0, 1, 2, 4, 5, 6])
-      await expect(options.nth(index)).toContainText('⌘')
+      await expect(options.nth(index)).toContainText(process.platform === 'darwin' ? '⌘' : 'Ctrl')
     await page.keyboard.press('Escape')
-    await page.keyboard.press('Meta+,')
+    await page.keyboard.press(`${mod}+,`)
     await page.locator('.settings-nav [data-category="tabs"]').click()
     const prefs = page.locator('.tab-settings')
     await prefs.getByRole('tab', { name: '녹음', exact: true }).click()
@@ -252,24 +253,24 @@ test('tab menu order, all shortcuts and tab defaults work together', async () =>
         boardHideDone: true
       })
     await page.keyboard.press('Escape')
-    await page.keyboard.press('Meta+Shift+m')
+    await page.keyboard.press(`${mod}+Shift+m`)
     await expect(
       page.locator('.dv-tab').filter({ hasText: '강의 필기' })
     ).toBeVisible()
-    await page.keyboard.press('Meta+Shift+a')
+    await page.keyboard.press(`${mod}+Shift+a`)
     await expect(page.locator('.dv-tab.dv-active-tab')).toContainText('AI')
-    await page.keyboard.press('Meta+Alt+r')
+    await page.keyboard.press(`${mod}+Alt+r`)
     await expect(page.locator('.recording:visible')).toBeVisible()
     await expect(
       page.locator('.recording:visible .recording__sidebar')
     ).toBeHidden()
-    await page.keyboard.press('Meta+Alt+w')
+    await page.keyboard.press(`${mod}+Alt+w`)
     const boards = await page.evaluate(async () => {
       const course = (await window.bandal.invoke('courses:list', {}))[0]!
       return window.bandal.invoke('canvas:list', { courseId: course.id })
     })
     expect(boards[0]?.background).toBe('dots')
-    await page.keyboard.press('Meta+Alt+d')
+    await page.keyboard.press(`${mod}+Alt+d`)
     await expect(page.locator('.dv-tab.dv-active-tab')).toContainText(
       '학업 보드'
     )

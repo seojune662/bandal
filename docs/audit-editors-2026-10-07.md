@@ -73,3 +73,11 @@ pnpm exec tsc --noEmit -p tsconfig.node.json
 - `workspaceStore`의 hydration 오류·재시도, `WorkspaceHost`의 inert/콘텐츠 비활성, `materialsStore`의 refreshOnly/cache/응답 순서, `MaterialsSidebar`·`useMaterialsPaste`·`tabCommands`의 비동기 과목 범위, 공용 focus/menu의 숨김·disabled·Escape 전파를 독립적으로 읽었다.
 - `createStudyTab('whiteboard')`만 아직 생성 대기 후 다른 과목이나 학습 홈을 덮는 경로가 남아 있었다. root에 먼저 보고 후 허가된 범위에서 원래 과목 확인을 추가했다. `pnpm exec vitest run tests/renderer/app/tabCommandScope.test.ts` 5개 검사(추가 3개) 통과.
 - `20261007000000_whiteboard_asset_boundaries.sql`, 기존 asset migration, 격리 SQL fixture를 비교했다. 외부 board/group 컬럼 명시, 활성 board·membership·author/owner, UPDATE 기존/새 경로 조건에서 추가 배포 차단 결함을 찾지 못했다. 운영 적용이나 실제 계정 조작은 수행하지 않았다.
+
+## 통합 E2E 후속: 포커스 없는 PDF 분할 화면
+
+- 페이지 필기를 생성한 뒤 필기가 활성 상태일 때, PDF 페이지 입력으로 키보드 포커스만 이동해 30쪽으로 이동하면 필기 스크롤이 0에 머무르는 문제를 기존 빌드에서 재현했다. 같은 입력을 마우스로 클릭하고 실행하면 통과해 비활성 분할 패널의 처리 차이임을 확인했다.
+- `PdfViewer`는 화면에 보이는 다른 분할 그룹도 `interactive=false`로 간주해 스크롤·읽기 위치·크기 변경을 무시했다. `usePanelVisible`을 분리해 현재 과목의 보이는 PDF는 포커스와 무관하게 스크롤을 처리하고, 숨겨진 탭/과목의 레이아웃 스크롤은 계속 차단한다. 펜·단축키의 활성 패널 구분은 유지한다.
+- `visibleSplitPanel`과 `pageSyncScroll` 2파일/6검사, renderer 타입 검사 통과. `interactionStability` 마지막 시나리오에 PDF hover→wheel만 하는 단계도 추가했다. 실제 수정 빌드 E2E 결과는 root 통합 실행에서 확인한다.
+- 명령: `pnpm exec vitest run tests/renderer/workspace/visibleSplitPanel.test.tsx tests/renderer/links/pageSyncScroll.test.ts`, `pnpm exec tsc --noEmit -p tsconfig.web.json`.
+- 웹 체험 내보내기를 위한 열린 노트의 전체 Markdown snapshot accessor와 quota/다른 과목 회귀는 `audit-web-2026-10-07.md`에 기록했다.

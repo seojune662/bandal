@@ -141,7 +141,18 @@ describe('writeFileAtomic', () => {
     expect(readdirSync(directory)).toEqual(['state.json'])
   })
 
-  test('a note rename publishes its canonical heading after a temporary replacement lock', () => {
+  test('an async transaction can disable nested blocking retries', () => {
+    const directory = temporaryDirectory(), file = join(directory, 'state.json')
+    writeFileSync(file, 'original', 'utf8')
+    const wait = refuseReplacement(file, 1)
+    expect(() => writeFileAtomic(file, 'new', { retryWindowsLocks: false })).toThrow(replacementFault.error!)
+    expect(replacementFault.attempts).toBe(1)
+    expect(wait).not.toHaveBeenCalled()
+    expect(readFileSync(file, 'utf8')).toBe('original')
+    expect(readdirSync(directory)).toEqual(['state.json'])
+  })
+
+  test('a note rename publishes its canonical heading after a temporary replacement lock', async () => {
     const directory = temporaryDirectory(), source = join(directory, 'moving.md'), destination = join(directory, 'renamed.md')
     writeFileSync(source, '# moving\n\n보존할 최신 본문\n', 'utf8')
     refuseReplacement(destination, 2)
@@ -149,7 +160,7 @@ describe('writeFileAtomic', () => {
     const changed = vi.fn(() => expect(readFileSync(destination, 'utf8')).toBe('# renamed\n\n보존할 최신 본문\n'))
     const repo = createNotesRepo({ getCourseFolder: () => directory, onPathChanged: changed })
 
-    const renamed = repo.rename({ courseId: 'course', relPath: 'moving.md', newName: 'renamed.md' })
+    const renamed = await repo.rename({ courseId: 'course', relPath: 'moving.md', newName: 'renamed.md' })
 
     expect(renamed.relPath).toBe('renamed.md')
     expect(renamed.markdown).toBe('# renamed\n\n보존할 최신 본문\n')
@@ -158,7 +169,7 @@ describe('writeFileAtomic', () => {
     expect(readdirSync(directory)).toEqual(['renamed.md'])
   })
 
-  test('an exhausted note replacement lock preserves rename rollback and original body with no temp left', () => {
+  test('an exhausted note replacement lock preserves rename rollback and original body with no temp left', async () => {
     const directory = temporaryDirectory(), source = join(directory, 'moving.md'), destination = join(directory, 'renamed.md')
     const original = '# moving\n\n보존할 최신 본문\n'
     writeFileSync(source, original, 'utf8')
@@ -166,7 +177,7 @@ describe('writeFileAtomic', () => {
     const changed = vi.fn()
     const repo = createNotesRepo({ getCourseFolder: () => directory, onPathChanged: changed })
 
-    expect(() => repo.rename({ courseId: 'course', relPath: 'moving.md', newName: 'renamed.md' })).toThrow(replacementFault.error!)
+    await expect(repo.rename({ courseId: 'course', relPath: 'moving.md', newName: 'renamed.md' })).rejects.toThrow(replacementFault.error!)
 
     expect(replacementFault.attempts).toBe(6)
     expect(readFileSync(source, 'utf8')).toBe(original)

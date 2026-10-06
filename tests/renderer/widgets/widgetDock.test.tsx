@@ -64,6 +64,28 @@ const startResize = async (): Promise<void> => {
   await act(async () => Simulate.pointerDown(divider(), { button: 0, pointerId: 1, clientY: 620 } as never))
 }
 
+test('a failed initial settings request shows a retry instead of silently hiding enabled widgets', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  mocks.load.mockRejectedValueOnce(new Error('settings IPC failed')).mockResolvedValue(settings)
+  await mount()
+  expect(host.querySelector('[role=alert]')?.textContent).toContain('위젯 설정을 불러오지 못했어요')
+  expect(host.querySelector('.widget-card')).toBeNull()
+  await act(async () => host.querySelector<HTMLButtonElement>('[role=alert] button')!.click())
+  expect(mocks.load).toHaveBeenCalledTimes(2)
+  expect(host.querySelector('[role=alert]')).toBeNull()
+  expect(input('할 일 추가')).not.toBeNull()
+})
+
+test('a settings push recovers the dock before an older initial request rejects', async () => {
+  let fail!: (reason: Error) => void
+  mocks.load.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject }))
+  await mount()
+  await act(async () => push('settings:changed', { settings }))
+  await act(async () => fail(new Error('stale initial request')))
+  expect(host.querySelector('[role=alert]')).toBeNull()
+  expect(input('할 일 추가')).not.toBeNull()
+})
+
 test('adding once preserves the title, date and color typed while the first task is pending', async () => {
   let finish!: (value: unknown) => void
   const initial = mocks.invoke.getMockImplementation()!

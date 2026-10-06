@@ -10,7 +10,7 @@ import { useUiStore } from '../src/renderer/src/stores/uiStore'
 import { setLocale } from '../src/renderer/src/i18n'
 import { THEMES } from '../src/shared/theme'
 import { adapter, emit, exportNotes } from './adapter'
-import { data, commit, settings, courseId, PDF, NOTE, PAGE_NOTE, pdfDescriptor, pageNoteDescriptor, mode, ko, resetDemo, storageLabel } from './state'
+import { data, commit, settings, courseId, PDF, NOTE, pdfDescriptor, currentPageNoteDescriptor, mode, ko, resetDemo, storageLabel } from './state'
 import '../src/renderer/src/styles/tokens.css'
 import '../src/renderer/src/styles/base.css'
 import './web-demo.css'
@@ -62,10 +62,10 @@ function openExperience(view: Experience) {
   }
   if (view === 'ai') store.openTab({ kind: 'chat', payload: { courseId, conversationId: 'demo-chat' } })
   else if (view === 'board') store.openTab({ kind: 'board', payload: {} })
-  else if (view === 'linked' && innerWidth >= 700) store.openPdfNotePair(pdfDescriptor, pageNoteDescriptor, 'demo-pdf-note-link', 1)
+  else if (view === 'linked' && innerWidth >= 700) store.openPdfNotePair(pdfDescriptor, currentPageNoteDescriptor(), 'demo-pdf-note-link', 1)
   else {
     store.openTab({ kind: 'pdf', payload: { courseId, relPath: PDF } })
-    store.openTab({ kind: 'note', payload: { courseId, relPath: view === 'linked' ? PAGE_NOTE : data.primaryNotePath ?? NOTE } }, { beside: innerWidth >= 700, background: innerWidth < 700 })
+    store.openTab({ kind: 'note', payload: { courseId, relPath: view === 'linked' ? currentPageNoteDescriptor().payload.relPath : data.primaryNotePath ?? NOTE } }, { beside: innerWidth >= 700, background: innerWidth < 700 })
   }
   // Dockview's retained PDF overlay can cache pre-split bounds during a preset
   // replacement. Reconcile after React effects and the position-cache frame.
