@@ -15,7 +15,6 @@ permissions:
 jobs:
   check:
     name: Affected checks
-    if: github.ref_name != 'codex/course-move-windows-diagnosis'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -37,48 +36,3 @@ jobs:
           if [ -n "$FULL" ]; then args+=("$FULL"); fi
           if [ -n "$PR_BASE" ]; then args+=(--base "$PR_BASE"); fi
           node scripts/affected-checks.mjs "${args[@]}"
-
-  windows-note-diagnosis:
-    name: Diagnose packaged Windows note move and rename
-    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'codex/course-move-windows-diagnosis'
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-
-      - name: Compile the same app configuration as the release
-        run: pnpm build
-        env:
-          MAIN_VITE_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
-          MAIN_VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.MAIN_VITE_SUPABASE_PUBLISHABLE_KEY }}
-          MAIN_VITE_MARKETPLACE_URL: ${{ vars.MAIN_VITE_MARKETPLACE_URL }}
-          MAIN_VITE_GMAIL_CLIENT_ID: ${{ secrets.MAIN_VITE_GMAIL_CLIENT_ID }}
-          MAIN_VITE_GMAIL_VERIFIED: ${{ vars.MAIN_VITE_GMAIL_VERIFIED }}
-
-      - name: Package Windows without publishing
-        run: pnpm exec electron-builder --win dir --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Repeat only the real note move and rename case
-        shell: bash
-        run: |
-          export BANDAL_E2E_EXECUTABLE="$PWD/release/win-unpacked/Bandal.exe"
-          pnpm exec playwright test -c e2e e2e/courseTabMove.spec.ts \
-            --grep 'note movement keeps its editor and resource binding through split placement, cancellation and another course hop$' \
-            --repeat-each 10 --workers 1 --retries 0
-
-      - name: Save every diagnostic result and failure trace
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: windows-note-diagnosis-${{ github.run_id }}-${{ github.run_attempt }}
-          path: e2e/test-results
-          retention-days: 7
-          if-no-files-found: warn
