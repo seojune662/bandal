@@ -605,12 +605,19 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
 
       let renamedRelPath: string
       if (node.kind === 'note') {
+        // The rename can rewrite the H1 and references. Compare with the bytes
+        // before the request so live sessions retain concurrent body edits.
+        const beforeRename = await invoke('notes:read', noteRef)
         const renamed = await invoke('notes:rename', {
           ...noteRef,
           newName
         })
         renamedRelPath = renamed.relPath
-        retargetOpenNoteSession(noteRef, renamed.relPath, renamed.mtime)
+        retargetOpenNoteSession(noteRef, renamed.relPath, renamed.mtime, {
+          sourceMarkdown: beforeRename.markdown,
+          title: renamed.title,
+          markdown: renamed.markdown
+        })
       } else {
         const renamed = await invoke('materials:rename', {
           ...noteRef,

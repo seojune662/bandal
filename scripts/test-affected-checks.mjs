@@ -66,6 +66,13 @@ test('material rename changes cover moved views without repeating live session c
   }
 })
 
+test('atomic file replacement selects the real note save and rename regression', () => {
+  const plan = planChecks(['src/main/lib/atomicWrite.ts'])
+  assert.deepEqual(plan.e2e, ['e2e/courseTabMove.spec.ts'])
+  assert.deepEqual(plan.types, ['tsconfig.node.json'])
+  assert.equal(plan.full, false)
+})
+
 test('native image clipboard does not repeat PDF image export checks', () => {
   assert.deepEqual(planChecks(['src/main/features/systemClipboard.ts']).e2e, ['e2e/interactionFixes.spec.ts'])
 })

@@ -10,6 +10,25 @@ import {
 } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 
+const WINDOWS_RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400, 800] as const
+const renameWait = new Int32Array(new SharedArrayBuffer(4))
+
+function publishAtomicFile(temporaryPath: string, absPath: string): void {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      renameSync(temporaryPath, absPath)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | null)?.code
+      const delay = WINDOWS_RENAME_RETRY_DELAYS_MS[attempt]
+      if (process.platform !== 'win32' || (code !== 'EPERM' && code !== 'EBUSY') || delay === undefined) throw error
+      // Transient Windows file locks can reject an atomic replacement.
+      // Keep both files intact while waiting; only rename publishes new bytes.
+      Atomics.wait(renameWait, 0, 0, delay)
+    }
+  }
+}
+
 export function writeFileAtomic(
   absPath: string,
   data: string | Buffer,
@@ -31,7 +50,7 @@ export function writeFileAtomic(
     fsyncSync(descriptor)
     closeSync(descriptor)
     descriptor = undefined
-    renameSync(temporaryPath, absPath)
+    publishAtomicFile(temporaryPath, absPath)
   } catch (error) {
     if (descriptor !== undefined) {
       try {

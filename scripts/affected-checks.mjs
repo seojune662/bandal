@@ -134,7 +134,7 @@ export function planChecks(files, full = false) {
     e2e.add('e2e/courseTabMove.spec.ts')
     e2e.add('e2e/tabMoveSessions.spec.ts')
   }
-  if (has(/^src\/renderer\/src\/features\/materials\/(?:MaterialTree|MaterialsSidebar)\.tsx$/)) e2e.add('e2e/courseTabMove.spec.ts')
+  if (has(/^src\/renderer\/src\/features\/materials\/(?:MaterialTree|MaterialsSidebar)\.tsx$/) || has(/^src\/main\/lib\/atomicWrite\.ts$/)) e2e.add('e2e/courseTabMove.spec.ts')
   if (has(/^src\/(?:renderer\/src\/features\/(?:workspace\/(?:panelContentHost|WorkspaceHost|panels\/browserAnchor)\.|browser\/(?:BrowserGuestView|nativePageHandle)\.)|main\/features\/browser\/nativeTabs\.ts$)/)) e2e.add('e2e/browserPlacement.spec.ts')
   if (e2e.size === 0) e2e.add('e2e/startup.spec.ts')
   const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f))
