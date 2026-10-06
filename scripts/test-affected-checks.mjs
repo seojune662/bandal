@@ -58,6 +58,14 @@ test('AI links and connection fixes select their direct product regressions', ()
   assert.ok(!workspace.e2e.includes('e2e/aiConnections.spec.ts'))
 })
 
+test('material rename changes cover moved views without repeating live session checks', () => {
+  for (const file of ['MaterialTree', 'MaterialsSidebar']) {
+    const plan = planChecks([`src/renderer/src/features/materials/${file}.tsx`])
+    assert.ok(plan.e2e.includes('e2e/courseTabMove.spec.ts'))
+    assert.ok(!plan.e2e.includes('e2e/tabMoveSessions.spec.ts'))
+  }
+})
+
 test('native image clipboard does not repeat PDF image export checks', () => {
   assert.deepEqual(planChecks(['src/main/features/systemClipboard.ts']).e2e, ['e2e/interactionFixes.spec.ts'])
 })

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useMemo, type CSSProperties } from 'react'
 import type {
   MaterialKind,
   MaterialNode,
@@ -133,15 +133,12 @@ function InlineNameEditor({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      const input = inputRef.current
-      if (input === null) return
-      input.focus()
-      const extensionStart = node.kind === 'dir' ? -1 : node.name.lastIndexOf('.')
-      input.setSelectionRange(0, extensionStart > 0 ? extensionStart : node.name.length)
-    })
-    return () => window.cancelAnimationFrame(frame)
+  useLayoutEffect(() => {
+    const input = inputRef.current
+    if (input === null) return
+    input.focus()
+    const extensionStart = node.kind === 'dir' ? -1 : node.name.lastIndexOf('.')
+    input.setSelectionRange(0, extensionStart > 0 ? extensionStart : node.name.length)
   }, [node.kind, node.name])
 
   const submit = async (): Promise<void> => {

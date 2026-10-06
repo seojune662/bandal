@@ -124,12 +124,17 @@ test('a model rejection exposes the actual run details and requires a different 
     await configureEnglishForm(settings, '오류 복구 읽기')
     await settings.getByRole('button', { name: '공간 만들고 첫 글 찾기', exact: true }).click()
     await expect(settings).toBeHidden()
+    // This is a failure of the current visit. Hydrate the initial home first so
+    // the injected run is not correctly classified as a historical failure.
+    await expect(bandal.page.getByLabel('학습 AI 변경')).toHaveText('Gemini · pro')
+    await expect(bandal.page.locator('.learning-hero:visible')).toContainText('관심 있는 글부터 읽어보세요.')
     const course = await bandal.page.evaluate(async () => (await window.bandal.invoke('courses:list', {})).find(course => course.name === '오류 복구 읽기')!)
     const binding = { courseId: course.id, rootRelPath: '' }
     const repo = createLearningRepo({ getCourseFolder: () => course.folderPath })
     const timestamp = new Date().toISOString()
     await repo.updateRun({ binding, run: { id: 'rejected', kind: 'find-articles', status: 'failed', provider: 'gemini', model: 'pro', effort: null, sessionId: 'fixture-session', errorCode: 'model-unavailable', errorCategory: 'model', actionable: '다른 모델을 선택하세요.', error: '이 계정에서 모델을 사용할 수 없어요.', articleIds: [], wordIds: [], message: '', draft: null, createdAt: timestamp, updatedAt: timestamp } })
     await bandal.app.evaluate(({ BrowserWindow }, binding) => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('learning:changed', { binding }) }, binding)
+    expect((await bandal.page.evaluate(binding => window.bandal.invoke('learning:get', { binding }), binding)).runs).toContainEqual(expect.objectContaining({ id: 'rejected', status: 'failed', errorCode: 'model-unavailable' }))
     const failure = bandal.page.locator('.learning-run:visible').filter({ hasText: '이 계정에서 모델' })
     await expect(failure.getByRole('button', { name: '다시 시도', exact: true })).toBeDisabled()
     await failure.getByText('상세 보기', { exact: true }).click()
