@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
@@ -349,6 +349,19 @@ describe('createPdfExporter', () => {
     expect(hasFace(names, 'NotoSansKR-Bold')).toBe(true)
     expect(hasFace(names, 'NotoSansKR-Regular')).toBe(false)
     expect(await pdfText(outputPath)).toContain('굵은 글만')
+  })
+
+  test.skipIf(process.platform === 'win32')('refuses to read a symlink outside the course folder', async () => {
+    const outside = join(ctx.dir, 'outside.pdf')
+    writeFileSync(outside, sourceBytes)
+    symlinkSync(outside, join(ctx.dir, 'slides', 'linked.pdf'))
+    const exporter = createPdfExporter({
+      getCourseFolder: () => join(ctx.dir, 'slides'),
+      listDrawings: () => [], listAnnotations: () => []
+    })
+    const destination = join(ctx.dir, 'must-not-exist.pdf')
+    await expect(exporter.exportAnnotated({ courseId: 'course-1', relPath: 'linked.pdf' }, destination)).rejects.toThrow()
+    expect(existsSync(destination)).toBe(false)
   })
 
   test('refuses to overwrite the original path', async () => {

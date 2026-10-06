@@ -33,6 +33,17 @@ beforeEach(() => {
 })
 
 describe('lazy auth restoration', () => {
+  test('subscribes before hydration and preserves a newer login push', async () => {
+    let resolveAuth!: (auth: AuthState) => void
+    ipc.invoke.mockReturnValue(new Promise<AuthState>(resolve => { resolveAuth = resolve }))
+    const pending = useAuthStore.getState().init()
+    const changed = ipc.onPush.mock.calls[0]?.[1] as unknown as (auth: AuthState) => void
+    expect(changed).toBeTypeOf('function')
+    changed(signedIn)
+    resolveAuth({ ...signedIn, phase: 'signed-out', profile: null })
+    await pending
+    expect(useAuthStore.getState().auth).toEqual(signedIn)
+  })
   test('does not read auth state until an entry point explicitly initializes it', async () => {
     ipc.invoke.mockResolvedValue(signedIn)
 

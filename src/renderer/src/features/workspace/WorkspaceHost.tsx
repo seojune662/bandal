@@ -172,6 +172,7 @@ function HeaderActions(_props: IDockviewHeaderActionsProps): JSX.Element {
 
 function CourseWorkspace({ courseId, active }: { courseId: string | null; active: boolean }): JSX.Element {
   const ko = useLocale() === 'ko-KR'
+  const failed = useWorkspaceStore(state => active && state.hydration === 'error')
   const rootRef = useRef<HTMLDivElement>(null)
   const layoutSubscription = useRef<{ dispose: () => void } | null>(null)
   const frame = useRef<number | null>(null)
@@ -196,7 +197,7 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
     layoutSubscription.current = { dispose: () => { layout.dispose(); overlay.dispose() } }
   }
   return <WorkspaceCourseContext.Provider value={courseId}><CourseActivity.Provider value={active}>
-    <div ref={rootRef} className="workspace-course" hidden={!active} aria-hidden={!active} {...{ inert: !active ? '' : undefined }} data-workspace-course={courseId ?? ''} data-drop-language={ko ? 'ko' : 'en'}>
+    <div ref={rootRef} className="workspace-course" hidden={!active} aria-hidden={!active || failed} {...{ inert: !active || failed ? '' : undefined }} data-workspace-course={courseId ?? ''} data-drop-language={ko ? 'ko' : 'en'}>
       <DockviewReact
         theme={bandalTheme}
         dndEdges={workspaceDragEdges}
@@ -215,7 +216,10 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
 }
 
 export function WorkspaceHost(): JSX.Element {
+  const ko = useLocale() === 'ko-KR'
   const surface = useWorkspaceStore(state => state.surface)
+  const hydration = useWorkspaceStore(state => state.hydration)
+  const retryHydration = useWorkspaceStore(state => state.retryHydration)
   const courses = useCoursesStore(state => state.courses)
   const selectedCourseId = useCoursesStore(state => state.selectedCourseId)
   const course = courses.find(entry => entry.id === selectedCourseId) ?? null
@@ -286,8 +290,13 @@ export function WorkspaceHost(): JSX.Element {
   return <div ref={hostRef} className="workspace-host" data-tour="tab-strip">
     {[...ids].sort().map(id => <CourseWorkspace key={id} courseId={id} active={surface === 'course' && id === courseId} />)}
     {(retainEmpty || courseId === null || dragSource?.courseId === null) && <CourseWorkspace key="empty" courseId={null} active={surface === 'course' && courseId === null} />}
-    <WorkspaceContentLayer components={workspacePanelContents} activeCourseId={courseId} active={surface === 'course'} />
+    <WorkspaceContentLayer components={workspacePanelContents} activeCourseId={courseId} active={surface === 'course' && hydration !== 'error'} />
     <CourseTabMoveOverlay />
+    {surface === 'course' && hydration === 'error' && <div className="workspace-recovery" role="alert">
+      <strong>{ko ? '작업 공간을 불러오지 못했어요.' : 'Could not load your workspace.'}</strong>
+      <p>{ko ? '저장된 탭은 그대로 보존되어 있어요. 다시 불러와 주세요.' : 'Your saved tabs are preserved. Try loading them again.'}</p>
+      <button type="button" className="button button--primary" onClick={retryHydration}>{ko ? '다시 불러오기' : 'Try again'}</button>
+    </div>}
     {surface === 'learning-home' && <LearningHome />}
     {surface === 'course' && isMenuOpen && course !== null && <NewTabMenu course={course} />}
   </div>

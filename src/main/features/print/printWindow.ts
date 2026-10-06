@@ -75,13 +75,20 @@ export async function printPdfBytes(
       if (!win.isDestroyed()) win.close()
     }
 
-    win.once('closed', cleanup)
+    win.once('closed', () => {
+      cleanup()
+      finish(false)
+    })
     win.once('ready-to-show', () => {
       win.show()
-      win.webContents.print(
-        { silent: false, printBackground: true, margins: { marginType: 'none' } },
-        (success) => finish(success)
-      )
+      try {
+        win.webContents.print(
+          { silent: false, printBackground: true, margins: { marginType: 'none' } },
+          (success) => finish(success)
+        )
+      } catch {
+        finish(false)
+      }
     })
     win.webContents.once('render-process-gone', () => finish(false))
     void win.loadFile(file).catch(() => finish(false))

@@ -10,6 +10,14 @@ const storage = vi.hoisted(() => ({
   encryptString: vi.fn((value: string) => Buffer.from(`encrypted:${value}`)),
   decryptString: vi.fn((value: Buffer) => value.toString().slice(10))
 }))
+const deletion = vi.hoisted(() => ({ fail: false }))
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, unlink: async (path: import('node:fs').PathLike) => {
+    if (deletion.fail && String(path).endsWith('session.enc')) throw Object.assign(new Error('disk denied'), { code: 'EACCES' })
+    return actual.unlink(path)
+  } }
+})
 const openExternal = vi.hoisted(() => vi.fn())
 vi.mock('../../../src/main/lib/safeStorageGate', () => ({ runtimeSafeStorage: () => storage }))
 vi.mock('electron', () => ({ shell: { openExternal } }))
@@ -45,6 +53,7 @@ describe('Gmail desktop session', () => {
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'bandal-mail-test-'))
     vi.clearAllMocks()
+    deletion.fail = false
     vi.stubEnv('MAIN_VITE_GMAIL_CLIENT_ID', 'desktop-client.apps.googleusercontent.com')
     vi.stubGlobal('fetch', mockFetch)
   })
@@ -103,6 +112,21 @@ describe('Gmail desktop session', () => {
     expect((await service.state()).status).toBe('disconnected')
     await expect(readFile(join(dir, 'gmail/session.enc'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
+  test('failed disconnect preserves the account and can retry deleting the saved session', async () => {
+    await seed(Date.now() + 3600_000)
+    mockFetch.mockResolvedValue(Response.json({}))
+    const service = createGmailService(dir)
+    expect((await service.state()).status).toBe('connected')
+    deletion.fail = true
+    await expect(service.disconnect()).rejects.toThrow('disk denied')
+    expect((await service.state()).status).toBe('connected')
+    expect((await createGmailService(dir).state()).status).toBe('connected')
+    deletion.fail = false
+    await service.disconnect()
+    expect((await service.state()).status).toBe('disconnected')
+    expect((await createGmailService(dir).state()).status).toBe('disconnected')
+  })
+
   test('revoked refresh tokens require explicit reconnection', async () => {
     await seed()
     mockFetch.mockResolvedValue(Response.json({ error: 'invalid_grant' }, { status: 400 }))

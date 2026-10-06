@@ -8,9 +8,9 @@ const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
 
 interface ParsedSemver {
-  major: number
-  minor: number
-  patch: number
+  major: string
+  minor: string
+  patch: string
   prerelease: readonly string[]
 }
 
@@ -20,9 +20,9 @@ export function parseSemver(value: string): ParsedSemver | null {
   if (match === null) return null
   const [, major, minor, patch, prerelease] = match
   return {
-    major: Number(major),
-    minor: Number(minor),
-    patch: Number(patch),
+    major: major!,
+    minor: minor!,
+    patch: patch!,
     prerelease: prerelease === undefined ? [] : prerelease.split('.')
   }
 }
@@ -34,7 +34,12 @@ export function isValidSemver(value: unknown): value is string {
 function compareIdentifiers(a: string, b: string): number {
   const aNumeric = /^\d+$/.test(a)
   const bNumeric = /^\d+$/.test(b)
-  if (aNumeric && bNumeric) return Math.sign(Number(a) - Number(b))
+  // SemVer numeric identifiers have no precision limit. They cannot have
+  // leading zeroes, so length followed by lexicographic order is exact.
+  if (aNumeric && bNumeric) {
+    if (a.length !== b.length) return a.length < b.length ? -1 : 1
+    return a < b ? -1 : a > b ? 1 : 0
+  }
   if (aNumeric) return -1
   if (bNumeric) return 1
   return a < b ? -1 : a > b ? 1 : 0
@@ -51,7 +56,8 @@ export function compareSemver(a: string, b: string): -1 | 0 | 1 {
     throw new Error(`compareSemver: invalid version "${left === null ? a : b}"`)
   }
   for (const key of ['major', 'minor', 'patch'] as const) {
-    if (left[key] !== right[key]) return left[key] < right[key] ? -1 : 1
+    const comparison = compareIdentifiers(left[key], right[key])
+    if (comparison !== 0) return comparison < 0 ? -1 : 1
   }
   if (left.prerelease.length === 0 && right.prerelease.length === 0) return 0
   if (left.prerelease.length === 0) return 1

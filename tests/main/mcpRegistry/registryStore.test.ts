@@ -18,8 +18,17 @@ import {
 } from '../../../src/main/features/mcpRegistry'
 
 const temporaryDirectories: string[] = []
+const deletionFailure = vi.hoisted(() => ({ path: '' }))
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return { ...actual, rmSync: (...args: Parameters<typeof actual.rmSync>) => {
+    if (String(args[0]) === deletionFailure.path) throw new Error('injected delete failure')
+    return actual.rmSync(...args)
+  } }
+})
 
 afterEach(() => {
+  deletionFailure.path = ''
   vi.restoreAllMocks()
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true })
@@ -74,6 +83,20 @@ function registry(
 }
 
 describe('MCP registry persistence', () => {
+  test('keeps the last server visible and reports a failed disk deletion', () => {
+    const userDataPath = temporaryUserData()
+    const store = registry(userDataPath)
+    const saved = store.save(stdioInput('notes'))
+    deletionFailure.path = join(userDataPath, MCP_REGISTRY_FILE_NAME)
+    expect(() => store.delete(saved.id)).toThrow()
+    expect(store.list()).toEqual([saved])
+    expect(registry(userDataPath).list()).toEqual([saved])
+    deletionFailure.path = ''
+    store.delete(saved.id)
+    expect(store.list()).toEqual([])
+    expect(existsSync(join(userDataPath, MCP_REGISTRY_FILE_NAME))).toBe(false)
+  })
+
   test('saves, lists, resolves enabled servers, and deletes them', () => {
     const userDataPath = temporaryUserData()
     const store = registry(userDataPath)
@@ -232,7 +255,7 @@ describe('MCP registry persistence', () => {
     const encryptedBytes = Buffer.from('unreadable encrypted registry')
     writeFileSync(path, encryptedBytes)
     const timestamp = '2026-08-21T01:02:03.000Z'
-    writeFileSync(`${path}.corrupt-${timestamp}`, Buffer.from('older quarantine'))
+    writeFileSync(`${path}.corrupt-${timestamp.replaceAll(':', '-')}`, Buffer.from('older quarantine'))
     let decryptions = 0
     const storage = fakeSafeStorage()
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -252,7 +275,7 @@ describe('MCP registry persistence', () => {
     const availability = store.availability()
     expect(store.list()).toEqual([])
     expect(existsSync(path)).toBe(false)
-    const quarantinedName = `${MCP_REGISTRY_FILE_NAME}.corrupt-${timestamp}-1`
+    const quarantinedName = `${MCP_REGISTRY_FILE_NAME}.corrupt-${timestamp.replaceAll(':', '-')}-1`
     expect(readdirSync(userDataPath)).toContain(quarantinedName)
     const quarantinedPath = join(userDataPath, quarantinedName)
     expect(readFileSync(quarantinedPath)).toEqual(encryptedBytes)

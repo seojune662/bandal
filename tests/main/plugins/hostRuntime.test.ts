@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm'
 import { describe, expect, test, vi } from 'vitest'
 import type { PluginManifest } from '../../../src/shared/types/plugin'
 import type {
@@ -78,7 +79,7 @@ function createHarness(source: string) {
         receive = callback
       }
     },
-    { readFile, now: () => 1234 }
+    { readFile, now: () => 1234, execute: (source, globals) => { runInNewContext(source, globals, { timeout: 1000 }) } }
   )
 
   function send(message: MainToHost): void {
@@ -112,6 +113,9 @@ function loadMessage(): MainToHost {
 }
 
 describe('createHostRuntime', () => {
+  test('refuses to evaluate plugin code in the Node process', () => {
+    expect(() => createHostRuntime({ post: vi.fn(), onMessage: vi.fn() })).toThrow('sandboxed browser worker')
+  })
   test('loads CommonJS in the requested directory and reports registered commands', async () => {
     const harness = createHarness(`
       module.exports = {

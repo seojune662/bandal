@@ -1,6 +1,6 @@
-/** Main-process owner of the isolated utility-process plugin host. */
+/** Main-process owner of isolated Chromium plugin execution sandboxes. */
 
-import { utilityProcess, type UtilityProcess } from 'electron'
+import { createSandboxHost, type PluginHostProcess } from './sandboxHost'
 import { ValidationError } from '../../db/errors'
 import type { PluginLog } from './pluginLog'
 import type { PluginRateLimiter } from './rateLimit'
@@ -36,10 +36,10 @@ export interface PluginRuntimeDeps {
   api: PluginApiImpl
   limiter: PluginRateLimiter
   log: PluginLog
-  hostEntry: string
+  preloadPath: string
   appVersion: string
   changed(): void
-  fork?: typeof utilityProcess.fork
+  createHost?: typeof createSandboxHost
 }
 
 interface PendingActivation {
@@ -114,16 +114,17 @@ export function createPluginRuntime(deps: PluginRuntimeDeps): PluginRuntime {
 }
 
 function createPluginProcessRuntime(deps: PluginRuntimeDeps, ownerId: string): PluginRuntime {
-  const fork = deps.fork ?? utilityProcess.fork
+  const createHost = deps.createHost ?? createSandboxHost
   const activations = new Map<string, PendingActivation>()
   const commands = new Map<number, PendingCommand>()
-  let child: UtilityProcess | null = null
+  let child: PluginHostProcess | null = null
   let hostReady = false
   let hostReadyPromise: Promise<void> | null = null
   let resolveHostReady: (() => void) | null = null
   let rejectHostReady: ((error: Error) => void) | null = null
   let nextCommandId = 1
   let disposed = false
+  let hostFailure: string | null = null
 
   const permissionsFor = (pluginId: string) => {
     const plugin = deps.store.get(pluginId)
@@ -179,7 +180,7 @@ function createPluginProcessRuntime(deps: PluginRuntimeDeps, ownerId: string): P
     child = null
     hostReady = false
     hostReadyPromise = null
-    const error = new Error(`plugin host exited with code ${code}`)
+    const error = new Error(hostFailure ?? `plugin host exited with code ${code}`)
     failPending(error)
     if (disposed) return
     for (const plugin of deps.store.list()) {
@@ -192,31 +193,24 @@ function createPluginProcessRuntime(deps: PluginRuntimeDeps, ownerId: string): P
     }
   }
 
-  function ensureHost(): UtilityProcess {
+  function ensureHost(): PluginHostProcess {
     if (disposed) throw new Error('plugin runtime is disposed')
     if (child !== null) return child
 
     hostReady = false
+    hostFailure = null
     hostReadyPromise = new Promise<void>((resolve, reject) => {
       resolveHostReady = resolve
       rejectHostReady = reject
     })
-    const hostEnvironment = Object.fromEntries(
-      ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'SystemRoot', 'WINDIR', 'LANG', 'LC_ALL']
-        .flatMap((key) => process.env[key] === undefined ? [] : [[key, process.env[key]!]])
-    )
-    const spawned = fork(deps.hostEntry, [], {
-      serviceName: `Bandal Plugin: ${ownerId}`,
-      env: hostEnvironment,
-      execArgv: ['--max-old-space-size=128'],
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
+    const spawned = createHost(deps.preloadPath)
     child = spawned
     spawned.on('message', (message: unknown) => {
       if (child !== spawned) return
       void handleHostMessage(message)
     })
     spawned.on('error', (_type, location) => {
+      hostFailure = location || 'Plugin execution sandbox failed'
       deps.log.push({
         pluginId: ownerId,
         level: 'error',
@@ -224,22 +218,10 @@ function createPluginProcessRuntime(deps: PluginRuntimeDeps, ownerId: string): P
       })
     })
     spawned.on('exit', (code) => { if (child === spawned) handleExit(code) })
-    spawned.stdout?.on('data', (chunk: Buffer | string) => {
-      const message = String(chunk).trim()
-      if (message !== '') {
-        deps.log.push({ pluginId: ownerId, level: 'info', message })
-      }
-    })
-    spawned.stderr?.on('data', (chunk: Buffer | string) => {
-      const message = String(chunk).trim()
-      if (message !== '') {
-        deps.log.push({ pluginId: ownerId, level: 'error', message })
-      }
-    })
     return spawned
   }
 
-  async function readyHost(): Promise<UtilityProcess> {
+  async function readyHost(): Promise<PluginHostProcess> {
     const process = ensureHost()
     const ready = hostReadyPromise
     if (!hostReady && ready !== null) {
@@ -332,7 +314,7 @@ function createPluginProcessRuntime(deps: PluginRuntimeDeps, ownerId: string): P
     if (!isRecord(raw) || typeof raw['t'] !== 'string') return
     const message = raw as HostToMain
     // Identity is bound to the transport, never supplied by plugin code.
-    if ('pluginId' in message && message.pluginId !== ownerId) return
+    if (message.t !== 'ready' && (!('pluginId' in message) || message.pluginId !== ownerId)) return
     if (message.t === 'api') {
       const sender = child
       const response = await broker.handle(message)
@@ -340,6 +322,29 @@ function createPluginProcessRuntime(deps: PluginRuntimeDeps, ownerId: string): P
         child.postMessage(response)
       }
       return
+    }
+    // Worker code controls its own transport. Validate every lifecycle/log
+    // message too, rather than treating the renderer as trusted host code.
+    switch (message.t) {
+      case 'ready':
+        if (!Number.isInteger(message.protocolVersion)) return
+        break
+      case 'activated':
+        if (typeof message.ok !== 'boolean') return
+        if (message.ok) {
+          if (!Array.isArray(message.commands) || message.commands.length > 32 || message.commands.some(command => typeof command !== 'string')) return
+        } else if (typeof message.error !== 'string') return
+        break
+      case 'commandResult':
+        if (!Number.isSafeInteger(message.id) || typeof message.ok !== 'boolean' || (message.error !== undefined && typeof message.error !== 'string')) return
+        break
+      case 'log':
+        if (!['info', 'warn', 'error'].includes(message.level) || typeof message.message !== 'string') return
+        break
+      case 'deactivated':
+        break
+      default:
+        return
     }
     await broker.handle(message)
   }

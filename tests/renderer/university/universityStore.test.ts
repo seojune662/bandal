@@ -139,14 +139,27 @@ describe('universityStore layout mutators', () => {
     expect(settings.secondaryOverrides).toEqual({})
   })
 
-  test('a failed save keeps the optimistic state and surfaces an error', async () => {
+  test('a failed save restores the saved layout and surfaces an error', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     invokeMock.mockRejectedValueOnce(new Error('disk full'))
 
     await useUniversityStore.getState().reorderServices(['common.everytime'])
 
-    expect(serviceIds()[0]).toBe('common.everytime')
+    expect(serviceIds()).toEqual([...SNU_IDS, 'common.everytime'])
     expect(useUniversityStore.getState().error).not.toBeNull()
+    consoleError.mockRestore()
+  })
+
+  test('an older failed save cannot roll back a newer school selection', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let reject!: (error: Error) => void
+    invokeMock.mockReturnValueOnce(new Promise((_resolve, fail) => { reject = fail }) as never)
+    const pending = useUniversityStore.getState().reorderServices(['common.everytime'])
+    await useUniversityStore.getState().selectPreset('kaist')
+    reject(new Error('old failure'))
+    await pending
+    expect(useUniversityStore.getState().university?.id).toBe('kaist')
+    expect(useUniversityStore.getState().error).toBeNull()
     consoleError.mockRestore()
   })
 })

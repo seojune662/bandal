@@ -181,7 +181,7 @@ describe('quarantineFile', () => {
     const directory = temporaryDirectory()
     const file = join(directory, 'settings.json')
     const now = new Date('2026-08-22T03:04:05.000Z')
-    const collision = `${file}.corrupt-${now.toISOString()}`
+    const collision = `${file}.corrupt-2026-08-22T03-04-05.000Z`
     writeFileSync(file, 'corrupt', 'utf8')
     writeFileSync(collision, 'older', 'utf8')
 

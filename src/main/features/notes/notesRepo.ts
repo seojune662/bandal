@@ -1,3 +1,4 @@
+import { replaceNoteTitle } from '../../../shared/noteTitle'
 /**
  * Notes repository. Notes are plain .md files inside the course folder; the
  * DB is not involved. Every relPath goes through the path-traversal guard.
@@ -196,15 +197,7 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
       // 새 파일명에 맞출 H1 내용을 먼저 계산하되, 파일명 변경 전에는
       // 원본을 건드리지 않는다.
       const original = readFileSync(abs, 'utf8')
-      const lines = original.split('\n')
-      const headingIndex = lines.findIndex((line) => /^#\s/u.test(line))
-      let updated: string
-      if (headingIndex >= 0) {
-        lines[headingIndex] = `# ${finalStem}`
-        updated = lines.join('\n')
-      } else {
-        updated = `# ${finalStem}\n\n${original}`
-      }
+      const updated = replaceNoteTitle(original, finalStem)
       const nextAbs = join(dirAbs, fileName)
       let renamed = false
       if (nextAbs !== abs) {

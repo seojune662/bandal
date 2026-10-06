@@ -4,7 +4,7 @@ import { ValidationError } from '../../../src/main/db/errors'
 import { createSystemPermissions } from '../../../src/main/features/permissions/systemPermissions'
 
 describe('system permissions', () => {
-  test('maps macOS states and checks the data-root parent with a real listing', async () => {
+  test('maps macOS states and checks the existing data root with a real listing', async () => {
     const denied = Object.assign(new Error('blocked'), { code: 'EACCES' })
     const access = vi.fn(async () => undefined)
     const readdir = vi.fn(async () => {
@@ -54,10 +54,24 @@ describe('system permissions', () => {
       checkedAt: '2026-09-05T01:02:03.000Z'
     })
     expect(access).toHaveBeenCalledWith(
-      '/Users/student/Documents',
+      '/Users/student/Documents/Bandal',
       fsConstants.R_OK | fsConstants.W_OK
     )
-    expect(readdir).toHaveBeenCalledWith('/Users/student/Documents')
+    expect(readdir).toHaveBeenCalledWith('/Users/student/Documents/Bandal')
+  })
+
+  test('checks an ancestor only for missing folders, never bypassing a denied data root', async () => {
+    const access = vi.fn(async (path: string) => {
+      if (path.endsWith('/Bandal')) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+    })
+    const permissions = createSystemPermissions({ platform: 'darwin', getDataRoot: () => '/Users/student/Documents/Bandal',
+      getScreenAccess: () => 'granted', requestScreenAccess: async () => [], isTrustedAccessibilityClient: () => true,
+      notificationIsSupported: () => true, openExternal: async () => {}, access, readdir: async () => [] })
+    expect((await permissions.status()).permissions.find(item => item.id === 'documents')?.state).toBe('granted')
+    expect(access.mock.calls.map(([path]) => path)).toEqual(['/Users/student/Documents/Bandal', '/Users/student/Documents'])
+    access.mockReset().mockRejectedValue(Object.assign(new Error('denied'), { code: 'EACCES' }))
+    expect((await permissions.status()).permissions.find(item => item.id === 'documents')?.state).toBe('denied')
+    expect(access).toHaveBeenCalledOnce()
   })
 
   test('requests screen capture once and returns the refreshed state', async () => {

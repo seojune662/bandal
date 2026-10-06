@@ -1,5 +1,6 @@
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -42,6 +43,15 @@ describe('packStore', () => {
 
   afterEach(() => {
     rmSync(userDataPath, { recursive: true, force: true })
+  })
+
+  test('does not quarantine or replace a registry that could not be read', () => {
+    const registry = join(userDataPath, WORKFLOW_PACKS_FILE_NAME)
+    mkdirSync(registry)
+    const store = createPackStore({ userDataPath })
+    expect(() => store.list()).toThrow()
+    expect(() => store.importText(packJson())).toThrow()
+    expect(readdirSync(userDataPath)).toEqual([WORKFLOW_PACKS_FILE_NAME])
   })
 
   test('sanitizes imports and always assigns a fresh custom id', () => {

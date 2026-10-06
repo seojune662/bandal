@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import {
   RAIL_WIDTH_LIMITS,
@@ -19,6 +19,7 @@ interface RailResizerProps {
  */
 export function RailResizer({ side }: RailResizerProps): JSX.Element {
   const dragRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
+  const [width, setWidth] = useState(RAIL_WIDTH_LIMITS[side].default)
   useEffect(() => () => { delete document.documentElement.dataset.railResizing }, [])
 
   const applyWidth = useCallback((px: number): number => {
@@ -27,8 +28,17 @@ export function RailResizer({ side }: RailResizerProps): JSX.Element {
       RAIL_WIDTH_VARIABLES[side],
       `${clamped}px`
     )
+    setWidth(clamped)
     return clamped
   }, [side])
+
+  const cancelDrag = useCallback((): void => {
+    const drag = dragRef.current
+    if (drag === null) return
+    dragRef.current = null
+    delete document.documentElement.dataset.railResizing
+    applyWidth(drag.startWidth)
+  }, [applyWidth])
 
   const currentWidth = useCallback((): number => {
     // 리사이저는 그리드 경계에 절대배치된 형제라, 실제 폭은 rail 요소를 잰다.
@@ -37,6 +47,8 @@ export function RailResizer({ side }: RailResizerProps): JSX.Element {
       ? rail.getBoundingClientRect().width
       : RAIL_WIDTH_LIMITS[side].default
   }, [side])
+
+  useEffect(() => { setWidth(currentWidth()) }, [currentWidth])
 
   const finishDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
     const drag = dragRef.current
@@ -58,7 +70,21 @@ export function RailResizer({ side }: RailResizerProps): JSX.Element {
       role="separator"
       aria-orientation="vertical"
       aria-label={side === 'left' ? '과목 사이드바 폭 조절' : '자료 사이드바 폭 조절'}
-      title="드래그해서 폭 조절 · 더블클릭하면 기본 폭"
+      aria-valuemin={RAIL_WIDTH_LIMITS[side].min}
+      aria-valuemax={RAIL_WIDTH_LIMITS[side].max}
+      aria-valuenow={width}
+      tabIndex={0}
+      title="드래그 또는 좌우 방향키로 폭 조절 · 더블클릭하면 기본 폭"
+      onKeyDown={event => {
+        if (event.altKey || event.ctrlKey || event.metaKey) return
+        const delta = event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : null
+        const next = event.key === 'Home' ? RAIL_WIDTH_LIMITS[side].min
+          : event.key === 'End' ? RAIL_WIDTH_LIMITS[side].max
+          : delta === null ? null : currentWidth() + (side === 'left' ? delta : -delta)
+        if (next === null) return
+        event.preventDefault()
+        persistRailWidth(side, applyWidth(next))
+      }}
       onPointerDown={(event) => {
         if (event.button !== 0) return
         event.preventDefault()
@@ -79,7 +105,8 @@ export function RailResizer({ side }: RailResizerProps): JSX.Element {
         applyWidth(drag.startWidth + delta)
       }}
       onPointerUp={finishDrag}
-      onPointerCancel={finishDrag}
+      onPointerCancel={cancelDrag}
+      onLostPointerCapture={cancelDrag}
       onDoubleClick={() => {
         persistRailWidth(side, applyWidth(RAIL_WIDTH_LIMITS[side].default))
       }}

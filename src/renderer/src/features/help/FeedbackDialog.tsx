@@ -57,11 +57,13 @@ export function FeedbackDialog({
   const [body, setBody] = useState('')
   const [includeAppInfo, setIncludeAppInfo] = useState(true)
   const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const resetForm = (): void => {
     setKind('bug')
     setBody('')
     setIncludeAppInfo(true)
+    setError(null)
   }
 
   const close = (): void => {
@@ -97,14 +99,18 @@ export function FeedbackDialog({
   }
 
   const handleUnavailable = async (): Promise<void> => {
+    let copied = false
     try {
       await navigator.clipboard.writeText(body)
+      copied = true
     } catch {
       // Never pass the Clipboard error object: a platform implementation may
       // include the rejected content in its message.
       console.error('[feedback] clipboard copy failed')
     }
-    showToastWithAction(t('feedback.unavailable'), githubAction)
+    const message = t(copied ? 'feedback.unavailable' : 'feedback.unavailableCopyFailed')
+    setError(message)
+    showToastWithAction(message, githubAction)
   }
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -112,6 +118,7 @@ export function FeedbackDialog({
     if (pending || body.trim() === '') return
 
     setPending(true)
+    setError(null)
     try {
       let result: FeedbackResult
       try {
@@ -130,13 +137,13 @@ export function FeedbackDialog({
       const state = feedbackResultState(result)
       if (state === 'success') {
         showToast(t('feedback.success'))
+        setOpen(false)
+        resetForm()
       } else if (state === 'rate-limited') {
-        showToast(t('feedback.rateLimited'))
+        setError(t('feedback.rateLimited'))
       } else {
         await handleUnavailable()
       }
-      setOpen(false)
-      resetForm()
     } finally {
       setPending(false)
     }
@@ -208,6 +215,8 @@ export function FeedbackDialog({
               <span>{t('feedback.includeAppInfo')}</span>
             </label>
           </fieldset>
+
+          {error !== null && <p className="form-error" role="alert">{error}</p>}
 
           <footer className="help-feedback__actions">
             <button

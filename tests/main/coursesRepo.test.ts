@@ -340,6 +340,19 @@ describe('coursesRepo', () => {
       expect(() => repo.purge({ courseId: course.id })).toThrow(ValidationError)
     })
 
+    test.each(['same', 'child', 'parent', 'symlink'] as const)('refuses to trash a %s folder used by another live course', relation => {
+      const removed = repo.create({ name: 'Old space', color: 'blue' })
+      repo.softDelete({ courseId: removed.id })
+      let folderPath = removed.folderPath
+      if (relation === 'child') { folderPath = join(folderPath, 'live'); mkdirSync(folderPath) }
+      if (relation === 'parent') folderPath = dataRoot
+      if (relation === 'symlink') { folderPath = join(ctx.dir, 'alias'); symlinkSync(removed.folderPath, folderPath, 'dir') }
+      const owner = repo.addFromFolder({ folderPath, color: 'green' })
+      expect(owner.status).toBe('ok')
+      expect(() => repo.purge({ courseId: removed.id })).toThrow('다른 공간')
+      expect(repo.getByIdIncludingDeleted(removed.id).deletedAt).toBeDefined()
+    })
+
     test('purges a course that has FK children across the whole graph', () => {
       const course = repo.create({ name: '반달 튜토리얼', color: 'gold' })
       const now = new Date().toISOString()

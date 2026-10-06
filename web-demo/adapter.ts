@@ -2,7 +2,7 @@ import { readDocumentContexts } from '../src/renderer/src/features/agent/documen
 import { taskCalendarInterval } from '../src/shared/taskSchedule'
 import { localDateValue } from '../src/renderer/src/features/calendar/calendarDate'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../src/shared/ipc/contract'
-import type { PushChannel, PushPayload } from '../src/shared/ipc/events'
+import type { ChatEventBatch, PushChannel, PushPayload } from '../src/shared/ipc/events'
 import type { IpcAdapter } from '../src/renderer/src/lib/ipc'
 import type { ChatMessage } from '../src/shared/types/chat'
 import { data, commit, settings, stamp, id, key, ko, PDF, NOTE, courseId } from './state'
@@ -29,11 +29,11 @@ function writeNote(course: string, path: string, markdown: string) {
   materialChanged(course)
   return structuredClone(note)
 }
-function unusedName(course: string, name: string): string {
+function unusedName(course: string, name: string, currentPath?: string): string {
   const cleaned = name.replace(/[\\/]/g, '-').trim().slice(0, 180) || '새 필기'
   const stem = cleaned.replace(/\.md$/i, '')
   let path = `${stem}.md`, i = 2
-  while (data.notes[key(course, path)]) path = `${stem} ${i++}.md`
+  while (path !== currentPath && data.notes[key(course, path)]) path = `${stem} ${i++}.md`
   return path
 }
 function session(course: string, sessionId: string) {
@@ -46,7 +46,12 @@ function message(course: string, sessionId: string, role: 'user' | 'assistant', 
   return { id: messageId, courseId: course, sessionId, role, turnSeq: Math.floor(session(course, sessionId).messages.length / 2) + 1, createdAt: stamp(), blocks: [{ id: id(), messageId, ord: 0, kind: 'text', payload: { text } }] }
 }
 const pending = new Map<string, ReturnType<typeof setTimeout>>()
-let sequence = 0
+const sequences = new Map<string, number>()
+function emitChat(courseId: string, sessionId: string, events: ChatEventBatch['events']): void {
+  const seq = (sequences.get(sessionId) ?? 0) + 1
+  sequences.set(sessionId, seq)
+  emit('chat:event-batch', { courseId, sessionId, seq, events })
+}
 const handlers: Handlers = {
   'settings:get': () => structuredClone(settings),
   'settings:set': patch => {
@@ -79,12 +84,13 @@ const handlers: Handlers = {
   'materials:duplicate': ({ courseId, relPath }) => { const path = unusedName(courseId, relPath.replace(/\.md$/, ' 복사본')); writeNote(courseId, path, readNote(courseId, relPath).markdown); return { relPath: path } },
   'notes:read': ({ courseId, relPath }) => readNote(courseId, relPath),
   'notes:write': ({ courseId, relPath, markdown, expectedMtime }) => {
+    readNote(courseId, relPath)
     if (expectedMtime !== undefined && expectedMtime !== data.notes[key(courseId, relPath)]?.mtime) throw new Error('필기가 다른 곳에서 변경되었습니다. 새로 불러온 뒤 다시 저장해주세요.')
     return writeNote(courseId, relPath, markdown)
   },
   'notes:create': ({ courseId, title }) => writeNote(courseId, unusedName(courseId, title), `# ${title}\n\n`),
   'notes:rename': ({ courseId, relPath, newName }) => {
-    const nextPath = unusedName(courseId, newName)
+    const nextPath = unusedName(courseId, newName, relPath)
     const note = readNote(courseId, relPath)
     commit(next => {
       delete next.notes[key(courseId, relPath)]
@@ -161,20 +167,25 @@ const handlers: Handlers = {
   'chat:setConfiguration': ({ courseId, sessionId, model, effort }) => { session(courseId, sessionId); commit(next => { Object.assign(next.chats[sessionId]!.session, { model, effort }) }); return { model, effort } },
   'chat:setProvider': ({ courseId, sessionId, provider }) => { session(courseId, sessionId); commit(next => { Object.assign(next.chats[sessionId]!.session, { provider, model: null, effort: null }) }); return { sessionInfo: data.chats[sessionId]!.session, carried: { messages: 0, chars: 0, truncated: false } } },
   'chat:send': ({ courseId, sessionId, content }) => {
+    if (pending.has(sessionId)) throw new Error(ko ? '예시 답변을 만들고 있어요. 완료하거나 중지한 뒤 다시 보내주세요.' : 'A reply is in progress. Wait or stop it before sending again.')
     const user = message(courseId, sessionId, 'user', content)
     commit(next => { next.chats[sessionId]!.messages.push(user) })
     const timer = setTimeout(() => {
-      const reply = message(courseId, sessionId, 'assistant', answer)
-      commit(next => { next.chats[sessionId]!.messages.push(reply) })
-      emit('chat:event-batch', { courseId, sessionId, seq: ++sequence, events: [{ type: 'text-final', blockId: reply.blocks[0]!.id, text: answer }, { type: 'turn-complete', stopReason: 'success' }] })
-      pending.delete(sessionId)
+      try {
+        if (!data.chats[sessionId]) return
+        const reply = message(courseId, sessionId, 'assistant', answer)
+        commit(next => { next.chats[sessionId]!.messages.push(reply) })
+        emitChat(courseId, sessionId, [{ type: 'text-final', blockId: reply.blocks[0]!.id, text: answer }, { type: 'turn-complete', stopReason: 'success' }])
+      } catch (error) {
+        emitChat(courseId, sessionId, [{ type: 'error', code: 'unknown', fatal: false, message: error instanceof Error ? error.message : String(error) }, { type: 'turn-complete', stopReason: 'error' }])
+      } finally { pending.delete(sessionId) }
     }, 550)
     pending.set(sessionId, timer)
     return { turnSeq: user.turnSeq }
   },
-  'chat:cancel': ({ courseId, sessionId }) => { clearTimeout(pending.get(sessionId)); pending.delete(sessionId); emit('chat:event-batch', { courseId, sessionId, seq: ++sequence, events: [{ type: 'turn-complete', stopReason: 'interrupted' }] }); return ok },
+  'chat:cancel': ({ courseId, sessionId }) => { clearTimeout(pending.get(sessionId)); pending.delete(sessionId); emitChat(courseId, sessionId, [{ type: 'turn-complete', stopReason: 'interrupted' }]); return ok },
   'chat:close': () => ok,
-  'chat:deleteConversation': ({ sessionId }) => { commit(next => { delete next.chats[sessionId] }); return ok },
+  'chat:deleteConversation': ({ sessionId }) => { commit(next => { delete next.chats[sessionId] }); clearTimeout(pending.get(sessionId)); pending.delete(sessionId); return ok },
   'mcp:list': () => ({ servers: [], availability: { available: false, reason: '웹 체험에서는 계정과 외부 도구를 연결하지 않습니다.' } }),
   'agentTools:changes': ({ turnId }) => ({ turnId, actions: [] }),
   'search:indexPdfPages': () => ok,

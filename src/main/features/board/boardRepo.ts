@@ -268,7 +268,7 @@ export function createBoardRepo(db: Database): BoardRepo {
   return {
     list(input = {}) {
       const includeDone = input.includeDone === true
-      const clauses = ['deleted_at IS NULL']
+      const clauses = ['deleted_at IS NULL', '(course_id IS NULL OR EXISTS (SELECT 1 FROM courses c WHERE c.id = board_tasks.course_id AND c.deleted_at IS NULL))']
       const params: string[] = []
       if (input.courseId === null) {
         clauses.push('course_id IS NULL')
@@ -296,6 +296,7 @@ export function createBoardRepo(db: Database): BoardRepo {
       const clauses = [
         'deleted_at IS NULL',
         'due_at IS NOT NULL',
+        '(course_id IS NULL OR EXISTS (SELECT 1 FROM courses c WHERE c.id = board_tasks.course_id AND c.deleted_at IS NULL))',
         `((all_day = 1 AND due_at >= ? AND COALESCE(start_at, due_at) <= ?)
           OR (all_day != 1 AND (due_at > ? OR (due_at = ? AND (start_at IS NULL OR start_at = due_at))) AND COALESCE(start_at, due_at) < ?))`
       ]
@@ -331,6 +332,7 @@ export function createBoardRepo(db: Database): BoardRepo {
         't.deleted_at IS NULL',
         "t.status != 'done'",
         't.due_at IS NOT NULL',
+        '(t.course_id IS NULL OR c.id IS NOT NULL)',
         `((t.all_day = 1 AND t.due_at < ?)
           OR (t.all_day != 1 AND t.due_at < ?))`
       ]

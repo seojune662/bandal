@@ -379,6 +379,28 @@ describe('browser tools (read-only)', () => {
       expect(result.status).toBe('error')
       expect(p.pressKey).not.toHaveBeenCalled()
     })
+    test('Enter cannot bypass the confirmation required to submit a form', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      const p = page(), confirm = vi.fn(async () => false)
+      const api = tools({ page: p, confirm })
+      expect((await api.browser_key('t1', 'Enter')).status).toBe('error')
+      expect(confirm).toHaveBeenCalledOnce()
+      expect(p.pressKey).not.toHaveBeenCalled()
+      expect((await api.browser_key('t1', 'Tab')).status).toBe('ok')
+      expect(confirm).toHaveBeenCalledOnce()
+    })
+    test('Enter rechecks the approved document and executes only after confirmation', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      let url = `${ORIGIN}/w3`
+      const p = page({ currentUrl: () => url })
+      const confirm = vi.fn(async () => 'once' as const)
+      const api = tools({ page: p, confirm })
+      expect((await api.browser_key('t1', 'Enter')).status).toBe('ok')
+      p.pressKey.mockClear()
+      confirm.mockImplementation(async () => { url = `${ORIGIN}/another-form`; return 'once' })
+      expect((await api.browser_key('t1', 'Enter')).status).toBe('error')
+      expect(p.pressKey).not.toHaveBeenCalled()
+    })
     test('browser_back returns the settled URL and navigation flag', async () => {
       grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
       const p = page({
@@ -404,6 +426,37 @@ describe('browser tools (read-only)', () => {
       expect(result.status).toBe('error')
       expect(p.factsFor).not.toHaveBeenCalled()
       expect(p.hover).not.toHaveBeenCalled()
+    })
+    test.each(['browser_snapshot', 'browser_read', 'browser_key'] as const)('%s refuses a page changed while site approval was pending', async (tool) => {
+      let url = `${ORIGIN}/w3`
+      const p = page({ currentUrl: () => url })
+      const api = tools({ page: p, confirm: async () => { url = 'https://other.example/private'; return 'once' } })
+      const result = tool === 'browser_key' ? await api.browser_key('t1', 'Enter') : await api[tool]('t1', null)
+      expect(result.status).toBe('error')
+      expect(p.snapshot).not.toHaveBeenCalled()
+      expect(p.read).not.toHaveBeenCalled()
+      expect(p.pressKey).not.toHaveBeenCalled()
+    })
+    test('a click refuses a ref invalidated while element facts were loading', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      let generation = 3
+      const p = page({ generation: () => generation, factsFor: async () => {
+        generation++
+        return { tag: 'a', type: null, inNonGetForm: false, href: '/safe', disabled: false }
+      } })
+      const result = await tools({ page: p }).browser_act('t1', 'f0:e0@3', { kind: 'click' })
+      expect(result.status).toBe('error')
+      expect(p.act).not.toHaveBeenCalled()
+    })
+    test('a delayed old turn cannot click after the next chat turn has started', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      let turn = 'chat:1'
+      const p = page({ factsFor: async () => {
+        turn = 'chat:2'
+        return { tag: 'a', type: null, inNonGetForm: false, href: '/safe', disabled: false }
+      } })
+      await expect(tools({ page: p, getRunId: () => turn }).browser_act('t1', 'f0:e0@3', { kind: 'click' })).rejects.toThrow('중지')
+      expect(p.act).not.toHaveBeenCalled()
     })
     test('a course-wide approval covers a site never named', async () => {
       // The "이 과목 전체" answer. It still cannot reach a categorically
@@ -587,6 +640,39 @@ describe('browser tools (read-only)', () => {
         ...over
       }
     }
+    test.each(['navigation', 'same-url reload'] as const)('submit refuses %s during confirmation', async (change) => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      let url = `${ORIGIN}/w3`, generation = 3
+      const c = commit()
+      const p = page({ currentUrl: () => url, generation: () => generation })
+      const result = await tools({ page: p, commit: c, confirm: async () => {
+        if (change === 'navigation') url = `${ORIGIN}/another-form`
+        else generation++
+        return 'once'
+      } }).browser_submit('t1', 'f0:e0@3')
+      expect(result.status).toBe('error')
+      expect(c.submit).not.toHaveBeenCalled()
+    })
+    test('saved login refuses navigation during confirmation', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      let url = `${ORIGIN}/w3`
+      const c = commit()
+      const result = await tools({ page: page({ currentUrl: () => url }), commit: c, confirm: async () => {
+        url = 'https://other.example/login'
+        return 'once'
+      } }).browser_use_saved_login('t1')
+      expect(result.status).toBe('error')
+      expect(c.useSavedLogin).not.toHaveBeenCalled()
+    })
+    test('submit honours a stop received while confirmation was pending', async () => {
+      grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
+      let stopped = false
+      const c = commit()
+      const p = page({ assertLive: () => { if (stopped) throw new Error('학생이 중지했어요.') } })
+      await expect(tools({ page: p, commit: c, confirm: async () => { stopped = true; return 'once' } })
+        .browser_submit('t1', 'f0:e0@3')).rejects.toThrow('중지')
+      expect(c.submit).not.toHaveBeenCalled()
+    })
     test('submit asks EVERY time, even with an interact grant', async () => {
       grants.grant({ courseId: COURSE, url: ORIGIN, capability: 'interact' })
       const confirm = vi.fn(async () => true)

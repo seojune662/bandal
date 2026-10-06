@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import type { UtilityProcess } from 'electron'
+import type { PluginHostProcess } from '../../../src/main/features/plugins/sandboxHost'
 import type {
   PluginState,
   PluginSummary
@@ -10,9 +10,7 @@ import type { PluginStore } from '../../../src/main/features/plugins/pluginStore
 import type { PluginApiImpl } from '../../../src/main/features/plugins/rpcBroker'
 
 const electronMocks = vi.hoisted(() => ({ fork: vi.fn() }))
-vi.mock('electron', () => ({
-  utilityProcess: { fork: electronMocks.fork }
-}))
+vi.mock('../../../src/main/features/plugins/sandboxHost', () => ({ createSandboxHost: electronMocks.fork }))
 
 import { createPluginRuntime } from '../../../src/main/features/plugins/pluginRuntime'
 import { createPluginLog } from '../../../src/main/features/plugins/pluginLog'
@@ -61,7 +59,7 @@ class FakeChild extends EventEmitter {
 function fixture(options: { appVersion?: string } = {}) {
   let plugin = structuredClone(basePlugin)
   const child = new FakeChild()
-  electronMocks.fork.mockReturnValue(child as unknown as UtilityProcess)
+  electronMocks.fork.mockReturnValue(child as unknown as PluginHostProcess)
   const store = {
     list: () => [structuredClone(plugin)],
     get: (id: string) =>
@@ -81,16 +79,17 @@ function fixture(options: { appVersion?: string } = {}) {
   const apiCall = vi.fn(async () => ({ content: 'hello' }))
   const api = new Proxy({}, { get: () => apiCall }) as PluginApiImpl
   const changed = vi.fn()
+  const log = createPluginLog({ warn: vi.fn() })
   const runtime = createPluginRuntime({
     store,
     api,
     limiter: createPluginRateLimiter(),
-    log: createPluginLog({ warn: vi.fn() }),
-    hostEntry: '/app/pluginHost.js',
+    log,
+    preloadPath: '/app/preload/pluginHost.js',
     appVersion: options.appVersion ?? '0.36.0',
     changed
   })
-  return { apiCall, changed, child, get plugin() { return plugin }, runtime }
+  return { apiCall, changed, child, log, get plugin() { return plugin }, runtime }
 }
 
 async function activate(harness: ReturnType<typeof fixture>): Promise<void> {
@@ -111,16 +110,26 @@ async function activate(harness: ReturnType<typeof fixture>): Promise<void> {
 beforeEach(() => electronMocks.fork.mockReset())
 
 describe('createPluginRuntime', () => {
+  test('rejects malformed lifecycle and log messages from plugin-controlled workers', async () => {
+    const harness = fixture()
+    try {
+      await activate(harness)
+      harness.child.emit('message', { t: 'log', pluginId: basePlugin.manifest.id, level: 'error', message: null })
+      harness.child.emit('message', { t: 'commandResult', pluginId: basePlugin.manifest.id, id: {}, ok: true })
+      harness.child.emit('message', { t: 'activated', pluginId: basePlugin.manifest.id, ok: true, commands: null })
+      harness.child.emit('message', { t: 'log', level: 'info', message: 'ownerless' })
+      await Promise.resolve()
+      expect(harness.plugin.state).toBe('active')
+      expect(harness.log.list(null)).toEqual([])
+    } finally { harness.runtime.dispose() }
+  })
   test('does not inherit application secrets or Node preload options', async () => {
     vi.stubEnv('BANDAL_TEST_SECRET', 'secret-value')
     vi.stubEnv('NODE_OPTIONS', '--require=untrusted.js')
     const harness = fixture()
     try {
       await activate(harness)
-      const options = electronMocks.fork.mock.calls[0]?.[2]
-      expect(options.env).not.toHaveProperty('BANDAL_TEST_SECRET')
-      expect(options.env).not.toHaveProperty('NODE_OPTIONS')
-      expect(options.execArgv).toEqual(['--max-old-space-size=128'])
+      expect(electronMocks.fork).toHaveBeenCalledWith('/app/preload/pluginHost.js')
     } finally { harness.runtime.dispose(); vi.unstubAllEnvs() }
   })
   test('a plugin crash cannot terminate another plugin host or forge its messages', async () => {
@@ -132,7 +141,7 @@ describe('createPluginRuntime', () => {
         const plugin = { ...plugins.get(id)!, state, lastError }; plugins.set(id, plugin); return plugin
       } } as unknown as PluginStore
     const runtime = createPluginRuntime({ store, api: new Proxy({}, { get: () => vi.fn() }) as PluginApiImpl,
-      limiter: createPluginRateLimiter(), log: createPluginLog({ warn: vi.fn() }), hostEntry: '/host.js', appVersion: '0.41.2', changed: vi.fn() })
+      limiter: createPluginRateLimiter(), log: createPluginLog({ warn: vi.fn() }), preloadPath: '/preload.js', appVersion: '0.41.2', changed: vi.fn() })
     for (const id of plugins.keys()) {
       const loading = runtime.load(id)
       const child = children.at(-1)!

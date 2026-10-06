@@ -421,6 +421,30 @@ afterEach(() => {
 })
 
 describe('hydration and course switching', () => {
+  test('a failed layout read cannot overwrite saved tabs and can be retried', async () => {
+    const dock = new FakeDockview()
+    let unavailable = true
+    invokeMock.mockImplementation((channel: string) => {
+      if (channel === 'layout:get') return unavailable
+        ? Promise.reject(new Error('database is temporarily unavailable'))
+        : Promise.resolve({ layout: singleLeafLayout([pdfA]) })
+      return Promise.resolve({ ok: true })
+    })
+    useWorkspaceStore.getState().attachApi(dock.asApi())
+    useWorkspaceStore.getState().setActiveCourse('c1')
+    await settle()
+    expect(useWorkspaceStore.getState().hydration).toBe('error')
+    useWorkspaceStore.getState().notifyLayoutChanged()
+    useWorkspaceStore.getState().flushPendingSave()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(savesFor('c1')).toEqual([])
+    unavailable = false
+    useWorkspaceStore.getState().retryHydration()
+    await settle()
+    expect(useWorkspaceStore.getState().hydration).toBe('ready')
+    expect(useWorkspaceStore.getState().openTabs[tabPanelId(pdfA)]).toEqual(pdfA)
+  })
+
   test('attachApi hydrates the already-selected course', async () => {
     // Arrange
     const dock = new FakeDockview()

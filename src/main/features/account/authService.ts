@@ -108,6 +108,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   let uid: string | null = null
   let sessionVersion = 0
   let unsubscribe: (() => void) | null = null
+  let signingOut = false
   /** The code currently being exchanged — the re-entrancy guard (§handleDeepLink). */
   let exchangingCode: string | null = null
   /** Codes already spent. A replayed callback must not burn a rate-limit slot. */
@@ -138,6 +139,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   function ensureAuthSubscription(client: SupabaseClient): void {
     if (unsubscribe !== null) return
     const { data: sub } = client.auth.onAuthStateChange((_event, session) => {
+      if (signingOut) return
       if (session === null) {
         clearSession()
         publish({ ...SIGNED_OUT_AUTH_STATE })
@@ -248,8 +250,10 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
 
     async restore() {
       if (deps.client === null) return state
+      const version = sessionVersion
       try {
         const { data, error } = await deps.client.auth.getSession()
+        if (version !== sessionVersion || signingOut) return state
         if (error !== null || data.session === null) {
           clearSession()
           return publish({ ...SIGNED_OUT_AUTH_STATE })
@@ -262,6 +266,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           data.session.user.user_metadata
         )
       } catch (error) {
+        if (version !== sessionVersion || signingOut) return state
         // Corrupt session file, expired refresh token, no network — all
         // non-fatal. The app is already running; we just stay signed out.
         console.error('[account] session restore failed (non-fatal)', error)
@@ -279,6 +284,8 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       if (state.phase === 'signed-in') {
         return { ok: false, reason: 'already-signed-in' } as const
       }
+      if (signingOut) return { ok: false, reason: 'provider' } as const
+      const version = ++sessionVersion
       try {
         // `skipBrowserRedirect` is what makes this usable from Electron: it
         // asks for the provider URL instead of navigating, so WE choose the
@@ -291,12 +298,14 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
             skipBrowserRedirect: true
           }
         })
+        if (version !== sessionVersion) return { ok: true } as const
         if (error !== null || typeof data.url !== 'string' || data.url === '') {
           console.error('[account] signInWithOAuth returned no url', error)
           failed('provider')
           return { ok: false, reason: 'provider' } as const
         }
         await deps.openExternal(data.url)
+        if (version !== sessionVersion) return { ok: true } as const
         // Nothing else happens until the deep link arrives. The renderer shows
         // "브라우저에서 계속해요" against this phase.
         publish({
@@ -309,6 +318,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         })
         return { ok: true } as const
       } catch (error) {
+        if (version !== sessionVersion) return { ok: true } as const
         // No network to reach the auth endpoint, or the OS refused to open a
         // browser. Either way the user is still signed out, not broken.
         console.error('[account] sign-in failed', error)
@@ -334,6 +344,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
      *  4. Two callbacks racing → the in-flight code is the guard.
      */
     async handleDeepLink(url) {
+      if (signingOut) return
       const parsed = parseAuthCallbackUrl(url)
       if (parsed.kind === 'ignored') {
         if (parsed.why !== 'not-auth-callback') return
@@ -383,10 +394,12 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       }
 
       exchangingCode = parsed.code
+      const version = ++sessionVersion
       try {
         const { data, error } = await deps.client.auth.exchangeCodeForSession(
           parsed.code
         )
+        if (version !== sessionVersion || signingOut) return
         spentCodes.add(parsed.code)
         if (error !== null || data.session === null) {
           console.error('[account] code exchange failed', error)
@@ -401,6 +414,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           data.session.user.user_metadata
         )
       } catch (error) {
+        if (version !== sessionVersion || signingOut) return
         console.error('[account] code exchange threw', error)
         failed('network')
       } finally {
@@ -409,6 +423,10 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     },
 
     async signOut() {
+      signingOut = true
+      unsubscribe?.()
+      unsubscribe = null
+      clearSession()
       if (deps.client !== null) {
         try {
           await deps.client.auth.signOut()
@@ -418,6 +436,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         }
       }
       clearSession()
+      signingOut = false
       spentCodes.clear()
       deps.destroySession()
       publish(
@@ -444,6 +463,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     },
 
     dispose: () => {
+      clearSession()
       unsubscribe?.()
       unsubscribe = null
     }

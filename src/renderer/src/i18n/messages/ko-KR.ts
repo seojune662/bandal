@@ -586,6 +586,7 @@ export const koKR = {
   'feedback.success': '고마워요! 잘 받았어요.',
   'feedback.rateLimited': '조금 뒤에 다시 보내 주세요.',
   'feedback.unavailable': '지금은 보낼 수 없어 내용을 복사해 뒀어요. GitHub 이슈로 남겨 주세요.',
+  'feedback.unavailableCopyFailed': '전송과 자동 복사에 실패했어요. 작성한 내용은 그대로 있으니 다시 보내거나 직접 복사해 주세요.',
   'feedback.githubOpen': 'GitHub 열기',
   'feedback.githubOpenFailed': 'GitHub 이슈를 열지 못했어요.',
 

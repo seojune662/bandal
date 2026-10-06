@@ -267,8 +267,6 @@ export function ChatSurface({
         return
       }
       await session.send(text, attachments, { ...context, ...(sourcePanelId ? { sourcePanelId } : {}) })
-      setDraft((current) => current === draft ? '' : current)
-      setPendingQuotes([])
       isPinnedRef.current = true
     },
     [draft, pendingQuotes, session.send, setDraft, sourcePanelId]

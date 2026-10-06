@@ -94,8 +94,8 @@ describe('createFeedbackService', () => {
       p_kind: 'feature',
       p_body: '가'.repeat(FEEDBACK_BODY_LIMIT),
       p_app_version: null,
-      p_os: 'darwin',
-      p_palette: 'bandal'
+      p_os: null,
+      p_palette: null
     })
     expect(client.rpc).toHaveBeenNthCalledWith(2, 'submit_feedback', {
       p_kind: 'friction',

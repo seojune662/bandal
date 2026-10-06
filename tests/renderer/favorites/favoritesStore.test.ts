@@ -130,3 +130,49 @@ describe('favoritesStore', () => {
     expect(useFavoritesStore.getState().error).toBe('offline')
   })
 })
+
+function deferred<T>() { let resolve!: (value: T) => void; let reject!: (error: Error) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
+
+test('a stale list response cannot remove a newly added favorite', async () => {
+  const old = favorite('old', 'c1', 'Old', 0), added = favorite('new', 'c1', 'New', 1)
+  useFavoritesStore.setState({ byCourse: { c1: [old] } })
+  const listing = deferred<Favorite[]>()
+  invokeMock.mockImplementation(channel => channel === 'favorites:list' ? listing.promise : Promise.resolve(added))
+  const loading = useFavoritesStore.getState().load('c1')
+  await useFavoritesStore.getState().add({ courseId: 'c1', label: 'New', descriptor: added.descriptor })
+  listing.resolve([old]); await loading
+  expect(useFavoritesStore.getState().byCourse.c1?.map(item => item.id)).toEqual(['old', 'new'])
+  expect(useFavoritesStore.getState().loadingByCourse.c1).toBe(false)
+})
+
+test('a failed remove restores only its item and preserves a concurrent add and rename', async () => {
+  const removed = favorite('a', 'c1', 'A', 0), keep = favorite('b', 'c1', 'B', 1), added = favorite('c', 'c1', 'C', 2)
+  useFavoritesStore.setState({ byCourse: { c1: [removed, keep] } })
+  const deletion = deferred<{ ok: true }>()
+  invokeMock.mockImplementation(channel => channel === 'favorites:remove' ? deletion.promise : Promise.resolve(channel === 'favorites:rename' ? { ...keep, label: 'Changed' } : added))
+  const pending = useFavoritesStore.getState().remove('a')
+  const rejected = expect(pending).rejects.toThrow('failed')
+  await useFavoritesStore.getState().add({ courseId: 'c1', label: 'C', descriptor: added.descriptor })
+  await useFavoritesStore.getState().rename({ id: 'b', label: 'Changed' })
+  deletion.reject(new Error('failed')); await rejected
+  expect(useFavoritesStore.getState().byCourse.c1?.map(item => [item.id, item.label])).toEqual([['a', 'A'], ['b', 'Changed'], ['c', 'C']])
+})
+
+test('an older failed reorder cannot undo a newer successful order', async () => {
+  useFavoritesStore.setState({ byCourse: { c1: ['a', 'b', 'c'].map((id, n) => favorite(id, 'c1', id, n)) } })
+  const first = deferred<{ ok: true }>()
+  invokeMock.mockReturnValueOnce(first.promise).mockResolvedValue({ ok: true })
+  const old = useFavoritesStore.getState().reorder(['b', 'a', 'c'])
+  const rejected = expect(old).rejects.toThrow('failed')
+  await useFavoritesStore.getState().reorder(['c', 'b', 'a'])
+  first.reject(new Error('failed')); await rejected
+  expect(useFavoritesStore.getState().byCourse.c1?.map(item => item.id)).toEqual(['c', 'b', 'a'])
+})
+
+test('a completed add does not duplicate an item already included by a list refresh', async () => {
+  const added = favorite('new', 'c1', 'New', 0)
+  useFavoritesStore.setState({ byCourse: { c1: [added] } })
+  invokeMock.mockResolvedValue(added)
+  await useFavoritesStore.getState().add({ courseId: 'c1', label: 'New', descriptor: added.descriptor })
+  expect(useFavoritesStore.getState().byCourse.c1).toEqual([added])
+})

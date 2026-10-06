@@ -103,7 +103,7 @@ describe('settings store recovery', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(timestamp))
     writeFileSync(
-      `${file}.corrupt-${timestamp}`,
+      `${file}.corrupt-${timestamp.replaceAll(':', '-')}`,
       'previous quarantine',
       'utf8'
     )
@@ -115,7 +115,7 @@ describe('settings store recovery', () => {
     expect(settings.theme).toBe(DEFAULT_SETTINGS.theme)
     expect(settings.dataRoot).toBe(join(userDataPath, 'course-data'))
     expect(existsSync(file)).toBe(false)
-    const quarantinedName = `settings.json.corrupt-${timestamp}-1`
+    const quarantinedName = `settings.json.corrupt-${timestamp.replaceAll(':', '-')}-1`
     expect(readdirSync(userDataPath)).toContain(quarantinedName)
     const quarantinedPath = join(userDataPath, quarantinedName)
     expect(readFileSync(quarantinedPath, 'utf8')).toBe(corruptContents)

@@ -24,30 +24,46 @@ export function BrowserFindBar({
 }): JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null)
   const [draft, setDraft] = useState(state.query)
+  const queryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchedQuery = useRef<string | null>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
     inputRef.current?.select()
   }, [state.focusSeq])
 
-  // Debounced incremental search. `findNext: false` restarts from the top,
-  // which is what a changed query means.
+  // Omit options for a fresh search; explicit findNext:false does not emit a
+  // found-in-page result on Chromium. Enter may flush this debounce early.
   useEffect(() => {
     const store = useBrowserGuests.getState()
     if (draft === '') {
+      searchedQuery.current = null
       store.setFindQuery(tabId, '')
       guestActions.stopFind(tabId)
       return
     }
-    const timer = setTimeout(() => {
+    queryTimer.current = setTimeout(() => {
+      queryTimer.current = null
+      searchedQuery.current = draft
       store.setFindQuery(tabId, draft)
       guestActions.find(tabId, draft)
     }, QUERY_DEBOUNCE_MS)
-    return () => clearTimeout(timer)
+    return () => {
+      if (queryTimer.current !== null) clearTimeout(queryTimer.current)
+      queryTimer.current = null
+    }
   }, [draft, tabId])
 
   const step = (forward: boolean): void => {
     if (draft === '') return
+    if (searchedQuery.current !== draft) {
+      if (queryTimer.current !== null) clearTimeout(queryTimer.current)
+      queryTimer.current = null
+      searchedQuery.current = draft
+      useBrowserGuests.getState().setFindQuery(tabId, draft)
+      guestActions.find(tabId, draft)
+      return
+    }
     guestActions.find(tabId, draft, { findNext: true, forward })
   }
 
@@ -70,6 +86,7 @@ export function BrowserFindBar({
         data-empty={noMatches ? 'true' : undefined}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
           if (event.key === 'Escape') {
             event.preventDefault()
             close()

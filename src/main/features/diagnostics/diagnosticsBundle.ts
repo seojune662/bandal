@@ -39,15 +39,17 @@ interface DiagnosticsDeps {
 }
 
 const EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu
-const URL_TOKEN = /([?&](?:access[_-]?)?token=)[^&#\s]+/giu
+const URL_TOKEN = /([?&](?:(?:(?:access|refresh|id)[_-]?)?token|api[_-]?key|code|password|secret)=)[^&#\s"']+/giu
 const BEARER_TOKEN = /\bBearer\s+[^\s"']+/giu
-const SENSITIVE_KEY = /(?:e-?mail|token)/iu
+const SENSITIVE_KEY = /(?:e-?mail|token|secret|password|authorization|api[_-]?key)/iu
+const JSON_SECRET = /("(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|password|secret|authorization)"\s*:\s*")[^"\r\n]*/giu
 
 function redactString(value: string): string {
   return value
     .replace(EMAIL, REDACTED)
     .replace(URL_TOKEN, `$1${REDACTED}`)
     .replace(BEARER_TOKEN, `Bearer ${REDACTED}`)
+    .replace(JSON_SECRET, `$1${REDACTED}`)
 }
 
 function redactDataRoot(value: string): string {
@@ -201,7 +203,7 @@ function pluginLogSection(entries: PluginLogEntry[]): string {
         at: entry.at,
         pluginId: entry.pluginId,
         level: entry.level,
-        message: entry.message
+        message: redactString(entry.message)
       })
     )
     .join('\n')
@@ -264,7 +266,7 @@ export function createDiagnosticsBundle(deps: DiagnosticsDeps) {
       `OS 버전: ${deps.osVersion()}`
     ].join('\n')
     const content = boundBundle(
-      [
+      redactString([
         '# 반달 진단 정보',
         `생성 시각: ${now.toISOString()}`,
         section(CONTENTS[0], system),
@@ -276,7 +278,7 @@ export function createDiagnosticsBundle(deps: DiagnosticsDeps) {
         section(CONTENTS[3], pluginSection(deps.getPlugins())),
         section(CONTENTS[4], pluginLogSection(deps.getPluginLogs())),
         section(CONTENTS[5], await appLogSection(deps.logsPath()))
-      ].join('\n\n')
+      ].join('\n\n'))
     )
     await fs.mkdir(directory, { recursive: true, mode: 0o700 })
     await fs.writeFile(path, content, { encoding: 'utf8', mode: 0o600 })

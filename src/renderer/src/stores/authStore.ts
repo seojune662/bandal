@@ -45,6 +45,8 @@ const INITIAL: AuthState = {
 }
 
 let initialization: Promise<void> | null = null
+let unsubscribe: (() => void) | null = null
+let generation = 0
 
 export const useAuthStore = create<AuthStoreState>()((set, get) => ({
   auth: INITIAL,
@@ -56,11 +58,15 @@ export const useAuthStore = create<AuthStoreState>()((set, get) => ({
     if (initialization === null) {
       initialization = (async () => {
         set({ initializing: true })
+        if (unsubscribe === null) {
+          unsubscribe = onPush('auth:changed', (auth) => {
+            generation += 1
+            set({ auth, hydrated: true, initializing: false })
+          })
+        }
+        const current = generation
         const auth = await invoke('auth:getState', {})
-        set({ auth, hydrated: true, initializing: false })
-        onPush('auth:changed', (next) => {
-          set({ auth: next })
-        })
+        if (current === generation) set({ auth, hydrated: true, initializing: false })
       })()
     }
     const pending = initialization
@@ -82,8 +88,9 @@ export const useAuthStore = create<AuthStoreState>()((set, get) => ({
   },
 
   signOut: async () => {
+    const current = generation
     await invoke('auth:signOut', {})
-    set({ auth: { ...get().auth, phase: 'signed-out', profile: null, email: null, avatarUrl: null } })
+    if (current === generation) set({ auth: { ...get().auth, phase: 'signed-out', profile: null, email: null, avatarUrl: null, errorCode: null }, lastSignInResult: null })
   },
 
   setNickname: async (nickname) => {
@@ -96,6 +103,9 @@ export const useAuthStore = create<AuthStoreState>()((set, get) => ({
 
 /** Test-only: drop the memoized init so a fresh store can hydrate again. */
 export function resetAuthStoreForTests(): void {
+  unsubscribe?.()
+  unsubscribe = null
+  generation += 1
   initialization = null
   useAuthStore.setState({
     auth: INITIAL,

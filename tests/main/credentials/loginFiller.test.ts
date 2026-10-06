@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
+import { JSDOM } from 'jsdom'
 import { createLoginFiller } from '../../../src/main/features/credentials'
 import type {
   LoginGuestWebContents,
@@ -105,6 +106,22 @@ describe('main login fill origin boundary', () => {
       guestWebContentsId: 7
     })).resolves.toEqual({ filled: true, submitted: true })
     expect(execute).toHaveBeenCalledWith(expect.any(String), true)
+  })
+
+  test('an agent fill-only request overrides a saved auto-submit preference', async () => {
+    const dom = new JSDOM('<form><input name="username"><input type="password"></form>', { url: 'https://portal.example.edu', runScripts: 'outside-only' })
+    try {
+      const submit = vi.fn()
+      dom.window.document.querySelector('form')!.requestSubmit = submit
+      const guest = fakeGuest('https://portal.example.edu')
+      guest.executeJavaScript = async source => dom.window.eval(source)
+      const fill = createLoginFiller(fakeStore({ username: 'student', password: 'secret', autoSubmit: true }), { fromId: () => guest })
+      await expect(fill({ origin: 'https://portal.example.edu', guestWebContentsId: 7, allowAutoSubmit: false }))
+        .resolves.toEqual({ filled: true, submitted: false })
+      expect(dom.window.document.querySelector<HTMLInputElement>('[name=username]')!.value).toBe('student')
+      expect(dom.window.document.querySelector<HTMLInputElement>('[type=password]')!.value).toBe('secret')
+      expect(submit).not.toHaveBeenCalled()
+    } finally { dom.window.close() }
   })
 
   test('quietly returns not-filled when injection fails', async () => {

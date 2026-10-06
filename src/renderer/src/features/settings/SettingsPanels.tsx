@@ -19,7 +19,6 @@ import { Icon } from './SettingsIcon'
 import { savePreference } from './savePreference'
 
 export { AppearancePanel } from './AppearancePanel'
-export { McpServersPanel } from './McpServersPanel'
 
 export function GeneralPanel({ settings }: { settings: Settings | null }): JSX.Element {
   const t = useT()

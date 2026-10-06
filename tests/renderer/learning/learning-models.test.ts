@@ -61,9 +61,19 @@ describe('review and conversion safeguards', () => {
     const answer = { questionId: 'q', answer: 'My answer', correct: null, answeredAt: 'now' }
     const attempt = { answers: [answer] } as Parameters<typeof quizCanFinish>[1]
     expect(quizCanFinish(quiz, attempt)).toBe(false)
-    expect(quizCanFinish(quiz, { ...attempt!, answers: [{ ...answer, selfCheck: false }] })).toBe(true)
+    const checked = { ...attempt!, answers: [{ ...answer, selfCheck: false }] }
+    expect(quizCanFinish(quiz, checked)).toBe(true)
+    expect(quizCanFinish(quiz, checked, { q: 'Changed answer' })).toBe(false)
     const project = { cards: [{ id: 'new', status: 'new', dueAt: '2026-10-05' }, { id: 'due', status: 'review', dueAt: '2026-10-03' }, { id: 'future', status: 'review', dueAt: '2026-10-05' }] } as LearningProjectSnapshot
     expect(dueLearningCards(project, Date.parse('2026-10-04')).map(card => card.id)).toEqual(['due', 'new'])
+  })
+  test('cleared local answers immediately block grading before their save completes', () => {
+    const quiz = { kind: 'quiz', questions: [{ id: 'q', type: 'cloze' }] } as Extract<LearningArtifact, { kind: 'quiz' }>
+    const attempt = { answers: [{ questionId: 'q', answer: 'previous answer' }] } as Parameters<typeof quizCanFinish>[1]
+    expect(quizCanFinish(quiz, attempt)).toBe(true)
+    expect(quizCanFinish(quiz, attempt, { q: '' })).toBe(false)
+    expect(quizCanFinish(quiz, attempt, { q: '   ' })).toBe(false)
+    expect(quizCanFinish(quiz, attempt, { q: 'new answer' })).toBe(true)
   })
   test('conversion preview rejects unknown correct options and empty cards', () => {
     expect(learningDraftIsSaveable({ version: 1, artifacts: [{ kind: 'quiz', title: 'Quiz', questions: [{ id: 'q', type: 'choice', prompt: 'Q', options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }], answer: 'unknown', explanation: '', sourceRefs: [] }] }] })).toBe(false)

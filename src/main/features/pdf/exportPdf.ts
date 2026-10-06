@@ -32,7 +32,7 @@ import type {
 } from '../../../shared/types/drawing'
 import { drawPdfText, type TextboxFont } from '../pdfText'
 import { ValidationError } from '../../db/errors'
-import { requireId, requireNonEmptyString, resolveInside, resolveInsideReal } from '../../db/validate'
+import { requireId, requireNonEmptyString, resolveInsideReal } from '../../db/validate'
 import {
   layoutTextboxLines,
   usedTextboxFaces,
@@ -451,7 +451,7 @@ export function createPdfExporter(deps: PdfExporterDeps): {
       const savePath = requireNonEmptyString(savePathInput, 'savePath')
       if (!isAbsolute(savePath)) throw new ValidationError('savePath must be absolute')
 
-      const sourcePath = resolveInside(deps.getCourseFolder(courseId), relPath)
+      const sourcePath = resolveInsideReal(deps.getCourseFolder(courseId), relPath)
       const [canonicalSource, canonicalSave] = await Promise.all([
         canonicalPath(sourcePath),
         canonicalPath(resolve(savePath))

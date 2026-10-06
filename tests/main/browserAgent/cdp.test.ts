@@ -88,47 +88,55 @@ describe('insertText', () => {
 })
 
 describe('setFileInputFiles', () => {
-  test('resolves the node then sets the files', async () => {
-    const calls: string[] = []
+  function fileTarget(options: { marked?: boolean; missing?: boolean; duplicate?: boolean; fail?: boolean } = {}) {
+    let marker = ''
+    const frame = { executeJavaScript: vi.fn(async (code: string) => {
+      marker = /data-bandal-upload-[a-f0-9-]+/.exec(code)?.[0] ?? ''
+      return options.marked ?? true
+    }) }
     const send = vi.fn(async (method: string) => {
-      calls.push(method)
-      if (method === 'DOM.getDocument') return { root: { nodeId: 1 } }
-      if (method === 'DOM.querySelector') return { nodeId: 42 }
+      if (method === 'DOM.getDocument') return { root: { nodeId: 1, children: [
+        { nodeId: 10, nodeName: 'INPUT', attributes: ['type', 'file'] },
+        { nodeId: 11, nodeName: 'IFRAME', contentDocument: { nodeId: 12, children: options.missing ? [] : [
+          { nodeId: 42, nodeName: 'INPUT', attributes: ['type', 'file', marker, ''] },
+          ...(options.duplicate ? [{ nodeId: 43, nodeName: 'INPUT', attributes: ['type', 'file', marker, ''] }] : [])
+        ] } }
+      ] } }
+      if (options.fail) throw new Error('attachment failed')
       return {}
     })
-    const { t } = target({ send })
-    expect(await setFileInputFiles(t, 'input[type=file]', ['/a/b.pdf'])).toBe(true)
-    expect(calls).toEqual([
-      'DOM.getDocument',
-      'DOM.querySelector',
-      'DOM.setFileInputFiles'
-    ])
+    return { ...target({ send }), frame, send }
+  }
+
+  test('uses the snapshot ordinal in the requested frame and attaches to that exact input', async () => {
+    const { t, frame, send, detach } = fileTarget()
+    expect(await setFileInputFiles(t, frame, 7, ['/a/report.pdf'])).toBe(true)
+    expect(frame.executeJavaScript.mock.calls[0]?.[0]).toContain('__bandalTargets()[7]')
+    expect(frame.executeJavaScript.mock.calls[0]?.[0]).toContain("target.type !== 'file'")
+    expect(send).toHaveBeenCalledWith('DOM.getDocument', { depth: -1, pierce: true })
+    expect(send).toHaveBeenCalledWith('DOM.setFileInputFiles', { nodeId: 42, files: ['/a/report.pdf'] })
+    expect(frame.executeJavaScript.mock.calls[1]?.[0]).toContain('removeAttribute')
+    expect(detach).toHaveBeenCalledOnce()
   })
 
-  test('a missing element is false, not a thrown error', async () => {
-    const send = vi.fn(async (method: string) => {
-      if (method === 'DOM.getDocument') return { root: { nodeId: 1 } }
-      return { nodeId: 0 }
-    })
-    const { t } = target({ send })
-    expect(await setFileInputFiles(t, 'input[type=file]', ['/a'])).toBe(false)
+  test.each([{ marked: false }, { missing: true }, { duplicate: true }])('never falls back to another upload input: %j', async (options) => {
+    const { t, frame, send } = fileTarget(options)
+    expect(await setFileInputFiles(t, frame, 7, ['/a/report.pdf'])).toBe(false)
+    expect(send.mock.calls.some(([method]) => method === 'DOM.setFileInputFiles')).toBe(false)
+    expect(frame.executeJavaScript.mock.calls.at(-1)?.[0]).toContain('removeAttribute')
   })
 
-  test('a document we cannot read is false', async () => {
-    const { t } = target({ send: async () => ({}) })
-    expect(await setFileInputFiles(t, 'input', ['/a'])).toBe(false)
+  test('removes its temporary marker and detaches when uploading fails', async () => {
+    const { t, frame, detach } = fileTarget({ fail: true })
+    await expect(setFileInputFiles(t, frame, 7, ['/a/report.pdf'])).rejects.toThrow('attachment failed')
+    expect(frame.executeJavaScript.mock.calls.at(-1)?.[0]).toContain('removeAttribute')
+    expect(detach).toHaveBeenCalledOnce()
   })
 
-  test('still detaches after a file attach', async () => {
-    const send = vi.fn(async (method: string) =>
-      method === 'DOM.getDocument'
-        ? { root: { nodeId: 1 } }
-        : method === 'DOM.querySelector'
-          ? { nodeId: 5 }
-          : {}
-    )
-    const { t, detach } = target({ send })
-    await setFileInputFiles(t, 'input', ['/a'])
-    expect(detach).toHaveBeenCalledTimes(1)
+  test('rejects invalid ordinals without evaluating page code', async () => {
+    const { t, frame, send } = fileTarget()
+    expect(await setFileInputFiles(t, frame, -1, ['/a/report.pdf'])).toBe(false)
+    expect(frame.executeJavaScript).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
   })
 })

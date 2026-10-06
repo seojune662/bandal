@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react'
 import type { CellObject, ColInfo, WorkSheet } from 'xlsx'
+import { sheetPreviewBounds } from '../lib/sheetPreviewBounds'
 import type { MaterialFileContent } from '../../../../../shared/types/materials'
 
 interface SheetViewerProps {
@@ -40,8 +41,6 @@ interface RenderedCell {
   colSpan: number
   rowSpan: number
 }
-
-const MAX_RENDERED_ROWS = 2_000
 
 function fallbackCellText(value: unknown): string {
   if (value === null || value === undefined) return ''
@@ -84,12 +83,9 @@ function viewForSheet(loaded: LoadedSheet, sheetName: string): SheetView {
     }
   }
 
-  const originalRange = loaded.xlsx.utils.decode_range(ref)
-  const totalRows = originalRange.e.r - originalRange.s.r + 1
-  const endRow = Math.min(
-    originalRange.e.r,
-    originalRange.s.r + MAX_RENDERED_ROWS - 1
-  )
+  const preview = sheetPreviewBounds(loaded.xlsx.utils.decode_range(ref))
+  const originalRange = preview.range
+  const endRow = originalRange.e.r
   const mergesByRow = new Map<number, VisibleMerge[]>()
 
   for (const merge of worksheet['!merges'] ?? []) {
@@ -134,7 +130,7 @@ function viewForSheet(loaded: LoadedSheet, sheetName: string): SheetView {
       columnWidth(worksheet['!cols']?.[originalRange.s.c + index])
     ),
     mergesByRow,
-    truncated: totalRows > MAX_RENDERED_ROWS
+    truncated: preview.truncated
   }
 }
 
@@ -300,7 +296,7 @@ export function SheetViewer({
         </div>
         {sheetView?.truncated && (
           <p className="file-notice" role="status">
-            처음 2,000행만 표시합니다.
+            시트가 커서 앞부분 {sheetView.rowCount.toLocaleString()}행 · {sheetView.columnCount.toLocaleString()}열만 표시합니다. 전체 내용은 원본 파일에서 확인해 주세요.
           </p>
         )}
       </div>

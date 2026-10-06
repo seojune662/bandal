@@ -2,8 +2,8 @@
  * Third-party extensions ("확장") — real code, unlike workflow packs.
  *
  * A plugin is a folder under `<userData>/plugins/<id>/` with a manifest, a
- * `main.js` that runs in the plugin HOST (a `utilityProcess`, never the
- * renderer or the main process), and an optional `ui/` tree served to a
+ * `main.js` that runs in a dedicated Worker in its own OS-sandboxed
+ * Chromium renderer (never the app renderer or the main process), and an optional `ui/` tree served to a
  * `<webview>` on `bandal-plugin://<id>/ui/…`. Everything the plugin can do is
  * an RPC to main gated by the permissions the user approved on first enable.
  *

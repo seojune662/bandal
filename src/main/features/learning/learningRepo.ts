@@ -656,7 +656,7 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
         const question = artifact.questions.find((entry) => entry.id === input.questionId)
         if (!question) throw new NotFoundError('quiz question', input.questionId)
         const attemptId = learningId(input.attemptId, 'attemptId')
-        const answer = learningString(input.answer, 'answer', 20_000, question.type === 'short-answer')
+        const answer = learningString(input.answer, 'answer', 20_000, question.type !== 'choice')
         if (question.type === 'choice' && !question.options?.some((option) => option.id === answer)) throw new ValidationError('선택지를 다시 확인해 주세요.')
         if (input.selfCheck !== undefined && typeof input.selfCheck !== 'boolean') throw new ValidationError('자기 평가가 올바르지 않습니다.')
         let attempt = tx.state.quizAttempts.find((entry) => entry.id === attemptId)
@@ -684,7 +684,7 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
         if (attempt.completedAt) return false
         const artifact = await artifactFrom(tx.root, tx.state, attempt.artifactId, tx.binding)
         if (artifact.kind !== 'quiz') throw new ValidationError('퀴즈 자료가 아닙니다.')
-        if (artifact.questions.some((question) => !attempt.answers.some((answer) => answer.questionId === question.id
+        if (artifact.questions.some((question) => !attempt.answers.some((answer) => answer.questionId === question.id && answer.answer.trim().length > 0
           && (question.type !== 'short-answer' || answer.selfCheck !== undefined)))) throw new ValidationError('모든 문항에 답하고 서술형 답안을 자기 점검해 주세요.')
         attempt.completedAt = tx.now
         attempt.resultRelPath = `${LEARNING_DATA_DIR}/results/quiz-${attempt.id}-${learningHash(json(attempt)).slice(0, 16)}.json`

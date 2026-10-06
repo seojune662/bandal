@@ -105,9 +105,20 @@ async function documentsStatus(
       ? join(context.homeDir(), 'Documents', 'Bandal')
       : configured
   try {
-    const parent = dirname(dataRoot)
-    await context.access(parent, fsConstants.R_OK | fsConstants.W_OK)
-    await context.readdir(parent)
+    // A writable parent does not prove that an existing study-data folder is
+    // writable. Only walk upward when the requested folder does not exist yet.
+    let target = dataRoot
+    while (true) {
+      try {
+        await context.access(target, fsConstants.R_OK | fsConstants.W_OK)
+        await context.readdir(target)
+        break
+      } catch (error) {
+        const parent = dirname(target)
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || parent === target) throw error
+        target = parent
+      }
+    }
     return result(context, 'documents', 'granted', false)
   } catch (error) {
     return result(

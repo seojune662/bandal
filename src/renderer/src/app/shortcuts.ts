@@ -484,6 +484,8 @@ export function useGlobalShortcuts(): void {
     )
 
     const onKeyDown = (event: KeyboardEvent): void => {
+      // Editors and dialogs get the first chance to handle their own chords.
+      if (event.defaultPrevented) return
       const action = resolveShortcut({
         key: event.key,
         code: event.code,

@@ -36,9 +36,11 @@ interface FavoriteRenameState {
   placement: 'top' | 'bottom'
 }
 
-export function FavoritesSection({
-  courseId
-}: FavoritesSectionProps): JSX.Element {
+export function FavoritesSection(props: FavoritesSectionProps): JSX.Element {
+  return <FavoritesSectionBody key={favoriteScopeKey(props.courseId)} {...props} />
+}
+
+function FavoritesSectionBody({ courseId }: FavoritesSectionProps): JSX.Element {
   const key = favoriteScopeKey(courseId)
   const t = useT()
   const linkFormId = useId()
@@ -46,7 +48,7 @@ export function FavoritesSection({
   const loading = useFavoritesStore(
     (state) => state.loadingByCourse[key] === true
   )
-  const error = useFavoritesStore((state) => state.error)
+  const error = useFavoritesStore((state) => state.errorScopeKey === key ? state.error : null)
   const load = useFavoritesStore((state) => state.load)
   const add = useFavoritesStore((state) => state.add)
   const rename = useFavoritesStore((state) => state.rename)
@@ -62,6 +64,8 @@ export function FavoritesSection({
     useState<FavoriteRenameState | null>(null)
   const [isSavingRename, setSavingRename] = useState(false)
   const dragDepth = useRef(0)
+  const savingLink = useRef(false)
+  const renameSequence = useRef(0)
   const requestedScope = useRef<string | null>(null)
   const linkUrlRef = useRef<HTMLInputElement>(null)
   const renamePopoverRef = useRef<HTMLFormElement>(null)
@@ -127,6 +131,7 @@ export function FavoritesSection({
     event: React.FormEvent<HTMLFormElement>
   ): Promise<void> => {
     event.preventDefault()
+    if (savingLink.current) return
 
     let input
     try {
@@ -145,6 +150,7 @@ export function FavoritesSection({
       return
     }
 
+    savingLink.current = true
     setSavingLink(true)
     setLinkError(null)
     try {
@@ -154,6 +160,7 @@ export function FavoritesSection({
     } catch {
       setLinkError('링크를 저장하지 못했어요. 다시 시도해 주세요.')
     } finally {
+      savingLink.current = false
       setSavingLink(false)
     }
   }
@@ -169,6 +176,8 @@ export function FavoritesSection({
     event: React.MouseEvent<HTMLButtonElement>,
     favorite: Favorite
   ): void => {
+    renameSequence.current++
+    setSavingRename(false)
     const bounds = event.currentTarget.getBoundingClientRect()
     renameTriggerRef.current = event.currentTarget
     setRenameDraft({
@@ -193,14 +202,16 @@ export function FavoritesSection({
       return
     }
 
+    const sequence = ++renameSequence.current
+    const sent = renameDraft
     setSavingRename(true)
     try {
       await rename({ id: renameDraft.id, label })
-      setRenameDraft(null)
+      if (renameSequence.current === sequence) setRenameDraft(current => current === sent ? null : current)
     } catch {
       showToast('즐겨찾기 이름을 바꾸지 못했어요.', 'danger')
     } finally {
-      setSavingRename(false)
+      if (renameSequence.current === sequence) setSavingRename(false)
     }
   }
 
@@ -473,6 +484,7 @@ export function FavoritesSection({
       {error !== null && (
         <p className="favorites-section__error" role="alert">
           {error}
+          <button type="button" disabled={loading} onClick={() => void load(courseId)}>다시 불러오기</button>
         </p>
       )}
     </section>

@@ -71,7 +71,7 @@ export async function importMaterialPaths(
     })
     if (result.imported.length > 0) {
       showToast(`${result.imported.length}개 가져옴`)
-      await useMaterialsStore.getState().loadTree(courseId, { silent: true })
+      await useMaterialsStore.getState().loadTree(courseId, { silent: true, refreshOnly: true })
     }
     if (result.failed.length > 0) {
       const names = result.failed.map((entry) => fileName(entry.path)).join(', ')
@@ -174,7 +174,7 @@ export async function importDroppedFiles(
   }
   if (moved.length > 0) {
     showToast(moved.length === 1 ? '이동했어요.' : `${moved.length}개 이동했어요.`)
-    await useMaterialsStore.getState().loadTree(courseId, { silent: true })
+    await useMaterialsStore.getState().loadTree(courseId, { silent: true, refreshOnly: true })
   }
 
   if (toImport.length === 0) return moved

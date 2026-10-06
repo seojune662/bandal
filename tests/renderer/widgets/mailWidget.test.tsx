@@ -73,3 +73,17 @@ test('unconfigured builds offer an honest fallback, not a broken login', async (
   expect(document.body.textContent).toContain('전체 Gmail')
   expect(invoke).not.toHaveBeenCalledWith('mail:list', expect.anything())
 })
+
+test('a reply finishing later does not erase text written after sending', async () => {
+  const original = invoke.getMockImplementation()!
+  let sent!: (value: unknown) => void
+  invoke.mockImplementation((channel, input) => channel === 'mail:reply'
+    ? new Promise(resolve => { sent = resolve }) : original(channel, input))
+  await mount(); await click('수업 안내')
+  const textarea = document.body.querySelector('textarea')!
+  await act(async () => Simulate.change(textarea, { target: { value: '먼저 보내는 답장' } } as never))
+  await act(async () => Simulate.submit(document.body.querySelector('.mail-mini__reply')!))
+  await act(async () => Simulate.change(textarea, { target: { value: '추가로 작성하는 내용' } } as never))
+  await act(async () => sent({ ok: true }))
+  expect(textarea.value).toBe('추가로 작성하는 내용')
+})

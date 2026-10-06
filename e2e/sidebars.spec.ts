@@ -70,6 +70,22 @@ test.describe('sidebars', () => {
     await expect(page.getByRole('button', { name: '자료 사이드바 접기' })).toHaveCount(1)
   })
 
+  test('sidebar resize handles support keyboard adjustment and retain the chosen width', async () => {
+    const { page } = bandal
+    for (const side of ['left', 'right']) {
+      const handle = page.locator(`.rail-resizer--${side}`)
+      await handle.focus()
+      await page.keyboard.press('Home')
+      const minimum = side === 'left' ? 176 : 220
+      await expect(handle).toHaveAttribute('aria-valuenow', String(minimum))
+      await page.keyboard.press(side === 'left' ? 'ArrowRight' : 'ArrowLeft')
+      await expect(handle).toHaveAttribute('aria-valuenow', String(minimum + 16))
+      const saved = await page.evaluate(key => JSON.parse(localStorage.getItem('bandal:rail-widths:v1')!)[key], side)
+      expect(saved).toBe(minimum + 16)
+      await handle.dblclick()
+    }
+  })
+
   test('opening a tab does not leave two of either toggle', async () => {
     const { page } = bandal
     await page

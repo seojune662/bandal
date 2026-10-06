@@ -22,7 +22,7 @@ import type { ChatQuote } from './chatPromptBus'
 import type { LimitInfo } from './chatModel'
 import './composer.css'
 import { AddMenu } from './AddMenu'
-import { draftContext, updateComposerDraft, useComposerDraft } from './composerDraftStore'
+import { consumeComposerDraft, draftContext, updateComposerDraft, useComposerDraft } from './composerDraftStore'
 import { CREATION_LABELS, type ChatContext } from '../../../../shared/types/chatCapabilities'
 import type { AgentProvider } from '../../../../shared/types/agent-events'
 
@@ -289,9 +289,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
         const imported = pendingFiles.length ? await invoke('chat:importAttachments', { courseId, paths: pendingFiles.map((file) => file.path!) }) : []
         let index = 0
         const files = draftState.files.map((file) => file.path ? imported[index++]! : file)
-        updateComposerDraft(conversationId, { files })
+        const importedByPath = new Map(pendingFiles.map((file, index) => [file.path, imported[index]!]))
+        updateComposerDraft(conversationId, current => ({ files: current.files.map(file => file.path ? importedByPath.get(file.path) ?? file : file) }))
         await onSend(attachments, draftContext({ ...draftState, files }))
-        updateComposerDraft(conversationId, { images: [], files: [], skills: [], creation: null, browser: false, screen: false })
+        consumeComposerDraft(conversationId, { ...draftState, text: value, quotes: [...quotes], files })
         setMention(null)
         window.requestAnimationFrame(resize)
       } catch (error) { setAttachmentError(error instanceof Error ? error.message : '전송하지 못했어요. 다시 시도해 주세요.') }

@@ -1,3 +1,4 @@
+import { rememberStartedLearningRun } from '../learning/learningStartedRuns'
 import type { LearningAiSettings, LearningBinding, LearningProjectSummary } from '../../../../shared/types/learning'
 import type { LearningGenerationSource } from '../../../../shared/ipc/learningContract'
 import type { WorkflowPackScope } from '../../../../shared/types/workflowPack'
@@ -56,10 +57,6 @@ export function featureActionDisabledReason(entry: FeatureEntry, context: Launch
   const supportedScope = entry.schemaVersion === 2 && context.browser && scope !== 'course' ? scope === 'selection' ? 'selection' : 'material' : targetScope(context, scope)
   if (!entry.worksOn.includes(supportedScope)) return scope === 'course' ? '이 기능은 과목 전체에서 사용할 수 없어요.' : scope === 'selection' ? '이 기능은 선택한 글에서 사용할 수 없어요.' : '이 기능은 현재 자료에서 사용할 수 없어요.'
   return null
-}
-
-export function canExecuteFeatureAction(entry: FeatureEntry, context: LauncherContext, scope: FeatureActionScope = 'material'): boolean {
-  return featureActionDisabledReason(entry, context, scope) === null
 }
 
 async function flushSourceNote(context: LauncherContext): Promise<void> {
@@ -157,6 +154,7 @@ export async function executeFeatureAction(entry: FeatureEntry, capturedContext:
       const sourceCourseId = source.kind === 'course' && project?.purpose === 'course-review' && project.linkedCourseId ? project.linkedCourseId : source.kind === 'article' || source.kind === 'vocabulary' ? binding?.courseId ?? context.courseId! : context.courseId!
       const result = await invoke('study:generate', { courseId: sourceCourseId, packId: entry.packId,
         ...(binding ? { binding } : {}), source: { ...source, sourceCourseId }, ...(options.ai ? { ai: options.ai } : {}) })
+      rememberStartedLearningRun(result)
       openLearning(result.binding, 'review')
       return { status: 'started', ...result, message: `${entry.label}을 준비하고 있어요. 학습 공간에서 진행 상황을 볼 수 있어요.` }
     }
@@ -168,7 +166,7 @@ export async function executeFeatureAction(entry: FeatureEntry, capturedContext:
       : await useStudyToolsStore.getState().run({ courseId: context.courseId!, tool: entry.packId,
           relPath: scope === 'course' ? null : context.savedMaterialRelPath ?? context.material?.relPath ?? null,
           ...(scope === 'selection' ? { selection: context.selection } : {}), ...(options.followUp ? { followUpOf: entry.packId } : {}) })
-    window.setTimeout(() => { void useMaterialsStore.getState().loadTree(context.courseId!) }, 800)
+    window.setTimeout(() => { void useMaterialsStore.getState().loadTree(context.courseId!, { silent: true, refreshOnly: true }) }, 800)
     return { status: 'dispatched', courseId: context.courseId!, relPath: result.relPath, message: `생성을 요청했어요. 자료에 나타나면 열어 보세요: ${result.relPath}` }
   } catch (error) {
     return { status: 'failed', message: error instanceof Error ? error.message : '기능을 실행하지 못했어요.' }

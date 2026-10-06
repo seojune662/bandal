@@ -19,6 +19,8 @@ function focusFixture(): FocusFixture {
       tabIndex: 0,
       isConnected: true,
       closest: () => null,
+      matches: () => false,
+      ownerDocument,
       focus: vi.fn(() => {
         ownerDocument.activeElement = item
       })

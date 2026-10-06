@@ -1,3 +1,4 @@
+import { assertAppRendererSender } from './ipc/appRendererSender'
 import { onBrowserQuitCancelled } from './features/browser/nativeTabs'
 import { registerEarlyMediaProtocol } from './features/materials/mediaRegistration'
 import { markStartup } from './performanceTrace'
@@ -138,6 +139,8 @@ if (!app.requestSingleInstanceLock()) {
   let rejectStartup!: (error: unknown) => void
   const startup = new Promise<void>((resolve, reject) => { resolveStartup = resolve; rejectStartup = reject })
   void startup.catch(() => undefined)
+  // Preload asks before its document URL is committed. This read-only barrier
+  // grants no capabilities; every later app request checks its sender.
   ipcMain.handle('startup:ready', () => startup)
 
   void app.whenReady().then(async () => {
@@ -311,7 +314,8 @@ if (!app.requestSingleInstanceLock()) {
 
     // Temporary M0 channel to open the settings window from the renderer.
     // Replaced by an app menu entry in a later milestone.
-    ipcMain.handle('window:openSettings', () => {
+    ipcMain.handle('window:openSettings', event => {
+      assertAppRendererSender(event)
       openSettingsInApp()
       return { ok: true }
     })

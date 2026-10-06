@@ -64,6 +64,21 @@ describe('portable learning projects', () => {
     expect(items[0].sourceRefs.map((ref: LearningSourceRef) => ref.quote)).toEqual(['climate', 'climate', 'People adapt'])
   })
 
+  test('saves cleared text answers and refuses to finish a visibly unanswered quiz', async () => {
+    await seed()
+    await repo.putArtifact({ binding, artifact: quiz() })
+    const attempt = { binding, artifactId: 'quiz-1', attemptId: 'cleared-attempt' }
+    await repo.saveQuizAnswer({ ...attempt, questionId: 'q1', answer: 'a' })
+    await repo.saveQuizAnswer({ ...attempt, questionId: 'q2', answer: 'climate' })
+    await repo.saveQuizAnswer({ ...attempt, questionId: 'q3', answer: 'weather patterns', selfCheck: true })
+    const cleared = await repo.saveQuizAnswer({ ...attempt, questionId: 'q2', answer: '' })
+    expect(cleared.quizAttempts[0]?.answers.find(answer => answer.questionId === 'q2')?.answer).toBe('')
+    await expect(repo.finishQuiz(attempt)).rejects.toThrow('모든 문항')
+    await repo.saveQuizAnswer({ ...attempt, questionId: 'q2', answer: 'climate' })
+    await repo.saveQuizAnswer({ ...attempt, questionId: 'q3', answer: '', selfCheck: true })
+    await expect(repo.finishQuiz(attempt)).rejects.toThrow('모든 문항')
+  })
+
   test('creates editable vocabulary documents immediately and preserves existing user text', async () => {
     await create()
     expect(readFileSync(join(course, binding.rootRelPath, '단어장.md'), 'utf8')).toContain('모르는 표현')

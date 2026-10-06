@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'vitest'
-import { redactSettingsSnapshot } from '../../../src/main/features/diagnostics/diagnosticsBundle'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createDiagnosticsBundle, redactSettingsSnapshot } from '../../../src/main/features/diagnostics/diagnosticsBundle'
+import { DEFAULT_SETTINGS } from '../../../src/shared/types/settings'
 
 describe('diagnostics settings redaction', () => {
   test('removes paths, emails, tokens, and notification ledger values', () => {
@@ -51,4 +55,20 @@ describe('diagnostics settings redaction', () => {
       })
     ).toEqual({ dataRoot: '~/…/Bandal' })
   })
+})
+
+test('redacts sensitive data in exported app and plugin logs as well as settings', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'bandal-diagnostics-test-'))
+  try {
+    await writeFile(join(directory, 'app.log'), 'owner@example.test https://login.test/?code=oauth-private&refresh_token=refresh-private\n{"api_key":"key-private"}')
+    const writeBundle = createDiagnosticsBundle({ tempDir: () => directory, now: () => new Date('2026-10-07T00:00:00Z'),
+      appVersion: () => '1.0.0', electronVersion: () => '1.0.0', platform: 'darwin', osVersion: () => 'test',
+      getSettings: () => DEFAULT_SETTINGS, getAgentAvailability: async () => ({ installed: false, loggedIn: false }),
+      getPlugins: () => [], getPluginLogs: () => [{ at: '2026-10-07T00:00:00Z', pluginId: 'test', level: 'error', message: 'Bearer bearer-private\n{"api_key":"plugin-key-private"}' }],
+      logsPath: () => directory, reveal: () => {} })
+    const bundle = await writeBundle()
+    const text = await readFile(bundle.path, 'utf8')
+    for (const secret of ['owner@example.test', 'oauth-private', 'refresh-private', 'key-private', 'bearer-private', 'plugin-key-private']) expect(text).not.toContain(secret)
+    expect(text).toContain('[가림]')
+  } finally { await rm(directory, { recursive: true, force: true }) }
 })

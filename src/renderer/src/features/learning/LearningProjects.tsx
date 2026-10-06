@@ -8,7 +8,7 @@ import { LearningSpaceMenu } from './LearningSpaceManagement'
 import { learningDisplayName, learningSourceCourse } from './learningPresentation'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { learningPurpose } from './learningPurpose'
-import { LEARNING_CHANGED_EVENT, learningError, openLearning, openLearningOverview, rememberEnglishBinding } from './learningNavigation'
+import { LEARNING_CHANGED_EVENT, learningError, openLearning, rememberEnglishBinding } from './learningNavigation'
 import './learning.css'
 
 export function useLearningProjects(courseId?: string, includeDeleted = false): { projects: LearningProjectSummary[]; loading: boolean; error: string | null; reload: () => Promise<void> } {
@@ -31,19 +31,6 @@ export function useLearningProjects(courseId?: string, includeDeleted = false): 
     return () => { disposed = true; sequence.current += 1; stop(); stopMaterials(); stopCourses(); window.removeEventListener(LEARNING_CHANGED_EVENT, load) }
   }, [reload])
   return { projects, loading, error, reload }
-}
-
-export function LearningSidebar({ courseId, compact = false }: { courseId?: string; compact?: boolean }): JSX.Element {
-  const { projects, error, reload } = useLearningProjects(courseId)
-  const [creating, setCreating] = useState(false)
-  const selectedCourseId = useCoursesStore(state => state.selectedCourseId)
-  const courses = useCoursesStore(state => state.courses)
-  return <section className={`learning-sidebar${compact ? ' learning-sidebar--compact' : ''}`} aria-label="학습 공간">
-    <div className="learning-sidebar__heading"><button type="button" className="learning-sidebar__title" onClick={() => { const id = courseId ?? selectedCourseId; if (id) openLearningOverview(id); else setCreating(true) }}>학습 공간</button><button type="button" className="bare-icon-button" aria-label="새 학습" onClick={() => setCreating(true)}><Icon name="plus" /></button></div>
-    {projects.map(project => <button type="button" key={`${project.binding.courseId}:${project.binding.rootRelPath}`} className="learning-sidebar__project" title={project.warning ?? project.topic} onClick={() => { if (project.purpose === 'english-reading' && project.readingSetupConfirmed) rememberEnglishBinding(project.binding); openLearning(project.binding) }}><Icon name="graph" /><span>{learningDisplayName(project, courses)}</span>{project.dueCardCount > 0 && <small>{project.dueCardCount}</small>}</button>)}
-    {error && <button type="button" className="learning-sidebar__retry" onClick={() => void reload()}>학습 공간 다시 불러오기</button>}
-    {creating && <NewLearningDialog onClose={() => setCreating(false)} />}
-  </section>
 }
 
 export function LearningProjectGroups({ projects, compact = false }: { projects: LearningProjectSummary[]; compact?: boolean }): JSX.Element {

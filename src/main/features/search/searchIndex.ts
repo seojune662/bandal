@@ -305,6 +305,24 @@ export function createSearchIndex(
      )`
   )
 
+  // This is a derived cache, but its folder binding must survive restarts:
+  // the same course/relative path can point to unrelated content after relink.
+  db.exec('CREATE TABLE IF NOT EXISTS course_content_roots (course_id TEXT PRIMARY KEY, folder TEXT NOT NULL)')
+  const cachedRoots = new Map<string, string>()
+  const selectRoot = db.prepare('SELECT folder FROM course_content_roots WHERE course_id = ?')
+  const resetRoot = db.transaction((id: string, folder: string) => {
+    db.prepare(`DELETE FROM ${SEARCH_TABLE} WHERE course_id = ?`).run(id)
+    db.prepare('INSERT OR REPLACE INTO course_content_roots (course_id, folder) VALUES (?, ?)').run(id, folder)
+  })
+  function courseRoot(id: string): string {
+    const folder = deps.getCourseFolder(id)
+    const stored = selectRoot.get(id) as { folder: string } | undefined
+    if (stored?.folder !== folder) resetRoot(id, folder)
+    if (cachedRoots.get(id) !== folder || stored?.folder !== folder) textFileMetadataByCourse.delete(id)
+    cachedRoots.set(id, folder)
+    return folder
+  }
+
   const insert = db.prepare(
     `INSERT INTO ${SEARCH_TABLE} (course_id, rel_path, kind, page, body)
      VALUES (?, ?, ?, ?, ?)`
@@ -323,22 +341,26 @@ export function createSearchIndex(
 
   function* refreshTextFileBatches(courseId: string): Generator<void> {
     const id = requireId(courseId, 'courseId')
+    const root = courseRoot(id)
+    const current = (): boolean => deps.getCourseFolder(id) === root && cachedRoots.get(id) === root
     const previousMetadata =
       textFileMetadataByCourse.get(id) ?? new Map<string, TextFileMetadata>()
     const scan = scanTextDocuments(
-      deps.getCourseFolder(id),
+      root,
       previousMetadata,
       readTextFile,
       logger
     )
 
     for (let offset = 0; offset < scan.removed.length; offset += 100) {
+      if (!current()) return
       db.transaction(() => {
         for (const relPath of scan.removed.slice(offset, offset + 100)) removeTextFile.run(id, relPath)
       })()
       yield
     }
     for (let offset = 0; offset < scan.changed.length;) {
+      if (!current()) return
       const batch: TextDocument[] = []
       let chars = 0
       while (offset < scan.changed.length && batch.length < 100 && chars < 256_000) {
@@ -354,7 +376,7 @@ export function createSearchIndex(
       })()
       yield
     }
-    textFileMetadataByCourse.set(id, scan.metadata)
+    if (current()) textFileMetadataByCourse.set(id, scan.metadata)
   }
 
   function refreshTextFiles(courseId: string): void {
@@ -368,7 +390,7 @@ export function createSearchIndex(
   }): void {
     const courseId = requireId(input.courseId, 'courseId')
     const relPath = requireNonEmptyString(input.relPath, 'relPath')
-    const root = deps.getCourseFolder(courseId)
+    const root = courseRoot(courseId)
     const absPath = resolveInsideReal(root, relPath)
     if (extname(relPath).toLowerCase() !== '.pdf') {
       throw new ValidationError('relPath must point to a PDF')
@@ -405,7 +427,7 @@ export function createSearchIndex(
 
   function* pruneBatches(courseId: string): Generator<void> {
     const id = requireId(courseId, 'courseId')
-    const root = deps.getCourseFolder(id)
+    const root = courseRoot(id)
     const rows = db
       .prepare(
         `SELECT DISTINCT rel_path FROM ${SEARCH_TABLE} WHERE course_id = ?`
@@ -445,6 +467,7 @@ export function createSearchIndex(
       requireNonEmptyString(queryText, 'query').trim()
     )
     const resolvedLimit = validateLimit(limit)
+    courseRoot(id)
 
     // Text files are cheap and mutable outside Bandal, so every search gets a
     // fresh view. Pruning also removes cached PDF pages after an out-of-band

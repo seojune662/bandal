@@ -47,9 +47,10 @@ export function dueKeys(
   for (const task of tasks) {
     const dueMs = taskDueDate(task).getTime()
     if (!Number.isFinite(dueMs) || nowMs >= dueMs) continue
-    for (const lead of leadDays) {
-      if (nowMs >= dueMs - lead * DAY_MS) keys.push(`${task.id}:${lead}`)
-    }
+    // Returning after a few days should produce the nearest reminder once,
+    // rather than a burst of stale D-7, D-3 and D-1 notices for the same task.
+    const eligible = leadDays.filter(lead => nowMs >= dueMs - lead * DAY_MS)
+    if (eligible.length > 0) keys.push(`${task.id}:${Math.min(...eligible)}`)
   }
   return keys
 }

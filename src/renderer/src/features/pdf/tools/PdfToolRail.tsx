@@ -15,6 +15,7 @@ interface PdfToolRailProps {
   relPath: string
   drawingsApi: DrawingsApi
   onExport?: () => Promise<void>
+  beforeExport?: (() => Promise<void>) | undefined
   expanded?: boolean
   interactive?: boolean
 }
@@ -101,6 +102,7 @@ export function PdfToolRail({
   relPath,
   drawingsApi,
   onExport,
+  beforeExport,
   interactive = true,
   expanded = true
 }: PdfToolRailProps): JSX.Element {
@@ -237,6 +239,7 @@ export function PdfToolRail({
     setExportMessage(null)
     try {
       await drawingsApi.flush?.()
+      await beforeExport?.()
       if (onExport) {
         await onExport()
         return

@@ -179,10 +179,11 @@ function buildCredentialStore(deps: CredentialStoreDeps): CredentialStore {
 
   const discard = (): void => {
     try {
-      rmSync(filePath, { force: true })
       rmSync(`${filePath}.tmp`, { force: true })
+      rmSync(filePath, { force: true })
     } catch {
-      // Best effort. A later load still treats any unreadable file as empty.
+      // Keep the cache unchanged until the encrypted file is actually gone.
+      throw new Error('Saved login could not be deleted')
     }
   }
 

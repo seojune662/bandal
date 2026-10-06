@@ -11,6 +11,7 @@ import type {
   MaterialSearchHit
 } from '../../../shared/types/materials'
 import { openMaterialInCourse } from '../features/workspace/openMaterial'
+import { isViewableFile } from '../features/file/fileFormats'
 import { acquirePointerPassthrough } from '../features/browser/webviewPassthrough'
 import { invoke } from '../lib/ipc'
 import { useCoursesStore } from '../stores/coursesStore'
@@ -30,14 +31,6 @@ const KIND_ICONS: Record<MaterialKind, IconName> = {
   other: 'file'
 }
 
-const KIND_HINTS: Record<MaterialKind, string> = {
-  pdf: '탭에서 열기',
-  note: '탭에서 열기',
-  image: 'Finder에서 보기',
-  video: '탭에서 열기',
-  other: 'Finder에서 보기'
-}
-
 export function QuickFileSearch(): JSX.Element | null {
   const isOpen = useQuickSearch((state) => state.isOpen)
   const close = useQuickSearch((state) => state.close)
@@ -49,6 +42,8 @@ export function QuickFileSearch(): JSX.Element | null {
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<MaterialSearchHit[]>([])
   const [isSearching, setIsSearching] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
   const [highlighted, setHighlighted] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -73,9 +68,12 @@ export function QuickFileSearch(): JSX.Element | null {
   }, [isOpen, close])
 
   useEffect(() => {
+    const sequence = ++sequenceRef.current
+    setHits([])
+    setError(null)
+    setIsSearching(false)
     if (!isOpen || course === null) return
     const normalized = query.trim()
-    const sequence = ++sequenceRef.current
     if (normalized.length === 0) {
       setHits([])
       setIsSearching(false)
@@ -89,23 +87,23 @@ export function QuickFileSearch(): JSX.Element | null {
           setHits(results.slice(0, MAX_RESULTS))
           setHighlighted(0)
         })
-        .catch(() => {
-          if (sequence === sequenceRef.current) setHits([])
+        .catch((cause: unknown) => {
+          if (sequence === sequenceRef.current) setError(cause instanceof Error ? cause.message : '파일을 검색하지 못했어요.')
         })
         .finally(() => {
           if (sequence === sequenceRef.current) setIsSearching(false)
         })
     }, SEARCH_DEBOUNCE_MS)
-    return () => window.clearTimeout(timeout)
-  }, [isOpen, course, query])
+    return () => { window.clearTimeout(timeout); sequenceRef.current += 1 }
+  }, [isOpen, course, query, attempt])
 
   const activate = useCallback(
     (hit: MaterialSearchHit | undefined): void => {
-      if (hit === undefined || course === null) return
+      if (hit === undefined || course === null || isSearching) return
       openMaterialInCourse(course.id, hit.kind, hit.relPath)
       close()
     },
-    [course, close]
+    [course, close, isSearching]
   )
 
   if (!isOpen) return null
@@ -163,7 +161,12 @@ export function QuickFileSearch(): JSX.Element | null {
         </div>
 
         <div className="quick-search__body">
-          {!showsResults ? null : isSearching && hits.length === 0 ? (
+          {!showsResults ? null : error ? (
+            <div className="quick-search__hint" role="alert">
+              <p>{error}</p>
+              <button type="button" className="button button--secondary" onClick={() => setAttempt(value => value + 1)}>다시 시도</button>
+            </div>
+          ) : isSearching && hits.length === 0 ? (
             <p className="quick-search__hint" role="status">
               찾는 중…
             </p>
@@ -188,7 +191,7 @@ export function QuickFileSearch(): JSX.Element | null {
                     <span className="quick-search__meta">
                       {hit.relPath.includes('/')
                         ? hit.relPath.slice(0, hit.relPath.lastIndexOf('/'))
-                        : KIND_HINTS[hit.kind]}
+                        : hit.kind !== 'other' || isViewableFile(hit.relPath) ? '탭에서 열기' : '폴더에서 보기'}
                     </span>
                   </button>
                 </li>

@@ -12,7 +12,9 @@ export function CalendarSettingsPanel(): JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const sequence = useRef(0)
+  const saving = useRef(false)
   const refresh = useCallback(async () => {
+    if (saving.current) return
     const current = ++sequence.current
     try {
       const value = await invoke('appleCalendar:state', {})
@@ -27,10 +29,13 @@ export function CalendarSettingsPanel(): JSX.Element {
     return () => { sequence.current++; off(); window.removeEventListener('focus', focus) }
   }, [refresh])
   const run = async (action: () => Promise<AppleCalendarState>, message: string) => {
+    if (saving.current) return
+    saving.current = true
+    const current = ++sequence.current
     setBusy(true); setError(null); setNotice('')
-    try { const value = await action(); setState(value); setNotice(message) }
-    catch (e) { setError(e instanceof Error ? e.message : '캘린더 설정을 저장하지 못했습니다.') }
-    finally { setBusy(false) }
+    try { const value = await action(); if (current === sequence.current) { setState(value); setNotice(message) } }
+    catch (e) { if (current === sequence.current) setError(e instanceof Error ? e.message : '캘린더 설정을 저장하지 못했습니다.') }
+    finally { saving.current = false; if (current === sequence.current) setBusy(false) }
   }
   const ready = state?.connected === true && state.authorization === 'authorized'
   const denied = state?.authorization === 'denied' || state?.authorization === 'restricted' || state?.authorization === 'write-only'

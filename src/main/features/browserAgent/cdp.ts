@@ -41,6 +41,10 @@
  * and confusing). Callers degrade to the DOM tier rather than failing.
  */
 
+import { randomUUID } from 'node:crypto'
+import { TARGET_INDEX_SOURCE } from './snapshot'
+import { runGuestScript } from './pageDriver'
+
 export interface DebuggerLike {
   isAttached: () => boolean
   attach: (protocolVersion?: string) => void
@@ -114,33 +118,46 @@ export async function insertText(
   })
 }
 
-/**
- * Attaches files to an `input[type=file]`.
- *
- * `DOM.setFileInputFiles` needs a backend node id, so the element is located
- * through the document first. There is no JavaScript equivalent — assigning
- * to `.files` is forbidden.
- */
+/** Resolve the same visible-element ordinal as the snapshot, in its frame. */
 export async function setFileInputFiles(
   target: CdpTarget,
-  selector: string,
+  frame: { executeJavaScript(code: string): Promise<unknown> },
+  elementIndex: number,
   paths: readonly string[]
 ): Promise<boolean> {
-  return withDebugger(target, async (send) => {
-    const doc = (await send('DOM.getDocument', { depth: 0 })) as {
-      root?: { nodeId?: number }
-    }
-    const rootId = doc?.root?.nodeId
-    if (typeof rootId !== 'number') return false
-
-    const found = (await send('DOM.querySelector', {
-      nodeId: rootId,
-      selector
-    })) as { nodeId?: number }
-    const nodeId = found?.nodeId
-    if (typeof nodeId !== 'number' || nodeId === 0) return false
-
-    await send('DOM.setFileInputFiles', { nodeId, files: [...paths] })
-    return true
-  })
+  if (!Number.isSafeInteger(elementIndex) || elementIndex < 0) return false
+  const marker = `data-bandal-upload-${randomUUID()}`
+  const attribute = JSON.stringify(marker)
+  try {
+    const marked = await runGuestScript(() => frame.executeJavaScript(`(() => {
+      ${TARGET_INDEX_SOURCE}
+      const target = __bandalTargets()[${elementIndex}];
+      if (!(target instanceof HTMLInputElement) || target.type !== 'file' || target.disabled) return false;
+      target.setAttribute(${attribute}, '');
+      return true;
+    })()`))
+    if (marked !== true) return false
+    return await withDebugger(target, async (send) => {
+      // Include iframe documents. Never fall back to an unrelated input if
+      // Chromium cannot expose a child frame to this debugger target.
+      interface Node { nodeId?: number; nodeName?: string; attributes?: string[]; children?: Node[]; contentDocument?: Node; shadowRoots?: Node[] }
+      const document = await runGuestScript(() => send('DOM.getDocument', { depth: -1, pierce: true })) as { root?: Node }
+      const matches: number[] = []
+      const visit = (node: Node): void => {
+        const attrs = node.attributes ?? []
+        const hasAttribute = (name: string, value?: string): boolean => attrs.some((attr, index) => index % 2 === 0 && attr === name && (value === undefined || attrs[index + 1]?.toLowerCase() === value))
+        if (node.nodeName === 'INPUT' && hasAttribute(marker) && hasAttribute('type', 'file') && !hasAttribute('disabled') && typeof node.nodeId === 'number' && node.nodeId > 0) matches.push(node.nodeId)
+        for (const child of node.children ?? []) visit(child)
+        for (const child of node.shadowRoots ?? []) visit(child)
+        if (node.contentDocument) visit(node.contentDocument)
+      }
+      if (document.root) visit(document.root)
+      if (matches.length !== 1) return false
+      await runGuestScript(() => send('DOM.setFileInputFiles', { nodeId: matches[0], files: [...paths] }))
+      return true
+    })
+  } finally {
+    try { await runGuestScript(() => frame.executeJavaScript(`document.querySelectorAll('[${marker}]').forEach(el => el.removeAttribute(${attribute}))`)) }
+    catch { /* The original frame may have navigated or closed. */ }
+  }
 }

@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test, vi } from 'vitest'
@@ -57,7 +58,7 @@ function integratedRuntime(options: {
         deliverToHost = callback
       }
     },
-    { readFile: (path) => readFileSync(path, 'utf8'), now: Date.now }
+    { readFile: (path) => readFileSync(path, 'utf8'), now: Date.now, execute: (source, globals) => { runInNewContext(source, globals, { timeout: 1000 }) } }
   )
 
   function send(message: MainToHost): void {

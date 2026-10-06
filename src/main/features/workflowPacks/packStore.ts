@@ -157,8 +157,11 @@ export function createPackStore(deps: PackStoreDeps): PackStore {
       return cache
     }
 
+    // An I/O failure does not mean the registry is corrupt. Preserve it and
+    // surface the error so a later mutation cannot replace unreadable data.
+    const text = readFileSync(filePath, 'utf8')
     try {
-      cache = parseEnvelope(readFileSync(filePath, 'utf8'))
+      cache = parseEnvelope(text)
     } catch (error) {
       const quarantined = quarantineFile(filePath, now())
       console.warn(

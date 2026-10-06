@@ -45,7 +45,7 @@ describe('RendererErrorBoundary', () => {
 
     expect(container.textContent).toContain('화면을 불러오지 못했어요')
     expect(container.textContent).toContain(
-      '파일과 필기는 그대로 보존되어 있습니다'
+      '이미 저장한 파일과 필기는 보존되어 있습니다'
     )
     expect(container.textContent).toContain('page-note editor context missing')
     expect(container.querySelector('button')?.textContent).toBe('다시 불러오기')

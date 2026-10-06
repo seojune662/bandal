@@ -48,6 +48,7 @@
 }
 
 .rail-resizer:hover::after,
+.rail-resizer:focus-visible::after,
 .rail-resizer:active::after {
   background: var(--accent);
 }

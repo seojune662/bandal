@@ -42,6 +42,12 @@ try {
   ]) {
     assert.match(run('validate', resolve('examples/plugins', name)), /Valid:/)
   }
+  if (process.platform !== 'win32') {
+    execFileSync('mkfifo', [join(plugin, 'blocked.js')])
+    assert.throws(() => execFileSync(process.execPath, [cli, 'validate', plugin], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 3_000
+    }), /Only regular files and directories are supported/)
+  }
   console.info(
     'SDK: create, validate, deterministic pack, overwrite protection, and four examples passed.',
   )

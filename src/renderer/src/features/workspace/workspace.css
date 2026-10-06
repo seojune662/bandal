@@ -20,6 +20,24 @@
   min-height: 0;
 }
 
+.workspace-recovery {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  background: var(--bg-app);
+  text-align: center;
+}
+
+.workspace-recovery p {
+  color: var(--text-muted);
+}
+
 /* -- dockview theme (variables consumed by dockview's own chrome) -------- */
 
 .bandal-dockview {

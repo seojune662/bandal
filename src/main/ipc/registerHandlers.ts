@@ -1,3 +1,4 @@
+import { assertAppRendererSender } from './appRendererSender'
 import { createLearningRepo, normalizeLearningDraft } from '../features/learning'
 import { createLearningApprovalDialogs } from '../features/learning/approvalDialogs'
 import { createLearningCache } from '../features/learning/learningCache'
@@ -90,6 +91,7 @@ import {
   createGuestRegistry,
   createPageSurface,
   createRunRegistry,
+  createConversationRunScope,
   insertText,
   setFileInputFiles,
   createSeenRepo,
@@ -303,6 +305,7 @@ function handle<K extends IpcChannel>(
 ): void {
   registered.add(channel)
   ipcMain.handle(channel, async (_event, req: IpcRequest<K>) => {
+    assertAppRendererSender(_event)
     const start = performance.now()
     try {
       return await fn(req, _event)
@@ -757,6 +760,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // 과제 제출)이 일반 파일처럼 받는다.
   ipcMain.on('materials:startDrag', (event, req: unknown) => {
     try {
+      assertAppRendererSender(event)
       const record = req as { courseId?: unknown; relPath?: unknown }
       if (
         typeof record?.courseId !== 'string' ||
@@ -1247,12 +1251,25 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const browserSeen = createSeenRepo(db)
   /** One beat after a load ends, so the new document has committed. */
   const SETTLE_QUIET_MS = 150
+  const browserRunScopes = new Map<string, ReturnType<typeof createConversationRunScope>>()
+  const finishBrowserConversation = (conversationId: string): void => {
+    const scope = browserRunScopes.get(conversationId)
+    const run = scope?.current()
+    if (run) {
+      pendingResumes.get(run.runId)?.('stopped')
+      pendingResumes.delete(run.runId)
+    }
+    scope?.finish()
+  }
 
   const browserToolsFor = (
     courseId: string,
     conversationId: string,
     getRunId: () => string
   ): ReturnType<typeof createBrowserTools> => {
+    finishBrowserConversation(conversationId)
+    const runScope = createConversationRunScope({ registry: browserRuns, courseId, getTurnId: getRunId })
+    browserRunScopes.set(conversationId, runScope)
     const recipeSession = (): Electron.Session => {
       if (openBrowserTabs.courseId === courseId && openBrowserTabs.activeTabId) {
         const guest = guestRegistry.resolve(openBrowserTabs.activeTabId)
@@ -1305,12 +1322,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
             const requestId = randomUUID()
             // Opening a page IS the start of a run — from here on the student
             // has a strip and a 중지 button on the tab being driven.
-            let runId: string | null =
-              browserRuns.forCourse(courseId)?.runId ?? null
-            if (runId === null) {
-              runId = browserRuns.start(courseId, '', '페이지를 여는 중', url)
-                .runId
-            }
+            runScope.assertLive()
+            runScope.step('페이지를 여는 중', url)
+            const runId = runScope.current()!.runId
             pendingTabOpens.set(requestId, { resolve, runId })
             broadcast('browser:open-url', { url, requestId })
             setTimeout(() => {
@@ -1320,7 +1334,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
               // The run was started for a tab that never arrived. Ending it
               // stops a 중지 strip from outliving the attempt, bound to
               // nothing, for the rest of the session.
-              if (pending.runId !== null) browserRuns.finish(pending.runId)
+              if (pending.runId === runScope.current()?.runId) runScope.finish()
               resolve(null)
             }, timeoutMs)
           }),
@@ -1466,21 +1480,12 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
           )
         },
         run: {
-          assertLive: () => {
-            const live = browserRuns.forCourse(courseId)
-            if (live !== null) browserRuns.assertLive(live.runId)
-          },
-          step: (action, url) => {
-            const live = browserRuns.forCourse(courseId)
-            if (live !== null) browserRuns.step(live.runId, action, url)
-          },
-          wait: (message) => {
-            const live = browserRuns.forCourse(courseId)
-            if (live !== null) browserRuns.wait(live.runId, message)
-          },
+          assertLive: runScope.assertLive,
+          step: runScope.step,
+          wait: runScope.wait,
           awaitResume: (timeoutMs) =>
             new Promise((resolve) => {
-              const live = browserRuns.forCourse(courseId)
+              const live = runScope.current()
               if (live === null) {
                 resolve('stopped')
                 return
@@ -1529,7 +1534,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
           if (guest === null) return { filled: false, username: null }
           const result = await loginBridgeFor(guest.id).fill({
             origin: guest.getURL(),
-            guestWebContentsId: guest.id
+            guestWebContentsId: guest.id,
+            allowAutoSubmit: false
           })
           return { filled: result.filled, username: null }
         },
@@ -1541,12 +1547,15 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         attachFile: async (tabId, frameIndex, elementIndex, target, relPath) => {
           const guest = guestRegistry.resolve(tabId)
           if (guest === null) return false
-          void frameIndex
+          const wc = guest as unknown as Electron.WebContents
+          const frame = wc.mainFrame.framesInSubtree[frameIndex]
+          if (frame === undefined) return false
           const absPath = resolveInside(coursesRepo.getFolder(target), relPath)
           try {
             return await setFileInputFiles(
               guest as unknown as { debugger: Electron.Debugger },
-              `input[type=file]:nth-of-type(${elementIndex + 1}), input[type=file]`,
+              frame,
+              elementIndex,
               [absPath]
             )
           } catch {
@@ -1703,10 +1712,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       if (pending !== undefined) {
         pendingTabOpens.delete(openRequestId)
         // The strip belongs to the tab that just appeared.
-        if (pending.runId !== null) {
-          browserRuns.attachTab(pending.runId, req.tabId)
+        try {
+          if (pending.runId !== null) browserRuns.attachTab(pending.runId, req.tabId)
+          pending.resolve(req.tabId)
+        } catch {
+          if (pending.runId !== null) browserRuns.stop(pending.runId)
+          pending.resolve(null)
         }
-        pending.resolve(req.tabId)
       }
     }
     pendingTabWakes.get(req.tabId)?.(true)
@@ -1989,8 +2001,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       broadcast('agentTools:unavailable', { courseId, sessionId })
     },
     onTurnComplete: notifyTurnComplete,
-    onTurnSettled: settleStudyTurn,
-    onRequestsCancelled: (sessionId) => agentConfirmer.cancelConversation(sessionId),
+    onTurnSettled: info => { finishBrowserConversation(info.sessionId); settleStudyTurn(info) },
+    onRequestsCancelled: (sessionId) => { finishBrowserConversation(sessionId); browserRunScopes.delete(sessionId); agentConfirmer.cancelConversation(sessionId) },
     onUsage: recordUsage
   })
   app.on('will-quit', () => {
@@ -2035,8 +2047,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       broadcast('agentTools:unavailable', { courseId, sessionId })
     },
     onTurnComplete: notifyTurnComplete,
-    onTurnSettled: settleStudyTurn,
-    onRequestsCancelled: (sessionId) => agentConfirmer.cancelConversation(sessionId),
+    onTurnSettled: info => { finishBrowserConversation(info.sessionId); settleStudyTurn(info) },
+    onRequestsCancelled: (sessionId) => { finishBrowserConversation(sessionId); browserRunScopes.delete(sessionId); agentConfirmer.cancelConversation(sessionId) },
     onUsage: recordUsage
   })
   const geminiSessionManager = createSessionManager({
@@ -2059,8 +2071,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       broadcast('agentTools:unavailable', { courseId, sessionId })
     },
     onTurnComplete: notifyTurnComplete,
-    onTurnSettled: settleStudyTurn,
-    onRequestsCancelled: (sessionId) => agentConfirmer.cancelConversation(sessionId),
+    onTurnSettled: info => { finishBrowserConversation(info.sessionId); settleStudyTurn(info) },
+    onRequestsCancelled: (sessionId) => { finishBrowserConversation(sessionId); browserRunScopes.delete(sessionId); agentConfirmer.cancelConversation(sessionId) },
     onUsage: recordUsage
   })
   const managerFor = (provider: string): typeof sessionManager =>
@@ -3186,7 +3198,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     api: pluginApi,
     limiter: pluginLimiter,
     log: pluginLog,
-    hostEntry: join(__dirname, 'pluginHost.js'),
+    preloadPath: join(__dirname, '../preload/pluginHost.js'),
     appVersion: resolveAppVersion(
       app.isPackaged,
       app.getVersion(),

@@ -20,6 +20,30 @@ export function updateComposerDraft(id: string, update: Partial<ComposerDraft> |
   })
   draftChannel?.postMessage({ kind: 'patch', id, patch })
 }
+
+/** Remove the submitted snapshot without discarding newer edits from another composer. */
+export function consumeComposerDraft(id: string, sent: ComposerDraft): void {
+  const remaining = <T,>(current: T[], submitted: T[]): T[] => {
+    const counts = new Map<string, number>()
+    for (const item of submitted) { const key = JSON.stringify(item); counts.set(key, (counts.get(key) ?? 0) + 1) }
+    return current.filter(item => {
+      const key = JSON.stringify(item), count = counts.get(key) ?? 0
+      if (count === 0) return true
+      counts.set(key, count - 1)
+      return false
+    })
+  }
+  updateComposerDraft(id, current => ({
+    text: current.text === sent.text ? '' : current.text,
+    quotes: remaining(current.quotes ?? [], sent.quotes ?? []),
+    images: remaining(current.images, sent.images),
+    files: remaining(current.files, sent.files),
+    skills: remaining(current.skills, sent.skills),
+    creation: current.creation === sent.creation ? null : current.creation,
+    browser: sent.browser ? false : current.browser,
+    screen: sent.screen ? false : current.screen
+  }))
+}
 export function draftContext(draft: ComposerDraft): ChatContext {
   return { ...(draft.excludeCurrentMaterial ? { excludeCurrentMaterial: true } : {}), files: draft.files.flatMap((file) => file.relPath ? [{ name: file.name, relPath: file.relPath }] : []), skillIds: draft.skills.map((skill) => skill.id), skillNames: draft.skills.map((skill) => skill.name), ...(draft.creation ? { creation: draft.creation } : {}), browser: draft.browser, screen: draft.screen }
 }

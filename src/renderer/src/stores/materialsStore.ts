@@ -17,7 +17,7 @@ interface MaterialsState {
   isSearching: boolean
   error: string | null
   /** `silent` refreshes in place (watcher pushes) without the skeleton. */
-  loadTree: (courseId: string, options?: { silent?: boolean }) => Promise<void>
+  loadTree: (courseId: string, options?: { silent?: boolean; refreshOnly?: boolean }) => Promise<void>
   search: (courseId: string, query: string) => Promise<void>
   clearSearch: () => void
   clear: () => void
@@ -44,6 +44,12 @@ export const useMaterialsStore: ImmerStore<MaterialsState> = create<MaterialsSta
     error: null,
 
     loadTree: async (courseId, options = {}) => {
+      // Background mutations may finish after the user has selected a different
+      // course. Invalidate the old cache without changing the visible scope.
+      if (options.refreshOnly && get().activeCourseId !== courseId) {
+        for (const key of courseTrees.keys()) if (key.startsWith(`${courseId}:`)) courseTrees.delete(key)
+        return
+      }
       const sequence = ++treeSequence
       const cacheKey = `${courseId}:${useCoursesStore.getState().courses.find(course => course.id === courseId)?.folderPath ?? ''}`
       const previous = get()
@@ -61,13 +67,15 @@ export const useMaterialsStore: ImmerStore<MaterialsState> = create<MaterialsSta
         })
       }
       set((state) => {
-        if (options.silent !== true && cached === undefined) state.isLoading = true
+        state.isLoading = options.silent !== true && cached === undefined
         state.error = null
       })
 
       try {
         if (cached === undefined) {
-          const snapshot = await invoke('materials:snapshot', { courseId })
+          // The snapshot is only a startup optimization. A missing/corrupt cache
+          // must not prevent a live scan from recovering the materials list.
+          const snapshot = await invoke('materials:snapshot', { courseId }).catch(() => ({ tree: null }))
           if (sequence !== treeSequence || get().activeCourseId !== courseId) return
           if (snapshot.tree !== null) set(state => { state.tree = snapshot.tree!; state.isLoading = false })
         }
@@ -89,6 +97,7 @@ export const useMaterialsStore: ImmerStore<MaterialsState> = create<MaterialsSta
     },
 
     search: async (courseId, query) => {
+      if (get().activeCourseId !== courseId) return
       const normalizedQuery = query.trim()
       if (normalizedQuery.length === 0) {
         get().clearSearch()
@@ -131,6 +140,11 @@ export const useMaterialsStore: ImmerStore<MaterialsState> = create<MaterialsSta
     clear: () => {
       treeSequence += 1
       searchSequence += 1
+      if (activeCacheKey !== null) {
+        const previous = get()
+        courseTrees.set(activeCacheKey, { tree: previous.tree, expandedPaths: previous.expandedPaths })
+        activeCacheKey = null
+      }
       set((state) => {
         state.activeCourseId = null
         state.tree = []

@@ -10,9 +10,10 @@ export function dueLearningCards(project: LearningProjectSnapshot, now = Date.no
   return project.cards.filter(card => card.status === 'new' || Date.parse(card.dueAt) <= now).sort((a, b) => a.dueAt.localeCompare(b.dueAt))
 }
 
-export function quizCanFinish(artifact: Extract<LearningArtifact, { kind: 'quiz' }>, attempt: LearningQuizAttempt | undefined): boolean {
+export function quizCanFinish(artifact: Extract<LearningArtifact, { kind: 'quiz' }>, attempt: LearningQuizAttempt | undefined, drafts?: Record<string, string>): boolean {
   return artifact.questions.every(question => { const answer = attempt?.answers.find(item => item.questionId === question.id)
-    return Boolean(answer?.answer.trim()) && (question.type !== 'short-answer' || answer?.selfCheck !== undefined)
+    const value = drafts?.[question.id] ?? answer?.answer
+    return Boolean(value?.trim()) && (question.type !== 'short-answer' || answer?.selfCheck !== undefined && value === answer.answer)
   })
 }
 
@@ -26,20 +27,40 @@ export function LearningQuiz({ artifact, project, onUpdate, onArticle }: { artif
   const [error, setError] = useState<string | null>(null)
   const completed = attempt?.completedAt !== null && attempt?.completedAt !== undefined
   const saveQueue = useRef<Promise<void>>(Promise.resolve())
+  const failedAnswers = useRef(new Map<string, { answer: string; selfCheck?: boolean; error: string }>())
+  const finishing = useRef(false)
   const save = (questionId: string, answer: string, selfCheck?: boolean): Promise<void> => {
     const request = saveQueue.current.catch(() => {}).then(async () => {
-      const next = await invoke('learning:saveQuizAnswer', { binding: project.binding, artifactId: artifact.id, attemptId, questionId, answer, ...(selfCheck === undefined ? {} : { selfCheck }) })
-      onUpdate(next)
+      try {
+        const next = await invoke('learning:saveQuizAnswer', { binding: project.binding, artifactId: artifact.id, attemptId, questionId, answer, ...(selfCheck === undefined ? {} : { selfCheck }) })
+        failedAnswers.current.delete(questionId)
+        setError(failedAnswers.current.values().next().value?.error ?? null)
+        onUpdate(next)
+      } catch (caught) {
+        const error = learningError(caught)
+        failedAnswers.current.set(questionId, { answer, ...(selfCheck === undefined ? {} : { selfCheck }), error })
+        setError(error)
+        throw caught
+      }
     })
     saveQueue.current = request
-    void request.catch(caught => setError(learningError(caught)))
+    void request.catch(() => {})
     return request
   }
-  const finish = async (): Promise<void> => {
+  const finish = async (grade = true): Promise<void> => {
+    if (finishing.current) return
+    finishing.current = true
     setPending(true); setError(null)
-    try { await saveQueue.current; const next = await invoke('learning:finishQuiz', { binding: project.binding, artifactId: artifact.id, attemptId }); onUpdate(next); notifyLearningChanged() }
-    catch (caught) { setError(learningError(caught)) }
-    finally { setPending(false) }
+    try {
+      await saveQueue.current.catch(() => {})
+      // A later answer's successful save must not permit grading an older failed draft.
+      for (const [questionId, draft] of [...failedAnswers.current]) await save(questionId, draft.answer, draft.selfCheck)
+      if (grade) {
+        const next = await invoke('learning:finishQuiz', { binding: project.binding, artifactId: artifact.id, attemptId })
+        onUpdate(next); notifyLearningChanged()
+      }
+    } catch (caught) { setError(learningError(caught)) }
+    finally { finishing.current = false; setPending(false) }
   }
 
   return <div className="learning-quiz"><div className="learning-section-heading"><div><p className="learning-eyebrow">CHECK YOUR UNDERSTANDING</p><h2>{artifact.title}</h2></div><span className="learning-pill">{artifact.questions.length}문제</span></div>
@@ -53,11 +74,11 @@ export function LearningQuiz({ artifact, project, onUpdate, onArticle }: { artif
         {question.type === 'choice' ? <fieldset className="learning-choices" disabled={completed || pending}><legend className="sr-only">{index + 1}번 답 고르기</legend>{question.options?.map(option => <label key={option.id} data-selected={value === option.id}><input type="radio" name={`${attemptId}-${question.id}`} value={option.id} checked={value === option.id} onChange={() => { setDrafts(current => ({ ...current, [question.id]: option.id })); void save(question.id, option.id) }} /><span>{option.text}</span></label>)}</fieldset> : <label className="learning-field"><span className="sr-only">{index + 1}번 답 입력</span><textarea aria-label={`${index + 1}번 답 입력`} rows={question.type === 'short-answer' ? 3 : 1} value={value} placeholder="나의 답" disabled={completed || pending} onChange={event => { const text = event.target.value; setDrafts(current => ({ ...current, [question.id]: text })); void save(question.id, text) }} /></label>}
         {question.type === 'short-answer' && !showsAnswer && <button className="button button--secondary" type="button" disabled={!value.trim() || pending} onClick={() => setRevealed(current => new Set([...current, question.id]))}>모범 답안과 비교하기</button>}
         {showsAnswer && <div className="learning-answer" data-correct={question.type !== 'short-answer' ? answer?.correct : undefined}><strong>{question.type === 'short-answer' ? '모범 답안' : answer?.correct ? '맞았어요' : '다시 확인해요'}</strong><MarkdownView text={question.type === 'short-answer' ? (question.modelAnswer ?? question.answer) : question.type === 'choice' ? (question.options?.find(item => item.id === question.answer)?.text ?? question.answer) : question.answer} /><MarkdownView text={question.explanation} />{question.checkingPoints && <ul>{question.checkingPoints.map(point => <li key={point}>{point}</li>)}</ul>}
-          {question.type === 'short-answer' && !completed && <div className="learning-self-check" aria-label="내 답 스스로 확인"><button className="button button--secondary" type="button" aria-pressed={answer?.selfCheck === true} onClick={() => void save(question.id, value, true)}>잘 설명했어요</button><button className="button button--secondary" type="button" aria-pressed={answer?.selfCheck === false} onClick={() => void save(question.id, value, false)}>다시 공부할래요</button></div>}
+          {question.type === 'short-answer' && !completed && <div className="learning-self-check" aria-label="내 답 스스로 확인"><button className="button button--secondary" type="button" aria-pressed={answer?.selfCheck === true} disabled={pending} onClick={() => void save(question.id, value, true)}>잘 설명했어요</button><button className="button button--secondary" type="button" aria-pressed={answer?.selfCheck === false} disabled={pending} onClick={() => void save(question.id, value, false)}>다시 공부할래요</button></div>}
           <LearningSources sources={question.sourceRefs} binding={project.binding} onArticle={onArticle} /></div>}
       </div></section>
     })}
-    {error && <p className="learning-error" role="alert">{error}</p>}{!completed && <footer className="learning-review-footer"><span className="learning-muted">모든 문제에 답하고 단답형 자기 확인을 마치면 결과를 볼 수 있어요.</span><button className="button button--primary" type="button" disabled={pending || !quizCanFinish(artifact, attempt)} onClick={() => void finish()}>{pending ? '결과 저장 중…' : '채점하고 정답 보기'}</button></footer>}
+    {error && <div className="learning-error" role="alert">{error}{failedAnswers.current.size > 0 && <button className="button button--secondary" type="button" disabled={pending} onClick={() => void finish(false)}>답 다시 저장</button>}</div>}{!completed && <footer className="learning-review-footer"><span className="learning-muted">모든 문제에 답하고 단답형 자기 확인을 마치면 결과를 볼 수 있어요.</span><button className="button button--primary" type="button" disabled={pending || !quizCanFinish(artifact, attempt, drafts)} onClick={() => void finish()}>{pending ? '결과 저장 중…' : '채점하고 정답 보기'}</button></footer>}
   </div>
 }
 

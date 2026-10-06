@@ -5,7 +5,7 @@
  * Persistence design (see docs/orca-analysis.md §5):
  *  - NO zustand persist middleware. Hydration is explicit and ordered:
  *    course switch → flush pending save → `layout:get` → validate hard →
- *    `fromJSON` (or empty layout on any failure).
+ *    `fromJSON` (read failures retain the saved layout for an explicit retry).
  *  - Saves are debounced (1s) and only scheduled for *structural* changes
  *    (open/close/move/resize). Decorative churn — focus/active-tab changes —
  *    refreshes the pending snapshot but never starts a save on its own.
@@ -43,7 +43,7 @@ import {
   validateLayout
 } from '../features/workspace/layoutPersistence'
 
-export type WorkspaceHydration = 'idle' | 'loading' | 'ready'
+export type WorkspaceHydration = 'idle' | 'loading' | 'ready' | 'error'
 export type WorkspaceSurface = 'course' | 'learning-home'
 
 interface WorkspaceState {
@@ -58,6 +58,7 @@ interface WorkspaceState {
   /** Actual Dockview identity, including duplicate instances. */
   activePanelId: string | null
   hydration: WorkspaceHydration
+  retryHydration: () => void
   /** Mirror of the descriptors currently open in dockview, by panel id. */
   openTabs: Record<string, TabDescriptor>
   attachCourseApi: (courseId: string | null, api: DockviewApi) => void
@@ -242,7 +243,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 
   const queueDuringHydration = (open: () => void): boolean => {
     const { activeCourseId, hydration } = get()
-    if (activeCourseId === null || hydration !== 'loading') return false
+    if (activeCourseId === null || (hydration !== 'loading' && hydration !== 'error')) return false
     const queued = pendingOpens.get(activeCourseId) ?? []
     queued.push(open)
     pendingOpens.set(activeCourseId, queued)
@@ -372,6 +373,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         raw = (await invoke('layout:get', { courseId })).layout
       } catch (error) {
         console.error('[Bandal] 레이아웃을 불러오지 못했습니다.', error)
+        if (serial === switchSerial && api !== null) set({ hydration: 'error', activePanelId: null })
+        return
       }
     }
     // A newer switch won the race — drop this hydration entirely.
@@ -428,6 +431,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     activeCourseId: null,
     activePanelId: null,
     hydration: 'idle',
+    retryHydration: () => {
+      const { activeCourseId, hydration } = get()
+      if (activeCourseId !== null && hydration === 'error') void hydrate(activeCourseId, ++switchSerial)
+    },
     openTabs: {},
 
     attachCourseApi: (courseId, nextApi) => {

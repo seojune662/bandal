@@ -46,6 +46,9 @@ export function useMaterialsPaste({
   const [pasteNotice, setPasteNotice] = useState<string | null>(null)
   const [isPasting, setIsPasting] = useState(false)
   const clearTimerRef = useRef<number | null>(null)
+  const activeCourse = useRef(courseId)
+  activeCourse.current = courseId
+  const pending = useRef(false)
 
   const showNotice = useCallback((message: string, clearAfter = false): void => {
     if (clearTimerRef.current !== null) {
@@ -68,6 +71,8 @@ export function useMaterialsPaste({
     []
   )
 
+  useEffect(() => { setPasteNotice(null) }, [courseId])
+
   const paste = useCallback(
     async (plan: ReturnType<typeof planClipboardPaste>): Promise<void> => {
       if (courseId === null || courseName === null) {
@@ -89,6 +94,7 @@ export function useMaterialsPaste({
       try {
         if (plan.kind === 'files') {
           const imported = await importMaterialPaths(courseId, plan.paths)
+          if (activeCourse.current !== courseId) return
           onCreated(imported)
           if (imported.length > 0) showNotice(`${targetName}에 추가했어요`, true)
           else showNotice('추가된 파일이 없어요', true)
@@ -122,7 +128,8 @@ export function useMaterialsPaste({
           created.push(result.relPath)
         }
 
-        await useMaterialsStore.getState().loadTree(courseId)
+        await useMaterialsStore.getState().loadTree(courseId, { refreshOnly: true })
+        if (activeCourse.current !== courseId) return
         onCreated(created)
         showToast(
           created.length === 1 ? '자료를 붙여넣었어요.' : `${created.length}개 붙여넣었어요.`
@@ -130,14 +137,14 @@ export function useMaterialsPaste({
         showNotice(`${targetName}에 추가했어요`, true)
       } catch (error) {
         if (created.length > 0) {
-          await useMaterialsStore.getState().loadTree(courseId, { silent: true })
-          onCreated(created)
+          await useMaterialsStore.getState().loadTree(courseId, { silent: true, refreshOnly: true })
+          if (activeCourse.current === courseId) onCreated(created)
         }
         const message =
           error instanceof Error ? error.message : '클립보드 자료를 추가하지 못했습니다.'
         console.error('[Bandal] 클립보드 자료를 추가하지 못했습니다.', error)
         showToast(message, 'danger')
-        showNotice('붙여넣지 못했어요', true)
+        if (activeCourse.current === courseId) showNotice('붙여넣지 못했어요', true)
       } finally {
         setIsPasting(false)
       }
@@ -148,14 +155,15 @@ export function useMaterialsPaste({
     (event: ClipboardEvent<HTMLElement>): void => {
       if (!shouldHandleMaterialsPaste(enabled, event.target)) return
       event.preventDefault()
-      if (isPasting) {
+      if (pending.current) {
         showToast('이전 자료를 붙여넣는 중이에요.', 'danger')
         return
       }
       const plan = planClipboardPaste(snapshotClipboard(event.clipboardData), pathForFile)
-      void paste(plan)
+      pending.current = true
+      void paste(plan).finally(() => { pending.current = false })
     },
-    [enabled, isPasting, paste]
+    [enabled, paste]
   )
 
   return { pasteNotice, isPasting, onPaste }

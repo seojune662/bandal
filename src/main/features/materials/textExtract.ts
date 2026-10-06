@@ -19,6 +19,7 @@ const TEXT_EXTENSIONS = new Set([
 
 /** 시트 하나가 통째로 결과를 삼키지 않게 시트당 CSV 행 수를 자른다. */
 const MAX_ROWS_PER_SHEET = 500
+const MAX_COLUMNS_PER_SHEET = 100
 
 /** 도구 기본값과 같다 — schemas.ts 의 read_material 설명과 짝. */
 export const DEFAULT_EXTRACT_MAX_CHARS = 20_000
@@ -54,19 +55,26 @@ async function extractXlsx(absPath: string): Promise<string> {
   // readFile 대신 buffer 로 읽는다 — ESM 로드 시 xlsx 의 내부 fs 바인딩
   // (set_fs)이 비어 있을 수 있어 node fs 를 직접 쓰는 쪽이 안전하다.
   const buffer = await readFile(absPath)
-  const workbook = XLSX.read(buffer, { type: 'buffer' })
+  const workbook = XLSX.read(buffer, { type: 'buffer', sheetRows: MAX_ROWS_PER_SHEET })
   const sections: string[] = []
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName]
     if (sheet === undefined) continue
-    const csv = XLSX.utils.sheet_to_csv(sheet)
-    const rows = csv.split('\n')
-    const kept = rows.slice(0, MAX_ROWS_PER_SHEET)
-    const omitted = rows.length - kept.length
+    const reference = sheet['!ref']
+    if (!reference) { sections.push(`## 시트: ${sheetName}\n`); continue }
+    const original = XLSX.utils.decode_range(sheet['!fullref'] ?? reference)
+    const range = XLSX.utils.decode_range(reference)
+    range.e.r = Math.min(range.e.r, range.s.r + MAX_ROWS_PER_SHEET - 1)
+    range.e.c = Math.min(range.e.c, range.s.c + MAX_COLUMNS_PER_SHEET - 1)
+    // Clamp BEFORE CSV generation. A sparse !ref can otherwise enumerate
+    // billions of empty cells, even though the final text is truncated.
+    const csv = XLSX.utils.sheet_to_csv({ ...sheet, '!ref': XLSX.utils.encode_range(range) })
+    const omittedRows = Math.max(0, original.e.r - range.e.r)
+    const omittedColumns = Math.max(0, original.e.c - range.e.c)
     sections.push(
-      `## 시트: ${sheetName}\n` +
-        kept.join('\n') +
-        (omitted > 0 ? `\n…(행 ${omitted}개 생략)` : '')
+      `## 시트: ${sheetName}\n${csv}` +
+        (omittedRows > 0 ? `\n…(행 ${omittedRows}개 생략)` : '') +
+        (omittedColumns > 0 ? `\n…(열 ${omittedColumns}개 생략)` : '')
     )
   }
   return sections.join('\n\n')

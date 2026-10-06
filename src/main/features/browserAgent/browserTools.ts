@@ -1,4 +1,6 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import type { AgentConfirmScope } from '../../../shared/types/agentTools'
+import { RunStopped } from './run'
 import type { AuditRepo } from './audit'
 import {
   ANY_ORIGIN,
@@ -99,7 +101,7 @@ export interface PageSurface {
   tabLifecycle: (tabId: string, action: 'focus' | 'close') => Promise<boolean>
   findInPage: (tabId: string, text: string) => Promise<number>
   handoff: (tabId: string, message: string) => Promise<'resumed' | 'stopped'>
-  assertLive: () => void
+  assertLive: (tabId?: string) => void
   step: (action: string, url?: string) => void
 }
 export interface ActOutcome {
@@ -115,6 +117,12 @@ export interface LmsCoursePageResult {
   platform: string | null
 }
 export function createBrowserTools(deps: BrowserToolsDeps) {
+  const toolTurn = new AsyncLocalStorage<string>()
+  function assertPageLive(page: PageSurface, tabId?: string): void {
+    const startedIn = toolTurn.getStore()
+    if (startedIn !== undefined && startedIn !== deps.getRunId()) throw new RunStopped()
+    page.assertLive(tabId)
+  }
   function targetFor(courseId: string): LmsTarget | null {
     for (const link of deps.courseLinks(courseId)) {
       const target = lmsTargetFor(link, deps.specFor(link.url))
@@ -211,6 +219,15 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
   type GatedTab =
     | { ok: true; page: PageSurface; url: string }
     | { ok: false; result: ToolError }
+  function pageChanged(page: PageSurface, tabId: string, url: string, generation: number): ToolError | null {
+    assertPageLive(page, tabId)
+    if (deps.getAgentUse?.() === false) {
+      return { status: 'error', message: '브라우저 에이전트 사용이 설정에서 꺼져 있어요' }
+    }
+    if (page.currentUrl(tabId) === url && page.generation(tabId) === generation) return null
+    audit('denied', url, '승인 또는 페이지 확인 중 페이지가 바뀜')
+    return { status: 'error', message: '페이지가 그 사이에 바뀌었어요. 다시 살펴본 뒤에 진행해 주세요.' }
+  }
   async function gatedTab(
     tabId: string,
     capability: BrowserCapability,
@@ -220,7 +237,7 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
     if (page === undefined) {
       return { ok: false, result: { status: 'error', message: unavailable } }
     }
-    page.assertLive()
+    assertPageLive(page, tabId)
     const listedUrl = deps.openTabs?.().tabs.find((tab) => tab.tabId === tabId)?.url
     const url = page.currentUrl(tabId) ?? listedUrl ?? null
     if (url === null) {
@@ -229,6 +246,7 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         result: { status: 'error', message: '그 탭을 찾지 못했어요.' }
       }
     }
+    const generation = page.generation(tabId)
     const permitted = await gate(url, capability)
     if (!permitted.ok) {
       return {
@@ -236,6 +254,8 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         result: { status: 'error', message: permitted.message }
       }
     }
+    const changed = pageChanged(page, tabId, url, generation)
+    if (changed) return { ok: false, result: changed }
     return { ok: true, page, url }
   }
   async function refFacts(
@@ -248,7 +268,8 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
     | { ok: true; frameIndex: number; elementIndex: number; facts: ElementFacts }
     | { ok: false; result: ToolError }
   > {
-    const resolved = resolveRef(ref, page.generation(tabId))
+    const generation = page.generation(tabId)
+    const resolved = resolveRef(ref, generation)
     if (!resolved.ok) {
       audit('denied', url, `${detail} ref ${resolved.reason}`)
       return {
@@ -261,6 +282,8 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       resolved.frameIndex,
       resolved.elementIndex
     )
+    const changed = pageChanged(page, tabId, url, generation)
+    if (changed) return { ok: false, result: changed }
     if (facts === null) {
       audit('denied', url, `${detail}: 요소 없음`)
       return {
@@ -423,9 +446,11 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       if (page === undefined) {
         return { status: 'error', message: '이 대화에서는 페이지를 열 수 없어요.' }
       }
-      page.assertLive()
+      assertPageLive(page)
       const permitted = await gate(url, 'read')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
+      assertPageLive(page)
+      if (deps.getAgentUse?.() === false) return { status: 'error', message: '브라우저 에이전트 사용이 설정에서 꺼져 있어요' }
       const opened = await page.openTab(url)
       audit('navigate', opened.url, '탭에서 열었어요')
       page.step('페이지를 여는 중', opened.url)
@@ -439,17 +464,22 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       if (page === undefined) {
         return { status: 'error', message: '이 대화에서는 페이지를 볼 수 없어요.' }
       }
-      page.assertLive()
+      assertPageLive(page, tabId)
       const url = await urlOfTab(page, tabId)
       if (url === null) {
         return { status: 'error', message: '그 탭을 찾지 못했어요.' }
       }
+      const generation = page.generation(tabId)
       const permitted = await gate(url, 'read')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
+      const changed = pageChanged(page, tabId, url, generation)
+      if (changed) return changed
       const result = await page.snapshot(tabId, maxChars ?? DEFAULT_SNAPSHOT_CHARS)
       if (result === null) {
         return { status: 'error', message: '페이지를 살펴보지 못했어요.' }
       }
+      const changedAfterRead = pageChanged(page, tabId, url, generation)
+      if (changedAfterRead) return changedAfterRead
       audit('snapshot', result.url, `${result.outline.length}자`)
       page.step('페이지를 살펴보는 중', result.url)
       return { status: 'ok', url: result.url, outline: result.outline }
@@ -462,17 +492,22 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       if (page === undefined) {
         return { status: 'error', message: '이 대화에서는 페이지를 읽을 수 없어요.' }
       }
-      page.assertLive()
+      assertPageLive(page, tabId)
       const url = await urlOfTab(page, tabId)
       if (url === null) {
         return { status: 'error', message: '그 탭을 찾지 못했어요.' }
       }
+      const generation = page.generation(tabId)
       const permitted = await gate(url, 'read')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
+      const changed = pageChanged(page, tabId, url, generation)
+      if (changed) return changed
       const result = await page.read(tabId, maxChars ?? 8000)
       if (result === null) {
         return { status: 'error', message: '페이지를 읽지 못했어요.' }
       }
+      const changedAfterRead = pageChanged(page, tabId, url, generation)
+      if (changedAfterRead) return changedAfterRead
       audit('read', result.url, `본문 ${result.text.length}자`)
       return { status: 'ok', url: result.url, text: result.text }
     },
@@ -519,6 +554,22 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       if (!(BROWSER_KEYS as readonly string[]).includes(key)) {
         audit('denied', tab.url, `key ${key}`)
         return { status: 'error' as const, message: '지원하지 않는 키예요.' }
+      }
+      if (key === 'Enter') {
+        const generation = tab.page.generation(tabId)
+        const approved = await deps.confirm({
+          courseId: deps.courseId,
+          tool: 'browser_key',
+          summary: `${normalizeOrigin(tab.url) ?? tab.url} 에서 Enter 키를 누를까요?`,
+          details: ['입력 중인 폼이 제출되거나 메시지가 전송될 수 있어요.', '이 승인은 이번 한 번만 유효하고, 기억해 두지 않습니다.'],
+          scopes: ['once']
+        })
+        if (!approved) {
+          audit('denied', tab.url, 'Enter: 학생이 거부함')
+          return { status: 'error' as const, message: '학생이 Enter 키 실행을 승인하지 않았어요.' }
+        }
+        const changed = pageChanged(tab.page, tabId, tab.url, generation)
+        if (changed) return changed
       }
       return actionResult(
         tab.page,
@@ -635,13 +686,16 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       if (page === undefined || commit === undefined) {
         return { status: 'error', message: '이 대화에서는 제출할 수 없어요.' }
       }
-      page.assertLive()
+      assertPageLive(page, tabId)
       const url = page.currentUrl(tabId)
       if (url === null) {
         return { status: 'error', message: '그 탭을 찾지 못했어요.' }
       }
+      const generation = page.generation(tabId)
       const permitted = await gate(url, 'interact')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
+      const changed = pageChanged(page, tabId, url, generation)
+      if (changed) return changed
       const resolved = resolveRef(ref, page.generation(tabId))
       if (!resolved.ok) {
         audit('denied', url, `submit ref ${resolved.reason}`)
@@ -655,6 +709,8 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       if (facts === null) {
         return { status: 'error', message: '그 요소를 찾지 못했어요.' }
       }
+      const changedAfterFacts = pageChanged(page, tabId, url, generation)
+      if (changedAfterFacts) return changedAfterFacts
       const approved = await deps.confirm({
         courseId: deps.courseId,
         tool: 'browser_submit',
@@ -668,6 +724,8 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         audit('denied', url, 'submit: 학생이 거부함')
         return { status: 'error', message: '학생이 제출을 승인하지 않았어요.' }
       }
+      const changedAfterApproval = pageChanged(page, tabId, url, generation)
+      if (changedAfterApproval) return changedAfterApproval
       const ok = await runGuestScript(() =>
         commit.submit(tabId, resolved.frameIndex, resolved.elementIndex)
       )
@@ -682,13 +740,16 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       if (page === undefined || commit === undefined) {
         return { status: 'error', message: '이 대화에서는 로그인할 수 없어요.' }
       }
-      page.assertLive()
+      assertPageLive(page, tabId)
       const url = page.currentUrl(tabId)
       if (url === null) {
         return { status: 'error', message: '그 탭을 찾지 못했어요.' }
       }
+      const generation = page.generation(tabId)
       const permitted = await gate(url, 'interact')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
+      const changed = pageChanged(page, tabId, url, generation)
+      if (changed) return changed
       const origin = normalizeOrigin(url) ?? url
       const approved = await deps.confirm({
         courseId: deps.courseId,
@@ -703,6 +764,8 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
         audit('denied', url, 'saved-login: 학생이 거부함')
         return { status: 'error', message: '학생이 로그인을 승인하지 않았어요.' }
       }
+      const changedAfterApproval = pageChanged(page, tabId, url, generation)
+      if (changedAfterApproval) return changedAfterApproval
       const result = await commit.useSavedLogin(tabId)
       audit('navigate', url, result.filled ? 'saved-login 채움' : 'saved-login 없음')
       return { status: 'ok', filled: result.filled }
@@ -718,13 +781,16 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       if (page === undefined || commit === undefined) {
         return { status: 'error', message: '이 대화에서는 파일을 붙일 수 없어요.' }
       }
-      page.assertLive()
+      assertPageLive(page, tabId)
       const url = page.currentUrl(tabId)
       if (url === null) {
         return { status: 'error', message: '그 탭을 찾지 못했어요.' }
       }
+      const generation = page.generation(tabId)
       const permitted = await gate(url, 'interact')
       if (!permitted.ok) return { status: 'error', message: permitted.message }
+      const changed = pageChanged(page, tabId, url, generation)
+      if (changed) return changed
       const resolved = resolveRef(ref, page.generation(tabId))
       if (!resolved.ok) {
         return { status: 'error', message: resolved.message }
@@ -794,7 +860,7 @@ export function createBrowserTools(deps: BrowserToolsDeps) {
       if (typeof value !== 'function') return value
       return (...args: unknown[]) => deps.getAgentUse?.() === false
         ? { status: 'error', message: '브라우저 에이전트 사용이 설정에서 꺼져 있어요' }
-        : Reflect.apply(value, target, args)
+        : toolTurn.run(deps.getRunId(), () => Reflect.apply(value, target, args))
     }
   })
 }

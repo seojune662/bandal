@@ -50,6 +50,7 @@ import {
   updateOptimisticCanvasShape,
   type CanvasShapeInput
 } from './canvasModel'
+import { createCanvasSaveQueue, type CanvasSaveState } from './canvasSaveQueue'
 import { CanvasToolRail } from './CanvasToolRail'
 import { CanvasPage, DEFAULT_PAGE_ASPECT } from './CanvasPage'
 import { CanvasPreviewPanel } from './CanvasPreviewPanel'
@@ -147,6 +148,8 @@ function CanvasSession({
   }, [surfaceKey])
   const [board, setBoard] = useState(initialBoard)
   const [shapes, setShapes] = useState<PersonalBoardShape[]>(() => [...initialShapes])
+  const [saveState, setSaveState] = useState<CanvasSaveState>({ pending: 0, error: null })
+  const saveQueue = useMemo(() => createCanvasSaveQueue(setSaveState), [])
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(initialBoard.title)
@@ -200,7 +203,8 @@ function CanvasSession({
     restore = false
   ): void => {
     const operation = nextOperation(shape.id)
-    void invoke('canvas:putShape', {
+    void saveQueue.enqueue([shape.id], async () => {
+      const saved = await invoke('canvas:putShape', {
       boardId: board.id,
       id: shape.id,
       page: shape.page,
@@ -212,7 +216,7 @@ function CanvasSession({
       // Only undo may revive an erased shape. Every other save leaves a
       // tombstone alone, so a late in-flight write cannot un-erase.
       ...(restore ? { restore: true } : {})
-    }).then((saved) => {
+      })
       if (
         operationRef.current.get(shape.id) === operation &&
         shapesRef.current.some((entry) => entry.id === shape.id)
@@ -222,9 +226,8 @@ function CanvasSession({
           page: shape.page
         }))
       }
-      setStatusMessage(null)
-    }).catch(showSaveError)
-  }, [board.id, nextOperation, replace, showSaveError])
+    })
+  }, [board.id, nextOperation, replace, saveQueue])
 
   const addInternal = useCallback((
     input: Omit<CanvasShapeInput, 'page'>,
@@ -282,12 +285,11 @@ function CanvasSession({
         drawings: removed
       })
     }
-    void invoke('canvas:removeShapes', {
-      boardId: board.id,
-      ids: removed.map((shape) => shape.id)
-    }).then(() => setStatusMessage(null)).catch(showSaveError)
+    void saveQueue.enqueue(removed.map((shape) => shape.id), async (pendingIds) => {
+      await invoke('canvas:removeShapes', { boardId: board.id, ids: [...pendingIds] })
+    })
     return removed
-  }, [board.id, nextOperation, replace, showSaveError, surfaceKey])
+  }, [board.id, nextOperation, replace, saveQueue, surfaceKey])
 
   const updateInternal = useCallback((
     id: string,
@@ -421,6 +423,7 @@ function CanvasSession({
   const exportBoardPdf = useCallback(async (): Promise<void> => {
     setExportingPdf(true)
     try {
+      await saveQueue.flush()
       const result = await invoke('canvas:exportPdf', { boardId: board.id })
       showToast(`과목 폴더에 PDF로 내보냈어요: ${result.relPath}`)
     } catch (error: unknown) {
@@ -428,7 +431,7 @@ function CanvasSession({
     } finally {
       setExportingPdf(false)
     }
-  }, [board.id])
+  }, [board.id, saveQueue])
 
   const addPage = useCallback(async (): Promise<void> => {
     const pageCount = board.pageCount + 1
@@ -493,7 +496,7 @@ function CanvasSession({
     point: { x: number; y: number },
     page: number
   ): void => {
-    void loadDrawingImage(board.courseId, source)
+    void saveQueue.prepare(() => loadDrawingImage(board.courseId, source)
       .then((dataUrl) => (dataUrl === null ? null : dataUrlImageAspect(dataUrl)))
       .then((imageAspect) => {
         setActiveTool('select')
@@ -506,10 +509,10 @@ function CanvasSession({
           style: { color, width, opacity: 1 }
         }, page, true)
       })
-      .catch(() => {})
-  }, [addInternal, board.courseId, color, setActiveTool, width])
+    ).catch(() => showToast('사진을 추가하지 못했어요.', 'danger'))
+  }, [addInternal, board.courseId, color, saveQueue, setActiveTool, width])
 
-  const insertImageFiles = useCallback(async (filesInput: readonly File[]): Promise<void> => {
+  const insertImageFiles = useCallback((filesInput: readonly File[]): Promise<void> => saveQueue.prepare(async () => {
     const files = [...filesInput].slice(0, WHITEBOARD_IMAGE_MAX_FILES)
     if (files.length === 0) return
     setStatusMessage('사진을 최적화하는 중…')
@@ -559,7 +562,7 @@ function CanvasSession({
       setStatusMessage(message)
       showToast(message, 'danger')
     }
-  }, [addInternal, board.courseId, board.id, color, setActiveTool, visiblePage, width])
+  }), [addInternal, board.courseId, board.id, color, saveQueue, setActiveTool, visiblePage, width])
 
   useEffect(() => {
     if (!panelActive) return
@@ -596,7 +599,7 @@ function CanvasSession({
     // ratio. 재중심화(clipBoxAtDrop 재계산) 대신 healedImageBox 방식 —
     // 폭·자리 유지, 높이만 보정이라 화면에서 "점프"하지 않는다.
     // pageAspect 가 전달된 신버전 클립은 사실상 항상 no-op.
-    void renderClip(source).then((dataUrl) =>
+    void saveQueue.prepare(() => renderClip(source).then((dataUrl) =>
       dataUrl === null ? null : readImageAspect(dataUrl)
     ).then((clipAspect) => {
       if (clipAspect === null) return
@@ -607,8 +610,8 @@ function CanvasSession({
       updateInternal(created.id, {
         data: { ...current.data, box: healed }
       }, false)
-    }).catch(() => {})
-  }, [addInternal, color, renderClip, updateInternal, width])
+    })).catch(() => {})
+  }, [addInternal, color, renderClip, saveQueue, updateInternal, width])
 
   // Clips sent from a PDF by clicking, rather than dragged onto the surface.
   // Delivery follows the page with the greatest visible area. This keeps a
@@ -691,7 +694,9 @@ function CanvasSession({
           <Icon name="layoutLeft" />
           미리보기
         </button>
-        <span className="canvas-tab__local-badge">이 기기에 저장됨</span>
+        <span className="canvas-tab__local-badge" role="status">
+          {saveState.error !== null ? '저장하지 못함' : saveState.pending > 0 ? '저장 중…' : '이 기기에 저장됨'}
+        </span>
       </header>
 
       <CanvasToolRail
@@ -719,6 +724,13 @@ function CanvasSession({
       />
       <TextFormatRow visible={activeTool === 'text'} />
 
+      {saveState.error !== null && (
+        <div className="canvas-tab__status" role="alert">
+          <span>변경 내용을 저장하지 못했어요. 이 탭을 닫기 전에 다시 시도해 주세요: {saveState.error}</span>
+          <button type="button" disabled={saveState.pending > 0}
+            onClick={() => { void saveQueue.retry().catch(showSaveError) }}>다시 저장</button>
+        </div>
+      )}
       {statusMessage !== null && (
         <p className="canvas-tab__status" role="status">{statusMessage}</p>
       )}

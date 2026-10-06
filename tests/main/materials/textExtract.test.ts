@@ -76,6 +76,31 @@ describe('extractMaterialText', () => {
     expect(text).toContain('성적,100')
   })
 
+  test('bounds sheet columns before CSV generation and reports omitted dimensions', async () => {
+    const workbook = XLSX.utils.book_new()
+    const sheet = XLSX.utils.aoa_to_sheet([['visible']])
+    sheet.CW1 = { t: 's', v: 'outside preview columns' }
+    sheet.A500 = { t: 's', v: 'last visible row' }
+    sheet.A501 = { t: 's', v: 'outside preview rows' }
+    sheet['!ref'] = 'A1:CW501'
+    XLSX.utils.book_append_sheet(workbook, sheet, 'wide')
+    const file = join(dir, 'wide.xlsx')
+    writeFileSync(file, XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
+    const text = await extractMaterialText(file, '.xlsx', 100_000)
+    expect(text).toContain('visible')
+    expect(text).not.toContain('outside preview')
+    expect(text).toContain('열 1개 생략')
+    expect(text).toContain('행 1개 생략')
+  })
+
+  test('does not split a multiline CSV cell at the row preview limit', async () => {
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['line\n'.repeat(500) + 'last line']]), 'multiline')
+    const file = join(dir, 'multiline.xlsx')
+    writeFileSync(file, XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
+    expect(await extractMaterialText(file, '.xlsx')).toContain('last line')
+  })
+
   test('extracts docx through mammoth (mocked at the module seam)', async () => {
     const file = join(dir, 'report.docx')
     writeFileSync(file, Buffer.from('not-a-real-docx'))

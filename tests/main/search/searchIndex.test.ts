@@ -2,6 +2,7 @@ import {
   mkdirSync,
   readFileSync,
   unlinkSync,
+  utimesSync,
   writeFileSync
 } from 'node:fs'
 import { join } from 'node:path'
@@ -82,6 +83,31 @@ describe('course content search index', () => {
       await removal
       expect(count()).toBe(0)
     } finally { foreground.close() }
+  })
+
+  test.each([false, true])('drops old text and PDF rows after relinking the course (restart=%s)', restart => {
+    writeFileSync(join(courseFolder, 'note.md'), 'OLD ROOT')
+    utimesSync(join(courseFolder, 'note.md'), 100, 100)
+    writeFileSync(join(courseFolder, 'lecture.pdf'), 'old pdf')
+    index.indexPdfPages({ courseId: 'course-1', relPath: 'lecture.pdf', pages: [{ page: 1, text: 'OLD PDF' }] })
+    expect(index.query('course-1', 'OLD')).toHaveLength(2)
+    courseFolder = join(ctx.dir, 'relinked'); mkdirSync(courseFolder)
+    writeFileSync(join(courseFolder, 'note.md'), 'NEW ROOT')
+    utimesSync(join(courseFolder, 'note.md'), 100, 100)
+    writeFileSync(join(courseFolder, 'lecture.pdf'), 'new pdf')
+    if (restart) index = createSearchIndex(ctx.db, { getCourseFolder: () => courseFolder })
+    expect(index.query('course-1', 'OLD')).toEqual([])
+    expect(index.query('course-1', 'NEW')[0]?.relPath).toBe('note.md')
+  })
+
+  test('a late background scan from the old root cannot overwrite the relinked index', async () => {
+    for (let i = 0; i < 250; i++) writeFileSync(join(courseFolder, `${i}.md`), 'OLD ROOT')
+    const previous = index.refreshInBackground('course-1')
+    courseFolder = join(ctx.dir, 'relinked'); mkdirSync(courseFolder)
+    writeFileSync(join(courseFolder, '99.md'), 'NEW ROOT')
+    expect(index.query('course-1', 'NEW')).toHaveLength(1)
+    await previous
+    expect(index.query('course-1', 'OLD')).toEqual([])
   })
 
   test('finds an unsegmented Korean substring from NFD text using an NFC query', () => {

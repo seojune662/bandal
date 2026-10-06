@@ -71,7 +71,8 @@ export function writeFileAtomic(
 export function quarantineFile(absPath: string, now = new Date()): string | null {
   if (!existsSync(absPath)) return null
 
-  const basePath = `${absPath}.corrupt-${now.toISOString()}`
+  // Colons are illegal in Windows filenames (and can name an NTFS stream).
+  const basePath = `${absPath}.corrupt-${now.toISOString().replaceAll(':', '-')}`
   let quarantinePath = basePath
   let suffix = 1
   while (existsSync(quarantinePath)) {

@@ -39,8 +39,8 @@ export interface RunRegistryDeps {
 }
 
 /**
- * One run at a time per course. A second concurrent run would mean two
- * strips, two stop buttons and no way for a student to tell which is which.
+ * Each conversation owns its run. A tab has at most one live owner, so its
+ * single stop control always stops the conversation that is driving it.
  */
 export function createRunRegistry(deps: RunRegistryDeps) {
   const runs = new Map<string, RunState>()
@@ -50,8 +50,16 @@ export function createRunRegistry(deps: RunRegistryDeps) {
     deps.emit(state)
   }
 
+  function assertTabAvailable(tabId: string, runId?: string): void {
+    if (tabId === '') return
+    if ([...runs.values()].some(run => run.tabId === tabId && run.runId !== runId && (run.status === 'running' || run.status === 'waiting'))) {
+      throw new Error('다른 대화가 이 탭을 사용하고 있어요. 해당 작업을 끝내거나 중지한 뒤 다시 시도하세요.')
+    }
+  }
+
   return {
     start(courseId: string, tabId: string, action: string, url: string): RunState {
+      assertTabAvailable(tabId)
       const state: RunState = {
         runId: randomUUID(),
         courseId,
@@ -74,7 +82,7 @@ export function createRunRegistry(deps: RunRegistryDeps) {
     /** Marks a run as waiting on the student (handoff). */
     wait(runId: string, action: string): void {
       const current = runs.get(runId)
-      if (current === undefined) return
+      if (current === undefined || current.status === 'stopped' || current.status === 'done') return
       publish({ ...current, status: 'waiting', action })
     },
 
@@ -110,7 +118,9 @@ export function createRunRegistry(deps: RunRegistryDeps) {
     /** Binds a run to the tab that was opened for it. */
     attachTab(runId: string, tabId: string): void {
       const current = runs.get(runId)
-      if (current === undefined || current.tabId !== '') return
+      if (current === undefined || current.tabId === tabId || current.status === 'stopped') return
+      assertTabAvailable(tabId, runId)
+      if (current.tabId !== '') deps.emit({ ...current, status: 'done', action: '' })
       publish({ ...current, tabId })
     },
 
@@ -146,5 +156,47 @@ export function createRunRegistry(deps: RunRegistryDeps) {
         }
       }
     }
+  }
+}
+
+/** A stopped or completed turn cannot resume; the next turn gets a new run. */
+export function createConversationRunScope(deps: {
+  registry: ReturnType<typeof createRunRegistry>
+  courseId: string
+  getTurnId(): string
+}) {
+  let turnId: string | null = null
+  let runId: string | null = null
+  let finished = false
+  const finish = (): void => {
+    if (turnId === null) turnId = deps.getTurnId()
+    finished = true
+    if (runId !== null) deps.registry.finish(runId)
+  }
+  const assertLive = (tabId?: string): void => {
+    const nextTurn = deps.getTurnId()
+    if (turnId !== nextTurn) {
+      finish()
+      turnId = nextTurn
+      runId = null
+      finished = false
+    }
+    if (finished) throw new RunStopped()
+    if (runId === null) runId = deps.registry.start(deps.courseId, tabId ?? '', '페이지를 살펴보는 중', '').runId
+    deps.registry.assertLive(runId)
+    if (tabId) deps.registry.attachTab(runId, tabId)
+  }
+  return {
+    assertLive,
+    current: (): RunState | null => turnId === deps.getTurnId() && runId !== null ? deps.registry.get(runId) : null,
+    step(action: string, url?: string): void {
+      assertLive()
+      deps.registry.step(runId!, action, url)
+    },
+    wait(message: string): void {
+      assertLive()
+      deps.registry.wait(runId!, message)
+    },
+    finish
   }
 }

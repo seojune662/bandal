@@ -75,6 +75,31 @@ afterEach(() => {
   resetSettingsSnapshotForTests()
 })
 
+test('a course creation response does not duplicate the row already loaded from its broadcast', async () => {
+  const created = course('created', 1)
+  let finish!: (value: Course) => void
+  invokeMock.mockImplementation(async channel => {
+    if (channel === 'courses:create') return new Promise<Course>(resolve => { finish = resolve })
+    return {}
+  })
+  const pending = useCoursesStore.getState().createCourse({ name: created.name, color: created.color })
+  useCoursesStore.setState({ courses: [created] })
+  finish(created)
+  await pending
+  expect(useCoursesStore.getState().courses.map(entry => entry.id)).toEqual([created.id])
+})
+
+test('a group creation response does not duplicate the row already loaded from its broadcast', async () => {
+  const created = { id: 'group', name: '학기', sortOrder: 1, createdAt: '2026-01-01', updatedAt: '2026-01-01' }
+  let finish!: (value: typeof created) => void
+  invokeMock.mockReturnValue(new Promise(resolve => { finish = resolve }))
+  const pending = useCoursesStore.getState().createGroup(created.name)
+  useCoursesStore.setState({ groups: [created] })
+  finish(created)
+  await pending
+  expect(useCoursesStore.getState().groups.map(entry => entry.id)).toEqual([created.id])
+})
+
 describe('coursesStore selection persistence', () => {
   test('selecting the same course returns from global home even when its selected ID has not changed', () => {
     useCoursesStore.setState({ courses: [course('c1', 0)], selectedCourseId: 'c1' })
@@ -107,6 +132,34 @@ describe('coursesStore selection persistence', () => {
 })
 
 describe('coursesStore archiveCourse', () => {
+  test.each(['archive', 'delete'] as const)('%s completion preserves a newer course selection', async (action) => {
+    const first = course('c1', 0), second = course('c2', 1), third = course('c3', 2)
+    useCoursesStore.setState({ courses: [first, second, third], selectedCourseId: first.id })
+    let finish!: (value: unknown) => void
+    invokeMock.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    const pending = action === 'archive'
+      ? useCoursesStore.getState().archiveCourse(first.id, true)
+      : useCoursesStore.getState().deleteCourse(first.id)
+    useCoursesStore.getState().selectCourse(third.id)
+    finish({ ...first, archived: true })
+    await pending
+    expect(useCoursesStore.getState().selectedCourseId).toBe(third.id)
+  })
+
+  test.each(['archive', 'delete'] as const)('%s repairs a course selected while its removal was pending', async (action) => {
+    const first = course('c1', 0), second = course('c2', 1)
+    useCoursesStore.setState({ courses: [first, second], selectedCourseId: second.id })
+    let finish!: (value: unknown) => void
+    invokeMock.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    const pending = action === 'archive'
+      ? useCoursesStore.getState().archiveCourse(first.id, true)
+      : useCoursesStore.getState().deleteCourse(first.id)
+    useCoursesStore.getState().selectCourse(first.id)
+    finish({ ...first, archived: true })
+    await pending
+    expect(useCoursesStore.getState().selectedCourseId).toBe(second.id)
+  })
+
   test('archives with the requested boolean and removes the active row', async () => {
     const first = course('c1', 0)
     const second = course('c2', 1)

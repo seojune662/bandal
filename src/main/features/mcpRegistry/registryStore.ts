@@ -408,10 +408,11 @@ export function createMcpRegistry(deps: McpRegistryDeps): McpRegistry {
 
   const discard = (): void => {
     try {
-      rmSync(filePath, { force: true })
       rmSync(`${filePath}.tmp`, { force: true })
+      rmSync(filePath, { force: true })
     } catch {
-      // A later load also treats an unreadable registry as empty.
+      // Do not report success while a restart would restore the server.
+      throw new Error('MCP 서버 설정을 삭제하지 못했습니다.')
     }
   }
 

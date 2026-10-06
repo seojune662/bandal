@@ -331,7 +331,7 @@ function BoardSurface(): JSX.Element {
           : dueAtForLocalInput(draft.dueDate, '', true),
         allDay: draft.dueDate.length > 0
       })
-      setTasks((current) => [...current, created])
+      setTasks((current) => [...current.filter(task => task.id !== created.id), created])
       setRecentTaskId(created.id)
       setCreatingStatus(null)
     } catch (createError) {
@@ -410,6 +410,7 @@ function BoardSurface(): JSX.Element {
         title: draft.title,
         notes: draft.notes,
         kind: draft.kind,
+        color: draft.color,
         startAt: draft.startAt,
         dueAt: draft.dueAt,
         allDay: draft.allDay,
@@ -728,6 +729,7 @@ function BoardSurface(): JSX.Element {
 
       {view === 'board' && editor !== null && editingTask !== null && (
         <TaskEditorPopover
+          key={editingTask.id}
           task={editingTask}
           courses={courses}
           anchorStyle={editor.style}

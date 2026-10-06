@@ -1,3 +1,4 @@
+import { startLearningRun } from './learningStartedRuns'
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { LearningAiSettings, LearningBinding, LearningLevel, LearningProjectSnapshot, LearningPurpose } from '../../../../shared/types/learning'
@@ -61,7 +62,7 @@ export function LearningCreateDialog({ packId, project, onClose, onCreated }: Le
       if (english) rememberEnglishBinding(saved.binding)
       openLearning(saved.binding)
       notifyLearningChanged(); onCreated?.(saved.binding)
-      if (english && !editing) void invoke('learning:run', { binding: saved.binding, kind: 'find-articles', ...(saved.packId ? { packId: saved.packId } : {}) }).catch(caught => showToast(learningError(caught), 'danger'))
+      if (english && !editing) void startLearningRun({ binding: saved.binding, kind: 'find-articles', ...(saved.packId ? { packId: saved.packId } : {}) }).catch(caught => showToast(learningError(caught), 'danger'))
       onClose()
     } catch (caught) { setError(learningError(caught)); setPending(false) }
   }

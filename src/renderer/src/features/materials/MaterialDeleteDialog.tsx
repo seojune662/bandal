@@ -49,8 +49,8 @@ export function MaterialDeleteDialog({
         </div>
         <h2 id={titleId}>삭제할까요?</h2>
         <p id={descriptionId}>
-          <strong>{target.name}</strong>을(를) 휴지통으로 이동합니다. Finder의
-          휴지통에서 다시 복구할 수 있습니다.
+          <strong>{target.name}</strong>을(를) 휴지통으로 이동합니다.
+          컴퓨터의 휴지통에서 다시 복구할 수 있습니다.
         </p>
         {error !== null && (
           <p className="confirm-dialog__error" role="alert">

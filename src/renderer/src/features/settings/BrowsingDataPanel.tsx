@@ -53,17 +53,23 @@ export function BrowsingDataPanel({
   const [permissions, setPermissions] = useState<SitePermission[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [sitesError, setSitesError] = useState(false)
+  const [permissionsError, setPermissionsError] = useState(false)
 
   const loadSites = useCallback(() => {
+    setSitesError(false)
+    setSites(null)
     void invoke('browser:sessionSites', { profileId })
       .then((result) => setSites(result.sites))
-      .catch(() => setSites([]))
+      .catch(() => setSitesError(true))
   }, [profileId])
 
   const loadPermissions = useCallback(() => {
+    setPermissionsError(false)
+    setPermissions(null)
     void invoke('browser:sitePermissions', { profileId })
       .then((result) => setPermissions(result.permissions))
-      .catch(() => setPermissions([]))
+      .catch(() => setPermissionsError(true))
   }, [profileId])
 
   useEffect(() => loadSites(), [loadSites])
@@ -131,7 +137,12 @@ export function BrowsingDataPanel({
           <h2>로그인된 사이트</h2>
           <p>반달 브라우저가 기억하고 있는 학교 사이트 로그인입니다.</p>
         </div>
-        {sites === null ? (
+        {sitesError ? (
+          <div className="settings-feedback settings-feedback--error" role="alert">
+            로그인된 사이트를 불러오지 못했습니다.
+            <button type="button" className="settings-site-row__action" onClick={loadSites}>다시 불러오기</button>
+          </div>
+        ) : sites === null ? (
           <p className="settings-feedback">불러오는 중…</p>
         ) : sites.length === 0 ? (
           <p className="settings-feedback">아직 없습니다.</p>
@@ -191,7 +202,12 @@ export function BrowsingDataPanel({
             묻습니다.
           </p>
         </div>
-        {permissions === null ? (
+        {permissionsError ? (
+          <div className="settings-feedback settings-feedback--error" role="alert">
+            사이트 권한을 불러오지 못했습니다.
+            <button type="button" className="settings-site-row__action" onClick={loadPermissions}>다시 불러오기</button>
+          </div>
+        ) : permissions === null ? (
           <p className="settings-feedback">불러오는 중…</p>
         ) : permissions.length === 0 ? (
           <p className="settings-feedback">아직 아무 사이트도 요청하지 않았습니다.</p>

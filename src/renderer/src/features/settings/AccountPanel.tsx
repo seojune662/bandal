@@ -26,12 +26,14 @@ export function AccountPanel(): JSX.Element {
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const mountedRef = useRef(true)
+  const authRevision = useRef(0)
   const nicknameInputRef = useRef<HTMLInputElement>(null)
   const nicknameId = useId()
 
   const readAuth = useCallback(async (): Promise<AuthState> => {
+    const revision = authRevision.current
     const next = await invoke('auth:getState', {})
-    if (mountedRef.current) {
+    if (mountedRef.current && revision === authRevision.current) {
       setAuth(next)
       setLoadFailed(false)
     }
@@ -52,10 +54,16 @@ export function AccountPanel(): JSX.Element {
 
   useEffect(() => {
     mountedRef.current = true
+    const off = onPush('auth:changed', next => {
+      authRevision.current += 1
+      setAuth(next)
+      setLoadFailed(false)
+      setLoading(false)
+    })
     loadAuth()
-    const off = onPush('auth:changed', next => setAuth(next))
     return () => {
       mountedRef.current = false
+      authRevision.current += 1
       off()
     }
   }, [loadAuth])

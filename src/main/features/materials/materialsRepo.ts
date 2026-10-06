@@ -574,6 +574,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       const destAbs = resolveCoursePath(folder, relPath)
       return mutatePath(input.courseId, async () => {
         await renameWithRetry(sourceAbs, destAbs, () => {
+          if (getCourseFolder(input.courseId) !== folder) throw new ValidationError('과목 폴더가 변경되었습니다. 자료 목록을 새로고침하고 다시 시도하세요.')
           assertRealInside(folder, sourceAbs)
           assertRealInside(folder, destDirAbs)
           assertRealInside(folder, destAbs)
@@ -642,6 +643,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       }
       return mutatePath(input.courseId, async () => {
         await renameWithRetry(sourceAbs, destinationAbs, () => {
+          if (getCourseFolder(input.courseId) !== folder) throw new ValidationError('과목 폴더가 변경되었습니다. 자료 목록을 새로고침하고 다시 시도하세요.')
           assertRealInside(folder, sourceAbs)
           assertRealInside(folder, destinationAbs)
           assertFileOrDirectory(sourceAbs, input.relPath)

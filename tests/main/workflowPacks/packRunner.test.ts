@@ -189,6 +189,10 @@ describe('packRunner', () => {
       'browser_read',
       'write_file'
     ])
+    await expect(harness.runner.run({ courseId: COURSE_ID, packId: CUSTOM_PACK.id,
+      browserTabUrl: 'https://example.test/second' })).rejects.toThrow('완료한 뒤')
+    expect(harness.ask).toHaveBeenCalledOnce()
+    expect([...guard.restrictionFor(COURSE_ID) ?? []]).toEqual(['browser_read', 'write_file'])
 
     settle?.()
     await Promise.resolve()
@@ -231,6 +235,21 @@ describe('packRunner', () => {
       FIXED_NOW.toISOString()
     )
     expect(harness.ask).toHaveBeenCalledOnce()
+  })
+
+  test('never grants persistent approval to a recipe replaced while confirmation was open', async () => {
+    let pack = CUSTOM_PACK
+    const approve = vi.fn()
+    const ask = vi.fn(async () => {})
+    const runner = createPackRunner({
+      store: { resolve: () => pack, list: () => [{ pack, source: 'user', enabled: true, approvedAt: null }], approve },
+      runGuard: createPackRunGuard(), getCourse: () => ({ name: '영어 읽기', folder: courseFolder }),
+      ask, confirm: async () => { pack = { ...pack, recipe: 'changed recipe' }; return 'always' }
+    })
+    await expect(runner.run({ courseId: COURSE_ID, packId: CUSTOM_PACK.id,
+      browserTabUrl: 'https://example.test/article' })).rejects.toThrow('변경됐어요')
+    expect(approve).not.toHaveBeenCalled()
+    expect(ask).not.toHaveBeenCalled()
   })
 
   test('does not dispatch when custom-pack approval is refused', async () => {

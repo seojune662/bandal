@@ -25,14 +25,27 @@ export interface FocusTrapOptions {
   onEscape?: (() => void) | undefined
 }
 
-function focusableElements(container: HTMLElement): HTMLElement[] {
+export function focusableElements(container: HTMLElement): HTMLElement[] {
   return Array.from(
     container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
   ).filter(
     (element) =>
       element.tabIndex >= 0 &&
-      element.closest('[hidden], [inert], [aria-hidden="true"]') === null
+      !element.matches(':disabled') &&
+      !isHidden(element)
   )
+}
+
+function isHidden(element: HTMLElement): boolean {
+  if (element.closest('[hidden], [inert], [aria-hidden="true"]')) return true
+  const view = element.ownerDocument.defaultView
+  if (!view) return false
+  const visibility = view.getComputedStyle(element).visibility
+  if (visibility === 'hidden' || visibility === 'collapse') return true
+  for (let ancestor: HTMLElement | null = element; ancestor; ancestor = ancestor.parentElement) {
+    if (view.getComputedStyle(ancestor).display === 'none') return true
+  }
+  return false
 }
 
 /** Shared by the hook and its DOM-free regression tests. */
@@ -41,7 +54,7 @@ export function handleFocusTrapKeyDown(
   container: HTMLElement
 ): void {
   if (event.key !== 'Tab' || event.defaultPrevented) return
-  if (container.closest('[hidden], [inert], [aria-hidden="true"]')) return
+  if (isHidden(container)) return
 
   const items = focusableElements(container)
   const first = items[0]
@@ -54,7 +67,7 @@ export function handleFocusTrapKeyDown(
 
   const activeElement = container.ownerDocument.activeElement
   const focusIsOutside =
-    activeElement === null || !container.contains(activeElement)
+    activeElement === null || !items.includes(activeElement as HTMLElement)
   if (event.shiftKey && (activeElement === first || focusIsOutside)) {
     event.preventDefault()
     last.focus()
@@ -121,7 +134,7 @@ export function useFocusTrap<T extends HTMLElement>(
     activeTraps.set(ownerDocument, traps)
 
     const handleKeyDown = (event: KeyboardEvent): void => {
-      const current = traps.findLast(trap => !trap.closest('[hidden], [inert], [aria-hidden="true"]'))
+      const current = traps.findLast(trap => !isHidden(trap))
       if (current !== container) return
       if (event.key === 'Escape' && !event.defaultPrevented) {
         const escape = onEscapeRef.current

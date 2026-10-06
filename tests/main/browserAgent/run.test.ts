@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 import {
   createRunRegistry,
+  createConversationRunScope,
   RunStopped
 } from '../../../src/main/features/browserAgent/run'
 
@@ -60,6 +61,14 @@ describe('run registry (the glass box)', () => {
     api.resume(run.runId)
     expect(api.get(run.runId)?.status).toBe('stopped')
   })
+  test('a delayed handoff cannot revive a stopped run', () => {
+    const { api } = registry()
+    const run = api.start('ds', 't1', 'a', '')
+    api.stop(run.runId)
+    api.wait(run.runId, '계속해 주세요')
+    api.resume(run.runId)
+    expect(api.get(run.runId)?.status).toBe('stopped')
+  })
 
   test('finishing clears it so no stale strip lingers', () => {
     const { api } = registry()
@@ -91,5 +100,62 @@ describe('run registry (the glass box)', () => {
     expect(() => api.stop('nope')).not.toThrow()
     expect(() => api.assertLive('nope')).not.toThrow()
     expect(emit).not.toHaveBeenCalled()
+  })
+})
+
+describe('conversation browser run lifecycle', () => {
+  test('existing tabs get a stop control, and a stopped turn can run again on its next message', () => {
+    const { api } = registry()
+    let turn = 'chat:1'
+    const scope = createConversationRunScope({ registry: api, courseId: 'ds', getTurnId: () => turn })
+    scope.assertLive('existing-tab')
+    const first = scope.current()!
+    expect(first.tabId).toBe('existing-tab')
+    api.stop(first.runId)
+    expect(() => scope.assertLive('existing-tab')).toThrow(RunStopped)
+    scope.finish()
+    expect(() => scope.assertLive('existing-tab')).toThrow(RunStopped)
+    turn = 'chat:2'
+    expect(() => scope.assertLive('existing-tab')).not.toThrow()
+    expect(scope.current()?.runId).not.toBe(first.runId)
+    expect(scope.current()?.status).toBe('running')
+  })
+  test('finishing one conversation leaves another conversation in the same course live', () => {
+    const { api } = registry()
+    const first = createConversationRunScope({ registry: api, courseId: 'ds', getTurnId: () => 'one:1' })
+    const second = createConversationRunScope({ registry: api, courseId: 'ds', getTurnId: () => 'two:1' })
+    first.assertLive('one-tab'); second.assertLive('two-tab')
+    first.finish()
+    expect(first.current()).toBeNull()
+    expect(second.current()?.status).toBe('running')
+    expect(api.all()).toHaveLength(1)
+  })
+  test('two conversations cannot drive the same tab behind a single stop control', () => {
+    const { api } = registry()
+    const first = createConversationRunScope({ registry: api, courseId: 'ds', getTurnId: () => 'one:1' })
+    const second = createConversationRunScope({ registry: api, courseId: 'ds', getTurnId: () => 'two:1' })
+    first.assertLive('shared-tab')
+    expect(() => second.assertLive('shared-tab')).toThrow('다른 대화')
+    expect(api.all()).toHaveLength(1)
+    api.stop(first.current()!.runId)
+    expect(() => second.assertLive('shared-tab')).not.toThrow()
+    expect(() => first.assertLive('shared-tab')).toThrow(RunStopped)
+  })
+  test('trying to use another conversation tab keeps the current tab indicator intact', () => {
+    const { api, emitted } = registry()
+    const first = createConversationRunScope({ registry: api, courseId: 'ds', getTurnId: () => 'one:1' })
+    const second = createConversationRunScope({ registry: api, courseId: 'ds', getTurnId: () => 'two:1' })
+    first.assertLive('one-tab'); second.assertLive('two-tab')
+    const count = emitted.length
+    expect(() => second.assertLive('one-tab')).toThrow('다른 대화')
+    expect(second.current()?.tabId).toBe('two-tab')
+    expect(emitted).toHaveLength(count)
+  })
+  test('the run indicator follows the tab that is actually being operated', () => {
+    const { api, emitted } = registry()
+    const scope = createConversationRunScope({ registry: api, courseId: 'ds', getTurnId: () => 'chat:1' })
+    scope.assertLive('one-tab'); scope.assertLive('two-tab')
+    expect(emitted.at(-2)).toMatchObject({ tabId: 'one-tab', status: 'done' })
+    expect(emitted.at(-1)).toMatchObject({ tabId: 'two-tab', status: 'running' })
   })
 })

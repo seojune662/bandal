@@ -1,3 +1,5 @@
+import { replaceNoteTitle } from '../../../../shared/noteTitle'
+
 export interface NoteRenameResponse {
   relPath: string
   mtime: number
@@ -18,14 +20,6 @@ export interface NoteRenameSynchronization {
   markdown: string
 }
 
-function replaceFirstH1(markdown: string, title: string): string {
-  const lines = markdown.split('\n')
-  const headingIndex = lines.findIndex((line) => /^#\s/u.test(line))
-  if (headingIndex === -1) return `# ${title}\n\n${markdown}`
-  lines[headingIndex] = `# ${title}`
-  return lines.join('\n')
-}
-
 /**
  * Applies the canonical title/markdown returned by notes:rename. A body edit
  * made while rename was in flight is retained, but its H1 is still advanced
@@ -39,7 +33,7 @@ export function synchronizeNoteRename(
   const nextCurrent =
     currentMarkdown === markdownSentToRename
       ? renamed.markdown
-      : replaceFirstH1(currentMarkdown, renamed.title)
+      : replaceNoteTitle(currentMarkdown, renamed.title)
   return {
     currentMarkdown: nextCurrent,
     persistedMarkdown: renamed.markdown,

@@ -1,15 +1,12 @@
 /**
- * Runtime used inside the Electron utility process.
+ * Runtime evaluated only inside an OS-sandboxed Chromium renderer.
  *
- * The utility process is the security boundary; one `vm` context per plugin
- * additionally gives every extension a clean global object. Plugin code gets
- * no Node loader, process object, filesystem or network primitive. Every
- * effect is a typed request to the main-process broker.
+ * This module is a browser-only factory: all plugin-visible objects, functions,
+ * errors and promises belong to the renderer realm. The main process transports
+ * source text and JSON messages; it never evaluates plugin code. Do not call
+ * this factory with untrusted source in Node (including a Node vm context).
  */
 
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { Script, createContext, type Context } from 'node:vm'
 import type { PluginManifest } from '../../shared/types/plugin'
 import {
   PLUGIN_RPC_LIMITS,
@@ -32,6 +29,8 @@ export interface PluginHostRuntime {
 export interface PluginHostRuntimeDeps {
   readFile?: (path: string) => string
   now?: () => number
+  /** Test-only browser-realm evaluator. Production executes inside Chromium. */
+  execute?: (source: string, globals: Record<string, unknown>) => void
 }
 
 type PluginHandler = (...args: unknown[]) => unknown
@@ -46,8 +45,8 @@ interface PendingApiCall {
 interface PluginInstance {
   id: string
   manifest: PluginManifest
-  context: Context
   module: { exports: unknown }
+  globals: Record<string, unknown>
   commands: Map<string, PluginHandler>
   events: Map<PluginEventName, Set<PluginHandler>>
   panels: Map<string, Set<PluginHandler>>
@@ -57,65 +56,66 @@ interface PluginInstance {
   disposed: boolean
 }
 
-const INVOKE_SCRIPT = new Script(
-  'Promise.resolve(__bandalInvoke(...__bandalInvokeArgs))',
-  { filename: 'bandal:invoke' }
-)
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim() !== '') return error.message
-  return String(error)
-}
-
-function jsonBytes(value: unknown): number {
-  try {
-    const json = JSON.stringify(value)
-    return json === undefined ? 0 : Buffer.byteLength(json, 'utf8')
-  } catch {
-    return Number.POSITIVE_INFINITY
-  }
-}
-
-function timeout<T>(promise: Promise<T>, milliseconds: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${label} timed out`)), milliseconds)
-    void promise.then(
-      (value) => {
-        clearTimeout(timer)
-        resolve(value)
-      },
-      (error: unknown) => {
-        clearTimeout(timer)
-        reject(error instanceof Error ? error : new Error(String(error)))
-      }
-    )
-  })
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function exportedHook(exportsValue: unknown, name: 'activate' | 'deactivate'): PluginHandler | null {
-  if (!isObject(exportsValue)) return null
-  const hook = exportsValue[name]
-  return typeof hook === 'function' ? (hook as PluginHandler) : null
-}
-
-function freezeCapability<T extends object>(value: T): T {
-  for (const child of Object.values(value)) {
-    if (typeof child === 'object' && child !== null && !Object.isFrozen(child)) {
-      Object.freeze(child)
-    }
-  }
-  return Object.freeze(value)
-}
-
 export function createHostRuntime(
   transport: PluginHostTransport,
-  deps: PluginHostRuntimeDeps = {}
+  deps: PluginHostRuntimeDeps = {},
+  limits = PLUGIN_RPC_LIMITS,
+  protocolVersion: typeof PLUGIN_RPC_PROTOCOL_VERSION = PLUGIN_RPC_PROTOCOL_VERSION
 ): PluginHostRuntime {
-  const readFile = deps.readFile ?? ((path: string) => readFileSync(path, 'utf8'))
+  if (deps.execute === undefined && typeof process !== 'undefined') {
+    throw new Error('Plugin source requires the sandboxed browser worker')
+  }
+  function errorMessage(error: unknown): string {
+    if (error instanceof Error && error.message.trim() !== '') return error.message
+    return String(error)
+  }
+
+  function jsonBytes(value: unknown): number {
+    try {
+      const json = JSON.stringify(value)
+      return json === undefined ? 0 : new TextEncoder().encode(json).byteLength
+    } catch {
+      return Number.POSITIVE_INFINITY
+    }
+  }
+
+  function timeout<T>(promise: Promise<T>, milliseconds: number, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`${label} timed out`)), milliseconds)
+      void promise.then(
+        (value) => {
+          clearTimeout(timer)
+          resolve(value)
+        },
+        (error: unknown) => {
+          clearTimeout(timer)
+          reject(error instanceof Error ? error : new Error(String(error)))
+        }
+      )
+    })
+  }
+
+  function isObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null
+  }
+
+  function exportedHook(exportsValue: unknown, name: 'activate' | 'deactivate'): PluginHandler | null {
+    if (!isObject(exportsValue)) return null
+    const hook = exportsValue[name]
+    return typeof hook === 'function' ? (hook as PluginHandler) : null
+  }
+
+  function freezeCapability<T extends object>(value: T): T {
+    for (const child of Object.values(value)) {
+      if (typeof child === 'object' && child !== null && !Object.isFrozen(child)) {
+        Object.freeze(child)
+      }
+    }
+    return Object.freeze(value)
+  }
+
+
+  const readFile = deps.readFile ?? (() => { throw new Error('Plugin source was not supplied by the main process') })
   const now = deps.now ?? Date.now
   const instances = new Map<string, PluginInstance>()
   const pendingApi = new Map<number, PendingApiCall>()
@@ -165,17 +165,10 @@ export function createHostRuntime(
     args: readonly unknown[]
   ): Promise<unknown> {
     if (instance.disposed) return Promise.reject(new Error('plugin is unloaded'))
-    const globals = instance.context as Record<string, unknown>
-    globals['__bandalInvoke'] = handler
-    globals['__bandalInvokeArgs'] = [...args]
     try {
-      const result = INVOKE_SCRIPT.runInContext(instance.context, { timeout: 1_000 })
-      return Promise.resolve(result as unknown)
+      return Promise.resolve(handler(...args))
     } catch (error) {
       return Promise.reject(error)
-    } finally {
-      delete globals['__bandalInvoke']
-      delete globals['__bandalInvokeArgs']
     }
   }
 
@@ -185,7 +178,7 @@ export function createHostRuntime(
     args: unknown[]
   ): Promise<unknown> {
     if (instance.disposed) return Promise.reject(new Error('plugin is unloaded'))
-    if (jsonBytes(args) > PLUGIN_RPC_LIMITS.messageBytes) {
+    if (jsonBytes(args) > limits.messageBytes) {
       return Promise.reject(new Error('plugin API payload is too large'))
     }
     try {
@@ -198,7 +191,7 @@ export function createHostRuntime(
       const timer = setTimeout(() => {
         pendingApi.delete(id)
         reject(new Error(`${method} timed out`))
-      }, PLUGIN_RPC_LIMITS.apiTimeoutMs)
+      }, limits.apiTimeoutMs)
       pendingApi.set(id, { pluginId: instance.id, resolve, reject, timer })
       post({ t: 'api', id, pluginId: instance.id, method, args })
     })
@@ -326,8 +319,8 @@ export function createHostRuntime(
     const instance: PluginInstance = {
       id: message.pluginId,
       manifest: message.manifest,
-      context: undefined as unknown as Context,
       module,
+      globals: {},
       commands: new Map(),
       events: new Map(),
       panels: new Map(),
@@ -396,10 +389,7 @@ export function createHostRuntime(
         instance.intervals.delete(id)
       }
     }
-    instance.context = createContext(sandbox, {
-      name: `bandal-plugin:${instance.id}`,
-      codeGeneration: { strings: false, wasm: false }
-    })
+    instance.globals = sandbox
     return instance
   }
 
@@ -413,7 +403,7 @@ export function createHostRuntime(
       if (instance.deactivate !== null) {
         await timeout(
           invokeInContext(instance, instance.deactivate, []),
-          PLUGIN_RPC_LIMITS.activateTimeoutMs,
+          limits.activateTimeoutMs,
           'deactivate'
         )
       }
@@ -437,22 +427,21 @@ export function createHostRuntime(
       })
       return
     }
-    const instance = createInstance(message)
+    let instance: PluginInstance | null = null
     try {
-      const source = readFile(join(message.dir, message.manifest.main))
-      const script = new Script(source, {
-        filename: join(message.dir, message.manifest.main),
-        lineOffset: 0,
-        columnOffset: 0
-      })
-      script.runInContext(instance.context, { timeout: 1_000 })
+      instance = createInstance(message)
+      const source = 'source' in message && typeof message.source === 'string'
+        ? message.source : readFile(`${message.dir}/${message.manifest.main}`)
+      // CommonJS compatibility in the sandboxed renderer, never the preload world.
+      if (deps.execute) deps.execute(source, instance.globals)
+      else new Function(...Object.keys(instance.globals), source)(...Object.values(instance.globals))
       const activate = exportedHook(instance.module.exports, 'activate')
       instance.deactivate = exportedHook(instance.module.exports, 'deactivate')
       instances.set(instance.id, instance)
       if (activate !== null) {
         await timeout(
           invokeInContext(instance, activate, [createCapability(instance)]),
-          PLUGIN_RPC_LIMITS.activateTimeoutMs,
+          limits.activateTimeoutMs,
           'activate'
         )
       }
@@ -463,11 +452,10 @@ export function createHostRuntime(
         commands: [...instance.commands.keys()]
       })
     } catch (error) {
-      clearInstanceResources(instance)
-      instances.delete(instance.id)
+      if (instance !== null) { clearInstanceResources(instance); instances.delete(instance.id) }
       post({
         t: 'activated',
-        pluginId: instance.id,
+        pluginId: message.pluginId,
         ok: false,
         error: errorMessage(error)
       })
@@ -492,7 +480,7 @@ export function createHostRuntime(
     try {
       await timeout(
         invokeInContext(instance, handler, [message.context ?? null]),
-        PLUGIN_RPC_LIMITS.commandTimeoutMs,
+        limits.commandTimeoutMs,
         `command ${message.commandId}`
       )
       post({
@@ -581,7 +569,7 @@ export function createHostRuntime(
   // `now` is intentionally touched here: production gets a real clock, while
   // tests can prove construction performs no ambient I/O besides transport.
   void now()
-  post({ t: 'ready', protocolVersion: PLUGIN_RPC_PROTOCOL_VERSION })
+  post({ t: 'ready', protocolVersion })
 
   return {
     dispose() {

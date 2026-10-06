@@ -42,3 +42,18 @@ test('account settings retain nickname editing without custom avatar controls', 
     expect(element.textContent).not.toContain('아바타')
   } finally { await act(() => root.unmount()); element.remove() }
 })
+
+test('account settings keep a completed login when an earlier state request resolves late', async () => {
+  let resolve!: (value: unknown) => void
+  let changed!: (value: unknown) => void
+  ipc.invoke.mockReturnValueOnce(new Promise(done => { resolve = done }))
+  ipc.onPush.mockImplementationOnce((...args: unknown[]) => { changed = args[1] as typeof changed; return () => {} })
+  const element = document.createElement('div')
+  const root = createRoot(element)
+  try {
+    await act(async () => root.render(<AccountPanel />))
+    await act(() => changed({ phase: 'signed-in', profile: { id: 'one', nickname: 'new-login' }, email: null, avatarUrl: null }))
+    await act(async () => resolve({ phase: 'signed-out', profile: null, email: null, avatarUrl: null }))
+    expect(element.querySelector<HTMLInputElement>('.account-nickname-form input')?.value).toBe('new-login')
+  } finally { await act(() => root.unmount()); element.remove() }
+})

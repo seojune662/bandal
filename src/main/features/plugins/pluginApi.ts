@@ -182,15 +182,16 @@ async function pluginFetch(
   const options =
     optionsValue === undefined ? {} : objectArg(optionsValue, 'fetch options')
   const methodValue = options['method'] ?? 'GET'
-  const method = stringArg(methodValue, 'method', 16).toUpperCase()
+  let method = stringArg(methodValue, 'method', 16).toUpperCase()
   if (!['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
     throw new ValidationError(`unsupported HTTP method ${method}`)
   }
   const headers = safeHeaders(options['headers'])
-  const bodyValue = options['body']
-  if (bodyValue !== undefined && typeof bodyValue !== 'string') {
+  const requestedBody = options['body']
+  if (requestedBody !== undefined && typeof requestedBody !== 'string') {
     throw new ValidationError('fetch body must be a string')
   }
+  let bodyValue: string | undefined = requestedBody
   if (
     typeof bodyValue === 'string' &&
     Buffer.byteLength(bodyValue, 'utf8') > PLUGIN_RPC_LIMITS.messageBytes
@@ -221,14 +222,32 @@ async function pluginFetch(
           : { body: bodyValue })
       }
       const response = await net.fetch(url, init)
-      if (response.status >= 300 && response.status < 400) {
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers.get('location')
-        if (location === null) break
-        if (redirects === 5) {
-          throw new ValidationError('network request has too many redirects')
+        if (location !== null) {
+          await response.body?.cancel()
+          if (redirects === 5) {
+            throw new ValidationError('network request has too many redirects')
+          }
+          const next = new URL(location, url)
+          // A grant to contact both hosts does not grant the second host the
+          // first host's credentials. Match fetch's cross-origin behavior.
+          if (next.origin !== new URL(url).origin) {
+            for (const key of Object.keys(headers)) {
+              if (['authorization', 'proxy-authorization'].includes(key.toLowerCase())) delete headers[key]
+            }
+          }
+          if (((response.status === 301 || response.status === 302) && method === 'POST') ||
+              (response.status === 303 && method !== 'GET' && method !== 'HEAD')) {
+            method = 'GET'
+            bodyValue = undefined
+            for (const key of Object.keys(headers)) {
+              if (['content-type', 'content-encoding', 'content-language', 'content-location'].includes(key.toLowerCase())) delete headers[key]
+            }
+          }
+          url = next.toString()
+          continue
         }
-        url = new URL(location, url).toString()
-        continue
       }
       const bytes = await responseBytes(response)
       return {

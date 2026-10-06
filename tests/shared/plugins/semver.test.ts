@@ -5,6 +5,19 @@ import {
 } from '../../../src/shared/plugins/semver'
 
 describe('plugin semver', () => {
+  test('keeps numeric precedence exact beyond IEEE-754 precision and overflow', () => {
+    for (const [left, right] of [
+      ['9007199254740992.0.0', '9007199254740993.0.0'],
+      ['1.9007199254740992.0', '1.9007199254740993.0'],
+      ['1.0.9007199254740992', '1.0.9007199254740993'],
+      ['1.0.0-9007199254740992', '1.0.0-9007199254740993'],
+      [`1.0.0-${'9'.repeat(310)}`, `1.0.0-1${'0'.repeat(310)}`]
+    ]) {
+      expect(compareSemver(left!, right!)).toBe(-1)
+      expect(compareSemver(right!, left!)).toBe(1)
+      expect(compareSemver(left!, left!)).toBe(0)
+    }
+  })
   test.each([
     '0.0.0',
     '1.2.3',

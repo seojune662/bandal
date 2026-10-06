@@ -69,6 +69,7 @@ export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
     : { phase: 'unsupported', currentVersion }
   let timer: NodeJS.Timeout | null = null
   let initialTimer: NodeJS.Timeout | null = null
+  let availableVersion: string | null = null
 
   function setStatus(next: UpdateStatus): void {
     status = next
@@ -91,6 +92,11 @@ export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
     if (initialTimer !== null) clearTimeout(initialTimer)
     timer = null
     initialTimer = null
+    autoUpdater.removeListener('update-available', onAvailable)
+    autoUpdater.removeListener('update-not-available', onNotAvailable)
+    autoUpdater.removeListener('download-progress', onProgress)
+    autoUpdater.removeListener('update-downloaded', onDownloaded)
+    autoUpdater.removeListener('error', onError)
   }
 
   autoUpdater.autoDownload = false
@@ -99,20 +105,22 @@ export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
   autoUpdater.autoInstallOnAppQuit = false
   autoUpdater.logger = null
 
-  autoUpdater.on('update-available', (info) => {
+  function onAvailable(info: { version: string; releaseNotes?: unknown }): void {
+    availableVersion = info.version
     setStatus({
       phase: 'available',
       currentVersion,
       version: info.version,
       notes: typeof info.releaseNotes === 'string' ? info.releaseNotes : null
     })
-  })
+  }
 
-  autoUpdater.on('update-not-available', () => {
+  function onNotAvailable(): void {
+    availableVersion = null
     setStatus({ phase: 'idle', currentVersion, lastCheckedAt: Date.now() })
-  })
+  }
 
-  autoUpdater.on('download-progress', (progress) => {
+  function onProgress(progress: { percent: number }): void {
     const version = status.phase === 'available' || status.phase === 'downloading'
       ? status.version
       : currentVersion
@@ -122,13 +130,13 @@ export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
       version,
       percent: Math.round(progress.percent)
     })
-  })
+  }
 
-  autoUpdater.on('update-downloaded', (info) => {
+  function onDownloaded(info: { version: string }): void {
     setStatus({ phase: 'ready', currentVersion, version: info.version })
-  })
+  }
 
-  autoUpdater.on('error', (error: Error) => {
+  function onError(error: Error): void {
     console.error('[updater]', error)
     // No app-update.yml: this build was never wired to a release feed. Stop
     // checking rather than retry every 6 hours forever.
@@ -139,7 +147,7 @@ export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
     }
     // Offline is the normal state of a laptop in a lecture hall, not a failure
     // worth a red toast.
-    if (isOfflineish(error.message)) {
+    if (status.phase !== 'downloading' && isOfflineish(error.message)) {
       setStatus({ phase: 'idle', currentVersion, lastCheckedAt: Date.now() })
       return
     }
@@ -148,11 +156,17 @@ export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
       currentVersion,
       message: describeError(error.message)
     })
-  })
+  }
+  autoUpdater.on('update-available', onAvailable)
+  autoUpdater.on('update-not-available', onNotAvailable)
+  autoUpdater.on('download-progress', onProgress)
+  autoUpdater.on('update-downloaded', onDownloaded)
+  autoUpdater.on('error', onError)
 
   async function check(): Promise<UpdateStatus> {
     if (
       status.phase === 'downloading' ||
+      status.phase === 'checking' ||
       status.phase === 'ready' ||
       // Feed already proven absent — retrying only re-logs the same ENOENT.
       status.phase === 'unsupported'
@@ -173,9 +187,12 @@ export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
   }
 
   async function download(): Promise<UpdateStatus> {
-    if (status.phase !== 'available' && status.phase !== 'error') {
+    if ((status.phase !== 'available' && status.phase !== 'error') || availableVersion === null) {
       return status
     }
+    // Reserve the download before its first progress event so repeated clicks
+    // and periodic checks cannot start a second operation during connection.
+    setStatus({ phase: 'downloading', currentVersion, version: availableVersion, percent: 0 })
     try {
       await autoUpdater.downloadUpdate()
     } catch {

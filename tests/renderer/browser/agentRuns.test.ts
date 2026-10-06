@@ -62,6 +62,12 @@ describe('useAgentRuns', () => {
     push({ ...RUNNING, status: 'done', action: '' })
     expect(useAgentRuns.getState().byTab['t1']).toBeUndefined()
   })
+  test('a late completion cannot hide a newer run on the same tab', () => {
+    push(RUNNING)
+    push({ ...RUNNING, runId: 'newer' })
+    push({ ...RUNNING, status: 'done' })
+    expect(useAgentRuns.getState().byTab.t1?.runId).toBe('newer')
+  })
 
   test('a stopped run stays visible, so the student sees it took effect', () => {
     push(RUNNING)

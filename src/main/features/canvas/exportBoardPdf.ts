@@ -1,3 +1,4 @@
+import { createBoardMediaRenderer } from './boardMediaPdf'
 import { readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import fontkit from '@pdf-lib/fontkit'
@@ -447,7 +448,10 @@ export function createBoardPdfExporter(deps: BoardPdfExporterDeps): BoardPdfExpo
     if (cached !== undefined) return cached
     const promise = Promise.resolve().then(() =>
       readFile((deps.resolveFontPath ?? resolveDefaultFontPath)(file))
-    )
+    ).catch((error: unknown) => {
+      fontBytes.delete(file)
+      throw error
+    })
     fontBytes.set(file, promise)
     return promise
   }
@@ -515,7 +519,7 @@ export function createBoardPdfExporter(deps: BoardPdfExporterDeps): BoardPdfExpo
       const textboxes = shapes.filter((shape) => shape.kind === 'textbox')
       const fonts = textboxes.length > 0 ? await embedTextboxFonts(pdf, textboxes) : null
 
-      let skippedClips = 0
+      const renderMedia = createBoardMediaRenderer(pdf, courseFolder)
       for (let pageNumber = 1; pageNumber <= board.pageCount; pageNumber += 1) {
         const page = pdf.addPage(PageSizes.A4)
         const { width, height } = page.getSize()
@@ -523,8 +527,8 @@ export function createBoardPdfExporter(deps: BoardPdfExporterDeps): BoardPdfExpo
 
         for (const shape of shapes) {
           if (shape.page !== pageNumber) continue
-          if (shape.kind === 'clip') {
-            skippedClips += 1
+          if (shape.kind === 'clip' || shape.kind === 'image') {
+            await renderMedia(page, shape)
           } else if (shape.kind === 'ink' || shape.kind === 'highlighter') {
             drawInk(page, shape, palette, board.surface, width, height)
           } else if (shape.kind === 'rect' || shape.kind === 'ellipse') {
@@ -533,7 +537,7 @@ export function createBoardPdfExporter(deps: BoardPdfExporterDeps): BoardPdfExpo
             }
           } else if (shape.kind === 'line' || shape.kind === 'arrow') {
             drawStraightLine(page, shape, palette, width, height)
-          } else if (fonts !== null && shape.data.box !== undefined) {
+          } else if (shape.kind === 'textbox' && fonts !== null && shape.data.box !== undefined) {
             drawTextbox(page, shape, shape.data.box, fonts, palette, width, height)
           }
         }
@@ -546,7 +550,7 @@ export function createBoardPdfExporter(deps: BoardPdfExporterDeps): BoardPdfExpo
         try {
           await writeFile(join(courseFolder, relPath), bytes, { flag: 'wx' })
           console.info(
-            `[canvas] exported board PDF: ${relPath}; skipped clips: ${skippedClips}`
+            `[canvas] exported board PDF: ${relPath}`
           )
           return { relPath }
         } catch (error) {

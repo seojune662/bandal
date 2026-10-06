@@ -17,6 +17,10 @@ function task(over: Partial<DeadlineTask> = {}): DeadlineTask {
 }
 
 describe('dueKeys', () => {
+  test('a returning user receives only the nearest eligible reminder per task', () => {
+    expect(dueKeys(new Date('2026-09-08T10:00:00Z'), [7, 3, 1], [task()])).toEqual(['task-1:1'])
+    expect(dueKeys(new Date('2026-09-06T10:00:00Z'), [1, 7, 3], [task()])).toEqual(['task-1:3'])
+  })
   test('includes the exact lead-day boundary', () => {
     expect(
       dueKeys(new Date('2026-09-05T12:00:00.000Z'), [3], [task()])

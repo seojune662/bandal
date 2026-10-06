@@ -91,9 +91,12 @@ export function UniversitySettingsPanel(): JSX.Element {
     void init()
   }, [init])
 
-  const run = (work: () => Promise<void>): void => {
+  const run = async (work: () => Promise<void>): Promise<boolean> => {
     setBusy(true)
-    void work().finally(() => setBusy(false))
+    try {
+      await work()
+      return useUniversityStore.getState().error === null
+    } finally { setBusy(false) }
   }
 
   const hiddenIds = settings.hiddenServiceIds

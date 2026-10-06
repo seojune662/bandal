@@ -58,6 +58,8 @@ interface UniversityStore {
 }
 
 let initialized = false
+let unsubscribe: (() => void) | null = null
+let generation = 0
 
 function derive(
   settings: UniversitySettings
@@ -93,12 +95,15 @@ function buildCustomUniversity(input: CustomUniversityInput): University {
 export const useUniversityStore = create<UniversityStore>()((set, get) => {
   /** Persists a whole UniversitySettings and optimistically applies it. */
   const persist = async (next: UniversitySettings): Promise<void> => {
+    const previous = get().settings
+    const current = ++generation
     set({ ...derive(next), error: null })
     try {
-      await invoke('settings:set', { university: next })
+      const saved = await invoke('settings:set', { university: next })
+      if (current === generation && saved.university !== undefined) set({ ...derive(saved.university), error: null })
     } catch (error) {
       console.error('[Bandal] 학교 설정을 저장하지 못했습니다.', error)
-      set({ error: '학교 설정을 저장하지 못했어요. 잠시 후 다시 시도해주세요.' })
+      if (current === generation) set({ ...derive(previous), error: '학교 설정을 저장하지 못했어요. 잠시 후 다시 시도해주세요.' })
     }
   }
 
@@ -113,14 +118,17 @@ export const useUniversityStore = create<UniversityStore>()((set, get) => {
       if (initialized) return
       initialized = true
 
-      onPush('settings:changed', ({ settings }) => {
-        set({ ...derive(settings.university), loaded: true })
+      if (unsubscribe === null) unsubscribe = onPush('settings:changed', ({ settings }) => {
+        generation += 1
+        set({ ...derive(settings.university), loaded: true, error: null })
       })
 
+      const current = generation
       try {
         const settings = await ensureSettingsLoaded()
-        set({ ...derive(settings.university), loaded: true })
+        if (current === generation) set({ ...derive(settings.university), loaded: true })
       } catch (error) {
+        initialized = false
         console.error('[Bandal] 학교 설정을 불러오지 못했습니다.', error)
         set({ loaded: true })
       }
@@ -207,6 +215,9 @@ export const useUniversityStore = create<UniversityStore>()((set, get) => {
 
 /** Test-only: allow re-initialization. */
 export function resetUniversityStoreForTests(): void {
+  unsubscribe?.()
+  unsubscribe = null
+  generation += 1
   initialized = false
   useUniversityStore.setState({
     ...derive(DEFAULT_UNIVERSITY_SETTINGS),

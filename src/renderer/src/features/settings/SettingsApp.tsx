@@ -131,6 +131,8 @@ export function SettingsApp({
   const [includeArchived, setIncludeArchived] = useState(false);
   const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const settingsPushVersion = useRef(0);
+  const coursesRequest = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId);
   const plugins = usePluginsStore((state) => state.plugins);
@@ -170,17 +172,18 @@ export function SettingsApp({
   }, []);
 
   const loadCourses = (showArchived: boolean): void => {
+    const request = ++coursesRequest.current;
     setCoursesLoading(true);
     setCoursesError(null);
     void invoke("courses:list", { includeArchived: showArchived })
       .then((result) => {
-        if (mountedRef.current) setCourses(result.filter(course => course.workspaceKind !== 'study-space'));
+        if (mountedRef.current && request === coursesRequest.current) setCourses(result.filter(course => course.workspaceKind !== 'study-space'));
       })
       .catch(() => {
-        if (mountedRef.current) setCoursesError("courses-failed");
+        if (mountedRef.current && request === coursesRequest.current) setCoursesError("courses-failed");
       })
       .finally(() => {
-        if (mountedRef.current) setCoursesLoading(false);
+        if (mountedRef.current && request === coursesRequest.current) setCoursesLoading(false);
       });
   };
 
@@ -191,6 +194,8 @@ export function SettingsApp({
     setSettingsLoadError(false);
     const unsubscribe = onPush("settings:changed", ({ settings: next }) => {
       pushed = true;
+      settingsPushVersion.current += 1;
+      setSettingsLoadError(false);
       setSettings(next);
       setAppearance(pickAppearance(next));
       if (!embedded) applyTheme(next);
@@ -204,17 +209,18 @@ export function SettingsApp({
         if (!embedded) applyTheme(result);
       })
       .catch(() => {
-        if (active) {
+        if (active && !pushed) {
           setSettingsLoadError(true);
           setThemeErrorKey("settings.appearance.loadFailed");
         }
       });
 
-    loadCourses(false);
+    loadCourses(includeArchived);
 
     return () => {
       active = false;
       mountedRef.current = false;
+      coursesRequest.current += 1;
       unsubscribe();
     };
   }, [embedded, loadAvailability, settingsAttempt]);
@@ -275,6 +281,7 @@ export function SettingsApp({
   const saveAppearance = (patch: Partial<AppearanceSettings>): void => {
     if (themeSaving) return;
     const previous = appearance;
+    const pushVersion = settingsPushVersion.current;
     const next = { ...previous, ...patch };
     if (isSameAppearance(next, previous)) return;
     setAppearance(next);
@@ -284,15 +291,17 @@ export function SettingsApp({
 
     void invoke("settings:set", patch)
       .then((nextSettings) => {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || pushVersion !== settingsPushVersion.current) return;
         setSettings(nextSettings);
         setAppearance(pickAppearance(nextSettings));
         if (!embedded) applyTheme(nextSettings);
       })
       .catch(() => {
         if (!mountedRef.current) return;
-        setAppearance(previous);
-        if (!embedded) applyTheme(previous);
+        if (pushVersion === settingsPushVersion.current) {
+          setAppearance(previous);
+          if (!embedded) applyTheme(previous);
+        }
         setThemeErrorKey("settings.appearance.saveFailed");
       })
       .finally(() => {
@@ -328,6 +337,7 @@ export function SettingsApp({
     }
 
     const previousProvider = settings.agentProvider;
+    const pushVersion = settingsPushVersion.current;
     setSettings((current) =>
       current === null ? current : { ...current, agentProvider: nextProvider },
     );
@@ -337,12 +347,12 @@ export function SettingsApp({
     void invoke("settings:set", { agentProvider: nextProvider })
       .then((nextSettings) => {
         if (!mountedRef.current) return;
-        setSettings(nextSettings);
+        if (pushVersion === settingsPushVersion.current) setSettings(nextSettings);
         setAgentProviderFeedbackKey("settings.ai.engine.saved");
       })
       .catch(() => {
         if (!mountedRef.current) return;
-        setSettings((current) =>
+        if (pushVersion === settingsPushVersion.current) setSettings((current) =>
           current === null
             ? current
             : { ...current, agentProvider: previousProvider },

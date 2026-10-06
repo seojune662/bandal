@@ -18,8 +18,17 @@ import {
 import type { CredentialSafeStorage } from '../../../src/main/features/credentials'
 
 const temporaryDirectories: string[] = []
+const deletionFailure = vi.hoisted(() => ({ path: '' }))
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return { ...actual, rmSync: (...args: Parameters<typeof actual.rmSync>) => {
+    if (String(args[0]) === deletionFailure.path) throw new Error('injected delete failure')
+    return actual.rmSync(...args)
+  } }
+})
 
 afterEach(() => {
+  deletionFailure.path = ''
   vi.restoreAllMocks()
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true })
@@ -69,6 +78,20 @@ function credentialPath(userDataPath: string): string {
 }
 
 describe('credential encryption boundary', () => {
+  test('keeps the last login visible and reports a failed disk deletion', () => {
+    const userDataPath = temporaryUserData()
+    const store = createCredentialStore({ userDataPath, safeStorage: fakeSafeStorage() })
+    const saved = store.save({ origin: 'https://portal.example.edu', username: 'student', password: 'secret' })
+    deletionFailure.path = credentialPath(userDataPath)
+    expect(() => store.forget(saved.origin, saved.id)).toThrow()
+    expect(store.list()).toEqual([saved])
+    expect(createCredentialStore({ userDataPath, safeStorage: fakeSafeStorage() }).list()).toEqual([saved])
+    deletionFailure.path = ''
+    expect(store.forget(saved.origin, saved.id)).toEqual({ ok: true })
+    expect(store.list()).toEqual([])
+    expect(existsSync(credentialPath(userDataPath))).toBe(false)
+  })
+
   test('reports unavailable, rejects saving, and creates no plaintext fallback', () => {
     const userDataPath = temporaryUserData()
     const store = createCredentialStore({
@@ -136,7 +159,7 @@ describe('credential parsing and summaries', () => {
     const encryptedBytes = Buffer.from('corrupt encrypted bytes')
     writeFileSync(path, encryptedBytes)
     const timestamp = '2026-08-22T03:04:05.000Z'
-    writeFileSync(`${path}.corrupt-${timestamp}`, Buffer.from('older quarantine'))
+    writeFileSync(`${path}.corrupt-${timestamp.replaceAll(':', '-')}`, Buffer.from('older quarantine'))
     let decryptions = 0
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const store = createCredentialStore({
@@ -158,7 +181,7 @@ describe('credential parsing and summaries', () => {
     expect(() => store.list()).not.toThrow()
     expect(store.list()).toEqual([])
     expect(existsSync(path)).toBe(false)
-    const quarantinedName = `${CREDENTIALS_FILE_NAME}.corrupt-${timestamp}-1`
+    const quarantinedName = `${CREDENTIALS_FILE_NAME}.corrupt-${timestamp.replaceAll(':', '-')}-1`
     const quarantinedPath = join(userDataPath, quarantinedName)
     expect(readdirSync(userDataPath)).toContain(quarantinedName)
     expect(readFileSync(quarantinedPath)).toEqual(encryptedBytes)

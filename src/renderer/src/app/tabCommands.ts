@@ -13,6 +13,7 @@ import { useMaterialsStore } from '../stores/materialsStore'
 import { settingsSnapshot } from '../stores/settingsSnapshot'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { descriptorFor } from '../features/workspace/tabIdentity'
+import { showToast } from './toast'
 
 export const DEFAULT_BROWSER_URL = 'https://www.google.com'
 
@@ -39,10 +40,12 @@ export async function createMarkdownTab(title?: string): Promise<void> {
       dirRelPath: '',
       title: title ?? defaultMarkdownTitle(new Date())
     })
-    useWorkspaceStore.getState().openTab(descriptorFor('note', ref))
-    void useMaterialsStore.getState().loadTree(courseId)
+    if (activeCourseId() === courseId) useWorkspaceStore.getState().openTab(descriptorFor('note', ref))
+    else showToast('원래 과목에 새 필기를 만들었어요.')
+    void useMaterialsStore.getState().loadTree(courseId, { refreshOnly: true })
   } catch (error) {
     console.error('[Bandal] 마크다운을 만들지 못했습니다.', error)
+    showToast('필기를 만들지 못했어요. 다시 시도해 주세요.', 'danger')
   }
 }
 
@@ -70,6 +73,7 @@ export async function createStudyTab(
     open(descriptorFor('recording', { courseId }))
   } else {
     const board = await invoke('canvas:create', { courseId })
-    open(descriptorFor('whiteboard', { courseId, boardId: board.id }))
+    if (activeCourseId() === courseId) open(descriptorFor('whiteboard', { courseId, boardId: board.id }))
+    else showToast('원래 과목에 새 화이트보드를 만들었어요.')
   }
 }

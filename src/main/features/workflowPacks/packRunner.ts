@@ -214,6 +214,10 @@ export function createPackRunner(deps: PackRunnerDeps): {
     input: RunWorkflowPackInput
   ): Promise<RunWorkflowPackResult> {
     const courseId = requireId(input.courseId, 'courseId')
+    const assertAvailable = (): void => {
+      if (activeRun.has(courseId)) throw new ValidationError('이 과목에서 학습자료를 만들고 있어요. 완료한 뒤 다시 시도해 주세요.')
+    }
+    assertAvailable()
     const packId = requireId(input.packId, 'packId')
     const pack = deps.store.resolve(packId)
     if (pack === null) {
@@ -248,6 +252,12 @@ export function createPackRunner(deps: PackRunnerDeps): {
       })
       if (scope !== 'once' && scope !== 'always') {
         throw new ValidationError('워크플로 팩 실행이 취소되었습니다.')
+      }
+      assertAvailable()
+      // Approval belongs to the exact recipe the dialog described. Updating
+      // or disabling a pack while the dialog is open invalidates that choice.
+      if (JSON.stringify(deps.store.resolve(packId)) !== JSON.stringify(pack)) {
+        throw new ValidationError('확인하는 동안 워크플로 팩이 변경됐어요. 내용을 확인하고 다시 실행해 주세요.')
       }
       if (scope === 'always') {
         deps.store.approve(pack.id, now().toISOString())

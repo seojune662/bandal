@@ -1,10 +1,10 @@
 /**
- * Wire protocol between the plugin HOST (`utilityProcess`) and main.
+ * Wire protocol between the plugin HOST (sandboxed Chromium renderer) and main.
  *
  * Every message is structured-clone-safe JSON. Main is the only side that
  * touches repos, the network or the renderer; the host only runs plugin code
  * and forwards. Identity (`pluginId`) on host→main messages is trusted only
- * because the host process is ours — the broker still re-checks permissions
+ * after it matches the owner of its dedicated transport — the broker re-checks permissions
  * per call, so a misbehaving plugin cannot borrow another plugin's grants.
  */
 
@@ -118,7 +118,7 @@ export type MainToHost =
   | {
       t: 'load'
       pluginId: string
-      /** Absolute plugin folder; the host reads `<dir>/<manifest.main>`. */
+      /** Absolute plugin folder; main reads `<dir>/<manifest.main>` and sends source to the sandbox. */
       dir: string
       manifest: PluginManifest
       appVersion: string

@@ -35,11 +35,13 @@ function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
   const [logins, setLogins] = useState<SavedLoginSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [pendingOrigin, setPendingOrigin] = useState<string | null>(null)
 
   const load = (): void => {
     setLoading(true)
     setError(false)
+    setLoadFailed(false)
     void Promise.all([
       invoke('credentials:availability', { profileId }),
       invoke('credentials:list', { profileId }),
@@ -50,7 +52,7 @@ function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
         setLogins(nextLogins)
       })
       .catch(() => {
-        if (mountedRef.current) setError(true)
+        if (mountedRef.current) { setError(true); setLoadFailed(true) }
       })
       .finally(() => {
         if (mountedRef.current) setLoading(false)
@@ -70,6 +72,7 @@ function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
     autoSubmit: boolean,
   ): Promise<void> => {
     if (pendingOrigin !== null) return
+    setError(false)
     setPendingOrigin(login.id)
     try {
       // Main treats an empty password as metadata-only only when this exact
@@ -103,6 +106,7 @@ function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
     )
     if (!confirmed) return
 
+    setError(false)
     setPendingOrigin(login.id)
     try {
       await invoke('credentials:forget', {
@@ -144,13 +148,21 @@ function ProfileSavedLogins({ profileId }: { profileId: string }): JSX.Element {
           <span />
           <span />
         </div>
+      ) : loadFailed ? (
+        <div className="settings-feedback settings-feedback--error" role="alert">
+          <span>{korean ? '저장된 로그인을 불러오지 못했습니다.' : 'Could not load saved logins.'}</span>
+          <button type="button" className="secondary-button" onClick={load}>
+            {korean ? '다시 불러오기' : 'Reload'}
+          </button>
+        </div>
       ) : availability?.state === 'unavailable' ? (
         <div className="saved-login-unavailable" role="status">
           <strong>
             {korean
-              ? '암호화를 사용할 수 없어 기능이 꺼져 있습니다.'
+              ? '저장된 로그인을 사용할 수 없습니다.'
               : 'Saved logins are disabled.'}
           </strong>
+          <span>{availability.reason}</span>
           <span>
             {korean
               ? '비밀번호를 평문으로 저장하지 않습니다.'

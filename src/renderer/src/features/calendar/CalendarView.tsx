@@ -149,6 +149,7 @@ function CalendarTaskForm({
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
+    if (busy) return
     if (title.trim().length === 0 || schedule.endDate.length === 0) {
       setError('제목과 날짜를 입력해주세요.')
       return
@@ -178,6 +179,7 @@ function CalendarTaskForm({
         <input
           value={title}
           maxLength={200}
+          disabled={busy}
           required
           autoFocus
           placeholder="과제나 시험 이름"
@@ -191,6 +193,7 @@ function CalendarTaskForm({
             <label key={value}>
               <input
                 type="radio"
+                disabled={busy}
                 name="calendar-task-kind"
                 value={value}
                 checked={kind === value}
@@ -203,7 +206,7 @@ function CalendarTaskForm({
       </fieldset>
       <label className="board-field">
         <span>과목</span>
-        <select value={courseId} onChange={(event) => setCourseId(event.target.value)}>
+        <select disabled={busy} value={courseId} onChange={(event) => setCourseId(event.target.value)}>
           <option value="">전체</option>
           {currentCourseMissing && <option value={courseId}>목록에 없는 과목</option>}
           {courses.map((course) => (
@@ -211,7 +214,7 @@ function CalendarTaskForm({
           ))}
         </select>
       </label>
-      <TaskScheduleFields schedule={schedule} required />
+      <TaskScheduleFields schedule={schedule} required disabled={busy} />
       {error !== null && <p className="calendar-form__error" role="alert">{error}</p>}
       <footer className="calendar-form__actions">
         {onDelete !== undefined && (
@@ -246,6 +249,7 @@ export function CalendarView({
   const [appleError, setAppleError] = useState<string | null>(null)
   const [selectedAppleId, setSelectedAppleId] = useState<string | null>(null)
   const optionsRef = useRef<HTMLDetailsElement>(null)
+  const refreshApple = useRef<() => Promise<void>>(async () => {})
   const openCalendarSettings = () => { if (optionsRef.current) optionsRef.current.open = false; useUiStore.getState().openSettings('calendar') }
   const today = useToday()
   const [cursor, setCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
@@ -261,6 +265,14 @@ export function CalendarView({
   const loadSequence = useRef(0)
   const gridRef = useRef<HTMLDivElement>(null)
   const grid = useMemo(() => calendarMonthGrid(cursor, today), [cursor, today])
+
+  const selection = useRef(0)
+  const mutationPending = useRef(false)
+  const scope = `${courseId === undefined ? 'all' : courseId ?? 'global'}:${grid.from}:${grid.to}`
+  const currentScope = useRef(scope)
+  if (currentScope.current !== scope) { currentScope.current = scope; selection.current++ }
+  useEffect(() => { setTasks([]); setAdding(false); setEditingId(null); setSelectedAppleId(null); setSaveNotice(null) }, [courseId])
+  useEffect(() => { currentScope.current = scope; return () => { selection.current++; currentScope.current = '' } }, [])
 
   const load = useCallback(async (): Promise<void> => {
     const sequence = ++loadSequence.current
@@ -297,6 +309,7 @@ export function CalendarView({
         if (active && current === sequence) { setAppleState(state); setAppleEvents(events); setAppleError(null) }
       } catch (e) { if (active && current === sequence) { setAppleEvents([]); setAppleError(messageFor(e)) } }
     }
+    refreshApple.current = refresh
     const focus = () => { if (!document.hidden) void refresh() }
     void refresh()
     const off = onPush('appleCalendar:changed', () => { setAppleEvents([]); void refresh() })
@@ -318,7 +331,7 @@ export function CalendarView({
   }, [])
   const externalByDay = useMemo(() => appleEventsByDay(appleEvents, grid.days, new Set(tasks.map(task => task.id))), [appleEvents, grid.days, tasks])
   const selectedApple = appleEvents.find(event => event.id === selectedAppleId) ?? null
-  const chooseApple = (event: AppleCalendarEvent, day: string) => { setSelectedKey(day); setSelectedAppleId(event.id); setEditingId(null); setAdding(false) }
+  const chooseApple = (event: AppleCalendarEvent, day: string) => { selection.current++; setSelectedKey(day); setSelectedAppleId(event.id); setEditingId(null); setAdding(false) }
 
   useEffect(() => {
     if (recentTaskId === null) return
@@ -337,6 +350,7 @@ export function CalendarView({
   const tasksByDay = useMemo(() => boardTasksByDay(tasks, grid.days), [tasks, grid.days])
 
   const selectDay = (key: string): void => {
+    selection.current++
     setSelectedKey(key)
     setSelectedAppleId(null)
     setEditingId(null)
@@ -351,6 +365,7 @@ export function CalendarView({
   }
 
   const beginAdd = (dateKey: string): void => {
+    selection.current++
     revealDate(dateKey)
     setSelectedAppleId(null)
     setEditingId(null)
@@ -359,6 +374,9 @@ export function CalendarView({
   }
 
   const createTask = async (draft: CalendarDraft): Promise<void> => {
+    if (mutationPending.current) return
+    const selected = selection.current, startedScope = currentScope.current
+    mutationPending.current = true
     setMutating(true)
     try {
       const created = await invoke('board:createTask', {
@@ -370,19 +388,28 @@ export function CalendarView({
         dueAt: draft.dueAt,
         allDay: draft.allDay
       })
-      setTasks((current) => [...current.filter((task) => task.id !== created.id), created])
-      revealDate(draft.dateKey)
-      setRecentTaskId(created.id)
-      setSaveNotice(`${fullDateTitle(draft.dateKey)}에 “${created.title}” 일정을 추가했어요.`)
-      setAdding(false)
+      if (currentScope.current === startedScope) {
+        loadSequence.current++; setLoading(false)
+        if (courseId === undefined || created.courseId === courseId) setTasks((current) => [...current.filter((task) => task.id !== created.id), created])
+      }
+      if (selection.current === selected && currentScope.current === startedScope) {
+        revealDate(draft.dateKey)
+        setRecentTaskId(created.id)
+        setSaveNotice(`${fullDateTitle(draft.dateKey)}에 “${created.title}” 일정을 추가했어요.`)
+        setAdding(false)
+      }
       await onTasksChanged?.()
     } finally {
+      mutationPending.current = false
       setMutating(false)
     }
   }
 
   const editingTask = tasks.find((task) => task.id === editingId) ?? null
   const updateTask = async (task: BoardTask, draft: CalendarDraft): Promise<void> => {
+    if (mutationPending.current) return
+    const selected = selection.current, startedScope = currentScope.current
+    mutationPending.current = true
     setMutating(true)
     try {
       const updated = await invoke('board:updateTask', {
@@ -394,33 +421,49 @@ export function CalendarView({
         allDay: draft.allDay,
         ...(draft.courseId === task.courseId ? {} : { courseId: draft.courseId })
       })
-      setTasks((current) => current.map((entry) => entry.id === updated.id ? updated : entry))
-      revealDate(draft.dateKey)
-      setRecentTaskId(updated.id)
-      setSaveNotice(`${fullDateTitle(draft.dateKey)}에서 변경한 일정을 확인하세요.`)
-      setEditingId(null)
+      if (currentScope.current === startedScope) {
+        loadSequence.current++; setLoading(false)
+        setTasks((current) => current.map((entry) => entry.id === updated.id ? updated : entry).filter(entry => courseId === undefined || entry.courseId === courseId))
+      }
+      if (selection.current === selected && currentScope.current === startedScope) {
+        revealDate(draft.dateKey)
+        setRecentTaskId(updated.id)
+        setSaveNotice(`${fullDateTitle(draft.dateKey)}에서 변경한 일정을 확인하세요.`)
+        setEditingId(null)
+      }
       await onTasksChanged?.()
     } finally {
+      mutationPending.current = false
       setMutating(false)
     }
   }
 
   const deleteTask = async (task: BoardTask): Promise<void> => {
+    if (mutationPending.current) return
+    const selected = selection.current, startedScope = currentScope.current
     if (!window.confirm(`“${task.title}” 일정을 삭제할까요?`)) return
+    mutationPending.current = true
     setMutating(true)
     try {
       await invoke('board:deleteTask', { id: task.id })
-      setTasks((current) => current.filter((entry) => entry.id !== task.id))
-      setEditingId(null)
-      setSaveNotice('일정을 삭제했어요.')
+      if (currentScope.current === startedScope) {
+        loadSequence.current++; setLoading(false)
+        setTasks((current) => current.filter((entry) => entry.id !== task.id))
+      }
+      if (selection.current === selected && currentScope.current === startedScope) {
+        setEditingId(null)
+        setSaveNotice('일정을 삭제했어요.')
+      }
       await onTasksChanged?.()
     } finally {
+      mutationPending.current = false
       setMutating(false)
     }
   }
 
   const selectedTasks = tasksByDay.get(selectedKey) ?? []
   const moveMonth = (offset: number): void => {
+    selection.current++
     setCursor((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1))
     setEditingId(null)
     setAdding(false)
@@ -446,7 +489,7 @@ export function CalendarView({
           </div>
           <h3>{monthTitle(cursor)}</h3>
           <span className="calendar-month__count">{tasks.length + new Set([...externalByDay.values()].flat().map(event => event.id)).size}개 일정</span>
-          <details ref={optionsRef} className="calendar-options"><summary className="board-icon-button" aria-label="달력 더 보기">···</summary><div className="calendar-options__menu"><button type="button" onClick={openCalendarSettings}><Icon name="settings" /> 달력 설정 · Apple 캘린더</button><button type="button" onClick={() => { if (optionsRef.current) optionsRef.current.open = false; void load(); void invoke('appleCalendar:events', { from: grid.from, to: grid.to }).then(events => { setAppleEvents(events); setAppleError(null) }).catch(e => setAppleError(messageFor(e))) }}><Icon name="refresh" /> 일정 새로고침</button></div></details>
+          <details ref={optionsRef} className="calendar-options"><summary className="board-icon-button" aria-label="달력 더 보기">···</summary><div className="calendar-options__menu"><button type="button" onClick={openCalendarSettings}><Icon name="settings" /> 달력 설정 · Apple 캘린더</button><button type="button" onClick={() => { if (optionsRef.current) optionsRef.current.open = false; void load(); void refreshApple.current() }}><Icon name="refresh" /> 일정 새로고침</button></div></details>
         </header>
         {appleError && <div className="board-error" role="alert"><span>{appleError}</span><button type="button" onClick={openCalendarSettings}>연결 설정</button></div>}
         {error !== null && (
@@ -510,7 +553,7 @@ export function CalendarView({
                         data-recent={recentTaskId === task.id || undefined}
                         data-course-color={course === null ? undefined : normalizeCourseColor(course.color)}
                         title={`${KIND_LABELS[task.kind]} · ${task.title}${task.startAt && task.dueAt ? ` · ${fullDateTitle(localDateKey(task.startAt))} – ${fullDateTitle(localDateKey(task.dueAt))}` : ''}`}
-                        onClick={() => { setSelectedKey(day.key); setAdding(false); setSelectedAppleId(null); setEditingId(task.id) }}
+                        onClick={() => { selection.current++; setSelectedKey(day.key); setAdding(false); setSelectedAppleId(null); setEditingId(task.id) }}
                       >
                         <span className="board-course-dot" aria-hidden="true" />
                         <span className="calendar-entry__kind">{KIND_LABELS[task.kind]}</span>
@@ -557,7 +600,7 @@ export function CalendarView({
             defaultCourseId={courseId ?? null}
             courses={courses}
             busy={mutating}
-            onCancel={() => setAdding(false)}
+            onCancel={() => { selection.current++; setAdding(false) }}
             onSubmit={createTask}
           />
         ) : selectedApple !== null ? (
@@ -570,15 +613,16 @@ export function CalendarView({
             defaultCourseId={courseId ?? null}
             courses={courses}
             busy={mutating}
-            onCancel={() => setEditingId(null)}
+            onCancel={() => { selection.current++; setEditingId(null) }}
             onSubmit={(draft) => updateTask(editingTask, draft)}
             onDelete={() => deleteTask(editingTask)}
             {...(appleState?.connected && appleState.authorization === 'authorized' && appleState.destinationCalendarId ? { onExport: async (draft: CalendarDraft) => {
+              const selected = selection.current, startedScope = currentScope.current
               await updateTask(editingTask, draft)
               try {
                 const result = await invoke('appleCalendar:export', { taskId: editingTask.id })
-                setSaveNotice(result.updated ? 'Apple 캘린더의 기존 일정을 갱신했어요.' : 'Apple 캘린더로 일정을 보냈어요.')
-              } catch (e) { setAppleError(messageFor(e)) }
+                if (selection.current === selected && currentScope.current === startedScope) setSaveNotice(result.updated ? 'Apple 캘린더의 기존 일정을 갱신했어요.' : 'Apple 캘린더로 일정을 보냈어요.')
+              } catch (e) { if (selection.current === selected && currentScope.current === startedScope) setAppleError(messageFor(e)) }
             } } : {})}
           />
         ) : selectedTasks.length === 0 && (externalByDay.get(selectedKey)?.length ?? 0) === 0 ? (
@@ -606,7 +650,7 @@ export function CalendarView({
                     data-overdue={taskIsOverdue(task) || undefined}
                     data-recent={recentTaskId === task.id || undefined}
                     data-course-color={course === null ? undefined : normalizeCourseColor(course.color)}
-                    onClick={() => { setSelectedAppleId(null); setEditingId(task.id) }}
+                    onClick={() => { selection.current++; setSelectedAppleId(null); setEditingId(task.id) }}
                   >
                     <span className="board-course-dot" aria-hidden="true" />
                     <span>

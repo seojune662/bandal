@@ -69,7 +69,7 @@ export interface PageSurfaceDeps {
    */
   insertText?: (tabId: string, text: string) => Promise<void>
   run: {
-    assertLive: () => void
+    assertLive: (tabId?: string) => void
     step: (action: string, url?: string) => void
     wait: (message: string) => void
     /** Resolves when the student presses 계속, or rejects if they stop. */
@@ -306,6 +306,7 @@ export function createPageSurface(deps: PageSurfaceDeps): PageSurface {
     },
 
     async handoff(_tabId, message) {
+      deps.run.assertLive(_tabId)
       deps.run.wait(message)
       try {
         return await deps.run.awaitResume(HANDOFF_TIMEOUT_MS)
@@ -315,8 +316,8 @@ export function createPageSurface(deps: PageSurfaceDeps): PageSurface {
       }
     },
 
-    assertLive() {
-      deps.run.assertLive()
+    assertLive(tabId) {
+      deps.run.assertLive(tabId)
     },
 
     step(action, url) {

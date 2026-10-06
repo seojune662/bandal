@@ -441,6 +441,27 @@ describe('materialsRepo', () => {
     })
   })
 
+  test.each(['rename', 'move'] as const)('does not %s files in an old course folder after relink while waiting for the watcher', async action => {
+    const original = courseFolder
+    let release!: () => void
+    let pauseStarted!: () => void
+    const waiting = new Promise<void>(resolve => { pauseStarted = resolve })
+    const paused = new Promise<void>(resolve => { release = resolve })
+    const guarded = createMaterialsRepo({ db: ctx.db, getCourseFolder: () => courseFolder,
+      revealItem: () => {}, trashItem: async () => {},
+      pauseWatching: async () => { pauseStarted(); await paused; return async () => {} } })
+    const pending = action === 'rename'
+      ? guarded.rename({ courseId, relPath: 'syllabus.pdf', newName: 'changed.pdf' })
+      : guarded.move({ courseId, fromRelPath: 'syllabus.pdf', toDirRelPath: 'notes' })
+    const rejected = expect(pending).rejects.toThrow('폴더가 변경')
+    await waiting
+    courseFolder = join(ctx.dir, 'relinked'); mkdirSync(courseFolder)
+    release()
+    await rejected
+    expect(existsSync(join(original, 'syllabus.pdf'))).toBe(true)
+    expect(existsSync(join(original, action === 'rename' ? 'changed.pdf' : 'notes/syllabus.pdf'))).toBe(false)
+  })
+
   describe('rename', () => {
     test('renames files and folders and returns a course-relative path', async () => {
       expect(

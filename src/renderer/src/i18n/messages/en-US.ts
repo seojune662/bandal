@@ -588,6 +588,7 @@ export const enUS: Record<MessageKey, string> = {
   'feedback.success': 'Thank you! We got it.',
   'feedback.rateLimited': 'Please try again in a little while.',
   'feedback.unavailable': 'We cannot send this right now, so we copied it. Please leave it as a GitHub issue.',
+  'feedback.unavailableCopyFailed': 'Sending and copying failed. Your draft is still here. Try sending again or copy it manually.',
   'feedback.githubOpen': 'Open GitHub',
   'feedback.githubOpenFailed': 'Could not open GitHub Issues.',
 

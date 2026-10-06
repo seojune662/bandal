@@ -30,6 +30,7 @@ export function createGmailService(userData: string) {
   let authPromise: Promise<MailAccountState> | null = null
   let cancelAuth: (() => void) | null = null
   let refreshPromise: Promise<string> | null = null
+  let disconnectPromise: Promise<void> | null = null
   let needsAuth = false
   let epoch = 0
   let storageQueue: Promise<void> = Promise.resolve()
@@ -82,6 +83,7 @@ export function createGmailService(userData: string) {
   }
   async function accessToken(): Promise<string> {
     await load()
+    if (disconnectPromise) throw new Error('메일 연결을 해제하고 있어요. 잠시 후 다시 시도해 주세요.')
     if (!tokens || needsAuth) throw new Error('Google 메일을 연결해 주세요.')
     if (tokens.expiresAt > Date.now() + 60_000) return tokens.accessToken
     if (refreshPromise) return refreshPromise
@@ -115,6 +117,7 @@ export function createGmailService(userData: string) {
     return result
   }
   async function connect(): Promise<MailAccountState> {
+    if (disconnectPromise) await disconnectPromise
     if (authPromise) return authPromise
     const cfg = config()
     if (!cfg.clientId) throw new Error('이 빌드에는 Google 메일 연결 설정이 아직 없어요.')
@@ -165,13 +168,20 @@ export function createGmailService(userData: string) {
     })().finally(() => { authPromise = null })
     return authPromise
   }
-  async function disconnect(): Promise<void> {
-    ++epoch; cancelAuth?.(); await load()
-    const old = tokens
-    tokens = null; needsAuth = false; bodies.clear()
-    await storageQueue
-    await unlink(tokenPath).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
-    if (old) await fetch('https://oauth2.googleapis.com/revoke', { method: 'POST', body: new URLSearchParams({ token: old.refreshToken }), signal: AbortSignal.timeout(10_000) }).catch(() => {})
+  function disconnect(): Promise<void> {
+    if (disconnectPromise) return disconnectPromise
+    ++epoch; cancelAuth?.()
+    disconnectPromise = (async () => {
+      await load()
+      const old = tokens
+      await storageQueue
+      await unlink(tokenPath).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
+      // Keep the account visible if removal fails, so the user can retry and
+      // the running app agrees with the credentials still saved on disk.
+      tokens = null; needsAuth = false; bodies.clear()
+      if (old) await fetch('https://oauth2.googleapis.com/revoke', { method: 'POST', body: new URLSearchParams({ token: old.refreshToken }), signal: AbortSignal.timeout(10_000) }).catch(() => {})
+    })().finally(() => { disconnectPromise = null })
+    return disconnectPromise
   }
   async function list(input: { pageToken?: string; filter?: 'inbox' | 'starred' | 'unread'; query?: string }): Promise<MailList> {
     const generation = epoch

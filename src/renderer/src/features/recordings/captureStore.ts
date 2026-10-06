@@ -71,7 +71,7 @@ export async function startCapture(session: RecordingSession, deviceId: string):
   try {
     // Request access before spending time loading a model, but no samples are
     // saved until the model is ready and the explicit recording state starts.
-    media = await navigator.mediaDevices.getUserMedia({
+    const acquiredMedia = await navigator.mediaDevices.getUserMedia({
       audio: {
         ...(deviceId !== 'default' ? { deviceId: { exact: deviceId } } : {}),
         channelCount: 1,
@@ -81,12 +81,19 @@ export async function startCapture(session: RecordingSession, deviceId: string):
       },
       video: false
     })
+    if (serial !== captureSerial) {
+      for (const track of acquiredMedia.getTracks()) track.stop()
+      throw new Error('녹음 시작이 취소되었습니다.')
+    }
+    media = acquiredMedia
     context = new AudioContext({ sampleRate: 16000, latencyHint: 'balanced' })
     if (context.sampleRate !== 16000)
       throw new Error('이 기기에서 16 kHz 오디오를 준비하지 못했습니다.')
     await context.audioWorklet.addModule(workletUrl)
+    if (serial !== captureSerial) throw new Error('녹음 시작이 취소되었습니다.')
     const recording = await invoke('recordings:control', { id: session.id, action: 'start' })
     started = true
+    if (serial !== captureSerial) throw new Error('녹음 시작이 취소되었습니다.')
     sequence = recording.nextSequence
     failure = null
     queued = 0
@@ -147,12 +154,14 @@ export async function startCapture(session: RecordingSession, deviceId: string):
       }
     await context.resume()
   } catch (error) {
-    if (serial !== captureSerial) throw error
-    disposeAudio()
+    // Cleanup belongs to this attempt. A cancelled startup may finish after a
+    // different capture acquired the global audio resources.
+    if (serial === captureSerial) disposeAudio()
     if (started)
       await invoke('recordings:control', { id: session.id, action: 'interrupt' }).catch(
         () => undefined
       )
+    if (serial !== captureSerial) throw error
     useCaptureStore.setState({
       session: null,
       busy: false,

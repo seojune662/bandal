@@ -86,10 +86,13 @@ export function LinkPickerDialog({
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [reload, setReload] = useState(0)
   const [creatingPath, setCreatingPath] = useState<string | null>(null)
   const [highlighted, setHighlighted] = useState(0)
   const dialogRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const creatingRef = useRef(false)
 
   useFocusTrap(dialogRef, {
     active: true,
@@ -106,6 +109,7 @@ export function LinkPickerDialog({
       const current = ++sequence
       setLoading(true)
       setError(null)
+      setLoadFailed(false)
       try {
         const tree = await invoke('materials:tree', { courseId })
         if (!disposed && current === sequence) {
@@ -115,6 +119,7 @@ export function LinkPickerDialog({
         if (!disposed && current === sequence) {
           console.error('[Bandal] 연결할 자료 목록을 불러오지 못했습니다.', caught)
           setFiles([])
+          setLoadFailed(true)
           setError(t('links.picker.loadFailed'))
         }
       } finally {
@@ -132,7 +137,7 @@ export function LinkPickerDialog({
       stopMaterials()
       releasePointer()
     }
-  }, [courseId, t])
+  }, [courseId, t, reload])
 
   const filteredFiles = useMemo(
     () => filterLinkPickerFiles(files, sourceRelPath, query),
@@ -144,6 +149,8 @@ export function LinkPickerDialog({
   )
 
   const createLink = async (target: LinkPickerFile): Promise<void> => {
+    if (creatingRef.current) return
+    creatingRef.current = true
     setCreatingPath(target.relPath)
     setError(null)
     try {
@@ -160,6 +167,7 @@ export function LinkPickerDialog({
       console.error('[Bandal] 자료를 연결하지 못했습니다.', caught)
       setError(t('links.picker.createFailed'))
     } finally {
+      creatingRef.current = false
       setCreatingPath(null)
     }
   }
@@ -223,14 +231,15 @@ export function LinkPickerDialog({
           />
         </div>
         <div className="link-picker__body">
+          {error !== null && <p className="link-picker__error" role="alert">{error}</p>}
           {loading ? (
             <p className="link-picker__empty" role="status">
               {t('links.picker.loading')}
             </p>
-          ) : error !== null ? (
-            <p className="link-picker__error" role="alert">
-              {error}
-            </p>
+          ) : loadFailed ? (
+            <button type="button" className="secondary-button" onClick={() => setReload(value => value + 1)}>
+              {t('help.retry')}
+            </button>
           ) : filteredFiles.length === 0 ? (
             <p className="link-picker__empty">
               {query.trim().length === 0

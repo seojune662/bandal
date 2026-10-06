@@ -21,11 +21,12 @@ export function useTaskSchedule(task: BoardTask | null, defaultDate = '') {
   return { endDate, setEndDate, startDate, setStartDate, endTime, setEndTime, startTime, setStartTime, allDay, setAllDay, hasRange, setHasRange, value }
 }
 
-export function TaskScheduleFields({ schedule: s, required = false }: {
+export function TaskScheduleFields({ schedule: s, required = false, disabled = false }: {
   schedule: ReturnType<typeof useTaskSchedule>
   required?: boolean
+  disabled?: boolean
 }): JSX.Element {
-  return <fieldset className="task-schedule">
+  return <fieldset className="task-schedule" disabled={disabled}>
     <legend>일정</legend>
     <div className="task-schedule__options">
       <label><input type="checkbox" checked={s.hasRange} onChange={event => {

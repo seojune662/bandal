@@ -20,6 +20,7 @@ export interface PdfToolbarProps {
   courseId: string
   relPath: string
   drawingsApi: DrawingsApi
+  flushAnnotations?: (() => Promise<void>) | undefined
   onJumpToPage: (page: number) => void
   onZoomIn: () => void
   onZoomOut: () => void
@@ -174,6 +175,7 @@ export function PdfToolbar(props: PdfToolbarProps): JSX.Element {
         courseId={props.courseId}
         relPath={props.relPath}
         drawingsApi={props.drawingsApi}
+        beforeExport={props.flushAnnotations}
       />
 
       <div className="pdf-toolbar__zoom">

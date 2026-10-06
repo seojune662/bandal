@@ -191,3 +191,35 @@ it('stops with an explicit storage error when the bounded ten-second queue fills
   expect(useCaptureStore.getState().error).toContain('10초')
   expect(ipc).toHaveBeenLastCalledWith('recordings:control', { id: 'a', action: 'interrupt' })
 })
+it('disposes late microphone permission results without disturbing a newer capture', async () => {
+  let grant!: (stream: MediaStream) => void
+  vi.mocked(navigator.mediaDevices.getUserMedia).mockImplementationOnce(() =>
+    new Promise((resolve) => { grant = resolve }))
+  const previous = startCapture(session('a'), 'default').catch(error => error)
+  abandonCapture('cancelled')
+  await startCapture(session('b'), 'default')
+  const oldTrack = { stop: vi.fn() }
+  grant({ getTracks: () => [oldTrack] } as unknown as MediaStream)
+  expect(await previous).toBeInstanceOf(Error)
+  expect(oldTrack.stop).toHaveBeenCalledOnce()
+  expect(useCaptureStore.getState().session?.id).toBe('b')
+  expect(tracks[0]!.stop).not.toHaveBeenCalled()
+  expect(ipc.mock.calls.filter(([channel, request]) => channel === 'recordings:control' && (request as any).id === 'a')).toEqual([])
+})
+it('interrupts a cancelled engine startup without replacing a newer capture session', async () => {
+  let finish!: (value: any) => void
+  const original = ipc.getMockImplementation()!
+  ipc.mockImplementation((channel, request: any) => request.id === 'a' && request.action === 'start'
+    ? new Promise((resolve) => { finish = resolve }) : original(channel, request))
+  const first = session('a')
+  const previous = startCapture(first, 'default').catch(error => error)
+  await settle()
+  abandonCapture('cancelled')
+  await startCapture(session('b'), 'default')
+  finish({ ...first, status: 'recording' })
+  expect(await previous).toBeInstanceOf(Error)
+  expect(useCaptureStore.getState().session?.id).toBe('b')
+  expect(tracks[0]!.stop).toHaveBeenCalledOnce()
+  expect(tracks[1]!.stop).not.toHaveBeenCalled()
+  expect(ipc).toHaveBeenLastCalledWith('recordings:control', { id: 'a', action: 'interrupt' })
+})

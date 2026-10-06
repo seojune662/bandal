@@ -1,0 +1,25 @@
+do $$ begin
+  if not exists(select 1 from pg_roles where rolname='anon') then create role anon; end if;
+  if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if;
+end $$;
+create schema auth;
+create schema storage;
+create table auth.users(id uuid primary key);
+create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+grant usage on schema auth, storage to authenticated;
+create table public.study_groups(id uuid primary key);
+create table public.memberships(group_id uuid, user_id uuid);
+create function public.is_group_member(gid uuid, uid uuid) returns boolean language sql security definer stable set search_path='' as $$ select exists(select 1 from public.memberships m where m.group_id=gid and m.user_id=uid) $$;
+create function public.set_updated_at() returns trigger language plpgsql as $$ begin new.updated_at=now(); return new; end $$;
+create table public.whiteboards(id uuid primary key, group_id uuid, deleted_at timestamptz);
+create table public.whiteboard_shapes(kind text);
+grant select on public.whiteboards to authenticated;
+create table storage.buckets(id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
+create table storage.objects(id uuid primary key, bucket_id text, name text, owner_id text);
+alter table storage.objects enable row level security;
+grant select, insert, update on storage.objects to authenticated;
+create function storage.foldername(name text) returns text[] language sql immutable as $$ select (string_to_array(name,'/'))[1:array_length(string_to_array(name,'/'),1)-1] $$;
+insert into auth.users values('11111111-1111-1111-1111-111111111111');
+insert into public.study_groups values('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+insert into public.memberships values('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111'),('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','11111111-1111-1111-1111-111111111111');
+insert into public.whiteboards values('cccccccc-cccc-cccc-cccc-cccccccccccc','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',null),('dddddddd-dddd-dddd-dddd-dddddddddddd','bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',null);

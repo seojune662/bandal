@@ -40,7 +40,7 @@ export class RendererErrorBoundary extends Component<
           <p className="renderer-error__eyebrow">Bandal 복구 모드</p>
           <h1>화면을 불러오지 못했어요</h1>
           <p>
-            파일과 필기는 그대로 보존되어 있습니다. 앱을 다시 불러오면 마지막
+            이미 저장한 파일과 필기는 보존되어 있습니다. 앱을 다시 불러오면 마지막
             작업 화면부터 복구를 시도합니다.
           </p>
           <button type="button" onClick={() => window.location.reload()}>

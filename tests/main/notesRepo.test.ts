@@ -302,6 +302,14 @@ describe('notesRepo', () => {
     })
   })
 
+  test('renames the real heading while preserving a fenced shell comment', () => {
+    const code = '```bash\n# sample comment\necho hello\n```\n\n'
+    repo.write({ courseId: COURSE_ID, relPath: 'old.md', markdown: code + '# Old\n\nbody' })
+    const renamed = repo.rename({ courseId: COURSE_ID, relPath: 'old.md', newName: 'New' })
+    expect(renamed.markdown).toBe(code + '# New\n\nbody')
+    expect(repo.read({ courseId: COURSE_ID, relPath: renamed.relPath }).markdown).toBe(renamed.markdown)
+  })
+
   describe('create', () => {
     test('creates <title>.md in the requested directory', () => {
       // Act

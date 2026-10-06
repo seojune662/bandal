@@ -8,6 +8,8 @@ export interface LoginFillRequest {
   origin: string
   guestWebContentsId: number
   credentialId?: string
+  /** Main-only callers may promise to fill without submitting. */
+  allowAutoSubmit?: boolean
 }
 
 export interface LoginGuestWebContents {
@@ -155,6 +157,7 @@ export function createLoginFiller(
     // Re-check immediately before injection. Navigation can race every await
     // and the source itself repeats the origin/top-frame checks.
     if (currentOrigin(guest) !== requestedOrigin) return failed()
+    const autoSubmit = request.allowAutoSubmit !== false && login.autoSubmit
     try {
       const result = await runGuestScript(() =>
         guest.executeJavaScript(
@@ -162,9 +165,9 @@ export function createLoginFiller(
             requestedOrigin,
             login.username,
             login.password,
-            login.autoSubmit
+            autoSubmit
           ),
-          login.autoSubmit
+          autoSubmit
         )
       )
       return parseResult(result)

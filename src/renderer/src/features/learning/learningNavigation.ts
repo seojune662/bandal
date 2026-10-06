@@ -37,12 +37,6 @@ export function openLearning(binding: LearningBinding, view: LearningView = 'hom
   }))
 }
 
-export function openLearningOverview(courseId: string): void {
-  useCoursesStore.getState().selectCourse(courseId)
-  useWorkspaceStore.getState().setActiveCourse(courseId)
-  useWorkspaceStore.getState().openTab(descriptorFor('learning', { courseId }))
-}
-
 export function learningError(error: unknown): string {
   return error instanceof Error ? error.message : '학습 자료를 처리하지 못했어요.'
 }

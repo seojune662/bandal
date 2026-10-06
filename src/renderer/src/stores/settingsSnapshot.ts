@@ -43,6 +43,7 @@ export function ensureSettingsLoaded(): Promise<Settings> {
       .catch((error: unknown) => {
         // 다음 호출이 다시 시도할 수 있게 실패는 캐시하지 않는다.
         loading = null
+        if (snapshot !== null) return snapshot
         throw error
       })
   }

@@ -209,7 +209,7 @@ export function MaterialsContextMenu({
         disabled={!hasTarget}
         onClick={onReveal}
       >
-        <Icon name="folderOpen" />Finder에서 보기
+        <Icon name="folderOpen" />폴더에서 보기
       </button>
       <div className="materials-context-menu__separator" role="separator" />
       <button

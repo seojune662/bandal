@@ -91,6 +91,7 @@ function reconcileTabsAfterRename(
 ): void {
   const workspace = useWorkspaceStore.getState()
   if (reconcileWorkspaceMaterialRename(courseId, node.relPath, newRelPath) > 0) return
+  if (workspace.activeCourseId !== courseId) return
   const registeredNotePanelId =
     node.kind === 'note'
       ? (openNotePanelId({ courseId, relPath: newRelPath }) ??
@@ -390,7 +391,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   }, [selectedRelPath, tree])
 
   const refreshAfterMutation = async (courseId: string): Promise<void> => {
-    await useMaterialsStore.getState().loadTree(courseId)
+    await useMaterialsStore.getState().loadTree(courseId, { refreshOnly: true })
   }
 
   const moveMaterial = async (
@@ -412,9 +413,11 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         toDirRelPath
       })
       reconcileTabsAfterRename(course.id, node, moved.relPath, false)
+      if (activeCourseIdRef.current !== course.id) return
       setQuery('')
       clearSearch()
       await refreshAfterMutation(course.id)
+      if (activeCourseIdRef.current !== course.id) return
       ensureAncestorsExpanded(moved.relPath)
       setSelectedRelPath(moved.relPath)
     } catch (moveError) {
@@ -428,7 +431,10 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
     setDropTargetDirRelPath(null)
     setUrlDropTargetDirRelPath(null)
     if (course === null || course.missing || files.length === 0) return
-    void importDroppedFiles(course.id, files, dirRelPath).then(handleCreated)
+    const courseId = course.id
+    void importDroppedFiles(courseId, files, dirRelPath).then(paths => {
+      if (activeCourseIdRef.current === courseId) handleCreated(paths)
+    })
   }
 
   const downloadFromUrl = async (
@@ -457,6 +463,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       setQuery('')
       clearSearch()
       await refreshAfterMutation(courseId)
+      if (activeCourseIdRef.current !== courseId) return
       ensureAncestorsExpanded(downloaded.relPath)
       setSelectedRelPath(downloaded.relPath)
     } catch (downloadError) {
@@ -511,9 +518,11 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         dirRelPath,
         title: '새 파일'
       })
+      if (activeCourseIdRef.current !== course.id) { showToast('원래 과목에 새 파일을 만들었어요.'); return }
       ensureAncestorsExpanded(created.relPath)
       openMaterialInWorkspace('note', created.relPath)
       await refreshAfterMutation(course.id)
+      if (activeCourseIdRef.current !== course.id) return
       setSelectedRelPath(created.relPath)
       setEditing({ relPath: created.relPath, reopenAfterRename: true })
     } catch (createError) {
@@ -533,8 +542,10 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         dirRelPath,
         name
       })
+      if (activeCourseIdRef.current !== course.id) return
       ensureAncestorsExpanded(created.relPath)
       await refreshAfterMutation(course.id)
+      if (activeCourseIdRef.current !== course.id) return
       setSelectedRelPath(created.relPath)
       setEditing({ relPath: created.relPath, reopenAfterRename: false })
     } catch (createError) {
@@ -551,8 +562,10 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         courseId: course.id,
         relPath: target.relPath
       })
+      if (activeCourseIdRef.current !== course.id) return
       ensureAncestorsExpanded(duplicated.relPath)
       await refreshAfterMutation(course.id)
+      if (activeCourseIdRef.current !== course.id) return
       setSelectedRelPath(duplicated.relPath)
       showToast('자료를 복제했어요.')
     } catch (duplicateError) {
@@ -570,8 +583,8 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         relPath: target.relPath
       })
     } catch (revealError) {
-      console.error('[Bandal] Finder에서 자료를 열지 못했습니다.', revealError)
-      showToast('Finder에서 자료를 열지 못했습니다.', 'danger')
+      console.error('[Bandal] 폴더에서 자료를 표시하지 못했습니다.', revealError)
+      showToast('폴더에서 자료를 표시하지 못했습니다.', 'danger')
     }
   }
 
@@ -637,9 +650,10 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         course.id,
         reconciledNode,
         renamedRelPath,
-        editing?.reopenAfterRename === true
+        activeCourseIdRef.current === course.id && editing?.reopenAfterRename === true
       )
       await refreshAfterMutation(course.id)
+      if (activeCourseIdRef.current !== course.id) return null
       setSelectedRelPath(renamedRelPath)
       setEditing(null)
       return null
@@ -662,6 +676,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       })
       closeDeletedTabs(course.id, deleteTarget)
       await refreshAfterMutation(course.id)
+      if (activeCourseIdRef.current !== course.id) return
       if (
         selectedRelPath !== null &&
         pathIsTargetOrChild(selectedRelPath, deleteTarget.relPath)
@@ -671,7 +686,8 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
       setDeleteTarget(null)
       showToast('휴지통으로 이동했어요.')
     } catch (deleteFailure) {
-      setDeleteError(operationError(deleteFailure, '휴지통으로 이동하지 못했습니다.'))
+      if (activeCourseIdRef.current === course.id) setDeleteError(operationError(deleteFailure, '휴지통으로 이동하지 못했습니다.'))
+      else showToast(operationError(deleteFailure, '휴지통으로 이동하지 못했습니다.'), 'danger')
     } finally {
       setDeletePending(false)
     }

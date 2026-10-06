@@ -178,6 +178,7 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
       try {
         const created = await invoke('courseGroups:create', { name })
         set((state) => {
+          state.groups = state.groups.filter((group) => group.id !== created.id)
           state.groups.push(created)
           state.groups.sort((a, b) => a.sortOrder - b.sortOrder)
         })
@@ -275,6 +276,7 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
       try {
         const created = await invoke('courses:create', input)
         set((state) => {
+          state.courses = state.courses.filter((course) => course.id !== created.id)
           state.courses.push(created)
           state.courses.sort((a, b) => a.sortOrder - b.sortOrder)
         })
@@ -415,13 +417,13 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
     },
 
     archiveCourse: async (courseId, archived) => {
-      const { courses, selectedCourseId } = get()
       set((state) => {
         state.pendingCourseId = courseId
         state.error = null
       })
       try {
         const updated = await invoke('courses:archive', { courseId, archived })
+        const courses = get().courses
         if (archived) {
           // The course row is gone from active listings; a queued layout save
           // for it would be stale. Its agent session was disposed in main.
@@ -438,7 +440,7 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
           }
           state.pendingCourseId = null
         })
-        if (archived && selectedCourseId === courseId) {
+        if (archived && get().selectedCourseId === courseId) {
           get().selectCourse(nextSelection(courses, courseId))
         }
       } catch (error) {
@@ -451,13 +453,13 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
     },
 
     deleteCourse: async (courseId) => {
-      const { courses, selectedCourseId } = get()
       set((state) => {
         state.pendingCourseId = courseId
         state.error = null
       })
       try {
         await invoke('courses:delete', { courseId })
+        const courses = get().courses
         // Saving a layout for a deleted course would throw in main; the
         // workspace swaps to the next course via the selection change below.
         useWorkspaceStore.getState().discardPendingSave(courseId)
@@ -466,7 +468,7 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
           state.courses = state.courses.filter((course) => course.id !== courseId)
           state.pendingCourseId = null
         })
-        if (selectedCourseId === courseId) {
+        if (get().selectedCourseId === courseId) {
           get().selectCourse(nextSelection(courses, courseId))
         }
       } catch (error) {

@@ -1,3 +1,4 @@
+import { startLearningRun } from './learningStartedRuns'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LearningArticleSnapshot, LearningProjectSnapshot } from '../../../../shared/types/learning'
 import { showToast } from '../../app/toast'
@@ -52,7 +53,7 @@ export function LearningReader({ project, article, onUpdate, onComplete, onArtic
       const occurrence = [...next.occurrences].reverse().find(item => item.sourceRef.articleId === article.id && item.surface === selected.surface)
       if (occurrence && !meaning.trim()) {
         const surface = selected.surface
-        void invoke('learning:run', { binding: project.binding, kind: 'explain-word', ...(readingPackId ? { packId: readingPackId } : {}), articleIds: [article.id], wordIds: [occurrence.wordId] })
+        void startLearningRun({ binding: project.binding, kind: 'explain-word', ...(readingPackId ? { packId: readingPackId } : {}), articleIds: [article.id], wordIds: [occurrence.wordId] })
           .catch(() => setNotice(`“${surface}”은 단어장에 저장됐어요. 아래 문맥 설명 버튼으로 뜻 정리를 다시 시작할 수 있어요.`))
       }
     } catch (caught) { setError(learningError(caught)) }
@@ -60,7 +61,7 @@ export function LearningReader({ project, article, onUpdate, onComplete, onArtic
   }
   const explain = async (wordId: string): Promise<void> => {
     setPending(true); setError(null)
-    try { await invoke('learning:run', { binding: project.binding, kind: 'explain-word', ...(readingPackId ? { packId: readingPackId } : {}), articleIds: [article.id], wordIds: [wordId] }); setNotice('이 문장에서 쓰인 뜻과 표현을 정리하고 있어요.') }
+    try { await startLearningRun({ binding: project.binding, kind: 'explain-word', ...(readingPackId ? { packId: readingPackId } : {}), articleIds: [article.id], wordIds: [wordId] }); setNotice('이 문장에서 쓰인 뜻과 표현을 정리하고 있어요.') }
     catch (caught) { setError(learningError(caught)) }
     finally { setPending(false) }
   }
@@ -71,7 +72,7 @@ export function LearningReader({ project, article, onUpdate, onComplete, onArtic
       progress.current = null
       const next = await invoke('learning:completeArticle', { binding: project.binding, articleId: article.id })
       onUpdate(next); notifyLearningChanged(); onComplete()
-      if (project.purpose === 'english-reading' && project.readingSetupConfirmed) await invoke('learning:run', { binding: project.binding, kind: 'find-articles', ...(readingPackId ? { packId: readingPackId } : {}), articleIds: [article.id] }).catch(caught => showToast(`읽은 기록은 저장됐어요. 다음 글을 찾지 못했습니다: ${learningError(caught)}`, 'danger'))
+      if (project.purpose === 'english-reading' && project.readingSetupConfirmed) await startLearningRun({ binding: project.binding, kind: 'find-articles', ...(readingPackId ? { packId: readingPackId } : {}), articleIds: [article.id] }).catch(caught => showToast(`읽은 기록은 저장됐어요. 다음 글을 찾지 못했습니다: ${learningError(caught)}`, 'danger'))
     } catch (caught) { setError(learningError(caught)) }
     finally { setPending(false) }
   }
@@ -107,7 +108,7 @@ export function LearningReader({ project, article, onUpdate, onComplete, onArtic
           tokens.push(<span key="last">{paragraph.text.slice(offset)}</span>)
           return <p key={paragraph.id} data-learning-paragraph={paragraph.id}>{tokens}</p>
         })}
-        <footer className="learning-reader-footer"><p>이 글에서 {new Set(saved.map(item => item.wordId)).size}개의 단어를 담았어요.</p><button className="button button--primary" type="button" disabled={pending} onClick={() => void complete()}>{pending ? '처리 중…' : '읽기 완료 · 다음 글 찾기'} <Icon name="chevronRight" /></button></footer>
+        <footer className="learning-reader-footer"><p>이 글에서 {new Set(saved.map(item => item.wordId)).size}개의 단어를 담았어요.</p><button className="button button--primary" type="button" disabled={pending} onClick={() => void complete()}>{pending ? '처리 중…' : project.purpose === 'english-reading' && project.readingSetupConfirmed ? '읽기 완료 · 다음 글 찾기' : '읽기 완료'} <Icon name="chevronRight" /></button></footer>
       </article>
     </div>
     <aside className="learning-word-panel" aria-label="읽기 단어장"><p className="learning-eyebrow">WORDS IN CONTEXT</p><h2>{selected ? '이 표현을 기억해요' : '이 글의 단어'}</h2>

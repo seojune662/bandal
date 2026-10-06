@@ -7,7 +7,7 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, rmdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import type {
@@ -449,10 +449,22 @@ export function createCoursesRepo(deps: CoursesRepoDeps): CoursesRepo {
       // dataRoot 를 바꿀 수 있게 되면서 그 검사가 정당한 purge 를 막는다
       // (옛 dataRoot 아래에 만들어진 managed 과목이 영원히 못 지워짐).
       // source:'managed' 는 폴더를 반달이 당시의 dataRoot 아래에 직접
-      // 만들었다는 뜻이므로 managed + soft-deleted 두 겹이면 충분하고,
+      // 만들었다는 뜻이며, 아래에서 현재 다른 공간의 사용 여부도 검사한다.
       // 호출자(courses:purge)는 unlink 가 아니라 trashItem 으로 보내므로
       // 실수해도 복구할 수 있다. containment 는 심층 방어였을 뿐이다.
       const folderPath = normalizeFolderPath(row.folder_path)
+      // A removed space can be re-added (or one of its subfolders linked)
+      // before tutorial cleanup. Trashing its old folder must not affect any
+      // live space, including an archived one.
+      const contains = (parent: string, child: string): boolean => {
+        const path = relative(parent, child)
+        return path === '' || (path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path))
+      }
+      const liveFolders = db.prepare('SELECT folder_path FROM courses WHERE deleted_at IS NULL').all() as { folder_path: string }[]
+      if (liveFolders.some(candidate => {
+        const live = normalizeFolderPath(candidate.folder_path)
+        return contains(folderPath, live) || contains(live, folderPath)
+      })) throw new ValidationError('이 폴더를 다른 공간에서 사용하고 있어 삭제할 수 없습니다.')
       // foreign_keys=ON: the row cannot go while children reference it. Chain
       // order matters — grandchildren first (no course_id of their own), then
       // messages before agent_sessions (messages FK it), then every table

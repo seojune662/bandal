@@ -800,9 +800,10 @@ function PdfViewer({
         anchor: pendingSelection.anchor,
         comment: null
       })
+      if (created === null) return
       setPendingSelection(null)
       window.getSelection()?.removeAllRanges()
-      if (created !== null) flash(created.id)
+      flash(created.id)
     },
     [pendingSelection, annotationsApi, courseId, relPath, flash]
   )
@@ -1007,6 +1008,7 @@ function PdfViewer({
         courseId={courseId}
         relPath={relPath}
         drawingsApi={drawingsApi}
+        flushAnnotations={annotationsApi.flush}
         onJumpToPage={jumpToPage}
         onZoomIn={() => applyZoom(zoom * ZOOM_STEP)}
         onZoomOut={() => applyZoom(zoom / ZOOM_STEP)}
@@ -1019,6 +1021,15 @@ function PdfViewer({
         pageNoteSyncEnabled={pageNoteSync}
         onTogglePageNoteSync={togglePageNoteSync}
       />
+      {annotationsApi.error !== null && (
+        <div className="pdf-annotation-error" role="alert">
+          <span>주석을 저장하거나 불러오지 못했어요: {annotationsApi.error}</span>
+          {annotationsApi.hasUnsavedUpdates && <>
+            <span> 탭을 닫기 전에 다시 저장해 주세요. </span>
+            <button type="button" onClick={() => { void annotationsApi.retryUpdates?.() }}>다시 저장</button>
+          </>}
+        </div>
+      )}
       <TextFormatRow visible={activeTool === 'text'} />
       <div className="pdf-tab__main">
         {isPreviewOpen && (

@@ -21,8 +21,3 @@ export function externalReasonMessage(reason: ExternalReason | undefined): strin
       return '이 사이트는 앱 안에서 열리지 않아 기본 브라우저로 열려요.'
   }
 }
-
-/** 설정 창 톤(합니다체)으로 쓰는 확인일 문구. */
-export function verifiedAtLabel(verifiedAt: string): string {
-  return verifiedAt.length === 0 ? '확인일 정보 없음' : `확인일 ${verifiedAt}`
-}

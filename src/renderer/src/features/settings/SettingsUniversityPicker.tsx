@@ -10,7 +10,7 @@ interface SettingsUniversityPickerProps {
   selectedId: string | null
   customName?: string | undefined
   onSelectPreset: (universityId: string) => void
-  onAddCustom: (input: CustomUniversityInput) => void
+  onAddCustom: (input: CustomUniversityInput) => Promise<boolean>
   busy?: boolean
 }
 
@@ -53,12 +53,14 @@ export function SettingsUniversityPicker({
   const submitCustom = (event: React.FormEvent): void => {
     event.preventDefault()
     const nameKo = customNameDraft.trim()
-    if (nameKo.length === 0) return
+    if (busy || nameKo.length === 0) return
     const courseUrl = customUrl.trim()
-    onAddCustom(courseUrl.length > 0 ? { nameKo, courseUrl } : { nameKo })
-    setCustomOpen(false)
-    setCustomUrl('')
-    setQuery('')
+    void onAddCustom(courseUrl.length > 0 ? { nameKo, courseUrl } : { nameKo }).then(saved => {
+      if (!saved) return
+      setCustomOpen(false)
+      setCustomUrl('')
+      setQuery('')
+    })
   }
 
   return (

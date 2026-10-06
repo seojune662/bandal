@@ -34,7 +34,9 @@ export const useAgentRuns = create<AgentRunStore>()((set) => ({
         const next = { ...current.byTab }
         // A finished or stopped run leaves nothing behind — a stale strip
         // saying "reading…" over an idle page is worse than no strip.
-        if (state.status === 'done') delete next[state.tabId]
+        if (state.status === 'done') {
+          if (next[state.tabId]?.runId === state.runId) delete next[state.tabId]
+        }
         else next[state.tabId] = state
         return { byTab: next }
       })

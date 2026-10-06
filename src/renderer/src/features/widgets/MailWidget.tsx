@@ -149,7 +149,12 @@ export function NativeMailWidget({ fallback, active = true }: { fallback: { url:
           <form className="mail-mini__reply" onSubmit={(event) => {
             event.preventDefault(); if (mutating || !reply.trim()) return
             setMutating(true); setError(null)
-            void invoke('mail:reply', { messageId: selected.id, text: reply }).then(() => { setReply(''); setNotice('답장을 보냈어요.') }).catch(failure).finally(() => setMutating(false))
+            const sentText = reply, version = readVersion.current
+            void invoke('mail:reply', { messageId: selected.id, text: sentText }).then(() => {
+              if (version !== readVersion.current) return
+              setReply(current => current === sentText ? '' : current)
+              setNotice('답장을 보냈어요.')
+            }).catch(failure).finally(() => setMutating(false))
           }}><label htmlFor="mail-reply">답장</label><textarea id="mail-reply" placeholder="답장을 입력하세요" value={reply} maxLength={100_000} onChange={(e) => setReply(e.target.value)} /><button type="submit" className="mail-mini__primary" disabled={mutating || !reply.trim()}>{mutating ? '처리 중…' : '답장 보내기'}</button></form></article> : <div className="mail-mini__empty" role="status">{reading ? '메일을 불러오는 중…' : <><p>메일을 불러오지 못했어요.</p><button type="button" onClick={() => { const message = page.messages.find((item) => item.id === selectedId); if (message) void open(message); else back() }}>다시 시도</button></>}</div>}
         </> : <><ul className="mail-mini__list">{(expanded ? page.messages : page.messages.slice(0, 3)).map((message) => <li key={message.id} data-unread={message.unread || undefined}><button type="button" onClick={() => { setExpanded(true); void open(message) }}><span className="mail-mini__avatar">{sender(message.from).charAt(0).toUpperCase()}</span><span className="mail-mini__preview"><span><strong>{sender(message.from)}</strong><time>{time(message.date)}</time></span><b>{message.subject}</b><small>{mailText('', message.snippet)}</small></span>{message.unread && <i aria-label="읽지 않음" />}</button></li>)}</ul>
         {loading && <p className="mail-mini__empty" role="status">메일을 불러오는 중…</p>}

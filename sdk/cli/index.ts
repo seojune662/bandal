@@ -78,6 +78,8 @@ async function main(): Promise<void> {
       )
         continue
       if (entry.isSymbolicLink()) throw new Error('Symlinks are not supported')
+      if (!entry.isDirectory() && !entry.isFile())
+        throw new Error('Only regular files and directories are supported')
       if (entry.isDirectory())
         add(join(directory, entry.name), `${prefix}${entry.name}/`)
       else if (

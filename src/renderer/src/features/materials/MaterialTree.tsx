@@ -8,6 +8,7 @@ import { Icon } from '../../app/icons'
 import { MaterialFileIcon } from './materialIcons'
 import { startMaterialDrag as startNativeMaterialDrag } from '../../lib/ipc'
 import { openMaterialInWorkspace } from '../workspace/openMaterial'
+import { isViewableFile } from '../file/fileFormats'
 import {
   classifyDrop,
   isFileDrag
@@ -25,12 +26,12 @@ import {
 } from './materialMoveDrag'
 import { canAcceptUrlDrop } from './urlDrop'
 
-/** pdf/md/video open as tabs; everything else opens in Finder (tooltip says so). */
+/** Keep the row hint aligned with the viewer used by openMaterialInWorkspace. */
 function rowTitle(kind: MaterialKind | 'dir', relPath: string): string {
-  if (kind === 'dir' || kind === 'pdf' || kind === 'note' || kind === 'video' || relPath.toLowerCase().endsWith('.wav')) {
+  if (kind !== 'other' || isViewableFile(relPath) || relPath.toLowerCase().endsWith('.wav')) {
     return relPath
   }
-  return `${relPath} — Finder에서 열기`
+  return `${relPath} — 폴더에서 보기`
 }
 
 function canMoveToDirectory(
@@ -134,6 +135,8 @@ function InlineNameEditor({
   const [error, setError] = useState<string | null>(null)
 
   useLayoutEffect(() => {
+    // Complete selection before the input becomes interactive. A delayed frame
+    // can select the old stem midway through typing/pasting a replacement name.
     const input = inputRef.current
     if (input === null) return
     input.focus()

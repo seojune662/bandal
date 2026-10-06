@@ -380,8 +380,10 @@ describe('createBoardPdfExporter', () => {
     )
   })
 
-  test('skips clips and reports their count without failing the export', async () => {
-    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+  test('includes the source PDF clip instead of silently omitting it', async () => {
+    const source = await PDFDocument.create()
+    source.addPage([300, 400]).drawText('SOURCE CLIP', { x: 30, y: 350, size: 14 })
+    writeFileSync(join(ctx.dir, '강의.pdf'), await source.save())
     const board = repo.createBoard({ courseId: 'course-1', title: '클립 보드' })
     repo.putShape({
       boardId: board.id,
@@ -403,6 +405,6 @@ describe('createBoardPdfExporter', () => {
     await expect(exporter.exportBoard(board.id)).resolves.toEqual({
       relPath: '클립 보드.pdf'
     })
-    expect(info).toHaveBeenCalledWith(expect.stringContaining('skipped clips: 1'))
+    expect(await pdfText(join(ctx.dir, '클립 보드.pdf'))).toContain('SOURCE CLIP')
   })
 })

@@ -1,3 +1,4 @@
+import { firstNoteTitle as firstH1Title } from '../../../../shared/noteTitle'
 import { usePanelAssistant } from '../assistantPanel/panelContext'
 import { registerDocumentContext } from '../agent/documentContext'
 import {
@@ -146,10 +147,6 @@ const STATUS_LABEL: Record<SaveStatus, string> = {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-function firstH1Title(markdown: string): string | null {
-  return /^#\s+(.*)$/m.exec(markdown)?.[1] ?? null
 }
 
 /** Mirrors the main-process title cleanup for a no-op rename comparison. */

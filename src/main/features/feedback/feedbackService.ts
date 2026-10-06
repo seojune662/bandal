@@ -68,8 +68,8 @@ export function createFeedbackService(
           p_kind: req.kind,
           p_body: req.body.slice(0, FEEDBACK_BODY_LIMIT),
           p_app_version: req.includeAppInfo ? deps.appVersion : null,
-          p_os: deps.platform,
-          p_palette: deps.getPalette()
+          p_os: req.includeAppInfo ? deps.platform : null,
+          p_palette: req.includeAppInfo ? deps.getPalette() : null
         })
 
         if (error === null) return { ok: true }

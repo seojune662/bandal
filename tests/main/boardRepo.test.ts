@@ -317,6 +317,19 @@ describe('boardRepo', () => {
     })
   })
 
+  test('hides deleted-course tasks from all views and restores them with the course', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-07T00:00:00Z'))
+    const dueAt = '2026-10-08T12:00:00Z'
+    const removed = repo.create({ courseId, title: 'Deleted space task', dueAt })
+    const global = repo.create({ courseId: null, title: 'Global task', dueAt })
+    courses.softDelete({ courseId })
+    expect(repo.list().map(t => t.id)).toEqual([global.id])
+    expect(repo.listRange({ from: '2026-10-01T00:00:00Z', to: '2026-11-01T00:00:00Z' }).map(t => t.id)).toEqual([global.id])
+    expect(repo.upcoming().map(t => t.task.id)).toEqual([global.id])
+    courses.restore({ courseId })
+    expect(repo.list().map(t => t.id)).toContain(removed.id)
+  })
+
   describe('calendar range', () => {
     test('lists due entries in a half-open range and applies the course filter', () => {
       const otherCourseId = courses.create({ name: 'Other', color: '#111' }).id
