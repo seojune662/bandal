@@ -216,10 +216,30 @@ test.describe('continuous study interactions', () => {
   })
 })
 
-test('PDF pairs hand scrolling back immediately after text composition and keep their page on resize', async () => {
+test('PDF pairs hand scrolling back immediately after text composition and keep their page on resize', async ({}, info) => {
   const bandal = await launchBandal()
   try {
     const { page, app } = bandal
+    await app.context().tracing.start({ screenshots: true, snapshots: true })
+    await page.evaluate(() => {
+      const events: unknown[] = []
+      Object.assign(window, { __pdfPairDiagnostics: events })
+      const record = (kind: string, detail?: unknown): void => {
+        const pdf = document.querySelector<HTMLElement>('.pdf-scroller')
+        const note = document.querySelector<HTMLElement>('.page-note-scroll')
+        const geometry = (node: HTMLElement | null) => node && ({ top: node.scrollTop, height: node.clientHeight, scrollHeight: node.scrollHeight, rect: node.getBoundingClientRect().toJSON() })
+        events.push({ kind, detail, time: performance.now(), viewport: [innerWidth, innerHeight], pdf: geometry(pdf), note: geometry(note), page: document.querySelector<HTMLInputElement>('[aria-label="페이지 이동"]')?.value })
+        if (events.length > 150) events.shift()
+      }
+      document.addEventListener('wheel', event => {
+        record('wheel', { target: (event.target as Element).className, x: event.clientX, y: event.clientY, deltaY: event.deltaY })
+        requestAnimationFrame(() => { record('wheel-frame-1'); requestAnimationFrame(() => record('wheel-frame-2')) })
+      }, true)
+      document.addEventListener('scroll', event => {
+        if ((event.target as Element).matches?.('.pdf-scroller,.page-note-scroll')) record('scroll', (event.target as Element).className)
+      }, true)
+      window.addEventListener('bandal:pdf-page-note-anchor', event => record('anchor', (event as CustomEvent).detail))
+    })
     await createCourse(page, 'PDF 연결 검사')
     const folder = readdirSync(bandal.dataRoot, { withFileTypes: true }).find((entry) => entry.isDirectory())!
     const pdf = await PDFDocument.create()
@@ -260,7 +280,76 @@ test('PDF pairs hand scrolling back immediately after text composition and keep 
     await window.evaluate((win) => { const [width, height] = win.getSize(); win.setSize(width - 160, height) })
     await frames(page, 8)
     await expect(jump).toHaveValue(readingPage)
+  } catch (error) {
+    await info.attach('pdf-pair-diagnostics', { body: JSON.stringify(await bandal.page.evaluate(() => Reflect.get(window, '__pdfPairDiagnostics')), null, 2), contentType: 'application/json' })
+    await info.attach('pdf-pair-screen', { body: await bandal.page.screenshot(), contentType: 'image/png' })
+    const trace = info.outputPath('pdf-pair-electron-trace.zip')
+    await bandal.app.context().tracing.stop({ path: trace })
+    await info.attach('pdf-pair-electron-trace', { path: trace, contentType: 'application/zip' })
+    throw error
   } finally {
     await bandal.close()
   }
 })
+
+
+for (const action of ['restore', 'wheel', 'jump'] as const) {
+  test(`a delayed saved PDF position respects ${action === 'restore' ? 'normal restoration and reopening' : `a newer ${action}`}`, async () => {
+    const bandal = await launchBandal()
+    try {
+      const { page, app } = bandal
+      await createCourse(page, 'PDF 위치 복원')
+      const folder = readdirSync(bandal.dataRoot, { withFileTypes: true }).find(entry => entry.isDirectory())!
+      const pdf = await PDFDocument.create()
+      for (let i = 0; i < 100; i++) pdf.addPage([720, 540])
+      writeFileSync(join(bandal.dataRoot, folder.name, 'restore.pdf'), await pdf.save())
+      await page.evaluate(async () => {
+        const courses = await window.bandal.invoke('courses:list', {})
+        await window.bandal.invoke('pdf:setViewState', { courseId: courses[0]!.id, relPath: 'restore.pdf', page: 30, zoom: 2 })
+      })
+      // Hold the real saved result until the user has already navigated.
+      // Only the first read is held; subsequent reads keep normal IPC behavior.
+      await app.evaluate(({ ipcMain }) => {
+        const handlers = (ipcMain as any)._invokeHandlers as Map<string, (...args: any[]) => Promise<unknown>>
+        const original = handlers.get('pdf:getViewState')!
+        handlers.set('pdf:getViewState', async (...args) => {
+          handlers.set('pdf:getViewState', original)
+          const saved = await original(...args)
+          return new Promise(resolve => Object.assign(globalThis, { __releasePdfViewState: () => resolve(saved) }))
+        })
+      })
+      await page.getByRole('button', { name: '자료 새로고침' }).click()
+      await page.locator('[data-material-path="restore.pdf"]').click()
+      await expect(page.locator('[data-pdf-page]')).toHaveCount(100)
+      await expect.poll(() => app.evaluate(() => typeof Reflect.get(globalThis, '__releasePdfViewState'))).toBe('function')
+      const scroller = page.locator('.pdf-scroller')
+      const jump = page.getByRole('textbox', { name: '페이지 이동', exact: true })
+      if (action === 'wheel') {
+        await scroller.hover()
+        await page.mouse.wheel(0, 500)
+        await expect.poll(() => scroller.evaluate(node => node.scrollTop)).toBeGreaterThan(0)
+      } else if (action === 'jump') {
+        await jump.fill('10')
+        await jump.press('Enter')
+        await expect(jump).toHaveValue('10')
+      }
+      const before = await scroller.evaluate(node => node.scrollTop)
+      await app.evaluate(() => Reflect.get(globalThis, '__releasePdfViewState')())
+      if (action === 'restore') {
+        await expect(jump).toHaveValue('30')
+        await expect(page.getByRole('button', { name: '현재 배율 200%, 클릭하면 폭 맞춤' })).toBeVisible()
+        const tab = page.locator('.workspace-tab').filter({ hasText: 'restore.pdf' })
+        await tab.getByRole('button', { name: '탭 닫기' }).click()
+        await page.locator('[data-material-path="restore.pdf"]').click()
+        await expect(jump).toHaveValue('30')
+        await expect(page.getByRole('button', { name: '현재 배율 200%, 클릭하면 폭 맞춤' })).toBeVisible()
+      } else {
+        // Drain the response and its queued restoration/layout frames. A wrong
+        // restore changes both the reading position and the user's zoom.
+        await frames(page, 5)
+        expect(await scroller.evaluate(node => node.scrollTop)).toBe(before)
+        await expect(page.getByRole('button', { name: '현재 배율 100%, 클릭하면 폭 맞춤' })).toBeVisible()
+      }
+    } finally { await bandal.close() }
+  })
+}

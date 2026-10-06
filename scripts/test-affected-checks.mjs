@@ -93,9 +93,17 @@ test('native image clipboard does not repeat PDF image export checks', () => {
 })
 test('PDF buffering runs continuous zoom and drawing geometry, without unrelated textbox editing', () => {
   const plan = planChecks(['src/renderer/src/features/pdf/BufferedPdfCanvas.tsx', 'src/renderer/src/features/pdf/PdfTab.tsx'])
-  assert.deepEqual(plan.e2e, ['e2e/pdfTextbox.spec.ts', 'e2e/interactionFixes.spec.ts'])
+  assert.deepEqual(plan.e2e, ['e2e/pdfTextbox.spec.ts', 'e2e/interactionStability.spec.ts', 'e2e/interactionFixes.spec.ts'])
   assert.match(plan.e2eGrep, /zooming in and back/)
   assert.equal(planChecks(['src/renderer/src/features/ink/InkLayer.tsx']).e2eGrep, null)
+})
+
+test('page synchronization helpers retain the actual paired scroll regression', () => {
+  for (const file of ['pdfPageNoteSync', 'pageSyncScroll']) {
+    const plan = planChecks([`src/renderer/src/features/links/${file}.ts`])
+    assert.deepEqual(plan.e2e, ['e2e/interactionStability.spec.ts'])
+    assert.equal(plan.full, false)
+  }
 })
 
 test('image-only note changes skip unrelated toolbar commands', () => {

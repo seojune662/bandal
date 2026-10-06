@@ -90,3 +90,16 @@ pnpm exec tsc --noEmit -p tsconfig.node.json
 - DOM 회귀가 0/stale overlay, 실제 그룹만의 resize, hidden→visible, transfer slot 공백, 같은 API의 group 변경, 미저장 입력 보존과 해제를 검증한다. `panelContentHost`·`rebindingApi`·`visibleSplitPanel` 7개와 `browserAnchorVisibility` 1개 통과, renderer 타입 검사 통과.
 - 실제 Chrome/WebKit × 한/영 × 320/1440px 8개에서 초기 표시와 reload 복원을 검사했다. canvas 존재만 확인하지 않고 실제 scroller 교차 영역과 hit-test를 요구한다. 웹 native 인쇄 메뉴 상태 동기화 no-op과 모바일 scene 메뉴 2열 배치, 최종 320px 4개 검증은 [웹 감사](audit-web-2026-10-07.md)에 기록했다.
 - 공통 runtime 변경은 **v0.75.0** 대상이다. v0.74.0은 macOS 패키지 검사 성공, Windows 153개 통과·viewport 가정 관련 2개 검사 실패로 공개되지 않았다. root가 해당 검사를 실제 좌표/펼치기 동작과 1024px 창 기준으로 보완했다. root의 v0.75.0 최종 로컬 desktop 영향 E2E 16개는 모두 통과했다. 배포 패키지 검사, 커밋·릴리스 공개와 웹 배포 결과는 root 후속 기록으로 남는다.
+
+
+## v0.75 macOS 패키지 검사 후속: 연결 이벤트와 지연 위치 복원
+
+v0.75.0 패키지 검사에서 Windows 31개는 모두 통과했으나 macOS는 30개 통과, PDF pair의 첫 휠 뒤 필기 스크롤이 0인 시나리오 1개가 실패했다. 제공된 trace에는 테스트 호출 기록만 있고 실제 Electron DOM/화면/휠 대상은 없어 당시 PDF 자체가 이동했는지 확인할 수 없었다. 동일한 1280×800 화면 및 1024×700, CPU 4배·10배 지연 조건에 실제 wheel/scroll/anchor 기록을 추가한 로컬 진단에서는 모두 정상 전달됐다. 따라서 아래 두 경합을 원래 macOS 실패의 단일 확정 원인으로 단정하지 않는다.
+
+- **중복 연결 설정이 대기 중인 사용자 이동을 삭제**: `setPageNoteSyncEnabled(pairId, true)`가 이미 켜진 설정을 재확인할 때에도 다음 프레임의 pending anchor를 지웠다. PDF/필기 양쪽의 연결 metadata 갱신과 첫 휠이 겹치면 전달을 잃을 수 있다. AI/browser 담당이 default true→true와 explicit true→true 두 단위 사례를 기존 코드에서 실패로 재현했다. 비활성화할 때만 pending anchor를 지우며 끄기→켜기 전후의 오래된 이동 차단은 유지한다.
+- **저장 위치 조회 응답이 더 최근의 사용자 이동을 덮음**: 실제 `pdf:getViewState` 응답을 보류한 뒤 PDF에 wheel 500px를 입력했다. 응답을 풀자 `scrollTop`이 **500→12**로 되돌아가는 것을 기존 빌드에서 재현했다. 최신 휠·키·포인터 입력, 명시적 페이지/주석 이동, 확대/축소, peer anchor가 초기 복원을 취소한다. 시작된 복원 이후 숨김/폐기에도 늦은 응답과 rAF를 적용하지 않는다.
+- 초기 저장 배율과 위치는 유효성 검사를 통과한 프레임에서 적용하며 배율 변경에 따른 실제 pageWidth 레이아웃이 끝난 뒤 최종 페이지 이동을 한다. 사용자 입력은 이 초기 복원 소유의 pending 이동만 회수한다. 일반 resize anchor를 재현 근거 없이 일괄 삭제하지 않았다.
+- 수명 상태와 사용자 취소 상태를 분리해 React StrictMode의 effect replay가 사용자 취소로 취급되지 않도록 했다. 최초부터 숨겨져 복원이 시작되지 않은 경우를 영구 취소하지 않는다. `PdfViewer`의 numPages/containerWidth 초기값은 0이고 문서 로드 뒤 복원이 시작되는 구조도 독립 검토했다.
+- `interactionStability.spec.ts`에 정상 저장 **30쪽·200%** 복원과 닫기/재열기, 저장 응답 전 최신 휠, 명시적 페이지 이동의 영구 회귀 3개를 추가했다. 기존 첫 휠 검사 조건은 유지하고 실패 시 실제 Electron trace·스크린샷, wheel target/좌표, PDF·필기의 scrollTop/clientHeight/scrollHeight, 페이지 anchor와 다음 프레임 기록을 첨부한다. 진단용 기본/CPU 반복 spec은 제거했다.
+
+검증: 최종 production build와 renderer TypeScript 검사 통과. 원래 PDF pair 시나리오와 새 복원 3개 **4개 모두 통과**(7.2초, exit 0), 연결 버스·PageSyncScroll·보이는 분할 패널 **3파일/13개 통과**. 동일 최종 빌드의 `interactionFixes.spec.ts` 중 PDF zoom 검사만 1회 실행해 **1개 통과**(2.6초, exit 0): 연속 확대 중 canvas 픽셀 유지, 125–150% 확대 범위, 포인터 기준 위치 drift <3px를 확인했다. 앞선 통제 재현 로그는 `/private/tmp/bandal-pdf-late-restore-before.log`, 최종 회귀 로그는 `/private/tmp/bandal-pdf-restore-layout-final.log`다. 정상 전달 진단과 원래 CI 실패의 불확실성은 구분한다. 최종 목표 버전은 **v0.76.0**이며 새 패키지 검사·릴리스 공개는 root가 수행한다.

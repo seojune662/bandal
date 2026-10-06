@@ -63,7 +63,9 @@ export function subscribePageSyncAnchor(
 }
 
 export function setPageNoteSyncEnabled(pairId: string, enabled: boolean): void {
-  pendingAnchors.delete(pairId)
+  // Both panes refresh persisted metadata asynchronously. Reapplying `true`
+  // must not erase a user's scroll queued for the next animation frame.
+  if (!enabled) pendingAnchors.delete(pairId)
   settings.set(pairId, enabled)
   window.dispatchEvent(
     new CustomEvent(SETTING_EVENT, { detail: { pairId, enabled } })

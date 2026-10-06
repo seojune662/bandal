@@ -91,10 +91,50 @@ describe('PDF page-note scroll event coordinator', () => {
   test('disabling sync drops queued movement', () => {
     const received = vi.fn()
     const stop = subscribePageSyncAnchor('disable', received)
+    setPageNoteSyncEnabled('disable', true)
     publishPageSyncAnchor({ pairId: 'disable', connectionId: 'link', originPanelId: 'left', page: 3, pageOffset: .2 })
     setPageNoteSyncEnabled('disable', false)
     ;(queuedFrame as FrameRequestCallback)(16)
     expect(received).not.toHaveBeenCalled()
     stop()
+  })
+
+  test.each([false, true])('an enabled metadata refresh preserves pending movement (explicit setting: %s)', (explicitSetting) => {
+    const pairId = `enabled-refresh-${explicitSetting}`
+    const received = vi.fn()
+    const stop = subscribePageSyncAnchor(pairId, received)
+    try {
+      if (explicitSetting) setPageNoteSyncEnabled(pairId, true)
+      publishPageSyncAnchor({ pairId, connectionId: 'link', originPanelId: 'pdf-panel', page: 2, pageOffset: .35 })
+      setPageNoteSyncEnabled(pairId, true)
+      ;(queuedFrame as FrameRequestCallback)(16)
+
+      expect(received).toHaveBeenCalledOnce()
+      expect(received).toHaveBeenCalledWith(expect.objectContaining({ page: 2, pageOffset: .35 }))
+    } finally {
+      stop()
+    }
+  })
+
+  test('reenabling sync discards movement from before and during the disabled interval', () => {
+    const pairId = 'disable-enable'
+    const received = vi.fn()
+    const stop = subscribePageSyncAnchor(pairId, received)
+    try {
+      setPageNoteSyncEnabled(pairId, true)
+      publishPageSyncAnchor({ pairId, connectionId: 'link', originPanelId: 'pdf-panel', page: 2, pageOffset: .2 })
+      setPageNoteSyncEnabled(pairId, false)
+      publishPageSyncAnchor({ pairId, connectionId: 'link', originPanelId: 'pdf-panel', page: 3, pageOffset: .3 })
+      setPageNoteSyncEnabled(pairId, true)
+      ;(queuedFrame as FrameRequestCallback)(16)
+      expect(received).not.toHaveBeenCalled()
+
+      publishPageSyncAnchor({ pairId, connectionId: 'link', originPanelId: 'pdf-panel', page: 4, pageOffset: .4 })
+      ;(queuedFrame as FrameRequestCallback)(32)
+      expect(received).toHaveBeenCalledOnce()
+      expect(received).toHaveBeenCalledWith(expect.objectContaining({ page: 4, pageOffset: .4 }))
+    } finally {
+      stop()
+    }
   })
 })
