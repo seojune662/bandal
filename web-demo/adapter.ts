@@ -135,6 +135,9 @@ const handlers: Handlers = {
   'appleCalendar:state': () => ({ supported: false, connected: false, authorization: 'not-determined', calendars: [], selectedCalendarIds: [], destinationCalendarId: null }),
   'appleCalendar:events': () => [],
   'window:getState': () => ({ fullscreen: false }),
+  // Viewer focus synchronizes a native menu item even without a print action.
+  // The browser demo has no native menu, so this background update is a no-op.
+  'window:setPrintEnabled': () => ok,
   'browser:setHostOccluded': () => ok,
   'auth:getState': () => ({ phase: 'unconfigured', profile: null, email: null, avatarUrl: null, online: true, errorCode: null }),
   'plugins:list': () => ({ plugins: [] }),

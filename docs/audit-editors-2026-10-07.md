@@ -78,6 +78,15 @@ pnpm exec tsc --noEmit -p tsconfig.node.json
 
 - 페이지 필기를 생성한 뒤 필기가 활성 상태일 때, PDF 페이지 입력으로 키보드 포커스만 이동해 30쪽으로 이동하면 필기 스크롤이 0에 머무르는 문제를 기존 빌드에서 재현했다. 같은 입력을 마우스로 클릭하고 실행하면 통과해 비활성 분할 패널의 처리 차이임을 확인했다.
 - `PdfViewer`는 화면에 보이는 다른 분할 그룹도 `interactive=false`로 간주해 스크롤·읽기 위치·크기 변경을 무시했다. `usePanelVisible`을 분리해 현재 과목의 보이는 PDF는 포커스와 무관하게 스크롤을 처리하고, 숨겨진 탭/과목의 레이아웃 스크롤은 계속 차단한다. 펜·단축키의 활성 패널 구분은 유지한다.
-- `visibleSplitPanel`과 `pageSyncScroll` 2파일/6검사, renderer 타입 검사 통과. `interactionStability` 마지막 시나리오에 PDF hover→wheel만 하는 단계도 추가했다. 실제 수정 빌드 E2E 결과는 root 통합 실행에서 확인한다.
+- `visibleSplitPanel`과 `pageSyncScroll` 2파일/6검사, renderer 타입 검사 통과. `interactionStability` 마지막 시나리오에 PDF hover→wheel만 하는 단계도 추가했다. root가 최종 v0.74.0 빌드에서 실패 항목과 직접 영향 기능 29개를 재검사해 모두 통과했고 해당 PDF 분할 시나리오도 포함됐다.
 - 명령: `pnpm exec vitest run tests/renderer/workspace/visibleSplitPanel.test.tsx tests/renderer/links/pageSyncScroll.test.ts`, `pnpm exec tsc --noEmit -p tsconfig.web.json`.
 - 웹 체험 내보내기를 위한 열린 노트의 전체 Markdown snapshot accessor와 quota/다른 과목 회귀는 `audit-web-2026-10-07.md`에 기록했다.
+
+
+## 마지막 시각 점검 후속: retained 패널의 오래된 overlay 크기
+
+- 웹의 영어 320px 화면에서 PDF canvas와 텍스트가 준비된 뒤에도 본문이 보이지 않았다. 실제 그룹 콘텐츠 높이는 523.5px인데 Dockview overlay와 슬롯은 0px였고 live content가 그 0 크기를 유지해 canvas를 잘랐다. iframe을 화면 안으로 스크롤하고 기다려도 재현돼 로딩 전 캡처와 구분했다.
+- `panelContentHost`는 overlay 슬롯의 간접 크기 대신 같은 workspace 안의 실제 그룹 콘텐츠 영역을 측정한다. 그룹 영역 ResizeObserver와 `onDidGroupChange`를 통해 reflow·이동을 관찰하고, 숨김/0 크기 구간의 마지막 유효한 크기 및 slot 이동 중 편집기 DOM을 보존한다. observer는 그룹 교체와 폐기 때 정리한다.
+- DOM 회귀가 0/stale overlay, 실제 그룹만의 resize, hidden→visible, transfer slot 공백, 같은 API의 group 변경, 미저장 입력 보존과 해제를 검증한다. `panelContentHost`·`rebindingApi`·`visibleSplitPanel` 7개와 `browserAnchorVisibility` 1개 통과, renderer 타입 검사 통과.
+- 실제 Chrome/WebKit × 한/영 × 320/1440px 8개에서 초기 표시와 reload 복원을 검사했다. canvas 존재만 확인하지 않고 실제 scroller 교차 영역과 hit-test를 요구한다. 웹 native 인쇄 메뉴 상태 동기화 no-op과 모바일 scene 메뉴 2열 배치, 최종 320px 4개 검증은 [웹 감사](audit-web-2026-10-07.md)에 기록했다.
+- 공통 runtime 변경은 **v0.75.0** 대상이다. v0.74.0은 macOS 패키지 검사 성공, Windows 153개 통과·viewport 가정 관련 2개 검사 실패로 공개되지 않았다. root가 해당 검사를 실제 좌표/펼치기 동작과 1024px 창 기준으로 보완했다. root의 v0.75.0 최종 로컬 desktop 영향 E2E 16개는 모두 통과했다. 배포 패키지 검사, 커밋·릴리스 공개와 웹 배포 결과는 root 후속 기록으로 남는다.

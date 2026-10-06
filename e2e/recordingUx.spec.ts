@@ -10,6 +10,7 @@ test('saved WAV opens its own tab; folding, scrolling and playback are independe
   let closed = false
   try {
     const { page } = bandal
+    await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1024, 768))
     await createCourse(page, '녹음 UX 검증')
     const recordings = await page.evaluate(async () => {
       const course = (await window.bandal.invoke('courses:list', {}))[0]!
@@ -76,6 +77,9 @@ test('saved WAV opens its own tab; folding, scrolling and playback are independe
       panel.getByRole('heading', { name: first.title, exact: true })
     ).toBeVisible()
     await expect(panel.locator('.recording__segment')).toHaveCount(200)
+    // Narrow panels intentionally start with the settings sidebar folded.
+    const expandSettings = panel.getByRole('button', { name: '설정·자료 펼치기', exact: true })
+    if (await expandSettings.isVisible()) await expandSettings.click()
     await expect(panel.locator('.recording__sidebar')).toBeVisible()
     await panel.locator('.recording__setup > summary').click()
     await expect(

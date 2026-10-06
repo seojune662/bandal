@@ -18,3 +18,4 @@
 .demo-reset h2 { font-size: 18px; }.demo-reset p { margin-block: 12px 20px; line-height: 1.7; color: var(--text-secondary); }
 .demo-reset button { padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: 6px; margin-right: 8px; }
 @media(max-width:700px) { .demo-toolbar { flex-wrap: wrap; padding: 6px; gap: 2px; } .demo-scenes { width: 100%; justify-content: space-between; }.demo-scenes button { padding: 6px; font-size: 11px; }.demo-utilities { margin-left: auto; }.demo-utilities button { padding: 2px 6px; font-size: 10px; }.demo-status { font-size: 9px; padding: 6px; }.demo-app .board-panel { min-width: 0; }.demo-app .app-rail { max-width: 190px; } }
+@media(max-width:480px) { .demo-scenes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -11,6 +11,17 @@ async function fixture() {
   return { adapter, courseId, NOTE }
 }
 
+test('native print menu state updates do not display an unsupported-action notice', async () => {
+  const { adapter } = await fixture()
+  const unavailable = vi.fn()
+  window.addEventListener('bandal-demo-unavailable', unavailable)
+  try {
+    await expect(adapter.invoke('window:setPrintEnabled', { enabled: true })).resolves.toEqual({ ok: true })
+    await expect(adapter.invoke('window:setPrintEnabled', { enabled: false })).resolves.toEqual({ ok: true })
+    expect(unavailable).not.toHaveBeenCalled()
+  } finally { window.removeEventListener('bandal-demo-unavailable', unavailable) }
+})
+
 test('deleting a conversation cancels its scheduled answer instead of recreating it', async () => {
   const { adapter, courseId } = await fixture()
   await adapter.invoke('chat:send', { courseId, sessionId: 'deleted', content: 'Question' })

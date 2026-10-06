@@ -73,13 +73,18 @@ test.describe('continuous study interactions', () => {
 
   test('copies the clicked slide, including ink and images, and offers the original', async ({}, info) => {
     const { page, app } = bandal
+    // Exercise the small desktop layout used by hosted Windows runners too.
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1024, 768))
     await page.locator('[data-material-path="slides.pptx"]').click()
     const viewer = page.locator('.presentation-viewer:visible')
     await viewer.getByRole('spinbutton', { name: '슬라이드 번호' }).fill('5')
     const slide = viewer.locator('section[data-slide-index="4"]')
     await expect(slide.locator('canvas')).toBeVisible()
     await viewer.getByRole('button', { name: '텍스트', exact: true }).click()
-    await slide.locator('.pdf-drawing-layer').click({ position: { x: 70, y: 170 } })
+    const layer = slide.locator('.pdf-drawing-layer')
+    const bounds = (await layer.boundingBox())!
+    // A fitted split slide may be shorter than the old fixed y=170 click.
+    await layer.click({ position: { x: bounds.width * .25, y: bounds.height * .45 } })
     await viewer.locator('[contenteditable="true"]').fill('복사할 필기')
     await page.keyboard.press('Enter')
     await page.keyboard.insertText('두 번째 줄')

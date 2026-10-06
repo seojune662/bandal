@@ -15,6 +15,8 @@ interface ContentEntry {
   panel: ReturnType<typeof createRebindingApi<DockviewPanelApi>>
   container: ReturnType<typeof createRebindingApi<DockviewApi>>
   slot: HTMLElement | null
+  groupContent: HTMLElement | null
+  resize: ResizeObserver
   bounds: Bounds
   transferring: boolean
   dispose: (() => void)[]
@@ -33,10 +35,22 @@ function measure(): void {
   layoutFrame = 0
   let changed = false
   for (const entry of entries.values()) {
-    if (!entry.slot?.isConnected) continue
+    if (!entry.slot?.isConnected || entry.transferring) continue
     const root = entry.slot.closest('.workspace-host')
     if (!root) continue
-    const outer = root.getBoundingClientRect(), rect = entry.slot.getBoundingClientRect()
+    // Dockview's "always" overlay copies group bounds asynchronously. It can
+    // retain a zero or pre-move rectangle even after the group has laid out.
+    // Our live content is outside that overlay: measure the actual group area.
+    const group = entry.props.api.group?.element
+    const content = group && root.contains(group)
+      ? group.querySelector<HTMLElement>(':scope > .dv-content-container') : null
+    if (entry.groupContent !== content) {
+      entry.resize.disconnect()
+      entry.groupContent = content
+      if (content) entry.resize.observe(content)
+    }
+    if (!entry.props.api.isVisible) continue
+    const outer = root.getBoundingClientRect(), rect = (content ?? entry.slot).getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) continue
     const next = { x: rect.x - outer.x, y: rect.y - outer.y, width: rect.width, height: rect.height }
     if (Object.keys(next).some(key => next[key as keyof Bounds] !== entry.bounds[key as keyof Bounds])) {
@@ -52,6 +66,7 @@ export function schedulePanelContentLayout(): void {
 function removeEntry(entry: ContentEntry): void {
   if (entries.get(entry.instanceId) !== entry) return
   entries.delete(entry.instanceId)
+  entry.resize.disconnect()
   entry.dispose.forEach(dispose => dispose())
   entry.panel.dispose()
   entry.container.dispose()
@@ -64,7 +79,8 @@ function registerSlot(props: PanelProps, courseId: string | null, slot: HTMLElem
     const panel = createRebindingApi(props.api), container = createRebindingApi(props.containerApi)
     entry = { instanceId: crypto.randomUUID(), courseId, panelId: props.api.id,
       props: { ...props, api: panel.api, containerApi: container.api }, panel, container,
-      slot, bounds: { x: 0, y: 0, width: 0, height: 0 }, transferring: false, dispose: [] }
+      slot, groupContent: null, resize: new ResizeObserver(schedulePanelContentLayout),
+      bounds: { x: 0, y: 0, width: 0, height: 0 }, transferring: false, dispose: [] }
     entries.set(entry.instanceId, entry)
     byApi.set(props.api, entry)
     const current = entry
@@ -72,6 +88,7 @@ function registerSlot(props: PanelProps, courseId: string | null, slot: HTMLElem
       panel.api.onDidActiveChange(() => publish()).dispose,
       panel.api.onDidVisibilityChange(() => { schedulePanelContentLayout(); publish() }).dispose,
       panel.api.onDidDimensionsChange(() => schedulePanelContentLayout()).dispose,
+      panel.api.onDidGroupChange(() => schedulePanelContentLayout()).dispose,
       panel.api.onDidParametersChange(parameters => {
         const params = { ...current.props.params, ...parameters }
         for (const key of Object.keys(parameters)) if (parameters[key] === undefined) delete params[key]
