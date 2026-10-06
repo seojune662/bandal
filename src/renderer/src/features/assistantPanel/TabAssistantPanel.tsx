@@ -4,6 +4,7 @@ import { isTabDescriptor, tabTitle, descriptorFor } from '../workspace/tabIdenti
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { usePanelActive } from '../workspace/usePanelActive'
+import { useWorkspacePlacement } from '../workspace/placementContext'
 import { PanelAssistantContext, normalizeAssistantPanel, type AssistantPanelState } from './panelContext'
 import { updateComposerDraft } from '../chat/composerDraftStore'
 import { Icon } from '../../app/icons'
@@ -23,11 +24,13 @@ export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelPr
       return () => subscription?.dispose()
     }, [props.api])
     const selectedCourseId = useCoursesStore(s => s.selectedCourseId)
+    const placement = useWorkspacePlacement()
     const active = usePanelActive(props.api)
     const [state, setState] = useState(() => normalizeAssistantPanel(props.params.assistant))
-    const [ownerCourseId] = useState(() => state.courseId ?? selectedCourseId)
-    const [workspaceCourseId] = useState(() => useWorkspaceStore.getState().activeCourseId)
-    const courseId = descriptor && 'courseId' in descriptor.payload ? descriptor.payload.courseId : ownerCourseId
+    const [ownerCourseId] = useState(() => state.courseId ?? (placement ? placement.courseId : selectedCourseId))
+    const workspaceCourseId = placement ? placement.courseId : useWorkspaceStore.getState().activeCourseId
+    const resourceCourseId = descriptor && 'courseId' in descriptor.payload ? descriptor.payload.courseId : null
+    const courseId = resourceCourseId ?? state.courseId ?? ownerCourseId ?? placement?.courseId ?? null
     const [initialized, setInitialized] = useState(state.open)
     const [focusRequested, setFocusRequested] = useState(false)
     const resizeCleanup = useRef<(() => void) | null>(null)
@@ -41,6 +44,11 @@ export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelPr
       props.api.updateParameters({ assistant: next })
       useWorkspaceStore.getState().notifyLayoutChanged()
     }, [props.api, courseId])
+    useLayoutEffect(() => {
+      // An assistant opened before the first course only acquires an owner when
+      // it can actually initialize a conversation. Keep that owner after moves.
+      if (initialized && courseId && !state.courseId && ownerCourseId === null && resourceCourseId === null) update({ courseId })
+    }, [initialized, courseId, state.courseId, ownerCourseId, resourceCourseId, update])
     useEffect(() => () => resizeCleanup.current?.(), [])
     useEffect(() => {
       if (!root.current) return

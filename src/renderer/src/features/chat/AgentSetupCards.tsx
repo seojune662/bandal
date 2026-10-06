@@ -13,7 +13,10 @@ import {
 } from '../../../../shared/types/agent-events'
 import { BandalMark } from '../../components/BandalMark'
 import { Icon } from '../../app/icons'
-import { invoke, onPush } from '../../lib/ipc'
+import {
+  acquireAgentConnection, isAgentConnectionBusy, isAgentConnectionReady, prepareAgentConnection,
+  refreshAgentConnection, seedAgentAvailability, startAgentInstall, startAgentLogin, useAgentConnectionStore
+} from './agentConnectionStore'
 
 const PROVIDER_LABELS: Record<AgentProvider, string> = {
   'claude-code': 'Claude Code',
@@ -116,14 +119,6 @@ export function GateCard({
   )
 }
 
-type SetupStage =
-  | 'idle'
-  | 'installing'
-  | 'checking-install'
-  | 'opening-login'
-  | 'waiting-login'
-  | 'error'
-
 function commandFromLoginFailure(message: string): string {
   const match = /직접 실행해 주세요:\s*(.+)$/u.exec(message)
   return match?.[1]?.trim() || message
@@ -140,172 +135,34 @@ export function AgentSetupCard({
   onProviderChange: (provider: AgentProvider) => void
   onRefresh: () => void
 }): JSX.Element {
-  const [stage, setStage] = useState<SetupStage>('idle')
-  const [command, setCommand] = useState('')
-  const [logs, setLogs] = useState<string[]>([])
-  const [message, setMessage] = useState('')
-  const [loginFailure, setLoginFailure] = useState('')
+  const connection = useAgentConnectionStore(state => state.connections[provider])
+  const { stage, command, logs, message, loginFailure } = connection
   const [copied, setCopied] = useState(false)
-  const installStartedRef = useRef(false)
-  const installFinishedRef = useRef(false)
-  const continueAfterInstallRef = useRef(false)
-  const loginRequestedRef = useRef(false)
-
-  const needsUpdate = availability.code === 'version-too-old'
-  const needsInstall = !availability.installed || needsUpdate
-  const busy =
-    stage === 'installing' ||
-    stage === 'checking-install' ||
-    stage === 'opening-login'
+  const refreshRef = useRef(onRefresh)
+  refreshRef.current = onRefresh
+  const confirmedReadyRef = useRef(false)
+  const currentAvailability = connection.availability ?? availability
+  const needsUpdate = currentAvailability.code === 'version-too-old'
+  const needsInstall = !currentAvailability.installed || needsUpdate
+  const busy = isAgentConnectionBusy(stage)
 
   useEffect(() => {
-    setStage('idle')
-    setCommand('')
-    setLogs([])
-    setMessage('')
-    setLoginFailure('')
-    setCopied(false)
-    installStartedRef.current = false
-    installFinishedRef.current = false
-    continueAfterInstallRef.current = false
-    loginRequestedRef.current = false
+    seedAgentAvailability(provider, availability)
+  }, [provider, availability])
+  useEffect(() => {
+    confirmedReadyRef.current = false
+    return acquireAgentConnection(provider)
   }, [provider])
-
   useEffect(() => {
-    if (!needsInstall) return
-    let active = true
-    void invoke('agent:installCommand', { provider }).then(
-      (result) => {
-        if (active) setCommand(result.command)
-      },
-      () => undefined
-    )
-    return () => {
-      active = false
-    }
+    if (needsInstall) void prepareAgentConnection(provider).catch(() => undefined)
   }, [needsInstall, provider])
-
   useEffect(() => {
-    const refresh = (): void => onRefresh()
-    const refreshWhenVisible = (): void => {
-      if (document.visibilityState === 'visible') refresh()
-    }
-    const interval = window.setInterval(refresh, 3_000)
-    window.addEventListener('focus', refresh)
-    document.addEventListener('visibilitychange', refreshWhenVisible)
-    return () => {
-      window.clearInterval(interval)
-      window.removeEventListener('focus', refresh)
-      document.removeEventListener('visibilitychange', refreshWhenVisible)
-    }
-  }, [onRefresh])
-
-  const finishInstallation = useCallback(
-    (ok: boolean) => {
-      if (installFinishedRef.current) return
-      installFinishedRef.current = true
-      installStartedRef.current = false
-      continueAfterInstallRef.current = ok
-      setStage(ok ? 'checking-install' : 'error')
-      onRefresh()
-    },
-    [onRefresh]
-  )
-
-  useEffect(
-    () =>
-      onPush('agent:install-progress', (progress) => {
-        if (progress.provider !== provider) return
-        if (installStartedRef.current && progress.line !== '') {
-          setLogs((current) => [...current.slice(-119), progress.line])
-        }
-        if (!progress.done) return
-        // Every completed install invalidates this snapshot, even when another
-        // surface initiated it. Only this surface's own install may auto-login.
-        if (installStartedRef.current) {
-          if (!progress.ok) {
-            setMessage('설치를 완료하지 못했어요. 진행 로그를 확인해 주세요.')
-          }
-          finishInstallation(progress.ok)
-        } else {
-          onRefresh()
-        }
-      }),
-    [finishInstallation, onRefresh, provider]
-  )
-
-  const openLogin = useCallback(() => {
-    if (loginRequestedRef.current) return
-    loginRequestedRef.current = true
-    setStage('opening-login')
-    setMessage('')
-    setLoginFailure('')
-    setCopied(false)
-    void invoke('agent:login', { provider }).then(
-      (result) => {
-        loginRequestedRef.current = false
-        if (result.ok) {
-          setStage('waiting-login')
-          setMessage('터미널에서 로그인을 마치면 자동으로 이어져요.')
-          onRefresh()
-          return
-        }
-        setStage('error')
-        setLoginFailure(result.message)
-      },
-      () => {
-        loginRequestedRef.current = false
-        setStage('error')
-        setLoginFailure('로그인 창을 열지 못했어요. 잠시 후 다시 시도해 주세요.')
-      }
-    )
-  }, [onRefresh, provider])
-
-  useEffect(() => {
-    if (!continueAfterInstallRef.current || needsInstall) return
-    continueAfterInstallRef.current = false
-    if (availability.loggedIn) {
-      setStage('idle')
-      return
-    }
-    openLogin()
-  }, [availability.loggedIn, needsInstall, openLogin])
-
-  const install = useCallback(() => {
-    if (busy) return
-    installStartedRef.current = true
-    installFinishedRef.current = false
-    continueAfterInstallRef.current = false
-    setStage('installing')
-    setLogs([])
-    setMessage('')
-    setLoginFailure('')
-
-    const commandReady =
-      command !== ''
-        ? Promise.resolve()
-        : invoke('agent:installCommand', { provider }).then((result) => {
-            setCommand(result.command)
-          })
-
-    void commandReady.then(
-      () =>
-        invoke('agent:install', { provider }).then(
-          (result) => {
-            setMessage(result.message)
-            finishInstallation(result.ok)
-          },
-          () => {
-            setMessage('설치 요청을 완료하지 못했어요.')
-            finishInstallation(false)
-          }
-        ),
-      () => {
-        setMessage('설치 명령어를 불러오지 못했어요.')
-        finishInstallation(false)
-      }
-    )
-  }, [busy, command, finishInstallation, provider])
+    if (!isAgentConnectionReady(useAgentConnectionStore.getState().connections[provider].availability) || confirmedReadyRef.current) return
+    confirmedReadyRef.current = true
+    refreshRef.current()
+  }, [connection.availability, provider])
+  const install = useCallback(() => { void startAgentInstall(provider) }, [provider])
+  const openLogin = useCallback(() => { void startAgentLogin(provider) }, [provider])
 
   const copyLoginCommand = useCallback(() => {
     void navigator.clipboard
@@ -335,7 +192,7 @@ export function AgentSetupCard({
         : '로그인 창 열기'
 
   return (
-    <GateCard eyebrow="SETUP" title={title}>
+    <GateCard eyebrow="SETUP" title={title} onRefresh={() => { void refreshAgentConnection(provider, true) }}>
       <ProviderSelector
         provider={provider}
         onChange={onProviderChange}
@@ -344,7 +201,7 @@ export function AgentSetupCard({
 
       {needsUpdate ? (
         <p className="chat-gate__desc">
-          현재 버전 {availability.version ?? '알 수 없음'}을 최신 버전으로
+          현재 버전 {currentAvailability.version ?? '알 수 없음'}을 최신 버전으로
           업데이트하면 자동으로 연결을 이어갈게요.
         </p>
       ) : needsInstall ? (
@@ -410,8 +267,10 @@ export function AgentSetupCard({
         </div>
       )}
 
-      {availability.reason !== undefined && availability.reason !== '' && (
-        <p className="chat-gate__notice">{availability.reason}</p>
+      {connection.error !== null && <p className="chat-gate__notice" role="alert">{connection.error}</p>}
+      {connection.availabilityError !== null && <p className="chat-gate__notice" role="alert">{connection.availabilityError}</p>}
+      {currentAvailability.reason !== undefined && currentAvailability.reason !== '' && (
+        <p className="chat-gate__notice">{currentAvailability.reason}</p>
       )}
     </GateCard>
   )

@@ -3,6 +3,7 @@ import type { Course } from '../../../../shared/types/course'
 import { Icon } from '../../app/icons'
 import { FavoritesSection } from './FavoritesSection'
 import { CourseMark } from './CourseMark'
+import { useWorkspaceCourseHover } from './useWorkspaceCourseHover'
 
 interface CourseListItemProps {
   course: Course
@@ -33,6 +34,7 @@ export function CourseListItem({
   onToggle,
   onSelect
 }: CourseListItemProps): JSX.Element {
+  const hover = useWorkspaceCourseHover().rowProps(course.id, !pending)
   return (
     <li>
       <div
@@ -42,6 +44,10 @@ export function CourseListItem({
         data-drop-before={dropBefore || undefined}
         data-dragging={dragging || undefined}
         {...dragProps}
+        data-tab-hover={(hover as Record<string, unknown>)['data-tab-hover'] || undefined}
+        onDragOver={event => { hover.onDragOver?.(event); if (!event.defaultPrevented) dragProps.onDragOver?.(event) }}
+        onDragLeave={event => { hover.onDragLeave?.(event); dragProps.onDragLeave?.(event) }}
+        onDrop={event => { hover.onDrop?.(event); if (!event.defaultPrevented) dragProps.onDrop?.(event) }}
         onContextMenu={onContextMenu}
       >
         <button

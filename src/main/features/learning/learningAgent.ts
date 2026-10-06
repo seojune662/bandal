@@ -1,10 +1,11 @@
 import type { LearningAiSettings } from '../../../shared/types/learning'
 import type { SessionManager } from '../agent/SessionManager'
 import type { AgentAvailability, AgentProvider } from '../../../shared/types/agent-events'
+import { isAgentReady } from '../../../shared/agentProviderSelection'
 import { LearningExecutionError, learningFailure } from './learningFailures'
 
 function assertConnected(availability: AgentAvailability): void {
-  if (!availability.installed || !availability.loggedIn || availability.code) throw new LearningExecutionError({
+  if (!isAgentReady(availability)) throw new LearningExecutionError({
     message: availability.reason ?? '선택한 AI 연결을 사용할 수 없어요.',
     code: availability.code ?? (!availability.installed ? 'not-installed' : 'not-logged-in'), category: 'connection',
     actionable: '설정에서 선택한 AI 연결을 확인하고 로그인한 뒤 다시 시도하세요.'

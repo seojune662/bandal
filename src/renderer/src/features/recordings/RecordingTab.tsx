@@ -126,7 +126,10 @@ function RecordingWorkspace({
   )
   const sidebarId = useId()
   const root = useRef<HTMLElement>(null)
-  const tree = useMaterialsStore((state) => state.tree)
+  const activeMaterialsCourse = useMaterialsStore((state) => state.activeCourseId)
+  const activeTree = useMaterialsStore((state) => state.tree)
+  const [resourceTree, setResourceTree] = useState<MaterialNode[]>([])
+  const tree = activeMaterialsCourse === courseId ? activeTree : resourceTree
   const [models, setModels] = useState<SpeechModelState[]>([])
   const [modelId, setModelId] = useState<SpeechModelId>(
     preferences.recordingModel
@@ -170,6 +173,14 @@ function RecordingWorkspace({
   const isCapturing = !!session && capture.session?.id === session.id
   const model = models.find((entry) => entry.id === modelId)
   const materials = useMemo(() => flatten(tree), [tree])
+  useEffect(() => {
+    if (activeMaterialsCourse === courseId) return
+    let alive = true
+    const load = (): void => { void invoke('materials:tree', { courseId }).then(next => { if (alive) setResourceTree(next) }).catch(() => {}) }
+    load()
+    const unsubscribe = onPush('materials:changed', event => { if (event.courseId === courseId) load() })
+    return () => { alive = false; unsubscribe() }
+  }, [courseId, activeMaterialsCourse])
 
   useEffect(() => {
     let wasNarrow: boolean | null = null

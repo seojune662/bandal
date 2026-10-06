@@ -83,3 +83,28 @@ test('drag image contains the title and icon without interactive tab controls', 
   expect(preview?.querySelector('button')).toBeNull()
   expect(preview?.querySelector('svg')).not.toBeNull()
 })
+
+test('a trusted source survives capture-phase drop until the target has consumed it', async () => {
+  fixture()
+  const source = { courseId: 'source', panelId: 'panel', nonce: 'trusted' }
+  tabDragSession.beginTab(source)
+  let consumed: unknown
+  const drop = () => { consumed = tabDragSession.getSource() }
+  window.addEventListener('drop', drop)
+  window.dispatchEvent(new Event('drop', { bubbles: true }))
+  window.removeEventListener('drop', drop)
+  expect(consumed).toBe(source)
+  await Promise.resolve()
+  expect(tabDragSession.getSource()).toBe(source)
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(tabDragSession.getSource()).toBeNull()
+})
+
+test('blurring the source tab while switching course does not cancel the held drag', () => {
+  const root = fixture()
+  tabDragSession.beginTab({ courseId: 'source', panelId: 'panel', nonce: 'trusted' })
+  root.querySelector('.dv-tab')!.dispatchEvent(new Event('blur'))
+  expect(tabDragSession.getSource()?.courseId).toBe('source')
+  window.dispatchEvent(new Event('blur'))
+  expect(tabDragSession.getSource()).toBeNull()
+})

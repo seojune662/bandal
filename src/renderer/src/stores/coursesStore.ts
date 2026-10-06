@@ -12,7 +12,7 @@ import { folderProblemMessage } from '../features/courses/folderMessages'
 import { invoke } from '../lib/ipc'
 import type { ImmerStore } from './immerStore'
 import { ensureSettingsLoaded, settingsSnapshot } from './settingsSnapshot'
-import { useWorkspaceStore } from './workspaceStore'
+import { closeResourceTabs, useWorkspaceStore } from './workspaceStore'
 
 interface CoursesState {
   courses: Course[]
@@ -461,6 +461,7 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
         // Saving a layout for a deleted course would throw in main; the
         // workspace swaps to the next course via the selection change below.
         useWorkspaceStore.getState().discardPendingSave(courseId)
+        closeResourceTabs(descriptor => 'courseId' in descriptor.payload && descriptor.payload.courseId === courseId)
         set((state) => {
           state.courses = state.courses.filter((course) => course.id !== courseId)
           state.pendingCourseId = null

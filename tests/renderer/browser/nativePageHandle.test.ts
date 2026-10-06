@@ -34,6 +34,18 @@ test('failed native creation rejects commands and reports a visible error once',
   expect(mocks.invoke).toHaveBeenCalledTimes(1)
   page.dispose()
 })
+test('course placement updates preserve the native page and use increasing revisions', async () => {
+  const page = attachNativePage(document.createElement('div'), 'tab', true, 'source', 'profile')
+  await page.course('target')
+  await page.course('third')
+  const updates = mocks.invoke.mock.calls.filter(call => call[0] === 'browser:setCourse').map(call => call[1])
+  expect(updates).toHaveLength(2)
+  expect(updates[0]).toMatchObject({ tabId: 'tab', courseId: 'target', expectedWebContentsId: 41 })
+  expect(updates[1].revision).toBeGreaterThan(updates[0].revision)
+  expect(mocks.invoke.mock.calls.filter(call => call[0] === 'browser:createPage')).toHaveLength(1)
+  expect(mocks.invoke.mock.calls.some(call => call[0] === 'browser:destroyPage' || call[0] === 'browser:pageAction')).toBe(false)
+  page.dispose()
+})
 
 test('only the latest bounds waiting on page creation reach main', async () => {
   let resolve!: (value: unknown) => void

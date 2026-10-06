@@ -26,6 +26,7 @@ import type { TabDescriptor, TabKind } from '../../../../shared/tabs'
 import type { IconName } from '../../app/icons'
 import { tabTitle } from './tabIdentity'
 import { withMaterialSequence } from '../links/MaterialSequenceWrapper'
+import { WorkspacePanelSlot } from './panelContentHost'
 
 type DockPanel = FunctionComponent<IDockviewPanelProps>
 
@@ -146,8 +147,12 @@ function visiblePanel(Component: DockPanel): DockPanel {
   }
 }
 
-export const dockviewComponents: Record<string, DockPanel> = Object.fromEntries(
+export const workspacePanelContents: Record<string, DockPanel> = Object.fromEntries(
   Object.entries(tabRegistry).map(([kind, entry]) => [kind,
     visiblePanel(withAssistantPanel(kind === 'plugin-panel' || kind === 'learning' ? entry.component : withMaterialSequence(entry.component)))
   ])
+)
+
+export const dockviewComponents: Record<string, DockPanel> = Object.fromEntries(
+  Object.keys(tabRegistry).map(kind => [kind, WorkspacePanelSlot])
 )

@@ -8,7 +8,7 @@ import { invoke, onPush } from '../../lib/ipc'
 import { showToast } from '../../app/toast'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useMaterialsStore } from '../../stores/materialsStore'
-import { useWorkspaceStore } from '../../stores/workspaceStore'
+import { closeResourceTabs, reconcileWorkspaceMaterialRename, useWorkspaceStore } from '../../stores/workspaceStore'
 import { CourseMark } from '../courses/CourseMark'
 import { LinkPickerDialog } from '../links/LinkPickerDialog'
 import { requestOpenPdfPageNote } from '../links/pdfPageNoteNavigation'
@@ -90,6 +90,7 @@ function reconcileTabsAfterRename(
   forceReopen: boolean
 ): void {
   const workspace = useWorkspaceStore.getState()
+  if (reconcileWorkspaceMaterialRename(courseId, node.relPath, newRelPath) > 0) return
   const registeredNotePanelId =
     node.kind === 'note'
       ? (openNotePanelId({ courseId, relPath: newRelPath }) ??
@@ -159,6 +160,8 @@ function reconcileTabsAfterRename(
 }
 
 function closeDeletedTabs(courseId: string, node: MaterialNode): void {
+  closeResourceTabs(descriptor => 'courseId' in descriptor.payload && descriptor.payload.courseId === courseId &&
+    'relPath' in descriptor.payload && pathIsTargetOrChild(descriptor.payload.relPath, node.relPath))
   const workspace = useWorkspaceStore.getState()
   for (const [panelId, descriptor] of Object.entries(workspace.openTabs)) {
     if (descriptor.kind !== 'pdf' && descriptor.kind !== 'note') continue

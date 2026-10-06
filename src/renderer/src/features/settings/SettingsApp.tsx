@@ -14,10 +14,10 @@ import { useUiStore } from "../../stores/uiStore";
 import { usePluginsStore } from "../../stores/pluginsStore";
 import {
   AGENT_PROVIDERS,
-  isAgentProvider,
   type AgentAvailability,
   type AgentProvider,
 } from "../../../../shared/types/agent-events";
+import { acquireAgentConnection, refreshAgentConnection, useAgentConnectionStore } from "../chat/agentConnectionStore";
 import type { Course } from "../../../../shared/types/course";
 import {
   isSameAppearance,
@@ -92,26 +92,6 @@ interface SettingsAppProps {
 
 type ProviderState<T> = Record<AgentProvider, T>;
 
-function connectedProvider(
-  availability: AgentAvailability | null,
-): boolean {
-  return availability?.installed === true && availability.loggedIn;
-}
-
-export function soleConnectedProvider(
-  currentProvider: AgentProvider,
-  availability: Record<AgentProvider, AgentAvailability | null>,
-): AgentProvider | null {
-  if (AGENT_PROVIDERS.some((provider) => availability[provider] === null)) {
-    return null;
-  }
-  if (connectedProvider(availability[currentProvider])) return null;
-  const connected = AGENT_PROVIDERS.filter((provider) =>
-    connectedProvider(availability[provider]),
-  );
-  return connected.length === 1 ? connected[0]! : null;
-}
-
 export function SettingsApp({
   embedded = false,
   onClose,
@@ -137,27 +117,10 @@ export function SettingsApp({
   );
   const [themeSaving, setThemeSaving] = useState(false);
   const [themeErrorKey, setThemeErrorKey] = useState<string | null>(null);
-  const [availability, setAvailability] = useState<
-    ProviderState<AgentAvailability | null>
-  >(() =>
-    Object.fromEntries(
-      AGENT_PROVIDERS.map((provider) => [provider, null]),
-    ) as ProviderState<AgentAvailability | null>,
-  );
-  const [availabilityLoading, setAvailabilityLoading] = useState<
-    ProviderState<boolean>
-  >(() =>
-    Object.fromEntries(
-      AGENT_PROVIDERS.map((provider) => [provider, true]),
-    ) as ProviderState<boolean>,
-  );
-  const [availabilityError, setAvailabilityError] = useState<
-    ProviderState<string | null>
-  >(() =>
-    Object.fromEntries(
-      AGENT_PROVIDERS.map((provider) => [provider, null]),
-    ) as ProviderState<string | null>,
-  );
+  const connections = useAgentConnectionStore(state => state.connections);
+  const availability = Object.fromEntries(AGENT_PROVIDERS.map(provider => [provider, connections[provider].availability])) as ProviderState<AgentAvailability | null>;
+  const availabilityLoading = Object.fromEntries(AGENT_PROVIDERS.map(provider => [provider, connections[provider].loading || connections[provider].availability === null && connections[provider].availabilityError === null])) as ProviderState<boolean>;
+  const availabilityError = Object.fromEntries(AGENT_PROVIDERS.map(provider => [provider, connections[provider].availabilityError])) as ProviderState<string | null>;
   const [agentProviderSaving, setAgentProviderSaving] = useState(false);
   const [agentProviderFeedbackKey, setAgentProviderFeedbackKey] = useState<
     string | null
@@ -168,7 +131,6 @@ export function SettingsApp({
   const [includeArchived, setIncludeArchived] = useState(false);
   const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
   const mountedRef = useRef(true);
-  const autoProviderCheckedRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId);
   const plugins = usePluginsStore((state) => state.plugins);
@@ -204,34 +166,7 @@ export function SettingsApp({
   );
 
   const loadAvailability = useCallback((target?: AgentProvider): void => {
-    const providers = target === undefined ? AGENT_PROVIDERS : [target];
-
-    for (const provider of providers) {
-      setAvailabilityLoading((current) => ({ ...current, [provider]: true }));
-      setAvailabilityError((current) => ({ ...current, [provider]: null }));
-      void invoke("agent:availability", { provider })
-        .then((result) => {
-          if (mountedRef.current) {
-            setAvailability((current) => ({ ...current, [provider]: result }));
-          }
-        })
-        .catch(() => {
-          if (mountedRef.current) {
-            setAvailabilityError((current) => ({
-              ...current,
-              [provider]: "availability-failed",
-            }));
-          }
-        })
-        .finally(() => {
-          if (mountedRef.current) {
-            setAvailabilityLoading((current) => ({
-              ...current,
-              [provider]: false,
-            }));
-          }
-        });
-    }
+    for (const provider of target === undefined ? AGENT_PROVIDERS : [target]) void refreshAgentConnection(provider, true);
   }, []);
 
   const loadCourses = (showArchived: boolean): void => {
@@ -275,7 +210,6 @@ export function SettingsApp({
         }
       });
 
-    loadAvailability();
     loadCourses(false);
 
     return () => {
@@ -308,53 +242,9 @@ export function SettingsApp({
   }, [activeCategory, searchTarget]);
 
   useEffect(() => {
-    const refreshAvailability = (): void => loadAvailability();
-    const refreshWhenVisible = (): void => {
-      if (document.visibilityState === "visible") refreshAvailability();
-    };
-    const unsubscribe = onPush("agent:install-progress", (progress) => {
-      if (
-        progress.done &&
-        isAgentProvider(progress.provider)
-      ) {
-        loadAvailability(progress.provider);
-      }
-    });
-    window.addEventListener("focus", refreshAvailability);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => {
-      unsubscribe();
-      window.removeEventListener("focus", refreshAvailability);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-    };
-  }, [loadAvailability]);
-
-  useEffect(() => {
-    if (settings === null || autoProviderCheckedRef.current) return;
-    if (AGENT_PROVIDERS.some((provider) => availability[provider] === null)) {
-      return;
-    }
-    autoProviderCheckedRef.current = true;
-    const previousProvider = settings.agentProvider;
-    const nextProvider = soleConnectedProvider(previousProvider, availability);
-    if (nextProvider === null) return;
-
-    void invoke("settings:set", { agentProvider: nextProvider })
-      .then((nextSettings) => {
-        if (!mountedRef.current) return;
-        setSettings(nextSettings);
-        const nextKey = nextProvider === "claude-code" ? "claude" : nextProvider;
-        const previousKey =
-          previousProvider === "claude-code" ? "claude" : previousProvider;
-        showToast(
-          t("settings.ai.engine.autoSwitched", {
-            provider: t(`settings.ai.${nextKey}.name`),
-            unavailable: t(`settings.ai.${previousKey}.name`),
-          }),
-        );
-      })
-      .catch(() => undefined);
-  }, [availability, settings, t]);
+    const releases = AGENT_PROVIDERS.map(acquireAgentConnection);
+    return () => releases.forEach(release => release());
+  }, []);
 
   useEffect(() => {
     if (embedded) return;
@@ -429,7 +319,6 @@ export function SettingsApp({
 
 
   const handleAgentProviderSelect = (nextProvider: AgentProvider): void => {
-    autoProviderCheckedRef.current = true;
     if (
       settings === null ||
       nextProvider === settings.agentProvider ||

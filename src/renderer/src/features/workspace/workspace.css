@@ -824,3 +824,15 @@
 .workspace-course[hidden] .dv-tabs-and-actions-container * {
   -webkit-app-region: no-drag;
 }
+
+.workspace-panel-slot { width: 100%; height: 100%; }
+.workspace-content-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.workspace-panel-content { position: absolute; overflow: hidden; pointer-events: auto; }
+.workspace-panel-content > * { width: 100%; height: 100%; }
+.workspace-panel-content[hidden] { display: block; visibility: hidden; pointer-events: none; }
+.workspace-content-layer[data-content-dragging] .workspace-panel-content { pointer-events: none; }
+.workspace-course .dv-tabs-and-actions-container { position: relative; z-index: 2; }
+.course-tab-move-overlay { position: absolute; inset: 0; z-index: 19; pointer-events: none; }
+.course-tab-move-preview { position: absolute; pointer-events: none; background: var(--dv-drag-over-background-color, rgb(90 100 180 / .2)); border: 2px solid var(--accent); border-radius: var(--radius-sm); }
+.course-tab-move-preview span { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-primary); font-size: var(--text-sm); }
+.course-row[data-tab-hover] { background: var(--bg-hover); outline: 2px solid var(--accent); outline-offset: -2px; }

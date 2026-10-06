@@ -19,7 +19,8 @@ import type {
   AgentProvider,
   AgentTurnFailure,
   Usage,
-  PermissionResponse
+  PermissionResponse,
+  TurnStopReason
 } from '../../../shared/types/agent-events'
 import type {
   ChatAttachment,
@@ -28,6 +29,7 @@ import type {
   ChatSurface
 } from '../../../shared/types/chat'
 import { AgentUnavailableError } from './binaryLocator'
+import { providerModel } from './rpcSession'
 import { deriveConversationTitle } from './chatRepo'
 import type { BlockInput, ChatRepo } from './chatRepo'
 import type { ClaudeCodeSession } from './claude/ClaudeCodeAdapter'
@@ -94,7 +96,7 @@ export interface SessionManagerDeps {
    */
   reportToolsUnavailable?: (courseId: string, sessionId: string) => void
   onRequestsCancelled?: (sessionId: string) => void
-  onTurnComplete?: (info: { courseId: string; sessionId: string; turnSeq?: number }) => void
+  onTurnComplete?: (info: { courseId: string; sessionId: string; turnSeq?: number; stopReason: TurnStopReason }) => void
   /** A real terminal event, including crashes/close/cancel; never dispatch completion. */
   onTurnSettled?: (info: { courseId: string; sessionId: string; turnSeq: number; reason: 'success' | 'error' | 'interrupted'; error?: AgentTurnFailure }) => void
   onUsage?: (info: {
@@ -136,6 +138,8 @@ export interface SessionManager {
   close(courseId: string, sessionId: string): void
   /** True while this manager holds a warm entry for the conversation. */
   has(sessionId: string): boolean
+  /** Reconnect idle sessions now, and active sessions after their current response. */
+  invalidateCredentials(): void
   disposeAll(): void
 }
 
@@ -156,6 +160,7 @@ interface CourseChat {
   sessionPromise: Promise<AgentSession> | null
   generation: number
   sending: boolean
+  credentialsInvalidated: boolean
   unsubscribe: (() => void) | null
   turnSeq: number
   settledTurnSeq?: number
@@ -266,6 +271,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         sessionPromise: null,
         generation: 0,
         sending: false,
+        credentialsInvalidated: false,
         unsubscribe: null,
         turnSeq: 0,
         turnBlocks: new Map(),
@@ -292,6 +298,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
   function dropSession(entry: CourseChat): void {
     settleTurn(entry, 'interrupted')
     entry.generation += 1
+    entry.credentialsInvalidated = false
     deps.onRequestsCancelled?.(entry.sessionId)
     for (const requestId of entry.pendingPermissions.keys()) deps.emit(entry.courseId, entry.sessionId, { type: 'permission-resolved', requestId, behavior: 'deny' })
     entry.pendingPermissions.clear()
@@ -354,6 +361,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
     }
     if (entry.surface === 'study' && deps.adapter.provider !== 'gemini') startOptions.webSearch = 'live'
     let mcpHint = ''
+    let attemptTools: CourseChat['toolServer'] = null
     if (deps.startToolServer !== undefined) {
       // A failure here must not cost the student their tutor: fall back to the
       // file-only agent rather than refusing to open the chat.
@@ -368,6 +376,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
           await tools.close()
           throw new Error('전송을 취소했어요.')
         }
+        attemptTools = tools
         entry.toolServer = tools
         startOptions.mcpConfigPath = tools.mcpConfigPath
         startOptions.extraAllowedTools = tools.extraAllowedTools
@@ -395,9 +404,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
     }
     if (entry.selectedSkills?.length) startOptions.selectedSkills = entry.selectedSkills
     if (entry.info.effort) startOptions.effort = entry.info.effort
-    if (entry.info.model !== null) {
-      startOptions.model = entry.info.model
-    }
+    const selectedModel = providerModel(entry.info.model)
+    if (selectedModel !== undefined) startOptions.model = selectedModel
     entry.sessionPromise = deps.adapter.startSession(startOptions).then(
       (session) => {
         if (entry.generation !== generation) {
@@ -412,6 +420,8 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       },
       (error: unknown) => {
         if (entry.generation === generation) entry.sessionPromise = null
+        if (entry.toolServer === attemptTools) entry.toolServer = null
+        void attemptTools?.close().catch(() => undefined)
         throw error
       }
     )
@@ -543,17 +553,20 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         deps.onPermissionResolved?.(entry.sessionId, event.requestId)
         return true
       case 'turn-complete':
+        if (entry.info.status !== 'running') return false
         entry.pendingPermissions.clear()
         commitTurn(entry, event.stopReason)
         entry.info = { ...entry.info, status: 'idle' }
         deps.repo.setStatus(entry.info.id, 'idle')
-        scheduleIdleReap(entry)
+        const closeFinishedSession = entry.session?.closed || entry.credentialsInvalidated
+        if (!closeFinishedSession) scheduleIdleReap(entry)
         settleTurn(entry, event.stopReason === 'success' ? 'success' : event.stopReason === 'error' ? 'error' : 'interrupted')
         try {
           deps.onTurnComplete?.({
             courseId: entry.courseId,
             sessionId: entry.sessionId,
-            turnSeq: entry.turnSeq
+            turnSeq: entry.turnSeq,
+            stopReason: event.stopReason
           })
         } catch (error) {
           console.error('[agent] turn-complete hook failed', error)
@@ -572,6 +585,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         } catch (error) {
           console.error('[agent] usage hook failed', error)
         }
+        if (closeFinishedSession) dropSession(entry)
         return true
       case 'error':
         entry.turnError = { code: event.code, message: event.message }
@@ -698,6 +712,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         try {
           session = await ensureSession(entry)
         } catch (error) {
+          if (error instanceof Error && error.message === '전송을 취소했어요.') throw error
           const message =
             error instanceof Error ? error.message : 'Failed to start the agent'
           const code =
@@ -852,6 +867,14 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
 
     has(sessionId) {
       return chats.has(sessionId)
+    },
+
+    invalidateCredentials() {
+      for (const entry of chats.values()) {
+        if (entry.info.status === 'running' || entry.sending || entry.sessionPromise !== null) {
+          entry.credentialsInvalidated = true
+        } else dropSession(entry)
+      }
     },
 
     disposeAll() {

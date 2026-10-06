@@ -27,6 +27,7 @@ import { invoke } from '../../lib/ipc'
 import { favoriteScopeKey, useFavoritesStore } from '../../stores/favoritesStore'
 import { settingsSnapshot } from '../../stores/settingsSnapshot'
 import { browserTabCourseId, useWorkspaceStore } from '../../stores/workspaceStore'
+import { useWorkspacePlacement } from '../workspace/placementContext'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { useBrowserAnchorRect } from '../workspace/panels/browserAnchor'
 import { BrowserIcon } from './browserIcons'
@@ -539,8 +540,9 @@ function BrowserToolbar({
 export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   const payload = browserPayloadFromParams(props.params)
   const tabId = payload?.tabId ?? ''
-  // This owner survives a course change while a native profile decision awaits.
-  const [ownerCourse] = useState(() => browserTabCourseId(tabId))
+  const placement = useWorkspacePlacement()
+  const fallbackCourse = useWorkspaceStore(() => browserTabCourseId(tabId))
+  const ownerCourse = placement ? placement.courseId : fallbackCourse
   const initialUrl = payload?.initialUrl ?? ''
   const initialPrivate = payload?.isPrivate === true
   const [isPrivate, setPrivate] = useState(initialPrivate)
@@ -601,7 +603,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
           }
         }
       })
-      useBrowserGuests.getState().ensureGuest(tabId, url, next, profileId, ownerCourse)
+      useBrowserGuests.getState().ensureGuest(tabId, url, next, profileId, browserTabCourseId(tabId))
       useWorkspaceStore.getState().notifyLayoutChanged()
     })().catch(console.error)
   }, [initialUrl, isPrivate, navState.url, props.api, tabId, profileId, ownerCourse])
@@ -613,7 +615,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
     const url = navState.url || initialUrl
     props.api.updateParameters({ descriptor: { kind: 'browser', payload: { tabId, initialUrl: url, isPrivate, profileId: id } } })
     setProfileId(id)
-    useBrowserGuests.getState().ensureGuest(tabId, url, isPrivate, id, ownerCourse)
+    useBrowserGuests.getState().ensureGuest(tabId, url, isPrivate, id, browserTabCourseId(tabId))
     useWorkspaceStore.getState().notifyLayoutChanged()
   }, [profileId, tabId, navState.url, initialUrl, props.api, isPrivate, ownerCourse])
 

@@ -55,6 +55,7 @@ import {
   type IpcAdapter
 } from '../../../src/renderer/src/lib/ipc'
 import { useUiStore } from '../../../src/renderer/src/stores/uiStore'
+import { resetAgentConnectionsForTests } from '../../../src/renderer/src/features/chat/agentConnectionStore'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true
@@ -88,6 +89,7 @@ afterEach(() => {
     mountedRoot = null
   }
   setIpcAdapter(null)
+  resetAgentConnectionsForTests()
   useUiStore.setState({ isSettingsOpen: false, settingsCategory: null })
 })
 
@@ -135,7 +137,7 @@ describe('AI engine settings', () => {
     expect(html).toContain('>재인증</button>')
   })
 
-  test('switches to a newly connected provider when the selected one is offline', async () => {
+  test('preserves the selected provider when another connection becomes ready', async () => {
     const invoke = vi.fn(async () => DEFAULT_SETTINGS)
     setIpcAdapter({
       invoke,
@@ -167,9 +169,8 @@ describe('AI engine settings', () => {
     await act(async () => renderPanel(false))
     await act(async () => renderPanel(true))
 
-    expect(invoke).toHaveBeenCalledWith('settings:set', {
-      agentProvider: 'codex'
-    })
+    expect(invoke).not.toHaveBeenCalledWith('settings:set', expect.anything())
+    expect(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent).not.toContain('Codex')
   })
 
   test('stores and removes a Gemini API key, then refreshes availability', async () => {

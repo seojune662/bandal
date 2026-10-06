@@ -1,4 +1,4 @@
-import { requireProtocolVersion } from '../protocolAvailability'
+import { assertAgentReady, checkAgentAvailability } from '../availability'
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AgentAdapter, AgentCapabilities, AgentStartSessionOptions } from '../../../../shared/types/agent-events'
@@ -11,14 +11,15 @@ import { writeGeminiSettings, GEMINI_SYSTEM_SETTINGS_ENV_VAR, GEMINI_MCP_TOKEN_E
 const capabilities: AgentCapabilities = { interactivePermissions: true, streamingInput: false, partialText: true, cancel: true, imageInput: true, resume: true }
 const processes = new Set<number>()
 export interface GeminiAdapterDeps { userDataPath: string; locator?: BinaryLocator; spawnImpl?: typeof spawnClaude; apiKey?: () => string | null }
-export function buildGeminiArgs(options: { model?: string }): string[] { return ['--acp', ...(options.model ? ['-m', options.model] : [])] }
+export function buildGeminiArgs(options: { model?: string }): string[] { return ['--acp', ...(options.model && options.model !== 'default' ? ['-m', options.model] : [])] }
 export function killAllGeminiProcessesSync(): void { for (const pid of processes) killProcessTree(pid, 'SIGKILL'); processes.clear() }
 export function createGeminiAdapter(deps: GeminiAdapterDeps): AgentAdapter {
   const key = deps.apiKey ?? (() => createGeminiApiKeyStore(deps.userDataPath).readKey())
-  const locator = deps.locator ?? createGeminiBinaryLocator()
-  return { provider: 'gemini', capabilities, checkAvailability: async () => requireProtocolVersion(await locator.availability(), 'gemini'),
+  const locator = deps.locator ?? createGeminiBinaryLocator({ hasApiKey: () => key() !== null })
+  return { provider: 'gemini', capabilities, checkAvailability: () => checkAgentAvailability('gemini', locator),
     async startSession(base: AgentStartSessionOptions) {
       const options = base as AgentStartSessionOptions & { geminiMcpServers?: Record<string, GeminiMcpServerSettings> }
+      await assertAgentReady('gemini', locator, { refresh: true })
       const binary = await locator.locate(), loginPath = await locator.loginShellPath(), apiKey = key()
       const root = join(deps.userDataPath, 'gemini-sessions'); mkdirSync(root, { recursive: true, mode: 0o700 })
       const directory = mkdtempSync(join(root, 'session-'))
@@ -30,6 +31,7 @@ export function createGeminiAdapter(deps: GeminiAdapterDeps): AgentAdapter {
       return createRpcSession(options, 'gemini', () => {
         const child = (deps.spawnImpl ?? spawnClaude)(binary.path, buildGeminiArgs(options), { cwd: options.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
         if (child.pid) { const pid = child.pid; processes.add(pid); child.once('close', () => { processes.delete(pid); rmSync(directory, { recursive: true, force: true }) }) }
+        else child.once('close', () => rmSync(directory, { recursive: true, force: true }))
         return child
       }, () => rmSync(directory, { recursive: true, force: true }))
     }

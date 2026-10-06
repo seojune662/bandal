@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import type { IDockviewPanelHeaderProps } from 'dockview'
 import { Icon } from '../../app/icons'
 import { Tooltip } from '../../components/Tooltip'
@@ -9,9 +9,12 @@ import { TabContextMenu } from './TabContextMenu'
 import { isTabDescriptor } from './tabIdentity'
 import { setWorkspaceTabDragImage, writeWorkspaceTabDragData } from './tabDrag'
 import { TabKindIcon } from './workspaceIcons'
+import { WorkspaceCourseContext } from './placementContext'
+import { tabDragSession } from './tabDragSession'
 
 export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
   const t = useT()
+  const workspaceCourseId = useContext(WorkspaceCourseContext)
   const [title, setTitle] = useState(props.api.title ?? '')
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -42,7 +45,11 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
     if (!(dockviewTab instanceof HTMLElement) || descriptor === null) return
     const handleDragStart = (event: DragEvent): void => {
       if (event.dataTransfer === null) return
-      writeWorkspaceTabDragData(event.dataTransfer, descriptor, title)
+      const source = {
+        courseId: workspaceCourseId, panelId: props.api.id, nonce: crypto.randomUUID()
+      }
+      tabDragSession.beginTab(source)
+      writeWorkspaceTabDragData(event.dataTransfer, descriptor, title, source)
       setWorkspaceTabDragImage(event.dataTransfer, dockviewTab, title)
     }
     const updateSelection = (): void => {
@@ -84,7 +91,7 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
       dockviewTab.removeEventListener('dragstart', handleDragStart)
       dockviewTab.removeEventListener('keydown', handleKeyDown)
     }
-  }, [descriptor, title, props.api])
+  }, [descriptor, title, props.api, workspaceCourseId])
 
   return (
     <>

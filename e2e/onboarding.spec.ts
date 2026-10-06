@@ -72,7 +72,32 @@ test('five features use real surfaces and remove the temporary sample without AI
     await advance(page, 'PDF를 읽고 필기하기', 2)
     const pdf = page.locator('.pdf-page').first(), note = page.locator('[aria-label="마크다운 필기 편집기"]')
     await expect(pdf).toBeVisible(); await expect(note).toBeVisible()
-    expect(await page.evaluate(() => document.querySelector('.pdf-page')?.closest('.dv-groupview') === document.querySelector('[aria-label="마크다운 필기 편집기"]')?.closest('.dv-groupview'))).toBe(false)
+    const presentation = await page.evaluate(() => {
+      const groupFor = (selector: string): Element | null => {
+        const panelId = document.querySelector(selector)?.closest('[data-content-panel]')?.getAttribute('data-content-panel')
+        const slot = panelId ? document.querySelector(`[data-panel-slot="${CSS.escape(panelId)}"]`) : null
+        const course = slot?.closest('.workspace-course')
+        if (!slot || !course) return null
+        const bounds = slot.getBoundingClientRect()
+        if (bounds.width <= 0 || bounds.height <= 0) return null
+        // Dockview keeps live presentation slots in a sibling render overlay.
+        // The slot's complete bounds must belong to exactly one real group.
+        const groups = [...course.querySelectorAll('.dv-groupview')].filter(group => {
+          const area = group.getBoundingClientRect()
+          return area.width > 0 && area.height > 0 && bounds.left >= area.left - 1 && bounds.top >= area.top - 1 && bounds.right <= area.right + 1 && bounds.bottom <= area.bottom + 1
+        })
+        return groups.length === 1 ? groups[0]! : null
+      }
+      const pdfGroup = groupFor('.pdf-page'), noteGroup = groupFor('[aria-label="마크다운 필기 편집기"]')
+      return {
+        split: { pdfGroupPresent: pdfGroup !== null, noteGroupPresent: noteGroup !== null, sameGroup: pdfGroup === noteGroup },
+        contents: [...document.querySelectorAll('[data-content-panel]')].map(element => ({ panelId: element.getAttribute('data-content-panel'), html: element.outerHTML.slice(0, 400), hidden: element.hasAttribute('hidden') })),
+        slots: [...document.querySelectorAll('[data-panel-slot]')].map(element => ({ panelId: element.getAttribute('data-panel-slot'), html: element.outerHTML, ancestors: (() => { const names: string[] = []; for (let node = element.parentElement; node; node = node.parentElement) names.push(node.className); return names })() })),
+        groups: [...document.querySelectorAll('.dv-groupview')].map(element => element.outerHTML.slice(0, 800))
+      }
+    })
+    await test.info().attach('tutorial-presentation-mapping.json', { body: JSON.stringify(presentation, null, 2), contentType: 'application/json' })
+    expect(presentation.split).toEqual({ pdfGroupPresent: true, noteGroupPresent: true, sameGroup: false })
     await screenshot(bandal, 'tutorial-2-reading')
     await advance(page, '현재 자료에 대해 AI에게 질문하기', 3)
     const sidebar = page.locator('[data-tour="document-assistant"]')

@@ -45,7 +45,17 @@ test('server and SDK edits retain their related tests instead of becoming no-op 
 
 test('login and download changes select compatibility rather than omnibox E2E', () => {
   const plan = planChecks(['src/main/features/browser/downloads.ts', 'src/renderer/src/features/browser/BrowserGuestView.tsx'])
-  assert.deepEqual(plan.e2e, ['e2e/browserCompatibility.spec.ts'])
+  assert.deepEqual(plan.e2e, ['e2e/browserCompatibility.spec.ts', 'e2e/courseTabMove.spec.ts', 'e2e/tabMoveSessions.spec.ts', 'e2e/browserPlacement.spec.ts'])
+})
+
+test('AI links and connection fixes select their direct product regressions', () => {
+  assert.deepEqual(planChecks(['src/renderer/src/features/ai/aiShortcutModel.ts']).e2e, ['e2e/aiConnections.spec.ts'])
+  const runtime = planChecks(['src/main/features/agent/rpcSession.ts'])
+  assert.ok(runtime.e2e.includes('e2e/aiConnections.spec.ts'))
+  assert.ok(!runtime.e2e.includes('e2e/courseTabMove.spec.ts'))
+  const workspace = planChecks(['src/renderer/src/features/workspace/panelContentHost.tsx'])
+  assert.ok(workspace.e2e.includes('e2e/courseTabMove.spec.ts'))
+  assert.ok(!workspace.e2e.includes('e2e/aiConnections.spec.ts'))
 })
 
 test('native image clipboard does not repeat PDF image export checks', () => {
@@ -168,7 +178,7 @@ test('browser settings avoid unrelated global appearance checks', () => {
 test('workspace styles, state and tab types cover dragging across app surfaces', () => {
   for (const file of ['src/renderer/src/features/workspace/workspace.css', 'src/renderer/src/features/workspace/tabDragSession.ts', 'src/renderer/src/stores/workspaceStore.ts', 'src/shared/tabs.ts']) {
     const plan = planChecks([file])
-    const specs = ['tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance']
+    const specs = ['tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance', 'courseTabMove', 'tabMoveSessions']
     if (file.endsWith('workspaceStore.ts')) specs.push('learningManagement', 'learningNavigation')
     assert.deepEqual(new Set(plan.e2e), new Set(specs.map(spec => `e2e/${spec}.spec.ts`)), file)
     assert.equal(plan.full, false, file)
@@ -202,7 +212,7 @@ test('only the known browser import dev hook and version are exempt from runtime
 
 test('AI transport and brand updates select chat/context/orb package checks without unrelated theme tests', () => {
   const plan = planChecks(['src/main/features/agent/rpcSession.ts', 'src/renderer/src/components/BandalMark.tsx'])
-  assert.deepEqual(plan.e2e, ['e2e/chatUx.spec.ts', 'e2e/assistantSidebar.spec.ts', 'e2e/aiContext.spec.ts'])
+  assert.deepEqual(plan.e2e, ['e2e/chatUx.spec.ts', 'e2e/assistantSidebar.spec.ts', 'e2e/aiContext.spec.ts', 'e2e/aiConnections.spec.ts'])
   assert.equal(plan.full, false)
 })
 
@@ -263,7 +273,7 @@ test('onboarding and plugin management select their own regressions without glob
     assert.ok(!plan.scriptTests.includes('scripts/check-contrast.mjs'), file)
   }
   assert.deepEqual(planChecks(['src/renderer/src/features/onboarding/tour/tourStore.ts']).e2e, ['e2e/onboarding.spec.ts'])
-  assert.deepEqual(planChecks(['src/renderer/src/features/settings/SettingsPanels.tsx']).e2e, ['e2e/settingsShell.spec.ts', 'e2e/onboarding.spec.ts'])
+  assert.deepEqual(planChecks(['src/renderer/src/features/settings/SettingsPanels.tsx']).e2e, ['e2e/settingsShell.spec.ts', 'e2e/onboarding.spec.ts', 'e2e/aiConnections.spec.ts'])
   assert.deepEqual(planChecks(['src/shared/settingsCategories.ts']).e2e, ['e2e/settingsShell.spec.ts', 'e2e/pluginCenter.spec.ts'])
   const mixed = planChecks(['src/renderer/src/features/settings/settings-plugins.css', 'src/renderer/src/styles/tokens.css'])
   assert.ok(mixed.e2e.includes('e2e/theme.spec.ts'))

@@ -1,6 +1,7 @@
 import { useAgentRuns } from '../browser/AgentRunBanner'
 import { CourseActivity } from './courseActivity'
-import { flushCourseNotes } from '../notes/noteSessionRegistry'
+import { flushWorkspaceNotes } from './workspaceNoteFlush'
+import { useTemporaryWorkspaceRetention } from './useTemporaryWorkspaceRetention'
 /**
  * Dockview host for the tabbed workspace (center region of the shell).
  * Owns: dockview mounting, the custom tab/watermark/header chrome, the
@@ -8,7 +9,7 @@ import { flushCourseNotes } from '../notes/noteSessionRegistry'
  * course-switch hydration.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   DockviewReact,
   type DockviewReadyEvent,
@@ -30,8 +31,11 @@ import { NewTabMenu } from './NewTabMenu'
 import { WorkspaceTab } from './WorkspaceTab'
 import { openNewTabMenu, useNewTabMenu } from './newTabMenuController'
 import { descriptorFor } from './tabIdentity'
-import { installWorkspaceDragSession } from './tabDragSession'
-import { dockviewComponents } from './tabRegistry'
+import { installWorkspaceDragSession, tabDragSession } from './tabDragSession'
+import { dockviewComponents, workspacePanelContents } from './tabRegistry'
+import { WorkspaceCourseContext } from './placementContext'
+import { WorkspaceContentLayer } from './panelContentHost'
+import { CourseTabMoveOverlay } from './CourseTabMoveOverlay'
 import { installTabDragScrolling } from './tabDragScroll'
 import { installTabStripWheelScrolling } from './tabStripScroll'
 import { TabKindIcon } from './workspaceIcons'
@@ -191,13 +195,14 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
     })
     layoutSubscription.current = { dispose: () => { layout.dispose(); overlay.dispose() } }
   }
-  return <CourseActivity.Provider value={active}>
+  return <WorkspaceCourseContext.Provider value={courseId}><CourseActivity.Provider value={active}>
     <div ref={rootRef} className="workspace-course" hidden={!active} aria-hidden={!active} {...{ inert: !active ? '' : undefined }} data-workspace-course={courseId ?? ''} data-drop-language={ko ? 'ko' : 'en'}>
       <DockviewReact
         theme={bandalTheme}
         dndEdges={workspaceDragEdges}
         scrollbars="native"
         components={dockviewComponents}
+        defaultRenderer="always"
         defaultTabComponent={WorkspaceTab}
         watermarkComponent={Watermark}
         prefixHeaderActionsComponent={ChromeLeft}
@@ -206,7 +211,7 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
         onReady={onReady}
       />
     </div>
-  </CourseActivity.Provider>
+  </CourseActivity.Provider></WorkspaceCourseContext.Provider>
 }
 
 export function WorkspaceHost(): JSX.Element {
@@ -216,8 +221,12 @@ export function WorkspaceHost(): JSX.Element {
   const course = courses.find(entry => entry.id === selectedCourseId) ?? null
   const courseId = course?.id ?? null
   const [retained, setRetained] = useState<string[]>([])
+  const retainEmpty = useTemporaryWorkspaceRetention()
+  const dragSource = useSyncExternalStore(tabDragSession.subscribe, tabDragSession.getSource)
+  const dragCourseId = dragSource?.courseId
   const alive = retained.filter(id => courses.some(course => course.id === id))
-  const ids = courseId === null ? alive : [...alive.filter(id => id !== courseId), courseId]
+  const ids = [...new Set([...alive.filter(id => id !== courseId), ...(courseId ? [courseId] : []),
+    ...(dragCourseId && courses.some(course => course.id === dragCourseId) ? [dragCourseId] : [])])]
   const isMenuOpen = useNewTabMenu(state => state.isOpen)
   const hostRef = useRef<HTMLDivElement>(null)
 
@@ -249,7 +258,7 @@ export function WorkspaceHost(): JSX.Element {
       for (const candidate of ids) {
         if (keep.length <= 3) break
         const running = retainedTabDescriptors(candidate).some(tab => tab.kind === 'browser' && useAgentRuns.getState().byTab[tab.payload.tabId] !== undefined)
-        if (candidate === courseId || running || !await flushCourseNotes(candidate)) continue
+        if (candidate === courseId || candidate === dragSource?.courseId || running || !await flushWorkspaceNotes(candidate)) continue
         if (cancelled) return
         keep.splice(keep.indexOf(candidate), 1)
       }
@@ -257,7 +266,7 @@ export function WorkspaceHost(): JSX.Element {
     }
     void trim()
     return () => { cancelled = true }
-  }, [courseId, courses])
+  }, [courseId, courses, dragSource])
 
   useEffect(() => {
     const host = hostRef.current
@@ -276,7 +285,9 @@ export function WorkspaceHost(): JSX.Element {
 
   return <div ref={hostRef} className="workspace-host" data-tour="tab-strip">
     {[...ids].sort().map(id => <CourseWorkspace key={id} courseId={id} active={surface === 'course' && id === courseId} />)}
-    {courseId === null && <CourseWorkspace key="empty" courseId={null} active={surface === 'course'} />}
+    {(retainEmpty || courseId === null || dragSource?.courseId === null) && <CourseWorkspace key="empty" courseId={null} active={surface === 'course' && courseId === null} />}
+    <WorkspaceContentLayer components={workspacePanelContents} activeCourseId={courseId} active={surface === 'course'} />
+    <CourseTabMoveOverlay />
     {surface === 'learning-home' && <LearningHome />}
     {surface === 'course' && isMenuOpen && course !== null && <NewTabMenu course={course} />}
   </div>

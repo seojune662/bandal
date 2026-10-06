@@ -630,7 +630,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
    * provider did not change. Refused while a turn is running.
    */
   'chat:setProvider': {
-    req: { courseId: string; sessionId: string; provider: AgentProvider }
+    req: { courseId: string; sessionId: string; provider: AgentProvider; surface?: ChatSurface }
     res: { sessionInfo: ChatSessionInfo | null; carried: CarryoverStats | null }
   }
   /** Conversation list for a course (zero-message conversations excluded). Defaults to app. */
@@ -726,7 +726,7 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
 
   // -- agent ----------------------------------------------------------------
   'agent:availability': {
-    req: { provider: AgentProvider }
+    req: { provider: AgentProvider; refresh?: boolean }
     res: AgentAvailability
   }
   /** Models the installed CLI reports. Cached in main for the process lifetime. */
@@ -840,6 +840,10 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
   'browser:setDownloadTarget': {
     req: { courseId: string | null; webContentsId: number; tabId: string }
     res: { ok: true }
+  }
+  'browser:setCourse': {
+    req: { tabId: string; courseId: string | null; expectedWebContentsId: number; revision: number }
+    res: { ok: boolean }
   }
   'browser:prepareProfileSwitch': { req: { tabId: string }; res: { allowed: boolean } }
   'browser:profiles': { req: {}; res: import('../types/browserProfile').BrowserProfile[] }
@@ -1517,6 +1521,10 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     req: { courseId: string; layout: unknown }
     res: { ok: true }
   }
+  'layout:saveMany': {
+    req: { layouts: Array<{ courseId: string; layout: unknown }> }
+    res: { ok: true }
+  }
 
   // -- auth -----------------------------------------------------------------
   /** Projected auth state. Never contains a token or an e-mail address. */
@@ -1737,6 +1745,7 @@ export const IPC_CHANNELS = [
   'browser:sessionSites',
   'browser:clearSession',
   'browser:setDownloadTarget',
+  'browser:setCourse',
   'browser:recordVisit',
   'browser:searchHistory',
   'browser:clearHistory',
@@ -1796,6 +1805,7 @@ export const IPC_CHANNELS = [
   'agent:setGeminiApiKey',
   'layout:get',
   'layout:save',
+  'layout:saveMany',
   'auth:getState',
   'auth:signIn',
   'auth:signOut',

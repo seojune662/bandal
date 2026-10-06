@@ -67,7 +67,7 @@ export interface PermissionResponse {
 export interface AgentSessionStartedEvent {
   type: 'session-started'
   sessionId: string
-  model: string
+  model: string | null
   provider: AgentProvider
 }
 
@@ -241,6 +241,8 @@ export interface AgentStartSessionOptions {
 export type Unsubscribe = () => void
 
 export interface AgentSession {
+  /** A terminal connection is replaced before the next send. */
+  readonly closed?: boolean
   /** Resolves once the CLI reports its session id. */
   readonly sessionId: Promise<string>
   sendMessage(content: string, attachments?: readonly ChatAttachment[]): void

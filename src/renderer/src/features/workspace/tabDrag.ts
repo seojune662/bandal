@@ -1,4 +1,5 @@
 import type { TabDescriptor } from '../../../../shared/tabs'
+import type { WorkspaceTabDragSource } from './tabDragSession'
 
 export const BANDAL_TAB_DRAG_MIME = 'application/x-bandal-tab'
 
@@ -25,7 +26,8 @@ export function setWorkspaceTabDragImage(
 export function writeWorkspaceTabDragData(
   dataTransfer: DataTransfer,
   descriptor: TabDescriptor,
-  label: string
+  label: string,
+  source?: WorkspaceTabDragSource
 ): void {
   // Dockview initializes every tab drag as move-only. Favorites intentionally
   // copy the descriptor while the original workspace tab stays open, so a
@@ -35,7 +37,16 @@ export function writeWorkspaceTabDragData(
   dataTransfer.effectAllowed = 'copyMove'
   dataTransfer.setData(
     BANDAL_TAB_DRAG_MIME,
-    JSON.stringify({ descriptor, label })
+    JSON.stringify({ descriptor, label, ...(source ? { source } : {}) })
   )
   dataTransfer.setData('text/plain', label)
+}
+
+/** Only a live tab header in this renderer can authorize moving a panel. */
+export function matchesWorkspaceMoveData(dataTransfer: DataTransfer, source: WorkspaceTabDragSource): boolean {
+  try {
+    const payload = JSON.parse(dataTransfer.getData(BANDAL_TAB_DRAG_MIME))
+    return payload?.source?.nonce === source.nonce &&
+      payload.source.courseId === source.courseId && payload.source.panelId === source.panelId
+  } catch { return false }
 }

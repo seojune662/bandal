@@ -25,12 +25,17 @@ export function onBrowserAnchorRect(listener: AnchorListener): () => void {
   listeners.add(listener)
   return () => { listeners.delete(listener) }
 }
+/** Retained content keeps its size while hidden, but must never expose its native page. */
+export function readBrowserAnchorRect(element: HTMLElement): AnchorRect | null {
+  if (!element.isConnected || element.closest('[hidden], [inert]') || getComputedStyle(element).visibility !== 'visible') return null
+  const rect = element.getBoundingClientRect()
+  return rect.width > 0 && rect.height > 0 && element.getClientRects().length > 0
+    ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null
+}
 function measureAll(): void {
   frame = 0
   for (const [tabId, element] of anchors) {
-    const rect = element.getBoundingClientRect()
-    const visible = element.isConnected && rect.width > 0 && rect.height > 0 && element.getClientRects().length > 0
-    publish(tabId, visible ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null)
+    publish(tabId, readBrowserAnchorRect(element))
   }
   // A drag can translate a group without resizing its page.
   for (const element of moving) if (!element.isConnected || !element.getAnimations().some(animation => animation.playState === 'running')) moving.delete(element)

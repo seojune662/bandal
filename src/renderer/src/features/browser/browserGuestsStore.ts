@@ -93,6 +93,7 @@ interface BrowserGuestsState {
   setFavicon: (tabId: string, dataUrl: string | null) => void
   setAuthFallback: (tabId: string, url: string | null) => void
   ensureGuest: (tabId: string, initialUrl: string, isPrivate?: boolean, profileId?: string, courseId?: string | null) => void
+  setGuestCourse: (tabId: string, courseId: string | null) => void
   requestAddressFocus: (tabId: string) => void
   openFind: (tabId: string) => void
   closeFind: (tabId: string) => void
@@ -229,6 +230,7 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
     const { liveGuests, nav, login, recent, authFallback } = get()
     const currentGuest = liveGuests.find((guest) => guest.tabId === tabId)
     if (currentGuest !== undefined && currentGuest.isPrivate === isPrivate && currentGuest.profileId === profileId) {
+      get().setGuestCourse(tabId, courseId)
       get().touchGuest(tabId)
       return
     }
@@ -255,6 +257,12 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
       },
       authFallback: withoutKeys(authFallback, [tabId])
     })
+  },
+
+  setGuestCourse: (tabId, courseId) => {
+    const guest = get().liveGuests.find(entry => entry.tabId === tabId)
+    if (!guest || guest.courseId === courseId) return
+    set({ liveGuests: get().liveGuests.map(entry => entry.tabId === tabId ? { ...entry, courseId } : entry) })
   },
 
   setFavicon: (tabId, dataUrl) => {

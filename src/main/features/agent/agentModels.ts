@@ -66,7 +66,8 @@ async function discoverModels(
   }
   try {
     const binary = await locator.locate()
-    const models = await probeModels({ binaryPath: binary.path })
+    const loginPath = await locator.loginShellPath()
+    const models = await probeModels({ binaryPath: binary.path, env: augmentedPathEnv(binary.path, loginPath) })
     return models === FALLBACK_MODELS ? fallbackResult(provider) : { models: toOptions(models), source: 'live', status: 'ready', fetchedAt: new Date().toISOString() }
   } catch {
     return fallbackResult(provider)

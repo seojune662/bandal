@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   firstConnectedProvider,
+  isAgentReady,
   providerPreferenceOrder
 } from '../../src/shared/agentProviderSelection'
 
@@ -32,4 +33,11 @@ describe('agent provider selection', () => {
       })
     ).toBe('codex')
   })
+})
+
+
+test.each(['version-too-old', 'not-logged-in'] as const)('a %s provider cannot be selected as ready even when stored flags say connected', code => {
+  const availability = { installed: true, loggedIn: true, code }
+  expect(isAgentReady(availability)).toBe(false)
+  expect(firstConnectedProvider(['codex', 'gemini'], { codex: availability, gemini: { installed: true, loggedIn: true } })).toBe('gemini')
 })

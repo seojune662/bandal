@@ -32,6 +32,20 @@ beforeEach(() => {
 })
 
 describe('ensureGuest', () => {
+  test('adopts a new placement without resetting page or UI state', () => {
+    store().ensureGuest('move', 'https://gemini.google.com', false, 'default', 'source')
+    store().updateNav('move', { url: 'https://gemini.google.com/app/chat', title: 'Conversation', canGoBack: true })
+    store().setZoom('move', 2)
+    store().openFind('move')
+    store().setFindQuery('move', 'draft')
+    const nav = store().nav.move
+    const find = store().find.move
+    store().ensureGuest('move', 'https://gemini.google.com', false, 'default', 'target')
+    expect(store().liveGuests.find(guest => guest.tabId === 'move')?.courseId).toBe('target')
+    expect(store().nav.move).toBe(nav)
+    expect(store().find.move).toBe(find)
+    expect(store().zoom.move).toBe(2)
+  })
   test('creates a live guest with the initial URL and seeded nav state', () => {
     store().ensureGuest('t1', 'https://example.com')
 

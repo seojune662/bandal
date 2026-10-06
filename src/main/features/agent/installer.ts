@@ -8,6 +8,7 @@ import type { AgentProvider } from '../../../shared/types/agent-events'
 import { createBinaryLocator, type BinaryLocator } from './binaryLocator'
 import { createCodexBinaryLocator } from './codex/binaryLocator'
 import { createGeminiBinaryLocator } from './gemini/binaryLocator'
+import { requireProtocolVersion } from './protocolAvailability'
 import {
   augmentedPathEnv,
   killProcessTree,
@@ -114,11 +115,11 @@ function forwardLines(
   }
 }
 
-async function verifyInstalled(locator: BinaryLocator): Promise<boolean> {
+async function verifyInstalled(locator: BinaryLocator, provider: AgentProvider): Promise<boolean> {
   locator.reset()
   try {
-    await locator.locate()
-    return true
+    const binary = await locator.locate()
+    return provider === 'claude-code' || requireProtocolVersion({ installed: true, loggedIn: false, version: binary.version }, provider).code === undefined
   } catch {
     return false
   }
@@ -291,7 +292,7 @@ export function createAgentInstaller(deps?: {
     } else if (processResult.code !== 0) {
       message = `설치 명령이 실패했습니다 (코드 ${processResult.code ?? '없음'}, 신호 ${processResult.signal ?? '없음'}).`
     } else {
-      ok = await verifyInstalled(locators[provider])
+      ok = await verifyInstalled(locators[provider], provider)
       message = ok
         ? `${provider === 'claude-code' ? 'Claude Code' : provider === 'codex' ? 'Codex' : 'Gemini'} 설치를 확인했습니다.`
         : '설치 명령은 끝났지만 새 CLI를 PATH에서 찾지 못했습니다.'

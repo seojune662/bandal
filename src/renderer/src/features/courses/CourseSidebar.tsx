@@ -12,6 +12,7 @@ import { BandalMark } from '../../components/BandalMark'
 import { Tooltip } from '../../components/Tooltip'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { UniversityShortcuts } from '../university/UniversityShortcuts'
+import { AiShortcuts } from '../ai/AiShortcuts'
 import {
   ArchiveCourseDialog,
   CourseFormDialog,
@@ -340,6 +341,7 @@ export function CourseSidebar({ hidden = false }: { hidden?: boolean }): JSX.Ele
   return (
     <aside className="app-rail app-rail--left" aria-label="과목 목록" hidden={hidden}>
       <UniversityShortcuts />
+      <AiShortcuts />
 
       <div className="rail-heading">
         <div>

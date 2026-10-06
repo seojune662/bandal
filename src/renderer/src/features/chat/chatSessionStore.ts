@@ -13,6 +13,7 @@ import type {
   ChatSurface
 } from '../../../../shared/types/chat'
 import { invoke, onPush, type Unsubscribe } from '../../lib/ipc'
+import { isAgentConnectionReady, useAgentConnectionStore } from './agentConnectionStore'
 import {
   appendLocalUserMessage,
   applyAgentEvents,
@@ -49,6 +50,10 @@ interface ChatSessionStoreState {
 interface ConversationRuntime {
   /** The course this conversation belongs to (needed for reopen). */
   courseId: string
+  surface: ChatSurface
+  providerGeneration: number
+  modelsGeneration: number
+  modelsRevision: number
   refCount: number
   unsubscribe: Unsubscribe | null
   lastSeq: number | null
@@ -82,6 +87,10 @@ function runtimeFor(courseId: string, conversationId: string): ConversationRunti
   if (runtime === undefined) {
     runtime = {
       courseId,
+      surface: 'app',
+      providerGeneration: 0,
+      modelsGeneration: 0,
+      modelsRevision: 0,
       refCount: 0,
       unsubscribe: null,
       lastSeq: null,
@@ -152,17 +161,22 @@ function loadModels(
   provider: AgentProvider
 ): void {
   const runtime = runtimeFor(courseId, conversationId)
-  if (
+  if (!isAgentConnectionReady(snapshotFor(conversationId).availability)) return
+  const revision = useAgentConnectionStore.getState().connections[provider].modelsRevision
+  const refresh = revision !== runtime.modelsRevision
+  if (!refresh && (
     (runtime.modelsPromise !== null && runtime.modelsProvider === provider) ||
     (runtime.modelsProvider === provider &&
       snapshotFor(conversationId).models.length > 0)
-  ) {
+  )) {
     return
   }
+  const generation = ++runtime.modelsGeneration
+  runtime.modelsRevision = revision
   runtime.modelsProvider = provider
-  runtime.modelsPromise = invoke('agent:models', { provider })
+  runtime.modelsPromise = invoke('agent:models', { provider, ...(refresh ? { refresh: true } : {}) })
     .then(({ models }) => {
-      if (runtime.modelsProvider !== provider) return
+      if (runtime.modelsGeneration !== generation || runtime.modelsProvider !== provider) return
       updateSnapshot(conversationId, (current) => current.provider === provider ? { ...current, models } : current)
     })
     .catch(() => {
@@ -170,7 +184,7 @@ function loadModels(
       // unavailable during teardown or in an older preload.
     })
     .finally(() => {
-      if (runtime.modelsProvider === provider) runtime.modelsPromise = null
+      if (runtime.modelsGeneration === generation) runtime.modelsPromise = null
     })
 }
 
@@ -178,10 +192,11 @@ async function openConversation(
   courseId: string,
   conversationId: string,
   opts: { discardQueue: boolean },
-  surface: ChatSurface = 'app'
+  surface?: ChatSurface
 ): Promise<void> {
   const runtime = runtimeFor(courseId, conversationId)
   const version = ++runtime.openVersion
+  const availabilityAtOpen = useAgentConnectionStore.getState().connections
   runtime.hydrating = true
   if (opts.discardQueue) {
     runtime.queue = []
@@ -192,16 +207,19 @@ async function openConversation(
     const result = await invoke('chat:open', {
       courseId,
       sessionId: conversationId,
-      surface
+      surface: surface ?? runtime.surface
     })
     if (version !== runtime.openVersion) {
       return
     }
     checkpoint = result.eventSeq
+    const provider = result.sessionInfo?.provider ?? snapshotFor(conversationId).provider
+    const connection = useAgentConnectionStore.getState().connections[provider]
+    const availability = connection.availability !== null && connection.availabilityRevision > availabilityAtOpen[provider].availabilityRevision ? connection.availability : result.availability
     updateSnapshot(conversationId, (current) => ({
       ...current,
       provider: result.sessionInfo?.provider ?? current.provider,
-      availability: result.availability,
+      availability,
       openError: null,
       title: result.sessionInfo?.title ?? current.title,
       effort: result.sessionInfo?.effort ?? null,
@@ -268,6 +286,7 @@ export function acquireChatSession(
 ): () => void {
   const runtime = runtimeFor(courseId, conversationId)
   runtime.courseId = courseId
+  runtime.surface = surface
   if (useChatSessionStore.getState().sessions[conversationId] === undefined) {
     updateSnapshot(conversationId, (current) => ({ ...current }))
   }
@@ -295,7 +314,22 @@ export function acquireChatSession(
     const unsubscribeSettings = onPush('chat:configurationChanged', (event) => {
       if (event.sessionId === conversationId) updateSnapshot(conversationId, (current) => ({ ...current, effort: event.effort, state: { ...current.state, model: event.model } }))
     })
-    runtime.unsubscribe = () => { unsubscribeBatch(); unsubscribeMessage(); unsubscribeSettings() }
+    const unsubscribeConnection = useAgentConnectionStore.subscribe((store, previous) => {
+      const provider = snapshotFor(conversationId).provider
+      const generation = runtime.providerGeneration
+      const connection = store.connections[provider], before = previous.connections[provider]
+      if (connection.availability !== null && connection.availabilityRevision !== before.availabilityRevision) {
+        updateSnapshot(conversationId, current => current.provider === provider && current.phase !== 'loading' && runtime.providerGeneration === generation ? { ...current, availability: connection.availability } : current)
+      }
+      if (connection.modelsInvalidationRevision !== before.modelsInvalidationRevision || !isAgentConnectionReady(connection.availability) && isAgentConnectionReady(before.availability)) {
+        runtime.modelsGeneration += 1
+        runtime.modelsProvider = null
+        runtime.modelsPromise = null
+        updateSnapshot(conversationId, current => current.provider === provider ? { ...current, models: [] } : current)
+      }
+      if (store.connections[provider].modelsRevision !== previous.connections[provider].modelsRevision) loadModels(courseId, conversationId, provider)
+    })
+    runtime.unsubscribe = () => { unsubscribeBatch(); unsubscribeMessage(); unsubscribeSettings(); unsubscribeConnection() }
     void openConversation(
       courseId,
       conversationId,
@@ -438,7 +472,11 @@ export async function setChatProvider(
   provider: AgentProvider
 ): Promise<void> {
   const runtime = runtimeFor(courseId, conversationId)
+  const generation = ++runtime.providerGeneration
+  runtime.openVersion += 1
+  runtime.modelsGeneration += 1
   runtime.modelsProvider = null
+  runtime.modelsPromise = null
   updateSnapshot(conversationId, (current) => ({
     ...current,
     provider,
@@ -449,17 +487,19 @@ export async function setChatProvider(
   }))
   try {
     await invoke('settings:set', { agentProvider: provider })
+    if (runtime.providerGeneration !== generation) return
     await invoke('chat:setProvider', {
       courseId,
       sessionId: conversationId,
-      provider
+      provider,
+      surface: runtime.surface
     })
-    if (snapshotFor(conversationId).provider === provider) {
+    if (runtime.providerGeneration === generation) {
       await openConversation(courseId, conversationId, { discardQueue: true })
     }
   } catch (error: unknown) {
     // A newer switch already owns the snapshot — leave its state alone.
-    if (snapshotFor(conversationId).provider !== provider) {
+    if (runtime.providerGeneration !== generation) {
       return
     }
     updateSnapshot(conversationId, (current) => ({

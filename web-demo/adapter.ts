@@ -68,6 +68,7 @@ const handlers: Handlers = {
   'courseLinks:list': () => [],
   'layout:get': ({ courseId }) => ({ layout: data.layouts[courseId] ?? null }),
   'layout:save': ({ courseId, layout }) => { commit(next => { next.layouts[courseId] = layout }); return ok },
+  'layout:saveMany': ({ layouts }) => { commit(next => { for (const { courseId, layout } of layouts) next.layouts[courseId] = layout }); return ok },
   'materials:snapshot': ({ courseId }) => ({ tree: nodeList(courseId) }),
   'materials:tree': ({ courseId }) => nodeList(courseId),
   'materials:search': ({ courseId, query }) => nodeList(courseId).filter(n => n.name.toLowerCase().includes(query.toLowerCase())).map(n => ({ ...n, score: 1 })),

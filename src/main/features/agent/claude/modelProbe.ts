@@ -5,7 +5,7 @@
  * parse, kill. Older CLIs answer with an error → static fallback.
  */
 
-import { createInterface } from 'node:readline'
+import { createInterface, type Interface } from 'node:readline'
 import { tmpdir } from 'node:os'
 import { killProcessTree, spawnClaude } from '../platform'
 
@@ -79,20 +79,26 @@ export interface ModelProbeOptions {
   cwd?: string
   timeoutMs?: number
   spawnImpl?: typeof spawnClaude
+  env?: NodeJS.ProcessEnv
 }
 
 /** Lists the models the user's CLI offers; falls back to a static list. */
 export async function probeModels(opts: ModelProbeOptions): Promise<CliModel[]> {
   const spawnImpl = opts.spawnImpl ?? spawnClaude
-  const env = { ...process.env }
+  const env = { ...(opts.env ?? process.env) }
   delete env['CLAUDECODE']
   delete env['CLAUDE_CODE_ENTRYPOINT']
 
   return new Promise<CliModel[]>((resolve) => {
     let settled = false
+    let reader: Interface | null = null
+    let timer: ReturnType<typeof setTimeout> | undefined
     const finish = (models: CliModel[]): void => {
       if (!settled) {
         settled = true
+        clearTimeout(timer)
+        reader?.close()
+        child.stdin?.end()
         // Tree kill, not `child.kill()`: on Windows the direct child is the
         // `cmd.exe` shim, and killing it would orphan the real CLI process.
         if (child.pid !== undefined) {
@@ -121,9 +127,8 @@ export async function probeModels(opts: ModelProbeOptions): Promise<CliModel[]> 
           cwd: opts.cwd ?? tmpdir(),
           env,
           stdio: ['pipe', 'pipe', 'ignore'],
-          // One-shot probe: killed explicitly by `finish`, no helper tree to
-          // sweep, so it can stay in this process's group.
-          detached: false
+          // Teardown signals the entire group, including native/npm helpers.
+          detached: true
         }
       )
     } catch {
@@ -131,7 +136,7 @@ export async function probeModels(opts: ModelProbeOptions): Promise<CliModel[]> 
       return
     }
 
-    const timer = setTimeout(
+    timer = setTimeout(
       () => finish(FALLBACK_MODELS),
       opts.timeoutMs ?? PROBE_TIMEOUT_MS
     )
@@ -139,9 +144,10 @@ export async function probeModels(opts: ModelProbeOptions): Promise<CliModel[]> 
 
     child.on('error', () => finish(FALLBACK_MODELS))
     child.on('exit', () => finish(FALLBACK_MODELS))
+    child.stdin?.on('error', () => finish(FALLBACK_MODELS))
 
     if (child.stdout !== null) {
-      const reader = createInterface({ input: child.stdout })
+      reader = createInterface({ input: child.stdout })
       reader.on('line', (line) => {
         try {
           const models = parseModels(JSON.parse(line))

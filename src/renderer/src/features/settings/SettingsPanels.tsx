@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BandalMark } from '../../components/BandalMark'
 import { ProviderMark } from '../../components/ProviderMark'
 import { LOCALES, setLocale, useLocale, useT } from '../../i18n'
 import type { Locale } from '../../i18n'
-import { invoke, onPush } from '../../lib/ipc'
+import { invoke } from '../../lib/ipc'
+import { isAgentConnectionBusy, isAgentConnectionReady, prepareAgentConnection, refreshAgentConnectionAfterMutation, seedAgentAvailability, startAgentInstall, startAgentLogin, useAgentConnectionStore } from '../chat/agentConnectionStore'
 import { useUpdateStore } from '../../stores/updateStore'
 import {
   AGENT_PROVIDERS,
@@ -189,16 +190,6 @@ function AvailabilityRows({
   )
 }
 
-type ConnectionStage =
-  | 'idle'
-  | 'installing'
-  | 'checking-install'
-  | 'opening-login'
-  | 'waiting-login'
-  | 'error'
-
-type ConnectionError = 'command' | 'request' | 'failed' | 'login-request' | null
-
 function loginCommandFromMessage(message: string): string {
   const match = /직접 실행해 주세요:\s*(.+)$/u.exec(message)
   return match?.[1]?.trim() || message
@@ -294,6 +285,7 @@ function GeminiApiKeyRow({ onRefresh }: { onRefresh: () => void }): JSX.Element 
         setStatus({ ...result, storageAvailable: true })
         setKey('')
         setSaving(false)
+        void refreshAgentConnectionAfterMutation('gemini')
         onRefresh()
       },
       () => {
@@ -394,193 +386,33 @@ function GeminiApiKeyRow({ onRefresh }: { onRefresh: () => void }): JSX.Element 
 function AgentConnector({
   provider,
   availability,
-  selectedProvider,
-  selectedAvailability,
   onRefresh
 }: {
   provider: AgentProvider
   availability: AgentAvailability
-  selectedProvider: AgentProvider
-  selectedAvailability: AgentAvailability | null
   onRefresh: () => void
 }): JSX.Element | null {
   const t = useT()
-  const [stage, setStage] = useState<ConnectionStage>('idle')
-  const [error, setError] = useState<ConnectionError>(null)
-  const [command, setCommand] = useState('')
-  const [logs, setLogs] = useState<string[]>([])
-  const [loginFailure, setLoginFailure] = useState('')
+  const connection = useAgentConnectionStore(state => state.connections[provider])
+  const { stage, command, logs, loginFailure } = connection
   const [copied, setCopied] = useState(false)
   const [installCommandCopied, setInstallCommandCopied] = useState(false)
   const logsRef = useRef<HTMLPreElement>(null)
-  const installStartedRef = useRef(false)
-  const installFinishedRef = useRef(false)
-  const continueAfterInstallRef = useRef(false)
-  const loginRequestedRef = useRef(false)
-  const wasLoggedInRef = useRef(availability.loggedIn)
-
   const needsUpdate = availability.code === 'version-too-old'
   const needsInstall = !availability.installed || needsUpdate
-  const needsLogin =
-    availability.installed && !availability.loggedIn && !needsUpdate
-  const needsConnection = needsInstall || needsLogin
+  const needsConnection = !isAgentConnectionReady(availability)
   const providerKey = provider === 'claude-code' ? 'claude' : provider
   const providerName = t(`settings.ai.${providerKey}.name`)
-  const busy =
-    stage === 'installing' ||
-    stage === 'checking-install' ||
-    stage === 'opening-login'
-
-  const finishInstallation = useCallback(
-    (ok: boolean, failure: ConnectionError = 'failed') => {
-      if (installFinishedRef.current) return
-      installFinishedRef.current = true
-      installStartedRef.current = false
-      continueAfterInstallRef.current = ok
-      setStage(ok ? 'checking-install' : 'error')
-      setError(ok ? null : failure)
-      onRefresh()
-    },
-    [onRefresh]
-  )
-
+  const busy = isAgentConnectionBusy(stage)
+  useEffect(() => { seedAgentAvailability(provider, availability) }, [provider, availability])
   useEffect(() => {
-    if (!needsInstall) return
-    let active = true
-    void invoke('agent:installCommand', { provider }).then(
-      (result) => {
-        if (active) setCommand(result.command)
-      },
-      () => undefined
-    )
-    return () => {
-      active = false
-    }
+    if (needsInstall) void prepareAgentConnection(provider).catch(() => undefined)
   }, [needsInstall, provider])
-
   useEffect(() => {
-    if (!needsConnection) return
-    const interval = window.setInterval(onRefresh, 3_000)
-    return () => window.clearInterval(interval)
-  }, [needsConnection, onRefresh])
-
-  useEffect(
-    () =>
-      onPush('agent:install-progress', (progress) => {
-        if (progress.provider !== provider) return
-        if (installStartedRef.current && progress.line !== '') {
-          setLogs((current) => [...current.slice(-119), progress.line])
-        }
-        if (!progress.done) return
-        if (installStartedRef.current) {
-          finishInstallation(progress.ok)
-        } else {
-          onRefresh()
-        }
-      }),
-    [finishInstallation, onRefresh, provider]
-  )
-
-  useEffect(() => {
-    if (logsRef.current !== null) {
-      logsRef.current.scrollTop = logsRef.current.scrollHeight
-    }
+    if (logsRef.current) logsRef.current.scrollTop = logsRef.current.scrollHeight
   }, [logs])
-
-  const openLogin = useCallback(() => {
-    if (loginRequestedRef.current) return
-    loginRequestedRef.current = true
-    setStage('opening-login')
-    setError(null)
-    setLoginFailure('')
-    setCopied(false)
-    void invoke('agent:login', { provider }).then(
-      (result) => {
-        loginRequestedRef.current = false
-        if (result.ok) {
-          setStage(needsConnection ? 'waiting-login' : 'idle')
-          onRefresh()
-          return
-        }
-        setStage('error')
-        setLoginFailure(result.message)
-      },
-      () => {
-        loginRequestedRef.current = false
-        setStage('error')
-        setError('login-request')
-      }
-    )
-  }, [needsConnection, onRefresh, provider])
-
-  useEffect(() => {
-    if (!continueAfterInstallRef.current || needsInstall) return
-    continueAfterInstallRef.current = false
-    if (availability.loggedIn) {
-      setStage('idle')
-      return
-    }
-    openLogin()
-  }, [availability.loggedIn, needsInstall, openLogin])
-
-  useEffect(() => {
-    const becameConnected = !wasLoggedInRef.current && availability.loggedIn
-    wasLoggedInRef.current = availability.loggedIn
-    const selectedConnected =
-      selectedAvailability?.installed === true && selectedAvailability.loggedIn
-    if (!becameConnected || provider === selectedProvider || selectedConnected) return
-    void invoke('settings:set', { agentProvider: provider }).catch(() => undefined)
-  }, [
-    availability.loggedIn,
-    provider,
-    selectedAvailability,
-    selectedProvider
-  ])
-
-  useEffect(() => {
-    if (needsConnection) return
-    setStage('idle')
-    setError(null)
-    setLoginFailure('')
-    installStartedRef.current = false
-    installFinishedRef.current = false
-    continueAfterInstallRef.current = false
-    loginRequestedRef.current = false
-  }, [needsConnection])
-
-  const install = (): void => {
-    if (busy) return
-    installStartedRef.current = true
-    installFinishedRef.current = false
-    continueAfterInstallRef.current = false
-    setLogs([])
-    setError(null)
-    setLoginFailure('')
-    setInstallCommandCopied(false)
-    setStage('installing')
-
-    const commandReady =
-      command !== ''
-        ? Promise.resolve()
-        : invoke('agent:installCommand', { provider }).then((result) => {
-            setCommand(result.command)
-          })
-
-    void commandReady.then(
-      () =>
-        invoke('agent:install', { provider }).then(
-          (result) => finishInstallation(result.ok),
-          () => {
-            finishInstallation(false, 'request')
-          }
-        ),
-      () => {
-        installStartedRef.current = false
-        setStage('error')
-        setError('command')
-      }
-    )
-  }
+  const install = (): void => { void startAgentInstall(provider) }
+  const openLogin = (): void => { void startAgentLogin(provider) }
 
   const copyLoginCommand = (): void => {
     void navigator.clipboard
@@ -589,24 +421,8 @@ function AgentConnector({
   }
 
   const copyInstallCommand = (): void => {
-    const pendingCommand =
-      command === ''
-        ? invoke('agent:installCommand', { provider }).then((result) => {
-            setCommand(result.command)
-            return result.command
-          })
-        : Promise.resolve(command)
-
-    void pendingCommand.then(
-      (nextCommand) =>
-        navigator.clipboard
-          .writeText(nextCommand)
-          .then(
-            () => setInstallCommandCopied(true),
-            () => setInstallCommandCopied(false)
-          ),
-      () => setInstallCommandCopied(false)
-    )
+    void prepareAgentConnection(provider).then(() => navigator.clipboard.writeText(useAgentConnectionStore.getState().connections[provider].command))
+      .then(() => setInstallCommandCopied(true), () => setInstallCommandCopied(false))
   }
 
   const accountRow = (
@@ -620,14 +436,7 @@ function AgentConnector({
   const apiKeyRow =
     provider === 'gemini' ? <GeminiApiKeyRow onRefresh={onRefresh} /> : null
 
-  const errorKey =
-    error === 'command'
-      ? 'settings.ai.install.commandFailed'
-      : error === 'request'
-        ? 'settings.ai.install.requestFailed'
-        : error === 'login-request'
-          ? 'settings.ai.login.requestFailed'
-          : 'settings.ai.install.failed'
+  const errorMessage = connection.error ?? t('settings.ai.install.failed')
 
   if (!needsConnection) {
     return (
@@ -636,7 +445,7 @@ function AgentConnector({
         {apiKeyRow}
         {stage === 'error' && (
           <div className="settings-ai-install-error" role="alert">
-            <span>{loginFailure || t(errorKey)}</span>
+            <span>{loginFailure || errorMessage}</span>
             {loginFailure !== '' && (
               <button
                 type="button"
@@ -755,7 +564,7 @@ function AgentConnector({
 
         {stage === 'error' && loginFailure === '' && (
           <div className="settings-ai-install-error" role="alert">
-            <span>{t(errorKey)}</span>
+            <span>{errorMessage}</span>
           </div>
         )}
 
@@ -783,16 +592,12 @@ function AgentConnector({
 function ProviderCard({
   provider,
   availability,
-  selectedProvider,
-  selectedAvailability,
   loading,
   error,
   onRetry
 }: {
   provider: AgentProvider
   availability: AgentAvailability | null
-  selectedProvider: AgentProvider
-  selectedAvailability: AgentAvailability | null
   loading: boolean
   error: string | null
   onRetry: () => void
@@ -800,10 +605,7 @@ function ProviderCard({
   const t = useT()
   const providerKey = provider === 'claude-code' ? 'claude' : provider
   const installed = availability?.installed === true
-  const connected =
-    installed &&
-    availability?.loggedIn === true &&
-    availability.code !== 'version-too-old'
+  const connected = isAgentConnectionReady(availability)
   const providerName = t(`settings.ai.${providerKey}.name`)
   const statusLabel = loading
     ? t('settings.ai.checking')
@@ -869,8 +671,6 @@ function ProviderCard({
           <AgentConnector
             provider={provider}
             availability={availability}
-            selectedProvider={selectedProvider}
-            selectedAvailability={selectedAvailability}
             onRefresh={onRetry}
           />
         </>
@@ -961,8 +761,6 @@ export function AiPanel({
           key={option}
           provider={option}
           availability={availability[option]}
-          selectedProvider={provider}
-          selectedAvailability={availability[provider]}
           loading={loading[option]}
           error={error[option]}
           onRetry={() => onRetry(option)}

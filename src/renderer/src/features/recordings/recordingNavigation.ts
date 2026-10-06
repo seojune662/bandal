@@ -18,6 +18,11 @@ export function activateRecordingView(sessionId: string): boolean {
     (candidate) => candidate.sessionId === sessionId
   )
   if (!view) return false
+  const panelId = [...views.entries()].find(([, entry]) => entry === view)?.[0]
+  const placement = panelId ? workspaceCourseForPanel(panelId) : null
+  if (placement) useCoursesStore.getState().selectCourse(placement)
   view.activate()
   return true
 }
+import { useCoursesStore } from '../../stores/coursesStore'
+import { workspaceCourseForPanel } from '../../stores/workspaceStore'

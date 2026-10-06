@@ -33,6 +33,8 @@ import {
   panelIdMatchesDescriptor
 } from '../features/workspace/tabDuplication'
 import { canCloseTab } from '../features/workspace/tabCloseGuard'
+import { rebindPanelContent } from '../features/workspace/panelContentHost'
+import { useBrowserGuests } from '../features/browser/browserGuestsStore'
 import {
   LAYOUT_SAVE_DEBOUNCE_MS,
   persistentLayout,
@@ -123,10 +125,11 @@ interface PendingSave {
   courseId: string
   layout: unknown
   exhausted: boolean
+  revision: number
 }
 
 interface ActiveSave {
-  save: PendingSave
+  saves: PendingSave[]
   failures: number
   inFlight: boolean
   retryTimer: ReturnType<typeof setTimeout> | null
@@ -171,7 +174,7 @@ let lastStructuralKey = ''
 let pendingSaves: PendingSave[] = []
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let activeSave: ActiveSave | null = null
-let flushAfterActiveSave = false
+let saveRevision = 0
 
 const LAYOUT_SAVE_RETRY_LIMIT = 3
 const LAYOUT_SAVE_RETRY_BASE_MS = 250
@@ -253,45 +256,41 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
   }
 
   const saveIsPending = (save: PendingSave): boolean =>
-    pendingSaves.includes(save)
-
-  const nextPendingSave = (): PendingSave | null =>
-    pendingSaves.find((save) => !save.exhausted) ?? null
+    pendingSaves.some(current => current.courseId === save.courseId && current.revision === save.revision)
 
   const finishActiveSave = (job: ActiveSave): void => {
     if (activeSave !== job) return
     if (job.retryTimer !== null) clearTimeout(job.retryTimer)
     activeSave = null
-    if (!flushAfterActiveSave) return
-    flushAfterActiveSave = false
     flush()
   }
 
   const attemptSave = (job: ActiveSave): void => {
     if (activeSave !== job) return
-    if (!saveIsPending(job.save)) {
+    if (!job.saves.every(saveIsPending)) {
       finishActiveSave(job)
       return
     }
     job.retryTimer = null
     job.inFlight = true
-    void invoke('layout:save', {
-      courseId: job.save.courseId,
-      layout: job.save.layout
-    }).then(
+    const single = job.saves.length === 1 ? job.saves[0]! : null
+    const request = single
+      ? invoke('layout:save', { courseId: single.courseId, layout: single.layout })
+      : invoke('layout:saveMany', { layouts: job.saves.map(({ courseId, layout }) => ({ courseId, layout })) })
+    void request.then(
       () => {
         if (activeSave !== job) return
         job.inFlight = false
         // A newer snapshot for the same course may have replaced this exact
         // object while IPC was in flight. Only the ACKed snapshot is removed.
-        pendingSaves = pendingSaves.filter((save) => save !== job.save)
+        pendingSaves = pendingSaves.filter((save) => !job.saves.some(saved => saved.courseId === save.courseId && saved.revision === save.revision))
         finishActiveSave(job)
       },
       (error: unknown) => {
         if (activeSave !== job) return
         job.inFlight = false
         // Deleted courses and superseded snapshots no longer need a retry.
-        if (!saveIsPending(job.save)) {
+        if (!job.saves.every(saveIsPending)) {
           finishActiveSave(job)
           return
         }
@@ -302,7 +301,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
           job.retryTimer = setTimeout(() => attemptSave(job), retryDelay)
           return
         }
-        job.save.exhausted = true
+        job.saves.forEach(save => { save.exhausted = true })
         console.error('[Bandal] 레이아웃을 저장하지 못했습니다.', error)
         showToast('작업 공간을 저장하지 못했어요', 'danger')
         finishActiveSave(job)
@@ -313,9 +312,6 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
   const flush = (): void => {
     clearSaveTimer()
     if (activeSave !== null) {
-      flushAfterActiveSave = pendingSaves.some(
-        (save) => !save.exhausted && save !== activeSave?.save
-      )
       // beforeunload/course-switch flushes remain immediate even if a failed
       // background save was waiting in its retry backoff.
       if (!activeSave.inFlight && activeSave.retryTimer !== null) {
@@ -325,10 +321,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       }
       return
     }
-    const save = nextPendingSave()
-    if (save === null) return
+    const saves = pendingSaves.filter(save => !save.exhausted)
+    if (saves.length === 0) return
     const job: ActiveSave = {
-      save,
+      saves,
       failures: 0,
       inFlight: false,
       retryTimer: null
@@ -343,8 +339,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     pendingSaves.push({
       courseId,
       layout,
-      exhausted: false
+      exhausted: false,
+      revision: ++saveRevision
     })
+    // A failed paired save must resume as a pair, even if only one side changed.
+    for (const save of pendingSaves) save.exhausted = false
   }
 
   const scheduleSave = (courseId: string, layout: unknown): void => {
@@ -500,6 +499,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         }
       }
       if (courseId === null) {
+        if (retainedMode && api) {
+          const live = api.toJSON()
+          set({ openTabs: tabsFromLayout(live), activePanelId: get().surface === 'course' ? api.activePanel?.id ?? null : null })
+          return
+        }
         clearDockview()
         return
       }
@@ -678,10 +682,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     closeTabsMatching: (descriptor) => {
       // Closes the canonical panel AND every duplicate view of the same tab —
       // closing only tabPanelId(descriptor) leaves ::duplicate:: panels open.
-      if (api === null) return
-      for (const panel of [...api.panels]) {
-        if (panelIdMatchesDescriptor(panel.id, descriptor)) panel.api.close()
-      }
+      closeResourceTabs(candidate => JSON.stringify(candidate) === JSON.stringify(descriptor) || tabPanelId(candidate) === tabPanelId(descriptor))
     },
 
     closeOthers: (panelId, scope = 'group') => {
@@ -773,12 +774,13 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       if (suppressLayoutEvents || api === null) return
       syncActivePanel()
       const { activeCourseId, hydration, openTabs } = get()
-      if (activeCourseId === null || discardedCourses.has(activeCourseId) || hydration !== 'ready') return
+      if ((activeCourseId !== null && discardedCourses.has(activeCourseId)) || hydration !== 'ready') return
 
       const layout = api.toJSON()
-      runtimeLayouts.set(activeCourseId, layout)
       const tabs = tabsFromLayout(layout)
       if (!sameTabs(openTabs, tabs)) set({ openTabs: tabs })
+      if (activeCourseId === null) return
+      runtimeLayouts.set(activeCourseId, layout)
 
       const key = structuralKey(layout)
       if (key === lastStructuralKey) {
@@ -834,7 +836,7 @@ export function resetWorkspaceStoreForTests(): void {
   runtimeLayouts.clear()
   discardedCourses.clear()
   activeSave = null
-  flushAfterActiveSave = false
+  saveRevision = 0
   useWorkspaceStore.setState({
     surface: 'course',
     activeCourseId: null,
@@ -853,7 +855,189 @@ export function retainedTabDescriptors(courseId?: string): TabDescriptor[] {
     if (id === state.activeCourseId || (courseId !== undefined && id !== courseId)) continue
     descriptors.push(...Object.values(tabsFromLayout(layout)))
   }
+  // The temporary no-course canvas has no persisted row, but its pages are live.
+  const temporary = courseApis.get(null)
+  if (temporary && state.activeCourseId !== null && courseId === undefined) {
+    descriptors.push(...temporary.panels.flatMap(panel => isTabDescriptor(panel.params?.descriptor) ? [panel.params.descriptor] : []))
+  }
   return descriptors
+}
+
+export function workspaceApiForCourse(courseId: string | null): DockviewApi | null {
+  return courseApis.get(courseId) ?? (useWorkspaceStore.getState().activeCourseId === courseId ? api : null)
+}
+
+/** Placement lookup, independent of descriptors' original resource bindings. */
+export function workspaceCourseForPanel(panelId: string): string | null {
+  for (const [courseId, target] of courseApis) if (target.getPanel(panelId)) return courseId
+  for (const [courseId, layout] of runtimeLayouts) if (tabsFromLayout(layout)[panelId]) return courseId
+  return null
+}
+
+export interface WorkspacePanelPlacement {
+  courseId: string
+  panelId: string
+  descriptor: TabDescriptor
+}
+
+export function workspacePanelPlacements(): WorkspacePanelPlacement[] {
+  const placements: WorkspacePanelPlacement[] = []
+  for (const [courseId, layout] of runtimeLayouts) {
+    if (discardedCourses.has(courseId)) continue
+    const target = workspaceApiForCourse(courseId)
+    const tabs = target ? Object.fromEntries(target.panels.flatMap(panel => isTabDescriptor(panel.params?.descriptor) ? [[panel.id, panel.params.descriptor]] : [])) : tabsFromLayout(layout)
+    for (const [panelId, descriptor] of Object.entries(tabs)) placements.push({ courseId, panelId, descriptor })
+  }
+  return placements
+}
+
+/** Resource deletion closes every placement, including evicted course layouts. */
+export function closeResourceTabs(matches: (descriptor: TabDescriptor) => boolean): void {
+  const state = useWorkspaceStore.getState()
+  for (const courseId of new Set([...runtimeLayouts.keys(), ...courseApis.keys(), state.activeCourseId])) {
+    if (courseId === null || discardedCourses.has(courseId)) continue
+    const target = workspaceApiForCourse(courseId)
+    if (target) {
+      let changed = false
+      for (const panel of [...target.panels]) if (isTabDescriptor(panel.params?.descriptor) && matches(panel.params.descriptor)) {
+        panel.api.close(); changed = true
+      }
+      if (!changed) continue
+      if (courseId === state.activeCourseId) state.notifyLayoutChanged()
+      else state.saveRetainedLayout(courseId, target.toJSON())
+    } else {
+      const raw = runtimeLayouts.get(courseId)
+      const ids = Object.entries(tabsFromLayout(raw)).filter(([, descriptor]) => matches(descriptor)).map(([id]) => id)
+      if (!ids.length) continue
+      const layout = structuredClone(raw) as RetainedLayout
+      for (const id of ids) delete layout.panels[id]
+      const remaining = validateLayout(layout)?.layout ?? { ...layout, panels: {}, grid: { ...layout.grid, root: { type: 'branch' as const, data: [] } } }
+      state.saveRetainedLayout(courseId, remaining)
+    }
+  }
+  closedTabs = closedTabs.filter(tab => !matches(tab.descriptor))
+}
+
+/** File operations keep a moved view in its chosen workspace. */
+export function reconcileWorkspaceMaterialRename(courseId: string, from: string, to: string): number {
+  const state = useWorkspaceStore.getState()
+  let changed = 0
+  const rewrite = (descriptor: TabDescriptor): TabDescriptor | null => {
+    if (!('relPath' in descriptor.payload) || !('courseId' in descriptor.payload) || descriptor.payload.courseId !== courseId) return null
+    const path = descriptor.payload.relPath
+    if (path !== from && !path.startsWith(`${from}/`) && path !== to && !path.startsWith(`${to}/`)) return null
+    const relPath = path === to || path.startsWith(`${to}/`) ? path : `${to}${path.slice(from.length)}`
+    return { ...descriptor, payload: { ...descriptor.payload, relPath } } as TabDescriptor
+  }
+  for (const placementCourse of new Set([...runtimeLayouts.keys(), state.activeCourseId])) {
+    if (!placementCourse || discardedCourses.has(placementCourse)) continue
+    const target = workspaceApiForCourse(placementCourse)
+    if (target) {
+      let updated = false
+      for (const panel of [...target.panels]) {
+        if (!isTabDescriptor(panel.params?.descriptor)) continue
+        const descriptor = rewrite(panel.params.descriptor)
+        if (!descriptor) continue
+        let id = panel.id.includes('::duplicate::') ? createDuplicatePanelId(descriptor) : tabPanelId(descriptor)
+        if (id === panel.id) continue
+        if (target.getPanel(id)) id = createDuplicatePanelId(descriptor)
+        const group = panel.group.id, index = panel.group.panels.indexOf(panel), active = panel.api.isActive
+        const params = { ...panel.params, descriptor }
+        panel.api.close()
+        target.addPanel({ id, component: descriptor.kind, title: tabTitle(descriptor), params,
+          inactive: !active, ...(target.getGroup(group) ? { position: { referenceGroup: group, index } } : {}) })
+        updated = true; changed++
+      }
+      if (updated) {
+        if (placementCourse === state.activeCourseId) state.notifyLayoutChanged()
+        else state.saveRetainedLayout(placementCourse, target.toJSON())
+      }
+    } else {
+      const raw = runtimeLayouts.get(placementCourse)
+      if (!raw) continue
+      const layout = structuredClone(raw) as RetainedLayout
+      const ids = new Map<string, string>()
+      for (const [id, saved] of Object.entries(layout.panels)) {
+        if (!isTabDescriptor(saved.params?.descriptor)) continue
+        const descriptor = rewrite(saved.params.descriptor)
+        if (!descriptor) continue
+        const nextId = id.includes('::duplicate::') ? createDuplicatePanelId(descriptor) : tabPanelId(descriptor)
+        if (nextId === id) continue
+        ids.set(id, nextId); delete layout.panels[id]
+        layout.panels[nextId] = { ...saved, id: nextId, title: tabTitle(descriptor), params: { ...saved.params, descriptor } }
+        changed++
+      }
+      if (ids.size) {
+        const visit = (node: RetainedLayout['grid']['root']): void => {
+          if (Array.isArray(node.data)) node.data.forEach(visit)
+          else { node.data.views = node.data.views.map(id => ids.get(id) ?? id); if (node.data.activeView) node.data.activeView = ids.get(node.data.activeView) ?? node.data.activeView }
+        }
+        visit(layout.grid.root)
+        state.saveRetainedLayout(placementCourse, layout)
+      }
+    }
+  }
+  return changed
+}
+
+export interface WorkspacePanelMovePosition {
+  groupId?: string
+  direction?: 'within' | 'left' | 'right' | 'above' | 'below'
+  index?: number
+}
+
+/** Transfer presentation only: resources, live content and identities stay intact. */
+export async function moveWorkspacePanel(input: {
+  sourceCourseId: string | null
+  panelId: string
+  targetCourseId: string
+  position?: WorkspacePanelMovePosition
+}): Promise<boolean> {
+  const state = useWorkspaceStore.getState()
+  if (input.sourceCourseId === input.targetCourseId || (input.sourceCourseId !== null && discardedCourses.has(input.sourceCourseId)) || discardedCourses.has(input.targetCourseId)) return false
+  const source = workspaceApiForCourse(input.sourceCourseId), target = workspaceApiForCourse(input.targetCourseId)
+  const panel = source?.getPanel(input.panelId)
+  if (!source || !target || !panel || !hydratedCourses.has(input.targetCourseId) || !isTabDescriptor(panel.params?.descriptor)) return false
+  if (target.getPanel(input.panelId)) {
+    showToast('이 과목에 같은 창이 이미 열려 있어요. 창을 닫은 후 다시 옮겨 주세요.')
+    return false
+  }
+  const group = input.position?.groupId ? target.getGroup(input.position.groupId) : undefined
+  if (input.position?.groupId && !group) return false
+  const direction = input.position?.direction
+  const position = group ? { referenceGroup: group.id, direction: direction ?? 'within',
+    ...(input.position?.index !== undefined ? { index: input.position.index } : {}) }
+    : direction && direction !== 'within' ? { direction } : undefined
+  let added: IDockviewPanel | undefined
+  suppressLayoutEvents = true
+  try {
+    const descriptor = panel.params.descriptor
+    added = target.addPanel({ id: panel.id, component: descriptor.kind,
+      title: panel.title ?? tabTitle(descriptor), params: { ...panel.params },
+      ...(position ? { position } : {}) })
+    rebindPanelContent(panel.api, added.api, target, input.targetCourseId)
+    source.removePanel(panel)
+    if (descriptor.kind === 'browser') useBrowserGuests.getState().setGuestCourse(descriptor.payload.tabId, input.targetCourseId)
+    // Publish both live ownership snapshots before subscribers (guest reaping).
+    if (input.sourceCourseId !== null) runtimeLayouts.set(input.sourceCourseId, source.toJSON())
+    runtimeLayouts.set(input.targetCourseId, target.toJSON())
+    if (api && state.activeCourseId) {
+      useWorkspaceStore.setState({ openTabs: tabsFromLayout(api.toJSON()), activePanelId: api.activePanel?.id ?? null })
+    }
+  } catch (error) {
+    if (added && source.getPanel(panel.id) === panel) {
+      rebindPanelContent(added.api, panel.api, source, input.sourceCourseId)
+      target.removePanel(added)
+    }
+    console.error('[Bandal] 창을 옮기지 못했습니다.', error)
+    showToast('창을 옮기지 못했어요. 원래 창에서 다시 시도해 주세요.', 'danger')
+    return false
+  } finally { suppressLayoutEvents = false }
+  state.saveRetainedLayout(input.sourceCourseId, source.toJSON())
+  state.saveRetainedLayout(input.targetCourseId, target.toJSON())
+  if (state.activeCourseId === input.targetCourseId) state.notifyLayoutChanged()
+  state.flushPendingSave()
+  return true
 }
 
 /** Resolve ownership independently of whichever course is currently selected. */
@@ -974,8 +1158,12 @@ export async function prepareCloseLearningSpace(binding: LearningBinding, standa
   const target = learningSpaceApi(binding)
   const descriptors = target ? target.panels.flatMap(panel => isTabDescriptor(panel.params?.descriptor) ? [panel.params.descriptor] : [])
     : Object.values(tabsFromLayout(runtimeLayouts.get(binding.courseId)))
+  const moved = workspacePanelPlacements().filter(placement => placement.courseId !== binding.courseId &&
+    (standalone ? 'courseId' in placement.descriptor.payload && placement.descriptor.payload.courseId === binding.courseId
+      : belongsToLearningSpace(placement.descriptor, binding, false))).map(placement => placement.descriptor)
   try {
     for (const descriptor of descriptors) if (belongsToLearningSpace(descriptor, binding, standalone) && !await canCloseTab(descriptor)) return false
+    for (const descriptor of moved) if (!await canCloseTab(descriptor)) return false
     return true
   } catch {
     showToast('학습 공간의 탭을 닫지 못했어요. 다시 시도해 주세요.', 'danger')
@@ -1011,5 +1199,8 @@ export async function closeLearningSpace(binding: LearningBinding, standalone: b
     useWorkspaceStore.setState({ openTabs: {}, activePanelId: null })
     state.showLearningHome()
   }
+  closeResourceTabs(descriptor => standalone
+    ? 'courseId' in descriptor.payload && descriptor.payload.courseId === binding.courseId
+    : belongsToLearningSpace(descriptor, binding, false))
   return true
 }

@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Course } from '../../../src/shared/types/course'
 
 const workspaceMocks = vi.hoisted(() => ({
-  discardPendingSave: vi.fn(), showCourseWorkspace: vi.fn(), setActiveCourse: vi.fn()
+  discardPendingSave: vi.fn(), showCourseWorkspace: vi.fn(), setActiveCourse: vi.fn(), closeResourceTabs: vi.fn()
 }))
 
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
+  closeResourceTabs: workspaceMocks.closeResourceTabs,
   useWorkspaceStore: {
     getState: () => ({
       discardPendingSave: workspaceMocks.discardPendingSave,
@@ -56,6 +57,7 @@ beforeEach(() => {
   workspaceMocks.discardPendingSave.mockReset()
   workspaceMocks.showCourseWorkspace.mockReset()
   workspaceMocks.setActiveCourse.mockReset()
+  workspaceMocks.closeResourceTabs.mockReset()
   useCoursesStore.setState({
     courses: [],
     groups: [],
@@ -147,6 +149,18 @@ describe('coursesStore archiveCourse', () => {
     expect(useCoursesStore.getState().selectedCourseId).toBe(active.id)
     expect(workspaceMocks.discardPendingSave).not.toHaveBeenCalled()
   })
+})
+
+test('deleting an original course closes moved resource-bound views, while archival leaves them accessible', async () => {
+  useCoursesStore.setState({ courses: [course('c1', 0), course('c2', 1)], selectedCourseId: 'c2' })
+  invokeMock.mockImplementation(async channel => channel === 'courses:archive' ? course('c1', 0, true) : { ok: true })
+  await useCoursesStore.getState().archiveCourse('c1', true)
+  expect(workspaceMocks.closeResourceTabs).not.toHaveBeenCalled()
+  await useCoursesStore.getState().deleteCourse('c1')
+  const matches = workspaceMocks.closeResourceTabs.mock.calls[0]![0]
+  expect(matches({ kind: 'note', payload: { courseId: 'c1', relPath: 'draft.md' } })).toBe(true)
+  expect(matches({ kind: 'note', payload: { courseId: 'c2', relPath: 'draft.md' } })).toBe(false)
+  expect(matches({ kind: 'browser', payload: { tabId: 'moved', initialUrl: 'https://example.test' } })).toBe(false)
 })
 
 describe('coursesStore setCourseColor', () => {

@@ -11,7 +11,7 @@ test('isolates concurrent session settings and removes only the disposed session
   const { tmpdir } = await import('node:os')
   const { createGeminiAdapter } = await import('../../../src/main/features/agent/gemini/GeminiAdapter')
   const directory = mkdtempSync(join(tmpdir(), 'bandal-gemini-isolation-'))
-  const adapter = createGeminiAdapter({ userDataPath: directory, apiKey: () => 'private-key', locator: { locate: async () => ({ path: '/mock/gemini', version: '0.58.0' }), loginShellPath: async () => '/usr/bin' } as any })
+  const adapter = createGeminiAdapter({ userDataPath: directory, apiKey: () => 'private-key', locator: { reset() {}, availability: async () => ({ installed: true, loggedIn: true, version: '0.58.0' }), locate: async () => ({ path: '/mock/gemini', version: '0.58.0' }), loginShellPath: async () => '/usr/bin' } as any })
   try {
     const a = await adapter.startSession({ courseId: 'a', cwd: directory, mcpHttp: { url: 'http://localhost:1001/mcp', token: 'secret-a' } })
     const first = readdirSync(join(directory, 'gemini-sessions'))[0]!

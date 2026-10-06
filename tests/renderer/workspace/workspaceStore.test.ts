@@ -23,7 +23,8 @@ import {
   openBrowserTabInCourse,
   retainedTabDescriptors,
   resetWorkspaceStoreForTests,
-  useWorkspaceStore
+  useWorkspaceStore,
+  moveWorkspacePanel
 } from '../../../src/renderer/src/stores/workspaceStore'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
 import {
@@ -162,6 +163,23 @@ function singleLeafLayout(
   }
 }
 
+function liveDock(): FakeDockview {
+  const dock = new FakeDockview()
+  const add = dock.addPanel.bind(dock)
+  dock.addPanel = (options: { id: string }) => {
+    const panel = add(options)
+    Object.assign(panel, { params: (options as { params?: unknown }).params, title: (options as { title?: string }).title })
+    dock.activate(panel.id)
+    return panel
+  }
+  dock.toJSON = () => {
+    const ids = dock.panels.map(panel => panel.id)
+    return { grid: { root: ids.length ? { type: 'leaf', data: { id: 'live', views: ids, activeView: dock.activePanel?.id } } : { type: 'branch', data: [] }, width: 800, height: 600, orientation: 'HORIZONTAL' },
+      panels: Object.fromEntries(dock.panels.map(panel => [panel.id, { id: panel.id, contentComponent: panel.params?.descriptor.kind, params: panel.params }])), activeGroup: 'live' }
+  }
+  return dock
+}
+
 const pdfA = descriptorFor('pdf', { courseId: 'c1', relPath: 'a.pdf' })
 const pdfB = descriptorFor('pdf', { courseId: 'c1', relPath: 'b.pdf' })
 
@@ -189,6 +207,85 @@ beforeEach(() => {
   invokeMock.mockImplementation((channel: string) => {
     if (channel === 'layout:get') return Promise.resolve({ layout: null })
     return Promise.resolve({ ok: true })
+  })
+})
+
+describe('cross-course placement transfer', () => {
+  async function ready(sourceCourse: string | null = 'c1') {
+    const source = liveDock(), target = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse(sourceCourse); state.attachCourseApi(sourceCourse, source.asApi()); await settle()
+    const descriptor = descriptorFor('browser', { tabId: 'moving-page', initialUrl: 'https://example.test/current', profileId: 'school', isPrivate: true })
+    const panel = source.addPanel({ id: tabPanelId(descriptor), params: { descriptor, assistant: { courseId: 'original', conversationId: 'conversation' } }, title: 'Current page' } as { id: string })
+    state.notifyLayoutChanged()
+    state.attachCourseApi('c2', target.asApi()); state.setActiveCourse('c2'); await settle()
+    return { source, target, panel, descriptor, state }
+  }
+
+  test('moves exact identity and parameters, preserves browser session and persists both layouts atomically', async () => {
+    const { source, target, panel, descriptor } = await ready()
+    const unregister = registerTabCloseGuard(vi.fn(() => false))
+    useBrowserGuests.getState().ensureGuest('moving-page', descriptor.payload.initialUrl, true, 'school', 'c1')
+    expect(await moveWorkspacePanel({ sourceCourseId: 'c1', targetCourseId: 'c2', panelId: panel.id })).toBe(true)
+    expect(source.getPanel(panel.id)).toBeUndefined()
+    expect(target.getPanel(panel.id)?.params).toEqual(panel.params)
+    expect(panel.api.close).not.toHaveBeenCalled()
+    expect(browserTabCourseId('moving-page')).toBe('c2')
+    expect(useBrowserGuests.getState().liveGuests[0]).toMatchObject({ tabId: 'moving-page', profileId: 'school', isPrivate: true, courseId: 'c2' })
+    // Private pages stay live, but never enter saved layouts.
+    const batch = invokeMock.mock.calls.find(([channel]) => channel === 'layout:saveMany')
+    expect((batch?.[1] as { layouts: { courseId: string }[] }).layouts.map(layout => layout.courseId).sort()).toEqual(['c1', 'c2'])
+    unregister()
+  })
+
+  test('temporary no-course browser can move into a course without closing or persisting a nonexistent source', async () => {
+    const { source, target, panel } = await ready(null)
+    expect(retainedTabDescriptors().some(tab => tab.kind === 'browser' && tab.payload.tabId === 'moving-page')).toBe(true)
+    expect(await moveWorkspacePanel({ sourceCourseId: null, targetCourseId: 'c2', panelId: panel.id })).toBe(true)
+    expect(source.getPanel(panel.id)).toBeUndefined(); expect(target.getPanel(panel.id)).toBeDefined()
+    expect(invokeMock.mock.calls.filter(([channel]) => channel === 'layout:saveMany')).toHaveLength(0)
+    expect(savesFor('c2').length).toBeGreaterThan(0)
+  })
+
+  test('the temporary workspace reflects and retains its tabs without writing a layout row', async () => {
+    const source = liveDock(), state = useWorkspaceStore.getState()
+    state.attachCourseApi(null, source.asApi())
+    const descriptor = descriptorFor('browser', { tabId: 'temporary', initialUrl: 'https://example.test' })
+    source.addPanel({ id: tabPanelId(descriptor), params: { descriptor } } as { id: string })
+    state.notifyLayoutChanged()
+    expect(useWorkspaceStore.getState().openTabs[tabPanelId(descriptor)]).toEqual(descriptor)
+    const target = liveDock(); state.attachCourseApi('c2', target.asApi()); state.setActiveCourse('c2'); await settle()
+    state.setActiveCourse(null)
+    expect(useWorkspaceStore.getState().openTabs[tabPanelId(descriptor)]).toEqual(descriptor)
+    expect(source.panels).toHaveLength(1)
+    expect(invokeMock.mock.calls.filter(([channel, request]) => channel === 'layout:save' && (request as { courseId: string | null }).courseId === null)).toHaveLength(0)
+  })
+
+  test('identity collision leaves both panels and original content untouched', async () => {
+    const { source, target, panel, descriptor } = await ready()
+    target.addPanel({ id: panel.id, params: { descriptor } } as { id: string })
+    expect(await moveWorkspacePanel({ sourceCourseId: 'c1', targetCourseId: 'c2', panelId: panel.id })).toBe(false)
+    expect(source.getPanel(panel.id)).toBe(panel)
+    expect(target.panels).toHaveLength(1)
+  })
+
+  test('a source-only edit after exhausted atomic persistence wakes the entire unacknowledged pair', async () => {
+    const { source, panel, target } = await ready()
+    // Use a persistent note for the restart ownership assertion.
+    source.removePanel(panel)
+    const material = source.addPanel({ id: tabPanelId(pdfA), params: { descriptor: pdfA } } as { id: string })
+    let failing = true
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    invokeMock.mockImplementation(channel => channel === 'layout:saveMany' && failing ? Promise.reject(new Error('disk full')) : Promise.resolve({ ok: true }))
+    expect(await moveWorkspacePanel({ sourceCourseId: 'c1', targetCourseId: 'c2', panelId: material.id })).toBe(true)
+    await vi.advanceTimersByTimeAsync(1750)
+    expect(invokeMock.mock.calls.filter(([channel]) => channel === 'layout:saveMany')).toHaveLength(4)
+    failing = false
+    useWorkspaceStore.getState().saveRetainedLayout('c1', singleLeafLayout([pdfB]) as ReturnType<DockviewApi['toJSON']>)
+    await vi.advanceTimersByTimeAsync(1000)
+    const batch = invokeMock.mock.calls.filter(([channel]) => channel === 'layout:saveMany').at(-1)![1] as { layouts: { courseId: string; layout: { panels: Record<string, unknown> } }[] }
+    expect(batch.layouts.map(entry => entry.courseId).sort()).toEqual(['c1', 'c2'])
+    expect(Object.keys(batch.layouts.find(entry => entry.courseId === 'c2')!.layout.panels)).toContain(target.panels[0]!.id)
+    consoleError.mockRestore()
   })
 })
 

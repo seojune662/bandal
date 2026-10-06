@@ -129,6 +129,12 @@ export function planChecks(files, full = false) {
   }
   // At least one launch for an installer with no feature-specific E2E coverage.
   if (has(/src\/(main\/(features\/(agent|agentTools|browserAgent|desktopAgent)|windows\/(assistantWindow|approvalWindow|screenSelection|overlay))|renderer\/src\/features\/(chat|assistantPanel|overlay)|shared\/(types\/(chat|aiAccess)|moonGeometry|brandMark|screenGeometry))/)) { e2e.add('e2e/chatUx.spec.ts'); e2e.add('e2e/assistantSidebar.spec.ts'); e2e.add('e2e/aiContext.spec.ts') }
+  if (has(/^src\/(main\/features\/agent\/|renderer\/src\/features\/(?:ai\/|chat\/(?:agentConnectionStore|AgentSetupCards|chatSessionStore|ChatSurface)\.|settings\/(?:SettingsApp|SettingsPanels)\.)|shared\/(?:agentProviderSelection|types\/agent-events)\.ts$)/)) e2e.add('e2e/aiConnections.spec.ts')
+  if (workspace || has(/^src\/(?:renderer\/src\/features\/(?:courses\/(?:CourseSidebar|CourseListItem|useWorkspaceCourseHover)\.|browser\/(?:BrowserGuestView|nativePageHandle|browserGuestsStore)\.)|main\/(?:db\/layoutRepo\.ts$|features\/browser\/nativeTabs\.ts$))/)) {
+    e2e.add('e2e/courseTabMove.spec.ts')
+    e2e.add('e2e/tabMoveSessions.spec.ts')
+  }
+  if (has(/^src\/(?:renderer\/src\/features\/(?:workspace\/(?:panelContentHost|WorkspaceHost|panels\/browserAnchor)\.|browser\/(?:BrowserGuestView|nativePageHandle)\.)|main\/features\/browser\/nativeTabs\.ts$)/)) e2e.add('e2e/browserPlacement.spec.ts')
   if (e2e.size === 0) e2e.add('e2e/startup.spec.ts')
   const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f))
   if (sharedAppearance) unitInputs.push('src/shared/theme.ts', 'src/renderer/src/features/courses/CourseSidebar.tsx', 'src/renderer/src/features/settings/AppearancePanel.tsx')

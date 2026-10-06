@@ -151,8 +151,8 @@ describe('createClaudeCodeAdapter — MCP environment', () => {
     const spawnEnv = spawnImpl.mock.calls[0]?.[2]?.env
     expect(spawnArgs).not.toContain('ignored-by-claude=true')
     expect(JSON.stringify(spawnArgs)).not.toContain('user-secret')
+    expect(spawnEnv['PATH']?.split(':').slice(0, 2)).toEqual(['/bin', '/login/bin'])
     expect(spawnEnv).toMatchObject({
-      PATH: '/login/bin',
       BANDAL_MCP_DOCS_TOKEN: 'user-secret'
     })
     session.dispose()

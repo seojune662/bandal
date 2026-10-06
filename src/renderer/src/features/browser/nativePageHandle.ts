@@ -2,6 +2,9 @@ import { invoke, onPush } from '../../lib/ipc'
 import type { BrowserPageAction, BrowserPageState } from '../../../../shared/types/browserNative'
 import type { BrowserPageHandle } from './browserPageTypes'
 
+// Survives presentation remounts; native IDs guard recreated pages.
+let ownershipRevision = 0
+
 /** A native page transport with an independent, presentation-only DOM anchor. */
 export function attachNativePage(element: HTMLElement, tabId: string, isPrivate: boolean, courseId: string | null, profileId = 'default') {
   const events = new EventTarget()
@@ -73,6 +76,15 @@ export function attachNativePage(element: HTMLElement, tabId: string, isPrivate:
   }
   return {
     handle,
+    course: (nextCourseId: string | null) => {
+      const revision = ++ownershipRevision
+      return ready.then(() => {
+        if (disposed || creationError) return
+        return invoke('browser:setCourse', {
+          tabId, courseId: nextCourseId, expectedWebContentsId: current.id, revision
+        })
+      })
+    },
     isAdopted: () => adopted,
     bounds: (bounds: { x: number; y: number; width: number; height: number } | null, preview = false) => {
       const serial = ++boundsSerial

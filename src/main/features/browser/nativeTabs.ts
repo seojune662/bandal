@@ -21,6 +21,7 @@ interface Tab {
   partition: string
   profileId: string
   isPrivate: boolean
+  ownershipRevision?: number
   bounds?: Electron.Rectangle | null
   preview?: Promise<string | null>
 }
@@ -198,6 +199,17 @@ export async function createBrowserPage(event: IpcMainInvokeEvent, req: { tabId:
   install(tab)
   setBrowsingCourse(tab.view.webContents.id, tab.tabId, req.courseId)
   return { state: state(tab.view.webContents), adopted: false }
+}
+/** Placement changes never recreate a page or navigate it. */
+export function setBrowserPageCourse(event: IpcMainInvokeEvent, req: {
+  tabId: string; courseId: string | null; expectedWebContentsId: number; revision: number
+}): { ok: boolean } {
+  const tab = owned(event, req.tabId)
+  if (!Number.isSafeInteger(req.revision) || req.revision < 1) throw new Error('Invalid browser ownership revision')
+  if (tab.view.webContents.id !== req.expectedWebContentsId || req.revision <= (tab.ownershipRevision ?? 0)) return { ok: false }
+  tab.ownershipRevision = req.revision
+  setBrowsingCourse(tab.view.webContents.id, tab.tabId, req.courseId)
+  return { ok: true }
 }
 export async function setBrowserPageBounds(event: IpcMainInvokeEvent, req: { tabId: string; bounds: Electron.Rectangle | null; preview?: boolean }): Promise<{ snapshot: string | null }> {
   const tab = owned(event, req.tabId)

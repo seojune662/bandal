@@ -1,4 +1,4 @@
-import { requireProtocolVersion } from '../protocolAvailability'
+import { assertAgentReady, checkAgentAvailability } from '../availability'
 import type { AgentAdapter, AgentCapabilities, AgentStartSessionOptions } from '../../../../shared/types/agent-events'
 import type { BinaryLocator } from '../binaryLocator'
 import { augmentedPathEnv, killProcessTree, spawnClaude } from '../platform'
@@ -16,8 +16,9 @@ export function buildCodexArgs(opts: { mcpUrl?: string; mcpExtraArgs?: readonly 
 }
 export function createCodexAdapter(deps: CodexAdapterDeps = {}): AgentAdapter {
   const locator = deps.locator ?? createCodexBinaryLocator()
-  return { provider: 'codex', capabilities: CODEX_CAPABILITIES, checkAvailability: async () => requireProtocolVersion(await locator.availability(), 'codex'),
+  return { provider: 'codex', capabilities: CODEX_CAPABILITIES, checkAvailability: () => checkAgentAvailability('codex', locator),
     async startSession(options: AgentStartSessionOptions) {
+      await assertAgentReady('codex', locator, { refresh: true })
       const binary = await locator.locate(), loginPath = await locator.loginShellPath()
       const env = { ...augmentedPathEnv(binary.path, loginPath), ...options.mcpExtraEnv }
       delete env['CODEX_THREAD_ID']; delete env['CODEX_CI']

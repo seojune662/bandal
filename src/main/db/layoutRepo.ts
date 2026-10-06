@@ -10,6 +10,7 @@ import { nowIso, requireId } from './validate'
 export interface LayoutRepo {
   get(courseId: string): { layout: unknown | null }
   save(courseId: string, layout: unknown): { ok: true }
+  saveMany(layouts: Array<{ courseId: string; layout: unknown }>): { ok: true }
 }
 
 interface LayoutRow {
@@ -25,6 +26,27 @@ export function createLayoutRepo(db: Database): LayoutRepo {
       throw new ValidationError(`courseId "${courseId}" does not exist`)
     }
   }
+
+  function serialize(courseId: string, layout: unknown): { id: string; json: string } {
+    const id = requireId(courseId, 'courseId')
+    assertCourseExists(id)
+    let json: string | undefined
+    try { json = JSON.stringify(layout) } catch {
+      throw new ValidationError('layout must be JSON-serializable')
+    }
+    if (typeof json !== 'string') throw new ValidationError('layout must be JSON-serializable')
+    return { id, json }
+  }
+  const write = db.prepare(
+    `INSERT INTO tabs_layout (course_id, layout_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(course_id) DO UPDATE
+       SET layout_json = excluded.layout_json, updated_at = excluded.updated_at`
+  )
+  const writeMany = db.transaction((rows: Array<{ id: string; json: string }>) => {
+    const now = nowIso()
+    for (const row of rows) write.run(row.id, row.json, now, now)
+  })
 
   return {
     get(courseId) {
@@ -44,28 +66,15 @@ export function createLayoutRepo(db: Database): LayoutRepo {
     },
 
     save(courseId, layout) {
-      const id = requireId(courseId, 'courseId')
-      assertCourseExists(id)
-      if (layout === undefined) {
-        throw new ValidationError('layout is required')
-      }
-      let json: string
-      try {
-        json = JSON.stringify(layout)
-      } catch {
-        throw new ValidationError('layout must be JSON-serializable')
-      }
-      if (typeof json !== 'string') {
-        throw new ValidationError('layout must be JSON-serializable')
-      }
-      const now = nowIso()
-      db.prepare(
-        `INSERT INTO tabs_layout (course_id, layout_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(course_id) DO UPDATE
-           SET layout_json = excluded.layout_json,
-               updated_at  = excluded.updated_at`
-      ).run(id, json, now, now)
+      writeMany([serialize(courseId, layout)])
+      return { ok: true }
+    },
+
+    saveMany(layouts) {
+      if (!Array.isArray(layouts) || layouts.length === 0) throw new ValidationError('layouts are required')
+      const rows = layouts.map(entry => serialize(entry.courseId, entry.layout))
+      if (new Set(rows.map(row => row.id)).size !== rows.length) throw new ValidationError('courseIds must be distinct')
+      writeMany(rows)
       return { ok: true }
     }
   }

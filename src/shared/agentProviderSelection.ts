@@ -13,6 +13,11 @@ export function providerPreferenceOrder(
   )
 }
 
+/** Installed credentials are not ready when the transport/version probe failed. */
+export function isAgentReady(state: AgentAvailability | undefined): boolean {
+  return state?.installed === true && state.loggedIn && state.code === undefined
+}
+
 export function firstConnectedProvider(
   order: readonly AgentProvider[],
   availability: Partial<Record<AgentProvider, AgentAvailability>>
@@ -20,7 +25,7 @@ export function firstConnectedProvider(
   return (
     order.find((provider) => {
       const state = availability[provider]
-      return state?.installed === true && state.loggedIn
+      return isAgentReady(state)
     }) ?? null
   )
 }

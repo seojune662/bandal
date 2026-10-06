@@ -1,12 +1,15 @@
-import { afterEach, expect, test, vi } from 'vitest'
-import { acquireChatSession, selectChatSession, useChatSessionStore } from '../../../src/renderer/src/features/chat/chatSessionStore'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { acquireChatSession, refreshChatSession, selectChatSession, setChatProvider, useChatSessionStore } from '../../../src/renderer/src/features/chat/chatSessionStore'
+import { refreshAgentConnection, refreshAgentConnectionAfterMutation, resetAgentConnectionsForTests, seedAgentAvailability, startAgentLogin } from '../../../src/renderer/src/features/chat/agentConnectionStore'
 import { setIpcAdapter, type IpcAdapter } from '../../../src/renderer/src/lib/ipc'
 
 let release: (() => void) | undefined
+beforeEach(() => { vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1)); vi.stubGlobal('cancelAnimationFrame', vi.fn()) })
 afterEach(() => {
   release?.()
   release = undefined
   useChatSessionStore.setState({ sessions: {} })
+  resetAgentConnectionsForTests()
   setIpcAdapter(null)
   vi.unstubAllGlobals()
 })
@@ -81,4 +84,111 @@ test('canonical user messages replace optimistic copies and synchronize other wi
   const payload = { sessionId: 'user-sync', message: { id: 'canonical', courseId: 'course', sessionId: 'user-sync', role: 'user', turnSeq: 1, createdAt: '', blocks: [{ id: 'text', ord: 0, kind: 'text', messageId: 'canonical', payload: { text: 'Question' } }] } }
   handlers.get('chat:message')!(payload); handlers.get('chat:message')!(payload)
   expect(selectChatSession('user-sync').state.messages).toMatchObject([{ id: 'canonical', role: 'user' }])
+})
+
+function deferred<T>() { let resolve!: (value: T) => void; return { promise: new Promise<T>(done => { resolve = done }), resolve } }
+const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve() }
+
+test('retains desktop surface during refresh and provisional provider change', async () => {
+  let provider = 'codex'
+  const invoke = vi.fn(async (channel: string, req: any) => {
+    if (channel === 'chat:setProvider') { provider = req.provider; return {} }
+    if (channel === 'chat:open') return { history: [], availability: { installed: true, loggedIn: true }, sessionInfo: { provider, surface: req.surface } }
+    return { models: [] }
+  })
+  setIpcAdapter({ invoke, on: () => () => undefined } as unknown as IpcAdapter)
+  release = acquireChatSession('course', 'surface-retained', 'desktop')
+  await vi.waitFor(() => expect(selectChatSession('surface-retained').phase).toBe('ready'))
+  refreshChatSession('course', 'surface-retained'); await flush()
+  await setChatProvider('course', 'surface-retained', 'gemini')
+  expect(invoke.mock.calls.filter(([channel]) => channel === 'chat:open').every(([, req]) => req.surface === 'desktop')).toBe(true)
+  expect(invoke).toHaveBeenCalledWith('chat:setProvider', { courseId: 'course', sessionId: 'surface-retained', provider: 'gemini', surface: 'desktop' })
+})
+
+test('A to B to A model loading does not apply an old A result over the latest catalog', async () => {
+  let provider = 'codex', codexRequests = 0
+  const old = deferred<any>(), latest = deferred<any>()
+  const invoke = vi.fn(async (channel: string, req: any) => {
+    if (channel === 'chat:setProvider') { provider = req.provider; return {} }
+    if (channel === 'chat:open') return { history: [], availability: { installed: true, loggedIn: true }, sessionInfo: { provider } }
+    if (channel === 'agent:models' && req.provider === 'codex') return ++codexRequests === 1 ? old.promise : latest.promise
+    return { models: [{ id: 'gemini', displayName: 'Gemini' }] }
+  })
+  setIpcAdapter({ invoke, on: () => () => undefined } as unknown as IpcAdapter)
+  release = acquireChatSession('course', 'model-generation')
+  await vi.waitFor(() => expect(selectChatSession('model-generation').phase).toBe('ready'))
+  await setChatProvider('course', 'model-generation', 'gemini')
+  await setChatProvider('course', 'model-generation', 'codex')
+  latest.resolve({ models: [{ id: 'new', displayName: 'New' }] }); await flush()
+  old.resolve({ models: [{ id: 'old', displayName: 'Old' }] }); await flush()
+  expect(selectChatSession('model-generation').models).toEqual([{ id: 'new', displayName: 'New' }])
+})
+
+test('an older settings save cannot send a provider switch after a newer A to B to A choice', async () => {
+  let provider = 'codex'
+  const old = deferred<any>(), latest = deferred<any>()
+  const invoke = vi.fn(async (channel: string, req: any) => {
+    if (channel === 'settings:set') return req.agentProvider === 'gemini' ? old.promise : latest.promise
+    if (channel === 'chat:setProvider') { provider = req.provider; return {} }
+    if (channel === 'chat:open') return { history: [], availability: { installed: true, loggedIn: true }, sessionInfo: { provider } }
+    return { models: [] }
+  })
+  setIpcAdapter({ invoke, on: () => () => undefined } as unknown as IpcAdapter)
+  release = acquireChatSession('course', 'provider-generation')
+  await vi.waitFor(() => expect(selectChatSession('provider-generation').phase).toBe('ready'))
+  const first = setChatProvider('course', 'provider-generation', 'gemini')
+  const second = setChatProvider('course', 'provider-generation', 'codex')
+  latest.resolve({}); await second
+  old.resolve({}); await first
+  expect(selectChatSession('provider-generation').provider).toBe('codex')
+  expect(invoke.mock.calls.filter(([channel]) => channel === 'chat:setProvider')).toEqual([['chat:setProvider', { courseId: 'course', sessionId: 'provider-generation', provider: 'codex', surface: 'app' }]])
+})
+
+test('actual login readiness updates an acquired chat and loads a fresh catalog once', async () => {
+  let loggedIn = false
+  const invoke = vi.fn(async (channel: string) => {
+    const availability = { installed: true, loggedIn }
+    if (channel === 'chat:open') return { history: [], availability, sessionInfo: { provider: 'codex' } }
+    if (channel === 'agent:login') return { ok: true, message: 'opened' }
+    if (channel === 'agent:availability') return availability
+    return { models: [{ id: loggedIn ? 'account-model' : 'fallback', displayName: 'Fixture' }] }
+  })
+  setIpcAdapter({ invoke, on: () => () => undefined } as unknown as IpcAdapter)
+  release = acquireChatSession('course', 'login-catalog')
+  await vi.waitFor(() => expect(selectChatSession('login-catalog').phase).toBe('ready'))
+  await startAgentLogin('codex')
+  expect(invoke.mock.calls.filter(([channel]) => channel === 'agent:models')).toHaveLength(0)
+  loggedIn = true
+  await refreshAgentConnection('codex', true); await flush()
+  expect(selectChatSession('login-catalog').availability?.loggedIn).toBe(true)
+  expect(selectChatSession('login-catalog').models[0]?.id).toBe('account-model')
+  expect(invoke).toHaveBeenCalledWith('agent:models', { provider: 'codex', refresh: true })
+  const count = invoke.mock.calls.filter(([channel]) => channel === 'agent:models').length
+  await refreshAgentConnection('codex', true); await flush()
+  expect(invoke.mock.calls.filter(([channel]) => channel === 'agent:models')).toHaveLength(count)
+})
+
+test('credential removal updates a streaming chat without clearing its response and invalidates pending models', async () => {
+  const oldModels = deferred<any>(), handlers = new Map<string, (payload: any) => void>()
+  setIpcAdapter({ invoke: async (channel: string) => channel === 'chat:open' ? { history: [], availability: { installed: true, loggedIn: true }, sessionInfo: { provider: 'codex', status: 'running' } } : channel === 'agent:models' ? oldModels.promise : { installed: true, loggedIn: false }, on: (channel: string, handler: (payload: any) => void) => { handlers.set(channel, handler); return () => handlers.delete(channel) } } as unknown as IpcAdapter)
+  release = acquireChatSession('course', 'credential-streaming')
+  await vi.waitFor(() => expect(selectChatSession('credential-streaming').phase).toBe('ready'))
+  handlers.get('chat:message')!({ sessionId: 'credential-streaming', message: { id: 'answer', courseId: 'course', sessionId: 'credential-streaming', role: 'assistant', createdAt: '', blocks: [{ id: 'text', ord: 0, kind: 'text', messageId: 'answer', payload: { text: '응답을 이어 쓰는 중' } }] } })
+  await refreshAgentConnectionAfterMutation('codex')
+  oldModels.resolve({ models: [{ id: 'old-account', displayName: 'Old' }] }); await flush()
+  expect(selectChatSession('credential-streaming').availability?.loggedIn).toBe(false)
+  expect(selectChatSession('credential-streaming').state.streaming).toBe(true)
+  expect(selectChatSession('credential-streaming').state.messages).toHaveLength(1)
+  expect(selectChatSession('credential-streaming').models).toEqual([])
+})
+
+test('a late open result cannot restore readiness after an authoritative credential refresh', async () => {
+  const open = deferred<any>()
+  setIpcAdapter({ invoke: async (channel: string) => channel === 'chat:open' ? open.promise : channel === 'agent:availability' ? { installed: true, loggedIn: false } : { models: [] }, on: () => () => undefined } as unknown as IpcAdapter)
+  release = acquireChatSession('course', 'stale-readiness-open')
+  await refreshAgentConnectionAfterMutation('codex')
+  open.resolve({ history: [], availability: { installed: true, loggedIn: true }, sessionInfo: { provider: 'codex' } })
+  await vi.waitFor(() => expect(selectChatSession('stale-readiness-open').phase).toBe('ready'))
+  seedAgentAvailability('codex', { installed: true, loggedIn: true })
+  expect(selectChatSession('stale-readiness-open').availability?.loggedIn).toBe(false)
 })

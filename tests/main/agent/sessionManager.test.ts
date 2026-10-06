@@ -284,6 +284,87 @@ describe('SessionManager', () => {
     expect(fake.sessions).toHaveLength(0)
   })
 
+  test('adapter startup failure closes its MCP server before a retry owns another server', async () => {
+    manager.disposeAll()
+    const closes = [vi.fn(async () => {}), vi.fn(async () => {})]
+    let attempt = 0
+    const startToolServer = vi.fn(async () => ({ mcpConfigPath: '/tmp/mcp.json', extraAllowedTools: [], extraEnv: {}, codexOverrides: [], mcpHint: '', url: 'http://localhost/mcp', token: 'secret', close: closes[attempt++]! }))
+    const startSession = fake.adapter.startSession
+    let fail = true
+    fake.adapter.startSession = async options => { if (fail) { fail = false; throw new Error('start failed') }; return startSession(options) }
+    manager = createSessionManager({ adapter: fake.adapter, repo, getCourse: () => ({ folder: ctx.dir, name: 'test' }), emit: () => {}, startToolServer })
+    await expect(manager.send(courseId, conversationId, 'first')).rejects.toThrow('start failed')
+    expect(closes[0]).toHaveBeenCalledOnce()
+    await manager.send(courseId, conversationId, 'retry')
+    expect(closes[1]).not.toHaveBeenCalled()
+    manager.close(courseId, conversationId)
+    expect(closes[1]).toHaveBeenCalledOnce()
+  })
+
+  test('closed interrupted sessions are replaced on the very next send without an error retry', async () => {
+    await manager.send(courseId, conversationId, 'first')
+    const session = fake.sessions[0]!
+    Object.defineProperty(session, 'closed', { value: true })
+    session.emit({ type: 'turn-complete', stopReason: 'interrupted' })
+    expect(session.disposed).toBe(true)
+    expect(repo.getSession(conversationId)?.status).toBe('idle')
+    await manager.send(courseId, conversationId, 'next')
+    expect(fake.sessions).toHaveLength(2)
+  })
+
+  test('a nullable resolved model does not pin an invented default when restarting', async () => {
+    await manager.send(courseId, conversationId, 'first')
+    fake.sessions[0]!.emit({ type: 'session-started', sessionId: 'cli-unknown-model', model: null, provider: 'claude-code' })
+    fake.sessions[0]!.emit({ type: 'turn-complete', stopReason: 'success' })
+    manager.close(courseId, conversationId)
+    await manager.send(courseId, conversationId, 'next')
+    expect(fake.startOptions[1]).not.toHaveProperty('model')
+    expect(fake.startOptions[1]?.resumeCliSessionId).toBe('cli-unknown-model')
+  })
+
+  test('credential invalidation immediately replaces idle connections and preserves their resume record', async () => {
+    await manager.send(courseId, conversationId, 'first')
+    const old = fake.sessions[0]!
+    old.emit({ type: 'session-started', sessionId: 'cli-key-session', model: 'model', provider: 'claude-code' })
+    old.emit({ type: 'turn-complete', stopReason: 'success' })
+    manager.invalidateCredentials()
+    expect(old.disposed).toBe(true)
+    expect(repo.getSession(conversationId)?.status).toBe('idle')
+    await manager.send(courseId, conversationId, 'next')
+    expect(fake.sessions).toHaveLength(2)
+    expect(fake.startOptions[1]?.resumeCliSessionId).toBe('cli-key-session')
+  })
+
+  test('credential invalidation leaves a running response intact and replaces its process on completion', async () => {
+    await manager.send(courseId, conversationId, 'first')
+    const old = fake.sessions[0]!
+    old.emit({ type: 'text-delta', blockId: 'answer', text: 'before ' })
+    manager.invalidateCredentials()
+    expect(old.disposed).toBe(false)
+    expect(old.cancelled).toBe(false)
+    old.emit({ type: 'text-delta', blockId: 'answer', text: 'after' })
+    old.emit({ type: 'turn-complete', stopReason: 'success' })
+    expect(old.disposed).toBe(true)
+    expect(repo.historyTail(conversationId)[1]?.blocks[0]?.payload).toEqual({ text: 'before after' })
+    await manager.send(courseId, conversationId, 'next')
+    expect(fake.sessions).toHaveLength(2)
+  })
+
+  test('credential invalidation during deferred startup does not cancel dispatch and reconnects after settlement', async () => {
+    let resolve!: (session: AgentSession) => void
+    fake.adapter.startSession = () => new Promise(done => { resolve = done })
+    const sending = manager.send(courseId, conversationId, 'first')
+    manager.invalidateCredentials()
+    const session = createFakeSession()
+    resolve(session)
+    await sending
+    expect(session.sentMessages).toEqual(['first'])
+    expect(session.disposed).toBe(false)
+    session.emit({ type: 'turn-complete', stopReason: 'success' })
+    expect(session.disposed).toBe(true)
+    expect(repo.getSession(conversationId)?.status).toBe('idle')
+  })
+
   test('open() alone leaves zero agent_sessions rows (lazy creation)', async () => {
     await manager.open(courseId, conversationId)
     const count = ctx.db

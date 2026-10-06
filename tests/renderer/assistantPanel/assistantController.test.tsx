@@ -10,14 +10,16 @@ import { useUiStore } from '../../../src/renderer/src/stores/uiStore'
 import { showToast } from '../../../src/renderer/src/app/toast'
 import { openActiveAssistant, openChosenAssistant, registerAssistantController, resetAssistantControllersForTests, useActiveAssistantOpen } from '../../../src/renderer/src/features/assistantPanel/assistantController'
 import { withAssistantPanel } from '../../../src/renderer/src/features/assistantPanel/TabAssistantPanel'
+import { WorkspacePlacementContext } from '../../../src/renderer/src/features/workspace/placementContext'
+import { CourseActivity } from '../../../src/renderer/src/features/workspace/courseActivity'
 import { updateComposerDraft, useComposerDraft, useComposerDraftStore } from '../../../src/renderer/src/features/chat/composerDraftStore'
 
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: vi.fn(async () => ({ ok: true })), onPush: vi.fn(() => () => {}) }))
 vi.mock('../../../src/renderer/src/app/toast', () => ({ showToast: vi.fn() }))
 vi.mock('../../../src/renderer/src/features/chat/ChatSurface', () => ({
-  ChatSurface: ({ conversationId }: { conversationId: string }) => {
+  ChatSurface: ({ conversationId, courseId }: { conversationId: string; courseId: string }) => {
     const draft = useComposerDraft(conversationId)
-    return <textarea className="chat-composer__input" data-conversation={conversationId} value={draft.text} readOnly />
+    return <textarea className="chat-composer__input" data-conversation={conversationId} data-course={courseId} value={draft.text} readOnly />
   }
 }))
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -30,7 +32,7 @@ let container: HTMLDivElement, root: Root
 function controller(courseId: string | null = 'c1', open = false) {
   return { courseId, open, show: vi.fn(), focus: vi.fn() }
 }
-function activate(panelId: string, descriptor = note, courseId = 'c1') {
+function activate(panelId: string, descriptor = note, courseId: string | null = 'c1') {
   source = { panelId, descriptor }
   useWorkspaceStore.setState({ activeCourseId: courseId, activePanelId: panelId, hydration: 'ready' })
 }
@@ -191,4 +193,57 @@ test('a chat shortcut focuses its current composer without adding a second assis
   expect(container.querySelector('.tab-assistant')).toBeNull()
   expect(props.api.updateParameters).not.toHaveBeenCalled()
   expect(useWorkspaceStore.getState().openTab).not.toHaveBeenCalled()
+})
+
+test('an unopened temporary browser follows placement until AI opens, then retains its conversation owner across later moves', async () => {
+  const browser: TabDescriptor = { kind: 'browser', payload: { tabId: 'scratch', initialUrl: 'https://gemini.google.com/app' } }
+  const props = panelProps(browser)
+  props.params.assistant = { conversationId: 'scratch-conversation', open: false, width: 320 }
+  const Wrapped = withAssistantPanel(() => <p>브라우저</p>)
+  const render = async (courseId: string | null) => act(async () => {
+    activate(props.api.id, browser, courseId)
+    root.render(<WorkspacePlacementContext.Provider value={{ courseId, panelId: props.api.id, instanceId: 'scratch-instance' }}><Wrapped {...props} /></WorkspacePlacementContext.Provider>)
+  })
+  await render(null); await render('c1'); await render('c2')
+  expect(props.api.updateParameters).not.toHaveBeenCalled()
+  await act(async () => openActiveAssistant())
+  const composer = container.querySelector<HTMLTextAreaElement>('.chat-composer__input')!
+  expect(composer.dataset.course).toBe('c2')
+  expect(composer.dataset.conversation).toBe('scratch-conversation')
+  expect(props.api.updateParameters).toHaveBeenCalledWith({ assistant: expect.objectContaining({ courseId: 'c2', conversationId: 'scratch-conversation', open: true }) })
+  await render('c1')
+  expect(container.querySelector('.chat-composer__input')).toBe(composer)
+  expect(composer.dataset.course).toBe('c2')
+  expect(useWorkspaceStore.getState().openTab).not.toHaveBeenCalled()
+})
+
+test('a hidden temporary browser cannot inherit a selected course, and an assistant opened at null pins its first valid destination', async () => {
+  const browser: TabDescriptor = { kind: 'browser', payload: { tabId: 'scratch-open', initialUrl: 'https://gemini.google.com/app' } }
+  const props = panelProps(browser)
+  props.params.assistant = { conversationId: 'scratch-open-conversation', open: true, width: 320 }
+  const Wrapped = withAssistantPanel(() => <p>브라우저</p>)
+  const render = async (courseId: string | null, active = true) => act(async () => {
+    if (active) activate(props.api.id, browser, courseId)
+    root.render(<WorkspacePlacementContext.Provider value={{ courseId, panelId: props.api.id, instanceId: 'scratch-open-instance' }}><CourseActivity.Provider value={active}><Wrapped {...props} /></CourseActivity.Provider></WorkspacePlacementContext.Provider>)
+  })
+  activate('another-course-panel', note, 'c1')
+  await render(null, false)
+  expect(container.querySelector('.chat-composer__input')).toBeNull()
+  expect(container.textContent).toContain('과목을 선택하면 AI와 대화할 수 있어요.')
+  expect(props.api.updateParameters).not.toHaveBeenCalled()
+  await render('c1')
+  const composer = container.querySelector<HTMLTextAreaElement>('.chat-composer__input')!
+  expect(composer.dataset.course).toBe('c1')
+  expect(props.api.updateParameters).toHaveBeenCalledWith({ assistant: expect.objectContaining({ courseId: 'c1', conversationId: 'scratch-open-conversation' }) })
+  await render('c2')
+  expect(container.querySelector('.chat-composer__input')).toBe(composer)
+  expect(composer.dataset.course).toBe('c1')
+})
+
+test('a moved resource assistant uses its original course ahead of persisted assistant or placement owners', async () => {
+  const props = panelProps(note), Wrapped = withAssistantPanel(() => <p>자료</p>)
+  props.params.assistant = { courseId: 'c2', conversationId: 'resource-conversation', open: true, width: 320 }
+  activate(props.api.id, note, 'c3')
+  await act(async () => root.render(<WorkspacePlacementContext.Provider value={{ courseId: 'c3', panelId: props.api.id, instanceId: 'resource-instance' }}><Wrapped {...props} /></WorkspacePlacementContext.Provider>))
+  expect(container.querySelector<HTMLTextAreaElement>('.chat-composer__input')!.dataset.course).toBe('c1')
 })

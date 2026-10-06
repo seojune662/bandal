@@ -152,11 +152,18 @@ test('drags a real dockview tab into course favorites', async () => {
 
     expect(drag.types).toContain(FAVORITE_TAB_MIME)
     expect(drag.customData).not.toBe('')
+    expect(immediateState.courseId).not.toBeNull()
     expect(JSON.parse(drag.customData)).toEqual({
       descriptor: { kind: 'board', payload: {} },
-      label: '학업 보드'
+      label: '학업 보드',
+      source: {
+        courseId: immediateState.courseId,
+        panelId: 'board',
+        nonce: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu)
+      }
     })
     expect(drag.dropDefaultPrevented).toBe(true)
+    await expect(tab).toBeVisible()
     await expect(
       favorites.locator('.favorite-row', { hasText: '학업 보드' })
     ).toHaveCount(1)

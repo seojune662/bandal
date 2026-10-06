@@ -41,6 +41,7 @@ import { createPdfClipRenderer } from '../pdf/renderClip'
 import { openMaterialInCourse } from '../workspace/openMaterial'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { useHasBeenShown } from '../workspace/useHasBeenShown'
+import { usePanelActive } from '../workspace/usePanelActive'
 import {
   clipBoxAtDrop,
   createOptimisticCanvasShape,
@@ -111,22 +112,6 @@ function descriptorFromParams(
   return isTabDescriptor(descriptor) && descriptor.kind === 'whiteboard'
     ? descriptor.payload
     : null
-}
-
-function usePanelActive(api: IDockviewPanelProps['api']): boolean {
-  const [active, setActive] = useState(() => api.isActive && api.isVisible)
-
-  useEffect(() => {
-    const update = (): void => setActive(api.isActive && api.isVisible)
-    const activeDisposable = api.onDidActiveChange(update)
-    const visibleDisposable = api.onDidVisibilityChange(update)
-    return () => {
-      activeDisposable.dispose()
-      visibleDisposable.dispose()
-    }
-  }, [api])
-
-  return active
 }
 
 export function canvasUndoKey(boardId: string): string {

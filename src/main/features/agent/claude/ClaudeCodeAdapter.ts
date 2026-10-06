@@ -14,7 +14,9 @@ import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { killProcessTree, spawnClaude } from '../platform'
+import { augmentedPathEnv, killProcessTree, spawnClaude } from '../platform'
+import { assertAgentReady, checkAgentAvailability } from '../availability'
+import { AGENT_INACTIVITY_MS, AGENT_CANCEL_TIMEOUT_MS, providerModel } from '../rpcSession'
 import type {
   AgentAdapter,
   AgentCapabilities,
@@ -150,9 +152,8 @@ export function buildClaudeArgs(opts: {
     args.splice(denied, 2)
   }
   if (opts.effort) args.push('--effort', opts.effort)
-  if (opts.model !== undefined && opts.model !== '') {
-    args.push('--model', opts.model)
-  }
+  const model = providerModel(opts.model)
+  if (model !== undefined) args.push('--model', model)
   if (opts.resumeCliSessionId !== undefined && opts.resumeCliSessionId !== '') {
     args.push('--resume', opts.resumeCliSessionId)
   }
@@ -160,17 +161,15 @@ export function buildClaudeArgs(opts: {
 }
 
 function buildChildEnv(
+  binaryPath: string,
   loginPath: string | null,
   extraEnv: Record<string, string> = {}
 ): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, ...extraEnv }
+  const env: NodeJS.ProcessEnv = { ...augmentedPathEnv(binaryPath, loginPath), ...extraEnv }
   // Bandal itself may run inside a Claude Code session — never leak that.
   delete env['CLAUDECODE']
   delete env['CLAUDE_CODE_ENTRYPOINT']
   delete env['CLAUDE_CODE_SSE_PORT']
-  if (loginPath !== null) {
-    env['PATH'] = loginPath
-  }
   return env
 }
 
@@ -196,6 +195,7 @@ export function createClaudeCodeAdapter(
   async function startSession(
     opts: AgentStartSessionOptions
   ): Promise<ClaudeCodeSession> {
+    await assertAgentReady('claude-code', deps.locator, { refresh: true })
     const binary = await deps.locator.locate()
     const loginPath = await deps.locator.loginShellPath()
     const args = buildClaudeArgs(opts)
@@ -204,7 +204,7 @@ export function createClaudeCodeAdapter(
     try {
       child = spawnImpl(binary.path, args, {
         cwd: opts.cwd,
-        env: buildChildEnv(loginPath, opts.mcpExtraEnv)
+        env: buildChildEnv(binary.path, loginPath, opts.mcpExtraEnv)
       })
     } catch (error) {
       throw new AgentUnavailableError(
@@ -232,6 +232,23 @@ export function createClaudeCodeAdapter(
 
     let disposed = false
     let exited = false
+    let running = false
+    let cancelled = false
+    let turnSequence = 0
+    let inactivityTimer: ReturnType<typeof setTimeout> | undefined
+    let cancelTimer: ReturnType<typeof setTimeout> | undefined
+    const clearTurnTimers = (): void => { clearTimeout(inactivityTimer); clearTimeout(cancelTimer) }
+    const armTimeout = (): void => {
+      clearTimeout(inactivityTimer)
+      if (!running || cancelled || pendingPermissionInputs.size || disposed || exited) return
+      const turn = turnSequence
+      inactivityTimer = setTimeout(() => {
+        if (!running || turn !== turnSequence || disposed || exited) return
+        emit({ type: 'error', code: 'process-crashed', message: 'AI 작업이 5분 동안 응답하지 않았어요. 다시 보내면 대화를 이어갈 수 있어요.', fatal: true })
+        disposeInternal()
+      }, AGENT_INACTIVITY_MS)
+      inactivityTimer.unref()
+    }
     let transcriptPath: string | null = null
     let resolveSessionId!: (id: string) => void
     let rejectSessionId!: (error: Error) => void
@@ -249,6 +266,13 @@ export function createClaudeCodeAdapter(
     }
 
     function emit(event: AgentEvent): void {
+      if (event.type === 'turn-complete') {
+        if (!running) return
+        running = false
+        clearTurnTimers()
+        pendingPermissionInputs.clear()
+        if (cancelled) event = { ...event, stopReason: 'interrupted' }
+      }
       if (event.type === 'session-started') {
         // Computed from the CLI's naming rule; the file may flush lazily.
         transcriptPath = join(transcriptDirFor(cwd), `${event.sessionId}.jsonl`)
@@ -256,7 +280,8 @@ export function createClaudeCodeAdapter(
       }
       if (event.type === 'permission-request') {
         pendingPermissionInputs.set(event.requestId, event.input)
-      }
+        clearTimeout(inactivityTimer)
+      } else if (event.type !== 'turn-complete') armTimeout()
       for (const subscriber of subscribers) {
         subscriber(event)
       }
@@ -303,8 +328,9 @@ export function createClaudeCodeAdapter(
       stderrRing.push(chunk)
     })
 
-    child.on('error', (error) => {
-      exited = true
+    const failed = (error: Error): void => {
+      if (disposed || exited) return
+      clearTurnTimers()
       rejectSessionId(
         new AgentUnavailableError('spawn-failed', error.message)
       )
@@ -314,11 +340,15 @@ export function createClaudeCodeAdapter(
         message: `Claude Code failed to start: ${error.message}`,
         fatal: true
       })
+      disposeInternal()
       endIterators()
-    })
+    }
+    child.on('error', failed)
+    child.stdin?.on('error', failed)
 
     child.on('exit', (code, signal) => {
       exited = true
+      clearTurnTimers()
       if (pgid !== undefined) {
         liveProcessGroups.delete(pgid)
       }
@@ -347,6 +377,9 @@ export function createClaudeCodeAdapter(
         return
       }
       disposed = true
+      clearTurnTimers()
+      pendingPermissionInputs.clear()
+      rejectSessionId(new Error('대화를 닫았어요.'))
       jsonl?.dispose()
       try {
         child.stdin?.end()
@@ -358,7 +391,7 @@ export function createClaudeCodeAdapter(
         // the escalation timer below is a POSIX-only no-op there.
         killProcessTree(pgid, 'SIGTERM')
         const killTimer = setTimeout(() => {
-          killProcessTree(pgid, 'SIGKILL')
+          if (!exited) killProcessTree(pgid, 'SIGKILL')
         }, SIGKILL_DELAY_MS)
         killTimer.unref()
       }
@@ -396,6 +429,7 @@ export function createClaudeCodeAdapter(
 
     return {
       sessionId: sessionIdPromise,
+      get closed() { return disposed || exited },
       events,
       get transcriptPath() {
         return transcriptPath
@@ -406,6 +440,9 @@ export function createClaudeCodeAdapter(
         return () => subscribers.delete(cb)
       },
       sendMessage: (content, attachments = []) => {
+        if (disposed || exited) throw new AgentUnavailableError('process-crashed', 'AI 연결이 닫혔어요. 다시 보내 주세요.')
+        if (running) throw new Error('진행 중인 응답을 마친 뒤 보내 주세요.')
+        running = true; cancelled = false; turnSequence++; armTimeout()
         const messageContent: Array<Record<string, unknown>> = attachments.map(
           (attachment) => ({
             type: 'image',
@@ -423,6 +460,7 @@ export function createClaudeCodeAdapter(
         })
       },
       respondPermission: (requestId: string, res: PermissionResponse) => {
+        if (disposed || exited || !pendingPermissionInputs.has(requestId)) return
         const input = pendingPermissionInputs.get(requestId)
         pendingPermissionInputs.delete(requestId)
         const response =
@@ -433,14 +471,30 @@ export function createClaudeCodeAdapter(
           type: 'control_response',
           response: { subtype: 'success', request_id: requestId, response }
         })
+        armTimeout()
       },
       cancel: () => {
+        if (!running || cancelled || disposed || exited) return
+        cancelled = true
+        clearTimeout(inactivityTimer)
+        for (const requestId of pendingPermissionInputs.keys()) {
+          pendingPermissionInputs.delete(requestId)
+          writeLine({ type: 'control_response', response: { subtype: 'success', request_id: requestId, response: { behavior: 'deny', message: 'User cancelled this turn' } } })
+          emit({ type: 'permission-resolved', requestId, behavior: 'deny' })
+        }
         mapper.markInterrupted()
         writeLine({
           type: 'control_request',
           request_id: `interrupt-${randomUUID()}`,
           request: { subtype: 'interrupt' }
         })
+        const turn = turnSequence
+        cancelTimer = setTimeout(() => {
+          if (!running || turn !== turnSequence || disposed || exited) return
+          disposeInternal()
+          emit({ type: 'turn-complete', stopReason: 'interrupted' })
+        }, AGENT_CANCEL_TIMEOUT_MS)
+        cancelTimer.unref()
       },
       dispose: disposeInternal
     }
@@ -449,7 +503,7 @@ export function createClaudeCodeAdapter(
   return {
     provider: 'claude-code',
     capabilities: CLAUDE_CAPABILITIES,
-    checkAvailability: () => deps.locator.availability(),
+    checkAvailability: () => checkAgentAvailability('claude-code', deps.locator),
     startSession
   }
 }

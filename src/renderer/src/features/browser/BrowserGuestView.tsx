@@ -83,6 +83,8 @@ export function BrowserGuestView({
   const ownerCourse = useBrowserGuests(state =>
     state.liveGuests.find(guest => guest.tabId === tabId)?.courseId ?? null
   )
+  const ownerCourseRef = useRef(ownerCourse)
+  ownerCourseRef.current = ownerCourse
   const [rect, setRect] = useState<AnchorRect | null>(() =>
     getBrowserAnchorRect(tabId)
   )
@@ -98,7 +100,10 @@ export function BrowserGuestView({
     nativeRef.current = native
     pageRef.current = native.handle
     return () => { native.dispose(); nativeRef.current = null; pageRef.current = null }
-  }, [tabId, isPrivate, ownerCourse, profileId])
+  }, [tabId, isPrivate, profileId])
+  useLayoutEffect(() => {
+    void nativeRef.current?.course(ownerCourse).catch(console.error)
+  }, [tabId, isPrivate, profileId, ownerCourse])
   useLayoutEffect(() => {
     nativeRef.current?.bounds(overlayVisible || obscured || contextMenu ? null : rect, rect !== null && !overlayVisible && (obscured || contextMenu !== null))
   }, [rect, overlayVisible, obscured, contextMenu, tabId, isPrivate, ownerCourse, profileId])
@@ -255,7 +260,7 @@ export function BrowserGuestView({
               if (disposed) return
               await invoke('browser:setDownloadTarget', {
                 webContentsId: element.getWebContentsId(), tabId,
-                courseId: matched.courseId ?? ownerCourse
+                courseId: ownerCourseRef.current ?? matched.courseId
               })
               if (!disposed) await element.loadURL(src).catch(() => undefined)
             })().catch((error: unknown) => {
@@ -297,7 +302,7 @@ export function BrowserGuestView({
               useBrowserGuests.getState().nav[tabId]?.title ?? '',
             hasPlayingVideo:
               videoReportForTab(tabId)?.hasPlayingVideo === true,
-            courseId: ownerCourse
+            courseId: ownerCourseRef.current
           })
         }) as EventListener
       ],

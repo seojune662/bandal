@@ -59,6 +59,7 @@ export function RecordingIndicator(): JSX.Element | null {
       <i />
       <button
         onClick={() => {
+          if (activateRecordingView(capture.session!.id)) return
           useCoursesStore.getState().selectCourse(capture.session!.courseId)
           setPending(true)
         }}

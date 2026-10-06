@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentAvailability, AgentProvider } from '../../../../shared/types/agent-events'
+import { isAgentReady } from '../../../../shared/agentProviderSelection'
 import type { AgentModelOption } from '../../../../shared/types/chat'
 import type { LearningAiSettings } from '../../../../shared/types/learning'
 import { useUiStore } from '../../stores/uiStore'
@@ -31,7 +32,7 @@ export function LearningAISelector({ value, disabled = false, onChange, onValidi
   const sequence = useRef(0)
   const models = catalog?.models.filter(item => item.id.trim() && !['default', 'auto'].includes(item.id.toLowerCase()) && !catalog?.blockedModelIds?.includes(item.id)) ?? []
   const selected = models.find(item => item.id === model)
-  const connected = availability?.installed === true && availability.loggedIn === true && !availability.code
+  const connected = isAgentReady(availability ?? undefined)
   const effortValid = !effort || selected?.supportedEfforts?.includes(effort) === true
   const valid = !!provider && connected && !!selected && effortValid && catalog?.status !== 'unavailable' && !loading && !error
   const validity = useRef(onValidityChange); validity.current = onValidityChange
@@ -44,7 +45,7 @@ export function LearningAISelector({ value, disabled = false, onChange, onValidi
     const request = ++sequence.current
     if (!provider) { setAvailability(null); setCatalog(null); setError(null); setLoading(false); return }
     setLoading(true); setError(null)
-    const results = await Promise.allSettled([invoke('agent:availability', { provider }), invoke('agent:models', { provider, ...(refresh ? { refresh: true } : {}) })])
+    const results = await Promise.allSettled([invoke('agent:availability', { provider, ...(refresh ? { refresh: true } : {}) }), invoke('agent:models', { provider, ...(refresh ? { refresh: true } : {}) })])
     if (request !== sequence.current) return
     if (results[0].status === 'fulfilled') setAvailability(results[0].value)
     else setAvailability(null)

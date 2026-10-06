@@ -25,6 +25,7 @@ import type { ChatContext } from '../../../../shared/types/chatCapabilities'
 import { ConversationListMenu } from './ConversationListMenu'
 import { formatCost, MessageList, UsageText } from './MessageList'
 import { useChatSession } from './useChatSession'
+import { isAgentConnectionReady } from './agentConnectionStore'
 import {
   AgentApprovalRail,
   hasVisibleAgentToolActivity
@@ -343,12 +344,10 @@ export function ChatSurface({
     )
   }
 
-  if (
-    availability !== null &&
-    (availability.code === 'version-too-old' ||
-      !availability.installed ||
-      !availability.loggedIn)
-  ) {
+  if (availability !== null && !isAgentConnectionReady(availability) && !state.streaming && !hasPendingApprovals) {
+    if (availability.installed && availability.loggedIn && availability.code !== 'version-too-old') {
+      return root(<GateCard eyebrow="ERROR" title="AI 연결을 확인하지 못했어요" onRefresh={session.refresh}><p className="chat-gate__desc">{availability.reason ?? '연결 상태를 다시 확인해 주세요.'}</p></GateCard>)
+    }
     return root(
       <AgentSetupCard
         provider={provider}
@@ -410,12 +409,13 @@ export function ChatSurface({
           )}
           {selectorControls}
         </header>}
-      {state.notice !== null && state.notice.code !== 'version-too-old' && (
+      {state.notice !== null && (
         <div
           className="chat-banner chat-banner--error"
           role={state.notice.fatal ? 'alert' : 'status'}
         >
           <span>{state.notice.message}</span>
+          {['not-installed', 'not-logged-in', 'version-too-old', 'spawn-failed'].includes(state.notice.code) && <button type="button" className="chat-gate__refresh" onClick={session.refresh}>연결 다시 확인</button>}
           <button
             type="button"
             className="chat-banner__dismiss"

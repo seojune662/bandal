@@ -41,7 +41,7 @@ export interface BlockInput {
 
 export interface SessionStartRecord {
   cliSessionId: string
-  model: string
+  model: string | null
   transcriptPath: string | null
   launchConfigJson: string | null
 }

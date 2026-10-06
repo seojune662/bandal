@@ -4,6 +4,8 @@ import { createLearningCache } from '../features/learning/learningCache'
 import { createLearningRuntime } from '../features/learning/learningRuntime'
 import { sendLearningWithSession, validateConnectedLearningAi } from '../features/learning/learningAgent'
 import { rejectAgentModel, resolveLearningAi, validateLearningAi } from '../features/agent/agentModels'
+import { createAgentAvailabilityService } from '../features/agent/availability'
+import { resolveConversationProvider } from '../features/agent/conversationRouting'
 import type { AgentTurnFailure } from '../../shared/types/agent-events'
 import { createArticleExtractor, matchArticleWords } from '../features/learning/articleExtractor'
 import { createLearningGrounding } from '../features/learning/learningGrounding'
@@ -20,7 +22,7 @@ import { createQuitDrain } from '../lib/quitDrain'
 import { existsSync, readFileSync } from 'node:fs'
 import { initializeBrowserProfiles, listBrowserProfiles, saveBrowserProfile, deleteBrowserProfile, browserProfileResources, guestProfile, onBrowserSession, ensureProfileSession, profileDirectory, onBrowserProfileDeleted } from '../features/browser/profiles'
 import { hardenBrowsingSession, useProfilePermissions, forgetProfilePermissions } from '../features/browser/hardenWebviews'
-import { browserSessionForTab, prepareProfileSwitch, createBrowserPage, setBrowserPageBounds, setBrowserHostOccluded, browserPageAction, destroyBrowserPage, prepareBrowserPageClose, onBrowserQuitCancelled } from '../features/browser/nativeTabs'
+import { browserSessionForTab, prepareProfileSwitch, createBrowserPage, setBrowserPageCourse, setBrowserPageBounds, setBrowserHostOccluded, browserPageAction, destroyBrowserPage, prepareBrowserPageClose, onBrowserQuitCancelled } from '../features/browser/nativeTabs'
 import { isManagedBrowserPage } from '../features/browser/managedPages'
 import { beginClipboardCopy, writeImageClipboard } from '../features/systemClipboard'
 import { copyFile } from 'node:fs/promises'
@@ -97,16 +99,12 @@ import type { IpcChannel, IpcRequest, IpcResponse } from '../../shared/ipc/contr
 import type { PushChannel, PushPayload } from '../../shared/ipc/events'
 import type { AgentAppState } from '../../shared/types/agentTools'
 import type {
-  AgentAvailability,
   AgentProvider,
+  TurnStopReason,
   Usage
 } from '../../shared/types/agent-events'
 import { isUsageWindowDays } from '../../shared/types/usage'
 import type { ScreenPermissionState } from '../../shared/types/screenCapture'
-import {
-  firstConnectedProvider,
-  providerPreferenceOrder
-} from '../../shared/agentProviderSelection'
 import { isSystemPermissionId } from '../../shared/types/permissions'
 import type { Settings, SettingsPatch } from '../../shared/types/settings'
 import {
@@ -1174,6 +1172,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     codex: codexLocator,
     gemini: geminiLocator
   }
+  const agentAvailability = createAgentAvailabilityService({ locators: agentLocators })
 
   // -- assistant acting on the app -------------------------------------------
   // The agent reads third-party lecture PDFs, so these tools widen the blast
@@ -1907,8 +1906,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     courseId: string
     sessionId: string
     turnSeq?: number
+    stopReason?: TurnStopReason
   }): void => {
     agentConfirmer.cancelConversation(info.sessionId)
+    if (info.stopReason === 'error' || info.stopReason === 'interrupted') {
+      artifactJobs.delete(info.sessionId)
+      return
+    }
     if (learningRuntime?.isStudySession(info.sessionId)) return
     const job = artifactJobs.get(info.sessionId)
     if (job) {
@@ -2103,6 +2107,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     sessionId: string
   ): Promise<typeof sessionManager> => {
     const row = chatRepo.getSession(sessionId)
+    if (row && row.courseId !== courseId) throw new Error('대화가 이 과목에 속하지 않아요.')
     if (row?.status === 'running') return managerFor(row.provider)
     const warmProvider = sessionManager.has(sessionId)
       ? 'claude-code'
@@ -2111,33 +2116,18 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
         : geminiSessionManager.has(sessionId)
           ? 'gemini'
           : null
-    const preferred =
-      row?.provider ?? warmProvider ?? getSettings().agentProvider
-    const candidates = providerPreferenceOrder(
-      preferred,
-      getSettings().agentProvider
-    )
-    let chosen: AgentProvider | null = null
-    const availabilityByProvider: Partial<
-      Record<AgentProvider, AgentAvailability>
-    > = {}
-    for (const provider of candidates) {
-      try {
-        const availability = await agentLocators[provider].availability()
-        availabilityByProvider[provider] = availability
-        chosen = firstConnectedProvider(candidates, availabilityByProvider)
-        if (chosen !== null) break
-      } catch {
-        // A broken provider probe must not prevent trying another connection.
-      }
-    }
-    if (chosen === null) return managerFor(preferred)
-    if (row !== null && row.provider !== chosen) {
-      switchConversationProvider(courseId, sessionId, chosen)
-    }
-    if (getSettings().agentProvider !== chosen) {
-      setSettings({ agentProvider: chosen })
-    }
+    const chosen = await resolveConversationProvider({
+      storedProvider: row?.provider ?? null,
+      warmProvider,
+      preferredProvider: getSettings().agentProvider,
+      check: provider => agentAvailability.check(provider)
+    })
+    // An explicit switch can finish while the initial automatic probes await.
+    const current = chatRepo.getSession(sessionId)
+    if (current) return managerFor(current.provider)
+    if (sessionManager.has(sessionId)) return sessionManager
+    if (codexSessionManager.has(sessionId)) return codexSessionManager
+    if (geminiSessionManager.has(sessionId)) return geminiSessionManager
     return managerFor(chosen)
   }
   /**
@@ -2186,7 +2176,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       return result
     },
     modelRejected: rejectAgentModel,
-    resolveAi: ai => validateConnectedLearningAi(ai, provider => agentLocators[provider].availability(), resolveLearningAi),
+    resolveAi: ai => validateConnectedLearningAi(ai, provider => agentAvailability.check(provider), resolveLearningAi),
     recipe: (packId, kind) => {
       const id = packId ?? (kind === 'find-articles' ? 'vocab-chain-en' : kind === 'create-quiz' ? 'quiz' : kind === 'create-cards' ? 'flashcards' : undefined)
       if (!id) return ''
@@ -2217,7 +2207,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   registerLearningHandlers(handle, {
     repo: learningRepo, runtime: learningRuntime, extractor: articleExtractor, cache: learningCache,
-    validateAi: ai => validateConnectedLearningAi(ai, provider => agentLocators[provider].availability(), validateLearningAi),
+    validateAi: ai => validateConnectedLearningAi(ai, provider => agentAvailability.check(provider), validateLearningAi),
     courses: coursesRepo,
     resolvePack: id => packStore.resolve(id),
     approvePack: async (id, courseId) => {
@@ -2501,7 +2491,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     resolveManager(req.sessionId).setModel(req.courseId, req.sessionId, req.model)
     return OK
   })
-  handle('chat:setProvider', (req) => {
+  handle('chat:setProvider', async (req) => {
     assertChatIdle(req.sessionId)
     const row = chatRepo.getSession(req.sessionId)
     if (row?.status === 'running') {
@@ -2509,7 +2499,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     }
     if (row === null || row.provider === req.provider) {
       closeConversationManagers(req.courseId, req.sessionId)
-      return { sessionInfo: row, carried: null }
+      const opened = await managerFor(req.provider).open(req.courseId, req.sessionId, req.surface ?? row?.surface ?? 'app')
+      return { sessionInfo: opened.sessionInfo, carried: null }
     }
     const { text: _text, ...carried } = serializeTranscript(
       chatRepo.historyTail(req.sessionId, CARRYOVER_HISTORY_LIMIT)
@@ -2524,7 +2515,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
 
   // -- agent (M4-H) ---------------------------------------------------------
   handle('agent:availability', async (req) =>
-    agentLocators[req.provider].availability()
+    agentAvailability.check(req.provider, { refresh: req.refresh })
   )
 
   // Installers mutate the machine outside the app sandbox, so `agent:install`
@@ -2677,10 +2668,19 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
 
   handle('agent:installCommand', (req) => agentInstaller.commandFor(req.provider))
   handle('agent:install', (req) => agentInstaller.install(req.provider))
-  handle('agent:login', (req) => loginLauncher.login(req.provider))
+  handle('agent:login', async (req) => {
+    const result = await loginLauncher.login(req.provider)
+    void agentAvailability.check(req.provider, { refresh: true }).catch(() => undefined)
+    return result
+  })
   handle('agent:models', (req) => getAgentModels(req.provider, req.refresh))
   handle('agent:geminiApiKey', () => geminiApiKeyStore.get())
-  handle('agent:setGeminiApiKey', (req) => geminiApiKeyStore.set(req.key))
+  handle('agent:setGeminiApiKey', (req) => {
+    const result = geminiApiKeyStore.set(req.key)
+    geminiSessionManager.invalidateCredentials()
+    void agentAvailability.check('gemini', { refresh: true }).catch(() => undefined)
+    return result
+  })
 
   // -- saved logins ----------------------------------------------------------
   // `resolve()` deliberately has no channel. The password is read here, put
@@ -2905,6 +2905,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('browser:prepareProfileSwitch', (req, event) => prepareProfileSwitch(event, req.tabId))
   handle('browser:prepareClose', (req, event) => prepareBrowserPageClose(event, req.tabId))
   handle('browser:createPage', (req, event) => createBrowserPage(event, req))
+  handle('browser:setCourse', (req, event) => {
+    if (req.courseId !== null) coursesRepo.getById(req.courseId)
+    return setBrowserPageCourse(event, req)
+  })
   handle('browser:pageBounds', (req, event) => setBrowserPageBounds(event, req))
   handle('browser:setHostOccluded', (req, event) => setBrowserHostOccluded(event, req.occluded))
   handle('browser:pageAction', (req, event) => browserPageAction(event, req))
@@ -3364,7 +3368,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     osVersion: release,
     getSettings,
     getAgentAvailability: (provider) =>
-      agentLocators[provider].availability(),
+      agentAvailability.check(provider),
     getPlugins: () => pluginStore.list(),
     getPluginLogs: () => pluginLog.list(null),
     logsPath: () => app.getPath('logs'),
@@ -3470,6 +3474,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // -- layout ---------------------------------------------------------------
   handle('layout:get', (req) => layoutRepo.get(req.courseId))
   handle('layout:save', (req) => layoutRepo.save(req.courseId, req.layout))
+  handle('layout:saveMany', (req) => layoutRepo.saveMany(req.layouts))
 
   const account = createAccountRuntime(state => broadcast('auth:changed', state))
 
