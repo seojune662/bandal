@@ -85,7 +85,7 @@ test('thin-rail AI reuses the exact document draft and plugin actions use the ca
     await expect(page.locator('.tab-assistant:visible').getByRole('textbox', { name: '메시지 입력' })).toHaveValue('')
     await page.locator('[data-material-path="biology.md"]').click()
     await assistant.getByRole('button', { name: 'AI 보조 사이드바 접기', exact: true }).click()
-    const editor = page.getByLabel('마크다운 필기 편집기').locator('[contenteditable="true"]')
+    const editor = page.getByLabel('마크다운 필기 편집기').locator('[contenteditable="true"]:visible')
     await editor.evaluate(element => {
       const node = Array.from(element.querySelectorAll('p')).find(item => item.textContent === 'Cells transform energy.')!.firstChild!
       const range = document.createRange(); range.selectNodeContents(node)

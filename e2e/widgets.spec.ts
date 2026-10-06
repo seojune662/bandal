@@ -30,6 +30,7 @@ test.describe('right rail widgets', () => {
     const date = widget.getByLabel('할 일 날짜')
     const colors = widget.getByRole('group', { name: '할 일 색상' })
 
+    await widget.locator('summary').filter({ hasText: '날짜 · 색상' }).click()
     await title.fill('나중 할 일')
     await date.fill('2026-09-20')
     await colors.getByRole('button', { name: '파랑' }).click()
@@ -74,7 +75,7 @@ test.describe('right rail widgets', () => {
     const { page } = bandal
     const widget = page.getByRole('region', { name: '자료 사이드바' }).getByRole('region', { name: '위젯' })
 
-    await widget.getByRole('tab', { name: '메일' }).click()
+    await expect(widget.getByRole('button', { name: '메일 위젯 접기', exact: true })).toHaveAttribute('aria-expanded', 'true')
 
     await expect(widget.locator('webview')).toHaveCount(0)
     await expect(widget.getByText('공부하면서 메일도 가볍게')).toBeVisible()

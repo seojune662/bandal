@@ -80,18 +80,21 @@ function useLiveSettings(): Settings {
   return settings
 }
 
-function useBoardTasks(): { tasks: BoardTask[]; loading: boolean } {
+function useBoardTasks(): { tasks: BoardTask[]; loading: boolean; error: boolean; retry: () => void } {
   const [tasks, setTasks] = useState<BoardTask[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const loadSequence = useRef(0)
   const load = useCallback((showLoading = true) => {
     const sequence = ++loadSequence.current
     if (showLoading) setLoading(true)
+    setError(false)
     void invoke('board:listTasks', { includeDone: true })
       .then((next) => {
         if (sequence === loadSequence.current) setTasks(next)
       })
       .catch((loadError: unknown) => {
+        if (sequence === loadSequence.current) setError(true)
         console.error('[Bandal] 위젯 할 일을 불러오지 못했습니다.', loadError)
       })
       .finally(() => {
@@ -106,7 +109,7 @@ function useBoardTasks(): { tasks: BoardTask[]; loading: boolean } {
       loadSequence.current += 1
     }
   }, [load])
-  return { tasks, loading }
+  return { tasks, loading, error, retry: load }
 }
 
 function byDue(left: BoardTask, right: BoardTask): number {
@@ -137,7 +140,7 @@ function TaskScope({ currentOnly, currentAvailable, onChange }: { currentOnly: b
 }
 
 function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
-  const { tasks, loading } = useBoardTasks()
+  const { tasks, loading, error, retry } = useBoardTasks()
   const courses = useCoursesStore((state) => state.courses)
   const selectedWorkspaceId = useCoursesStore((state) => state.selectedCourseId)
   const selectedCourseId = courses.find(course => course.id === selectedWorkspaceId && course.workspaceKind !== 'study-space')?.id ?? null
@@ -148,6 +151,8 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
   const [draftColor, setDraftColor] = useState<TaskColor>('none')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const pendingAdd = useRef(false)
+  const draftVersion = useRef(0)
   const visible = useMemo(
     () => tasks.filter((task) => !currentOnly || !selectedCourseId || task.courseId === selectedCourseId),
     [currentOnly, selectedCourseId, tasks]
@@ -156,7 +161,9 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
 
   const add = async (): Promise<void> => {
     const title = draft.trim()
-    if (title === '' || saving) return
+    if (title === '' || pendingAdd.current) return
+    pendingAdd.current = true
+    const version = draftVersion.current
     setSaving(true)
     try {
       await invoke('board:createTask', {
@@ -167,13 +174,16 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
         dueAt: draftDate === '' ? null : draftDate,
         allDay: draftDate !== ''
       })
-      setDraft('')
-      setDraftDate('')
-      setDraftColor('none')
+      if (version === draftVersion.current) {
+        setDraft('')
+        setDraftDate('')
+        setDraftColor('none')
+      }
     } catch (createError) {
       console.error('[Bandal] 위젯 할 일을 추가하지 못했습니다.', createError)
       showToast('할 일을 추가하지 못했어요.', 'danger')
     } finally {
+      pendingAdd.current = false
       setSaving(false)
     }
   }
@@ -212,7 +222,7 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
       </div>
       <form className="widget-quick-add" onSubmit={(event) => { event.preventDefault(); void add() }}>
         <div className="widget-quick-add__title">
-          <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="할 일 추가" aria-label="할 일 추가" />
+          <input value={draft} onChange={(event) => { draftVersion.current++; setDraft(event.target.value) }} placeholder="할 일 추가" aria-label="할 일 추가" />
           <button type="submit" disabled={draft.trim() === '' || saving} aria-label="추가"><Icon name="plus" /></button>
         </div>
         <details className="widget-quick-options"><summary>날짜 · 색상</summary><div className="widget-quick-add__options">
@@ -222,12 +232,13 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
               type="date"
               value={draftDate}
               aria-label="할 일 날짜"
-              onChange={(event) => setDraftDate(event.target.value)}
+              onChange={(event) => { draftVersion.current++; setDraftDate(event.target.value) }}
             />
           </label>
-          <TaskColorPicker value={draftColor} onChange={setDraftColor} />
+          <TaskColorPicker value={draftColor} onChange={color => { draftVersion.current++; setDraftColor(color) }} />
         </div></details>
       </form>
+      {error && <p className="widget-empty" role="alert">할 일을 불러오지 못했어요. <button type="button" onClick={retry}>다시 불러오기</button></p>}
       {loading ? (
         <p className="widget-empty">불러오는 중…</p>
       ) : mode === 'todo' ? (
@@ -270,7 +281,7 @@ function TaskWidget({ mode }: { mode: 'todo' | 'board' }): JSX.Element {
               )}
             </li>
           ))}
-          {list.every((task) => task.status === 'done') && <li className="widget-empty">남은 할 일이 없어요.</li>}
+          {!error && list.every((task) => task.status === 'done') && <li className="widget-empty">남은 할 일이 없어요.</li>}
         </ul>
       ) : (
         <div className="widget-board-columns">
@@ -312,38 +323,154 @@ export function WidgetDock(): JSX.Element | null {
   const rightRailOpen = useUiStore(state => state.rightRailOpen)
   const settingsOpen = useUiStore(state => state.isSettingsOpen)
   const dockRef = useRef<HTMLElement>(null)
-  if (widgets.enabled.length === 0) return null
+  const [heightRatio, setHeightRatio] = useState(widgets.heightRatio)
+  const heightRatioRef = useRef(heightRatio)
+  const confirmedRatio = useRef(widgets.heightRatio)
+  const heightSaveSequence = useRef(0)
+  const heightSavePending = useRef(false)
+  const resizeCleanup = useRef<(() => void) | null>(null)
+  const alive = useRef(true)
+  const collapsePending = useRef(false)
+  const [savingCollapse, setSavingCollapse] = useState(false)
+
+  const previewRatio = useCallback((ratio: number): void => {
+    heightRatioRef.current = ratio
+    setHeightRatio(ratio)
+  }, [])
+
+  useEffect(() => {
+    confirmedRatio.current = widgets.heightRatio
+    if (resizeCleanup.current === null && !heightSavePending.current) previewRatio(widgets.heightRatio)
+  }, [previewRatio, widgets.heightRatio])
+
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+      resizeCleanup.current?.()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (widgets.enabled.length === 0 || !rightRailOpen || settingsOpen) resizeCleanup.current?.()
+  }, [widgets.enabled.length, rightRailOpen, settingsOpen])
+
+  const saveRatio = async (ratio: number): Promise<void> => {
+    const sequence = ++heightSaveSequence.current
+    heightSavePending.current = true
+    previewRatio(ratio)
+    try {
+      const next = await invoke('settings:set', { widgets: { heightRatio: ratio } })
+      if (!alive.current || sequence !== heightSaveSequence.current) return
+      confirmedRatio.current = next.widgets.heightRatio
+      if (resizeCleanup.current === null) previewRatio(next.widgets.heightRatio)
+    } catch (error) {
+      if (!alive.current || sequence !== heightSaveSequence.current) return
+      if (resizeCleanup.current === null) previewRatio(confirmedRatio.current)
+      console.error('[Bandal] 위젯 크기를 저장하지 못했습니다.', error)
+      showToast('위젯 크기를 저장하지 못했어요. 다시 조절해 주세요.', 'danger')
+    } finally {
+      if (sequence === heightSaveSequence.current) heightSavePending.current = false
+    }
+  }
 
   const beginResize = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (event.button !== 0 || event.isPrimary === false) return
     const rail = dockRef.current?.parentElement
     if (rail === undefined || rail === null) return
-    event.currentTarget.setPointerCapture(event.pointerId)
     const rect = rail.getBoundingClientRect()
-    const move = (moveEvent: PointerEvent): void => {
-      const ratio = Math.min(0.65, Math.max(0.25, (rect.bottom - moveEvent.clientY) / rect.height))
-      if (dockRef.current !== null) dockRef.current.style.maxHeight = `${ratio * 100}%`
-    }
-    const end = (upEvent: PointerEvent): void => {
-      const ratio = Math.min(0.65, Math.max(0.25, (rect.bottom - upEvent.clientY) / rect.height))
+    if (rect.height <= 0) return
+    resizeCleanup.current?.()
+    const handle = event.currentTarget
+    const pointerId = event.pointerId
+    handle.setPointerCapture(pointerId)
+    event.preventDefault()
+    const ratioAt = (clientY: number): number => Math.min(0.65, Math.max(0.25, (rect.bottom - clientY) / rect.height))
+    const cleanup = (): void => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', end)
-      void invoke('settings:set', { widgets: { heightRatio: ratio } })
+      window.removeEventListener('pointercancel', cancelPointer)
+      window.removeEventListener('keydown', escape)
+      window.removeEventListener('blur', cancel)
+      handle.removeEventListener('lostpointercapture', cancel)
+      resizeCleanup.current = null
+      if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId)
     }
+    const cancel = (): void => {
+      cleanup()
+      if (alive.current) previewRatio(confirmedRatio.current)
+    }
+    const cancelPointer = (cancelEvent: PointerEvent): void => {
+      if (cancelEvent.pointerId === pointerId) cancel()
+    }
+    const escape = (keyEvent: KeyboardEvent): void => {
+      if (keyEvent.key !== 'Escape') return
+      keyEvent.preventDefault()
+      cancel()
+    }
+    const move = (moveEvent: PointerEvent): void => {
+      if (moveEvent.pointerId === pointerId) previewRatio(ratioAt(moveEvent.clientY))
+    }
+    const end = (upEvent: PointerEvent): void => {
+      if (upEvent.pointerId !== pointerId) return
+      cleanup()
+      void saveRatio(ratioAt(upEvent.clientY))
+    }
+    resizeCleanup.current = cancel
     window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', end, { once: true })
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', cancelPointer)
+    window.addEventListener('keydown', escape)
+    window.addEventListener('blur', cancel)
+    handle.addEventListener('lostpointercapture', cancel)
   }
+
+  const resizeByKeyboard = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    let ratio: number
+    switch (event.key) {
+      case 'ArrowUp': ratio = heightRatioRef.current + 0.02; break
+      case 'ArrowDown': ratio = heightRatioRef.current - 0.02; break
+      case 'Home': ratio = 0.25; break
+      case 'End': ratio = 0.65; break
+      default: return
+    }
+    event.preventDefault()
+    resizeCleanup.current?.()
+    void saveRatio(Math.min(0.65, Math.max(0.25, Math.round(ratio * 100) / 100)))
+  }
+
+  const toggleCollapsed = async (id: WidgetId): Promise<void> => {
+    if (collapsePending.current) return
+    collapsePending.current = true
+    setSavingCollapse(true)
+    const next = new Set(widgets.collapsed ?? [])
+    if (next.has(id)) next.delete(id); else next.add(id)
+    try {
+      await invoke('settings:set', { widgets: { collapsed: [...next] } })
+    } catch (error) {
+      if (alive.current) {
+        console.error('[Bandal] 위젯 상태를 저장하지 못했습니다.', error)
+        showToast('위젯 상태를 저장하지 못했어요. 다시 시도해 주세요.', 'danger')
+      }
+    } finally {
+      collapsePending.current = false
+      if (alive.current) setSavingCollapse(false)
+    }
+  }
+
+  if (widgets.enabled.length === 0) return null
 
   return (
     <>
-      <div className="widget-divider" role="separator" aria-orientation="horizontal" onPointerDown={beginResize} />
-      <section ref={dockRef} className="widget-dock" style={{ maxHeight: `${widgets.heightRatio * 100}%` }} aria-label="위젯">
+      <div className="widget-divider" role="separator" aria-orientation="horizontal"
+        tabIndex={0} aria-label="위젯 높이 조절" aria-valuemin={25} aria-valuemax={65}
+        aria-valuenow={Math.round(heightRatio * 100)} aria-valuetext={`${Math.round(heightRatio * 100)}%`}
+        style={{ touchAction: 'none' }} onPointerDown={beginResize} onKeyDown={resizeByKeyboard} />
+      <section ref={dockRef} className="widget-dock" style={{ maxHeight: `${heightRatio * 100}%` }} aria-label="위젯">
         {widgets.enabled.map(id => {
           const collapsed = widgets.collapsed?.includes(id) ?? false
           return <section className="widget-card" key={id} data-widget={id}>
-            <header className="widget-card__header"><button type="button" aria-label={`${LABELS[id]} 위젯 ${collapsed ? '펼치기' : '접기'}`} aria-expanded={!collapsed} onClick={() => {
-              const next = new Set(widgets.collapsed ?? []); if (collapsed) next.delete(id); else next.add(id)
-              void invoke('settings:set', { widgets: { collapsed: [...next] } })
-            }}><span className="widget-card__icon" aria-hidden="true">{id === 'todo' ? '✓' : id === 'board' ? '▦' : '✉'}</span><strong>{LABELS[id]}</strong><span className="widget-card__chevron">{collapsed ? '⌄' : '⌃'}</span></button></header>
+            <header className="widget-card__header"><button type="button" aria-label={`${LABELS[id]} 위젯 ${collapsed ? '펼치기' : '접기'}`} aria-expanded={!collapsed} disabled={savingCollapse} onClick={() => { void toggleCollapsed(id) }}><span className="widget-card__icon" aria-hidden="true">{id === 'todo' ? '✓' : id === 'board' ? '▦' : '✉'}</span><strong>{LABELS[id]}</strong><span className="widget-card__chevron">{collapsed ? '⌄' : '⌃'}</span></button></header>
             <div className="widget-card__body" data-collapsed={collapsed} aria-hidden={collapsed} {...{ inert: collapsed ? '' : undefined }}><div className="widget-card__content">{id === 'mail' ? <MailWidget settings={settings} active={!collapsed && rightRailOpen && !settingsOpen} /> : <TaskWidget mode={id} />}</div></div>
           </section>
         })}

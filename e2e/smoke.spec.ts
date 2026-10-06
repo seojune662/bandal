@@ -128,12 +128,10 @@ test.describe('smoke', () => {
     ).toHaveText('알고리즘 (폴더)')
   })
 
-  test('opens the study board from the left rail bottom nav', async () => {
+  test('opens the study board from global navigation', async () => {
     const { page } = bandal
-    // The bottom nav is icon-only; the label lives in aria-label/tooltip.
-    const boardNav = page.locator(
-      'aside.app-rail--left .rail-nav__item[aria-label^="학업 보드"]'
-    )
+    const boardNav = page.getByRole('navigation', { name: '앱 메뉴', exact: true })
+      .getByRole('button', { name: /^학업 보드/ })
 
     // [M7] The board entry point moved out of the titlebar into the rail.
     await expect(page.locator('.app-titlebar').getByText('보드')).toHaveCount(0)

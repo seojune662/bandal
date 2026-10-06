@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { fileURLToPath } from 'node:url'
 import { launchBandal } from './helpers/launch'
 
 test('app IPC rejects guest views, subframes and foreign documents before side effects', async () => {
@@ -9,12 +10,16 @@ test('app IPC rejects guest views, subframes and foreign documents before side e
       frame.id = 'ipc-sender-subframe'
       document.body.append(frame)
     })
-    const report = await app.app.evaluate(async ({ BrowserWindow, WebContentsView, ipcMain }) => {
+    const preload = fileURLToPath(new URL('../preload/index.js', app.page.url()))
+    const report = await app.app.evaluate(async ({ BrowserWindow, WebContentsView, ipcMain }, preload) => {
       const main = BrowserWindow.getAllWindows().find(win => win.webContents.getURL().includes('/index.html'))!
       const handlers = (ipcMain as any)._invokeHandlers as Map<string, (...args: any[]) => Promise<unknown>>
       const guest = new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } })
       const foreign = new BrowserWindow({ show: false, webPreferences: {
-        preload: main.webContents.getLastWebPreferences().preload,
+        // Electron omits preload from getLastWebPreferences(). Resolve the
+        // packaged sibling explicitly so these are real IPC calls, not calls
+        // through an absent window.bandal bridge.
+        preload,
         sandbox: true, contextIsolation: true, nodeIntegration: false
       } })
       try {
@@ -39,11 +44,11 @@ test('app IPC rejects guest views, subframes and foreign documents before side e
         // Even a BrowserWindow with the app preload loses authority after it
         // loads a foreign document. This exercises real renderer IPC.
         await foreign.loadURL('data:text/html,<title>Foreign document</title>')
-        const foreignResult = await foreign.webContents.executeJavaScript(`window.bandal.invoke('settings:set', { theme: 'light' }).then(() => 'allowed', error => String(error))`)
+        const foreignResult = await foreign.webContents.executeJavaScript(`Promise.resolve().then(() => window.bandal.invoke('settings:set', { theme: 'light' })).then(() => 'allowed', error => String(error))`)
         const localPages: string[] = []
         for (const page of ['settings.html', 'overlay.html', 'pip.html?view=toolbar']) {
           await foreign.loadURL(new URL(page, main.webContents.getURL()).href)
-          const theme = await foreign.webContents.executeJavaScript(`window.bandal.invoke('settings:get', {}).then(settings => settings.theme)`)
+          const theme = await foreign.webContents.executeJavaScript(`Promise.resolve().then(() => window.bandal.invoke('settings:get', {})).then(settings => settings.theme, error => String(error))`)
           localPages.push(theme)
         }
         return { denied, inspectedRequests, foreignResult, localPages }
@@ -51,7 +56,7 @@ test('app IPC rejects guest views, subframes and foreign documents before side e
         if (!guest.webContents.isDestroyed()) guest.webContents.close({ waitForBeforeUnload: false })
         foreign.destroy()
       }
-    })
+    }, preload)
     expect(report.denied).toHaveLength(6)
     for (const result of report.denied) expect(result).toContain('IPC sender is not an app renderer')
     expect(report.inspectedRequests).toBe(0)

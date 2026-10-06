@@ -29,6 +29,7 @@ import './pdf.css'
 import { isTabDescriptor } from '../workspace/tabIdentity'
 import { useHasBeenShown } from '../workspace/useHasBeenShown'
 import { usePanelActive } from '../workspace/usePanelActive'
+import { usePanelVisible } from '../workspace/usePanelVisible'
 import { mediaUrlFor } from '../materials/mediaUrl'
 import { useAnnotations } from './useAnnotations'
 import { usePageTexts, useStaleAnnotationIds } from './usePageTexts'
@@ -169,12 +170,14 @@ function PdfViewer({
   courseId,
   relPath,
   interactive,
+  visible,
   panelId,
   pageNotePair
 }: {
   courseId: string
   relPath: string
   interactive: boolean
+  visible: boolean
   panelId: string
   pageNotePair: PdfPageNotePairContext | null
 }): JSX.Element {
@@ -250,8 +253,8 @@ function PdfViewer({
   }, [activeTool])
 
   const zoomRef = useRef(zoom)
-  const interactiveRef = useRef(interactive)
-  interactiveRef.current = interactive
+  const visibleRef = useRef(visible)
+  visibleRef.current = visible
   const currentPageRef = useRef(currentPage)
   currentPageRef.current = currentPage
   const containerWidthRef = useRef(containerWidth)
@@ -266,7 +269,7 @@ function PdfViewer({
   const zoomEndTimer = useRef<number | null>(null)
   const [zooming, setZooming] = useState(false)
   const pendingLayoutAnchorRef = useRef<PdfViewportAnchor | null>(null)
-  const wasInteractiveRef = useRef(interactive)
+  const wasVisibleRef = useRef(visible)
   const flashTimer = useRef<number | null>(null)
   const scrollFrame = useRef<number | null>(null)
   const saveTimer = useRef<number | null>(null)
@@ -396,7 +399,7 @@ function PdfViewer({
       if (width <= 0 || width === containerWidthRef.current) return
       if (numPages > 0) {
         pendingLayoutAnchorRef.current =
-          interactiveRef.current
+          visibleRef.current
             ? rememberViewportAnchor()
             : viewAnchorRef.current
       }
@@ -422,8 +425,8 @@ function PdfViewer({
   // centers here; ordinary scroll frames only perform a binary search.
   useLayoutEffect(() => {
     invalidatePageOffsets()
-    if (numPages === 0 || !interactive) {
-      wasInteractiveRef.current = interactive
+    if (numPages === 0 || !visible) {
+      wasVisibleRef.current = visible
       return
     }
 
@@ -439,11 +442,11 @@ function PdfViewer({
       rememberViewportAnchor()
       return
     }
-    const becameInteractive = !wasInteractiveRef.current
-    wasInteractiveRef.current = true
+    const becameVisible = !wasVisibleRef.current
+    wasVisibleRef.current = true
     const anchor =
       pendingLayoutAnchorRef.current ??
-      (becameInteractive ? viewAnchorRef.current : null)
+      (becameVisible ? viewAnchorRef.current : null)
     if (anchor !== null && restoreViewportAnchor(anchor)) {
       pendingLayoutAnchorRef.current = null
       viewAnchorRef.current = anchor
@@ -457,7 +460,7 @@ function PdfViewer({
     pageWidth,
     pageAspects,
     numPages,
-    interactive,
+    visible,
     invalidatePageOffsets,
     pageAtViewportCenter,
     rememberViewportAnchor,
@@ -527,7 +530,7 @@ function PdfViewer({
     const scroller = scrollerRef.current
     if (scroller === null) return
     const canMeasure =
-      interactiveRef.current &&
+      visibleRef.current &&
       scroller.clientHeight > 0 &&
       scroller.scrollHeight > 0
     const anchor = canMeasure
@@ -557,7 +560,7 @@ function PdfViewer({
     // Hidden panels can emit a scroll event when the browser clamps their
     // scrollTop. That is layout fallout, not user navigation, and must never
     // overwrite the last real reading position.
-    if (!interactiveRef.current) return
+    if (!visibleRef.current) return
     if (scrollFrame.current === null) {
       scrollFrame.current = requestAnimationFrame(() => {
         scrollFrame.current = null
@@ -630,8 +633,8 @@ function PdfViewer({
   // the same anchor even if Dockview/Chromium reset the hidden element's
   // numeric scrollTop.
   useEffect(() => {
-    if (!interactive) persistScroll()
-  }, [interactive, persistScroll])
+    if (!visible) persistScroll()
+  }, [visible, persistScroll])
 
   useEffect(() => {
     return () => {
@@ -971,7 +974,7 @@ function PdfViewer({
         return current
       }
       const anchor =
-        interactiveRef.current
+        visibleRef.current
           ? rememberViewportAnchor()
           : viewAnchorRef.current
       if (anchor !== null) pendingLayoutAnchorRef.current = anchor
@@ -1208,6 +1211,7 @@ function PdfViewer({
 export default function PdfTab(props: IDockviewPanelProps): JSX.Element {
   const hasBeenShown = useHasBeenShown(props.api)
   const panelActive = usePanelActive(props.api)
+  const panelVisible = usePanelVisible(props.api)
 
   // dockview 기본 렌더러('onlyWhenVisible')는 비활성 패널의 DOM 을 떼어내고,
   // 분리된 스크롤 컨테이너는 브라우저가 scrollTop 을 0으로 리셋한다 — 탭을
@@ -1240,6 +1244,7 @@ export default function PdfTab(props: IDockviewPanelProps): JSX.Element {
         courseId={courseId}
         relPath={relPath}
         interactive={panelActive}
+        visible={panelVisible}
         panelId={props.api.id}
         pageNotePair={pageNotePair}
       />

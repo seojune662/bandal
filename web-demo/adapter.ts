@@ -1,11 +1,12 @@
 import { readDocumentContexts } from '../src/renderer/src/features/agent/documentContext'
 import { taskCalendarInterval } from '../src/shared/taskSchedule'
 import { localDateValue } from '../src/renderer/src/features/calendar/calendarDate'
+import { readOpenNoteSnapshots } from '../src/renderer/src/features/notes/noteSessionRegistry'
 import type { IpcChannel, IpcRequest, IpcResponse } from '../src/shared/ipc/contract'
 import type { ChatEventBatch, PushChannel, PushPayload } from '../src/shared/ipc/events'
 import type { IpcAdapter } from '../src/renderer/src/lib/ipc'
 import type { ChatMessage } from '../src/shared/types/chat'
-import { data, commit, settings, stamp, id, key, ko, PDF, NOTE, courseId } from './state'
+import { data, commit, settings, stamp, id, key, ko, PDF, NOTE } from './state'
 
 type Handlers = { [K in IpcChannel]?: (req: IpcRequest<K>) => IpcResponse<K> | Promise<IpcResponse<K>> }
 const listeners = new Map<string, Set<(value: never) => void>>()
@@ -209,8 +210,22 @@ export const adapter: IpcAdapter = {
   }
 }
 
+export function notesMarkdownForExport(): string {
+  const notes = new Map(Object.values(data.notes).map(note => [key(note.courseId, note.relPath), note]))
+  for (const snapshot of readOpenNoteSnapshots()) {
+    const file = key(snapshot.courseId, snapshot.relPath)
+    notes.set(file, { ...notes.get(file), ...snapshot, mtime: 0 })
+  }
+  return [...notes.values()].map(note => {
+    const course = data.courses.find(course => course.id === note.courseId)
+    return `<!-- ${course?.name ?? note.courseId} / ${note.relPath} -->\n${note.markdown}`
+  }).join('\n\n---\n\n')
+}
+
 export function exportNotes(): void {
-  const markdown = Object.values(data.notes).filter(note => note.courseId === courseId).map(note => `<!-- ${note.relPath} -->\n${note.markdown}`).join('\n\n---\n\n')
+  // Keep this synchronous to preserve the download gesture even when browser
+  // storage is full. A flush cannot recover unsaved content in that case.
+  const markdown = notesMarkdownForExport()
   const url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }))
   const link = document.createElement('a'); link.href = url; link.download = '반달-웹체험-필기.md'; link.click()
   setTimeout(() => URL.revokeObjectURL(url), 10000)

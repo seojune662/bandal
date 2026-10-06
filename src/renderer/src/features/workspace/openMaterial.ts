@@ -22,6 +22,7 @@ interface OpenMaterialOptions {
 export const MATERIAL_OPEN_DEDUPE_MS = 5 * 60 * 1000
 
 const materialOpenRecordedAt = new Map<string, number>()
+let latestOpenRequest = 0
 
 /** Pure duplicate decision used by the renderer-side activity throttle. */
 export function shouldRecordMaterialOpen(
@@ -71,6 +72,16 @@ export function openMaterialInCourse(
   relPath: string,
   options?: OpenMaterialOptions
 ): void {
+  const request = ++latestOpenRequest
+  const initialWorkspace = useWorkspaceStore.getState()
+  const initialCourse = useCoursesStore.getState().selectedCourseId
+  const stillRequested = (): boolean => {
+    const current = useWorkspaceStore.getState()
+    return request === latestOpenRequest && current.surface === initialWorkspace.surface &&
+      current.activeCourseId === initialWorkspace.activeCourseId &&
+      current.activePanelId === initialWorkspace.activePanelId &&
+      useCoursesStore.getState().selectedCourseId === initialCourse
+  }
   const openTab = (descriptor: TabDescriptor): void => {
     const courses = useCoursesStore.getState()
     if (!courses.courses.some(course => course.id === courseId)) {
@@ -88,6 +99,7 @@ export function openMaterialInCourse(
 
   if (relPath.toLowerCase().endsWith('.wav')) {
     void invoke('recordings:resolve', { courseId, relPath }).then((recording) => {
+      if (!stillRequested()) return
       if (recording) {
         openTab(descriptorFor('recording', {
           courseId, sessionId: recording.id, title: recording.title
@@ -97,7 +109,7 @@ export function openMaterialInCourse(
         void invoke('materials:reveal', { courseId, relPath }).catch(() =>
           showToast('파일을 열지 못했습니다.', 'danger'))
       }
-    }).catch(() => showToast('녹음 파일을 열지 못했습니다.', 'danger'))
+    }).catch(() => { if (stillRequested()) showToast('녹음 파일을 열지 못했습니다.', 'danger') })
     return
   }
 
@@ -122,7 +134,7 @@ export function openMaterialInCourse(
   void invoke('materials:reveal', { courseId, relPath })
     .then(() => recordMaterialOpened(courseId, relPath))
     .catch((error: unknown) => {
-      console.error('[Bandal] 파일을 Finder에서 열지 못했습니다.', error)
-      showToast('파일을 Finder에서 열지 못했습니다.', 'danger')
+      console.error('[Bandal] 파일 위치를 열지 못했습니다.', error)
+      showToast('파일 위치를 열지 못했습니다.', 'danger')
     })
 }

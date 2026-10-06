@@ -327,7 +327,7 @@ describe('rename path repointing', () => {
     )
   })
 
-  test('notesRepo returns the repointed body when a renamed note cites itself', () => {
+  test('notesRepo returns the repointed body when a renamed note cites itself', async () => {
     writeFileSync(
       join(courseFolder, 'old.md'),
       `# Old\n\n[나 자신](${materialHref('old.md')})\n`
@@ -340,7 +340,7 @@ describe('rename path repointing', () => {
       }
     })
 
-    const result = notes.rename({
+    const result = await notes.rename({
       courseId: COURSE_ID,
       relPath: 'old.md',
       newName: 'new.md'
@@ -536,11 +536,11 @@ describe('rename path repointing', () => {
       relPath: 'material.pdf',
       newName: 'renamed.pdf'
     })).toEqual({ relPath: 'renamed.pdf' })
-    expect(notes.rename({
+    expect((await notes.rename({
       courseId: COURSE_ID,
       relPath: 'note.md',
       newName: 'renamed-note.md'
-    }).relPath).toBe('renamed-note.md')
+    })).relPath).toBe('renamed-note.md')
 
     expect(existsSync(join(courseFolder, 'renamed.pdf'))).toBe(true)
     expect(existsSync(join(courseFolder, 'renamed-note.md'))).toBe(true)

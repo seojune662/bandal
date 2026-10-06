@@ -186,17 +186,18 @@ test('tab menu order, all shortcuts and tab defaults work together', async () =>
     const options = page.getByRole('option')
     expect(
       (await options.allTextContents())
-        .slice(0, 6)
+        .slice(0, 7)
         .map((text) => text.replace(/\s+/g, ' '))
     ).toEqual([
       expect.stringContaining('새 마크다운'),
       expect.stringContaining('새 브라우저 탭'),
       expect.stringContaining('AI'),
+      expect.stringContaining('학습 공간'),
       expect.stringContaining('녹음'),
       expect.stringContaining('새 화이트보드'),
       expect.stringContaining('학업 보드')
     ])
-    for (let index = 0; index < 6; index++)
+    for (const index of [0, 1, 2, 4, 5, 6])
       await expect(options.nth(index)).toContainText('⌘')
     await page.keyboard.press('Escape')
     await page.keyboard.press('Meta+,')

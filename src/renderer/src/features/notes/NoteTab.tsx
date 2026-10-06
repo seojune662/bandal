@@ -1381,6 +1381,7 @@ function NoteSession({
       registerOpenNoteSession({
         panelId: panelApi.id,
         flush: () => { flushPendingEditorMarkdown(); return flushRef.current() },
+        snapshot: () => mtimeRef.current === null ? null : currentMarkdownRef.current,
         ref: () => noteRef.current,
         retarget: retargetNote
       }),

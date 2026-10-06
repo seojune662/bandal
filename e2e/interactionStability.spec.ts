@@ -226,6 +226,11 @@ test('PDF pairs hand scrolling back immediately after text composition and keep 
     await page.getByRole('button', { name: '만들고 나란히 열기', exact: true }).click()
     await expect(page.locator('.page-note-paper')).toHaveCount(100)
     const jump = page.getByRole('textbox', { name: '페이지 이동', exact: true })
+    // The note owns focus after pairing. A visible PDF must still publish
+    // scrolling, and focusing its page field must not require a mouse click.
+    await page.locator('.pdf-scroller').hover()
+    await page.mouse.wheel(0, 500)
+    await expect.poll(() => page.locator('.page-note-scroll').evaluate((node) => node.scrollTop)).toBeGreaterThan(0)
     await jump.fill('30')
     await jump.press('Enter')
     await expect.poll(() => page.locator('.page-note-scroll').evaluate((node) => node.scrollTop)).toBeGreaterThan(500)

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { onlyVersionOrBrowserImportHookChanged, planChecks } from './affected-checks.mjs'
+import { onlyVersionOrBrowserImportHookChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
 
 test('PDF export changes skip unrelated browser/calendar/performance checks', () => {
@@ -40,6 +40,21 @@ test('server and SDK edits retain their related tests instead of becoming no-op 
     assert.deepEqual(plan.unitInputs, [file])
     assert.deepEqual(plan.types, ['tsconfig.node.json'])
   }
+})
+
+test('SDK verification builds its CLI in a clean checkout', () => {
+  assert.ok(planChecks(['sdk/cli/index.ts']).scriptTests.includes('scripts/test-plugin-sdk.mjs'))
+  assert.deepEqual(scriptTestCommand('scripts/test-plugin-sdk.mjs'), ['pnpm', ['plugin:test']])
+  assert.deepEqual(scriptTestCommand('scripts/test-release-assets.mjs'), ['node', ['--test', 'scripts/test-release-assets.mjs']])
+})
+
+test('plugin runtime and app sender boundaries retain their packaged regressions', () => {
+  for (const file of ['src/main/features/plugins/sandboxHost.ts', 'src/main/pluginHost/runtime.ts', 'src/preload/pluginHost.ts']) {
+    const plan = planChecks([file])
+    assert.ok(plan.e2e.includes('e2e/pluginSandbox.spec.ts'))
+    assert.ok(plan.e2e.includes('e2e/pluginsV2.spec.ts'))
+  }
+  assert.deepEqual(planChecks(['src/main/ipc/rendererSender.ts']).e2e, ['e2e/ipcSender.spec.ts'])
 })
 
 

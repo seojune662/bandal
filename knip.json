@@ -32,6 +32,7 @@
     "supabase",
     "iconutil",
     "plutil",
+    "mkfifo",
     "where.exe"
   ],
   "ignoreExportsUsedInFile": true,

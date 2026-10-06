@@ -12,6 +12,7 @@ const FOCUSABLE_SELECTOR = [
   'embed',
   'audio[controls]',
   'video[controls]',
+  'details > summary:first-of-type',
   '[contenteditable="true"]',
   '[tabindex]'
 ].join(',')
@@ -44,6 +45,10 @@ function isHidden(element: HTMLElement): boolean {
   if (visibility === 'hidden' || visibility === 'collapse') return true
   for (let ancestor: HTMLElement | null = element; ancestor; ancestor = ancestor.parentElement) {
     if (view.getComputedStyle(ancestor).display === 'none') return true
+    if (ancestor.tagName === 'DETAILS' && !ancestor.hasAttribute('open')) {
+      const summary = Array.from(ancestor.children).find(child => child.tagName === 'SUMMARY')
+      if (!summary?.contains(element)) return true
+    }
   }
   return false
 }
@@ -115,7 +120,8 @@ export function useFocusTrap<T extends HTMLElement>(
       initialFocus === 'first' ? null : initialFocus.current
     const firstFocus = focusableElements(container)[0] ?? null
     const focusTarget =
-      requestedFocus !== null && container.contains(requestedFocus)
+      requestedFocus !== null && container.contains(requestedFocus) &&
+        !requestedFocus.matches(':disabled') && !isHidden(requestedFocus)
         ? requestedFocus
         : firstFocus
 

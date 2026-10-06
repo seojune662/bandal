@@ -336,7 +336,9 @@ test.describe('browser', () => {
       })
       await addFavorite.click()
 
-      const bookmark = page.locator('.browser-bookmark', {
+      // Parked browser panels retain their bookmark DOM across tab moves.
+      // Exercise the active page's shortcut bar, which the student can see.
+      const bookmark = page.locator('.browser-bookmark:visible', {
         hasText: '학사정보시스템'
       })
       await expect(bookmark).toBeVisible({ timeout: 10_000 })

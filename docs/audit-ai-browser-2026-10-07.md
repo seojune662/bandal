@@ -140,3 +140,39 @@ E2E·릴리스 패키지와 배포 결과는 상위 검토 기록에 별도로 �
 표시하며 거부한다. 중지된 대화는 새 소유자의 작업을 계속할 수 없다. 다른 탭의 대화는
 병렬로 동작한다. 이 경합 2개를 실패 재현 후 수정했고 run/browserTools/renderer agentRuns
 최종 묶음 **91개 통과**. 탭 등록 충돌은 pending open을 실패로 완료해 대기 상태가 남지 않는다.
+
+## v0.72 Windows 필기 이동 후 이름 변경 실패 후속 조사
+
+- 기존 릴리스 run `37506609947`의 Windows error-context는 입력값이 정확히
+  `renamed.md`이며 `aria-invalid` 상태로 남았음을 보여 준다. v0.71의
+  `renamed.md.md` 선택 경합과 다른 실패다. 이 실행의 `trace.zip`은 test 단계만
+  포함하고 Electron DOM/IPC 오류는 담지 않아 원인을 확정할 수 없었다.
+- 별도 진단 브랜치 `88471e6`의 기존 Windows run
+  [37510999387](https://github.com/seojune662/bandal/actions/runs/37510999387)을
+  읽기 전용으로 조사했다. 실제 Windows 패키지에서 같은 시나리오 10회 중
+  2회 실패했고, 두 JSON 진단 모두 `notes:write` 성공 후 `notes:rename`이
+  `writeFileAtomic`의 `.renamed.md.<pid>.<random>.tmp` → `renamed.md`
+  `renameSync`에서 `EPERM`(errno -4048)으로 거절된 동일 원인이었다.
+  첫 파일명 변경 자체는 성공했고 H1을 교체하는 단계가 실패했다.
+  rollback 후 디스크에는 `moving.md`, 원본 H1, 편집한 초안이 모두 보존됐다.
+  파일 잠금을 건 구체적인 프로세스는 진단 자료로 식별할 수 없다.
+- 앱의 일시적 Windows 파일 잠금 복구 부재이며 테스트 대기 시간 문제가 아니다.
+  `notesRepo.rename`을 비동기 결과로 바꾸되 각 파일명/H1 변경 시도는 동기
+  트랜잭션으로 유지한다. 실패 시 원래 이름을 복구한 다음에만 event loop를
+  양보하여 50/100/200/400/800ms 간격으로 재시도한다. 기존 자료 폴더 이동의
+  `renameWithRetry`도 같은 `retryWindowsFileOperation` 정책을 공유한다.
+- Windows `EPERM`/`EBUSY`만 재시도한다. 다른 OS, `EACCES`/`ENOENT`,
+  복구 실패 `AggregateError`, commit 후 읽기 실패는 재시도하지 않는다.
+  매 시도 과목 폴더·실제 경로 경계·원본 dev/ino/mtimeNs/size를 재검증하므로
+  대기 중 과목 연결 변경이나 원본 교체/편집을 덮어쓰지 않는다. 새 목적 파일이
+  생기면 충돌 suffix를 다시 고른다. 성공 후에만 경로 참조 갱신과 IPC 변경
+  알림을 발행한다. 공용 원자 쓰기 전체에 동기 sleep을 추가하지 않았다.
+- 정확한 임시 파일 교체 단계의 오류를 주입한 새 검사 8개가 변경 전 실패했다.
+  동시 편집 보호 검사 1개를 추가해 최종 새 검사 9개와 notesRepo,
+  renameRepoint, 자료 renameWithRetry, IPC 응답 계약을 합친 **5개 파일·76개**가
+  통과했다. Node 타입 검사와 `git diff --check`도 통과했다.
+  로그: `/tmp/bandal-windows-note-rename-red.log`,
+  `/tmp/bandal-windows-note-rename-green.log`,
+  `/tmp/bandal-windows-note-rename-types.log`.
+- 이 담당자는 별도 build나 전체 E2E를 실행하지 않았다. 수정 이후의 실제
+  Windows 패키지 및 macOS note move E2E는 root 통합 검증에서 확인해야 한다.

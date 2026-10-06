@@ -22,6 +22,7 @@ import {
   resolveInsideReal
 } from '../../db/validate'
 import { writeFileAtomic } from '../../lib/atomicWrite'
+import { retryWindowsFileOperation } from '../../lib/retryWindowsFileOperation'
 
 export interface NotesRepo {
   read(input: NoteRef): NoteContent
@@ -33,12 +34,12 @@ export interface NotesRepo {
    * 이름으로 원자적으로 고쳐 쓴다. H1 저장이 실패하면 파일명을 원래대로
    * 되돌린다.
    */
-  rename(input: { courseId: string; relPath: string; newName: string }): {
+  rename(input: { courseId: string; relPath: string; newName: string }): Promise<{
     relPath: string
     mtime: number
     title: string
     markdown: string
-  }
+  }>
 }
 
 export interface NotesRepoDeps {
@@ -170,81 +171,103 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
       return { courseId: id, relPath }
     },
 
-    rename(input) {
+    async rename(input) {
       const { abs, folder } = resolveNote(input.courseId, input.relPath)
-      if (!existsSync(abs)) {
-        throw new NotFoundError('note', input.relPath)
-      }
-      // 호출자가 .md 를 붙여 보내도 관대하게 받아 준다(사이드바 인라인
-      // 편집기는 확장자까지 통째로 편집한다).
-      const requested = requireNonEmptyString(input.newName, 'newName')
-      const stem = sanitizeTitle(requested.replace(/\.md$/iu, ''))
-
-      const dirAbs = dirname(abs)
-      let fileName = `${stem}.md`
-      for (
-        let n = 2;
-        existsSync(join(dirAbs, fileName)) && join(dirAbs, fileName) !== abs;
-        n += 1
-      ) {
-        if (n > 1000) {
-          throw new ValidationError(`could not find a free name for "${stem}"`)
+      if (!existsSync(abs)) throw new NotFoundError('note', input.relPath)
+      const originalIdentity = statSync(abs, { bigint: true })
+      let committed = false
+      // Keep filename + H1 replacement synchronous as one transaction. When a
+      // Windows lock rejects its atomic write, restore the original filename
+      // before yielding so main-thread callers see a consistent note.
+      return retryWindowsFileOperation(() => {
+        if (getCourseFolder(input.courseId) !== folder) {
+          throw new ValidationError('과목 폴더가 변경되었습니다. 자료 목록을 새로고침하고 다시 시도하세요.')
         }
-        fileName = `${stem}-${n}.md`
-      }
-      const finalStem = fileName.replace(/\.md$/u, '')
-
-      // 새 파일명에 맞출 H1 내용을 먼저 계산하되, 파일명 변경 전에는
-      // 원본을 건드리지 않는다.
-      const original = readFileSync(abs, 'utf8')
-      const updated = replaceNoteTitle(original, finalStem)
-      const nextAbs = join(dirAbs, fileName)
-      let renamed = false
-      if (nextAbs !== abs) {
         assertRealInside(folder, abs)
-        assertRealInside(folder, nextAbs)
-        renameSync(abs, nextAbs)
-        renamed = true
-      }
+        if (!existsSync(abs)) {
+          throw new NotFoundError('note', input.relPath)
+        }
+        const current = statSync(abs, { bigint: true })
+        if (current.dev !== originalIdentity.dev || current.ino !== originalIdentity.ino ||
+            current.mtimeNs !== originalIdentity.mtimeNs || current.size !== originalIdentity.size) {
+          throw new ConflictError(`"${input.relPath}" changed on disk while waiting to rename`)
+        }
+        // 호출자가 .md 를 붙여 보내도 관대하게 받아 준다(사이드바 인라인
+        // 편집기는 확장자까지 통째로 편집한다).
+        const requested = requireNonEmptyString(input.newName, 'newName')
+        const stem = sanitizeTitle(requested.replace(/\.md$/iu, ''))
 
-      try {
-        if (updated !== original) {
-          assertRealInside(folder, nextAbs)
-          writeFileAtomic(nextAbs, updated)
-        }
-      } catch (error) {
-        if (renamed) {
-          try {
-            assertRealInside(folder, nextAbs)
-            assertRealInside(folder, abs)
-            renameSync(nextAbs, abs)
-          } catch (rollbackError) {
-            throw new AggregateError(
-              [error, rollbackError],
-              `failed to update the note heading and restore "${input.relPath}"`
-            )
+        const dirAbs = dirname(abs)
+        let fileName = `${stem}.md`
+        for (
+          let n = 2;
+          existsSync(join(dirAbs, fileName)) && join(dirAbs, fileName) !== abs;
+          n += 1
+        ) {
+          if (n > 1000) {
+            throw new ValidationError(`could not find a free name for "${stem}"`)
           }
+          fileName = `${stem}-${n}.md`
         }
-        throw error
-      }
-      const dirRel = posix.dirname(input.relPath)
-      const relPath =
-        dirRel === '.' ? fileName : posix.join(dirRel, fileName)
-      const hookCompleted = renamed && notifyPathChanged(
-        requireId(input.courseId, 'courseId'),
-        input.relPath,
-        relPath
-      )
-      // A successful repoint hook may atomically rewrite links in this same
-      // note. Return the bytes now on disk so the renderer cannot immediately
-      // save the pre-repoint body back over them.
-      const finalMarkdown = hookCompleted ? readFileSync(nextAbs, 'utf8') : updated
-      return {
-        relPath,
-        mtime: mtimeToken(nextAbs),
-        title: finalStem,
-        markdown: finalMarkdown
-      }
+        const finalStem = fileName.replace(/\.md$/u, '')
+
+        // 새 파일명에 맞출 H1 내용을 먼저 계산하되, 파일명 변경 전에는
+        // 원본을 건드리지 않는다.
+        const original = readFileSync(abs, 'utf8')
+        const updated = replaceNoteTitle(original, finalStem)
+        const nextAbs = join(dirAbs, fileName)
+        let renamed = false
+        if (nextAbs !== abs) {
+          assertRealInside(folder, abs)
+          assertRealInside(folder, nextAbs)
+          renameSync(abs, nextAbs)
+          renamed = true
+        }
+
+        try {
+          if (updated !== original) {
+            assertRealInside(folder, nextAbs)
+            writeFileAtomic(nextAbs, updated)
+          }
+        } catch (error) {
+          if (renamed) {
+            try {
+              assertRealInside(folder, nextAbs)
+              assertRealInside(folder, abs)
+              renameSync(nextAbs, abs)
+            } catch (rollbackError) {
+              throw new AggregateError(
+                [error, rollbackError],
+                `failed to update the note heading and restore "${input.relPath}"`
+              )
+            }
+          }
+          throw error
+        }
+        const dirRel = posix.dirname(input.relPath)
+        const relPath =
+          dirRel === '.' ? fileName : posix.join(dirRel, fileName)
+        committed = true
+        const hookCompleted = renamed && notifyPathChanged(
+          requireId(input.courseId, 'courseId'),
+          input.relPath,
+          relPath
+        )
+        // A successful repoint hook may atomically rewrite links in this same
+        // note. Return the bytes now on disk so the renderer cannot immediately
+        // save the pre-repoint body back over them.
+        const finalMarkdown = hookCompleted ? readFileSync(nextAbs, 'utf8') : updated
+        return {
+          relPath,
+          mtime: mtimeToken(nextAbs),
+          title: finalStem,
+          markdown: finalMarkdown
+        }
+      }, {
+        // A failed rollback is an AggregateError, never a retryable filesystem
+        // error. Once committed, hook/read errors must not replay the rename.
+        shouldRetry: () => !committed
+      })
     }
   }
 }

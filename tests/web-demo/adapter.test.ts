@@ -51,3 +51,22 @@ test('a browser quota failure ends the pending demo turn with a visible error', 
     expect(batches[0]?.events).toMatchObject([{ type: 'error' }, { type: 'turn-complete', stopReason: 'error' }])
   } finally { storage.mockRestore() }
 })
+
+test('export recovers all courses and the complete live draft without requiring browser storage', async () => {
+  const { adapter, courseId, NOTE } = await fixture()
+  const { notesMarkdownForExport } = await import('../../web-demo/adapter')
+  const { registerOpenNoteSession } = await import('../../src/renderer/src/features/notes/noteSessionRegistry')
+  await adapter.invoke('notes:create', { courseId: 'demo-course-1', title: 'Other course note' })
+  const markdown = '# Unsaved\n' + 'complete text '.repeat(2000)
+  const flush = vi.fn(async () => ({ status: 'error' as const, detail: 'storage full' }))
+  const dispose = registerOpenNoteSession({ panelId: 'export-draft', ref: () => ({ courseId, relPath: NOTE }), snapshot: () => markdown, flush, retarget() {} })
+  const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota') })
+  try {
+    const exported = notesMarkdownForExport()
+    expect(exported).toContain('Other course note')
+    expect(exported).toContain(markdown)
+    expect(exported).not.toContain('<!-- 자료구조 / 중간고사 정리.md -->\n# 해시 테이블과 충돌 해결')
+    expect(flush).not.toHaveBeenCalled()
+    expect(storage).not.toHaveBeenCalled()
+  } finally { dispose(); storage.mockRestore() }
+})

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test, vi } from 'vitest'
-import { handleFocusTrapKeyDown } from '../../../src/renderer/src/components/useFocusTrap'
+import { focusableElements, handleFocusTrapKeyDown } from '../../../src/renderer/src/components/useFocusTrap'
 
 afterEach(() => { document.body.replaceChildren() })
 
@@ -25,4 +25,15 @@ test('Shift+Tab from the dialog container stays inside the dialog', () => {
   container.focus()
   handleFocusTrapKeyDown({ key: 'Tab', shiftKey: true, defaultPrevented: false, preventDefault: vi.fn() }, container)
   expect(document.activeElement?.id).toBe('last')
+})
+
+test('closed disclosure exposes its summary but excludes its hidden controls', () => {
+  document.body.innerHTML = '<div id="dialog"><button id="first">First</button><details><summary id="summary" tabindex="0">Options</summary><input id="hidden"><details open><summary tabindex="0">Nested</summary><button>Hidden action</button></details></details></div>'
+  const container = document.querySelector<HTMLElement>('#dialog')!
+  expect(focusableElements(container).map(element => element.id)).toEqual(['first', 'summary'])
+  document.querySelector<HTMLElement>('#summary')!.focus()
+  handleFocusTrapKeyDown({ key: 'Tab', shiftKey: false, defaultPrevented: false, preventDefault: vi.fn() }, container)
+  expect(document.activeElement?.id).toBe('first')
+  container.querySelector('details')!.open = true
+  expect(focusableElements(container).map(element => element.id)).toContain('hidden')
 })

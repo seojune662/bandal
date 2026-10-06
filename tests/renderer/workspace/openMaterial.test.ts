@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-const { invokeMock, openTabMock, selectCourseMock, showCourseWorkspaceMock } = vi.hoisted(() => ({
+const { invokeMock, openTabMock, selectCourseMock, showCourseWorkspaceMock, workspace } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
-  openTabMock: vi.fn(), selectCourseMock: vi.fn(), showCourseWorkspaceMock: vi.fn()
+  openTabMock: vi.fn(), selectCourseMock: vi.fn(), showCourseWorkspaceMock: vi.fn(),
+  workspace: { activeCourseId: 'course-1', activePanelId: null, surface: 'course' }
 }))
 
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({
@@ -21,7 +22,7 @@ vi.mock('../../../src/renderer/src/stores/materialsStore', () => ({
 
 vi.mock('../../../src/renderer/src/stores/workspaceStore', () => ({
   useWorkspaceStore: {
-    getState: () => ({ openTab: openTabMock, showCourseWorkspace: showCourseWorkspaceMock })
+    getState: () => ({ ...workspace, openTab: openTabMock, showCourseWorkspace: showCourseWorkspaceMock })
   }
 }))
 vi.mock('../../../src/renderer/src/stores/coursesStore', () => ({
@@ -36,6 +37,7 @@ describe('openMaterialInCourse', () => {
     openTabMock.mockReset()
     selectCourseMock.mockReset(); showCourseWorkspaceMock.mockReset()
     invokeMock.mockResolvedValue({ ok: true })
+    workspace.activeCourseId = 'course-1'; workspace.surface = 'course'
   })
 
   test('opens an image tab and records material activity', () => {
@@ -91,5 +93,26 @@ describe('openMaterialInCourse', () => {
     expect(selectCourseMock).toHaveBeenCalledWith('course-1')
     expect(showCourseWorkspaceMock).toHaveBeenCalledWith('course-1')
     expect(showCourseWorkspaceMock.mock.invocationCallOrder[0]).toBeLessThan(openTabMock.mock.invocationCallOrder[0]!)
+  })
+
+  test('a resolved recording opens when its request is still current', async () => {
+    invokeMock.mockResolvedValueOnce({ id: 'recording-1', title: 'Lecture' })
+    openMaterialInCourse('course-1', 'other', 'lecture.wav')
+    await Promise.resolve()
+    expect(openTabMock).toHaveBeenCalledWith({ kind: 'recording', payload: { courseId: 'course-1', sessionId: 'recording-1', title: 'Lecture' } })
+  })
+
+  test.each(['course', 'home', 'another-file'])('a late recording result respects navigation to %s', async next => {
+    let resolve!: (value: unknown) => void
+    invokeMock.mockReturnValueOnce(new Promise(done => { resolve = done }))
+    openMaterialInCourse('course-1', 'other', 'lecture.wav')
+    if (next === 'course') workspace.activeCourseId = 'course-2'
+    else if (next === 'home') workspace.surface = 'learning-home'
+    else openMaterialInCourse('course-1', 'note', 'next.md')
+    openTabMock.mockClear(); selectCourseMock.mockClear()
+    resolve({ id: 'old-recording', title: 'Old' })
+    await Promise.resolve()
+    expect(openTabMock).not.toHaveBeenCalled()
+    expect(selectCourseMock).not.toHaveBeenCalled()
   })
 })

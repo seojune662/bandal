@@ -832,8 +832,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     })
     return result
   })
-  handle('notes:rename', (req) => {
-    const result = notesRepo.rename(req)
+  handle('notes:rename', async (req) => {
+    const result = await notesRepo.rename(req)
     materialsRepo.invalidateTree(req.courseId)
     broadcast('materials:changed', { courseId: req.courseId })
     emitPluginEvent('note:saved', {

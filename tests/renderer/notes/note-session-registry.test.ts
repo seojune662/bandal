@@ -6,9 +6,11 @@ import {
   openNotePanelId,
   openNoteRefForPanel,
   openNoteSessionsForFile,
+  readOpenNoteSnapshots,
   registerOpenNoteSession,
   retargetOpenNoteSession
 } from '../../../src/renderer/src/features/notes/noteSessionRegistry'
+import { claimNoteWriter, noteFileKey, subscribeNoteDoc } from '../../../src/renderer/src/features/notes/noteDocChannel'
 
 interface FakeSession {
   panelId: string
@@ -43,6 +45,33 @@ function makeSession(
 
 const fileRef: NoteRef = { courseId: 'course-1', relPath: 'notes/a.md' }
 const otherRef: NoteRef = { courseId: 'course-1', relPath: 'notes/b.md' }
+
+test('recovery reads the full current writer snapshot without saving or using a stale duplicate', () => {
+  const writer = makeSession('writer', fileRef, { status: 'error', detail: 'storage full' })
+  const peer = makeSession('peer', fileRef)
+  const loading = makeSession('loading', otherRef)
+  const markdown = '# Unsaved\n' + 'long note '.repeat(2000)
+  const key = noteFileKey(fileRef.courseId, fileRef.relPath)
+  const unsubscribe = subscribeNoteDoc(key, 'writer', { onRemoteEdit() {}, onRemoteSave() {} })
+  claimNoteWriter(key, 'writer')
+  const dispose = [
+    registerOpenNoteSession({ ...writer.session, snapshot: () => markdown }),
+    registerOpenNoteSession({ ...peer.session, snapshot: () => 'stale peer' }),
+    registerOpenNoteSession({ ...loading.session, snapshot: () => null })
+  ]
+  try {
+    expect(readOpenNoteSnapshots()).toEqual([{ ...fileRef, markdown }])
+    expect(writer.session.flush).not.toHaveBeenCalled()
+    expect(peer.session.flush).not.toHaveBeenCalled()
+  } finally { dispose.forEach(off => off()); unsubscribe() }
+})
+
+test('an intentionally empty editor snapshot can replace previously saved content', () => {
+  const note = makeSession('empty-editor', fileRef)
+  const dispose = registerOpenNoteSession({ ...note.session, snapshot: () => '' })
+  try { expect(readOpenNoteSnapshots()).toEqual([{ ...fileRef, markdown: '' }]) }
+  finally { dispose() }
+})
 
 describe('multi-session registration', () => {
   test('two panels on the same file register independent sessions', () => {

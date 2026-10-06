@@ -59,6 +59,7 @@ export function planChecks(files, full = false) {
   if (full || has(/^(src\/(renderer|shared)\/|src\/preload\/browser|tsconfig\.web\.json)/)) types.add('tsconfig.web.json')
   if (full || has(/^(web-demo\/|src\/shared\/|web-demo\/tsconfig\.json)/)) types.add('web-demo/tsconfig.json')
   const scriptTests = new Set(files.filter((f) => /^scripts\/test-.*\.mjs$/.test(f)))
+  if (has(/^(sdk\/|sdk\.vite\.config\.ts$|scripts\/test-plugin-sdk\.mjs$)/)) scriptTests.add('scripts/test-plugin-sdk.mjs')
   if (has(/^(scripts\/(affected-checks|reuse-ci)\.mjs|\.github\/workflows\/)/)) scriptTests.add('scripts/test-affected-checks.mjs')
   if (has(/^scripts\/(upload-release-assets|lib\/release-assets|test-release-assets)\.mjs$/)) scriptTests.add('scripts/test-release-assets.mjs')
   const e2e = new Set(files.filter((f) => existsSync(f) && /^e2e\/[^/]+\.spec\.ts$/.test(f)))
@@ -77,6 +78,11 @@ export function planChecks(files, full = false) {
   if (has(pluginSettings) || has(/^src\/(?:shared\/settingsCategories\.ts$|main\/features\/mcpRegistry\/)/)) e2e.add('e2e/pluginCenter.spec.ts')
   if (has(/^src\/renderer\/src\/features\/onboarding\//) || has(/^src\/renderer\/src\/features\/settings\/SettingsPanels\.tsx$/)) e2e.add('e2e/onboarding.spec.ts')
   if (has(/^src\/renderer\/src\/features\/plugins\/(pluginCommands|PluginMenuItems)\.tsx?$/)) e2e.add('e2e/pluginsV2.spec.ts')
+  if (has(/^src\/(main\/(features\/plugins\/|pluginHost\/)|preload\/pluginHost\.ts$|shared\/types\/pluginRpc\.ts$)/)) {
+    e2e.add('e2e/pluginSandbox.spec.ts')
+    e2e.add('e2e/pluginsV2.spec.ts')
+  }
+  if (has(/^src\/main\/ipc\/(appRendererSender|rendererSender)\.ts$/)) e2e.add('e2e/ipcSender.spec.ts')
   if (sharedAppearance) {
     for (const spec of ['theme', 'sidebars', 'settingsShell', 'uiRedesign', 'tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus']) e2e.add(`e2e/${spec}.spec.ts`)
     scriptTests.add('scripts/check-contrast.mjs')
@@ -163,6 +169,13 @@ function run(command, args) {
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
+export function scriptTestCommand(test) {
+  // SDK tests execute the compiled CLI. A clean CI checkout has no out/ tree.
+  return test === 'scripts/test-plugin-sdk.mjs'
+    ? ['pnpm', ['plugin:test']]
+    : ['node', ['--test', test]]
+}
+
 export function main(args) {
   const baseFlag = args.indexOf('--base')
   const { base, files } = changedFiles(baseFlag < 0 ? undefined : args[baseFlag + 1])
@@ -175,7 +188,7 @@ export function main(args) {
     return
   }
   for (const config of plan.types) run('pnpm', ['exec', 'tsc', '--noEmit', '-p', config])
-  for (const test of plan.scriptTests.filter(existsSync)) run('node', ['--test', test])
+  for (const test of plan.scriptTests.filter(existsSync)) run(...scriptTestCommand(test))
   if (plan.full) {
     run('pnpm', ['deadcode'])
     run('pnpm', ['test'])

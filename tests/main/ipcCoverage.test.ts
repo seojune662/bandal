@@ -142,7 +142,7 @@ describe('IPC channel coverage', () => {
       source.indexOf("handle('notes:create'")
     )
     expect(rename).toMatch(
-      /const result = notesRepo\.rename\(req\)[\s\S]*return result/
+      /const result = await notesRepo\.rename\(req\)[\s\S]*return result/
     )
   })
 

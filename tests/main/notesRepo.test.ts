@@ -55,14 +55,14 @@ describe('notesRepo', () => {
   })
 
   describe('rename', () => {
-    test('renames the file and rewrites the first H1 to the final name', () => {
+    test('renames the file and rewrites the first H1 to the final name', async () => {
       writeFileSync(
         join(courseFolder, 'old.md'),
         '# 예전 제목\n\n본문은 그대로.\n',
         'utf8'
       )
 
-      const result = repo.rename({
+      const result = await repo.rename({
         courseId: COURSE_ID,
         relPath: 'old.md',
         newName: '해시 테이블 정리'
@@ -76,11 +76,11 @@ describe('notesRepo', () => {
       expect(existsSync(join(courseFolder, 'old.md'))).toBe(false)
     })
 
-    test('resolves collisions with a suffix and titles match the final name', () => {
+    test('resolves collisions with a suffix and titles match the final name', async () => {
       writeFileSync(join(courseFolder, '정리.md'), '# x\n', 'utf8')
       writeFileSync(join(courseFolder, 'old.md'), '# y\n', 'utf8')
 
-      const result = repo.rename({
+      const result = await repo.rename({
         courseId: COURSE_ID,
         relPath: 'old.md',
         newName: '정리.md'
@@ -94,10 +94,10 @@ describe('notesRepo', () => {
       ).toBe('# 정리-2\n')
     })
 
-    test('same-name rename still syncs the heading and keeps the file', () => {
+    test('same-name rename still syncs the heading and keeps the file', async () => {
       writeFileSync(join(courseFolder, '동일.md'), '# 다른 제목\n', 'utf8')
 
-      const result = repo.rename({
+      const result = await repo.rename({
         courseId: COURSE_ID,
         relPath: '동일.md',
         newName: '동일'
@@ -109,10 +109,10 @@ describe('notesRepo', () => {
       )
     })
 
-    test('prepends an H1 when the note has none', () => {
+    test('prepends an H1 when the note has none', async () => {
       writeFileSync(join(courseFolder, 'no-title.md'), '그냥 본문\n', 'utf8')
 
-      const result = repo.rename({
+      const result = await repo.rename({
         courseId: COURSE_ID,
         relPath: 'no-title.md',
         newName: '새 제목'
@@ -123,25 +123,25 @@ describe('notesRepo', () => {
       ).toBe('# 새 제목\n\n그냥 본문\n')
     })
 
-    test('rejects names with no filesystem-safe characters', () => {
+    test('rejects names with no filesystem-safe characters', async () => {
       writeFileSync(join(courseFolder, 'a.md'), '# a\n', 'utf8')
-      expect(() =>
+      await expect(
         repo.rename({ courseId: COURSE_ID, relPath: 'a.md', newName: '///' })
-      ).toThrow(ValidationError)
+      ).rejects.toThrow(ValidationError)
     })
 
-    test('restores the original filename and propagates an H1 write failure', () => {
+    test('restores the original filename and propagates an H1 write failure', async () => {
       const original = '# 예전 제목\n\n보존할 본문\n'
       writeFileSync(join(courseFolder, 'old.md'), original, 'utf8')
       injectedFsFailure.failNextFsync = true
 
-      expect(() =>
+      await expect(
         repo.rename({
           courseId: COURSE_ID,
           relPath: 'old.md',
           newName: '새 제목'
         })
-      ).toThrow('injected fsync failure')
+      ).rejects.toThrow('injected fsync failure')
 
       expect(readFileSync(join(courseFolder, 'old.md'), 'utf8')).toBe(original)
       expect(existsSync(join(courseFolder, '새 제목.md'))).toBe(false)
@@ -302,10 +302,10 @@ describe('notesRepo', () => {
     })
   })
 
-  test('renames the real heading while preserving a fenced shell comment', () => {
+  test('renames the real heading while preserving a fenced shell comment', async () => {
     const code = '```bash\n# sample comment\necho hello\n```\n\n'
     repo.write({ courseId: COURSE_ID, relPath: 'old.md', markdown: code + '# Old\n\nbody' })
-    const renamed = repo.rename({ courseId: COURSE_ID, relPath: 'old.md', newName: 'New' })
+    const renamed = await repo.rename({ courseId: COURSE_ID, relPath: 'old.md', newName: 'New' })
     expect(renamed.markdown).toBe(code + '# New\n\nbody')
     expect(repo.read({ courseId: COURSE_ID, relPath: renamed.relPath }).markdown).toBe(renamed.markdown)
   })
