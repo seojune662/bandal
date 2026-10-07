@@ -68,6 +68,7 @@ import {
   type IpcAdapter
 } from '../../../src/renderer/src/lib/ipc'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
+import { resetUpdateStoreForTests } from '../../../src/renderer/src/stores/updateStore'
 
 const invokeMock = vi.fn<(channel: string, req: unknown) => Promise<unknown>>()
 
@@ -97,7 +98,10 @@ beforeEach(() => {
     requestAnimationFrame: vi.fn(() => 1),
     cancelAnimationFrame: vi.fn()
   })
+  resetUpdateStoreForTests()
   invokeMock.mockReset()
+  invokeMock.mockImplementation(async channel => channel === 'update:status'
+    ? { phase: 'unsupported', currentVersion: 'fixture' } : undefined)
   authState.phase = 'unconfigured'
   workspaceState.openTab.mockClear()
   setIpcAdapter({
@@ -123,6 +127,7 @@ afterEach(() => {
   container.remove()
   vi.clearAllTimers()
   vi.useRealTimers()
+  resetUpdateStoreForTests()
   setIpcAdapter(null)
 })
 
@@ -135,14 +140,16 @@ describe('CourseSidebar course menu', () => {
     expect(container.querySelector('.learning-sidebar')).toBeNull()
   })
 
-  test('keeps primary navigation above account and settings', () => {
+  test('keeps primary navigation above account and settings', async () => {
     authState.phase = 'signed-in'
-    act(() => root.render(<><GlobalNavigation /><CourseSidebar /></>))
+    await act(async () => root.render(<><GlobalNavigation /><CourseSidebar /></>))
 
     const labels = Array.from(
       container.querySelectorAll<HTMLElement>('.global-navigation .rail-nav__item')
     ).map((item) => item.getAttribute('aria-label'))
 
+    expect(invokeMock).toHaveBeenCalledWith('update:status', {})
+    expect(container.querySelector('.rail-update-button')).toBeNull()
     expect(labels).toEqual([
       '과목', '학습', '학업 보드 열기', 'AI', '도구', '더 보기', '내 프로필', '설정'
     ])
