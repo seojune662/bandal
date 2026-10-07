@@ -6,12 +6,14 @@ export interface WorkspaceTabDragSource {
 }
 let kind: WorkspaceDragKind = null
 let source: WorkspaceTabDragSource | null = null
+let revision = 0
 const listeners = new Set<() => void>()
 
 export const tabDragSession = {
   getSnapshot: (): WorkspaceDragKind => kind,
   getSource: (): WorkspaceTabDragSource | null => source,
   beginTab: (next: WorkspaceTabDragSource): void => {
+    revision += 1
     source = next
     kind = 'tab'
     for (const listener of listeners) listener()
@@ -24,11 +26,14 @@ export const tabDragSession = {
   },
   begin: (next: Exclude<WorkspaceDragKind, null>): void => {
     if (kind === next) return
+    revision += 1
+    if (next !== 'tab') source = null
     kind = next
     for (const listener of listeners) listener()
   },
   end: (): void => {
     if (kind === null && source === null) return
+    revision += 1
     kind = null
     source = null
     for (const listener of listeners) listener()
@@ -51,7 +56,15 @@ export function installWorkspaceDragSession(root: HTMLElement): () => void {
   // Target handlers need the trusted source during the entire drop dispatch.
   // Chromium runs microtasks between native listener callbacks. A microtask
   // here clears the source before later capture/target listeners see `drop`.
-  const dropped = (): void => { setTimeout(end, 0) }
+  let dropCleanup: ReturnType<typeof setTimeout> | null = null
+  const dropped = (): void => {
+    const droppedRevision = revision
+    if (dropCleanup !== null) clearTimeout(dropCleanup)
+    dropCleanup = setTimeout(() => {
+      dropCleanup = null
+      if (revision === droppedRevision) end()
+    }, 0)
+  }
   // Starting native HTML DnD cancels the pointer stream. Only a sash owns it.
   const endResize = (): void => {
     if (kind === 'resize') end()
@@ -64,6 +77,7 @@ export function installWorkspaceDragSession(root: HTMLElement): () => void {
     else delete root.dataset.tabDragging
   }
   const unsubscribe = tabDragSession.subscribe(reflect)
+  reflect()
   root.addEventListener('dragstart', start)
   root.addEventListener('pointerdown', pointer, true)
   window.addEventListener('drop', dropped, true)
@@ -75,6 +89,7 @@ export function installWorkspaceDragSession(root: HTMLElement): () => void {
   window.addEventListener('pointercancel', endResize, true)
   window.addEventListener('keydown', key, true)
   return () => {
+    if (dropCleanup !== null) clearTimeout(dropCleanup)
     end()
     unsubscribe()
     root.removeEventListener('dragstart', start)

@@ -1001,16 +1001,21 @@ export async function moveWorkspacePanel(input: {
   position?: WorkspacePanelMovePosition
 }): Promise<boolean> {
   const state = useWorkspaceStore.getState()
-  if (input.sourceCourseId === input.targetCourseId || (input.sourceCourseId !== null && discardedCourses.has(input.sourceCourseId)) || discardedCourses.has(input.targetCourseId)) return false
+  if (input.sourceCourseId === input.targetCourseId) return false
+  const unavailable = (): false => {
+    showToast('창을 옮기지 못했어요. 출발 과목에서 창을 확인한 뒤 다시 시도해 주세요.', 'danger')
+    return false
+  }
+  if ((input.sourceCourseId !== null && discardedCourses.has(input.sourceCourseId)) || discardedCourses.has(input.targetCourseId)) return unavailable()
   const source = workspaceApiForCourse(input.sourceCourseId), target = workspaceApiForCourse(input.targetCourseId)
   const panel = source?.getPanel(input.panelId)
-  if (!source || !target || !panel || !hydratedCourses.has(input.targetCourseId) || !isTabDescriptor(panel.params?.descriptor)) return false
+  if (!source || !target || !panel || !hydratedCourses.has(input.targetCourseId) || !isTabDescriptor(panel.params?.descriptor)) return unavailable()
   if (target.getPanel(input.panelId)) {
-    showToast('이 과목에 같은 창이 이미 열려 있어요. 창을 닫은 후 다시 옮겨 주세요.')
+    showToast('이 과목에 같은 창이 이미 열려 있어요. 출발 과목에 창을 그대로 두었어요. 도착 과목의 같은 창을 닫은 후 다시 옮겨 주세요.')
     return false
   }
   const group = input.position?.groupId ? target.getGroup(input.position.groupId) : undefined
-  if (input.position?.groupId && !group) return false
+  if (input.position?.groupId && !group) return unavailable()
   const direction = input.position?.direction
   const position = group ? { referenceGroup: group.id, direction: direction ?? 'within',
     ...(input.position?.index !== undefined ? { index: input.position.index } : {}) }

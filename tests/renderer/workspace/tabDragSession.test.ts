@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import {
   installWorkspaceDragSession,
   tabDragSession
@@ -10,6 +10,7 @@ let dispose: (() => void) | undefined
 afterEach(() => {
   dispose?.()
   tabDragSession.end()
+  vi.useRealTimers()
   document.body.replaceChildren()
 })
 
@@ -106,5 +107,29 @@ test('blurring the source tab while switching course does not cancel the held dr
   root.querySelector('.dv-tab')!.dispatchEvent(new Event('blur'))
   expect(tabDragSession.getSource()?.courseId).toBe('source')
   window.dispatchEvent(new Event('blur'))
+  expect(tabDragSession.getSource()).toBeNull()
+})
+
+test('deferred cleanup from a completed drop cannot end a newer drag gesture', () => {
+  vi.useFakeTimers()
+  const root = fixture()
+  tabDragSession.beginTab({ courseId: 'first', panelId: 'first-panel', nonce: 'first-drag' })
+  window.dispatchEvent(new Event('drop', { bubbles: true }))
+  const next = { courseId: 'second', panelId: 'second-panel', nonce: 'second-drag' }
+  tabDragSession.beginTab(next)
+  vi.runAllTimers()
+  expect(tabDragSession.getSource()).toBe(next)
+  expect(root.dataset.tabDragging).toBe('true')
+})
+
+test('a new group or resize gesture clears a stale trusted tab source', () => {
+  fixture()
+  tabDragSession.beginTab({ courseId: 'source', panelId: 'panel', nonce: 'first' })
+  tabDragSession.begin('group')
+  expect(tabDragSession.getSnapshot()).toBe('group')
+  expect(tabDragSession.getSource()).toBeNull()
+  tabDragSession.beginTab({ courseId: 'source', panelId: 'panel', nonce: 'second' })
+  tabDragSession.begin('resize')
+  expect(tabDragSession.getSnapshot()).toBe('resize')
   expect(tabDragSession.getSource()).toBeNull()
 })

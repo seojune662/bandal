@@ -45,6 +45,8 @@ export interface UpdaterRuntime {
   download(): Promise<UpdateStatus>
   /** Quit and install. Returns false if there was nothing staged. */
   install(): boolean
+  /** A browser unload veto cancelled the explicitly requested restart. */
+  cancelInstall(): void
   /** Stops the periodic timer. */
   dispose(): void
 }
@@ -56,6 +58,8 @@ export interface UpdaterDeps {
   isPackaged?: boolean
   /** Injectable for tests. Defaults to the installed or build app version. */
   currentVersion?: string
+  /** Injectable for platform-specific installer cancellation tests. */
+  platform?: NodeJS.Platform
 }
 
 export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
@@ -70,6 +74,7 @@ export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
   let timer: NodeJS.Timeout | null = null
   let initialTimer: NodeJS.Timeout | null = null
   let availableVersion: string | null = null
+  let installRequested = false
 
   function setStatus(next: UpdateStatus): void {
     status = next
@@ -83,6 +88,7 @@ export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
       check: async () => status,
       download: async () => status,
       install: () => false,
+      cancelInstall: () => undefined,
       dispose: () => undefined
     }
   }
@@ -137,6 +143,7 @@ export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
   }
 
   function onError(error: Error): void {
+    installRequested = false
     console.error('[updater]', error)
     // No app-update.yml: this build was never wired to a release feed. Stop
     // checking rather than retry every 6 hours forever.
@@ -202,16 +209,35 @@ export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
   }
 
   function install(): boolean {
-    if (status.phase !== 'ready') {
+    if (status.phase !== 'ready' || installRequested) {
       return false
     }
+    installRequested = true
+    if (status.restartCancelled) setStatus({ phase: 'ready', currentVersion, version: status.version })
     // The CLI holds file handles under the install dir on Windows; a survivor
     // makes the NSIS updater fail to replace the app. Harmless on macOS.
-    killAllClaudeProcessesSync()
     // isSilent=false so the student sees the NSIS progress; isForceRunAfter so
     // the app comes back up instead of just vanishing.
-    autoUpdater.quitAndInstall(false, true)
+    try {
+      killAllClaudeProcessesSync()
+      autoUpdater.quitAndInstall(false, true)
+    }
+    catch (error) { onError(error instanceof Error ? error : new Error(String(error))); return false }
     return true
+  }
+
+  function cancelInstall(): void {
+    if (!installRequested) return
+    installRequested = false
+    if ((deps.platform ?? process.platform) !== 'darwin') {
+      // electron-updater 6.8 BaseUpdater retains this own boolean after a quit
+      // veto. Clear only that known flag so an explicit retry is not ignored.
+      const requested = Object.getOwnPropertyDescriptor(autoUpdater, 'quitAndInstallCalled')
+      if (requested && 'value' in requested && typeof requested.value === 'boolean' && requested.writable) {
+        try { Reflect.set(autoUpdater, 'quitAndInstallCalled', false) } catch { /* No writable compatibility field. */ }
+      }
+    }
+    if (status.phase === 'ready') setStatus({ ...status, restartCancelled: true })
   }
 
   initialTimer = setTimeout(() => {
@@ -224,5 +250,5 @@ export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
   }, RECHECK_INTERVAL_MS)
   timer.unref()
 
-  return { status: () => status, check, download, install, dispose }
+  return { status: () => status, check, download, install, cancelInstall, dispose }
 }

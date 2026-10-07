@@ -3503,7 +3503,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // the one students actually hit.
   const quitDrain = createQuitDrain(() => app.quit(), QUIT_DRAIN_MS)
   app.on('before-quit', quitDrain.beforeQuit)
-  onBrowserQuitCancelled(quitDrain.reset)
 
   app.on('will-quit', () => account.dispose())
 
@@ -3520,6 +3519,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // in an unpackaged build the factory returns an inert stub anyway.
   const updater = createUpdaterRuntime({
     broadcast: (status) => broadcast('update:changed', status)
+  })
+  onBrowserQuitCancelled(() => {
+    quitDrain.reset()
+    updater.cancelInstall()
   })
   app.on('will-quit', () => {
     updater.dispose()

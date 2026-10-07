@@ -7,7 +7,7 @@ vi.mock('electron-updater', () => ({ default: { get autoUpdater() { return updat
 vi.mock('../../../src/main/features/agent', () => ({ killAllClaudeProcessesSync: vi.fn() }))
 const { createUpdaterRuntime } = await import('../../../src/main/features/updater')
 
-afterEach(() => { updater.removeAllListeners(); vi.clearAllMocks() })
+afterEach(() => { updater.removeAllListeners(); delete (updater as any).quitAndInstallCalled; vi.clearAllMocks(); mock.install.mockReset() })
 
 test('reserves an update download before progress and surfaces a network interruption for retry', async () => {
   const runtime = createUpdaterRuntime({ currentVersion: '1.0.0', broadcast: vi.fn() })
@@ -50,4 +50,58 @@ test('deduplicates checks and detaches only its own event listeners on disposal'
   expect(broadcast).toHaveBeenCalledTimes(before)
   finish()
   await checking
+})
+
+
+test('only an active install cancellation broadcasts recovery, clears the Windows guard, and allows exactly one explicit retry', () => {
+  const broadcast = vi.fn(), applied = vi.fn()
+  Object.defineProperty(updater, 'quitAndInstallCalled', { value: false, writable: true, configurable: true })
+  mock.install.mockImplementation(() => {
+    if ((updater as any).quitAndInstallCalled) return
+    ;(updater as any).quitAndInstallCalled = true
+    applied()
+  })
+  const runtime = createUpdaterRuntime({ currentVersion: '1.0.0', platform: 'win32', broadcast })
+  try {
+    updater.emit('update-downloaded', { version: '1.1.0' })
+    const before = broadcast.mock.calls.length
+    runtime.cancelInstall()
+    expect(broadcast).toHaveBeenCalledTimes(before)
+    expect(runtime.install()).toBe(true)
+    expect(runtime.install()).toBe(false)
+    expect(applied).toHaveBeenCalledOnce()
+    runtime.cancelInstall()
+    expect(runtime.status()).toEqual({ phase: 'ready', currentVersion: '1.0.0', version: '1.1.0', restartCancelled: true })
+    expect((updater as any).quitAndInstallCalled).toBe(false)
+    expect(broadcast).toHaveBeenCalledTimes(before + 1)
+    runtime.cancelInstall(); expect(broadcast).toHaveBeenCalledTimes(before + 1)
+    expect(runtime.install()).toBe(true)
+    expect(runtime.install()).toBe(false)
+    expect(applied).toHaveBeenCalledTimes(2)
+    expect(runtime.status()).toEqual({ phase: 'ready', currentVersion: '1.0.0', version: '1.1.0' })
+  } finally { runtime.dispose() }
+})
+
+test.each(['darwin', 'missing', 'readonly', 'other-type'] as const)('cancel recovery does not mutate an incompatible %s installer field', scenario => {
+  if (scenario !== 'missing') Object.defineProperty(updater, 'quitAndInstallCalled', { value: scenario === 'other-type' ? 1 : true, writable: scenario !== 'readonly', configurable: true })
+  const value = (updater as any).quitAndInstallCalled
+  const runtime = createUpdaterRuntime({ currentVersion: '1.0.0', platform: scenario === 'darwin' ? 'darwin' : 'win32', broadcast: vi.fn() })
+  try {
+    updater.emit('update-downloaded', { version: '1.1.0' }); runtime.install(); runtime.cancelInstall()
+    expect((updater as any).quitAndInstallCalled).toBe(value)
+    expect(runtime.status()).toMatchObject({ phase: 'ready', restartCancelled: true })
+  } finally { runtime.dispose() }
+})
+
+test('an updater error clears the active install so ordinary browser quit cancellation does not rebroadcast', () => {
+  const broadcast = vi.fn(), error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const runtime = createUpdaterRuntime({ currentVersion: '1.0.0', broadcast })
+  try {
+    updater.emit('update-downloaded', { version: '1.1.0' }); expect(runtime.install()).toBe(true)
+    updater.emit('error', new Error('update install failed'))
+    const before = broadcast.mock.calls.length
+    runtime.cancelInstall(); expect(broadcast).toHaveBeenCalledTimes(before)
+    updater.emit('update-downloaded', { version: '1.1.0' }); expect(runtime.install()).toBe(true)
+    expect(mock.install).toHaveBeenCalledTimes(2)
+  } finally { runtime.dispose(); error.mockRestore() }
 })

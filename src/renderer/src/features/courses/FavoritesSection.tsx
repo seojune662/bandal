@@ -12,6 +12,9 @@ import {
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { tabTitle } from '../workspace/tabIdentity'
 import { TabKindIcon } from '../workspace/workspaceIcons'
+import { matchesWorkspaceMoveData } from '../workspace/tabDrag'
+import { tabDragSession } from '../workspace/tabDragSession'
+import { acceptWorkspaceCourseCopyDrop } from '../workspace/courseTabMoveNavigation'
 import {
   canAcceptFavoriteDrop,
   descriptorFromDrop,
@@ -262,6 +265,8 @@ function FavoritesSectionBody({ courseId }: FavoritesSectionProps): JSX.Element 
       showToast('이 항목은 즐겨찾기에 추가할 수 없어요.', 'danger')
       return
     }
+    const source = tabDragSession.getSource()
+    if (source && matchesWorkspaceMoveData(event.dataTransfer, source)) acceptWorkspaceCourseCopyDrop(source.nonce)
     void add({ courseId, label: tabTitle(descriptor), descriptor })
       .then(() => showToast('즐겨찾기에 추가했어요.'))
       .catch(() => showToast('즐겨찾기를 추가하지 못했어요.', 'danger'))

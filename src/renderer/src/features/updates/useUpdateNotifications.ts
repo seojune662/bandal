@@ -31,6 +31,7 @@ export function mayRestartUnprompted(
 
 export function useUpdateNotifications(): void {
   const status = useUpdateStore((state) => state.status)
+  const actionError = useUpdateStore((state) => state.actionError)
   const init = useUpdateStore((state) => state.init)
   const download = useUpdateStore((state) => state.download)
   const install = useUpdateStore((state) => state.install)
@@ -50,6 +51,12 @@ export function useUpdateNotifications(): void {
   useEffect(() => {
     init()
   }, [init])
+
+  useEffect(() => {
+    if (!actionError || lastError.current === actionError) return
+    lastError.current = actionError
+    showToast(actionError, 'danger')
+  }, [actionError])
 
   useEffect(() => {
     if (status === null) return
@@ -74,6 +81,7 @@ export function useUpdateNotifications(): void {
     }
 
     if (status.phase === 'ready') {
+      if (status.restartCancelled) { askedThisSession.current = null; return }
       const key = `ready:${status.version}`
       if (announced.current === key) return
       announced.current = key

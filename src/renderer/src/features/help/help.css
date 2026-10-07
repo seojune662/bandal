@@ -1,10 +1,55 @@
-.help-menu {
-  width: calc(var(--context-menu-width) + var(--space-7));
+.context-menu.help-menu {
+  width: 17rem;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  padding: var(--space-1);
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+  border-radius: calc(var(--radius-lg) + var(--space-1));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   transform-origin: top left;
 }
 
-.help-menu button {
+.help-menu button[role='menuitem'] {
   justify-content: flex-start;
+  min-height: calc(var(--control-height) + var(--space-1));
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-primary);
+  background: transparent;
+  border-radius: var(--radius-md);
+  font-weight: 450;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.help-menu button[role='menuitem']:hover:enabled,
+.help-menu button[role='menuitem']:focus-visible {
+  background: var(--sidebar-hover);
+}
+
+.help-menu button[role='menuitem']:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.help-menu button[role='menuitem']:active {
+  transform: none;
+}
+
+.help-menu button[role='menuitem']:disabled {
+  color: var(--text-muted);
+  background: transparent;
+  cursor: default;
+}
+
+.help-menu button[role='menuitem'] svg {
+  font-size: var(--icon-size);
+  color: var(--text-secondary);
+}
+
+.help-menu .context-menu__separator {
+  margin: var(--space-1) var(--space-2);
 }
 
 .help-menu__accessory {
@@ -17,11 +62,12 @@
 }
 
 .help-menu__external {
+  margin-left: auto;
   color: var(--text-muted);
 }
 
 .help-menu__version {
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-3);
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);

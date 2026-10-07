@@ -60,7 +60,7 @@ test('plugin runtime and app sender boundaries retain their packaged regressions
 
 test('login and download changes select compatibility rather than omnibox E2E', () => {
   const plan = planChecks(['src/main/features/browser/downloads.ts', 'src/renderer/src/features/browser/BrowserGuestView.tsx'])
-  assert.deepEqual(plan.e2e, ['e2e/browserCompatibility.spec.ts', 'e2e/courseTabMove.spec.ts', 'e2e/tabMoveSessions.spec.ts', 'e2e/browserPlacement.spec.ts'])
+  assert.deepEqual(plan.e2e, ['e2e/browserCompatibility.spec.ts', 'e2e/courseTabMove.spec.ts', 'e2e/tabMoveSessions.spec.ts', 'e2e/courseMovePreview.spec.ts', 'e2e/browserPlacement.spec.ts'])
 })
 
 test('AI links and connection fixes select their direct product regressions', () => {
@@ -70,6 +70,7 @@ test('AI links and connection fixes select their direct product regressions', ()
   assert.ok(!runtime.e2e.includes('e2e/courseTabMove.spec.ts'))
   const workspace = planChecks(['src/renderer/src/features/workspace/panelContentHost.tsx'])
   assert.ok(workspace.e2e.includes('e2e/courseTabMove.spec.ts'))
+  assert.ok(workspace.e2e.includes('e2e/courseMovePreview.spec.ts'))
   assert.ok(!workspace.e2e.includes('e2e/aiConnections.spec.ts'))
 })
 
@@ -86,6 +87,27 @@ test('atomic file replacement selects the real note save and rename regression',
   assert.deepEqual(plan.e2e, ['e2e/courseTabMove.spec.ts'])
   assert.deepEqual(plan.types, ['tsconfig.node.json'])
   assert.equal(plan.full, false)
+})
+
+test('rail account and update controls select their direct interaction regression', () => {
+  for (const file of [
+    'src/renderer/src/features/account/SidebarAccountEntry.tsx',
+    'src/renderer/src/features/account/account.css',
+    'src/renderer/src/features/help/help.css',
+    'src/renderer/src/features/updates/RailUpdateButton.tsx',
+    'src/renderer/src/features/updates/rail-update.css',
+    'src/renderer/src/stores/updateStore.ts'
+  ]) {
+    const plan = planChecks([file])
+    assert.deepEqual(plan.e2e, ['e2e/railUx.spec.ts'])
+    assert.equal(plan.full, false)
+  }
+  assert.ok(planChecks(['src/renderer/src/app/GlobalNavigation.tsx']).e2e.includes('e2e/railUx.spec.ts'))
+})
+
+test('favorite copies after folder hover retain their navigation regression', () => {
+  assert.deepEqual(planChecks(['src/renderer/src/features/courses/FavoritesSection.tsx']).e2e,
+    ['e2e/favoritesDrag.spec.ts', 'e2e/courseMovePreview.spec.ts'])
 })
 
 test('native image clipboard does not repeat PDF image export checks', () => {
@@ -142,7 +164,7 @@ test('launcher entries select context and rail checks without unrelated appearan
   const feature = planChecks(['src/renderer/src/features/launcher/featureActions.ts', 'src/renderer/src/stores/workflowPacksStore.ts'])
   assert.deepEqual(feature.e2e, ['e2e/featureLauncher.spec.ts', 'e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts'])
   const shell = planChecks(['src/renderer/src/app/GlobalNavigation.tsx', 'src/renderer/src/app/AppShell.tsx'])
-  assert.deepEqual(new Set(shell.e2e), new Set(['e2e/featureLauncher.spec.ts', 'e2e/sidebars.spec.ts', 'e2e/settingsShell.spec.ts', 'e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts']))
+  assert.deepEqual(new Set(shell.e2e), new Set(['e2e/featureLauncher.spec.ts', 'e2e/sidebars.spec.ts', 'e2e/settingsShell.spec.ts', 'e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts', 'e2e/railUx.spec.ts']))
   assert.ok(!shell.scriptTests.includes('scripts/check-contrast.mjs'))
   assert.deepEqual(planChecks(['src/renderer/src/features/settings/PacksPanel.tsx']).e2e, ['e2e/featureLauncher.spec.ts', 'e2e/pluginCenter.spec.ts'])
   const mixed = planChecks(['src/renderer/src/app/GlobalNavigation.tsx', 'src/renderer/src/styles/tokens.css'])

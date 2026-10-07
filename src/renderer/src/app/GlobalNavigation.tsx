@@ -9,6 +9,7 @@ import { Tooltip } from '../components/Tooltip'
 import { Icon } from './icons'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { openLearningHome, returnToCourseWorkspace } from '../features/learning/learningNavigation'
+import { RailUpdateButton } from '../features/updates/RailUpdateButton'
 import './global-navigation.css'
 
 export function GlobalNavigation(): JSX.Element {
@@ -89,6 +90,7 @@ export function GlobalNavigation(): JSX.Element {
       </Tooltip>
       <HelpHub />
       <div className="global-navigation__bottom">
+        <RailUpdateButton />
         {phase === 'signed-in' ? (
           <SidebarAccountEntry />
         ) : (

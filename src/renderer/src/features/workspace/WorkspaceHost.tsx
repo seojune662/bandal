@@ -36,6 +36,7 @@ import { dockviewComponents, workspacePanelContents } from './tabRegistry'
 import { WorkspaceCourseContext } from './placementContext'
 import { WorkspaceContentLayer } from './panelContentHost'
 import { CourseTabMoveOverlay } from './CourseTabMoveOverlay'
+import { installWorkspaceCourseMoveNavigation } from './courseTabMoveNavigation'
 import { installTabDragScrolling } from './tabDragScroll'
 import { installTabStripWheelScrolling } from './tabStripScroll'
 import { TabKindIcon } from './workspaceIcons'
@@ -192,6 +193,11 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
       })
     })
     const overlay = event.api.onWillShowOverlay((event) => {
+      const source = tabDragSession.getSource()
+      if (useWorkspaceStore.getState().activeCourseId !== courseId || (source && source.courseId !== courseId)) {
+        event.preventDefault()
+        return
+      }
       if (rootRef.current) rootRef.current.dataset.dropKind = event.kind
     })
     layoutSubscription.current = { dispose: () => { layout.dispose(); overlay.dispose() } }
@@ -276,6 +282,7 @@ export function WorkspaceHost(): JSX.Element {
     const host = hostRef.current
     if (!host) return
     const stopWheel = installTabStripWheelScrolling(host)
+    const stopNavigation = installWorkspaceCourseMoveNavigation()
     const stopSession = installWorkspaceDragSession(host)
     const stopDrag = installTabDragScrolling(host)
     const flush = (): void => {
@@ -284,7 +291,7 @@ export function WorkspaceHost(): JSX.Element {
       flushLastActiveCoursePersist()
     }
     window.addEventListener('beforeunload', flush)
-    return () => { stopWheel(); stopDrag(); stopSession(); window.removeEventListener('beforeunload', flush); flush() }
+    return () => { stopWheel(); stopDrag(); stopSession(); stopNavigation(); window.removeEventListener('beforeunload', flush); flush() }
   }, [])
 
   return <div ref={hostRef} className="workspace-host" data-tour="tab-strip">

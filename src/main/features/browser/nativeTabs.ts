@@ -216,7 +216,7 @@ export async function setBrowserPageBounds(event: IpcMainInvokeEvent, req: { tab
   const b = req.bounds, factor = event.sender.getZoomFactor()
   if (!b || Object.values(b).some(v => !Number.isFinite(v)) || b.width <= 0 || b.height <= 0) {
     tab.bounds = null
-    if (req.preview) capturePreview(tab)
+    if (req.preview) capturePreview(tab, true)
     tab.view.setVisible(false)
     return { snapshot: req.preview ? await (tab.preview ?? null) : null }
   }
@@ -240,10 +240,20 @@ function applyPageVisibility(tab: Tab): void {
   tab.view.setVisible(true)
 }
 
-function capturePreview(tab: Tab): void {
-  if (!tab.view.getVisible()) return
-  tab.preview = tab.view.webContents.capturePage(undefined, { stayHidden: true })
-    .then(image => image.isEmpty() ? null : image.toDataURL()).catch(() => null)
+function capturePreview(tab: Tab, allowHidden = false): void {
+  const page = tab.view.webContents
+  if (page.isDestroyed() || (!tab.view.getVisible() && (!allowHidden || tab.preview))) return
+  let captured: Promise<Electron.NativeImage>
+  try { captured = page.capturePage(undefined, { stayHidden: true }) }
+  catch { delete tab.preview; return }
+  const preview = captured.then(image => image.isEmpty() ? null : image.toDataURL())
+    .catch(() => null).then(snapshot => {
+      // A failed hidden capture can be retried on the next request. Do not clear
+      // a newer preview that started after this page was shown again.
+      if (snapshot === null && tab.preview === preview) delete tab.preview
+      return snapshot
+    })
+  tab.preview = preview
 }
 
 export function setBrowserHostOccluded(event: IpcMainInvokeEvent, occluded: boolean): { ok: true } {

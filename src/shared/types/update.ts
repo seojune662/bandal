@@ -20,7 +20,7 @@ export type UpdateStatus =
   | { phase: 'available'; currentVersion: string; version: string; notes: string | null }
   | { phase: 'downloading'; currentVersion: string; version: string; percent: number }
   /** Downloaded and staged. Restarting applies it. */
-  | { phase: 'ready'; currentVersion: string; version: string }
+  | { phase: 'ready'; currentVersion: string; version: string; restartCancelled?: true }
   /**
    * The check or download failed. `message` is already user-facing Korean —
    * the raw electron-updater error is logged in main, not surfaced here.
