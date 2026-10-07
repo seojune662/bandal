@@ -238,7 +238,7 @@ test('browser settings avoid unrelated global appearance checks', () => {
 test('workspace styles, state and tab types cover dragging across app surfaces', () => {
   for (const file of ['src/renderer/src/features/workspace/workspace.css', 'src/renderer/src/features/workspace/tabDragSession.ts', 'src/renderer/src/stores/workspaceStore.ts', 'src/shared/tabs.ts']) {
     const plan = planChecks([file])
-    const specs = ['tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance', 'courseTabMove', 'tabMoveSessions']
+    const specs = ['tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance', 'courseTabMove', 'tabMoveSessions', 'courseMovePreview']
     if (file.endsWith('workspaceStore.ts')) specs.push('learningManagement', 'learningNavigation')
     assert.deepEqual(new Set(plan.e2e), new Set(specs.map(spec => `e2e/${spec}.spec.ts`)), file)
     assert.equal(plan.full, false, file)
