@@ -222,6 +222,19 @@ test.describe('pdf scroll preservation', () => {
       expect(anchorBeforeResize).toBeLessThan(1)
 
       const expectPageSixPreserved = async (): Promise<void> => {
+        // App rails animate their width. Inspect the settled page boxes, not
+        // a passing frame before fit-width rendering has caught up.
+        await scroller.evaluate(async (element) => {
+          let previous = ''
+          let stableFrames = 0
+          while (stableFrames < 3) {
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+            const page = element.querySelector<HTMLElement>('[data-pdf-page="6"]')
+            const geometry = [element.clientWidth, element.clientHeight, element.scrollTop, page?.getBoundingClientRect().height].join(':')
+            stableFrames = geometry === previous ? stableFrames + 1 : 0
+            previous = geometry
+          }
+        })
         await expect(pageInput).toHaveValue('6')
         await expect
           .poll(pageOffset)
@@ -266,6 +279,22 @@ test.describe('pdf scroll preservation', () => {
       await expectPageSixPreserved()
       await highlightToggle.click()
       await expect(page.locator('.pdf-rail')).toBeHidden()
+      await expectPageSixPreserved()
+
+      // The reading anchor also survives a height-only resize, such as a
+      // horizontal split sash, and the toolbar changing from two rows to one.
+      const previousHeight = await scroller.evaluate(element => element.clientHeight)
+      await bandal.app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
+        const [width, height] = window.getContentSize()
+        window.setContentSize(width, height - 120)
+      })
+      await expect.poll(() => scroller.evaluate(element => element.clientHeight)).toBeLessThan(previousHeight)
+      await expectPageSixPreserved()
+      await page.getByRole('button', { name: '과목 사이드바 접기' }).click()
+      await page.getByRole('button', { name: '자료 사이드바 접기' }).click()
+      await expect(page.locator('aside.app-rail--left')).toBeHidden()
+      await expect(page.locator('aside.app-rail--right')).toBeHidden()
       await expectPageSixPreserved()
 
       const scrollbarWidth = await scroller.evaluate((element) =>

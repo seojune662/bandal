@@ -65,7 +65,7 @@ test('four browser panes retain their pages, route native clicks and restore unf
     await bandal.page.getByRole('option', { name: `${origin}/shortcut 열기` }).click()
     await expect(bandal.page.locator('.dv-active-group .dv-tab')).toHaveCount(2)
     await expect(bandal.page.locator('.dv-active-group .dv-tab')).toContainText(['Pane 0', 'Pane shortcut'])
-    await bandal.page.locator('.dv-active-group .dv-active-tab .workspace-tab__close').click()
+    await bandal.page.locator('.dv-active-group .dv-active-tab').click({ button: 'middle' })
     await expect.poll(async () => (await pages()).length).toBe(4)
     expect(await bandal.app.evaluate(async ({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('document.querySelector("#draft").value'), clicked.id)).toBe('unsaved native draft')
     await expect.poll(async () => {

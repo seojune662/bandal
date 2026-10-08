@@ -215,6 +215,7 @@ function PdfViewer({
   const [numPages, setNumPages] = useState(0)
   const [pageAspects, setPageAspects] = useState<Map<number, number>>(new Map())
   const [containerWidth, setContainerWidth] = useState(0)
+  const [containerHeight, setContainerHeight] = useState(0)
   const [zoom, setZoom] = useState<number>(
     () => pdfScrollMemory.get(courseId, relPath)?.zoom ?? 1
   )
@@ -258,7 +259,7 @@ function PdfViewer({
   const currentPageRef = useRef(currentPage)
   currentPageRef.current = currentPage
   const containerWidthRef = useRef(containerWidth)
-  containerWidthRef.current = containerWidth
+  const containerHeightRef = useRef(containerHeight)
   const restoreRef = useRef({ done: false, cancelled: false })
   const restoreMountedRef = useRef(true)
   const restoreFrameRef = useRef<number | null>(null)
@@ -383,6 +384,14 @@ function PdfViewer({
   }, [courseId, pdfProxy, relPath])
 
   const rememberViewportAnchor = useCallback((): PdfViewportAnchor | null => {
+    // ResizeObserver runs after CSS has already changed the viewport. A
+    // scroll event in that frame must not replace the pre-resize position
+    // with one measured from the new toolbar/viewport height.
+    if (pendingLayoutAnchorRef.current !== null) return pendingLayoutAnchorRef.current
+    const height = scrollerRef.current?.clientHeight ?? 0
+    if (containerHeightRef.current > 0 && height !== containerHeightRef.current) {
+      return viewAnchorRef.current
+    }
     const anchor = captureViewportAnchor()
     if (anchor !== null) viewAnchorRef.current = anchor
     return anchor ?? viewAnchorRef.current
@@ -406,25 +415,31 @@ function PdfViewer({
     if (scroller === null) return
     const observer = new ResizeObserver(() => {
       const width = scroller.clientWidth
+      const height = scroller.clientHeight
       // Dockview's `always` renderer can temporarily give an inactive panel a
       // zero-sized box. Treat that as hidden, not as a real fit-width request:
       // rendering every page at MIN_PAGE_WIDTH would clamp scrollTop to a
       // different page before the tab is shown again.
-      if (width <= 0 || width === containerWidthRef.current) return
+      if (width <= 0 || height <= 0 ||
+        (width === containerWidthRef.current && height === containerHeightRef.current)) return
       if (numPages > 0) {
-        pendingLayoutAnchorRef.current =
-          visibleRef.current
+        pendingLayoutAnchorRef.current ??=
+          visibleRef.current && height === containerHeightRef.current
             ? rememberViewportAnchor()
             : viewAnchorRef.current
       }
       invalidatePageOffsets()
       containerWidthRef.current = width
+      containerHeightRef.current = height
       setContainerWidth(width)
+      setContainerHeight(height)
     })
     observer.observe(scroller)
     if (scroller.clientWidth > 0) {
       containerWidthRef.current = scroller.clientWidth
+      containerHeightRef.current = scroller.clientHeight
       setContainerWidth(scroller.clientWidth)
+      setContainerHeight(scroller.clientHeight)
     }
     return () => observer.disconnect()
   }, [invalidatePageOffsets, numPages, rememberViewportAnchor])
@@ -485,6 +500,7 @@ function PdfViewer({
     setCurrentPage(current?.page ?? pageAtViewportCenter())
   }, [
     pageWidth,
+    containerHeight,
     pageAspects,
     numPages,
     visible,
