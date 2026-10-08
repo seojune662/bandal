@@ -150,6 +150,9 @@ test.describe('pdf scroll preservation', () => {
     const bandal = await launchBandal()
     try {
       const { page } = bandal
+      await bandal.app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.setContentSize(1024, 720)
+      })
       await createCourse(page, '항공역학')
       const folders = readdirSync(bandal.dataRoot, { withFileTypes: true })
         .filter((entry) => entry.isDirectory())
@@ -227,7 +230,9 @@ test.describe('pdf scroll preservation', () => {
         await scroller.evaluate(async (element) => {
           let previous = ''
           let stableFrames = 0
+          const deadline = performance.now() + 5_000
           while (stableFrames < 3) {
+            if (performance.now() > deadline) throw new Error(`PDF geometry did not settle: ${previous}`)
             await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
             const page = element.querySelector<HTMLElement>('[data-pdf-page="6"]')
             const geometry = [element.clientWidth, element.clientHeight, element.scrollTop, page?.getBoundingClientRect().height].join(':')
@@ -280,6 +285,46 @@ test.describe('pdf scroll preservation', () => {
       await highlightToggle.click()
       await expect(page.locator('.pdf-rail')).toBeHidden()
       await expectPageSixPreserved()
+
+      // Windows gains a 14px horizontal scrollbar while a shrinking viewport
+      // still contains the previous wider page boxes. Exercise the same
+      // viewport-height sequence on platforms with overlay scrollbars too.
+      const cdp = await page.context().newCDPSession(page)
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 })
+      try {
+        await scroller.evaluate(async (element) => {
+          const viewer = element.closest<HTMLElement>('.pdf-tab')!
+          const width = viewer.clientWidth
+          const animation = viewer.animate(
+            [{ width: `${width}px` }, { width: `${width - 160}px` }],
+            { duration: 400, fill: 'forwards' }
+          )
+          const frames = async (count: number): Promise<void> => {
+            for (let index = 0; index < count; index++) {
+              await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+            }
+          }
+          try {
+            await frames(2)
+            element.style.marginBottom = '14px'
+            await frames(3)
+            // A native scroll adjustment can arrive after the page commit.
+            // It has no wheel/pointer/key intent and must not become a new
+            // semantic reading position during the reflow.
+            element.scrollTop -= 14
+            await frames(2)
+            element.style.marginBottom = ''
+            await animation.finished
+          } finally {
+            element.style.marginBottom = ''
+            animation.cancel()
+          }
+        })
+        await expectPageSixPreserved()
+      } finally {
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 })
+        await cdp.detach()
+      }
 
       // The reading anchor also survives a height-only resize, such as a
       // horizontal split sash, and the toolbar changing from two rows to one.

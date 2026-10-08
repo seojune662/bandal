@@ -292,6 +292,9 @@
   flex: 1;
   min-width: 0;
   overflow: auto;
+  /* Page+offset restoration owns reflow; Chromium must not also anchor a
+     transient canvas/text-layer node while virtualized pages change size. */
+  overflow-anchor: none;
   background: var(--bg-app);
   overscroll-behavior: contain;
   /* The global 8px scrollbar leaves almost no painted thumb after its 4px

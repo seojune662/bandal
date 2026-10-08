@@ -59,6 +59,7 @@ import {
 import { readPageSelection } from './lib/domSelection'
 import { normalizeSelectionRects, rectsBoundingBox } from './lib/annotationGeometry'
 import { pdfScrollMemory } from './lib/scrollMemory'
+import { PdfViewportResize } from './lib/viewportResize'
 import { useDrawings } from './tools/useDrawings'
 import { usePdfToolStore } from './tools/toolStore'
 import type {
@@ -266,7 +267,16 @@ function PdfViewer({
   const initialRestoreAnchorRef = useRef<PdfViewportAnchor | null>(null)
   const initialRestorePageRef = useRef<number | null>(null)
   const pendingLayoutAnchorRef = useRef<PdfViewportAnchor | null>(null)
+  const viewportResize = useRef(new PdfViewportResize())
+  const resizeSettleFrame = useRef<number | null>(null)
+  const cancelViewportResize = useCallback((): void => {
+    if (pendingLayoutAnchorRef.current === viewportResize.current.anchor) pendingLayoutAnchorRef.current = null
+    viewportResize.current.cancel()
+    if (resizeSettleFrame.current !== null) cancelAnimationFrame(resizeSettleFrame.current)
+    resizeSettleFrame.current = null
+  }, [])
   const cancelInitialRestore = useCallback((): void => {
+    cancelViewportResize()
     restoreRef.current.cancelled = true
     if (restoreFrameRef.current !== null) cancelAnimationFrame(restoreFrameRef.current)
     restoreFrameRef.current = null
@@ -275,7 +285,7 @@ function PdfViewer({
     }
     initialRestoreAnchorRef.current = null
     initialRestorePageRef.current = null
-  }, [])
+  }, [cancelViewportResize])
   const jumpToPageRef = useRef<(page: number, restoring?: boolean) => void>(() => {})
   const viewAnchorRef = useRef<PdfViewportAnchor | null>(null)
   const zoomPointRef = useRef<{ page: number; x: number; y: number; clientX: number; clientY: number } | null>(null)
@@ -384,12 +394,17 @@ function PdfViewer({
   }, [courseId, pdfProxy, relPath])
 
   const rememberViewportAnchor = useCallback((): PdfViewportAnchor | null => {
+    if (viewportResize.current.anchor !== null) return viewportResize.current.anchor
+    if (scrollerRef.current && viewportResize.current.isScrollEcho(scrollerRef.current.scrollTop)) return viewAnchorRef.current
     // ResizeObserver runs after CSS has already changed the viewport. A
     // scroll event in that frame must not replace the pre-resize position
     // with one measured from the new toolbar/viewport height.
     if (pendingLayoutAnchorRef.current !== null) return pendingLayoutAnchorRef.current
-    const height = scrollerRef.current?.clientHeight ?? 0
-    if (containerHeightRef.current > 0 && height !== containerHeightRef.current) {
+    const scroller = scrollerRef.current
+    if (scroller !== null && (
+      (containerWidthRef.current > 0 && scroller.clientWidth !== containerWidthRef.current) ||
+      (containerHeightRef.current > 0 && scroller.clientHeight !== containerHeightRef.current)
+    )) {
       return viewAnchorRef.current
     }
     const anchor = captureViewportAnchor()
@@ -423,10 +438,11 @@ function PdfViewer({
       if (width <= 0 || height <= 0 ||
         (width === containerWidthRef.current && height === containerHeightRef.current)) return
       if (numPages > 0) {
-        pendingLayoutAnchorRef.current ??=
-          visibleRef.current && height === containerHeightRef.current
-            ? rememberViewportAnchor()
-            : viewAnchorRef.current
+        viewportResize.current.begin(pendingLayoutAnchorRef.current ?? viewAnchorRef.current, {
+          width, height,
+          pageWidth: Math.max(MIN_PAGE_WIDTH_PX, Math.round((width - PAGE_GUTTER_PX) * zoomRef.current))
+        })
+        pendingLayoutAnchorRef.current ??= viewportResize.current.anchor
       }
       invalidatePageOffsets()
       containerWidthRef.current = width
@@ -449,6 +465,31 @@ function PdfViewer({
     MIN_PAGE_WIDTH_PX,
     Math.round((containerWidth - PAGE_GUTTER_PX) * zoom)
   )
+
+  const settleViewportResize = useCallback((): void => {
+    if (resizeSettleFrame.current !== null) cancelAnimationFrame(resizeSettleFrame.current)
+    const settle = (): void => {
+      resizeSettleFrame.current = null
+      const anchor = viewportResize.current.anchor
+      const scroller = scrollerRef.current
+      if (anchor === null || scroller === null || !visibleRef.current) return
+      if (restoreViewportAnchor(anchor)) {
+        viewAnchorRef.current = anchor
+        viewportResize.current.recordRestoredScroll(scroller.scrollTop)
+      }
+      const settled = viewportResize.current.observe({
+        width: scroller.clientWidth,
+        height: scroller.clientHeight,
+        pageWidth: elementFor(anchor.page)?.getBoundingClientRect().width ?? 0
+      })
+      if (!settled) resizeSettleFrame.current = requestAnimationFrame(settle)
+    }
+    resizeSettleFrame.current = requestAnimationFrame(settle)
+  }, [elementFor, restoreViewportAnchor])
+
+  useEffect(() => () => {
+    if (resizeSettleFrame.current !== null) cancelAnimationFrame(resizeSettleFrame.current)
+  }, [])
 
   // Page boxes only move when document layout changes. Rebuild their cached
   // centers here; ordinary scroll frames only perform a binary search.
@@ -488,10 +529,13 @@ function PdfViewer({
     wasVisibleRef.current = true
     const anchor =
       pendingLayoutAnchorRef.current ??
+      viewportResize.current.anchor ??
       (becameVisible ? viewAnchorRef.current : null)
     if (anchor !== null && restoreViewportAnchor(anchor)) {
       pendingLayoutAnchorRef.current = null
       viewAnchorRef.current = anchor
+      viewportResize.current.recordRestoredScroll(scrollerRef.current?.scrollTop ?? 0)
+      if (viewportResize.current.anchor !== null) settleViewportResize()
       setCurrentPage(anchor.page)
       return
     }
@@ -500,6 +544,7 @@ function PdfViewer({
     setCurrentPage(current?.page ?? pageAtViewportCenter())
   }, [
     pageWidth,
+    containerWidth,
     containerHeight,
     pageAspects,
     numPages,
@@ -507,7 +552,8 @@ function PdfViewer({
     invalidatePageOffsets,
     pageAtViewportCenter,
     rememberViewportAnchor,
-    restoreViewportAnchor
+    restoreViewportAnchor,
+    settleViewportResize
   ])
 
   // -- zoom -----------------------------------------------------------------
@@ -718,6 +764,7 @@ function PdfViewer({
       restoreFrameRef.current = requestAnimationFrame(() => {
         restoreFrameRef.current = null
         if (!canRestore()) return
+        cancelViewportResize()
         if (entry.anchor !== undefined) viewAnchorRef.current = entry.anchor
         const target = scrollerRef.current
         if (target === null) return
@@ -741,6 +788,7 @@ function PdfViewer({
         restoreFrameRef.current = requestAnimationFrame(() => {
           restoreFrameRef.current = null
           if (!canRestore()) return
+          cancelViewportResize()
           const savedAnchor = { page: saved.page, pageOffset: 0 }
           viewAnchorRef.current = savedAnchor
           if (Number.isFinite(saved.zoom) && saved.zoom > 0 && saved.zoom !== 1) {
@@ -763,7 +811,8 @@ function PdfViewer({
     relPath,
     pageAtViewportCenter,
     rememberViewportAnchor,
-    restoreViewportAnchor
+    restoreViewportAnchor,
+    cancelViewportResize
   ])
 
   // -- selection → mini toolbar ---------------------------------------------
@@ -967,17 +1016,21 @@ function PdfViewer({
       const scroller = scrollerRef.current
       const element = elementFor(clamped)
       if (scroller === null || element === null) return
-      if (!restoring) cancelInitialRestore()
+      if (restoring) cancelViewportResize()
+      else cancelInitialRestore()
       const scrollerBox = scroller.getBoundingClientRect()
       const elementBox = element.getBoundingClientRect()
       scroller.scrollTop =
         elementBox.top - scrollerBox.top + scroller.scrollTop - 12
       setCurrentPage(clamped)
+      // Publish explicit navigation synchronously, before a pending resize
+      // observer can claim the previous page as its pre-reflow anchor.
+      viewAnchorRef.current = captureViewportAnchor()
       requestAnimationFrame(() => {
         rememberViewportAnchor()
       })
     },
-    [elementFor, numPages, rememberViewportAnchor, cancelInitialRestore]
+    [elementFor, numPages, captureViewportAnchor, rememberViewportAnchor, cancelInitialRestore, cancelViewportResize]
   )
   // 복원 effect(정의 위쪽)가 최신 jumpToPage 를 부를 수 있게 ref 로 노출.
   jumpToPageRef.current = jumpToPage

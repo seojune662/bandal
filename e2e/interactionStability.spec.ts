@@ -145,7 +145,7 @@ test.describe('continuous study interactions', () => {
     })
     expect(result.settled).toEqual(result.stopped)
     const before = await viewer.getByRole('spinbutton', { name: '슬라이드 번호' }).inputValue()
-    await page.locator('.workspace-tab__title', { hasText: /^slides\.pptx$/ }).click()
+    await page.getByRole('tab', { name: 'slides.pptx', exact: true }).click()
     await page.locator('[data-material-path="note-0.md"]').click()
     await page.locator('[data-material-path="slides.pptx"]').click()
     await expect(viewer.getByRole('spinbutton', { name: '슬라이드 번호' })).toHaveValue(before)
