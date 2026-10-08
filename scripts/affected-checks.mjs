@@ -118,7 +118,7 @@ export function planChecks(files, full = false) {
   }
   const workspace = has(/^(src\/renderer\/src\/(features\/workspace\/|stores\/workspaceStore\.ts$)|src\/shared\/tabs\.ts$)/)
   if (workspace) {
-    for (const spec of ['tabDrag', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance']) e2e.add(`e2e/${spec}.spec.ts`)
+    for (const spec of ['tabs', 'tabDrag', 'workspaceLayout', 'workspaceNarrowTabs', 'workspaceCourseDrop', 'favoritesDrag', 'materialsDrag', 'viewportMenus', 'coursePerformance']) e2e.add(`e2e/${spec}.spec.ts`)
   }
   const boardCoursePicker = /^src\/renderer\/src\/features\/board\/BoardPanel\.tsx$/
   if (has(boardCoursePicker)) e2e.add('e2e/taskSchedule.spec.ts')

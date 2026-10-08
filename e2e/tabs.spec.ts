@@ -1,18 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Locator, Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 
 const SEEDED_NOTE = 'Seeded.md'
-const SCROLL_SAMPLE_COUNT = 12
-const WHEEL_DELTA = 32
-
-interface ScrollSample {
-  scrollLeft: number
-  timestamp: number
-}
-
 /** Opens the workspace "+" omnibox (header button, or watermark CTA when no tabs are open). */
 async function openNewTabMenu(page: Page): Promise<void> {
   const headerButton = page.locator('.workspace-add-tab')
@@ -25,64 +17,6 @@ async function openNewTabMenu(page: Page): Promise<void> {
       .click()
   }
   await expect(page.getByRole('dialog', { name: '새 탭 열기' })).toBeVisible()
-}
-
-async function sampleContinuousWheel(
-  page: Page,
-  tabs: Locator,
-  deltaX: number,
-  deltaY: number
-): Promise<ScrollSample[]> {
-  await tabs.evaluate((element) => {
-    element.scrollLeft = 0
-  })
-  await tabs.hover()
-
-  const samples: ScrollSample[] = [{ scrollLeft: 0, timestamp: 0 }]
-  for (let index = 0; index < SCROLL_SAMPLE_COUNT; index += 1) {
-    await page.mouse.wheel(deltaX, deltaY)
-    samples.push(
-      await tabs.evaluate(
-        (element) =>
-          new Promise<ScrollSample>((resolve) => {
-            window.requestAnimationFrame((timestamp) => {
-              resolve({ scrollLeft: element.scrollLeft, timestamp })
-            })
-          })
-      )
-    )
-  }
-  return samples
-}
-
-function expectSteadyForwardScroll(samples: ScrollSample[]): void {
-  const positions = samples.map((sample) => sample.scrollLeft)
-  const scrollSteps = positions
-    .slice(1)
-    .map((position, index) => position - positions[index]!)
-  const frameGaps = samples
-    .slice(2)
-    .map((sample, index) => sample.timestamp - samples[index + 1]!.timestamp)
-
-  expect(positions.at(-1)).toBeGreaterThan(0)
-  expect(
-    scrollSteps.every((step) => step > 0),
-    `scrollLeft samples: ${positions.join(', ')}`
-  ).toBe(true)
-  expect(Math.max(...scrollSteps)).toBeLessThanOrEqual(WHEEL_DELTA * 1.5)
-
-  /*
-   * The jank the student reported was *dropped input*, not a slow machine:
-   * dockview's scrollbar discarded `deltaX` entirely, so gestures produced no
-   * movement at all. The monotonic-step assertions above catch that and are
-   * deterministic.
-   *
-   * Frame timing is not. A wall-clock budget here fails whenever the CI box or
-   * a parallel build steals the main thread, and a test that cries wolf under
-   * load is worse than no test — people stop reading the failures. So this is
-   * a generous ceiling that only catches a real stall, not a busy machine.
-   */
-  expect(Math.max(...frameGaps)).toBeLessThan(400)
 }
 
 test.describe('workspace tabs', () => {
@@ -175,61 +109,39 @@ test.describe('workspace tabs', () => {
     await expect(page.locator('.browser-toolbar')).toBeVisible()
   })
 
-  test('scrolls an overflowing tab strip monotonically without dropped frames', async () => {
+  test('shrinks to icons and exposes every complete title without clipped tabs', async () => {
     const { page } = bandal
-    const noteNames = Array.from(
-      { length: SCROLL_SAMPLE_COUNT },
-      (_, index) => `Scroll sample ${String(index + 1).padStart(2, '0')} long tab.md`
-    )
-    for (const noteName of noteNames) {
-      writeFileSync(join(courseDir, noteName), '# Scroll sample\n')
-    }
-
+    const noteNames = Array.from({ length: 30 }, (_, index) => `Adaptive sample ${String(index + 1).padStart(2, '0')} long tab.md`)
+    for (const noteName of noteNames) writeFileSync(join(courseDir, noteName), '# Adaptive sample\n')
     await page.getByRole('button', { name: '자료 새로고침' }).click()
     for (const noteName of noteNames) {
-      const title = noteName.replace(/\.md$/, '')
-      const material = page.locator('.material-row', { hasText: title })
-      await expect(material).toBeVisible()
-      await material.click()
-      await expect(
-        page.locator('.workspace-tab__title', { hasText: title })
-      ).toBeVisible()
+      await page.locator(`[data-material-path="${noteName}"]`).click()
+      await expect(page.locator('.dv-tab.dv-active-tab')).toHaveAttribute('aria-label', noteName.replace(/\.md$/, ''))
     }
-
     const tabs = page.locator('.dv-tabs-container.dv-horizontal').first()
-    const dimensions = await tabs.evaluate((element) => ({
-      clientWidth: element.clientWidth,
-      scrollWidth: element.scrollWidth
-    }))
-    expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth)
-
-    // The newest (active) tab is deliberately offscreen. If dockview keeps
-    // revealing it after activation, the first sample jumps to the far end.
-    const activeTabStaysOffscreen = await tabs.evaluate((element) => {
-      element.scrollLeft = 0
-      const activeTab = element.querySelector<HTMLElement>('.dv-active-tab')
-      return (
-        activeTab !== null &&
-        activeTab.offsetLeft + activeTab.offsetWidth > element.clientWidth
-      )
-    })
-    expect(activeTabStaysOffscreen).toBe(true)
-
-    const horizontal = await sampleContinuousWheel(
-      page,
-      tabs,
-      WHEEL_DELTA,
-      0
-    )
-    expectSteadyForwardScroll(horizontal)
-
-    const vertical = await sampleContinuousWheel(
-      page,
-      tabs,
-      0,
-      WHEEL_DELTA
-    )
-    expectSteadyForwardScroll(vertical)
+    await expect(tabs).toHaveAttribute('data-tab-density', 'icon')
+    await expect.poll(() => tabs.evaluate(element => {
+      const rect = element.getBoundingClientRect()
+      const visible = [...element.querySelectorAll<HTMLElement>('.dv-tab')].filter(tab => !tab.hasAttribute('data-tab-overflow'))
+      return visible.every(tab => {
+        const box = tab.getBoundingClientRect()
+        return box.width >= 31.9 && box.left >= rect.left - 1 && box.right <= rect.right + 1
+      }) && element.scrollWidth <= element.clientWidth + 1 && visible.some(tab => tab.classList.contains('dv-active-tab'))
+    })).toBe(true)
+    await expect(tabs.locator('[data-tab-overflow]').first()).toHaveCount(1)
+    await page.getByRole('button', { name: /열린 탭 .*개 목록/ }).click()
+    const menu = page.getByRole('dialog', { name: /열린 탭/ })
+    await expect(menu.locator('.workspace-open-tabs-menu__row')).toHaveCount(33)
+    const search = menu.getByRole('searchbox', { name: '열린 탭 검색' })
+    await search.fill('Adaptive sample 20')
+    await expect(menu.locator('.workspace-open-tabs-menu__row')).toHaveCount(1)
+    await search.press('ArrowDown')
+    await expect(menu.getByRole('button', { name: 'Adaptive sample 20 long tab', exact: true })).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(menu).toBeHidden()
+    await expect(tabs.locator('.dv-active-tab')).toHaveAttribute('aria-label', 'Adaptive sample 20 long tab')
+    await expect(tabs.locator('.dv-active-tab')).toBeVisible()
+    await expect(page.locator('.note-tab:visible')).toBeVisible()
   })
 })
 

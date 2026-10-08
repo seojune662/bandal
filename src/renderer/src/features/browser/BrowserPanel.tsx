@@ -1,5 +1,5 @@
 import { openDiagnostics } from './diagnosticsBridge'
-import { useCourseActive } from '../workspace/courseActivity'
+import { usePanelVisible } from '../workspace/usePanelVisible'
 /**
  * [M3-F] Browser tab panel — dockview drop-in replacing the M2 placeholder.
  *
@@ -89,24 +89,6 @@ interface ToolbarProps {
   onTogglePrivate: () => void
   profileId: string
   onProfileChange: (id: string) => Promise<void>
-}
-
-function usePanelVisible(api: IDockviewPanelProps['api']): boolean {
-  const courseActive = useCourseActive()
-  const [visible, setVisible] = useState(() => api.isActive && api.isVisible)
-
-  useEffect(() => {
-    const update = (): void => setVisible(api.isActive && api.isVisible)
-    const activeDisposable = api.onDidActiveChange(update)
-    const visibleDisposable = api.onDidVisibilityChange(update)
-    update()
-    return () => {
-      activeDisposable.dispose()
-      visibleDisposable.dispose()
-    }
-  }, [api])
-
-  return courseActive && visible
 }
 
 function useBrowserFavoriteShortcuts(profileId: string): BrowserShortcut[] {

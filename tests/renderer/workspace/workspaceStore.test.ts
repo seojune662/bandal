@@ -210,6 +210,50 @@ beforeEach(() => {
   })
 })
 
+describe('captured new-tab destination', () => {
+  test('background creation in another pane preserves the focused pane', async () => {
+    const dock = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachCourseApi('c1', dock.asApi()); await settle()
+    const focused = dock.addPanel({ id: 'focused' }), destination = dock.addPanel({ id: 'destination' })
+    const group = { id: 'other-pane', panels: [destination], activePanel: destination }
+    Object.assign(destination, { group }); dock.activate(focused.id)
+    Object.assign(dock, { getGroup: () => group })
+    state.openTab(pdfA, { background: true, target: { courseId: 'c1', groupId: group.id } })
+    expect(dock.addPanelCalls.at(-1)).toMatchObject({ inactive: true })
+    expect(focused.api.setActive).toHaveBeenCalledOnce()
+    expect(destination.api.setActive).not.toHaveBeenCalled()
+  })
+
+  test('a delayed captured creation does not leave learning home', async () => {
+    const dock = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachCourseApi('c1', dock.asApi()); await settle()
+    Object.assign(dock, { getGroup: () => ({ id: 'original', panels: [], activePanel: undefined }) })
+    state.showLearningHome()
+    state.openTab(pdfA, { target: { courseId: 'c1', groupId: 'original' } })
+    expect(useWorkspaceStore.getState()).toMatchObject({ surface: 'learning-home', activePanelId: null })
+    expect(dock.addPanelCalls.at(-1)).toMatchObject({ id: tabPanelId(pdfA) })
+  })
+
+  test('an empty unfocused pane receives its own new tab', async () => {
+    const dock = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachCourseApi('c1', dock.asApi()); await settle()
+    const other = dock.addPanel({ id: 'other' })
+    dock.activate(other.id)
+    Object.assign(dock, { getGroup: (id: string) => id === 'empty-pane' ? { id, panels: [], activePanel: undefined } : undefined })
+    state.openTab(pdfA, { target: { courseId: 'c1', groupId: 'empty-pane' } })
+    expect(dock.addPanelCalls.at(-1)).toMatchObject({ id: tabPanelId(pdfA), position: { referenceGroup: 'empty-pane', index: 0 } })
+  })
+
+  test('a removed target pane never silently redirects to the focused pane', async () => {
+    const dock = liveDock(), state = useWorkspaceStore.getState()
+    state.setActiveCourse('c1'); state.attachCourseApi('c1', dock.asApi()); await settle()
+    Object.assign(dock, { getGroup: () => undefined })
+    state.openTab(pdfA, { target: { courseId: 'c1', groupId: 'removed' } })
+    expect(dock.panels).toHaveLength(0)
+    expect(showToastMock).toHaveBeenCalledWith(expect.stringContaining('영역이 닫혔어요'))
+  })
+})
+
 describe('cross-course placement transfer', () => {
   async function ready(sourceCourse: string | null = 'c1') {
     const source = liveDock(), target = liveDock(), state = useWorkspaceStore.getState()

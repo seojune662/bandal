@@ -5,10 +5,12 @@
  */
 
 import { create } from 'zustand'
+import type { WorkspaceTarget } from './placementContext'
 
 export interface MenuAnchor {
   x: number
   y: number
+  target?: WorkspaceTarget
 }
 
 interface NewTabMenuState {

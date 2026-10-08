@@ -1,5 +1,11 @@
 import { createContext, useContext } from 'react'
 
+/** Captured when an action starts; asynchronous work must not follow focus. */
+export interface WorkspaceTarget {
+  courseId: string | null
+  groupId: string
+}
+
 /** Placement is independent of a document's original resource/course binding. */
 export interface WorkspacePlacement {
   courseId: string | null

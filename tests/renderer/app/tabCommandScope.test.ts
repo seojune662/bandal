@@ -48,3 +48,14 @@ test('a whiteboard still opens when its original course remains active', async (
   await createStudyTab('whiteboard')
   expect(mocks.open).toHaveBeenCalledWith({ kind: 'whiteboard', payload: { courseId: 'first', boardId: 'new-board' } })
 })
+
+test.each(['note', 'whiteboard'])('an asynchronous %s keeps its captured pane when focus changes', async kind => {
+  let resolve!: (value: unknown) => void
+  mocks.invoke.mockReturnValue(new Promise(done => { resolve = done }))
+  const target = { courseId: 'first', groupId: 'bottom-right' }
+  const pending = kind === 'note' ? createMarkdownTab('내용', target) : createStudyTab('whiteboard', target)
+  mocks.courseId = 'second'
+  resolve(kind === 'note' ? { courseId: 'first', relPath: '내용.md' } : { id: 'new-board' })
+  await pending
+  expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({ kind: kind === 'note' ? 'note' : 'whiteboard' }), { target })
+})

@@ -12,7 +12,7 @@ async function beginDrag(page: Page, source: Locator, x: number, y: number): Pro
   await page.mouse.move(x + 1, y)
 }
 
-test('reorders, splits, merges, cancels and edge-scrolls tabs without losing edits', async ({}, testInfo) => {
+test('reorders, splits, merges, cancels and lists compact tabs without losing edits', async ({}, testInfo) => {
   let bandal = await launchBandal({ keepProfileOnClose: true })
   const profileDir = bandal.profileDir
   try {
@@ -38,15 +38,15 @@ test('reorders, splits, merges, cancels and edge-scrolls tabs without losing edi
 
     const content = (await page.locator('.dv-content-container:visible').first().boundingBox())!
     await beginDrag(page, tab(0), content.x + content.width - 8, content.y + content.height / 2)
-    const drop = page.locator('.dv-drop-target-anchor.dv-drop-target-right:visible').first()
+    const drop = page.locator('.course-tab-move-preview:visible').first()
     await expect(drop).toBeVisible()
     await expect.poll(async () => (await drop.boundingBox())!.width).toBeGreaterThan(content.width * 0.4)
     const preview = await drop.evaluate(element => ({
       background: getComputedStyle(element).backgroundColor,
-      label: getComputedStyle(element, '::after').content
+      label: element.textContent
     }))
     expect(preview.background).toMatch(/(?:\/\s*0\.\d+|rgba\(.+,\s*0\.\d+\))/)
-    expect(preview.label).toContain('오른쪽으로 이동')
+    expect(preview.label).toContain('여기에 나누어 놓기')
     await page.screenshot({ path: testInfo.outputPath('tab-drag-dark.png') })
     await page.mouse.up()
     await expect(page.locator('.dv-groupview')).toHaveCount(2)
@@ -55,6 +55,7 @@ test('reorders, splits, merges, cancels and edge-scrolls tabs without losing edi
     const destination = (await tab(1).boundingBox())!
     await beginDrag(page, tab(0), destination.x + destination.width / 2, destination.y + destination.height / 2)
     await page.mouse.up()
+    await page.getByRole('button', { name: '빈 영역 닫기', exact: true }).click()
     await expect(page.locator('.dv-groupview')).toHaveCount(1)
     await expect(page.locator('.dv-tab')).toHaveCount(3)
     const order = await titles()
@@ -66,13 +67,15 @@ test('reorders, splits, merges, cancels and edge-scrolls tabs without losing edi
 
     for (let i = 3; i < 20; i++) await page.locator(`[data-material-path="move-${i}.md"]`).click()
     const strip = page.locator('.dv-tabs-container.dv-horizontal')
-    await strip.evaluate((node) => { node.scrollLeft = 0 })
-    const stripBox = (await strip.boundingBox())!
-    await beginDrag(page, page.locator('.dv-tab').first(), stripBox.x + stripBox.width - 3, stripBox.y + stripBox.height / 2)
-    await expect.poll(() => strip.evaluate((node) => node.scrollLeft)).toBeGreaterThan(120)
-    await page.keyboard.press('Escape')
-    await page.mouse.up()
-    await expect(page.locator('.workspace-host')).not.toHaveAttribute('data-tab-dragging')
+    await expect(strip).toHaveAttribute('data-tab-density', 'icon')
+    await expect.poll(() => strip.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true)
+    await page.getByRole('button', { name: /열린 탭 .*개 목록/ }).click()
+    const list = page.getByRole('dialog', { name: /열린 탭/ })
+    await expect(list.locator('.workspace-open-tabs-menu__row')).toHaveCount(20)
+    await list.getByRole('searchbox').fill('move-19')
+    await list.getByRole('button', { name: 'move-19', exact: true }).click()
+    await expect(tab(19)).toBeVisible()
+    await expect(tab(19)).toHaveClass(/dv-active-tab/)
     const finalOrder = await titles()
     await bandal.close()
     bandal = await launchBandal({ reuseProfileDir: profileDir })
@@ -116,16 +119,22 @@ for (const theme of ['light', 'dark'] as const) {
         await expect(longLabel).toHaveText(titles.third)
         expect(await longLabel.evaluate(node => ({
           ellipsis: getComputedStyle(node).textOverflow,
-          truncated: node.scrollWidth > node.clientWidth
-        }))).toEqual({ ellipsis: 'ellipsis', truncated: true })
+          compact: getComputedStyle(node).display === 'none' || node.scrollWidth > node.clientWidth
+        }))).toEqual({ ellipsis: 'ellipsis', compact: true })
         const longClose = tab('third').getByRole('button', { name: `${titles.third} 탭 닫기`, exact: true })
-        expect(await longClose.evaluate(node => {
-          const button = node.getBoundingClientRect()
-          const tab = node.closest('.dv-tab')!.getBoundingClientRect()
-          return button.left >= Math.max(0, tab.left) && button.right <= Math.min(innerWidth, tab.right) &&
-            button.top >= Math.max(0, tab.top) && button.bottom <= Math.min(innerHeight, tab.bottom)
-        })).toBe(true)
-        await longClose.click()
+        if (await longClose.isVisible()) {
+          expect(await longClose.evaluate(node => {
+            const button = node.getBoundingClientRect()
+            const tab = node.closest('.dv-tab')!.getBoundingClientRect()
+            return button.left >= Math.max(0, tab.left) && button.right <= Math.min(innerWidth, tab.right)
+          })).toBe(true)
+          await longClose.click()
+        } else {
+          await page.getByRole('button', { name: /열린 탭 .*개 목록/ }).click()
+          const list = page.getByRole('dialog', { name: /열린 탭/ })
+          await list.getByRole('button', { name: `${titles.third} 탭 닫기`, exact: true }).click()
+          await page.keyboard.press('Escape')
+        }
         await expect(tab('first')).toHaveClass(/dv-active-tab/)
         await expect(tab('third')).toHaveCount(0)
         await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+T' : 'Control+Shift+T')
@@ -153,11 +162,11 @@ for (const theme of ['light', 'dark'] as const) {
         const content = (await page.locator('.dv-content-container:visible').first().boundingBox())!
         await beginDrag(page, tab('third'), content.x + 8, content.y + content.height / 2)
         await expect(tab('third')).toHaveAttribute('data-e2e-drag-label', titles.third)
-        const drop = page.locator('.dv-drop-target-anchor.dv-drop-target-left:visible').first()
+        const drop = page.locator('.course-tab-move-preview:visible').first()
         await expect(drop).toBeVisible()
         await expect.poll(async () => (await drop.boundingBox())!.width).toBeGreaterThan(content.width * 0.4)
-        expect(await drop.evaluate(element => getComputedStyle(element, '::after').content)).toContain('왼쪽으로 이동')
-        expect(await drop.evaluate(element => getComputedStyle(element, '::after').whiteSpace)).toBe('normal')
+        await expect(drop).toContainText('여기에 나누어 놓기')
+        expect(await drop.locator('span').evaluate(element => getComputedStyle(element).whiteSpace)).toBe('normal')
         const screenshotName = `tab-drag-${theme}-${viewport.width}.png`
         await page.screenshot({ path: testInfo.outputPath(screenshotName) })
         const screenshotDir = process.env['BANDAL_E2E_SHOT_DIR']

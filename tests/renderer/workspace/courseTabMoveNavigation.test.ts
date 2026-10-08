@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
 import { tabDragSession } from '../../../src/renderer/src/features/workspace/tabDragSession'
-import { beginWorkspaceCourseMoveDrop, finishWorkspaceCourseMoveDrop, installWorkspaceCourseMoveNavigation, navigateWorkspaceCourseHover } from '../../../src/renderer/src/features/workspace/courseTabMoveNavigation'
+import { beginWorkspaceCourseMoveDrop, finishWorkspaceCourseMoveDrop, installWorkspaceCourseMoveNavigation, navigateWorkspaceCourseHover, workspaceCourseMoveRetention } from '../../../src/renderer/src/features/workspace/courseTabMoveNavigation'
 
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: vi.fn(async () => ({})), onPush: vi.fn(() => () => {}) }))
 let dispose: () => void
@@ -42,12 +42,39 @@ test('only one drop can consume the same drag gesture', () => {
   expect(beginWorkspaceCourseMoveDrop('drag')).toBe(false)
 })
 
+test('a pending destination retains its source beyond native dragend and releases after completion', () => {
+  const listener = vi.fn(), unsubscribe = workspaceCourseMoveRetention.subscribe(listener)
+  navigateWorkspaceCourseHover('drag', 'target')
+  beginWorkspaceCourseMoveDrop('drag')
+  const pending = workspaceCourseMoveRetention.getSnapshot()
+  expect(pending).toEqual([{ courseId: 'source', panelId: 'panel', nonce: 'drag' }])
+  tabDragSession.end()
+  expect(workspaceCourseMoveRetention.getSnapshot()).toBe(pending)
+  finishWorkspaceCourseMoveDrop('drag', true)
+  expect(workspaceCourseMoveRetention.getSnapshot()).toEqual([])
+  expect(listener).toHaveBeenCalledTimes(2)
+  unsubscribe()
+})
+
+test('stale source nonces cannot start a pending transfer', () => {
+  expect(beginWorkspaceCourseMoveDrop('stale')).toBe(false)
+  expect(workspaceCourseMoveRetention.getSnapshot()).toEqual([])
+})
+
 test('external course selection wins over a canceled hover visit and further hover timers', () => {
   navigateWorkspaceCourseHover('drag', 'target')
   useCoursesStore.setState({ selectedCourseId: 'third' })
   expect(navigateWorkspaceCourseHover('drag', 'target')).toBe(false)
   tabDragSession.end()
   expect(useCoursesStore.getState().selectedCourseId).toBe('third')
+})
+
+test('external selection after dragend remains authoritative even if the user returns to the pending destination', () => {
+  navigateWorkspaceCourseHover('drag', 'target'); beginWorkspaceCourseMoveDrop('drag'); tabDragSession.end()
+  useCoursesStore.setState({ selectedCourseId: 'third' })
+  useCoursesStore.setState({ selectedCourseId: 'target' })
+  finishWorkspaceCourseMoveDrop('drag', false)
+  expect(useCoursesStore.getState().selectedCourseId).toBe('target')
 })
 
 test('a deleted origin is not restored by cancel', () => {

@@ -34,6 +34,8 @@ import {
 } from '../features/workspace/tabDuplication'
 import { canCloseTab } from '../features/workspace/tabCloseGuard'
 import { rebindPanelContent } from '../features/workspace/panelContentHost'
+import type { WorkspaceTarget } from '../features/workspace/placementContext'
+import { closeWorkspacePanel } from '../features/workspace/workspaceLayout'
 import { useBrowserGuests } from '../features/browser/browserGuestsStore'
 import {
   LAYOUT_SAVE_DEBOUNCE_MS,
@@ -76,6 +78,7 @@ interface WorkspaceState {
       beside?: boolean
       /** ⌘-click: open it but stay where you are, as every browser does. */
       background?: boolean
+      target?: WorkspaceTarget
     }
   ) => void
   /** Opens one PDF and its page-matched note as a persisted 50:50 pair. */
@@ -221,7 +224,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     const close = (allowed: boolean): void => {
       if (!allowed || target.getPanel(panel.id) !== panel) return
       if (snapshot) closedTabs = [...closedTabs, snapshot].slice(-CLOSED_TAB_LIMIT)
-      panel.api.close()
+      closeWorkspacePanel(target, panel.id)
       if (get().activeCourseId !== courseId && courseId !== null) get().saveRetainedLayout(courseId, target.toJSON())
     }
     try {
@@ -518,9 +521,29 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     },
 
     openTab: (descriptor, options) => {
-      if (!replayingOpens && options?.background !== true && get().surface === 'learning-home') get().showCourseWorkspace(get().activeCourseId)
+      const destination = options?.target
+      if (destination && destination.courseId !== get().activeCourseId) {
+        const target = workspaceApiForCourse(destination.courseId)
+        const group = target?.getGroup(destination.groupId)
+        if (!target || !group || (destination.courseId !== null && !hydratedCourses.has(destination.courseId))) {
+          showToast('원래 작업 영역을 찾을 수 없어요. 만든 자료는 원래 과목에서 열 수 있어요.')
+          return
+        }
+        const copy = options.newInstance ? duplicateTabDescriptor(descriptor) : descriptor
+        const id = options.newInstance && copy.kind !== 'browser' ? createDuplicatePanelId(copy) : tabPanelId(copy)
+        if (!target.getPanel(id)) target.addPanel({ id, component: copy.kind, title: tabTitle(copy), params: { descriptor: copy },
+          position: { referenceGroup: group.id, index: group.panels.length }, inactive: options.background === true })
+        get().saveRetainedLayout(destination.courseId, target.toJSON())
+        return
+      }
+      if (!destination && !replayingOpens && options?.background !== true && get().surface === 'learning-home') get().showCourseWorkspace(get().activeCourseId)
       if (queueDuringHydration(() => get().openTab(descriptor, options))) return
       if (api === null) return
+      const targetGroup = destination ? api.getGroup(destination.groupId) : undefined
+      if (destination && !targetGroup) {
+        showToast('원래 작업 영역이 닫혔어요. 만든 자료는 과목에서 다시 열 수 있어요.')
+        return
+      }
       // newInstance: 같은 파일의 새 뷰를 하나 더 연다 (⌘클릭/분할 열기).
       // 복제 패널 id 규칙은 탭 복제와 동일 — validateLayout이 이미 수용한다.
       if (options?.newInstance) descriptor = duplicateTabDescriptor(descriptor)
@@ -543,7 +566,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       // 지금 보고 있는 탭 바로 다음 칸에 넣는다(복제 탭과 같은 위치 규칙,
       // TabContextMenu.duplicateTab 참고). 기존 패널을 포커스만 하는 위의
       // 경로에는 적용하지 않는다 — 이미 있는 탭은 자리를 옮기지 않는다.
-      const activePanel = api.activePanel
+      const focusedPanel = api.activePanel
+      const activePanel = targetGroup ? targetGroup.activePanel : focusedPanel
       const activeIndex =
         activePanel === undefined
           ? -1
@@ -557,19 +581,20 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
               activePanel !== undefined &&
               activeIndex >= 0
           ? { position: { referencePanel: activePanel, index: activeIndex + 1 } }
-          : {}
+          : targetGroup ? { position: { referenceGroup: targetGroup.id, index: targetGroup.panels.length } } : {}
       const added = api.addPanel({
         id: panelId,
         component: descriptor.kind,
         title: tabTitle(descriptor),
         params: { descriptor },
+        inactive: options?.background === true,
         ...position
       })
       // dockview activates a new panel by default. ⌘-clicking five 공지 links
       // would otherwise yank focus five times and leave the student on the
       // last one.
-      if (options?.background === true && activePanel !== undefined) {
-        activePanel.api.setActive()
+      if (options?.background === true && focusedPanel !== undefined) {
+        focusedPanel.api.setActive()
         void added
       }
     },
@@ -1028,7 +1053,7 @@ export async function moveWorkspacePanel(input: {
       title: panel.title ?? tabTitle(descriptor), params: { ...panel.params },
       ...(position ? { position } : {}) })
     rebindPanelContent(panel.api, added.api, target, input.targetCourseId)
-    source.removePanel(panel)
+    closeWorkspacePanel(source, panel.id, 'transfer')
     if (descriptor.kind === 'browser') useBrowserGuests.getState().setGuestCourse(descriptor.payload.tabId, input.targetCourseId)
     // Publish both live ownership snapshots before subscribers (guest reaping).
     if (input.sourceCourseId !== null) runtimeLayouts.set(input.sourceCourseId, source.toJSON())

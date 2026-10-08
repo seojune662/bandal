@@ -1,4 +1,6 @@
 import { attachNativePage } from './nativePageHandle'
+import { createTabFaviconController, focusVisibleBrowserPanel } from './browserTabEvents'
+import { useWorkspaceStore, workspaceApiForCourse } from '../../stores/workspaceStore'
 import { overlapsNativePage } from './useNativePageOcclusion'
 /**
  * One native browser page, positioned over its stable DOM panel anchor.
@@ -132,6 +134,10 @@ export function BrowserGuestView({
     registerGuestElement(tabId, element)
     let initialNavigationStarted = false
     let disposed = false
+    const favicon = createTabFaviconController(
+      async url => (await invoke('browser:favicon', { url, profileId, isPrivate })).dataUrl,
+      dataUrl => useBrowserGuests.getState().setFavicon(tabId, dataUrl)
+    )
 
     const update = (patch: Partial<BrowserNavState>): void => {
       useBrowserGuests.getState().updateNav(tabId, patch)
@@ -158,6 +164,12 @@ export function BrowserGuestView({
 
     const listeners: ReadonlyArray<[string, EventListener]> = [
       ['dom-ready', () => { registerGuestWebContents(tabId, element); applyZoom() }],
+      ['focus', ((event: Event & { webContentsId?: number }) => {
+        const courseId = ownerCourseRef.current
+        if (event.webContentsId !== element.getWebContentsId() ||
+          useWorkspaceStore.getState().activeCourseId !== courseId || !getBrowserAnchorRect(tabId)) return
+        focusVisibleBrowserPanel(workspaceApiForCourse(courseId), tabId)
+      }) as EventListener],
       [
         'did-start-loading',
         () => {
@@ -182,6 +194,7 @@ export function BrowserGuestView({
       [
         'did-navigate',
         ((event: DidNavigateEvent) => {
+          favicon.navigation()
           recordHttpResponse(tabId, event.url, event.httpResponseCode ?? 0)
           update({ httpStatus: event.httpResponseCode ?? 0 })
           if (event.url !== 'about:blank') update({ url: event.url, hasDocument: true, ...historyState() })
@@ -333,15 +346,7 @@ export function BrowserGuestView({
         'page-favicon-updated',
         ((event: PageFaviconUpdatedEvent) => {
           // Chromium lists every declared icon; the last is the best match.
-          const best = event.favicons.at(-1)
-          if (best === undefined) return
-          void invoke('browser:favicon', { url: best, profileId, isPrivate })
-            .then((result) => {
-              useBrowserGuests.getState().setFavicon(tabId, result.dataUrl)
-            })
-            .catch(() => {
-              // A missing icon is a missing icon; the globe stands in.
-            })
+          favicon.update(event.favicons.at(-1))
         }) as EventListener
       ],
       [
@@ -361,12 +366,13 @@ export function BrowserGuestView({
     }
     return () => {
       disposed = true
+      favicon.dispose()
       for (const [name, listener] of listeners) {
         element.removeEventListener(name, listener)
       }
       unregisterGuestElement(tabId, element)
     }
-  }, [tabId])
+  }, [tabId, isPrivate, profileId])
 
   return (
     <div

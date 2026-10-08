@@ -67,8 +67,8 @@ function asGridNode(value: unknown): GridNode | null {
   return null
 }
 
-/** Filter leaf views / prune empty nodes; returns null when nothing is left. */
-function pruneNode(raw: unknown, keep: ReadonlySet<string>): GridNode | null {
+/** Keep intentional empty panes; invalid references alone never create a pane. */
+function pruneNode(raw: unknown, keep: ReadonlySet<string>, preserveEmptied = false): GridNode | null {
   const node = asGridNode(raw)
   if (node === null) return null
 
@@ -77,18 +77,19 @@ function pruneNode(raw: unknown, keep: ReadonlySet<string>): GridNode | null {
     const views = data.views.filter(
       (view): view is string => typeof view === 'string' && keep.has(view)
     )
-    if (views.length === 0) return null
+    if (views.length === 0 && data.views.length > 0 && !preserveEmptied) return null
     const activeView =
       typeof data.activeView === 'string' && views.includes(data.activeView)
         ? data.activeView
         : views[0]
     const nextData: LeafData = { ...data, views }
     if (activeView !== undefined) nextData.activeView = activeView
+    else delete nextData.activeView
     return { ...node, data: nextData }
   }
 
   const children = (node.data as unknown[])
-    .map((child) => pruneNode(child, keep))
+    .map((child) => pruneNode(child, keep, preserveEmptied))
     .filter((child): child is GridNode => child !== null)
   if (children.length === 0) return null
   return { ...node, data: children }
@@ -168,8 +169,6 @@ export function validateLayout(raw: unknown): ValidatedLayout | null {
       delete tabs[panelId]
     }
   }
-  if (Object.keys(panelsOut).length === 0) return null
-
   const groupIds = new Set<string>()
   collectGroupIds(root, groupIds)
 
@@ -257,7 +256,8 @@ export function persistentLayout(layout: unknown): unknown {
     panels[panelId] = state
     keep.add(panelId)
   }
-  const root = pruneNode(layout['grid']['root'], keep)
+  // Removing a private tab is an intentional close, not a corrupt descriptor.
+  const root = pruneNode(layout['grid']['root'], keep, true)
   if (root === null) return {}
   return {
     ...layout,

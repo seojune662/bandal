@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DockviewApi } from 'dockview'
-import { moveWorkspacePanel, useWorkspaceStore, workspaceApiForCourse, type WorkspacePanelMovePosition } from '../../stores/workspaceStore'
+import { useWorkspaceStore, workspaceApiForCourse, type WorkspacePanelMovePosition } from '../../stores/workspaceStore'
 import { BANDAL_TAB_DRAG_MIME, matchesWorkspaceMoveData } from './tabDrag'
 import { tabDragSession } from './tabDragSession'
 import { beginWorkspaceCourseMoveDrop, finishWorkspaceCourseMoveDrop } from './courseTabMoveNavigation'
 import { showToast } from '../../app/toast'
+import { dropWorkspaceTabOnCourse } from './workspaceTabDrop'
+import { moveWorkspacePanel as movePanelWithinWorkspace } from './workspaceLayout'
 
-interface MoveTarget {
+export interface MoveTarget {
   position: WorkspacePanelMovePosition | undefined
   x: number; y: number; width: number; height: number
   label: string
@@ -20,7 +22,7 @@ export function courseMoveTarget(api: DockviewApi, root: HTMLElement, x: number,
   const relative = (rect: { left: number; top: number; width: number; height: number }, position: MoveTarget['position'], label: string): MoveTarget => ({
     x: rect.left - bounds.left, y: rect.top - bounds.top, width: rect.width, height: rect.height, position, label
   })
-  if (api.panels.length === 0) return relative(bounds, undefined, '이 과목으로 창 옮기기')
+  if (api.groups.length === 0) return relative(bounds, undefined, '여기에 탭 놓기')
   for (const group of api.groups) {
     if (!root.contains(group.element)) continue
     const rect = group.element.getBoundingClientRect()
@@ -30,10 +32,13 @@ export function courseMoveTarget(api: DockviewApi, root: HTMLElement, x: number,
     const headerRect = header?.getBoundingClientRect()
     if (header && headerRect && headerRect.width > 0 && headerRect.height > 0 && x >= headerRect.left && x <= headerRect.right && y >= headerRect.top && y <= headerRect.bottom) {
       const tabs = [...header.querySelectorAll<HTMLElement>('.dv-tabs-container .dv-tab')]
-      const next = tabs.findIndex(tab => { const box = tab.getBoundingClientRect(); return x < box.left + box.width / 2 })
-      const index = next < 0 ? group.panels.length : next
+        .map((tab, index) => ({ box: tab.getBoundingClientRect(), index }))
+        .filter(({ box }) => box.width > 0 && box.height > 0)
+      const next = tabs.find(({ box }) => x < box.left + box.width / 2)
+      const last = tabs.at(-1)
+      const index = next?.index ?? (last ? last.index + 1 : group.panels.length)
       const edge = Math.max(headerRect.left + 2, Math.min(headerRect.right - 2,
-        tabs[index]?.getBoundingClientRect().left ?? tabs.at(-1)?.getBoundingClientRect().right ?? headerRect.left))
+        next?.box.left ?? last?.box.right ?? headerRect.left))
       return relative({ left: edge - 2, top: headerRect.top, width: 4, height: headerRect.height }, { groupId: group.id, direction: 'within', index }, '')
     }
     const content = group.element.querySelector<HTMLElement>(':scope > .dv-content-container')?.getBoundingClientRect()
@@ -48,7 +53,7 @@ export function courseMoveTarget(api: DockviewApi, root: HTMLElement, x: number,
       else { split.height /= 2; if (nearest === 3) split.top += split.height }
       return relative(split, { groupId: group.id, direction }, '여기에 나누어 놓기')
     }
-    return relative(content, { groupId: group.id, direction: 'within' }, '이 과목으로 창 옮기기')
+    return relative(content, { groupId: group.id, direction: 'within' }, '이 그룹으로 이동')
   }
   return null
 }
@@ -71,10 +76,10 @@ export function CourseTabMoveOverlay(): JSX.Element {
       if (heldTab && !inside) root.dataset.tabDragOutside = 'true'
       else delete root.dataset.tabDragOutside
     }
-    const targetAt = (event: DragEvent): { courseId: string; target: MoveTarget } | null => {
+    const targetAt = (event: DragEvent): { courseId: string | null; target: MoveTarget } | null => {
       const source = tabDragSession.getSource(), state = useWorkspaceStore.getState()
       if (!source || tabDragSession.getSnapshot() !== 'tab' || !event.dataTransfer?.types.includes(BANDAL_TAB_DRAG_MIME) ||
-        state.surface !== 'course' || !state.activeCourseId || state.activeCourseId === source.courseId || state.hydration !== 'ready') return null
+        state.surface !== 'course' || state.hydration !== 'ready' || (state.activeCourseId === null && source.courseId !== null)) return null
       const api = workspaceApiForCourse(state.activeCourseId)
       const target = api ? courseMoveTarget(api, root, event.clientX, event.clientY) : null
       return target ? { courseId: state.activeCourseId, target } : null
@@ -95,17 +100,27 @@ export function CourseTabMoveOverlay(): JSX.Element {
     const drop = (event: DragEvent): void => {
       setPreview(null)
       const source = tabDragSession.getSource(), destination = targetAt(event)
-      if (!source || !destination || !event.dataTransfer || !matchesWorkspaceMoveData(event.dataTransfer, source)) return
+      if (event.type !== 'drop' || !source || !destination || !event.dataTransfer || !matchesWorkspaceMoveData(event.dataTransfer, source)) return
       event.preventDefault()
       event.stopPropagation()
-      if (!beginWorkspaceCourseMoveDrop(source.nonce)) return
       const { courseId: targetCourseId, target } = destination
-      void moveWorkspacePanel({ sourceCourseId: source.courseId, panelId: source.panelId, targetCourseId, ...(target.position ? { position: target.position } : {}) })
-        .then(accepted => finishWorkspaceCourseMoveDrop(source.nonce, accepted), error => {
-          console.error('[Bandal] 창 이동을 마무리하지 못했습니다.', error)
-          showToast('창을 옮기지 못했어요. 출발 과목에서 창을 확인한 뒤 다시 시도해 주세요.', 'danger')
-          finishWorkspaceCourseMoveDrop(source.nonce, false)
-        })
+      if (targetCourseId !== source.courseId) {
+        if (targetCourseId !== null) void dropWorkspaceTabOnCourse(source, targetCourseId, target.position)
+        return
+      }
+      if (!beginWorkspaceCourseMoveDrop(source.nonce)) return
+      let accepted = false
+      try {
+        const api = workspaceApiForCourse(targetCourseId), panel = api?.getPanel(source.panelId)
+        if (api && panel && target.position?.groupId) {
+          const withinOwnContent = target.position.direction === 'within' && target.position.index === undefined && panel.group.id === target.position.groupId
+          accepted = withinOwnContent || movePanelWithinWorkspace(api, source.panelId, { ...target.position, groupId: target.position.groupId })
+          if (accepted) useWorkspaceStore.getState().notifyLayoutChanged()
+        }
+      } catch (error) {
+        console.error('[Bandal] 창 이동을 마무리하지 못했습니다.', error)
+        showToast('탭을 옮기지 못했어요. 다시 시도해 주세요.', 'danger')
+      } finally { finishWorkspaceCourseMoveDrop(source.nonce, accepted) }
     }
     const leave = (event: DragEvent): void => {
       if (!(event.relatedTarget instanceof Node) || !root.contains(event.relatedTarget)) { inside = false; reflectGuides(); setPreview(null) }

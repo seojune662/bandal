@@ -9,7 +9,7 @@ import { useTemporaryWorkspaceRetention } from './useTemporaryWorkspaceRetention
  * course-switch hydration.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   DockviewReact,
   type DockviewReadyEvent,
@@ -36,9 +36,11 @@ import { dockviewComponents, workspacePanelContents } from './tabRegistry'
 import { WorkspaceCourseContext } from './placementContext'
 import { WorkspaceContentLayer } from './panelContentHost'
 import { CourseTabMoveOverlay } from './CourseTabMoveOverlay'
-import { installWorkspaceCourseMoveNavigation } from './courseTabMoveNavigation'
-import { installTabDragScrolling } from './tabDragScroll'
-import { installTabStripWheelScrolling } from './tabStripScroll'
+import { installWorkspaceCourseMoveNavigation, workspaceCourseMoveRetention } from './courseTabMoveNavigation'
+import { focusWorkspaceHeader, headerChromeInset, installAdaptiveTabs, minimumHeaderWidth } from './adaptiveTabs'
+import { OpenTabsAction } from './OpenTabsMenu'
+import { WorkspaceLayoutMenu } from './WorkspaceLayoutMenu'
+import { applyWorkspaceLayout, removeEmptyWorkspaceGroup, splitWorkspaceGroup, type WorkspaceLayoutPreset } from './workspaceLayout'
 import { TabKindIcon } from './workspaceIcons'
 import './workspace.css'
 import LearningHome from '../learning/LearningHome'
@@ -46,7 +48,7 @@ import LearningHome from '../learning/LearningHome'
 const bandalTheme: DockviewTheme = {
   name: 'bandal',
   className: 'bandal-dockview',
-  gap: 0,
+  gap: 8,
   dndOverlayMounting: 'absolute',
   dndPanelOverlay: 'content'
 }
@@ -57,13 +59,26 @@ const workspaceDragEdges = {
   size: { value: 50, type: 'percentage' as const }
 }
 
-function Watermark(_props: IWatermarkPanelProps): JSX.Element {
+function Watermark(props: IWatermarkPanelProps): JSX.Element {
   const ko = useLocale() === 'ko-KR'
+  const placementCourseId = useContext(WorkspaceCourseContext)
   const courses = useCoursesStore((state) => state.courses)
   const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
   const course =
     courses.find((entry) => entry.id === selectedCourseId) ?? null
   const { isDropActive, dropProps } = useFileDropTarget(course?.id ?? null)
+  const target = props.group ? { courseId: placementCourseId, groupId: props.group.id } : undefined
+
+  if (props.group) return <div className="workspace-empty-pane" {...dropProps} data-drop-active={isDropActive || undefined}>
+    <BandalMark size={32} />
+    <span>{ko ? '이 영역에서 새 탭을 여세요' : 'Open a tab in this pane'}</span>
+    <button type="button" className="button" onClick={event => {
+      const rect = event.currentTarget.getBoundingClientRect()
+      if (course) openNewTabMenu({ x: rect.left, y: rect.bottom, ...(target ? { target } : {}) })
+      else createBrowserTab(undefined, target)
+    }}><Icon name="plus" />{ko ? '새 탭 열기' : 'Open new tab'}</button>
+    {props.containerApi.groups.length > 1 && <button type="button" className="button" onClick={() => removeEmptyWorkspaceGroup(props.containerApi, props.group!.id)}>{ko ? '빈 영역 닫기' : 'Close empty pane'}</button>}
+  </div>
 
   if (course === null) {
     return (
@@ -117,11 +132,33 @@ function Watermark(_props: IWatermarkPanelProps): JSX.Element {
 }
 
 /** Reserve fixed window controls when the sidebar is closed. */
-function ChromeLeft(): JSX.Element | null {
-  return <div className="workspace-chrome-spacer" aria-hidden="true" />
+function useWindowCorner(props: IDockviewHeaderActionsProps, side: 'left' | 'right'): boolean {
+  const [corner, setCorner] = useState(false)
+  useLayoutEffect(() => {
+    let frame = 0
+    const measure = (): void => {
+      frame = 0
+      const root = props.group.element.closest('.workspace-host')?.getBoundingClientRect()
+      const rect = props.group.element.getBoundingClientRect()
+      setCorner(!!root && rect.width > 0 && Math.abs(rect.top - root.top) < 2 && Math.abs(rect[side] - root[side]) < 2)
+    }
+    const schedule = (): void => { if (!frame) frame = requestAnimationFrame(measure) }
+    const subscription = props.containerApi.onDidLayoutChange(schedule)
+    const resize = new ResizeObserver(schedule)
+    resize.observe(props.group.element)
+    measure()
+    return () => { cancelAnimationFrame(frame); subscription.dispose(); resize.disconnect() }
+  }, [props.group, props.containerApi, side])
+  return corner
 }
 
-function AddTabAction(_props: IDockviewHeaderActionsProps): JSX.Element {
+function ChromeLeft(props: IDockviewHeaderActionsProps): JSX.Element | null {
+  const corner = useWindowCorner(props, 'left')
+  return corner ? <div className="workspace-chrome-spacer" aria-hidden="true" /> : null
+}
+
+function AddTabAction(props: IDockviewHeaderActionsProps): JSX.Element {
+  const courseId = useContext(WorkspaceCourseContext)
   return (
     <div className="workspace-tab-actions">
       <Tooltip label="새 탭 열기" placement="bottom">
@@ -131,7 +168,10 @@ function AddTabAction(_props: IDockviewHeaderActionsProps): JSX.Element {
           aria-label="새 탭 열기"
           onClick={(event) => {
             const rect = event.currentTarget.getBoundingClientRect()
-            openNewTabMenu({ x: rect.left, y: rect.bottom })
+            props.api.setActive()
+            const target = { courseId, groupId: props.group.id }
+            if (courseId === null) createBrowserTab(undefined, target)
+            else openNewTabMenu({ x: rect.left, y: rect.bottom, target })
           }}
         >
           <Icon name="plus" />
@@ -167,8 +207,56 @@ function ToggleRightRail(): JSX.Element | null {
   )
 }
 
-function HeaderActions(_props: IDockviewHeaderActionsProps): JSX.Element {
-  return <ToggleRightRail />
+function HeaderActions(props: IDockviewHeaderActionsProps): JSX.Element {
+  const corner = useWindowCorner(props, 'right')
+  const courseId = useContext(WorkspaceCourseContext)
+  const ko = useLocale() === 'ko-KR'
+  const rightRailOpen = useUiStore(state => state.rightRailOpen)
+  const materialsAvailable = useWorkspaceStore(state => state.surface === 'course' && state.activePanelSource()?.descriptor.kind !== 'learning')
+  useLayoutEffect(() => {
+    let frame = 0, previous = -1
+    const root = props.group.element.closest<HTMLElement>('.workspace-host')
+    const header = props.group.element.querySelector<HTMLElement>(':scope > .dv-tabs-and-actions-container')
+    if (!root || !header) return
+    const measure = (): void => {
+      frame = 0
+      const width = root.getBoundingClientRect().width
+      if (!width || header.closest('.workspace-course[hidden]')) return
+      const minimumWidth = minimumHeaderWidth(headerChromeInset(header), width)
+      if (minimumWidth !== previous) { previous = minimumWidth; props.api.setConstraints({ minimumWidth }) }
+    }
+    const schedule = (): void => { if (!frame) frame = requestAnimationFrame(measure) }
+    const resize = new ResizeObserver(schedule)
+    resize.observe(root); resize.observe(header)
+    for (const element of header.querySelectorAll('.dv-pre-actions-container, .workspace-group-actions')) resize.observe(element)
+    const subscription = props.containerApi.onDidLayoutChange(schedule)
+    measure()
+    return () => { cancelAnimationFrame(frame); resize.disconnect(); subscription.dispose() }
+  }, [props.api, props.containerApi, props.group, corner, rightRailOpen])
+  const runLayout = (close: () => void, action: () => void): void => {
+    close()
+    action()
+    requestAnimationFrame(() => focusWorkspaceHeader(props.containerApi.activeGroup?.element))
+  }
+  const presets: [WorkspaceLayoutPreset, string][] = [['single', ko ? '단일 영역' : 'Single pane'], ['columns', ko ? '좌우 2분할' : 'Two columns'], ['rows', ko ? '상하 2분할' : 'Two rows'], ['grid', ko ? '2×2 4분할' : 'Four panes (2×2)']]
+  return <div className="workspace-group-actions" data-window-corner={corner ? 'right' : undefined}>
+    <OpenTabsAction {...props} menuActions={close => <>
+      <button type="button" onClick={event => {
+        const rect = event.currentTarget.getBoundingClientRect()
+        close(); props.api.setActive()
+        const target = { courseId, groupId: props.group.id }
+        if (courseId === null) createBrowserTab(undefined, target)
+        else openNewTabMenu({ x: rect.left, y: rect.bottom, target })
+      }}>{ko ? '새 탭 열기' : 'Open new tab'}</button>
+      {presets.map(([preset, label]) => <button key={preset} type="button" onClick={() => runLayout(close, () => applyWorkspaceLayout(props.containerApi, preset))}>{label}</button>)}
+      <button type="button" onClick={() => runLayout(close, () => { splitWorkspaceGroup(props.containerApi, props.group.id, 'right') })}>{ko ? '이 영역을 좌우로 나누기' : 'Split this pane right'}</button>
+      <button type="button" onClick={() => runLayout(close, () => { splitWorkspaceGroup(props.containerApi, props.group.id, 'below') })}>{ko ? '이 영역을 상하로 나누기' : 'Split this pane down'}</button>
+      {corner && materialsAvailable && <button type="button" onClick={() => { close(); useUiStore.getState().toggleRightRail() }}>{rightRailOpen ? (ko ? '자료 사이드바 접기' : 'Hide materials sidebar') : (ko ? '자료 사이드바 펼치기' : 'Show materials sidebar')}</button>}
+      {props.group.panels.length === 0 && props.containerApi.groups.length > 1 && <button type="button" onClick={() => runLayout(close, () => { removeEmptyWorkspaceGroup(props.containerApi, props.group.id) })}>{ko ? '빈 영역 닫기' : 'Close empty pane'}</button>}
+    </>} />
+    <span className="workspace-header-layout-control"><WorkspaceLayoutMenu {...props} /></span>
+    {corner && <ToggleRightRail />}
+  </div>
 }
 
 function CourseWorkspace({ courseId, active }: { courseId: string | null; active: boolean }): JSX.Element {
@@ -194,13 +282,20 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
     })
     const overlay = event.api.onWillShowOverlay((event) => {
       const source = tabDragSession.getSource()
-      if (useWorkspaceStore.getState().activeCourseId !== courseId || (source && source.courseId !== courseId)) {
+      if (useWorkspaceStore.getState().activeCourseId !== courseId || source) {
         event.preventDefault()
         return
       }
       if (rootRef.current) rootRef.current.dataset.dropKind = event.kind
     })
-    layoutSubscription.current = { dispose: () => { layout.dispose(); overlay.dispose() } }
+    const drop = event.api.onWillDrop(event => {
+      const root = rootRef.current
+      const bounds = root?.getBoundingClientRect()
+      const native = event.nativeEvent
+      if (native.type !== 'drop' || tabDragSession.getSource() || useWorkspaceStore.getState().activeCourseId !== courseId ||
+        !bounds || native.clientX < bounds.left || native.clientX > bounds.right || native.clientY < bounds.top || native.clientY > bounds.bottom) event.preventDefault()
+    })
+    layoutSubscription.current = { dispose: () => { layout.dispose(); overlay.dispose(); drop.dispose() } }
   }
   return <WorkspaceCourseContext.Provider value={courseId}><CourseActivity.Provider value={active}>
     <div ref={rootRef} className="workspace-course" hidden={!active} aria-hidden={!active || failed} {...{ inert: !active || failed ? '' : undefined }} data-workspace-course={courseId ?? ''} data-drop-language={ko ? 'ko' : 'en'}>
@@ -208,6 +303,7 @@ function CourseWorkspace({ courseId, active }: { courseId: string | null; active
         theme={bandalTheme}
         dndEdges={workspaceDragEdges}
         scrollbars="native"
+        disableTabsOverflowList
         components={dockviewComponents}
         defaultRenderer="always"
         defaultTabComponent={WorkspaceTab}
@@ -233,10 +329,12 @@ export function WorkspaceHost(): JSX.Element {
   const [retained, setRetained] = useState<string[]>([])
   const retainEmpty = useTemporaryWorkspaceRetention()
   const dragSource = useSyncExternalStore(tabDragSession.subscribe, tabDragSession.getSource)
+  const pendingMoves = useSyncExternalStore(workspaceCourseMoveRetention.subscribe, workspaceCourseMoveRetention.getSnapshot)
   const dragCourseId = dragSource?.courseId
   const alive = retained.filter(id => courses.some(course => course.id === id))
   const ids = [...new Set([...alive.filter(id => id !== courseId), ...(courseId ? [courseId] : []),
-    ...(dragCourseId && courses.some(course => course.id === dragCourseId) ? [dragCourseId] : [])])]
+    ...(dragCourseId && courses.some(course => course.id === dragCourseId) ? [dragCourseId] : []),
+    ...pendingMoves.flatMap(source => source.courseId && courses.some(course => course.id === source.courseId) ? [source.courseId] : [])])]
   const isMenuOpen = useNewTabMenu(state => state.isOpen)
   const hostRef = useRef<HTMLDivElement>(null)
 
@@ -268,7 +366,7 @@ export function WorkspaceHost(): JSX.Element {
       for (const candidate of ids) {
         if (keep.length <= 3) break
         const running = retainedTabDescriptors(candidate).some(tab => tab.kind === 'browser' && useAgentRuns.getState().byTab[tab.payload.tabId] !== undefined)
-        if (candidate === courseId || candidate === dragSource?.courseId || running || !await flushWorkspaceNotes(candidate)) continue
+        if (candidate === courseId || candidate === dragSource?.courseId || pendingMoves.some(source => source.courseId === candidate) || running || !await flushWorkspaceNotes(candidate)) continue
         if (cancelled) return
         keep.splice(keep.indexOf(candidate), 1)
       }
@@ -276,27 +374,26 @@ export function WorkspaceHost(): JSX.Element {
     }
     void trim()
     return () => { cancelled = true }
-  }, [courseId, courses, dragSource])
+  }, [courseId, courses, dragSource, pendingMoves])
 
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
-    const stopWheel = installTabStripWheelScrolling(host)
+    const stopTabs = installAdaptiveTabs(host)
     const stopNavigation = installWorkspaceCourseMoveNavigation()
     const stopSession = installWorkspaceDragSession(host)
-    const stopDrag = installTabDragScrolling(host)
     const flush = (): void => {
       useWorkspaceStore.getState().notifyLayoutChanged()
       useWorkspaceStore.getState().flushPendingSave()
       flushLastActiveCoursePersist()
     }
     window.addEventListener('beforeunload', flush)
-    return () => { stopWheel(); stopDrag(); stopSession(); stopNavigation(); window.removeEventListener('beforeunload', flush); flush() }
+    return () => { stopTabs(); stopSession(); stopNavigation(); window.removeEventListener('beforeunload', flush); flush() }
   }, [])
 
   return <div ref={hostRef} className="workspace-host" data-tour="tab-strip">
     {[...ids].sort().map(id => <CourseWorkspace key={id} courseId={id} active={surface === 'course' && id === courseId} />)}
-    {(retainEmpty || courseId === null || dragSource?.courseId === null) && <CourseWorkspace key="empty" courseId={null} active={surface === 'course' && courseId === null} />}
+    {(retainEmpty || courseId === null || dragSource?.courseId === null || pendingMoves.some(source => source.courseId === null)) && <CourseWorkspace key="empty" courseId={null} active={surface === 'course' && courseId === null} />}
     <WorkspaceContentLayer components={workspacePanelContents} activeCourseId={courseId} active={surface === 'course' && hydration !== 'error'} />
     <CourseTabMoveOverlay />
     {surface === 'course' && hydration === 'error' && <div className="workspace-recovery" role="alert">

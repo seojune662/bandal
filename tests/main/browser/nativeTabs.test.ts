@@ -59,6 +59,34 @@ async function fixture() {
   return { native, event, page: mocks.view.webContents as Page, view: mocks.view as View }
 }
 
+test('native focus is forwarded only for a visible page', async () => {
+  const { native, event, page } = await fixture()
+  mocks.host.webContents.send.mockClear()
+  page.emit('focus')
+  expect(mocks.host.webContents.send).not.toHaveBeenCalled()
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })
+  page.emit('focus')
+  expect(mocks.host.webContents.send).toHaveBeenCalledWith('browser:page-event', expect.objectContaining({
+    tabId: 'retained', name: 'focus', detail: { webContentsId: page.id }
+  }))
+})
+
+test('mouse presses select a visible native pane even when OS focus does not change', async () => {
+  const { native, event, page } = await fixture()
+  const mouseEvent = { preventDefault: vi.fn() }
+  mocks.host.webContents.send.mockClear()
+  page.emit('before-mouse-event', mouseEvent, { type: 'mouseDown', button: 'left', x: 20, y: 40 })
+  expect(mocks.host.webContents.send).not.toHaveBeenCalled()
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })
+  page.emit('before-mouse-event', mouseEvent, { type: 'mouseMove', x: 20, y: 40 })
+  expect(mocks.host.webContents.send).not.toHaveBeenCalled()
+  page.emit('before-mouse-event', mouseEvent, { type: 'mouseDown', button: 'left', x: 20, y: 40 })
+  expect(mocks.host.webContents.send).toHaveBeenCalledWith('browser:page-event', expect.objectContaining({
+    tabId: 'retained', name: 'focus', detail: { webContentsId: page.id }
+  }))
+  expect(mouseEvent.preventDefault).not.toHaveBeenCalled()
+})
+
 test('an already hidden destination captures a preview without showing, focusing, recreating or navigating its native page', async () => {
   const { native, event, page, view } = await fixture()
   expect(view.getVisible()).toBe(false)

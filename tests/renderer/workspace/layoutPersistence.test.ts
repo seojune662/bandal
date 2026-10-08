@@ -58,6 +58,13 @@ const idB = tabPanelId(pdfB)
 const idNote = tabPanelId(note)
 
 describe('validateLayout', () => {
+  test('keeps intentionally empty quadrants while pruning a corrupt populated quadrant', () => {
+    const result = validateLayout(layoutDoc(branch([leaf('empty', [], 'stale'), leaf('bad', ['unknown'])]), {}))!
+    expect(result).not.toBeNull()
+    expect(result.tabs).toEqual({})
+    expect(result.layout.grid.root.data).toEqual([leaf('empty', [])])
+  })
+
   test('accepts a healthy document and returns its tabs', () => {
     // Arrange
     const doc = layoutDoc(
@@ -333,11 +340,13 @@ describe('persistentLayout', () => {
     expect((doc['panels'] as Record<string, unknown>)[privateId]).toBeDefined()
   })
 
-  test('persists an empty workspace when every open tab is private', () => {
+  test('retains an empty pane without any private data when every open tab is private', () => {
     const doc = layoutDoc(leaf('g1', [privateId], privateId), {
       [privateId]: panelState(privateBrowser)
     })
 
-    expect(persistentLayout(doc)).toEqual({})
+    const persisted = persistentLayout(doc)
+    expect(persisted).toEqual(layoutDoc(leaf('g1', []), {}))
+    expect(validateLayout(persisted)?.tabs).toEqual({})
   })
 })

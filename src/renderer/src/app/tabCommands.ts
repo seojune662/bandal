@@ -7,6 +7,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
+import type { TabDescriptor } from '../../../shared/tabs'
 import { invoke } from '../lib/ipc'
 import { useCoursesStore } from '../stores/coursesStore'
 import { useMaterialsStore } from '../stores/materialsStore'
@@ -14,6 +15,7 @@ import { settingsSnapshot } from '../stores/settingsSnapshot'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { descriptorFor } from '../features/workspace/tabIdentity'
 import { showToast } from './toast'
+import type { WorkspaceTarget } from '../features/workspace/placementContext'
 
 export const DEFAULT_BROWSER_URL = 'https://www.google.com'
 
@@ -31,8 +33,8 @@ function activeCourseId(): string | null {
 }
 
 /** Creates a .md in the course root and opens it. No-op without a course. */
-export async function createMarkdownTab(title?: string): Promise<void> {
-  const courseId = activeCourseId()
+export async function createMarkdownTab(title?: string, target?: WorkspaceTarget): Promise<void> {
+  const courseId = target ? target.courseId : activeCourseId()
   if (courseId === null) return
   try {
     const ref = await invoke('notes:create', {
@@ -40,7 +42,8 @@ export async function createMarkdownTab(title?: string): Promise<void> {
       dirRelPath: '',
       title: title ?? defaultMarkdownTitle(new Date())
     })
-    if (activeCourseId() === courseId) useWorkspaceStore.getState().openTab(descriptorFor('note', ref))
+    if (target) useWorkspaceStore.getState().openTab(descriptorFor('note', ref), { target })
+    else if (activeCourseId() === courseId) useWorkspaceStore.getState().openTab(descriptorFor('note', ref))
     else showToast('원래 과목에 새 필기를 만들었어요.')
     void useMaterialsStore.getState().loadTree(courseId, { refreshOnly: true })
   } catch (error) {
@@ -49,19 +52,23 @@ export async function createMarkdownTab(title?: string): Promise<void> {
   }
 }
 
-export function createBrowserTab(url?: string): void {
+export function createBrowserTab(url?: string, target?: WorkspaceTarget): void {
   const homePage = settingsSnapshot().browser.homePage
   const initialUrl = url ?? (homePage !== '' ? homePage : DEFAULT_BROWSER_URL)
   useWorkspaceStore
     .getState()
-    .openTab(descriptorFor('browser', { tabId: uuidv4(), initialUrl }))
+    .openTab(descriptorFor('browser', { tabId: uuidv4(), initialUrl }), target ? { target } : undefined)
 }
 
 export async function createStudyTab(
-  kind: 'chat' | 'recording' | 'whiteboard' | 'board'
+  kind: 'chat' | 'recording' | 'whiteboard' | 'board',
+  target?: WorkspaceTarget
 ): Promise<void> {
-  const courseId = activeCourseId()
-  const open = useWorkspaceStore.getState().openTab
+  const courseId = target ? target.courseId : activeCourseId()
+  const open = (descriptor: TabDescriptor): void => {
+    if (target) useWorkspaceStore.getState().openTab(descriptor, { target })
+    else useWorkspaceStore.getState().openTab(descriptor)
+  }
   if (kind === 'board') {
     open(descriptorFor('board', {}))
     return
@@ -73,7 +80,7 @@ export async function createStudyTab(
     open(descriptorFor('recording', { courseId }))
   } else {
     const board = await invoke('canvas:create', { courseId })
-    if (activeCourseId() === courseId) open(descriptorFor('whiteboard', { courseId, boardId: board.id }))
+    if (target || activeCourseId() === courseId) open(descriptorFor('whiteboard', { courseId, boardId: board.id }))
     else showToast('원래 과목에 새 화이트보드를 만들었어요.')
   }
 }

@@ -14,6 +14,7 @@ import { absoluteMaterialPath } from '../materials/materialPaths'
 import { invoke } from '../../lib/ipc'
 import { useFavoritesStore } from '../../stores/favoritesStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
+import { useCoursesStore } from '../../stores/coursesStore'
 import { createDuplicatePanelId, duplicateTabDescriptor } from './tabDuplication'
 import { descriptorFor, tabPanelId, tabTitle } from './tabIdentity'
 import { TabKindIcon } from './workspaceIcons'
@@ -77,6 +78,8 @@ export function TabContextMenu({
   const isBrowserTab = descriptor.kind === 'browser'
   const canOpenNewInstance =
     descriptor.kind !== 'board'
+  const resourceCourse = useCoursesStore(state => isFileTab
+    ? state.courses.find(entry => entry.id === descriptor.payload.courseId) : undefined)
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -271,10 +274,11 @@ export function TabContextMenu({
           <button
             type="button"
             role="menuitem"
+            disabled={!resourceCourse}
             onClick={() =>
               activate(() =>
                 copyText(
-                  absoluteMaterialPath(course.folderPath, descriptor.payload.relPath),
+                  absoluteMaterialPath(resourceCourse!.folderPath, descriptor.payload.relPath),
                   '경로를 복사했어요.'
                 )
               )

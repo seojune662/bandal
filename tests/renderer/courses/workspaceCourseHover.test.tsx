@@ -6,6 +6,9 @@ import { useWorkspaceCourseHover, WORKSPACE_COURSE_HOVER_MS } from '../../../src
 import { tabDragSession } from '../../../src/renderer/src/features/workspace/tabDragSession'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
 import { BANDAL_TAB_DRAG_MIME } from '../../../src/renderer/src/features/workspace/tabDrag'
+import { dropWorkspaceTabOnCourse } from '../../../src/renderer/src/features/workspace/workspaceTabDrop'
+
+vi.mock('../../../src/renderer/src/features/workspace/workspaceTabDrop', () => ({ dropWorkspaceTabOnCourse: vi.fn(async () => true) }))
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 const roots: Root[] = []
@@ -13,7 +16,7 @@ const originalSelectCourse = useCoursesStore.getState().selectCourse
 let select: ReturnType<typeof vi.spyOn>
 function drag(element: HTMLElement, type: string, extra: Record<string, unknown> = {}) {
   const event = new Event(type, { bubbles: true, cancelable: true })
-  Object.assign(event, { dataTransfer: { types: [BANDAL_TAB_DRAG_MIME], dropEffect: 'none' }, ...extra })
+  Object.assign(event, { dataTransfer: { types: [BANDAL_TAB_DRAG_MIME], dropEffect: 'none', getData: () => JSON.stringify({ source: tabDragSession.getSource() }) }, ...extra })
   act(() => { element.dispatchEvent(event) })
   return event
 }
@@ -33,6 +36,7 @@ function begin(nonce = 'trusted', courseId: string | null = 'source') {
 async function advance(milliseconds: number) { await act(async () => vi.advanceTimersByTimeAsync(milliseconds)) }
 beforeEach(() => {
   vi.useFakeTimers()
+  vi.mocked(dropWorkspaceTabOnCourse).mockClear()
   useCoursesStore.setState({ selectCourse: originalSelectCourse, selectedCourseId: 'source', courses: ['source', 'destination', 'other'].map(id => ({ id } as never)) })
   select = vi.spyOn(useCoursesStore.getState(), 'selectCourse').mockImplementation(() => {})
 })
@@ -97,7 +101,7 @@ test('a new drag nonce cancels the old hover instead of switching during the nex
   expect(select).toHaveBeenCalledExactlyOnceWith('destination')
 })
 
-test('cancel and a folder drop clear the highlight without moving or selecting', async () => {
+test('cancel clears the highlight; a direct folder drop moves without waiting for hover', async () => {
   const { row } = mount()
   begin(); drag(row, 'dragover')
   act(() => tabDragSession.end()); await advance(300)
@@ -106,7 +110,17 @@ test('cancel and a folder drop clear the highlight without moving or selecting',
   expect(drag(row, 'drop').defaultPrevented).toBe(true)
   await advance(300)
   expect(select).not.toHaveBeenCalled()
+  expect(dropWorkspaceTabOnCourse).toHaveBeenCalledExactlyOnceWith({ courseId: 'source', panelId: 'panel', nonce: 'next' }, 'destination')
   expect(row.hasAttribute('data-tab-hover')).toBe(false)
+})
+
+test('a forged drop payload and a disabled row cannot move the held tab', () => {
+  const { root, row } = mount()
+  begin()
+  expect(drag(row, 'drop', { dataTransfer: { types: [BANDAL_TAB_DRAG_MIME], getData: () => JSON.stringify({ source: { nonce: 'forged' } }) } }).defaultPrevented).toBe(false)
+  act(() => root.render(<Row id="destination" enabled={false} />))
+  expect(drag(row, 'drop').defaultPrevented).toBe(false)
+  expect(dropWorkspaceTabOnCourse).not.toHaveBeenCalled()
 })
 
 test('a pending or deleted destination cannot switch when its old timer expires', async () => {

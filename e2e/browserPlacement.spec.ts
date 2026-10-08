@@ -1,6 +1,90 @@
 import { expect, test } from '@playwright/test'
 import { writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { createCourse, launchBandal } from './helpers/launch'
+
+test('four browser panes retain their pages, route native clicks and restore unfocused pages', async ({}, info) => {
+  const icon = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1cAAAAASUVORK5CYII=', 'base64')
+  const server = createServer((req, res) => {
+    if (req.url?.startsWith('/favicon')) {
+      res.writeHead(200, { 'content-type': 'image/png' }); res.end(icon); return
+    }
+    const title = `Pane ${req.url?.slice(1) || 'home'}`
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+    res.end(`<html><head><title>${title}</title><link rel="icon" href="/favicon.png"></head><body style="margin:0"><input id="draft" style="width:95%;height:100px" placeholder="${title}"><script>window.clicks=0;addEventListener('mousedown',()=>window.clicks++);window.instanceToken=Math.random()</script></body></html>`)
+  })
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+  let bandal = await launchBandal({ keepProfileOnClose: true })
+  const pages = () => bandal.app.evaluate(({ BrowserWindow }, origin) => {
+    const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
+    return host.contentView.children.flatMap((view: any) => view.webContents?.getURL().startsWith(origin)
+      ? [{ id: view.webContents.id as number, url: view.webContents.getURL() as string, visible: view.getVisible() as boolean }] : [])
+  }, origin)
+  try {
+    await createCourse(bandal.page, '4분할 브라우저')
+    const courseId = await bandal.page.evaluate(async () => (await window.bandal.invoke('courses:list', {}))[0]!.id)
+    for (let index = 0; index < 4; index++) {
+      await bandal.app.evaluate(({ BrowserWindow }, url) => {
+        BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.webContents.send('browser:open-url', { url })
+      }, `${origin}/${index}`)
+      await expect.poll(async () => (await pages()).length).toBe(index + 1)
+    }
+    const original = await pages()
+    await expect.poll(() => bandal.app.evaluate(async ({ webContents }, ids) => Promise.all(ids.map(id =>
+      webContents.fromId(id)!.executeJavaScript('document.readyState === "complete" && !!document.querySelector("#draft")')
+    )), original.map(page => page.id))).toEqual([true, true, true, true])
+    await bandal.app.evaluate(async ({ webContents }, ids) => {
+      for (const id of ids) await webContents.fromId(id)!.executeJavaScript('document.querySelector("#draft").value="unsaved native draft"')
+    }, original.map(page => page.id))
+    await bandal.page.getByRole('button', { name: '작업 공간 배치', exact: true }).click()
+    await bandal.page.getByRole('menuitem', { name: '2×2 4분할', exact: true }).click()
+    await expect.poll(async () => (await pages()).filter(page => page.visible).length).toBe(4)
+    await expect(bandal.page.locator('.dv-groupview:visible')).toHaveCount(4)
+    await expect(bandal.page.locator('.workspace-tab__favicon:visible')).toHaveCount(4)
+    expect((await pages()).map(page => page.id).sort()).toEqual(original.map(page => page.id).sort())
+    const clicked = original.find(page => page.url === `${origin}/0`)!
+    // Deliver a real native mouse click; the test never calls WebContents.focus().
+    await bandal.app.evaluate(({ app, BrowserWindow, webContents }, id) => {
+      if (process.platform === 'darwin') app.focus({ steal: true })
+      BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.focus()
+      const page = webContents.fromId(id)!
+      page.sendInputEvent({ type: 'mouseDown', x: 60, y: 45, button: 'left', clickCount: 1 })
+      page.sendInputEvent({ type: 'mouseUp', x: 60, y: 45, button: 'left', clickCount: 1 })
+    }, clicked.id)
+    await expect.poll(() => bandal.app.evaluate(async ({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('window.clicks'), clicked.id)).toBe(1)
+    await expect(bandal.page.locator('.dv-active-group .dv-active-tab')).toContainText('Pane 0')
+    await bandal.app.evaluate(({ webContents }, id) => {
+      const page = webContents.fromId(id)!
+      const modifiers: Array<'meta' | 'control'> = [process.platform === 'darwin' ? 'meta' : 'control']
+      page.sendInputEvent({ type: 'keyDown', keyCode: 'T', modifiers })
+      page.sendInputEvent({ type: 'keyUp', keyCode: 'T', modifiers })
+    }, clicked.id)
+    await expect(bandal.page.getByRole('dialog', { name: '새 탭 열기' })).toBeVisible()
+    await bandal.page.getByLabel('새 탭 검색').fill(`${origin}/shortcut`)
+    await bandal.page.getByRole('option', { name: `${origin}/shortcut 열기` }).click()
+    await expect(bandal.page.locator('.dv-active-group .dv-tab')).toHaveCount(2)
+    await expect(bandal.page.locator('.dv-active-group .dv-tab')).toContainText(['Pane 0', 'Pane shortcut'])
+    await bandal.page.locator('.dv-active-group .dv-active-tab .workspace-tab__close').click()
+    await expect.poll(async () => (await pages()).length).toBe(4)
+    expect(await bandal.app.evaluate(async ({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('document.querySelector("#draft").value'), clicked.id)).toBe('unsaved native draft')
+    await expect.poll(async () => {
+      const layout = (await bandal.page.evaluate(courseId => window.bandal.invoke('layout:get', { courseId }), courseId)).layout as { panels?: Record<string, unknown> } | null
+      return Object.keys(layout?.panels ?? {}).length
+    }).toBe(4)
+    await bandal.page.screenshot({ path: info.outputPath('four-native-browser-panes.png') })
+    const profile = bandal.profileDir
+    await bandal.close()
+    bandal = await launchBandal({ reuseProfileDir: profile })
+    // Three panes are unfocused on startup, but all four must load immediately.
+    await expect(bandal.page.locator('.dv-groupview:visible')).toHaveCount(4)
+    await expect.poll(async () => (await pages()).filter(page => page.visible).length).toBe(4)
+    await expect(bandal.page.locator('.workspace-tab__favicon:visible')).toHaveCount(4)
+  } finally {
+    await bandal.close()
+    await new Promise<void>(resolve => server.close(() => resolve()))
+  }
+})
 
 test('only active native browser views stay within their live panel after resizing and rail changes', async ({}, info) => {
   const bandal = await launchBandal({ extraSettings: { theme: 'dark' } })

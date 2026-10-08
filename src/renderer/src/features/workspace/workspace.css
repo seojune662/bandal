@@ -349,7 +349,7 @@
  * a 138px fallback plus a small safety gap for older overlay implementations. */
 :root[data-platform='win32']
   .app-shell[data-right-rail='closed']
-  .workspace-header-actions {
+  .workspace-group-actions[data-window-corner='right'] {
   margin-inline-end: var(--window-controls-inset);
 }
 
@@ -846,6 +846,19 @@
 .workspace-panel-content[hidden] { display: block; visibility: hidden; pointer-events: none; }
 .workspace-content-layer[data-content-dragging] .workspace-panel-content { pointer-events: none; }
 .workspace-course .dv-tabs-and-actions-container { position: relative; z-index: 2; }
+.workspace-group-actions { display: flex; align-items: center; gap: 2px; height: 100%; padding-inline: 2px; -webkit-app-region: no-drag; }
+.workspace-group-actions .workspace-header-actions { padding-inline: 0; }
+.workspace-empty-pane { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); width: 100%; height: 100%; padding: var(--space-3); color: var(--text-secondary); text-align: center; }
+.workspace-empty-pane .button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); }
+.workspace-layout-menu { min-width: 190px; }
+/* Native pages stop at the content bounds. Keep the entire resize target in
+   a real gutter; DOM z-index alone cannot rise above a WebContentsView. */
+.bandal-dockview .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash { width: 8px; margin-left: -2px; }
+.bandal-dockview .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash { height: 8px; margin-top: -2px; }
+.bandal-dockview .dv-sash::after { content: ''; position: absolute; background: var(--shell-divider); pointer-events: none; }
+.bandal-dockview .dv-horizontal > .dv-sash-container > .dv-sash::after { left: 3px; top: 0; width: 1px; height: 100%; }
+.bandal-dockview .dv-vertical > .dv-sash-container > .dv-sash::after { top: 3px; left: 0; height: 1px; width: 100%; }
+.bandal-dockview .dv-sash:hover::after, .bandal-dockview .dv-sash:active::after { background: var(--accent); }
 .course-tab-move-overlay { position: absolute; inset: 0; z-index: 19; pointer-events: none; }
 .course-tab-move-preview { position: absolute; pointer-events: none; background: var(--workspace-drop-fill); border: 1px solid var(--workspace-drop-stroke); border-radius: var(--radius-md); }
 .course-tab-move-preview span {

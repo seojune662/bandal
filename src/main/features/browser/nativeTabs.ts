@@ -147,6 +147,14 @@ function install(tab: Tab, parent?: Tab): void {
     } satisfies BrowserPageEvent)
   }
   wc.on('dom-ready', () => send('dom-ready'))
+  wc.on('focus', () => {
+    if (tab.view.getVisible()) send('focus', { webContentsId: wc.id })
+  })
+  // Clicking an already-focused native page does not emit another focus event.
+  // Pointer input still selects its workspace pane, without consuming the click.
+  wc.on('before-mouse-event', (_event, mouse) => {
+    if (mouse.type === 'mouseDown' && tab.view.getVisible()) send('focus', { webContentsId: wc.id })
+  })
   wc.on('did-start-loading', () => send('did-start-loading'))
   wc.on('did-stop-loading', () => send('did-stop-loading'))
   wc.on('did-finish-load', () => send('did-finish-load'))

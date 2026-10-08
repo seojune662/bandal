@@ -6,7 +6,8 @@ import { useViewportBounds } from '../../lib/useViewportBounds'
  * results only; the default list leaves material browsing to the right rail.
  */
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { TabDescriptor } from '../../../../shared/tabs'
 import { v4 as uuidv4 } from 'uuid'
 import {
   formatChord,
@@ -37,7 +38,7 @@ import {
   panelsById as pluginPanelsById,
   usePluginsStore
 } from '../../stores/pluginsStore'
-import { openPluginPanel, runPluginCommand } from '../plugins/pluginCommands'
+import { runPluginCommand } from '../plugins/pluginCommands'
 
 const MAX_PDF_ITEMS = 8
 
@@ -88,7 +89,11 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
   const t = useT()
   const anchor = useNewTabMenu((state) => state.anchor)
   const close = useNewTabMenu((state) => state.close)
-  const openTab = useWorkspaceStore((state) => state.openTab)
+  const openInWorkspace = useWorkspaceStore((state) => state.openTab)
+  const target = anchor?.target
+  const openTab = useCallback((descriptor: TabDescriptor): void => {
+    openInWorkspace(descriptor, target ? { target } : undefined)
+  }, [openInWorkspace, target])
   const tree = useMaterialsStore((state) => state.tree)
   // [P2-D] Empty array when signed out or unconfigured, so the group entries
   // simply do not exist rather than appearing disabled.
@@ -187,7 +192,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         hint: '브라우저',
         icon: <TabKindIcon kind="browser" />,
         run: () => {
-          createBrowserTab(url)
+          createBrowserTab(url, target)
         }
       })
     }
@@ -202,7 +207,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
           ? {}
           : { shortcut: newMarkdownShortcut }),
         icon: <TabKindIcon kind="note" />,
-        run: () => createMarkdownTab(titled ? trimmed : undefined)
+        run: () => createMarkdownTab(titled ? trimmed : undefined, target)
       })
     }
     if (matches('녹음', '강의 녹음', '실시간 자막', 'STT', 'recording')) {
@@ -224,7 +229,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
           : { shortcut: newBrowserShortcut }),
         icon: <TabKindIcon kind="browser" />,
         run: () => {
-          createBrowserTab()
+          createBrowserTab(undefined, target)
         }
       })
     }
@@ -238,7 +243,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         hint: '정리 · 마인드맵',
         shortcut: shortcutLabel(keymap, 'new-whiteboard', platform),
         icon: <TabKindIcon kind="whiteboard" />,
-        run: () => createStudyTab('whiteboard')
+        run: () => createStudyTab('whiteboard', target)
       })
     }
     if (matches('AI', 'AI 튜터')) {
@@ -285,7 +290,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
         hint: item.pluginName,
         section: 'plugins',
         icon: <TabKindIcon kind="plugin-panel" />,
-        run: () => openPluginPanel(item.pluginId, item.panel.id)
+        run: () => openTab(descriptorFor('plugin-panel', { pluginId: item.pluginId, panelId: item.panel.id }))
       })
     }
 
@@ -341,6 +346,7 @@ export function NewTabMenu({ course }: NewTabMenuProps): JSX.Element {
     course.id,
     course.name,
     openTab,
+    target,
     newMarkdownShortcut,
     newBrowserShortcut,
     keymap,

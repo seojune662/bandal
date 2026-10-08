@@ -30,6 +30,30 @@ test('tab-strip insertion is narrow and follows visible tab order', () => {
   expect(courseMoveTarget(api, root, 980, 70)).toMatchObject({ position: { groupId: 'group', direction: 'within', index: 2 } })
 })
 
+test('hidden overflow tabs keep their real order but never supply zero-sized marker bounds', () => {
+  const list = group.querySelector('.dv-tabs-container')!
+  const extra = document.createElement('div'); extra.className = 'dv-tab'; list.append(extra)
+  const tabs = list.querySelectorAll<HTMLElement>('.dv-tab')
+  rect(tabs[1]!, 0, 0, 0, 0)
+  rect(extra, 280, 50, 120, 44)
+  api = { ...api, groups: [{ id: 'group', element: group, panels: [{}, {}, {}] }] } as unknown as DockviewApi
+  expect(courseMoveTarget(api, root, 290, 70)).toMatchObject({ x: 178, position: { index: 2 } })
+  rect(extra, 0, 0, 0, 0)
+  expect(courseMoveTarget(api, root, 980, 70)).toMatchObject({ x: 178, position: { index: 1 } })
+})
+
+test('dropping after a visible active tab inserts before its hidden successors', () => {
+  const list = group.querySelector('.dv-tabs-container')!
+  for (let index = 2; index < 100; index++) {
+    const tab = document.createElement('div'); tab.className = 'dv-tab'
+    rect(tab, 0, 0, 0, 0); list.append(tab)
+  }
+  const active = list.querySelectorAll<HTMLElement>('.dv-tab')[50]!
+  rect(active, 400, 50, 36, 44)
+  api = { ...api, groups: [{ id: 'group', element: group, panels: Array.from({ length: 100 }, () => ({})) }] } as unknown as DockviewApi
+  expect(courseMoveTarget(api, root, 431, 70)).toMatchObject({ x: 334, position: { index: 51 } })
+})
+
 test('a missing or zero-sized direct content area never falls back to a header-sized preview', () => {
   content.remove()
   const nested = document.createElement('section'), misleading = document.createElement('div')
@@ -49,4 +73,22 @@ test('empty workspaces accept their full canvas; external or invalid coordinates
 test('groups from another retained workspace cannot supply the target geometry', () => {
   group.remove()
   expect(courseMoveTarget(api, root, 550, 350)).toBeNull()
+})
+
+test('only the shared 36 px content edge requests a split', () => {
+  expect(courseMoveTarget(api, root, 136, 350)?.position?.direction).toBe('left')
+  expect(courseMoveTarget(api, root, 137, 350)?.position?.direction).toBe('within')
+  expect(courseMoveTarget(api, root, 963, 350)?.position?.direction).toBe('within')
+  expect(courseMoveTarget(api, root, 964, 350)?.position?.direction).toBe('right')
+})
+
+test('an empty retained pane remains a distinct placement target in a multi-pane layout', () => {
+  const empty = document.createElement('div'), emptyContent = document.createElement('div')
+  emptyContent.className = 'dv-content-container'
+  rect(group, 100, 50, 450, 600); rect(content, 100, 94, 450, 556)
+  rect(empty, 550, 50, 450, 600); rect(emptyContent, 550, 94, 450, 556)
+  empty.append(emptyContent); root.append(empty)
+  api = { panels: [], groups: [{ id: 'empty-left', element: group, panels: [] }, { id: 'empty-right', element: empty, panels: [] }] } as unknown as DockviewApi
+  expect(courseMoveTarget(api, root, 750, 300)?.position).toEqual({ groupId: 'empty-right', direction: 'within' })
+  expect(courseMoveTarget(api, root, 990, 300)?.position).toEqual({ groupId: 'empty-right', direction: 'right' })
 })

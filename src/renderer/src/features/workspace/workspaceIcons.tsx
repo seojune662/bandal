@@ -4,9 +4,10 @@
  * drawn here so the workspace stays self-contained.
  */
 
-import type { SVGProps } from 'react'
-import type { TabKind } from '../../../../shared/tabs'
+import { useState, type SVGProps } from 'react'
+import type { TabDescriptor, TabKind } from '../../../../shared/tabs'
 import { Icon } from '../../app/icons'
+import { useBrowserGuests } from '../browser/browserGuestsStore'
 
 type LocalKind = 'browser' | 'chat' | 'board' | 'whiteboard' | 'recording'
 
@@ -88,4 +89,14 @@ export function TabKindIcon({ kind, ...props }: TabKindIconProps): JSX.Element {
     case 'whiteboard':
       return <LocalIcon kind={kind} {...props} />
   }
+}
+
+/** Reuse the browser session's already validated raster data, never a remote URL. */
+export function WorkspaceTabIcon({ descriptor, className }: { descriptor: TabDescriptor; className?: string }): JSX.Element {
+  const favicon = useBrowserGuests(state => descriptor.kind === 'browser' ? state.favicon[descriptor.payload.tabId] : undefined)
+  const [failed, setFailed] = useState<string | undefined>()
+  if (favicon && favicon !== failed && /^data:image\/(?:png|jpeg|gif|webp|x-icon|vnd\.microsoft\.icon);base64,/i.test(favicon)) {
+    return <img src={favicon} alt="" draggable={false} className={`workspace-tab__favicon ${className ?? ''}`} data-tab-icon="browser" onError={() => setFailed(favicon)} />
+  }
+  return <TabKindIcon kind={descriptor.kind} {...(className ? { className } : {})} data-tab-icon={descriptor.kind} />
 }

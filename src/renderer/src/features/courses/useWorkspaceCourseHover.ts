@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type HTMLAttributes } from 'react'
 import { useCoursesStore } from '../../stores/coursesStore'
-import { BANDAL_TAB_DRAG_MIME } from '../workspace/tabDrag'
+import { BANDAL_TAB_DRAG_MIME, matchesWorkspaceMoveData } from '../workspace/tabDrag'
 import { tabDragSession } from '../workspace/tabDragSession'
 import { navigateWorkspaceCourseHover } from '../workspace/courseTabMoveNavigation'
+import { dropWorkspaceTabOnCourse } from '../workspace/workspaceTabDrop'
 
 export const WORKSPACE_COURSE_HOVER_MS = 300
 
@@ -57,11 +58,13 @@ export function useWorkspaceCourseHover(): { rowProps(courseId: string, enabled:
       clear()
     },
     onDrop: event => {
-      if (!tabDragSession.getSource() || !event.dataTransfer.types.includes(BANDAL_TAB_DRAG_MIME)) return
-      // A folder is a hover destination, not the final placement target.
+      const source = tabDragSession.getSource()
+      if (!enabled || !source || tabDragSession.getSnapshot() !== 'tab' || !event.dataTransfer.types.includes(BANDAL_TAB_DRAG_MIME) ||
+        !matchesWorkspaceMoveData(event.dataTransfer, source)) return
       event.preventDefault()
       event.stopPropagation()
       clear()
+      void dropWorkspaceTabOnCourse(source, courseId)
     }
     } as HTMLAttributes<HTMLDivElement>
   } }

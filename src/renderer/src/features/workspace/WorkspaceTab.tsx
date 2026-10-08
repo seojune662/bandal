@@ -8,9 +8,11 @@ import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { TabContextMenu } from './TabContextMenu'
 import { isTabDescriptor } from './tabIdentity'
 import { setWorkspaceTabDragImage, writeWorkspaceTabDragData } from './tabDrag'
-import { TabKindIcon } from './workspaceIcons'
+import { WorkspaceTabIcon } from './workspaceIcons'
 import { WorkspaceCourseContext } from './placementContext'
 import { tabDragSession } from './tabDragSession'
+import { layoutAdaptiveTabs } from './adaptiveTabs'
+import './adaptive-tabs.css'
 
 export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
   const t = useT()
@@ -25,8 +27,7 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
   } | null>(null)
   const tabRef = useRef<HTMLDivElement>(null)
   const courses = useCoursesStore((state) => state.courses)
-  const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
-  const course = courses.find((entry) => entry.id === selectedCourseId) ?? null
+  const course = courses.find((entry) => entry.id === workspaceCourseId) ?? null
   useEffect(() => {
     const disposable = props.api.onDidTitleChange((event) => {
       setTitle(event.title)
@@ -53,12 +54,14 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
       setWorkspaceTabDragImage(event.dataTransfer, dockviewTab, title)
     }
     const updateSelection = (): void => {
+      const selected = props.api.group.activePanel?.id === props.api.id
       dockviewTab.setAttribute('role', 'tab')
-      dockviewTab.setAttribute('aria-selected', String(props.api.isActive))
-      dockviewTab.tabIndex = props.api.isActive ? 0 : -1
+      dockviewTab.setAttribute('aria-label', title)
+      dockviewTab.setAttribute('aria-selected', String(selected))
+      dockviewTab.tabIndex = selected ? 0 : -1
     }
     updateSelection()
-    const selection = props.api.onDidActiveChange(updateSelection)
+    const selection = [props.api.onDidActiveChange(updateSelection), props.api.onDidVisibilityChange(updateSelection), props.api.onDidGroupChange(updateSelection)]
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (
         event.target !== dockviewTab ||
@@ -82,12 +85,13 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
       const elements =
         dockviewTab.parentElement?.querySelectorAll<HTMLElement>('.dv-tab')
       panels[index]?.api.setActive()
+      layoutAdaptiveTabs(props.api.group.element)
       elements?.[index]?.focus()
     }
     dockviewTab.addEventListener('dragstart', handleDragStart)
     dockviewTab.addEventListener('keydown', handleKeyDown)
     return () => {
-      selection.dispose()
+      selection.forEach(subscription => subscription.dispose())
       dockviewTab.removeEventListener('dragstart', handleDragStart)
       dockviewTab.removeEventListener('keydown', handleKeyDown)
     }
@@ -149,8 +153,8 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
           }}
         >
           {descriptor !== null && (
-            <TabKindIcon
-              kind={descriptor.kind}
+            <WorkspaceTabIcon
+              descriptor={descriptor}
               className="workspace-tab__kind"
             />
           )}

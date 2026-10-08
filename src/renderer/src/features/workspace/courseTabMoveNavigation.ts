@@ -1,5 +1,5 @@
 import { useCoursesStore } from '../../stores/coursesStore'
-import { tabDragSession } from './tabDragSession'
+import { tabDragSession, type WorkspaceTabDragSource } from './tabDragSession'
 
 interface HoverNavigation {
   nonce: string
@@ -12,6 +12,22 @@ interface HoverNavigation {
   ended: boolean
 }
 const navigations = new Map<string, HoverNavigation>()
+let pendingSources: readonly WorkspaceTabDragSource[] = []
+const retentionListeners = new Set<() => void>()
+
+/** Native dragend may precede a cold destination's hydration. Keep its source mounted. */
+export const workspaceCourseMoveRetention = {
+  getSnapshot: (): readonly WorkspaceTabDragSource[] => pendingSources,
+  subscribe: (listener: () => void): (() => void) => {
+    retentionListeners.add(listener)
+    return () => { retentionListeners.delete(listener) }
+  }
+}
+
+function retainSources(next: readonly WorkspaceTabDragSource[]): void {
+  pendingSources = next
+  for (const listener of retentionListeners) listener()
+}
 
 function finish(navigation: HoverNavigation): void {
   navigations.delete(navigation.nonce)
@@ -39,12 +55,14 @@ export function installWorkspaceCourseMoveNavigation(): () => void {
   }
   const stopSource = tabDragSession.subscribe(sourceChanged)
   const stopCourse = useCoursesStore.subscribe((state, previous) => {
-    if (state.selectedCourseId === previous.selectedCourseId || !activeNonce) return
-    const navigation = navigations.get(activeNonce)
-    if (navigation && state.selectedCourseId !== navigation.expected) navigation.externalSelection = true
+    if (state.selectedCourseId === previous.selectedCourseId) return
+    for (const navigation of navigations.values()) {
+      if ((navigation.nonce === activeNonce || navigation.pending) && state.selectedCourseId !== navigation.expected)
+        navigation.externalSelection = true
+    }
   })
   sourceChanged()
-  return () => { stopSource(); stopCourse(); navigations.clear() }
+  return () => { stopSource(); stopCourse(); navigations.clear(); retainSources([]) }
 }
 
 export function navigateWorkspaceCourseHover(nonce: string, courseId: string): boolean {
@@ -57,19 +75,30 @@ export function navigateWorkspaceCourseHover(nonce: string, courseId: string): b
 }
 
 export function beginWorkspaceCourseMoveDrop(nonce: string): boolean {
+  const source = tabDragSession.getSource()
+  if (!source || source.nonce !== nonce || pendingSources.some(entry => entry.nonce === nonce)) return false
   const navigation = navigations.get(nonce)
-  if (!navigation) return true
-  if (navigation.pending || navigation.accepted || navigation.ended) return false
-  navigation.pending = true
+  if (navigation) {
+    if (navigation.pending || navigation.accepted || navigation.ended) return false
+    navigation.pending = true
+  }
+  retainSources([...pendingSources, source])
   return true
 }
 
 export function finishWorkspaceCourseMoveDrop(nonce: string, accepted: boolean): void {
   const navigation = navigations.get(nonce)
-  if (!navigation) return
-  navigation.pending = false
-  navigation.accepted = accepted
-  if (navigation.ended) finish(navigation)
+  if (navigation) {
+    navigation.pending = false
+    navigation.accepted = accepted
+    if (navigation.ended) finish(navigation)
+  }
+  retainSources(pendingSources.filter(source => source.nonce !== nonce))
+}
+
+export function isWorkspaceCourseMoveDropCurrent(nonce: string): boolean {
+  const navigation = navigations.get(nonce)
+  return pendingSources.some(source => source.nonce === nonce) && (!navigation || !navigation.externalSelection)
 }
 
 /** A valid favorite copy keeps its chosen screen without moving the live tab. */
