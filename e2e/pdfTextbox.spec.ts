@@ -90,6 +90,27 @@ test('independent textboxes keep their own selection, edits and saved contents',
         clickCount: double ? 2 : 1
       })
     }
+    const replaceEditorText = async (text: string): Promise<void> => {
+      const input = page.locator('.ink-layer__textbox-editor-content')
+      const previous = await input.textContent()
+      await input.focus()
+      await expect(input).toBeFocused()
+      // ProseMirror reconciles selection shortly after focus. Playwright's
+      // fill() sets a DOM Range separately from its text insertion, which can
+      // race that reconciliation. Exercise the user's select-all shortcut.
+      await input.press('ControlOrMeta+A')
+      await expect.poll(() => input.evaluate((element) => {
+        const selection = window.getSelection()
+        return {
+          text: selection?.toString() ?? '',
+          inside: Boolean(selection?.rangeCount && element.contains(
+            selection.getRangeAt(0).commonAncestorContainer
+          ))
+        }
+      })).toEqual({ text: previous, inside: true })
+      await page.keyboard.insertText(text)
+      await expect(input).toHaveText(text)
+    }
     const texts = ['first independent box', 'second independent box', 'last independent box']
     const expected: Record<string, string> = {}
     const ids: string[] = []
@@ -166,7 +187,7 @@ test('independent textboxes keep their own selection, edits and saved contents',
     await clickBox(ids[0]!, true)
     let editor = page.locator('.ink-layer__textbox-editor-content')
     await expect(editor).toHaveText(expected[ids[0]!]!)
-    await editor.fill('discard this edit')
+    await replaceEditorText('discard this edit')
     await page.keyboard.press('Escape')
     await expect(editor).toHaveCount(0)
     await expect.poll(readTexts).toEqual(expected)
@@ -174,7 +195,7 @@ test('independent textboxes keep their own selection, edits and saved contents',
     await selectTextTool(page)
     await clickBox(ids[0]!)
     await expect(editor).toHaveText(expected[ids[0]!]!)
-    await editor.fill('first box edited through tool switch')
+    await replaceEditorText('first box edited through tool switch')
     await page.getByRole('button', { name: '선택', exact: true }).click()
     expected[ids[0]!] = 'first box edited through tool switch'
     await expect(editor).toHaveCount(0)
@@ -183,14 +204,14 @@ test('independent textboxes keep their own selection, edits and saved contents',
     await selectTextTool(page)
     await clickBox(ids[1]!)
     await expect(editor).toHaveText(expected[ids[1]!]!)
-    await editor.fill('second box edited before switching object')
+    await replaceEditorText('second box edited before switching object')
     // The prior blur and the new edit start occur in the same mouse gesture.
     await clickBox(ids[2]!)
     expected[ids[1]!] = 'second box edited before switching object'
     await expect(editor).toHaveCount(1)
     await expect(editor).toHaveText(expected[ids[2]!]!)
     await expect.poll(readTexts).toEqual(expected)
-    await editor.fill('last box edited independently')
+    await replaceEditorText('last box edited independently')
     await page.keyboard.press('ControlOrMeta+Enter')
     expected[ids[2]!] = 'last box edited independently'
     await expect.poll(readTexts).toEqual(expected)
