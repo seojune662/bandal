@@ -10,6 +10,7 @@ import { browsingContext, registerBrowsingContext, setBrowsingCourse } from './b
 import { registerManagedPage, forgetManagedPage } from './managedPages'
 import { trackTabDownload } from './popupLifecycle'
 import { closePage } from './pageClose'
+import { inheritEmbeddedAuthSource } from './embeddedAuth'
 
 interface Tab {
   tabId: string
@@ -107,6 +108,7 @@ function install(tab: Tab, parent?: Tab): void {
   tabs.set(tab.tabId, tab)
   registerManagedPage(wc.id)
   registerGuestProfile(wc.id, tab.profileId, tab.isPrivate)
+  if (parent) inheritEmbeddedAuthSource(wc, parent.view.webContents)
   registerBrowsingContext(wc.id, parent?.view.webContents.id)
   setBrowsingCourse(wc.id, tab.tabId, parent ? browsingContext(parent.view.webContents.id)?.courseId ?? null : null)
   tab.view.setVisible(false)
@@ -180,7 +182,7 @@ function install(tab: Tab, parent?: Tab): void {
     forgetGuestProfile(wc.id)
     if (requestedByPage) {
       tabs.delete(tab.tabId)
-      if (tab.adopted) {
+      if (tab.adopted && !tab.switching) {
         closedSiteTabs.add(tab.tabId)
         if (closedSiteTabs.size > 500) closedSiteTabs.delete(closedSiteTabs.values().next().value!)
       }

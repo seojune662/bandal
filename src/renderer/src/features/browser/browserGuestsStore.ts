@@ -234,7 +234,8 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
       get().touchGuest(tabId)
       return
     }
-    const changedProfile = currentGuest !== undefined && currentGuest.profileId !== profileId
+    const changedSession = currentGuest !== undefined &&
+      (currentGuest.profileId !== profileId || currentGuest.isPrivate !== isPrivate)
     const src = initialUrl
     const grown = [
       ...liveGuests.filter((guest) => guest.tabId !== tabId),
@@ -243,6 +244,11 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
     set({
       liveGuests: grown,
       favicon: withoutKeys(get().favicon, [tabId]),
+      overlay: withoutKeys(get().overlay, [tabId]),
+      ...(changedSession ? {
+        find: withoutKeys(get().find, [tabId]),
+        zoom: withoutKeys(get().zoom, [tabId])
+      } : {}),
       nav: {
         ...nav,
         [tabId]: initialNavState(src)
@@ -253,7 +259,7 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
       },
       recent: {
         ...recent,
-        [tabId]: isPrivate || changedProfile ? [] : (recent[tabId] ?? [])
+        [tabId]: isPrivate || changedSession ? [] : (recent[tabId] ?? [])
       },
       authFallback: withoutKeys(authFallback, [tabId])
     })

@@ -18,6 +18,7 @@ import {
 } from 'react'
 import type { IDockviewPanelProps } from 'dockview'
 import type { BrowserTabPayload } from '../../../../shared/tabs'
+import { browserProfileStartUrl } from '../../../../shared/browserAuth'
 import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
 import { DEFAULT_BROWSER_URL } from '../../app/tabCommands'
@@ -83,16 +84,17 @@ function hostnameOf(url: string): string {
 
 interface ToolbarProps {
   tabId: string
+  ownerCourse: string | null
   nav: BrowserNavState
   onNavigate: (url: string) => void
   isPrivate: boolean
   onTogglePrivate: () => void
   profileId: string
-  onProfileChange: (id: string) => Promise<void>
+  onProfileChange: (id: string) => Promise<boolean>
+  sessionChanging: boolean
 }
 
-function useBrowserFavoriteShortcuts(profileId: string): BrowserShortcut[] {
-  const courseId = useWorkspaceStore((state) => state.activeCourseId)
+function useBrowserFavoriteShortcuts(profileId: string, courseId: string | null): BrowserShortcut[] {
   const key = favoriteScopeKey(courseId)
   const stored = useFavoritesStore((state) => state.byCourse[key])
   const global = useFavoritesStore((state) => state.byCourse[favoriteScopeKey(null)])
@@ -245,12 +247,14 @@ export function BrowserLoginPrompt({
 
 function BrowserToolbar({
   tabId,
+  ownerCourse,
   nav,
   onNavigate,
   isPrivate,
   onTogglePrivate,
   profileId,
-  onProfileChange
+  onProfileChange,
+  sessionChanging
 }: ToolbarProps): JSX.Element {
   const video = useWebVideoReport(tabId)
   const login = useBrowserGuests((state) => state.login[tabId])
@@ -285,7 +289,7 @@ function BrowserToolbar({
     window.addEventListener(OPEN_DIAGNOSTICS_EVENT, onOpen)
     return () => window.removeEventListener(OPEN_DIAGNOSTICS_EVENT, onOpen)
   }, [tabId])
-  const starred = useBrowserFavorite(nav.url, profileId)
+  const starred = useBrowserFavorite(nav.url, profileId, ownerCourse)
   const favicon = useBrowserGuests((state) => state.favicon[tabId])
   const findState = useBrowserGuests((state) => state.find[tabId])
   const loginTooltip =
@@ -357,6 +361,7 @@ function BrowserToolbar({
           favicon={favicon}
           isPrivate={isPrivate}
           profileId={profileId}
+          courseId={ownerCourse}
         />
 
         <div ref={toolbarActionsRef} className="browser-toolbar__actions">
@@ -370,6 +375,7 @@ function BrowserToolbar({
               className="browser-nav-button browser-private-button"
               aria-label={isPrivate ? '시크릿 모드 끄기' : '시크릿 모드 켜기'}
               aria-pressed={isPrivate}
+              disabled={sessionChanging}
               onClick={onTogglePrivate}
             >
               <BrowserIcon name="private" />
@@ -529,6 +535,9 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   const initialPrivate = payload?.isPrivate === true
   const [isPrivate, setPrivate] = useState(initialPrivate)
   const [profileId, setProfileId] = useState(payload?.profileId ?? 'default')
+  const sessionChangingRef = useRef(false)
+  const [sessionChanging, setSessionChanging] = useState(false)
+  const sessionTargetRef = useRef({ profileId, isPrivate })
 
   const anchorRef = useRef<HTMLDivElement>(null)
   useBrowserAnchorRect(tabId, anchorRef)
@@ -542,7 +551,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   const login = useBrowserGuests((state) => state.login[tabId])
   const authFallback = useBrowserGuests((state) => state.authFallback[tabId])
   const navState = nav ?? initialNavState(initialUrl)
-  const favorites = useBrowserFavoriteShortcuts(profileId)
+  const favorites = useBrowserFavoriteShortcuts(profileId, ownerCourse)
 
   const navigate = useCallback(
     (url: string): void => {
@@ -561,18 +570,25 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
 
   // Unvisited background tabs stay cheap; a visited page remains alive when hidden.
   useEffect(() => {
+    // Dockview parameter changes can flush a previous render's passive effect.
+    // Never let that stale profile recreate a page during/after a session switch.
+    if (sessionChangingRef.current || profileId !== sessionTargetRef.current.profileId ||
+      isPrivate !== sessionTargetRef.current.isPrivate) return
     if (tabId !== '' && isPanelVisible) {
       useBrowserGuests.getState().ensureGuest(tabId, initialUrl, isPrivate, profileId, ownerCourse)
     }
-  }, [isPrivate, tabId, initialUrl, profileId, isPanelVisible, ownerCourse])
+  }, [isPrivate, tabId, initialUrl, profileId, isPanelVisible, ownerCourse, sessionChanging])
 
   const togglePrivate = useCallback((): void => {
-    if (tabId === '') return
+    if (tabId === '' || sessionChangingRef.current) return
+    sessionChangingRef.current = true
+    setSessionChanging(true)
     void (async () => {
       const { allowed } = await invoke('browser:prepareProfileSwitch', { tabId })
       if (!allowed) return
       const next = !isPrivate
-      const url = navState.url || initialUrl
+      const url = browserProfileStartUrl(navState.url || initialUrl, authFallback ?? initialUrl)
+      sessionTargetRef.current = { profileId, isPrivate: next }
       setPrivate(next)
       props.api.updateParameters({
         descriptor: {
@@ -585,21 +601,34 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
           }
         }
       })
-      useBrowserGuests.getState().ensureGuest(tabId, url, next, profileId, browserTabCourseId(tabId))
+      useBrowserGuests.getState().ensureGuest(tabId, url, next, profileId, ownerCourse)
       useWorkspaceStore.getState().notifyLayoutChanged()
-    })().catch(console.error)
-  }, [initialUrl, isPrivate, navState.url, props.api, tabId, profileId, ownerCourse])
+    })().catch(() => showToast('시크릿 모드를 전환하지 못했어요. 다시 시도해 주세요.', 'danger')).finally(() => {
+      sessionChangingRef.current = false
+      setSessionChanging(false)
+    })
+  }, [initialUrl, isPrivate, navState.url, props.api, tabId, profileId, ownerCourse, authFallback])
 
-  const changeProfile = useCallback(async (id: string): Promise<void> => {
-    if (id === profileId) return
-    const { allowed } = await invoke('browser:prepareProfileSwitch', { tabId })
-    if (!allowed) return
-    const url = navState.url || initialUrl
-    props.api.updateParameters({ descriptor: { kind: 'browser', payload: { tabId, initialUrl: url, isPrivate, profileId: id } } })
-    setProfileId(id)
-    useBrowserGuests.getState().ensureGuest(tabId, url, isPrivate, id, browserTabCourseId(tabId))
-    useWorkspaceStore.getState().notifyLayoutChanged()
-  }, [profileId, tabId, navState.url, initialUrl, props.api, isPrivate, ownerCourse])
+  const changeProfile = useCallback(async (id: string): Promise<boolean> => {
+    if (id === profileId) return true
+    if (tabId === '' || sessionChangingRef.current) return false
+    sessionChangingRef.current = true
+    setSessionChanging(true)
+    try {
+      const { allowed } = await invoke('browser:prepareProfileSwitch', { tabId })
+      if (!allowed) return false
+      const url = browserProfileStartUrl(navState.url || initialUrl, authFallback ?? initialUrl)
+      sessionTargetRef.current = { profileId: id, isPrivate }
+      setProfileId(id)
+      props.api.updateParameters({ descriptor: { kind: 'browser', payload: { tabId, initialUrl: url, isPrivate, profileId: id } } })
+      useBrowserGuests.getState().ensureGuest(tabId, url, isPrivate, id, ownerCourse)
+      useWorkspaceStore.getState().notifyLayoutChanged()
+      return true
+    } finally {
+      sessionChangingRef.current = false
+      setSessionChanging(false)
+    }
+  }, [profileId, tabId, navState.url, initialUrl, props.api, isPrivate, ownerCourse, authFallback])
 
   // Reflect the page title into the dockview tab.
   const { api } = props
@@ -630,6 +659,10 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   }, [isPanelVisible, tabId])
 
   useEffect(() => {
+    if (sessionChangingRef.current || profileId !== sessionTargetRef.current.profileId ||
+      isPrivate !== sessionTargetRef.current.isPrivate) return
+    const liveNav = useBrowserGuests.getState().nav[tabId]
+    if (liveNav && liveNav.url !== navState.url) return
     if (tabId === '' || navState.url === '' || navState.url === initialUrl) {
       return
     }
@@ -645,7 +678,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
       }
     })
     useWorkspaceStore.getState().notifyLayoutChanged()
-  }, [api, initialUrl, isPrivate, navState.url, tabId, profileId])
+  }, [api, initialUrl, isPrivate, navState.url, tabId, profileId, sessionChanging])
 
   if (payload === null) {
     return <div className="workspace-panel" data-kind="unknown" />
@@ -659,12 +692,14 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
     >
       <BrowserToolbar
         tabId={tabId}
+        ownerCourse={ownerCourse}
         nav={navState}
         onNavigate={navigate}
         isPrivate={isPrivate}
         onTogglePrivate={togglePrivate}
         profileId={profileId}
         onProfileChange={changeProfile}
+        sessionChanging={sessionChanging}
       />
       {isPanelVisible &&
         !isPrivate &&
@@ -699,7 +734,9 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
             type="button"
             className="browser-login-prompt__action browser-login-prompt__action--primary"
             onClick={() => {
-              void invoke('shell:openExternal', { url: authFallback })
+              void invoke('shell:openExternal', { url: authFallback }).catch(() => {
+                showToast('기본 브라우저를 열지 못했어요. 다시 시도해 주세요.', 'danger')
+              })
             }}
           >
             {t('browser.authFallback.action')}

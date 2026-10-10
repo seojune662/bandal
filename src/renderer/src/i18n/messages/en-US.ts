@@ -365,8 +365,8 @@ export const enUS: Record<MessageKey, string> = {
   'browser.externalAuth.message':
     'Google sign-in continues in your default browser. Return to this window after signing in.',
   'browser.externalAuth.dismiss': 'Dismiss notice',
-  'browser.authFallback.message': 'This sign-in provider refused the in-app browser.',
-  'browser.authFallback.action': 'Continue in default browser',
+  'browser.authFallback.message': 'Google blocked this in-app sign-in. This is separate from your Bandal account. Sign in to the site in your default browser; that session will not transfer to Bandal.',
+  'browser.authFallback.action': 'Open site in default browser',
   'browser.authFallback.dismiss': 'Dismiss sign-in fallback',
 
   'settings.category.mcp.label': 'Connections',

@@ -18,6 +18,7 @@ import type { Favorite } from '../../../../shared/types/favorite'
 import { useBrowserGuests } from './browserGuestsStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useUniversityStore } from '../../stores/universityStore'
+import { browserFavoriteShortcuts } from './browserStartPageModel'
 import {
   DEFAULT_SEARCH_ENGINE,
   suggestionsFor,
@@ -44,12 +45,16 @@ interface HistoryHit {
 export function useAddressSuggestions(
   draft: string | null,
   includeHistory = true,
-  profileId = 'default'
+  profileId = 'default',
+  ownerCourseId?: string | null
 ): AddressSuggestion[] {
   const [history, setHistory] = useState<{ query: string; profileId: string; entries: HistoryHit[] } | null>(null)
-  const courseId = useWorkspaceStore((state) => state.activeCourseId)
+  const courseId = useWorkspaceStore((state) => ownerCourseId === undefined ? state.activeCourseId : ownerCourseId)
   const favorites = useFavoritesStore(
     (state) => state.byCourse[favoriteScopeKey(courseId)] ?? EMPTY_FAVORITES
+  )
+  const globalFavorites = useFavoritesStore(
+    (state) => state.byCourse[favoriteScopeKey(null)] ?? EMPTY_FAVORITES
   )
   const openTabs = useWorkspaceStore((state) => state.openTabs)
   // Closed address bars need not re-render when another guest navigates.
@@ -83,16 +88,7 @@ export function useAddressSuggestions(
     draft,
     {
       history: includeHistory && history?.profileId === profileId && history?.query === draft ? history.entries : [],
-      favorites: favorites.flatMap((favorite) =>
-        favorite.descriptor.kind === 'browser'
-          ? [
-              {
-                label: favorite.label,
-                url: favorite.descriptor.payload.initialUrl
-              }
-            ]
-          : []
-      ),
+      favorites: browserFavoriteShortcuts([...favorites, ...globalFavorites], profileId),
       services: services.map((service) => ({
         label: service.label,
         url: service.url

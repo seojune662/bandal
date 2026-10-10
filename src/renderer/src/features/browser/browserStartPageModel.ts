@@ -20,6 +20,24 @@ export function hostnameForUrl(url: string): string {
   }
 }
 
+/** Generic document titles need a site identity, including older saved pins. */
+export function browserFavoriteLabel(title: string, url: string): string {
+  const label = title.trim()
+  const hostname = hostnameForUrl(url)
+  if (label === '') return hostname
+  const normalized = label.toLocaleLowerCase().replace(/[\s\-_·:：|]+/g, '')
+  if (/^(마이페이지|내페이지|홈|홈페이지|메인|메인페이지|대시보드|로그인|계정|mypage|myaccount|home|homepage|index|dashboard|login|signin|account|welcome)$/.test(normalized)) {
+    return `${hostname} · ${label}`
+  }
+  return label
+}
+
+export function favoriteDisplayLabel(favorite: Favorite): string {
+  return favorite.descriptor.kind === 'browser'
+    ? browserFavoriteLabel(favorite.label, favorite.descriptor.payload.initialUrl)
+    : favorite.label
+}
+
 export function initialForUrl(url: string): string {
   const hostname = hostnameForUrl(url)
   return Array.from(hostname)[0]?.toLocaleUpperCase() ?? '?'
@@ -50,7 +68,7 @@ export function browserFavoriteShortcuts(
     const key = JSON.stringify([favoriteProfile, payload.initialUrl])
     if (seen.has(key)) return []
     seen.add(key)
-    return [{ id: favorite.id, label: favorite.label, url: payload.initialUrl }]
+    return [{ id: favorite.id, label: favoriteDisplayLabel(favorite), url: payload.initialUrl }]
   })
 }
 

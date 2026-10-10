@@ -24,6 +24,20 @@ test('page commands and events live on an explicit handle, not its DOM anchor', 
   page.dispose()
   await expect(page.handle.reload()).rejects.toThrow('closed')
 })
+test('late adoption identifies its navigation snapshot while subsequent real navigations remain live events', async () => {
+  const state = { id: 41, url: 'https://accounts.google.com/denied', title: '로그인할 수 없음', loading: false, canGoBack: true, canGoForward: false }
+  mocks.invoke.mockResolvedValueOnce({ state, adopted: true })
+  const page = attachNativePage(document.createElement('div'), 'tab', false, null)
+  const navigate = vi.fn()
+  page.handle.addEventListener('did-navigate', navigate)
+  await page.handle.focus()
+  expect(navigate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ url: state.url, isSnapshot: true }))
+  const receive = mocks.push.mock.calls.at(-1)![1]
+  receive({ tabId: 'tab', name: 'did-navigate', state: { ...state, url: 'https://chatgpt.com/' }, detail: { url: 'https://chatgpt.com/', httpResponseCode: 200 } })
+  expect(navigate.mock.calls[1]![0]).not.toHaveProperty('isSnapshot')
+  expect(page.handle.getURL()).toBe('https://chatgpt.com/')
+  page.dispose()
+})
 test('failed native creation rejects commands and reports a visible error once', async () => {
   mocks.invoke.mockRejectedValueOnce(new Error('closed profile'))
   const page = attachNativePage(document.createElement('div'), 'tab', false, null)

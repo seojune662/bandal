@@ -161,6 +161,11 @@ function clearUnusedPrivateSession(profileId: string): void {
   }, () => undefined)
 }
 export function registerGuestProfile(id: number, profileId: string, isPrivate: boolean): void { guestProfiles.set(id, { profileId, isPrivate }) }
+/** Standalone site windows must keep their parent's session alive too. */
+export function inheritGuestProfile(id: number, parentId: number): void {
+  const parent = guestProfiles.get(parentId)
+  if (parent) guestProfiles.set(id, { ...parent })
+}
 export function forgetGuestProfile(id: number): void {
   const previous = guestProfiles.get(id)
   guestProfiles.delete(id)

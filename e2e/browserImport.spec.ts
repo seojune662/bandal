@@ -162,7 +162,7 @@ test('imports Safari export through the real dialog with scoped bookmarks and id
     await expect(browser.getByRole('button', { name: '브라우저 프로필', exact: true })).toContainText('기본')
     await expect(browser.locator('.browser-bookmark').filter({ hasText: '강의 자료' })).toHaveCount(0)
     await browser.getByRole('button', { name: '브라우저 프로필', exact: true }).click()
-    await page.getByRole('dialog', { name: '브라우저 프로필 선택' }).getByRole('button', { name: '● 학교', exact: true }).click()
+    await page.getByRole('dialog', { name: '브라우저 프로필 선택' }).getByRole('button', { name: '학교 이 프로필로 전환', exact: true }).click()
     await expect(browser.getByRole('button', { name: '브라우저 프로필', exact: true })).toContainText('학교')
     await expect(browser.locator('.browser-bookmark').filter({ hasText: '강의 자료' })).toHaveCount(1)
     await expect(browser.locator('.browser-bookmark').filter({ hasText: '강의 자료' })).toBeVisible()

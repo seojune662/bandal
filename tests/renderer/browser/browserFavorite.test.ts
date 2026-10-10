@@ -25,6 +25,34 @@ beforeEach(() => {
 })
 
 describe('profile-aware browser favorites', () => {
+  test('repeated clicks cannot duplicate a pending save or re-add a pending removal', async () => {
+    let complete!: (value: unknown) => void
+    invokeMock.mockImplementation(() => new Promise(resolve => { complete = resolve }))
+    toggleFavorite('active-tab', nav)
+    toggleFavorite('active-tab', nav)
+    expect(invokeMock).toHaveBeenCalledTimes(1)
+    complete(favorite('created', 'school'))
+    await vi.waitFor(() => expect(useFavoritesStore.getState().byCourse.course).toHaveLength(1))
+    toggleFavorite('active-tab', nav)
+    toggleFavorite('active-tab', nav)
+    expect(invokeMock).toHaveBeenCalledTimes(2)
+    expect(invokeMock).toHaveBeenLastCalledWith('favorites:remove', { id: 'created' })
+    complete({ ok: true })
+    await vi.waitFor(() => expect(useFavoritesStore.getState().byCourse.course).toHaveLength(0))
+  })
+
+  test('disambiguates generic page titles and saves under the guest course, even when another course is active', async () => {
+    useWorkspaceStore.setState({ activeCourseId: 'another-course' })
+    toggleFavorite('active-tab', { ...nav, title: '마이페이지' })
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith('favorites:add', expect.objectContaining({ courseId: 'course', label: 'school.example · 마이페이지' })))
+  })
+
+  test('global guest ownership remains global while a course is selected', async () => {
+    useBrowserGuests.setState({ liveGuests: [{ tabId: 'active-tab', src: nav.url, profileId: 'school', isPrivate: false, courseId: null }] })
+    toggleFavorite('active-tab', nav)
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith('favorites:add', expect.objectContaining({ courseId: null })))
+  })
+
   test('saving from a named profile keeps the course and profile and never removes another account bookmark', async () => {
     useFavoritesStore.setState({ byCourse: { [favoriteScopeKey('course')]: [favorite('personal')], [favoriteScopeKey(null)]: [] } })
     toggleFavorite('active-tab', nav)

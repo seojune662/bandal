@@ -51,6 +51,8 @@ export interface BrowserPageHandle extends EventTarget {
 
 export interface DidNavigateEvent extends Event {
   httpResponseCode?: number
+  /** Existing document state replayed when a native page gains a renderer. */
+  isSnapshot?: boolean
   url: string
 }
 

@@ -154,3 +154,22 @@ test('host occlusion skips unused hidden pages; only their explicit preview requ
   native.setBrowserHostOccluded(event, true)
   expect(page.capturePage).toHaveBeenCalledOnce()
 })
+
+test('switching an adopted login popup permits recreating its tab in the chosen profile', async () => {
+  const { native, event } = await fixture()
+  const { attachNavigationPolicies } = await import('../../../src/main/features/browser/hardenWebviews')
+  const { closePage } = await import('../../../src/main/features/browser/pageClose')
+  const popup = new View()
+  popup.webContents.id = 402
+  mocks.view = popup
+  const policy = vi.mocked(attachNavigationPolicies).mock.calls[0]![1]
+  policy.createTab!({}, { url: 'https://accounts.google.com/signin', disposition: 'foreground-tab' } as Electron.HandlerDetails)
+  const request = mocks.host.webContents.send.mock.calls.find((call: unknown[]) => call[0] === 'browser:open-url')![1]
+  vi.mocked(closePage).mockImplementationOnce(async contents => { (contents as unknown as Page).emit('destroyed'); return true })
+  expect(await native.prepareProfileSwitch(event, request.tabId)).toEqual({ allowed: true })
+  expect(mocks.host.webContents.send.mock.calls.some((call: unknown[]) => call[0] === 'browser:close-tab')).toBe(false)
+  const replacement = new View()
+  replacement.webContents.id = 403
+  mocks.view = replacement
+  expect(await native.createBrowserPage(event, { tabId: request.tabId, courseId: null, isPrivate: false, profileId: 'personal' })).toMatchObject({ state: { id: 403 }, adopted: false })
+})

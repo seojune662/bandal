@@ -363,8 +363,8 @@ export const koKR = {
   'browser.externalAuth.message':
     '구글 로그인은 기본 브라우저에서 진행돼요. 로그인 후 이 창으로 돌아오세요.',
   'browser.externalAuth.dismiss': '안내 닫기',
-  'browser.authFallback.message': '이 로그인 서비스가 앱 내 브라우저를 거부했습니다.',
-  'browser.authFallback.action': '기본 브라우저에서 계속',
+  'browser.authFallback.message': 'Google이 앱 내 로그인을 제한했어요. 반달 계정과는 별개이며, 기본 브라우저에서 이 사이트에 다시 로그인해야 해요. 외부 로그인은 반달로 자동 연결되지 않아요.',
+  'browser.authFallback.action': '기본 브라우저에서 사이트 열기',
   'browser.authFallback.dismiss': '대체 로그인 안내 닫기',
 
   'settings.category.mcp.label': '연결',

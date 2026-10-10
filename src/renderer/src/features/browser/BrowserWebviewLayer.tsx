@@ -97,12 +97,11 @@ function useOpenUrlForwarding(): void {
   )
 }
 
-/** A popup loaded in-app first and then proved that it refuses embedding. */
+/** Main detects explicit embedded-login refusals in tabs and site windows. */
 function useAuthFallbackForwarding(): void {
   useEffect(
-    () => onPush('browser:external-auth', ({ url, webContentsId }) => {
-      if (webContentsId === undefined) return
-      const tabId = tabIdForWebContents(webContentsId)
+    () => onPush('browser:external-auth', ({ url, webContentsId, tabId: targetTabId }) => {
+      const tabId = targetTabId ?? (webContentsId === undefined ? null : tabIdForWebContents(webContentsId))
       if (tabId !== null) {
         useBrowserGuests.getState().setAuthFallback(tabId, url)
       }

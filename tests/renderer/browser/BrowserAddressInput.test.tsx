@@ -12,6 +12,8 @@ import { BrowserAddressInput } from '../../../src/renderer/src/features/browser/
 import { useWorkspaceStore } from '../../../src/renderer/src/stores/workspaceStore'
 import { useBrowserGuests } from '../../../src/renderer/src/features/browser/browserGuestsStore'
 import { isPointerPassthroughActive } from '../../../src/renderer/src/features/browser/webviewPassthrough'
+import { favoriteScopeKey, resetFavoritesStoreForTests, useFavoritesStore } from '../../../src/renderer/src/stores/favoritesStore'
+import type { Favorite } from '../../../src/shared/types/favorite'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 let root: Root
@@ -25,6 +27,7 @@ beforeEach(() => {
   navigate.mockReset()
   invokeMock.mockReset().mockResolvedValue({ entries: [] })
   useWorkspaceStore.setState({ openTabs: {} })
+  resetFavoritesStoreForTests()
   useBrowserGuests.setState({ nav: {}, liveGuests: [] })
   host = document.createElement('div')
   document.body.append(host)
@@ -53,6 +56,25 @@ function key(input: HTMLInputElement, key: string, extra = {}): void {
 async function tick(): Promise<void> { await act(() => vi.advanceTimersByTimeAsync(100)) }
 
 describe('browser address interaction', () => {
+  test('suggests the owning course and global favorites only from the selected profile', () => {
+    const saved = (id: string, profileId: string, courseId: string | null): Favorite => ({
+      id, courseId, label: '마이페이지',
+      descriptor: { kind: 'browser', payload: { tabId: id, initialUrl: `https://${id}.example`, profileId } },
+      sortOrder: 0, createdAt: '', updatedAt: ''
+    })
+    useWorkspaceStore.setState({ activeCourseId: 'other-course' })
+    useFavoritesStore.setState({ byCourse: {
+      course: [saved('school-course', 'school', 'course'), saved('personal-course', 'default', 'course')],
+      'other-course': [saved('other-course', 'school', 'other-course')],
+      [favoriteScopeKey(null)]: [saved('school-imported', 'school', null), saved('personal-imported', 'default', null)]
+    } })
+    act(() => root.render(<BrowserAddressInput value={original} onNavigate={navigate} focusSeq={0}
+      favicon={undefined} isPrivate={false} profileId="school" courseId="course" />))
+    focus(host.querySelector('input')!)
+    const labels = Array.from(document.querySelectorAll('.browser-suggestion__label'), node => node.textContent)
+    expect(labels).toEqual(['school-course.example · 마이페이지', 'school-imported.example · 마이페이지'])
+  })
+
   test('shows just the domain; focus selects the complete URL, and Escape restores it', () => {
     const input = render()
     expect(host.querySelector('.browser-address__display')?.textContent).toBe('youtube.com')

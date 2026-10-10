@@ -22,6 +22,14 @@ afterEach(() => { act(() => root.unmount()); host.remove() })
 async function render(courseId = 'c1') { await act(async () => root.render(<FavoritesSection courseId={courseId} />)) }
 async function input(selector: string, value: string) { await act(async () => { const node = host.querySelector<HTMLInputElement>(selector)!; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(node, value); node.dispatchEvent(new Event('input', { bubbles: true })) }) }
 async function submit(selector: string) { await act(async () => host.querySelector(selector)!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))) }
+test('existing generic website favorites show their site and retain the editable saved name', async () => {
+  const saved: Favorite = { ...favorite('etl'), label: '마이페이지', descriptor: { kind: 'browser', payload: { tabId: 'etl', initialUrl: 'https://myetl.snu.ac.kr/' } } }
+  useFavoritesStore.setState({ byCourse: { c1: [saved] } })
+  await render()
+  expect(host.querySelector('.favorite-row__open')?.textContent).toBe('myetl.snu.ac.kr · 마이페이지')
+  await act(async () => host.querySelector<HTMLButtonElement>('[title="이름 변경"]')!.click())
+  expect(host.querySelector<HTMLInputElement>('.favorite-rename-popover input')?.value).toBe('마이페이지')
+})
 test('a prior scope link completion leaves the new scope draft intact', async () => {
   let finish!: (value: unknown) => void
   invokeMock.mockImplementation(() => new Promise(resolve => { finish = resolve }))

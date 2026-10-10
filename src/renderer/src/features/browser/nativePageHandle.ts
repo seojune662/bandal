@@ -25,7 +25,7 @@ export function attachNativePage(element: HTMLElement, tabId: string, isPrivate:
     adopted = result.adopted
     emit('native-ready')
     if (adopted && current.url) {
-      emit('did-navigate', { url: current.url, httpResponseCode: current.httpStatus ?? 0 })
+      emit('did-navigate', { url: current.url, httpResponseCode: current.httpStatus ?? 0, isSnapshot: true })
       emit('page-title-updated', { title: current.title })
       emit('dom-ready')
       if (!current.loading) emit('did-stop-loading')

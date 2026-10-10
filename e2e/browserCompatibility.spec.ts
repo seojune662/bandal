@@ -59,6 +59,87 @@ async function childAt(bandal: BandalApp, url: string) {
   return bandal.app.evaluate(({ webContents }, target) => webContents.getAllWebContents().find(w => w.getURL() === target)!.id, url)
 }
 
+for (const popup of [false, true]) test(`delayed Google ${popup ? 'popup' : 'page'} refusal offers a fresh service login with separate session guidance`, async () => {
+  const bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '로그인 안내')
+    await bandal.app.evaluate(({ session, shell }) => {
+      session.fromPartition('persist:browsing').protocol.handle('https', request => {
+        const url = new URL(request.url)
+        const body = url.hostname === 'accounts.google.com'
+          ? '<h1>Google 로그인</h1><script>setTimeout(() => { document.body.innerHTML = "<h1>로그인할 수 없음</h1><p>브라우저 또는 앱이 안전하지 않을 수 있습니다.</p>" }, 500)</script>'
+          : '<h1>ChatGPT</h1>'
+        return new Response(`<html><head><title>로그인 테스트</title></head><body>${body}</body></html>`, { headers: { 'content-type': 'text/html; charset=utf-8' } })
+      })
+      shell.openExternal = async (url: string) => { (globalThis as unknown as { openedAuthUrl: string }).openedAuthUrl = url }
+    })
+    const root = await openTab(bandal, 'https://chatgpt.com/')
+    const authUrl = 'https://accounts.google.com/v3/signin/challenge/pwd?TL=private-state'
+    await run(bandal, root, popup ? `window.open('${authUrl}');void 0` : `location.href='${authUrl}'`)
+    const authPage = await childAt(bandal, authUrl)
+    const banner = bandal.page.locator('.browser-external-auth').filter({ hasText: 'Google' })
+    await expect(banner).toBeVisible()
+    await expect(banner).toContainText('자동')
+    await banner.getByRole('button', { name: /기본 브라우저/ }).click()
+    expect(await bandal.app.evaluate(() => (globalThis as unknown as { openedAuthUrl: string }).openedAuthUrl)).toBe('https://chatgpt.com/')
+    // Google has already removed the original service from its URL. Switching
+    // profiles must use the remembered service, never replay the old OAuth state.
+    const profile = await bandal.page.evaluate(() => window.bandal.invoke('browser:saveProfile', { name: '개인', color: '#397db5', icon: '●' }))
+    await bandal.app.evaluate(({ session }, id) => {
+      session.fromPartition(`persist:bandal-profile-${id}`).protocol.handle('https', () => new Response('<html><title>새 로그인</title><body>ChatGPT</body></html>', { headers: { 'content-type': 'text/html; charset=utf-8' } }))
+    }, profile.id)
+    await bandal.page.getByRole('button', { name: '브라우저 프로필', exact: true }).click()
+    await bandal.page.getByRole('dialog', { name: '브라우저 프로필 선택' }).getByRole('button', { name: '개인 이 프로필로 전환', exact: true }).click()
+    await expect(bandal.page.getByRole('button', { name: '브라우저 프로필', exact: true })).toContainText('개인')
+    await expect.poll(() => bandal.app.evaluate(({ webContents, session }, id) => {
+      const targetSession = session.fromPartition(`persist:bandal-profile-${id}`)
+      return webContents.getAllWebContents().find(w => w.session === targetSession)?.getURL()
+    }, profile.id)).toBe('https://chatgpt.com/')
+    expect(await bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id)?.isDestroyed() ?? true, authPage)).toBe(true)
+    await expect(banner).toHaveCount(0)
+  } finally { await bandal.close() }
+})
+
+test('profile creation is visible and immediately usable, and generic favorites identify their site', async ({}, info) => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '계정과 즐겨찾기')
+    const original = await openTab(bandal, `${site.origin}/account`)
+    await run(bandal, original, "document.cookie='account=school'")
+    const picker = bandal.page.getByRole('button', { name: '브라우저 프로필', exact: true })
+    await picker.click()
+    const dialog = bandal.page.getByRole('dialog', { name: '브라우저 프로필 선택' })
+    await dialog.getByRole('button', { name: /새 프로필 만들기/ }).click()
+    const name = dialog.getByLabel('프로필 이름', { exact: true })
+    await name.fill('개인 ChatGPT')
+    const inputStyle = await name.evaluate(element => {
+      const style = getComputedStyle(element)
+      return { border: style.borderTopStyle, width: parseFloat(style.borderTopWidth), rect: element.getBoundingClientRect().width }
+    })
+    expect(inputStyle.border).toBe('solid')
+    expect(inputStyle.width).toBeGreaterThan(0)
+    expect(inputStyle.rect).toBeGreaterThan(120)
+    await bandal.page.screenshot({ path: info.outputPath('browser-profile-dark.png') })
+    await dialog.getByRole('button', { name: '만들고 이 탭에서 사용', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(picker).toContainText('개인 ChatGPT')
+    const personal = await childAt(bandal, `${site.origin}/account`)
+    expect(personal).not.toBe(original)
+    expect(await run(bandal, personal, 'document.cookie')).toBe('')
+    await run(bandal, personal, "document.title='마이페이지'")
+    await expect(bandal.page.locator('.workspace-tab__title', { hasText: '마이페이지' })).toBeVisible()
+    await bandal.page.getByRole('button', { name: '즐겨찾기에 추가', exact: true }).click()
+    await expect(bandal.page.locator('.browser-bookmark:visible > span').last()).toHaveText('127.0.0.1 · 마이페이지')
+    await picker.click()
+    await expect(dialog).toContainText('개인 ChatGPT')
+    await bandal.page.evaluate(() => window.bandal.invoke('settings:set', { theme: 'light' }))
+    await expect(bandal.page.locator('html')).toHaveAttribute('data-theme', 'light')
+    await bandal.page.screenshot({ path: info.outputPath('browser-profile-light.png') })
+    await dialog.getByRole('button', { name: '닫기', exact: true }).click()
+    await expect(picker).toBeFocused()
+  } finally { await bandal.close(); await site.close() }
+})
+
 test('cross-site POST, opener messaging and nested authentication keep their native context', async () => {
   const site = await fixture(), bandal = await launchBandal()
   try {
@@ -220,7 +301,7 @@ test('profiles isolate logins and history, switch a live tab and inherit popup s
     await run(bandal, root, `document.cookie='account=personal';localStorage.setItem('account','personal')`)
     const profile = await bandal.page.evaluate(() => window.bandal.invoke('browser:saveProfile', { name: '학교', color: '#397db5', icon: '●' }))
     await bandal.page.getByRole('button', { name: '브라우저 프로필', exact: true }).click()
-    await bandal.page.getByRole('dialog', { name: '브라우저 프로필 선택' }).getByRole('button', { name: '● 학교', exact: true }).click()
+    await bandal.page.getByRole('dialog', { name: '브라우저 프로필 선택' }).getByRole('button', { name: '학교 이 프로필로 전환', exact: true }).click()
     await expect.poll(() => bandal.app.evaluate(({ webContents }, oldId) => webContents.fromId(oldId)?.isDestroyed() ?? true, root)).toBe(true)
     const school = await childAt(bandal, `${site.origin}/lecture`)
     await expect.poll(() => run(bandal, school, 'document.readyState')).toBe('complete')
@@ -296,7 +377,7 @@ test('profile session and tab identity survive restart without replacing the def
     await openTab(bandal, `${site.origin}/lecture`)
     const profile = await bandal.page.evaluate(() => window.bandal.invoke('browser:saveProfile', { name: '복원 계정', color: '#9757b0', icon: '●' }))
     await bandal.page.getByRole('button', { name: '브라우저 프로필', exact: true }).click()
-    await bandal.page.getByRole('dialog').getByRole('button', { name: '● 복원 계정', exact: true }).click()
+    await bandal.page.getByRole('dialog').getByRole('button', { name: '복원 계정 이 프로필로 전환', exact: true }).click()
     const id = await childAt(bandal, `${site.origin}/lecture`)
     await run(bandal, id, `location.href='${site.origin}/after-login'`)
     await expect.poll(() => run(bandal, id, 'location.pathname')).toBe('/after-login')
@@ -494,7 +575,7 @@ test('browser duplicate, split and modified click create independent pages in th
     await openTab(bandal, `${site.origin}/lecture`)
     const profile = await bandal.page.evaluate(() => window.bandal.invoke('browser:saveProfile', { name: '분리 계정', color: '#9757b0', icon: '●' }))
     await bandal.page.getByRole('button', { name: '브라우저 프로필', exact: true }).click()
-    await bandal.page.getByRole('dialog').getByRole('button', { name: '● 분리 계정', exact: true }).click()
+    await bandal.page.getByRole('dialog').getByRole('button', { name: '분리 계정 이 프로필로 전환', exact: true }).click()
     await expect(bandal.page.getByRole('button', { name: '브라우저 프로필', exact: true })).toContainText('분리 계정')
     const source = await childAt(bandal, `${site.origin}/lecture`)
     await run(bandal, source, `location.href='${site.origin}/current'`)

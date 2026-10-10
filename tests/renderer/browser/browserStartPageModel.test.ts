@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import type { Favorite } from '../../../src/shared/types/favorite'
 import {
   LEGACY_NEW_TAB_URL,
+  browserFavoriteLabel,
   browserFavoriteMatches,
   browserFavoriteShortcuts,
   hostnameForUrl,
@@ -33,6 +34,21 @@ describe('browser start-page model', () => {
       toneForUrl('https://example.com/b')
     )
     expect(Number(toneForUrl('https://example.com'))).toBeLessThan(6)
+  })
+
+  test('distinguishes generic titles by site without changing meaningful saved names', () => {
+    expect(browserFavoriteLabel('마이페이지', 'https://myetl.snu.ac.kr/')).toBe('myetl.snu.ac.kr · 마이페이지')
+    expect(browserFavoriteLabel('마이페이지', 'https://portal.example/account')).toBe('portal.example · 마이페이지')
+    expect(browserFavoriteLabel('My Account', 'https://www.example.com/account')).toBe('example.com · My Account')
+    expect(browserFavoriteLabel('  ', 'https://www.example.com')).toBe('example.com')
+    expect(browserFavoriteLabel('내 강의 노트', 'https://school.example')).toBe('내 강의 노트')
+    expect(browserFavoriteLabel('example.com · Home', 'https://example.com')).toBe('example.com · Home')
+  })
+
+  test('also disambiguates old generic bookmarks without overwriting their stored labels', () => {
+    const saved = favorite({ label: '마이페이지', descriptor: { kind: 'browser', payload: { tabId: 'etl', initialUrl: 'https://myetl.snu.ac.kr/' } } })
+    expect(browserFavoriteShortcuts([saved])[0]?.label).toBe('myetl.snu.ac.kr · 마이페이지')
+    expect(saved.label).toBe('마이페이지')
   })
 
   test('keeps only browser favorites in their stored order', () => {

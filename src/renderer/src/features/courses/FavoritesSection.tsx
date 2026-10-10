@@ -25,6 +25,7 @@ import {
   serializeFavoriteTabDrag
 } from './favoriteDrop'
 import { buildLinkFavoriteInput } from './linkFavorite'
+import { favoriteDisplayLabel } from '../browser/browserStartPageModel'
 
 interface FavoritesSectionProps {
   courseId: string | null
@@ -400,7 +401,7 @@ function FavoritesSectionBody({ courseId }: FavoritesSectionProps): JSX.Element 
               <button
                 type="button"
                 className="favorite-row__open"
-                title={favorite.label}
+                title={favorite.descriptor.kind === 'browser' ? `${favoriteDisplayLabel(favorite)}\n${favorite.descriptor.payload.initialUrl}` : favorite.label}
                 onClick={(event) => {
                   const newInstance =
                     favorite.descriptor.kind !== 'board' &&
@@ -417,12 +418,12 @@ function FavoritesSectionBody({ courseId }: FavoritesSectionProps): JSX.Element 
                 }}
               >
                 <TabKindIcon kind={favorite.descriptor.kind} />
-                <span>{favorite.label}</span>
+                <span>{favoriteDisplayLabel(favorite)}</span>
               </button>
               <div className="favorite-row__actions">
                 <button
                   type="button"
-                  aria-label={`${favorite.label} 이름 변경`}
+                  aria-label={`${favoriteDisplayLabel(favorite)} 이름 변경`}
                   title="이름 변경"
                   aria-expanded={renameDraft?.id === favorite.id}
                   onClick={(event) => openRenamePopover(event, favorite)}
@@ -431,7 +432,7 @@ function FavoritesSectionBody({ courseId }: FavoritesSectionProps): JSX.Element 
                 </button>
                 <button
                   type="button"
-                  aria-label={`${favorite.label} 즐겨찾기 제거`}
+                  aria-label={`${favoriteDisplayLabel(favorite)} 즐겨찾기 제거`}
                   title="즐겨찾기 제거"
                   onClick={() => handleRemove(favorite)}
                 >

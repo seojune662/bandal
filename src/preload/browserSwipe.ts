@@ -1,6 +1,13 @@
-export function waitForSwipe(state: () => { canBack: boolean; canForward: boolean; enabled: boolean }): Promise<'back' | 'forward'> {
+export interface BrowserSwipeState {
+  canBack: boolean
+  canForward: boolean
+  enabled: boolean
+  theme: 'light' | 'dark'
+}
+
+export function waitForSwipe(state: () => BrowserSwipeState): Promise<'back' | 'forward'> {
   return new Promise(resolve => {
-    let distance = 0, vertical = 0, last = 0, blocked = false, timer: ReturnType<typeof setTimeout> | undefined
+    let distance = 0, vertical = 0, last = -Infinity, blocked = false, timer: ReturnType<typeof setTimeout> | undefined
     let hint: HTMLElement | null = null
     const clear = (): void => { hint?.remove(); hint = null }
     const scrolls = (event: WheelEvent): boolean => {
@@ -32,13 +39,16 @@ export function waitForSwipe(state: () => { canBack: boolean; canForward: boolea
         if (!hint) {
           hint = document.createElement('div')
           hint.setAttribute('aria-hidden', 'true')
-          hint.style.cssText = 'position:fixed;top:45%;z-index:2147483647;border-radius:50%;width:48px;height:48px;display:grid;place-items:center;font:28px sans-serif;color:white;background:#42694e;pointer-events:none;box-shadow:0 3px 16px #0004;'
+          hint.style.cssText = 'all:initial;position:fixed;top:45%;z-index:2147483647;border-radius:50%;width:44px;height:44px;display:grid;place-items:center;pointer-events:none;box-shadow:0 3px 16px #0003;'
           document.documentElement.append(hint)
         }
+        // Use the app's neutral theme, never the page CSS or course accent.
+        hint.style.color = flags.theme === 'dark' ? '#171717' : '#ffffff'
+        hint.style.backgroundColor = flags.theme === 'dark' ? '#ececec' : '#171717'
         hint.style.left = distance < 0 ? '12px' : 'auto'
         hint.style.right = distance > 0 ? '12px' : 'auto'
         hint.style.opacity = String(Math.min(1, Math.abs(distance) / 160))
-        hint.textContent = distance < 0 ? '‹' : '›'
+        hint.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${distance < 0 ? 'M14 6l-6 6 6 6' : 'M10 6l6 6-6 6'}"/></svg>`
       } else clear()
       timer = setTimeout(() => {
         clear()
@@ -46,6 +56,7 @@ export function waitForSwipe(state: () => { canBack: boolean; canForward: boolea
           window.removeEventListener('wheel', wheel, true)
           resolve(distance < 0 ? 'back' : 'forward')
         }
+        distance = 0; vertical = 0; last = -Infinity; blocked = false
       }, 180)
     }
     window.addEventListener('wheel', wheel, { capture: true, passive: false })

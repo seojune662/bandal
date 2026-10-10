@@ -32,6 +32,22 @@ beforeEach(() => {
 })
 
 describe('ensureGuest', () => {
+  test.each([
+    [false, 'personal'],
+    [true, 'default']
+  ] as const)('clears old page errors and session UI when changing to private=%s profile=%s', (isPrivate, profileId) => {
+    store().ensureGuest('t1', 'https://example.com')
+    store().setOverlay('t1', { kind: 'crashed', reason: 'crashed', url: 'https://example.com' })
+    store().openFind('t1')
+    store().setFindQuery('t1', 'school account')
+    store().setZoom('t1', 2)
+    store().setAuthFallback('t1', 'https://example.com/login')
+    store().ensureGuest('t1', 'https://example.com', isPrivate, profileId)
+    expect(store().overlay.t1).toBeUndefined()
+    expect(store().find.t1).toBeUndefined()
+    expect(store().zoom.t1).toBeUndefined()
+    expect(store().authFallback.t1).toBeUndefined()
+  })
   test('adopts a new placement without resetting page or UI state', () => {
     store().ensureGuest('move', 'https://gemini.google.com', false, 'default', 'source')
     store().updateNav('move', { url: 'https://gemini.google.com/app/chat', title: 'Conversation', canGoBack: true })

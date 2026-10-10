@@ -2,6 +2,7 @@ import { attachNativePage } from './nativePageHandle'
 import { createTabFaviconController, focusVisibleBrowserPanel } from './browserTabEvents'
 import { useWorkspaceStore, workspaceApiForCourse } from '../../stores/workspaceStore'
 import { overlapsNativePage } from './useNativePageOcclusion'
+import { isEmbeddedAuthProviderUrl } from '../../../../shared/browserAuth'
 /**
  * One native browser page, positioned over its stable DOM panel anchor.
  *
@@ -195,6 +196,9 @@ export function BrowserGuestView({
         'did-navigate',
         ((event: DidNavigateEvent) => {
           favicon.navigation()
+          // Adopting an already loaded popup replays its current URL; it must
+          // retain any refusal main detected before this renderer mounted.
+          if (!event.isSnapshot) useBrowserGuests.getState().setAuthFallback(tabId, null)
           recordHttpResponse(tabId, event.url, event.httpResponseCode ?? 0)
           update({ httpStatus: event.httpResponseCode ?? 0 })
           if (event.url !== 'about:blank') update({ url: event.url, hasDocument: true, ...historyState() })
@@ -203,7 +207,10 @@ export function BrowserGuestView({
       [
         'did-navigate-in-page',
         ((event: DidNavigateInPageEvent) => {
-          if (event.isMainFrame) update({ url: event.url, hasDocument: true, ...historyState() })
+          if (event.isMainFrame) {
+            if (!isEmbeddedAuthProviderUrl(event.url)) useBrowserGuests.getState().setAuthFallback(tabId, null)
+            update({ url: event.url, hasDocument: true, ...historyState() })
+          }
         }) as EventListener
       ],
       [
@@ -226,36 +233,6 @@ export function BrowserGuestView({
             url: event.validatedURL
           })
         }) as EventListener
-      ],
-      [
-        'did-finish-load',
-        () => {
-          let url = ''
-          try {
-            url = element.getURL()
-          } catch {
-            return
-          }
-          let host = ''
-          try {
-            host = new URL(url).hostname
-          } catch {
-            return
-          }
-          if (host !== 'accounts.google.com' && host !== 'accounts.youtube.com') {
-            useBrowserGuests.getState().setAuthFallback(tabId, null)
-            return
-          }
-          void element.executeJavaScript(`(() => {
-            const text = (document.body?.innerText || '').slice(0, 20000);
-            return /disallowed[_ -]?useragent|browser or app may not be secure|couldn't sign you in|브라우저 또는 앱이 안전하지 않을 수|지원되지 않는 브라우저/i.test(text);
-          })()`).then((blocked) => {
-            useBrowserGuests.getState().setAuthFallback(
-              tabId,
-              blocked === true ? url : null
-            )
-          }).catch(() => undefined)
-        }
       ],
       [
         // Not a nav concern: this is where the guest's WebContents id first

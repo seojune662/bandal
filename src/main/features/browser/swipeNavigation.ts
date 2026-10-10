@@ -1,7 +1,8 @@
-import { ipcMain, type Session, type WebContents } from 'electron'
+import { ipcMain, nativeTheme, type Session, type WebContents } from 'electron'
 import { join } from 'node:path'
 import { getSettings } from '../../settingsStore'
 import { isManagedBrowserPage } from './managedPages'
+import { resolveThemeId } from '../../../shared/theme'
 const last = new Map<number, number>()
 let registered = false
 export function installGestureSession(session: Session): void {
@@ -11,7 +12,13 @@ export function installGestureSession(session: Session): void {
   ipcMain.handle('browser-gesture:state', event => {
     const wc = event.sender
     if (!isManagedBrowserPage(wc.id)) return { canBack: false, canForward: false, enabled: false }
-    return { canBack: wc.navigationHistory.canGoBack(), canForward: wc.navigationHistory.canGoForward(), enabled: getSettings().browser.swipeNavigation }
+    const settings = getSettings()
+    return {
+      canBack: wc.navigationHistory.canGoBack(),
+      canForward: wc.navigationHistory.canGoForward(),
+      enabled: settings.browser.swipeNavigation,
+      theme: resolveThemeId(settings.theme, nativeTheme.shouldUseDarkColors)
+    }
   })
   ipcMain.on('browser-gesture:navigate', (event, action: unknown) => navigateBySwipe(event.sender, action))
 }

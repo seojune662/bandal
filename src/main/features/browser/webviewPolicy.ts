@@ -13,6 +13,7 @@
  */
 
 import { classifyExternalScheme } from './externalScheme'
+import { isEmbeddedAuthProviderUrl } from '../../../shared/browserAuth'
 import {
   chordFromKeyboardEvent,
   SHORTCUT_SPECS,
@@ -71,24 +72,8 @@ export function popupForwardUrl(url: string): string | null {
   return isHttpUrl(url) ? url : null
 }
 
-/**
- * Google authentication host. Bandal now tries these flows in an app-owned,
- * opener-preserving window first. This classifier is also used to inspect the
- * loaded page for Google's explicit unsupported-browser response; only that
- * detected refusal exposes an opt-in system-browser fallback.
- */
-export function isBlockedEmbeddedAuthUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url)
-    if (parsed.protocol !== 'https:') return false
-    return (
-      parsed.hostname === 'accounts.google.com' ||
-      parsed.hostname === 'accounts.youtube.com'
-    )
-  } catch {
-    return false
-  }
-}
+/** Only an explicit refusal from a known provider offers an external fallback. */
+export const isBlockedEmbeddedAuthUrl = isEmbeddedAuthProviderUrl
 
 /**
  * [M6-A] Shortcuts that must keep working while a guest page has keyboard

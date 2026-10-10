@@ -1,4 +1,5 @@
-import { guestProfile } from './profiles'
+import { guestProfile, inheritGuestProfile, forgetGuestProfile } from './profiles'
+import { attachEmbeddedAuthFallback, inheritEmbeddedAuthSource } from './embeddedAuth'
 import { installGestureSession, navigateBySwipe } from './swipeNavigation'
 import { isManagedBrowserPage } from './managedPages'
 /**
@@ -21,7 +22,6 @@ import {
   PRIVATE_BROWSING_PARTITION,
   decidePopup,
   isAllowedAttach,
-  isBlockedEmbeddedAuthUrl,
   isNavigationAllowed,
   passthroughShortcut,
   popupWindowSize,
@@ -422,6 +422,14 @@ export function attachNavigationPolicies(
   policyAttached.add(webContents)
   if (!browsingContext(webContents.id)) registerBrowsingContext(webContents.id)
   const rootId = browsingContext(webContents.id)!.rootId
+  attachEmbeddedAuthFallback(webContents, (url) => {
+    const host = navigationHost(webContents)
+    const targetId = isManagedBrowserPage(webContents.id) ? webContents.id : rootId
+    const tabId = browsingContext(targetId)?.tabId
+    if (!host.isDestroyed()) host.send('browser:external-auth', {
+      url, webContentsId: targetId, ...(tabId ? { tabId } : {})
+    } satisfies BrowserOpenUrl)
+  })
   const navigationGuard = (event: ElectronEvent, url: string): void => {
     if (isNavigationAllowed(url)) return
     event.preventDefault()
@@ -495,25 +503,14 @@ export function attachNavigationPolicies(
     const host = navigationHost(webContents)
     const partition = opts.partition ?? navigationPartitions.get(webContents) ?? BROWSING_PARTITION
     registerBrowsingContext(child.id, webContents.id)
+    inheritGuestProfile(child.id, webContents.id)
+    inheritEmbeddedAuthSource(child, webContents)
     navigationHosts.set(child, host)
     navigationPartitions.set(child, partition)
     window.once('closed', () => popupLimiter.release(rootId))
     attachNavigationPolicies(child, { ...opts, partition })
     trackPopupDownload(window, webContents, host)
-    child.on('did-finish-load', () => {
-      const url = child.getURL()
-      if (!isBlockedEmbeddedAuthUrl(url)) return
-      void child.executeJavaScript(`(() => {
-        const text = (document.body?.innerText || '').slice(0, 20000);
-        return /disallowed[_ -]?useragent|browser or app may not be secure|couldn't sign you in|브라우저 또는 앱이 안전하지 않을 수|지원되지 않는 브라우저/i.test(text);
-      })()`).then((blocked) => {
-        if (blocked !== true || host.isDestroyed()) return
-        host.send('browser:external-auth', {
-          url, webContentsId: rootId,
-          ...(partition === PRIVATE_BROWSING_PARTITION ? { isPrivate: true } : {})
-        } satisfies BrowserOpenUrl)
-      }).catch(() => undefined)
-    })
+    child.once('destroyed', () => forgetGuestProfile(child.id))
   })
 
   /**
