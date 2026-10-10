@@ -16,19 +16,22 @@ afterEach(() => {
 })
 function fixture(): void {
   document.body.innerHTML = '<div class="workspace-host"><div class="dv-tabs-and-actions-container"><div class="dv-tab"><span>Page</span><button>Close</button></div><button>Add</button></div><div class="dv-sash"></div><div class="content"></div></div>'
-  dispose = installWorkspaceNativePassthrough(document)
+  dispose = installWorkspaceNativePassthrough()
 }
 function pointer(selector: string, type: string, button = 0): void {
   document.querySelector(selector)!.dispatchEvent(new MouseEvent(type, { bubbles: true, button }))
 }
 
-test('a tab press suppresses native pages synchronously before dragstart and a click releases them', () => {
+test('pressing a tab leaves native pages alone until native dragstart owns the pointer', () => {
   fixture()
   pointer('.dv-tab span', 'pointerdown')
   expect(tabDragSession.getSnapshot()).toBeNull()
+  expect(ipc.invoke).not.toHaveBeenCalled()
+  expect(isPointerPassthroughActive()).toBe(false)
+  tabDragSession.beginTab({ courseId: 'source', panelId: 'panel', nonce: 'drag' })
   expect(ipc.invoke).toHaveBeenCalledExactlyOnceWith('browser:setHostOccluded', { occluded: true })
   expect(isPointerPassthroughActive()).toBe(true)
-  pointer('.dv-tab span', 'pointerup')
+  tabDragSession.end()
   expect(ipc.invoke).toHaveBeenLastCalledWith('browser:setHostOccluded', { occluded: false })
   expect(isPointerPassthroughActive()).toBe(false)
 })
@@ -54,15 +57,17 @@ test('session events suppress pages immediately even when no pointer press was o
   expect(ipc.invoke).toHaveBeenLastCalledWith('browser:setHostOccluded', { occluded: false })
 })
 
-test('controls, right-clicks and content presses do not obscure native pages', () => {
+test('normal tab clicks, controls, right-clicks and content presses do not obscure native pages', () => {
   fixture()
+  pointer('.dv-tab span', 'pointerdown')
+  pointer('.dv-tab span', 'pointerup')
   pointer('.dv-tab button', 'pointerdown')
   pointer('.dv-tab span', 'pointerdown', 2)
   pointer('.content', 'pointerdown')
   expect(ipc.invoke).not.toHaveBeenCalled()
 })
 
-test('canceled pending gestures and disposal release only their own passthrough token', () => {
+test('aborted presses stay visible and disposal releases only its own passthrough token', () => {
   fixture()
   pointer('.dv-sash', 'pointerdown')
   pointer('.dv-sash', 'pointercancel')
@@ -74,7 +79,7 @@ test('canceled pending gestures and disposal release only their own passthrough 
   window.dispatchEvent(new Event('blur'))
   expect(isPointerPassthroughActive()).toBe(false)
   const releaseOverlay = acquirePointerPassthrough()
-  pointer('.dv-tab span', 'pointerdown')
+  tabDragSession.begin('resize')
   dispose?.()
   dispose = undefined
   expect(isPointerPassthroughActive()).toBe(true)

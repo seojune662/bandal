@@ -32,7 +32,7 @@ async function openNotes(page: Page, course: { name: string; folderPath: string 
   for (let index = 0; index < count; index++) await page.locator(`[data-material-path="${prefix}-${index}.md"]`).click()
 }
 
-test('multi-tab drags cancel without splitting, drop directly into a cold course, and insert in the chosen target group', async () => {
+test('multi-tab drags cancel without splitting, enter and drop into a cold course, and insert in the chosen target group', async () => {
   let bandal = await launchBandal({ keepProfileOnClose: true })
   try {
     let page = bandal.page
@@ -71,8 +71,8 @@ test('multi-tab drags cancel without splitting, drop directly into a cold course
       expect(await groupTitles(page)).toEqual(original)
     }
 
-    // Release before the 300 ms hover timer: the row itself is the destination,
-    // including when no target Dockview has been mounted in this app session.
+    // Entering the row selects the destination immediately, including when its
+    // Dockview has not mounted yet. Releasing there completes the held transfer.
     await page.evaluate(() => {
       document.addEventListener('drop', event => {
         if (!(event.target instanceof Element) || !event.target.closest('.course-row')) return
@@ -83,8 +83,10 @@ test('multi-tab drags cancel without splitting, drop directly into a cold course
     const row = (await folder(page, cold.name).boundingBox())!
     await page.mouse.move(row.x + 80, row.y + row.height / 2, { steps: 8 })
     await page.mouse.move(row.x + 81, row.y + row.height / 2)
+    await expect(folder(page, cold.name)).toHaveAttribute('data-selected', 'true')
+    await expect(page.locator('.workspace-host')).toHaveAttribute('data-tab-dragging', 'true')
     await page.mouse.up()
-    expect(await page.evaluate(() => (window as any).__courseAtDirectDrop)).toBe(source.name)
+    expect(await page.evaluate(() => (window as any).__courseAtDirectDrop)).toBe(cold.name)
     await expect(folder(page, cold.name)).toHaveAttribute('data-selected', 'true')
     await expect(tab(page, 'source-0')).toBeVisible()
     await expect.poll(() => page.evaluate(async ({ sourceId, targetId }) => {
@@ -108,6 +110,10 @@ test('multi-tab drags cancel without splitting, drop directly into a cold course
     const beforeInsert = await groupTitles(page)
     const targetHeader = targetGroups.first().locator('.dv-tab').nth(1)
     const point = (await targetHeader.boundingBox())!
+    // Leave the selected folder horizontally before moving up to its header.
+    // A diagonal path would enter other course rows and correctly select them.
+    const selectedRow = (await folder(page, split.name).boundingBox())!
+    await page.mouse.move(point.x + 3, selectedRow.y + selectedRow.height / 2, { steps: 8 })
     await page.mouse.move(point.x + 3, point.y + point.height / 2, { steps: 8 })
     await page.mouse.move(point.x + 4, point.y + point.height / 2)
     await expect(page.locator('.course-tab-move-preview')).toHaveAttribute('data-tab-insertion', 'true')

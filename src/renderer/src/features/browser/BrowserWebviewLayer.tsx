@@ -165,7 +165,7 @@ export function BrowserWebviewLayer(): JSX.Element {
   useLayoutEffect(() => {
     setNativeHostBlocked('workspace', isMenuOpen)
   }, [isMenuOpen])
-  useLayoutEffect(() => installWorkspaceNativePassthrough(document), [])
+  useLayoutEffect(() => installWorkspaceNativePassthrough(), [])
   useLayoutEffect(() => () => setNativeHostBlocked('workspace', false), [])
   useEffect(() => registerTabCloseGuard(async descriptor => {
     if (descriptor.kind !== 'browser') return true
