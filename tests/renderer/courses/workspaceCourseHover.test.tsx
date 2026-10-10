@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { useWorkspaceCourseHover, WORKSPACE_COURSE_HOVER_MS } from '../../../src/renderer/src/features/courses/useWorkspaceCourseHover'
+import { useWorkspaceCourseHover } from '../../../src/renderer/src/features/courses/useWorkspaceCourseHover'
 import { tabDragSession } from '../../../src/renderer/src/features/workspace/tabDragSession'
 import { useCoursesStore } from '../../../src/renderer/src/stores/coursesStore'
 import { BANDAL_TAB_DRAG_MIME } from '../../../src/renderer/src/features/workspace/tabDrag'
@@ -22,7 +22,7 @@ function drag(element: HTMLElement, type: string, extra: Record<string, unknown>
 }
 function Row({ id, enabled = true }: { id: string; enabled?: boolean }) {
   const hover = useWorkspaceCourseHover()
-  return <div {...hover.rowProps(id, enabled)}><span>Folder</span></div>
+  return <div {...hover.rowProps(id, enabled)}><span>Folder</span><button>Menu</button></div>
 }
 function mount(id = 'destination') {
   const container = document.createElement('section'), root = createRoot(container)
@@ -33,85 +33,77 @@ function mount(id = 'destination') {
 function begin(nonce = 'trusted', courseId: string | null = 'source') {
   act(() => tabDragSession.beginTab({ courseId, panelId: 'panel', nonce }))
 }
-async function advance(milliseconds: number) { await act(async () => vi.advanceTimersByTimeAsync(milliseconds)) }
 beforeEach(() => {
   vi.useFakeTimers()
   vi.mocked(dropWorkspaceTabOnCourse).mockClear()
   useCoursesStore.setState({ selectCourse: originalSelectCourse, selectedCourseId: 'source', courses: ['source', 'destination', 'other'].map(id => ({ id } as never)) })
-  select = vi.spyOn(useCoursesStore.getState(), 'selectCourse').mockImplementation(() => {})
+  select = vi.spyOn(useCoursesStore.getState(), 'selectCourse').mockImplementation(id => useCoursesStore.setState({ selectedCourseId: id }))
 })
 afterEach(() => {
   for (const root of roots.splice(0)) act(() => root.unmount())
   tabDragSession.end(); useCoursesStore.setState({ selectCourse: originalSelectCourse }); vi.restoreAllMocks(); vi.useRealTimers(); document.body.replaceChildren()
 })
 
-test('a held trusted tab switches after 300 ms and leaving cancels the hover', async () => {
-  expect(WORKSPACE_COURSE_HOVER_MS).toBe(300)
+test('entering a folder switches immediately without waiting for a dragover or dwell timer', () => {
   const { row } = mount()
-  expect(drag(row, 'dragover').defaultPrevented).toBe(false)
+  expect(drag(row, 'dragenter').defaultPrevented).toBe(false)
   begin()
-  expect(drag(row, 'dragover').defaultPrevented).toBe(true)
-  expect(row.getAttribute('data-tab-hover')).toBe('true')
-  await advance(299); expect(select).not.toHaveBeenCalled()
-  drag(row, 'dragleave'); await advance(1)
-  expect(select).not.toHaveBeenCalled()
-  drag(row, 'dragover'); await advance(300)
+  expect(drag(row.firstElementChild as HTMLElement, 'dragenter').defaultPrevented).toBe(true)
   expect(select).toHaveBeenCalledExactlyOnceWith('destination')
-  expect(row.hasAttribute('data-tab-hover')).toBe(false)
+  expect(tabDragSession.getSource()?.courseId).toBe('source')
+  expect(dropWorkspaceTabOnCourse).not.toHaveBeenCalled()
+  expect(vi.getTimerCount()).toBe(0)
 })
 
-test('rapid folder crossings cancel the previous timer even when its dragleave is missing', async () => {
-  const first = mount(), second = mount('other')
-  begin(); drag(first.row, 'dragover'); await advance(200)
-  drag(second.row, 'dragover')
-  expect(first.row.hasAttribute('data-tab-hover')).toBe(false)
-  await advance(100); expect(select).not.toHaveBeenCalled()
-  await advance(200); expect(select).toHaveBeenCalledExactlyOnceWith('other')
+test('rapid folder crossings follow every entry and a late dragleave cannot switch back', () => {
+  const first = mount(), second = mount('other'), origin = mount('source')
+  begin(); drag(first.row, 'dragenter'); drag(second.row, 'dragenter')
+  drag(first.row, 'dragleave')
+  expect(useCoursesStore.getState().selectedCourseId).toBe('other')
+  drag(origin.row, 'dragenter'); drag(first.row, 'dragenter')
+  expect(select.mock.calls.map(([id]) => id)).toEqual(['destination', 'other', 'source', 'destination'])
+  act(() => vi.runAllTimers())
+  expect(useCoursesStore.getState().selectedCourseId).toBe('destination')
 })
 
-test('leaving a folder for the canvas cancels a stale timer without dragleave', async () => {
-  const { row } = mount(), canvas = document.createElement('div'); document.body.append(canvas)
-  begin(); drag(row, 'dragover'); await advance(200)
-  drag(canvas, 'dragover'); await advance(300)
-  expect(select).not.toHaveBeenCalled()
-  expect(row.hasAttribute('data-tab-hover')).toBe(false)
+test('moving across nested folder children and repeated dragover does not repeat selection', () => {
+  const { row } = mount()
+  begin(); drag(row, 'dragenter')
+  drag(row.firstElementChild as HTMLElement, 'dragenter')
+  drag(row.lastElementChild as HTMLElement, 'dragenter')
+  drag(row, 'dragover')
+  expect(select).toHaveBeenCalledExactlyOnceWith('destination')
 })
 
-test('same selected course never shows a transfer highlight or schedules selection', async () => {
-  const { row } = mount('source')
+test('dragover also selects when Chromium omits the entry event after a render', () => {
+  const { row } = mount()
   begin(); expect(drag(row, 'dragover').defaultPrevented).toBe(true)
-  await advance(300)
-  expect(select).not.toHaveBeenCalled()
-  expect(row.hasAttribute('data-tab-hover')).toBe(false)
-})
-
-test('a held tab can return to its source course after visiting another destination', async () => {
-  const { row } = mount('source')
-  useCoursesStore.setState({ selectedCourseId: 'other' })
-  begin(); drag(row, 'dragover'); await advance(300)
-  expect(select).toHaveBeenCalledExactlyOnceWith('source')
-})
-
-test('a new drag nonce cancels the old hover instead of switching during the next gesture', async () => {
-  const { row } = mount()
-  begin(); drag(row, 'dragover'); await advance(200)
-  begin('replacement'); await advance(100)
-  expect(select).not.toHaveBeenCalled()
-  drag(row, 'dragover'); await advance(300)
   expect(select).toHaveBeenCalledExactlyOnceWith('destination')
 })
 
-test('cancel clears the highlight; a direct folder drop moves without waiting for hover', async () => {
+test('same selected course accepts the held tab without scheduling another selection', () => {
+  const { row } = mount('source')
+  begin(); expect(drag(row, 'dragenter').defaultPrevented).toBe(true)
+  expect(select).not.toHaveBeenCalled()
+})
+
+test('ending a gesture leaves no pending selection for a later gesture', () => {
   const { row } = mount()
-  begin(); drag(row, 'dragover')
-  act(() => tabDragSession.end()); await advance(300)
-  expect(select).not.toHaveBeenCalled()
-  begin('next'); drag(row, 'dragover')
+  begin(); drag(row, 'dragenter')
+  act(() => tabDragSession.end())
+  useCoursesStore.setState({ selectedCourseId: 'source' })
+  begin('replacement')
+  act(() => vi.runAllTimers())
+  expect(useCoursesStore.getState().selectedCourseId).toBe('source')
+  drag(row, 'dragenter')
+  expect(select).toHaveBeenCalledTimes(2)
+})
+
+test('a direct folder drop moves once without requiring an earlier entry', () => {
+  const { row } = mount()
+  begin()
   expect(drag(row, 'drop').defaultPrevented).toBe(true)
-  await advance(300)
-  expect(select).not.toHaveBeenCalled()
-  expect(dropWorkspaceTabOnCourse).toHaveBeenCalledExactlyOnceWith({ courseId: 'source', panelId: 'panel', nonce: 'next' }, 'destination')
-  expect(row.hasAttribute('data-tab-hover')).toBe(false)
+  expect(dropWorkspaceTabOnCourse).toHaveBeenCalledExactlyOnceWith({ courseId: 'source', panelId: 'panel', nonce: 'trusted' }, 'destination')
 })
 
 test('a forged drop payload and a disabled row cannot move the held tab', () => {
@@ -119,22 +111,23 @@ test('a forged drop payload and a disabled row cannot move the held tab', () => 
   begin()
   expect(drag(row, 'drop', { dataTransfer: { types: [BANDAL_TAB_DRAG_MIME], getData: () => JSON.stringify({ source: { nonce: 'forged' } }) } }).defaultPrevented).toBe(false)
   act(() => root.render(<Row id="destination" enabled={false} />))
+  expect(drag(row, 'dragenter').defaultPrevented).toBe(false)
   expect(drag(row, 'drop').defaultPrevented).toBe(false)
+  expect(select).not.toHaveBeenCalled()
   expect(dropWorkspaceTabOnCourse).not.toHaveBeenCalled()
 })
 
-test('a pending or deleted destination cannot switch when its old timer expires', async () => {
-  const { root, row } = mount()
-  begin(); drag(row, 'dragover')
-  act(() => root.render(<Row id="destination" enabled={false} />)); await advance(300)
-  expect(select).not.toHaveBeenCalled()
-  act(() => root.render(<Row id="destination" />)); drag(row, 'dragover')
-  useCoursesStore.setState({ courses: [{ id: 'source' } as never] }); await advance(300)
+test('deleted destinations and unrelated payloads cannot select a course', () => {
+  const { row } = mount()
+  begin()
+  expect(drag(row, 'dragenter', { dataTransfer: { types: ['Files'] } }).defaultPrevented).toBe(false)
+  useCoursesStore.setState({ courses: [{ id: 'source' } as never] })
+  expect(drag(row, 'dragenter').defaultPrevented).toBe(false)
   expect(select).not.toHaveBeenCalled()
 })
 
-test('temporary no-course tabs can hover into their first real course', async () => {
+test('temporary no-course tabs can enter their first real course immediately', () => {
   const { row } = mount()
-  begin('temporary', null); drag(row, 'dragover'); await advance(300)
+  begin('temporary', null); drag(row, 'dragenter')
   expect(select).toHaveBeenCalledExactlyOnceWith('destination')
 })

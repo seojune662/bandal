@@ -44,9 +44,9 @@ export function CourseListItem({
         data-drop-before={dropBefore || undefined}
         data-dragging={dragging || undefined}
         {...dragProps}
-        data-tab-hover={(hover as Record<string, unknown>)['data-tab-hover'] || undefined}
+        onDragEnter={event => { hover.onDragEnter?.(event); if (!event.defaultPrevented) dragProps.onDragEnter?.(event) }}
         onDragOver={event => { hover.onDragOver?.(event); if (!event.defaultPrevented) dragProps.onDragOver?.(event) }}
-        onDragLeave={event => { hover.onDragLeave?.(event); dragProps.onDragLeave?.(event) }}
+        onDragLeave={dragProps.onDragLeave}
         onDrop={event => { hover.onDrop?.(event); if (!event.defaultPrevented) dragProps.onDrop?.(event) }}
         onContextMenu={onContextMenu}
       >

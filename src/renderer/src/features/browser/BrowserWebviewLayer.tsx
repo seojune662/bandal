@@ -13,6 +13,7 @@ import { useNativePageOcclusion } from './useNativePageOcclusion'
 
 import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react'
 import { setNativeHostBlocked } from './nativeHostVisibility'
+import { installWorkspaceNativePassthrough } from './workspaceNativePassthrough'
 import { tabDragSession } from '../workspace/tabDragSession'
 import { registerTabCloseGuard } from '../workspace/tabCloseGuard'
 import { v4 as uuidv4 } from 'uuid'
@@ -162,8 +163,9 @@ export function BrowserWebviewLayer(): JSX.Element {
   const isMenuOpen = useNewTabMenu((state) => state.isOpen)
   const isDragActive = useSyncExternalStore(tabDragSession.subscribe, tabDragSession.getSnapshot) !== null
   useLayoutEffect(() => {
-    setNativeHostBlocked('workspace', isDragActive || isMenuOpen)
-  }, [isDragActive, isMenuOpen])
+    setNativeHostBlocked('workspace', isMenuOpen)
+  }, [isMenuOpen])
+  useLayoutEffect(() => installWorkspaceNativePassthrough(document), [])
   useLayoutEffect(() => () => setNativeHostBlocked('workspace', false), [])
   useEffect(() => registerTabCloseGuard(async descriptor => {
     if (descriptor.kind !== 'browser') return true

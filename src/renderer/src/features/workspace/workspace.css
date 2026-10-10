@@ -873,7 +873,6 @@
    Cross-course placement uses one guide, measured from the current content. */
 .workspace-course[hidden] :is(.dv-drop-target-anchor, .dv-drop-target-selection),
 .workspace-host[data-course-tab-moving] :is(.dv-drop-target-anchor, .dv-drop-target-selection),
-.workspace-host[data-tab-drag-outside] :is(.dv-drop-target-anchor, .dv-drop-target-selection) {
+.workspace-host[data-tab-drag-outside] :is(.dv-drop-target-anchor, .dv-drop-target-selection, .course-tab-move-preview) {
   visibility: hidden !important;
 }
-.course-row[data-tab-hover] { background: var(--bg-hover); outline: 1px solid var(--focus-ring); outline-offset: -1px; }

@@ -65,6 +65,8 @@ export function CourseTabMoveOverlay(): JSX.Element {
     const root = overlayRef.current?.closest<HTMLElement>('.workspace-host')
     if (!root) return
     let inside = false
+    let point: { x: number; y: number; target: Node | null } | null = null
+    let previewFrame: number | null = null
     let lastCourse = useWorkspaceStore.getState().activeCourseId
     let lastHydration = useWorkspaceStore.getState().hydration
     let lastSurface = useWorkspaceStore.getState().surface
@@ -76,30 +78,53 @@ export function CourseTabMoveOverlay(): JSX.Element {
       if (heldTab && !inside) root.dataset.tabDragOutside = 'true'
       else delete root.dataset.tabDragOutside
     }
-    const targetAt = (event: DragEvent): { courseId: string | null; target: MoveTarget } | null => {
+    const targetAtPoint = (x: number, y: number): { courseId: string | null; target: MoveTarget } | null => {
       const source = tabDragSession.getSource(), state = useWorkspaceStore.getState()
-      if (!source || tabDragSession.getSnapshot() !== 'tab' || !event.dataTransfer?.types.includes(BANDAL_TAB_DRAG_MIME) ||
+      if (!source || tabDragSession.getSnapshot() !== 'tab' ||
         state.surface !== 'course' || state.hydration !== 'ready' || (state.activeCourseId === null && source.courseId !== null)) return null
       const api = workspaceApiForCourse(state.activeCourseId)
-      const target = api ? courseMoveTarget(api, root, event.clientX, event.clientY) : null
+      const target = api ? courseMoveTarget(api, root, x, y) : null
       return target ? { courseId: state.activeCourseId, target } : null
     }
-    const over = (event: DragEvent): void => {
+    const withinRoot = (x: number, y: number, target: Node | null): boolean => {
       const bounds = root.getBoundingClientRect()
-      inside = event.target instanceof Node && root.contains(event.target) &&
-        event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom
+      return !!target && root.contains(target) && x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom
+    }
+    const showPreview = (destination: ReturnType<typeof targetAtPoint>): void => {
+      setPreview(current => JSON.stringify(current) === JSON.stringify(destination?.target ?? null) ? current : destination?.target ?? null)
+    }
+    const refreshPreview = (): void => {
+      if (!point || !inside) return
+      const hit = document.elementFromPoint?.(point.x, point.y) ?? point.target
+      inside = withinRoot(point.x, point.y, hit)
       reflectGuides()
-      if (!inside) { setPreview(null); return }
-      const destination = targetAt(event)
-      if (!destination) { setPreview(null); return }
+      showPreview(inside ? targetAtPoint(point.x, point.y) : null)
+    }
+    const schedulePreview = (): void => {
+      if (!point || !inside) return
+      if (previewFrame !== null) cancelAnimationFrame(previewFrame)
+      previewFrame = requestAnimationFrame(() => { previewFrame = null; refreshPreview() })
+    }
+    const over = (event: DragEvent): void => {
+      point = { x: event.clientX, y: event.clientY, target: event.target instanceof Node ? event.target : null }
+      inside = withinRoot(point.x, point.y, point.target)
+      reflectGuides()
+      if (!inside || !event.dataTransfer?.types.includes(BANDAL_TAB_DRAG_MIME)) { setPreview(null); return }
+      const destination = targetAtPoint(point.x, point.y)
+      showPreview(destination)
+      // Course hydration and Dockview layout can finish after this native
+      // event. Re-evaluate the held position without requiring another wiggle.
+      schedulePreview()
+      if (!destination) return
       event.preventDefault()
       event.stopPropagation()
-      event.dataTransfer!.dropEffect = 'move'
-      setPreview(current => JSON.stringify(current) === JSON.stringify(destination.target) ? current : destination.target)
+      event.dataTransfer.dropEffect = 'move'
     }
     const drop = (event: DragEvent): void => {
       setPreview(null)
-      const source = tabDragSession.getSource(), destination = targetAt(event)
+      const source = tabDragSession.getSource()
+      const hit = document.elementFromPoint?.(event.clientX, event.clientY) ?? (event.target instanceof Node ? event.target : null)
+      const destination = withinRoot(event.clientX, event.clientY, hit) ? targetAtPoint(event.clientX, event.clientY) : null
       if (event.type !== 'drop' || !source || !destination || !event.dataTransfer || !matchesWorkspaceMoveData(event.dataTransfer, source)) return
       event.preventDefault()
       event.stopPropagation()
@@ -123,22 +148,28 @@ export function CourseTabMoveOverlay(): JSX.Element {
       } finally { finishWorkspaceCourseMoveDrop(source.nonce, accepted) }
     }
     const leave = (event: DragEvent): void => {
-      if (!(event.relatedTarget instanceof Node) || !root.contains(event.relatedTarget)) { inside = false; reflectGuides(); setPreview(null) }
+      // Child targets can emit dragleave with no relatedTarget while the
+      // pointer is still over the canvas. Only a real region exit clears it.
+      const next = event.relatedTarget instanceof Node ? event.relatedTarget : document.elementFromPoint?.(event.clientX, event.clientY)
+      if (!next || !root.contains(next)) { inside = false; reflectGuides(); setPreview(null) }
     }
-    const unsubscribe = tabDragSession.subscribe(() => { inside = false; reflectGuides(); setPreview(null) })
+    const unsubscribe = tabDragSession.subscribe(() => { inside = false; point = null; reflectGuides(); setPreview(null) })
     const stopCourse = useWorkspaceStore.subscribe(state => {
       if (state.activeCourseId !== lastCourse || state.hydration !== lastHydration || state.surface !== lastSurface) {
         lastCourse = state.activeCourseId; lastHydration = state.hydration; lastSurface = state.surface
         setPreview(null)
+        schedulePreview()
       }
       reflectGuides()
     })
     reflectGuides()
+    window.addEventListener('dragenter', over, true)
     window.addEventListener('dragover', over, true)
     root.addEventListener('drop', drop, true)
     root.addEventListener('dragleave', leave)
     return () => {
-      unsubscribe(); stopCourse(); window.removeEventListener('dragover', over, true); root.removeEventListener('drop', drop, true); root.removeEventListener('dragleave', leave)
+      if (previewFrame !== null) cancelAnimationFrame(previewFrame)
+      unsubscribe(); stopCourse(); window.removeEventListener('dragenter', over, true); window.removeEventListener('dragover', over, true); root.removeEventListener('drop', drop, true); root.removeEventListener('dragleave', leave)
       delete root.dataset.courseTabMoving; delete root.dataset.tabDragOutside
     }
   }, [])

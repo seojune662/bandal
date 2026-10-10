@@ -56,17 +56,12 @@ test('course hover keeps one live preview, cancel restores the source, and a fav
       await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
       await page.mouse.down()
       await page.mouse.move(bounds.x + bounds.width / 2 + 12, bounds.y + bounds.height / 2, { steps: 4 })
-      await expect(page.locator('.workspace-host')).toHaveAttribute('data-tab-dragging', 'true')
-      // Native browser suppression crosses IPC. Keep the pointer in the tab
-      // strip until it commits so CDP cannot enter the still-visible guest.
-      await expect.poll(() => app.evaluate(({ BrowserWindow }) => {
-        const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
-        return host.contentView.children.filter((view: any) => view.webContents).every((view: any) => !view.getVisible())
-      })).toBe(true)
+      // Continue immediately, as a real drag does: do not hide a native-page
+      // interception race by waiting for browser suppression in the fixture.
     }
     const workspace = (await page.locator('.workspace-host').boundingBox())!
     await beginTabDrag(tab)
-    await page.mouse.move(workspace.x + workspace.width - 8, workspace.y + workspace.height / 2, { steps: 15 })
+    await page.mouse.move(workspace.x + workspace.width - 8, workspace.y + workspace.height / 2)
     await expect(page.locator('.workspace-host')).toHaveAttribute('data-tab-dragging', 'true')
     await record('source-edge')
     const destination = (await folder('Target').boundingBox())!
