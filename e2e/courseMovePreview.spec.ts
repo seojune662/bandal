@@ -25,11 +25,24 @@ test('course hover keeps one live preview, cancel restores the source, and a fav
     await folder('Source').locator('.course-row__select').click()
     await open(source.id, 'https://chatgpt.com/moving')
     await open(source.id, 'https://gemini.google.com/app/source')
+    // Record the first gesture too: native-page focus can interrupt a pressed
+    // inactive tab before Chromium has started HTML DnD on Windows.
+    await page.evaluate(() => {
+      ;(window as any).__workspaceDragEvents = []
+      for (const type of ['pointerdown', 'mousedown', 'dragstart', 'pointercancel', 'dragend', 'mouseup', 'blur', 'focus']) window.addEventListener(type, event => {
+        const events = (window as any).__workspaceDragEvents
+        if (events.length >= 200) return
+        events.push({ type, time: performance.now(), target: event.target === window ? 'window' : (event.target as Element)?.className,
+          x: (event as MouseEvent).clientX, y: (event as MouseEvent).clientY,
+          focused: document.hasFocus(), dragging: document.querySelector('.workspace-host')?.getAttribute('data-tab-dragging') })
+      }, true)
+    })
     const record = async (stage: string) => {
       const dom = await page.evaluate(() => {
         const rect = (element: Element | null) => { if (!element) return null; const b = element.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height, visible: !!element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden' } }
         return {
           dragging: document.querySelector('.workspace-host')?.getAttribute('data-tab-dragging'),
+          events: (window as any).__workspaceDragEvents,
           selected: document.querySelector('.course-row[data-selected="true"]')?.textContent,
           groups: [...document.querySelectorAll('.workspace-course:not([hidden]) .dv-groupview')].map(element => ({
             group: rect(element), content: rect(element.querySelector(':scope > .dv-content-container')),
@@ -116,6 +129,9 @@ test('course hover keeps one live preview, cancel restores the source, and a fav
       return [Object.keys((source.layout as any)?.panels ?? {}).length, Object.keys((target.layout as any)?.panels ?? {}).length]
     }, { sourceId: source.id, targetId: target.id })).toEqual([2, 1])
     await record('favorite-copy')
+  } catch (error) {
+    records.push({ stage: 'failed', events: await bandal.page.evaluate(() => (window as any).__workspaceDragEvents).catch(() => null) })
+    throw error
   } finally {
     writeFileSync(info.outputPath('geometry.json'), JSON.stringify(records, null, 2))
     await bandal.close()

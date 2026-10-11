@@ -1,0 +1,30 @@
+name: Windows workspace drag regression
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workspace-drag:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Repeat native tab and course drag scenarios
+        run: pnpm exec playwright test -c e2e courseMovePreview.spec.ts workspaceCourseDrop.spec.ts --repeat-each=3
+      - name: Save failed input traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-workspace-drag-results
+          path: e2e/test-results
+          if-no-files-found: ignore
