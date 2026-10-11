@@ -39,7 +39,7 @@ export function createEmbeddedAuthObserver(documentId: string): string {
       }
       return text.slice(0, 40000);
     };
-    const snapshot = () => {
+    const readSnapshot = () => {
       const main = document.querySelector('main,[role="main"]') || document.body;
       const text = textOf(main);
       const headings = Array.from((main || document).querySelectorAll('h1,h2,[role="heading"]')).map(textOf).join(' ');
@@ -51,13 +51,20 @@ export function createEmbeddedAuthObserver(documentId: string): string {
       else if ((rejectedPage || rejectedHeading) && /browser or app may not be secure|브라우저 또는 앱이 안전하지 않을 수/i.test(text)) reason = 'insecure-browser';
       return { documentId, reason };
     };
-    let lastReason = snapshot().reason;
+    let lastReason = readSnapshot().reason;
+    // Main also reads after same-document URL changes, which do not necessarily
+    // mutate the DOM. Keep subsequent mutation comparisons at that observed state.
+    const snapshot = () => {
+      const current = readSnapshot();
+      lastReason = current.reason;
+      return current;
+    };
     const observer = new MutationObserver(() => {
       if (disposed || timer) return;
       timer = setTimeout(() => {
         timer = 0;
         if (disposed || window[key]?.documentId !== documentId) return;
-        const reason = snapshot().reason;
+        const reason = readSnapshot().reason;
         if (reason !== lastReason) {
           lastReason = reason;
           console.debug(${JSON.stringify(EMBEDDED_AUTH_STATUS_PREFIX)} + documentId);

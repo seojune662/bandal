@@ -124,6 +124,29 @@ test('newer recovery snapshots supersede an older pending refusal in the same do
   expect(blocked(statuses)).toEqual([])
 })
 
+test('a URL-only refusal updates the observer baseline so a later DOM recovery is reported', async () => {
+  const { page, statuses } = fixture()
+  page.navigate('https://accounts.google.com/v3/signin/identifier',
+    '<main><h1>Google 로그인</h1><p>브라우저 또는 앱이 안전하지 않을 수 있습니다.</p></main>')
+  await Promise.resolve()
+  expect(blocked(statuses)).toEqual([])
+  const documentId = browserAuthDocumentId(page.electron)
+  // Google can change its SPA route before replacing the contents. This read
+  // used to change only main's reason, leaving the observer at its initial null.
+  page.dom.window.history.pushState({}, '', '/v3/signin/rejected')
+  page.url = page.dom.window.location.href
+  page.emit('did-navigate-in-page', {}, page.url, true)
+  await vi.waitFor(() => expect(blocked(statuses)).toEqual([expect.objectContaining({
+    documentId, reason: 'insecure-browser'
+  })]))
+  page.dom.window.document.body.innerHTML = login
+  await vi.waitFor(() => expect(statuses).toHaveBeenLastCalledWith(expect.objectContaining({
+    status: 'clear', documentId
+  })))
+  page.dom.window.document.body.innerHTML = refusal
+  await vi.waitFor(() => expect(blocked(statuses)).toHaveLength(2))
+})
+
 test.each(['did-stop-loading', 'did-fail-load'] as const)('a canceled navigation resumes its retained document after %s without dom-ready', async event => {
   const { page, statuses } = fixture()
   page.navigate('https://accounts.google.com/v3/signin/rejected', refusal)
