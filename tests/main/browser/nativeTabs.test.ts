@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { beforeEach, expect, test, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ host: null as any, view: null as any, created: vi.fn(), appOn: vi.fn() }))
+const mocks = vi.hoisted(() => ({ host: null as any, view: null as any, created: vi.fn(), appOn: vi.fn(), cleanProbe: false }))
 vi.mock('electron', () => ({
   app: { on: mocks.appOn, quit: vi.fn() }, dialog: { showMessageBoxSync: vi.fn() },
   BrowserWindow: { fromWebContents: () => mocks.host },
@@ -14,6 +14,7 @@ vi.mock('../../../src/main/features/browser/hardenWebviews', () => ({ attachGues
 vi.mock('../../../src/main/features/browser/swipeNavigation', () => ({ installSwipeNavigation: vi.fn() }))
 vi.mock('../../../src/main/features/browser/popupLifecycle', () => ({ trackTabDownload: vi.fn() }))
 vi.mock('../../../src/main/features/browser/pageClose', () => ({ closePage: vi.fn(async () => true) }))
+vi.mock('../../../src/main/features/browser/authProbe', () => ({ isCleanBrowserAuthProbe: () => mocks.cleanProbe }))
 
 const image = (url = 'data:image/png;base64,fixture') => ({ isEmpty: () => false, toDataURL: () => url })
 class Page extends EventEmitter {
@@ -23,6 +24,7 @@ class Page extends EventEmitter {
   focus = vi.fn()
   close = vi.fn()
   loadURL = vi.fn()
+  executeJavaScript = vi.fn(async () => 'script-result')
   getURL = () => 'about:blank'
   getTitle = () => 'Retained fixture'
   isLoadingMainFrame = () => false
@@ -46,7 +48,7 @@ class Host extends EventEmitter {
   getContentSize = () => [900, 700]
   close = vi.fn()
 }
-beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); mocks.view = new View(); mocks.host = new Host() })
+beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); mocks.cleanProbe = false; mocks.view = new View(); mocks.host = new Host() })
 const bounds = { x: 20, y: 40, width: 640, height: 420 }
 async function fixture() {
   const native = await import('../../../src/main/features/browser/nativeTabs')
@@ -69,6 +71,18 @@ test('native focus is forwarded only for a visible page', async () => {
   expect(mocks.host.webContents.send).toHaveBeenCalledWith('browser:page-event', expect.objectContaining({
     tabId: 'retained', name: 'focus', detail: { webContentsId: page.id }
   }))
+})
+
+test('the clean authentication probe rejects page scripts while preserving ordinary navigation', async () => {
+  const { native, event, page } = await fixture()
+  mocks.cleanProbe = true
+  await expect(native.browserPageAction(event, { tabId: 'retained', action: 'executeJavaScript', args: ['document.title'] }))
+    .rejects.toThrow('Page scripts are disabled')
+  expect(page.executeJavaScript).not.toHaveBeenCalled()
+  await native.browserPageAction(event, { tabId: 'retained', action: 'loadURL', args: ['https://accounts.google.com/'] })
+  expect(page.loadURL).toHaveBeenCalledWith('https://accounts.google.com/')
+  mocks.cleanProbe = false
+  expect(await native.browserPageAction(event, { tabId: 'retained', action: 'executeJavaScript', args: ['document.title'] })).toBe('script-result')
 })
 
 test('mouse presses select a visible native pane even when OS focus does not change', async () => {

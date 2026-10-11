@@ -48,6 +48,58 @@ test('failed native creation rejects commands and reports a visible error once',
   expect(mocks.invoke).toHaveBeenCalledTimes(1)
   page.dispose()
 })
+test('late page events from a replaced native guest cannot overwrite the current handle', async () => {
+  const page = attachNativePage(document.createElement('div'), 'tab', false, null)
+  await page.handle.focus()
+  const navigate = vi.fn()
+  page.handle.addEventListener('did-navigate', navigate)
+  const receive = mocks.push.mock.calls.at(-1)![1]
+  receive({ tabId: 'tab', name: 'did-navigate',
+    state: { id: 12, url: 'https://accounts.google.com/old-refusal', authDocumentId: 'old' },
+    detail: { url: 'https://accounts.google.com/old-refusal' } })
+  expect(page.handle.getWebContentsId()).toBe(41)
+  expect(page.handle.getURL()).toBe('')
+  expect(navigate).not.toHaveBeenCalled()
+  page.dispose()
+})
+test('create replies retain newer matching page events and exclude events from an old guest', async () => {
+  let created!: (result: unknown) => void
+  mocks.invoke.mockImplementationOnce(() => new Promise(resolve => { created = resolve }))
+  const page = attachNativePage(document.createElement('div'), 'tab', false, null)
+  const readyUrls: string[] = []
+  const navigate = vi.fn()
+  page.handle.addEventListener('native-ready', () => readyUrls.push(page.handle.getURL()))
+  page.handle.addEventListener('did-navigate', navigate)
+  const receive = mocks.push.mock.calls.at(-1)![1]
+  const state = { id: 41, stateRevision: 8, authDocumentId: 'new-document', url: 'https://chatgpt.com/', title: 'ChatGPT', loading: false, canGoBack: true, canGoForward: false }
+  receive({ tabId: 'tab', name: 'did-navigate', state, detail: { url: state.url } })
+  receive({ tabId: 'tab', name: 'did-navigate', state: { ...state, id: 12, stateRevision: 100, url: 'https://accounts.google.com/old' }, detail: { url: 'https://accounts.google.com/old' } })
+  expect(navigate).not.toHaveBeenCalled()
+  created({ state: { ...state, stateRevision: 7, authDocumentId: 'previous-document', url: 'https://accounts.google.com/denied' }, adopted: true })
+  await page.handle.focus()
+  expect(readyUrls).toEqual(['https://chatgpt.com/'])
+  expect(page.handle.getWebContentsId()).toBe(41)
+  expect(page.handle.getURL()).toBe('https://chatgpt.com/')
+  expect(navigate.mock.calls.every(([event]) => event.url === 'https://chatgpt.com/')).toBe(true)
+  receive({ tabId: 'tab', name: 'did-navigate', state: { ...state, stateRevision: 6, url: 'https://accounts.google.com/old' }, detail: { url: 'https://accounts.google.com/old' } })
+  expect(page.handle.getURL()).toBe('https://chatgpt.com/')
+  page.dispose()
+})
+test('a newer create snapshot discards matching pre-ready events from an earlier document', async () => {
+  let created!: (result: unknown) => void
+  mocks.invoke.mockImplementationOnce(() => new Promise(resolve => { created = resolve }))
+  const page = attachNativePage(document.createElement('div'), 'tab', false, null)
+  const navigate = vi.fn()
+  page.handle.addEventListener('did-navigate', navigate)
+  const receive = mocks.push.mock.calls.at(-1)![1]
+  const state = { id: 41, stateRevision: 7, authDocumentId: 'new-document', url: 'https://chatgpt.com/', title: 'ChatGPT', loading: false, canGoBack: true, canGoForward: false }
+  receive({ tabId: 'tab', name: 'did-navigate', state: { ...state, stateRevision: 6, authDocumentId: 'old-document', url: 'https://accounts.google.com/old' }, detail: { url: 'https://accounts.google.com/old' } })
+  created({ state, adopted: true })
+  await page.handle.focus()
+  expect(page.handle.getURL()).toBe('https://chatgpt.com/')
+  expect(navigate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ url: 'https://chatgpt.com/', isSnapshot: true }))
+  page.dispose()
+})
 test('course placement updates preserve the native page and use increasing revisions', async () => {
   const page = attachNativePage(document.createElement('div'), 'tab', true, 'source', 'profile')
   await page.course('target')

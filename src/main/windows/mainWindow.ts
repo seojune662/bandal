@@ -13,6 +13,7 @@ import {
   normalizeAllowedExternalUrl
 } from './externalUrlPolicy'
 import { createWindowStateStore } from './windowBounds'
+import { browserAuthProbeArguments, getBrowserAuthProbeMode } from '../features/browser/authProbe'
 
 let mainWindow: BrowserWindow | null = null
 const mainWindowClosedListeners = new Set<() => void>()
@@ -128,6 +129,7 @@ export function createMainWindow(): BrowserWindow {
     backgroundColor: resolveWindowBackground(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
+      additionalArguments: browserAuthProbeArguments(),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -141,6 +143,12 @@ export function createMainWindow(): BrowserWindow {
   hardenWindowWebviews(mainWindow)
   registerBrowserHost(mainWindow)
   const win = mainWindow
+  const probeMode = getBrowserAuthProbeMode()
+  if (probeMode) {
+    const title = `Bandal 인증 비교 — ${probeMode}`
+    win.setTitle(title)
+    win.on('page-title-updated', event => { event.preventDefault(); win.setTitle(title) })
+  }
   const publishWindowState = (fullscreen: boolean): void => {
     if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
       win.webContents.send('window:stateChanged', { fullscreen })

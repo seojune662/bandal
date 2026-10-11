@@ -35,6 +35,8 @@ import {
 } from './windows/macFinderIcon'
 import { reportFatalStartupError } from './startupError'
 import { PLUGIN_SCHEME } from './features/plugins/pluginProtocol'
+import { BROWSER_AUTH_PROBE_PROTOCOL, initializeBrowserAuthProbe } from './features/browser/authProbe'
+import { writeFileSync } from 'node:fs'
 
 const execFileAsync = promisify(execFile)
 
@@ -54,7 +56,8 @@ function setSettings(patch: SettingsPatch): Settings {
 // [M6-B testability] E2E runs (Playwright _electron) point the app at a
 // throwaway profile so tests never touch the real userData. Must run before
 // requestSingleInstanceLock — the lock is scoped to the userData path.
-const testUserDataDir = process.env['BANDAL_USER_DATA_DIR']
+const authProbe = initializeBrowserAuthProbe(process.env, app.getPath('userData'), process.execPath, process.argv)
+const testUserDataDir = authProbe?.userDataDir ?? process.env['BANDAL_USER_DATA_DIR']
 if (testUserDataDir !== undefined && testUserDataDir !== '') {
   app.setPath('userData', testUserDataDir)
 }
@@ -113,25 +116,26 @@ if (!app.requestSingleInstanceLock()) {
     }
     app.setAsDefaultProtocolClient('bandal')
   }
-  registerProtocolClient()
+  if (!authProbe) registerProtocolClient()
 
   // ⚠ MUST be registered before whenReady(). A cold start from a deep link
   // emits `open-url` during startup; a listener attached inside whenReady()
   // misses it entirely and the URL is gone for good.
   app.on('open-url', (event, url) => {
     event.preventDefault()
+    if (authProbe) return
     deepLinks.push(url)
   })
 
   // Windows/Linux deliver the URL in argv instead; harmless no-op on macOS.
   const argvDeepLink = findDeepLinkArg(process.argv)
-  if (argvDeepLink !== null) deepLinks.push(argvDeepLink)
+  if (!authProbe && argvDeepLink !== null) deepLinks.push(argvDeepLink)
 
   app.on('second-instance', (_event, argv) => {
     // The relaunch that carries the callback is killed by the single-instance
     // lock, so its argv is the only place the URL exists.
     const url = findDeepLinkArg(argv)
-    if (url !== null) deepLinks.push(url)
+    if (!authProbe && url !== null) deepLinks.push(url)
     createMainWindow()
   })
 
@@ -145,6 +149,14 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(async () => {
     app.setAppUserModelId('com.bandal.app')
+    if (authProbe) writeFileSync(join(authProbe.root, 'runtime.json'), JSON.stringify({
+      protocol: BROWSER_AUTH_PROBE_PROTOCOL, version: 1, mode: authProbe.mode,
+      launchId: authProbe.launchId, pid: process.pid, startedAt: new Date().toISOString(),
+      appVersion: app.getVersion(), platform: process.platform, arch: process.arch,
+      electron: process.versions.electron, chromium: process.versions.chrome,
+      packaged: app.isPackaged, pageInstrumentation: authProbe.mode !== 'clean',
+      manualAuthenticationRequired: true, debuggingFlags: 'absent'
+    }, null, 2), { mode: 0o600 })
     ensureRegularAppPresence()
 
     // [M6-A] Custom menu: keeps ⌘W free for "close tab" in the renderer.
@@ -254,6 +266,7 @@ if (!app.requestSingleInstanceLock()) {
     const finder =
       process.platform === 'darwin' &&
       app.isPackaged &&
+      !authProbe &&
       appBundlePath !== null
         ? createFinderIconApplier({
             appBundlePath,

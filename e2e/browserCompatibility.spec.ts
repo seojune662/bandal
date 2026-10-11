@@ -100,6 +100,32 @@ for (const popup of [false, true]) test(`delayed Google ${popup ? 'popup' : 'pag
   } finally { await bandal.close() }
 })
 
+test('Google help text is not a refusal and a recovered sign-in document clears its notice', async () => {
+  const bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '로그인 복구')
+    await bandal.app.evaluate(({ session }) => {
+      session.fromPartition('persist:browsing').protocol.handle('https', () => new Response(
+        '<html><title>Google 로그인</title><body><h1>로그인</h1><input type="email"><a>지원되지 않는 브라우저에 대해 알아보기</a></body></html>',
+        { headers: { 'content-type': 'text/html; charset=utf-8' } }
+      ))
+    })
+    const authPage = await openTab(bandal, 'https://accounts.google.com/v3/signin/identifier')
+    const banner = bandal.page.locator('.browser-external-auth').filter({ hasText: 'Google' })
+    // Wait for the actual observer to inspect the initial help page.
+    await run(bandal, authPage, 'new Promise(resolve => setTimeout(resolve, 300))')
+    await expect(banner).toHaveCount(0)
+    await run(bandal, authPage, `document.body.innerHTML = '<h1>로그인할 수 없음</h1><p>브라우저 또는 앱이 안전하지 않을 수 있습니다.</p>'`)
+    await expect(banner).toBeVisible()
+    await run(bandal, authPage, `document.body.innerHTML = '<h1>로그인</h1><input type="email">'; history.pushState({}, '', '/v3/signin/identifier?step=recovered')`)
+    await expect(banner).toHaveCount(0)
+    await run(bandal, authPage, `document.body.innerHTML = '<h1>로그인할 수 없음</h1><p>브라우저 또는 앱이 안전하지 않을 수 있습니다.</p>'`)
+    await expect(banner).toBeVisible()
+    await run(bandal, authPage, "location.href = 'https://drive.google.com/'")
+    await expect(banner).toHaveCount(0)
+  } finally { await bandal.close() }
+})
+
 test('profile creation is visible and immediately usable, and generic favorites identify their site', async ({}, info) => {
   const site = await fixture(), bandal = await launchBandal()
   try {

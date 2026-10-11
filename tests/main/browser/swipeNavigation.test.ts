@@ -3,6 +3,7 @@ import type { Session, WebContents } from 'electron'
 
 const bridge = vi.hoisted(() => ({
   handle: vi.fn(),
+  cleanProbe: false,
   on: vi.fn(),
   nativeTheme: { shouldUseDarkColors: false },
   settings: { theme: 'system' as 'system' | 'light' | 'dark', browser: { swipeNavigation: true } }
@@ -10,6 +11,7 @@ const bridge = vi.hoisted(() => ({
 vi.mock('electron', () => ({ ipcMain: { handle: bridge.handle, on: bridge.on }, nativeTheme: bridge.nativeTheme }))
 vi.mock('../../../src/main/settingsStore', () => ({ getSettings: () => bridge.settings }))
 vi.mock('../../../src/main/features/browser/managedPages', () => ({ isManagedBrowserPage: (id: number) => id === 41 }))
+vi.mock('../../../src/main/features/browser/authProbe', () => ({ isCleanBrowserAuthProbe: () => bridge.cleanProbe }))
 import { installGestureSession, navigateBySwipe } from '../../../src/main/features/browser/swipeNavigation'
 
 const session = { registerPreloadScript: vi.fn() }
@@ -20,6 +22,7 @@ const page = { id: 41, navigationHistory: history } as unknown as WebContents
 
 beforeEach(() => {
   bridge.settings.theme = 'system'
+  bridge.cleanProbe = false
   bridge.settings.browser.swipeNavigation = true
   bridge.nativeTheme.shouldUseDarkColors = false
   history.goBack.mockClear()
@@ -35,6 +38,13 @@ test('gesture appearance resolves the app preference against OS dark mode', () =
   bridge.settings.theme = 'dark'
   bridge.nativeTheme.shouldUseDarkColors = false
   expect(readState({ sender: page }).theme).toBe('dark')
+})
+
+test('the clean comparison never registers the gesture preload in a new session', () => {
+  const isolated = { registerPreloadScript: vi.fn() }
+  bridge.cleanProbe = true
+  installGestureSession(isolated as unknown as Session)
+  expect(isolated.registerPreloadScript).not.toHaveBeenCalled()
 })
 
 test('unmanaged pages cannot use the gesture bridge', () => {

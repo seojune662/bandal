@@ -1,13 +1,28 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, expect, test, vi } from 'vitest'
-const mock = vi.hoisted(() => ({ check: vi.fn(), download: vi.fn(), install: vi.fn() }))
+const mock = vi.hoisted(() => ({ check: vi.fn(), download: vi.fn(), install: vi.fn(), probe: null as null | 'product' | 'clean' }))
 const updater = Object.assign(new EventEmitter(), { checkForUpdates: mock.check, downloadUpdate: mock.download, quitAndInstall: mock.install })
 vi.mock('electron', () => ({ app: { isPackaged: true } }))
 vi.mock('electron-updater', () => ({ default: { get autoUpdater() { return updater } } }))
 vi.mock('../../../src/main/features/agent', () => ({ killAllClaudeProcessesSync: vi.fn() }))
+vi.mock('../../../src/main/features/browser/authProbe', () => ({ getBrowserAuthProbeMode: () => mock.probe }))
 const { createUpdaterRuntime } = await import('../../../src/main/features/updater')
 
-afterEach(() => { updater.removeAllListeners(); delete (updater as any).quitAndInstallCalled; vi.clearAllMocks(); mock.install.mockReset() })
+afterEach(() => { updater.removeAllListeners(); delete (updater as any).quitAndInstallCalled; vi.clearAllMocks(); mock.install.mockReset(); mock.probe = null })
+
+test.each(['product', 'clean'] as const)('the packaged %s probe cannot check, download or install updates', async mode => {
+  mock.probe = mode
+  const runtime = createUpdaterRuntime({ isPackaged: true, currentVersion: '1.0.0', broadcast: vi.fn() })
+  expect(runtime.status().phase).toBe('unsupported')
+  await runtime.check()
+  await runtime.download()
+  expect(runtime.install()).toBe(false)
+  expect(mock.check).not.toHaveBeenCalled()
+  expect(mock.download).not.toHaveBeenCalled()
+  expect(mock.install).not.toHaveBeenCalled()
+  expect(updater.listenerCount('update-available')).toBe(0)
+  runtime.dispose()
+})
 
 test('reserves an update download before progress and surfaces a network interruption for retry', async () => {
   const runtime = createUpdaterRuntime({ currentVersion: '1.0.0', broadcast: vi.fn() })

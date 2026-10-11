@@ -1,6 +1,7 @@
 import { invoke, onPush } from '../../lib/ipc'
-import type { BrowserPageAction, BrowserPageState } from '../../../../shared/types/browserNative'
+import type { BrowserPageAction, BrowserPageEvent, BrowserPageState } from '../../../../shared/types/browserNative'
 import type { BrowserPageHandle } from './browserPageTypes'
+import { registerBrowserAuthGuest, retireBrowserAuthGuest } from './browserAuthForwarding'
 
 // Survives presentation remounts; native IDs guard recreated pages.
 let ownershipRevision = 0
@@ -10,18 +11,38 @@ export function attachNativePage(element: HTMLElement, tabId: string, isPrivate:
   const events = new EventTarget()
   let current: BrowserPageState = { id: 0, url: '', title: '', loading: false, canGoBack: false, canGoForward: false }
   let adopted = false, disposed = false, boundsSerial = 0
+  let nativeId: number | undefined
+  const pendingEvents: BrowserPageEvent[] = []
   let creationError: unknown
   const emit = (name: string, detail: Record<string, unknown> = {}): void => {
     events.dispatchEvent(Object.assign(new Event(name), detail))
   }
   const unsubscribe = onPush('browser:page-event', (event) => {
     if (disposed || event.tabId !== tabId) return
+    if (nativeId === undefined) {
+      pendingEvents.push(event)
+      if (pendingEvents.length > 64) pendingEvents.shift()
+      return
+    }
+    if (event.state.id !== nativeId || (current.stateRevision !== undefined &&
+      event.state.stateRevision !== undefined && event.state.stateRevision <= current.stateRevision)) return
     current = event.state
+    registerBrowserAuthGuest(tabId, nativeId, current.authDocumentId)
     emit(event.name, event.detail)
   })
   const ready = invoke('browser:createPage', { tabId, isPrivate, courseId, profileId }).then(result => {
     current = result.state
     if (disposed) return
+    nativeId = current.id
+    const buffered: BrowserPageEvent[] = []
+    for (const event of pendingEvents) {
+      if (event.state.id !== nativeId || (current.stateRevision !== undefined &&
+        event.state.stateRevision !== undefined && event.state.stateRevision <= current.stateRevision)) continue
+      current = event.state
+      buffered.push(event)
+    }
+    pendingEvents.length = 0
+    registerBrowserAuthGuest(tabId, nativeId, current.authDocumentId)
     adopted = result.adopted
     emit('native-ready')
     if (adopted && current.url) {
@@ -30,6 +51,9 @@ export function attachNativePage(element: HTMLElement, tabId: string, isPrivate:
       emit('dom-ready')
       if (!current.loading) emit('did-stop-loading')
     }
+    // The handle already exposes the newest state when ready listeners run.
+    // Events received before the create reply still deliver their details.
+    for (const event of buffered) emit(event.name, event.detail)
   }).catch(error => {
     creationError = error
     if (!disposed) emit('did-fail-load', {
@@ -106,6 +130,8 @@ export function attachNativePage(element: HTMLElement, tabId: string, isPrivate:
     },
     dispose: () => {
       disposed = true
+      pendingEvents.length = 0
+      if (nativeId !== undefined) retireBrowserAuthGuest(tabId, nativeId)
       unsubscribe()
       void ready.then(() => {
         if (current.id > 0) return invoke('browser:destroyPage', { tabId, expectedWebContentsId: current.id })

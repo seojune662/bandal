@@ -22,6 +22,7 @@ declare global {
       startMaterialDrag(courseId: string, relPath: string): void
       /** [M9] 'darwin' | 'win32' | 'linux' — drives the traffic-light inset. */
       readonly platform: string
+      readonly browserAuthProbe?: 'product' | 'clean'
       /** Temporary M0 helper — opens the settings window. */
       openSettings(): Promise<void>
     }

@@ -10,7 +10,8 @@ import { browsingContext, registerBrowsingContext, setBrowsingCourse } from './b
 import { registerManagedPage, forgetManagedPage } from './managedPages'
 import { trackTabDownload } from './popupLifecycle'
 import { closePage } from './pageClose'
-import { inheritEmbeddedAuthSource } from './embeddedAuth'
+import { browserAuthDocumentId, inheritEmbeddedAuthSource } from './embeddedAuth'
+import { isCleanBrowserAuthProbe } from './authProbe'
 
 interface Tab {
   tabId: string
@@ -30,6 +31,7 @@ const hosts = new Set<WebContents>()
 const occludedHosts = new Set<WebContents>()
 const tabs = new Map<string, Tab>()
 const responseCodes = new WeakMap<WebContents, number>()
+const stateRevisions = new WeakMap<WebContents, number>()
 const closedSiteTabs = new Set<string>()
 const quitCancelledListeners = new Set<() => void>()
 let quitRequested = false
@@ -94,7 +96,9 @@ function owned(event: IpcMainInvokeEvent, id: string): Tab {
   return tab
 }
 function state(wc: WebContents): BrowserPageState {
-  return { id: wc.id, url: wc.getURL(), title: wc.getTitle(), loading: wc.isLoadingMainFrame(), httpStatus: responseCodes.get(wc) ?? 0,
+  const stateRevision = (stateRevisions.get(wc) ?? 0) + 1
+  stateRevisions.set(wc, stateRevision)
+  return { id: wc.id, stateRevision, authDocumentId: browserAuthDocumentId(wc), url: wc.getURL(), title: wc.getTitle(), loading: wc.isLoadingMainFrame(), httpStatus: responseCodes.get(wc) ?? 0,
     canGoBack: wc.navigationHistory.canGoBack(), canGoForward: wc.navigationHistory.canGoForward() }
 }
 function destroy(tab: Tab): void {
@@ -291,7 +295,9 @@ export async function browserPageAction(event: IpcMainInvokeEvent, req: { tabId:
     case 'setZoomLevel': return wc.setZoomLevel(Number(a[0]))
     case 'findInPage': return wc.findInPage(String(a[0]), (a[1] ?? {}) as Electron.FindInPageOptions)
     case 'stopFindInPage': return wc.stopFindInPage(a[0] as 'clearSelection')
-    case 'executeJavaScript': return wc.executeJavaScript(String(a[0]), a[1] === true)
+    case 'executeJavaScript':
+      if (isCleanBrowserAuthProbe()) throw new Error('Page scripts are disabled in the clean authentication probe')
+      return wc.executeJavaScript(String(a[0]), a[1] === true)
     case 'downloadURL': if (!isNavigationAllowed(String(a[0]))) throw new Error('Invalid download'); return wc.downloadURL(String(a[0]))
     case 'copy': return wc.copy()
     case 'cut': return wc.cut()

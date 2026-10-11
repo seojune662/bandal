@@ -34,6 +34,8 @@ export interface BandalBridge {
    * anywhere else leaves a dead gap in the window chrome.
    */
   readonly platform: string
+  /** Present only in an explicitly isolated manual authentication probe. */
+  readonly browserAuthProbe?: 'product' | 'clean'
   /** Temporary M0 helper — opens the settings window. */
   openSettings(): Promise<void>
 }
@@ -147,6 +149,10 @@ const bridge: BandalBridge = {
     }
   },
   platform: process.platform,
+  ...(process.argv.includes('--bandal-browser-auth-probe=clean')
+    ? { browserAuthProbe: 'clean' as const }
+    : process.argv.includes('--bandal-browser-auth-probe=product')
+      ? { browserAuthProbe: 'product' as const } : {}),
   startMaterialDrag(courseId, relPath) {
     ipcRenderer.send('materials:startDrag', { courseId, relPath })
   },

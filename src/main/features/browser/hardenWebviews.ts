@@ -1,5 +1,6 @@
 import { guestProfile, inheritGuestProfile, forgetGuestProfile } from './profiles'
 import { attachEmbeddedAuthFallback, inheritEmbeddedAuthSource } from './embeddedAuth'
+import { isCleanBrowserAuthProbe } from './authProbe'
 import { installGestureSession, navigateBySwipe } from './swipeNavigation'
 import { isManagedBrowserPage } from './managedPages'
 /**
@@ -14,6 +15,7 @@ import { app, BrowserWindow, dialog, session, shell, webContents } from 'electro
 import type { Event as ElectronEvent, WebContents } from 'electron'
 import type {
   BrowserOpenUrl,
+  BrowserAuthEvent,
   ShortcutPassthrough
 } from '../../../shared/ipc/events'
 import { resolveKeymap } from '../../../shared/keymap'
@@ -422,13 +424,13 @@ export function attachNavigationPolicies(
   policyAttached.add(webContents)
   if (!browsingContext(webContents.id)) registerBrowsingContext(webContents.id)
   const rootId = browsingContext(webContents.id)!.rootId
-  attachEmbeddedAuthFallback(webContents, (url) => {
+  if (!isCleanBrowserAuthProbe()) attachEmbeddedAuthFallback(webContents, (status) => {
     const host = navigationHost(webContents)
     const targetId = isManagedBrowserPage(webContents.id) ? webContents.id : rootId
     const tabId = browsingContext(targetId)?.tabId
     if (!host.isDestroyed()) host.send('browser:external-auth', {
-      url, webContentsId: targetId, ...(tabId ? { tabId } : {})
-    } satisfies BrowserOpenUrl)
+      ...status, webContentsId: targetId, sourceWebContentsId: webContents.id, ...(tabId ? { tabId } : {})
+    } satisfies BrowserAuthEvent)
   })
   const navigationGuard = (event: ElectronEvent, url: string): void => {
     if (isNavigationAllowed(url)) return

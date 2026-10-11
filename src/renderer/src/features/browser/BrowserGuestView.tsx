@@ -2,7 +2,6 @@ import { attachNativePage } from './nativePageHandle'
 import { createTabFaviconController, focusVisibleBrowserPanel } from './browserTabEvents'
 import { useWorkspaceStore, workspaceApiForCourse } from '../../stores/workspaceStore'
 import { overlapsNativePage } from './useNativePageOcclusion'
-import { isEmbeddedAuthProviderUrl } from '../../../../shared/browserAuth'
 /**
  * One native browser page, positioned over its stable DOM panel anchor.
  *
@@ -82,6 +81,8 @@ export function BrowserGuestView({
 }: BrowserGuestViewProps): JSX.Element {
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const pageRef = useRef<BrowserPageHandle | null>(null)
+  const noInstrumentationRef = useRef<BrowserPageHandle | null>(null)
+  const instrumentationRef = window.bandal?.browserAuthProbe === 'clean' ? noInstrumentationRef : pageRef
   const nativeRef = useRef<ReturnType<typeof attachNativePage> | null>(null)
   const ownerCourse = useBrowserGuests(state =>
     state.liveGuests.find(guest => guest.tabId === tabId)?.courseId ?? null
@@ -110,10 +111,10 @@ export function BrowserGuestView({
   useLayoutEffect(() => {
     nativeRef.current?.bounds(overlayVisible || obscured || contextMenu ? null : rect, rect !== null && !overlayVisible && (obscured || contextMenu !== null))
   }, [rect, overlayVisible, obscured, contextMenu, tabId, isPrivate, ownerCourse, profileId])
-  useBrowserSelectionBridge(pageRef)
-  useBrowserLoginBridge(tabId, pageRef, !isPrivate)
-  useBrowserDiagnosticsBridge(tabId, pageRef)
-  useBrowserVideoBridge(tabId, pageRef)
+  useBrowserSelectionBridge(instrumentationRef)
+  useBrowserLoginBridge(tabId, instrumentationRef, !isPrivate)
+  useBrowserDiagnosticsBridge(tabId, instrumentationRef)
+  useBrowserVideoBridge(tabId, instrumentationRef)
 
   useEffect(
     () =>
@@ -196,9 +197,6 @@ export function BrowserGuestView({
         'did-navigate',
         ((event: DidNavigateEvent) => {
           favicon.navigation()
-          // Adopting an already loaded popup replays its current URL; it must
-          // retain any refusal main detected before this renderer mounted.
-          if (!event.isSnapshot) useBrowserGuests.getState().setAuthFallback(tabId, null)
           recordHttpResponse(tabId, event.url, event.httpResponseCode ?? 0)
           update({ httpStatus: event.httpResponseCode ?? 0 })
           if (event.url !== 'about:blank') update({ url: event.url, hasDocument: true, ...historyState() })
@@ -208,7 +206,6 @@ export function BrowserGuestView({
         'did-navigate-in-page',
         ((event: DidNavigateInPageEvent) => {
           if (event.isMainFrame) {
-            if (!isEmbeddedAuthProviderUrl(event.url)) useBrowserGuests.getState().setAuthFallback(tabId, null)
             update({ url: event.url, hasDocument: true, ...historyState() })
           }
         }) as EventListener

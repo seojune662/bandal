@@ -1,4 +1,5 @@
 import type { BrowserPageEvent } from '../types/browserNative'
+import type { BrowserAuthStatus } from '../types/browserAuth'
 /**
  * Push events: main → renderer, one-way, delivered via webContents.send and
  * subscribed through `window.bandal.on(channel, cb)`.
@@ -79,6 +80,13 @@ export interface BrowserOpenUrl {
    * exactly what the modifier exists to avoid.
    */
   background?: boolean
+}
+
+/** Authentication observations belong to one native page and one document. */
+export interface BrowserAuthEvent extends BrowserAuthStatus {
+  tabId?: string
+  webContentsId: number
+  sourceWebContentsId: number
 }
 
 /** Fired after settings change from any window. */
@@ -265,7 +273,7 @@ export interface PushEvents {
   /** 파일 ▸ 인쇄… (or ⌘P over a printable tab) was chosen. */
   'ui:print': { }
   /** An in-app authentication page explicitly reported an embedded refusal. */
-  'browser:external-auth': BrowserOpenUrl
+  'browser:external-auth': BrowserAuthEvent
   'settings:changed': SettingsChanged
   'window:stateChanged': { fullscreen: boolean }
   /** Open the in-app settings overlay (app menu ⌘, or legacy callers). */

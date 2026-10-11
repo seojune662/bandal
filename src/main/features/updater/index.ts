@@ -24,6 +24,7 @@ import type { UpdateStatus } from '../../../shared/types/update'
 import { killAllClaudeProcessesSync } from '../agent'
 import { resolveAppVersion } from './appVersion'
 import { describeError, isNoFeed, isOfflineish } from './errorMessages'
+import { getBrowserAuthProbeMode } from '../browser/authProbe'
 
 export { resolveAppVersion } from './appVersion'
 
@@ -64,11 +65,12 @@ export interface UpdaterDeps {
 
 export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
   const isPackaged = deps.isPackaged ?? app.isPackaged
+  const updatesEnabled = isPackaged && getBrowserAuthProbeMode() === null
   const currentVersion =
     deps.currentVersion ??
     resolveAppVersion(isPackaged, app.getVersion(), __APP_VERSION__)
 
-  let status: UpdateStatus = isPackaged
+  let status: UpdateStatus = updatesEnabled
     ? { phase: 'idle', currentVersion, lastCheckedAt: null }
     : { phase: 'unsupported', currentVersion }
   let timer: NodeJS.Timeout | null = null
@@ -81,7 +83,7 @@ export function createUpdaterRuntime(deps: UpdaterDeps): UpdaterRuntime {
     deps.broadcast(next)
   }
 
-  if (!isPackaged) {
+  if (!updatesEnabled) {
     // Nothing else in this module should run: no feed, no timers, no listeners.
     return {
       status: () => status,

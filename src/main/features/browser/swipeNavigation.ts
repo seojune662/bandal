@@ -3,9 +3,11 @@ import { join } from 'node:path'
 import { getSettings } from '../../settingsStore'
 import { isManagedBrowserPage } from './managedPages'
 import { resolveThemeId } from '../../../shared/theme'
+import { isCleanBrowserAuthProbe } from './authProbe'
 const last = new Map<number, number>()
 let registered = false
 export function installGestureSession(session: Session): void {
+  if (isCleanBrowserAuthProbe()) return
   session.registerPreloadScript({ id: 'bandal-browser-gestures', type: 'frame', filePath: join(__dirname, '../preload/browserGesture.js') })
   if (registered) return
   registered = true

@@ -1,5 +1,6 @@
 import { BrowserWindow, dialog, shell } from 'electron'
 import type { WebContents } from 'electron'
+import { isCleanBrowserAuthProbe } from './authProbe'
 
 const downloadOnly = new Map<number, () => Promise<void>>()
 
@@ -47,7 +48,7 @@ export function trackPopupDownload(
     }).finally(() => { prompting = false })
   })
   downloadOnly.set(child.id, async () => {
-    if (committed || child.isDestroyed()) return
+    if (committed || child.isDestroyed() || isCleanBrowserAuthProbe()) return
     // about:blank may contain a document written by its opener (reports,
     // authentication). Never close that document just because its URL is blank.
     const empty = await child.mainFrame.executeJavaScript(
@@ -66,7 +67,7 @@ export function trackTabDownload(child: WebContents, close: () => void): void {
   let committed = false
   child.on('did-navigate', (_event, url) => { if (url && url !== 'about:blank') committed = true })
   downloadOnly.set(child.id, async () => {
-    if (committed || child.isDestroyed()) return
+    if (committed || child.isDestroyed() || isCleanBrowserAuthProbe()) return
     const empty = await child.mainFrame.executeJavaScript("!document.body || document.body.children.length === 0 && !document.body.textContent.trim()").catch(() => false)
     if (empty && !committed && !child.isDestroyed()) close()
   })

@@ -29,7 +29,8 @@ import {
   useAgentTabSync,
   useCloseTabRequests
 } from './agentTabSync'
-import { rememberOpenRequest, tabIdForWebContents } from './guestActions'
+import { rememberOpenRequest } from './guestActions'
+import { installBrowserAuthForwarding } from './browserAuthForwarding'
 import {
   isPointerPassthroughActive,
   onPointerPassthrough
@@ -99,15 +100,7 @@ function useOpenUrlForwarding(): void {
 
 /** Main detects explicit embedded-login refusals in tabs and site windows. */
 function useAuthFallbackForwarding(): void {
-  useEffect(
-    () => onPush('browser:external-auth', ({ url, webContentsId, tabId: targetTabId }) => {
-      const tabId = targetTabId ?? (webContentsId === undefined ? null : tabIdForWebContents(webContentsId))
-      if (tabId !== null) {
-        useBrowserGuests.getState().setAuthFallback(tabId, url)
-      }
-    }),
-    []
-  )
+  useEffect(() => installBrowserAuthForwarding(), [])
 }
 
 /**
