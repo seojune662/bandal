@@ -122,8 +122,8 @@ export const guestActions = {
    * release build — which is the only place a real school login exists.
    */
   /** Chrome focuses the document when a tab activates; so do we. */
-  focus: (tabId: string): void => {
-    withGuest(tabId, (element) => element.focus())
+  focus: (tabId: string, shouldFocus?: () => boolean): void => {
+    withGuest(tabId, (element) => element.focus(shouldFocus))
   },
 
   paste: (tabId: string): void => {

@@ -55,6 +55,7 @@ import {
   type BrowserShortcut
 } from './browserStartPageModel'
 import { guestActions } from './guestActions'
+import { scheduleBrowserAutofocus } from './browserAutofocus'
 import {
   discardStagedLoginForTab,
   fillLoginForTab,
@@ -543,6 +544,8 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
   useBrowserAnchorRect(tabId, anchorRef)
   const t = useT()
   const isPanelVisible = usePanelVisible(props.api)
+  const visibleRef = useRef(isPanelVisible)
+  visibleRef.current = isPanelVisible
 
   const nav = useBrowserGuests((state) =>
     tabId !== '' ? state.nav[tabId] : undefined
@@ -651,12 +654,8 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
    */
   useEffect(() => {
     if (!isPanelVisible || tabId === '') return undefined
-    // One frame, so dockview has finished moving the panel before we take focus.
-    const handle = window.requestAnimationFrame(() => {
-      guestActions.focus(tabId)
-    })
-    return () => window.cancelAnimationFrame(handle)
-  }, [isPanelVisible, tabId])
+    return scheduleBrowserAutofocus(tabId, () => visibleRef.current && api.isVisible && api.isActive)
+  }, [api, isPanelVisible, tabId])
 
   useEffect(() => {
     if (sessionChangingRef.current || profileId !== sessionTargetRef.current.profileId ||

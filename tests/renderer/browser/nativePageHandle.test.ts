@@ -86,3 +86,19 @@ test('a late preview cannot cover a page that has already been shown again', asy
   expect(element.style.backgroundImage).toBe('')
   page.dispose()
 })
+
+test('automatic focus rechecks its owner after asynchronous native creation', async () => {
+  let resolve!: (value: unknown) => void
+  mocks.invoke.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  const page = attachNativePage(document.createElement('div'), 'tab', false, null)
+  let allowed = true
+  const pending = page.handle.focus(() => allowed)
+  allowed = false
+  resolve({ state: { id: 41 }, adopted: false })
+  await pending
+  expect(mocks.invoke.mock.calls.filter(call => call[0] === 'browser:pageAction')).toHaveLength(0)
+  allowed = true
+  await page.handle.focus(() => allowed)
+  expect(mocks.invoke).toHaveBeenLastCalledWith('browser:pageAction', { tabId: 'tab', action: 'focus', args: [] })
+  page.dispose()
+})

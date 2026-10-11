@@ -72,7 +72,13 @@ export function attachNativePage(element: HTMLElement, tabId: string, isPrivate:
     redo: () => call('redo'),
     copyImageAt: (x, y) => call('copyImageAt', [x, y]),
     openDevTools: () => call('openDevTools'),
-    focus: () => call('focus')
+    focus: async shouldFocus => {
+      await ready
+      if (disposed) throw new Error('Browser page closed')
+      if (creationError) throw creationError
+      if (shouldFocus && !shouldFocus()) return
+      await invoke('browser:pageAction', { tabId, action: 'focus', args: [] })
+    }
   }
   return {
     handle,

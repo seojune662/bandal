@@ -6,17 +6,23 @@ export interface WorkspaceTabDragSource {
 }
 let kind: WorkspaceDragKind = null
 let source: WorkspaceTabDragSource | null = null
+let headerPressed = false
 let revision = 0
 const listeners = new Set<() => void>()
+const notify = (): void => { for (const listener of listeners) listener() }
 
 export const tabDragSession = {
   getSnapshot: (): WorkspaceDragKind => kind,
   getSource: (): WorkspaceTabDragSource | null => source,
+  // A press delays automatic native focus without hiding a native page or
+  // claiming a drag before Chromium has actually started it.
+  isFocusBlocked: (): boolean => headerPressed || kind !== null,
   beginTab: (next: WorkspaceTabDragSource): void => {
     revision += 1
+    headerPressed = false
     source = next
     kind = 'tab'
-    for (const listener of listeners) listener()
+    notify()
   },
   subscribe: (listener: () => void): (() => void) => {
     listeners.add(listener)
@@ -27,16 +33,18 @@ export const tabDragSession = {
   begin: (next: Exclude<WorkspaceDragKind, null>): void => {
     if (kind === next) return
     revision += 1
+    headerPressed = false
     if (next !== 'tab') source = null
     kind = next
-    for (const listener of listeners) listener()
+    notify()
   },
   end: (): void => {
-    if (kind === null && source === null) return
+    if (kind === null && source === null && !headerPressed) return
     revision += 1
+    headerPressed = false
     kind = null
     source = null
-    for (const listener of listeners) listener()
+    notify()
   }
 }
 
@@ -49,8 +57,14 @@ export function installWorkspaceDragSession(root: HTMLElement): () => void {
       tabDragSession.begin('group')
   }
   const pointer = (event: PointerEvent): void => {
-    if (event.target instanceof Element && event.target.closest('.dv-sash'))
+    if (!(event.target instanceof Element) || (event.button !== undefined && event.button !== 0)) return
+    if (event.target.closest('.dv-sash'))
       tabDragSession.begin('resize')
+    else if (event.target.closest('.dv-tabs-and-actions-container, .dv-tab')) {
+      headerPressed = true
+      revision += 1
+      notify()
+    }
   }
   const end = (): void => tabDragSession.end()
   // Target handlers need the trusted source during the entire drop dispatch.
@@ -66,8 +80,12 @@ export function installWorkspaceDragSession(root: HTMLElement): () => void {
     }, 0)
   }
   // Starting native HTML DnD cancels the pointer stream. Only a sash owns it.
-  const endResize = (): void => {
+  const endPointer = (): void => {
     if (kind === 'resize') end()
+    else if (headerPressed) {
+      headerPressed = false
+      notify()
+    }
   }
   const key = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') end()
@@ -85,8 +103,8 @@ export function installWorkspaceDragSession(root: HTMLElement): () => void {
     window.addEventListener(name, end, true)
   // A course switch blurs its focused tab; that is not losing the app window.
   window.addEventListener('blur', end)
-  window.addEventListener('pointerup', endResize, true)
-  window.addEventListener('pointercancel', endResize, true)
+  window.addEventListener('pointerup', endPointer, true)
+  window.addEventListener('pointercancel', endPointer, true)
   window.addEventListener('keydown', key, true)
   return () => {
     if (dropCleanup !== null) clearTimeout(dropCleanup)
@@ -98,8 +116,8 @@ export function installWorkspaceDragSession(root: HTMLElement): () => void {
     for (const name of ['dragend', 'mouseup'] as const)
       window.removeEventListener(name, end, true)
     window.removeEventListener('blur', end)
-    window.removeEventListener('pointerup', endResize, true)
-    window.removeEventListener('pointercancel', endResize, true)
+    window.removeEventListener('pointerup', endPointer, true)
+    window.removeEventListener('pointercancel', endPointer, true)
     window.removeEventListener('keydown', key, true)
   }
 }

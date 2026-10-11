@@ -8,11 +8,42 @@ const folder = (page: Page, name: string): Locator => page.locator('.course-row'
 const tab = (page: Page, title: string): Locator => visibleWorkspace(page).locator('.dv-tab').filter({ has: page.locator('.workspace-tab__title', { hasText: new RegExp(`^${title}$`) }) })
 const groupTitles = (page: Page): Promise<string[][]> => visibleWorkspace(page).locator('.dv-groupview').evaluateAll(groups => groups.map(group => [...group.querySelectorAll('.workspace-tab__title')].map(title => title.textContent ?? '')))
 
-async function beginDrag(page: Page, source: Locator): Promise<void> {
-  const box = (await source.boundingBox())!
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+type DragBounds = { x: number; y: number; width: number; height: number }
+
+async function stableBoundingBox(locator: Locator): Promise<DragBounds> {
+  await expect(locator).toBeVisible()
+  let bounds: DragBounds | null = null
+  await expect.poll(async () => {
+    bounds = await locator.evaluate(async element => {
+      const measure = (): DragBounds => {
+        const { x, y, width, height } = element.getBoundingClientRect()
+        return { x, y, width, height }
+      }
+      const first = measure()
+      for (let frame = 0; frame < 2; frame++) {
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+        const next = measure()
+        if (!element.isConnected || Object.keys(first).some(key => first[key as keyof DragBounds] !== next[key as keyof DragBounds])) return null
+      }
+      return first.width > 0 && first.height > 0 ? first : null
+    })
+    return bounds !== null
+  }).toBe(true)
+  return bounds!
+}
+
+async function startPhysicalDrag(page: Page, source: Locator): Promise<void> {
+  const box = await stableBoundingBox(source)
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  await page.mouse.move(point.x, point.y)
+  // A sidebar transition can otherwise put another tab under stale coordinates.
+  expect(await source.evaluate((element, point) => element.contains(document.elementFromPoint(point.x, point.y)), point)).toBe(true)
   await page.mouse.down()
-  await page.mouse.move(box.x + box.width / 2 + 12, box.y + box.height / 2, { steps: 3 })
+  await page.mouse.move(point.x + 12, point.y, { steps: 3 })
+}
+
+async function beginDrag(page: Page, source: Locator): Promise<void> {
+  await startPhysicalDrag(page, source)
   await expect(page.locator('.workspace-host')).toHaveAttribute('data-tab-dragging', 'true')
 }
 
@@ -139,6 +170,12 @@ test('repeated last-tab moves recover the course welcome after cancel, retry, cl
   const stages: string[] = []
   try {
     let page = bandal.page
+    await bandal.app.evaluate(({ BrowserWindow }) => {
+      const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
+      host.setContentSize(1024, 720)
+      host.webContents.setZoomFactor(1)
+    })
+    await expect.poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual({ width: 1024, height: 720 })
     const names = ['반복 이동 원본', '반복 이동 둘', '반복 이동 셋', '반복 이동 넷']
     for (const name of names) await createCourse(page, name)
     const all = await page.evaluate(() => window.bandal.invoke('courses:list', {}))
@@ -173,10 +210,15 @@ test('repeated last-tab moves recover the course welcome after cancel, retry, cl
       await hoverFolder(page, destination.name)
       if (index % 2 === 0) {
         const bounds = (await visibleWorkspace(page).boundingBox())!
+        const row = (await folder(page, destination.name).boundingBox())!
+        // Leave the sidebar at this row's height before moving vertically;
+        // a diagonal route can correctly select another course on small screens.
+        await page.mouse.move(bounds.x + bounds.width / 2, row.y + row.height / 2, { steps: 8 })
         await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, { steps: 10 })
         await page.mouse.move(bounds.x + bounds.width / 2 + 1, bounds.y + bounds.height / 2)
         await expect(page.locator('.course-tab-move-preview')).toBeVisible()
       }
+      await expect(folder(page, destination.name)).toHaveAttribute('data-selected', 'true')
       await page.mouse.up()
       await expect(folder(page, destination.name)).toHaveAttribute('data-selected', 'true')
       await expect(page.locator('.workspace-host')).not.toHaveAttribute('data-tab-dragging')
@@ -225,6 +267,14 @@ test('a whole-group merge keeps inactive tabs accessible and draggable to anothe
   const bandal = await launchBandal()
   try {
     const { page } = bandal
+    // Windows runners can start at 1024px, where three full-width tabs and
+    // caption controls consume the native group's otherwise draggable space.
+    await bandal.app.evaluate(({ BrowserWindow }) => {
+      const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
+      host.setContentSize(1440, 900)
+      host.webContents.setZoomFactor(1)
+    })
+    await expect.poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual({ width: 1440, height: 900 })
     await createCourse(page, '그룹 합치기 원본')
     await createCourse(page, '그룹 합치기 도착')
     const all = await page.evaluate(() => window.bandal.invoke('courses:list', {}))
@@ -235,7 +285,7 @@ test('a whole-group merge keeps inactive tabs accessible and draggable to anothe
 
     // Put one note below the other three so the source header has usable blank
     // space for Dockview's native whole-group drag handle.
-    const content = (await visibleWorkspace(page).locator('.dv-content-container').boundingBox())!
+    const content = await stableBoundingBox(visibleWorkspace(page).locator('.dv-content-container'))
     await beginDrag(page, tab(page, 'group-3'))
     await page.mouse.move(content.x + content.width / 2, content.y + content.height - 8, { steps: 10 })
     await page.mouse.move(content.x + content.width / 2 + 1, content.y + content.height - 8)
@@ -247,12 +297,9 @@ test('a whole-group merge keeps inactive tabs accessible and draggable to anothe
     await page.evaluate(() => { (window as any).__groupMergeEditor = [...document.querySelectorAll('.ProseMirror')].find(element => element.textContent?.includes('group-0')) })
 
     const groups = visibleWorkspace(page).locator('.dv-groupview')
-    const handle = (await groups.first().locator('.dv-void-container').boundingBox())!
-    expect(handle.width).toBeGreaterThan(8)
-    const target = (await groups.nth(1).locator('.dv-content-container').boundingBox())!
-    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(handle.x + handle.width / 2 + 12, handle.y + handle.height / 2, { steps: 3 })
+    await expect.poll(async () => (await groups.first().locator('.dv-void-container').boundingBox())?.width ?? 0).toBeGreaterThan(32)
+    const target = await stableBoundingBox(groups.nth(1).locator('.dv-content-container'))
+    await startPhysicalDrag(page, groups.first().locator('.dv-void-container'))
     await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 10 })
     await page.mouse.move(target.x + target.width / 2 + 1, target.y + target.height / 2)
     await page.mouse.up()

@@ -31,7 +31,7 @@ export interface BrowserPageHandle extends EventTarget {
   executeJavaScript(code: string, userGesture?: boolean): Promise<unknown>
   /** Same `will-download` path a real click takes — cookies, redirects, name. */
   downloadURL(url: string): Promise<void>
-  focus(): Promise<void>
+  focus(shouldFocus?: () => boolean): Promise<void>
   copy(): Promise<void>
   cut(): Promise<void>
   paste(): Promise<void>
