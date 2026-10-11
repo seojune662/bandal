@@ -42,10 +42,10 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
     descriptor.kind !== 'board'
 
   useEffect(() => {
-    const dockviewTab = tabRef.current?.closest('.dv-tab')
-    if (!(dockviewTab instanceof HTMLElement) || descriptor === null) return
+    if (descriptor === null) return
+    let dockviewTab: HTMLElement | null = null
     const handleDragStart = (event: DragEvent): void => {
-      if (event.dataTransfer === null) return
+      if (event.dataTransfer === null || dockviewTab === null) return
       const source = {
         courseId: workspaceCourseId, panelId: props.api.id, nonce: crypto.randomUUID()
       }
@@ -53,17 +53,9 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
       writeWorkspaceTabDragData(event.dataTransfer, descriptor, title, source)
       setWorkspaceTabDragImage(event.dataTransfer, dockviewTab, title)
     }
-    const updateSelection = (): void => {
-      const selected = props.api.group.activePanel?.id === props.api.id
-      dockviewTab.setAttribute('role', 'tab')
-      dockviewTab.setAttribute('aria-label', title)
-      dockviewTab.setAttribute('aria-selected', String(selected))
-      dockviewTab.tabIndex = selected ? 0 : -1
-    }
-    updateSelection()
-    const selection = [props.api.onDidActiveChange(updateSelection), props.api.onDidVisibilityChange(updateSelection), props.api.onDidGroupChange(updateSelection)]
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (
+        dockviewTab === null ||
         event.target !== dockviewTab ||
         event.metaKey ||
         event.ctrlKey ||
@@ -88,14 +80,54 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps): JSX.Element {
       layoutAdaptiveTabs(props.api.group.element)
       elements?.[index]?.focus()
     }
-    dockviewTab.addEventListener('dragstart', handleDragStart)
-    dockviewTab.addEventListener('keydown', handleKeyDown)
-    return () => {
-      selection.forEach(subscription => subscription.dispose())
-      dockviewTab.removeEventListener('dragstart', handleDragStart)
-      dockviewTab.removeEventListener('keydown', handleKeyDown)
+    const unbind = (): void => {
+      dockviewTab?.removeEventListener('dragstart', handleDragStart)
+      dockviewTab?.removeEventListener('keydown', handleKeyDown)
     }
-  }, [descriptor, title, props.api, workspaceCourseId])
+    const updateSelection = (): void => {
+      const current = tabRef.current?.closest<HTMLElement>('.dv-tab') ?? null
+      if (current !== dockviewTab) {
+        unbind()
+        dockviewTab = current
+        dockviewTab?.addEventListener('dragstart', handleDragStart)
+        dockviewTab?.addEventListener('keydown', handleKeyDown)
+      }
+      if (!dockviewTab) return
+      const selected = props.api.group.activePanel?.id === props.api.id
+      dockviewTab.setAttribute('role', 'tab')
+      dockviewTab.setAttribute('aria-label', title)
+      dockviewTab.setAttribute('aria-selected', String(selected))
+      dockviewTab.tabIndex = selected ? 0 : -1
+    }
+    let disposed = false
+    let groupUpdateQueued = false
+    const groupChanged = (): void => {
+      if (groupUpdateQueued) return
+      groupUpdateQueued = true
+      // Whole-group merges can omit onDidMovePanel for the moved tabs. The
+      // group event precedes DOM placement, which finishes in this same turn.
+      queueMicrotask(() => {
+        groupUpdateQueued = false
+        if (!disposed) updateSelection()
+      })
+    }
+    updateSelection()
+    // Dockview preserves this React header but replaces its .dv-tab wrapper
+    // when moving panels or restoring layouts. Group-change fires before the
+    // new wrapper exists, so also bind on the completed container events.
+    const selection = [
+      props.api.onDidActiveChange(updateSelection),
+      props.api.onDidVisibilityChange(updateSelection),
+      props.api.onDidGroupChange(groupChanged),
+      props.containerApi.onDidMovePanel(event => { if (event.panel.id === props.api.id) updateSelection() }),
+      props.containerApi.onDidLayoutFromJSON(updateSelection)
+    ]
+    return () => {
+      disposed = true
+      selection.forEach(subscription => subscription.dispose())
+      unbind()
+    }
+  }, [descriptor, title, props.api, props.containerApi, workspaceCourseId])
 
   return (
     <>

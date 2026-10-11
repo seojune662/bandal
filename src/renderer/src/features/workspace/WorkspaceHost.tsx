@@ -59,17 +59,25 @@ const workspaceDragEdges = {
   size: { value: 50, type: 'percentage' as const }
 }
 
-function Watermark(props: IWatermarkPanelProps): JSX.Element {
+export function Watermark(props: IWatermarkPanelProps): JSX.Element {
   const ko = useLocale() === 'ko-KR'
   const placementCourseId = useContext(WorkspaceCourseContext)
   const courses = useCoursesStore((state) => state.courses)
-  const selectedCourseId = useCoursesStore((state) => state.selectedCourseId)
   const course =
-    courses.find((entry) => entry.id === selectedCourseId) ?? null
+    courses.find((entry) => entry.id === placementCourseId) ?? null
+  const split = useSyncExternalStore(
+    listener => {
+      const subscription = props.containerApi.onDidLayoutChange(listener)
+      return () => subscription.dispose()
+    },
+    () => props.containerApi.groups.length > 1
+  )
   const { isDropActive, dropProps } = useFileDropTarget(course?.id ?? null)
   const target = props.group ? { courseId: placementCourseId, groupId: props.group.id } : undefined
 
-  if (props.group) return <div className="workspace-empty-pane" {...dropProps} data-drop-active={isDropActive || undefined}>
+  // Closing or transferring the last tab preserves its pane. A lone empty
+  // pane is still the course home, including layouts saved by older versions.
+  if (props.group && split) return <div className="workspace-empty-pane" {...dropProps} data-drop-active={isDropActive || undefined}>
     <BandalMark size={32} />
     <span>{ko ? '이 영역에서 새 탭을 여세요' : 'Open a tab in this pane'}</span>
     <button type="button" className="button" onClick={event => {
@@ -83,7 +91,7 @@ function Watermark(props: IWatermarkPanelProps): JSX.Element {
   if (course === null) {
     return (
       <div className="workspace-watermark">
-        <ToggleRightRail />
+        {!props.group && <ToggleRightRail />}
         <BandalMark size={56} className="workspace-watermark__moon" />
       </div>
     )
@@ -94,23 +102,23 @@ function Watermark(props: IWatermarkPanelProps): JSX.Element {
       data-drop-active={isDropActive || undefined}
       {...dropProps}
     >
-      <ToggleRightRail />
+      {!props.group && <ToggleRightRail />}
       <section className="workspace-welcome" aria-label={ko ? '학습 공간' : 'Your workspace'}>
         <BandalMark size={48} className="workspace-watermark__moon" />
         <h1>{course.name}</h1>
         <p className="workspace-watermark__hint">{ko ? '읽고, 기록하고, 연결하는 나만의 학습 공간' : 'A space to read, write, and connect your ideas.'}</p>
         <div className="workspace-start-actions" aria-label={ko ? '학습 시작' : 'Start studying'}>
-          <button type="button" onClick={() => void createMarkdownTab()}>
+          <button type="button" onClick={() => void createMarkdownTab(undefined, target)}>
             <span className="workspace-start-actions__icon"><TabKindIcon kind="note" /></span>
             <span className="workspace-start-actions__copy"><strong>{ko ? '새 필기' : 'New note'}</strong><span>{ko ? '생각을 기록하세요' : 'Capture an idea'}</span></span>
             <Icon name="chevronRight" className="workspace-start-actions__arrow" />
           </button>
-          <button type="button" onClick={() => createBrowserTab()}>
+          <button type="button" onClick={() => createBrowserTab(undefined, target)}>
             <span className="workspace-start-actions__icon"><TabKindIcon kind="browser" /></span>
             <span className="workspace-start-actions__copy"><strong>{ko ? '웹 탐색' : 'Browse the web'}</strong><span>{ko ? '자료를 찾아보세요' : 'Find your sources'}</span></span>
             <Icon name="chevronRight" className="workspace-start-actions__arrow" />
           </button>
-          <button type="button" onClick={() => useWorkspaceStore.getState().openTab(descriptorFor('chat', { courseId: course.id, conversationId: crypto.randomUUID() }))}>
+          <button type="button" onClick={() => useWorkspaceStore.getState().openTab(descriptorFor('chat', { courseId: course.id, conversationId: crypto.randomUUID() }), target ? { target } : undefined)}>
             <span className="workspace-start-actions__icon"><TabKindIcon kind="chat" /></span>
             <span className="workspace-start-actions__copy"><strong>{ko ? 'AI와 공부' : 'Study with AI'}</strong><span>{ko ? '질문에서 시작하세요' : 'Start with a question'}</span></span>
             <Icon name="chevronRight" className="workspace-start-actions__arrow" />
@@ -121,7 +129,7 @@ function Watermark(props: IWatermarkPanelProps): JSX.Element {
           className="workspace-watermark__cta"
           onClick={(event) => {
             const rect = event.currentTarget.getBoundingClientRect()
-            openNewTabMenu({ x: rect.left, y: rect.bottom + 8 })
+            openNewTabMenu({ x: rect.left, y: rect.bottom + 8, ...(target ? { target } : {}) })
           }}
         >
           <Icon name="plus" />{ko ? '새 탭 열기' : 'Open new tab'}
