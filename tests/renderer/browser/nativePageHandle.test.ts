@@ -1,15 +1,36 @@
 // @vitest-environment jsdom
-import { beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), push: vi.fn(), remove: vi.fn() }))
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: mocks.invoke, onPush: mocks.push }))
 import { attachNativePage } from '../../../src/renderer/src/features/browser/nativePageHandle'
+import { installWorkspaceDragSession, tabDragSession } from '../../../src/renderer/src/features/workspace/tabDragSession'
+import { installWorkspaceNativePassthrough } from '../../../src/renderer/src/features/browser/workspaceNativePassthrough'
+let removeDragSession: (() => void) | undefined
+let removePassthrough: (() => void) | undefined
 beforeEach(() => {
+  tabDragSession.end()
   mocks.invoke.mockReset()
   mocks.push.mockReturnValue(mocks.remove)
   mocks.invoke.mockImplementation(async channel => channel === 'browser:createPage'
     ? { state: { id: 41, url: '', title: '', loading: false, canGoBack: false, canGoForward: false }, adopted: false }
     : channel === 'browser:pageAction' ? 17 : { snapshot: null })
 })
+afterEach(() => {
+  removeDragSession?.()
+  removeDragSession = undefined
+  removePassthrough?.()
+  removePassthrough = undefined
+  document.body.replaceChildren()
+})
+function pressHeader(): void {
+  const root = document.createElement('div')
+  root.innerHTML = '<div class="dv-tab"><span>Inactive tab</span></div>'
+  document.body.append(root)
+  removeDragSession = installWorkspaceDragSession(root)
+  root.querySelector('span')!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }))
+}
+const boundsCalls = () => mocks.invoke.mock.calls.filter(call => call[0] === 'browser:pageBounds')
+const flushMicrotasks = async () => { for (let index = 0; index < 6; index++) await Promise.resolve() }
 test('page commands and events live on an explicit handle, not its DOM anchor', async () => {
   const element = document.createElement('div')
   const page = attachNativePage(element, 'tab', false, 'course')
@@ -101,4 +122,80 @@ test('automatic focus rechecks its owner after asynchronous native creation', as
   await page.handle.focus(() => allowed)
   expect(mocks.invoke).toHaveBeenLastCalledWith('browser:pageAction', { tabId: 'tab', action: 'focus', args: [] })
   page.dispose()
+})
+
+test('pressing an inactive tab defers both native hide and show until release, applying only their latest placement', async () => {
+  const previous = attachNativePage(document.createElement('div'), 'previous', false, null)
+  const selected = attachNativePage(document.createElement('div'), 'selected', false, null)
+  const bounds = { x: 288, y: 169, width: 448, height: 551 }
+  previous.bounds(bounds)
+  await flushMicrotasks()
+  expect(boundsCalls()).toHaveLength(1)
+  mocks.invoke.mockClear()
+  pressHeader()
+  previous.bounds(null)
+  selected.bounds(bounds)
+  selected.bounds({ ...bounds, width: 450 })
+  await flushMicrotasks()
+  expect(boundsCalls()).toHaveLength(0)
+  expect(tabDragSession.getSnapshot()).toBeNull()
+  window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }))
+  await flushMicrotasks()
+  expect(boundsCalls()).toEqual([
+    ['browser:pageBounds', { tabId: 'previous', bounds: null, preview: false }],
+    ['browser:pageBounds', { tabId: 'selected', bounds: { ...bounds, width: 450 }, preview: false }]
+  ])
+  previous.dispose(); selected.dispose()
+})
+
+test('native dragstart releases placement deferral and later drag previews continue immediately', async () => {
+  const page = attachNativePage(document.createElement('div'), 'tab', false, null)
+  await flushMicrotasks()
+  pressHeader()
+  removePassthrough = installWorkspaceNativePassthrough()
+  page.bounds(null, true)
+  await flushMicrotasks()
+  expect(boundsCalls()).toHaveLength(0)
+  tabDragSession.beginTab({ courseId: 'source', panelId: 'panel', nonce: 'drag' })
+  expect(mocks.invoke).toHaveBeenLastCalledWith('browser:setHostOccluded', { occluded: true })
+  expect(boundsCalls()).toHaveLength(0)
+  await flushMicrotasks()
+  expect(boundsCalls()).toEqual([['browser:pageBounds', { tabId: 'tab', bounds: null, preview: true }]])
+  window.dispatchEvent(new MouseEvent('pointercancel'))
+  page.bounds({ x: 10, y: 20, width: 300, height: 400 }, true)
+  await flushMicrotasks()
+  expect(boundsCalls()).toHaveLength(2)
+  expect(tabDragSession.getSnapshot()).toBe('tab')
+  page.dispose()
+})
+
+test('page creation resolving during a header press cannot apply queued placement until the press ends', async () => {
+  let resolve!: (value: unknown) => void
+  mocks.invoke.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  const page = attachNativePage(document.createElement('div'), 'tab', false, null)
+  page.bounds({ x: 0, y: 0, width: 300, height: 400 })
+  pressHeader()
+  resolve({ state: { id: 41 }, adopted: false })
+  await flushMicrotasks()
+  expect(boundsCalls()).toHaveLength(0)
+  window.dispatchEvent(new MouseEvent('pointerup'))
+  await flushMicrotasks()
+  expect(boundsCalls()).toHaveLength(1)
+  tabDragSession.end()
+  await flushMicrotasks()
+  expect(boundsCalls()).toHaveLength(1)
+  page.dispose()
+})
+
+test('disposing a page discards placement deferred by a header press', async () => {
+  const page = attachNativePage(document.createElement('div'), 'tab', false, null)
+  await flushMicrotasks()
+  pressHeader()
+  page.bounds(null)
+  await flushMicrotasks()
+  expect(boundsCalls()).toHaveLength(0)
+  page.dispose()
+  window.dispatchEvent(new MouseEvent('pointerup'))
+  await flushMicrotasks()
+  expect(boundsCalls()).toHaveLength(0)
 })

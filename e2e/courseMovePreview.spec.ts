@@ -25,15 +25,42 @@ test('course hover keeps one live preview, cancel restores the source, and a fav
     await folder('Source').locator('.course-row__select').click()
     await open(source.id, 'https://chatgpt.com/moving')
     await open(source.id, 'https://gemini.google.com/app/source')
+    await app.evaluate(({ BrowserWindow }) => {
+      const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
+      const events: unknown[] = []
+      ;(globalThis as any).__workspaceNativeEvents = events
+      const record = (type: string, view: any, value?: unknown) => {
+        if (events.length < 300) events.push({ type, epoch: Date.now(), url: view.webContents.getURL(),
+          visible: view.getVisible(), bounds: view.getBounds(), value })
+      }
+      for (const view of host.contentView.children as any[]) {
+        if (!view.webContents) continue
+        const setVisible = view.setVisible.bind(view), setBounds = view.setBounds.bind(view)
+        const focus = view.webContents.focus.bind(view.webContents)
+        view.setVisible = (value: boolean) => { record('setVisible', view, value); return setVisible(value) }
+        view.setBounds = (value: unknown) => { record('setBounds', view, value); return setBounds(value) }
+        view.webContents.focus = () => { record('focus', view); return focus() }
+      }
+      const focusHost = host.webContents.focus.bind(host.webContents)
+      host.webContents.focus = () => {
+        if (events.length < 300) events.push({ type: 'focus-host', epoch: Date.now() })
+        return focusHost()
+      }
+    })
     // Record the first gesture too: native-page focus can interrupt a pressed
     // inactive tab before Chromium has started HTML DnD on Windows.
     await page.evaluate(() => {
       ;(window as any).__workspaceDragEvents = []
-      for (const type of ['pointerdown', 'mousedown', 'dragstart', 'pointercancel', 'dragend', 'mouseup', 'blur', 'focus']) window.addEventListener(type, event => {
+      for (const type of ['pointerdown', 'mousedown', 'pointermove', 'mousemove', 'dragstart', 'pointercancel', 'dragend', 'pointerup', 'mouseup', 'blur', 'focus']) window.addEventListener(type, event => {
         const events = (window as any).__workspaceDragEvents
         if (events.length >= 200) return
-        events.push({ type, time: performance.now(), target: event.target === window ? 'window' : (event.target as Element)?.className,
-          x: (event as MouseEvent).clientX, y: (event as MouseEvent).clientY,
+        const target = event.target instanceof Element ? event.target : null
+        const tab = target?.closest('.dv-tab'), bounds = tab?.getBoundingClientRect()
+        const mouse = event as MouseEvent
+        events.push({ type, time: performance.now(), epoch: Date.now(), target: event.target === window ? 'window' : target?.className,
+          x: mouse.clientX, y: mouse.clientY, buttons: mouse.buttons,
+          hit: Number.isFinite(mouse.clientX) ? document.elementFromPoint(mouse.clientX, mouse.clientY)?.className : undefined,
+          draggable: tab?.getAttribute('draggable'), tab: bounds ? { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height } : null,
           focused: document.hasFocus(), dragging: document.querySelector('.workspace-host')?.getAttribute('data-tab-dragging') })
       }, true)
     })
@@ -57,7 +84,8 @@ test('course hover keeps one live preview, cancel restores the source, and a fav
         const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
         return host.contentView.children.flatMap((view: any) => view.webContents ? [{ url: view.webContents.getURL(), visible: view.getVisible(), bounds: view.getBounds() }] : [])
       })
-      records.push({ stage, dom, native })
+      const nativeEvents = await app.evaluate(() => (globalThis as any).__workspaceNativeEvents)
+      records.push({ stage, dom, native, nativeEvents })
       await page.screenshot({ path: info.outputPath(`${stage}-renderer.png`) })
       const capture = await app.evaluate(async ({ BrowserWindow }) => (await BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.capturePage()).toDataURL())
       writeFileSync(info.outputPath(`${stage}-window.png`), Buffer.from(capture.split(',')[1]!, 'base64'))
@@ -130,7 +158,8 @@ test('course hover keeps one live preview, cancel restores the source, and a fav
     }, { sourceId: source.id, targetId: target.id })).toEqual([2, 1])
     await record('favorite-copy')
   } catch (error) {
-    records.push({ stage: 'failed', events: await bandal.page.evaluate(() => (window as any).__workspaceDragEvents).catch(() => null) })
+    records.push({ stage: 'failed', events: await bandal.page.evaluate(() => (window as any).__workspaceDragEvents).catch(() => null),
+      nativeEvents: await bandal.app.evaluate(() => (globalThis as any).__workspaceNativeEvents).catch(() => null) })
     throw error
   } finally {
     writeFileSync(info.outputPath('geometry.json'), JSON.stringify(records, null, 2))
