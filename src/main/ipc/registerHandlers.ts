@@ -25,6 +25,7 @@ import { initializeBrowserProfiles, listBrowserProfiles, saveBrowserProfile, del
 import { hardenBrowsingSession, useProfilePermissions, forgetProfilePermissions } from '../features/browser/hardenWebviews'
 import { browserSessionForTab, prepareProfileSwitch, createBrowserPage, setBrowserPageCourse, setBrowserPageBounds, setBrowserHostOccluded, browserPageAction, destroyBrowserPage, prepareBrowserPageClose, onBrowserQuitCancelled } from '../features/browser/nativeTabs'
 import { isManagedBrowserPage } from '../features/browser/managedPages'
+import { isCleanBrowserAuthProbe } from '../features/browser/authProbe'
 import { beginClipboardCopy, writeImageClipboard } from '../features/systemClipboard'
 import { copyFile } from 'node:fs/promises'
 import { browsingContext, setBrowsingCourse } from '../features/browser/browsingContext'
@@ -1659,12 +1660,16 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
       if (!contents || contents.isDestroyed()) { failed = true; material = undefined }
       else {
         try {
-          const selection = await Promise.race([
+          const cleanProbe = isCleanBrowserAuthProbe()
+          const selection = cleanProbe ? undefined : await Promise.race([
             contents.executeJavaScript('window.getSelection()?.toString().slice(0, 8000) || ""'),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error('문맥 읽기 시간 초과')), 1500))
           ])
           if (sourcePanelId && !panelMaterials.has(sourcePanelId)) { failed = true; material = undefined }
-          else material = { ...material, url: contents.getURL(), title: contents.getTitle() || material.title, ...(typeof selection === 'string' && selection ? { selection } : {}) }
+          else {
+            material = { ...material, url: contents.getURL(), title: contents.getTitle() || material.title, ...(typeof selection === 'string' && selection ? { selection } : {}) }
+            if (cleanProbe) delete material.selection
+          }
         } catch { failed = true; material = undefined }
       }
     }

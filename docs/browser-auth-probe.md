@@ -13,7 +13,7 @@ node scripts/browser-auth-probe.mjs --app /Applications/Bandal.app --mode clean
 
 Windows에서는 `--app "C:\경로\win-unpacked\Bandal.exe"`처럼 패키지 실행 파일을 지정한다. 설치 프로그램 자체를 지정하지 않는다. 각 명령은 새로운 독립 폴더를 만든다. `product`는 제품의 페이지 계측을 유지한다. `clean`은 같은 UA·네트워크 정책·보안 설정을 유지하면서 앱의 페이지 JavaScript 주입과 제스처 preload를 끈다. 기본 Electron 전체와 비교하는 실험이 아니며, 단일 변수인 앱의 페이지 계측 영향을 좁히는 실험이다.
 
-앱 창 제목은 `Bandal 인증 비교 — product/clean`이다. 앱 계정 로그인과 온보딩은 필요하지 않다. 브라우저 탭을 열고 주소를 직접 입력한다. Playwright, CDP, DevTools, 원격 디버깅 플래그를 연결하지 않는다. 앱은 이 실행에서 기본 프로토콜 등록·앱 업데이트·Finder 아이콘 변경을 수행하지 않는다.
+앱 창 제목은 `Bandal 인증 비교 — product/clean`이다. 앱 계정 로그인과 온보딩은 필요하지 않다. 브라우저 탭을 열고 주소를 직접 입력한다. 시험 중에는 AI 작업이나 브라우저 자동화를 실행하지 않는다. Playwright, CDP, DevTools, 원격 디버깅 플래그를 연결하지 않는다. 앱은 이 실행에서 기본 프로토콜 등록·앱 업데이트·Finder 아이콘 변경을 수행하지 않는다.
 
 런처가 출력한 폴더에는 앱 복사본, `user-data`, `data`, 실행 마커 `probe.json`, 비밀값을 포함하지 않는 버전 정보 `runtime.json`이 있다. 자동 로그 캡처는 하지 않는다. **로그인 후의 user-data에는 실제 세션이 저장되므로 폴더 전체를 공유하지 않는다.** 앱을 완전히 종료한 뒤 같은 세션을 다시 여는 명령은 다음과 같다.
 
