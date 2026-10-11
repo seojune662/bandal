@@ -17,6 +17,7 @@ export const tabDragSession = {
   // A press delays automatic native focus without hiding a native page or
   // claiming a drag before Chromium has actually started it.
   isFocusBlocked: (): boolean => headerPressed || kind !== null,
+  isHeaderPressed: (): boolean => headerPressed,
   beginTab: (next: WorkspaceTabDragSource): void => {
     revision += 1
     headerPressed = false

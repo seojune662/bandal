@@ -2,6 +2,7 @@ import { invoke, onPush } from '../../lib/ipc'
 import type { BrowserPageAction, BrowserPageEvent, BrowserPageState } from '../../../../shared/types/browserNative'
 import type { BrowserPageHandle } from './browserPageTypes'
 import { registerBrowserAuthGuest, retireBrowserAuthGuest } from './browserAuthForwarding'
+import { tabDragSession } from '../workspace/tabDragSession'
 
 // Survives presentation remounts; native IDs guard recreated pages.
 let ownershipRevision = 0
@@ -13,6 +14,7 @@ export function attachNativePage(element: HTMLElement, tabId: string, isPrivate:
   let adopted = false, disposed = false, boundsSerial = 0
   let nativeId: number | undefined
   const pendingEvents: BrowserPageEvent[] = []
+  let pendingBounds: { bounds: { x: number; y: number; width: number; height: number } | null; preview: boolean; serial: number } | null = null
   let creationError: unknown
   const emit = (name: string, detail: Record<string, unknown> = {}): void => {
     events.dispatchEvent(Object.assign(new Event(name), detail))
@@ -66,6 +68,24 @@ export function attachNativePage(element: HTMLElement, tabId: string, isPrivate:
     if (creationError) throw creationError
     return await invoke('browser:pageAction', { tabId, action, args }) as T
   }
+  const flushBounds = (): void => {
+    const pending = pendingBounds
+    if (!pending || tabDragSession.isHeaderPressed()) return
+    void ready.then(async () => {
+      if (disposed || creationError || pendingBounds !== pending || tabDragSession.isHeaderPressed()) return
+      pendingBounds = null
+      const { bounds, preview, serial } = pending
+      const result = await invoke('browser:pageBounds', { tabId, bounds, preview })
+      if (!disposed && serial === boundsSerial && result.snapshot) {
+        element.style.backgroundImage = `url("${result.snapshot}")`
+        element.style.backgroundSize = '100% 100%'
+      }
+    }).catch(() => undefined)
+  }
+  // Inactive-tab selection hides/shows native views before dragstart. On
+  // Windows that can interrupt the pressed pointer, so retain their placement
+  // until release or actual dragstart; drag previews then update normally.
+  const unsubscribePress = tabDragSession.subscribe(flushBounds)
   const handle: BrowserPageHandle = {
     element,
     addEventListener: events.addEventListener.bind(events),
@@ -119,19 +139,15 @@ export function attachNativePage(element: HTMLElement, tabId: string, isPrivate:
     bounds: (bounds: { x: number; y: number; width: number; height: number } | null, preview = false) => {
       const serial = ++boundsSerial
       if (bounds) element.style.backgroundImage = ''
-      void ready.then(async () => {
-        if (disposed || creationError || serial !== boundsSerial) return
-        const result = await invoke('browser:pageBounds', { tabId, bounds, preview })
-        if (!disposed && serial === boundsSerial && result.snapshot) {
-          element.style.backgroundImage = `url("${result.snapshot}")`
-          element.style.backgroundSize = '100% 100%'
-        }
-      }).catch(() => undefined)
+      pendingBounds = { bounds, preview, serial }
+      flushBounds()
     },
     dispose: () => {
       disposed = true
       pendingEvents.length = 0
       if (nativeId !== undefined) retireBrowserAuthGuest(tabId, nativeId)
+      pendingBounds = null
+      unsubscribePress()
       unsubscribe()
       void ready.then(() => {
         if (current.id > 0) return invoke('browser:destroyPage', { tabId, expectedWebContentsId: current.id })
