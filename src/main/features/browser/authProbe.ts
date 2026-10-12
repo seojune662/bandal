@@ -2,9 +2,12 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 
 export type BrowserAuthProbeMode = 'product' | 'clean'
+export type BrowserAuthProbeIdentity = 'product' | 'native'
 export const BROWSER_AUTH_PROBE_PROTOCOL = 'bandal-manual-auth-probe/v1'
+export const BROWSER_AUTH_PROBE_NATIVE_IDENTITY_CAPABILITY = 'bandal-manual-auth-probe/native-identity/v1'
 export interface BrowserAuthProbe {
   mode: BrowserAuthProbeMode
+  identity: BrowserAuthProbeIdentity
   root: string
   userDataDir: string
   dataRoot: string
@@ -30,6 +33,8 @@ export function validateBrowserAuthProbe(
   const mode = env.BANDAL_BROWSER_AUTH_PROBE
   if (mode === undefined) return null
   if (mode !== 'product' && mode !== 'clean') throw new Error('Invalid browser authentication probe mode.')
+  const identity = env.BANDAL_BROWSER_AUTH_PROBE_IDENTITY ?? 'product'
+  if (identity !== 'product' && identity !== 'native') throw new Error('Invalid browser authentication probe identity.')
   if (argv.some(arg => /^--(?:remote-debugging(?:-|=|$)|inspect|no-sandbox|disable-web-security|ignore-certificate-errors|user-agent|user-data-dir)/.test(arg))) {
     throw new Error('Authentication probes must run without automation, UA overrides or weakened security flags.')
   }
@@ -68,13 +73,16 @@ export function validateBrowserAuthProbe(
   const marker: unknown = JSON.parse(readFileSync(join(root, 'probe.json'), 'utf8'))
   if (!marker || typeof marker !== 'object') throw new Error('Missing authentication probe launcher marker.')
   const value = marker as Record<string, unknown>
+  // Older launchers did not select an identity; they always used product behavior.
+  const markerIdentity = value.identity === undefined ? 'product' : value.identity
   const executable = canonical(executablePath)
   if (value.version !== 1 || value.purpose !== 'bandal-browser-auth-probe' || value.mode !== mode ||
+    markerIdentity !== identity ||
     value.root !== root || value.userDataDir !== userDataDir || value.dataRoot !== dataRoot ||
     value.executablePath !== executable || !contains(join(root, 'application'), executable)) {
     throw new Error('Authentication probe launcher marker does not match this app copy and data paths.')
   }
-  return { mode, root, userDataDir, dataRoot, launchId }
+  return { mode, identity, root, userDataDir, dataRoot, launchId }
 }
 
 /** Called once, before any profile, single-instance lock or window is opened. */
@@ -89,6 +97,7 @@ export function initializeBrowserAuthProbe(
 }
 
 export function getBrowserAuthProbeMode(): BrowserAuthProbeMode | null { return activeProbe?.mode ?? null }
+export function getBrowserAuthProbeIdentity(): BrowserAuthProbeIdentity | null { return activeProbe?.identity ?? null }
 export function isCleanBrowserAuthProbe(): boolean { return activeProbe?.mode === 'clean' }
 
 /** Only this non-secret, immutable setting is passed to the application preload. */

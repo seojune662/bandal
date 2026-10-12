@@ -9,19 +9,31 @@ Node.js 24에서 이 기능이 포함된 공개 배포 설치 파일을 풀거�
 ```sh
 node scripts/browser-auth-probe.mjs --app /Applications/Bandal.app --mode product
 node scripts/browser-auth-probe.mjs --app /Applications/Bandal.app --mode clean
+node scripts/browser-auth-probe.mjs --app /Applications/Bandal.app --mode product --identity native
+node scripts/browser-auth-probe.mjs --app /Applications/Bandal.app --mode clean --identity native
 ```
 
-Windows에서는 `--app "C:\경로\win-unpacked\Bandal.exe"`처럼 패키지 실행 파일을 지정한다. 설치 프로그램 자체를 지정하지 않는다. 각 명령은 새로운 독립 폴더를 만든다. `product`는 제품의 페이지 계측을 유지한다. `clean`은 같은 UA·네트워크 정책·보안 설정을 유지하면서 앱의 페이지 JavaScript 주입과 제스처 preload를 끈다. 기본 Electron 전체와 비교하는 실험이 아니며, 단일 변수인 앱의 페이지 계측 영향을 좁히는 실험이다.
+Windows에서는 `--app "C:\경로\win-unpacked\Bandal.exe"`처럼 패키지 실행 파일을 지정한다. 설치 프로그램 자체를 지정하지 않는다. 각 명령은 새로운 독립 폴더를 만든다. 계측 모드와 브라우저 식별 방식은 독립된 두 조건이다.
 
-앱 창 제목은 `Bandal 인증 비교 — product/clean`이다. 앱 계정 로그인과 온보딩은 필요하지 않다. 브라우저 탭을 열고 주소를 직접 입력한다. 시험 중에는 AI 작업이나 브라우저 자동화를 실행하지 않는다. Playwright, CDP, DevTools, 원격 디버깅 플래그를 연결하지 않는다. 앱은 이 실행에서 기본 프로토콜 등록·앱 업데이트·Finder 아이콘 변경을 수행하지 않는다.
+| 모드 | 식별 방식 | 페이지 계측 | User-Agent 처리 |
+|---|---|---|---|
+| `product` | `product` (기본값) | 제품과 동일 | 제품과 동일 |
+| `clean` | `product` (기본값) | 제외 | 제품과 동일 |
+| `product` | `native` | 제품과 동일 | 런타임 기본값 유지 |
+| `clean` | `native` | 제외 | 런타임 기본값 유지 |
+
+`clean`은 앱의 페이지 JavaScript 주입과 제스처 preload를 끈다. `native`는 세션의 `setUserAgent`를 호출하지 않아 Electron의 원래 식별값을 유지한다. 다른 브라우저의 문자열이나 Client Hints를 생성하지 않으며, 원래 값을 다시 설정하는 호출도 하지 않는다. 모든 조건에서 네트워크 정책·보안 설정은 동일하다. 기본 Electron 전체와 비교하는 실험은 아니다.
+
+앱 창 제목은 `Bandal 인증 비교 — product/clean`이며 원래 식별값 조건에는 `/ native identity`가 붙는다. 앱 계정 로그인과 온보딩은 필요하지 않다. 브라우저 탭을 열고 주소를 직접 입력한다. 시험 중에는 AI 작업이나 브라우저 자동화를 실행하지 않는다. Playwright, CDP, DevTools, 원격 디버깅 플래그를 연결하지 않는다. 앱은 이 실행에서 기본 프로토콜 등록·앱 업데이트·Finder 아이콘 변경을 수행하지 않는다.
 
 런처가 출력한 폴더에는 앱 복사본, `user-data`, `data`, 실행 마커 `probe.json`, 비밀값을 포함하지 않는 버전 정보 `runtime.json`이 있다. 자동 로그 캡처는 하지 않는다. **로그인 후의 user-data에는 실제 세션이 저장되므로 폴더 전체를 공유하지 않는다.** 앱을 완전히 종료한 뒤 같은 세션을 다시 여는 명령은 다음과 같다.
 
 ```sh
 node scripts/browser-auth-probe.mjs --resume /절대/경로/bandal-auth-probe-product-xxxxxx --mode product
+node scripts/browser-auth-probe.mjs --resume /절대/경로/native-시험-폴더 --mode product --identity native
 ```
 
-비교가 끝나면 해당 앱을 종료하고 런처가 출력한 전용 폴더만 삭제한다. `--resume`는 같은 모드·동일 복사본만 재사용한다. 런처 마커나 경로가 일치하지 않으면 앱은 데이터 초기화 전에 실행을 거절한다.
+비교가 끝나면 해당 앱을 종료하고 런처가 출력한 전용 폴더만 삭제한다. `--resume`는 같은 모드·식별 방식·동일 복사본만 재사용한다. 첫 탐색 전 정한 식별 방식을 시험 중이나 호스트별로 바꾸지 않는다. 런처 마커나 경로가 일치하지 않으면 앱은 데이터 초기화 전에 실행을 거절한다. v0.79.4의 기존 시험 폴더와 런타임 응답에 식별 필드가 없으면 `product`로만 해석한다. `native`는 해당 기능이 포함된 새 공개 패키지가 필요하며 구버전 패키지는 실행 전에 거절한다.
 
 ## 판정
 
@@ -31,10 +43,12 @@ node scripts/browser-auth-probe.mjs --resume /절대/경로/bandal-auth-probe-pr
 2. Google의 `다른 계정 추가`로 두 번째 계정을 추가하고 계정 메뉴에서 전환한다. 다른 탭과 함께 사용할 때 실제 계정과 콘텐츠를 확인한다.
 3. 서로 다른 계정으로 로그인한 두 브라우저 프로필을 현재 탭에서 왕복 전환한다. 다른 프로필을 사용하는 별도 탭은 원래 로그인 상태를 유지하는지 확인한다.
 4. 앱 종료 후 `--resume`로 다시 열어 세션 유지, 시험 공간에서 로그아웃 후 재로그인을 확인한다.
-5. 거절되면 동일 기기·네트워크·계정의 지원 브라우저에서 비교한다. `clean`만 성공할 때 앱 계측을 하나씩 복원하여 실패시키는 최소 조건을 찾는다. 둘 다 실패하면 계정·조직·네트워크 영향과 내장 브라우저 제한을 분리하고, 필요할 때 같은 Electron 버전의 최소 구성으로 비교한다. 최소 구성도 거절되기 전에는 브라우저 구조가 원인이라고 확정하지 않는다.
+5. 거절되면 동일 기기·네트워크·계정의 지원 브라우저에서 비교한다. 같은 식별 방식에서 `clean`만 성공하면 앱 계측을 하나씩 복원하여 실패시키는 최소 조건을 찾는다. 같은 계측 모드에서 `native`만 성공하면 새로운 빈 공간에서 그 비교를 재확인한다. 계측과 식별 방식을 동시에 바꾼 두 결과만으로 원인을 단정하지 않는다. 모든 조건이 실패하면 계정·조직·네트워크 영향과 내장 브라우저 제한을 분리하고, 필요할 때 같은 Electron 버전의 최소 구성으로 비교한다. 최소 구성도 거절되기 전에는 브라우저 구조가 원인이라고 확정하지 않는다.
 
-기록은 OS, 앱/Electron/Chromium 버전, 모드, 개인/Workspace 구분, 통과한 단계, 거절 종류와 호스트·경로에 한정한다. 이메일·이름·인증 URL query/fragment·쿠키·토큰·화면 속 개인 자료는 공유 기록에 포함하지 않는다. 서명되지 않은 로컬 빌드의 결과는 배포 앱 인증 성공의 근거로 사용하지 않는다. macOS·Windows의 공개된 동일 버전을 각각 확인하고 서명 상태를 구분한다.
+반달의 기존 User-Agent 처리는 대학 사이트 호환성을 위해 Electron과 앱 이름을 제거한다. 다른 Electron 프로젝트에서 이 가공과 Google 거절의 관련성을 보고한 [재현 기록](https://github.com/stablyai/orca/issues/11518)이 있어 원래 식별값 조건을 별도로 추가했다. 이는 반달에서 확인된 원인이나 Google의 공식 허용 조건이 아니다. 비교 결과를 얻기 전까지 일반 제품의 기본 UA 정책을 변경하지 않는다.
 
-런처는 실행 전 패키지에 이 기능의 표식이 있는지 확인하여 구버전을 거절한다. 실행 후에도 현재 실행의 식별자·PID·모드가 일치하는 새 런타임 응답을 20초 이내에 확인한다. 응답이 없으면 자신이 실행한 복사본 프로세스만 종료하고 실패를 보고한다. 이 확인은 격리 환경의 시작 확인이며 Google 로그인 성공 판정이 아니다.
+기록은 OS, 앱/Electron/Chromium 버전, 모드·식별 방식, 개인/Workspace 구분, 통과한 단계, 거절 종류와 호스트·경로에 한정한다. 이메일·이름·인증 URL query/fragment·쿠키·토큰·화면 속 개인 자료는 공유 기록에 포함하지 않는다. 서명되지 않은 로컬 빌드의 결과는 배포 앱 인증 성공의 근거로 사용하지 않는다. macOS·Windows의 공개된 동일 버전을 각각 확인하고 서명 상태를 구분한다.
+
+런처는 실행 전 패키지에 이 기능의 표식이 있는지 확인하여 구버전을 거절한다. 실행 후에도 현재 실행의 식별자·PID·모드·식별 방식이 일치하는 새 런타임 응답을 20초 이내에 확인한다. 응답이 없으면 자신이 실행한 복사본 프로세스만 종료하고 실패를 보고한다. 이 확인은 격리 환경의 시작 확인이며 Google 로그인 성공 판정이 아니다.
 
 공식 근거: Google은 앱에 내장되거나 자동화로 제어되는 브라우저의 로그인을 제한할 수 있다. [지원 브라우저 안내](https://support.google.com/accounts/answer/7675428?hl=ko). 두 계정 전환은 Google 웹 자체의 기능이며 브라우저 프로필과 동일한 개념이 아니다. [여러 계정 로그인](https://support.google.com/accounts/answer/1721977?hl=ko).

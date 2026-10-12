@@ -35,7 +35,7 @@ import {
 } from './windows/macFinderIcon'
 import { reportFatalStartupError } from './startupError'
 import { PLUGIN_SCHEME } from './features/plugins/pluginProtocol'
-import { BROWSER_AUTH_PROBE_PROTOCOL, initializeBrowserAuthProbe } from './features/browser/authProbe'
+import { BROWSER_AUTH_PROBE_NATIVE_IDENTITY_CAPABILITY, BROWSER_AUTH_PROBE_PROTOCOL, initializeBrowserAuthProbe } from './features/browser/authProbe'
 import { writeFileSync } from 'node:fs'
 
 const execFileAsync = promisify(execFile)
@@ -151,6 +151,7 @@ if (!app.requestSingleInstanceLock()) {
     app.setAppUserModelId('com.bandal.app')
     if (authProbe) writeFileSync(join(authProbe.root, 'runtime.json'), JSON.stringify({
       protocol: BROWSER_AUTH_PROBE_PROTOCOL, version: 1, mode: authProbe.mode,
+      identity: authProbe.identity, capabilities: [BROWSER_AUTH_PROBE_NATIVE_IDENTITY_CAPABILITY],
       launchId: authProbe.launchId, pid: process.pid, startedAt: new Date().toISOString(),
       appVersion: app.getVersion(), platform: process.platform, arch: process.arch,
       electron: process.versions.electron, chromium: process.versions.chrome,

@@ -1,6 +1,6 @@
 import { guestProfile, inheritGuestProfile, forgetGuestProfile } from './profiles'
 import { attachEmbeddedAuthFallback, inheritEmbeddedAuthSource } from './embeddedAuth'
-import { isCleanBrowserAuthProbe } from './authProbe'
+import { getBrowserAuthProbeIdentity, isCleanBrowserAuthProbe } from './authProbe'
 import { installGestureSession, navigateBySwipe } from './swipeNavigation'
 import { isManagedBrowserPage } from './managedPages'
 /**
@@ -151,9 +151,11 @@ export function hardenBrowsingSession(partition: string): void {
   const browsingSession = session.fromPartition(partition)
   installGestureSession(browsingSession)
   const persistent = partition.startsWith('persist:')
-  browsingSession.setUserAgent(
-    browsingUserAgent(browsingSession.getUserAgent(), app.getName())
-  )
+  if (getBrowserAuthProbeIdentity() !== 'native') {
+    browsingSession.setUserAgent(
+      browsingUserAgent(browsingSession.getUserAgent(), app.getName())
+    )
+  }
   browsingSession.setPermissionRequestHandler(
     (webContents, permission, callback, details) => {
       const tier = permissionTier(permission)

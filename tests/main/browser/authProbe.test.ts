@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { browserAuthProbeArguments, getBrowserAuthProbeMode, initializeBrowserAuthProbe, isCleanBrowserAuthProbe, validateBrowserAuthProbe } from '../../../src/main/features/browser/authProbe'
+import { BROWSER_AUTH_PROBE_NATIVE_IDENTITY_CAPABILITY, browserAuthProbeArguments, getBrowserAuthProbeIdentity, getBrowserAuthProbeMode, initializeBrowserAuthProbe, isCleanBrowserAuthProbe, validateBrowserAuthProbe } from '../../../src/main/features/browser/authProbe'
 
 let root: string, installed: string, executablePath: string, env: NodeJS.ProcessEnv
 let marker: Record<string, unknown>
@@ -33,7 +33,9 @@ afterEach(() => {
 
 test('normal startup ignores old test-data overrides and has no probe capabilities', () => {
   expect(validateBrowserAuthProbe({ BANDAL_USER_DATA_DIR: installed }, installed, executablePath)).toBeNull()
+  expect(initializeBrowserAuthProbe({ BANDAL_BROWSER_AUTH_PROBE_IDENTITY: 'native' }, installed, executablePath)).toBeNull()
   expect(getBrowserAuthProbeMode()).toBeNull()
+  expect(getBrowserAuthProbeIdentity()).toBeNull()
   expect(browserAuthProbeArguments()).toEqual([])
 })
 
@@ -42,8 +44,48 @@ test.each(['clean', 'product'] as const)('accepts only a marked copied app and p
   marker.mode = mode
   writeMarker()
   expect(initializeBrowserAuthProbe(env, installed, executablePath)).toMatchObject({ mode, root })
+  expect(getBrowserAuthProbeIdentity()).toBe('product')
   expect(browserAuthProbeArguments()).toEqual([`--bandal-browser-auth-probe=${mode}`])
   expect(isCleanBrowserAuthProbe()).toBe(mode === 'clean')
+})
+
+test.each([
+  ['product', 'product'], ['product', 'native'], ['clean', 'product'], ['clean', 'native']
+] as const)('accepts a matching %s instrumentation / %s identity marker independently', (mode, identity) => {
+  env.BANDAL_BROWSER_AUTH_PROBE = mode
+  env.BANDAL_BROWSER_AUTH_PROBE_IDENTITY = identity
+  marker.mode = mode
+  marker.identity = identity
+  writeMarker()
+  expect(initializeBrowserAuthProbe(env, installed, executablePath)).toMatchObject({ mode, identity, root })
+  expect(getBrowserAuthProbeMode()).toBe(mode)
+  expect(getBrowserAuthProbeIdentity()).toBe(identity)
+  expect(isCleanBrowserAuthProbe()).toBe(mode === 'clean')
+  expect(browserAuthProbeArguments()).toEqual([`--bandal-browser-auth-probe=${mode}`])
+  expect(BROWSER_AUTH_PROBE_NATIVE_IDENTITY_CAPABILITY).toBe('bandal-manual-auth-probe/native-identity/v1')
+})
+
+test('legacy identity omissions mean product only, never native', () => {
+  expect(validateBrowserAuthProbe(env, installed, executablePath)?.identity).toBe('product')
+  expect(validateBrowserAuthProbe({ ...env, BANDAL_BROWSER_AUTH_PROBE_IDENTITY: 'product' }, installed, executablePath)?.identity).toBe('product')
+  expect(() => validateBrowserAuthProbe({ ...env, BANDAL_BROWSER_AUTH_PROBE_IDENTITY: 'native' }, installed, executablePath)).toThrow(/marker/)
+  marker.identity = 'native'
+  writeMarker()
+  expect(() => validateBrowserAuthProbe(env, installed, executablePath)).toThrow(/marker/)
+})
+
+test.each(['', 'chrome', 'Native', 'unknown'])('refuses unknown identity %s in either environment or marker', identity => {
+  expect(() => validateBrowserAuthProbe({ ...env, BANDAL_BROWSER_AUTH_PROBE_IDENTITY: identity }, installed, executablePath)).toThrow(/identity/)
+  marker.identity = identity
+  writeMarker()
+  expect(() => validateBrowserAuthProbe(env, installed, executablePath)).toThrow(/marker/)
+})
+
+test.each([['product', 'native'], ['native', 'product']] as const)('refuses environment identity %s against marker identity %s', (identity, markerIdentity) => {
+  marker.identity = markerIdentity
+  writeMarker()
+  expect(() => validateBrowserAuthProbe({ ...env, BANDAL_BROWSER_AUTH_PROBE_IDENTITY: identity }, installed, executablePath)).toThrow(/marker/)
+  expect(getBrowserAuthProbeIdentity()).toBeNull()
 })
 
 test('refuses a mode flag alone, relative data paths, or another mode marker', () => {

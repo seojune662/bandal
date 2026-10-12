@@ -13,7 +13,7 @@ import {
   normalizeAllowedExternalUrl
 } from './externalUrlPolicy'
 import { createWindowStateStore } from './windowBounds'
-import { browserAuthProbeArguments, getBrowserAuthProbeMode } from '../features/browser/authProbe'
+import { browserAuthProbeArguments, getBrowserAuthProbeIdentity, getBrowserAuthProbeMode } from '../features/browser/authProbe'
 
 let mainWindow: BrowserWindow | null = null
 const mainWindowClosedListeners = new Set<() => void>()
@@ -145,7 +145,8 @@ export function createMainWindow(): BrowserWindow {
   const win = mainWindow
   const probeMode = getBrowserAuthProbeMode()
   if (probeMode) {
-    const title = `Bandal 인증 비교 — ${probeMode}`
+    const identity = getBrowserAuthProbeIdentity()
+    const title = `Bandal 인증 비교 — ${probeMode}${identity === 'native' ? ' / native identity' : ''}`
     win.setTitle(title)
     win.on('page-title-updated', event => { event.preventDefault(); win.setTitle(title) })
   }
