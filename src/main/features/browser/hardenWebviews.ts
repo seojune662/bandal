@@ -271,6 +271,10 @@ export function popupWebPreferences(
   return {
     partition,
     nodeIntegration: false,
+    // Electron gates session frame preloads on this flag too. Keep Node out of
+    // page worlds with the explicit sandbox and isolation below; only the
+    // gesture preload is registered for this browsing session.
+    nodeIntegrationInSubFrames: true,
     nodeIntegrationInWorker: false,
     contextIsolation: true,
     sandbox: true,

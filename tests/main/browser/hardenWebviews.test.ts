@@ -38,7 +38,8 @@ vi.mock('../../../src/main/settingsStore', () => ({
 import {
   attachGuestInput,
   attachNavigationPolicies,
-  forwardBrowserSwipe
+  forwardBrowserSwipe,
+  popupWebPreferences
 } from '../../../src/main/features/browser/hardenWebviews'
 
 type Listener = (...args: any[]) => void
@@ -210,4 +211,20 @@ describe('forwardBrowserSwipe', () => {
 
     expect(host.send).not.toHaveBeenCalled()
   })
+})
+
+
+test('browser frames load the isolated gesture preload while keeping sandboxed page worlds', () => {
+  const preferences = popupWebPreferences('fixture-browser-session')
+  expect(preferences).toMatchObject({
+    partition: 'fixture-browser-session',
+    nodeIntegration: false,
+    nodeIntegrationInSubFrames: true,
+    nodeIntegrationInWorker: false,
+    contextIsolation: true,
+    sandbox: true,
+    webSecurity: true,
+    webviewTag: false
+  })
+  expect(preferences.preload).toBeUndefined()
 })

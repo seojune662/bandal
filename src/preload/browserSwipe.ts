@@ -5,36 +5,83 @@ export interface BrowserSwipeState {
   theme: 'light' | 'dark'
 }
 
-export function waitForSwipe(state: () => BrowserSwipeState): Promise<'back' | 'forward'> {
+export const BROWSER_SWIPE_IDLE_MS = 180
+
+export type ParentSwipePolicy = (direction: 'back' | 'forward', startedAt: number) => Promise<boolean>
+
+export function scrollChainConsumes(path: EventTarget[], deltaX: number): boolean {
+  const viewport = document.scrollingElement
+  const rootCss = viewport === document.documentElement ? getComputedStyle(document.documentElement) : null
+  const bodyCss = rootCss && document.body ? getComputedStyle(document.body) : null
+  // Propagated body overflow belongs to the viewport, not a second container.
+  const bodyOverflow = rootCss && bodyCss && bodyCss.display !== 'none'
+    && (!rootCss.overflowX || rootCss.overflowX === 'visible') && (!rootCss.overflowY || rootCss.overflowY === 'visible')
+    && (!rootCss.contain || rootCss.contain === 'none') && (!bodyCss.contain || bodyCss.contain === 'none')
+  for (const item of path) {
+    if (!(item instanceof Element) || (bodyOverflow && item === document.body)) continue
+    const css = getComputedStyle(item)
+    // The viewport scrolls with its default overflow:visible. Plain elements
+    // must be scroll containers before their overscroll policy has an effect.
+    const overflow = item === viewport && bodyOverflow ? bodyCss!.overflowX : css.overflowX
+    if (item !== viewport && !/^(auto|scroll|hidden)$/.test(overflow)) continue
+    if (css.overscrollBehaviorX === 'contain' || css.overscrollBehaviorX === 'none') return true
+    if (overflow === 'hidden' || overflow === 'clip' || item.scrollWidth <= item.clientWidth + 1) continue
+    const max = item.scrollWidth - item.clientWidth
+    const x = item.scrollLeft
+    if (css.direction === 'rtl' ? (deltaX < 0 ? x > -max + 1 : x < -1) : (deltaX < 0 ? x > 1 : x < max - 1)) return true
+  }
+  return false
+}
+
+export function waitForSwipe(state: () => BrowserSwipeState, checkParents?: ParentSwipePolicy): Promise<'back' | 'forward'> {
   return new Promise(resolve => {
     let distance = 0, vertical = 0, last = -Infinity, blocked = false, timer: ReturnType<typeof setTimeout> | undefined
+    let gesture = 0, policyRequest = 0, startedAt = 0, parentAllowed = !checkParents
+    let parentDirection: 'back' | 'forward' | undefined
     let hint: HTMLElement | null = null
     const clear = (): void => { hint?.remove(); hint = null }
-    const scrolls = (event: WheelEvent): boolean => {
-      for (const item of event.composedPath()) {
-        if (!(item instanceof Element)) continue
-        const css = getComputedStyle(item)
-        if (css.overscrollBehaviorX === 'contain' || css.overscrollBehaviorX === 'none') return true
-        if (!/(auto|scroll)/.test(css.overflowX) || item.scrollWidth <= item.clientWidth + 1) continue
-        const max = item.scrollWidth - item.clientWidth
-        const x = item.scrollLeft
-        if (css.direction === 'rtl' ? (event.deltaX < 0 ? x > -max + 1 : x < -1) : (event.deltaX < 0 ? x > 1 : x < max - 1)) return true
-      }
-      return false
+    const commit = (direction: 'back' | 'forward', expectedGesture: number): void => {
+      const current = state()
+      if (gesture !== expectedGesture || document.hidden || !current.enabled || !(direction === 'back' ? current.canBack : current.canForward)) return
+      window.removeEventListener('wheel', wheel)
+      window.removeEventListener('blur', cancel)
+      window.removeEventListener('pagehide', cancel)
+      document.removeEventListener('visibilitychange', visibilityChanged)
+      resolve(direction)
     }
     const wheel = (event: WheelEvent): void => {
       if (!event.isTrusted) return
       const now = performance.now()
-      if (now - last > 220) { distance = 0; vertical = 0; blocked = scrolls(event); clear() }
+      if (now - last >= BROWSER_SWIPE_IDLE_MS) {
+        distance = 0; vertical = 0; blocked = false; clear()
+        gesture++; startedAt = Date.now(); parentAllowed = !checkParents; parentDirection = undefined
+      }
       last = now
       clearTimeout(timer)
-      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.deltaMode !== 0) blocked = true
+      // Check the actual direction on every packet, including a reversal.
+      // Once scrolling owns a gesture, reaching its edge cannot turn the
+      // remaining movement (or momentum) into a history navigation.
+      if (event.deltaX !== 0 && scrollChainConsumes(event.composedPath(), event.deltaX)) blocked = true
+      if (event.defaultPrevented || document.hidden || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.deltaMode !== 0) blocked = true
+      if (checkParents && !blocked && event.deltaX !== 0) {
+        const direction = event.deltaX < 0 ? 'back' : 'forward'
+        if (direction !== parentDirection) {
+          parentAllowed = false
+          parentDirection = direction
+          const expectedGesture = gesture, request = ++policyRequest
+          void checkParents(direction, startedAt).catch(() => false).then(allowed => {
+            if (gesture !== expectedGesture || policyRequest !== request) return
+            parentAllowed = allowed
+            if (!allowed) { blocked = true; clear() }
+          })
+        }
+      }
       distance += event.deltaX
       vertical += Math.abs(event.deltaY)
       if (vertical > 12 && vertical > Math.abs(distance) / 1.5) blocked = true
       const flags = state()
       const available = flags.enabled && (distance < 0 ? flags.canBack : flags.canForward)
-      if (!blocked && available && Math.abs(distance) > 12 && Math.abs(distance) > vertical * 1.5) {
+      if (!blocked && parentAllowed && available && Math.abs(distance) > 12 && Math.abs(distance) > vertical * 1.5) {
         event.preventDefault()
         if (!hint) {
           hint = document.createElement('div')
@@ -52,13 +99,22 @@ export function waitForSwipe(state: () => BrowserSwipeState): Promise<'back' | '
       } else clear()
       timer = setTimeout(() => {
         clear()
-        if (!blocked && available && Math.abs(distance) >= 160 && Math.abs(distance) > vertical * 1.5) {
-          window.removeEventListener('wheel', wheel, true)
-          resolve(distance < 0 ? 'back' : 'forward')
+        if (!blocked && parentAllowed && Math.abs(distance) >= 160 && Math.abs(distance) > vertical * 1.5) {
+          const direction = distance < 0 ? 'back' : 'forward', expectedGesture = gesture
+          // The first unclaimed packet can scroll an ancestor before its policy
+          // reply arrives. Recheck recent ancestor scrolling before committing.
+          if (checkParents) void checkParents(direction, startedAt).catch(() => false).then(allowed => { if (allowed) commit(direction, expectedGesture) })
+          else commit(direction, expectedGesture)
         }
         distance = 0; vertical = 0; last = -Infinity; blocked = false
-      }, 180)
+      }, BROWSER_SWIPE_IDLE_MS)
     }
-    window.addEventListener('wheel', wheel, { capture: true, passive: false })
+    const cancel = (): void => { gesture++; blocked = true; clear() }
+    const visibilityChanged = (): void => { if (document.hidden) cancel() }
+    // Let page widgets consume wheel input before deciding to navigate.
+    window.addEventListener('wheel', wheel, { passive: false })
+    window.addEventListener('blur', cancel)
+    window.addEventListener('pagehide', cancel)
+    document.addEventListener('visibilitychange', visibilityChanged)
   })
 }

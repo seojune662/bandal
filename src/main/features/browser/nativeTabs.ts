@@ -118,7 +118,7 @@ function install(tab: Tab, parent?: Tab): void {
   tab.view.setVisible(false)
   tab.host.contentView.addChildView(tab.view)
   attachGuestInput(host, wc, tab.partition)
-  installSwipeNavigation(wc)
+  installSwipeNavigation(wc, () => !tab.host.isDestroyed() && tab.host.isVisible() && !tab.host.isMinimized() && tab.view.getVisible())
   attachNavigationPolicies(wc, {
     partition: tab.partition,
     openInTab: (url) => host.send('browser:open-url', { url }),

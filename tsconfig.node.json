@@ -36,6 +36,7 @@
   ],
   "exclude": [
     "src/preload/browserGesture.ts",
-    "src/preload/browserSwipe.ts"
+    "src/preload/browserSwipe.ts",
+    "src/preload/browserSwipeParents.ts"
   ]
 }

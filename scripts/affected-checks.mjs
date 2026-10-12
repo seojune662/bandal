@@ -50,6 +50,15 @@ export function onlyBrowserGestureEntryChanged(before, after) {
   return strip(before) === strip(after)
 }
 
+export function onlySwipeRegistrationChanged(before, after) {
+  // A visibility predicate passed to the gesture bridge does not change native
+  // tab placement or dragging. Keep their unit coverage, but run gesture E2E.
+  const registration = '  installSwipeNavigation(wc, () => !tab.host.isDestroyed() && tab.host.isVisible() && !tab.host.isMinimized() && tab.view.getVisible())'
+  const strip = value => value.replaceAll('\r\n', '\n').split('\n')
+    .map(line => line === registration ? '  installSwipeNavigation(wc)' : line).join('\n').trim()
+  return before !== after && strip(before) === strip(after)
+}
+
 export function planChecks(files, full = false) {
   const has = (pattern) => files.some((file) => pattern.test(file))
   // Global runtime/toolchain changes justify a broad check; routine features do not.
@@ -98,7 +107,9 @@ export function planChecks(files, full = false) {
   if (has(/(renderInkSnapshot|pageImage)/i)) e2e.add('e2e/pageImageCopy.spec.ts')
   if (has(/(systemClipboard|noteImagePlugin|BufferedPdfCanvas|zoomInput)/)) e2e.add('e2e/interactionFixes.spec.ts')
   if (has(/(BrowserAddress|browserSearch|urlInput|useAddressSuggestions)/)) e2e.add('e2e/browserAddress.spec.ts')
-  if (has(/^src\/.*\/browser\/|src\/preload\/browser|src\/main\/windows\/assistantWindow|src\/renderer\/src\/features\/assistant\//)) e2e.add('e2e/browserCompatibility.spec.ts')
+  const browserSwipe = /^src\/(?:main\/features\/browser\/swipeNavigation|preload\/browser(?:Gesture|Swipe(?:Parents)?))\.ts$/
+  if (has(browserSwipe)) e2e.add('e2e/browserSwipe.spec.ts')
+  if (files.some(file => !browserSwipe.test(file) && /^src\/.*\/browser\/|src\/preload\/browser|src\/main\/windows\/assistantWindow|src\/renderer\/src\/features\/assistant\//.test(file))) e2e.add('e2e/browserCompatibility.spec.ts')
   const browserImport = has(/^(src\/main\/features\/(browser\/(import\/|(?:profiles|historyRepo)\.ts$)|credentials\/)|src\/main\/ipc\/browserImportHandlers\.ts$|src\/renderer\/src\/features\/browser\/(BrowserImportDialog\.tsx|BrowserPanel\.tsx|browserImport\.css|loginBridge\.ts|browserFavorite\.ts|browserStartPageModel\.ts)$|src\/shared\/types\/(browserImport|browserProfile|credentials)\.ts$|(?:native|resources\/native)\/browser-import\/|scripts\/(build-browser-import|verify-browser-import|build-native)\.mjs$)/) || has(browserSettings)
   if (browserImport) {
     e2e.add('e2e/browserImport.spec.ts')
@@ -131,7 +142,7 @@ export function planChecks(files, full = false) {
   if (has(/^src\/(main\/(background\/|db\/|index\.ts|features\/materials\/)|preload\/index\.ts|renderer\/src\/(features\/workspace\/|stores\/workspaceStore))/)) e2e.add('e2e/coursePerformance.spec.ts')
   if (has(/^src\/renderer\/src\/features\/notes\/(NoteTab|NoteToolbar|noteEditorPlugins|noteFormatting|nativeHistoryGuard)/)) e2e.add('e2e/noteToolbar.spec.ts')
   if (full) {
-    for (const spec of ['pdfExport', 'browserAddress', 'browserCompatibility', 'browserImport', 'learning', 'tabDrag', 'favoritesDrag', 'materialsDrag', 'pageImageCopy', 'taskSchedule', 'appleCalendar', 'viewportMenus', 'coursePerformance']) {
+    for (const spec of ['pdfExport', 'browserAddress', 'browserCompatibility', 'browserSwipe', 'browserImport', 'learning', 'tabDrag', 'favoritesDrag', 'materialsDrag', 'pageImageCopy', 'taskSchedule', 'appleCalendar', 'viewportMenus', 'coursePerformance']) {
       e2e.add(`e2e/${spec}.spec.ts`)
     }
   }
@@ -188,6 +199,14 @@ export function main(args) {
   const baseFlag = args.indexOf('--base')
   const { base, files } = changedFiles(baseFlag < 0 ? undefined : args[baseFlag + 1])
   const plan = planChecks(files, args.includes('--full'))
+  const nativeTabs = 'src/main/features/browser/nativeTabs.ts'
+  if (!plan.full && files.includes(nativeTabs) && onlySwipeRegistrationChanged(
+    git('show', `${base}:${nativeTabs}`), readFileSync(nativeTabs, 'utf8')
+  )) {
+    const gesturePlan = planChecks(files.filter(file => file !== nativeTabs).concat('src/main/features/browser/swipeNavigation.ts'))
+    plan.e2e = gesturePlan.e2e
+    plan.e2eGrep = gesturePlan.e2eGrep
+  }
   console.log(JSON.stringify({ base, ...plan }, null, 2))
   if (args.includes('--plan')) return
   if (args.includes('--e2e')) {

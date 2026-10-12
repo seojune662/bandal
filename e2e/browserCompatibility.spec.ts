@@ -372,29 +372,6 @@ test('tab assistant stays beside native pages while browser remains interactive'
   } finally { await bandal.close(); await site.close() }
 })
 
-test('horizontal trackpad gestures navigate once and respect scrolling elements', async () => {
-  const site = await fixture(), bandal = await launchBandal()
-  try {
-    await createCourse(bandal.page, '제스처 검증')
-    const root = await openTab(bandal, `${site.origin}/lecture`)
-    await run(bandal, root, `location.href='${site.origin}/second'`)
-    await expect.poll(() => run(bandal, root, 'location.pathname')).toBe('/second')
-    const wheel = async (deltaX: number, deltaY = 0) => {
-      await bandal.app.evaluate(({ webContents }, { id, deltaX, deltaY }) => { const wc = webContents.fromId(id)!; wc.focus(); wc.sendInputEvent({ type: 'mouseWheel', x: 120, y: 120, deltaX, deltaY, hasPreciseScrollingDeltas: true, canScroll: true }) }, { id: root, deltaX, deltaY })
-      await bandal.page.waitForTimeout(40)
-    }
-    // Electron input deltas have the opposite sign to DOM WheelEvent deltas.
-    await wheel(5)
-    for (let i = 0; i < 10; i++) await wheel(22)
-    await expect.poll(() => run(bandal, root, 'location.pathname')).toBe('/lecture')
-    await bandal.page.waitForTimeout(700)
-    await run(bandal, root, `document.body.innerHTML='<div id="scroller" style="position:fixed;inset:0;overflow:auto"><div style="width:3000px;height:100px">wide</div></div>';document.getElementById('scroller').scrollLeft=400`)
-    for (let i = 0; i < 10; i++) await wheel(-22)
-    await bandal.page.waitForTimeout(250)
-    expect(await run(bandal, root, 'location.pathname')).toBe('/lecture')
-  } finally { await bandal.close(); await site.close() }
-})
-
 test('profile session and tab identity survive restart without replacing the default login', async () => {
   const site = await fixture()
   let bandal = await launchBandal({ keepProfileOnClose: true })
@@ -446,33 +423,6 @@ test('cancelled beforeunload keeps the current profile and its page alive', asyn
     expect(await run(bandal, id, 'document.body.textContent')).toBe('Edit')
     await run(bandal, id, 'onbeforeunload=null')
     await bandal.app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1 })
-  } finally { await bandal.close(); await site.close() }
-})
-
-test('two-finger history works inside a cross-origin iframe', async () => {
-  const site = await fixture(), bandal = await launchBandal()
-  try {
-    await createCourse(bandal.page, '프레임 제스처')
-    const id = await openTab(bandal, `${site.origin}/lecture`)
-    await run(bandal, id, `location.href='${site.origin}/second'`)
-    await expect.poll(() => run(bandal, id, 'location.pathname')).toBe('/second')
-    await run(bandal, id, `document.body.innerHTML='<iframe src="${site.other}/frame" style="position:fixed;inset:0;width:100%;height:100%;border:0"></iframe>'`)
-    await expect.poll(() => bandal.app.evaluate(async ({ webContents }, { id, url }) => {
-      const frame = webContents.fromId(id)!.mainFrame.frames.find(f => f.url === url)
-      return frame ? frame.executeJavaScript('document.readyState') : null
-    }, { id, url: `${site.other}/frame` })).toBe('complete')
-    await bandal.app.evaluate(async ({ BrowserWindow, webContents }, id) => {
-      const wc = webContents.fromId(id)!
-      BrowserWindow.fromWebContents(wc)?.focus()
-      wc.focus()
-      await wc.mainFrame.frames[0]!.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
-      wc.sendInputEvent({ type: 'mouseMove', x: 120, y: 120 })
-    }, id)
-    for (let i = 0; i < 12; i++) {
-      await bandal.app.evaluate(({ webContents }, id) => { const wc = webContents.fromId(id)!; wc.focus(); wc.sendInputEvent({ type: 'mouseWheel', x: 120, y: 120, deltaX: 22, deltaY: 0, hasPreciseScrollingDeltas: true, canScroll: true }) }, id)
-      await bandal.page.waitForTimeout(40)
-    }
-    await expect.poll(() => run(bandal, id, 'location.pathname')).toBe('/lecture')
   } finally { await bandal.close(); await site.close() }
 })
 

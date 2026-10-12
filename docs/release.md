@@ -1,5 +1,7 @@
 # 배포와 자동 업데이트
 
+v0.79.7은 두 손가락 앞뒤 탐색의 연속 입력 누락, 가로 스크롤 오인, iframe 미동작과 숨은 탭의 지연 이동을 수정한다. 원인과 검증 범위는 [`release-notes/v0.79.7.md`](release-notes/v0.79.7.md)에 기록한다.
+
 v0.79.6는 독립 로그인 비교 환경에 Electron의 원래 브라우저 식별값을 유지하는 조건을 추가한다. 페이지 계측과 식별 방식의 영향을 따로 비교하며 일반 제품의 UA 처리는 유지한다. 실제 Google 신규 로그인 성공은 아직 확인되지 않았다. 검증 범위는 [`release-notes/v0.79.6.md`](release-notes/v0.79.6.md)를 따른다.
 
 v0.79.4는 Google 로그인 거절 안내의 오탐·복구·문서 수명을 보완하고, 실제 로그인 원인을 비교할 수 있는 독립 실행 환경을 추가한다. 이 변경은 Google 신규 로그인 성공을 의미하지 않는다. 검증 범위는 [`release-notes/v0.79.4.md`](release-notes/v0.79.4.md), 수동 비교 절차는 [`browser-auth-probe.md`](browser-auth-probe.md)를 따른다.

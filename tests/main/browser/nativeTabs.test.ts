@@ -45,6 +45,8 @@ class Host extends EventEmitter {
   webContents = new Page()
   contentView = { addChildView: vi.fn(), removeChildView: vi.fn() }
   isDestroyed = () => false
+  isVisible = () => true
+  isMinimized = () => false
   getContentSize = () => [900, 700]
   close = vi.fn()
 }
@@ -186,4 +188,28 @@ test('switching an adopted login popup permits recreating its tab in the chosen 
   replacement.webContents.id = 403
   mocks.view = replacement
   expect(await native.createBrowserPage(event, { tabId: request.tabId, courseId: null, isPrivate: false, profileId: 'personal' })).toMatchObject({ state: { id: 403 }, adopted: false })
+})
+
+
+test('swipes require both the native page and its host window to remain visible', async () => {
+  const { native, event, page } = await fixture()
+  const { installSwipeNavigation } = await import('../../../src/main/features/browser/swipeNavigation')
+  const [target, available] = vi.mocked(installSwipeNavigation).mock.calls[0]!
+  expect(target).toBe(page)
+  expect(available()).toBe(false)
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })
+  expect(available()).toBe(true)
+  const host = mocks.host as Host
+  host.isMinimized = () => true
+  expect(available()).toBe(false)
+  host.isMinimized = () => false
+  host.isVisible = () => false
+  expect(available()).toBe(false)
+  host.isVisible = () => true
+  expect(available()).toBe(true)
+  host.isDestroyed = () => true
+  expect(available()).toBe(false)
+  host.isDestroyed = () => false
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds: null })
+  expect(available()).toBe(false)
 })

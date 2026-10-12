@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { onlyVersionOrBrowserImportHookChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
+import { onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
 
 test('PDF export changes skip unrelated browser/calendar/performance checks', () => {
@@ -147,8 +147,30 @@ test('isolated browser gesture entry does not expand into unrelated checks', asy
   assert.equal(onlyBrowserGestureEntryChanged(before, after.replace('input:', 'output:').replaceAll('\n', '\r\n')), false)
   const plan = planChecks(['src/preload/browserGesture.ts', 'src/preload/browserSwipe.ts'])
   assert.equal(plan.full, false)
-  assert.deepEqual(plan.e2e, ['e2e/browserCompatibility.spec.ts'])
+  assert.deepEqual(plan.e2e, ['e2e/browserSwipe.spec.ts'])
   assert.ok(plan.types.includes('tsconfig.web.json'))
+})
+
+test('swipe navigation changes select the dedicated packaged input regression', () => {
+  const swipe = 'src/main/features/browser/swipeNavigation.ts'
+  assert.deepEqual(planChecks([swipe]).e2e, ['e2e/browserSwipe.spec.ts'])
+  assert.deepEqual(planChecks(['src/preload/browserSwipeParents.ts']).e2e, ['e2e/browserSwipe.spec.ts'])
+  assert.deepEqual(planChecks([swipe, 'src/main/features/browser/hardenWebviews.ts']).e2e,
+    ['e2e/browserSwipe.spec.ts', 'e2e/browserCompatibility.spec.ts'])
+  assert.ok(planChecks(['pnpm-lock.yaml']).e2e.includes('e2e/browserSwipe.spec.ts'))
+})
+
+test('only the native swipe registration hook can narrow native tab E2E', () => {
+  const before = 'function install() {\n  installSwipeNavigation(wc)\n  tab.view.setVisible(false)\n}\n'
+  const after = before.replace('installSwipeNavigation(wc)', 'installSwipeNavigation(wc, () => !tab.host.isDestroyed() && tab.host.isVisible() && !tab.host.isMinimized() && tab.view.getVisible())')
+  assert.equal(onlySwipeRegistrationChanged(before, after), true)
+  assert.equal(onlySwipeRegistrationChanged(before.trim(), after), true)
+  assert.equal(onlySwipeRegistrationChanged(before, after.replaceAll('\n', '\r\n')), true)
+  assert.equal(onlySwipeRegistrationChanged(before, after.replace('setVisible(false)', 'setVisible(true)')), false)
+  assert.equal(onlySwipeRegistrationChanged(before, after.replace('install()', 'create()')), false)
+  assert.equal(onlySwipeRegistrationChanged(before, after.replace('tab.view.getVisible()', 'tab.view.setBounds({})')), false)
+  assert.equal(onlySwipeRegistrationChanged(before, after.replace('tab.view.getVisible())', 'tab.view.getVisible()); moveTab()')), false)
+  assert.equal(onlySwipeRegistrationChanged(before, before), false)
 })
 
 test('CSS-only appearance edits select the shell regressions without backend checks', () => {
