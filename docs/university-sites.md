@@ -14,10 +14,10 @@
    실제 강의실은 **Canvas** 기반 `myetl.snu.ac.kr` 다. 과목 딥링크는 `https://myetl.snu.ac.kr/courses/{정수id}`.
 2. **국내 LMS는 Canvas / Moodle 양강 구도** — 조사한 18개교 중 Canvas 7 + Moodle 8.
    **딥링크 어댑터 두 개로 15개교를 덮는다.** Canvas 진영은 로그인 체인까지 동일하다.
-3. **UA에서 `Chrome/<버전>` 토큰을 절대 지우지 마라.** 연세대 포털·KAIST 수강신청·서강대 SAINT가
-   미분류 UA를 fail-closed로 막는다. `Electron/` 과 앱 이름만 제거하라.
-4. **웹메일은 기본값 외부 브라우저.** Google(서울대·성균관·한양·이화)·Microsoft(중앙대·건국대)가
-   임베디드 웹뷰 로그인을 정책적으로 차단한다.
+3. **런타임의 원래 UA를 유지하라.** 2026-10-12 재검증에서 연세대·KAIST의 검사는 원래 UA의
+   `Chrome/<버전>`을 인식했다. v0.79.8부터 Electron·앱 토큰을 제거하지 않는다.
+4. **웹메일 로그인은 실제 앱에서 검증한다.** Google은 내장 브라우저 로그인을 제한할 수 있으나,
+   안내 문구만으로 모든 구성이 실패한다고 단정하지 않는다. 계정·2단계 인증·전환 결과를 따로 기록한다.
 5. `X-Frame-Options` 는 **우리 문제가 아니다** — `<webview>` 는 최상위 프레임이다. 대신 **절대 `<iframe>` 으로 바꾸지 마라.**
 
 ---
@@ -228,7 +228,7 @@
   다른 iLOS 사이트는 `KJKEY=` 를 쓴다(건국대에서 실증). 서강대는 실계정 검증 전 하드코딩 금지.
 - 🔴 **SAINT는 SAP NetWeaver Portal이고 UA를 가린다.** 응답 본문이 로그인 폼이 아니라
   `"iView를 열 수 없습니다. iView가 브라우저, 운영 체제 또는 장치와 호환되지 않습니다."` 였다.
-  Electron 기본 UA로는 그대로 막힐 가능성이 크다 → **Chrome UA 강제 + 실기기 테스트 필수**, 실패 시 외부 브라우저 폴백.
+  이 응답만으로 Electron 토큰 때문이라고 판단할 수 없다. 원래 UA에서 실기기 검증이 필요하며, 전역 UA 가공의 근거로 사용하지 않는다.
 - 🟠 수강신청 시스템이 *"SAINT와 동시 로그인 시 중복 로그인 문제"* 를 경고한다.
   → **서강대만은 수강신청을 별도 파티션으로 격리**하는 편이 안전하다.
 - ❌ `splus.sogang.ac.kr` 은 LMS가 아니라 **비교과통합관리시스템**이다(홈페이지 링크 위치 때문에 헷갈리기 쉬움).
@@ -547,15 +547,11 @@
 
 ### 5.2 임베디드 브라우저에서 실제로 문제가 되는 것
 
-#### 🔴 1) Google 로그인은 임베디드 웹뷰를 거부한다 — **가장 큰 리스크**
+#### 🔴 1) Google의 내장 브라우저 로그인 제한
 
-- Google은 2023-07-24부터 임베디드 웹뷰의 로그인을 `disallowed_useragent` 로 차단한다
-  ("이 브라우저 또는 앱은 안전하지 않을 수 있습니다").
-- **영향 학교: 서울대(학생 메일 = Gmail), 성균관대, 한양대, 이화여대.** 즉 우리 1순위 사용자가 정통으로 맞는다.
-- 판정 신호에는 UA의 `Electron/` · `wv` 토큰이 포함된다.
-- **대응:** 메일 서비스는 기본값 `opensExternally: true` (시스템 브라우저로 열기).
-  UA에서 `Electron/…` 과 앱 이름을 제거하면 통과할 수도 있지만 **깨지기 쉬운 우회이므로 기본값으로 삼지 말 것.**
-- Microsoft OWA(중앙대·건국대)도 비표준 임베디드 브라우저에 비우호적이다 — 동일 정책 권장.
+Google은 내장 또는 자동화 브라우저의 로그인을 제한할 수 있다([공식 안내](https://support.google.com/accounts/answer/7675428?hl=ko)). 이 안내만으로 반달의 거절 원인이나 특정 UA 토큰에 대한 내부 판정 규칙을 확정할 수 없다.
+
+2026-10-12에는 사용자가 원래 식별값을 유지한 인증 probe의 성공과 일반 제품의 거절을 보고했다. v0.79.7의 일반 제품은 Electron·앱 토큰을 지웠으며 일반 탐색과 팝업의 식별값도 달랐다. v0.79.8은 가공을 제거하여 런타임의 실제 식별값을 일관되게 유지한다. 보안 설정을 완화하거나 다른 브라우저의 UA·Client Hints를 생성하지 않는다. 공개 앱의 실제 계정 인증 결과는 자동 회귀와 구분한다.
 
 #### 🔴 2) UA 스니핑 — `Chrome/<버전>` 토큰을 절대 지우지 마라
 
@@ -571,15 +567,9 @@ Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like 
   bandal/0.1.0 Chrome/134.0.6998.205 Electron/35.7.5 Safari/537.36
 ```
 
-권장: 브라우징 파티션에 한해 **`bandal/…` 와 `Electron/…` 만 제거**한 순정 Chrome UA를 쓴다.
-`Chrome/` 토큰은 반드시 남긴다.
+**2026-10-12 정정:** [연세대](https://portal.yonsei.ac.kr/js/browserCheck.js)와 [KAIST](https://sugang.kaist.ac.kr/js/browserCheck.js)의 `getBrowserType()`은 UA에 `chrome`이 있으면 Chrome으로 분류하고 `Chrome` 버전이 31 이상인지 검사한다. 위 원래 UA도 이 조건을 만족한다. 미분류 UA의 실패만으로 Electron·앱 토큰 제거가 필요하다고 결론 내렸던 권고는 철회한다.
 
-```
-Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)
-  Chrome/134.0.6998.205 Safari/537.36
-```
-
-버전은 **런타임에 `process.versions.chrome` 에서 만들어라.** 하드코딩하면 Electron 업그레이드 때 낡는다.
+v0.79.8부터 `session.setUserAgent()`를 호출하지 않고 런타임 기본값을 유지한다. 버전 문자열을 합성하거나 목적지에 따라 식별값을 바꾸지 않는다. 실제 학교 계정의 로그인 전체 흐름은 별도 검증 대상이다.
 
 #### 🟢 3) `X-Frame-Options` / `frame-ancestors` 는 우리 문제가 아니다
 
@@ -856,9 +846,9 @@ CREATE INDEX idx_course_links_course ON course_links(course_id, sort_order);
    `frame-ancestors` 화이트리스트를 보내고, 동국대 포털은 실제 frame-buster다.
    현재 `<webview>` 구조가 정답이다 — 바꾸지 마라.
 
-2. **UA에서 `Chrome/<버전>` 을 지우지 마라.** 연세대 포털·KAIST 수강신청·서강대 SAINT가
-   모두 미분류 UA를 fail-closed로 막는다. `Electron/` 과 앱 이름만 제거하고,
-   버전은 `process.versions.chrome` 에서 런타임 생성하라.
+2. **런타임의 원래 UA를 유지하라.** 기본값에 이미 `Chrome/<버전>`이 포함된다.
+   Electron·앱 토큰을 제거하거나 다른 브라우저의 식별값을 합성하지 않는다.
+   학교별 실패는 실제 검사 코드와 로그인 흐름으로 확인한다.
 
 3. **인증서 오류를 우회하지 마라.** `ewhain.net` 이 만료 인증서를 서빙하지만,
    `webSecurity: false` 나 `certificate-error` 무시로 대응하면 안 된다.

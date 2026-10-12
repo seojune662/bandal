@@ -18,7 +18,7 @@ vi.mock('../../../src/main/settingsStore', () => ({
 vi.mock('../../../src/main/features/browser/swipeNavigation', () => ({ installGestureSession: vi.fn(), navigateBySwipe: vi.fn() }))
 vi.mock('../../../src/main/features/browser/displayMedia', () => ({ installDisplayMediaHandler: vi.fn() }))
 
-import { hardenBrowsingSession } from '../../../src/main/features/browser/hardenWebviews'
+import { forgetProfilePermissions, hardenBrowsingSession } from '../../../src/main/features/browser/hardenWebviews'
 import { getBrowserAuthProbeIdentity, initializeBrowserAuthProbe } from '../../../src/main/features/browser/authProbe'
 
 const userAgent = 'Mozilla/5.0 Bandal/0.80.0 Chrome/150.0.0.0 Electron/43.4.1 Safari/537.36'
@@ -67,6 +67,12 @@ function probe(mode: BrowserAuthProbeMode, identity?: BrowserAuthProbeIdentity):
 }
 const harden = () => hardenBrowsingSession(`persist:identity-regression-${++partition}`)
 
+function expectNativeIdentity(): void {
+  expect(browsingSession.setUserAgent).not.toHaveBeenCalled()
+  expect(browsingSession.getUserAgent).not.toHaveBeenCalled()
+  expect(electronMocks.getName).not.toHaveBeenCalled()
+}
+
 function expectSecurityHandlers(): void {
   expect(browsingSession.setPermissionRequestHandler).toHaveBeenCalledOnce()
   expect(browsingSession.setPermissionCheckHandler).toHaveBeenCalledOnce()
@@ -87,35 +93,45 @@ function expectSecurityHandlers(): void {
   const headers = vi.fn()
   beforeHeaders({ requestHeaders: { Accept: 'text/html' } }, headers)
   expect(headers).toHaveBeenCalledExactlyOnceWith({ requestHeaders: { Accept: 'text/html', DNT: '1', 'Sec-GPC': '1' } })
+  // Authentication and ordinary navigation keep both native identity surfaces;
+  // neither a provider-specific UA nor stripped Client Hints may be introduced.
+  for (const url of ['https://accounts.google.com/', 'https://portal.yonsei.ac.kr/']) {
+    const identityHeaders = { 'User-Agent': userAgent, 'sec-ch-ua': '"Chromium";v="150"', 'sec-ch-ua-platform': '"macOS"' }
+    headers.mockClear()
+    beforeHeaders({ url, requestHeaders: identityHeaders }, headers)
+    expect(headers).toHaveBeenCalledExactlyOnceWith({ requestHeaders: { ...identityHeaders, DNT: '1', 'Sec-GPC': '1' } })
+  }
 }
 
-test.each(['product', 'clean'] as const)('%s instrumentation with validated native identity never overrides the session UA', mode => {
-  probe(mode, 'native')
-  harden()
-  expect(getBrowserAuthProbeIdentity()).toBe('native')
-  expect(browsingSession.setUserAgent).not.toHaveBeenCalled()
-  expect(browsingSession.getUserAgent).not.toHaveBeenCalled()
-  expect(electronMocks.getName).not.toHaveBeenCalled()
-  expectSecurityHandlers()
-})
+for (const mode of ['product', 'clean'] as const) {
+  test.each(['product', 'native', undefined] as const)(`${mode} instrumentation with %s identity uses the native product behavior`, identity => {
+    probe(mode, identity)
+    harden()
+    expect(getBrowserAuthProbeIdentity()).toBe(identity ?? 'product')
+    expectNativeIdentity()
+    expectSecurityHandlers()
+  })
+}
 
-test.each(['product', 'clean'] as const)('%s instrumentation retains existing product UA behavior for explicit and legacy identity', mode => {
-  probe(mode, 'product')
-  harden()
-  expect(browsingSession.setUserAgent).toHaveBeenCalledExactlyOnceWith('Mozilla/5.0 Chrome/150.0.0.0 Safari/537.36')
-  expectSecurityHandlers()
-  // A fresh legacy launcher marker has no identity setting at all.
-  rmSync(join(directory, 'probe'), { recursive: true, force: true })
-  probe(mode)
-  browsingSession.setUserAgent.mockClear()
-  harden()
-  expect(browsingSession.setUserAgent).toHaveBeenCalledExactlyOnceWith('Mozilla/5.0 Chrome/150.0.0.0 Safari/537.36')
-})
+test.each(['persist:browsing', 'persist:bandal-profile-identity', 'bandal-private', 'bandal-profile-identity-private'])(
+  'ordinary app partition %s preserves native identity and security', partitionName => {
+    forgetProfilePermissions([partitionName])
+    hardenBrowsingSession(partitionName)
+    expect(electronMocks.fromPartition).toHaveBeenCalledExactlyOnceWith(partitionName)
+    expectNativeIdentity()
+    expectSecurityHandlers()
+    // A reused partition must retain the same unmodified session.
+    hardenBrowsingSession(partitionName)
+    expect(electronMocks.fromPartition).toHaveBeenCalledOnce()
+    expectNativeIdentity()
+    forgetProfilePermissions([partitionName])
+  }
+)
 
 test('a native identity environment flag without a validated probe cannot change the ordinary app UA', () => {
   initializeBrowserAuthProbe({ BANDAL_BROWSER_AUTH_PROBE_IDENTITY: 'native' }, directory, '')
   harden()
   expect(getBrowserAuthProbeIdentity()).toBeNull()
-  expect(browsingSession.setUserAgent).toHaveBeenCalledExactlyOnceWith('Mozilla/5.0 Chrome/150.0.0.0 Safari/537.36')
+  expectNativeIdentity()
   expectSecurityHandlers()
 })

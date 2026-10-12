@@ -1,6 +1,6 @@
 import { guestProfile, inheritGuestProfile, forgetGuestProfile } from './profiles'
 import { attachEmbeddedAuthFallback, inheritEmbeddedAuthSource } from './embeddedAuth'
-import { getBrowserAuthProbeIdentity, isCleanBrowserAuthProbe } from './authProbe'
+import { isCleanBrowserAuthProbe } from './authProbe'
 import { installGestureSession, navigateBySwipe } from './swipeNavigation'
 import { isManagedBrowserPage } from './managedPages'
 /**
@@ -11,7 +11,7 @@ import { isManagedBrowserPage } from './managedPages'
  * ./webviewPolicy.ts; this module only attaches them to electron objects.
  */
 
-import { app, BrowserWindow, dialog, session, shell, webContents } from 'electron'
+import { BrowserWindow, dialog, session, shell, webContents } from 'electron'
 import type { Event as ElectronEvent, WebContents } from 'electron'
 import type {
   BrowserOpenUrl,
@@ -45,7 +45,6 @@ import {
 } from './trackingProtection'
 import { browsingContext, registerBrowsingContext, forgetBrowsingContext } from './browsingContext'
 import { trackPopupDownload } from './popupLifecycle'
-import { browsingUserAgent } from './userAgent'
 import { confirmPageUnload } from './pageClose'
 import { getSettings } from '../../settingsStore'
 import {
@@ -80,8 +79,7 @@ export function forwardBrowserSwipe(
  *  - permissions deny-by-default (fullscreen only)
  *  - no file:// requests at all (navigation guards cover the main frame;
  *    this catches subresources/subframes as defense in depth)
- *  - [§6.1] a plain Chrome user agent, so UA-sniffing 학사 포털 stop failing
- *    closed on the `Electron/` and app-name tokens (see ./userAgent.ts)
+ *  - preserve the runtime's native browser identity, including its Chrome token
  */
 /**
  * Remembered site decisions. Injected once at startup so this module keeps
@@ -151,11 +149,8 @@ export function hardenBrowsingSession(partition: string): void {
   const browsingSession = session.fromPartition(partition)
   installGestureSession(browsingSession)
   const persistent = partition.startsWith('persist:')
-  if (getBrowserAuthProbeIdentity() !== 'native') {
-    browsingSession.setUserAgent(
-      browsingUserAgent(browsingSession.getUserAgent(), app.getName())
-    )
-  }
+  // Leave browser identity to Chromium for every profile, request and child
+  // window. Setting a session UA can diverge from renderer-created popups.
   browsingSession.setPermissionRequestHandler(
     (webContents, permission, callback, details) => {
       const tier = permissionTier(permission)

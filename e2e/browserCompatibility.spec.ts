@@ -5,12 +5,17 @@ import { join } from 'node:path'
 import { launchBandal, createCourse, type BandalApp } from './helpers/launch'
 
 async function fixture() {
+  const requests: { path: string; userAgent: string }[] = []
   const server = createServer((req, res) => {
     let body = ''
     req.on('data', (chunk) => { body += chunk })
     req.on('end', () => {
       const url = new URL(req.url!, `http://${req.headers.host}`)
-      if (url.pathname === '/download') {
+      requests.push({ path: url.pathname, userAgent: req.headers['user-agent'] ?? '' })
+      if (url.pathname === '/redirect') {
+        res.writeHead(302, { location: url.searchParams.get('to')! })
+        res.end()
+      } else if (url.pathname === '/download') {
         res.writeHead(200, { 'content-type': 'application/octet-stream',
           'content-disposition': `attachment; filename="${url.searchParams.get('name') || 'handout.txt'}"` })
         res.end(`lecture:${req.method}:${body}`)
@@ -20,7 +25,7 @@ async function fixture() {
         const html = `<html><head><title>Browser fixture</title></head><body><h1>Lecture page</h1><script>
           window.result = null;
           addEventListener('message', e => { window.result = e.data });
-          window.received = ${JSON.stringify({ method: req.method, body, referer: req.headers.referer ?? '' })};
+          window.received = ${JSON.stringify({ method: req.method, body, referer: req.headers.referer ?? '', userAgent: req.headers['user-agent'] ?? '' })};
         </script></body></html>`
         // An attached cross-site frame can still be loading its new document.
         if (url.pathname === '/frame') setTimeout(() => res.end(html), 800)
@@ -30,7 +35,7 @@ async function fixture() {
   })
   await new Promise<void>((resolve) => server.listen(0, '0.0.0.0', resolve))
   const port = (server.address() as { port: number }).port
-  return { origin: `http://127.0.0.1:${port}`, other: `http://localhost:${port}`,
+  return { origin: `http://127.0.0.1:${port}`, other: `http://localhost:${port}`, requests,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())) }
 }
 
@@ -58,6 +63,77 @@ async function childAt(bandal: BandalApp, url: string) {
     webContents.getAllWebContents().find(w => w.getURL() === target)?.id ?? null, url)).not.toBeNull()
   return bandal.app.evaluate(({ webContents }, target) => webContents.getAllWebContents().find(w => w.getURL() === target)!.id, url)
 }
+
+async function nativeUserAgent(bandal: BandalApp) {
+  const identity = await bandal.app.evaluate(({ app, session }) => ({
+    userAgent: session.defaultSession.getUserAgent(),
+    electronVersion: process.versions.electron,
+    appName: app.getName(),
+    appVersion: app.getVersion()
+  }))
+  expect(identity.userAgent).toContain(`Electron/${identity.electronVersion}`)
+  expect(identity.userAgent.toLowerCase()).toContain(`${identity.appName}/${identity.appVersion}`.toLowerCase())
+  return identity.userAgent
+}
+
+async function expectNativeIdentity(bandal: BandalApp, id: number, url: string, userAgent: string) {
+  // Echo the actual request header from the HTTP server. Reading only the
+  // session or navigator misses Electron's different child-navigation paths.
+  await expect.poll(() => run(bandal, id,
+    '({ url: location.href, page: navigator.userAgent, request: window.received?.userAgent })'
+  )).toEqual({ url, page: userAgent, request: userAgent })
+}
+
+test('native browser identity agrees in requests and pages across redirects, child tabs and isolated profiles', async ({}, info) => {
+  const site = await fixture(), bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '브라우저 식별 정보')
+    const userAgent = await nativeUserAgent(bandal)
+    await info.attach('native-user-agent', { body: userAgent, contentType: 'text/plain' })
+    const initialUrl = `${site.origin}/identity`
+    const root = await openTab(bandal, initialUrl)
+    await expectNativeIdentity(bandal, root, initialUrl, userAgent)
+
+    const redirectedUrl = `${site.other}/identity-after-redirect`
+    await run(bandal, root, `location.href=${JSON.stringify(`${site.origin}/redirect?to=${encodeURIComponent(redirectedUrl)}`)}`)
+    await expectNativeIdentity(bandal, root, redirectedUrl, userAgent)
+    expect(site.requests.filter(request => request.path === '/redirect')).toEqual([{ path: '/redirect', userAgent }])
+
+    const childUrl = `${site.origin}/child-tab`
+    await run(bandal, root, `window.open(${JSON.stringify(childUrl)}); void 0`)
+    const child = await childAt(bandal, childUrl)
+    await expectNativeIdentity(bandal, child, childUrl, userAgent)
+    expect(await run(bandal, child, 'window.opener !== null')).toBe(true)
+    await run(bandal, child, 'window.close()')
+    await expect.poll(() => bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id) == null, child)).toBe(true)
+
+    const profile = await bandal.page.evaluate(() => window.bandal.invoke('browser:saveProfile', { name: '개인 식별 정보', color: '#397db5', icon: '●' }))
+    const picker = bandal.page.getByRole('button', { name: '브라우저 프로필', exact: true })
+    await picker.click()
+    await bandal.page.getByRole('dialog', { name: '브라우저 프로필 선택' }).getByRole('button', { name: '개인 식별 정보 이 프로필로 전환', exact: true }).click()
+    await expect(picker).toContainText('개인 식별 정보')
+    const personal = await childAt(bandal, redirectedUrl)
+    expect(personal).not.toBe(root)
+    expect(await bandal.app.evaluate(({ webContents, session }, { id, profileId }) =>
+      webContents.fromId(id)!.session === session.fromPartition(`persist:bandal-profile-${profileId}`), { id: personal, profileId: profile.id })).toBe(true)
+    await expectNativeIdentity(bandal, personal, redirectedUrl, userAgent)
+
+    await bandal.page.getByRole('button', { name: '시크릿 모드 켜기' }).click()
+    await expect(bandal.page.getByRole('button', { name: '시크릿 모드 끄기' })).toBeVisible()
+    const privateId = await childAt(bandal, redirectedUrl)
+    expect(privateId).not.toBe(personal)
+    expect(await bandal.app.evaluate(({ webContents, session }, { id, profileId }) =>
+      webContents.fromId(id)!.session === session.fromPartition(`bandal-profile-${profileId}-private`), { id: privateId, profileId: profile.id })).toBe(true)
+    await expectNativeIdentity(bandal, privateId, redirectedUrl, userAgent)
+
+    const authUrl = `${site.origin}/oauth/authorize`
+    await run(bandal, privateId, `window.open(${JSON.stringify(authUrl)}); void 0`)
+    const authChild = await childAt(bandal, authUrl)
+    await expectNativeIdentity(bandal, authChild, authUrl, userAgent)
+    expect(await bandal.app.evaluate(({ webContents }, { opener, child }) =>
+      webContents.fromId(child)!.session === webContents.fromId(opener)!.session, { opener: privateId, child: authChild })).toBe(true)
+  } finally { await bandal.close(); await site.close() }
+})
 
 for (const popup of [false, true]) test(`delayed Google ${popup ? 'popup' : 'page'} refusal offers a fresh service login with separate session guidance`, async () => {
   const bandal = await launchBandal()
