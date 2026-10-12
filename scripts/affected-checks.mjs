@@ -119,6 +119,7 @@ export function planChecks(files, full = false) {
   }
   const learning = has(/^src\/(main\/(features\/(learning|workflowPacks)\/|ipc\/learningHandlers\.ts$)|renderer\/src\/features\/learning\/|shared\/(learning\/|workflowPacks\/|types\/(learning|workflowPack)\.ts$|ipc\/learningContract\.ts$))/)
   const dictionaryResources = has(/^(resources\/dictionary\/|scripts\/build-dictionary\.mjs$)/)
+  if (has(/^src\/renderer\/src\/features\/learning\/(?:EnglishReadingGuide\.tsx|englishReadingGuide(?:State\.ts|\.css)|LearningCreateDialog\.tsx|LearningTab\.tsx)$/)) e2e.add('e2e/englishReadingGuide.spec.ts')
   if (dictionaryResources || has(/^src\/(?:main\/features\/learning\/dictionary\.ts$|shared\/types\/dictionary\.ts$|renderer\/src\/features\/(?:study\/|learning\/(?:LearningReader|ReaderDictionaryPopover|readerSelection)\.|materials\/MaterialsStudyToolMenuItem\.))/)) e2e.add('e2e/readingTools.spec.ts')
   if (learning) {
     e2e.add('e2e/learning.spec.ts')

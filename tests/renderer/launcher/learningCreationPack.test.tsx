@@ -15,7 +15,12 @@ const binding = { courseId: 'new-course', rootRelPath: '' }
 const ai = { provider: 'codex', model: 'real-model', effort: null }
 const catalog = { models: [{ id: 'default', displayName: 'Default', isDefault: true }, { id: 'real-model', displayName: 'Model', isDefault: false, supportedEfforts: ['low', 'high'] }], source: 'live', status: 'ready' }
 afterEach(() => { if (root) act(() => root?.unmount()); root = null; vi.restoreAllMocks(); setIpcAdapter(null); useUiStore.setState({ isSettingsOpen: false }); document.body.replaceChildren(); localStorage.clear() })
-async function mount(): Promise<void> { const element = document.createElement('div'); document.body.append(element); root = createRoot(element); await act(async () => { root!.render(<LearningDialogsHost />) }) }
+async function mount(): Promise<void> {
+  // These tests exercise the setup form; the first-use guide has dedicated E2E coverage.
+  localStorage.setItem('bandal:english-reading-guide:v1', 'seen')
+  const element = document.createElement('div'); document.body.append(element); root = createRoot(element)
+  await act(async () => { root!.render(<LearningDialogsHost />) })
+}
 function field(label: string): HTMLInputElement | HTMLSelectElement { return document.querySelector(`[aria-label="${label}"]`)! }
 async function fill(label: string, value: string): Promise<void> { const element = field(label); await act(async () => { Object.getOwnPropertyDescriptor(element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype, 'value')!.set!.call(element, value); element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true })) }) }
 async function chooseAI(): Promise<void> { await fill('학습 AI 제공자', 'codex'); await fill('학습 AI 모델', 'real-model') }

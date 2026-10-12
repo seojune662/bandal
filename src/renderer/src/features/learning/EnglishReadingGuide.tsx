@@ -68,7 +68,7 @@ export function EnglishReadingGuide({ creating = false, onClose, onContinue }: {
   const current = STEPS[step]!
   useFocusTrap(root, { active: true, initialFocus: nextButton, onEscape: onClose })
   useEffect(() => acquirePointerPassthrough(), [])
-  useEffect(() => { body.current?.scrollTo({ top: 0 }) }, [step])
+  useEffect(() => { if (body.current) body.current.scrollTop = 0 }, [step])
   return createPortal(<div className="dialog-backdrop reading-guide-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <section ref={root} className="reading-guide" role="dialog" aria-modal="true" aria-label="영어 읽기 사용 방법" aria-describedby={`${id}-intro`}>
       <header className="reading-guide-header"><div><p className="reading-guide-eyebrow">ENGLISH READING <span>처음이라면</span></p><h2>영어 기사 한 편이,<br />나의 단어가 되는 시간</h2><p id={`${id}-intro`}>읽고, 담고, 다시 만나는 영어 이어읽기.</p></div><button type="button" className="bare-icon-button" aria-label="소개 닫기" onClick={onClose}><Icon name="x" /></button></header>

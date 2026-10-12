@@ -3,6 +3,15 @@ import assert from 'node:assert/strict'
 import { onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
 
+test('English guide rendering, persistence and entry points retain first-use packaged coverage', () => {
+  for (const name of ['EnglishReadingGuide.tsx', 'englishReadingGuide.css', 'englishReadingGuideState.ts', 'LearningCreateDialog.tsx', 'LearningTab.tsx']) {
+    const plan = planChecks([`src/renderer/src/features/learning/${name}`])
+    assert.equal(plan.full, false)
+    assert.ok(plan.e2e.includes('e2e/englishReadingGuide.spec.ts'))
+    assert.ok(!plan.e2e.includes('e2e/browserCompatibility.spec.ts'))
+  }
+})
+
 test('offline dictionary assets and study palette retain focused packaged coverage', () => {
   for (const file of ['resources/dictionary/en-ko.sqlite', 'scripts/build-dictionary.mjs', 'src/renderer/src/features/study/StudyToolMenu.tsx']) {
     const plan = planChecks([file])
@@ -337,6 +346,7 @@ test('learning experience changes select their native package regression includi
     const plan = planChecks([file])
     assert.equal(plan.full, false, file)
     const expected = ['e2e/learning.spec.ts', 'e2e/learningSpaces.spec.ts']
+    if (file.endsWith('/LearningTab.tsx')) expected.unshift('e2e/englishReadingGuide.spec.ts')
     if (file.includes('renderer/src/features/learning/') || file.endsWith('learningHandlers.ts')) expected.push('e2e/learningManagement.spec.ts', 'e2e/learningNavigation.spec.ts')
     assert.deepEqual(plan.e2e, expected, file)
   }
