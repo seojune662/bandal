@@ -11,6 +11,18 @@ test('browser chrome stays in one row with working AI and accessible tools in na
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/`
   const bandal = await launchBandal()
+  const setViewport = async (name: string, width: number, height: number): Promise<void> => {
+    // Windows CI starts at the virtual display size, which can already put a
+    // single pane into overflow mode. Exercise explicit renderer dimensions.
+    await bandal.app.evaluate(({ BrowserWindow }, size) => {
+      const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
+      if (host.isMaximized()) host.unmaximize()
+      host.webContents.setZoomFactor(1)
+      host.setContentSize(size.width, size.height)
+    }, { width, height })
+    await expect.poll(() => bandal.page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }))).toEqual({ width, height })
+    await info.attach(`${name}-viewport`, { body: JSON.stringify({ width, height }), contentType: 'application/json' })
+  }
   const capture = async (name: string): Promise<void> => {
     const expectedPages = await bandal.page.locator('.browser-anchor:visible').count()
     await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
@@ -34,6 +46,7 @@ test('browser chrome stays in one row with working AI and accessible tools in na
   }
   try {
     const { page } = bandal
+    await setViewport('wide', 1440, 900)
     await createCourse(page, '브라우저 작업 공간')
     const add = page.locator('.workspace-add-tab')
     if (await add.isVisible()) await add.click()
@@ -44,6 +57,7 @@ test('browser chrome stays in one row with working AI and accessible tools in na
     const panel = page.locator('.browser-panel:visible').first()
     await expect(page.locator('.tab-assistant-launchbar:visible')).toHaveCount(0)
     const toolbar = panel.locator('.browser-toolbar')
+    await expect.poll(async () => (await toolbar.boundingBox())!.width).toBeGreaterThan(600)
     await expect.poll(async () => (await toolbar.boundingBox())!.height).toBe(44)
     const profile = toolbar.getByRole('button', { name: '브라우저 프로필', exact: true })
     await expect(profile).toHaveText('●기본⌄')
@@ -64,6 +78,7 @@ test('browser chrome stays in one row with working AI and accessible tools in na
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
     await capture('browser-chrome-light.png')
 
+    await setViewport('narrow-splits', 1440, 900)
     await page.locator('.workspace-tab').first().click({ button: 'right' })
     await page.getByRole('menuitem', { name: '오른쪽에 분할해서 열기', exact: true }).click()
     await expect(page.locator('.browser-panel:visible')).toHaveCount(2)
@@ -78,6 +93,8 @@ test('browser chrome stays in one row with working AI and accessible tools in na
         return { height: bar.getBoundingClientRect().height, width: bar.clientWidth, content: bar.scrollWidth, addressWidth: address.getBoundingClientRect().width, fieldWidth: field.getBoundingClientRect().width }
       })
       await info.attach('narrow-header-geometry', { body: JSON.stringify(geometry), contentType: 'application/json' })
+      expect(geometry.width).toBeGreaterThan(340)
+      expect(geometry.width).toBeLessThanOrEqual(600)
       expect(geometry.height).toBe(44)
       expect(geometry.content).toBeLessThanOrEqual(geometry.width)
       expect(geometry.addressWidth).toBeGreaterThan(100)
@@ -166,8 +183,7 @@ test('browser chrome stays in one row with working AI and accessible tools in na
 
     // At the supported minimum window size both sidebars leave tiny splits.
     // Give typing its own row here instead of forcing a near-zero URL field.
-    await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
-      .find(window => window.webContents.getURL().includes('index.html'))!.setSize(1024, 800))
+    await setViewport('minimum-window', 1024, 800)
     await expect.poll(async () => (await panel.locator('.browser-toolbar').boundingBox())!.height).toBeGreaterThan(44)
     for (const tiny of await page.locator('.browser-panel:visible').all()) {
       const geometry = await tiny.evaluate(element => {
@@ -176,6 +192,7 @@ test('browser chrome stays in one row with working AI and accessible tools in na
         const input = element.querySelector<HTMLElement>('.browser-address input')!
         return { width: toolbar.clientWidth, content: toolbar.scrollWidth, address: address.getBoundingClientRect().width, input: input.getBoundingClientRect().width }
       })
+      expect(geometry.width).toBeLessThanOrEqual(340)
       expect(geometry.content).toBeLessThanOrEqual(geometry.width)
       expect(geometry.address).toBeGreaterThan(150)
       expect(geometry.input).toBeGreaterThan(100)

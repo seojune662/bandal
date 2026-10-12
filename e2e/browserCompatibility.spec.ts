@@ -3,6 +3,7 @@ import { createServer } from 'node:http'
 import { readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { launchBandal, createCourse, type BandalApp } from './helpers/launch'
+import { clickBrowserToolbarAction } from './helpers/browserToolbar'
 
 async function fixture() {
   const requests: { path: string; userAgent: string }[] = []
@@ -136,8 +137,8 @@ test('Bandal browser identity agrees in requests and pages across redirects, chi
       webContents.fromId(id)!.session === session.fromPartition(`persist:bandal-profile-${profileId}`), { id: personal, profileId: profile.id })).toBe(true)
     await expectBrandedIdentity(bandal, personal, redirectedUrl, userAgent)
 
-    await bandal.page.getByRole('button', { name: '시크릿 모드 켜기' }).click()
-    await expect(bandal.page.getByRole('button', { name: '시크릿 모드 끄기' })).toBeVisible()
+    await clickBrowserToolbarAction(bandal.page, '시크릿 모드 켜기')
+    await expect(bandal.page.locator('.browser-panel:visible').first()).toHaveAttribute('data-private', 'true')
     const privateId = await childAt(bandal, redirectedUrl)
     expect(privateId).not.toBe(personal)
     expect(await bandal.app.evaluate(({ webContents, session }, { id, profileId }) =>
@@ -248,7 +249,7 @@ test('profile creation is visible and immediately usable, and generic favorites 
     expect(await run(bandal, personal, 'document.cookie')).toBe('')
     await run(bandal, personal, "document.title='마이페이지'")
     await expect(bandal.page.locator('.workspace-tab__title', { hasText: '마이페이지' })).toBeVisible()
-    await bandal.page.getByRole('button', { name: '즐겨찾기에 추가', exact: true }).click()
+    await clickBrowserToolbarAction(bandal.page, '즐겨찾기에 추가')
     await expect(bandal.page.locator('.browser-bookmark:visible > span').last()).toHaveText('127.0.0.1 · 마이페이지')
     await picker.click()
     await expect(dialog).toContainText('개인 ChatGPT')
@@ -327,7 +328,7 @@ test('private login windows keep an isolated session and direct downloads show t
     const root = await openTab(bandal, `${site.origin}/lecture`)
     await run(bandal, root, "document.cookie='normal_session=yes; path=/'")
     // Use the actual toolbar toggle to create the isolated guest.
-    await bandal.page.getByRole('button', { name: '시크릿 모드 켜기' }).first().click()
+    await clickBrowserToolbarAction(bandal.page, '시크릿 모드 켜기')
     await expect.poll(() => bandal.app.evaluate(({ webContents, session }) =>
       webContents.getAllWebContents().find(w => w.getType() !== 'webview' && w.session === session.fromPartition('bandal-private') && w.getURL().startsWith('http'))?.id ?? null)).not.toBeNull()
     const privateId = await bandal.app.evaluate(({ webContents, session }) =>
@@ -621,16 +622,24 @@ test('closing a dirty tab can be cancelled without removing its tab or native pa
 test('the final private page clears its cookies before another private page opens', async () => {
   const site = await fixture(), bandal = await launchBandal()
   try {
+    // Exercise the overflow path on every platform, then return to the inline
+    // toolbar for the final toggle without changing the underlying action.
+    await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
+      .find(window => window.webContents.getURL().includes('index.html'))!.setContentSize(1024, 720))
     await createCourse(bandal.page, '시크릿 종료')
     await openTab(bandal, `${site.origin}/lecture`)
-    await bandal.page.getByRole('button', { name: '시크릿 모드 켜기' }).click()
-    await expect(bandal.page.getByRole('button', { name: '시크릿 모드 끄기' })).toBeVisible()
+    await expect(bandal.page.getByRole('button', { name: '브라우저 도구 더 보기', exact: true })).toBeVisible()
+    await clickBrowserToolbarAction(bandal.page, '시크릿 모드 켜기')
+    await expect(bandal.page.locator('.browser-panel:visible').first()).toHaveAttribute('data-private', 'true')
     const privateId = await childAt(bandal, `${site.origin}/lecture`)
     await run(bandal, privateId, "document.cookie='private_value=old; path=/';localStorage.setItem('private_value','old')")
-    await bandal.page.getByRole('button', { name: '시크릿 모드 끄기' }).click()
-    await expect(bandal.page.getByRole('button', { name: '시크릿 모드 켜기' })).toBeVisible()
-    await bandal.page.getByRole('button', { name: '시크릿 모드 켜기' }).click()
-    await expect(bandal.page.getByRole('button', { name: '시크릿 모드 끄기' })).toBeVisible()
+    await clickBrowserToolbarAction(bandal.page, '시크릿 모드 끄기')
+    await expect(bandal.page.locator('.browser-panel:visible').first()).not.toHaveAttribute('data-private', 'true')
+    await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
+      .find(window => window.webContents.getURL().includes('index.html'))!.setContentSize(1600, 900))
+    await expect(bandal.page.getByRole('button', { name: '브라우저 도구 더 보기', exact: true })).toBeHidden()
+    await clickBrowserToolbarAction(bandal.page, '시크릿 모드 켜기')
+    await expect(bandal.page.locator('.browser-panel:visible').first()).toHaveAttribute('data-private', 'true')
     const freshId = await childAt(bandal, `${site.origin}/lecture`)
     expect(freshId).not.toBe(privateId)
     expect(await run(bandal, freshId, 'document.cookie')).not.toContain('private_value')

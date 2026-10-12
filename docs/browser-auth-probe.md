@@ -13,7 +13,7 @@ node scripts/browser-auth-probe.mjs --app /Applications/Bandal.app --mode produc
 node scripts/browser-auth-probe.mjs --app /Applications/Bandal.app --mode clean --identity native
 ```
 
-Windows에서는 `--app "C:\경로\win-unpacked\Bandal.exe"`처럼 패키지 실행 파일을 지정한다. 설치 프로그램 자체를 지정하지 않는다. 각 명령은 새로운 독립 폴더를 만든다. v0.79.6–v0.79.7에서는 계측 모드와 브라우저 식별 방식이 독립된 두 조건이었다. **v0.79.8에서는 `product`와 `native`가 모두 원래 식별값을 사용했다. v0.79.9부터 `product`는 실제 반달 이름·버전과 Chromium 엔진 정보를 유지하면서 Electron 라이브러리 토큰만 제외한 제품 식별값을 사용하고, `native`는 수정하지 않은 런타임을 비교 조건으로 유지한다.** 구버전과 비교할 때 앱 버전을 반드시 함께 기록한다.
+Windows에서는 `--app "C:\경로\win-unpacked\Bandal.exe"`처럼 패키지 실행 파일을 지정한다. 설치 프로그램 자체를 지정하지 않는다. 각 명령은 새로운 독립 폴더를 만든다. v0.79.6–v0.79.7에서는 계측 모드와 브라우저 식별 방식이 독립된 두 조건이었다. **v0.79.8에서는 `product`와 `native`가 모두 원래 식별값을 사용했다. v0.79.10부터 `product`는 실제 반달 이름·버전과 Chromium 엔진 정보를 유지하면서 Electron 라이브러리 토큰만 제외한 제품 식별값을 사용하고, `native`는 수정하지 않은 런타임을 비교 조건으로 유지한다.** 구버전과 비교할 때 앱 버전을 반드시 함께 기록한다.
 
 | 모드 | 식별 방식 | 페이지 계측 | User-Agent 처리 |
 |---|---|---|---|
@@ -22,7 +22,7 @@ Windows에서는 `--app "C:\경로\win-unpacked\Bandal.exe"`처럼 패키지 실
 | `product` | `native` | 제품과 동일 | 런타임 기본값 유지 |
 | `clean` | `native` | 제외 | 런타임 기본값 유지 |
 
-`clean`은 앱의 페이지 JavaScript 주입과 제스처 preload를 끈다. v0.79.9의 제품 식별값은 세션·창 생성 전에 `app.userAgentFallback`에 한 번 설정한다. 개별 세션의 `setUserAgent`, 목적지별 헤더 가공, 다른 브라우저 이름·엔진 버전의 합성은 사용하지 않는다. Chromium의 실제 Client Hints도 그대로 둔다. 이 방식은 일반 탭·리다이렉트·팝업·프로필·시크릿 모드가 같은 식별값을 상속하게 한다. 모든 조건에서 네트워크 정책·보안 설정은 동일하다. 기본 Electron 전체와 비교하는 실험은 아니다.
+`clean`은 앱의 페이지 JavaScript 주입과 제스처 preload를 끈다. v0.79.10의 제품 식별값은 세션·창 생성 전에 `app.userAgentFallback`에 한 번 설정한다. 개별 세션의 `setUserAgent`, 목적지별 헤더 가공, 다른 브라우저 이름·엔진 버전의 합성은 사용하지 않는다. Chromium의 실제 Client Hints도 그대로 둔다. 이 방식은 일반 탭·리다이렉트·팝업·프로필·시크릿 모드가 같은 식별값을 상속하게 한다. 모든 조건에서 네트워크 정책·보안 설정은 동일하다. 기본 Electron 전체와 비교하는 실험은 아니다.
 
 앱 창 제목은 `Bandal 인증 비교 — product/clean`이며 원래 식별값 조건에는 `/ native identity`가 붙는다. 앱 계정 로그인과 온보딩은 필요하지 않다. 브라우저 탭을 열고 주소를 직접 입력한다. 시험 중에는 AI 작업이나 브라우저 자동화를 실행하지 않는다. Playwright, CDP, DevTools, 원격 디버깅 플래그를 연결하지 않는다. 앱은 이 실행에서 기본 프로토콜 등록·앱 업데이트·Finder 아이콘 변경을 수행하지 않는다.
 
@@ -47,7 +47,7 @@ node scripts/browser-auth-probe.mjs --resume /절대/경로/native-시험-폴더
 
 v0.79.7까지 일반 제품은 대학 사이트 호환성을 이유로 Electron과 앱 이름을 제거했다. 이 가공은 일반 탐색과 팝업의 요청 식별값도 서로 다르게 만들었다. 2026-10-12 사용자가 앞서 제공한 `product / native identity` 시험의 성공과 일반 앱의 거절을 보고하여, v0.79.8에서 일반 제품도 원래 식별값을 유지하도록 수정했다. 연세대·KAIST의 공개 검사 코드는 원래 UA에 포함된 `Chrome/` 토큰을 인식하므로 두 토큰을 제거할 근거가 아니었다. 다른 Electron 프로젝트의 [재현 기록](https://github.com/stablyai/orca/issues/11518)은 참고 자료이며 Google의 공식 허용 조건을 뜻하지 않는다. 로컬 HTTP 회귀는 요청·JavaScript 식별값과 세션 일관성을 검사하고, 실제 계정의 로그인·계정 전환·2단계 인증은 공개 앱에서 별도로 확인한다.
 
-v0.79.9 조사에서 동일 기기의 같은 Family Link 관리 계정은 Orca에서 로그인돼 있었지만 반달의 Google 웹 로그인은 `Family Link에서 관리하는 계정은 여기에서 로그인할 수 없습니다`를 표시했다. 계정·쿠키 없이 공개 `ServiceLogin`에 요청한 비교에서는 실제 `bandal/0.79.8 Chrome/150.0.7871.224 Electron/43.4.1` 식별값이 `WebLiteSignIn`으로, **반달·실제 엔진 토큰을 유지하고 Electron만 제외한 값**이 `GlifWebSignIn`으로 연결됐다. 이는 시작 흐름 분류 차이의 증거이며 로그인 성공의 증거는 아니다. 제품 전체의 식별값을 통일하여 일반 웹 흐름을 요청하며 `flowName`·승인 상태·계정 유형을 변경하지 않는다. Google이 계속 거절하면 해당 사유와 보호자 승인 필요성을 안내하고, 원래 서비스에서 새로 시작하거나 별도 기본 브라우저에서 열 수 있다. 외부 브라우저 로그인은 반달에 전달되지 않는다.
+v0.79.10 조사에서 동일 기기의 같은 Family Link 관리 계정은 Orca에서 로그인돼 있었지만 반달의 Google 웹 로그인은 `Family Link에서 관리하는 계정은 여기에서 로그인할 수 없습니다`를 표시했다. 계정·쿠키 없이 공개 `ServiceLogin`에 요청한 비교에서는 실제 `bandal/0.79.8 Chrome/150.0.7871.224 Electron/43.4.1` 식별값이 `WebLiteSignIn`으로, **반달·실제 엔진 토큰을 유지하고 Electron만 제외한 값**이 `GlifWebSignIn`으로 연결됐다. 이는 시작 흐름 분류 차이의 증거이며 로그인 성공의 증거는 아니다. 제품 전체의 식별값을 통일하여 일반 웹 흐름을 요청하며 `flowName`·승인 상태·계정 유형을 변경하지 않는다. Google이 계속 거절하면 해당 사유와 보호자 승인 필요성을 안내하고, 원래 서비스에서 새로 시작하거나 별도 기본 브라우저에서 열 수 있다. 외부 브라우저 로그인은 반달에 전달되지 않는다.
 
 Google의 [브라우저 개발자 안내](https://developers.googleblog.com/en/guidance-to-developers-affected-by-our-effort-to-block-less-secure-browsers-and-applications/)는 실제 브라우저 식별과 완전한 웹 기능을 요구하며 다른 브라우저로의 위장을 금지한다. [Family Link의 웹 로그인 안내](https://support.google.com/families/answer/9043123?hl=ko)는 보호자 승인 아래 웹사이트 로그인을 지원한다고 설명한다. 반달 자체 식별값을 보내는 것이 Google의 공식 인증 또는 모든 관리 계정의 지원 보장을 뜻하지 않는다. 실제 계정의 최종 로그인·보호자 승인·서비스 접근은 공개 배포 앱에서 별도로 검증한다.
 
