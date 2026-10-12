@@ -11,6 +11,8 @@ import { useFocusTrap } from '../../components/useFocusTrap'
 import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { LearningAISelector } from './LearningAISelector'
+import { EnglishReadingGuide } from './EnglishReadingGuide'
+import { dismissEnglishReadingGuide, useEnglishReadingGuideSeen } from './englishReadingGuideState'
 import { learningError, notifyLearningChanged, openLearning, rememberEnglishBinding } from './learningNavigation'
 import './learning.css'
 
@@ -22,7 +24,13 @@ export interface LearningCreateDialogProps {
   onCreated?: (binding: LearningBinding) => void
 }
 
-export function LearningCreateDialog({ packId, project, onClose, onCreated }: LearningCreateDialogProps): JSX.Element {
+export function LearningCreateDialog(props: LearningCreateDialogProps): JSX.Element {
+  const guideSeen = useEnglishReadingGuideSeen()
+  if (!props.project && !guideSeen) return <EnglishReadingGuide creating onContinue={dismissEnglishReadingGuide} onClose={() => { dismissEnglishReadingGuide(); props.onClose() }} />
+  return <LearningCreateForm {...props} />
+}
+
+function LearningCreateForm({ packId, project, onClose, onCreated }: LearningCreateDialogProps): JSX.Element {
   const owner = useCoursesStore(state => state.courses.find(course => course.id === project?.binding.courseId))
   const [classifyStandalone, setClassifyStandalone] = useState(false)
   const canClassifyStandalone = !!project && project.binding.rootRelPath === '' && owner?.workspaceKind !== 'study-space'

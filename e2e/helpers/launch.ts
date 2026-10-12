@@ -55,6 +55,8 @@ export async function launchBandal(
     reuseProfileDir?: string
     keepProfileOnClose?: boolean
     extraSettings?: Partial<Settings>
+    /** Keep the first-use English reading guide enabled for its dedicated specs. */
+    englishReadingGuide?: boolean
   } = {}
 ): Promise<BandalApp> {
   const profileDir =
@@ -123,6 +125,11 @@ export async function launchBandal(
   // The shell is up once the course rail exists and the theme is applied.
   await expect(page.locator('aside.app-rail--left:visible')).toBeVisible()
   await expect(page.locator('html[data-theme]')).toBeAttached()
+  // Unrelated learning specs start at their target form. Never overwrite an
+  // existing profile: guide specs must be able to verify persisted dismissal.
+  if (options.reuseProfileDir === undefined && options.englishReadingGuide !== true) {
+    await page.evaluate(() => localStorage.setItem('bandal:english-reading-guide:v1', 'seen'))
+  }
 
   const close = async (): Promise<void> => {
     await app.close()
