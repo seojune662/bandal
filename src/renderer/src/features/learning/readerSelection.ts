@@ -1,9 +1,18 @@
-import type { LearningArticleSnapshot, LearningSourceRef, LearningWord } from '../../../../shared/types/learning'
+import type { LearningArticleSnapshot, LearningOccurrence, LearningSourceRef, LearningWord } from '../../../../shared/types/learning'
 
 export interface ReaderWordSelection {
   surface: string
   sentence: string
   sourceRef: LearningSourceRef
+}
+
+export function readerSelectionKey(selection: ReaderWordSelection): string {
+  const source = selection.sourceRef
+  return JSON.stringify([source.articleId, source.paragraphId, source.start, source.end])
+}
+
+export function readerSavedOccurrence(occurrences: LearningOccurrence[], selection: ReaderWordSelection): LearningOccurrence | undefined {
+  return occurrences.find(item => readerSelectionKey(item) === readerSelectionKey(selection))
 }
 
 export interface ReaderVocabularyMatch { wordId: string; start: number; end: number }

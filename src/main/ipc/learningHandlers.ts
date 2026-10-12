@@ -12,9 +12,11 @@ import type { createLearningRuntime } from '../features/learning/learningRuntime
 import type { createArticleExtractor } from '../features/learning/articleExtractor'
 import { matchArticleWords } from '../features/learning/articleExtractor'
 import type { createLearningCache } from '../features/learning/learningCache'
+import type { createDictionaryService } from '../features/learning/dictionary'
 
 type Handler = <K extends keyof LearningIpcContract>(channel: K, fn: (input: LearningIpcContract[K]['req']) => LearningIpcContract[K]['res'] | Promise<LearningIpcContract[K]['res']>) => void
 interface LearningHandlerDeps {
+  dictionary: ReturnType<typeof createDictionaryService>
   repo: LearningRepo
   runtime: ReturnType<typeof createLearningRuntime>
   extractor: ReturnType<typeof createArticleExtractor>
@@ -33,6 +35,7 @@ interface LearningHandlerDeps {
 }
 
 export function registerLearningHandlers(handle: Handler, deps: LearningHandlerDeps): void {
+  handle('learning:lookupDictionary', input => deps.dictionary.lookup(input?.text))
   function nativePack(id: string, kind?: StartLearningRunInput['kind']): WorkflowPackV2 {
     const pack = deps.resolvePack(id)
     if (!pack || pack.schemaVersion !== 2) throw new ValidationError('이 학습 팩은 전용 학습 화면에서 사용할 수 없습니다.')

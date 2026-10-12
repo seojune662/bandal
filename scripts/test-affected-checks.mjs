@@ -3,6 +3,15 @@ import assert from 'node:assert/strict'
 import { onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
 
+test('offline dictionary assets and study palette retain focused packaged coverage', () => {
+  for (const file of ['resources/dictionary/en-ko.sqlite', 'scripts/build-dictionary.mjs', 'src/renderer/src/features/study/StudyToolMenu.tsx']) {
+    const plan = planChecks([file])
+    assert.equal(plan.full, false)
+    assert.deepEqual(plan.e2e, ['e2e/readingTools.spec.ts'])
+    if (!file.startsWith('src/')) assert.ok(plan.unitInputs.includes('src/main/features/learning/dictionary.ts'))
+  }
+})
+
 test('browser chrome and password changes retain their packaged interaction checks', () => {
   for (const file of ['src/renderer/src/features/browser/browser.css', 'src/renderer/src/features/assistantPanel/AssistantPanelToggle.tsx']) {
     const plan = planChecks([file])

@@ -7,6 +7,7 @@ import { useMaterialsStore } from '../../stores/materialsStore'
 import { useCoursesStore } from '../../stores/coursesStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { requestLearningCreation, requestLearningGeneration } from '../learning/LearningDialogsHost'
+import type { LearningGenerationRequest } from '../learning/LearningGenerationForm'
 import { openLearning } from '../learning/learningNavigation'
 import { flushOpenNoteSession } from '../notes/noteSessionRegistry'
 import { openPluginPanel, runPluginCommand } from '../plugins/pluginCommands'
@@ -74,12 +75,15 @@ function sameBinding(left: LearningBinding, right: LearningBinding): boolean { r
 export async function requestFeatureAction(entry: FeatureEntry, context: LauncherContext, options: {
   scope?: FeatureActionScope; binding?: LearningBinding; sourceCourseId?: string; followUp?: boolean
   onResult?: (result: FeatureActionResult) => void
+  /** Contextual launchers can present the shared setup form in their own surface. */
+  presentGeneration?: (request: LearningGenerationRequest) => void
 } = {}): Promise<FeatureActionResult> {
   if (entry.unavailableReason || !entry.enabled) return { status: 'failed', message: entry.unavailableReason ?? '이 기능이 비활성화되어 있어요.' }
   if (entry.kind === 'plugin-panel' || entry.kind === 'plugin-command' && entry.menuLocations.length === 0 || entry.kind === 'pack' && entry.experience === 'article-vocabulary') {
     return executeFeatureAction(entry, context, options.scope ?? 'course', options)
   }
-  requestLearningGeneration({ label: entry.kind === 'pack' && entry.packId === 'flashcards' ? '카드' : entry.label, entry, context, ...(options.scope ? { initialScope: options.scope } : {}),
+  const presentGeneration = options.presentGeneration ?? requestLearningGeneration
+  presentGeneration({ label: entry.kind === 'pack' && entry.packId === 'flashcards' ? '카드' : entry.label, entry, context, ...(options.scope ? { initialScope: options.scope } : {}),
     ...(options.binding ? { binding: options.binding } : {}), ...(options.sourceCourseId ? { sourceCourseId: options.sourceCourseId } : {}),
     onStart: async choice => {
       const result = await executeFeatureAction(entry, choice.context, choice.scope, { ...(choice.binding ? { binding: choice.binding } : {}), ...(choice.ai ? { ai: choice.ai } : {}), ...(options.followUp ? { followUp: true } : {}) })

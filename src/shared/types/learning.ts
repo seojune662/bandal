@@ -1,6 +1,7 @@
 /** Portable learning records. Persisted paths are relative to the project root. */
 import type { AgentProvider } from './agent-events'
 import type { WorkspaceKind } from './course'
+import type { DictionarySource } from './dictionary'
 
 export interface LearningBinding { courseId: string; rootRelPath: string }
 export type LearningPurpose = 'english-reading' | 'course-review' | 'unclassified'
@@ -91,10 +92,12 @@ export type LearningWordStatus = 'new' | 'learning' | 'known'
 export interface LearningWord {
   id: string; surface: string; lemma: string; meaning: string; pronunciation: string
   partOfSpeech: string; status: LearningWordStatus; createdAt: string; updatedAt: string
+  dictionarySource?: DictionarySource
 }
 export interface LearningOccurrence {
   id: string; wordId: string; surface: string; sentence: string
   sourceRef: LearningSourceRef; meaning: string; createdAt: string
+  dictionarySource?: DictionarySource
 }
 export interface LearningQuizQuestion {
   id: string; type: 'choice' | 'cloze' | 'short-answer'; prompt: string
@@ -148,6 +151,7 @@ export interface LearningRunSource {
 export interface LearningWordDraft {
   surface: string; lemma?: string; meaning?: string; pronunciation?: string; partOfSpeech?: string
   sentence: string; sourceRef: LearningSourceRef
+  dictionarySource?: DictionarySource
 }
 export interface LearningDraft {
   version: 1

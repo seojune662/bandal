@@ -2,6 +2,7 @@ import { assertAppRendererSender } from './appRendererSender'
 import { createLearningRepo, normalizeLearningDraft } from '../features/learning'
 import { createLearningApprovalDialogs } from '../features/learning/approvalDialogs'
 import { createLearningCache } from '../features/learning/learningCache'
+import { createDictionaryService } from '../features/learning/dictionary'
 import { createLearningRuntime } from '../features/learning/learningRuntime'
 import { sendLearningWithSession, validateConnectedLearningAi } from '../features/learning/learningAgent'
 import { rejectAgentModel, resolveLearningAi, validateLearningAi } from '../features/agent/agentModels'
@@ -409,6 +410,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   }
   let learningRuntime: ReturnType<typeof createLearningRuntime> | undefined
   const learningCache = createLearningCache(db)
+  const dictionary = createDictionaryService({ directory: app.isPackaged
+    ? join(process.resourcesPath, 'dictionary') : join(__dirname, '../../resources/dictionary') })
   const learningRepo = createLearningRepo({
     getCourseFolder: courseId => coursesRepo.getFolder(courseId),
     getCourseFolderIncludingDeleted: courseId => coursesRepo.getFolderIncludingDeleted(courseId),
@@ -2016,6 +2019,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     browserRuns.disposeAll()
     materialsWatcher.dispose()
     learningRuntime?.dispose()
+    dictionary.dispose()
     articleExtractor.dispose()
     sessionManager.disposeAll()
     codexSessionManager.disposeAll()
@@ -2223,7 +2227,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     }
   })
   registerLearningHandlers(handle, {
-    repo: learningRepo, runtime: learningRuntime, extractor: articleExtractor, cache: learningCache,
+    repo: learningRepo, runtime: learningRuntime, extractor: articleExtractor, cache: learningCache, dictionary,
     validateAi: ai => validateConnectedLearningAi(ai, provider => agentAvailability.check(provider), validateLearningAi),
     courses: coursesRepo,
     resolvePack: id => packStore.resolve(id),

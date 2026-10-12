@@ -1,291 +1,138 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { StudyToolId } from '../../../../shared/types/study'
+import { Icon } from '../../app/icons'
 import { showToast } from '../../app/toast'
+import { restoreFocus, useFocusTrap } from '../../components/useFocusTrap'
+import { useUiStore } from '../../stores/uiStore'
+import { useWorkflowPacksStore } from '../../stores/workflowPacksStore'
+import { acquirePointerPassthrough } from '../browser/webviewPassthrough'
+import { requestFeatureAction, featureActionDisabledReason, studyToolFeatureEntry, type FeatureActionScope } from '../launcher/featureActions'
+import { LearningGenerationForm, type LearningGenerationRequest } from '../learning/LearningGenerationForm'
 import { StudyToolIcon, StudyToolsIcon } from './StudyToolIcons'
+import { type PackStudyToolDefinition, useStudyToolsStore } from './studyToolsStore'
+import type { StudyPaletteRequest } from './studyPaletteEvents'
 import {
-  type PackStudyToolDefinition,
-  useStudyToolsStore
-} from './studyToolsStore'
+  FEATURED_STUDY_TOOLS, STUDY_TOOL_GROUPS, isPackFollowUpAvailable,
+  studyToolDescription, studyToolFollowUpLabel, studyToolGroup, studyToolLabel,
+  studyToolMatches, studyToolOutput
+} from './studyPaletteModel'
 import './study.css'
-import { requestLearningProjectPicker } from '../learning/LearningDialogsHost'
-import { requestFeatureAction, featureActionDisabledReason, studyToolFeatureEntry } from '../launcher/featureActions'
-import { studyTargetContext } from '../launcher/launcherContext'
 
-interface MenuPosition {
-  left: number
-  top: number
-}
+export { isPackFollowUpAvailable } from './studyPaletteModel'
 
-const BUILTIN_TOOL_IDS: readonly StudyToolId[] = [
-  'summary',
-  'quiz',
-  'flashcards',
-  'mindmap',
-  'structured-notes',
-  'exam-predictions',
-  'explain'
-]
-
-function isBuiltinToolId(id: string): id is StudyToolId {
-  return BUILTIN_TOOL_IDS.includes(id as StudyToolId)
-}
-
-function outputDirectory(tool: PackStudyToolDefinition): string | null {
-  return tool.outputs?.dir ?? tool.outputDir ?? tool.outputsDir ?? null
-}
-
-function followUpLabel(tool: PackStudyToolDefinition): string | null {
-  return tool.followUp?.label ?? tool.followUpLabel ?? null
-}
-
-export function isPackFollowUpAvailable(
-  tool: PackStudyToolDefinition,
-  relPath: string | null
-): boolean {
-  if (tool.experience || relPath === null || tool.enabled === false || followUpLabel(tool) === null) {
-    return false
-  }
-  const directory = outputDirectory(tool)
-    ?.replace(/^\.\//, '')
-    .replace(/\/+$/, '')
-  const target = relPath.replace(/^\.\//, '')
-  return (
-    directory !== undefined &&
-    directory.length > 0 &&
-    target.startsWith(`${directory}/`)
-  )
-}
-
+const BUILTIN_TOOL_IDS: readonly StudyToolId[] = ['summary', 'quiz', 'flashcards', 'mindmap', 'structured-notes', 'exam-predictions', 'explain']
 function ToolIcon({ id }: { id: string }): JSX.Element {
-  return isBuiltinToolId(id) ? <StudyToolIcon tool={id} /> : <StudyToolsIcon />
+  return BUILTIN_TOOL_IDS.includes(id as StudyToolId) ? <StudyToolIcon tool={id as StudyToolId} /> : <StudyToolsIcon />
 }
 
 export interface StudyToolMenuProps {
-  courseId: string
-  /** 대상 파일. null이면 과목 전체 도구만 활성화된다. */
-  relPath: string | null
-  selection?: string
-  x: number
-  y: number
+  request: StudyPaletteRequest
   onClose: () => void
   /** Stable snapshot override used by non-interactive renderers and tests. */
   toolsOverride?: readonly PackStudyToolDefinition[]
 }
 
-function enabledMenuItems(menu: HTMLElement): HTMLButtonElement[] {
-  return Array.from(
-    menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
-  )
-}
-
-function statusMessage(
-  isLoading: boolean,
-  hasLoaded: boolean,
-  error: string | null
-): string | null {
-  if (isLoading) return 'AI 학습 도구를 불러오는 중이에요.'
-  if (error !== null) return error
-  if (!hasLoaded) return 'AI 학습 도구를 불러오는 중이에요.'
-  return '사용 가능한 AI 학습 도구가 없어요.'
-}
-
-export function StudyToolMenu(props: StudyToolMenuProps): JSX.Element {
-  const { courseId, relPath, selection, x, y, onClose, toolsOverride } = props
-  const menuRef = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState<MenuPosition>({ left: x, top: y })
-  const storedTools = useStudyToolsStore((state) => state.tools)
+/** A single surface owns tool discovery and the existing validated setup form. */
+export function StudyToolMenu({ request, onClose, toolsOverride }: StudyToolMenuProps): JSX.Element {
+  const { context, returnFocus } = request
+  const scope: FeatureActionScope = context.selection.trim() ? 'selection' : context.material ? 'material' : 'course'
+  const relPath = context.material?.relPath ?? null
+  const root = useRef<HTMLElement>(null)
+  const search = useRef<HTMLInputElement>(null)
+  const setupHeading = useRef<HTMLHeadingElement>(null)
+  const id = useId()
+  const [query, setQuery] = useState('')
+  const [generation, setGeneration] = useState<LearningGenerationRequest | null>(null)
+  const [pending, setPending] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const settingsOpen = useUiStore(state => state.isSettingsOpen)
+  const storedTools = useStudyToolsStore(state => state.tools)
+  const hasLoaded = useStudyToolsStore(state => state.hasLoaded)
+  const isLoading = useStudyToolsStore(state => state.isLoading)
+  const error = useStudyToolsStore(state => state.error)
+  const running = useStudyToolsStore(state => state.running)
+  const loadTools = useStudyToolsStore(state => state.loadTools)
   const tools = toolsOverride ?? storedTools
-  const hasLoaded = useStudyToolsStore((state) => state.hasLoaded)
-  const isLoading = useStudyToolsStore((state) => state.isLoading)
-  const error = useStudyToolsStore((state) => state.error)
-  const running = useStudyToolsStore((state) => state.running)
-  const loadTools = useStudyToolsStore((state) => state.loadTools)
+  const loading = toolsOverride === undefined && (isLoading || !hasLoaded && !error)
+  const loadError = toolsOverride === undefined ? error : null
+  const visibleTools = useMemo(() => tools.filter(tool => tool.experience !== 'article-vocabulary' && studyToolMatches(tool, query)), [tools, query])
+  const featured = FEATURED_STUDY_TOOLS.flatMap(toolId => visibleTools.filter(tool => tool.id === toolId && tool.source !== 'user'))
+  const remaining = visibleTools.filter(tool => !featured.includes(tool))
 
+  useEffect(() => { if (toolsOverride === undefined) void loadTools() }, [loadTools, toolsOverride])
+  useFocusTrap(root, { active: !settingsOpen, initialFocus: search, returnFocus: false, onEscape: pending ? undefined : onClose })
+  useEffect(() => { if (!settingsOpen) return acquirePointerPassthrough() }, [settingsOpen])
+  useEffect(() => () => restoreFocus(returnFocus), [returnFocus])
   useEffect(() => {
-    void loadTools()
-  }, [loadTools])
+    if (settingsOpen) return
+    // A step transition replaces controls, but keeps one modal and focus trap.
+    if (generation) setupHeading.current?.focus({ preventScroll: true })
+    else search.current?.focus({ preventScroll: true })
+  }, [generation, settingsOpen])
 
-  useEffect(() => {
-    const placeInsideViewport = (): void => {
-      const menu = menuRef.current
-      if (menu === null) return
-      const { width, height } = menu.getBoundingClientRect()
-      const flippedLeft = x + width > window.innerWidth ? x - width : x
-      const flippedTop = y + height > window.innerHeight ? y - height : y
-      setPosition({
-        left: Math.min(
-          Math.max(0, flippedLeft),
-          Math.max(0, window.innerWidth - width)
-        ),
-        top: Math.min(
-          Math.max(0, flippedTop),
-          Math.max(0, window.innerHeight - height)
-        )
+  const chooseTool = async (tool: PackStudyToolDefinition, followUp = false): Promise<void> => {
+    setActionError(null)
+    try {
+      const result = await requestFeatureAction(studyToolFeatureEntry(tool), context, {
+        scope, followUp, presentGeneration: setGeneration,
+        onResult: result => {
+          if (result.status === 'started' || result.status === 'dispatched' || result.status === 'completed') showToast(result.message)
+        }
       })
+      if (result.status === 'failed' || result.status === 'needs-course') setActionError(result.message)
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : '학습 도구를 열지 못했어요.')
     }
-
-    placeInsideViewport()
-    window.addEventListener('resize', placeInsideViewport)
-    return () => window.removeEventListener('resize', placeInsideViewport)
-  }, [error, hasLoaded, isLoading, tools.length, x, y])
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      const menu = menuRef.current
-      if (menu === null) return
-      const firstItem = enabledMenuItems(menu)[0]
-      if (firstItem === undefined) menu.focus()
-      else firstItem.focus()
-    })
-    const dismissOnPointerDown = (event: PointerEvent): void => {
-      if (!menuRef.current?.contains(event.target as Node)) onClose()
-    }
-    const dismissOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('pointerdown', dismissOnPointerDown)
-    window.addEventListener('keydown', dismissOnEscape)
-    window.addEventListener('blur', onClose)
-    return () => {
-      window.cancelAnimationFrame(frame)
-      window.removeEventListener('pointerdown', dismissOnPointerDown)
-      window.removeEventListener('keydown', dismissOnEscape)
-      window.removeEventListener('blur', onClose)
-    }
-  }, [onClose])
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
-    event.stopPropagation()
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      onClose()
-      return
-    }
-    const menu = menuRef.current
-    if (menu === null) return
-    const items = enabledMenuItems(menu)
-    if (items.length === 0) return
-    const current = items.indexOf(document.activeElement as HTMLButtonElement)
-    let next: number | null = null
-
-    if (event.key === 'ArrowDown') next = current < 0 ? 0 : (current + 1) % items.length
-    if (event.key === 'ArrowUp') {
-      next = current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length
-    }
-    if (event.key === 'Home') next = 0
-    if (event.key === 'End') next = items.length - 1
-    if (event.key === 'Tab') {
-      next = event.shiftKey
-        ? current <= 0
-          ? items.length - 1
-          : current - 1
-        : current >= items.length - 1
-          ? 0
-          : current + 1
-    }
-    if (next === null) return
-    event.preventDefault()
-    items[next]?.focus()
   }
 
-  const runTool = (tool: PackStudyToolDefinition, followUp = false): void => {
-    const context = studyTargetContext(courseId, relPath, selection)
-    const scope = selection?.trim() ? 'selection' : relPath === null ? 'course' : 'material'
-    void requestFeatureAction(studyToolFeatureEntry(tool), context, { scope, followUp }).then(result => {
-      if (result.status === 'needs-project-picker') requestLearningProjectPicker(result.projects)
-      showToast(result.message, result.status === 'failed' || result.status === 'needs-course' ? 'danger' : 'info')
-    })
-    if (!tool.experience) showToast('AI가 만드는 중이에요. 자료에 곧 나타납니다.')
-    onClose()
+  const card = (tool: PackStudyToolDefinition, prominent = false): JSX.Element => {
+    const reason = featureActionDisabledReason(studyToolFeatureEntry(tool), context, scope)
+      ?? ((running[tool.id] ?? 0) > 0 ? '이미 만들고 있어요.' : null)
+    const descriptionId = `${id}-${tool.id}-description`
+    return <article className="study-palette__card" key={tool.id} data-featured={prominent || undefined} data-disabled={!!reason || undefined}>
+      <button type="button" className="study-palette__tool" aria-label={studyToolLabel(tool)} aria-describedby={descriptionId} disabled={!!reason} onClick={() => void chooseTool(tool)}>
+        <span className="study-palette__tool-icon" aria-hidden="true"><ToolIcon id={tool.id} /></span>
+        <span className="study-palette__tool-copy">
+          <strong>{studyToolLabel(tool)}</strong>
+          <span id={descriptionId} className="study-palette__description">{reason ?? studyToolDescription(tool)}</span>
+          <span className="study-palette__badges"><span>{studyToolOutput(tool)}</span>{tool.usesWeb && <span>웹 검색</span>}</span>
+        </span>
+      </button>
+      {isPackFollowUpAvailable(tool, relPath) && <button type="button" className="study-palette__follow-up" disabled={!!reason} onClick={() => void chooseTool(tool, true)}>{studyToolFollowUpLabel(tool)}<Icon name="chevronRight" /></button>}
+    </article>
   }
 
-  const emptyMessage =
-    tools.length === 0 ? statusMessage(isLoading, hasLoaded, error) : null
-  const builtinTools = tools.filter((tool) => tool.source !== 'user')
-  const userTools = tools.filter((tool) => tool.source === 'user')
-
-  const renderTool = (
-    tool: PackStudyToolDefinition,
-    followUp: boolean
-  ): JSX.Element => {
-    const targetReason = featureActionDisabledReason(studyToolFeatureEntry(tool), studyTargetContext(courseId, relPath, selection), selection?.trim() ? 'selection' : relPath === null ? 'course' : 'material')
-    const targetEnabled = targetReason === null
-    const isRunning = (running[tool.id] ?? 0) > 0
-    const disabled = !targetEnabled || isRunning
-    const reason = targetEnabled
-      ? isRunning
-        ? '이미 만들고 있어요.'
-        : null
-      : targetReason
-    const label = followUp ? (followUpLabel(tool) ?? tool.label) : tool.label
-    const description = followUp
-      ? '이 팩의 후속 레시피를 실행해요.'
-      : tool.description
-
-    return (
-      <span
-        key={`${tool.id}:${followUp ? 'follow-up' : 'primary'}`}
-        className="study-tool-menu__item"
-        title={reason ?? undefined}
-      >
-        <button
-          type="button"
-          role="menuitem"
-          disabled={disabled}
-          aria-label={reason === null ? label : `${label}: ${reason}`}
-          onClick={() => runTool(tool, followUp)}
-        >
-          <ToolIcon id={tool.id} />
-          <span className="study-tool-menu__copy">
-            <strong>
-              <span className="study-tool-menu__label">{label}</span>
-              {tool.usesWeb === true && (
-                <span
-                  className="study-tool-menu__web-dot"
-                  aria-label="웹 검색 사용"
-                  title="웹 검색 사용"
-                />
-              )}
-            </strong>
-            <small>{reason ?? description}</small>
-          </span>
-        </button>
-      </span>
-    )
-  }
-
-  const renderGroup = (group: PackStudyToolDefinition[]): JSX.Element[] =>
-    group.flatMap((tool) => [
-      renderTool(tool, false),
-      ...(isPackFollowUpAvailable(tool, relPath)
-        ? [renderTool(tool, true)]
-        : [])
-    ])
-
-  return (
-    <div
-      ref={menuRef}
-      className="context-menu study-tool-menu"
-      role="menu"
-      aria-label="AI 학습 도구"
-      tabIndex={-1}
-      style={{ left: position.left, top: position.top }}
-      onKeyDown={handleKeyDown}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      <div className="study-tool-menu__heading">AI 학습 도구</div>
-      {renderGroup(builtinTools)}
-      {userTools.length > 0 && (
-        <div className="study-tool-menu__heading study-tool-menu__heading--separator">
-          설치한 팩
+  const targetName = context.material?.title || relPath?.split('/').at(-1) || context.courseName || '선택한 과목'
+  const scopeLabel = scope === 'selection' ? '선택한 부분' : scope === 'course' ? '과목 전체' : '자료 전체'
+  return createPortal(<div className="dialog-backdrop study-palette-backdrop" style={settingsOpen ? { display: 'none' } : undefined} onMouseDown={event => { if (event.target === event.currentTarget && !pending) onClose() }}>
+    <section ref={root} className="course-dialog study-palette" role="dialog" aria-modal="true" aria-label="이 자료로 학습하기">
+      <header className="study-palette__header">
+        <div>{generation ? <button type="button" className="study-palette__back" aria-label="도구 선택으로 돌아가기" disabled={pending} onClick={() => { setGeneration(null); setPending(false) }}><Icon name="chevronLeft" />도구 선택</button> : <p className="study-palette__eyebrow">AI 학습 도구</p>}
+          <h2 ref={setupHeading} tabIndex={-1}>{generation ? `${generation.label} ${generation.entry.kind === 'plugin-command' ? '실행' : '만들기'}` : '어떤 방식으로 공부할까요?'}</h2>
+          {!generation && <p className="study-palette__intro">원하는 결과를 고르고, 바로 학습을 시작하세요.</p>}
         </div>
-      )}
-      {renderGroup(userTools)}
-      {emptyMessage !== null && (
-        <p className="study-tool-menu__empty" role="status">
-          {emptyMessage}
-        </p>
-      )}
-    </div>
-  )
+        <button className="bare-icon-button" type="button" aria-label="학습 도구 닫기" disabled={pending} onClick={onClose}><Icon name="x" /></button>
+      </header>
+      <div className="study-palette__target" aria-label="선택한 학습 자료">
+        <Icon name={context.material ? 'fileText' : 'folderOpen'} />
+        <div><strong>{targetName}</strong><span>{[context.courseName, relPath && relPath !== targetName ? relPath : null, scopeLabel].filter(Boolean).join(' · ')}</span></div>
+      </div>
+      {generation ? <LearningGenerationForm request={generation} sourceLocked onClose={onClose} onPendingChange={setPending} /> : <>
+        <label className="study-palette__search"><Icon name="search" /><input ref={search} value={query} onChange={event => setQuery(event.target.value)} placeholder="어떤 도움이 필요한가요?" aria-label="학습 도구 검색" />{query && <button type="button" className="bare-icon-button" aria-label="검색 지우기" onClick={() => { setQuery(''); search.current?.focus() }}><Icon name="x" /></button>}</label>
+        <div className="study-palette__body">
+          {loadError && <div className="study-palette__error" role="alert"><span>{loadError}</span><button type="button" onClick={() => void useWorkflowPacksStore.getState().refresh()}>다시 불러오기</button></div>}
+          {actionError && <p className="study-palette__error" role="alert">{actionError}</p>}
+          {loading && <p className="study-palette__empty" role="status">학습 도구를 불러오는 중이에요.</p>}
+          {featured.length > 0 && <section aria-label="학습 바로가기"><h3>바로 시작하기</h3><div className="study-palette__featured">{featured.map(tool => card(tool, true))}</div></section>}
+          {STUDY_TOOL_GROUPS.map(group => {
+            const grouped = remaining.filter(tool => studyToolGroup(tool) === group)
+            return grouped.length > 0 ? <section key={group} aria-label={group}><h3>{group}</h3><div className="study-palette__grid">{grouped.map(tool => card(tool))}</div></section> : null
+          })}
+          {!loading && !loadError && visibleTools.length === 0 && <div className="study-palette__empty" role="status"><StudyToolsIcon /><strong>{query.trim() ? '일치하는 학습 도구가 없어요.' : '사용 가능한 학습 도구가 없어요.'}</strong><span>{query.trim() ? '다른 단어나 만들고 싶은 결과로 검색해 보세요.' : '설정의 플러그인 관리에서 학습 도구를 확인해 주세요.'}</span></div>}
+        </div>
+        <footer className="study-palette__footer"><span>도구를 고르면 원본과 저장할 곳을 확인할 수 있어요.</span><kbd>Esc</kbd><span>닫기</span></footer>
+      </>}
+    </section>
+  </div>, document.body)
 }

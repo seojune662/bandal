@@ -11,6 +11,8 @@ import { LearningCreateDialog } from './LearningCreateDialog'
 import { LearningGenerationDialog, type LearningGenerationRequest } from './LearningGenerationDialog'
 import { useLearningProjects } from './LearningProjects'
 import { learningError, notifyLearningChanged, openLearning } from './learningNavigation'
+import { StudyToolMenu } from '../study/StudyToolMenu'
+import { STUDY_PALETTE_EVENT, type StudyPaletteRequest } from '../study/studyPaletteEvents'
 
 const CREATE_EVENT = 'bandal:learning-create'
 const IMPORT_EVENT = 'bandal:learning-import'
@@ -36,17 +38,20 @@ export function LearningDialogsHost(): JSX.Element | null {
   const [generationKey, setGenerationKey] = useState(0)
   const [importing, setImporting] = useState<ArticleImportRequest | null>(null)
   const [picking, setPicking] = useState<LearningProjectSummary[] | null>(null)
+  const [studying, setStudying] = useState<StudyPaletteRequest | null>(null)
   useEffect(() => {
     const create = (event: Event): void => { if (event instanceof CustomEvent) setCreating(event.detail as CreationRequest) }
     const generate = (event: Event): void => { if (event instanceof CustomEvent) { setGenerating(event.detail as LearningGenerationRequest); setGenerationKey(key => key + 1) } }
     const importArticle = (event: Event): void => { if (event instanceof CustomEvent) setImporting(event.detail as ArticleImportRequest) }
     const pick = (event: Event): void => { if (event instanceof CustomEvent) setPicking(event.detail as LearningProjectSummary[]) }
+    const study = (event: Event): void => { if (event instanceof CustomEvent) setStudying(event.detail as StudyPaletteRequest) }
     window.addEventListener(GENERATE_EVENT, generate); window.addEventListener(CREATE_EVENT, create); window.addEventListener(IMPORT_EVENT, importArticle); window.addEventListener(PICK_EVENT, pick)
-    return () => { window.removeEventListener(GENERATE_EVENT, generate); window.removeEventListener(CREATE_EVENT, create); window.removeEventListener(IMPORT_EVENT, importArticle); window.removeEventListener(PICK_EVENT, pick) }
+    window.addEventListener(STUDY_PALETTE_EVENT, study)
+    return () => { window.removeEventListener(GENERATE_EVENT, generate); window.removeEventListener(CREATE_EVENT, create); window.removeEventListener(IMPORT_EVENT, importArticle); window.removeEventListener(PICK_EVENT, pick); window.removeEventListener(STUDY_PALETTE_EVENT, study) }
   }, [])
   const settingsOpen = useUiStore(state => state.isSettingsOpen)
   useEffect(() => { if (settingsOpen || (!creating && !importing && !picking && !generating)) return; return acquirePointerPassthrough() }, [creating, importing, picking, generating, settingsOpen])
-  return creating ? <LearningCreateDialog {...creating} onClose={() => setCreating(null)} /> : generating ? <LearningGenerationDialog key={generationKey} request={generating} onClose={() => setGenerating(null)} /> : importing ? <ArticleImportDialog input={importing} onClose={() => setImporting(null)} /> : picking ? <ProjectPicker projects={picking} onClose={() => setPicking(null)} /> : null
+  return creating ? <LearningCreateDialog {...creating} onClose={() => setCreating(null)} /> : generating ? <LearningGenerationDialog key={generationKey} request={generating} onClose={() => setGenerating(null)} /> : importing ? <ArticleImportDialog input={importing} onClose={() => setImporting(null)} /> : picking ? <ProjectPicker projects={picking} onClose={() => setPicking(null)} /> : studying ? <StudyToolMenu request={studying} onClose={() => setStudying(null)} /> : null
 }
 
 function ProjectPicker({ projects, onClose }: { projects: LearningProjectSummary[]; onClose: () => void }): JSX.Element {

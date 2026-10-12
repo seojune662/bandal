@@ -118,6 +118,8 @@ export function planChecks(files, full = false) {
     e2e.add('e2e/browserCompatibility.spec.ts')
   }
   const learning = has(/^src\/(main\/(features\/(learning|workflowPacks)\/|ipc\/learningHandlers\.ts$)|renderer\/src\/features\/learning\/|shared\/(learning\/|workflowPacks\/|types\/(learning|workflowPack)\.ts$|ipc\/learningContract\.ts$))/)
+  const dictionaryResources = has(/^(resources\/dictionary\/|scripts\/build-dictionary\.mjs$)/)
+  if (dictionaryResources || has(/^src\/(?:main\/features\/learning\/dictionary\.ts$|shared\/types\/dictionary\.ts$|renderer\/src\/features\/(?:study\/|learning\/(?:LearningReader|ReaderDictionaryPopover|readerSelection)\.|materials\/MaterialsStudyToolMenuItem\.))/)) e2e.add('e2e/readingTools.spec.ts')
   if (learning) {
     e2e.add('e2e/learning.spec.ts')
     e2e.add('e2e/learningSpaces.spec.ts')
@@ -165,6 +167,7 @@ export function planChecks(files, full = false) {
   if (has(/^src\/(?:renderer\/src\/features\/(?:workspace\/(?:panelContentHost|WorkspaceHost|panels\/browserAnchor)\.|browser\/(?:BrowserGuestView|nativePageHandle)\.)|main\/features\/browser\/nativeTabs\.ts$)/)) e2e.add('e2e/browserPlacement.spec.ts')
   if (e2e.size === 0) e2e.add('e2e/startup.spec.ts')
   const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f))
+  if (dictionaryResources) unitInputs.push('src/main/features/learning/dictionary.ts')
   if (sharedAppearance) unitInputs.push('src/shared/theme.ts', 'src/renderer/src/features/courses/CourseSidebar.tsx', 'src/renderer/src/features/settings/AppearancePanel.tsx')
   if (has(/^(?:native|resources\/native)\/browser-import\/|^scripts\/(build-browser-import|verify-browser-import|build-native)\.mjs$/)) unitInputs.push('src/main/features/browser/import/index.ts')
   if (has(/^src\/renderer\/src\/features\/workspace\/.*\.css$/)) unitInputs.push('src/renderer/src/features/workspace/tabDrag.ts', 'src/renderer/src/features/workspace/tabDragSession.ts', 'src/renderer/src/features/workspace/tabDuplication.ts')

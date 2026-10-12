@@ -12,6 +12,7 @@ import type {
   SaveLearningWordInput, UpdateLearningRunInput, UpdateLearningWordInput, UpdateLearningOccurrenceInput, UpdateLearningSettingsInput,
   RenameLearningProjectInput, DismissLearningRunInput
 } from '../../../shared/types/learning'
+import type { DictionarySource } from '../../../shared/types/dictionary'
 import { ConflictError, NotFoundError, ValidationError } from '../../db/errors'
 import { assertRealInside, resolveInside } from '../../db/validate'
 import { articleMarkdown, gradeLearningAnswer, learningHash, normalizeLearningAnswer,
@@ -308,11 +309,14 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
   }
   async function vocabularyExport(tx: Transaction): Promise<void> {
     const lines = [`# ${tx.state.name} 단어장`, '', '읽은 기사에서 직접 고른 단어와 원문 예문입니다.', '']
+    const attribution = (source: DictionarySource): string => `${source.modified ? '직접 수정한 뜻의 원래 사전 출처' : '사전 뜻 출처'}: [Wiktionary contributors](<${source.url}>) · koreader-dicts ${source.datasetVersion} / Kaikki / Wiktextract · [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)`
     for (const word of tx.state.words) {
       lines.push(`## ${word.lemma}`, '', `${word.meaning || '뜻을 아직 정리하지 않았어요.'}${word.partOfSpeech ? ` · ${word.partOfSpeech}` : ''}`, '')
+      if (word.dictionarySource) lines.push(attribution(word.dictionarySource), '')
       for (const occurrence of tx.state.occurrences.filter((entry) => entry.wordId === word.id)) {
         lines.push(`> ${occurrence.sentence.replace(/\n/g, '\n> ')}`, '')
         if (occurrence.meaning) lines.push(occurrence.meaning, '')
+        if (occurrence.dictionarySource) lines.push(attribution(occurrence.dictionarySource), '')
         const article = tx.state.articles.find((entry) => entry.id === occurrence.sourceRef.articleId)
         if (article) lines.push(`[${article.title}](${article.sourceUrl})`, '')
       }
@@ -448,14 +452,26 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
     let word = candidates.length === 1 ? candidates[0] : undefined
     if (!word) {
       word = { id: randomUUID(), surface, lemma, meaning: input.meaning ?? '', pronunciation: input.pronunciation ?? '',
-        partOfSpeech, status: 'new', createdAt: tx.now, updatedAt: tx.now }
+        partOfSpeech, status: 'new', createdAt: tx.now, updatedAt: tx.now,
+        ...(input.dictionarySource ? { dictionarySource: input.dictionarySource } : {}) }
       learningString(word.meaning, 'meaning', 20_000, true); learningString(word.pronunciation, 'pronunciation', 1_000, true)
       learningString(word.partOfSpeech, 'partOfSpeech', 1_000, true)
       tx.state.words.push(word)
     }
     const key = JSON.stringify(sourceRef)
     if (tx.state.occurrences.some((entry) => entry.wordId === word!.id && JSON.stringify(entry.sourceRef) === key)) return false
-    tx.state.occurrences.push({ id: randomUUID(), wordId: word.id, surface, sentence, sourceRef, meaning: input.meaning ?? '', createdAt: tx.now })
+    // A new encounter can complete an empty record; never replace a personal
+    // definition just because a dictionary offers another sense.
+    if (!word.meaning.trim() && input.meaning?.trim()) {
+      word.meaning = input.meaning
+      if (input.dictionarySource) word.dictionarySource = input.dictionarySource
+      else delete word.dictionarySource
+      if (!word.pronunciation && input.pronunciation) word.pronunciation = input.pronunciation
+      if (!word.partOfSpeech && partOfSpeech) word.partOfSpeech = partOfSpeech
+      word.updatedAt = tx.now
+    }
+    tx.state.occurrences.push({ id: randomUUID(), wordId: word.id, surface, sentence, sourceRef, meaning: input.meaning ?? '', createdAt: tx.now,
+      ...(input.dictionarySource ? { dictionarySource: input.dictionarySource } : {}) })
     history(tx, 'word-saved', word.id, `«${surface}» 단어와 예문을 저장했습니다.`)
     return true
   }
@@ -614,6 +630,7 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
         for (const key of ['lemma', 'meaning', 'pronunciation', 'partOfSpeech'] as const) {
           if (input[key] !== undefined) word[key] = learningString(input[key], key, key === 'meaning' ? 20_000 : 1_000, key !== 'lemma')
         }
+        if (input.meaning !== undefined && word.dictionarySource) word.dictionarySource = { ...word.dictionarySource, modified: true }
         if (input.status !== undefined) {
           if (!['new', 'learning', 'known'].includes(input.status)) throw new ValidationError('올바르지 않은 단어 학습 상태입니다.')
           word.status = input.status
@@ -626,6 +643,7 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
         const occurrence = tx.state.occurrences.find(entry => entry.id === learningId(input.occurrenceId, 'occurrenceId'))
         if (!occurrence) throw new NotFoundError('word occurrence', input.occurrenceId)
         occurrence.meaning = learningString(input.meaning, 'meaning', 20_000, true)
+        if (occurrence.dictionarySource) occurrence.dictionarySource = { ...occurrence.dictionarySource, modified: true }
         await vocabularyExport(tx)
       })
     },
@@ -741,11 +759,16 @@ export function createLearningRepo(deps: LearningRepoDeps): LearningRepo {
         for (const update of draft.wordUpdates ?? []) {
           const word = tx.state.words.find((entry) => entry.id === update.wordId)!
           word.meaning = update.meaning
+          delete word.dictionarySource
           if (update.lemma !== undefined) word.lemma = normalizeLearningLemma(update.lemma)
           if (update.pronunciation !== undefined) word.pronunciation = update.pronunciation
           if (update.partOfSpeech !== undefined) word.partOfSpeech = update.partOfSpeech
           word.updatedAt = tx.now
-          if (update.occurrenceId !== undefined) tx.state.occurrences.find((entry) => entry.id === update.occurrenceId)!.meaning = update.meaning
+          if (update.occurrenceId !== undefined) {
+            const occurrence = tx.state.occurrences.find((entry) => entry.id === update.occurrenceId)!
+            occurrence.meaning = update.meaning
+            delete occurrence.dictionarySource
+          }
         }
         if (draft.wordUpdates?.length || draft.words?.length) await vocabularyExport(tx)
         if (run) {

@@ -158,8 +158,7 @@ export function MaterialsContextMenu({
       <div className="materials-context-menu__separator" role="separator" />
       <MaterialsStudyToolMenuItem
         target={target}
-        x={x}
-        y={y}
+        returnFocus={returnFocus}
         onClose={onClose}
       />
       {target !== null && activeCourseId !== null && <PluginMenuItems location="materials" courseId={activeCourseId} relPath={target.relPath} onClose={onClose} />}

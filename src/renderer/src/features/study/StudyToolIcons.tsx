@@ -84,11 +84,3 @@ export function StudyToolsIcon(): JSX.Element {
     </svg>
   )
 }
-
-export function SubmenuChevronIcon(): JSX.Element {
-  return (
-    <svg {...iconProps}>
-      <path d="m9 6 6 6-6 6" />
-    </svg>
-  )
-}

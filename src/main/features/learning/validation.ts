@@ -7,6 +7,21 @@ import { LEARNING_TOPICS } from '../../../shared/types/learning'
 import { isAgentProvider } from '../../../shared/types/agent-events'
 import { ValidationError } from '../../db/errors'
 import { learningHash } from './model'
+import type { DictionarySource } from '../../../shared/types/dictionary'
+
+/** Only our attributed dictionary URLs may be embedded in portable exports. */
+export function validateDictionarySource(value: unknown): DictionarySource {
+  const input = learningObject(value, 'dictionarySource')
+  const headword = learningString(input['headword'], 'dictionary headword', 120).trim()
+  const datasetVersion = learningString(input['datasetVersion'], 'dictionary version', 64)
+  const url = learningString(input['url'], 'dictionary URL', 2_048)
+  const canonical = `https://en.wiktionary.org/wiki/${encodeURIComponent(headword)}`
+  if (/[\r\n\u0000-\u001f]/.test(headword) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(datasetVersion) || (url !== canonical && url !== `${canonical}#English`)
+    || (input['modified'] !== undefined && input['modified'] !== true)) {
+    throw new ValidationError('올바른 사전 출처가 필요합니다.')
+  }
+  return { headword, datasetVersion, url, ...(input['modified'] === true ? { modified: true } : {}) }
+}
 
 export function learningObject(value: unknown, field: string): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new ValidationError(`${field}은(는) 객체여야 합니다.`)
@@ -199,6 +214,7 @@ export async function validateLearningWordDraft(value: unknown, context: Learnin
   for (const field of ['lemma', 'meaning', 'pronunciation', 'partOfSpeech'] as const) {
     if (input[field] !== undefined) word[field] = learningString(input[field], field, field === 'meaning' ? 20_000 : 1_000, field !== 'lemma')
   }
+  if (input['dictionarySource'] !== undefined) word.dictionarySource = validateDictionarySource(input['dictionarySource'])
   return word
 }
 
@@ -421,6 +437,7 @@ export function validateLearningState(value: unknown): LearningProjectState {
   }
   for (const entry of learningArray(state['words'], 'words')) {
     const word = learningObject(entry, 'word')
+    if (word['dictionarySource'] !== undefined) validateDictionarySource(word['dictionarySource'])
     learningString(word['surface'], 'surface', 1_000); learningString(word['lemma'], 'lemma', 1_000)
     for (const field of ['meaning', 'pronunciation', 'partOfSpeech'] as const) learningString(word[field], field, 20_000, true)
     if (!['new', 'learning', 'known'].includes(String(word['status']))) throw new ValidationError('올바르지 않은 단어 상태입니다.')
@@ -428,6 +445,7 @@ export function validateLearningState(value: unknown): LearningProjectState {
   }
   for (const entry of learningArray(state['occurrences'], 'occurrences')) {
     const occurrence = learningObject(entry, 'occurrence')
+    if (occurrence['dictionarySource'] !== undefined) validateDictionarySource(occurrence['dictionarySource'])
     learningId(occurrence['wordId'], 'wordId')
     if (!wordIds.has(occurrence['wordId'])) throw new ValidationError('예문의 단어가 없습니다.')
     learningString(occurrence['surface'], 'surface', 1_000); learningString(occurrence['sentence'], 'sentence', 20_000)

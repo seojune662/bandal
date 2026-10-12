@@ -5,6 +5,7 @@ import type {
   FinishLearningQuizInput, ReviewLearningCardInput, StartLearningRunInput, ImportLearningDraftInput, LearningMaterialRequest,
   LearningProjectSettings, LearningAiSettings, UpdateLearningSettingsInput, LearningMutation, RenameLearningProjectInput, DismissLearningRunInput
 } from '../types/learning'
+import type { DictionaryLookupResult } from '../types/dictionary'
 
 export interface LearningGenerationSource {
   kind: 'course' | 'material' | 'article' | 'vocabulary'
@@ -17,6 +18,7 @@ export interface LearningGenerationSource {
 }
 export interface LearningRunResult { runId: string; binding: LearningBinding }
 export interface LearningIpcContract {
+  'learning:lookupDictionary': { req: { text: string }; res: DictionaryLookupResult }
   'learning:list': { req: { courseId?: string; includeDeleted?: boolean }; res: { projects: LearningProjectSummary[] } }
   'learning:rename': { req: RenameLearningProjectInput; res: LearningProjectSnapshot }
   'learning:delete': { req: LearningMutation; res: { ok: true } }
@@ -52,6 +54,7 @@ export interface LearningIpcContract {
 }
 
 export const LEARNING_CHANNELS = [
+  'learning:lookupDictionary',
   'learning:list', 'learning:rename', 'learning:delete', 'learning:restore', 'learning:dismissRun', 'learning:create', 'learning:get', 'learning:updateSettings', 'learning:getArticle', 'learning:getArtifact',
   'learning:resolveSource', 'learning:addArticle', 'learning:saveWord', 'learning:updateWord', 'learning:updateOccurrence', 'learning:saveProgress',
   'learning:completeArticle', 'learning:saveQuizAnswer', 'learning:finishQuiz', 'learning:reviewCard',

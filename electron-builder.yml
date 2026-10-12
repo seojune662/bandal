@@ -44,6 +44,10 @@ files:
 # glyph exports as '?'. It lives outside asar so the main process can read it
 # with a plain fs call, and lands at <Resources>/fonts/ in the packaged app.
 extraResources:
+  - from: resources/dictionary
+    to: dictionary
+    filter:
+      - '**/*'
   - from: resources/fonts
     to: fonts
     filter:

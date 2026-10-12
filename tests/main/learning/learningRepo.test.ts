@@ -344,6 +344,52 @@ describe('portable learning projects', () => {
     if (changed.kind !== 'cards') throw new Error('expected cards')
     expect(changed.cards[0]!.sourceRefs[0]).toMatchObject({ quote: materialSource.quote, availability: 'changed' })
   })
+  test('dictionary meanings retain attribution through export and restart without replacing personal definitions', async () => {
+    await seed()
+    const dictionarySource = { datasetVersion: '1.2.0', headword: 'climate', url: 'https://en.wiktionary.org/wiki/climate#English' }
+    let result = await repo.saveWord({ binding, surface: 'climate', sentence: 'x', sourceRef: source, meaning: '기후', dictionarySource })
+    expect((await repo.read(binding)).words[0]!.dictionarySource).toEqual(dictionarySource)
+    expect(result.occurrences[0]!.dictionarySource).toEqual(dictionarySource)
+    const exported = readFileSync(join(course, binding.rootRelPath, '단어장.md'), 'utf8')
+    expect(exported).toContain(dictionarySource.url)
+    expect(exported).toContain('CC BY-SA 4.0')
+    const wordId = result.words[0]!.id
+    result = await repo.updateWord({ binding, wordId, meaning: '내가 이해한 기후' })
+    expect(result.words[0]!.dictionarySource).toEqual({ ...dictionarySource, modified: true })
+    expect(result.occurrences[0]!.dictionarySource).toEqual(dictionarySource)
+    await repo.addArticle({ binding, article: article({ id: 'article-2', sourceUrl: 'https://example.com/other', paragraphs: splitLearningParagraphs('The climate of opinion has changed.') }) })
+    result = await repo.saveWord({ binding, surface: 'climate', sentence: 'x', sourceRef: { kind: 'article', articleId: 'article-2', quote: 'climate' }, meaning: '분위기', dictionarySource })
+    expect(result.words).toHaveLength(1)
+    expect(result.words[0]!.meaning).toBe('내가 이해한 기후')
+    expect(result.words[0]!.dictionarySource).toEqual({ ...dictionarySource, modified: true })
+    expect(result.occurrences[1]!.dictionarySource).toEqual(dictionarySource)
+    result = await repo.updateOccurrence({ binding, occurrenceId: result.occurrences[0]!.id, meaning: '직접 적은 문맥 뜻' })
+    expect(result.occurrences[0]!.dictionarySource).toEqual({ ...dictionarySource, modified: true })
+    result = await repo.importDraft({ binding, draft: { version: 1, wordUpdates: [{ wordId, occurrenceId: result.occurrences[1]!.id, meaning: 'AI로 확인한 분위기' }] } })
+    expect(result.occurrences[1]!.dictionarySource).toBeUndefined()
+    expect(result.words[0]!.dictionarySource).toBeUndefined()
+  })
+
+  test('rejects unsafe dictionary provenance before it reaches persisted records or Markdown', async () => {
+    await seed()
+    await expect(repo.saveWord({ binding, surface: 'climate', sentence: 'x', sourceRef: source, meaning: '기후',
+      dictionarySource: { datasetVersion: '1.2.0', headword: 'climate', url: 'javascript:alert(1)' } })).rejects.toThrow('사전 출처')
+    await expect(repo.saveWord({ binding, surface: 'climate', sentence: 'x', sourceRef: source, meaning: '기후',
+      dictionarySource: { datasetVersion: '[unsafe](https://example.com)', headword: 'climate', url: 'https://en.wiktionary.org/wiki/climate' } })).rejects.toThrow('사전 출처')
+    expect((await repo.read(binding)).words).toHaveLength(0)
+  })
+
+  test('a later dictionary encounter can fill an empty definition without duplicating a word', async () => {
+    await seed()
+    await repo.saveWord({ binding, surface: 'climate', sentence: 'x', sourceRef: source })
+    await repo.addArticle({ binding, article: article({ id: 'article-2', sourceUrl: 'https://example.com/other', paragraphs: splitLearningParagraphs('The climate is changing.') }) })
+    const dictionarySource = { datasetVersion: '1.2.0', headword: 'climate', url: 'https://en.wiktionary.org/wiki/climate' }
+    const result = await repo.saveWord({ binding, surface: 'climate', sentence: 'x', sourceRef: { kind: 'article', articleId: 'article-2', quote: 'climate' }, meaning: '기후', dictionarySource })
+    expect(result.words).toHaveLength(1)
+    expect(result.words[0]).toMatchObject({ meaning: '기후', dictionarySource })
+    expect(result.occurrences[0]!.meaning).toBe('')
+  })
+
   test('draft explanation changes only its named occurrence meaning', async () => {
     await seed()
     let result = await repo.saveWord({ binding, surface: 'climate', sentence: 'x', sourceRef: source, meaning: '기후' })

@@ -99,21 +99,39 @@
 .learning-placement input { grid-row: span 2; accent-color: var(--accent); align-self: center; }
 .learning-placement strong { font-size: 12px; font-weight: 600; }
 .learning-placement span { font-size: 11px; color: var(--text-muted); }
-.learning-reader-layout { display: flex; flex: 1; min-height: 0; }
+.learning-reader-shell { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
+.learning-reader-toolbar { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; padding: 6px 26px; border-bottom: 1px solid var(--border-subtle); }
+.learning-reader-toolbar > div { display: flex; align-items: center; gap: 18px; }
+.learning-reader-progress { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.learning-reader-progress-track { display: block; width: 62px; height: 3px; overflow: hidden; border-radius: 4px; background: var(--border-subtle); }
+.learning-reader-progress-track > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.learning-reader-toolbar .learning-reader-progress { gap: 9px; }
+.learning-reader-duration { margin-left: 7px; }
+.learning-reader-vocabulary-toggle { display: inline-flex; gap: 8px; align-items: center; padding: 7px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.learning-reader-vocabulary-toggle:hover, .learning-reader-vocabulary-toggle[aria-expanded="true"] { border-color: var(--border-subtle); background: var(--bg-raised); color: var(--text-primary); }
+.learning-reader-vocabulary-toggle strong { display: grid; place-items: center; min-width: 20px; height: 20px; border-radius: 5px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); font-size: 11px; }
+.learning-reader-layout { display: flex; flex: 1; min-height: 0; position: relative; overflow: hidden; }
 .learning-reader { overflow: auto; flex: 1; min-width: 0; scroll-behavior: auto; }
 .learning-reader-paper { width: min(100%, 770px); padding: 44px 46px 70px; margin: 0 auto; box-sizing: border-box; }
 .learning-reader-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 10px; letter-spacing: .04em; color: var(--text-muted); }
 .learning-reader-paper h1 { font-family: Georgia, 'Times New Roman', serif; font-size: 32px; line-height: 1.25; font-weight: 550; margin: 20px 0 14px; letter-spacing: -.025em; }
 .learning-reader-paper > p[data-learning-paragraph] { font-family: Georgia, 'Times New Roman', serif; font-size: 19px; line-height: 1.9; margin: 24px 0; word-break: normal; }
 .learning-reader-hint { font-size: 11px; line-height: 1.8; color: var(--text-muted); border-block: 1px solid var(--border-subtle); padding: 12px 0; margin: 22px 0 30px; }
+.learning-reader-hint > span:first-child { color: var(--text-secondary); }
 .learning-reader-word { cursor: pointer; border-radius: 3px; }
 .learning-reader-word:hover, .learning-reader-word:focus-visible { background: color-mix(in srgb, var(--accent) 17%, transparent); }
 .learning-reader-word[data-saved] { background: color-mix(in srgb, var(--accent) 18%, transparent); text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 4px; }
 .learning-reader-word[data-recurring] { background: color-mix(in srgb, var(--accent) 12%, transparent); text-decoration: underline; text-decoration-color: var(--accent); text-decoration-style: dotted; text-underline-offset: 5px; }
 .learning-reader-word[data-saved] { text-decoration-style: solid; }
+.learning-reader-word[data-selected] { background: color-mix(in srgb, var(--accent) 24%, transparent); outline: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+.learning-reader-word:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .learning-reader-footer { border-top: 1px solid var(--border-subtle); margin-top: 42px; padding-top: 22px; }
 .learning-reader-footer p { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
-.learning-word-panel { width: 260px; min-width: 220px; box-sizing: border-box; border-left: 1px solid var(--border-subtle); padding: 28px 22px; background: color-mix(in srgb, var(--bg-raised) 35%, var(--bg-surface)); overflow: auto; }
+.learning-word-panel { width: 260px; flex: 0 0 260px; box-sizing: border-box; border-left: 1px solid var(--border-subtle); padding: 24px 20px; background: var(--bg-surface); overflow: auto; }
+.learning-word-panel-header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.learning-word-panel-header .learning-eyebrow { margin-bottom: 4px; }
+.learning-word-panel-header h2 > span { color: var(--text-muted); font-size: 12px; margin-left: 5px; }
+.learning-reader-drawer-backdrop { display: none; }
 .learning-word-panel h2 { font-size: 16px; margin: 8px 0 16px; }
 .learning-word-selection h3 { font-size: 24px; margin: 20px 0 12px; overflow-wrap: anywhere; }
 .learning-word-selection blockquote { border-left: 2px solid var(--accent); padding: 0 0 0 12px; font-family: Georgia, serif; margin: 0; font-size: 16px; line-height: 1.8; color: var(--text-secondary); }
@@ -329,4 +347,63 @@ button.learning-resume-item:hover { background: var(--bg-raised); }
   .learning-resume-item { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
   .learning-home-heading h1 { font-size: 25px; }
   .learning-hero--simple h1 { font-size: 22px; }
+}
+
+/* The dictionary stays beside the selected text, outside the dock pane's clipping. */
+.learning-dictionary-popover { position: fixed; z-index: 1100; display: flex; flex-direction: column; width: min(340px, calc(100vw - 24px)); box-sizing: border-box; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--bg-surface); color: var(--text-primary); box-shadow: 0 18px 60px #00000026, 0 3px 12px #00000012; font-family: var(--font-sans); }
+.learning-dictionary-header { display: flex; align-items: start; justify-content: space-between; gap: 14px; padding: 18px 18px 12px; flex-shrink: 0; }
+.learning-dictionary-header > div { min-width: 0; }
+.learning-dictionary-label { color: var(--text-muted); font-size: 10px; letter-spacing: .035em; }
+.learning-dictionary-header h2 { margin: 4px 0 0; font-family: Georgia, 'Times New Roman', serif; font-size: 25px; line-height: 1.2; font-weight: 550; overflow-wrap: anywhere; }
+.learning-dictionary-header .bare-icon-button { flex-shrink: 0; color: var(--text-muted); }
+.learning-dictionary-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 18px 12px; scrollbar-width: thin; }
+.learning-dictionary-saved-meaning { border-radius: 9px; padding: 11px 12px; background: color-mix(in srgb, var(--accent) 8%, var(--bg-surface)); margin: 2px 0 14px; }
+.learning-dictionary-saved-meaning > span { font-size: 10px; color: var(--accent); }
+.learning-dictionary-saved-meaning p { font-size: 14px; line-height: 1.6; margin: 5px 0 0; overflow-wrap: anywhere; }
+.learning-dictionary-entry + .learning-dictionary-entry { border-top: 1px solid var(--border-subtle); margin-top: 14px; padding-top: 14px; }
+.learning-dictionary-entry-heading { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); margin: 2px 0 7px; }
+.learning-dictionary-entry-heading > strong { color: var(--text-secondary); font-weight: 600; }
+.learning-dictionary-entry-heading > span { background: var(--bg-raised); border-radius: 4px; padding: 2px 5px; font-size: 10px; }
+.learning-dictionary-entry-heading > small { font-family: Georgia, 'Times New Roman', serif; font-size: 12px; }
+.learning-dictionary-senses { display: grid; gap: 3px; }
+.learning-dictionary-senses > button { display: flex; align-items: start; gap: 10px; width: 100%; text-align: left; padding: 9px 10px; color: var(--text-primary); background: transparent; border: 1px solid transparent; border-radius: 8px; font: inherit; cursor: pointer; }
+.learning-dictionary-senses > button:hover { background: var(--bg-raised); }
+.learning-dictionary-senses > button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--accent) 28%, transparent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.learning-dictionary-sense-number { flex-shrink: 0; font-size: 10px; padding-top: 4px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.learning-dictionary-senses strong { display: block; font-size: 14px; line-height: 1.65; font-weight: 560; overflow-wrap: anywhere; }
+.learning-dictionary-senses small { display: block; font-size: 11px; line-height: 1.65; color: var(--text-muted); margin-top: 3px; overflow-wrap: anywhere; }
+.learning-dictionary-source { display: inline-flex; gap: 5px; align-items: center; background: transparent; border: 0; color: var(--text-muted); padding: 6px 0 0; font-size: 9px; cursor: pointer; }
+.learning-dictionary-source:hover { color: var(--accent); }
+.learning-dictionary-empty { padding: 10px 0 8px; }
+.learning-dictionary-empty strong { font-size: 13px; font-weight: 600; }
+.learning-dictionary-empty p, .learning-dictionary-status { color: var(--text-muted); font-size: 12px; line-height: 1.75; margin: 6px 0 8px; }
+.learning-dictionary-note, .learning-dictionary-context, .learning-dictionary-popover .learning-prior-examples, .learning-dictionary-credits { margin: 12px 0 0; font-size: 11px; color: var(--text-muted); }
+.learning-dictionary-note > summary, .learning-dictionary-context > summary, .learning-dictionary-popover .learning-prior-examples > summary, .learning-dictionary-credits > summary { cursor: pointer; padding: 3px 0; }
+.learning-dictionary-note .learning-field { margin: 10px 0 0; }
+.learning-dictionary-note input { width: 100%; box-sizing: border-box; font-size: 12px; }
+.learning-dictionary-context blockquote, .learning-dictionary-popover .learning-prior-examples blockquote { font-family: Georgia, 'Times New Roman', serif; font-size: 14px; color: var(--text-secondary); line-height: 1.7; border-left: 2px solid var(--border-subtle); margin: 9px 0 0; padding-left: 10px; }
+.learning-dictionary-popover .learning-prior-examples blockquote p { margin: 0 0 5px; }
+.learning-dictionary-popover .learning-prior-examples blockquote small { font: 11px/1.6 var(--font-sans); }
+.learning-dictionary-footer { padding: 12px 18px 14px; border-top: 1px solid var(--border-subtle); flex-shrink: 0; background: var(--bg-surface); }
+.learning-dictionary-save { width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 12px; }
+.learning-dictionary-save:disabled { opacity: .65; cursor: default; }
+.learning-dictionary-secondary { display: flex; gap: 12px; justify-content: space-between; align-items: center; margin-top: 9px; }
+.learning-dictionary-secondary .learning-text-button { font-size: 10px; }
+.learning-dictionary-secondary button:disabled { opacity: .4; cursor: default; }
+.learning-dictionary-popover :is(button, input, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.learning-dictionary-credits { font-size: 9px; line-height: 1.7; }
+.learning-dictionary-credits p { margin: 5px 0; }
+.learning-dictionary-credits button { border: 0; background: transparent; font: inherit; color: var(--accent); padding: 0; cursor: pointer; }
+@container (max-width: 899px) {
+  .learning-reader-layout .learning-word-panel { position: absolute; z-index: 4; top: 0; bottom: 0; right: 0; width: min(320px, calc(100% - 24px)); max-height: none; min-width: 0; border-left: 1px solid var(--border-subtle); border-top: 0; box-shadow: -12px 0 32px #00000015; }
+  .learning-reader-drawer-backdrop { display: block; position: absolute; inset: 0; z-index: 3; border: 0; padding: 0; background: #00000022; cursor: default; }
+}
+@container (max-width: 540px) {
+  .learning-reader-shell .learning-reader-layout { flex-direction: row; }
+  .learning-reader-toolbar { gap: 8px; padding-inline: 14px; }
+  .learning-reader-toolbar > div { gap: 8px; }
+  .learning-reader-duration, .learning-reader-original { display: none; }
+  .learning-reader-progress-track { width: 40px; }
+  .learning-reader-vocabulary-toggle { padding-inline: 6px; }
+  .learning-reader-paper { padding-inline: 22px; }
 }
