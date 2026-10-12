@@ -49,6 +49,7 @@ export function createEmbeddedAuthObserver(documentId: string): string {
       let reason = null;
       if (explicitError || ((rejectedPage || rejectedHeading) && /\bdisallowed[_ -]?useragent\b/i.test(text))) reason = 'disallowed-useragent';
       else if ((rejectedPage || rejectedHeading) && /browser or app may not be secure|브라우저 또는 앱이 안전하지 않을 수/i.test(text)) reason = 'insecure-browser';
+      else if ((rejectedPage || rejectedHeading) && /Family\s*Link/i.test(text) && /여기에서 로그인할 수 없|can(?:not|['’]t) sign in here|can(?:not|['’]t) be signed in here/i.test(text)) reason = 'supervised-account';
       return { documentId, reason };
     };
     let lastReason = readSnapshot().reason;
@@ -126,7 +127,7 @@ export function attachEmbeddedAuthFallback(page: WebContents, onStatus: (status:
       if (!ready || page.isDestroyed() || documentId !== expectedDocument || revision !== expectedRevision ||
         !isEmbeddedAuthProviderUrl(page.getURL()) || !value || typeof value !== 'object') return
       const snapshot = value as { documentId?: unknown; reason?: unknown }
-      if (snapshot.documentId !== documentId || (snapshot.reason !== null && snapshot.reason !== 'insecure-browser' && snapshot.reason !== 'disallowed-useragent')) return
+      if (snapshot.documentId !== documentId || (snapshot.reason !== null && snapshot.reason !== 'insecure-browser' && snapshot.reason !== 'disallowed-useragent' && snapshot.reason !== 'supervised-account')) return
       const reason = snapshot.reason as BrowserAuthReason | null
       if (reason !== lastReason) emit(reason, page.getURL())
     }).catch(() => undefined)

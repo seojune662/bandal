@@ -3,6 +3,19 @@ import assert from 'node:assert/strict'
 import { onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
 
+test('browser chrome and password changes retain their packaged interaction checks', () => {
+  for (const file of ['src/renderer/src/features/browser/browser.css', 'src/renderer/src/features/assistantPanel/AssistantPanelToggle.tsx']) {
+    const plan = planChecks([file])
+    assert.ok(plan.e2e.includes('e2e/browserChrome.spec.ts'))
+    assert.equal(plan.full, false)
+  }
+  for (const file of ['src/renderer/src/features/browser/BrowserLoginPrompt.tsx', 'src/renderer/src/features/browser/loginBridge.ts', 'src/main/features/credentials/loginCapture.ts']) {
+    const plan = planChecks([file])
+    assert.ok(plan.e2e.includes('e2e/browserPasswordPrompt.spec.ts'))
+    assert.equal(plan.full, false)
+  }
+})
+
 test('PDF export changes skip unrelated browser/calendar/performance checks', () => {
   const plan = planChecks(['src/main/features/pdf/exportPdf.ts', 'src/main/features/pdfText.ts', 'src/main/features/canvas/exportBoardPdf.ts'])
   assert.equal(plan.full, false)
@@ -235,7 +248,7 @@ test('browser import boundaries select import and compatibility regressions', ()
   ]) {
     const plan = planChecks([file])
     assert.equal(plan.full, false, file)
-    assert.deepEqual(new Set(plan.e2e), new Set(['e2e/browserImport.spec.ts', 'e2e/browserCompatibility.spec.ts']), file)
+    assert.deepEqual(new Set(plan.e2e), new Set(['e2e/browserImport.spec.ts', 'e2e/browserCompatibility.spec.ts', ...(file === 'src/shared/types/credentials.ts' ? ['e2e/browserPasswordPrompt.spec.ts'] : [])]), file)
     assert.ok(!plan.scriptTests.includes('scripts/check-contrast.mjs'), file)
   }
 })
@@ -248,7 +261,7 @@ test('browser settings avoid unrelated global appearance checks', () => {
     'src/renderer/src/features/settings/BrowsingDataPanel.tsx'
   ]) {
     const plan = planChecks([file])
-    assert.deepEqual(new Set(plan.e2e), new Set(['e2e/browserImport.spec.ts', 'e2e/browserCompatibility.spec.ts']), file)
+    assert.deepEqual(new Set(plan.e2e), new Set(['e2e/browserImport.spec.ts', 'e2e/browserCompatibility.spec.ts', ...(file === 'src/shared/types/credentials.ts' ? ['e2e/browserPasswordPrompt.spec.ts'] : [])]), file)
     assert.ok(!plan.unitInputs.includes('src/shared/theme.ts'), file)
   }
   const mixed = planChecks(['src/renderer/src/features/settings/browser/browser-settings.css', 'src/renderer/src/styles/tokens.css'])

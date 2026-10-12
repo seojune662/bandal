@@ -23,22 +23,26 @@ describe('BrowserPanel accessibility', () => {
 
 describe('saved login prompt', () => {
   test.each([
-    ['save', '이 사이트 로그인을 저장할까요?'],
-    ['update', '비밀번호를 업데이트할까요?']
-  ] as const)('uses the %s wording and all three decisions', (kind, wording) => {
+    ['save', '비밀번호 저장 확인'],
+    ['update', '비밀번호 업데이트 확인']
+  ] as const)('announces the %s candidate without opening a card', (kind, label) => {
     const html = renderToStaticMarkup(
       <BrowserLoginPrompt
         kind={kind}
+        origin="https://accounts.google.com"
+        username="student@example.edu"
         onSave={vi.fn()}
         onDecline={vi.fn()}
         onSuppress={vi.fn()}
       />
     )
 
-    expect(html).toContain(wording)
-    expect(html).toContain('저장')
-    expect(html).toContain('이번엔 안 함')
-    expect(html).toContain('이 사이트는 묻지 않기')
+    expect(html).toContain(`aria-label="${label}"`)
+    expect(html).toContain('aria-haspopup="dialog"')
+    expect(html).toContain('aria-expanded="false"')
+    expect(html).toContain('role="status"')
+    expect(html).toContain('accounts.google.com 로그인 정보를 저장할 수 있습니다.')
+    expect(html).not.toContain('role="dialog"')
   })
 })
 

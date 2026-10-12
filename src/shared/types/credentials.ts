@@ -59,6 +59,9 @@ export interface CredentialsImportResult {
  */
 export const LOGIN_CAPTURE_GLOBAL = '__bandalCaptureUserEnteredLoginV1__'
 
+/** Both the main-only secret and its renderer prompt expire together. */
+export const STAGED_LOGIN_TTL_MS = 60_000
+
 export interface FillLoginResult {
   /** False when nothing is stored for the origin, or encryption is off. */
   filled: boolean

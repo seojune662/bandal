@@ -19,6 +19,7 @@ vi.mock('../../../src/renderer/src/features/browser/BrowserProfilePicker', () =>
 vi.mock('../../../src/renderer/src/features/browser/BrowserAddressInput', () => ({ BrowserAddressInput: () => null }))
 vi.mock('../../../src/renderer/src/features/browser/videoBridge', () => ({ useWebVideoReport: () => null, openWebVideoInPip: vi.fn() }))
 
+import { guestActions } from '../../../src/renderer/src/features/browser/guestActions'
 import { BrowserPanel } from '../../../src/renderer/src/features/browser/BrowserPanel'
 import { resetBrowserGuestsForTests, useBrowserGuests } from '../../../src/renderer/src/features/browser/browserGuestsStore'
 import { resetFavoritesStoreForTests, useFavoritesStore, favoriteScopeKey } from '../../../src/renderer/src/stores/favoritesStore'
@@ -38,7 +39,7 @@ beforeEach(() => {
   resetFavoritesStoreForTests()
   useFavoritesStore.setState({ byCourse: { [favoriteScopeKey(null)]: [] } })
   useBrowserGuests.getState().ensureGuest('tab', refused, false, 'default', null)
-  useBrowserGuests.getState().setAuthFallback('tab', 'https://chatgpt.com/')
+  useBrowserGuests.getState().setAuthFallback('tab', { restartUrl: 'https://chatgpt.com/' })
   props = {
     params: { descriptor: { kind: 'browser', payload: { tabId: 'tab', initialUrl: refused, profileId: 'default' } } },
     api: {
@@ -82,6 +83,30 @@ test('cancelling beforeunload retains the existing profile, URL, and login notic
   await act(async () => { expect(await mocks.changeProfile!('personal')).toBe(false) })
   expect(ensure.mock.calls.every(call => call[3] === 'default')).toBe(true)
   expect(useBrowserGuests.getState().liveGuests).toMatchObject([{ profileId: 'default', src: refused }])
-  expect(useBrowserGuests.getState().authFallback.tab).toBe('https://chatgpt.com/')
+  expect(useBrowserGuests.getState().authFallback.tab?.restartUrl).toBe('https://chatgpt.com/')
   expect(props.api.updateParameters).not.toHaveBeenCalled()
+})
+
+
+test('supervised refusal explains the separate external session and opens a fresh service URL', async () => {
+  useBrowserGuests.getState().setAuthFallback('tab', { restartUrl: 'https://chatgpt.com/', reason: 'supervised-account' })
+  act(() => root.render(<Harness />))
+  expect(host.textContent).toContain('Family Link 관리 계정의 로그인을 거부')
+  expect(host.textContent).toContain('보호자 승인')
+  expect(host.textContent).toContain('외부 로그인은 반달에 연결되지 않아요')
+  const open = [...host.querySelectorAll('button')].find(button => button.textContent === '기본 브라우저에서 사이트 열기')!
+  await act(async () => { open.click() })
+  expect(mocks.invoke).toHaveBeenCalledWith('shell:openExternal', { url: 'https://chatgpt.com/' })
+})
+
+
+test('supervised retry navigates to the original service and removes the old refusal', () => {
+  useBrowserGuests.getState().setAuthFallback('tab', { restartUrl: 'https://chatgpt.com/', reason: 'supervised-account' })
+  const navigate = vi.spyOn(guestActions, 'navigate').mockImplementation(() => {})
+  act(() => root.render(<Harness />))
+  const retry = [...host.querySelectorAll('button')].find(button => button.textContent === '원래 사이트 다시 열기')!
+  act(() => retry.click())
+  expect(navigate).toHaveBeenCalledExactlyOnceWith('tab', 'https://chatgpt.com/')
+  expect(useBrowserGuests.getState().authFallback.tab).toBeUndefined()
+  expect(mocks.invoke.mock.calls.some(call => call[0] === 'shell:openExternal')).toBe(false)
 })

@@ -61,12 +61,12 @@ test('a refusal received before popup adoption survives the snapshot and clears 
     restartUrl: 'https://chatgpt.com/', origin: 'https://accounts.google.com', path: '/denied' }))
   expect(useBrowserGuests.getState().authFallback.popup).toBeUndefined()
   await act(async () => { created({ state: refused, adopted: true }); await Promise.resolve() })
-  expect(useBrowserGuests.getState().authFallback.popup).toBe('https://chatgpt.com/')
+  expect(useBrowserGuests.getState().authFallback.popup?.restartUrl).toBe('https://chatgpt.com/')
   expect(useBrowserGuests.getState().nav.popup?.url).toBe(refused.url)
   expect(mocks.invoke.mock.calls.some(call => call[0] === 'browser:pageAction' && call[1]?.action === 'loadURL')).toBe(false)
   act(() => mocks.authEvent!({ tabId: 'popup', webContentsId: 41, sourceWebContentsId: 41,
     documentId: 'next-document', status: 'clear', origin: 'https://chatgpt.com', path: '/' }))
-  expect(useBrowserGuests.getState().authFallback.popup).toBe('https://chatgpt.com/')
+  expect(useBrowserGuests.getState().authFallback.popup?.restartUrl).toBe('https://chatgpt.com/')
   act(() => mocks.pageEvent!({ tabId: 'popup', name: 'did-navigate',
     state: { ...refused, authDocumentId: 'next-document', url: 'https://chatgpt.com/' }, detail: { url: 'https://chatgpt.com/', httpResponseCode: 200 } }))
   expect(useBrowserGuests.getState().authFallback.popup).toBeUndefined()

@@ -1,3 +1,4 @@
+import type { BrowserAuthFallback } from '../../../../shared/types/browserAuth'
 import type { PushEvents } from '../../../../shared/ipc/events'
 import { onPush } from '../../lib/ipc'
 import { useBrowserGuests, type LiveGuest } from './browserGuestsStore'
@@ -7,7 +8,7 @@ type GuestIdentity = Pick<LiveGuest, 'tabId' | 'profileId' | 'isPrivate'>
 interface AuthSource {
   documentId: string
   retiredDocuments: Set<string>
-  restartUrl: string | null
+  fallback: BrowserAuthFallback | null
 }
 interface AuthTarget {
   session: string
@@ -36,7 +37,7 @@ function rememberBounded<T>(values: Set<T>, value: T, limit: number): void {
 /** Main owns detection. This only keeps its results attached to the right page. */
 export function createBrowserAuthForwarder(
   guests: () => readonly GuestIdentity[],
-  setFallback: (tabId: string, url: string | null) => void
+  setFallback: (tabId: string, fallback: BrowserAuthFallback | null) => void
 ) {
   const targets = new Map<string, AuthTarget>()
   const retiredWebContents = new Set<number>()
@@ -46,8 +47,8 @@ export function createBrowserAuthForwarder(
     return guest ? sessionKey(guest) : null
   }
   const show = (tabId: string, target: AuthTarget): void => {
-    const notices = [...target.sources.values()].filter(source => source.restartUrl !== null)
-    setFallback(tabId, notices.at(-1)?.restartUrl ?? null)
+    const notices = [...target.sources.values()].filter(source => source.fallback !== null)
+    setFallback(tabId, notices.at(-1)?.fallback ?? null)
   }
   const retire = (tabId: string, webContentsId: number): void => {
     rememberBounded(retiredWebContents, webContentsId, MAX_RETIRED_PAGES)
@@ -79,11 +80,12 @@ export function createBrowserAuthForwarder(
     if (previous?.retiredDocuments.has(event.documentId)) return true
     const retiredDocuments = previous?.retiredDocuments ?? new Set<string>()
     if (previous && previous.documentId !== event.documentId) rememberBounded(retiredDocuments, previous.documentId, MAX_RETIRED_DOCUMENTS)
-    const restartUrl = event.status === 'blocked' ? event.restartUrl ?? null : null
+    const fallback = event.status === 'blocked' && event.restartUrl
+      ? { restartUrl: event.restartUrl, ...(event.reason ? { reason: event.reason } : {}) } : null
     // Reinsert so the most recently reported visible refusal wins. A popup's
     // recovery must not erase another popup or the parent document's refusal.
     target.sources.delete(event.sourceWebContentsId)
-    target.sources.set(event.sourceWebContentsId, { documentId: event.documentId, retiredDocuments, restartUrl })
+    target.sources.set(event.sourceWebContentsId, { documentId: event.documentId, retiredDocuments, fallback })
     while (target.sources.size > MAX_SOURCES) target.sources.delete(target.sources.keys().next().value!)
     show(tabId, target)
     return true

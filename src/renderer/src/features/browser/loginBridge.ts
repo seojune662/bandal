@@ -1,6 +1,7 @@
 import { useEffect, type RefObject } from 'react'
 import {
   LOGIN_CAPTURE_GLOBAL,
+  STAGED_LOGIN_TTL_MS,
   type SavedLoginSummary
 } from '../../../../shared/types/credentials'
 import { invoke } from '../../lib/ipc'
@@ -145,6 +146,7 @@ interface CaptureModeRequest {
 
 export interface StagedPromptCandidate {
   origin: string
+  username: string
   kind: 'save' | 'update'
   ready: boolean
   navigated: boolean
@@ -155,6 +157,7 @@ const elements = new Map<string, BrowserPageHandle>()
 const autoFilledOrigins = new Map<string, string>()
 const navigationGenerations = new Map<string, number>()
 const stagedLogins = new Map<string, StagedPromptCandidate>()
+const stagedExpiryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const suppressedSites = new Set<string>()
 const SUPPRESSED_SITE_STORAGE_PREFIX = 'bandal.credentials.suppress.'
 
@@ -275,6 +278,10 @@ export function consumeStagedPrompt(
     !candidate.navigated ||
     candidate.prompted ||
     hasLoginForm ||
+    // Google's password-free passkey, verification, consent and refusal
+    // screens are still authentication steps. Wait until the account flow
+    // reaches a Google service before offering to save the submitted login.
+    httpsOrigin(currentOrigin) === 'https://accounts.google.com' ||
     !isSameLoginSite(candidate.origin, currentOrigin)
   ) {
     return false
@@ -323,8 +330,15 @@ function maybeShowPrompt(tabId: string): void {
     return
   }
   update(tabId, {
-    savePrompt: { origin: staged.origin, kind: staged.kind },
+    savePrompt: { origin: staged.origin, username: staged.username, kind: staged.kind },
   })
+}
+
+function clearStagedLogin(tabId: string): void {
+  stagedLogins.delete(tabId)
+  const timer = stagedExpiryTimers.get(tabId)
+  if (timer !== undefined) clearTimeout(timer)
+  stagedExpiryTimers.delete(tabId)
 }
 
 async function fill(tabId: string, origin: string, credentialId?: string): Promise<boolean> {
@@ -365,12 +379,15 @@ async function stageSubmittedLogin(
 
   const candidate: StagedPromptCandidate = {
     origin: report.origin,
-    kind: state.savedLogin === null ? 'save' : 'update',
+    username: '',
+    kind: 'save',
     ready: false,
     navigated: false,
     prompted: false
   }
+  clearStagedLogin(tabId)
   stagedLogins.set(tabId, candidate)
+  update(tabId, { savePrompt: null })
   try {
     const summary = await captureWithMode({
       origin: report.origin,
@@ -380,27 +397,36 @@ async function stageSubmittedLogin(
     })
     if (stagedLogins.get(tabId) !== candidate) return
     if (summary === null) {
-      stagedLogins.delete(tabId)
+      clearStagedLogin(tabId)
       return
     }
-    if (candidate.kind === 'save') {
-      try {
-        const logins = await invoke('credentials:list', { profileId: useBrowserGuests.getState().liveGuests.find(g => g.tabId === tabId)?.profileId ?? 'default' })
-        if (logins.some((login) => login.origin === summary.origin && login.username === summary.username)) {
-          candidate.kind = 'update'
-        }
-      } catch {
-        // The capture already succeeded; keep the conservative save wording
-        // while surfacing that metadata lookup failed.
-        update(tabId, { message: 'failed' })
+    // An existing login for the site can belong to a different account.
+    // Only the actual captured account can make this an update prompt.
+    try {
+      const logins = await invoke('credentials:list', { profileId: useBrowserGuests.getState().liveGuests.find(g => g.tabId === tabId)?.profileId ?? 'default' })
+      if (logins.some((login) => login.origin === summary.origin && login.username === summary.username)) {
+        candidate.kind = 'update'
       }
+    } catch {
+      // The capture already succeeded; keep the conservative save wording
+      // while surfacing that metadata lookup failed.
+      update(tabId, { message: 'failed' })
     }
     if (stagedLogins.get(tabId) !== candidate) return
     candidate.origin = summary.origin
+    candidate.username = summary.username
+    const remaining = Date.parse(summary.updatedAt) + STAGED_LOGIN_TTL_MS - Date.now()
+    if (!Number.isFinite(remaining) || remaining <= 0) {
+      await discardStagedLoginForTab(tabId, false)
+      return
+    }
+    stagedExpiryTimers.set(tabId, setTimeout(() => {
+      if (stagedLogins.get(tabId) === candidate) void discardStagedLoginForTab(tabId, false)
+    }, remaining))
     candidate.ready = true
     maybeShowPrompt(tabId)
   } catch {
-    if (stagedLogins.get(tabId) === candidate) stagedLogins.delete(tabId)
+    if (stagedLogins.get(tabId) === candidate) clearStagedLogin(tabId)
     update(tabId, { message: 'failed' })
   }
 }
@@ -460,7 +486,7 @@ async function applyFormReport(
 }
 
 
-export async function saveStagedLoginForTab(tabId: string): Promise<void> {
+export async function saveStagedLoginForTab(tabId: string): Promise<'saved' | 'expired' | 'failed'> {
   const element = elements.get(tabId)
   const staged = stagedLogins.get(tabId)
   const current = element === undefined ? null : liveOrigin(element)
@@ -471,7 +497,7 @@ export async function saveStagedLoginForTab(tabId: string): Promise<void> {
     guestWebContentsId === null ||
     !isSameLoginSite(staged.origin, current)
   ) {
-    return
+    return 'expired'
   }
 
   update(tabId, { pending: true, message: null })
@@ -483,18 +509,23 @@ export async function saveStagedLoginForTab(tabId: string): Promise<void> {
       mode: 'commit'
     })
     if (saved === null) {
+      // Main also returns null when storage refuses the write. Preserve the
+      // candidate for retry while it is still alive; null alone is not proof
+      // that it expired. The shared expiry timer removes the card when due.
       update(tabId, { pending: false, message: 'failed' })
-      return
+      return stagedLogins.get(tabId) === staged ? 'failed' : 'expired'
     }
-    stagedLogins.delete(tabId)
+    clearStagedLogin(tabId)
     update(tabId, {
       pending: false,
       savePrompt: null,
       savedLogin: saved.origin === current ? saved : null,
       message: 'saved'
     })
+    return 'saved'
   } catch {
     update(tabId, { pending: false, message: 'failed' })
+    return 'failed'
   }
 }
 
@@ -510,7 +541,7 @@ export async function discardStagedLoginForTab(
     const key = siteKey(staged.origin)
     if (key !== null && !suppressLoginPromptForSite(key)) message = 'failed'
   }
-  stagedLogins.delete(tabId)
+  clearStagedLogin(tabId)
   update(tabId, { savePrompt: null, message })
   const guestWebContentsId = element === undefined ? null : guestId(element)
   const origin = element === undefined ? null : liveOrigin(element)
@@ -638,5 +669,7 @@ export function resetLoginBridgeForTests(): void {
   autoFilledOrigins.clear()
   navigationGenerations.clear()
   stagedLogins.clear()
+  for (const timer of stagedExpiryTimers.values()) clearTimeout(timer)
+  stagedExpiryTimers.clear()
   suppressedSites.clear()
 }

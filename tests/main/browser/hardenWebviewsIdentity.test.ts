@@ -67,7 +67,7 @@ function probe(mode: BrowserAuthProbeMode, identity?: BrowserAuthProbeIdentity):
 }
 const harden = () => hardenBrowsingSession(`persist:identity-regression-${++partition}`)
 
-function expectNativeIdentity(): void {
+function expectInheritedIdentity(): void {
   expect(browsingSession.setUserAgent).not.toHaveBeenCalled()
   expect(browsingSession.getUserAgent).not.toHaveBeenCalled()
   expect(electronMocks.getName).not.toHaveBeenCalled()
@@ -93,7 +93,7 @@ function expectSecurityHandlers(): void {
   const headers = vi.fn()
   beforeHeaders({ requestHeaders: { Accept: 'text/html' } }, headers)
   expect(headers).toHaveBeenCalledExactlyOnceWith({ requestHeaders: { Accept: 'text/html', DNT: '1', 'Sec-GPC': '1' } })
-  // Authentication and ordinary navigation keep both native identity surfaces;
+  // Authentication and ordinary navigation keep both inherited identity surfaces;
   // neither a provider-specific UA nor stripped Client Hints may be introduced.
   for (const url of ['https://accounts.google.com/', 'https://portal.yonsei.ac.kr/']) {
     const identityHeaders = { 'User-Agent': userAgent, 'sec-ch-ua': '"Chromium";v="150"', 'sec-ch-ua-platform': '"macOS"' }
@@ -104,26 +104,26 @@ function expectSecurityHandlers(): void {
 }
 
 for (const mode of ['product', 'clean'] as const) {
-  test.each(['product', 'native', undefined] as const)(`${mode} instrumentation with %s identity uses the native product behavior`, identity => {
+  test.each(['product', 'native', undefined] as const)(`${mode} instrumentation with %s identity does not override the boot identity`, identity => {
     probe(mode, identity)
     harden()
     expect(getBrowserAuthProbeIdentity()).toBe(identity ?? 'product')
-    expectNativeIdentity()
+    expectInheritedIdentity()
     expectSecurityHandlers()
   })
 }
 
 test.each(['persist:browsing', 'persist:bandal-profile-identity', 'bandal-private', 'bandal-profile-identity-private'])(
-  'ordinary app partition %s preserves native identity and security', partitionName => {
+  'ordinary app partition %s inherits the boot identity and preserves security', partitionName => {
     forgetProfilePermissions([partitionName])
     hardenBrowsingSession(partitionName)
     expect(electronMocks.fromPartition).toHaveBeenCalledExactlyOnceWith(partitionName)
-    expectNativeIdentity()
+    expectInheritedIdentity()
     expectSecurityHandlers()
     // A reused partition must retain the same unmodified session.
     hardenBrowsingSession(partitionName)
     expect(electronMocks.fromPartition).toHaveBeenCalledOnce()
-    expectNativeIdentity()
+    expectInheritedIdentity()
     forgetProfilePermissions([partitionName])
   }
 )
@@ -132,6 +132,6 @@ test('a native identity environment flag without a validated probe cannot change
   initializeBrowserAuthProbe({ BANDAL_BROWSER_AUTH_PROBE_IDENTITY: 'native' }, directory, '')
   harden()
   expect(getBrowserAuthProbeIdentity()).toBeNull()
-  expectNativeIdentity()
+  expectInheritedIdentity()
   expectSecurityHandlers()
 })

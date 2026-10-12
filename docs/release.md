@@ -1,5 +1,7 @@
 # 배포와 자동 업데이트
 
+v0.79.9는 브라우저 상단 중복 행과 비밀번호 저장 안내를 정리하고, 실제 Bandal·Chromium 식별값을 유지하면서 로그인 화면 선택에 영향을 주는 Electron 라이브러리 토큰만 제거한다. Family Link 계정의 로그인 결과는 [`release-notes/v0.79.9.md`](release-notes/v0.79.9.md)의 실제 검증 범위와 구분한다.
+
 v0.79.8은 일반 브라우저의 User-Agent 가공을 제거하여 인증 probe에서 사용한 원래 식별값을 제품에도 적용한다. 일반 탭·팝업·프로필에서 같은 런타임 식별값을 유지한다. 검증 범위는 [`release-notes/v0.79.8.md`](release-notes/v0.79.8.md)를 따른다.
 
 v0.79.7은 두 손가락 앞뒤 탐색의 연속 입력 누락, 가로 스크롤 오인, iframe 미동작과 숨은 탭의 지연 이동을 수정한다. 원인과 검증 범위는 [`release-notes/v0.79.7.md`](release-notes/v0.79.7.md)에 기록한다.

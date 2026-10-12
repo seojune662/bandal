@@ -49,39 +49,21 @@
   container-type: inline-size;
   position: relative;
   flex: none;
-  padding-bottom: calc(var(--space-1) / 2);
   background: var(--bg-surface);
   border-bottom: thin solid var(--border-subtle);
 }
 
 .browser-toolbar {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-1);
   align-items: center;
   height: var(--chrome-height);
   padding-inline: var(--space-2);
 }
 
-/* Keep typing usable in narrow split panes instead of shrinking the input to zero. */
-@container (max-width: 480px) {
-  .browser-toolbar {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    height: auto;
-    padding-block: var(--space-2);
-  }
-
-  .browser-toolbar .browser-address {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    box-sizing: border-box;
-    width: 100%;
-    max-width: none;
-  }
-}
-
 .browser-toolbar__nav,
-.browser-toolbar__actions {
+.browser-toolbar__actions,
+.browser-toolbar__utilities {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -89,12 +71,97 @@
 
 .browser-toolbar__nav {
   flex: 0 0 auto;
-  gap: var(--space-1);
+  gap: 0;
 }
 
 .browser-toolbar__actions {
   flex: 0 1 auto;
   justify-content: flex-end;
+}
+
+.browser-toolbar__utilities { flex: none; }
+.browser-toolbar .browser-toolbar__more,
+.browser-toolbar__utilities .browser-toolbar-menu__navigation { display: none; }
+
+.browser-toolbar .browser-assistant-toggle {
+  flex: none;
+  justify-content: center;
+  height: var(--icon-button-size);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.browser-assistant-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.browser-toolbar__more[data-private] { color: var(--on-accent); background: var(--accent); }
+
+.browser-toolbar-menu {
+  position: fixed;
+  z-index: 10050;
+  display: grid;
+  width: 220px;
+  padding: var(--space-2);
+  color: var(--text-primary);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+.browser-toolbar-menu__title { padding: 4px 8px 8px; color: var(--text-muted); font-size: var(--text-xs); }
+.browser-toolbar-menu > button {
+  display: flex;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  height: auto;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+.browser-toolbar-menu > button::after { content: attr(aria-label); }
+.browser-toolbar-menu > button > svg { flex: none; font-size: var(--icon-size); }
+
+/* Secondary controls fold away instead of creating another full-width row. */
+@container (max-width: 600px) {
+  .browser-toolbar__utilities,
+  .browser-toolbar .browser-nav-button--forward,
+  .browser-toolbar .browser-nav-button--home,
+  .browser-assistant-toggle .tab-assistant-toggle__label { display: none; }
+  .browser-toolbar .browser-toolbar__more { display: inline-grid; }
+  .browser-toolbar .browser-assistant-toggle { width: var(--icon-button-size); padding: 0; }
+  .browser-profile-trigger { max-width: 96px; }
+  .browser-toolbar .browser-address { padding-inline: var(--space-2); }
+}
+
+/* A minimum-size window can leave very small side-by-side panes. Keep an
+ * editable full-width address instead of compressing it to a few characters. */
+@container (max-width: 340px) {
+  .browser-toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    height: auto;
+    padding-block: var(--space-1);
+  }
+  .browser-toolbar .browser-address { grid-column: 1 / -1; grid-row: 1; }
+  .browser-toolbar__nav { grid-column: 1; grid-row: 2; }
+  .browser-toolbar__actions { grid-column: 2; grid-row: 2; flex-wrap: wrap; }
+  .browser-toolbar .browser-profile-trigger {
+    flex: none;
+    justify-content: center;
+    width: var(--icon-button-size);
+    min-width: var(--icon-button-size);
+    padding: 0;
+  }
+  .browser-profile-trigger__name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    clip-path: inset(50%);
+  }
+  .browser-profile-trigger__chevron { display: none; }
 }
 
 .browser-nav-button {
@@ -109,7 +176,7 @@
   cursor: pointer;
   background: transparent;
   border: none;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-md);
   transition:
     opacity var(--dur-base) var(--ease-out),
     transform var(--dur-base) var(--ease-out);
@@ -146,15 +213,15 @@
   gap: var(--space-2);
   align-items: center;
   width: auto;
-  max-width: 720px;
+  max-width: none;
   height: var(--control-height);
   min-width: 0;
-  margin-inline: auto;
+  margin-inline: var(--space-1);
   padding-inline: var(--space-3);
   color: var(--text-muted);
   background: var(--bg-app);
   border: thin solid var(--border-subtle);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-md);
 }
 
 .browser-address:hover {
@@ -230,6 +297,35 @@
   display: flex;
   min-width: 0;
   align-items: center;
+}
+
+.browser-login-account-control { position: relative; display: inline-flex; min-width: 0; }
+.browser-login-account-control__icon { display: none; }
+.browser-login-account-control .browser-login-account {
+  max-width: 180px;
+  height: var(--control-height);
+  padding-inline: var(--space-2);
+  color: var(--text-primary);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+.browser-login-account-control .browser-login-account:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+@container (max-width: 600px) {
+  .browser-login-action { flex: none; }
+  .browser-login-action .browser-login-button {
+    width: var(--icon-button-size);
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
+  .browser-login-action .browser-login-button > svg { flex: none; font-size: var(--icon-size); }
+  .browser-login-account-control .browser-login-account { appearance: none; width: var(--icon-button-size); padding: 0; color: transparent; cursor: pointer; }
+  .browser-login-account option { color: var(--text-primary); }
+  .browser-login-account-control__icon { position: absolute; inset: 0; display: block; width: 16px; height: 16px; margin: auto; color: var(--text-secondary); pointer-events: none; }
 }
 
 .browser-login-button {

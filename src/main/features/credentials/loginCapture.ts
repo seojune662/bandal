@@ -1,6 +1,7 @@
 import { isManagedBrowserPage } from '../browser/managedPages'
 import {
   LOGIN_CAPTURE_GLOBAL,
+  STAGED_LOGIN_TTL_MS,
   type SavedLoginSummary
 } from '../../../shared/types/credentials'
 import type { CredentialStore, ResolvedLogin } from './credentialStore'
@@ -21,7 +22,7 @@ export interface LoginCaptureRequest {
   mode?: 'save' | 'stage' | 'commit' | 'discard'
 }
 
-export const STAGED_LOGIN_TTL_MS = 60_000
+export { STAGED_LOGIN_TTL_MS } from '../../../shared/types/credentials'
 
 interface LoginCaptureDeps extends LoginFillerDeps {
   now?: () => number

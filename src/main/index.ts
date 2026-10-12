@@ -35,6 +35,8 @@ import {
 } from './windows/macFinderIcon'
 import { reportFatalStartupError } from './startupError'
 import { PLUGIN_SCHEME } from './features/plugins/pluginProtocol'
+import { resolveAppVersion } from './features/updater/appVersion'
+import { configureBrowserIdentity } from './features/browser/browserIdentity'
 import { BROWSER_AUTH_PROBE_NATIVE_IDENTITY_CAPABILITY, BROWSER_AUTH_PROBE_PROTOCOL, initializeBrowserAuthProbe } from './features/browser/authProbe'
 import { writeFileSync } from 'node:fs'
 
@@ -57,6 +59,10 @@ function setSettings(patch: SettingsPatch): Settings {
 // throwaway profile so tests never touch the real userData. Must run before
 // requestSingleInstanceLock — the lock is scoped to the userData path.
 const authProbe = initializeBrowserAuthProbe(process.env, app.getPath('userData'), process.execPath, process.argv)
+configureBrowserIdentity(app, {
+  name: app.isPackaged ? app.getName() : 'bandal',
+  version: resolveAppVersion(app.isPackaged, app.getVersion(), __APP_VERSION__)
+}, authProbe?.identity)
 const testUserDataDir = authProbe?.userDataDir ?? process.env['BANDAL_USER_DATA_DIR']
 if (testUserDataDir !== undefined && testUserDataDir !== '') {
   app.setPath('userData', testUserDataDir)

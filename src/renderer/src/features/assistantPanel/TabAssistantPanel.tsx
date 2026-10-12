@@ -14,6 +14,7 @@ import { ConversationListMenu } from '../chat/ConversationListMenu'
 import { Tooltip } from '../../components/Tooltip'
 import './assistant-panel.css'
 import { registerAssistantController } from './assistantController'
+import { AssistantPanelToggle } from './AssistantPanelToggle'
 const ChatSurface = lazy(() => import('../chat/ChatSurface').then(m => ({ default: m.ChatSurface })))
 export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelProps>): FunctionComponent<IDockviewPanelProps> {
   return function AssistantPanel(props) {
@@ -116,13 +117,14 @@ export function withAssistantPanel(Component: FunctionComponent<IDockviewPanelPr
       show()
     }, [show])
     const setHighlightsOpen = useCallback((highlightsOpen: boolean) => update({ highlightsOpen }), [update])
-    const context = useMemo(() => ({ panelId: props.api.id, highlightsOpen: state.highlightsOpen, setHighlightsOpen, ask }), [props.api.id, state.highlightsOpen, setHighlightsOpen, ask])
+    const toggle = useCallback(() => state.open ? close() : show(), [state.open, close, show])
+    const context = useMemo(() => ({ panelId: props.api.id, open: state.open, toggle, highlightsOpen: state.highlightsOpen, setHighlightsOpen, ask }), [props.api.id, state.open, toggle, state.highlightsOpen, setHighlightsOpen, ask])
     if (isChat) return <div className="tab-assistant-chat-host" ref={root}><Component {...props} /></div>
     const overlay = availableWidth < state.width + 360
     return <PanelAssistantContext.Provider value={context}>
       <div className="tab-with-assistant" data-tour-panel={props.api.id} ref={root} data-assistant-open={state.open} data-assistant-overlay={overlay}>
         <div className="tab-document">
-          <div className="tab-assistant-launchbar"><span>{descriptor?.kind === 'learning' ? panelTitle || '학습 공간' : descriptor ? tabTitle(descriptor) : '현재 자료'}</span><button type="button" className="tab-assistant-toggle" data-tour="assistant-panel-toggle" aria-expanded={state.open} aria-label={state.open ? 'AI 보조 사이드바 접기' : 'AI 보조 사이드바 펼치기'} onClick={() => state.open ? close() : show()}>✦ <span>AI</span></button></div>
+          {descriptor?.kind !== 'browser' && <div className="tab-assistant-launchbar"><span>{descriptor?.kind === 'learning' ? panelTitle || '학습 공간' : descriptor ? tabTitle(descriptor) : '현재 자료'}</span><AssistantPanelToggle /></div>}
           <div className="tab-document-content"><Component {...props} /></div>
         </div>
         {initialized && <aside hidden={!state.open} className="tab-assistant" data-tour={active && state.open ? "document-assistant" : undefined} role={overlay ? 'dialog' : 'complementary'} aria-label="탭 보조 사이드바" style={{ width: Math.min(state.width, availableWidth) }}>

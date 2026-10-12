@@ -15,6 +15,7 @@ function document(html: string, url = 'https://accounts.google.com/v3/signin/rej
 }
 afterEach(() => { for (const dom of documents.splice(0)) dom.window.close() })
 const refusal = '<main><h1>로그인할 수 없음</h1><p>브라우저 또는 앱이 안전하지 않을 수 있습니다.</p></main>'
+const supervisedRefusal = '<main><h1>로그인할 수 없음</h1><p>Family Link에서 관리하는 계정은 여기에서 로그인할 수 없습니다.</p></main>'
 const login = '<main><h1>Google 계정으로 로그인</h1><input type="email"></main>'
 
 class Page extends EventEmitter {
@@ -229,6 +230,10 @@ test.each([
   ['hidden rejection template', `${login}<div hidden>${refusal}</div>`],
   ['CSS-hidden rejection template', `${login}<div style="display:none">${refusal}</div>`],
   ['generic credential error', '<main><h1>로그인할 수 없음</h1><p>비밀번호를 확인하세요.</p></main>'],
+  ['Family Link parent approval', '<main><h1>부모님의 승인</h1><p>Family Link에서 관리하는 계정입니다. 보호자가 승인해 주세요.</p></main>'],
+  ['Family Link service restriction', '<main><h1>로그인할 수 없음</h1><p>Family Link 계정으로 이 서비스를 사용할 수 없습니다.</p></main>'],
+  ['hidden supervised refusal', `${login}<div hidden>${supervisedRefusal}</div>`],
+  ['Family Link help link', '<main><h1>로그인할 수 없음</h1><a>Family Link에서 관리하는 계정은 여기에서 로그인할 수 없습니다.</a><p>비밀번호를 확인하세요.</p></main>'],
   ['plain compatibility text on normal form', `${login}<p>브라우저 또는 앱이 안전하지 않을 수 있습니다.</p>`]
 ])('ignores %s', (_name, html) => {
   const dom = document(html, 'https://accounts.google.com/v3/signin/identifier')
@@ -237,6 +242,8 @@ test.each([
 
 test.each([
   ['https://accounts.google.com/v3/signin/rejected', refusal, 'insecure-browser'],
+  ['https://accounts.google.com/v3/signin/rejected', supervisedRefusal, 'supervised-account'],
+  ['https://accounts.google.com/v3/signin/challenge', '<main><h1>Couldn’t sign you in</h1><p>Accounts managed with Family Link can’t sign in here.</p></main>', 'supervised-account'],
   ['https://accounts.google.com/v3/signin/challenge', '<main><h1>Couldn’t sign you in</h1><p>This browser or app may not be secure.</p></main>', 'insecure-browser'],
   ['https://accounts.google.com/signin/error', '<main><h1>Error 403</h1><p>disallowed_useragent</p></main>', 'disallowed-useragent'],
   ['https://accounts.google.com/signin?error=disallowed_useragent&state=secret', login, 'disallowed-useragent']
@@ -256,4 +263,15 @@ test('replacing an observer disposes pending reports from its previous document 
   dom.window.document.body.innerHTML = login
   await vi.waitFor(() => expect(report).toHaveBeenCalledExactlyOnceWith(EMBEDDED_AUTH_STATUS_PREFIX + 'new'))
   expect(dom.window.eval(createEmbeddedAuthObserver('new'))).toEqual({ documentId: 'new', reason: null })
+})
+
+
+test('supervised refusal retains its reason while restarting the service without login state', async () => {
+  const { page, statuses } = fixture()
+  page.navigate('https://accounts.google.com/v3/signin/rejected?state=private-state&continue=https%3A%2F%2Fchatgpt.com%2Fauth%2Fcallback%3Fcode%3Dprivate-code', supervisedRefusal)
+  await vi.waitFor(() => expect(blocked(statuses)).toEqual([expect.objectContaining({
+    reason: 'supervised-account', restartUrl: 'https://chatgpt.com/',
+    origin: 'https://accounts.google.com', path: '/v3/signin/rejected'
+  })]))
+  expect(JSON.stringify(statuses.mock.calls)).not.toMatch(/private-state|private-code|Family Link/)
 })

@@ -1,5 +1,6 @@
 import { openDiagnostics } from './diagnosticsBridge'
 import { usePanelVisible } from '../workspace/usePanelVisible'
+import { AssistantPanelToggle } from '../assistantPanel/AssistantPanelToggle'
 /**
  * [M3-F] Browser tab panel — dockview drop-in replacing the M2 placeholder.
  *
@@ -61,7 +62,9 @@ import {
   fillLoginForTab,
   saveStagedLoginForTab
 } from './loginBridge'
+import { BrowserLoginPrompt } from './BrowserLoginPrompt'
 import { BrowserProfilePicker } from './BrowserProfilePicker'
+import { BrowserToolbarOverflow } from './BrowserToolbarOverflow'
 import { BrowserImportBanner } from './BrowserImportDialog'
 import { BrowserAddressInput } from './BrowserAddressInput'
 import { scheduleProgressVisibility } from './loadingIndicator'
@@ -93,6 +96,7 @@ interface ToolbarProps {
   profileId: string
   onProfileChange: (id: string) => Promise<boolean>
   sessionChanging: boolean
+  isPanelVisible: boolean
 }
 
 function useBrowserFavoriteShortcuts(profileId: string, courseId: string | null): BrowserShortcut[] {
@@ -202,49 +206,7 @@ export function BrowserPipChip({
   )
 }
 
-export function BrowserLoginPrompt({
-  kind,
-  onSave,
-  onDecline,
-  onSuppress
-}: {
-  kind: 'save' | 'update'
-  onSave: () => void
-  onDecline: () => void
-  onSuppress: () => void
-}): JSX.Element {
-  return (
-    <div className="browser-external-auth browser-login-prompt" role="status">
-      <BrowserIcon name="key" />
-      <span className="browser-external-auth__message">
-        {kind === 'update'
-          ? '비밀번호를 업데이트할까요?'
-          : '이 사이트 로그인을 저장할까요?'}
-      </span>
-      <button
-        type="button"
-        className="browser-login-prompt__action browser-login-prompt__action--primary"
-        onClick={onSave}
-      >
-        저장
-      </button>
-      <button
-        type="button"
-        className="browser-login-prompt__action"
-        onClick={onDecline}
-      >
-        이번엔 안 함
-      </button>
-      <button
-        type="button"
-        className="browser-login-prompt__action"
-        onClick={onSuppress}
-      >
-        이 사이트는 묻지 않기
-      </button>
-    </div>
-  )
-}
+export { BrowserLoginPrompt } from './BrowserLoginPrompt'
 
 function BrowserToolbar({
   tabId,
@@ -255,7 +217,8 @@ function BrowserToolbar({
   onTogglePrivate,
   profileId,
   onProfileChange,
-  sessionChanging
+  sessionChanging,
+  isPanelVisible
 }: ToolbarProps): JSX.Element {
   const video = useWebVideoReport(tabId)
   const login = useBrowserGuests((state) => state.login[tabId])
@@ -318,7 +281,7 @@ function BrowserToolbar({
           <Tooltip label="앞으로" placement="bottom">
             <button
               type="button"
-              className="browser-nav-button"
+              className="browser-nav-button browser-nav-button--forward"
               aria-label="앞으로"
               disabled={!nav.canGoForward}
               onClick={() => guestActions.forward(tabId)}
@@ -343,7 +306,7 @@ function BrowserToolbar({
           <Tooltip label="홈" placement="bottom">
             <button
               type="button"
-              className="browser-nav-button"
+              className="browser-nav-button browser-nav-button--home"
               aria-label="홈페이지로 이동"
               onClick={() => {
                 const homePage = settingsSnapshot().browser.homePage
@@ -367,6 +330,27 @@ function BrowserToolbar({
 
         <div ref={toolbarActionsRef} className="browser-toolbar__actions">
           <BrowserProfilePicker profileId={profileId} onChange={onProfileChange} />
+          {isPanelVisible && !isPrivate && login?.savePrompt && (
+            <BrowserLoginPrompt
+              key={`${login.savePrompt.origin}:${login.savePrompt.username}:${login.savePrompt.kind}`}
+              kind={login.savePrompt.kind}
+              origin={login.savePrompt.origin}
+              username={login.savePrompt.username}
+              pending={login.pending}
+              onSave={() => void saveStagedLoginForTab(tabId).then(result => {
+                if (result === 'saved') showToast('비밀번호를 저장했어요.')
+                else if (result === 'expired') showToast('저장할 로그인 정보가 만료됐어요. 다음 로그인 때 다시 저장해 주세요.', 'danger')
+                else showToast('비밀번호를 저장하지 못했어요. 다시 시도해 주세요.', 'danger')
+              })}
+              onDecline={() => void discardStagedLoginForTab(tabId, false)}
+              onSuppress={() => void discardStagedLoginForTab(tabId, true)}
+            />
+          )}
+          <BrowserToolbarOverflow isPrivate={isPrivate} active={isPanelVisible}>
+          <button type="button" className="browser-nav-button browser-toolbar-menu__navigation" aria-label="앞으로"
+            disabled={!nav.canGoForward} onClick={() => guestActions.forward(tabId)}><BrowserIcon name="arrowRight" /></button>
+          <button type="button" className="browser-nav-button browser-toolbar-menu__navigation" aria-label="홈페이지로 이동"
+            onClick={() => onNavigate(settingsSnapshot().browser.homePage || DEFAULT_BROWSER_URL)}><BrowserIcon name="home" /></button>
           <Tooltip
             label={isPrivate ? '시크릿 모드 끄기' : '이 탭을 시크릿 모드로 전환'}
             placement="bottom"
@@ -429,19 +413,6 @@ function BrowserToolbar({
               </button>
             </Tooltip>
           )}
-          {downloadsAnchor !== null && (
-            <BrowserDownloadsPanel
-              anchor={downloadsAnchor}
-              onClose={() => setDownloadsAnchor(null)}
-            />
-          )}
-          {diagnosticsAnchor !== null && (
-            <BrowserDiagnosticsPanel
-              tabId={tabId}
-              anchor={diagnosticsAnchor}
-              onClose={() => setDiagnosticsAnchor(null)}
-            />
-          )}
           {!isDefaultZoom(
             zoomLevel,
             settingsSnapshot().browser.defaultZoomLevel
@@ -450,6 +421,7 @@ function BrowserToolbar({
               <button
                 type="button"
                 className="browser-zoom-pill"
+                aria-label={`기본 크기로 (${zoomPercent(zoomLevel)}%)`}
                 onClick={() => {
                   const defaultZoomLevel =
                     settingsSnapshot().browser.defaultZoomLevel
@@ -461,12 +433,17 @@ function BrowserToolbar({
               </button>
             </Tooltip>
           )}
+          </BrowserToolbarOverflow>
+          {downloadsAnchor !== null && <BrowserDownloadsPanel anchor={downloadsAnchor} onClose={() => setDownloadsAnchor(null)} />}
+          {diagnosticsAnchor !== null && <BrowserDiagnosticsPanel tabId={tabId} anchor={diagnosticsAnchor} onClose={() => setDiagnosticsAnchor(null)} />}
           {login?.hasLoginForm === true &&
             login.usernameFocused &&
             login.origin !== null &&
             login.savedLogins.length > 0 && (
             <div className="browser-login-action">
               {login.savedLogins.length > 1 ? (
+                <label className="browser-login-account-control">
+                <BrowserIcon name="key" className="browser-login-account-control__icon" />
                 <select
                   aria-label="저장된 로그인 계정 선택"
                   className="browser-login-account"
@@ -481,6 +458,7 @@ function BrowserToolbar({
                     <option key={account.id} value={account.id}>{account.username || account.origin}</option>
                   ))}
                 </select>
+                </label>
               ) : (
               <Tooltip label={loginTooltip} placement="bottom">
                 <button
@@ -509,6 +487,7 @@ function BrowserToolbar({
               )}
             </div>
           )}
+          <AssistantPanelToggle className="browser-assistant-toggle" />
         </div>
       </header>
       <AgentRunBanner tabId={tabId} />
@@ -551,7 +530,6 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
     tabId !== '' ? state.nav[tabId] : undefined
   )
   const overlay = useBrowserGuests((state) => state.overlay[tabId] ?? null)
-  const login = useBrowserGuests((state) => state.login[tabId])
   const authFallback = useBrowserGuests((state) => state.authFallback[tabId])
   const navState = nav ?? initialNavState(initialUrl)
   const favorites = useBrowserFavoriteShortcuts(profileId, ownerCourse)
@@ -590,7 +568,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
       const { allowed } = await invoke('browser:prepareProfileSwitch', { tabId })
       if (!allowed) return
       const next = !isPrivate
-      const url = browserProfileStartUrl(navState.url || initialUrl, authFallback ?? initialUrl)
+      const url = browserProfileStartUrl(navState.url || initialUrl, authFallback?.restartUrl ?? initialUrl)
       sessionTargetRef.current = { profileId, isPrivate: next }
       setPrivate(next)
       props.api.updateParameters({
@@ -620,7 +598,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
     try {
       const { allowed } = await invoke('browser:prepareProfileSwitch', { tabId })
       if (!allowed) return false
-      const url = browserProfileStartUrl(navState.url || initialUrl, authFallback ?? initialUrl)
+      const url = browserProfileStartUrl(navState.url || initialUrl, authFallback?.restartUrl ?? initialUrl)
       sessionTargetRef.current = { profileId: id, isPrivate }
       setProfileId(id)
       props.api.updateParameters({ descriptor: { kind: 'browser', payload: { tabId, initialUrl: url, isPrivate, profileId: id } } })
@@ -699,18 +677,8 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
         profileId={profileId}
         onProfileChange={changeProfile}
         sessionChanging={sessionChanging}
+        isPanelVisible={isPanelVisible}
       />
-      {isPanelVisible &&
-        !isPrivate &&
-        login?.savePrompt !== null &&
-        login?.savePrompt !== undefined && (
-          <BrowserLoginPrompt
-            kind={login.savePrompt.kind}
-            onSave={() => void saveStagedLoginForTab(tabId)}
-            onDecline={() => void discardStagedLoginForTab(tabId, false)}
-            onSuppress={() => void discardStagedLoginForTab(tabId, true)}
-          />
-        )}
       <BrowserBookmarksBar favorites={favorites} onNavigate={navigate} />
       {isPanelVisible && !isPrivate && (navState.url === DEFAULT_BROWSER_URL || navState.url === `${DEFAULT_BROWSER_URL}/` || navState.url === 'about:blank') && <BrowserImportBanner key={profileId} profileId={profileId} />}
       {isPanelVisible && (navState.httpStatus ?? 0) >= 400 && (
@@ -727,13 +695,21 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
         >
           <BrowserIcon name="globe" />
           <span className="browser-external-auth__message">
-            {t('browser.authFallback.message')}
+            {t(authFallback.reason === 'supervised-account' ? 'browser.authFallback.supervised' : 'browser.authFallback.message')}
           </span>
+          {authFallback.reason === 'supervised-account' && (
+            <button type="button" className="browser-login-prompt__action"
+              onClick={() => {
+                navigate(authFallback.restartUrl)
+                useBrowserGuests.getState().setAuthFallback(tabId, null)
+              }}
+            >{t('browser.authFallback.retry')}</button>
+          )}
           <button
             type="button"
             className="browser-login-prompt__action browser-login-prompt__action--primary"
             onClick={() => {
-              void invoke('shell:openExternal', { url: authFallback }).catch(() => {
+              void invoke('shell:openExternal', { url: authFallback.restartUrl }).catch(() => {
                 showToast('기본 브라우저를 열지 못했어요. 다시 시도해 주세요.', 'danger')
               })
             }}

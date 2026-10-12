@@ -41,7 +41,7 @@ describe('ensureGuest', () => {
     store().openFind('t1')
     store().setFindQuery('t1', 'school account')
     store().setZoom('t1', 2)
-    store().setAuthFallback('t1', 'https://example.com/login')
+    store().setAuthFallback('t1', { restartUrl: 'https://example.com/login' })
     store().ensureGuest('t1', 'https://example.com', isPrivate, profileId)
     expect(store().overlay.t1).toBeUndefined()
     expect(store().find.t1).toBeUndefined()

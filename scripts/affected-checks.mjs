@@ -107,6 +107,8 @@ export function planChecks(files, full = false) {
   if (has(/(renderInkSnapshot|pageImage)/i)) e2e.add('e2e/pageImageCopy.spec.ts')
   if (has(/(systemClipboard|noteImagePlugin|BufferedPdfCanvas|zoomInput)/)) e2e.add('e2e/interactionFixes.spec.ts')
   if (has(/(BrowserAddress|browserSearch|urlInput|useAddressSuggestions)/)) e2e.add('e2e/browserAddress.spec.ts')
+  if (has(/^src\/renderer\/src\/features\/(?:browser\/(?:BrowserPanel|BrowserToolbarOverflow|BrowserProfilePicker|browser|browserProfiles)\.(?:tsx|css)|assistantPanel\/(?:TabAssistantPanel|AssistantPanelToggle|panelContext)\.tsx?)$/)) e2e.add('e2e/browserChrome.spec.ts')
+  if (has(/^src\/(?:renderer\/src\/features\/browser\/(?:BrowserPanel|BrowserLoginPrompt|browserLoginPrompt|loginBridge)\.(?:tsx?|css)|main\/features\/credentials\/loginCapture\.ts|shared\/types\/credentials\.ts)$/)) e2e.add('e2e/browserPasswordPrompt.spec.ts')
   const browserSwipe = /^src\/(?:main\/features\/browser\/swipeNavigation|preload\/browser(?:Gesture|Swipe(?:Parents)?))\.ts$/
   if (has(browserSwipe)) e2e.add('e2e/browserSwipe.spec.ts')
   if (files.some(file => !browserSwipe.test(file) && /^src\/.*\/browser\/|src\/preload\/browser|src\/main\/windows\/assistantWindow|src\/renderer\/src\/features\/assistant\//.test(file))) e2e.add('e2e/browserCompatibility.spec.ts')

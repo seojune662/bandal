@@ -366,6 +366,8 @@ export const enUS: Record<MessageKey, string> = {
     'Google sign-in continues in your default browser. Return to this window after signing in.',
   'browser.externalAuth.dismiss': 'Dismiss notice',
   'browser.authFallback.message': 'Google blocked this in-app sign-in. This is separate from your Bandal account. Sign in to the site in your default browser; that session will not transfer to Bandal.',
+  'browser.authFallback.supervised': 'Google does not allow this Family Link account to sign in here. Open the site in your default browser and complete parent approval if Google asks. That sign-in will not transfer to Bandal.',
+  'browser.authFallback.retry': 'Reopen original site',
   'browser.authFallback.action': 'Open site in default browser',
   'browser.authFallback.dismiss': 'Dismiss sign-in fallback',
 

@@ -6,6 +6,7 @@
 
 import { create } from 'zustand'
 import type { SavedLoginSummary } from '../../../../shared/types/credentials'
+import type { BrowserAuthFallback } from '../../../../shared/types/browserAuth'
 import type { BrowserOverlay } from './loadError'
 
 export interface BrowserFindState {
@@ -54,6 +55,7 @@ export interface BrowserLoginState {
   savedLogin: SavedLoginSummary | null
   savePrompt: {
     origin: string
+    username: string
     kind: 'save' | 'update'
   } | null
   pending: boolean
@@ -89,9 +91,9 @@ interface BrowserGuestsState {
   /** Favicon as a data URL, per tab. Absent = show the generic globe. */
   favicon: Record<string, string | undefined>
   /** Embedded auth failure URL; shown as an explicit external fallback. */
-  authFallback: Record<string, string | undefined>
+  authFallback: Record<string, BrowserAuthFallback | undefined>
   setFavicon: (tabId: string, dataUrl: string | null) => void
-  setAuthFallback: (tabId: string, url: string | null) => void
+  setAuthFallback: (tabId: string, fallback: BrowserAuthFallback | null) => void
   ensureGuest: (tabId: string, initialUrl: string, isPrivate?: boolean, profileId?: string, courseId?: string | null) => void
   setGuestCourse: (tabId: string, courseId: string | null) => void
   requestAddressFocus: (tabId: string) => void
@@ -217,12 +219,12 @@ export const useBrowserGuests = create<BrowserGuestsState>()((set, get) => ({
   favicon: {},
   authFallback: {},
 
-  setAuthFallback: (tabId, url) => {
+  setAuthFallback: (tabId, fallback) => {
     const current = get().authFallback
     set({
-      authFallback: url === null
+      authFallback: fallback === null
         ? withoutKeys(current, [tabId])
-        : { ...current, [tabId]: url }
+        : { ...current, [tabId]: fallback }
     })
   },
 

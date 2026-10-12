@@ -79,7 +79,7 @@ export function forwardBrowserSwipe(
  *  - permissions deny-by-default (fullscreen only)
  *  - no file:// requests at all (navigation guards cover the main frame;
  *    this catches subresources/subframes as defense in depth)
- *  - preserve the runtime's native browser identity, including its Chrome token
+ *  - inherit the application's browser identity, including its real Chrome token
  */
 /**
  * Remembered site decisions. Injected once at startup so this module keeps
@@ -149,8 +149,8 @@ export function hardenBrowsingSession(partition: string): void {
   const browsingSession = session.fromPartition(partition)
   installGestureSession(browsingSession)
   const persistent = partition.startsWith('persist:')
-  // Leave browser identity to Chromium for every profile, request and child
-  // window. Setting a session UA can diverge from renderer-created popups.
+  // Inherit the identity configured once at app boot for every profile,
+  // request and child window. Session UA overrides can diverge in popups.
   browsingSession.setPermissionRequestHandler(
     (webContents, permission, callback, details) => {
       const tier = permissionTier(permission)

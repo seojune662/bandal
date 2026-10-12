@@ -364,6 +364,8 @@ export const koKR = {
     '구글 로그인은 기본 브라우저에서 진행돼요. 로그인 후 이 창으로 돌아오세요.',
   'browser.externalAuth.dismiss': '안내 닫기',
   'browser.authFallback.message': 'Google이 앱 내 로그인을 제한했어요. 반달 계정과는 별개이며, 기본 브라우저에서 이 사이트에 다시 로그인해야 해요. 외부 로그인은 반달로 자동 연결되지 않아요.',
+  'browser.authFallback.supervised': 'Google이 이 환경에서 Family Link 관리 계정의 로그인을 거부했어요. 기본 브라우저에서 사이트를 열고, Google이 요청하면 보호자 승인을 진행해 주세요. 외부 로그인은 반달에 연결되지 않아요.',
+  'browser.authFallback.retry': '원래 사이트 다시 열기',
   'browser.authFallback.action': '기본 브라우저에서 사이트 열기',
   'browser.authFallback.dismiss': '대체 로그인 안내 닫기',
 

@@ -28,6 +28,7 @@ export function BrowserProfilePicker({ profileId, onChange }: {
   const dialogRef = useRef<HTMLElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const descriptionId = useId()
+  const currentNameId = useId()
   const current = profiles.find(p => p.id === profileId)
   const currentName = current?.name ?? (profileId === 'default' ? '기본' : '프로필 선택')
 
@@ -80,14 +81,15 @@ export function BrowserProfilePicker({ profileId, onChange }: {
       type="button"
       className="browser-profile-trigger"
       aria-label="브라우저 프로필"
+      aria-describedby={currentNameId}
       aria-haspopup="dialog"
       aria-expanded={open}
       title={`브라우저 프로필: ${currentName} · 이 탭의 로그인 계정 분리 및 변경`}
       onClick={() => { setOpen(true); void refresh() }}
     >
       <span className="browser-profile-trigger__icon" aria-hidden="true" style={{ color: current?.color }}>{current?.icon ?? '●'}</span>
-      <span className="browser-profile-trigger__name">프로필 · {currentName}</span>
-      <span aria-hidden="true">⌄</span>
+      <span id={currentNameId} className="browser-profile-trigger__name">{currentName}</span>
+      <span className="browser-profile-trigger__chevron" aria-hidden="true">⌄</span>
     </button>
     {open && createPortal(<div className="browser-profile-manager-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) close() }}>
       <section ref={dialogRef} className="browser-profile-manager" role="dialog" aria-modal="true" aria-label="브라우저 프로필 선택" aria-describedby={descriptionId} aria-busy={busy}>

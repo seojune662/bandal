@@ -18,6 +18,8 @@ export function normalizeAssistantPanel(value: unknown): AssistantPanelState {
 }
 export const PanelAssistantContext = createContext<{
   panelId: string
+  open: boolean
+  toggle: () => void
   highlightsOpen: boolean
   setHighlightsOpen: (open: boolean) => void
   ask: (text: string) => void
