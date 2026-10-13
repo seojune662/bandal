@@ -6,7 +6,7 @@
   var __getOwnPropNames = Object.getOwnPropertyNames;
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
-  var __defNormalProp = (obj2, key3, value) => key3 in obj2 ? __defProp(obj2, key3, { enumerable: true, configurable: true, writable: true, value }) : obj2[key3] = value;
+  var __defNormalProp = (obj2, key4, value) => key4 in obj2 ? __defProp(obj2, key4, { enumerable: true, configurable: true, writable: true, value }) : obj2[key4] = value;
   var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
     get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
   }) : x)(function(x) {
@@ -25,9 +25,9 @@
   };
   var __copyProps = (to, from, except, desc) => {
     if (from && typeof from === "object" || typeof from === "function") {
-      for (let key3 of __getOwnPropNames(from))
-        if (!__hasOwnProp.call(to, key3) && key3 !== except)
-          __defProp(to, key3, { get: () => from[key3], enumerable: !(desc = __getOwnPropDesc(from, key3)) || desc.enumerable });
+      for (let key4 of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key4) && key4 !== except)
+          __defProp(to, key4, { get: () => from[key4], enumerable: !(desc = __getOwnPropDesc(from, key4)) || desc.enumerable });
     }
     return to;
   };
@@ -40,9 +40,9 @@
     mod
   ));
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-  var __publicField = (obj2, key3, value) => __defNormalProp(obj2, typeof key3 !== "symbol" ? key3 + "" : key3, value);
+  var __publicField = (obj2, key4, value) => __defNormalProp(obj2, typeof key4 !== "symbol" ? key4 + "" : key4, value);
 
-  // DesktopRuntime/backend/native.ts
+  // backend/native.ts
   function native(op, args = {}) {
     const host3 = globalThis.__bandalNative;
     if (!host3) throw new Error("Bandal native host is unavailable");
@@ -63,12 +63,12 @@
   }
   var environment;
   var init_native = __esm({
-    "DesktopRuntime/backend/native.ts"() {
+    "backend/native.ts"() {
       "use strict";
     }
   });
 
-  // DesktopRuntime/backend/shims/buffer.ts
+  // backend/shims/buffer.ts
   function encodeUTF8(text) {
     const bytes = [];
     for (const symbol of text) {
@@ -83,7 +83,7 @@
   }
   var alphabet, Buffer2;
   var init_buffer = __esm({
-    "DesktopRuntime/backend/shims/buffer.ts"() {
+    "backend/shims/buffer.ts"() {
       "use strict";
       alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
       Buffer2 = class _Buffer extends Uint8Array {
@@ -207,7 +207,7 @@
     }
   });
 
-  // DesktopRuntime/backend/shims/electron.ts
+  // backend/shims/electron.ts
   var electron_exports = {};
   __export(electron_exports, {
     BrowserWindow: () => BrowserWindow,
@@ -216,7 +216,7 @@
   });
   var app, BrowserWindow, nativeImage;
   var init_electron = __esm({
-    "DesktopRuntime/backend/shims/electron.ts"() {
+    "backend/shims/electron.ts"() {
       init_native();
       init_buffer();
       app = {
@@ -240,9 +240,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/mammoth@1.12.1/node_modules/mammoth/mammoth.browser.js
+  // ../../bandal/node_modules/.pnpm/mammoth@1.12.1/node_modules/mammoth/mammoth.browser.js
   var require_mammoth_browser = __commonJS({
-    "../bandal/node_modules/.pnpm/mammoth@1.12.1/node_modules/mammoth/mammoth.browser.js"(exports, module) {
+    "../../bandal/node_modules/.pnpm/mammoth@1.12.1/node_modules/mammoth/mammoth.browser.js"(exports, module) {
       (function(f) {
         if (typeof exports === "object" && typeof module !== "undefined") {
           module.exports = f();
@@ -835,8 +835,8 @@
             Notes.prototype.resolve = function(reference) {
               return this.findNoteByKey(noteKey(reference.noteType, reference.noteId));
             };
-            Notes.prototype.findNoteByKey = function(key3) {
-              return this._notes[key3] || null;
+            Notes.prototype.findNoteByKey = function(key4) {
+              return this._notes[key4] || null;
             };
             function Note(options) {
               return {
@@ -1613,14 +1613,14 @@
             var result = Result.combine(_2.pluck(results, "_result"));
             return new ReadResult(
               _2.flatten(_2.pluck(result.value, "element")),
-              _2.filter(_2.flatten(_2.pluck(result.value, "extra")), identity2),
+              _2.filter(_2.flatten(_2.pluck(result.value, "extra")), identity3),
               result.messages
             );
           }
           function joinElements(first, second) {
             return _2.flatten([first, second]);
           }
-          function identity2(value) {
+          function identity3(value) {
             return value;
           }
         }, { "../documents": 4, "../results": 25, "../transforms": 30, "../xml": 35, "./uris": 16, "dingbat-to-unicode": 85, "underscore": 102 }], 6: [function(require2, module3, exports2) {
@@ -2377,13 +2377,13 @@
           }
           var collapsers = {
             element: collapseElement,
-            text: identity2,
-            forceWrite: identity2
+            text: identity3,
+            forceWrite: identity3
           };
           function collapseElement(node) {
             return ast.elementWithTag(node.tag, collapse(node.children));
           }
-          function identity2(value) {
+          function identity3(value) {
             return value;
           }
           function appendChild(children, child) {
@@ -2604,7 +2604,7 @@
           ];
           var standardOptions = exports2._standardOptions = {
             externalFileAccess: false,
-            transformDocument: identity2,
+            transformDocument: identity3,
             includeDefaultStyleMap: true,
             includeEmbeddedStyleMap: true
           };
@@ -2637,7 +2637,7 @@
               return styleMap;
             }
           }
-          function identity2(value) {
+          function identity3(value) {
             return value;
           }
         }, { "underscore": 102 }], 23: [function(require2, module3, exports2) {
@@ -2880,7 +2880,7 @@
             ).map(function(createMatcher, matcherOptions) {
               return createMatcher(matcherOptions);
             });
-            var table9 = sequence(
+            var table10 = sequence(
               lop.rules.token("identifier", "table"),
               sequence.capture(createMatcherSuffixesRule([
                 styleIdRule,
@@ -2933,7 +2933,7 @@
             return lop.rules.firstOf(
               "element type",
               paragraphOrRun,
-              table9,
+              table10,
               bold,
               italic,
               underline,
@@ -3080,7 +3080,7 @@
         }, { "./results": 25, "./styles/document-matchers": 27, "./styles/html-paths": 28, "./styles/parser/tokeniser": 29, "lop": 89, "underscore": 102 }], 27: [function(require2, module3, exports2) {
           exports2.paragraph = paragraph;
           exports2.run = run;
-          exports2.table = table9;
+          exports2.table = table10;
           exports2.bold = new Matcher("bold");
           exports2.italic = new Matcher("italic");
           exports2.underline = new Matcher("underline");
@@ -3100,7 +3100,7 @@
           function run(options) {
             return new Matcher("run", options);
           }
-          function table9(options) {
+          function table10(options) {
             return new Matcher("table", options);
           }
           function highlight(options) {
@@ -3403,8 +3403,8 @@
               fragments.push("<" + tagName + attributeString + " />");
             }
             function generateAttributeString(attributes) {
-              return _2.map(attributes, function(value, key3) {
-                return " " + key3 + '="' + escapeHtmlAttribute(value) + '"';
+              return _2.map(attributes, function(value, key4) {
+                return " " + key4 + '="' + escapeHtmlAttribute(value) + '"';
               }).join("");
             }
             function text(value) {
@@ -3739,8 +3739,8 @@
                 standalone: true
               });
               _2.forEach(namespaces, function(uri, prefix2) {
-                var key3 = "xmlns" + (prefix2 === "" ? "" : ":" + prefix2);
-                builder.attribute(key3, uri);
+                var key4 = "xmlns" + (prefix2 === "" ? "" : ":" + prefix2);
+                builder.attribute(key4, uri);
               });
               root2.children.forEach(function(child) {
                 writeNode(builder, child);
@@ -3861,9 +3861,9 @@
             if (target === null || typeof target !== "object") {
               throw new TypeError("target is not an object");
             }
-            for (var key3 in source) {
-              if (Object.prototype.hasOwnProperty.call(source, key3)) {
-                target[key3] = source[key3];
+            for (var key4 in source) {
+              if (Object.prototype.hasOwnProperty.call(source, key4)) {
+                target[key4] = source[key4];
               }
             }
             return target;
@@ -4022,15 +4022,15 @@
             var errorHandler = {};
             var isCallback = errorImpl instanceof Function;
             locator = locator || {};
-            function build(key3) {
-              var fn = errorImpl[key3];
+            function build(key4) {
+              var fn = errorImpl[key4];
               if (!fn && isCallback) {
                 fn = errorImpl.length == 2 ? function(msg) {
-                  errorImpl(key3, msg);
+                  errorImpl(key4, msg);
                 } : errorImpl;
               }
-              errorHandler[key3] = fn && function(msg) {
-                fn("[xmldom " + key3 + "]	" + msg + _locator(locator));
+              errorHandler[key4] = fn && function(msg) {
+                fn("[xmldom " + key4 + "]	" + msg + _locator(locator));
               } || function() {
               };
             }
@@ -4163,8 +4163,8 @@
               return chars3;
             }
           }
-          "endDTD,startEntity,endEntity,attributeDecl,elementDecl,externalEntityDecl,internalEntityDecl,resolveEntity,getExternalSubset,notationDecl,unparsedEntityDecl".replace(/\w+/g, function(key3) {
-            DOMHandler.prototype[key3] = function() {
+          "endDTD,startEntity,endEntity,attributeDecl,elementDecl,externalEntityDecl,internalEntityDecl,resolveEntity,getExternalSubset,notationDecl,unparsedEntityDecl".replace(/\w+/g, function(key4) {
+            DOMHandler.prototype[key4] = function() {
               return null;
             };
           });
@@ -4386,11 +4386,11 @@
           NamedNodeMap.prototype = {
             length: 0,
             item: NodeList.prototype.item,
-            getNamedItem: function(key3) {
+            getNamedItem: function(key4) {
               var i = this.length;
               while (i--) {
                 var attr = this[i];
-                if (attr.nodeName == key3) {
+                if (attr.nodeName == key4) {
                   return attr;
                 }
               }
@@ -4415,8 +4415,8 @@
               return oldAttr;
             },
             /* returns Node */
-            removeNamedItem: function(key3) {
-              var attr = this.getNamedItem(key3);
+            removeNamedItem: function(key4) {
+              var attr = this.getNamedItem(key4);
               _removeNamedNode(this._ownerElement, this, attr);
               return attr;
             },
@@ -5528,8 +5528,8 @@
             }
             return node2;
           }
-          function __set__(object2, key3, value) {
-            object2[key3] = value;
+          function __set__(object2, key4, value) {
+            object2[key4] = value;
           }
           try {
             if (Object.defineProperty) {
@@ -5579,8 +5579,8 @@
                   }
                 }
               });
-              __set__ = function(object2, key3, value) {
-                object2["$$" + key3] = value;
+              __set__ = function(object2, key4, value) {
+                object2["$$" + key4] = value;
               };
             }
           } catch (e) {
@@ -6999,8 +6999,8 @@
                   } else if (util.isObject(e)) {
                     var keys4 = getKeys(item);
                     for (var j = 0; j < keys4.length; ++j) {
-                      var key3 = keys4[j];
-                      if (item[key3] != e[key3]) {
+                      var key4 = keys4[j];
+                      if (item[key4] != e[key4]) {
                         continue predicateLoop;
                       }
                     }
@@ -8130,18 +8130,18 @@
             var proto = {}.constructor.prototype;
             var ObjectKeys = function(o) {
               var ret2 = [];
-              for (var key3 in o) {
-                if (has2.call(o, key3)) {
-                  ret2.push(key3);
+              for (var key4 in o) {
+                if (has2.call(o, key4)) {
+                  ret2.push(key4);
                 }
               }
               return ret2;
             };
-            var ObjectGetDescriptor = function(o, key3) {
-              return { value: o[key3] };
+            var ObjectGetDescriptor = function(o, key4) {
+              return { value: o[key4] };
             };
-            var ObjectDefineProperty = function(o, key3, desc) {
-              o[key3] = desc.value;
+            var ObjectDefineProperty = function(o, key4, desc) {
+              o[key4] = desc.value;
               return o;
             };
             var ObjectFreeze = function(obj2) {
@@ -8840,9 +8840,9 @@
               ret2.stack = obj2.stack;
               var keys4 = es52.keys(obj2);
               for (var i = 0; i < keys4.length; ++i) {
-                var key3 = keys4[i];
-                if (!rErrorKey.test(key3)) {
-                  ret2[key3] = obj2[key3];
+                var key4 = keys4[i];
+                if (!rErrorKey.test(key4)) {
+                  ret2[key4] = obj2[key4];
                 }
               }
               return ret2;
@@ -9794,8 +9794,8 @@
             var defaultFilter = function(name7) {
               return util.isIdentifier(name7) && name7.charAt(0) !== "_" && name7 !== "constructor";
             };
-            function propsFilter(key3) {
-              return !noCopyPropsPattern.test(key3);
+            function propsFilter(key4) {
+              return !noCopyPropsPattern.test(key4);
             }
             function isPromisified(fn) {
               try {
@@ -9804,19 +9804,19 @@
                 return false;
               }
             }
-            function hasPromisified(obj2, key3, suffix) {
+            function hasPromisified(obj2, key4, suffix) {
               var val2 = util.getDataPropertyOrDefault(
                 obj2,
-                key3 + suffix,
+                key4 + suffix,
                 defaultPromisified
               );
               return val2 ? isPromisified(val2) : false;
             }
             function checkValid(ret2, suffix, suffixRegexp) {
               for (var i = 0; i < ret2.length; i += 2) {
-                var key3 = ret2[i];
-                if (suffixRegexp.test(key3)) {
-                  var keyWithoutAsyncSuffix = key3.replace(suffixRegexp, "");
+                var key4 = ret2[i];
+                if (suffixRegexp.test(key4)) {
+                  var keyWithoutAsyncSuffix = key4.replace(suffixRegexp, "");
                   for (var j = 0; j < ret2.length; j += 2) {
                     if (ret2[j] === keyWithoutAsyncSuffix) {
                       throw new TypeError2("Cannot promisify an API that has normal methods with '%s'-suffix\n\n    See http://goo.gl/MqrFmX\n".replace("%s", suffix));
@@ -9829,11 +9829,11 @@
               var keys4 = util.inheritedDataKeys(obj2);
               var ret2 = [];
               for (var i = 0; i < keys4.length; ++i) {
-                var key3 = keys4[i];
-                var value = obj2[key3];
-                var passesDefaultFilter = filter === defaultFilter ? true : defaultFilter(key3, value, obj2);
-                if (typeof value === "function" && !isPromisified(value) && !hasPromisified(obj2, key3, suffix) && filter(key3, value, obj2, passesDefaultFilter)) {
-                  ret2.push(key3, value);
+                var key4 = keys4[i];
+                var value = obj2[key4];
+                var passesDefaultFilter = filter === defaultFilter ? true : defaultFilter(key4, value, obj2);
+                if (typeof value === "function" && !isPromisified(value) && !hasPromisified(obj2, key4, suffix) && filter(key4, value, obj2, passesDefaultFilter)) {
+                  ret2.push(key4, value);
                 }
               }
               checkValid(ret2, suffix, suffixRegexp);
@@ -9954,17 +9954,17 @@
               var suffixRegexp = new RegExp(escapeIdentRegex(suffix) + "$");
               var methods = promisifiableMethods(obj2, suffix, suffixRegexp, filter);
               for (var i = 0, len2 = methods.length; i < len2; i += 2) {
-                var key3 = methods[i];
+                var key4 = methods[i];
                 var fn = methods[i + 1];
-                var promisifiedKey = key3 + suffix;
+                var promisifiedKey = key4 + suffix;
                 if (promisifier === makeNodePromisified) {
-                  obj2[promisifiedKey] = makeNodePromisified(key3, THIS, key3, fn, suffix, multiArgs);
+                  obj2[promisifiedKey] = makeNodePromisified(key4, THIS, key4, fn, suffix, multiArgs);
                 } else {
                   var promisified = promisifier(fn, function() {
                     return makeNodePromisified(
-                      key3,
+                      key4,
                       THIS,
-                      key3,
+                      key4,
                       fn,
                       suffix,
                       multiArgs
@@ -10044,9 +10044,9 @@
             var mapToEntries = /* @__PURE__ */ (function() {
               var index = 0;
               var size = 0;
-              function extractEntry(value, key3) {
+              function extractEntry(value, key4) {
                 this[index] = value;
-                this[index + size] = key3;
+                this[index + size] = key4;
                 index++;
               }
               return function mapToEntries2(map) {
@@ -10061,9 +10061,9 @@
               var ret2 = new Es6Map();
               var length = entries.length / 2 | 0;
               for (var i = 0; i < length; ++i) {
-                var key3 = entries[length + i];
+                var key4 = entries[length + i];
                 var value = entries[i];
-                ret2.set(key3, value);
+                ret2.set(key4, value);
               }
               return ret2;
             };
@@ -10078,9 +10078,9 @@
                 var len2 = keys4.length;
                 entries = new Array(len2 * 2);
                 for (var i = 0; i < len2; ++i) {
-                  var key3 = keys4[i];
-                  entries[i] = obj2[key3];
-                  entries[i + len2] = key3;
+                  var key4 = keys4[i];
+                  entries[i] = obj2[key4];
+                  entries[i + len2] = key4;
                 }
               }
               this.constructor$(entries);
@@ -11134,14 +11134,14 @@
               ret2[i] = appendee;
               return ret2;
             }
-            function getDataPropertyOrDefault(obj2, key3, defaultValue) {
+            function getDataPropertyOrDefault(obj2, key4, defaultValue) {
               if (es5.isES5) {
-                var desc = Object.getOwnPropertyDescriptor(obj2, key3);
+                var desc = Object.getOwnPropertyDescriptor(obj2, key4);
                 if (desc != null) {
                   return desc.get == null && desc.set == null ? desc.value : defaultValue;
                 }
               } else {
-                return {}.hasOwnProperty.call(obj2, key3) ? obj2[key3] : void 0;
+                return {}.hasOwnProperty.call(obj2, key4) ? obj2[key4] : void 0;
               }
             }
             function notEnumerableProp(obj2, name7, value) {
@@ -11185,12 +11185,12 @@
                       return ret2;
                     }
                     for (var i = 0; i < keys4.length; ++i) {
-                      var key3 = keys4[i];
-                      if (visitedKeys[key3]) continue;
-                      visitedKeys[key3] = true;
-                      var desc = Object.getOwnPropertyDescriptor(obj2, key3);
+                      var key4 = keys4[i];
+                      if (visitedKeys[key4]) continue;
+                      visitedKeys[key4] = true;
+                      var desc = Object.getOwnPropertyDescriptor(obj2, key4);
                       if (desc != null && desc.get == null && desc.set == null) {
-                        ret2.push(key3);
+                        ret2.push(key4);
                       }
                     }
                     obj2 = es5.getPrototypeOf(obj2);
@@ -11202,16 +11202,16 @@
                 return function(obj2) {
                   if (isExcludedProto(obj2)) return [];
                   var ret2 = [];
-                  enumeration: for (var key3 in obj2) {
-                    if (hasProp.call(obj2, key3)) {
-                      ret2.push(key3);
+                  enumeration: for (var key4 in obj2) {
+                    if (hasProp.call(obj2, key4)) {
+                      ret2.push(key4);
                     } else {
                       for (var i = 0; i < excludedPrototypes.length; ++i) {
-                        if (hasProp.call(excludedPrototypes[i], key3)) {
+                        if (hasProp.call(excludedPrototypes[i], key4)) {
                           continue enumeration;
                         }
                       }
-                      ret2.push(key3);
+                      ret2.push(key4);
                     }
                   }
                   return ret2;
@@ -11301,10 +11301,10 @@
             function copyDescriptors(from, to, filter) {
               var keys4 = es5.names(from);
               for (var i = 0; i < keys4.length; ++i) {
-                var key3 = keys4[i];
-                if (filter(key3)) {
+                var key4 = keys4[i];
+                if (filter(key4)) {
                   try {
-                    es5.defineProperty(to, key3, es5.getDescriptor(from, key3));
+                    es5.defineProperty(to, key4, es5.getDescriptor(from, key4));
                   } catch (ignore) {
                   }
                 }
@@ -11339,8 +11339,8 @@
             }
             var isNode = typeof process !== "undefined" && classString(process).toLowerCase() === "[object process]";
             var hasEnvVariables = typeof process !== "undefined" && typeof process.env !== "undefined";
-            function env(key3) {
-              return hasEnvVariables ? process.env[key3] : void 0;
+            function env(key4) {
+              return hasEnvVariables ? process.env[key4] : void 0;
             }
             function getNativePromise() {
               if (typeof Promise === "function") {
@@ -17308,8 +17308,8 @@
               }
               var isDataView$1 = hasStringTagBug ? ie10IsDataView : isDataView;
               var isArray2 = nativeIsArray || tagTester("Array");
-              function has$1(obj2, key3) {
-                return obj2 != null && hasOwnProperty2.call(obj2, key3);
+              function has$1(obj2, key4) {
+                return obj2 != null && hasOwnProperty2.call(obj2, key4);
               }
               var isArguments5 = tagTester("Arguments");
               (function() {
@@ -17337,9 +17337,9 @@
                   return typeof sizeProperty == "number" && sizeProperty >= 0 && sizeProperty <= MAX_ARRAY_INDEX;
                 };
               }
-              function shallowProperty(key3) {
+              function shallowProperty(key4) {
                 return function(obj2) {
-                  return obj2 == null ? void 0 : obj2[key3];
+                  return obj2 == null ? void 0 : obj2[key4];
                 };
               }
               var getByteLength = shallowProperty("byteLength");
@@ -17354,12 +17354,12 @@
                 var hash3 = {};
                 for (var l2 = keys5.length, i = 0; i < l2; ++i) hash3[keys5[i]] = true;
                 return {
-                  contains: function(key3) {
-                    return hash3[key3];
+                  contains: function(key4) {
+                    return hash3[key4];
                   },
-                  push: function(key3) {
-                    hash3[key3] = true;
-                    return keys5.push(key3);
+                  push: function(key4) {
+                    hash3[key4] = true;
+                    return keys5.push(key4);
                   }
                 };
               }
@@ -17381,7 +17381,7 @@
                 if (!isObject3(obj2)) return [];
                 if (nativeKeys) return nativeKeys(obj2);
                 var keys5 = [];
-                for (var key3 in obj2) if (has$1(obj2, key3)) keys5.push(key3);
+                for (var key4 in obj2) if (has$1(obj2, key4)) keys5.push(key4);
                 if (hasEnumBug) collectNonEnumProps(obj2, keys5);
                 return keys5;
               }
@@ -17396,8 +17396,8 @@
                 if (object3 == null) return !length;
                 var obj2 = Object(object3);
                 for (var i = 0; i < length; i++) {
-                  var key3 = _keys[i];
-                  if (attrs[key3] !== obj2[key3] || !(key3 in obj2)) return false;
+                  var key4 = _keys[i];
+                  if (attrs[key4] !== obj2[key4] || !(key4 in obj2)) return false;
                 }
                 return true;
               }
@@ -17486,12 +17486,12 @@
                     if (!eq(a[length], b[length], aStack, bStack)) return false;
                   }
                 } else {
-                  var _keys = keys4(a), key3;
+                  var _keys = keys4(a), key4;
                   length = _keys.length;
                   if (keys4(b).length !== length) return false;
                   while (length--) {
-                    key3 = _keys[length];
-                    if (!(has$1(b, key3) && eq(a[key3], b[key3], aStack, bStack))) return false;
+                    key4 = _keys[length];
+                    if (!(has$1(b, key4) && eq(a[key4], b[key4], aStack, bStack))) return false;
                   }
                 }
                 aStack.pop();
@@ -17504,7 +17504,7 @@
               function allKeys(obj2) {
                 if (!isObject3(obj2)) return [];
                 var keys5 = [];
-                for (var key3 in obj2) keys5.push(key3);
+                for (var key4 in obj2) keys5.push(key4);
                 if (hasEnumBug) collectNonEnumProps(obj2, keys5);
                 return keys5;
               }
@@ -17554,8 +17554,8 @@
               }
               function functions(obj2) {
                 var names = [];
-                for (var key3 in obj2) {
-                  if (isFunction$12(obj2[key3])) names.push(key3);
+                for (var key4 in obj2) {
+                  if (isFunction$12(obj2[key4])) names.push(key4);
                 }
                 return names.sort();
               }
@@ -17567,8 +17567,8 @@
                   for (var index = 1; index < length; index++) {
                     var source = arguments[index], keys5 = keysFunc(source), l2 = keys5.length;
                     for (var i = 0; i < l2; i++) {
-                      var key3 = keys5[i];
-                      if (!defaults2 || obj2[key3] === void 0) obj2[key3] = source[key3];
+                      var key4 = keys5[i];
+                      if (!defaults2 || obj2[key4] === void 0) obj2[key4] = source[key4];
                     }
                   }
                   return obj2;
@@ -17626,13 +17626,13 @@
                 path = toPath(path);
                 var length = path.length;
                 for (var i = 0; i < length; i++) {
-                  var key3 = path[i];
-                  if (!has$1(obj2, key3)) return false;
-                  obj2 = obj2[key3];
+                  var key4 = path[i];
+                  if (!has$1(obj2, key4)) return false;
+                  obj2 = obj2[key4];
                 }
                 return !!length;
               }
-              function identity2(value) {
+              function identity3(value) {
                 return value;
               }
               function matcher(attrs) {
@@ -17669,7 +17669,7 @@
                 };
               }
               function baseIteratee(value, context2, argCount) {
-                if (value == null) return identity2;
+                if (value == null) return identity3;
                 if (isFunction$12(value)) return optimizeCb(value, context2, argCount);
                 if (isObject3(value) && !isArray2(value)) return matcher(value);
                 return property(value);
@@ -17887,15 +17887,15 @@
                 var index = keys5.length;
                 if (index < 1) throw new Error("bindAll must be passed function names");
                 while (index--) {
-                  var key3 = keys5[index];
-                  obj2[key3] = bind2(obj2[key3], obj2);
+                  var key4 = keys5[index];
+                  obj2[key4] = bind2(obj2[key4], obj2);
                 }
                 return obj2;
               });
               function memoize(func, hasher) {
-                var memoize2 = function(key3) {
+                var memoize2 = function(key4) {
                   var cache2 = memoize2.cache;
-                  var address = "" + (hasher ? hasher.apply(this, arguments) : key3);
+                  var address = "" + (hasher ? hasher.apply(this, arguments) : key4);
                   if (!has$1(cache2, address)) cache2[address] = func.apply(this, arguments);
                   return cache2[address];
                 };
@@ -18010,10 +18010,10 @@
               var once3 = partial(before, 2);
               function findKey(obj2, predicate, context2) {
                 predicate = cb(predicate, context2);
-                var _keys = keys4(obj2), key3;
+                var _keys = keys4(obj2), key4;
                 for (var i = 0, length = _keys.length; i < length; i++) {
-                  key3 = _keys[i];
-                  if (predicate(obj2[key3], key3, obj2)) return key3;
+                  key4 = _keys[i];
+                  if (predicate(obj2[key4], key4, obj2)) return key4;
                 }
               }
               function createPredicateIndexFinder(dir) {
@@ -18067,8 +18067,8 @@
               var lastIndexOf = createIndexFinder(-1, findLastIndex);
               function find(obj2, predicate, context2) {
                 var keyFinder = isArrayLike(obj2) ? findIndex : findKey;
-                var key3 = keyFinder(obj2, predicate, context2);
-                if (key3 !== void 0 && key3 !== -1) return obj2[key3];
+                var key4 = keyFinder(obj2, predicate, context2);
+                if (key4 !== void 0 && key4 !== -1) return obj2[key4];
               }
               function findWhere(obj2, attrs) {
                 return find(obj2, matcher(attrs));
@@ -18172,8 +18172,8 @@
                   return method == null ? method : method.apply(context2, args);
                 });
               });
-              function pluck(obj2, key3) {
-                return map(obj2, property(key3));
+              function pluck(obj2, key4) {
+                return map(obj2, property(key4));
               }
               function where(obj2, attrs) {
                 return filter(obj2, matcher(attrs));
@@ -18245,11 +18245,11 @@
               function sortBy(obj2, iteratee2, context2) {
                 var index = 0;
                 iteratee2 = cb(iteratee2, context2);
-                return pluck(map(obj2, function(value, key3, list) {
+                return pluck(map(obj2, function(value, key4, list) {
                   return {
                     value,
                     index: index++,
-                    criteria: iteratee2(value, key3, list)
+                    criteria: iteratee2(value, key4, list)
                   };
                 }).sort(function(left, right) {
                   var a = left.criteria;
@@ -18266,22 +18266,22 @@
                   var result2 = partition2 ? [[], []] : {};
                   iteratee2 = cb(iteratee2, context2);
                   each(obj2, function(value, index) {
-                    var key3 = iteratee2(value, index, obj2);
-                    behavior(result2, value, key3);
+                    var key4 = iteratee2(value, index, obj2);
+                    behavior(result2, value, key4);
                   });
                   return result2;
                 };
               }
-              var groupBy = group(function(result2, value, key3) {
-                if (has$1(result2, key3)) result2[key3].push(value);
-                else result2[key3] = [value];
+              var groupBy = group(function(result2, value, key4) {
+                if (has$1(result2, key4)) result2[key4].push(value);
+                else result2[key4] = [value];
               });
-              var indexBy = group(function(result2, value, key3) {
-                result2[key3] = value;
+              var indexBy = group(function(result2, value, key4) {
+                result2[key4] = value;
               });
-              var countBy = group(function(result2, value, key3) {
-                if (has$1(result2, key3)) result2[key3]++;
-                else result2[key3] = 1;
+              var countBy = group(function(result2, value, key4) {
+                if (has$1(result2, key4)) result2[key4]++;
+                else result2[key4] = 1;
               });
               var partition = group(function(result2, value, pass) {
                 result2[pass ? 0 : 1].push(value);
@@ -18293,15 +18293,15 @@
                 if (isString2(obj2)) {
                   return obj2.match(reStrSymbol);
                 }
-                if (isArrayLike(obj2)) return map(obj2, identity2);
+                if (isArrayLike(obj2)) return map(obj2, identity3);
                 return values2(obj2);
               }
               function size(obj2) {
                 if (obj2 == null) return 0;
                 return isArrayLike(obj2) ? obj2.length : keys4(obj2).length;
               }
-              function keyInObj(value, key3, obj2) {
-                return key3 in obj2;
+              function keyInObj(value, key4, obj2) {
+                return key4 in obj2;
               }
               var pick = restArguments(function(obj2, keys5) {
                 var result2 = {}, iteratee2 = keys5[0];
@@ -18315,9 +18315,9 @@
                   obj2 = Object(obj2);
                 }
                 for (var i = 0, length = keys5.length; i < length; i++) {
-                  var key3 = keys5[i];
-                  var value = obj2[key3];
-                  if (iteratee2(value, key3, obj2)) result2[key3] = value;
+                  var key4 = keys5[i];
+                  var value = obj2[key4];
+                  if (iteratee2(value, key4, obj2)) result2[key4] = value;
                 }
                 return result2;
               });
@@ -18328,8 +18328,8 @@
                   if (keys5.length > 1) context2 = keys5[1];
                 } else {
                   keys5 = map(flatten$1(keys5, false, false), String);
-                  iteratee2 = function(value, key3) {
-                    return !contains(keys5, key3);
+                  iteratee2 = function(value, key4) {
+                    return !contains(keys5, key4);
                   };
                 }
                 return pick(obj2, iteratee2, context2);
@@ -18533,7 +18533,7 @@
                 get,
                 has: has2,
                 mapObject,
-                identity: identity2,
+                identity: identity3,
                 constant,
                 noop: noop2,
                 toPath: toPath$1,
@@ -18644,7 +18644,7 @@
           (function() {
             var assign, getValue, isArray2, isEmpty, isFunction3, isObject3, isPlainObject, slice2 = [].slice, hasProp = {}.hasOwnProperty;
             assign = function() {
-              var i, key3, len2, source, sources2, target;
+              var i, key4, len2, source, sources2, target;
               target = arguments[0], sources2 = 2 <= arguments.length ? slice2.call(arguments, 1) : [];
               if (isFunction3(Object.assign)) {
                 Object.assign.apply(null, arguments);
@@ -18652,9 +18652,9 @@
                 for (i = 0, len2 = sources2.length; i < len2; i++) {
                   source = sources2[i];
                   if (source != null) {
-                    for (key3 in source) {
-                      if (!hasProp.call(source, key3)) continue;
-                      target[key3] = source[key3];
+                    for (key4 in source) {
+                      if (!hasProp.call(source, key4)) continue;
+                      target[key4] = source[key4];
                     }
                   }
                 }
@@ -18676,12 +18676,12 @@
               }
             };
             isEmpty = function(val2) {
-              var key3;
+              var key4;
               if (isArray2(val2)) {
                 return !val2.length;
               } else {
-                for (key3 in val2) {
-                  if (!hasProp.call(val2, key3)) continue;
+                for (key4 in val2) {
+                  if (!hasProp.call(val2, key4)) continue;
                   return false;
                 }
                 return true;
@@ -18748,8 +18748,8 @@
         }, {}], 105: [function(require2, module3, exports2) {
           (function() {
             var XMLCData, XMLNode, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -18781,8 +18781,8 @@
         }, { "./XMLNode": 116 }], 106: [function(require2, module3, exports2) {
           (function() {
             var XMLComment, XMLNode, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -18814,8 +18814,8 @@
         }, { "./XMLNode": 116 }], 107: [function(require2, module3, exports2) {
           (function() {
             var XMLDTDAttList, XMLNode, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -18866,8 +18866,8 @@
         }, { "./XMLNode": 116 }], 108: [function(require2, module3, exports2) {
           (function() {
             var XMLDTDElement, XMLNode, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -18903,8 +18903,8 @@
         }, { "./XMLNode": 116 }], 109: [function(require2, module3, exports2) {
           (function() {
             var XMLDTDEntity, XMLNode, isObject3, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -18960,8 +18960,8 @@
         }, { "./Utility": 103, "./XMLNode": 116 }], 110: [function(require2, module3, exports2) {
           (function() {
             var XMLDTDNotation, XMLNode, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -18999,8 +18999,8 @@
         }, { "./XMLNode": 116 }], 111: [function(require2, module3, exports2) {
           (function() {
             var XMLDeclaration, XMLNode, isObject3, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -19040,8 +19040,8 @@
         }, { "./Utility": 103, "./XMLNode": 116 }], 112: [function(require2, module3, exports2) {
           (function() {
             var XMLDTDAttList, XMLDTDElement, XMLDTDEntity, XMLDTDNotation, XMLDocType, XMLNode, isObject3, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -19134,8 +19134,8 @@
         }, { "./Utility": 103, "./XMLDTDAttList": 107, "./XMLDTDElement": 108, "./XMLDTDEntity": 109, "./XMLDTDNotation": 110, "./XMLNode": 116 }], 113: [function(require2, module3, exports2) {
           (function() {
             var XMLDocument, XMLNode, XMLStringWriter, XMLStringifier, isPlainObject, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -19530,8 +19530,8 @@
         }, { "./Utility": 103, "./XMLAttribute": 104, "./XMLCData": 105, "./XMLComment": 106, "./XMLDTDAttList": 107, "./XMLDTDElement": 108, "./XMLDTDEntity": 109, "./XMLDTDNotation": 110, "./XMLDeclaration": 111, "./XMLDocType": 112, "./XMLElement": 115, "./XMLProcessingInstruction": 117, "./XMLRaw": 118, "./XMLStringWriter": 120, "./XMLStringifier": 121, "./XMLText": 122 }], 115: [function(require2, module3, exports2) {
           (function() {
             var XMLAttribute, XMLElement, XMLNode, getValue, isFunction3, isObject3, ref, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -19665,7 +19665,7 @@
                 }
               }
               XMLNode2.prototype.element = function(name7, attributes, text) {
-                var childNode, item, j, k, key3, lastChild, len2, len1, ref1, val2;
+                var childNode, item, j, k, key4, lastChild, len2, len1, ref1, val2;
                 lastChild = null;
                 if (attributes == null) {
                   attributes = {};
@@ -19685,29 +19685,29 @@
                 } else if (isFunction3(name7)) {
                   lastChild = this.element(name7.apply());
                 } else if (isObject3(name7)) {
-                  for (key3 in name7) {
-                    if (!hasProp.call(name7, key3)) continue;
-                    val2 = name7[key3];
+                  for (key4 in name7) {
+                    if (!hasProp.call(name7, key4)) continue;
+                    val2 = name7[key4];
                     if (isFunction3(val2)) {
                       val2 = val2.apply();
                     }
                     if (isObject3(val2) && isEmpty(val2)) {
                       val2 = null;
                     }
-                    if (!this.options.ignoreDecorators && this.stringify.convertAttKey && key3.indexOf(this.stringify.convertAttKey) === 0) {
-                      lastChild = this.attribute(key3.substr(this.stringify.convertAttKey.length), val2);
+                    if (!this.options.ignoreDecorators && this.stringify.convertAttKey && key4.indexOf(this.stringify.convertAttKey) === 0) {
+                      lastChild = this.attribute(key4.substr(this.stringify.convertAttKey.length), val2);
                     } else if (!this.options.separateArrayItems && Array.isArray(val2)) {
                       for (k = 0, len1 = val2.length; k < len1; k++) {
                         item = val2[k];
                         childNode = {};
-                        childNode[key3] = item;
+                        childNode[key4] = item;
                         lastChild = this.element(childNode);
                       }
                     } else if (isObject3(val2)) {
-                      lastChild = this.element(key3);
+                      lastChild = this.element(key4);
                       lastChild.element(val2);
                     } else {
-                      lastChild = this.element(key3, val2);
+                      lastChild = this.element(key4, val2);
                     }
                   }
                 } else {
@@ -20026,8 +20026,8 @@
         }, { "./Utility": 103, "./XMLCData": 105, "./XMLComment": 106, "./XMLDeclaration": 111, "./XMLDocType": 112, "./XMLElement": 115, "./XMLProcessingInstruction": 117, "./XMLRaw": 118, "./XMLText": 122 }], 117: [function(require2, module3, exports2) {
           (function() {
             var XMLNode, XMLProcessingInstruction, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -20062,8 +20062,8 @@
         }, { "./XMLNode": 116 }], 118: [function(require2, module3, exports2) {
           (function() {
             var XMLNode, XMLRaw, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -20095,8 +20095,8 @@
         }, { "./XMLNode": 116 }], 119: [function(require2, module3, exports2) {
           (function() {
             var XMLCData, XMLComment, XMLDTDAttList, XMLDTDElement, XMLDTDEntity, XMLDTDNotation, XMLDeclaration, XMLDocType, XMLElement, XMLProcessingInstruction, XMLRaw, XMLStreamWriter, XMLText, XMLWriterBase, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -20350,8 +20350,8 @@
         }, { "./XMLCData": 105, "./XMLComment": 106, "./XMLDTDAttList": 107, "./XMLDTDElement": 108, "./XMLDTDEntity": 109, "./XMLDTDNotation": 110, "./XMLDeclaration": 111, "./XMLDocType": 112, "./XMLElement": 115, "./XMLProcessingInstruction": 117, "./XMLRaw": 118, "./XMLText": 122, "./XMLWriterBase": 123 }], 120: [function(require2, module3, exports2) {
           (function() {
             var XMLCData, XMLComment, XMLDTDAttList, XMLDTDElement, XMLDTDEntity, XMLDTDNotation, XMLDeclaration, XMLDocType, XMLElement, XMLProcessingInstruction, XMLRaw, XMLStringWriter, XMLText, XMLWriterBase, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -20666,14 +20666,14 @@
             module3.exports = XMLStringifier = (function() {
               function XMLStringifier2(options) {
                 this.assertLegalChar = bind2(this.assertLegalChar, this);
-                var key3, ref, value;
+                var key4, ref, value;
                 options || (options = {});
                 this.noDoubleEncoding = options.noDoubleEncoding;
                 ref = options.stringify || {};
-                for (key3 in ref) {
-                  if (!hasProp.call(ref, key3)) continue;
-                  value = ref[key3];
-                  this[key3] = value;
+                for (key4 in ref) {
+                  if (!hasProp.call(ref, key4)) continue;
+                  value = ref[key4];
+                  this[key4] = value;
                 }
               }
               XMLStringifier2.prototype.eleName = function(val2) {
@@ -20792,8 +20792,8 @@
         }, {}], 122: [function(require2, module3, exports2) {
           (function() {
             var XMLNode, XMLText, extend = function(child, parent) {
-              for (var key3 in parent) {
-                if (hasProp.call(parent, key3)) child[key3] = parent[key3];
+              for (var key4 in parent) {
+                if (hasProp.call(parent, key4)) child[key4] = parent[key4];
               }
               function ctor() {
                 this.constructor = child;
@@ -20827,7 +20827,7 @@
             var XMLWriterBase, hasProp = {}.hasOwnProperty;
             module3.exports = XMLWriterBase = (function() {
               function XMLWriterBase2(options) {
-                var key3, ref, ref1, ref2, ref3, ref4, ref5, ref6, value;
+                var key4, ref, ref1, ref2, ref3, ref4, ref5, ref6, value;
                 options || (options = {});
                 this.pretty = options.pretty || false;
                 this.allowEmpty = (ref = options.allowEmpty) != null ? ref : false;
@@ -20849,14 +20849,14 @@
                 this.newlinedefault = this.newline;
                 this.prettydefault = this.pretty;
                 ref6 = options.writer || {};
-                for (key3 in ref6) {
-                  if (!hasProp.call(ref6, key3)) continue;
-                  value = ref6[key3];
-                  this[key3] = value;
+                for (key4 in ref6) {
+                  if (!hasProp.call(ref6, key4)) continue;
+                  value = ref6[key4];
+                  this[key4] = value;
                 }
               }
               XMLWriterBase2.prototype.set = function(options) {
-                var key3, ref, value;
+                var key4, ref, value;
                 options || (options = {});
                 if ("pretty" in options) {
                   this.pretty = options.pretty;
@@ -20882,10 +20882,10 @@
                 this.newlinedefault = this.newline;
                 this.prettydefault = this.pretty;
                 ref = options.writer || {};
-                for (key3 in ref) {
-                  if (!hasProp.call(ref, key3)) continue;
-                  value = ref[key3];
-                  this[key3] = value;
+                for (key4 in ref) {
+                  if (!hasProp.call(ref, key4)) continue;
+                  value = ref[key4];
+                  this[key4] = value;
                 }
                 return this;
               };
@@ -20953,7 +20953,7 @@
     }
   });
 
-  // DesktopRuntime/backend/ai/mammoth.ts
+  // backend/ai/mammoth.ts
   var mammoth_exports = {};
   __export(mammoth_exports, {
     default: () => mammoth_default,
@@ -20965,14 +20965,14 @@
   }
   var module2, mammoth, mammoth_default;
   var init_mammoth = __esm({
-    "DesktopRuntime/backend/ai/mammoth.ts"() {
+    "backend/ai/mammoth.ts"() {
       module2 = __toESM(require_mammoth_browser());
       mammoth = module2.default ?? module2;
       mammoth_default = { extractRawText };
     }
   });
 
-  // ../bandal/node_modules/.pnpm/xlsx@file+vendor+xlsx-0.20.3.tgz/node_modules/xlsx/xlsx.mjs
+  // ../../bandal/node_modules/.pnpm/xlsx@file+vendor+xlsx-0.20.3.tgz/node_modules/xlsx/xlsx.mjs
   var xlsx_exports = {};
   __export(xlsx_exports, {
     CFB: () => CFB,
@@ -22606,9 +22606,9 @@
     for (var i = 0; i < ks.length; ++i) if (Object.prototype.hasOwnProperty.call(o, ks[i])) o2.push(ks[i]);
     return o2;
   }
-  function evert_key(obj2, key3) {
+  function evert_key(obj2, key4) {
     var o = [], K = keys(obj2);
-    for (var i = 0; i !== K.length; ++i) if (o[obj2[K[i]][key3]] == null) o[obj2[K[i]][key3]] = K[i];
+    for (var i = 0; i !== K.length; ++i) if (o[obj2[K[i]][key4]] == null) o[obj2[K[i]][key4]] = K[i];
     return o;
   }
   function evert(obj2) {
@@ -33157,7 +33157,7 @@
     if (fmt === "General") return SSF_general(value);
     return SSF_format(fmt, value, { date1904: !!date1904 });
   }
-  function xlml_set_custprop(Custprops, key3, cp, val2) {
+  function xlml_set_custprop(Custprops, key4, cp, val2) {
     var oval = val2;
     switch ((cp[0].match(/dt:dt="([\w.]+)"/) || ["", ""])[1]) {
       case "boolean":
@@ -33184,7 +33184,7 @@
       default:
         throw new Error("bad custprop:" + cp[0]);
     }
-    Custprops[unescapexml(key3)] = oval;
+    Custprops[unescapexml(key4)] = oval;
   }
   function safe_format_xlml(cell, nf, o, date1904) {
     if (cell.t === "z") return;
@@ -36431,10 +36431,10 @@
     out.push("</table>" + footer);
     return out.join("");
   }
-  function sheet_add_dom(ws, table9, _opts) {
-    var rows = table9.rows;
+  function sheet_add_dom(ws, table10, _opts) {
+    var rows = table10.rows;
     if (!rows) {
-      throw "Unsupported origin when " + table9.tagName + " is not a TABLE";
+      throw "Unsupported origin when " + table10.tagName + " is not a TABLE";
     }
     var opts = _opts || {};
     var dense = ws["!data"] != null;
@@ -36522,14 +36522,14 @@
     if (R >= sheetRows) ws["!fullref"] = encode_range((range3.e.r = rows.length - _R + R - 1 + or_R, range3));
     return ws;
   }
-  function parse_dom_table(table9, _opts) {
+  function parse_dom_table(table10, _opts) {
     var opts = _opts || {};
     var ws = {};
     if (opts.dense) ws["!data"] = [];
-    return sheet_add_dom(ws, table9, _opts);
+    return sheet_add_dom(ws, table10, _opts);
   }
-  function table_to_book(table9, opts) {
-    var o = sheet_to_workbook(parse_dom_table(table9, opts), opts);
+  function table_to_book(table10, opts) {
+    var o = sheet_to_workbook(parse_dom_table(table10, opts), opts);
     return o;
   }
   function is_dom_element_hidden(element) {
@@ -38843,10 +38843,10 @@
       var le = parse_shallow(entry2.data);
       if (!le[1])
         return;
-      var key3 = varint_to_i32(le[1][0].data) >>> 0;
+      var key4 = varint_to_i32(le[1][0].data) >>> 0;
       switch (type) {
         case 1:
-          data2[key3] = u8str(le[3][0].data);
+          data2[key4] = u8str(le[3][0].data);
           break;
         case 8:
           {
@@ -38860,7 +38860,7 @@
             var richtext = { v: tswpsa[3].map(function(x) {
               return u8str(x.data);
             }).join("") };
-            data2[key3] = richtext;
+            data2[key4] = richtext;
             sfields:
               if ((_a3 = tswpsa == null ? void 0 : tswpsa[11]) == null ? void 0 : _a3[0]) {
                 var smartfields = (_b = parse_shallow(tswpsa[11][0].data)) == null ? void 0 : _b[1];
@@ -38889,15 +38889,15 @@
           }
           break;
         case 2:
-          data2[key3] = parse_shallow(le[6][0].data);
+          data2[key4] = parse_shallow(le[6][0].data);
           break;
         case 3:
-          data2[key3] = parse_shallow(le[5][0].data);
+          data2[key4] = parse_shallow(le[5][0].data);
           break;
         case 10:
           {
             var cs = M2[parse_TSP_Reference(le[10][0].data)][0];
-            data2[key3] = parse_TSD_CommentStorageArchive(M2, cs.data);
+            data2[key4] = parse_TSD_CommentStorageArchive(M2, cs.data);
           }
           break;
         default:
@@ -39587,7 +39587,7 @@
     numbers_iwa_doit(cfb, deps, tmaref, function(tmaroot, arch) {
       var _a3, _b;
       var tma = parse_shallow(tmaroot.messages[0].data);
-      var uuid4 = u8str(tma[1][0].data), new_uuid = uuid4.replace(/-[A-Z0-9]*/, "-".concat(("0000" + wsidx.toString(16)).slice(-4)));
+      var uuid5 = u8str(tma[1][0].data), new_uuid = uuid5.replace(/-[A-Z0-9]*/, "-".concat(("0000" + wsidx.toString(16)).slice(-4)));
       tma[1][0].data = stru8(new_uuid);
       [12, 13, 29, 31, 32, 33, 39, 44, 47, 81, 82, 84].forEach(function(n) {
         return delete tma[n];
@@ -42003,7 +42003,7 @@
   }
   var XLSX, current_codepage, current_ansi, $cptable, VALID_ANSI, CS2CP, set_ansi, set_cp, debom, _getchar, _getansi, DENSE, DIF_XL, Base64_map, has_buf, Buffer_from, buf_utf16le, s2a, bconcat, chr0, chr1, p2_32, days, months, table_fmt, SSF_default_map, SSF_default_str, pct1, frac1, dec1, closeparen, phone, SSF_abstime, cfregex2, SSF, SSFImplicit, dateNFregex, bad_formats, CRC32, CFB, _fs, dnthresh, dnthresh1, dnthresh2, pdre1, pdre2, pdre3, FDRE1, FDRE2, FDISO, utc_append_works, lower_months, split_regex, xml_boundary, str_match_xml_ns, str_match_xml_ns_g, str_remove_xml_ns_g, str_match_xml_ig, XML_HEADER, attregexg, tagregex1, tagregex2, tagregex, nsregex, nsregex2, encodings, rencoding, unescapexml, decregex, charegex, htmlcharegex, xlml_fixstr, utf8corpus, utf8read, utf8write, htmldecode, vtvregex, vtmregex, wtregex, xlmlregex, XMLNS, XMLNS_main, XLMLNS, ___toBuffer, __toBuffer, ___utf16le, __utf16le, ___hexlify, __hexlify, ___utf8, __utf8, ___lpstr, __lpstr, ___cpstr, __cpstr, ___lpwstr, __lpwstr, ___lpp4, __lpp4, ___8lpp4, __8lpp4, ___double, __double, is_buf, __readUInt8, __readUInt16LE, __readInt16LE, __readUInt32LE, __readInt32LE, __readInt32BE, __writeUInt32LE, __writeInt32LE, __writeUInt16LE, parse_BrtCommentText, parse_XLSBCodeName, write_XLSBCodeName, parse_XLNameWideString, parse_RelID, write_RelID, parse_UncheckedRfX, write_UncheckedRfX, VT_I2, VT_I4, VT_BOOL, VT_VARIANT, VT_UI4, VT_FILETIME, VT_BLOB, VT_CF, VT_VECTOR_VARIANT, VT_VECTOR_LPSTR, VT_STRING, VT_USTR, VT_CUSTOM, DocSummaryPIDDSI, SummaryPIDSI, CountryEnum, XLSFillPattern, _XLSIcv, XLSIcv, BErr, RBErr, XLSLblBuiltIn, ct2type, CT_LIST, RELS, CT_ODS, CORE_PROPS, EXT_PROPS, PseudoPropsPairs, custregex, XLMLDocPropsMap, evert_XLMLDPM, XLSPSSkip, parse_Ref, FtTab, parse_BIFF2Format, write_BIFF4XF, parse_XLHeaderFooter, parse_BIFF5OT, parse_Blank, parse_Scl, parse_String, DBF_SUPPORTED_VERSIONS, DBF, SYLK, DIF, ETH, PRN, WK_, parse_rs, rs_to_html, sitregex, sirregex, sstr1, sstr2, straywsregex, write_BrtSSTItem, crypto_CreateXorArray_Method1, crypto_DecryptData_Method1, crypto_MakeXorDecryptor, DEF_MDW, MAX_MDW, MIN_MDW, MDW, DEF_PPI, PPI, XLMLPatternTypeMap, cellXF_uint, cellXF_bool, parse_sty_xml, XLSBFillPTNames, rev_XLSBFillPTNames, parse_BrtFill, parse_BrtBorder, XLSXThemeClrScheme, parse_BrtCommentAuthor, CT_VBA, VBAFMTS, rc_to_a1, crefregex, a1_to_rc, parse_PtgMemErr, parse_PtgMemNoMem, parse_PtgTbl, parse_PtgElfCol, parse_PtgElfColS, parse_PtgElfColSV, parse_PtgElfColV, parse_PtgElfRadical, parse_PtgElfRadicalLel, parse_PtgElfRadicalS, parse_PtgElfRw, parse_PtgElfRwV, PtgListRT, PtgTypes, PtgDupes, Ptg18, Ptg19, PtgBinOp, parse_XLSBArrayParsedFormula, parse_XLSBCellParsedFormula, parse_XLSBNameParsedFormula, parse_XLSBSharedParsedFormula, write_XLSBNameParsedFormula, Cetab, Ftab, FtabArgc, strs, _ssfopts, browser_has_Map, mergecregex, hlinkregex, dimregex, colregex, afregex, marginregex, sheetprregex, sheetprot_deffalse, sheetprot_deftrue, sviewregex, parse_ws_xml_data, parse_BrtWsDim, write_BrtWsDim, parse_BrtMergeCell, write_BrtMergeCell, BrtMarginKeys, WBPropsDef, WBViewDef, SheetDef, CalcPrDef, badchars, wbnsregex, attregexg2, attregex2, XLMLFormatMap, CONTINUE_RT, PSCLSID, XLSBRecordEnum, XLSRecordEnum, b8oid, b8ocnts, HTML_BEGIN, HTML_END, write_styles_ods, write_content_ods, subarray, numbers_lut_new, USE_WIDE_ROWS, qreg, utils, _Readable, __stream, version, xlsx_default;
   var init_xlsx = __esm({
-    "../bandal/node_modules/.pnpm/xlsx@file+vendor+xlsx-0.20.3.tgz/node_modules/xlsx/xlsx.mjs"() {
+    "../../bandal/node_modules/.pnpm/xlsx@file+vendor+xlsx-0.20.3.tgz/node_modules/xlsx/xlsx.mjs"() {
       XLSX = {};
       XLSX.version = "0.20.3";
       current_codepage = 1200;
@@ -42345,7 +42345,7 @@
         var CRC322 = {};
         CRC322.version = "1.2.0";
         function signed_crc_table() {
-          var c = 0, table9 = new Array(256);
+          var c = 0, table10 = new Array(256);
           for (var n = 0; n != 256; ++n) {
             c = n;
             c = c & 1 ? -306674912 ^ c >>> 1 : c >>> 1;
@@ -42356,20 +42356,20 @@
             c = c & 1 ? -306674912 ^ c >>> 1 : c >>> 1;
             c = c & 1 ? -306674912 ^ c >>> 1 : c >>> 1;
             c = c & 1 ? -306674912 ^ c >>> 1 : c >>> 1;
-            table9[n] = c;
+            table10[n] = c;
           }
-          return typeof Int32Array !== "undefined" ? new Int32Array(table9) : table9;
+          return typeof Int32Array !== "undefined" ? new Int32Array(table10) : table10;
         }
         var T0 = signed_crc_table();
         function slice_by_16_tables(T10) {
-          var c = 0, v = 0, n = 0, table9 = typeof Int32Array !== "undefined" ? new Int32Array(4096) : new Array(4096);
-          for (n = 0; n != 256; ++n) table9[n] = T10[n];
+          var c = 0, v = 0, n = 0, table10 = typeof Int32Array !== "undefined" ? new Int32Array(4096) : new Array(4096);
+          for (n = 0; n != 256; ++n) table10[n] = T10[n];
           for (n = 0; n != 256; ++n) {
             v = T10[n];
-            for (c = 256 + n; c < 4096; c += 256) v = table9[c] = v >>> 8 ^ T10[v & 255];
+            for (c = 256 + n; c < 4096; c += 256) v = table10[c] = v >>> 8 ^ T10[v & 255];
           }
           var out = [];
-          for (n = 1; n != 16; ++n) out[n - 1] = typeof Int32Array !== "undefined" && typeof table9.subarray == "function" ? table9.subarray(n * 256, n * 256 + 256) : table9.slice(n * 256, n * 256 + 256);
+          for (n = 1; n != 16; ++n) out[n - 1] = typeof Int32Array !== "undefined" && typeof table10.subarray == "function" ? table10.subarray(n * 256, n * 256 + 256) : table10.slice(n * 256, n * 256 + 256);
           return out;
         }
         var TT = slice_by_16_tables(T0);
@@ -54956,9 +54956,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/tslib@1.14.1/node_modules/tslib/tslib.js
+  // ../../bandal/node_modules/.pnpm/tslib@1.14.1/node_modules/tslib/tslib.js
   var require_tslib = __commonJS({
-    "../bandal/node_modules/.pnpm/tslib@1.14.1/node_modules/tslib/tslib.js"(exports2, module3) {
+    "../../bandal/node_modules/.pnpm/tslib@1.14.1/node_modules/tslib/tslib.js"(exports2, module3) {
       var __extends2;
       var __assign2;
       var __rest2;
@@ -55036,15 +55036,15 @@
             }
           return t;
         };
-        __decorate2 = function(decorators, target, key3, desc) {
-          var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key3) : desc, d;
-          if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key3, desc);
-          else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key3, r) : d(target, key3)) || r;
-          return c > 3 && r && Object.defineProperty(target, key3, r), r;
+        __decorate2 = function(decorators, target, key4, desc) {
+          var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key4) : desc, d;
+          if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key4, desc);
+          else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key4, r) : d(target, key4)) || r;
+          return c > 3 && r && Object.defineProperty(target, key4, r), r;
         };
         __param2 = function(paramIndex, decorator) {
-          return function(target, key3) {
-            decorator(target, key3, paramIndex);
+          return function(target, key4) {
+            decorator(target, key4, paramIndex);
           };
         };
         __metadata2 = function(metadataKey, metadataValue) {
@@ -55321,13 +55321,13 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/utils/common.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/utils/common.js
   var require_common = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/utils/common.js"(exports2) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/utils/common.js"(exports2) {
       "use strict";
       var TYPED_OK = typeof Uint8Array !== "undefined" && typeof Uint16Array !== "undefined" && typeof Int32Array !== "undefined";
-      function _has(obj2, key3) {
-        return Object.prototype.hasOwnProperty.call(obj2, key3);
+      function _has(obj2, key4) {
+        return Object.prototype.hasOwnProperty.call(obj2, key4);
       }
       exports2.assign = function(obj2) {
         var sources2 = Array.prototype.slice.call(arguments, 1);
@@ -55412,9 +55412,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/trees.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/trees.js
   var require_trees = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/trees.js"(exports2) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/trees.js"(exports2) {
       "use strict";
       var utils3 = require_common();
       var Z_FIXED = 4;
@@ -56054,9 +56054,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/adler32.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/adler32.js
   var require_adler32 = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/adler32.js"(exports2, module3) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/adler32.js"(exports2, module3) {
       "use strict";
       function adler32(adler, buf, len2, pos) {
         var s1 = adler & 65535 | 0, s2 = adler >>> 16 & 65535 | 0, n = 0;
@@ -56076,20 +56076,20 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/crc32.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/crc32.js
   var require_crc32 = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/crc32.js"(exports2, module3) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/crc32.js"(exports2, module3) {
       "use strict";
       function makeTable() {
-        var c, table9 = [];
+        var c, table10 = [];
         for (var n = 0; n < 256; n++) {
           c = n;
           for (var k = 0; k < 8; k++) {
             c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
           }
-          table9[n] = c;
+          table10[n] = c;
         }
-        return table9;
+        return table10;
       }
       var crcTable = makeTable();
       function crc32(crc, buf, len2, pos) {
@@ -56104,9 +56104,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/messages.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/messages.js
   var require_messages = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/messages.js"(exports2, module3) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/messages.js"(exports2, module3) {
       "use strict";
       module3.exports = {
         2: "need dictionary",
@@ -56131,9 +56131,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/deflate.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/deflate.js
   var require_deflate = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/deflate.js"(exports2) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/deflate.js"(exports2) {
       "use strict";
       var utils3 = require_common();
       var trees = require_trees();
@@ -57180,9 +57180,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/utils/strings.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/utils/strings.js
   var require_strings = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/utils/strings.js"(exports2) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/utils/strings.js"(exports2) {
       "use strict";
       var utils3 = require_common();
       var STR_APPLY_OK = true;
@@ -57322,9 +57322,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/zstream.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/zstream.js
   var require_zstream = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/zstream.js"(exports2, module3) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/zstream.js"(exports2, module3) {
       "use strict";
       function ZStream() {
         this.input = null;
@@ -57344,9 +57344,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/deflate.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/deflate.js
   var require_deflate2 = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/deflate.js"(exports2) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/deflate.js"(exports2) {
       "use strict";
       var zlib_deflate = require_deflate();
       var utils3 = require_common();
@@ -57505,9 +57505,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/inffast.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/inffast.js
   var require_inffast = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/inffast.js"(exports2, module3) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/inffast.js"(exports2, module3) {
       "use strict";
       var BAD = 30;
       var TYPE = 12;
@@ -57734,9 +57734,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/inftrees.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/inftrees.js
   var require_inftrees = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/inftrees.js"(exports2, module3) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/inftrees.js"(exports2, module3) {
       "use strict";
       var utils3 = require_common();
       var MAXBITS = 15;
@@ -57883,7 +57883,7 @@
         64,
         64
       ];
-      module3.exports = function inflate_table(type, lens, lens_index, codes, table9, table_index, work, opts) {
+      module3.exports = function inflate_table(type, lens, lens_index, codes, table10, table_index, work, opts) {
         var bits3 = opts.bits;
         var len2 = 0;
         var sym = 0;
@@ -57923,8 +57923,8 @@
           root = max2;
         }
         if (max2 === 0) {
-          table9[table_index++] = 1 << 24 | 64 << 16 | 0;
-          table9[table_index++] = 1 << 24 | 64 << 16 | 0;
+          table10[table_index++] = 1 << 24 | 64 << 16 | 0;
+          table10[table_index++] = 1 << 24 | 64 << 16 | 0;
           opts.bits = 1;
           return 0;
         }
@@ -57999,7 +57999,7 @@
           min = fill3;
           do {
             fill3 -= incr;
-            table9[next + (huff >> drop) + fill3] = here_bits << 24 | here_op << 16 | here_val | 0;
+            table10[next + (huff >> drop) + fill3] = here_bits << 24 | here_op << 16 | here_val | 0;
           } while (fill3 !== 0);
           incr = 1 << len2 - 1;
           while (huff & incr) {
@@ -58038,11 +58038,11 @@
               return 1;
             }
             low = huff & mask2;
-            table9[low] = root << 24 | curr << 16 | next - table_index | 0;
+            table10[low] = root << 24 | curr << 16 | next - table_index | 0;
           }
         }
         if (huff !== 0) {
-          table9[next + huff] = len2 - drop << 24 | 64 << 16 | 0;
+          table10[next + huff] = len2 - drop << 24 | 64 << 16 | 0;
         }
         opts.bits = root;
         return 0;
@@ -58050,9 +58050,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/inflate.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/inflate.js
   var require_inflate = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/inflate.js"(exports2) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/inflate.js"(exports2) {
       "use strict";
       var utils3 = require_common();
       var adler32 = require_adler32();
@@ -59289,9 +59289,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/constants.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/constants.js
   var require_constants = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/constants.js"(exports2, module3) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/constants.js"(exports2, module3) {
       "use strict";
       module3.exports = {
         /* Allowed flush values; see deflate() and inflate() below for details */
@@ -59336,9 +59336,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/gzheader.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/gzheader.js
   var require_gzheader = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/gzheader.js"(exports2, module3) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/gzheader.js"(exports2, module3) {
       "use strict";
       function GZheader() {
         this.text = 0;
@@ -59356,9 +59356,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/inflate.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/inflate.js
   var require_inflate2 = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/inflate.js"(exports2) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/inflate.js"(exports2) {
       "use strict";
       var zlib_inflate = require_inflate();
       var utils3 = require_common();
@@ -59530,9 +59530,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/index.js
+  // ../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/index.js
   var require_pako = __commonJS({
-    "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/index.js"(exports2, module3) {
+    "../../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/index.js"(exports2, module3) {
       "use strict";
       var assign = require_common().assign;
       var deflate = require_deflate2();
@@ -59544,9 +59544,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/dist/jszip.min.js
+  // ../../bandal/node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/dist/jszip.min.js
   var require_jszip_min = __commonJS({
-    "../bandal/node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/dist/jszip.min.js"(exports2, module3) {
+    "../../bandal/node_modules/.pnpm/jszip@3.10.1/node_modules/jszip/dist/jszip.min.js"(exports2, module3) {
       !(function(e) {
         if ("object" == typeof exports2 && "undefined" != typeof module3) module3.exports = e();
         else if ("function" == typeof define && define.amd) define([], e);
@@ -61910,9 +61910,9 @@
     }
   });
 
-  // ../bandal/node_modules/.pnpm/exceljs@4.4.0/node_modules/exceljs/dist/exceljs.bare.min.js
+  // ../../bandal/node_modules/.pnpm/exceljs@4.4.0/node_modules/exceljs/dist/exceljs.bare.min.js
   var require_exceljs_bare_min = __commonJS({
-    "../bandal/node_modules/.pnpm/exceljs@4.4.0/node_modules/exceljs/dist/exceljs.bare.min.js"(exports2, module3) {
+    "../../bandal/node_modules/.pnpm/exceljs@4.4.0/node_modules/exceljs/dist/exceljs.bare.min.js"(exports2, module3) {
       !(function(e) {
         if ("object" == typeof exports2 && "undefined" != typeof module3) module3.exports = e();
         else if ("function" == typeof define && define.amd) define([], e);
@@ -83732,11 +83732,11 @@
     }
   });
 
-  // DesktopRuntime/backend/globals.ts
+  // backend/globals.ts
   init_native();
   init_buffer();
 
-  // DesktopRuntime/backend/shims/url.ts
+  // backend/shims/url.ts
   init_native();
   var decode = (value) => {
     try {
@@ -83755,26 +83755,26 @@
         return [decode(i < 0 ? piece : piece.slice(0, i)), decode(i < 0 ? "" : piece.slice(i + 1))];
       }) : Object.entries(value);
     }
-    get(key3) {
-      return this.values.find((x) => x[0] === key3)?.[1] ?? null;
+    get(key4) {
+      return this.values.find((x) => x[0] === key4)?.[1] ?? null;
     }
-    getAll(key3) {
-      return this.values.filter((x) => x[0] === key3).map((x) => x[1]);
+    getAll(key4) {
+      return this.values.filter((x) => x[0] === key4).map((x) => x[1]);
     }
-    has(key3) {
-      return this.values.some((x) => x[0] === key3);
+    has(key4) {
+      return this.values.some((x) => x[0] === key4);
     }
-    set(key3, value) {
-      this.values = this.values.filter((x) => x[0] !== key3);
-      this.values.push([key3, String(value)]);
+    set(key4, value) {
+      this.values = this.values.filter((x) => x[0] !== key4);
+      this.values.push([key4, String(value)]);
       this.changed?.(this.toString());
     }
-    append(key3, value) {
-      this.values.push([key3, String(value)]);
+    append(key4, value) {
+      this.values.push([key4, String(value)]);
       this.changed?.(this.toString());
     }
-    delete(key3) {
-      this.values = this.values.filter((x) => x[0] !== key3);
+    delete(key4) {
+      this.values = this.values.filter((x) => x[0] !== key4);
       this.changed?.(this.toString());
     }
     toString() {
@@ -83790,7 +83790,7 @@
       return this.entries();
     }
     forEach(callback) {
-      for (const [key3, value] of this.values) callback(value, key3);
+      for (const [key4, value] of this.values) callback(value, key4);
     }
   };
   var URL2 = class {
@@ -83854,7 +83854,7 @@
     }
   };
 
-  // DesktopRuntime/backend/shims/text-decoder.ts
+  // backend/shims/text-decoder.ts
   var TextDecoder2 = class {
     constructor(label = "utf-8", options = {}) {
       __publicField(this, "encoding");
@@ -83949,7 +83949,7 @@
     }
   };
 
-  // DesktopRuntime/backend/globals.ts
+  // backend/globals.ts
   var runtime = globalThis;
   var hostTimeout = runtime.setTimeout;
   var hostClearTimeout = runtime.clearTimeout;
@@ -83982,9 +83982,9 @@
       if (ArrayBuffer.isView(input)) return new input.constructor(input);
       const output = Array.isArray(input) ? [] : input instanceof Map ? /* @__PURE__ */ new Map() : input instanceof Set ? /* @__PURE__ */ new Set() : {};
       seen.set(input, output);
-      if (input instanceof Map) for (const [key3, value2] of input) output.set(clone(key3), clone(value2));
+      if (input instanceof Map) for (const [key4, value2] of input) output.set(clone(key4), clone(value2));
       else if (input instanceof Set) for (const value2 of input) output.add(clone(value2));
-      else for (const [key3, value2] of Object.entries(input)) output[key3] = clone(value2);
+      else for (const [key4, value2] of Object.entries(input)) output[key4] = clone(value2);
       return output;
     }
     return clone(value);
@@ -83993,22 +83993,22 @@
   runtime.performance ?? (runtime.performance = { now: () => Date.now() });
   runtime.console ?? (runtime.console = Object.fromEntries(["debug", "log", "info", "warn", "error"].map((level) => [level, (...values2) => runtime.__bandalNative.log(level, values2.map((v) => typeof v === "string" ? v : JSON.stringify(v)).join(" "))])));
 
-  // DesktopRuntime/backend/index.ts
+  // backend/index.ts
   init_native();
 
-  // DesktopRuntime/backend/database.ts
+  // backend/database.ts
   init_native();
   init_buffer();
   function encode2(value) {
     if (value instanceof Uint8Array) return { __buffer: Buffer2.from(value).toString("base64") };
     if (Array.isArray(value)) return value.map(encode2);
-    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key3, value2]) => [key3, encode2(value2)]));
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key4, value2]) => [key4, encode2(value2)]));
     return value === void 0 ? null : value;
   }
   function decode2(value) {
     if (value?.__buffer) return Buffer2.from(value.__buffer, "base64");
     if (Array.isArray(value)) return value.map(decode2);
-    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key3, value2]) => [key3, decode2(value2)]));
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key4, value2]) => [key4, decode2(value2)]));
     return value;
   }
   function parameters(args) {
@@ -84059,14 +84059,14 @@
     };
   }
 
-  // DesktopRuntime/backend/index.ts
+  // backend/index.ts
   init_buffer();
 
-  // DesktopRuntime/backend/shims/fs.ts
+  // backend/shims/fs.ts
   init_native();
   init_buffer();
 
-  // DesktopRuntime/backend/shims/fs-promises.ts
+  // backend/shims/fs-promises.ts
   var fs_promises_exports = {};
   __export(fs_promises_exports, {
     copyFile: () => copyFile,
@@ -84085,7 +84085,7 @@
     writeFile: () => writeFile
   });
 
-  // DesktopRuntime/backend/shims/crypto.ts
+  // backend/shims/crypto.ts
   init_native();
   init_buffer();
   var randomUUID = () => native("crypto.randomUUID");
@@ -84121,7 +84121,7 @@
     return hash3;
   }
 
-  // DesktopRuntime/backend/shims/fs-promises.ts
+  // backend/shims/fs-promises.ts
   var copyFile = async (from, to, mode) => copyFileSync(from, to, mode);
   var mkdtemp = async (prefix2) => {
     for (let i = 0; i < 10; i++) {
@@ -84203,7 +84203,7 @@
     };
   }
 
-  // DesktopRuntime/backend/shims/fs.ts
+  // backend/shims/fs.ts
   var constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1, COPYFILE_EXCL: 1, O_RDONLY: 0, O_NOFOLLOW: env2().fsConstants?.O_NOFOLLOW ?? 256 };
   function entry(value) {
     return { ...value, isFile: () => value.isFile === true, isDirectory: () => value.isDirectory === true, isSymbolicLink: () => value.isSymbolicLink === true };
@@ -84214,7 +84214,7 @@
       mtime: new Date(value.mtimeMs),
       ctime: new Date(value.ctimeMs ?? value.mtimeMs),
       birthtime: new Date(value.birthtimeMs ?? value.mtimeMs),
-      ...options?.bigint ? { size: BigInt(value.size), mtimeNs: BigInt(value.mtimeNs ?? Math.round(value.mtimeMs * 1e6)), mtimeMs: BigInt(Math.floor(value.mtimeMs)) } : {}
+      ...options?.bigint ? { size: BigInt(value.size), ...value.dev !== void 0 ? { dev: BigInt(value.dev) } : {}, ...value.ino !== void 0 ? { ino: BigInt(value.ino) } : {}, ...value.ctimeNs !== void 0 ? { ctimeNs: BigInt(value.ctimeNs) } : {}, mtimeNs: BigInt(value.mtimeNs ?? Math.round(value.mtimeMs * 1e6)), mtimeMs: BigInt(Math.floor(value.mtimeMs)) } : {}
     };
   }
   var statSync = (path, options) => statValue(native("fs.stat", { path, followSymlinks: true }), options);
@@ -84328,7 +84328,7 @@
     } };
   }
 
-  // DesktopRuntime/backend/shims/path.ts
+  // backend/shims/path.ts
   var sep = "/";
   function isAbsolute(value) {
     return value.startsWith("/");
@@ -84380,7 +84380,7 @@
   }
   var posix = { sep, isAbsolute, normalize, join, resolve, dirname, basename, extname, relative };
 
-  // DesktopRuntime/upstream/src/shared/types/aiAccess.ts
+  // upstream/src/shared/types/aiAccess.ts
   var DEFAULT_AI_ACCESS = { mode: "full", scope: { course: true, browser: true, screen: false } };
   function parseAiAccess(value) {
     if (!value || typeof value !== "object") return structuredClone(DEFAULT_AI_ACCESS);
@@ -84388,7 +84388,7 @@
     return { mode: v.mode === "ask" || v.mode === "full" ? v.mode : "auto", scope: { course: v.scope?.course !== false, browser: v.scope?.browser === true, screen: v.scope?.screen === true } };
   }
 
-  // DesktopRuntime/upstream/src/main/db/errors.ts
+  // upstream/src/main/db/errors.ts
   var ValidationError = class extends Error {
     constructor(message) {
       super(`[validation] ${message}`);
@@ -84414,7 +84414,7 @@
     }
   };
 
-  // DesktopRuntime/upstream/src/main/db/validate.ts
+  // upstream/src/main/db/validate.ts
   function requireNonEmptyString(value, field) {
     if (typeof value !== "string" || value.trim().length === 0) {
       throw new ValidationError(`${field} must be a non-empty string`);
@@ -84498,7 +84498,7 @@
     return (/* @__PURE__ */ new Date()).toISOString();
   }
 
-  // DesktopRuntime/upstream/src/main/features/agent/chatRepo.ts
+  // upstream/src/main/features/agent/chatRepo.ts
   var HISTORY_TAIL_LIMIT = 300;
   var CONVERSATION_TITLE_MAX = 60;
   function deriveConversationTitle(text) {
@@ -84821,7 +84821,7 @@
   // sql:/Users/iseojun/dev/bandal-iPad/DesktopRuntime/upstream/src/main/db/schema.sql
   var schema_default = "-- [C5] Bandal SQLite schema (v1).\n-- Conventions:\n--   * ids are UUID strings (TEXT PRIMARY KEY)\n--   * created_at / updated_at are ISO-8601 TEXT\n--   * deleted_at is NULL for live rows (soft delete)\n\nPRAGMA journal_mode = WAL;\nPRAGMA foreign_keys = ON;\n\nCREATE TABLE IF NOT EXISTS courses (\n  id          TEXT PRIMARY KEY,\n  name        TEXT NOT NULL,\n  slug        TEXT NOT NULL UNIQUE,\n  color       TEXT NOT NULL,\n  folder_path TEXT NOT NULL,\n  archived    INTEGER NOT NULL DEFAULT 0,\n  sort_order  INTEGER NOT NULL DEFAULT 0,\n  created_at  TEXT NOT NULL,\n  updated_at  TEXT NOT NULL,\n  deleted_at  TEXT\n);\n\n-- Cached index of files inside each course folder (source of truth is disk).\nCREATE TABLE IF NOT EXISTS materials_index (\n  id         TEXT PRIMARY KEY,\n  course_id  TEXT NOT NULL REFERENCES courses(id),\n  rel_path   TEXT NOT NULL,\n  kind       TEXT NOT NULL,            -- 'pdf' | 'note' | 'image' | 'other'\n  size       INTEGER NOT NULL,\n  mtime      INTEGER NOT NULL,         -- epoch ms\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  deleted_at TEXT,\n  UNIQUE (course_id, rel_path)\n);\n\nCREATE TABLE IF NOT EXISTS annotations (\n  id          TEXT PRIMARY KEY,\n  course_id   TEXT NOT NULL REFERENCES courses(id),\n  rel_path    TEXT NOT NULL,\n  page        INTEGER NOT NULL,        -- 1-based\n  color       TEXT NOT NULL,           -- 'yellow' | 'green' | 'pink' | 'blue'\n  rects_json  TEXT NOT NULL,           -- AnnotationRect[] JSON\n  anchor_json TEXT NOT NULL,           -- AnnotationAnchor JSON\n  comment     TEXT,\n  created_at  TEXT NOT NULL,\n  updated_at  TEXT NOT NULL,\n  deleted_at  TEXT\n);\n\nCREATE TABLE IF NOT EXISTS board_tasks (\n  id         TEXT PRIMARY KEY,\n  course_id  TEXT REFERENCES courses(id),  -- NULL = global task\n  title      TEXT NOT NULL,\n  notes      TEXT NOT NULL DEFAULT '',\n  status     TEXT NOT NULL DEFAULT 'todo', -- 'todo' | 'in-progress' | 'done'\n  due_at     TEXT,\n  sort_order INTEGER NOT NULL DEFAULT 0,\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  deleted_at TEXT\n);\n\nCREATE TABLE IF NOT EXISTS agent_sessions (\n  id             TEXT PRIMARY KEY,\n  course_id      TEXT NOT NULL REFERENCES courses(id),\n  provider       TEXT NOT NULL,        -- 'claude-code' | 'codex' | 'gemini'\n  cli_session_id TEXT,\n  model          TEXT,\n  status         TEXT NOT NULL,        -- 'idle' | 'running' | 'error' | 'closed'\n  last_used_at   TEXT,\n  created_at     TEXT NOT NULL,\n  updated_at     TEXT NOT NULL,\n  deleted_at     TEXT\n);\n\nCREATE TABLE IF NOT EXISTS messages (\n  id         TEXT PRIMARY KEY,\n  course_id  TEXT NOT NULL REFERENCES courses(id),\n  session_id TEXT NOT NULL REFERENCES agent_sessions(id),\n  role       TEXT NOT NULL,            -- 'user' | 'assistant'\n  turn_seq   INTEGER NOT NULL,\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  deleted_at TEXT\n);\n\nCREATE TABLE IF NOT EXISTS message_blocks (\n  id           TEXT PRIMARY KEY,\n  message_id   TEXT NOT NULL REFERENCES messages(id),\n  ord          INTEGER NOT NULL,\n  kind         TEXT NOT NULL,          -- 'text' | 'thinking' | 'tool' | 'permission'\n  payload_json TEXT NOT NULL,\n  created_at   TEXT NOT NULL,\n  updated_at   TEXT NOT NULL,\n  deleted_at   TEXT,\n  UNIQUE (message_id, ord)\n);\n\n-- Remembered agent permission rules per course.\nCREATE TABLE IF NOT EXISTS permission_grants (\n  id         TEXT PRIMARY KEY,\n  course_id  TEXT NOT NULL REFERENCES courses(id),\n  rule       TEXT NOT NULL,\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  deleted_at TEXT\n);\n\n-- Persisted dockview layout per course.\nCREATE TABLE IF NOT EXISTS tabs_layout (\n  course_id   TEXT PRIMARY KEY REFERENCES courses(id),\n  layout_json TEXT NOT NULL,\n  created_at  TEXT NOT NULL,\n  updated_at  TEXT NOT NULL\n);\n\n-- Indexes ------------------------------------------------------------------\n\nCREATE INDEX IF NOT EXISTS idx_courses_sort\n  ON courses (archived, sort_order) WHERE deleted_at IS NULL;\n\nCREATE INDEX IF NOT EXISTS idx_materials_course\n  ON materials_index (course_id) WHERE deleted_at IS NULL;\n\nCREATE INDEX IF NOT EXISTS idx_annotations_file_page\n  ON annotations (course_id, rel_path, page) WHERE deleted_at IS NULL;\n\nCREATE INDEX IF NOT EXISTS idx_board_tasks_course_status\n  ON board_tasks (course_id, status, sort_order) WHERE deleted_at IS NULL;\n\nCREATE INDEX IF NOT EXISTS idx_agent_sessions_course\n  ON agent_sessions (course_id, last_used_at) WHERE deleted_at IS NULL;\n\nCREATE INDEX IF NOT EXISTS idx_messages_course_turn\n  ON messages (course_id, turn_seq) WHERE deleted_at IS NULL;\n\nCREATE INDEX IF NOT EXISTS idx_message_blocks_message\n  ON message_blocks (message_id, ord) WHERE deleted_at IS NULL;\n\nCREATE INDEX IF NOT EXISTS idx_permission_grants_course\n  ON permission_grants (course_id) WHERE deleted_at IS NULL;\n";
 
-  // DesktopRuntime/upstream/src/main/features/recordings/schema.ts
+  // upstream/src/main/features/recordings/schema.ts
   var RECORDING_SCHEMA = `
   CREATE TABLE IF NOT EXISTS recording_sessions (
     id TEXT PRIMARY KEY,
@@ -84847,7 +84847,7 @@
   CREATE INDEX IF NOT EXISTS recording_anchors_session ON recording_anchors(session_id);
 `;
 
-  // DesktopRuntime/upstream/src/main/db/migrations.ts
+  // upstream/src/main/db/migrations.ts
   var migrations = [
     {
       version: 1,
@@ -85885,15 +85885,15 @@
     }
   }
 
-  // DesktopRuntime/upstream/src/main/settingsStore.ts
+  // upstream/src/main/settingsStore.ts
   init_electron();
 
-  // DesktopRuntime/backend/shims/os.ts
+  // backend/shims/os.ts
   init_native();
   var homedir = () => env2().homePath;
   var tmpdir = () => env2().tempPath;
 
-  // DesktopRuntime/upstream/src/shared/recording.ts
+  // upstream/src/shared/recording.ts
   var RECORDING_SAMPLE_RATE = 16e3;
   var DEFAULT_SPEECH_MODEL = "whisper-large-v3-turbo";
   function recordingTime(samples) {
@@ -85901,7 +85901,7 @@
     return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60].map((part) => String(part).padStart(2, "0")).join(":");
   }
 
-  // DesktopRuntime/upstream/src/shared/tabPreferences.ts
+  // upstream/src/shared/tabPreferences.ts
   var DEFAULT_TAB_PREFERENCES = {
     markdownTitlePrefix: "\uC0C8 \uB9C8\uD06C\uB2E4\uC6B4",
     recordingModel: DEFAULT_SPEECH_MODEL,
@@ -85934,7 +85934,7 @@
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/theme.ts
+  // upstream/src/shared/theme.ts
   var DEFAULT_PALETTE_ID = "bandal";
   function isPaletteId(value) {
     return [
@@ -85957,7 +85957,7 @@
     return fallback;
   }
 
-  // DesktopRuntime/upstream/src/shared/search.ts
+  // upstream/src/shared/search.ts
   var SEARCH_ENGINES = {
     google: "https://www.google.com/search?q=",
     // Naver matters here: for a lot of Korean queries Google simply has less.
@@ -85970,7 +85970,7 @@
     return typeof value === "string" && Object.prototype.hasOwnProperty.call(SEARCH_ENGINES, value);
   }
 
-  // DesktopRuntime/upstream/src/shared/types/university.ts
+  // upstream/src/shared/types/university.ts
   var SERVICE_KINDS = [
     "portal",
     "lms",
@@ -85991,7 +85991,7 @@
     secondaryOverrides: {}
   };
 
-  // DesktopRuntime/upstream/src/shared/types/settings.ts
+  // upstream/src/shared/types/settings.ts
   var WIDGET_IDS = ["todo", "board", "mail"];
   function isWidgetId(value) {
     return WIDGET_IDS.some((id2) => id2 === value);
@@ -86105,7 +86105,7 @@
     pluginTheme: null
   };
 
-  // DesktopRuntime/upstream/src/shared/keymap.ts
+  // upstream/src/shared/keymap.ts
   var FIXED = false;
   var CUSTOM = true;
   var GUEST = true;
@@ -86186,10 +86186,10 @@
     "space",
     "tab"
   ]);
-  function normalizeKey(key3) {
-    if (key3 === " ") return "space";
-    if (key3 === "+") return "=";
-    const normalized = key3.trim().toLowerCase();
+  function normalizeKey(key4) {
+    if (key4 === " ") return "space";
+    if (key4 === "+") return "=";
+    const normalized = key4.trim().toLowerCase();
     if (normalized === "" || normalized === "unidentified") return null;
     if (MODIFIER_KEYS.has(normalized)) return null;
     if (normalized.includes("+")) return null;
@@ -86211,7 +86211,7 @@
     let mod = false;
     let alt = false;
     let shift = false;
-    let key3 = null;
+    let key4 = null;
     for (const rawPart of parts) {
       const part = rawPart.trim();
       if (part === "mod") {
@@ -86224,23 +86224,23 @@
         if (shift) return null;
         shift = true;
       } else {
-        if (key3 !== null) return null;
-        key3 = normalizeKey(part);
-        if (key3 === null) return null;
+        if (key4 !== null) return null;
+        key4 = normalizeKey(part);
+        if (key4 === null) return null;
       }
     }
-    return key3 === null ? null : { mod, alt, shift, key: key3 };
+    return key4 === null ? null : { mod, alt, shift, key: key4 };
   }
   function chordFromKeyboardEvent(event) {
     const physical = event.code?.match(/^Key([A-Z])$/)?.[1];
     const value = physical && (event.metaKey || event.ctrlKey) && (event.key === "Dead" || /[^\x00-\x7f]/.test(event.key)) ? physical : event.key;
-    const key3 = normalizeKey(value);
-    if (key3 === null) return null;
+    const key4 = normalizeKey(value);
+    if (key4 === null) return null;
     return serializeChord({
       mod: event.metaKey || event.ctrlKey,
       alt: event.altKey,
       shift: event.shiftKey,
-      key: key3
+      key: key4
     });
   }
   var SPEC_BY_ID = new Map(
@@ -86278,7 +86278,7 @@
     return result;
   }
 
-  // DesktopRuntime/upstream/src/shared/universities/specs.ts
+  // upstream/src/shared/universities/specs.ts
   function escapeForRegex(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
@@ -86319,7 +86319,7 @@
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/universities/courseLink.ts
+  // upstream/src/shared/universities/courseLink.ts
   var BARE_HOST = /^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#].*)?$/i;
   var HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
   function normalizeHttpUrl(rawUrl) {
@@ -86337,7 +86337,7 @@
     }
   }
 
-  // DesktopRuntime/upstream/src/shared/universities/sanitize.ts
+  // upstream/src/shared/universities/sanitize.ts
   var EXTERNAL_REASONS = [
     "federated-login",
     "ua-sniffing",
@@ -86448,7 +86448,7 @@
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/browserZoom.ts
+  // upstream/src/shared/browserZoom.ts
   var ZOOM_LEVELS = [
     -7.6,
     -6.08,
@@ -86472,20 +86472,20 @@
     return typeof value === "number" && ZOOM_LEVELS.some((level) => level === value);
   }
 
-  // DesktopRuntime/upstream/src/shared/types/agent-events.ts
+  // upstream/src/shared/types/agent-events.ts
   var AGENT_PROVIDERS = ["claude-code", "codex", "gemini"];
   function isAgentProvider(value) {
     return AGENT_PROVIDERS.some((provider) => provider === value);
   }
 
-  // DesktopRuntime/upstream/src/shared/types/pluginCatalog.ts
+  // upstream/src/shared/types/pluginCatalog.ts
   var OFFICIAL_CATALOG_URL = "https://bandal.io/plugins/index.json";
   var CATALOG_INDEX_FORMAT = "bandal-plugin-catalog";
   var CATALOG_INDEX_VERSION = 1;
   var CATALOG_ARTIFACT_MAX_BYTES = 8 * 1024 * 1024;
   var CATALOG_SOURCES_MAX = 20;
 
-  // DesktopRuntime/upstream/src/main/settingsSanitize.ts
+  // upstream/src/main/settingsSanitize.ts
   var CUSTOMIZABLE_SHORTCUT_IDS = new Set(
     SHORTCUT_SPECS.filter((spec) => spec.customizable).map((spec) => spec.id)
   );
@@ -86544,9 +86544,9 @@
   function sanitizeSentLedger(raw) {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
     const ledger = {};
-    for (const [key3, value] of Object.entries(raw)) {
-      if (typeof value === "string" && key3.length <= 128 && /^[^:]+:(1|3|7)$/.test(key3) && !Number.isNaN(Date.parse(value))) {
-        ledger[key3] = value;
+    for (const [key4, value] of Object.entries(raw)) {
+      if (typeof value === "string" && key4.length <= 128 && /^[^:]+:(1|3|7)$/.test(key4) && !Number.isNaN(Date.parse(value))) {
+        ledger[key4] = value;
       }
     }
     return ledger;
@@ -86689,7 +86689,7 @@
     };
   }
 
-  // DesktopRuntime/backend/shims/atomic-write.ts
+  // backend/shims/atomic-write.ts
   init_buffer();
   function writeFileAtomic(path, data2, options) {
     const temporary = join(dirname(path), `.${basename(path)}.${randomBytes(8).toString("hex")}.tmp`);
@@ -86730,7 +86730,7 @@
     return target;
   }
 
-  // DesktopRuntime/upstream/src/main/settingsStore.ts
+  // upstream/src/main/settingsStore.ts
   var SETTINGS_FILE = "settings.json";
   var cached = null;
   function settingsPath() {
@@ -86778,10 +86778,10 @@
     const previous = getSettings();
     const merged = { ...previous, ...patch };
     if ((patch.theme !== void 0 || patch.palette !== void 0) && patch.pluginTheme === void 0) merged.pluginTheme = null;
-    for (const key3 of ["browser", "notifications", "experimental", "widgets", "tabs"]) {
-      const value = patch[key3];
+    for (const key4 of ["browser", "notifications", "experimental", "widgets", "tabs"]) {
+      const value = patch[key4];
       if (value !== void 0 && value !== null && typeof value === "object" && !Array.isArray(value)) {
-        Object.assign(merged, { [key3]: { ...previous[key3], ...value } });
+        Object.assign(merged, { [key4]: { ...previous[key4], ...value } });
       }
     }
     const next = sanitizeSettings(merged, defaultsWithPaths());
@@ -86827,7 +86827,7 @@
     }
   }
 
-  // DesktopRuntime/upstream/src/main/features/courses/courseFolder.ts
+  // upstream/src/main/features/courses/courseFolder.ts
   function normalizeFolderPath(value) {
     const raw = requireNonEmptyString(value, "folderPath");
     if (!isAbsolute(raw)) {
@@ -86866,7 +86866,7 @@
     return name7.length > 0 ? name7 : absPath;
   }
 
-  // DesktopRuntime/upstream/src/main/features/courses/coursesRepo.ts
+  // upstream/src/main/features/courses/coursesRepo.ts
   function toSource(value) {
     return value === "linked" ? "linked" : "managed";
   }
@@ -87270,7 +87270,7 @@
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/courses/courseGroupsRepo.ts
+  // upstream/src/main/features/courses/courseGroupsRepo.ts
   function rowToGroup(row) {
     return {
       id: row.id,
@@ -87347,7 +87347,7 @@
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/courses/courseLinksRepo.ts
+  // upstream/src/main/features/courses/courseLinksRepo.ts
   var LINK_KINDS = [
     "lms-course",
     "portal",
@@ -87492,7 +87492,7 @@
     };
   }
 
-  // DesktopRuntime/upstream/src/main/performanceTrace.ts
+  // upstream/src/main/performanceTrace.ts
   var trace = process.env["BANDAL_PERF_TRACE"] === "1" ? { startedAt: performance.now(), marks: {}, ipc: {}, work: {} } : null;
   if (trace) globalThis.__bandalPerformance = trace;
   function record(metrics, name7, duration) {
@@ -87511,7 +87511,7 @@
     }
   }
 
-  // DesktopRuntime/upstream/src/shared/materialKind.ts
+  // upstream/src/shared/materialKind.ts
   var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set([
     ".png",
     ".jpg",
@@ -87538,7 +87538,7 @@
     return "other";
   }
 
-  // DesktopRuntime/upstream/src/main/features/materials/scanMaterialTree.ts
+  // upstream/src/main/features/materials/scanMaterialTree.ts
   function kindForFile(fileName) {
     return materialKindForPath(fileName);
   }
@@ -87622,10 +87622,10 @@
     return { nodes, files: state.files, truncation: state.truncation };
   }
 
-  // DesktopRuntime/backend/shims/timers-promises.ts
+  // backend/shims/timers-promises.ts
   var setTimeout2 = (delay, value) => new Promise((resolve2) => globalThis.setTimeout(() => resolve2(value), delay));
 
-  // DesktopRuntime/upstream/src/main/lib/retryWindowsFileOperation.ts
+  // upstream/src/main/lib/retryWindowsFileOperation.ts
   var RETRY_DELAYS_MS = [50, 100, 200, 400, 800];
   async function retryWindowsFileOperation(operation, options = {}) {
     const wait = options.wait ?? ((milliseconds) => setTimeout2(milliseconds));
@@ -87643,7 +87643,7 @@
     }
   }
 
-  // DesktopRuntime/upstream/src/main/features/materials/renameWithRetry.ts
+  // upstream/src/main/features/materials/renameWithRetry.ts
   async function renameWithRetry(sourcePath, destinationPath, beforeAttempt, options = {}) {
     const operation = options.rename ?? rename;
     return retryWindowsFileOperation(() => operation(sourcePath, destinationPath), {
@@ -87652,7 +87652,131 @@
     });
   }
 
-  // DesktopRuntime/upstream/src/main/features/materials/materialAddedState.ts
+  // upstream/src/main/features/materials/materialPathJournal.ts
+  var table = "material_path_intents";
+  var key = (path) => path.normalize("NFC").toLowerCase();
+  var overlaps = (a, b) => key(a) === key(b) || key(a).startsWith(`${key(b)}/`) || key(b).startsWith(`${key(a)}/`);
+  function assertMaterialPathAvailable(db, courseId2, relPath2) {
+    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table)) return;
+    const pending = db.prepare(`SELECT from_rel_path,to_rel_path FROM ${table} WHERE course_id=?`).all(courseId2);
+    const conflict = pending.find((row) => relPath2 === void 0 || overlaps(relPath2, row.from_rel_path) || overlaps(relPath2, row.to_rel_path));
+    if (conflict) throw new ConflictError(`\uC790\uB8CC \uACBD\uB85C \uBCF5\uAD6C\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4. "${conflict.from_rel_path}" \u2192 "${conflict.to_rel_path}"\uC758 \uD30C\uC77C\uACFC \uAE30\uB85D\uC744 \uBCF4\uC874\uD588\uC2B5\uB2C8\uB2E4. \uBC18\uB2EC\uC744 \uB2E4\uC2DC \uC5F0 \uB4A4 \uD655\uC778\uD574 \uC8FC\uC138\uC694.`);
+  }
+  function identity(path) {
+    const value = lstatSync(path, { bigint: true });
+    if (!value.isFile() && !value.isDirectory() || [value.dev, value.ino, value.size, value.mtimeNs, value.ctimeNs].some((part) => typeof part !== "bigint")) {
+      throw new ValidationError("Material identity cannot be verified for crash recovery");
+    }
+    return { dev: String(value.dev), ino: String(value.ino), size: String(value.size), mtimeNs: String(value.mtimeNs), ctimeNs: String(value.ctimeNs), directory: value.isDirectory() };
+  }
+  function optionalIdentity(path) {
+    try {
+      return identity(path);
+    } catch (error2) {
+      if (error2.code === "ENOENT") return void 0;
+      throw error2;
+    }
+  }
+  function same(a, b, includeChangeTime = true) {
+    return a.dev === b.dev && a.ino === b.ino && a.directory === b.directory && (a.directory || a.size === b.size && a.mtimeNs === b.mtimeNs && (!includeChangeTime || a.ctimeNs === b.ctimeNs));
+  }
+  function protectedPDFs(folder) {
+    const files = [];
+    let visited = 0;
+    function walk(relativePath2, depth) {
+      if (depth > 64) throw new ValidationError("Material move is too deep to journal safely");
+      for (const entry2 of readdirSync(join(folder, relativePath2), { withFileTypes: true })) {
+        if (++visited > 1e5) throw new ValidationError("Material move is too large to journal safely");
+        const child = relativePath2 ? `${relativePath2}/${entry2.name}` : entry2.name;
+        if (entry2.isDirectory()) walk(child, depth + 1);
+        else if (entry2.isFile() && /\.pdf$/i.test(entry2.name)) files.push({ relativePath: child, identity: identity(join(folder, child)) });
+      }
+    }
+    walk("", 0);
+    return files;
+  }
+  function verifyProtectedPDFs(original, destination) {
+    for (const file of original.pdfs ?? []) {
+      if (!same(file.identity, identity(assertRealInside(destination, resolveInside(destination, file.relativePath))))) {
+        throw new ConflictError("A PDF inside the renamed folder changed; its existing ink was preserved");
+      }
+    }
+  }
+  function createMaterialPathJournal(db, getCourseFolder) {
+    db.exec(`CREATE TABLE IF NOT EXISTS ${table} (
+    id TEXT PRIMARY KEY, course_id TEXT NOT NULL, folder_path TEXT NOT NULL,
+    folder_identity TEXT NOT NULL, from_rel_path TEXT NOT NULL, to_rel_path TEXT NOT NULL,
+    original_identity TEXT NOT NULL, moved_identity TEXT, created_at TEXT NOT NULL
+  )`);
+    function durable(operation) {
+      const synchronous = Number(db.pragma("synchronous", { simple: true }));
+      db.pragma("synchronous = FULL");
+      try {
+        return operation();
+      } finally {
+        db.pragma(`synchronous = ${synchronous}`);
+      }
+    }
+    function paths(intent) {
+      const folderPath = getCourseFolder(intent.course_id);
+      const folder = identity(folderPath), originalFolder = JSON.parse(intent.folder_identity);
+      if (!folder.directory || folder.dev !== originalFolder.dev || folder.ino !== originalFolder.ino) throw new ConflictError("Course folder was replaced during material recovery");
+      const source = assertRealInside(folderPath, resolveInside(folderPath, intent.from_rel_path));
+      const destination = assertRealInside(folderPath, resolveInside(folderPath, intent.to_rel_path));
+      return { source, destination };
+    }
+    function begin(change, folder) {
+      assertMaterialPathAvailable(db, change.courseId);
+      const source = assertRealInside(folder, resolveInside(folder, change.fromRelPath)), destination = assertRealInside(folder, resolveInside(folder, change.toRelPath));
+      if (optionalIdentity(destination)) throw new ConflictError("Material destination already exists");
+      const sourceIdentity = identity(source);
+      if (sourceIdentity.directory) sourceIdentity.pdfs = protectedPDFs(source);
+      if (sourceIdentity.directory !== change.isDirectory) throw new ConflictError("Material type changed before rename");
+      const id2 = randomUUID();
+      durable(() => db.prepare(`INSERT INTO ${table}(id,course_id,folder_path,folder_identity,from_rel_path,to_rel_path,original_identity,created_at) VALUES(?,?,?,?,?,?,?,?)`).run(id2, change.courseId, folder, JSON.stringify(identity(folder)), change.fromRelPath, change.toRelPath, JSON.stringify(sourceIdentity), (/* @__PURE__ */ new Date()).toISOString()));
+      return id2;
+    }
+    const find = (id2) => {
+      const value = db.prepare(`SELECT * FROM ${table} WHERE id=?`).get(id2);
+      if (!value) throw new ValidationError("Material path recovery intent is missing");
+      return value;
+    };
+    const remove = (id2) => db.prepare(`DELETE FROM ${table} WHERE id=?`).run(id2);
+    function markMoved(id2) {
+      const intent = find(id2), { source, destination } = paths(intent), moved = identity(destination);
+      if (optionalIdentity(source) || !same(JSON.parse(intent.original_identity), moved, false)) throw new ConflictError("Material changed while rename was in progress");
+      verifyProtectedPDFs(JSON.parse(intent.original_identity), destination);
+      durable(() => db.prepare(`UPDATE ${table} SET moved_identity=? WHERE id=?`).run(JSON.stringify(moved), id2));
+    }
+    function complete(id2, apply3) {
+      const intent = find(id2), { source, destination } = paths(intent), moved = identity(destination);
+      if (optionalIdentity(source) || !same(JSON.parse(intent.moved_identity ?? intent.original_identity), moved, intent.moved_identity !== null)) throw new ConflictError("Material paths changed before recovery could finish");
+      verifyProtectedPDFs(JSON.parse(intent.original_identity), destination);
+      durable(() => db.transaction(() => {
+        apply3({ courseId: intent.course_id, fromRelPath: intent.from_rel_path, toRelPath: intent.to_rel_path, isDirectory: moved.directory });
+        remove(id2);
+      })());
+    }
+    function discardIfOriginal(id2) {
+      const intent = find(id2), { source, destination } = paths(intent), original = optionalIdentity(source);
+      if (!original || optionalIdentity(destination) || !same(JSON.parse(intent.original_identity), original, false)) return false;
+      verifyProtectedPDFs(JSON.parse(intent.original_identity), source);
+      durable(() => remove(id2));
+      return true;
+    }
+    function recover(apply3, report) {
+      for (const { id: id2 } of db.prepare(`SELECT id FROM ${table} ORDER BY created_at,id`).all()) {
+        try {
+          if (!discardIfOriginal(id2)) complete(id2, apply3);
+        } catch (error2) {
+          report(error2);
+        }
+      }
+    }
+    return { begin, markMoved, complete, discardIfOriginal, recover };
+  }
+
+  // upstream/src/main/features/materials/materialAddedState.ts
   function createMaterialAddedState(db, getFolder) {
     function binding2(courseId2) {
       const folder = getFolder(courseId2);
@@ -87735,7 +87859,7 @@
     return { recordAdded, repoint, reconcile, timestamps, decorate };
   }
 
-  // DesktopRuntime/upstream/src/main/features/materials/materialsRepo.ts
+  // upstream/src/main/features/materials/materialsRepo.ts
   function searchKey(value) {
     return value.normalize("NFC").toLowerCase();
   }
@@ -87875,15 +87999,43 @@
     course_id TEXT PRIMARY KEY REFERENCES courses(id) ON DELETE CASCADE,
     folder TEXT NOT NULL, tree TEXT NOT NULL
   )`);
+    const journal = createMaterialPathJournal(db, getCourseFolder);
+    let localLockHeld = false;
+    const pathLock = deps.pathLock ?? { tryAcquire() {
+      if (localLockHeld) return void 0;
+      localLockHeld = true;
+      return () => {
+        localLockHeld = false;
+      };
+    } };
+    const applyPathChange = (change) => {
+      addedState.repoint(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory);
+      deps.onPathChanged?.(change);
+      invalidate(change.courseId);
+    };
+    const recoverLocked = () => journal.recover(applyPathChange, (error2) => console.error("[materials] preserved interrupted path change:", error2));
+    function recoverPathChanges() {
+      if (!deps.pathLock) return;
+      const unlock = pathLock.tryAcquire();
+      if (!unlock) return;
+      try {
+        recoverLocked();
+      } finally {
+        unlock();
+      }
+    }
     function invalidate(courseId2) {
       treeCache.delete(courseId2);
       generations.set(courseId2, (generations.get(courseId2) ?? 0) + 1);
     }
-    function notifyPathChanged(courseId2, fromRelPath, toRelPath, isDirectory) {
+    function completePathChange(courseId2, fromRelPath, toRelPath, intent) {
       try {
-        deps.onPathChanged?.({ courseId: courseId2, fromRelPath, toRelPath, isDirectory });
+        journal.markMoved(intent);
+        journal.complete(intent, applyPathChange);
       } catch (error2) {
-        console.warn(`[materials] path-change hook failed for "${fromRelPath}" -> "${toRelPath}"`, error2);
+        throw new Error(`\uC790\uB8CC \uACBD\uB85C \uBCC0\uACBD\uC744 \uB9C8\uBB34\uB9AC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. "${fromRelPath}" \u2192 "${toRelPath}"\uC758 \uD30C\uC77C\uACFC \uC774\uC804 \uD544\uAE30 \uAE30\uB85D\uC744 \uBCF4\uC874\uD588\uC73C\uBA70 \uB2E4\uC74C \uC2E4\uD589\uC5D0\uC11C \uB2E4\uC2DC \uD655\uC778\uD569\uB2C8\uB2E4. ${String(error2)}`, { cause: error2 });
+      } finally {
+        invalidate(courseId2);
       }
     }
     function mutatePath(courseId2, operation) {
@@ -87896,11 +88048,17 @@
         });
         scanGates.set(id2, gate);
         let resume2;
+        let unlock;
         try {
           resume2 = await deps.pauseWatching?.(id2);
           await scanWork.get(id2)?.catch(() => void 0);
+          unlock = pathLock.tryAcquire();
+          if (!unlock) throw new ConflictError("\uB2E4\uB978 \uBC18\uB2EC \uC791\uC5C5\uC5D0\uC11C \uC790\uB8CC \uACBD\uB85C\uB97C \uBCC0\uACBD \uC911\uC785\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
+          if (deps.pathLock) recoverLocked();
+          assertMaterialPathAvailable(db, id2);
           return await operation();
         } finally {
+          unlock?.();
           try {
             await resume2?.();
           } catch (error2) {
@@ -87918,6 +88076,7 @@
     }
     function requireCourseFolder(courseId2) {
       const id2 = requireId(courseId2, "courseId");
+      assertMaterialPathAvailable(db, id2);
       const folder = getCourseFolder(id2);
       if (!existsSync(folder)) {
         throw new NotFoundError("course folder", folder);
@@ -87979,6 +88138,7 @@
         await gate;
         return cachedTree(courseId2, getCourseFolder(courseId2));
       }
+      assertMaterialPathAvailable(db, courseId2);
       const cached2 = treeCache.get(courseId2);
       if (cached2?.folder === folder) return cached2.nodes;
       const pending = scans.get(courseId2);
@@ -88029,6 +88189,7 @@
       return task;
     }
     async function absolutePathForAsync(courseId2, relPath2) {
+      assertMaterialPathAvailable(db, courseId2, relPath2);
       const folder = getCourseFolder(requireId(courseId2, "courseId"));
       const abs = resolveInside(folder, requireNonEmptyString(relPath2, "relPath"));
       const [root, target] = await Promise.all([realpath(folder), realpath(abs)]);
@@ -88037,6 +88198,7 @@
       return abs;
     }
     return {
+      recoverPathChanges,
       absolutePathForAsync,
       absolutePathFor(courseId2, relPath2) {
         return resolveMaterialAbs(courseId2, relPath2);
@@ -88174,25 +88336,32 @@
         const relPath2 = input.toDirRelPath === "" ? targetName : posix.join(input.toDirRelPath, targetName);
         const destAbs = resolveCoursePath(folder, relPath2);
         return mutatePath(input.courseId, async () => {
-          await renameWithRetry(sourceAbs, destAbs, () => {
-            if (getCourseFolder(input.courseId) !== folder) throw new ValidationError("\uACFC\uBAA9 \uD3F4\uB354\uAC00 \uBCC0\uACBD\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uC790\uB8CC \uBAA9\uB85D\uC744 \uC0C8\uB85C\uACE0\uCE68\uD558\uACE0 \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694.");
-            assertRealInside(folder, sourceAbs);
-            assertRealInside(folder, destDirAbs);
-            assertRealInside(folder, destAbs);
-            assertFileOrDirectory(sourceAbs, input.fromRelPath);
-            if (!existsSync(destDirAbs) || !lstatSync(destDirAbs).isDirectory()) {
-              throw new NotFoundError("material directory", input.toDirRelPath);
+          const intent = journal.begin({ courseId: input.courseId, fromRelPath: input.fromRelPath, toRelPath: relPath2, isDirectory: sourceKind === "dir" }, folder);
+          try {
+            await renameWithRetry(sourceAbs, destAbs, () => {
+              if (getCourseFolder(input.courseId) !== folder) throw new ValidationError("\uACFC\uBAA9 \uD3F4\uB354\uAC00 \uBCC0\uACBD\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uC790\uB8CC \uBAA9\uB85D\uC744 \uC0C8\uB85C\uACE0\uCE68\uD558\uACE0 \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694.");
+              assertRealInside(folder, sourceAbs);
+              assertRealInside(folder, destDirAbs);
+              assertRealInside(folder, destAbs);
+              assertFileOrDirectory(sourceAbs, input.fromRelPath);
+              if (!existsSync(destDirAbs) || !lstatSync(destDirAbs).isDirectory()) {
+                throw new NotFoundError("material directory", input.toDirRelPath);
+              }
+              if (destDirAbs === sourceAbs || destDirAbs.startsWith(sourceAbs + sep)) {
+                throw new ValidationError("\uD3F4\uB354\uB97C \uC790\uAE30 \uC548\uC73C\uB85C \uC62E\uAE38 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4");
+              }
+              if (existsSync(destAbs)) throw new ConflictError(`material "${relPath2}" already exists`);
+            });
+            const courseId2 = requireId(input.courseId, "courseId");
+            completePathChange(courseId2, input.fromRelPath, relPath2, intent);
+            return { relPath: relPath2 };
+          } catch (error2) {
+            try {
+              journal.discardIfOriginal(intent);
+            } catch {
             }
-            if (destDirAbs === sourceAbs || destDirAbs.startsWith(sourceAbs + sep)) {
-              throw new ValidationError("\uD3F4\uB354\uB97C \uC790\uAE30 \uC548\uC73C\uB85C \uC62E\uAE38 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4");
-            }
-            if (existsSync(destAbs)) throw new ConflictError(`material "${relPath2}" already exists`);
-          });
-          const courseId2 = requireId(input.courseId, "courseId");
-          addedState.repoint(courseId2, input.fromRelPath, relPath2, sourceKind === "dir");
-          invalidate(courseId2);
-          notifyPathChanged(courseId2, input.fromRelPath, relPath2, sourceKind === "dir");
-          return { relPath: relPath2 };
+            throw error2;
+          }
         });
       },
       async readFile(courseId2, relPath2) {
@@ -88238,18 +88407,25 @@
           throw new ConflictError(`material "${destinationRelPath}" already exists`);
         }
         return mutatePath(input.courseId, async () => {
-          await renameWithRetry(sourceAbs, destinationAbs, () => {
-            if (getCourseFolder(input.courseId) !== folder) throw new ValidationError("\uACFC\uBAA9 \uD3F4\uB354\uAC00 \uBCC0\uACBD\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uC790\uB8CC \uBAA9\uB85D\uC744 \uC0C8\uB85C\uACE0\uCE68\uD558\uACE0 \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694.");
-            assertRealInside(folder, sourceAbs);
-            assertRealInside(folder, destinationAbs);
-            assertFileOrDirectory(sourceAbs, input.relPath);
-            if (existsSync(destinationAbs)) throw new ConflictError(`material "${destinationRelPath}" already exists`);
-          });
-          const courseId2 = requireId(input.courseId, "courseId");
-          addedState.repoint(courseId2, input.relPath, destinationRelPath, sourceKind === "dir");
-          invalidate(courseId2);
-          notifyPathChanged(courseId2, input.relPath, destinationRelPath, sourceKind === "dir");
-          return { relPath: destinationRelPath };
+          const intent = journal.begin({ courseId: input.courseId, fromRelPath: input.relPath, toRelPath: destinationRelPath, isDirectory: sourceKind === "dir" }, folder);
+          try {
+            await renameWithRetry(sourceAbs, destinationAbs, () => {
+              if (getCourseFolder(input.courseId) !== folder) throw new ValidationError("\uACFC\uBAA9 \uD3F4\uB354\uAC00 \uBCC0\uACBD\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uC790\uB8CC \uBAA9\uB85D\uC744 \uC0C8\uB85C\uACE0\uCE68\uD558\uACE0 \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694.");
+              assertRealInside(folder, sourceAbs);
+              assertRealInside(folder, destinationAbs);
+              assertFileOrDirectory(sourceAbs, input.relPath);
+              if (existsSync(destinationAbs)) throw new ConflictError(`material "${destinationRelPath}" already exists`);
+            });
+            const courseId2 = requireId(input.courseId, "courseId");
+            completePathChange(courseId2, input.relPath, destinationRelPath, intent);
+            return { relPath: destinationRelPath };
+          } catch (error2) {
+            try {
+              journal.discardIfOriginal(intent);
+            } catch {
+            }
+            throw error2;
+          }
         });
       },
       async softDelete(input) {
@@ -88375,7 +88551,7 @@
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/noteTitle.ts
+  // upstream/src/shared/noteTitle.ts
   function frontMatterEnd(lines) {
     if (lines[0]?.trim() !== "---") return -1;
     const end = lines.findIndex((line, index) => index > 0 && /^(?:---|\.\.\.)\s*$/.test(line));
@@ -88439,7 +88615,7 @@
 ${markdown}`;
   }
 
-  // DesktopRuntime/upstream/src/main/features/notes/notesRepo.ts
+  // upstream/src/main/features/notes/notesRepo.ts
   function sanitizeTitle(title2) {
     const cleaned = title2.trim().replace(/[/\\:*?"<>|]/g, "").replace(/\s+/g, " ").replace(/^\.+/, "").slice(0, 120).trim();
     if (cleaned.length === 0) {
@@ -88620,554 +88796,7 @@ ${markdown}`;
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/annotations/annotationsRepo.ts
-  var HIGHLIGHT_COLORS = ["yellow", "green", "pink", "blue"];
-  function assertColor(value) {
-    if (!HIGHLIGHT_COLORS.includes(value)) {
-      throw new ValidationError(
-        `color must be one of ${HIGHLIGHT_COLORS.join(", ")} (got "${String(value)}")`
-      );
-    }
-    return value;
-  }
-  function assertRects(value) {
-    if (!Array.isArray(value) || value.length === 0) {
-      throw new ValidationError("rects must be a non-empty array");
-    }
-    for (const rect of value) {
-      const r = rect;
-      if (r === null || typeof r !== "object" || ![r.x, r.y, r.width, r.height].every(
-        (n) => typeof n === "number" && Number.isFinite(n)
-      )) {
-        throw new ValidationError("each rect needs finite numeric x/y/width/height");
-      }
-    }
-    return value;
-  }
-  function assertAnchor(value) {
-    const anchor = value;
-    if (anchor === null || typeof anchor !== "object" || typeof anchor.quote !== "string" || typeof anchor.prefix !== "string" || typeof anchor.suffix !== "string") {
-      throw new ValidationError("anchor needs string quote/prefix/suffix");
-    }
-    return anchor;
-  }
-  function rowToAnnotation(row) {
-    return {
-      id: row.id,
-      courseId: row.course_id,
-      relPath: row.rel_path,
-      page: row.page,
-      color: row.color,
-      rects: JSON.parse(row.rects_json),
-      anchor: JSON.parse(row.anchor_json),
-      comment: row.comment,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  }
-  function createAnnotationsRepo(db) {
-    function assertCourseExists(courseId2) {
-      const row = db.prepare("SELECT id FROM courses WHERE id = ? AND deleted_at IS NULL").get(courseId2);
-      if (row === void 0) {
-        throw new NotFoundError("course", courseId2);
-      }
-    }
-    function getRowOrThrow(id2) {
-      const row = db.prepare("SELECT * FROM annotations WHERE id = ? AND deleted_at IS NULL").get(id2);
-      if (row === void 0) {
-        throw new NotFoundError("annotation", id2);
-      }
-      return row;
-    }
-    return {
-      listForFile(input) {
-        const courseId2 = requireId(input.courseId, "courseId");
-        const relPath2 = requireNonEmptyString(input.relPath, "relPath");
-        const rows = db.prepare(
-          `SELECT * FROM annotations
-           WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL
-           ORDER BY page ASC, created_at ASC`
-        ).all(courseId2, relPath2);
-        return rows.map(rowToAnnotation);
-      },
-      create(input) {
-        const courseId2 = requireId(input.courseId, "courseId");
-        assertCourseExists(courseId2);
-        const relPath2 = requireNonEmptyString(input.relPath, "relPath");
-        const page = requireInt(input.page, "page", 1);
-        const color = assertColor(input.color);
-        const rects = assertRects(input.rects);
-        const anchor = assertAnchor(input.anchor);
-        const comment = input.comment ?? null;
-        if (comment !== null && typeof comment !== "string") {
-          throw new ValidationError("comment must be a string or null");
-        }
-        const now = nowIso();
-        const annotation = {
-          id: randomUUID(),
-          courseId: courseId2,
-          relPath: relPath2,
-          page,
-          color,
-          rects,
-          anchor,
-          comment,
-          createdAt: now,
-          updatedAt: now
-        };
-        db.prepare(
-          `INSERT INTO annotations
-           (id, course_id, rel_path, page, color, rects_json, anchor_json,
-            comment, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(
-          annotation.id,
-          courseId2,
-          relPath2,
-          page,
-          color,
-          JSON.stringify(rects),
-          JSON.stringify(anchor),
-          comment,
-          now,
-          now
-        );
-        return annotation;
-      },
-      update(input) {
-        const row = getRowOrThrow(requireId(input.id, "id"));
-        const color = input.color === void 0 ? row.color : assertColor(input.color);
-        const comment = input.comment === void 0 ? row.comment : input.comment;
-        if (comment !== null && typeof comment !== "string") {
-          throw new ValidationError("comment must be a string or null");
-        }
-        const now = nowIso();
-        db.prepare(
-          "UPDATE annotations SET color = ?, comment = ?, updated_at = ? WHERE id = ?"
-        ).run(color, comment, now, row.id);
-        return rowToAnnotation({ ...row, color, comment, updated_at: now });
-      },
-      softDelete(input) {
-        const row = getRowOrThrow(requireId(input.id, "id"));
-        const now = nowIso();
-        db.prepare("UPDATE annotations SET deleted_at = ?, updated_at = ? WHERE id = ?").run(
-          now,
-          now,
-          row.id
-        );
-        return { ok: true };
-      }
-    };
-  }
-
-  // DesktopRuntime/upstream/src/shared/types/drawing.ts
-  var DRAWING_KINDS = [
-    "ink",
-    "highlighter",
-    "rect",
-    "ellipse",
-    "arrow",
-    "line",
-    "textbox",
-    "clip",
-    "image"
-  ];
-  var DRAWING_COLORS = [
-    "ink",
-    "red",
-    "orange",
-    "yellow",
-    "green",
-    "blue",
-    "violet"
-  ];
-  var TEXT_ALIGNS = ["left", "center", "right"];
-
-  // DesktopRuntime/upstream/src/shared/textRuns.ts
-  var INLINE_KEYS = [
-    "color",
-    "fontSizePt",
-    "bold",
-    "italic",
-    "underline",
-    "strike"
-  ];
-  function sameInlineStyle(left, right) {
-    return INLINE_KEYS.every((key3) => left[key3] === right[key3]);
-  }
-  function normalizeTextRuns(text, runs) {
-    if (runs === void 0 || text.length === 0) return [];
-    const valid = runs.filter(
-      (run) => Number.isInteger(run.from) && Number.isInteger(run.to) && run.from >= 0 && run.to > run.from && run.from < text.length
-    ).map((run) => ({
-      from: run.from,
-      to: Math.min(text.length, run.to),
-      style: { ...run.style }
-    })).sort((left, right) => left.from - right.from || left.to - right.to);
-    const normalized = [];
-    for (const run of valid) {
-      const previous = normalized.at(-1);
-      const from = previous === void 0 ? run.from : Math.max(previous.to, run.from);
-      if (run.to <= from || Object.keys(run.style).length === 0) continue;
-      if (previous !== void 0 && previous.to === from && sameInlineStyle(previous.style, run.style)) {
-        previous.to = run.to;
-      } else {
-        normalized.push({ ...run, from });
-      }
-    }
-    return normalized;
-  }
-
-  // DesktopRuntime/upstream/src/main/features/drawingValidation.ts
-  var TEXT_FLAG_FIELDS = ["bold", "italic", "underline", "strike"];
-  function assertUnit(value, field) {
-    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
-      throw new ValidationError(`${field} must be a finite number between 0 and 1`);
-    }
-    return value;
-  }
-  function assertPositive(value, field, max2 = 1) {
-    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > max2) {
-      throw new ValidationError(
-        `${field} must be a finite number greater than 0 and at most ${max2}`
-      );
-    }
-    return value;
-  }
-  function assertPoint(value, field) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-      throw new ValidationError(`${field} must be a drawing point`);
-    }
-    const point2 = value;
-    return {
-      x: assertUnit(point2.x, `${field}.x`),
-      y: assertUnit(point2.y, `${field}.y`),
-      p: assertUnit(point2.p, `${field}.p`)
-    };
-  }
-  function assertBox(value, field) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-      throw new ValidationError(`${field} must be a drawing box`);
-    }
-    const box2 = value;
-    const result = {
-      x: assertUnit(box2.x, `${field}.x`),
-      y: assertUnit(box2.y, `${field}.y`),
-      width: assertUnit(box2.width, `${field}.width`),
-      height: assertUnit(box2.height, `${field}.height`)
-    };
-    if (result.x + result.width > 1 || result.y + result.height > 1) {
-      throw new ValidationError(`${field} must stay inside the normalized page`);
-    }
-    return result;
-  }
-  function assertImage(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-      throw new ValidationError("data.image must be an object");
-    }
-    const image = value;
-    if (typeof image.relPath !== "string" || image.relPath.trim() === "" || typeof image.label !== "string" || image.label.trim() === "") {
-      throw new ValidationError("data.image needs relPath and label");
-    }
-    const result = {
-      relPath: image.relPath,
-      label: image.label
-    };
-    if (image.storage !== void 0 || image.assetId !== void 0) {
-      if (image.storage !== "shared" || typeof image.assetId !== "string" || image.assetId.trim() === "" || typeof image.widthPx !== "number" || !Number.isInteger(image.widthPx) || image.widthPx <= 0 || typeof image.heightPx !== "number" || !Number.isInteger(image.heightPx) || image.heightPx <= 0) {
-        throw new ValidationError("shared data.image needs assetId and pixel dimensions");
-      }
-      result.storage = "shared";
-      result.assetId = image.assetId;
-      result.widthPx = image.widthPx;
-      result.heightPx = image.heightPx;
-    }
-    return result;
-  }
-  function assertClip(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-      throw new ValidationError("data.clip must be an object");
-    }
-    const clip2 = value;
-    if (typeof clip2.relPath !== "string" || clip2.relPath.trim() === "" || typeof clip2.label !== "string" || clip2.label.trim() === "") {
-      throw new ValidationError("data.clip needs relPath and label");
-    }
-    if (typeof clip2.page !== "number" || !Number.isInteger(clip2.page) || clip2.page < 1) {
-      throw new ValidationError("data.clip.page must be an integer >= 1");
-    }
-    const result = {
-      relPath: clip2.relPath,
-      page: clip2.page,
-      label: clip2.label
-    };
-    if (clip2.crop !== void 0) result.crop = assertBox(clip2.crop, "data.clip.crop");
-    return result;
-  }
-  function assertTextRuns(text, value) {
-    if (!Array.isArray(value)) {
-      throw new ValidationError("data.textRuns needs textbox text and an array");
-    }
-    const runs = value.map((raw, index) => {
-      if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-        throw new ValidationError(`data.textRuns[${index}] must be an object`);
-      }
-      const run = raw;
-      if (!Number.isInteger(run.from) || !Number.isInteger(run.to) || run.from < 0 || run.to <= run.from || run.to > text.length) {
-        throw new ValidationError(`data.textRuns[${index}] has an invalid range`);
-      }
-      if (run.style === null || typeof run.style !== "object" || Array.isArray(run.style)) {
-        throw new ValidationError(`data.textRuns[${index}].style must be an object`);
-      }
-      const style = {};
-      if (run.style.color !== void 0) {
-        if (!DRAWING_COLORS.includes(run.style.color)) {
-          throw new ValidationError(`data.textRuns[${index}].style.color is invalid`);
-        }
-        style.color = run.style.color;
-      }
-      if (run.style.fontSizePt !== void 0) {
-        style.fontSizePt = assertPositive(
-          run.style.fontSizePt,
-          `data.textRuns[${index}].style.fontSizePt`,
-          96
-        );
-      }
-      for (const field of TEXT_FLAG_FIELDS) {
-        const flag3 = run.style[field];
-        if (flag3 === void 0) continue;
-        if (typeof flag3 !== "boolean") {
-          throw new ValidationError(`data.textRuns[${index}].style.${field} must be boolean`);
-        }
-        style[field] = flag3;
-      }
-      return { from: run.from, to: run.to, style };
-    });
-    const normalized = normalizeTextRuns(text, runs);
-    if (normalized.length !== runs.length) {
-      throw new ValidationError("data.textRuns must be ordered, non-overlapping ranges");
-    }
-    return normalized;
-  }
-  function assertDrawingKind(value, allowedKinds = DRAWING_KINDS) {
-    if (!allowedKinds.includes(value)) {
-      throw new ValidationError(`kind must be one of ${allowedKinds.join(", ")}`);
-    }
-    return value;
-  }
-  function assertDrawingData(value, kind, options = {}) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-      throw new ValidationError("data must be an object");
-    }
-    const candidate = value;
-    let points;
-    if (candidate.points !== void 0) {
-      if (!Array.isArray(candidate.points)) {
-        throw new ValidationError("data.points must be an array");
-      }
-      points = candidate.points.map(
-        (point2, index) => assertPoint(point2, `data.points[${index}]`)
-      );
-    }
-    const box2 = candidate.box === void 0 ? void 0 : assertBox(candidate.box, "data.box");
-    const text = candidate.text;
-    if (text !== void 0 && typeof text !== "string") {
-      throw new ValidationError("data.text must be a string");
-    }
-    let textRuns;
-    if (candidate.textRuns !== void 0) {
-      if (text === void 0) {
-        throw new ValidationError("data.textRuns needs textbox text and an array");
-      }
-      textRuns = assertTextRuns(text, candidate.textRuns);
-    }
-    if ((kind === "ink" || kind === "highlighter") && (points?.length ?? 0) === 0) {
-      throw new ValidationError(`${kind} data needs at least one point`);
-    }
-    if ((kind === "rect" || kind === "ellipse" || kind === "textbox") && box2 === void 0) {
-      throw new ValidationError(`${kind} data needs a box`);
-    }
-    if ((kind === "line" || kind === "arrow") && box2 === void 0 && (points?.length ?? 0) < 2) {
-      throw new ValidationError(`${kind} data needs a box or two points`);
-    }
-    if (kind === "textbox" && text === void 0) {
-      throw new ValidationError("textbox data needs text");
-    }
-    const image = candidate.image === void 0 ? void 0 : assertImage(candidate.image);
-    if (kind === "image" && (image === void 0 || box2 === void 0)) {
-      throw new ValidationError("image data needs a box and an image source");
-    }
-    const clip2 = options.allowClip === true && candidate.clip !== void 0 ? assertClip(candidate.clip) : void 0;
-    if (kind === "clip" && (clip2 === void 0 || box2 === void 0)) {
-      throw new ValidationError("clip data needs a box and a clip source");
-    }
-    const result = {};
-    if (points !== void 0) result.points = points;
-    if (box2 !== void 0) result.box = box2;
-    if (text !== void 0) result.text = text;
-    if (textRuns !== void 0 && textRuns.length > 0) result.textRuns = textRuns;
-    if (image !== void 0) result.image = image;
-    if (clip2 !== void 0) result.clip = clip2;
-    return result;
-  }
-  function assertDrawingStyle(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-      throw new ValidationError("style must be an object");
-    }
-    const style = value;
-    if (!DRAWING_COLORS.includes(style.color)) {
-      throw new ValidationError(
-        `style.color must be one of ${DRAWING_COLORS.join(", ")}`
-      );
-    }
-    const result = {
-      color: style.color,
-      width: assertPositive(style.width, "style.width"),
-      opacity: assertUnit(style.opacity, "style.opacity")
-    };
-    if (style.fontScale !== void 0) {
-      result.fontScale = assertPositive(style.fontScale, "style.fontScale", 10);
-    }
-    if (style.fontSizePt !== void 0) {
-      result.fontSizePt = assertPositive(style.fontSizePt, "style.fontSizePt", 96);
-    }
-    for (const field of TEXT_FLAG_FIELDS) {
-      const flag3 = style[field];
-      if (flag3 === void 0) continue;
-      if (typeof flag3 !== "boolean") {
-        throw new ValidationError(`style.${field} must be a boolean`);
-      }
-      result[field] = flag3;
-    }
-    if (style.align !== void 0) {
-      if (!TEXT_ALIGNS.includes(style.align)) {
-        throw new ValidationError(`style.align must be one of ${TEXT_ALIGNS.join(", ")}`);
-      }
-      result.align = style.align;
-    }
-    if (style.fill !== void 0) {
-      if (!DRAWING_COLORS.includes(style.fill)) {
-        throw new ValidationError(`style.fill must be one of ${DRAWING_COLORS.join(", ")}`);
-      }
-      result.fill = style.fill;
-    }
-    return result;
-  }
-
-  // DesktopRuntime/upstream/src/main/features/pdf/drawingsRepo.ts
-  var DRAWING_KINDS2 = DRAWING_KINDS.filter(
-    (kind) => kind !== "clip"
-  );
-  function rowToDrawing(row) {
-    return {
-      id: row.id,
-      courseId: row.course_id,
-      relPath: row.rel_path,
-      page: row.page,
-      kind: row.kind,
-      data: JSON.parse(row.data_json),
-      style: JSON.parse(row.style_json),
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  }
-  function createDrawingsRepo(db) {
-    function assertCourseExists(courseId2) {
-      const row = db.prepare("SELECT id FROM courses WHERE id = ? AND deleted_at IS NULL").get(courseId2);
-      if (row === void 0) throw new NotFoundError("course", courseId2);
-    }
-    function getRowOrThrow(id2) {
-      const row = db.prepare("SELECT * FROM pdf_drawings WHERE id = ? AND deleted_at IS NULL").get(id2);
-      if (row === void 0) throw new NotFoundError("drawing", id2);
-      return row;
-    }
-    return {
-      listForFile(courseIdInput, relPathInput) {
-        const courseId2 = requireId(courseIdInput, "courseId");
-        const relPath2 = requireNonEmptyString(relPathInput, "relPath");
-        const rows = db.prepare(
-          `SELECT * FROM pdf_drawings
-           WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL
-           ORDER BY page ASC, created_at ASC`
-        ).all(courseId2, relPath2);
-        return rows.map(rowToDrawing);
-      },
-      create(input) {
-        const courseId2 = requireId(input.courseId, "courseId");
-        assertCourseExists(courseId2);
-        const relPath2 = requireNonEmptyString(input.relPath, "relPath");
-        const page = requireInt(input.page, "page", 1);
-        const kind = assertDrawingKind(input.kind, DRAWING_KINDS2);
-        const data2 = assertDrawingData(input.data, kind);
-        const style = assertDrawingStyle(input.style);
-        const now = nowIso();
-        const drawing = {
-          id: randomUUID(),
-          courseId: courseId2,
-          relPath: relPath2,
-          page,
-          kind,
-          data: data2,
-          style,
-          createdAt: now,
-          updatedAt: now
-        };
-        db.prepare(
-          `INSERT INTO pdf_drawings
-           (id, course_id, rel_path, page, kind, data_json, style_json,
-            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(
-          drawing.id,
-          courseId2,
-          relPath2,
-          page,
-          kind,
-          JSON.stringify(data2),
-          JSON.stringify(style),
-          now,
-          now
-        );
-        return drawing;
-      },
-      update(input) {
-        const row = getRowOrThrow(requireId(input.id, "id"));
-        const kind = row.kind;
-        const data2 = input.data === void 0 ? JSON.parse(row.data_json) : assertDrawingData(input.data, kind);
-        const style = input.style === void 0 ? JSON.parse(row.style_json) : assertDrawingStyle(input.style);
-        const now = nowIso();
-        db.prepare(
-          "UPDATE pdf_drawings SET data_json = ?, style_json = ?, updated_at = ? WHERE id = ?"
-        ).run(JSON.stringify(data2), JSON.stringify(style), now, row.id);
-        return rowToDrawing({
-          ...row,
-          data_json: JSON.stringify(data2),
-          style_json: JSON.stringify(style),
-          updated_at: now
-        });
-      },
-      softDelete(idsInput) {
-        if (!Array.isArray(idsInput)) {
-          throw new ValidationError("ids must be an array");
-        }
-        const ids = [...new Set(idsInput.map((id2) => requireId(id2, "id")))];
-        if (ids.length === 0) return;
-        const now = nowIso();
-        const remove = db.transaction(() => {
-          const statement = db.prepare(
-            "UPDATE pdf_drawings SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL"
-          );
-          for (const id2 of ids) {
-            if (statement.run(now, now, id2).changes === 0) {
-              throw new NotFoundError("drawing", id2);
-            }
-          }
-        });
-        remove();
-      }
-    };
-  }
-
-  // DesktopRuntime/upstream/src/main/features/pdf/pdfViewStateRepo.ts
+  // upstream/src/main/features/pdf/pdfViewStateRepo.ts
   function toState(row) {
     return {
       courseId: row.course_id,
@@ -89209,7 +88838,7 @@ ${markdown}`;
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/materials/mediaProgressRepo.ts
+  // upstream/src/main/features/materials/mediaProgressRepo.ts
   function toProgress(row) {
     return {
       courseId: row.course_id,
@@ -89275,7 +88904,7 @@ ${markdown}`;
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/taskSchedule.ts
+  // upstream/src/shared/taskSchedule.ts
   function isCalendarDate(value) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
     const date = /* @__PURE__ */ new Date(`${value}T00:00:00.000Z`);
@@ -89298,7 +88927,7 @@ ${markdown}`;
     return { start, end, allDay: task.allDay };
   }
 
-  // DesktopRuntime/upstream/src/shared/types/board.ts
+  // upstream/src/shared/types/board.ts
   var TASK_COLORS = [
     "none",
     "red",
@@ -89309,7 +88938,7 @@ ${markdown}`;
     "violet"
   ];
 
-  // DesktopRuntime/upstream/src/main/features/board/calendarTime.ts
+  // upstream/src/main/features/board/calendarTime.ts
   var DAY_MS = 24 * 60 * 60 * 1e3;
   function localCalendarDayDifference(due, now) {
     const dueDay = Date.UTC(due.getFullYear(), due.getMonth(), due.getDate());
@@ -89324,7 +88953,7 @@ ${markdown}`;
     );
   }
 
-  // DesktopRuntime/upstream/src/main/features/board/boardRepo.ts
+  // upstream/src/main/features/board/boardRepo.ts
   var STATUSES = ["todo", "in-progress", "done"];
   var KINDS = ["task", "assignment", "exam", "class"];
   var LOCAL_DATE_KEY = /^\d{4}-\d{2}-\d{2}$/u;
@@ -89345,7 +88974,7 @@ ${markdown}`;
     }
     return value;
   }
-  function assertColor2(value) {
+  function assertColor(value) {
     if (!TASK_COLORS.includes(value)) {
       throw new ValidationError(
         `color must be one of ${TASK_COLORS.join(", ")} (got "${String(value)}")`
@@ -89585,7 +89214,7 @@ ${markdown}`;
         }
         const status = input.status === void 0 ? "todo" : assertStatus(input.status);
         const kind = input.kind === void 0 ? "task" : assertKind(input.kind);
-        const color = input.color === void 0 ? "none" : assertColor2(input.color);
+        const color = input.color === void 0 ? "none" : assertColor(input.color);
         const notes = input.notes ?? "";
         if (typeof notes !== "string") {
           throw new ValidationError("notes must be a string");
@@ -89641,7 +89270,7 @@ ${markdown}`;
         }
         const status = input.status === void 0 ? row.status : assertStatus(input.status);
         const kind = input.kind === void 0 ? row.kind : assertKind(input.kind);
-        const color = input.color === void 0 ? row.color : assertColor2(input.color);
+        const color = input.color === void 0 ? row.color : assertColor(input.color);
         const allDay = input.allDay === void 0 ? row.all_day === 1 : assertAllDay(input.allDay);
         const dueAt = input.dueAt === void 0 && !allDay && row.due_at !== null && LOCAL_DATE_KEY.test(row.due_at) ? dateKeyToLocalInstant(row.due_at) : normalizeDueAt(input.dueAt === void 0 ? row.due_at : input.dueAt, allDay);
         const previousStart = input.startAt === void 0 ? row.start_at : input.startAt;
@@ -89702,7 +89331,30 @@ ${markdown}`;
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/types/whiteboard.ts
+  // upstream/src/shared/types/drawing.ts
+  var DRAWING_KINDS = [
+    "ink",
+    "highlighter",
+    "rect",
+    "ellipse",
+    "arrow",
+    "line",
+    "textbox",
+    "clip",
+    "image"
+  ];
+  var DRAWING_COLORS = [
+    "ink",
+    "red",
+    "orange",
+    "yellow",
+    "green",
+    "blue",
+    "violet"
+  ];
+  var TEXT_ALIGNS = ["left", "center", "right"];
+
+  // upstream/src/shared/types/whiteboard.ts
   var BOARD_BACKGROUNDS = [
     "grid",
     "dots",
@@ -89714,7 +89366,7 @@ ${markdown}`;
     "light"
   ];
 
-  // DesktopRuntime/upstream/src/main/features/canvas/canvasRepo.ts
+  // upstream/src/main/features/canvas/canvasRepo.ts
   var BOARD_HOVER_SHAPE_LIMIT = 160;
   var BOARD_HOVER_SHAPE_BYTES = 32 * 1024;
   var BOARD_HOVER_TOTAL_BYTES = 256 * 1024;
@@ -90057,7 +89709,7 @@ ${markdown}`;
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/tabs.ts
+  // upstream/src/shared/tabs.ts
   var NEW_TAB_URL = "https://www.google.com";
   var TAB_KINDS = [
     "recording",
@@ -90109,7 +89761,7 @@ ${markdown}`;
     }
   }
 
-  // DesktopRuntime/upstream/src/main/features/favorites/descriptorJson.ts
+  // upstream/src/main/features/favorites/descriptorJson.ts
   function parseAndValidate(json3, invalidDescriptorMessage) {
     let parsed;
     try {
@@ -90150,7 +89802,7 @@ ${markdown}`;
     }
   }
 
-  // DesktopRuntime/upstream/src/main/features/favorites/favoritesRepo.ts
+  // upstream/src/main/features/favorites/favoritesRepo.ts
   function requireCourseId(value) {
     return value === null ? null : requireId(value, "courseId");
   }
@@ -90306,7 +89958,7 @@ ${markdown}`;
     };
   }
 
-  // DesktopRuntime/upstream/src/main/db/layoutRepo.ts
+  // upstream/src/main/db/layoutRepo.ts
   function createLayoutRepo(db) {
     function assertCourseExists(courseId2) {
       const row = db.prepare("SELECT id FROM courses WHERE id = ? AND deleted_at IS NULL").get(courseId2);
@@ -90364,7 +90016,7 @@ ${markdown}`;
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/types/link.ts
+  // upstream/src/shared/types/link.ts
   var BANDAL_LINK_SCHEME = "bandal:";
   function isPdfPageNoteLinkMetadata(value) {
     if (typeof value !== "object" || value === null) return false;
@@ -90376,7 +90028,7 @@ ${markdown}`;
     });
   }
 
-  // DesktopRuntime/upstream/src/main/features/links/materialLinksRepo.ts
+  // upstream/src/main/features/links/materialLinksRepo.ts
   function rowToRecord(row) {
     let metadata = null;
     if (row.metadata_json !== null) {
@@ -90589,7 +90241,7 @@ ${markdown}`;
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/wikilink.ts
+  // upstream/src/shared/wikilink.ts
   var WIKILINK_SOURCE = "!?\\[\\[([^\\[\\]|#\\n]+?)(?:#([^\\[\\]|\\n]+?))?(?:\\|([^\\[\\]\\n]+?))?\\]\\]";
   var WIKILINK_RE = new RegExp(WIKILINK_SOURCE, "gu");
   var WIKILINK_WHOLE_RE = new RegExp(`^${WIKILINK_SOURCE}$`, "u");
@@ -90643,9 +90295,9 @@ ${markdown}`;
     });
     return best ?? null;
   }
-  function appendTo(map, key3, relPath2) {
-    const existing = map.get(key3);
-    if (existing === void 0) map.set(key3, [relPath2]);
+  function appendTo(map, key4, relPath2) {
+    const existing = map.get(key4);
+    if (existing === void 0) map.set(key4, [relPath2]);
     else if (!existing.includes(relPath2)) existing.push(relPath2);
   }
   function createWikilinkResolver(files) {
@@ -90658,14 +90310,14 @@ ${markdown}`;
     }
     return {
       resolve: (target) => {
-        const key3 = wikilinkKey(target);
-        if (key3.length === 0) return null;
-        return pickBest(byPath.get(key3) ?? []) ?? pickBest(byBasename.get(key3) ?? []);
+        const key4 = wikilinkKey(target);
+        if (key4.length === 0) return null;
+        return pickBest(byPath.get(key4) ?? []) ?? pickBest(byBasename.get(key4) ?? []);
       }
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/link/materialLink.ts
+  // upstream/src/main/features/link/materialLink.ts
   var MATERIAL_LINK_TARGET = "material";
   function encodeQueryComponent(value) {
     return encodeURIComponent(value).replace(
@@ -90705,7 +90357,7 @@ ${markdown}`;
     return annotationId === null || annotationId.length === 0 ? { relPath: relPath2, page } : { relPath: relPath2, page, annotationId };
   }
 
-  // DesktopRuntime/upstream/src/main/features/links/linkIndex.ts
+  // upstream/src/main/features/links/linkIndex.ts
   var LINK_TABLE = "content_links";
   var NOTE_EXTENSIONS = /* @__PURE__ */ new Set([".md", ".markdown"]);
   var LINK_KIND_COLUMN = "link_kind";
@@ -90851,8 +90503,8 @@ ${markdown}`;
     };
     return row.link_kind === "wikilink" ? { ...backlink, linkKind: "wikilink" } : backlink;
   }
-  function hasColumn(db, table9, column) {
-    const columns = db.pragma(`table_info(${table9})`);
+  function hasColumn(db, table10, column) {
+    const columns = db.pragma(`table_info(${table10})`);
     return columns.some((entry2) => entry2.name === column);
   }
   function ensureLinkTable(db) {
@@ -90958,7 +90610,7 @@ ${markdown}`;
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/pdfPageNote.ts
+  // upstream/src/shared/pdfPageNote.ts
   var MANIFEST_PREFIX = "<!-- bandal:pdf-page-note ";
   var MANIFEST_SUFFIX = " -->";
   var PAGE_MARKER = /^<!-- bandal:page (\d+) -->[ \t]*$/gm;
@@ -91069,7 +90721,7 @@ ${sections.join("\n\n")}${appendixSection}
     );
   }
 
-  // DesktopRuntime/upstream/src/main/features/links/renameRepoint.ts
+  // upstream/src/main/features/links/renameRepoint.ts
   var PATH_TABLES = [
     "annotations",
     "pdf_drawings",
@@ -91108,7 +90760,7 @@ ${sections.join("\n\n")}${appendixSection}
     return value.replace(/\.(?:md|markdown)$/iu, "");
   }
   function repointedWikilinkTarget(target, fromRelPath, toRelPath, isDirectory) {
-    const key3 = wikilinkKey(target);
+    const key4 = wikilinkKey(target);
     const isPathForm = target.includes("/");
     if (isDirectory) {
       if (!isPathForm) return null;
@@ -91119,17 +90771,17 @@ ${sections.join("\n\n")}${appendixSection}
     const wroteExtension = fromExtension.length > 0 && target.normalize("NFC").trim().toLowerCase().endsWith(fromExtension);
     const withWrittenExtension = (next) => wroteExtension ? next : stripNoteExtension(next);
     if (isPathForm) {
-      if (key3 !== wikilinkKey(fromRelPath)) return null;
+      if (key4 !== wikilinkKey(fromRelPath)) return null;
       return withWrittenExtension(toRelPath);
     }
-    const matchesBasename = key3 === wikilinkKey(basenameOf2(fromRelPath)) || key3 === wikilinkKey(wikilinkStem(fromRelPath));
+    const matchesBasename = key4 === wikilinkKey(basenameOf2(fromRelPath)) || key4 === wikilinkKey(wikilinkStem(fromRelPath));
     if (!matchesBasename) return null;
     const toBasename = basenameOf2(toRelPath);
-    const wroteStem = !wroteExtension && key3 === wikilinkKey(wikilinkStem(fromRelPath));
+    const wroteStem = !wroteExtension && key4 === wikilinkKey(wikilinkStem(fromRelPath));
     return wroteStem ? wikilinkStem(toBasename) : withWrittenExtension(toBasename);
   }
-  function tableExists(db, table9) {
-    return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table9) !== void 0;
+  function tableExists(db, table10) {
+    return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table10) !== void 0;
   }
   function collectRepointNoteCandidates(input) {
     if (!tableExists(input.db, "content_links")) return [];
@@ -91212,9 +90864,9 @@ ${sections.join("\n\n")}${appendixSection}
     parsed.payload["relPath"] = next;
     return JSON.stringify(parsed.value);
   }
-  function warning(table9, id2, error2) {
+  function warning(table10, id2, error2) {
     const message = error2 instanceof Error ? error2.message : String(error2);
-    console.warn(`[links] skipped invalid ${table9} row "${id2}": ${message}`);
+    console.warn(`[links] skipped invalid ${table10} row "${id2}": ${message}`);
   }
   function rewriteFavorites(db, courseId2, fromRelPath, toRelPath, isDirectory) {
     const rows = db.prepare(
@@ -91274,17 +90926,17 @@ ${sections.join("\n\n")}${appendixSection}
   }
   function updateRelPathTables(db, courseId2, fromRelPath, toRelPath, isDirectory, counts) {
     const escapedPrefix = fromRelPath.replace(/[\\%_]/g, "\\$&") + "/%";
-    for (const table9 of PATH_TABLES) {
-      const normalizedOnly = db.prepare(`SELECT rowid AS row_id, rel_path FROM ${table9} WHERE course_id = ?`).all(courseId2).map((row) => ({
+    for (const table10 of PATH_TABLES) {
+      const normalizedOnly = db.prepare(`SELECT rowid AS row_id, rel_path FROM ${table10} WHERE course_id = ?`).all(courseId2).map((row) => ({
         ...row,
         next: repointedPath(row.rel_path, fromRelPath, toRelPath, isDirectory)
       })).filter(
         (row) => row.next !== null && row.next !== row.rel_path && row.rel_path !== fromRelPath && !(isDirectory && row.rel_path.startsWith(`${fromRelPath}/`))
       );
-      counts[table9] += db.prepare(`UPDATE ${table9} SET rel_path = ? WHERE course_id = ? AND rel_path = ?`).run(toRelPath, courseId2, fromRelPath).changes;
+      counts[table10] += db.prepare(`UPDATE ${table10} SET rel_path = ? WHERE course_id = ? AND rel_path = ?`).run(toRelPath, courseId2, fromRelPath).changes;
       if (isDirectory) {
-        counts[table9] += db.prepare(
-          `UPDATE ${table9}
+        counts[table10] += db.prepare(
+          `UPDATE ${table10}
               SET rel_path = ? || substr(rel_path, length(?) + 1)
             WHERE course_id = ? AND rel_path LIKE ? ESCAPE '\\'
               AND substr(rel_path, 1, length(?)) = ?`
@@ -91298,10 +90950,10 @@ ${sections.join("\n\n")}${appendixSection}
         ).changes;
       }
       const updateNormalized = db.prepare(
-        `UPDATE ${table9} SET rel_path = ? WHERE rowid = ?`
+        `UPDATE ${table10} SET rel_path = ? WHERE rowid = ?`
       );
       for (const row of normalizedOnly) {
-        counts[table9] += updateNormalized.run(row.next, row.row_id).changes;
+        counts[table10] += updateNormalized.run(row.next, row.row_id).changes;
       }
     }
   }
@@ -91411,7 +91063,7 @@ ${sections.join("\n\n")}${appendixSection}
     const candidates = input.candidateNoteRelPaths === void 0 ? collectRepointNoteCandidates(normalizedInput) : [...new Set(input.candidateNoteRelPaths)];
     const repointDatabase = input.db.transaction(() => {
       const updatedRows2 = Object.fromEntries(
-        UPDATED_TABLES.map((table9) => [table9, 0])
+        UPDATED_TABLES.map((table10) => [table10, 0])
       );
       updateRelPathTables(
         input.db,
@@ -91449,7 +91101,7 @@ ${sections.join("\n\n")}${appendixSection}
     return { updatedRows, ...notes };
   }
 
-  // DesktopRuntime/upstream/src/main/features/link/linkService.ts
+  // upstream/src/main/features/link/linkService.ts
   var LINK_URL_PATTERN = /bandal:\/\/material\/?\?[^\s)>]+/g;
   var LINK_LABEL_QUOTE_LIMIT = 80;
   function safeNoteTitle(title2) {
@@ -91619,7 +91271,7 @@ ${sections.join("\n\n")}${appendixSection}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/context/activityRepo.ts
+  // upstream/src/main/features/context/activityRepo.ts
   var ACTIVITY_KINDS = [
     "material-added",
     "material-opened",
@@ -91721,7 +91373,7 @@ ${sections.join("\n\n")}${appendixSection}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/usage/usageRepo.ts
+  // upstream/src/main/features/usage/usageRepo.ts
   function whole(value) {
     return value === void 0 || !Number.isFinite(value) ? 0 : Math.max(0, Math.trunc(value));
   }
@@ -91821,7 +91473,7 @@ ${sections.join("\n\n")}${appendixSection}
     return { record: record2, summary };
   }
 
-  // DesktopRuntime/upstream/src/main/features/recordings/modelCatalog.ts
+  // upstream/src/main/features/recordings/modelCatalog.ts
   var SPEECH_MODELS = [
     {
       id: "whisper-large-v3-turbo",
@@ -91904,7 +91556,7 @@ ${sections.join("\n\n")}${appendixSection}
     return model;
   }
 
-  // DesktopRuntime/upstream/src/main/features/recordings/recordingRepo.ts
+  // upstream/src/main/features/recordings/recordingRepo.ts
   function wavHeader(samples) {
     const result = Buffer.alloc(44);
     result.write("RIFF", 0);
@@ -92181,7 +91833,7 @@ ${sections.join("\n\n")}${appendixSection}
     };
   }
 
-  // DesktopRuntime/backend/ai/abort.ts
+  // backend/ai/abort.ts
   var host = globalThis;
   if (!host.AbortController) {
     class Signal {
@@ -92219,7 +91871,7 @@ ${sections.join("\n\n")}${appendixSection}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/learning/model.ts
+  // upstream/src/main/features/learning/model.ts
   function learningHash(value) {
     return createHash("sha256").update(value).digest("hex");
   }
@@ -92277,7 +91929,7 @@ ${sections.join("\n\n")}${appendixSection}
     ].join("\n");
   }
 
-  // DesktopRuntime/upstream/src/shared/types/learning.ts
+  // upstream/src/shared/types/learning.ts
   var LEARNING_TOPICS = [
     { id: "science", label: "\uACFC\uD559" },
     { id: "space", label: "\uC6B0\uC8FC" },
@@ -92295,7 +91947,7 @@ ${sections.join("\n\n")}${appendixSection}
     { id: "career", label: "\uCEE4\uB9AC\uC5B4" }
   ];
 
-  // DesktopRuntime/upstream/src/main/features/learning/validation.ts
+  // upstream/src/main/features/learning/validation.ts
   function validateDictionarySource(value) {
     const input = learningObject(value, "dictionarySource");
     const headword = learningString(input["headword"], "dictionary headword", 120).trim();
@@ -92348,7 +92000,7 @@ ${sections.join("\n\n")}${appendixSection}
     }
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new ValidationError(`${field}\uC5D0\uB294 HTTP(S) \uC6F9 \uC8FC\uC18C\uB9CC \uC0AC\uC6A9\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.`);
     url.hash = "";
-    for (const key3 of [...url.searchParams.keys()]) if (/^(utm_|fbclid$|gclid$)/i.test(key3)) url.searchParams.delete(key3);
+    for (const key4 of [...url.searchParams.keys()]) if (/^(utm_|fbclid$|gclid$)/i.test(key4)) url.searchParams.delete(key4);
     return url.href;
   }
   function optionalText(value, field) {
@@ -92690,13 +92342,13 @@ ${sections.join("\n\n")}${appendixSection}
     learningTime(state["createdAt"], "createdAt");
     learningTime(state["updatedAt"], "updatedAt");
     if (state["deletedAt"] !== void 0 && state["deletedAt"] !== null) learningTime(state["deletedAt"], "deletedAt");
-    for (const key3 of ["articles", "words", "occurrences", "artifacts", "cards", "quizAttempts", "runs", "history"]) {
-      const entries = learningArray(state[key3], key3);
+    for (const key4 of ["articles", "words", "occurrences", "artifacts", "cards", "quizAttempts", "runs", "history"]) {
+      const entries = learningArray(state[key4], key4);
       const seen = /* @__PURE__ */ new Set();
       for (const entry2 of entries) {
-        const record2 = learningObject(entry2, key3);
-        const id2 = learningId(record2["id"], `${key3}.id`);
-        if (seen.has(id2)) throw new ValidationError(`${key3}\uC758 \uC2DD\uBCC4\uC790\uAC00 \uC911\uBCF5\uB418\uC5C8\uC2B5\uB2C8\uB2E4.`);
+        const record2 = learningObject(entry2, key4);
+        const id2 = learningId(record2["id"], `${key4}.id`);
+        if (seen.has(id2)) throw new ValidationError(`${key4}\uC758 \uC2DD\uBCC4\uC790\uAC00 \uC911\uBCF5\uB418\uC5C8\uC2B5\uB2C8\uB2E4.`);
         seen.add(id2);
       }
     }
@@ -92822,7 +92474,7 @@ ${sections.join("\n\n")}${appendixSection}
     return { ...structuredClone(state), ...settings, purpose: settings.purpose ?? (state["name"] === "AI \uD559\uC2B5\uC790\uB8CC" && state["topic"] === "\uACFC\uBAA9 \uC790\uB8CC" ? "course-review" : "unclassified"), topicIds: settings.topicIds ?? [], readingSetupConfirmed: settings.readingSetupConfirmed ?? false };
   }
 
-  // DesktopRuntime/upstream/src/main/features/learning/learningRepo.ts
+  // upstream/src/main/features/learning/learningRepo.ts
   var LEARNING_DATA_DIR = ".bandal/learning";
   var MANIFEST = `${LEARNING_DATA_DIR}/manifest.json`;
   var STATE = `${LEARNING_DATA_DIR}/state.json`;
@@ -92862,8 +92514,8 @@ ${sections.join("\n\n")}${appendixSection}
 `;
   }
   function contentIdentity(value) {
-    return JSON.stringify(value, (key3, entry2) => {
-      if (key3 === "createdAt" || key3 === "fetchedAt" || key3 === "availability") return void 0;
+    return JSON.stringify(value, (key4, entry2) => {
+      if (key4 === "createdAt" || key4 === "fetchedAt" || key4 === "availability") return void 0;
       if (entry2 !== null && typeof entry2 === "object" && !Array.isArray(entry2)) {
         return Object.fromEntries(Object.entries(entry2).sort(([left], [right]) => left.localeCompare(right)));
       }
@@ -92896,14 +92548,14 @@ ${sections.join("\n\n")}${appendixSection}
     }
     async function serial(binding2, work, allowMissing = false, includeDeleted = false) {
       const root = projectRoot(binding2, allowMissing, includeDeleted);
-      const key3 = existsSync(root) ? realpathSync.native(root) : root;
-      const previous = queues.get(key3) ?? Promise.resolve();
+      const key4 = existsSync(root) ? realpathSync.native(root) : root;
+      const previous = queues.get(key4) ?? Promise.resolve();
       const task = previous.catch(() => void 0).then(work);
-      queues.set(key3, task);
+      queues.set(key4, task);
       try {
         return await task;
       } finally {
-        if (queues.get(key3) === task) queues.delete(key3);
+        if (queues.get(key4) === task) queues.delete(key4);
       }
     }
     async function readJsonFile(root, relPath2) {
@@ -92954,8 +92606,8 @@ ${sections.join("\n\n")}${appendixSection}
       const availability = /* @__PURE__ */ new Map();
       for (const source of sources2) {
         if (source.kind !== "material" || !source.relPath) continue;
-        const key3 = `${source.sourceCourseId ?? binding2.courseId}:${source.pathScope ?? "project"}:${source.relPath}:${source.contentHash ?? ""}`;
-        let result = availability.get(key3);
+        const key4 = `${source.sourceCourseId ?? binding2.courseId}:${source.pathScope ?? "project"}:${source.relPath}:${source.contentHash ?? ""}`;
+        let result = availability.get(key4);
         if (!result) {
           result = (async () => {
             try {
@@ -92969,7 +92621,7 @@ ${sections.join("\n\n")}${appendixSection}
               return "missing";
             }
           })();
-          availability.set(key3, result);
+          availability.set(key4, result);
         }
         source.availability = await result;
       }
@@ -93290,8 +92942,8 @@ ${sections.join("\n\n")}${appendixSection}
         learningString(word.partOfSpeech, "partOfSpeech", 1e3, true);
         tx.state.words.push(word);
       }
-      const key3 = JSON.stringify(sourceRef);
-      if (tx.state.occurrences.some((entry2) => entry2.wordId === word.id && JSON.stringify(entry2.sourceRef) === key3)) return false;
+      const key4 = JSON.stringify(sourceRef);
+      if (tx.state.occurrences.some((entry2) => entry2.wordId === word.id && JSON.stringify(entry2.sourceRef) === key4)) return false;
       if (!word.meaning.trim() && input.meaning?.trim()) {
         word.meaning = input.meaning;
         if (input.dictionarySource) word.dictionarySource = input.dictionarySource;
@@ -93561,8 +93213,8 @@ ${sections.join("\n\n")}${appendixSection}
         return mutate(input, async (tx) => {
           const word = tx.state.words.find((entry2) => entry2.id === learningId(input.wordId, "wordId"));
           if (!word) throw new NotFoundError("word", input.wordId);
-          for (const key3 of ["lemma", "meaning", "pronunciation", "partOfSpeech"]) {
-            if (input[key3] !== void 0) word[key3] = learningString(input[key3], key3, key3 === "meaning" ? 2e4 : 1e3, key3 !== "lemma");
+          for (const key4 of ["lemma", "meaning", "pronunciation", "partOfSpeech"]) {
+            if (input[key4] !== void 0) word[key4] = learningString(input[key4], key4, key4 === "meaning" ? 2e4 : 1e3, key4 !== "lemma");
           }
           if (input.meaning !== void 0 && word.dictionarySource) word.dictionarySource = { ...word.dictionarySource, modified: true };
           if (input.status !== void 0) {
@@ -93816,7 +93468,7 @@ ${sections.join("\n\n")}${appendixSection}
     return repo;
   }
 
-  // DesktopRuntime/upstream/src/main/features/learning/learningCache.ts
+  // upstream/src/main/features/learning/learningCache.ts
   function createLearningCache(db) {
     db.exec(`CREATE TABLE IF NOT EXISTS learning_projects_cache (
     course_id TEXT NOT NULL, root_rel_path TEXT NOT NULL, project_id TEXT NOT NULL,
@@ -93858,7 +93510,7 @@ ${sections.join("\n\n")}${appendixSection}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/learning/learningFailures.ts
+  // upstream/src/main/features/learning/learningFailures.ts
   var LearningExecutionError = class extends Error {
     constructor(failure2) {
       super(failure2.message);
@@ -93905,7 +93557,7 @@ ${sections.join("\n\n")}${appendixSection}
     return { message, code: code2, category: fallback, actionable };
   }
 
-  // DesktopRuntime/upstream/src/main/features/learning/learningRuntime.ts
+  // upstream/src/main/features/learning/learningRuntime.ts
   var keyFor = (binding2) => JSON.stringify([binding2.courseId, binding2.rootRelPath.split("/").filter((part) => part && part !== ".").join("/")]);
   var TOOL_ALLOWLIST = /* @__PURE__ */ new Set(["learning_verify_article", "learning_submit_result", "read_material", "list_materials", "app_state", "browser_tabs", "browser_open", "browser_snapshot", "browser_read", "browser_scroll", "browser_handoff"]);
   var TERMINAL = /* @__PURE__ */ new Set(["complete", "failed", "cancelled", "interrupted", "awaiting-confirmation"]);
@@ -93925,25 +93577,25 @@ ${sections.join("\n\n")}${appendixSection}
     const now = deps.now ?? (() => (/* @__PURE__ */ new Date()).toISOString());
     let disposed = false;
     function pump(binding2) {
-      const key3 = keyFor(binding2);
-      if (disposed || pausedProjects.has(key3) || activeProjects.has(key3)) return;
-      const queued = pendingProjects.get(key3);
+      const key4 = keyFor(binding2);
+      if (disposed || pausedProjects.has(key4) || activeProjects.has(key4)) return;
+      const queued = pendingProjects.get(key4);
       if (!queued?.[0]?.ready) return;
       const next = queued.shift();
-      if (!queued.length) pendingProjects.delete(key3);
+      if (!queued.length) pendingProjects.delete(key4);
       if (next.settled) {
         pump(binding2);
         return;
       }
-      activeProjects.set(key3, next);
-      const tasks = dispatchTasks.get(key3) ?? /* @__PURE__ */ new Set();
-      dispatchTasks.set(key3, tasks);
+      activeProjects.set(key4, next);
+      const tasks = dispatchTasks.get(key4) ?? /* @__PURE__ */ new Set();
+      dispatchTasks.set(key4, tasks);
       const task = dispatch(next);
       next.dispatching = task;
       tasks.add(task);
       void task.finally(() => {
         tasks.delete(task);
-        if (!tasks.size) dispatchTasks.delete(key3);
+        if (!tasks.size) dispatchTasks.delete(key4);
       });
     }
     function requireAvailable(binding2) {
@@ -93951,16 +93603,16 @@ ${sections.join("\n\n")}${appendixSection}
     }
     async function trackStart(binding2, work) {
       requireAvailable(binding2);
-      const key3 = keyFor(binding2);
-      const tasks = startingProjects.get(key3) ?? /* @__PURE__ */ new Set();
-      startingProjects.set(key3, tasks);
+      const key4 = keyFor(binding2);
+      const tasks = startingProjects.get(key4) ?? /* @__PURE__ */ new Set();
+      startingProjects.set(key4, tasks);
       const task = work();
       tasks.add(task);
       try {
         return await task;
       } finally {
         tasks.delete(task);
-        if (!tasks.size) startingProjects.delete(key3);
+        if (!tasks.size) startingProjects.delete(key4);
       }
     }
     function persist(execution, changes, allowSettled = false) {
@@ -94170,7 +93822,7 @@ ${sections.join("\n\n")}${appendixSection}
           learningArray(articleIds, "articleIds", 1e3).forEach((id2) => learningId(id2));
           if (requestedWords.some((id2) => !state.words.some((word) => word.id === id2)) || articleIds.some((id2) => !state.articles.some((article) => article.id === id2))) throw new Error("\uC120\uD0DD\uD55C \uD559\uC2B5 \uC790\uB8CC\uB098 \uB2E8\uC5B4\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
           if (input.kind === "explain-word" && !wordIds.length) throw new Error("\uC124\uBA85\uD560 \uB2E8\uC5B4\uB97C \uBA3C\uC800 \uC120\uD0DD\uD574 \uC8FC\uC138\uC694.");
-          const identity2 = JSON.stringify({
+          const identity3 = JSON.stringify({
             kind: input.kind,
             provider,
             model: ai.model,
@@ -94181,9 +93833,9 @@ ${sections.join("\n\n")}${appendixSection}
             wordIds: [...new Set(wordIds)].sort(),
             source: source ?? null
           });
-          const key3 = keyFor(input.binding);
+          const key4 = keyFor(input.binding);
           requireAvailable(input.binding);
-          const existing = [activeProjects.get(key3), ...pendingProjects.get(key3) ?? []].find((item) => item && !item.settled && item.identity === identity2);
+          const existing = [activeProjects.get(key4), ...pendingProjects.get(key4) ?? []].find((item) => item && !item.settled && item.identity === identity3);
           if (existing) return { runId: existing.run.id, binding: input.binding };
           const timestamp2 = now();
           const sessionId = randomUUID();
@@ -94202,7 +93854,7 @@ ${sections.join("\n\n")}${appendixSection}
             ...readingContext.purpose ? { purpose: readingContext.purpose } : {},
             ...readingContext.topicIds ? { topicIds: [...topicIds] } : {},
             ...readingContext.readingSetupConfirmed === void 0 ? {} : { readingSetupConfirmed: readingContext.readingSetupConfirmed },
-            message: activeProjects.has(key3) ? "\uC55E\uC120 \uD559\uC2B5 \uC791\uC5C5\uC774 \uB05D\uB098\uBA74 \uC2DC\uC791\uD560\uAC8C\uC694." : "\uD559\uC2B5 \uC791\uC5C5\uC744 \uC900\uBE44\uD558\uACE0 \uC788\uC5B4\uC694.",
+            message: activeProjects.has(key4) ? "\uC55E\uC120 \uD559\uC2B5 \uC791\uC5C5\uC774 \uB05D\uB098\uBA74 \uC2DC\uC791\uD560\uAC8C\uC694." : "\uD559\uC2B5 \uC791\uC5C5\uC744 \uC900\uBE44\uD558\uACE0 \uC788\uC5B4\uC694.",
             error: null,
             draft: null,
             createdAt: timestamp2,
@@ -94225,7 +93877,7 @@ ${sections.join("\n\n")}${appendixSection}
             settled: false,
             draft: null,
             timer: null,
-            identity: identity2,
+            identity: identity3,
             allowedTools,
             writes: Promise.resolve(),
             finishing: null,
@@ -94234,12 +93886,12 @@ ${sections.join("\n\n")}${appendixSection}
             ...source ? { source } : {}
           };
           sessions.set(execution.sessionId, execution);
-          pendingProjects.set(key3, [...pendingProjects.get(key3) ?? [], execution]);
+          pendingProjects.set(key4, [...pendingProjects.get(key4) ?? [], execution]);
           try {
             await deps.repo.updateRun({ binding: input.binding, run });
             execution.ready = true;
           } catch (error2) {
-            pendingProjects.set(key3, (pendingProjects.get(key3) ?? []).filter((item) => item !== execution));
+            pendingProjects.set(key4, (pendingProjects.get(key4) ?? []).filter((item) => item !== execution));
             sessions.delete(execution.sessionId);
             pump(input.binding);
             throw error2;
@@ -94250,12 +93902,12 @@ ${sections.join("\n\n")}${appendixSection}
       },
       /** Stops new dispatches, cancels queued work and waits for all durable writes before removal. */
       async withProjectPaused(binding2, work) {
-        const key3 = keyFor(binding2);
-        pausedProjects.set(key3, (pausedProjects.get(key3) ?? 0) + 1);
-        const previous = projectLifecycles.get(key3) ?? Promise.resolve();
+        const key4 = keyFor(binding2);
+        pausedProjects.set(key4, (pausedProjects.get(key4) ?? 0) + 1);
+        const previous = projectLifecycles.get(key4) ?? Promise.resolve();
         const task = previous.catch(() => void 0).then(async () => {
-          await Promise.allSettled([...startingProjects.get(key3) ?? []]);
-          const executions = [...sessions.values()].filter((item) => keyFor(item.binding) === key3);
+          await Promise.allSettled([...startingProjects.get(key4) ?? []]);
+          const executions = [...sessions.values()].filter((item) => keyFor(item.binding) === key4);
           await Promise.all(executions.map(async (execution) => {
             if (execution.finishing) await execution.finishing;
             else if (!execution.settled) {
@@ -94265,19 +93917,19 @@ ${sections.join("\n\n")}${appendixSection}
             }
             await execution.dispatching;
           }));
-          await Promise.allSettled([...dispatchTasks.get(key3) ?? []]);
+          await Promise.allSettled([...dispatchTasks.get(key4) ?? []]);
           await deps.repo.cancelPendingRuns(binding2);
           return work();
         });
-        projectLifecycles.set(key3, task);
+        projectLifecycles.set(key4, task);
         try {
           return await task;
         } finally {
-          if (projectLifecycles.get(key3) === task) projectLifecycles.delete(key3);
-          const count = (pausedProjects.get(key3) ?? 1) - 1;
-          if (count) pausedProjects.set(key3, count);
+          if (projectLifecycles.get(key4) === task) projectLifecycles.delete(key4);
+          const count = (pausedProjects.get(key4) ?? 1) - 1;
+          if (count) pausedProjects.set(key4, count);
           else {
-            pausedProjects.delete(key3);
+            pausedProjects.delete(key4);
             pump(binding2);
           }
         }
@@ -94416,10 +94068,10 @@ ${sections.join("\n\n")}${appendixSection}
     };
   }
 
-  // DesktopRuntime/backend/ai/material-source.ts
+  // backend/ai/material-source.ts
   init_native();
 
-  // DesktopRuntime/upstream/src/main/features/materials/textExtract.ts
+  // upstream/src/main/features/materials/textExtract.ts
   var TEXT_EXTENSIONS2 = /* @__PURE__ */ new Set([
     ".md",
     ".markdown",
@@ -94505,7 +94157,7 @@ ${csv}` + (omittedRows > 0 ? `
     return null;
   }
 
-  // DesktopRuntime/backend/ai/material-source.ts
+  // backend/ai/material-source.ts
   var MAX_BYTES = 50 * 1024 * 1024;
   var hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
   function cancelled(signal) {
@@ -94539,7 +94191,7 @@ ${csv}` + (omittedRows > 0 ? `
     return result ? { ...result, contentHash } : null;
   }
 
-  // DesktopRuntime/upstream/src/main/features/learning/learningGrounding.ts
+  // upstream/src/main/features/learning/learningGrounding.ts
   var normalize2 = (text) => text.normalize("NFC").replace(/\s+/gu, " ").trim();
   function createLearningGrounding(getCourseFolder) {
     const sourcePath = (binding2, ref) => ref.pathScope === "course" ? ref.relPath ?? "" : posix.join(binding2.rootRelPath, ref.relPath ?? "");
@@ -94561,9 +94213,9 @@ ${csv}` + (omittedRows > 0 ? `
         const sourceCourseId = ref.sourceCourseId ?? binding2.courseId;
         if (ref.sourceCourseId && (ref.pathScope !== "course" || sourceCourseId !== binding2.courseId && sourceCourseId !== linkedCourseId)) throw new ValidationError("\uC5F0\uACB0\uB418\uC9C0 \uC54A\uC740 \uACFC\uBAA9\uC758 \uCD9C\uCC98\uC785\uB2C8\uB2E4.");
         const relPath2 = sourcePath(binding2, ref);
-        const key3 = `${sourceCourseId}:${relPath2}`;
-        if (!sources2.has(key3)) sources2.set(key3, material(binding2, relPath2, sourceCourseId));
-        const source = await sources2.get(key3);
+        const key4 = `${sourceCourseId}:${relPath2}`;
+        if (!sources2.has(key4)) sources2.set(key4, material(binding2, relPath2, sourceCourseId));
+        const source = await sources2.get(key4);
         if (ref.contentHash && ref.contentHash !== source.contentHash) throw new Error("\uC790\uB8CC\uAC00 \uC0DD\uC131\uD560 \uB54C\uC640 \uB2EC\uB77C\uC84C\uC5B4\uC694. \uCD5C\uC2E0 \uC790\uB8CC\uB85C \uB2E4\uC2DC \uC0DD\uC131\uD558\uC138\uC694.");
         const text = ref.page === void 0 ? source.text : source.pages.find((page) => page.page === ref.page)?.text;
         if (!text || !normalize2(text).includes(normalize2(ref.quote))) throw new Error("\uD559\uC2B5 \uC790\uB8CC\uC758 \uADFC\uAC70 \uBB38\uC7A5\uC774 \uC6D0\uBCF8\uC5D0 \uC5C6\uC5B4\uC694.");
@@ -94597,7 +94249,7 @@ ${csv}` + (omittedRows > 0 ? `
   function cleanUrl(input) {
     const url = new URL(input);
     url.hash = "";
-    for (const key3 of [...url.searchParams.keys()]) if (/^utm_/i.test(key3) || ["fbclid", "gclid"].includes(key3)) url.searchParams.delete(key3);
+    for (const key4 of [...url.searchParams.keys()]) if (/^utm_/i.test(key4) || ["fbclid", "gclid"].includes(key4)) url.searchParams.delete(key4);
     return url.href;
   }
   var ENGLISH_FUNCTION_WORDS = new Set("the and to of a in that is for it on with as was are this be by from at an or have has but not we they you their which will can its".split(" "));
@@ -94668,11 +94320,11 @@ ${csv}` + (omittedRows > 0 ? `
             const first = selected[0], last2 = selected[selected.length - 1];
             const start = first.index, end = last2.index + last2[0].length;
             if (wanted.length > 1 && !selected.slice(1).every((token, offset) => /^[\s-]*$/u.test(paragraph.text.slice(selected[offset].index + selected[offset][0].length, token.index)))) continue;
-            const key3 = `${start}:${end}`;
-            if (seen.has(key3)) continue;
+            const key4 = `${start}:${end}`;
+            if (seen.has(key4)) continue;
             const sentence = paragraph.sentences.find((item) => item.start <= start && item.end >= end);
             if (!sentence) continue;
-            seen.add(key3);
+            seen.add(key4);
             matches.push({ wordId: word.id, surface: paragraph.text.slice(start, end), paragraphId: paragraph.id, sentenceId: sentence.id, sentence: sentence.text, start, end });
           }
         }
@@ -94681,7 +94333,7 @@ ${csv}` + (omittedRows > 0 ? `
     return matches;
   }
 
-  // DesktopRuntime/upstream/src/main/ipc/learningHandlers.ts
+  // upstream/src/main/ipc/learningHandlers.ts
   function registerLearningHandlers(handle2, deps) {
     handle2("learning:lookupDictionary", (input) => deps.dictionary.lookup(input?.text));
     function nativePack2(id2, kind) {
@@ -94767,14 +94419,14 @@ ${csv}` + (omittedRows > 0 ? `
     }
     const lifecycleRequests = /* @__PURE__ */ new Map();
     async function lifecycle(binding2, work) {
-      const key3 = JSON.stringify([binding2.courseId, posix.normalize(binding2.rootRelPath || ".")]);
-      const previous = lifecycleRequests.get(key3) ?? Promise.resolve();
+      const key4 = JSON.stringify([binding2.courseId, posix.normalize(binding2.rootRelPath || ".")]);
+      const previous = lifecycleRequests.get(key4) ?? Promise.resolve();
       const task = previous.catch(() => void 0).then(work);
-      lifecycleRequests.set(key3, task);
+      lifecycleRequests.set(key4, task);
       try {
         return await task;
       } finally {
-        if (lifecycleRequests.get(key3) === task) lifecycleRequests.delete(key3);
+        if (lifecycleRequests.get(key4) === task) lifecycleRequests.delete(key4);
       }
     }
     handle2("learning:rename", (input) => lifecycle(input.binding, async () => {
@@ -94965,7 +94617,7 @@ ${csv}` + (omittedRows > 0 ? `
     });
   }
 
-  // DesktopRuntime/backend/ai/adapter.ts
+  // backend/ai/adapter.ts
   var platform = (channel, request = {}) => globalThis.__bandalPlatform.invoke(channel, request);
   var running = /* @__PURE__ */ new Map();
   function receiveEvent(request) {
@@ -95109,7 +94761,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
   }
 
-  // DesktopRuntime/backend/learning.ts
+  // backend/learning.ts
   init_native();
   function installLearning(deps) {
     let ai;
@@ -95245,13 +94897,13 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/types/usage.ts
+  // upstream/src/shared/types/usage.ts
   var USAGE_WINDOWS = [7, 30, 0];
   function isUsageWindowDays(value) {
     return USAGE_WINDOWS.some((days2) => days2 === value);
   }
 
-  // DesktopRuntime/upstream/src/main/features/calendar/appleCalendarService.ts
+  // upstream/src/main/features/calendar/appleCalendarService.ts
   var EMPTY_CALENDAR_CONFIG = {
     initialized: false,
     connected: false,
@@ -95267,7 +94919,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       connected: value.connected === true,
       selectedCalendarIds: [...new Set(ids)].slice(0, 500),
       destinationCalendarId: typeof value.destinationCalendarId === "string" ? value.destinationCalendarId : null,
-      exports: value.exports && typeof value.exports === "object" ? Object.fromEntries(Object.entries(value.exports).filter(([key3, id2]) => key3.length < 1024 && typeof id2 === "string" && id2.length < 4096)) : {}
+      exports: value.exports && typeof value.exports === "object" ? Object.fromEntries(Object.entries(value.exports).filter(([key4, id2]) => key4.length < 1024 && typeof id2 === "string" && id2.length < 4096)) : {}
     };
   }
   function createAppleCalendarService(deps) {
@@ -95350,11 +95002,295 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
   }
 
-  // DesktopRuntime/backend/legacy.ts
+  // backend/legacy.ts
   init_native();
   init_buffer();
 
-  // DesktopRuntime/backend/legacy-recording.ts
+  // upstream/src/shared/textRuns.ts
+  var INLINE_KEYS = [
+    "color",
+    "fontSizePt",
+    "bold",
+    "italic",
+    "underline",
+    "strike"
+  ];
+  function sameInlineStyle(left, right) {
+    return INLINE_KEYS.every((key4) => left[key4] === right[key4]);
+  }
+  function normalizeTextRuns(text, runs) {
+    if (runs === void 0 || text.length === 0) return [];
+    const valid = runs.filter(
+      (run) => Number.isInteger(run.from) && Number.isInteger(run.to) && run.from >= 0 && run.to > run.from && run.from < text.length
+    ).map((run) => ({
+      from: run.from,
+      to: Math.min(text.length, run.to),
+      style: { ...run.style }
+    })).sort((left, right) => left.from - right.from || left.to - right.to);
+    const normalized = [];
+    for (const run of valid) {
+      const previous = normalized.at(-1);
+      const from = previous === void 0 ? run.from : Math.max(previous.to, run.from);
+      if (run.to <= from || Object.keys(run.style).length === 0) continue;
+      if (previous !== void 0 && previous.to === from && sameInlineStyle(previous.style, run.style)) {
+        previous.to = run.to;
+      } else {
+        normalized.push({ ...run, from });
+      }
+    }
+    return normalized;
+  }
+
+  // upstream/src/main/features/drawingValidation.ts
+  var TEXT_FLAG_FIELDS = ["bold", "italic", "underline", "strike"];
+  function assertUnit(value, field) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+      throw new ValidationError(`${field} must be a finite number between 0 and 1`);
+    }
+    return value;
+  }
+  function assertPositive(value, field, max2 = 1) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > max2) {
+      throw new ValidationError(
+        `${field} must be a finite number greater than 0 and at most ${max2}`
+      );
+    }
+    return value;
+  }
+  function assertPoint(value, field) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      throw new ValidationError(`${field} must be a drawing point`);
+    }
+    const point2 = value;
+    const result = {
+      x: assertUnit(point2.x, `${field}.x`),
+      y: assertUnit(point2.y, `${field}.y`),
+      p: assertUnit(point2.p, `${field}.p`)
+    };
+    for (const key4 of ["t", "tiltX", "tiltY"]) {
+      const sample = point2[key4];
+      if (sample === void 0) continue;
+      const min = key4 === "t" ? 0 : -90, max2 = key4 === "t" ? 864e5 : 90;
+      if (typeof sample !== "number" || !Number.isFinite(sample) || sample < min || sample > max2) {
+        throw new ValidationError(`${field}.${key4} is outside its measured sample range`);
+      }
+      result[key4] = sample;
+    }
+    return result;
+  }
+  function assertBox(value, field) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      throw new ValidationError(`${field} must be a drawing box`);
+    }
+    const box2 = value;
+    const result = {
+      x: assertUnit(box2.x, `${field}.x`),
+      y: assertUnit(box2.y, `${field}.y`),
+      width: assertUnit(box2.width, `${field}.width`),
+      height: assertUnit(box2.height, `${field}.height`)
+    };
+    if (result.x + result.width > 1 || result.y + result.height > 1) {
+      throw new ValidationError(`${field} must stay inside the normalized page`);
+    }
+    return result;
+  }
+  function assertImage(value) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      throw new ValidationError("data.image must be an object");
+    }
+    const image = value;
+    if (typeof image.relPath !== "string" || image.relPath.trim() === "" || typeof image.label !== "string" || image.label.trim() === "") {
+      throw new ValidationError("data.image needs relPath and label");
+    }
+    const result = {
+      relPath: image.relPath,
+      label: image.label
+    };
+    if (image.storage !== void 0 || image.assetId !== void 0) {
+      if (image.storage !== "shared" || typeof image.assetId !== "string" || image.assetId.trim() === "" || typeof image.widthPx !== "number" || !Number.isInteger(image.widthPx) || image.widthPx <= 0 || typeof image.heightPx !== "number" || !Number.isInteger(image.heightPx) || image.heightPx <= 0) {
+        throw new ValidationError("shared data.image needs assetId and pixel dimensions");
+      }
+      result.storage = "shared";
+      result.assetId = image.assetId;
+      result.widthPx = image.widthPx;
+      result.heightPx = image.heightPx;
+    }
+    return result;
+  }
+  function assertClip(value) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      throw new ValidationError("data.clip must be an object");
+    }
+    const clip2 = value;
+    if (typeof clip2.relPath !== "string" || clip2.relPath.trim() === "" || typeof clip2.label !== "string" || clip2.label.trim() === "") {
+      throw new ValidationError("data.clip needs relPath and label");
+    }
+    if (typeof clip2.page !== "number" || !Number.isInteger(clip2.page) || clip2.page < 1) {
+      throw new ValidationError("data.clip.page must be an integer >= 1");
+    }
+    const result = {
+      relPath: clip2.relPath,
+      page: clip2.page,
+      label: clip2.label
+    };
+    if (clip2.crop !== void 0) result.crop = assertBox(clip2.crop, "data.clip.crop");
+    return result;
+  }
+  function assertTextRuns(text, value) {
+    if (!Array.isArray(value)) {
+      throw new ValidationError("data.textRuns needs textbox text and an array");
+    }
+    const runs = value.map((raw, index) => {
+      if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+        throw new ValidationError(`data.textRuns[${index}] must be an object`);
+      }
+      const run = raw;
+      if (!Number.isInteger(run.from) || !Number.isInteger(run.to) || run.from < 0 || run.to <= run.from || run.to > text.length) {
+        throw new ValidationError(`data.textRuns[${index}] has an invalid range`);
+      }
+      if (run.style === null || typeof run.style !== "object" || Array.isArray(run.style)) {
+        throw new ValidationError(`data.textRuns[${index}].style must be an object`);
+      }
+      const style = {};
+      if (run.style.color !== void 0) {
+        if (!DRAWING_COLORS.includes(run.style.color)) {
+          throw new ValidationError(`data.textRuns[${index}].style.color is invalid`);
+        }
+        style.color = run.style.color;
+      }
+      if (run.style.fontSizePt !== void 0) {
+        style.fontSizePt = assertPositive(
+          run.style.fontSizePt,
+          `data.textRuns[${index}].style.fontSizePt`,
+          96
+        );
+      }
+      for (const field of TEXT_FLAG_FIELDS) {
+        const flag3 = run.style[field];
+        if (flag3 === void 0) continue;
+        if (typeof flag3 !== "boolean") {
+          throw new ValidationError(`data.textRuns[${index}].style.${field} must be boolean`);
+        }
+        style[field] = flag3;
+      }
+      return { from: run.from, to: run.to, style };
+    });
+    const normalized = normalizeTextRuns(text, runs);
+    if (normalized.length !== runs.length) {
+      throw new ValidationError("data.textRuns must be ordered, non-overlapping ranges");
+    }
+    return normalized;
+  }
+  function assertDrawingKind(value, allowedKinds = DRAWING_KINDS) {
+    if (!allowedKinds.includes(value)) {
+      throw new ValidationError(`kind must be one of ${allowedKinds.join(", ")}`);
+    }
+    return value;
+  }
+  function assertDrawingData(value, kind, options = {}) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      throw new ValidationError("data must be an object");
+    }
+    const candidate = value;
+    let points;
+    if (candidate.points !== void 0) {
+      if (!Array.isArray(candidate.points)) {
+        throw new ValidationError("data.points must be an array");
+      }
+      points = candidate.points.map(
+        (point2, index) => assertPoint(point2, `data.points[${index}]`)
+      );
+    }
+    const box2 = candidate.box === void 0 ? void 0 : assertBox(candidate.box, "data.box");
+    const text = candidate.text;
+    if (text !== void 0 && typeof text !== "string") {
+      throw new ValidationError("data.text must be a string");
+    }
+    let textRuns;
+    if (candidate.textRuns !== void 0) {
+      if (text === void 0) {
+        throw new ValidationError("data.textRuns needs textbox text and an array");
+      }
+      textRuns = assertTextRuns(text, candidate.textRuns);
+    }
+    if ((kind === "ink" || kind === "highlighter") && (points?.length ?? 0) === 0) {
+      throw new ValidationError(`${kind} data needs at least one point`);
+    }
+    if ((kind === "rect" || kind === "ellipse" || kind === "textbox") && box2 === void 0) {
+      throw new ValidationError(`${kind} data needs a box`);
+    }
+    if ((kind === "line" || kind === "arrow") && box2 === void 0 && (points?.length ?? 0) < 2) {
+      throw new ValidationError(`${kind} data needs a box or two points`);
+    }
+    if (kind === "textbox" && text === void 0) {
+      throw new ValidationError("textbox data needs text");
+    }
+    const image = candidate.image === void 0 ? void 0 : assertImage(candidate.image);
+    if (kind === "image" && (image === void 0 || box2 === void 0)) {
+      throw new ValidationError("image data needs a box and an image source");
+    }
+    const clip2 = options.allowClip === true && candidate.clip !== void 0 ? assertClip(candidate.clip) : void 0;
+    if (kind === "clip" && (clip2 === void 0 || box2 === void 0)) {
+      throw new ValidationError("clip data needs a box and a clip source");
+    }
+    const result = {};
+    if (candidate.inkVersion !== void 0) {
+      if (candidate.inkVersion !== 2 || kind !== "ink" && kind !== "highlighter") throw new ValidationError("Unsupported ink renderer version");
+      result.inkVersion = 2;
+    }
+    if (points !== void 0) result.points = points;
+    if (box2 !== void 0) result.box = box2;
+    if (text !== void 0) result.text = text;
+    if (textRuns !== void 0 && textRuns.length > 0) result.textRuns = textRuns;
+    if (image !== void 0) result.image = image;
+    if (clip2 !== void 0) result.clip = clip2;
+    return result;
+  }
+  function assertDrawingStyle(value) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      throw new ValidationError("style must be an object");
+    }
+    const style = value;
+    if (!DRAWING_COLORS.includes(style.color)) {
+      throw new ValidationError(
+        `style.color must be one of ${DRAWING_COLORS.join(", ")}`
+      );
+    }
+    const result = {
+      color: style.color,
+      width: assertPositive(style.width, "style.width"),
+      opacity: assertUnit(style.opacity, "style.opacity")
+    };
+    if (style.fontScale !== void 0) {
+      result.fontScale = assertPositive(style.fontScale, "style.fontScale", 10);
+    }
+    if (style.fontSizePt !== void 0) {
+      result.fontSizePt = assertPositive(style.fontSizePt, "style.fontSizePt", 96);
+    }
+    for (const field of TEXT_FLAG_FIELDS) {
+      const flag3 = style[field];
+      if (flag3 === void 0) continue;
+      if (typeof flag3 !== "boolean") {
+        throw new ValidationError(`style.${field} must be a boolean`);
+      }
+      result[field] = flag3;
+    }
+    if (style.align !== void 0) {
+      if (!TEXT_ALIGNS.includes(style.align)) {
+        throw new ValidationError(`style.align must be one of ${TEXT_ALIGNS.join(", ")}`);
+      }
+      result.align = style.align;
+    }
+    if (style.fill !== void 0) {
+      if (!DRAWING_COLORS.includes(style.fill)) {
+        throw new ValidationError(`style.fill must be one of ${DRAWING_COLORS.join(", ")}`);
+      }
+      result.fill = style.fill;
+    }
+    return result;
+  }
+
+  // backend/legacy-recording.ts
   init_buffer();
   init_native();
   function copyLegacyRecording(source, target) {
@@ -95413,7 +95349,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
   }
 
-  // DesktopRuntime/backend/legacy.ts
+  // backend/legacy.ts
   var version2 = "native-to-desktop-v1";
   var coordinateSpace = "unrotated-crop-box-top-left-normalized";
   var uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -95482,7 +95418,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     writeFileAtomic(join(recovery, "legacy-snapshot.json"), archiveBytes);
     const live = records.filter((record2) => !record2.deleted), ofKind = (kind) => live.filter((record2) => record2.kind === kind);
     const courses = /* @__PURE__ */ new Map(), materials = /* @__PURE__ */ new Map(), files = [], rows = [];
-    const add = (table9, value) => rows.push({ table: table9, value });
+    const add = (table10, value) => rows.push({ table: table10, value });
     for (const record2 of ofKind("course")) {
       const p = record2.payload, courseID = id(p.id), folder = join(env2().dataRoot, "iPad", courseID);
       if (db.prepare("SELECT id FROM courses WHERE id=?").get(courseID)) throw new Error("Legacy course ID already exists without a migration receipt");
@@ -95510,9 +95446,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       const extension2 = extname(proposed), stem = proposed.slice(0, proposed.length - extension2.length);
       for (let index = 1; index <= 1e4; index++) {
         const file = index === 1 ? proposed : `${stem} (${index})${extension2}`, rel = directory2 ? `${directory2}/${file}` : file;
-        const key3 = `${courseID}/${rel.normalize("NFC").toLowerCase()}`;
-        if (!occupied.has(key3)) {
-          occupied.add(key3);
+        const key4 = `${courseID}/${rel.normalize("NFC").toLowerCase()}`;
+        if (!occupied.has(key4)) {
+          occupied.add(key4);
           return rel;
         }
       }
@@ -95643,7 +95579,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       if (!(geometry.width > 0 && geometry.height > 0) || ![0, 90, 180, 270].includes(geometry.rotation) || !Number.isInteger(page.page) || page.page < 1) throw new Error("Legacy page geometry is invalid");
       if (material.kind !== "whiteboard") {
         const actual = native("pdf.geometry", { path: material.target }).find((p) => p.page === page.page);
-        if (!actual || actual.rotation !== geometry.rotation || ["x", "y", "width", "height"].some((key3, index) => Math.abs(actual.cropBox[key3] - [geometry.cropX, geometry.cropY, geometry.width, geometry.height][index]) > 1e-3)) throw new Error("Legacy ink PDF geometry does not match its document");
+        if (!actual || actual.rotation !== geometry.rotation || ["x", "y", "width", "height"].some((key4, index) => Math.abs(actual.cropBox[key4] - [geometry.cropX, geometry.cropY, geometry.width, geometry.height][index]) > 1e-3)) throw new Error("Legacy ink PDF geometry does not match its document");
       }
       const deleted = new Set(page.deletedObjectIDs ?? []), deletedHighlights = new Set(page.deletedHighlightIDs ?? []);
       for (const original of page.objects) {
@@ -95709,19 +95645,19 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const report = { version: version2, sourceHash, recoveryPath: recovery, records: records.length, courses: courses.size, materials: materials.size, objects, highlights, recordings: recordingCount, historicalPages, archivedKinds };
     db.transaction(() => {
       for (const record2 of records) db.prepare("INSERT INTO ipad_legacy_archive VALUES(?,?,?,?)").run(record2.id, record2.kind, JSON.stringify(record2.payload), JSON.stringify(record2));
-      for (const { table: table9, value } of rows) {
+      for (const { table: table10, value } of rows) {
         const keys4 = Object.keys(value);
-        const result = db.prepare(`INSERT INTO ${table9} (${keys4.join(",")}) VALUES (${keys4.map(() => "?").join(",")})`).run(...keys4.map((key3) => value[key3]));
+        const result = db.prepare(`INSERT INTO ${table10} (${keys4.join(",")}) VALUES (${keys4.map(() => "?").join(",")})`).run(...keys4.map((key4) => value[key4]));
         if (value.id === void 0) value.id = result.lastInsertRowid;
       }
-      for (const { table: table9, value } of rows) if (!db.prepare(`SELECT id FROM ${table9} WHERE id=?`).get(value.id)) throw new Error("Legacy row verification failed");
+      for (const { table: table10, value } of rows) if (!db.prepare(`SELECT id FROM ${table10} WHERE id=?`).get(value.id)) throw new Error("Legacy row verification failed");
       if (db.prepare("SELECT COUNT(*) n FROM ipad_legacy_archive").get().n !== records.length) throw new Error("Legacy archive count verification failed");
       db.prepare("INSERT INTO ipad_legacy_migrations VALUES(?,?)").run(version2, JSON.stringify(report));
     })();
     return report;
   }
 
-  // DesktopRuntime/upstream/src/renderer/src/features/file/fileFormats.ts
+  // upstream/src/renderer/src/features/file/fileFormats.ts
   var DOCX_EXTENSIONS = [".docx"];
   var SHEET_EXTENSIONS = [".xlsx", ".xls", ".csv", ".tsv"];
   var SLIDES_EXTENSIONS = [".pptx", ".ppt"];
@@ -95825,7 +95761,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return VIEWABLE_EXTENSIONS.has(extensionFor2(relPath2));
   }
 
-  // DesktopRuntime/backend/legacy-view-state.ts
+  // backend/legacy-view-state.ts
   init_native();
   var LEGACY_VIEW_STATE_VERSION = "native-to-desktop-view-state-v1";
   var uuid2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -96103,7 +96039,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return report;
   }
 
-  // DesktopRuntime/backend/storage-relocation.ts
+  // backend/storage-relocation.ts
   init_native();
   var uuid3 = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
   var oldContainer = new RegExp(`^((?:/private)?/var/mobile/Containers/Data/Application/${uuid3}/Documents/BandalDesktop)(?:/|$)`, "i");
@@ -96194,11 +96130,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
     const hasTable = (name7) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name7);
     const jsonChanges = [];
-    const jsonRows = (table9, column, key3, update) => {
-      if (!hasTable(table9) || !db.prepare(`PRAGMA table_info(${table9})`).all().some((c) => c.name === column)) return;
-      for (const row of db.prepare(`SELECT ${key3},${column} FROM ${table9}`).all()) {
+    const jsonRows = (table10, column, key4, update) => {
+      if (!hasTable(table10) || !db.prepare(`PRAGMA table_info(${table10})`).all().some((c) => c.name === column)) return;
+      for (const row of db.prepare(`SELECT ${key4},${column} FROM ${table10}`).all()) {
         const value = JSON.parse(row[column]), next = update(value);
-        if (JSON.stringify(next) !== JSON.stringify(value)) jsonChanges.push({ table: table9, column, key: key3, id: row[key3], text: JSON.stringify(next) });
+        if (JSON.stringify(next) !== JSON.stringify(value)) jsonChanges.push({ table: table10, column, key: key4, id: row[key4], text: JSON.stringify(next) });
       }
     };
     jsonRows("ipad_sync_projection", "source_json", "id", (value) => {
@@ -96227,7 +96163,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return { courses: moved.size, files: fileChanges.length };
   }
 
-  // DesktopRuntime/upstream/src/main/features/search/searchIndex.ts
+  // upstream/src/main/features/search/searchIndex.ts
   var SEARCH_TABLE = "course_content_fts";
   var DEFAULT_LIMIT = 30;
   var MAX_LIMIT = 100;
@@ -96371,10 +96307,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   function rowsToHits(rows, needle) {
     const hits = [];
     for (const row of rows) {
-      const key3 = contentSearchKey(row.body);
-      const matchAt = key3.indexOf(needle);
+      const key4 = contentSearchKey(row.body);
+      const matchAt = key4.indexOf(needle);
       if (matchAt < 0) continue;
-      const occurrences = occurrenceCount(key3, needle);
+      const occurrences = occurrenceCount(key4, needle);
       hits.push({
         kind: row.kind,
         relPath: row.rel_path,
@@ -96578,7 +96514,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return { refreshTextFiles, refreshInBackground, indexPdfPages, query, prune };
   }
 
-  // DesktopRuntime/upstream/src/shared/types/plugin.ts
+  // upstream/src/shared/types/plugin.ts
   var PLUGIN_MANIFEST_VERSION = 2;
   var PLUGIN_PERMISSIONS = [
     "courses.read",
@@ -96612,13 +96548,13 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     settingsBytes: 256 * 1024
   };
 
-  // DesktopRuntime/upstream/src/shared/plugins/permissions.ts
+  // upstream/src/shared/plugins/permissions.ts
   var STATIC_PERMISSIONS = new Set(PLUGIN_PERMISSIONS);
   function isStaticPermission(value) {
     return STATIC_PERMISSIONS.has(value);
   }
 
-  // DesktopRuntime/upstream/src/shared/plugins/semver.ts
+  // upstream/src/shared/plugins/semver.ts
   var SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
   function parseSemver(value) {
     if (typeof value !== "string") return null;
@@ -96652,8 +96588,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     if (left === null || right === null) {
       throw new Error(`compareSemver: invalid version "${left === null ? a : b}"`);
     }
-    for (const key3 of ["major", "minor", "patch"]) {
-      const comparison = compareIdentifiers(left[key3], right[key3]);
+    for (const key4 of ["major", "minor", "patch"]) {
+      const comparison = compareIdentifiers(left[key4], right[key4]);
       if (comparison !== 0) return comparison < 0 ? -1 : 1;
     }
     if (left.prerelease.length === 0 && right.prerelease.length === 0) return 0;
@@ -96671,7 +96607,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return 0;
   }
 
-  // DesktopRuntime/upstream/src/shared/plugins/configuration.ts
+  // upstream/src/shared/plugins/configuration.ts
   function validSettingValue(definition, value) {
     switch (definition.type) {
       case "boolean":
@@ -96722,7 +96658,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     );
   }
 
-  // DesktopRuntime/upstream/src/shared/plugins/contributions.ts
+  // upstream/src/shared/plugins/contributions.ts
   var PLUGIN_THEME_TOKENS = [
     "--bg-app",
     "--bg-surface",
@@ -96791,7 +96727,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return { menus: resultMenus, themes: resultThemes };
   }
 
-  // DesktopRuntime/upstream/src/shared/plugins/sanitize.ts
+  // upstream/src/shared/plugins/sanitize.ts
   var DEFAULT_MAIN = "main.js";
   var STYLES_FILE = "styles.css";
   var IGNORED_MANIFEST_KEYS = ["menus", "themes"];
@@ -97054,9 +96990,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     } else if (rawStyles !== void 0 && rawStyles !== null) {
       warnings.push(`styles must be exactly "${STYLES_FILE}" or null; ignored.`);
     }
-    for (const key3 of IGNORED_MANIFEST_KEYS) {
-      if (raw[key3] !== void 0) {
-        warnings.push(`${key3} is not supported in manifestVersion 1; ignored.`);
+    for (const key4 of IGNORED_MANIFEST_KEYS) {
+      if (raw[key4] !== void 0) {
+        warnings.push(`${key4} is not supported in manifestVersion 1; ignored.`);
       }
     }
     let additions = {};
@@ -97085,7 +97021,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/plugins/pluginStore.ts
+  // upstream/src/main/features/plugins/pluginStore.ts
   var PLUGINS_ENVELOPE_FILE = "plugins.json";
   var PLUGINS_DIR = "plugins";
   var ENVELOPE_FORMAT = "bandal-plugins";
@@ -97481,7 +97417,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/plugins/pluginDataStore.ts
+  // upstream/src/main/features/plugins/pluginDataStore.ts
   var PLUGIN_DATA_DIR = "plugin-data";
   function assertPluginId(pluginId) {
     if (typeof pluginId !== "string" || pluginId.length > PLUGIN_ID_MAX_LENGTH || !PLUGIN_ID_PATTERN.test(pluginId)) {
@@ -97541,7 +97477,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/plugins/pluginSettings.ts
+  // upstream/src/main/features/plugins/pluginSettings.ts
   function createPluginSettings(deps) {
     function schema(id2) {
       const manifest = deps.manifest(id2);
@@ -97553,13 +97489,13 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
     return {
       get,
-      set(id2, key3, value) {
-        const field = schema(id2).find((candidate) => candidate.key === key3);
+      set(id2, key4, value) {
+        const field = schema(id2).find((candidate) => candidate.key === key4);
         if (field === void 0 || !validSettingValue(field, value))
           throw new ValidationError("invalid plugin setting");
         const stored = deps.data.get(id2);
         const current = typeof stored === "object" && stored !== null && !Array.isArray(stored) ? stored : {};
-        deps.data.set(id2, { ...current, [key3]: value });
+        deps.data.set(id2, { ...current, [key4]: value });
         deps.changed(id2, get(id2));
       },
       reset(id2) {
@@ -97576,12 +97512,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/types/workflowPack.ts
+  // upstream/src/shared/types/workflowPack.ts
   var WORKFLOW_PACK_SCHEMA_VERSION = 2;
   var LEGACY_WORKFLOW_PACK_SCHEMA_VERSION = 1;
   var CUSTOM_PACK_PREFIX = "custom:";
 
-  // DesktopRuntime/upstream/src/shared/workflowPacks/builtins.ts
+  // upstream/src/shared/workflowPacks/builtins.ts
   var COURSE_SCOPES = [
     "course",
     "material",
@@ -97781,7 +97717,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return legacy;
   }
 
-  // DesktopRuntime/upstream/src/shared/workflowPacks/toolNames.ts
+  // upstream/src/shared/workflowPacks/toolNames.ts
   var WORKFLOW_PACK_ALLOWED_TOOL_NAMES = [
     "learning_verify_article",
     "learning_submit_result",
@@ -97859,7 +97795,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     "browser_attach_file"
   ];
 
-  // DesktopRuntime/upstream/src/shared/workflowPacks/sanitize.ts
+  // upstream/src/shared/workflowPacks/sanitize.ts
   var MAX_NAME_LENGTH = 40;
   var MAX_RECIPE_BYTES = 8 * 1024;
   var WORKFLOW_PACK_SCOPES = [
@@ -98046,7 +97982,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return { pack, warnings };
   }
 
-  // DesktopRuntime/upstream/src/main/features/workflowPacks/packStore.ts
+  // upstream/src/main/features/workflowPacks/packStore.ts
   var WORKFLOW_PACKS_FILE_NAME = "workflow-packs.json";
   var MAX_CUSTOM_WORKFLOW_PACKS = 50;
   var ENVELOPE_FORMAT2 = "bandal-workflow-packs";
@@ -98285,7 +98221,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
   }
 
-  // ../bandal/node_modules/.pnpm/tslib@1.14.1/node_modules/tslib/modules/index.js
+  // ../../bandal/node_modules/.pnpm/tslib@1.14.1/node_modules/tslib/modules/index.js
   var import_tslib = __toESM(require_tslib(), 1);
   var {
     __extends,
@@ -98313,7 +98249,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     __classPrivateFieldSet
   } = import_tslib.default;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/base64.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/base64.js
   var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   var lookup = new Uint8Array(256);
   for (i = 0; i < chars.length; i++) {
@@ -98375,7 +98311,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return decodeFromBase64(data2);
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/strings.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/strings.js
   var toCharCode = function(character) {
     return character.charCodeAt(0);
   };
@@ -98513,7 +98449,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return { match: lastMatch, pos: position };
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/arrays.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/arrays.js
   var last = function(array) {
     return array[array.length - 1];
   };
@@ -98634,7 +98570,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/async.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/async.js
   var waitForTick = function() {
     return new Promise(function(resolve2) {
       setTimeout(function() {
@@ -98643,7 +98579,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     });
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/unicode.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/unicode.js
   var utf16Encode = function(input, byteOrderMark) {
     if (byteOrderMark === void 0) {
       byteOrderMark = true;
@@ -98741,7 +98677,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return hasUtf16BigEndianBOM(bytes) || hasUtf16LittleEndianBOM(bytes);
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/numbers.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/numbers.js
   var numberToString = function(num) {
     var numStr = String(num);
     if (Math.abs(num) < 1) {
@@ -98776,12 +98712,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return bytes;
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/errors.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/errors.js
   var error = function(msg) {
     throw new Error(msg);
   };
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/utils.js
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/utils.js
   var import_pako = __toESM(require_pako());
   var chars2 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   var lookup2 = new Uint8Array(256);
@@ -98834,49 +98770,49 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return padding + value;
   };
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Courier-Bold.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Courier-Bold.compressed.json
   var Courier_Bold_compressed_default = "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";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Courier-BoldOblique.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Courier-BoldOblique.compressed.json
   var Courier_BoldOblique_compressed_default = "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";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Courier-Oblique.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Courier-Oblique.compressed.json
   var Courier_Oblique_compressed_default = "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";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Courier.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Courier.compressed.json
   var Courier_compressed_default = "eJyFWdtSGzkQ/RXXPO1WmZSBEAJvjnESb8AmGENCKg+ypj3Wohk5ugAmlX9fzUCyW6s+ysuUfVqXvh61Zr4XI1PX1PjiuLg6C05U1Ns/Ojx42TsYHB4eFf3irWn8VNQUB4xMsIpsCwatU1DUSm8T+JpUtW7XP6NShToiEy+0ksOm0nHkIP53b9UDlefKy3Vx7G2gfjFaCyukJzundu74wVNTUnlhatE8a/XmjXkojr/s7O33d/YOBv3D3YP+68HB136xiEOtVg2dG6e8Mk1xvLM7GPxHcLlW8rYh54rjOLO4Iuu6YcVgsP9iMBjELabGK/lkymZrWxt6f8g/e7tHr4/68Xk06J673XOve+53z8PesDRL6s23zlPtepNGGrsxVngqX/R6Q617F+1qrndBjuxdRONu4ziqVE01l2vqHNgtMveiKYUtf0rjwJHYvH/26MGrvX7x6ee/l3uv+sXQydZPtjh+tXfUL07o1/+d3YPDfjH35fvrOHO3+3n1/LN19hl5q2T0x5fvxfWnOL/11zQq4jYiuuFH/38wPUgt6hT/Fkw0dKlTSRPqZevnqkllpdFa2BTfkJVtdiYCUUeRi94BGnQBY9YTlhpNKyQC04RrV3S3zCwdXIrKWFQihdfbzZoY66MpyjCWOC3cOoUfyZoUNQ0TJX/PjPRrS8zYVSxZBlV3zFinHhiQ7jjriPdpoziFpdGGWcNRrYBIt1WcbvotCCYHK0uxDhkzvwVyHVOksWd0H6bQmxQapdBJCo1T6G0KvUuh9yk0SaG/UuhDCp2m0FkKTVNolkLnKfQxhS5SaJ5Clym0SKGrFLpOoU8p9DmFblJoGU+iW/I8bSyjDNTp8zzIKVIpqawMDIuGlrRdPDiYEun4jVeG4ZwlU2MM/zIVxHABU1AMy6WQSqG/U4ihV6aEGW8xVcvQ3oZxZQox3MDQC+P7kEJ3KXSfQgyTbhnS5/MLJMKSO0y78bls9EqX8KgvzT3jZ/50bo9L3fYraQq1XR3Ls1vu7FhpYxV7HoBVZLDxGJeMA7uycarrOmHXwnuzCipKagMooBV3C/9GDFy/YqpjxSR+bORYmilFVXFH2hPOtmJPDUcbO7LE1H7shURlxYYjtdj6E2PFv+5dCpfxcF4KXPQrAEBOWquNU0yhRkv92gTUKT4d+nxqRwdwrY+QwXONS8fkK01MOYO6qoW0XA4vLXEbl8YLyddbGa9axNpv2SqU8SoWG26Gu0NTCRtqLQKzjalik8mwtBSsHVTzCTtkWh5jy1Xs8fim8BQcsDOE8xvUkeSCZncQvL/b3pKpTg32NQhnVo+lGa+yMeWZoE1wPAmknwBJE/IRJRC6z1iDUt0pLps/A82GucoQYNIiN2kLJrnu2oVqhHJLLvg6WWA3CFQMC6BdQBPGeJOTSBDc/SNrqPz5voLZClGOBHkgeL9MswpolKOAUS+zq43QaoBVxxmedMBMBwlRgd21eaSmYgQXYIt3WSNDtkhywiEKqQWKSGjrTcZzl2tjmcVmaPcL4Lc5wEug7QJtEPjM7N5tuNA1OExPNAMpOEQ4oNU6aK82mmkzAzDwEhgYWy2vhC7VirldbTE1TME+Kpcs42yaZU4dLJJAjwbRIAroFDhoAhZq37zFhoF7/ba05pYa9g5kqVIOdL3vQLAnOUYJsar5q8gY5JQFBhnkmRsw4QZ47PklF3gFNvZMhzKCpKCzvOVR6wdPRyQYovYhk5XAwY+oNNDeMxQRdPSgSDm0MzZilm1LgIUnpD0TK8+TtL83GUbEqtXMKw0FNDL5PnOMXF+CDqfj8ZjANiYyo9o8k698Rn7I5vEpCJy3oqRaWEZzyrDCBHhpghLnFGgdnbYWmjkZ2psJKHCTy6gGdE2L38QP+IeQQRXg0mjQc1S5oPJOmGdDN8trXkaW4L52GBCiEVAiQDYvleTCcAIWsllrpiA+BuAX+bTOSodgzSHkaL7nmoF1HjMVMkanPdr7NmsKaAQm2VIAKvj85cZUbbwbw70fwVwasCguhb5W5S+03EH+CIxqsktFl+MTQqEaH4f2O+TXfvGBbHMulG2/Hn/98Q/b2xEO";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Helvetica-Bold.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Helvetica-Bold.compressed.json
   var Helvetica_Bold_compressed_default = "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";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Helvetica-BoldOblique.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Helvetica-BoldOblique.compressed.json
   var Helvetica_BoldOblique_compressed_default = "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";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Helvetica-Oblique.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Helvetica-Oblique.compressed.json
   var Helvetica_Oblique_compressed_default = "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";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Helvetica.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Helvetica.compressed.json
   var Helvetica_compressed_default = "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";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Times-Bold.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Times-Bold.compressed.json
   var Times_Bold_compressed_default = "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";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Times-BoldItalic.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Times-BoldItalic.compressed.json
   var Times_BoldItalic_compressed_default = "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";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Times-Italic.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Times-Italic.compressed.json
   var Times_Italic_compressed_default = "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";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Times-Roman.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Times-Roman.compressed.json
   var Times_Roman_compressed_default = "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";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Symbol.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Symbol.compressed.json
   var Symbol_compressed_default = "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";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/ZapfDingbats.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/ZapfDingbats.compressed.json
   var ZapfDingbats_compressed_default = "eJxtmNtu20YQhl+F4FULyMGeD7pz3AY1ChtG7NpFA18w1NomIlECSRcxgrx7SVk7+wOdG8H5OJydf2Z2d5gf9cV+t0v9VK/r+6vXsXlOlbHe28paq229qj/t++m62aXZ4J/m8PRb1z9/baZxefK63Z6eXN5dVMvTCh83u277xr/6kLrnl2XNq7TpXnczuZyabdee98/b2VzM/x4/dd/T5qab2pd6PQ2vaVVfvDRD005puE3Lu7eH1HbN9hTjx4/77/X6y5lcnUmjVzHIVVDicVX/1W/SsO36dLMfu6nb9/X6TAoBD+5euvZbn8axXtuZ36dhPJrVQqgPQoh5hev91LWLkIv94W1Ygq9+aX+tZAx2tfz64284/sblN/rqfLP/mqrbt3FKu7G67Nv9cNgPzZQ2H6rz7bb6vLgZq89pTMO/M/xfEqturJpqSM/d7GJIm2oamk3aNcO3av80O5xh3yyKmm1193ZIT02bqovTKjP+MAf++7zsZvZ3276kYyWWXB0z99S18/PbafPHQ71W4fjn/fxnFO+ZvkrT0LVzTr78qB/+nk38bHM9exgP8zr1z9U7jt6840YW5uSJKcZOCaBBnKgm5mU8MVNYyMwWFvO7Ukagkmgg6sDWQ5yFFqjzUrLEaQ3BEmiwNsMSaZS0vgWfOkPHWQowNeTUc0kumnxZvsgPxlGai6VTGUqAVCTQ6QkWnc77DKEiLktSUBJKqHIQZ86d8gCpHYoiEzMsb1ubYy8vW50DChB5ZhGqrijD0EqUIeiaEHIfCg5Kpuu0ApiToaGPSY0uaQsyr65L2oKi1yFt1PLaQ3lzfXTgXodGoJYzglndSLDMPg1sTPJpQJHJigw0QrGERqD9YhyTOgONQDUyuF1zaxuokc/BW2ztXCMrGZ9WMW1oQZHIXWNBkSCfRZEL5BMUiZw6CzVSFCfUSGZFNjIldoKDkonTKQiJIGzWmFd3BizJJ9SINoLDriOfUCOZS+zg+KGD1qGiLNMLxtJD1/ns00ON6EzyUCM6vbxhoBKaqbG3DFQCNiL1iHccBPV0DHhQH/JW8EW90dkyFKGywCJU0WkVSvSGeiSUODWFFD0HYdPQVoiRgfPMA+/nnRgiAyNYSjpWNQcNSMrtFCUH4ZIRpSCWocFCSuhCEY6hoUClc0WC52BJlCYYLQdhN+hygRRRlo5BKRRLS6oihSqh+ZzzRGG1Mo4Iz1LoP0qsxDGFzk0JE42ji0jCPejomJKCuwil4m5CiRMEUMVSzVLDUstSx1Juc0oVWMpqY295qVltmtWmWW2a1aZZbZrVplltmtWmWW2G1WZYbYbVZlhthtVmWG2G1WZYbYbVZlhtltVmWW2W1WZZbZbVZlltltVmWW2W1QYjQCh7E2aAQHeGhCFgPoNoy8KNb2wxBhmGKBxoUZXlLGsLI6AsftEDHV0wIURVbANLcTKlGGBIKPOAxCmhePCKUwFzAmpDFRQvjA9R06Hq8TONvshgKDCuRAZTXigUxjxNFfKRo3CLhnIJBMFRvMZpqpNBMlQJzGT5WFQMVQI/AikPMIhEU1aDjqJvQwmjSHB05cC9jbYwc5UtAHNLhDw41ha+lEqF4JaH3gmB61SYcqInxTDmQK8v08vjqv4zDf1N0w3Lf4A8/vwPpfK11w==";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Font.js
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Font.js
   var compressedJsonForFontName = {
     "Courier": Courier_compressed_default,
     "Courier-Bold": Courier_Bold_compressed_default,
@@ -98947,10 +98883,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     })()
   );
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/all-encodings.compressed.json
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/all-encodings.compressed.json
   var all_encodings_compressed_default = "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";
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Encoding.js
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+standard-fonts@1.0.0/node_modules/@pdf-lib/standard-fonts/es/Encoding.js
   var decompressedEncodings = decompressJson(all_encodings_compressed_default);
   var allUnicodeMappings = JSON.parse(decompressedEncodings);
   var Encoding = (
@@ -98986,7 +98922,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     WinAnsi: new Encoding("WinAnsi", allUnicodeMappings.win1252)
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/objects.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/objects.js
   var values = function(obj2) {
     return Object.keys(obj2).map(function(k) {
       return obj2[k];
@@ -99000,7 +98936,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/validators.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/validators.js
   var backtick = function(val2) {
     return "`" + val2 + "`";
   };
@@ -99177,7 +99113,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/pdfDocEncoding.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/pdfDocEncoding.js
   var pdfDocEncodingToUnicode = new Uint16Array(256);
   for (idx = 0; idx < 256; idx++) {
     pdfDocEncodingToUnicode[idx] = idx;
@@ -99235,7 +99171,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return String.fromCodePoint.apply(String, codePoints);
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/Cache.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/Cache.js
   var Cache = (
     /** @class */
     (function() {
@@ -99262,7 +99198,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var Cache_default = Cache;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/errors.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/errors.js
   var MethodNotImplementedError = (
     /** @class */
     (function(_super) {
@@ -99635,7 +99571,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     })(PDFParsingError)
   );
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/syntax/CharCodes.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/syntax/CharCodes.js
   var CharCodes;
   (function(CharCodes2) {
     CharCodes2[CharCodes2["Null"] = 0] = "Null";
@@ -99699,10 +99635,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   })(CharCodes || (CharCodes = {}));
   var CharCodes_default = CharCodes;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/PDFContext.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/PDFContext.js
   var import_pako3 = __toESM(require_pako());
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/document/PDFHeader.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/document/PDFHeader.js
   var PDFHeader = (
     /** @class */
     (function() {
@@ -99743,7 +99679,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFHeader_default = PDFHeader;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFObject.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFObject.js
   var PDFObject = (
     /** @class */
     (function() {
@@ -99766,7 +99702,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFObject_default = PDFObject;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFNumber.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFNumber.js
   var PDFNumber = (
     /** @class */
     (function(_super) {
@@ -99804,7 +99740,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFNumber_default = PDFNumber;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFArray.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFArray.js
   var PDFArray = (
     /** @class */
     (function(_super) {
@@ -99920,7 +99856,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFArray_default = PDFArray;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFBool.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFBool.js
   var ENFORCER = {};
   var PDFBool = (
     /** @class */
@@ -99969,7 +99905,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFBool_default = PDFBool;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/syntax/Delimiters.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/syntax/Delimiters.js
   var IsDelimiter = new Uint8Array(256);
   IsDelimiter[CharCodes_default.LeftParen] = 1;
   IsDelimiter[CharCodes_default.RightParen] = 1;
@@ -99982,7 +99918,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   IsDelimiter[CharCodes_default.ForwardSlash] = 1;
   IsDelimiter[CharCodes_default.Percent] = 1;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/syntax/Whitespace.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/syntax/Whitespace.js
   var IsWhitespace = new Uint8Array(256);
   IsWhitespace[CharCodes_default.Null] = 1;
   IsWhitespace[CharCodes_default.Tab] = 1;
@@ -99991,7 +99927,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   IsWhitespace[CharCodes_default.CarriageReturn] = 1;
   IsWhitespace[CharCodes_default.Space] = 1;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/syntax/Irregular.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/syntax/Irregular.js
   var IsIrregular = new Uint8Array(256);
   for (idx = 0, len2 = 256; idx < len2; idx++) {
     IsIrregular[idx] = IsWhitespace[idx] || IsDelimiter[idx] ? 1 : 0;
@@ -100000,7 +99936,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   var len2;
   IsIrregular[CharCodes_default.Hash] = 1;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFName.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFName.js
   var decodeName = function(name7) {
     return name7.replace(/#([\dABCDEF]{2})/g, function(_2, hex) {
       return charFromHexCode(hex);
@@ -100123,7 +100059,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFName_default = PDFName;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFNull.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFNull.js
   var PDFNull = (
     /** @class */
     (function(_super) {
@@ -100155,7 +100091,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFNull_default = new PDFNull();
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFDict.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFDict.js
   var PDFDict = (
     /** @class */
     (function(_super) {
@@ -100175,48 +100111,48 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       PDFDict2.prototype.entries = function() {
         return Array.from(this.dict.entries());
       };
-      PDFDict2.prototype.set = function(key3, value) {
-        this.dict.set(key3, value);
+      PDFDict2.prototype.set = function(key4, value) {
+        this.dict.set(key4, value);
       };
-      PDFDict2.prototype.get = function(key3, preservePDFNull) {
+      PDFDict2.prototype.get = function(key4, preservePDFNull) {
         if (preservePDFNull === void 0) {
           preservePDFNull = false;
         }
-        var value = this.dict.get(key3);
+        var value = this.dict.get(key4);
         if (value === PDFNull_default && !preservePDFNull)
           return void 0;
         return value;
       };
-      PDFDict2.prototype.has = function(key3) {
-        var value = this.dict.get(key3);
+      PDFDict2.prototype.has = function(key4) {
+        var value = this.dict.get(key4);
         return value !== void 0 && value !== PDFNull_default;
       };
-      PDFDict2.prototype.lookupMaybe = function(key3) {
+      PDFDict2.prototype.lookupMaybe = function(key4) {
         var _a3;
         var types2 = [];
         for (var _i = 1; _i < arguments.length; _i++) {
           types2[_i - 1] = arguments[_i];
         }
         var preservePDFNull = types2.includes(PDFNull_default);
-        var value = (_a3 = this.context).lookupMaybe.apply(_a3, __spreadArrays([this.get(key3, preservePDFNull)], types2));
+        var value = (_a3 = this.context).lookupMaybe.apply(_a3, __spreadArrays([this.get(key4, preservePDFNull)], types2));
         if (value === PDFNull_default && !preservePDFNull)
           return void 0;
         return value;
       };
-      PDFDict2.prototype.lookup = function(key3) {
+      PDFDict2.prototype.lookup = function(key4) {
         var _a3;
         var types2 = [];
         for (var _i = 1; _i < arguments.length; _i++) {
           types2[_i - 1] = arguments[_i];
         }
         var preservePDFNull = types2.includes(PDFNull_default);
-        var value = (_a3 = this.context).lookup.apply(_a3, __spreadArrays([this.get(key3, preservePDFNull)], types2));
+        var value = (_a3 = this.context).lookup.apply(_a3, __spreadArrays([this.get(key4, preservePDFNull)], types2));
         if (value === PDFNull_default && !preservePDFNull)
           return void 0;
         return value;
       };
-      PDFDict2.prototype.delete = function(key3) {
-        return this.dict.delete(key3);
+      PDFDict2.prototype.delete = function(key4) {
+        return this.dict.delete(key4);
       };
       PDFDict2.prototype.asMap = function() {
         return new Map(this.dict);
@@ -100226,18 +100162,18 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           tag2 = "";
         }
         var existingKeys = this.keys();
-        var key3 = PDFName_default.of(this.context.addRandomSuffix(tag2, 10));
-        while (existingKeys.includes(key3)) {
-          key3 = PDFName_default.of(this.context.addRandomSuffix(tag2, 10));
+        var key4 = PDFName_default.of(this.context.addRandomSuffix(tag2, 10));
+        while (existingKeys.includes(key4)) {
+          key4 = PDFName_default.of(this.context.addRandomSuffix(tag2, 10));
         }
-        return key3;
+        return key4;
       };
       PDFDict2.prototype.clone = function(context2) {
         var clone = PDFDict2.withContext(context2 || this.context);
         var entries = this.entries();
         for (var idx = 0, len2 = entries.length; idx < len2; idx++) {
-          var _a3 = entries[idx], key3 = _a3[0], value = _a3[1];
-          clone.set(key3, value);
+          var _a3 = entries[idx], key4 = _a3[0], value = _a3[1];
+          clone.set(key4, value);
         }
         return clone;
       };
@@ -100245,8 +100181,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         var dictString = "<<\n";
         var entries = this.entries();
         for (var idx = 0, len2 = entries.length; idx < len2; idx++) {
-          var _a3 = entries[idx], key3 = _a3[0], value = _a3[1];
-          dictString += key3.toString() + " " + value.toString() + "\n";
+          var _a3 = entries[idx], key4 = _a3[0], value = _a3[1];
+          dictString += key4.toString() + " " + value.toString() + "\n";
         }
         dictString += ">>";
         return dictString;
@@ -100255,8 +100191,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         var size = 5;
         var entries = this.entries();
         for (var idx = 0, len2 = entries.length; idx < len2; idx++) {
-          var _a3 = entries[idx], key3 = _a3[0], value = _a3[1];
-          size += key3.sizeInBytes() + value.sizeInBytes() + 2;
+          var _a3 = entries[idx], key4 = _a3[0], value = _a3[1];
+          size += key4.sizeInBytes() + value.sizeInBytes() + 2;
         }
         return size;
       };
@@ -100267,8 +100203,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         buffer2[offset++] = CharCodes_default.Newline;
         var entries = this.entries();
         for (var idx = 0, len2 = entries.length; idx < len2; idx++) {
-          var _a3 = entries[idx], key3 = _a3[0], value = _a3[1];
-          offset += key3.copyBytesInto(buffer2, offset);
+          var _a3 = entries[idx], key4 = _a3[0], value = _a3[1];
+          offset += key4.copyBytesInto(buffer2, offset);
           buffer2[offset++] = CharCodes_default.Space;
           offset += value.copyBytesInto(buffer2, offset);
           buffer2[offset++] = CharCodes_default.Newline;
@@ -100288,7 +100224,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFDict_default = PDFDict;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFStream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFStream.js
   var PDFStream = (
     /** @class */
     (function(_super) {
@@ -100359,7 +100295,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFStream_default = PDFStream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFRawStream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFRawStream.js
   var PDFRawStream = (
     /** @class */
     (function(_super) {
@@ -100392,7 +100328,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFRawStream_default = PDFRawStream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFRef.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFRef.js
   var ENFORCER3 = {};
   var pool2 = /* @__PURE__ */ new Map();
   var PDFRef = (
@@ -100439,7 +100375,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFRef_default = PDFRef;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/operators/PDFOperator.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/operators/PDFOperator.js
   var PDFOperator = (
     /** @class */
     (function() {
@@ -100494,7 +100430,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFOperator_default = PDFOperator;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/operators/PDFOperatorNames.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/operators/PDFOperatorNames.js
   var PDFOperatorNames;
   (function(PDFOperatorNames2) {
     PDFOperatorNames2["NonStrokingColor"] = "sc";
@@ -100573,7 +100509,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   })(PDFOperatorNames || (PDFOperatorNames = {}));
   var PDFOperatorNames_default = PDFOperatorNames;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFFlateStream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFFlateStream.js
   var import_pako2 = __toESM(require_pako());
   var PDFFlateStream = (
     /** @class */
@@ -100605,7 +100541,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFFlateStream_default = PDFFlateStream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFContentStream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFContentStream.js
   var PDFContentStream = (
     /** @class */
     (function(_super) {
@@ -100668,7 +100604,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFContentStream_default = PDFContentStream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/rng.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/rng.js
   var SimpleRNG = (
     /** @class */
     (function() {
@@ -100686,7 +100622,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     })()
   );
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/PDFContext.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/PDFContext.js
   var byAscendingObjectNumber = function(_a3, _b) {
     var a = _a3[0];
     var b = _b[0];
@@ -100795,10 +100731,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           var dict = PDFDict_default.withContext(this);
           var keys4 = Object.keys(literal);
           for (var idx = 0, len2 = keys4.length; idx < len2; idx++) {
-            var key3 = keys4[idx];
-            var value = literal[key3];
+            var key4 = keys4[idx];
+            var value = literal[key4];
             if (value !== void 0)
-              dict.set(PDFName_default.of(key3), this.obj(value));
+              dict.set(PDFName_default.of(key4), this.obj(value));
           }
           return dict;
         }
@@ -100861,7 +100797,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFContext_default = PDFContext;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFPageLeaf.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFPageLeaf.js
   var PDFPageLeaf = (
     /** @class */
     (function(_super) {
@@ -100879,8 +100815,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         var clone = PDFPageLeaf2.fromMapWithContext(/* @__PURE__ */ new Map(), context2 || this.context, this.autoNormalizeCTM);
         var entries = this.entries();
         for (var idx = 0, len2 = entries.length; idx < len2; idx++) {
-          var _a3 = entries[idx], key3 = _a3[0], value = _a3[1];
-          clone.set(key3, value);
+          var _a3 = entries[idx], key4 = _a3[0], value = _a3[1];
+          clone.set(key4, value);
         }
         return clone;
       };
@@ -100963,9 +100899,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         return Font2.uniqueKey(tag2);
       };
       PDFPageLeaf2.prototype.newFontDictionary = function(tag2, fontDictRef) {
-        var key3 = this.newFontDictionaryKey(tag2);
-        this.setFontDictionary(key3, fontDictRef);
-        return key3;
+        var key4 = this.newFontDictionaryKey(tag2);
+        this.setFontDictionary(key4, fontDictRef);
+        return key4;
       };
       PDFPageLeaf2.prototype.setXObject = function(name7, xObjectRef) {
         var XObject = this.normalizedEntries().XObject;
@@ -100976,9 +100912,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         return XObject.uniqueKey(tag2);
       };
       PDFPageLeaf2.prototype.newXObject = function(tag2, xObjectRef) {
-        var key3 = this.newXObjectKey(tag2);
-        this.setXObject(key3, xObjectRef);
-        return key3;
+        var key4 = this.newXObjectKey(tag2);
+        this.setXObject(key4, xObjectRef);
+        return key4;
       };
       PDFPageLeaf2.prototype.setExtGState = function(name7, extGStateRef) {
         var ExtGState = this.normalizedEntries().ExtGState;
@@ -100989,9 +100925,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         return ExtGState.uniqueKey(tag2);
       };
       PDFPageLeaf2.prototype.newExtGState = function(tag2, extGStateRef) {
-        var key3 = this.newExtGStateKey(tag2);
-        this.setExtGState(key3, extGStateRef);
-        return key3;
+        var key4 = this.newExtGStateKey(tag2);
+        this.setExtGState(key4, extGStateRef);
+        return key4;
       };
       PDFPageLeaf2.prototype.ascend = function(visitor) {
         visitor(this);
@@ -101063,7 +100999,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFPageLeaf_default = PDFPageLeaf;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/PDFObjectCopier.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/PDFObjectCopier.js
   var PDFObjectCopier = (
     /** @class */
     (function() {
@@ -101077,10 +101013,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           var clonedPage = originalPage.clone();
           var InheritableEntries = PDFPageLeaf_default.InheritableEntries;
           for (var idx = 0, len2 = InheritableEntries.length; idx < len2; idx++) {
-            var key3 = PDFName_default.of(InheritableEntries[idx]);
-            var value = clonedPage.getInheritableAttribute(key3);
-            if (!clonedPage.get(key3) && value)
-              clonedPage.set(key3, value);
+            var key4 = PDFName_default.of(InheritableEntries[idx]);
+            var value = clonedPage.getInheritableAttribute(key4);
+            if (!clonedPage.get(key4) && value)
+              clonedPage.set(key4, value);
           }
           clonedPage.delete(PDFName_default.of("Parent"));
           return _this.copyPDFDict(clonedPage);
@@ -101093,8 +101029,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           _this.traversedObjects.set(originalDict, clonedDict);
           var entries = originalDict.entries();
           for (var idx = 0, len2 = entries.length; idx < len2; idx++) {
-            var _a3 = entries[idx], key3 = _a3[0], value = _a3[1];
-            clonedDict.set(key3, _this.copy(value));
+            var _a3 = entries[idx], key4 = _a3[0], value = _a3[1];
+            clonedDict.set(key4, _this.copy(value));
           }
           return clonedDict;
         };
@@ -101118,8 +101054,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           _this.traversedObjects.set(originalStream, clonedStream);
           var entries = originalStream.dict.entries();
           for (var idx = 0, len2 = entries.length; idx < len2; idx++) {
-            var _a3 = entries[idx], key3 = _a3[0], value = _a3[1];
-            clonedStream.dict.set(key3, _this.copy(value));
+            var _a3 = entries[idx], key4 = _a3[0], value = _a3[1];
+            clonedStream.dict.set(key4, _this.copy(value));
           }
           return clonedStream;
         };
@@ -101147,7 +101083,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFObjectCopier_default = PDFObjectCopier;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/document/PDFCrossRefSection.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/document/PDFCrossRefSection.js
   var PDFCrossRefSection = (
     /** @class */
     (function() {
@@ -101266,7 +101202,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFCrossRefSection_default = PDFCrossRefSection;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/document/PDFTrailer.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/document/PDFTrailer.js
   var PDFTrailer = (
     /** @class */
     (function() {
@@ -101308,7 +101244,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFTrailer_default = PDFTrailer;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/document/PDFTrailerDict.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/document/PDFTrailerDict.js
   var PDFTrailerDict = (
     /** @class */
     (function() {
@@ -101342,7 +101278,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFTrailerDict_default = PDFTrailerDict;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFObjectStream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFObjectStream.js
   var PDFObjectStream = (
     /** @class */
     (function(_super) {
@@ -101416,7 +101352,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFObjectStream_default = PDFObjectStream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/writers/PDFWriter.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/writers/PDFWriter.js
   var PDFWriter = (
     /** @class */
     (function() {
@@ -101555,7 +101491,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFWriter_default = PDFWriter;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFInvalidObject.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFInvalidObject.js
   var PDFInvalidObject = (
     /** @class */
     (function(_super) {
@@ -101589,7 +101525,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFInvalidObject_default = PDFInvalidObject;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFCrossRefStream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFCrossRefStream.js
   var EntryType;
   (function(EntryType2) {
     EntryType2[EntryType2["Deleted"] = 0] = "Deleted";
@@ -101769,7 +101705,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFCrossRefStream_default = PDFCrossRefStream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/writers/PDFStreamWriter.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/writers/PDFStreamWriter.js
   var PDFStreamWriter = (
     /** @class */
     (function(_super) {
@@ -101874,7 +101810,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFStreamWriter_default = PDFStreamWriter;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFHexString.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFHexString.js
   var PDFHexString = (
     /** @class */
     (function(_super) {
@@ -101945,7 +101881,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFHexString_default = PDFHexString;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/StandardFontEmbedder.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/StandardFontEmbedder.js
   var StandardFontEmbedder = (
     /** @class */
     (function() {
@@ -102028,7 +101964,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var StandardFontEmbedder_default = StandardFontEmbedder;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/CMap.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/CMap.js
   var createCmap = function(glyphs, glyphId) {
     var bfChars = new Array(glyphs.length);
     for (var idx = 0, len2 = glyphs.length; idx < len2; idx++) {
@@ -102068,7 +102004,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     throw new Error(msg);
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/FontFlags.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/FontFlags.js
   var makeFontFlags = function(options) {
     var flags2 = 0;
     var flipBit = function(bit) {
@@ -102106,7 +102042,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return flags2;
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFString.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/objects/PDFString.js
   var PDFString = (
     /** @class */
     (function(_super) {
@@ -102216,7 +102152,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFString_default = PDFString;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/CustomFontEmbedder.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/CustomFontEmbedder.js
   var CustomFontEmbedder = (
     /** @class */
     (function() {
@@ -102447,7 +102383,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var CustomFontEmbedder_default = CustomFontEmbedder;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/CustomFontSubsetEmbedder.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/CustomFontSubsetEmbedder.js
   var CustomFontSubsetEmbedder = (
     /** @class */
     (function(_super) {
@@ -102513,7 +102449,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var CustomFontSubsetEmbedder_default = CustomFontSubsetEmbedder;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/FileEmbedder.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/FileEmbedder.js
   var AFRelationship;
   (function(AFRelationship2) {
     AFRelationship2["Source"] = "Source";
@@ -102583,7 +102519,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var FileEmbedder_default = FileEmbedder;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/JpegEmbedder.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/JpegEmbedder.js
   var MARKERS = [
     65472,
     65473,
@@ -102695,7 +102631,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var JpegEmbedder_default = JpegEmbedder;
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+upng@1.0.1/node_modules/@pdf-lib/upng/UPNG.js
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+upng@1.0.1/node_modules/@pdf-lib/upng/UPNG.js
   var import_pako4 = __toESM(require_pako());
   var UPNG = {};
   UPNG.toRGBA8 = function(out) {
@@ -104051,7 +103987,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   };
   var UPNG_default = UPNG;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/png.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/utils/png.js
   var getImageType = function(ctype) {
     if (ctype === 0)
       return PngType.Greyscale;
@@ -104116,7 +104052,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     })()
   );
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/PngEmbedder.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/PngEmbedder.js
   var PngEmbedder = (
     /** @class */
     (function() {
@@ -104182,7 +104118,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PngEmbedder_default = PngEmbedder;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/Stream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/Stream.js
   var Stream = (
     /** @class */
     (function() {
@@ -104283,7 +104219,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var Stream_default = Stream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/DecodeStream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/DecodeStream.js
   var emptyBuffer = new Uint8Array(0);
   var DecodeStream = (
     /** @class */
@@ -104421,7 +104357,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var DecodeStream_default = DecodeStream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/Ascii85Stream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/Ascii85Stream.js
   var isSpace = function(ch) {
     return ch === 32 || ch === 9 || ch === 13 || ch === 10;
   };
@@ -104496,7 +104432,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var Ascii85Stream_default = Ascii85Stream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/AsciiHexStream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/AsciiHexStream.js
   var AsciiHexStream = (
     /** @class */
     (function(_super) {
@@ -104553,7 +104489,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var AsciiHexStream_default = AsciiHexStream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/FlateStream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/FlateStream.js
   var codeLenCodeMap = new Int32Array([
     16,
     17,
@@ -105371,10 +105307,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         this.codeSize = codeSize -= bits3;
         return b;
       };
-      FlateStream2.prototype.getCode = function(table9) {
+      FlateStream2.prototype.getCode = function(table10) {
         var str = this.stream;
-        var codes = table9[0];
-        var maxLen = table9[1];
+        var codes = table10[0];
+        var maxLen = table10[1];
         var codeSize = this.codeSize;
         var codeBuf = this.codeBuf;
         var b;
@@ -105432,7 +105368,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var FlateStream_default = FlateStream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/LZWStream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/LZWStream.js
   var LZWStream = (
     /** @class */
     (function(_super) {
@@ -105555,7 +105491,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var LZWStream_default = LZWStream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/RunLengthStream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/RunLengthStream.js
   var RunLengthStream = (
     /** @class */
     (function(_super) {
@@ -105597,7 +105533,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var RunLengthStream_default = RunLengthStream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/decode.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/streams/decode.js
   var decodeStream = function(stream2, encoding, params) {
     if (encoding === PDFName_default.of("FlateDecode")) {
       return new FlateStream_default(stream2);
@@ -105640,7 +105576,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return stream2;
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/PDFPageEmbedder.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/PDFPageEmbedder.js
   var fullPageBoundingBox = function(page) {
     var mediaBox = page.MediaBox();
     var width = mediaBox.lookup(2, PDFNumber_default).asNumber() - mediaBox.lookup(0, PDFNumber_default).asNumber();
@@ -105720,7 +105656,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFPageEmbedder_default = PDFPageEmbedder;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/interactive/ViewerPreferences.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/interactive/ViewerPreferences.js
   var asEnum = function(rawValue, enumType) {
     if (rawValue === void 0)
       return void 0;
@@ -105755,14 +105691,14 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       function ViewerPreferences2(dict) {
         this.dict = dict;
       }
-      ViewerPreferences2.prototype.lookupBool = function(key3) {
-        var returnObj = this.dict.lookup(PDFName_default.of(key3));
+      ViewerPreferences2.prototype.lookupBool = function(key4) {
+        var returnObj = this.dict.lookup(PDFName_default.of(key4));
         if (returnObj instanceof PDFBool_default)
           return returnObj;
         return void 0;
       };
-      ViewerPreferences2.prototype.lookupName = function(key3) {
-        var returnObj = this.dict.lookup(PDFName_default.of(key3));
+      ViewerPreferences2.prototype.lookupName = function(key4) {
+        var returnObj = this.dict.lookup(PDFName_default.of(key4));
         if (returnObj instanceof PDFName_default)
           return returnObj;
         return void 0;
@@ -105954,7 +105890,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var ViewerPreferences_default = ViewerPreferences;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroField.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroField.js
   var tfRegex = /\/([^\0\t\n\f\r\ ]+)[\0\t\n\f\r\ ]*(\d*\.\d+|\d+)?[\0\t\n\f\r\ ]+Tf/;
   var PDFAcroField = (
     /** @class */
@@ -106085,7 +106021,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAcroField_default = PDFAcroField;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/annotation/BorderStyle.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/annotation/BorderStyle.js
   var BorderStyle = (
     /** @class */
     (function() {
@@ -106114,7 +106050,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var BorderStyle_default = BorderStyle;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/annotation/PDFAnnotation.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/annotation/PDFAnnotation.js
   var PDFAnnotation = (
     /** @class */
     (function() {
@@ -106230,7 +106166,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAnnotation_default = PDFAnnotation;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/annotation/AppearanceCharacteristics.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/annotation/AppearanceCharacteristics.js
   var AppearanceCharacteristics = (
     /** @class */
     (function() {
@@ -106347,7 +106283,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var AppearanceCharacteristics_default = AppearanceCharacteristics;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/annotation/PDFWidgetAnnotation.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/annotation/PDFWidgetAnnotation.js
   var PDFWidgetAnnotation = (
     /** @class */
     (function(_super) {
@@ -106426,9 +106362,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         if (normal instanceof PDFDict_default) {
           var keys4 = normal.keys();
           for (var idx = 0, len2 = keys4.length; idx < len2; idx++) {
-            var key3 = keys4[idx];
-            if (key3 !== PDFName_default.of("Off"))
-              return key3;
+            var key4 = keys4[idx];
+            if (key4 !== PDFName_default.of("Off"))
+              return key4;
           }
         }
         return void 0;
@@ -106450,7 +106386,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFWidgetAnnotation_default = PDFWidgetAnnotation;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroTerminal.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroTerminal.js
   var PDFAcroTerminal = (
     /** @class */
     (function(_super) {
@@ -106506,7 +106442,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAcroTerminal_default = PDFAcroTerminal;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroButton.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroButton.js
   var PDFAcroButton = (
     /** @class */
     (function(_super) {
@@ -106591,7 +106527,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAcroButton_default = PDFAcroButton;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroCheckBox.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroCheckBox.js
   var PDFAcroCheckBox = (
     /** @class */
     (function(_super) {
@@ -106639,7 +106575,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAcroCheckBox_default = PDFAcroCheckBox;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/flags.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/flags.js
   var flag = function(bitIndex) {
     return 1 << bitIndex;
   };
@@ -106676,7 +106612,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     AcroChoiceFlags2[AcroChoiceFlags2["CommitOnSelChange"] = flag(27 - 1)] = "CommitOnSelChange";
   })(AcroChoiceFlags || (AcroChoiceFlags = {}));
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroChoice.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroChoice.js
   var PDFAcroChoice = (
     /** @class */
     (function(_super) {
@@ -106793,7 +106729,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAcroChoice_default = PDFAcroChoice;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroComboBox.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroComboBox.js
   var PDFAcroComboBox = (
     /** @class */
     (function(_super) {
@@ -106818,7 +106754,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAcroComboBox_default = PDFAcroComboBox;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroNonTerminal.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroNonTerminal.js
   var PDFAcroNonTerminal = (
     /** @class */
     (function(_super) {
@@ -106851,7 +106787,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAcroNonTerminal_default = PDFAcroNonTerminal;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroSignature.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroSignature.js
   var PDFAcroSignature = (
     /** @class */
     (function(_super) {
@@ -106867,7 +106803,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAcroSignature_default = PDFAcroSignature;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroText.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroText.js
   var PDFAcroText = (
     /** @class */
     (function(_super) {
@@ -106932,7 +106868,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAcroText_default = PDFAcroText;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroPushButton.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroPushButton.js
   var PDFAcroPushButton = (
     /** @class */
     (function(_super) {
@@ -106957,7 +106893,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAcroPushButton_default = PDFAcroPushButton;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroRadioButton.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroRadioButton.js
   var PDFAcroRadioButton = (
     /** @class */
     (function(_super) {
@@ -107011,7 +106947,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAcroRadioButton_default = PDFAcroRadioButton;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroListBox.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroListBox.js
   var PDFAcroListBox = (
     /** @class */
     (function(_super) {
@@ -107035,7 +106971,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAcroListBox_default = PDFAcroListBox;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/utils.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/utils.js
   var createPDFAcroFields = function(kidDicts) {
     if (!kidDicts)
       return [];
@@ -107122,7 +107058,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       ascend(Parent, visitor);
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroForm.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/acroform/PDFAcroForm.js
   var PDFAcroForm = (
     /** @class */
     (function() {
@@ -107198,7 +107134,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFAcroForm_default = PDFAcroForm;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFCatalog.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFCatalog.js
   var PDFCatalog = (
     /** @class */
     (function(_super) {
@@ -107267,7 +107203,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFCatalog_default = PDFCatalog;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFPageTree.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/structures/PDFPageTree.js
   var PDFPageTree = (
     /** @class */
     (function(_super) {
@@ -107409,7 +107345,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFPageTree_default = PDFPageTree;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/syntax/Numeric.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/syntax/Numeric.js
   var IsDigit = new Uint8Array(256);
   IsDigit[CharCodes_default.Zero] = 1;
   IsDigit[CharCodes_default.One] = 1;
@@ -107432,7 +107368,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   var idx;
   var len2;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/parser/BaseParser.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/parser/BaseParser.js
   var Newline = CharCodes_default.Newline;
   var CarriageReturn = CharCodes_default.CarriageReturn;
   var BaseParser = (
@@ -107535,7 +107471,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var BaseParser_default = BaseParser;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/parser/ByteStream.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/parser/ByteStream.js
   var ByteStream = (
     /** @class */
     (function() {
@@ -107597,7 +107533,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var ByteStream_default = ByteStream;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/syntax/Keywords.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/syntax/Keywords.js
   var Space = CharCodes_default.Space;
   var CarriageReturn2 = CharCodes_default.CarriageReturn;
   var Newline2 = CharCodes_default.Newline;
@@ -107679,7 +107615,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     EOF3endstream: __spreadArrays([Newline2], endstream)
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/parser/PDFObjectParser.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/parser/PDFObjectParser.js
   var PDFObjectParser = (
     /** @class */
     (function(_super) {
@@ -107794,9 +107730,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         this.skipWhitespaceAndComments();
         var dict = /* @__PURE__ */ new Map();
         while (!this.bytes.done() && this.bytes.peek() !== CharCodes_default.GreaterThan && this.bytes.peekAhead(1) !== CharCodes_default.GreaterThan) {
-          var key3 = this.parseName();
+          var key4 = this.parseName();
           var value = this.parseObject();
-          dict.set(key3, value);
+          dict.set(key4, value);
           this.skipWhitespaceAndComments();
         }
         this.skipWhitespaceAndComments();
@@ -107870,7 +107806,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFObjectParser_default = PDFObjectParser;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/parser/PDFObjectStreamParser.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/parser/PDFObjectStreamParser.js
   var PDFObjectStreamParser = (
     /** @class */
     (function(_super) {
@@ -107942,7 +107878,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFObjectStreamParser_default = PDFObjectStreamParser;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/parser/PDFXRefStreamParser.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/parser/PDFXRefStreamParser.js
   var PDFXRefStreamParser = (
     /** @class */
     (function() {
@@ -108023,7 +107959,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFXRefStreamParser_default = PDFXRefStreamParser;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/parser/PDFParser.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/parser/PDFParser.js
   var PDFParser = (
     /** @class */
     (function(_super) {
@@ -108339,7 +108275,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFParser_default = PDFParser;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/annotation/flags.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/annotation/flags.js
   var flag2 = function(bitIndex) {
     return 1 << bitIndex;
   };
@@ -108357,7 +108293,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     AnnotationFlags2[AnnotationFlags2["LockedContents"] = flag2(10 - 1)] = "LockedContents";
   })(AnnotationFlags || (AnnotationFlags = {}));
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/objects.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/objects.js
   var asPDFName = function(name7) {
     return name7 instanceof PDFName_default ? name7 : PDFName_default.of(name7);
   };
@@ -108368,7 +108304,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return num instanceof PDFNumber_default ? num.asNumber() : num;
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/rotations.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/rotations.js
   var RotationTypes;
   (function(RotationTypes2) {
     RotationTypes2["Degrees"] = "degrees";
@@ -108436,7 +108372,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       return { x: x - b, y: y - b, width: w, height: h };
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/operators.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/operators.js
   var clip = function() {
     return PDFOperator_default.of(PDFOperatorNames_default.ClipNonZero);
   };
@@ -108605,20 +108541,20 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       asPDFNumber(blue)
     ]);
   };
-  var setFillingCmykColor = function(cyan, magenta, yellow, key3) {
+  var setFillingCmykColor = function(cyan, magenta, yellow, key4) {
     return PDFOperator_default.of(PDFOperatorNames_default.NonStrokingColorCmyk, [
       asPDFNumber(cyan),
       asPDFNumber(magenta),
       asPDFNumber(yellow),
-      asPDFNumber(key3)
+      asPDFNumber(key4)
     ]);
   };
-  var setStrokingCmykColor = function(cyan, magenta, yellow, key3) {
+  var setStrokingCmykColor = function(cyan, magenta, yellow, key4) {
     return PDFOperator_default.of(PDFOperatorNames_default.StrokingColorCmyk, [
       asPDFNumber(cyan),
       asPDFNumber(magenta),
       asPDFNumber(yellow),
-      asPDFNumber(key3)
+      asPDFNumber(key4)
     ]);
   };
   var beginMarkedContent = function(tag2) {
@@ -108628,7 +108564,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return PDFOperator_default.of(PDFOperatorNames_default.EndMarkedContent);
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/colors.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/colors.js
   var ColorTypes;
   (function(ColorTypes2) {
     ColorTypes2["Grayscale"] = "Grayscale";
@@ -108645,12 +108581,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     assertRange(blue, "blue", 0, 1);
     return { type: ColorTypes.RGB, red, green, blue };
   };
-  var cmyk = function(cyan, magenta, yellow, key3) {
+  var cmyk = function(cyan, magenta, yellow, key4) {
     assertRange(cyan, "cyan", 0, 1);
     assertRange(magenta, "magenta", 0, 1);
     assertRange(yellow, "yellow", 0, 1);
-    assertRange(key3, "key", 0, 1);
-    return { type: ColorTypes.CMYK, cyan, magenta, yellow, key: key3 };
+    assertRange(key4, "key", 0, 1);
+    return { type: ColorTypes.CMYK, cyan, magenta, yellow, key: key4 };
   };
   var Grayscale = ColorTypes.Grayscale;
   var RGB = ColorTypes.RGB;
@@ -108671,7 +108607,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return color.type === Grayscale ? [color.gray] : color.type === RGB ? [color.red, color.green, color.blue] : color.type === CMYK ? [color.cyan, color.magenta, color.yellow, color.key] : error("Invalid color: " + JSON.stringify(color));
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/svgPath.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/svgPath.js
   var cx = 0;
   var cy = 0;
   var px = 0;
@@ -109025,7 +108961,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return apply(parse(path));
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/operations.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/operations.js
   var drawLinesOfText = function(lines, options) {
     var operators = [
       pushGraphicsState(),
@@ -109451,7 +109387,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     ]);
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/errors.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/errors.js
   var EncryptedPDFError = (
     /** @class */
     (function(_super) {
@@ -109638,7 +109574,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     })(Error)
   );
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/text/alignment.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/text/alignment.js
   var TextAlignment;
   (function(TextAlignment2) {
     TextAlignment2[TextAlignment2["Left"] = 0] = "Left";
@@ -109646,7 +109582,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     TextAlignment2[TextAlignment2["Right"] = 2] = "Right";
   })(TextAlignment || (TextAlignment = {}));
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/text/layout.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/text/layout.js
   var MIN_FONT_SIZE = 4;
   var MAX_FONT_SIZE = 500;
   var computeFontSize = function(lines, font, bounds, multiline) {
@@ -109839,7 +109775,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/appearances.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/appearances.js
   var normalizeAppearance = function(appearance) {
     if ("normal" in appearance)
       return appearance;
@@ -110224,7 +110160,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }));
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFEmbeddedPage.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFEmbeddedPage.js
   var PDFEmbeddedPage = (
     /** @class */
     (function() {
@@ -110274,7 +110210,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFEmbeddedPage_default = PDFEmbeddedPage;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFFont.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFFont.js
   var PDFFont = (
     /** @class */
     (function() {
@@ -110348,7 +110284,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFFont_default = PDFFont;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFImage.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFImage.js
   var PDFImage = (
     /** @class */
     (function() {
@@ -110415,7 +110351,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFImage_default = PDFImage;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/image/alignment.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/image/alignment.js
   var ImageAlignment;
   (function(ImageAlignment2) {
     ImageAlignment2[ImageAlignment2["Left"] = 0] = "Left";
@@ -110423,7 +110359,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     ImageAlignment2[ImageAlignment2["Right"] = 2] = "Right";
   })(ImageAlignment || (ImageAlignment = {}));
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFField.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFField.js
   var assertFieldAppearanceOptions = function(options) {
     assertOrUndefined(options === null || options === void 0 ? void 0 : options.x, "options.x", ["number"]);
     assertOrUndefined(options === null || options === void 0 ? void 0 : options.y, "options.y", ["number"]);
@@ -110636,7 +110572,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFField_default = PDFField;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFCheckBox.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFCheckBox.js
   var PDFCheckBox = (
     /** @class */
     (function(_super) {
@@ -110739,7 +110675,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFCheckBox_default = PDFCheckBox;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFDropdown.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFDropdown.js
   var PDFDropdown = (
     /** @class */
     (function(_super) {
@@ -110942,7 +110878,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFDropdown_default = PDFDropdown;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFOptionList.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFOptionList.js
   var PDFOptionList = (
     /** @class */
     (function(_super) {
@@ -111123,7 +111059,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFOptionList_default = PDFOptionList;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFRadioGroup.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFRadioGroup.js
   var PDFRadioGroup = (
     /** @class */
     (function(_super) {
@@ -111274,7 +111210,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFRadioGroup_default = PDFRadioGroup;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFSignature.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFSignature.js
   var PDFSignature = (
     /** @class */
     (function(_super) {
@@ -111298,7 +111234,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFSignature_default = PDFSignature;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFTextField.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFTextField.js
   var PDFTextField = (
     /** @class */
     (function(_super) {
@@ -111522,7 +111458,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFTextField_default = PDFTextField;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/StandardFonts.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/StandardFonts.js
   var StandardFonts;
   (function(StandardFonts2) {
     StandardFonts2["Courier"] = "Courier";
@@ -111541,7 +111477,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     StandardFonts2["ZapfDingbats"] = "ZapfDingbats";
   })(StandardFonts || (StandardFonts = {}));
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFForm.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFForm.js
   var PDFForm = (
     /** @class */
     (function() {
@@ -111898,7 +111834,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     field.setParent(parentRef);
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/sizes.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/sizes.js
   var PageSizes = {
     "4A0": [4767.87, 6740.79],
     "2A0": [3370.39, 4767.87],
@@ -111952,7 +111888,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     Tabloid: [792, 1224]
   };
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFDocumentOptions.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFDocumentOptions.js
   var ParseSpeeds;
   (function(ParseSpeeds2) {
     ParseSpeeds2[ParseSpeeds2["Fastest"] = Infinity] = "Fastest";
@@ -111961,7 +111897,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     ParseSpeeds2[ParseSpeeds2["Slow"] = 100] = "Slow";
   })(ParseSpeeds || (ParseSpeeds = {}));
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFEmbeddedFile.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFEmbeddedFile.js
   var PDFEmbeddedFile = (
     /** @class */
     (function() {
@@ -112019,7 +111955,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFEmbeddedFile_default = PDFEmbeddedFile;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFJavaScript.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFJavaScript.js
   var PDFJavaScript = (
     /** @class */
     (function() {
@@ -112073,7 +112009,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFJavaScript_default = PDFJavaScript;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/JavaScriptEmbedder.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/core/embedders/JavaScriptEmbedder.js
   var JavaScriptEmbedder = (
     /** @class */
     (function() {
@@ -112111,7 +112047,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var JavaScriptEmbedder_default = JavaScriptEmbedder;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFDocument.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFDocument.js
   var PDFDocument = (
     /** @class */
     (function() {
@@ -112263,8 +112199,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       };
       PDFDocument2.prototype.setTitle = function(title2, options) {
         assertIs(title2, "title", ["string"]);
-        var key3 = PDFName_default.of("Title");
-        this.getInfoDict().set(key3, PDFHexString_default.fromText(title2));
+        var key4 = PDFName_default.of("Title");
+        this.getInfoDict().set(key4, PDFHexString_default.fromText(title2));
         if (options === null || options === void 0 ? void 0 : options.showInWindowTitleBar) {
           var prefs = this.catalog.getOrCreateViewerPreferences();
           prefs.setDisplayDocTitle(true);
@@ -112272,43 +112208,43 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       };
       PDFDocument2.prototype.setAuthor = function(author) {
         assertIs(author, "author", ["string"]);
-        var key3 = PDFName_default.of("Author");
-        this.getInfoDict().set(key3, PDFHexString_default.fromText(author));
+        var key4 = PDFName_default.of("Author");
+        this.getInfoDict().set(key4, PDFHexString_default.fromText(author));
       };
       PDFDocument2.prototype.setSubject = function(subject) {
         assertIs(subject, "author", ["string"]);
-        var key3 = PDFName_default.of("Subject");
-        this.getInfoDict().set(key3, PDFHexString_default.fromText(subject));
+        var key4 = PDFName_default.of("Subject");
+        this.getInfoDict().set(key4, PDFHexString_default.fromText(subject));
       };
       PDFDocument2.prototype.setKeywords = function(keywords) {
         assertIs(keywords, "keywords", [Array]);
-        var key3 = PDFName_default.of("Keywords");
-        this.getInfoDict().set(key3, PDFHexString_default.fromText(keywords.join(" ")));
+        var key4 = PDFName_default.of("Keywords");
+        this.getInfoDict().set(key4, PDFHexString_default.fromText(keywords.join(" ")));
       };
       PDFDocument2.prototype.setCreator = function(creator) {
         assertIs(creator, "creator", ["string"]);
-        var key3 = PDFName_default.of("Creator");
-        this.getInfoDict().set(key3, PDFHexString_default.fromText(creator));
+        var key4 = PDFName_default.of("Creator");
+        this.getInfoDict().set(key4, PDFHexString_default.fromText(creator));
       };
       PDFDocument2.prototype.setProducer = function(producer) {
         assertIs(producer, "creator", ["string"]);
-        var key3 = PDFName_default.of("Producer");
-        this.getInfoDict().set(key3, PDFHexString_default.fromText(producer));
+        var key4 = PDFName_default.of("Producer");
+        this.getInfoDict().set(key4, PDFHexString_default.fromText(producer));
       };
       PDFDocument2.prototype.setLanguage = function(language) {
         assertIs(language, "language", ["string"]);
-        var key3 = PDFName_default.of("Lang");
-        this.catalog.set(key3, PDFString_default.of(language));
+        var key4 = PDFName_default.of("Lang");
+        this.catalog.set(key4, PDFString_default.of(language));
       };
       PDFDocument2.prototype.setCreationDate = function(creationDate) {
         assertIs(creationDate, "creationDate", [[Date, "Date"]]);
-        var key3 = PDFName_default.of("CreationDate");
-        this.getInfoDict().set(key3, PDFString_default.fromDate(creationDate));
+        var key4 = PDFName_default.of("CreationDate");
+        this.getInfoDict().set(key4, PDFString_default.fromDate(creationDate));
       };
       PDFDocument2.prototype.setModificationDate = function(modificationDate) {
         assertIs(modificationDate, "modificationDate", [[Date, "Date"]]);
-        var key3 = PDFName_default.of("ModDate");
-        this.getInfoDict().set(key3, PDFString_default.fromDate(modificationDate));
+        var key4 = PDFName_default.of("ModDate");
+        this.getInfoDict().set(key4, PDFString_default.fromDate(modificationDate));
       };
       PDFDocument2.prototype.getPageCount = function() {
         if (this.pageCount === void 0)
@@ -112797,7 +112733,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
   }
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFPageOptions.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFPageOptions.js
   var BlendMode;
   (function(BlendMode2) {
     BlendMode2["Normal"] = "Normal";
@@ -112814,7 +112750,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     BlendMode2["Exclusion"] = "Exclusion";
   })(BlendMode || (BlendMode = {}));
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFPage.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/PDFPage.js
   var PDFPage = (
     /** @class */
     (function() {
@@ -113432,8 +113368,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           CA: borderOpacity,
           BM: blendMode
         });
-        var key3 = this.node.newExtGState("GS", graphicsState);
-        return key3;
+        var key4 = this.node.newExtGState("GS", graphicsState);
+        return key4;
       };
       PDFPage2.prototype.scaleAnnot = function(annot, x, y) {
         var selectors = ["RD", "CL", "Vertices", "QuadPoints", "L", "Rect"];
@@ -113466,7 +113402,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFPage_default = PDFPage;
 
-  // ../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFButton.js
+  // ../../bandal/node_modules/.pnpm/pdf-lib@1.17.1/node_modules/pdf-lib/es/api/form/PDFButton.js
   var PDFButton = (
     /** @class */
     (function(_super) {
@@ -113560,7 +113496,39 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   );
   var PDFButton_default = PDFButton;
 
-  // ../bandal/node_modules/.pnpm/@pdf-lib+fontkit@1.1.1/node_modules/@pdf-lib/fontkit/dist/fontkit.es.js
+  // upstream/src/shared/inkV2.ts
+  var INK_CIRCLE_SEGMENTS = 24;
+  function strokePolygonsV2(points, width, aspect, highlighter) {
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(aspect) || aspect <= 0 || points.some((p) => ![p.x, p.y, p.p].every(Number.isFinite))) return [];
+    const polygons = [];
+    const radius = (p) => width * (highlighter ? 1 : 0.35 + 0.65 * Math.max(0, Math.min(1, p.p))) / 2;
+    for (let i = 0; i < points.length; i++) {
+      const point2 = points[i], r = radius(point2);
+      const previous = points[i - 1];
+      if (previous) {
+        const dx = point2.x - previous.x, dy = (point2.y - previous.y) * aspect, length = Math.hypot(dx, dy);
+        if (length > 1e-12) {
+          const nx = -dy / length, ny = dx / length, a = radius(previous);
+          polygons.push([
+            [previous.x - nx * a, previous.y - ny * a / aspect],
+            [point2.x - nx * r, point2.y - ny * r / aspect],
+            [point2.x + nx * r, point2.y + ny * r / aspect],
+            [previous.x + nx * a, previous.y + ny * a / aspect]
+          ]);
+        }
+      }
+      polygons.push(Array.from({ length: INK_CIRCLE_SEGMENTS }, (_2, step) => {
+        const angle = step * 2 * Math.PI / INK_CIRCLE_SEGMENTS;
+        return [point2.x + r * Math.cos(angle), point2.y + r * Math.sin(angle) / aspect];
+      }));
+    }
+    return polygons;
+  }
+  function strokePathV2(points, width, aspect, highlighter, scaleX = 1, scaleY = 1) {
+    return strokePolygonsV2(points, width, aspect, highlighter).map((polygon) => polygon.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x * scaleX} ${y * scaleY}`).join(" ") + " Z").join(" ");
+  }
+
+  // ../../bandal/node_modules/.pnpm/@pdf-lib+fontkit@1.1.1/node_modules/@pdf-lib/fontkit/dist/fontkit.es.js
   var import_pako5 = __toESM(require_pako());
   var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
   function createCommonjsModule(fn, module3) {
@@ -115053,14 +115021,14 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
     var hexSliceLookupTable = (function() {
       var alphabet2 = "0123456789abcdef";
-      var table9 = new Array(256);
+      var table10 = new Array(256);
       for (var i = 0; i < 16; ++i) {
         var i16 = i * 16;
         for (var j = 0; j < 16; ++j) {
-          table9[i16 + j] = alphabet2[i] + alphabet2[j];
+          table10[i16 + j] = alphabet2[i] + alphabet2[j];
         }
       }
-      return table9;
+      return table10;
     })();
   });
   var buffer_1 = buffer.Buffer;
@@ -115335,10 +115303,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
     if (arguments.length === 0) {
       var keys4 = Object.keys(events);
-      for (var i = 0, key3; i < keys4.length; ++i) {
-        key3 = keys4[i];
-        if (key3 === "removeListener") continue;
-        this.removeAllListeners(key3);
+      for (var i = 0, key4; i < keys4.length; ++i) {
+        key4 = keys4[i];
+        if (key4 === "removeListener") continue;
+        this.removeAllListeners(key4);
       }
       this.removeAllListeners("removeListener");
       this._events = new EventHandlers();
@@ -115840,8 +115808,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     if (array) {
       output = formatArray(ctx, value, recurseTimes, visibleKeys, keys4);
     } else {
-      output = keys4.map(function(key3) {
-        return formatProperty(ctx, value, recurseTimes, visibleKeys, key3, array);
+      output = keys4.map(function(key4) {
+        return formatProperty(ctx, value, recurseTimes, visibleKeys, key4, array);
       });
     }
     ctx.seen.pop();
@@ -115869,17 +115837,17 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         output.push("");
       }
     }
-    keys4.forEach(function(key3) {
-      if (!key3.match(/^\d+$/)) {
-        output.push(formatProperty(ctx, value, recurseTimes, visibleKeys, key3, true));
+    keys4.forEach(function(key4) {
+      if (!key4.match(/^\d+$/)) {
+        output.push(formatProperty(ctx, value, recurseTimes, visibleKeys, key4, true));
       }
     });
     return output;
   }
-  function formatProperty(ctx, value, recurseTimes, visibleKeys, key3, array) {
+  function formatProperty(ctx, value, recurseTimes, visibleKeys, key4, array) {
     var name7, str, desc;
-    desc = Object.getOwnPropertyDescriptor(value, key3) || {
-      value: value[key3]
+    desc = Object.getOwnPropertyDescriptor(value, key4) || {
+      value: value[key4]
     };
     if (desc.get) {
       if (desc.set) {
@@ -115892,8 +115860,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         str = ctx.stylize("[Setter]", "special");
       }
     }
-    if (!hasOwnProperty(visibleKeys, key3)) {
-      name7 = "[" + key3 + "]";
+    if (!hasOwnProperty(visibleKeys, key4)) {
+      name7 = "[" + key4 + "]";
     }
     if (!str) {
       if (ctx.seen.indexOf(desc.value) < 0) {
@@ -115918,10 +115886,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       }
     }
     if (isUndefined(name7)) {
-      if (array && key3.match(/^\d+$/)) {
+      if (array && key4.match(/^\d+$/)) {
         return str;
       }
-      name7 = JSON.stringify("" + key3);
+      name7 = JSON.stringify("" + key4);
       if (name7.match(/^"([a-zA-Z_][a-zA-Z_0-9]*)"$/)) {
         name7 = name7.substr(1, name7.length - 2);
         name7 = ctx.stylize(name7, "name");
@@ -117330,17 +117298,17 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   };
   var Buffer3 = buffer.Buffer;
   var safer = {};
-  var key;
-  for (key in buffer) {
-    if (!buffer.hasOwnProperty(key)) continue;
-    if (key === "SlowBuffer" || key === "Buffer") continue;
-    safer[key] = buffer[key];
+  var key2;
+  for (key2 in buffer) {
+    if (!buffer.hasOwnProperty(key2)) continue;
+    if (key2 === "SlowBuffer" || key2 === "Buffer") continue;
+    safer[key2] = buffer[key2];
   }
   var Safer = safer.Buffer = {};
-  for (key in Buffer3) {
-    if (!Buffer3.hasOwnProperty(key)) continue;
-    if (key === "allocUnsafe" || key === "allocUnsafeSlow") continue;
-    Safer[key] = Buffer3[key];
+  for (key2 in Buffer3) {
+    if (!Buffer3.hasOwnProperty(key2)) continue;
+    if (key2 === "allocUnsafe" || key2 === "allocUnsafeSlow") continue;
+    Safer[key2] = Buffer3[key2];
   }
   safer.Buffer.prototype = Buffer3.prototype;
   if (!Safer.from || Safer.from === Uint8Array.from) {
@@ -118866,12 +118834,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     this.nodeIdx = 0;
     return ret2;
   };
-  function findIdx(table9, val2) {
-    if (table9[0] > val2) return -1;
-    var l2 = 0, r = table9.length;
+  function findIdx(table10, val2) {
+    if (table10[0] > val2) return -1;
+    var l2 = 0, r = table10.length;
     while (l2 < r - 1) {
       var mid = l2 + Math.floor((r - l2 + 1) / 2);
-      if (table9[mid] <= val2) l2 = mid;
+      if (table10[mid] <= val2) l2 = mid;
       else r = mid;
     }
     return l2;
@@ -127228,7 +127196,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     // Overall, it seems that it's a mess :( http://www8.plala.or.jp/tkubota1/unicode-symbols-map2.html
     "shiftjis": {
       type: "_dbcs",
-      table: function table() {
+      table: function table2() {
         return require$$0;
       },
       encodeAdd: {
@@ -127252,7 +127220,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     "cp932": "shiftjis",
     "eucjp": {
       type: "_dbcs",
-      table: function table2() {
+      table: function table3() {
         return require$$1;
       },
       encodeAdd: {
@@ -127279,14 +127247,14 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     "936": "cp936",
     "cp936": {
       type: "_dbcs",
-      table: function table3() {
+      table: function table4() {
         return require$$2;
       }
     },
     // GBK (~22000 chars) is an extension of CP936 that added user-mapped chars and some other.
     "gbk": {
       type: "_dbcs",
-      table: function table4() {
+      table: function table5() {
         return require$$2.concat(require$$3$1);
       }
     },
@@ -127299,7 +127267,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     // http://www.khngai.com/chinese/charmap/tblgbk.php?page=0
     "gb18030": {
       type: "_dbcs",
-      table: function table5() {
+      table: function table6() {
         return require$$2.concat(require$$3$1);
       },
       gb18030: function gb18030() {
@@ -127318,7 +127286,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     "949": "cp949",
     "cp949": {
       type: "_dbcs",
-      table: function table6() {
+      table: function table7() {
         return require$$5;
       }
     },
@@ -127357,7 +127325,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     "950": "cp950",
     "cp950": {
       type: "_dbcs",
-      table: function table7() {
+      table: function table8() {
         return require$$6;
       }
     },
@@ -127365,7 +127333,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     "big5": "big5hkscs",
     "big5hkscs": {
       type: "_dbcs",
-      table: function table8() {
+      table: function table9() {
         return require$$6.concat(require$$7);
       },
       encodeSkipVals: [41676]
@@ -127675,8 +127643,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
             enc = codecDef;
             break;
           case "object":
-            for (var key3 in codecDef) {
-              codecOptions[key3] = codecDef[key3];
+            for (var key4 in codecDef) {
+              codecOptions[key4] = codecDef[key4];
             }
             if (!codecOptions.encodingName) codecOptions.encodingName = enc;
             enc = codecDef.type;
@@ -127721,7 +127689,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       } catch (_error) {
       }
       DecodeStream3 = (function() {
-        var key3;
+        var key4;
         function DecodeStream4(buffer2) {
           this.buffer = buffer2;
           this.pos = 0;
@@ -127739,18 +127707,18 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           Float: 4,
           Double: 8
         };
-        for (key3 in buffer_1.prototype) {
-          if (key3.slice(0, 4) === "read") {
-            (function(key4) {
+        for (key4 in buffer_1.prototype) {
+          if (key4.slice(0, 4) === "read") {
+            (function(key5) {
               var bytes;
-              bytes = DecodeStream4.TYPES[key4.replace(/read|[BL]E/g, "")];
-              return DecodeStream4.prototype[key4] = function() {
+              bytes = DecodeStream4.TYPES[key5.replace(/read|[BL]E/g, "")];
+              return DecodeStream4.prototype[key5] = function() {
                 var ret2;
-                ret2 = this.buffer[key4](this.pos);
+                ret2 = this.buffer[key5](this.pos);
                 this.pos += bytes;
                 return ret2;
               };
-            })(key3);
+            })(key4);
           }
         }
         DecodeStream4.prototype.readString = function(length, encoding) {
@@ -127806,8 +127774,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   var EncodeStream = createCommonjsModule(function(module3) {
     (function() {
       var DecodeStream$1, EncodeStream2, iconv, stream2, __hasProp = {}.hasOwnProperty, __extends2 = function __extends3(child, parent) {
-        for (var key3 in parent) {
-          if (__hasProp.call(parent, key3)) child[key3] = parent[key3];
+        for (var key4 in parent) {
+          if (__hasProp.call(parent, key4)) child[key4] = parent[key4];
         }
         function ctor() {
           this.constructor = child;
@@ -127824,7 +127792,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       } catch (_error) {
       }
       EncodeStream2 = (function(_super) {
-        var key3;
+        var key4;
         __extends2(EncodeStream3, _super);
         function EncodeStream3(bufferSize) {
           if (bufferSize == null) {
@@ -127835,18 +127803,18 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           this.bufferOffset = 0;
           this.pos = 0;
         }
-        for (key3 in buffer_1.prototype) {
-          if (key3.slice(0, 5) === "write") {
-            (function(key4) {
+        for (key4 in buffer_1.prototype) {
+          if (key4.slice(0, 5) === "write") {
+            (function(key5) {
               var bytes;
-              bytes = +DecodeStream$1.TYPES[key4.replace(/write|[BL]E/g, "")];
-              return EncodeStream3.prototype[key4] = function(value) {
+              bytes = +DecodeStream$1.TYPES[key5.replace(/write|[BL]E/g, "")];
+              return EncodeStream3.prototype[key5] = function(value) {
                 this.ensure(bytes);
-                this.buffer[key4](value, this.bufferOffset);
+                this.buffer[key5](value, this.bufferOffset);
                 this.bufferOffset += bytes;
                 return this.pos += bytes;
               };
-            })(key3);
+            })(key4);
           }
         }
         EncodeStream3.prototype._read = function() {
@@ -127947,8 +127915,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   var _Number = createCommonjsModule(function(module3, exports2) {
     (function() {
       var DecodeStream$1, Fixed, NumberT, __hasProp = {}.hasOwnProperty, __extends2 = function __extends3(child, parent) {
-        for (var key3 in parent) {
-          if (__hasProp.call(parent, key3)) child[key3] = parent[key3];
+        for (var key4 in parent) {
+          if (__hasProp.call(parent, key4)) child[key4] = parent[key4];
         }
         function ctor() {
           this.constructor = child;
@@ -128076,15 +128044,15 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       };
       PropertyDescriptor = /* @__PURE__ */ (function() {
         function PropertyDescriptor2(opts) {
-          var key3, val2;
+          var key4, val2;
           if (opts == null) {
             opts = {};
           }
           this.enumerable = true;
           this.configurable = true;
-          for (key3 in opts) {
-            val2 = opts[key3];
-            this[key3] = val2;
+          for (key4 in opts) {
+            val2 = opts[key4];
+            this[key4] = val2;
           }
         }
         return PropertyDescriptor2;
@@ -128193,8 +128161,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   var LazyArray = createCommonjsModule(function(module3) {
     (function() {
       var ArrayT, LazyArray2, LazyArrayT, NumberT, inspect2, utils$1, __hasProp = {}.hasOwnProperty, __extends2 = function __extends3(child, parent) {
-        for (var key3 in parent) {
-          if (__hasProp.call(parent, key3)) child[key3] = parent[key3];
+        for (var key4 in parent) {
+          if (__hasProp.call(parent, key4)) child[key4] = parent[key4];
         }
         function ctor() {
           this.constructor = child;
@@ -128590,9 +128558,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           return res;
         };
         Struct3.prototype._parseFields = function(stream2, res, fields) {
-          var key3, type, val2;
-          for (key3 in fields) {
-            type = fields[key3];
+          var key4, type, val2;
+          for (key4 in fields) {
+            type = fields[key4];
             if (typeof type === "function") {
               val2 = type.call(res, res);
             } else {
@@ -128600,16 +128568,16 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
             }
             if (val2 !== void 0) {
               if (val2 instanceof utils$1.PropertyDescriptor) {
-                Object.defineProperty(res, key3, val2);
+                Object.defineProperty(res, key4, val2);
               } else {
-                res[key3] = val2;
+                res[key4] = val2;
               }
             }
             res._currentOffset = stream2.pos - res._startOffset;
           }
         };
         Struct3.prototype.size = function(val2, parent, includePointers) {
-          var ctx, key3, size, type, _ref;
+          var ctx, key4, size, type, _ref;
           if (val2 == null) {
             val2 = {};
           }
@@ -128623,10 +128591,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           };
           size = 0;
           _ref = this.fields;
-          for (key3 in _ref) {
-            type = _ref[key3];
+          for (key4 in _ref) {
+            type = _ref[key4];
             if (type.size != null) {
-              size += type.size(val2[key3], ctx);
+              size += type.size(val2[key4], ctx);
             }
           }
           if (includePointers) {
@@ -128635,7 +128603,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           return size;
         };
         Struct3.prototype.encode = function(stream2, val2, parent) {
-          var ctx, i, key3, ptr2, type, _ref, _ref1;
+          var ctx, i, key4, ptr2, type, _ref, _ref1;
           if ((_ref = this.preEncode) != null) {
             _ref.call(val2, stream2);
           }
@@ -128648,10 +128616,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           };
           ctx.pointerOffset = stream2.pos + this.size(val2, ctx, false);
           _ref1 = this.fields;
-          for (key3 in _ref1) {
-            type = _ref1[key3];
+          for (key4 in _ref1) {
+            type = _ref1[key4];
             if (type.encode != null) {
-              type.encode(stream2, val2[key3], ctx);
+              type.encode(stream2, val2[key4], ctx);
             }
           }
           i = 0;
@@ -128668,8 +128636,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   var VersionedStruct = createCommonjsModule(function(module3) {
     (function() {
       var Struct$1, VersionedStruct2, __hasProp = {}.hasOwnProperty, __extends2 = function __extends3(child, parent) {
-        for (var key3 in parent) {
-          if (__hasProp.call(parent, key3)) child[key3] = parent[key3];
+        for (var key4 in parent) {
+          if (__hasProp.call(parent, key4)) child[key4] = parent[key4];
         }
         function ctor() {
           this.constructor = child;
@@ -128732,7 +128700,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           return res;
         };
         VersionedStruct3.prototype.size = function(val2, parent, includePointers) {
-          var ctx, fields, key3, size, type, _ref;
+          var ctx, fields, key4, size, type, _ref;
           if (includePointers == null) {
             includePointers = true;
           }
@@ -128750,10 +128718,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           }
           if (this.versions.header) {
             _ref = this.versions.header;
-            for (key3 in _ref) {
-              type = _ref[key3];
+            for (key4 in _ref) {
+              type = _ref[key4];
               if (type.size != null) {
-                size += type.size(val2[key3], ctx);
+                size += type.size(val2[key4], ctx);
               }
             }
           }
@@ -128761,10 +128729,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           if (fields == null) {
             throw new Error("Unknown version " + val2.version);
           }
-          for (key3 in fields) {
-            type = fields[key3];
+          for (key4 in fields) {
+            type = fields[key4];
             if (type.size != null) {
-              size += type.size(val2[key3], ctx);
+              size += type.size(val2[key4], ctx);
             }
           }
           if (includePointers) {
@@ -128773,7 +128741,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           return size;
         };
         VersionedStruct3.prototype.encode = function(stream2, val2, parent) {
-          var ctx, fields, i, key3, ptr2, type, _ref, _ref1;
+          var ctx, fields, i, key4, ptr2, type, _ref, _ref1;
           if ((_ref = this.preEncode) != null) {
             _ref.call(val2, stream2);
           }
@@ -128790,18 +128758,18 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           }
           if (this.versions.header) {
             _ref1 = this.versions.header;
-            for (key3 in _ref1) {
-              type = _ref1[key3];
+            for (key4 in _ref1) {
+              type = _ref1[key4];
               if (type.encode != null) {
-                type.encode(stream2, val2[key3], ctx);
+                type.encode(stream2, val2[key4], ctx);
               }
             }
           }
           fields = this.versions[val2.version];
-          for (key3 in fields) {
-            type = fields[key3];
+          for (key4 in fields) {
+            type = fields[key4];
             if (type.encode != null) {
-              type.encode(stream2, val2[key3], ctx);
+              type.encode(stream2, val2[key4], ctx);
             }
           }
           i = 0;
@@ -128985,7 +128953,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   var Pointer_2 = Pointer.VoidPointer;
   var restructure = createCommonjsModule(function(module3, exports2) {
     (function() {
-      var key3, val2, _ref, _ref1;
+      var key4, val2, _ref, _ref1;
       exports2.EncodeStream = EncodeStream;
       exports2.DecodeStream = DecodeStream2;
       exports2.Array = _Array;
@@ -129000,14 +128968,14 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       exports2.Struct = Struct;
       exports2.VersionedStruct = VersionedStruct;
       _ref = _Number;
-      for (key3 in _ref) {
-        val2 = _ref[key3];
-        exports2[key3] = val2;
+      for (key4 in _ref) {
+        val2 = _ref[key4];
+        exports2[key4] = val2;
       }
       _ref1 = Pointer;
-      for (key3 in _ref1) {
-        val2 = _ref1[key3];
-        exports2[key3] = val2;
+      for (key4 in _ref1) {
+        val2 = _ref1[key4];
+        exports2[key4] = val2;
       }
     }).call(commonjsGlobal);
   });
@@ -129045,12 +129013,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       throw new Error("Unknown font format");
     }
   };
-  function cache(target, key3, descriptor) {
+  function cache(target, key4, descriptor) {
     if (descriptor.get) {
       var get = descriptor.get;
       descriptor.get = function() {
         var value = get.call(this);
-        Object.defineProperty(this, key3, {
+        Object.defineProperty(this, key4, {
           value
         });
         return value;
@@ -129064,15 +129032,15 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
             for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
               args[_key] = arguments[_key];
             }
-            var key4 = args.length > 0 ? args[0] : "value";
-            if (cache2.has(key4)) {
-              return cache2.get(key4);
+            var key5 = args.length > 0 ? args[0] : "value";
+            if (cache2.has(key5)) {
+              return cache2.get(key5);
             }
             var result = fn.apply(this, args);
-            cache2.set(key4, result);
+            cache2.set(key5, result);
             return result;
           }
-          Object.defineProperty(this, key3, {
+          Object.defineProperty(this, key4, {
             value: memoized
           });
           return memoized;
@@ -129810,11 +129778,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       if (language == null) {
         language = record2.platformID + "-" + record2.languageID;
       }
-      var key3 = record2.nameID >= 256 ? "fontFeatures" : NAMES[record2.nameID] || record2.nameID;
-      if (records[key3] == null) {
-        records[key3] = {};
+      var key4 = record2.nameID >= 256 ? "fontFeatures" : NAMES[record2.nameID] || record2.nameID;
+      if (records[key4] == null) {
+        records[key4] = {};
       }
-      var obj2 = records[key3];
+      var obj2 = records[key4];
       if (record2.nameID >= 256) {
         obj2 = obj2[record2.nameID] || (obj2[record2.nameID] = {});
       }
@@ -129828,23 +129796,23 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     if (Array.isArray(this.records)) return;
     this.version = 0;
     var records = [];
-    for (var key3 in this.records) {
-      var val2 = this.records[key3];
-      if (key3 === "fontFeatures") continue;
+    for (var key4 in this.records) {
+      var val2 = this.records[key4];
+      if (key4 === "fontFeatures") continue;
       records.push({
         platformID: 3,
         encodingID: 1,
         languageID: 1033,
-        nameID: NAMES.indexOf(key3),
+        nameID: NAMES.indexOf(key4),
         length: buffer_1.byteLength(val2.en, "utf16le"),
         string: val2.en
       });
-      if (key3 === "postscriptName") {
+      if (key4 === "postscriptName") {
         records.push({
           platformID: 1,
           encodingID: 0,
           languageID: 0,
-          nameID: NAMES.indexOf(key3),
+          nameID: NAMES.indexOf(key4),
           length: val2.en.length,
           string: val2.en
         });
@@ -130887,7 +130855,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return true;
   }
   function objEquiv(a, b, opts) {
-    var i, key3;
+    var i, key4;
     if (typeof a !== typeof b) {
       return false;
     }
@@ -130947,8 +130915,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       }
     }
     for (i = ka.length - 1; i >= 0; i--) {
-      key3 = ka[i];
-      if (!deepEqual(a[key3], b[key3], opts)) {
+      key4 = ka[i];
+      if (!deepEqual(a[key4], b[key4], opts)) {
         return false;
       }
     }
@@ -131096,8 +131064,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       this.fields = {};
       for (var _iterator = _createForOfIteratorHelperLoose$2(ops), _step; !(_step = _iterator()).done; ) {
         var field = _step.value;
-        var key3 = Array.isArray(field[0]) ? field[0][0] << 8 | field[0][1] : field[0];
-        this.fields[key3] = field;
+        var key4 = Array.isArray(field[0]) ? field[0][0] << 8 | field[0][1] : field[0];
+        this.fields[key4] = field;
       }
     }
     var _proto = CFFDict2.prototype;
@@ -131152,8 +131120,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           value: stream2.pos
         }
       });
-      for (var key3 in this.fields) {
-        var field = this.fields[key3];
+      for (var key4 in this.fields) {
+        var field = this.fields[key4];
         ret2[field[1]] = field[3];
       }
       while (stream2.pos < end) {
@@ -131203,8 +131171,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           var op = _step2.value;
           len2 += CFFOperand.size(op);
         }
-        var key3 = Array.isArray(field[0]) ? field[0] : [field[0]];
-        len2 += key3.length;
+        var key4 = Array.isArray(field[0]) ? field[0] : [field[0]];
+        len2 += key4.length;
       }
       if (includePointers) {
         len2 += ctx.pointerSize;
@@ -131231,8 +131199,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           var op = _step4.value;
           CFFOperand.encode(stream2, op);
         }
-        var key3 = Array.isArray(field[0]) ? field[0] : [field[0]];
-        for (var _iterator5 = _createForOfIteratorHelperLoose$2(key3), _step5; !(_step5 = _iterator5()).done; ) {
+        var key4 = Array.isArray(field[0]) ? field[0] : [field[0]];
+        for (var _iterator5 = _createForOfIteratorHelperLoose$2(key4), _step5; !(_step5 = _iterator5()).done; ) {
           var _op = _step5.value;
           stream2.writeUInt8(_op);
         }
@@ -131826,9 +131794,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     _proto.decode = function decode5() {
       var start = this.stream.pos;
       var top = CFFTop.decode(this.stream);
-      for (var key3 in top) {
-        var val2 = top[key3];
-        this[key3] = val2;
+      for (var key4 in top) {
+        var val2 = top[key4];
+        this[key4] = val2;
       }
       if (this.version < 2) {
         if (this.topDictIndex.length !== 1) {
@@ -132328,11 +132296,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     })
   };
   var ValueRecord = /* @__PURE__ */ (function() {
-    function ValueRecord2(key3) {
-      if (key3 === void 0) {
-        key3 = "valueFormat";
+    function ValueRecord2(key4) {
+      if (key4 === void 0) {
+        key4 = "valueFormat";
       }
-      this.key = key3;
+      this.key = key4;
     }
     var _proto = ValueRecord2.prototype;
     _proto.buildStruct = function buildStruct(parent) {
@@ -132346,9 +132314,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         return struct._startOffset;
       };
       var format2 = struct[this.key];
-      for (var key3 in format2) {
-        if (format2[key3]) {
-          fields[key3] = types[key3];
+      for (var key4 in format2) {
+        if (format2[key4]) {
+          fields[key4] = types[key4];
         }
       }
       return new restructure.Struct(fields);
@@ -133509,21 +133477,21 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   Directory.process = function() {
     var tables2 = {};
     for (var _iterator = _createForOfIteratorHelperLoose$3(this.tables), _step; !(_step = _iterator()).done; ) {
-      var table9 = _step.value;
-      tables2[table9.tag] = table9;
+      var table10 = _step.value;
+      tables2[table10.tag] = table10;
     }
     this.tables = tables2;
   };
   Directory.preEncode = function(stream2) {
     var tables$1 = [];
     for (var tag2 in this.tables) {
-      var table9 = this.tables[tag2];
-      if (table9) {
+      var table10 = this.tables[tag2];
+      if (table10) {
         tables$1.push({
           tag: tag2,
           checkSum: 0,
-          offset: new restructure.VoidPointer(tables[tag2], table9),
-          length: tables[tag2].size(table9)
+          offset: new restructure.VoidPointer(tables[tag2], table10),
+          length: tables[tag2].size(table10)
         });
       }
     }
@@ -133589,8 +133557,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   }
   function _applyDecoratedDescriptor(target, property, decorators, descriptor, context2) {
     var desc = {};
-    Object.keys(descriptor).forEach(function(key3) {
-      desc[key3] = descriptor[key3];
+    Object.keys(descriptor).forEach(function(key4) {
+      desc[key4] = descriptor[key4];
     });
     desc.enumerable = !!desc.enumerable;
     desc.configurable = !!desc.configurable;
@@ -133895,27 +133863,27 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     _proto.getKerning = function getKerning(left, right) {
       var res = 0;
       for (var _iterator = _createForOfIteratorHelperLoose$5(this.kern.tables), _step; !(_step = _iterator()).done; ) {
-        var table9 = _step.value;
-        if (table9.coverage.crossStream) {
+        var table10 = _step.value;
+        if (table10.coverage.crossStream) {
           continue;
         }
-        switch (table9.version) {
+        switch (table10.version) {
           case 0:
-            if (!table9.coverage.horizontal) {
+            if (!table10.coverage.horizontal) {
               continue;
             }
             break;
           case 1:
-            if (table9.coverage.vertical || table9.coverage.variation) {
+            if (table10.coverage.vertical || table10.coverage.variation) {
               continue;
             }
             break;
           default:
-            throw new Error("Unsupported kerning table version " + table9.version);
+            throw new Error("Unsupported kerning table version " + table10.version);
         }
         var val2 = 0;
-        var s = table9.subtable;
-        switch (table9.format) {
+        var s = table10.subtable;
+        switch (table10.format) {
           case 0:
             var pairIdx = binarySearch(s.pairs, function(pair) {
               return left - pair.left || right - pair.right;
@@ -133944,9 +133912,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
             val2 = s.kernValue[s.kernIndex[s.leftClass[left] * s.rightClassCount + s.rightClass[right]]];
             break;
           default:
-            throw new Error("Unsupported kerning sub-table format " + table9.format);
+            throw new Error("Unsupported kerning sub-table format " + table10.format);
         }
-        if (table9.coverage.override) {
+        if (table10.coverage.override) {
           res = val2;
         } else {
           res += val2;
@@ -135649,8 +135617,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   }
   function _applyDecoratedDescriptor$1(target, property, decorators, descriptor, context2) {
     var desc = {};
-    Object.keys(descriptor).forEach(function(key3) {
-      desc[key3] = descriptor[key3];
+    Object.keys(descriptor).forEach(function(key4) {
+      desc[key4] = descriptor[key4];
     });
     desc.enumerable = !!desc.enumerable;
     desc.configurable = !!desc.configurable;
@@ -135671,8 +135639,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return desc;
   }
   var AATLookupTable = (_class$1 = /* @__PURE__ */ (function() {
-    function AATLookupTable2(table9) {
-      this.table = table9;
+    function AATLookupTable2(table10) {
+      this.table = table10;
     }
     var _proto = AATLookupTable2.prototype;
     _proto.lookup = function lookup4(glyph2) {
@@ -135908,8 +135876,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   }
   function _applyDecoratedDescriptor$2(target, property, decorators, descriptor, context2) {
     var desc = {};
-    Object.keys(descriptor).forEach(function(key3) {
-      desc[key3] = descriptor[key3];
+    Object.keys(descriptor).forEach(function(key4) {
+      desc[key4] = descriptor[key4];
     });
     desc.enumerable = !!desc.enumerable;
     desc.configurable = !!desc.configurable;
@@ -136457,11 +136425,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
     return ShapingPlan2;
   })();
-  function _defineProperty(obj2, key3, value) {
-    if (key3 in obj2) {
-      Object.defineProperty(obj2, key3, { value, enumerable: true, configurable: true, writable: true });
+  function _defineProperty(obj2, key4, value) {
+    if (key4 in obj2) {
+      Object.defineProperty(obj2, key4, { value, enumerable: true, configurable: true, writable: true });
     } else {
-      obj2[key3] = value;
+      obj2[key4] = value;
     }
     return obj2;
   }
@@ -136738,9 +136706,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   }
   var DEFAULT_SCRIPTS = ["DFLT", "dflt", "latn"];
   var OTProcessor = /* @__PURE__ */ (function() {
-    function OTProcessor2(font, table9) {
+    function OTProcessor2(font, table10) {
       this.font = font;
-      this.table = table9;
+      this.table = table10;
       this.script = null;
       this.scriptTag = null;
       this.language = null;
@@ -136905,8 +136873,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
             continue;
           }
           for (var _iterator9 = _createForOfIteratorHelperLoose$d(lookup4.subTables), _step9; !(_step9 = _iterator9()).done; ) {
-            var table9 = _step9.value;
-            var res = this.applyLookup(lookup4.lookupType, table9);
+            var table10 = _step9.value;
+            var res = this.applyLookup(lookup4.lookupType, table10);
             if (res) {
               break;
             }
@@ -136915,7 +136883,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         }
       }
     };
-    _proto.applyLookup = function applyLookup(lookup4, table9) {
+    _proto.applyLookup = function applyLookup(lookup4, table10) {
       throw new Error("applyLookup must be implemented by subclasses");
     };
     _proto.applyLookupList = function applyLookupList(lookupRecords) {
@@ -136928,8 +136896,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         var lookup4 = this.table.lookupList.get(lookupRecord.lookupListIndex);
         this.glyphIterator.reset(lookup4.flags, this.glyphIterator.index);
         for (var _iterator11 = _createForOfIteratorHelperLoose$d(lookup4.subTables), _step11; !(_step11 = _iterator11()).done; ) {
-          var table9 = _step11.value;
-          if (this.applyLookup(lookup4.lookupType, table9)) {
+          var table10 = _step11.value;
+          if (this.applyLookup(lookup4.lookupType, table10)) {
             break;
           }
         }
@@ -137017,14 +136985,14 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         return classID === _this3.getClassID(glyph2.id, classDef);
       });
     };
-    _proto.applyContext = function applyContext(table9) {
-      switch (table9.version) {
+    _proto.applyContext = function applyContext(table10) {
+      switch (table10.version) {
         case 1:
-          var index = this.coverageIndex(table9.coverage);
+          var index = this.coverageIndex(table10.coverage);
           if (index === -1) {
             return false;
           }
-          var set = table9.ruleSets[index];
+          var set = table10.ruleSets[index];
           for (var _iterator14 = _createForOfIteratorHelperLoose$d(set), _step14; !(_step14 = _iterator14()).done; ) {
             var rule = _step14.value;
             if (this.sequenceMatches(1, rule.input)) {
@@ -137033,37 +137001,37 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           }
           break;
         case 2:
-          if (this.coverageIndex(table9.coverage) === -1) {
+          if (this.coverageIndex(table10.coverage) === -1) {
             return false;
           }
-          index = this.getClassID(this.glyphIterator.cur.id, table9.classDef);
+          index = this.getClassID(this.glyphIterator.cur.id, table10.classDef);
           if (index === -1) {
             return false;
           }
-          set = table9.classSet[index];
+          set = table10.classSet[index];
           for (var _iterator15 = _createForOfIteratorHelperLoose$d(set), _step15; !(_step15 = _iterator15()).done; ) {
             var _rule = _step15.value;
-            if (this.classSequenceMatches(1, _rule.classes, table9.classDef)) {
+            if (this.classSequenceMatches(1, _rule.classes, table10.classDef)) {
               return this.applyLookupList(_rule.lookupRecords);
             }
           }
           break;
         case 3:
-          if (this.coverageSequenceMatches(0, table9.coverages)) {
-            return this.applyLookupList(table9.lookupRecords);
+          if (this.coverageSequenceMatches(0, table10.coverages)) {
+            return this.applyLookupList(table10.lookupRecords);
           }
           break;
       }
       return false;
     };
-    _proto.applyChainingContext = function applyChainingContext(table9) {
-      switch (table9.version) {
+    _proto.applyChainingContext = function applyChainingContext(table10) {
+      switch (table10.version) {
         case 1:
-          var index = this.coverageIndex(table9.coverage);
+          var index = this.coverageIndex(table10.coverage);
           if (index === -1) {
             return false;
           }
-          var set = table9.chainRuleSets[index];
+          var set = table10.chainRuleSets[index];
           for (var _iterator16 = _createForOfIteratorHelperLoose$d(set), _step16; !(_step16 = _iterator16()).done; ) {
             var rule = _step16.value;
             if (this.sequenceMatches(-rule.backtrack.length, rule.backtrack) && this.sequenceMatches(1, rule.input) && this.sequenceMatches(1 + rule.input.length, rule.lookahead)) {
@@ -137072,24 +137040,24 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           }
           break;
         case 2:
-          if (this.coverageIndex(table9.coverage) === -1) {
+          if (this.coverageIndex(table10.coverage) === -1) {
             return false;
           }
-          index = this.getClassID(this.glyphIterator.cur.id, table9.inputClassDef);
-          var rules = table9.chainClassSet[index];
+          index = this.getClassID(this.glyphIterator.cur.id, table10.inputClassDef);
+          var rules = table10.chainClassSet[index];
           if (!rules) {
             return false;
           }
           for (var _iterator17 = _createForOfIteratorHelperLoose$d(rules), _step17; !(_step17 = _iterator17()).done; ) {
             var _rule2 = _step17.value;
-            if (this.classSequenceMatches(-_rule2.backtrack.length, _rule2.backtrack, table9.backtrackClassDef) && this.classSequenceMatches(1, _rule2.input, table9.inputClassDef) && this.classSequenceMatches(1 + _rule2.input.length, _rule2.lookahead, table9.lookaheadClassDef)) {
+            if (this.classSequenceMatches(-_rule2.backtrack.length, _rule2.backtrack, table10.backtrackClassDef) && this.classSequenceMatches(1, _rule2.input, table10.inputClassDef) && this.classSequenceMatches(1 + _rule2.input.length, _rule2.lookahead, table10.lookaheadClassDef)) {
               return this.applyLookupList(_rule2.lookupRecords);
             }
           }
           break;
         case 3:
-          if (this.coverageSequenceMatches(-table9.backtrackGlyphCount, table9.backtrackCoverage) && this.coverageSequenceMatches(0, table9.inputCoverage) && this.coverageSequenceMatches(table9.inputGlyphCount, table9.lookaheadCoverage)) {
-            return this.applyLookupList(table9.lookupRecords);
+          if (this.coverageSequenceMatches(-table10.backtrackGlyphCount, table10.backtrackCoverage) && this.coverageSequenceMatches(0, table10.inputCoverage) && this.coverageSequenceMatches(table10.inputGlyphCount, table10.lookaheadCoverage)) {
+            return this.applyLookupList(table10.lookupRecords);
           }
           break;
       }
@@ -137171,11 +137139,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     subClass.prototype.constructor = subClass;
     subClass.__proto__ = superClass;
   }
-  function _defineProperty$1(obj2, key3, value) {
-    if (key3 in obj2) {
-      Object.defineProperty(obj2, key3, { value, enumerable: true, configurable: true, writable: true });
+  function _defineProperty$1(obj2, key4, value) {
+    if (key4 in obj2) {
+      Object.defineProperty(obj2, key4, { value, enumerable: true, configurable: true, writable: true });
     } else {
-      obj2[key3] = value;
+      obj2[key4] = value;
     }
     return obj2;
   }
@@ -137716,11 +137684,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     subClass.prototype.constructor = subClass;
     subClass.__proto__ = superClass;
   }
-  function _defineProperty$2(obj2, key3, value) {
-    if (key3 in obj2) {
-      Object.defineProperty(obj2, key3, { value, enumerable: true, configurable: true, writable: true });
+  function _defineProperty$2(obj2, key4, value) {
+    if (key4 in obj2) {
+      Object.defineProperty(obj2, key4, { value, enumerable: true, configurable: true, writable: true });
     } else {
-      obj2[key3] = value;
+      obj2[key4] = value;
     }
     return obj2;
   }
@@ -138289,11 +138257,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     subClass.prototype.constructor = subClass;
     subClass.__proto__ = superClass;
   }
-  function _defineProperty$3(obj2, key3, value) {
-    if (key3 in obj2) {
-      Object.defineProperty(obj2, key3, { value, enumerable: true, configurable: true, writable: true });
+  function _defineProperty$3(obj2, key4, value) {
+    if (key4 in obj2) {
+      Object.defineProperty(obj2, key4, { value, enumerable: true, configurable: true, writable: true });
     } else {
-      obj2[key3] = value;
+      obj2[key4] = value;
     }
     return obj2;
   }
@@ -138659,30 +138627,30 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       return _OTProcessor.apply(this, arguments) || this;
     }
     var _proto = GSUBProcessor2.prototype;
-    _proto.applyLookup = function applyLookup(lookupType, table9) {
+    _proto.applyLookup = function applyLookup(lookupType, table10) {
       var _this = this;
       switch (lookupType) {
         case 1: {
-          var index = this.coverageIndex(table9.coverage);
+          var index = this.coverageIndex(table10.coverage);
           if (index === -1) {
             return false;
           }
           var glyph2 = this.glyphIterator.cur;
-          switch (table9.version) {
+          switch (table10.version) {
             case 1:
-              glyph2.id = glyph2.id + table9.deltaGlyphID & 65535;
+              glyph2.id = glyph2.id + table10.deltaGlyphID & 65535;
               break;
             case 2:
-              glyph2.id = table9.substitute.get(index);
+              glyph2.id = table10.substitute.get(index);
               break;
           }
           return true;
         }
         case 2: {
-          var _index = this.coverageIndex(table9.coverage);
+          var _index = this.coverageIndex(table10.coverage);
           if (_index !== -1) {
             var _this$glyphs;
-            var sequence = table9.sequences.get(_index);
+            var sequence = table10.sequences.get(_index);
             this.glyphIterator.cur.id = sequence[0];
             this.glyphIterator.cur.ligatureComponent = 0;
             var features2 = this.glyphIterator.cur.features;
@@ -138702,20 +138670,20 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           return false;
         }
         case 3: {
-          var _index2 = this.coverageIndex(table9.coverage);
+          var _index2 = this.coverageIndex(table10.coverage);
           if (_index2 !== -1) {
             var USER_INDEX = 0;
-            this.glyphIterator.cur.id = table9.alternateSet.get(_index2)[USER_INDEX];
+            this.glyphIterator.cur.id = table10.alternateSet.get(_index2)[USER_INDEX];
             return true;
           }
           return false;
         }
         case 4: {
-          var _index3 = this.coverageIndex(table9.coverage);
+          var _index3 = this.coverageIndex(table10.coverage);
           if (_index3 === -1) {
             return false;
           }
-          for (var _iterator = _createForOfIteratorHelperLoose$i(table9.ligatureSets.get(_index3)), _step; !(_step = _iterator()).done; ) {
+          for (var _iterator = _createForOfIteratorHelperLoose$i(table10.ligatureSets.get(_index3)), _step; !(_step = _iterator()).done; ) {
             var ligature = _step.value;
             var matched = this.sequenceMatchIndices(1, ligature.components);
             if (!matched) {
@@ -138776,11 +138744,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           return false;
         }
         case 5:
-          return this.applyContext(table9);
+          return this.applyContext(table10);
         case 6:
-          return this.applyChainingContext(table9);
+          return this.applyChainingContext(table10);
         case 7:
-          return this.applyLookup(table9.lookupType, table9.extension);
+          return this.applyLookup(table10.lookupType, table10.extension);
         default:
           throw new Error("GSUB lookupType " + lookupType + " is not supported");
       }
@@ -138856,19 +138824,19 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         }
       }
     };
-    _proto.applyLookup = function applyLookup(lookupType, table9) {
+    _proto.applyLookup = function applyLookup(lookupType, table10) {
       switch (lookupType) {
         case 1: {
-          var index = this.coverageIndex(table9.coverage);
+          var index = this.coverageIndex(table10.coverage);
           if (index === -1) {
             return false;
           }
-          switch (table9.version) {
+          switch (table10.version) {
             case 1:
-              this.applyPositionValue(0, table9.value);
+              this.applyPositionValue(0, table10.value);
               break;
             case 2:
-              this.applyPositionValue(0, table9.values.get(index));
+              this.applyPositionValue(0, table10.values.get(index));
               break;
           }
           return true;
@@ -138878,13 +138846,13 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           if (!nextGlyph) {
             return false;
           }
-          var _index = this.coverageIndex(table9.coverage);
+          var _index = this.coverageIndex(table10.coverage);
           if (_index === -1) {
             return false;
           }
-          switch (table9.version) {
+          switch (table10.version) {
             case 1:
-              var set = table9.pairSets.get(_index);
+              var set = table10.pairSets.get(_index);
               for (var _iterator = _createForOfIteratorHelperLoose$j(set), _step; !(_step = _iterator()).done; ) {
                 var _pair = _step.value;
                 if (_pair.secondGlyph === nextGlyph.id) {
@@ -138895,12 +138863,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
               }
               return false;
             case 2:
-              var class1 = this.getClassID(this.glyphIterator.cur.id, table9.classDef1);
-              var class2 = this.getClassID(nextGlyph.id, table9.classDef2);
+              var class1 = this.getClassID(this.glyphIterator.cur.id, table10.classDef1);
+              var class2 = this.getClassID(nextGlyph.id, table10.classDef2);
               if (class1 === -1 || class2 === -1) {
                 return false;
               }
-              var pair = table9.classRecords.get(class1).get(class2);
+              var pair = table10.classRecords.get(class1).get(class2);
               this.applyPositionValue(0, pair.value1);
               this.applyPositionValue(1, pair.value2);
               return true;
@@ -138912,11 +138880,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           if (!_nextGlyph) {
             return false;
           }
-          var curRecord = table9.entryExitRecords[this.coverageIndex(table9.coverage)];
+          var curRecord = table10.entryExitRecords[this.coverageIndex(table10.coverage)];
           if (!curRecord || !curRecord.exitAnchor) {
             return false;
           }
-          var nextRecord = table9.entryExitRecords[this.coverageIndex(table9.coverage, _nextGlyph.id)];
+          var nextRecord = table10.entryExitRecords[this.coverageIndex(table10.coverage, _nextGlyph.id)];
           if (!nextRecord || !nextRecord.entryAnchor) {
             return false;
           }
@@ -138948,7 +138916,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           return true;
         }
         case 4: {
-          var markIndex = this.coverageIndex(table9.markCoverage);
+          var markIndex = this.coverageIndex(table10.markCoverage);
           if (markIndex === -1) {
             return false;
           }
@@ -138958,17 +138926,17 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           if (baseGlyphIndex < 0) {
             return false;
           }
-          var baseIndex = this.coverageIndex(table9.baseCoverage, this.glyphs[baseGlyphIndex].id);
+          var baseIndex = this.coverageIndex(table10.baseCoverage, this.glyphs[baseGlyphIndex].id);
           if (baseIndex === -1) {
             return false;
           }
-          var markRecord = table9.markArray[markIndex];
-          var baseAnchor = table9.baseArray[baseIndex][markRecord["class"]];
+          var markRecord = table10.markArray[markIndex];
+          var baseAnchor = table10.baseArray[baseIndex][markRecord["class"]];
           this.applyAnchor(markRecord, baseAnchor, baseGlyphIndex);
           return true;
         }
         case 5: {
-          var _markIndex = this.coverageIndex(table9.markCoverage);
+          var _markIndex = this.coverageIndex(table10.markCoverage);
           if (_markIndex === -1) {
             return false;
           }
@@ -138978,21 +138946,21 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           if (_baseGlyphIndex < 0) {
             return false;
           }
-          var ligIndex = this.coverageIndex(table9.ligatureCoverage, this.glyphs[_baseGlyphIndex].id);
+          var ligIndex = this.coverageIndex(table10.ligatureCoverage, this.glyphs[_baseGlyphIndex].id);
           if (ligIndex === -1) {
             return false;
           }
-          var ligAttach = table9.ligatureArray[ligIndex];
+          var ligAttach = table10.ligatureArray[ligIndex];
           var markGlyph = this.glyphIterator.cur;
           var ligGlyph = this.glyphs[_baseGlyphIndex];
           var compIndex = ligGlyph.ligatureID && ligGlyph.ligatureID === markGlyph.ligatureID && markGlyph.ligatureComponent > 0 ? Math.min(markGlyph.ligatureComponent, ligGlyph.codePoints.length) - 1 : ligGlyph.codePoints.length - 1;
-          var _markRecord = table9.markArray[_markIndex];
+          var _markRecord = table10.markArray[_markIndex];
           var _baseAnchor = ligAttach[compIndex][_markRecord["class"]];
           this.applyAnchor(_markRecord, _baseAnchor, _baseGlyphIndex);
           return true;
         }
         case 6: {
-          var mark1Index = this.coverageIndex(table9.mark1Coverage);
+          var mark1Index = this.coverageIndex(table10.mark1Coverage);
           if (mark1Index === -1) {
             return false;
           }
@@ -139017,21 +138985,21 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           if (!good) {
             return false;
           }
-          var mark2Index = this.coverageIndex(table9.mark2Coverage, prev.id);
+          var mark2Index = this.coverageIndex(table10.mark2Coverage, prev.id);
           if (mark2Index === -1) {
             return false;
           }
-          var _markRecord2 = table9.mark1Array[mark1Index];
-          var _baseAnchor2 = table9.mark2Array[mark2Index][_markRecord2["class"]];
+          var _markRecord2 = table10.mark1Array[mark1Index];
+          var _baseAnchor2 = table10.mark2Array[mark2Index][_markRecord2["class"]];
           this.applyAnchor(_markRecord2, _baseAnchor2, prevIndex);
           return true;
         }
         case 7:
-          return this.applyContext(table9);
+          return this.applyContext(table10);
         case 8:
-          return this.applyChainingContext(table9);
+          return this.applyChainingContext(table10);
         case 9:
-          return this.applyLookup(table9.lookupType, table9.extension);
+          return this.applyLookup(table10.lookupType, table10.extension);
         default:
           throw new Error("Unsupported GPOS table: " + lookupType);
       }
@@ -139133,8 +139101,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       this.shaper = choose(script);
       this.plan = new ShapingPlan(this.font, script, glyphRun.direction);
       this.shaper.plan(this.plan, this.glyphInfos, glyphRun.features);
-      for (var key3 in this.plan.allFeatures) {
-        glyphRun.features[key3] = true;
+      for (var key4 in this.plan.allFeatures) {
+        glyphRun.features[key4] = true;
       }
     };
     _proto.substitute = function substitute(glyphRun) {
@@ -139614,8 +139582,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   }
   function _applyDecoratedDescriptor$3(target, property, decorators, descriptor, context2) {
     var desc = {};
-    Object.keys(descriptor).forEach(function(key3) {
-      desc[key3] = descriptor[key3];
+    Object.keys(descriptor).forEach(function(key4) {
+      desc[key4] = descriptor[key4];
     });
     desc.enumerable = !!desc.enumerable;
     desc.configurable = !!desc.configurable;
@@ -139653,14 +139621,14 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     _proto._getBBox = function _getBBox() {
       return this.path.bbox;
     };
-    _proto._getTableMetrics = function _getTableMetrics(table9) {
-      if (this.id < table9.metrics.length) {
-        return table9.metrics.get(this.id);
+    _proto._getTableMetrics = function _getTableMetrics(table10) {
+      if (this.id < table10.metrics.length) {
+        return table10.metrics.get(this.id);
       }
-      var metric = table9.metrics.get(table9.metrics.length - 1);
+      var metric = table10.metrics.get(table10.metrics.length - 1);
       var res = {
         advance: metric ? metric.advance : 0,
-        bearing: table9.bearings.get(this.id - table9.metrics.length) || 0
+        bearing: table10.bearings.get(this.id - table10.metrics.length) || 0
       };
       return res;
     };
@@ -139873,15 +139841,15 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       var cbox = new BBox(glyph2.xMin, glyph2.yMin, glyph2.xMax, glyph2.yMax);
       return Object.freeze(cbox);
     };
-    _proto2._parseGlyphCoord = function _parseGlyphCoord(stream2, prev, _short, same) {
+    _proto2._parseGlyphCoord = function _parseGlyphCoord(stream2, prev, _short, same2) {
       if (_short) {
         var val2 = stream2.readUInt8();
-        if (!same) {
+        if (!same2) {
           val2 = -val2;
         }
         val2 += prev;
       } else {
-        if (same) {
+        if (same2) {
           var val2 = prev;
         } else {
           var val2 = prev + stream2.readInt16BE();
@@ -140643,12 +140611,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     var _proto = SBIXGlyph2.prototype;
     _proto.getImageForSize = function getImageForSize(size) {
       for (var i = 0; i < this._font.sbix.imageTables.length; i++) {
-        var table9 = this._font.sbix.imageTables[i];
-        if (table9.ppem >= size) {
+        var table10 = this._font.sbix.imageTables[i];
+        if (table10.ppem >= size) {
           break;
         }
       }
-      var offsets = table9.imageOffsets;
+      var offsets = table10.imageOffsets;
       var start = offsets[this.id];
       var end = offsets[this.id + 1];
       if (start === end) {
@@ -141086,22 +141054,22 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         }
       }
     };
-    _proto.getAdvanceAdjustment = function getAdvanceAdjustment(gid, table9) {
+    _proto.getAdvanceAdjustment = function getAdvanceAdjustment(gid, table10) {
       var outerIndex2, innerIndex2;
-      if (table9.advanceWidthMapping) {
+      if (table10.advanceWidthMapping) {
         var idx = gid;
-        if (idx >= table9.advanceWidthMapping.mapCount) {
-          idx = table9.advanceWidthMapping.mapCount - 1;
+        if (idx >= table10.advanceWidthMapping.mapCount) {
+          idx = table10.advanceWidthMapping.mapCount - 1;
         }
-        var entryFormat = table9.advanceWidthMapping.entryFormat;
-        var _table$advanceWidthMa = table9.advanceWidthMapping.mapData[idx];
+        var entryFormat = table10.advanceWidthMapping.entryFormat;
+        var _table$advanceWidthMa = table10.advanceWidthMapping.mapData[idx];
         outerIndex2 = _table$advanceWidthMa.outerIndex;
         innerIndex2 = _table$advanceWidthMa.innerIndex;
       } else {
         outerIndex2 = 0;
         innerIndex2 = gid;
       }
-      return this.getDelta(table9.itemVariationStore, outerIndex2, innerIndex2);
+      return this.getDelta(table10.itemVariationStore, outerIndex2, innerIndex2);
     };
     _proto.getDelta = function getDelta(itemStore, outerIndex2, innerIndex2) {
       if (outerIndex2 >= itemStore.itemVariationData.length) {
@@ -141340,7 +141308,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       var xPoints = [];
       var yPoints = [];
       var flags2 = [];
-      var same = 0;
+      var same2 = 0;
       var lastX = 0, lastY = 0, lastFlag = 0;
       var pointCount = 0;
       for (var i = 0; i < path.commands.length; i++) {
@@ -141364,13 +141332,13 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           }
           flag3 = this._encodePoint(x, lastX, xPoints, flag3, X_SHORT_VECTOR$1, SAME_X$1);
           flag3 = this._encodePoint(y, lastY, yPoints, flag3, Y_SHORT_VECTOR$1, SAME_Y$1);
-          if (flag3 === lastFlag && same < 255) {
+          if (flag3 === lastFlag && same2 < 255) {
             flags2[flags2.length - 1] |= REPEAT$1;
-            same++;
+            same2++;
           } else {
-            if (same > 0) {
-              flags2.push(same);
-              same = 0;
+            if (same2 > 0) {
+              flags2.push(same2);
+              same2 = 0;
             }
             flags2.push(flag3);
             lastFlag = flag3;
@@ -141696,8 +141664,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       topDict.Encoding = null;
       topDict.CharStrings = this.charstrings;
       for (var _i = 0, _arr = ["version", "Notice", "Copyright", "FullName", "FamilyName", "Weight", "PostScript", "BaseFontName", "FontName"]; _i < _arr.length; _i++) {
-        var key3 = _arr[_i];
-        topDict[key3] = this.addString(this.cff.string(topDict[key3]));
+        var key4 = _arr[_i];
+        topDict[key4] = this.addString(this.cff.string(topDict[key4]));
       }
       topDict.ROS = [this.addString("Adobe"), this.addString("Identity"), 0];
       topDict.CIDCount = this.charstrings.length;
@@ -141764,8 +141732,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   }
   function _applyDecoratedDescriptor$4(target, property, decorators, descriptor, context2) {
     var desc = {};
-    Object.keys(descriptor).forEach(function(key3) {
-      desc[key3] = descriptor[key3];
+    Object.keys(descriptor).forEach(function(key4) {
+      desc[key4] = descriptor[key4];
     });
     desc.enumerable = !!desc.enumerable;
     desc.configurable = !!desc.configurable;
@@ -141801,32 +141769,32 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       this._glyphs = {};
       this._decodeDirectory();
       for (var tag2 in this.directory.tables) {
-        var table9 = this.directory.tables[tag2];
-        if (tables[tag2] && table9.length > 0) {
+        var table10 = this.directory.tables[tag2];
+        if (tables[tag2] && table10.length > 0) {
           Object.defineProperty(this, tag2, {
-            get: this._getTable.bind(this, table9)
+            get: this._getTable.bind(this, table10)
           });
         }
       }
     }
     var _proto = TTFFont2.prototype;
-    _proto._getTable = function _getTable(table9) {
-      if (!(table9.tag in this._tables)) {
+    _proto._getTable = function _getTable(table10) {
+      if (!(table10.tag in this._tables)) {
         try {
-          this._tables[table9.tag] = this._decodeTable(table9);
+          this._tables[table10.tag] = this._decodeTable(table10);
         } catch (e) {
           if (fontkit.logErrors) {
-            console.error("Error decoding table " + table9.tag);
+            console.error("Error decoding table " + table10.tag);
             console.error(e.stack);
           }
         }
       }
-      return this._tables[table9.tag];
+      return this._tables[table10.tag];
     };
     _proto._getTableStream = function _getTableStream(tag2) {
-      var table9 = this.directory.tables[tag2];
-      if (table9) {
-        this.stream.pos = table9.offset;
+      var table10 = this.directory.tables[tag2];
+      if (table10) {
+        this.stream.pos = table10.offset;
         return this.stream;
       }
       return null;
@@ -141836,18 +141804,18 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         _startOffset: 0
       });
     };
-    _proto._decodeTable = function _decodeTable(table9) {
+    _proto._decodeTable = function _decodeTable(table10) {
       var pos = this.stream.pos;
-      var stream2 = this._getTableStream(table9.tag);
-      var result = tables[table9.tag].decode(stream2, this, table9.length);
+      var stream2 = this._getTableStream(table10.tag);
+      var result = tables[table10.tag].decode(stream2, this, table10.length);
       this.stream.pos = pos;
       return result;
     };
-    _proto.getName = function getName(key3, lang) {
+    _proto.getName = function getName(key4, lang) {
       if (lang === void 0) {
         lang = "en";
       }
-      var record2 = this.name.records[key3];
+      var record2 = this.name.records[key4];
       if (record2) {
         return record2[lang];
       }
@@ -142258,8 +142226,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   WOFFDirectory.process = function() {
     var tables2 = {};
     for (var _iterator = _createForOfIteratorHelperLoose$r(this.tables), _step; !(_step = _iterator()).done; ) {
-      var table9 = _step.value;
-      tables2[table9.tag] = table9;
+      var table10 = _step.value;
+      tables2[table10.tag] = table10;
     }
     this.tables = tables2;
   };
@@ -142520,13 +142488,13 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       });
     };
     _proto._getTableStream = function _getTableStream(tag2) {
-      var table9 = this.directory.tables[tag2];
-      if (table9) {
-        this.stream.pos = table9.offset;
-        if (table9.compLength < table9.length) {
+      var table10 = this.directory.tables[tag2];
+      if (table10) {
+        this.stream.pos = table10.offset;
+        if (table10.compLength < table10.length) {
           this.stream.pos += 2;
-          var outBuffer = new buffer_1(table9.length);
-          var buf = tinyInflate$1(this.stream.readBuffer(table9.compLength - 2), outBuffer);
+          var outBuffer = new buffer_1(table10.length);
+          var buf = tinyInflate$1(this.stream.readBuffer(table10.compLength - 2), outBuffer);
           return new restructure.DecodeStream(buf);
         } else {
           return this.stream;
@@ -142760,17 +142728,17 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   }
   var HuffmanCode_1 = HuffmanCode;
   var MAX_LENGTH = 15;
-  function GetNextKey(key3, len2) {
+  function GetNextKey(key4, len2) {
     var step = 1 << len2 - 1;
-    while (key3 & step) {
+    while (key4 & step) {
       step >>= 1;
     }
-    return (key3 & step - 1) + step;
+    return (key4 & step - 1) + step;
   }
-  function ReplicateValue(table9, i, step, end, code2) {
+  function ReplicateValue(table10, i, step, end, code2) {
     do {
       end -= step;
-      table9[i + end] = new HuffmanCode(code2.bits, code2.value);
+      table10[i + end] = new HuffmanCode(code2.bits, code2.value);
     } while (end > 0);
   }
   function NextTableBitSize(count, len2, root_bits) {
@@ -142783,12 +142751,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
     return len2 - root_bits;
   }
-  var BrotliBuildHuffmanTable = function BrotliBuildHuffmanTable2(root_table, table9, root_bits, code_lengths, code_lengths_size) {
-    var start_table = table9;
+  var BrotliBuildHuffmanTable = function BrotliBuildHuffmanTable2(root_table, table10, root_bits, code_lengths, code_lengths_size) {
+    var start_table = table10;
     var code2;
     var len2;
     var symbol;
-    var key3;
+    var key4;
     var step;
     var low;
     var mask2;
@@ -142815,35 +142783,35 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     table_size = 1 << table_bits;
     total_size = table_size;
     if (offset[MAX_LENGTH] === 1) {
-      for (key3 = 0; key3 < total_size; ++key3) {
-        root_table[table9 + key3] = new HuffmanCode(0, sorted[0] & 65535);
+      for (key4 = 0; key4 < total_size; ++key4) {
+        root_table[table10 + key4] = new HuffmanCode(0, sorted[0] & 65535);
       }
       return total_size;
     }
-    key3 = 0;
+    key4 = 0;
     symbol = 0;
     for (len2 = 1, step = 2; len2 <= root_bits; ++len2, step <<= 1) {
       for (; count[len2] > 0; --count[len2]) {
         code2 = new HuffmanCode(len2 & 255, sorted[symbol++] & 65535);
-        ReplicateValue(root_table, table9 + key3, step, table_size, code2);
-        key3 = GetNextKey(key3, len2);
+        ReplicateValue(root_table, table10 + key4, step, table_size, code2);
+        key4 = GetNextKey(key4, len2);
       }
     }
     mask2 = total_size - 1;
     low = -1;
     for (len2 = root_bits + 1, step = 2; len2 <= MAX_LENGTH; ++len2, step <<= 1) {
       for (; count[len2] > 0; --count[len2]) {
-        if ((key3 & mask2) !== low) {
-          table9 += table_size;
+        if ((key4 & mask2) !== low) {
+          table10 += table_size;
           table_bits = NextTableBitSize(count, len2, root_bits);
           table_size = 1 << table_bits;
           total_size += table_size;
-          low = key3 & mask2;
-          root_table[start_table + low] = new HuffmanCode(table_bits + root_bits & 255, table9 - start_table - low & 65535);
+          low = key4 & mask2;
+          root_table[start_table + low] = new HuffmanCode(table_bits + root_bits & 255, table10 - start_table - low & 65535);
         }
         code2 = new HuffmanCode(len2 - root_bits & 255, sorted[symbol++] & 65535);
-        ReplicateValue(root_table, table9 + (key3 >> root_bits), step, table_size, code2);
-        key3 = GetNextKey(key3, len2);
+        ReplicateValue(root_table, table10 + (key4 >> root_bits), step, table_size, code2);
+        key4 = GetNextKey(key4, len2);
       }
     }
     return total_size;
@@ -144870,18 +144838,18 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
     return out;
   }
-  function ReadSymbol(table9, index, br) {
+  function ReadSymbol(table10, index, br) {
     var nbits;
     br.fillBitWindow();
     index += br.val_ >>> br.bit_pos_ & HUFFMAN_TABLE_MASK;
-    nbits = table9[index].bits - HUFFMAN_TABLE_BITS;
+    nbits = table10[index].bits - HUFFMAN_TABLE_BITS;
     if (nbits > 0) {
       br.bit_pos_ += HUFFMAN_TABLE_BITS;
-      index += table9[index].value;
+      index += table10[index].value;
       index += br.val_ >>> br.bit_pos_ & (1 << nbits) - 1;
     }
-    br.bit_pos_ += table9[index].bits;
-    return table9[index].value;
+    br.bit_pos_ += table10[index].bits;
+    return table10[index].value;
   }
   function ReadHuffmanCodeLengths(code_length_code_lengths, num_symbols, code_lengths, br) {
     var symbol = 0;
@@ -144889,19 +144857,19 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     var repeat = 0;
     var repeat_code_len = 0;
     var space = 32768;
-    var table9 = [];
+    var table10 = [];
     for (var i = 0; i < 32; i++) {
-      table9.push(new HuffmanCode$1(0, 0));
+      table10.push(new HuffmanCode$1(0, 0));
     }
-    BrotliBuildHuffmanTable$1(table9, 0, 5, code_length_code_lengths, CODE_LENGTH_CODES);
+    BrotliBuildHuffmanTable$1(table10, 0, 5, code_length_code_lengths, CODE_LENGTH_CODES);
     while (symbol < num_symbols && space > 0) {
       var p = 0;
       var code_len;
       br.readMoreInput();
       br.fillBitWindow();
       p += br.val_ >>> br.bit_pos_ & 31;
-      br.bit_pos_ += table9[p].bits;
-      code_len = table9[p].value & 255;
+      br.bit_pos_ += table10[p].bits;
+      code_len = table10[p].value & 255;
       if (code_len < kCodeLengthRepeatCode) {
         repeat = 0;
         code_lengths[symbol++] = code_len;
@@ -144947,7 +144915,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       code_lengths[symbol] = 0;
     }
   }
-  function ReadHuffmanCode(alphabet_size, tables2, table9, br) {
+  function ReadHuffmanCode(alphabet_size, tables2, table10, br) {
     var table_size = 0;
     var simple_code_or_skip;
     var code_lengths = new Uint8Array(alphabet_size);
@@ -145017,16 +144985,16 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       if (!(num_codes === 1 || space === 0)) throw new Error("[ReadHuffmanCode] invalid num_codes or space");
       ReadHuffmanCodeLengths(code_length_code_lengths, alphabet_size, code_lengths, br);
     }
-    table_size = BrotliBuildHuffmanTable$1(tables2, table9, HUFFMAN_TABLE_BITS, code_lengths, alphabet_size);
+    table_size = BrotliBuildHuffmanTable$1(tables2, table10, HUFFMAN_TABLE_BITS, code_lengths, alphabet_size);
     if (table_size === 0) {
       throw new Error("[ReadHuffmanCode] BuildHuffmanTable failed: ");
     }
     return table_size;
   }
-  function ReadBlockLength(table9, index, br) {
+  function ReadBlockLength(table10, index, br) {
     var code2;
     var nbits;
-    code2 = ReadSymbol(table9, index, br);
+    code2 = ReadSymbol(table10, index, br);
     nbits = prefix.kBlockLengthPrefixCode[code2].nbits;
     return prefix.kBlockLengthPrefixCode[code2].offset + br.readBits(nbits);
   }
@@ -145084,7 +145052,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
     var use_rle_for_zeros;
     var max_run_length_prefix = 0;
-    var table9;
+    var table10;
     var i;
     br.readMoreInput();
     var num_htrees = out.num_htrees = DecodeVarLenUint8(br) + 1;
@@ -145096,15 +145064,15 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     if (use_rle_for_zeros) {
       max_run_length_prefix = br.readBits(4) + 1;
     }
-    table9 = [];
+    table10 = [];
     for (i = 0; i < HUFFMAN_MAX_TABLE_SIZE; i++) {
-      table9[i] = new HuffmanCode$1(0, 0);
+      table10[i] = new HuffmanCode$1(0, 0);
     }
-    ReadHuffmanCode(num_htrees + max_run_length_prefix, table9, 0, br);
+    ReadHuffmanCode(num_htrees + max_run_length_prefix, table10, 0, br);
     for (i = 0; i < context_map_size; ) {
       var code2;
       br.readMoreInput();
-      code2 = ReadSymbol(table9, 0, br);
+      code2 = ReadSymbol(table10, 0, br);
       if (code2 === 0) {
         context_map[i] = 0;
         ++i;
@@ -145591,8 +145559,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   WOFF2Directory.process = function() {
     var tables2 = {};
     for (var i = 0; i < this.tables.length; i++) {
-      var table9 = this.tables[i];
-      tables2[table9.tag] = table9;
+      var table10 = this.tables[i];
+      tables2[table10.tag] = table10;
     }
     return this.tables = tables2;
   };
@@ -145632,9 +145600,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         this._decompressed = true;
       }
     };
-    _proto._decodeTable = function _decodeTable(table9) {
+    _proto._decodeTable = function _decodeTable(table10) {
       this._decompress();
-      return _TTFFont.prototype._decodeTable.call(this, table9);
+      return _TTFFont.prototype._decodeTable.call(this, table10);
     };
     _proto._getBaseGlyph = function _getBaseGlyph(glyph2, characters) {
       if (characters === void 0) {
@@ -145654,31 +145622,31 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     _proto._transformGlyfTable = function _transformGlyfTable() {
       this._decompress();
       this.stream.pos = this.directory.tables.glyf.offset;
-      var table9 = GlyfTable.decode(this.stream);
+      var table10 = GlyfTable.decode(this.stream);
       var glyphs = [];
-      for (var index = 0; index < table9.numGlyphs; index++) {
+      for (var index = 0; index < table10.numGlyphs; index++) {
         var glyph2 = {};
-        var nContours = table9.nContours.readInt16BE();
+        var nContours = table10.nContours.readInt16BE();
         glyph2.numberOfContours = nContours;
         if (nContours > 0) {
           var nPoints = [];
           var totalPoints = 0;
           for (var i = 0; i < nContours; i++) {
-            var _r = read255UInt16(table9.nPoints);
+            var _r = read255UInt16(table10.nPoints);
             totalPoints += _r;
             nPoints.push(totalPoints);
           }
-          glyph2.points = decodeTriplet(table9.flags, table9.glyphs, totalPoints);
+          glyph2.points = decodeTriplet(table10.flags, table10.glyphs, totalPoints);
           for (var _i = 0; _i < nContours; _i++) {
             glyph2.points[nPoints[_i] - 1].endContour = true;
           }
-          var instructionSize = read255UInt16(table9.glyphs);
+          var instructionSize = read255UInt16(table10.glyphs);
         } else if (nContours < 0) {
           var haveInstructions = TTFGlyph.prototype._decodeComposite.call({
             _font: this
-          }, glyph2, table9.composites);
+          }, glyph2, table10.composites);
           if (haveInstructions) {
-            var instructionSize = read255UInt16(table9.glyphs);
+            var instructionSize = read255UInt16(table10.glyphs);
           }
         }
         glyphs.push(glyph2);
@@ -146021,7 +145989,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   fontkit.registerFormat(DFont);
   var fontkit_es_default = fontkit;
 
-  // DesktopRuntime/upstream/src/shared/textBoxMetrics.ts
+  // upstream/src/shared/textBoxMetrics.ts
   var TEXT_BASE_FONT_RATIO = 0.026;
   var TEXT_LINE_HEIGHT = 1.35;
   var TEXT_BOX_PADDING_EM = 0.3;
@@ -146040,7 +146008,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return surfaceWidthPx * TEXT_BASE_FONT_RATIO * scale2;
   }
 
-  // DesktopRuntime/upstream/src/main/features/pdfText.ts
+  // upstream/src/main/features/pdfText.ts
   function drawPdfText(page, text, font, pen) {
     page.drawText(text, {
       x: pen.x,
@@ -146076,7 +146044,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
   }
 
-  // DesktopRuntime/upstream/src/main/features/textboxPdfLayout.ts
+  // upstream/src/main/features/textboxPdfLayout.ts
   function clamp(value, min, max2) {
     return Math.min(max2, Math.max(min, value));
   }
@@ -146190,7 +146158,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     });
   }
 
-  // DesktopRuntime/upstream/src/main/features/pdf/exportPdf.ts
+  // upstream/src/main/features/pdf/exportPdf.ts
   var TEXT_UNDERLINE_OFFSET_EM = -0.1;
   var TEXT_STRIKE_OFFSET_EM = 0.3;
   var TEXT_ALIGN_FACTORS = { left: 0, center: 0.5, right: 1 };
@@ -146209,7 +146177,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     blue: rgb(0.08, 0.38, 0.88),
     violet: rgb(0.49, 0.21, 0.82)
   };
-  var HIGHLIGHT_COLORS2 = {
+  var HIGHLIGHT_COLORS = {
     yellow: rgb(0.98, 0.83, 0.18),
     green: rgb(0.3, 0.78, 0.4),
     pink: rgb(0.94, 0.38, 0.6),
@@ -146232,6 +146200,22 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       { x: box2.x + box2.width, y: box2.y + box2.height, p: 0.5 }
     ];
   }
+  function annotationPageSpace(page) {
+    const { x, y, width, height } = page.getCropBox();
+    const rotation = (page.getRotation().angle % 360 + 360) % 360;
+    switch (rotation) {
+      case 0:
+        return { width, height, matrix: [1, 0, 0, 1, x, y] };
+      case 90:
+        return { width: height, height: width, matrix: [0, 1, -1, 0, x + width, y] };
+      case 180:
+        return { width, height, matrix: [-1, 0, 0, -1, x + width, y + height] };
+      case 270:
+        return { width: height, height: width, matrix: [0, -1, 1, 0, x, y + height] };
+      default:
+        throw new ValidationError("PDF page rotation must be a multiple of 90 degrees");
+    }
+  }
   function drawInk(page, drawing, width, height) {
     const points = drawing.data.points ?? [];
     if (points.length === 0) return;
@@ -146239,6 +146223,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const baseThickness = drawing.style.width * width;
     const opacity = drawing.kind === "highlighter" ? Math.min(drawing.style.opacity, 0.38) : drawing.style.opacity;
     const blendMode = drawing.kind === "highlighter" ? BlendMode.Multiply : BlendMode.Normal;
+    if (drawing.data.inkVersion === 2) {
+      const path = strokePathV2(points, drawing.style.width, height / width, drawing.kind === "highlighter", width, height);
+      if (path) page.drawSvgPath(path, { x: 0, y: height, color, opacity, blendMode });
+      return;
+    }
     const first = points[0];
     if (points.length === 1 && first !== void 0) {
       const point2 = pdfPoint(first, width, height);
@@ -146412,7 +146401,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         y: height - (rect.y + rect.height) * height,
         width: rect.width * width,
         height: rect.height * height,
-        color: HIGHLIGHT_COLORS2[annotation.color],
+        color: HIGHLIGHT_COLORS[annotation.color],
         opacity: 0.42,
         blendMode: BlendMode.Multiply
       });
@@ -146483,30 +146472,40 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       for (const annotation of annotations) {
         const page = pages[annotation.page - 1];
         if (page === void 0) continue;
-        const { width, height } = page.getSize();
-        drawAnnotation(page, annotation, width, height);
+        const { width, height, matrix } = annotationPageSpace(page);
+        page.pushOperators(pushGraphicsState(), concatTransformationMatrix(...matrix));
+        try {
+          drawAnnotation(page, annotation, width, height);
+        } finally {
+          page.pushOperators(popGraphicsState());
+        }
       }
       for (const drawing of drawings) {
         const page = pages[drawing.page - 1];
         if (page === void 0) continue;
-        const { width, height } = page.getSize();
-        if (drawing.kind === "ink" || drawing.kind === "highlighter") {
-          drawInk(page, drawing, width, height);
-        } else if (drawing.kind === "rect" || drawing.kind === "ellipse") {
-          if (drawing.data.box !== void 0) {
-            drawBoxShape(page, drawing, drawing.data.box, width, height);
+        const { width, height, matrix } = annotationPageSpace(page);
+        page.pushOperators(pushGraphicsState(), concatTransformationMatrix(...matrix));
+        try {
+          if (drawing.kind === "ink" || drawing.kind === "highlighter") {
+            drawInk(page, drawing, width, height);
+          } else if (drawing.kind === "rect" || drawing.kind === "ellipse") {
+            if (drawing.data.box !== void 0) {
+              drawBoxShape(page, drawing, drawing.data.box, width, height);
+            }
+          } else if (drawing.kind === "line" || drawing.kind === "arrow") {
+            drawStraightLine(page, drawing, width, height);
+          } else if (drawing.kind === "image" && drawing.data.image && drawing.data.box) {
+            const canonicalImage = resolveInsideReal(deps.getCourseFolder(courseId2), drawing.data.image.relPath);
+            const { nativeImage: nativeImage2 } = await Promise.resolve().then(() => (init_electron(), electron_exports));
+            const png = nativeImage2.createFromBuffer(await readFile(canonicalImage)).toPNG();
+            const image = await pdf.embedPng(png);
+            const box2 = drawing.data.box;
+            page.drawImage(image, { x: box2.x * width, y: (1 - box2.y - box2.height) * height, width: box2.width * width, height: box2.height * height, opacity: drawing.style.opacity });
+          } else if (drawing.kind === "textbox" && fonts !== null && drawing.data.box !== void 0) {
+            drawTextbox(page, drawing, drawing.data.box, fonts, width, height);
           }
-        } else if (drawing.kind === "line" || drawing.kind === "arrow") {
-          drawStraightLine(page, drawing, width, height);
-        } else if (drawing.kind === "image" && drawing.data.image && drawing.data.box) {
-          const canonicalImage = resolveInsideReal(deps.getCourseFolder(courseId2), drawing.data.image.relPath);
-          const { nativeImage: nativeImage2 } = await Promise.resolve().then(() => (init_electron(), electron_exports));
-          const png = nativeImage2.createFromBuffer(await readFile(canonicalImage)).toPNG();
-          const image = await pdf.embedPng(png);
-          const box2 = drawing.data.box;
-          page.drawImage(image, { x: box2.x * width, y: (1 - box2.y - box2.height) * height, width: box2.width * width, height: box2.height * height, opacity: drawing.style.opacity });
-        } else if (drawing.kind === "textbox" && fonts !== null && drawing.data.box !== void 0) {
-          drawTextbox(page, drawing, drawing.data.box, fonts, width, height);
+        } finally {
+          page.pushOperators(popGraphicsState());
         }
       }
     }
@@ -146542,7 +146541,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/canvas/boardMediaPdf.ts
+  // upstream/src/main/features/canvas/boardMediaPdf.ts
   function clipPdfBounds(page, crop) {
     const box2 = page.getCropBox();
     const rotation = (page.getRotation().angle % 360 + 360) % 360;
@@ -146607,8 +146606,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       }
       const source = shape2.data.clip;
       if (source === void 0) throw new Error("\uD074\uB9BD\uC758 \uC6D0\uBCF8 \uACBD\uB85C\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.");
-      const key3 = JSON.stringify([source.relPath, source.page, source.crop]);
-      let clip2 = clips.get(key3);
+      const key4 = JSON.stringify([source.relPath, source.page, source.crop]);
+      let clip2 = clips.get(key4);
       if (clip2 === void 0) {
         clip2 = (async () => {
           let document2 = documents.get(source.relPath);
@@ -146621,7 +146620,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           const { bounds, rotation } = clipPdfBounds(sourcePage, source.crop ?? { x: 0, y: 0, width: 1, height: 1 });
           return { page: await pdf.embedPage(sourcePage, bounds), rotation };
         })();
-        clips.set(key3, clip2);
+        clips.set(key4, clip2);
       }
       try {
         const embedded = await clip2;
@@ -146640,7 +146639,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/canvas/exportBoardPdf.ts
+  // upstream/src/main/features/canvas/exportBoardPdf.ts
   var RULE_SPACING = 28;
   var TEXT_UNDERLINE_OFFSET_EM2 = -0.1;
   var TEXT_STRIKE_OFFSET_EM2 = 0.3;
@@ -146723,6 +146722,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const opacity = shape2.kind === "highlighter" ? Math.min(clamp3(shape2.style.opacity, 0, 1), 0.42) : clamp3(shape2.style.opacity, 0, 1);
     const color = palette.marks[shape2.style.color];
     const blendMode = shape2.kind === "highlighter" ? surface === "dark" ? BlendMode.Screen : BlendMode.Multiply : BlendMode.Normal;
+    if (shape2.data.inkVersion === 2) {
+      const path = strokePathV2(points, shape2.style.width, height / width, shape2.kind === "highlighter", width, height);
+      if (path) page.drawSvgPath(path, { x: 0, y: height, color, opacity, blendMode });
+      return;
+    }
     if (points.length === 1) {
       page.drawCircle({
         ...pdfPoint2(first, width, height),
@@ -147019,7 +147023,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
   }
 
-  // DesktopRuntime/backend/pdf-export.ts
+  // backend/pdf-export.ts
   init_native();
   init_buffer();
   function installPdfExport(deps) {
@@ -147040,7 +147044,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     });
     async function annotatedBytes(request) {
       const source = resolveInsideReal(deps.courses.getFolder(request.courseId), request.relPath);
-      const pdf = await PDFDocument_default.load(await readFile(source)), overlay = await PDFDocument_default.create();
+      const bytes = await readFile(source);
+      deps.pdfBindings.check({ courseId: request.courseId, relPath: request.relPath, documentRevision: createHash("sha256").update(bytes).digest("hex") });
+      const pdf = await PDFDocument_default.load(bytes), overlay = await PDFDocument_default.create();
       const sourcePages = pdf.getPages();
       for (const page of sourcePages) {
         const { width, height } = page.getCropBox(), rotation = (page.getRotation().angle % 360 + 360) % 360;
@@ -147077,7 +147083,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     } };
   }
 
-  // DesktopRuntime/upstream/src/main/features/account/config.ts
+  // upstream/src/main/features/account/config.ts
   var import_meta = {};
   function buildTimeEnv() {
     try {
@@ -147111,12 +147117,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return { url, publishableKey };
   }
 
-  // DesktopRuntime/upstream/src/shared/types/studyMarket.ts
+  // upstream/src/shared/types/studyMarket.ts
   var STUDY_MARKET_LIMITS = { fileBytes: 50 * 1024 * 1024, bundleBytes: 200 * 1024 * 1024, files: 100, previews: 3 };
   var STUDY_MARKET_EXTENSIONS = ["pdf", "md", "txt", "png", "jpg", "jpeg", "webp", "docx", "pptx", "xlsx"];
   var STUDY_MARKET_ACTIONS = ["context", "requestUniversity", "courses", "createCourse", "listings", "listing", "dashboard", "saveDraft", "uploadGrant", "finalizeFile", "publish", "withdraw", "order", "orderStatus", "download", "downloadComplete", "refund", "report", "registerSeller", "operatorDashboard", "operatorAction"];
 
-  // DesktopRuntime/upstream/src/main/features/studyMarket/client.ts
+  // upstream/src/main/features/studyMarket/client.ts
   var emptyDashboard = (configured, signedIn) => ({
     configured,
     signedIn,
@@ -147179,18 +147185,18 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       const endpoint = trustedStorageUrl(grant.resumableUrl);
       const current = config2();
       const headers = { "Tus-Resumable": "1.0.0", "x-signature": grant.token, apikey: current.publishableKey };
-      const key3 = `${versionId}:${file.id}`;
+      const key4 = `${versionId}:${file.id}`;
       const handle2 = await open(file.absolutePath, "r");
       try {
         const stat2 = await handle2.stat();
         if (!stat2.isFile() || stat2.size !== file.bytes || stat2.size > STUDY_MARKET_LIMITS.fileBytes) throw new ValidationError("\uD310\uB9E4 \uC790\uB8CC \uC0AC\uBCF8\uC774 \uBCC0\uACBD\uB418\uC5C8\uC5B4\uC694. \uC790\uB8CC\uB97C \uB2E4\uC2DC \uC120\uD0DD\uD574 \uC8FC\uC138\uC694.");
-        let location = uploads.get(key3);
+        let location = uploads.get(key4);
         let offset = 0;
         if (location) {
           const head2 = await deps.fetch(location, { method: "HEAD", headers, redirect: "error", signal: AbortSignal.timeout(3e4) });
           if (head2.ok) offset = Number(head2.headers.get("Upload-Offset"));
           else {
-            uploads.delete(key3);
+            uploads.delete(key4);
             location = void 0;
           }
         }
@@ -147204,7 +147210,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           });
           if (!response.ok || !response.headers.get("Location")) throw new ValidationError("\uC790\uB8CC \uC5C5\uB85C\uB4DC\uB97C \uC2DC\uC791\uD558\uC9C0 \uBABB\uD588\uC5B4\uC694. \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
           location = trustedStorageUrl(new URL(response.headers.get("Location"), endpoint).href);
-          uploads.set(key3, location);
+          uploads.set(key4, location);
         }
         if (!Number.isSafeInteger(offset) || offset < 0 || offset > file.bytes) throw new ValidationError("\uC5C5\uB85C\uB4DC \uC9C4\uD589 \uC815\uBCF4\uAC00 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.");
         let failures = 0;
@@ -147233,7 +147239,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           }
         }
         await request("finalizeFile", { versionId, fileId: file.id });
-        uploads.delete(key3);
+        uploads.delete(key4);
       } finally {
         await handle2.close();
       }
@@ -147248,7 +147254,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return { request, dispatch: (req) => request(req.action, req.input), upload, checkout, trustedStorageUrl };
   }
 
-  // DesktopRuntime/upstream/src/main/features/studyMarket/markdown.ts
+  // upstream/src/main/features/studyMarket/markdown.ts
   function outsideCode(markdown, transform2) {
     return markdown.split(/(^ {0,3}(?:`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}(?:`{3,}|~{3,})[^\n]*(?:\n|$)|`+[^`\n]*`+)/gm).map((part, index) => index % 2 === 0 ? transform2(part) : part).join("");
   }
@@ -147347,7 +147353,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     });
   }
 
-  // DesktopRuntime/upstream/src/main/features/studyMarket/bundles.ts
+  // upstream/src/main/features/studyMarket/bundles.ts
   var MAX_PREVIEW_BYTES = 4 * 1024 * 1024;
   var MIME = {
     pdf: "application/pdf",
@@ -147361,7 +147367,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   };
-  function key2(path) {
+  function key3(path) {
     return path.normalize("NFC").toLowerCase();
   }
   function extension(path) {
@@ -147394,7 +147400,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       validateFilePath(file.path);
       if (typeof file.id !== "string" || !file.id || ids.has(file.id)) fail("\uC911\uBCF5\uB41C \uC790\uB8CC ID\uAC00 \uC788\uC5B4\uC694.");
       ids.add(file.id);
-      const pathKey4 = key2(file.path);
+      const pathKey4 = key3(file.path);
       if (paths.has(pathKey4)) fail("\uC774\uB984\uC774 \uACB9\uCE58\uB294 \uC790\uB8CC\uAC00 \uC788\uC5B4\uC694. \uB300\uC18C\uBB38\uC790\uC640 \uD55C\uAE00 \uD45C\uAE30\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
       for (const existing of paths) if (existing.startsWith(`${pathKey4}/`) || pathKey4.startsWith(`${existing}/`)) fail("\uD30C\uC77C\uACFC \uD3F4\uB354 \uC774\uB984\uC774 \uACB9\uCCD0\uC694.");
       paths.add(pathKey4);
@@ -147571,7 +147577,7 @@ ${escapeMarkdown(annotation.comment.trim())}
               do {
                 commentsPath = `${path.slice(0, -4)}-\uBA54\uBAA8${number === 1 ? "" : ` (${number})`}.md`;
                 number += 1;
-              } while ([...selected, ...notes.keys()].some((existing) => key2(existing) === key2(commentsPath)));
+              } while ([...selected, ...notes.keys()].some((existing) => key3(existing) === key3(commentsPath)));
               notes.set(commentsPath, comments);
               warnings.push(`${basename(path)}\uC758 \uD558\uC774\uB77C\uC774\uD2B8 \uBA54\uBAA8\uB97C ${basename(commentsPath)}\uC5D0 \uD568\uAED8 \uB2F4\uC558\uC5B4\uC694.`);
             }
@@ -147725,9 +147731,9 @@ ${escapeMarkdown(annotation.comment.trim())}
         let reservation;
         let reservationPath = "";
         while (!reservation) {
-          const occupied = new Set((await readdir(purchases)).map(key2));
-          if (!occupied.has(key2(name7))) {
-            reservationPath = join(purchases, `.bandal-market-reserve-${createHash("sha256").update(key2(name7)).digest("hex")}`);
+          const occupied = new Set((await readdir(purchases)).map(key3));
+          if (!occupied.has(key3(name7))) {
+            reservationPath = join(purchases, `.bandal-market-reserve-${createHash("sha256").update(key3(name7)).digest("hex")}`);
             try {
               reservation = await open(reservationPath, "wx", 384);
             } catch (error2) {
@@ -147788,7 +147794,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     return { prepare, getUploadFiles, previewSource, acceptPreview, preview, importDownload, discardBundle, discardPreview, dispose };
   }
 
-  // DesktopRuntime/upstream/src/main/ipc/studyMarketHandlers.ts
+  // upstream/src/main/ipc/studyMarketHandlers.ts
   function registerStudyMarketHandlers(handle2, deps) {
     const uploading = /* @__PURE__ */ new Map();
     const importing = /* @__PURE__ */ new Set();
@@ -147861,10 +147867,10 @@ ${escapeMarkdown(annotation.comment.trim())}
     });
   }
 
-  // DesktopRuntime/upstream/src/shared/ipc/studyMarketContract.ts
+  // upstream/src/shared/ipc/studyMarketContract.ts
   var STUDY_MARKET_CHANNELS = ["studyMarket:request", "studyMarket:prepare", "studyMarket:previewSource", "studyMarket:pickPreviewImage", "studyMarket:preview", "studyMarket:upload", "studyMarket:import", "studyMarket:discardPreview", "studyMarket:discardBundle", "studyMarket:openCheckout"];
 
-  // DesktopRuntime/upstream/src/main/features/plugins/marketplaceClient.ts
+  // upstream/src/main/features/plugins/marketplaceClient.ts
   var import_meta2 = {};
   function marketplaceUrl() {
     const raw = process.env["BANDAL_MARKETPLACE_URL"] ?? import_meta2.env?.MAIN_VITE_MARKETPLACE_URL;
@@ -147972,7 +147978,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/backend/market/zip-stream.ts
+  // backend/market/zip-stream.ts
   function createZipEntryStream(entry2) {
     const worker = entry2.internalStream("uint8array"), handlers2 = /* @__PURE__ */ new Map();
     let stopped = false;
@@ -147997,7 +148003,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     return stream2;
   }
 
-  // DesktopRuntime/upstream/src/shared/plugins/archive.ts
+  // upstream/src/shared/plugins/archive.ts
   var import_jszip = __toESM(require_jszip_min());
   var ALLOWED_EXTENSIONS = /\.(js|mjs|json|html|css|svg|png|jpe?g|gif|webp|woff2|txt|md)$/i;
   async function readZipEntry(entry2, budget) {
@@ -148070,7 +148076,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     return { manifest: parsed.manifest, files };
   }
 
-  // DesktopRuntime/upstream/src/main/features/feedback/rateGuard.ts
+  // upstream/src/main/features/feedback/rateGuard.ts
   var MINUTE = 6e4;
   var HOUR = 60 * MINUTE;
   var DAY = 24 * HOUR;
@@ -148092,19 +148098,19 @@ ${escapeMarkdown(annotation.comment.trim())}
     const rules = deps.rules ?? RATE_RULES;
     const now = deps.now ?? (() => Date.now());
     const hits = /* @__PURE__ */ new Map();
-    function windowed(key3, rule, at) {
+    function windowed(key4, rule, at) {
       const cutoff = at - rule.windowMs;
-      return (hits.get(key3) ?? []).filter((stamp) => stamp > cutoff);
+      return (hits.get(key4) ?? []).filter((stamp) => stamp > cutoff);
     }
     return {
       take: (action, scope) => {
         const rule = rules[action];
         if (rule === void 0) return { allowed: true, retryAfter: 0 };
         const at = now();
-        const key3 = keyOf(action, scope);
-        const recent = windowed(key3, rule, at);
+        const key4 = keyOf(action, scope);
+        const recent = windowed(key4, rule, at);
         if (recent.length >= rule.limit) {
-          hits.set(key3, recent);
+          hits.set(key4, recent);
           const oldest = recent[0] ?? at;
           const waitMs = oldest + rule.windowMs - at;
           return {
@@ -148112,7 +148118,7 @@ ${escapeMarkdown(annotation.comment.trim())}
             retryAfter: Math.max(1, Math.ceil(waitMs / 1e3))
           };
         }
-        hits.set(key3, [...recent, at]);
+        hits.set(key4, [...recent, at]);
         return { allowed: true, retryAfter: 0 };
       },
       reset: (action, scope) => {
@@ -148124,16 +148130,16 @@ ${escapeMarkdown(annotation.comment.trim())}
           (max2, rule) => Math.max(max2, rule.windowMs),
           0
         );
-        for (const [key3, stamps] of [...hits]) {
+        for (const [key4, stamps] of [...hits]) {
           const kept = stamps.filter((stamp) => stamp > at - longest);
-          if (kept.length === 0) hits.delete(key3);
-          else hits.set(key3, kept);
+          if (kept.length === 0) hits.delete(key4);
+          else hits.set(key4, kept);
         }
       }
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/feedback/feedbackService.ts
+  // upstream/src/main/features/feedback/feedbackService.ts
   var FEEDBACK_RATE_ACTION = "feedback:send";
   var FEEDBACK_BODY_LIMIT = 4e3;
   var FEEDBACK_RATE_RULE = {
@@ -148185,11 +148191,11 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/backend/market.ts
+  // backend/market.ts
   init_buffer();
   init_native();
 
-  // DesktopRuntime/backend/cloud.ts
+  // backend/cloud.ts
   init_buffer();
   var host2 = globalThis;
   host2.AbortSignal ?? (host2.AbortSignal = new host2.AbortController().signal.constructor);
@@ -148228,9 +148234,9 @@ ${escapeMarkdown(annotation.comment.trim())}
     signal?.throwIfAborted();
     if (options.redirect && options.redirect !== "error") throw new Error("Cloud redirects are not allowed");
     const headers = {};
-    if (Array.isArray(options.headers)) for (const [key3, value] of options.headers) headers[key3] = value;
-    else if (options.headers && typeof options.headers.forEach === "function") options.headers.forEach((value, key3) => {
-      headers[key3] = value;
+    if (Array.isArray(options.headers)) for (const [key4, value] of options.headers) headers[key4] = value;
+    else if (options.headers && typeof options.headers.forEach === "function") options.headers.forEach((value, key4) => {
+      headers[key4] = value;
     });
     else Object.assign(headers, options.headers ?? {});
     let bodyBase64;
@@ -148376,7 +148382,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/backend/market.ts
+  // backend/market.ts
   function installMarket(deps) {
     const scopes = /* @__PURE__ */ new Map();
     const rateGuard = createFeedbackRateGuard();
@@ -148433,12 +148439,12 @@ ${escapeMarkdown(annotation.comment.trim())}
     }
     async function scope() {
       const state = await cloudInvoke("native:cloudState");
-      const key3 = JSON.stringify([state.accountID, state.signedIn, state.supabase, state.marketplaceURL]);
-      let result = scopes.get(key3);
+      const key4 = JSON.stringify([state.accountID, state.signedIn, state.supabase, state.marketplaceURL]);
+      let result = scopes.get(key4);
       if (!result) {
         if (scopes.size >= 16) throw new Error("\uB9C8\uCF13 \uC5F0\uACB0 \uC124\uC815\uC774 \uB9CE\uC774 \uBCC0\uACBD\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uC571\uC744 \uB2E4\uC2DC \uC5F4\uC5B4 \uC8FC\uC138\uC694.");
         result = createScope(state);
-        scopes.set(key3, result);
+        scopes.set(key4, result);
       }
       return result;
     }
@@ -148482,7 +148488,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     } };
   }
 
-  // DesktopRuntime/backend/hover/utility-process.ts
+  // backend/hover/utility-process.ts
   var utilityProcess = { fork(_path, _args, _options) {
     const workerID = randomUUID(), listeners2 = /* @__PURE__ */ new Map();
     let killed = false;
@@ -148514,7 +148520,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     return worker;
   } };
 
-  // DesktopRuntime/upstream/src/main/features/materials/hoverPreviewExtract.ts
+  // upstream/src/main/features/materials/hoverPreviewExtract.ts
   var HOVER_TEXT_READ_BYTES = 64 * 1024;
   var HOVER_OFFICE_READ_BYTES = 32 * 1024 * 1024;
   var HOVER_TEXT_CHARS = 1200;
@@ -148554,13 +148560,13 @@ ${escapeMarkdown(annotation.comment.trim())}
     return trimmedText(new TextDecoder("utf-8").decode(bytes, { stream: truncated }), markdown ? "markdown" : "text", truncated);
   }
 
-  // DesktopRuntime/upstream/src/main/features/materials/hoverPreviewImage.ts
+  // upstream/src/main/features/materials/hoverPreviewImage.ts
   var HOVER_IMAGE_BYTES = 4 * 1024 * 1024;
   var HOVER_IMAGE_PIXELS = 16 * 1024 * 1024;
   var SVG_BYTES = 256 * 1024;
   var pngMagic = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
-  // DesktopRuntime/upstream/src/main/features/materials/hoverPreview.ts
+  // upstream/src/main/features/materials/hoverPreview.ts
   var __dirname2 = "";
   var OFFICE_EXTENSIONS = /* @__PURE__ */ new Set([".docx", ".xlsx", ".xls", ".csv", ".tsv", ".pptx", ".ppt", ".hwp", ".hwpx"]);
   var TEXT_EXTENSIONS5 = /* @__PURE__ */ new Set([
@@ -148721,14 +148727,14 @@ ${escapeMarkdown(annotation.comment.trim())}
     const loading = /* @__PURE__ */ new Map();
     let cacheBytes = 0;
     let disposed = false;
-    const retain = (key3, result) => {
+    const retain = (key4, result) => {
       if (disposed || result.content.kind === "unsupported") return;
       const bytes = Buffer.byteLength(JSON.stringify(result));
       if (bytes > CACHE_BYTES) return;
-      const previous = cache2.get(key3);
+      const previous = cache2.get(key4);
       cacheBytes -= previous?.bytes ?? 0;
-      cache2.delete(key3);
-      cache2.set(key3, { result, bytes });
+      cache2.delete(key4);
+      cache2.set(key4, { result, bytes });
       cacheBytes += bytes;
       while (cache2.size > CACHE_ENTRIES || cacheBytes > CACHE_BYTES) {
         const oldest = cache2.entries().next().value;
@@ -148748,14 +148754,14 @@ ${escapeMarkdown(annotation.comment.trim())}
         const ext = name7.slice(name7.lastIndexOf(".")).toLowerCase();
         const kind = materialKindForPath(request.relPath);
         const metadata = { name: name7, relPath: request.relPath, size: info.size, mtime: info.mtimeMs };
-        const key3 = JSON.stringify([request.courseId, request.relPath, info.mtimeMs, info.size, info.ctimeMs]);
-        const cached2 = cache2.get(key3);
+        const key4 = JSON.stringify([request.courseId, request.relPath, info.mtimeMs, info.size, info.ctimeMs]);
+        const cached2 = cache2.get(key4);
         if (cached2) {
-          cache2.delete(key3);
-          cache2.set(key3, cached2);
+          cache2.delete(key4);
+          cache2.set(key4, cached2);
           return cached2.result;
         }
-        const existing = loading.get(key3);
+        const existing = loading.get(key4);
         if (existing) return existing;
         const pending = (async () => {
           let content;
@@ -148768,14 +148774,14 @@ ${escapeMarkdown(annotation.comment.trim())}
           } else content = unavailablePreview("unsupported", "\uC774 \uD30C\uC77C \uD615\uC2DD\uC740 \uB0B4\uC6A9 \uBBF8\uB9AC\uBCF4\uAE30\uB97C \uC9C0\uC6D0\uD558\uC9C0 \uC54A\uC544\uC694.");
           const result = { ...metadata, content };
           const after = await stat(path).catch(() => null);
-          if (after?.mtimeMs === info.mtimeMs && after.size === info.size && after.ctimeMs === info.ctimeMs) retain(key3, result);
+          if (after?.mtimeMs === info.mtimeMs && after.size === info.size && after.ctimeMs === info.ctimeMs) retain(key4, result);
           return result;
         })();
-        loading.set(key3, pending);
+        loading.set(key4, pending);
         try {
           return await pending;
         } finally {
-          loading.delete(key3);
+          loading.delete(key4);
         }
       },
       dispose() {
@@ -148788,7 +148794,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/backend/hover/index.ts
+  // backend/hover/index.ts
   init_native();
   function installHoverPreview(deps) {
     const service = createMaterialHoverPreviewService({ materials: deps.materials, userData: env2().userDataPath });
@@ -148796,11 +148802,11 @@ ${escapeMarkdown(annotation.comment.trim())}
     return service;
   }
 
-  // DesktopRuntime/upstream/src/shared/types/mcp.ts
+  // upstream/src/shared/types/mcp.ts
   var MCP_SERVER_NAME_PATTERN = /^[a-z0-9_-]{1,32}$/;
   var MCP_RESERVED_NAMES = ["bandal"];
 
-  // DesktopRuntime/upstream/src/main/features/mcpRegistry/registryStore.ts
+  // upstream/src/main/features/mcpRegistry/registryStore.ts
   var MCP_REGISTRY_FILE_NAME = "mcp-servers.enc";
   var ENVELOPE_FORMAT3 = "bandal-mcp-servers";
   var ENVELOPE_VERSION3 = 1;
@@ -148917,7 +148923,7 @@ ${escapeMarkdown(annotation.comment.trim())}
   function sameConnection(left, right) {
     const sameMap = (first, second) => {
       const keys4 = Object.keys(first ?? {});
-      return keys4.length === Object.keys(second ?? {}).length && keys4.every((key3) => first?.[key3] === second?.[key3]);
+      return keys4.length === Object.keys(second ?? {}).length && keys4.every((key4) => first?.[key4] === second?.[key4]);
     };
     const leftArgs = left.args ?? [];
     const rightArgs = right.args ?? [];
@@ -148935,7 +148941,7 @@ ${escapeMarkdown(annotation.comment.trim())}
   function inputStringMap(value, label) {
     if (value === void 0) return void 0;
     if (!isRecord8(value) || Object.entries(value).some(
-      ([key3, item]) => key3 === "" || typeof item !== "string"
+      ([key4, item]) => key4 === "" || typeof item !== "string"
     )) {
       throw new Error(`${label} \uD615\uC2DD\uC774 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.`);
     }
@@ -149161,10 +149167,10 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/backend/mcp/index.ts
+  // backend/mcp/index.ts
   init_native();
 
-  // DesktopRuntime/upstream/src/main/features/browserAgent/redact.ts
+  // upstream/src/main/features/browserAgent/redact.ts
   var DIGIT_RUN = /\d[\d\s-]*\d/g;
   var MIN_DIGITS = 6;
   var MASK = "\u2588\u2588\u2588\u2588\u2588\u2588";
@@ -149192,7 +149198,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     }
   }
 
-  // DesktopRuntime/backend/mcp/index.ts
+  // backend/mcp/index.ts
   var fingerprint = (config2) => createHash("sha256").update(JSON.stringify(config2)).digest("hex");
   var connection = (config2) => JSON.stringify([config2.transport, config2.url, Object.entries(config2.headers ?? {}).sort(), config2.command ?? "", config2.args ?? [], Object.entries(config2.env ?? {}).sort()]);
   function installMCP({ handle: handle2 }) {
@@ -149331,7 +149337,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     return { isError: true, content: [{ type: "text", text: message }] };
   }
 
-  // DesktopRuntime/upstream/src/main/features/plugins/catalog/catalogIndex.ts
+  // upstream/src/main/features/plugins/catalog/catalogIndex.ts
   function isRecord9(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
@@ -149395,7 +149401,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     return { name: raw["name"], entries };
   }
 
-  // DesktopRuntime/upstream/src/main/features/plugins/catalog/catalogService.ts
+  // upstream/src/main/features/plugins/catalog/catalogService.ts
   var CATALOG_CACHE_FILE = "plugin-catalog.json";
   var CATALOG_INDEX_MAX_BYTES = 1024 * 1024;
   function isRecord10(value) {
@@ -149552,7 +149558,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/plugins/catalog/catalogInstall.ts
+  // upstream/src/main/features/plugins/catalog/catalogInstall.ts
   function interop2(module3) {
     const record2 = module3;
     return record2.default ?? module3;
@@ -149708,7 +149714,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/backend/plugins-catalog.ts
+  // backend/plugins-catalog.ts
   init_native();
   function installPluginCatalog({ handle: handle2, plugins, packs }) {
     let marketplace = null;
@@ -149749,7 +149755,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     });
   }
 
-  // DesktopRuntime/upstream/src/main/features/workflowPacks/runGuard.ts
+  // upstream/src/main/features/workflowPacks/runGuard.ts
   var PACK_RUN_GUARD_TTL_MS = 15 * 60 * 1e3;
   function createPackRunGuard(deps = {}) {
     const now = deps.now ?? Date.now;
@@ -149794,7 +149800,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/backend/ai/workflow.ts
+  // backend/ai/workflow.ts
   function createWorkflowBridge(deps) {
     const guard = createPackRunGuard(), sessions = /* @__PURE__ */ new Map(), armed = /* @__PURE__ */ new Map(), pending = /* @__PURE__ */ new Map();
     const sessionFor = (courseId2) => {
@@ -149862,7 +149868,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/browserAgent/siteRecipes.ts
+  // upstream/src/main/features/browserAgent/siteRecipes.ts
   var CANVAS_PATHS = {
     announcements: "discussion_topics?only_announcements=true&per_page=20",
     assignments: "assignments?per_page=40&order_by=due_at",
@@ -149929,7 +149935,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     }
   }
 
-  // DesktopRuntime/upstream/src/main/features/browserAgent/seenRepo.ts
+  // upstream/src/main/features/browserAgent/seenRepo.ts
   function itemKey(id2, title2, at) {
     if (id2 !== null && id2.trim() !== "") return id2.trim();
     return createHash("sha256").update(`${title2}|${at ?? ""}`).digest("hex").slice(0, 32);
@@ -149978,7 +149984,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/universities/snu.ts
+  // upstream/src/shared/universities/snu.ts
   var VERIFIED_AT = "2026-08-05";
   var SNU = {
     id: "snu",
@@ -150127,7 +150133,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     ]
   };
 
-  // DesktopRuntime/upstream/src/shared/universities/regional.ts
+  // upstream/src/shared/universities/regional.ts
   var KAIST = {
     id: "kaist",
     nameKo: "\uD55C\uAD6D\uACFC\uD559\uAE30\uC220\uC6D0",
@@ -150727,7 +150733,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     SEJONG
   ];
 
-  // DesktopRuntime/upstream/src/shared/universities/seoulPrivate.ts
+  // upstream/src/shared/universities/seoulPrivate.ts
   var YONSEI = {
     id: "yonsei",
     nameKo: "\uC5F0\uC138\uB300\uD559\uAD50",
@@ -151281,7 +151287,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     EWHA
   ];
 
-  // DesktopRuntime/upstream/src/shared/universities/index.ts
+  // upstream/src/shared/universities/index.ts
   var UNIVERSITIES = [
     SNU,
     ...SEOUL_PRIVATE_UNIVERSITIES,
@@ -151305,7 +151311,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     return findUniversity(universityId);
   }
 
-  // DesktopRuntime/backend/ai/browser-lms.ts
+  // backend/ai/browser-lms.ts
   function createLMSBrowserTools(deps) {
     const seen = createSeenRepo(deps.db);
     const kinds2 = ["announcements", "assignments", "modules", "files"];
@@ -151367,7 +151373,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/browserAgent/grants.ts
+  // upstream/src/main/features/browserAgent/grants.ts
   var GRANT_DAYS = 30;
   var ANY_ORIGIN = "*";
   function normalizeOrigin(url) {
@@ -151470,7 +151476,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/browserAgent/audit.ts
+  // upstream/src/main/features/browserAgent/audit.ts
   var AUDIT_RETENTION_DAYS = 90;
   var toEntry = (row) => ({
     id: row.id,
@@ -151526,7 +151532,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/browserAuth.ts
+  // upstream/src/shared/browserAuth.ts
   function webUrl(value) {
     try {
       const url = new URL(value ?? "");
@@ -151540,7 +151546,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     return url?.protocol === "https:" && ["accounts.google.com", "accounts.youtube.com"].includes(url.hostname);
   }
 
-  // DesktopRuntime/upstream/src/main/features/browser/webviewPolicy.ts
+  // upstream/src/main/features/browser/webviewPolicy.ts
   function isHttpUrl(url) {
     try {
       const parsed = new URL(url);
@@ -151625,7 +151631,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     return passthroughActionFor(action);
   }
 
-  // DesktopRuntime/upstream/src/main/features/browserAgent/denylist.ts
+  // upstream/src/main/features/browserAgent/denylist.ts
   var REGISTRATION_LABELS = ["sugang", "sugang1", "sugang2", "enroll", "susi"];
   var DENIED_HOST_SUFFIXES = [
     // Payment gateways used by Korean universities.
@@ -151677,7 +151683,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     return null;
   }
 
-  // DesktopRuntime/upstream/src/main/features/browserAgent/navigation.ts
+  // upstream/src/main/features/browserAgent/navigation.ts
   function checkNavigation(input) {
     const raw = typeof input.url === "string" ? input.url.trim() : "";
     if (raw === "") {
@@ -151711,7 +151717,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     return { allowed: true, url: raw };
   }
 
-  // DesktopRuntime/upstream/src/main/features/browserAgent/actionPolicy.ts
+  // upstream/src/main/features/browserAgent/actionPolicy.ts
   var TYPEABLE_TAGS = /* @__PURE__ */ new Set(["input", "textarea"]);
   var NON_TEXT_INPUT_TYPES = /* @__PURE__ */ new Set([
     "button",
@@ -151795,7 +151801,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     return { allowed: true };
   }
 
-  // DesktopRuntime/upstream/src/main/features/browserAgent/refs.ts
+  // upstream/src/main/features/browserAgent/refs.ts
   var REF_PATTERN = /^f(\d+):e(\d+)@(\d+)$/;
   function parseRef(ref) {
     if (typeof ref !== "string") return null;
@@ -151831,7 +151837,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/browserAgent/run.ts
+  // upstream/src/main/features/browserAgent/run.ts
   var RunStopped = class extends Error {
     constructor() {
       super("\uD559\uC0DD\uC774 \uC911\uC9C0\uD588\uC5B4\uC694.");
@@ -151976,7 +151982,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     };
   }
 
-  // DesktopRuntime/backend/ai/browser-port.ts
+  // backend/ai/browser-port.ts
   init_native();
   function createBrowserBridge(deps) {
     const grants = createGrantsRepo(deps.db), audit = createAuditRepo(deps.db);
@@ -152111,14 +152117,14 @@ ${escapeMarkdown(annotation.comment.trim())}
           log3("navigate", before.url, action.kind);
           return result;
         },
-        async browser_key(tabId, key3) {
-          if (!["Enter", "Tab", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(key3)) throw new Error("\uC9C0\uC6D0\uD558\uC9C0 \uC54A\uB294 \uD0A4\uC785\uB2C8\uB2E4.");
+        async browser_key(tabId, key4) {
+          if (!["Enter", "Tab", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(key4)) throw new Error("\uC9C0\uC6D0\uD558\uC9C0 \uC54A\uB294 \uD0A4\uC785\uB2C8\uB2E4.");
           const before = await inspect2(tabId, void 0, true);
           await gate(before.url, "interact");
-          if (key3 === "Enter" && before.facts?.href) await gate(new URL(before.facts.href, before.url).href, "read");
-          if (key3 === "Enter" && before.facts?.formAction) await gate(new URL(before.facts.formAction, before.url).href, "interact");
-          if (key3 === "Enter" && await deps.confirmer.confirm({ courseId: courseId2, conversationId, turnId: getTurnId(), tool: "browser_key", summary: "Enter \uD0A4\uB97C \uB204\uB97C\uAE4C\uC694?", details: ["\uD604\uC7AC \uD398\uC774\uC9C0\uC758 \uC591\uC2DD\uC774 \uC81C\uCD9C\uB420 \uC218 \uC788\uC5B4\uC694."], scopes: ["once"] }) === false) throw new Error("\uD559\uC0DD\uC774 \uC911\uC9C0\uD588\uC5B4\uC694.");
-          return native2("key", { tabId, key: key3, focusToken: before.focusToken, expectedFacts: before.facts, approved: key3 === "Enter" }, before);
+          if (key4 === "Enter" && before.facts?.href) await gate(new URL(before.facts.href, before.url).href, "read");
+          if (key4 === "Enter" && before.facts?.formAction) await gate(new URL(before.facts.formAction, before.url).href, "interact");
+          if (key4 === "Enter" && await deps.confirmer.confirm({ courseId: courseId2, conversationId, turnId: getTurnId(), tool: "browser_key", summary: "Enter \uD0A4\uB97C \uB204\uB97C\uAE4C\uC694?", details: ["\uD604\uC7AC \uD398\uC774\uC9C0\uC758 \uC591\uC2DD\uC774 \uC81C\uCD9C\uB420 \uC218 \uC788\uC5B4\uC694."], scopes: ["once"] }) === false) throw new Error("\uD559\uC0DD\uC774 \uC911\uC9C0\uD588\uC5B4\uC694.");
+          return native2("key", { tabId, key: key4, focusToken: before.focusToken, expectedFacts: before.facts, approved: key4 === "Enter" }, before);
         },
         browser_hover: (tabId, ref) => checked("hover", { tabId, ref }),
         browser_back: (tabId) => checked("back", { tabId }),
@@ -152192,7 +152198,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     } };
   }
 
-  // DesktopRuntime/upstream/src/main/features/agent/accessPolicy.ts
+  // upstream/src/main/features/agent/accessPolicy.ts
   function canonical(path) {
     if (existsSync(path)) return realpathSync(path);
     const parent = dirname(path);
@@ -152226,7 +152232,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     const normalize3 = (value) => {
       if (Array.isArray(value)) return value.map(normalize3);
       if (!value || typeof value !== "object") return value;
-      return Object.fromEntries(Object.entries(value).filter(([key3]) => !["requestId", "threadId", "turnId", "itemId", "toolCallId", "reason"].includes(key3)).sort(([a], [b]) => a.localeCompare(b)).map(([key3, value2]) => [key3, normalize3(value2)]));
+      return Object.fromEntries(Object.entries(value).filter(([key4]) => !["requestId", "threadId", "turnId", "itemId", "toolCallId", "reason"].includes(key4)).sort(([a], [b]) => a.localeCompare(b)).map(([key4, value2]) => [key4, normalize3(value2)]));
     };
     return JSON.stringify(normalize3(input)) ?? "";
   }
@@ -152252,7 +152258,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     return selected && selected !== "default" ? selected : void 0;
   }
 
-  // DesktopRuntime/upstream/src/main/features/agent/transcriptCarryover.ts
+  // upstream/src/main/features/agent/transcriptCarryover.ts
   var CARRYOVER_MAX_CHARS = 12e3;
   var CARRYOVER_MAX_MESSAGES = 40;
   var CARRYOVER_HISTORY_LIMIT = CARRYOVER_MAX_MESSAGES + 1;
@@ -152353,7 +152359,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     ].join("\n");
   }
 
-  // DesktopRuntime/upstream/src/main/features/agent/SessionManager.ts
+  // upstream/src/main/features/agent/SessionManager.ts
   var IDLE_REAP_MS = 10 * 60 * 1e3;
   var MAX_WARM_SESSIONS = 3;
   function permissionDetails(input) {
@@ -152593,11 +152599,11 @@ ${mcpHint}`;
       );
       return entry2.sessionPromise;
     }
-    function upsertTurnBlock(entry2, key3, update) {
-      const existing = entry2.turnBlocks.get(key3) ?? null;
+    function upsertTurnBlock(entry2, key4, update) {
+      const existing = entry2.turnBlocks.get(key4) ?? null;
       const input = update(existing?.input ?? null);
-      entry2.turnBlocks.set(key3, {
-        key: key3,
+      entry2.turnBlocks.set(key4, {
+        key: key4,
         ord: existing?.ord ?? entry2.turnBlocks.size,
         input
       });
@@ -153007,7 +153013,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/agent/eventBatcher.ts
+  // upstream/src/main/features/agent/eventBatcher.ts
   var BATCH_DEBOUNCE_MS = 40;
   var BATCH_MAX_WAIT_MS = 250;
   function isDelta(event) {
@@ -153114,7 +153120,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/upstream/src/shared/agentProviderSelection.ts
+  // upstream/src/shared/agentProviderSelection.ts
   function providerPreferenceOrder(preferred, lastSelected) {
     return [preferred, lastSelected, ...AGENT_PROVIDERS].filter(
       (provider, index, all) => all.indexOf(provider) === index
@@ -153124,7 +153130,7 @@ ${contextText}
     return state?.installed === true && state.loggedIn && state.code === void 0;
   }
 
-  // DesktopRuntime/upstream/src/main/features/agent/conversationRouting.ts
+  // upstream/src/main/features/agent/conversationRouting.ts
   async function resolveConversationProvider(options) {
     if (options.storedProvider) return options.storedProvider;
     if (options.warmProvider) return options.warmProvider;
@@ -153137,7 +153143,7 @@ ${contextText}
     return options.preferredProvider;
   }
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/confirm.ts
+  // upstream/src/main/features/agentTools/confirm.ts
   var DEFAULT_TIMEOUT_MS = 2 * 60 * 1e3;
   function createAgentConfirmer(deps) {
     const pending = /* @__PURE__ */ new Map();
@@ -153175,8 +153181,8 @@ ${contextText}
     }
     return {
       confirm(input) {
-        const key3 = input.turnId ? JSON.stringify([input.conversationId, input.turnId, input.tool, input.operationKey ?? input.details]) : null;
-        const previousId = key3 ? operations.get(key3) : void 0;
+        const key4 = input.turnId ? JSON.stringify([input.conversationId, input.turnId, input.tool, input.operationKey ?? input.details]) : null;
+        const previousId = key4 ? operations.get(key4) : void 0;
         if (previousId) {
           const waiting = pending.get(previousId);
           if (waiting) return waiting.promise;
@@ -153190,8 +153196,8 @@ ${contextText}
         });
         const timer = setTimeout(() => settle(request.requestId, "expired"), timeoutMs);
         pending.set(request.requestId, { request, resolve: resolve2, timer, promise });
-        if (key3) {
-          operations.set(key3, request.requestId);
+        if (key4) {
+          operations.set(key4, request.requestId);
           if (operations.size > 2e3) operations.delete(operations.keys().next().value);
         }
         try {
@@ -153224,7 +153230,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/journal.ts
+  // upstream/src/main/features/agentTools/journal.ts
   function rowToAction(row) {
     return {
       id: row.id,
@@ -153327,7 +153333,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/desktopAgent/schemas.ts
+  // upstream/src/main/features/desktopAgent/schemas.ts
   var readOnly = {
     readOnlyHint: true,
     destructiveHint: false,
@@ -153376,7 +153382,7 @@ ${contextText}
     }
   ];
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/coverage.ts
+  // upstream/src/main/features/agentTools/coverage.ts
   var AGENT_CHANNEL_TOOLS = {
     "courses:create": "create_course",
     "courses:rename": "rename_course",
@@ -153420,7 +153426,7 @@ ${contextText}
     Object.values(AGENT_CHANNEL_TOOLS)
   );
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/schemas.ts
+  // upstream/src/main/features/agentTools/schemas.ts
   var DESKTOP_TOOL_NAMES = [
     "desktop_screenshot",
     "desktop_windows",
@@ -154127,7 +154133,7 @@ ${contextText}
     (tool) => tool.name
   );
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/toolHandlers/context.ts
+  // upstream/src/main/features/agentTools/toolHandlers/context.ts
   var RawToolResult = class {
     constructor(result) {
       this.result = result;
@@ -154140,50 +154146,50 @@ ${contextText}
     }
     return value;
   }
-  function has(input, key3) {
-    return Object.prototype.hasOwnProperty.call(input, key3);
+  function has(input, key4) {
+    return Object.prototype.hasOwnProperty.call(input, key4);
   }
-  function stringField(input, key3, options = {}) {
-    const value = input[key3];
+  function stringField(input, key4, options = {}) {
+    const value = input[key4];
     if (typeof value !== "string") {
-      throw new ValidationError(`${key3} must be a string`);
+      throw new ValidationError(`${key4} must be a string`);
     }
     if (options.nonEmpty === true && value.trim() === "") {
-      throw new ValidationError(`${key3} must be a non-empty string`);
+      throw new ValidationError(`${key4} must be a non-empty string`);
     }
     return value;
   }
-  function optionalString2(input, key3) {
-    return has(input, key3) ? stringField(input, key3) : void 0;
+  function optionalString2(input, key4) {
+    return has(input, key4) ? stringField(input, key4) : void 0;
   }
-  function optionalBoolean(input, key3) {
-    if (!has(input, key3)) return void 0;
-    const value = input[key3];
+  function optionalBoolean(input, key4) {
+    if (!has(input, key4)) return void 0;
+    const value = input[key4];
     if (typeof value !== "boolean") {
-      throw new ValidationError(`${key3} must be a boolean`);
+      throw new ValidationError(`${key4} must be a boolean`);
     }
     return value;
   }
-  function optionalInteger(input, key3, minimum) {
-    if (!has(input, key3)) return void 0;
-    const value = input[key3];
+  function optionalInteger(input, key4, minimum) {
+    if (!has(input, key4)) return void 0;
+    const value = input[key4];
     if (typeof value !== "number" || !Number.isInteger(value) || value < minimum) {
-      throw new ValidationError(`${key3} must be an integer >= ${minimum}`);
+      throw new ValidationError(`${key4} must be an integer >= ${minimum}`);
     }
     return value;
   }
-  function nullableStringField(input, key3) {
-    if (input[key3] === null) return null;
-    return stringField(input, key3, { nonEmpty: true });
+  function nullableStringField(input, key4) {
+    if (input[key4] === null) return null;
+    return stringField(input, key4, { nonEmpty: true });
   }
-  function stringArrayField(input, key3) {
-    const value = input[key3];
+  function stringArrayField(input, key4) {
+    const value = input[key4];
     if (!Array.isArray(value) || value.length === 0) {
-      throw new ValidationError(`${key3} must be a non-empty array`);
+      throw new ValidationError(`${key4} must be a non-empty array`);
     }
     return value.map((item, index) => {
       if (typeof item !== "string" || item.trim() === "") {
-        throw new ValidationError(`${key3}[${index}] must be a non-empty string`);
+        throw new ValidationError(`${key4}[${index}] must be a non-empty string`);
       }
       return item;
     });
@@ -154199,7 +154205,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/toolHandlers/board.ts
+  // upstream/src/main/features/agentTools/toolHandlers/board.ts
   function boardTools(ctx) {
     const {
       deps,
@@ -154289,7 +154295,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/shapeValidation.ts
+  // upstream/src/main/features/agentTools/shapeValidation.ts
   function assertAgentBoardShape(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
       throw new ValidationError("shape must be an object");
@@ -154303,7 +154309,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/toolHandlers/canvas.ts
+  // upstream/src/main/features/agentTools/toolHandlers/canvas.ts
   function canvasTools(ctx) {
     const {
       deps,
@@ -154478,7 +154484,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/toolHandlers/courses.ts
+  // upstream/src/main/features/agentTools/toolHandlers/courses.ts
   function courseTools(ctx) {
     const { deps, currentTurn, reserve, release: release2, approve, record: record2 } = ctx;
     return {
@@ -154656,7 +154662,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/toolHandlers/links.ts
+  // upstream/src/main/features/agentTools/toolHandlers/links.ts
   function descriptorForMaterial(courseId2, relPath2) {
     switch (materialKindForPath(relPath2)) {
       case "pdf":
@@ -154741,7 +154747,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/toolHandlers/materials.ts
+  // upstream/src/main/features/agentTools/toolHandlers/materials.ts
   function materialTools(ctx) {
     const {
       deps,
@@ -154895,7 +154901,7 @@ ${contextText}
   // browser-key-constants:/Users/iseojun/dev/bandal-iPad/DesktopRuntime/upstream/src/main/features/browserAgent/browserTools.ts
   var BROWSER_KEYS = ["Enter", "Tab", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/toolHandlers/misc.ts
+  // upstream/src/main/features/agentTools/toolHandlers/misc.ts
   var SCROLL_DIRECTIONS = ["down", "up", "top", "bottom"];
   function miscTools(ctx) {
     const {
@@ -154987,13 +154993,13 @@ ${contextText}
         });
       },
       browser_key(input) {
-        const key3 = stringField(input, "key", { nonEmpty: true });
-        if (!BROWSER_KEYS.includes(key3)) {
+        const key4 = stringField(input, "key", { nonEmpty: true });
+        if (!BROWSER_KEYS.includes(key4)) {
           throw new ValidationError("unsupported browser key");
         }
         return browser2().browser_key(
           stringField(input, "tabId", { nonEmpty: true }),
-          key3
+          key4
         );
       },
       browser_hover(input) {
@@ -155068,7 +155074,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/documentBackup.ts
+  // upstream/src/main/features/agentTools/documentBackup.ts
   var MATERIAL_BACKUP_DIR_SEGMENTS = [".bandal", "backups"];
   var MATERIAL_BACKUP_KEEP = 20;
   var TARGET_ID_SEPARATOR = "\0";
@@ -155131,7 +155137,7 @@ ${contextText}
     copyFileSync(input.backupAbs, targetAbs);
   }
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/documentEdit.ts
+  // upstream/src/main/features/agentTools/documentEdit.ts
   var MAX_SHEET_EDITS = 200;
   var MAX_SHEET_APPEND_ROWS = 200;
   var MAX_SHEET_ROW_CELLS = 100;
@@ -155340,7 +155346,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/toolHandlers/notes.ts
+  // upstream/src/main/features/agentTools/toolHandlers/notes.ts
   function noteTools(ctx) {
     const {
       deps,
@@ -155489,7 +155495,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/agentTools/tools.ts
+  // upstream/src/main/features/agentTools/tools.ts
   var AGENT_TURN_LIMITS = {
     courses: 20,
     files: 50,
@@ -155775,10 +155781,10 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/backend/ai/index.ts
+  // backend/ai/index.ts
   init_native();
 
-  // DesktopRuntime/upstream/src/main/features/learning/learningAgent.ts
+  // upstream/src/main/features/learning/learningAgent.ts
   function assertConnected(availability) {
     if (!isAgentReady(availability)) throw new LearningExecutionError({
       message: availability.reason ?? "\uC120\uD0DD\uD55C AI \uC5F0\uACB0\uC744 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC5B4\uC694.",
@@ -155802,7 +155808,7 @@ ${contextText}
     return manager.send(courseId2, sessionId, prompt);
   }
 
-  // DesktopRuntime/backend/ai/index.ts
+  // backend/ai/index.ts
   function installAI(deps) {
     const { handle: handle2, chat, courses, repositories: repos } = deps;
     const warm = /* @__PURE__ */ new Map(), surfaces = /* @__PURE__ */ new Map(), toolSets = /* @__PURE__ */ new Map();
@@ -156141,14 +156147,14 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/backend/sync/index.ts
+  // backend/sync/index.ts
   init_native();
 
-  // DesktopRuntime/backend/sync/format.ts
+  // backend/sync/format.ts
   init_buffer();
   var coordinateSpace2 = "unrotated-crop-box-top-left-normalized";
   function canonical2(value) {
-    return JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map((key3) => [key3, item[key3]])) : item);
+    return JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map((key4) => [key4, item[key4]])) : item);
   }
   var digest = (value) => createHash("sha256").update(canonical2(value)).digest("hex");
   var decodePage = (record2) => JSON.parse(Buffer2.from(record2.payload.data, "base64").toString());
@@ -156179,7 +156185,7 @@ ${contextText}
     return result;
   }
 
-  // DesktopRuntime/backend/sync/export.ts
+  // backend/sync/export.ts
   init_native();
   function snapshotProjection(deps) {
     const db = deps.db, records = [], assets = [], sources2 = /* @__PURE__ */ new Map();
@@ -156212,7 +156218,10 @@ ${contextText}
         if (item.deleted_at || !existsSync(path)) continue;
         const mid = item.id, fileName = basename(item.rel_path), extension2 = extname(fileName).toLowerCase();
         const kind = extension2 === ".pdf" ? "pdf" : [".md", ".markdown"].includes(extension2) ? "note" : [".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic"].includes(extension2) ? "image" : "file";
+        const binding2 = kind === "pdf" ? deps.pdfBindings.check({ courseId: course.id, relPath: item.rel_path }) : void 0;
+        if (binding2 && binding2.materialID !== mid) throw new Error("PDF material identity changed during sync projection; retry after refreshing the index");
         const revision = asset(mid, path), source = { courseID: course.id, relPath: item.rel_path, path, hash: revision.sha256 };
+        if (binding2 && binding2.documentRevision !== revision.sha256) throw new Error("PDF changed while preparing sync; ink and original revision were preserved");
         add(`material:${mid}`, "material", {
           id: mid,
           courseID: course.id,
@@ -156288,7 +156297,7 @@ ${contextText}
       if (board.deleted_at) continue;
       const rows = db.prepare("SELECT * FROM whiteboard_local_shapes WHERE board_id=?").all(mid);
       const pages = new Set(rows.map((r) => r.page)), prefix2 = `drawing:${mid}:${revision}:`;
-      for (const key3 of mapped.keys()) if (key3.startsWith(prefix2)) pages.add(Number(key3.slice(prefix2.length)));
+      for (const key4 of mapped.keys()) if (key4.startsWith(prefix2)) pages.add(Number(key4.slice(prefix2.length)));
       for (const page of pages) {
         const prior = mapped.get(prefix2 + page), previous = prior ? decodePage(prior) : void 0;
         const geometry = previous?.geometry ?? { cropX: 0, cropY: 0, width: 595.28, height: 841.89, rotation: 0 };
@@ -156334,7 +156343,7 @@ ${contextText}
     return { records, assets, sources: sources2 };
   }
 
-  // DesktopRuntime/backend/sync/journal.ts
+  // backend/sync/journal.ts
   init_native();
   function createFileJournal(db) {
     const root = join(env2().userDataPath, "SyncRecovery");
@@ -156406,7 +156415,7 @@ ${contextText}
     };
   }
 
-  // DesktopRuntime/backend/sync/import.ts
+  // backend/sync/import.ts
   init_native();
   init_buffer();
   var kinds = /* @__PURE__ */ new Set(["course", "material", "note", "drawing", "annotation", "board", "task", "calendarEvent", "recording", "favorite", "chat", "learningEvent", "vocabulary", "flashcard", "quiz", "artifact"]);
@@ -156417,7 +156426,7 @@ ${contextText}
     if (typeof value !== "string" || !value || /[/\\\x00]/.test(value) || [".", ".."].includes(value)) throw new Error("Unsafe sync filename");
     return value;
   };
-  var identity = (value) => {
+  var identity2 = (value) => {
     if (typeof value !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(value)) throw new Error("Invalid sync identity");
     return value;
   };
@@ -156425,10 +156434,10 @@ ${contextText}
     const db = deps.db, p = record2.payload, now = (/* @__PURE__ */ new Date()).toISOString(), deleted = record2.deleted ? now : null;
     const files = [], changes = [];
     let source = {}, courseID;
-    const row = (table9, value) => {
+    const row = (table10, value) => {
       changes.push(() => {
         const keys4 = Object.keys(value), updates = keys4.filter((k) => k !== "id").map((k) => `${k}=excluded.${k}`).join(",");
-        db.prepare(`INSERT INTO ${table9}(${keys4.join(",")}) VALUES(${keys4.map(() => "?").join(",")}) ON CONFLICT(id) DO UPDATE SET ${updates}`).run(...keys4.map((k) => value[k]));
+        db.prepare(`INSERT INTO ${table10}(${keys4.join(",")}) VALUES(${keys4.map(() => "?").join(",")}) ON CONFLICT(id) DO UPDATE SET ${updates}`).run(...keys4.map((k) => value[k]));
       });
     };
     const course = (id2) => {
@@ -156448,7 +156457,7 @@ ${contextText}
       return path;
     };
     if (record2.kind === "course") {
-      const id2 = identity(p.id);
+      const id2 = identity2(p.id);
       if (record2.id !== `course:${id2}` || typeof p.name !== "string" || !p.name) throw new Error("Invalid course payload");
       const old = db.prepare("SELECT * FROM courses WHERE id=?").get(id2), folder = old?.folder_path ?? join(env2().dataRoot, "Synced", id2);
       mkdirSync(folder, { recursive: true });
@@ -156470,8 +156479,11 @@ ${contextText}
         deleted_at: deleted
       });
     } else if (record2.kind === "material") {
-      const id2 = identity(p.id), c = course(p.courseID), old = db.prepare("SELECT * FROM materials_index WHERE id=?").get(id2);
+      const id2 = identity2(p.id), c = course(p.courseID), old = db.prepare("SELECT * FROM materials_index WHERE id=?").get(id2);
       if (record2.id !== `material:${id2}` || old && old.course_id !== p.courseID) throw new Error("Material identity mismatch");
+      if (old && /\.pdf$/i.test(old.rel_path) && p.kind !== "pdf") throw new Error("A preserved PDF material cannot change its kind");
+      const oldBoard = db.prepare("SELECT id FROM whiteboards WHERE id=?").get(id2);
+      if (p.kind === "whiteboard" && old || p.kind !== "whiteboard" && oldBoard) throw new Error("File and whiteboard identities cannot be reused for each other");
       if (p.kind === "whiteboard") {
         row("whiteboards", {
           id: id2,
@@ -156499,6 +156511,10 @@ ${contextText}
           }
         }
         source = { courseID: p.courseID, relPath: relPath2, path: target, hash: p.revision };
+        if (!record2.deleted && old && /\.pdf$/i.test(old.rel_path) && existsSync(target)) {
+          const binding2 = deps.pdfBindings.check({ courseId: p.courseID, relPath: old.rel_path });
+          if (binding2.documentRevision !== p.revision) throw new Error("PDF replacement conflicts with its preserved drawing revision; import as a separate material");
+        }
         if (record2.deleted) files.push({ target, remove: true });
         else if (!existsSync(target) || native("fs.sha256", { path: target }) !== p.revision) {
           const path = asset(p.revision, p.byteCount);
@@ -156517,8 +156533,9 @@ ${contextText}
         });
       }
     } else if (record2.kind === "note") {
-      const m = material(identity(p.materialID));
+      const m = material(identity2(p.materialID));
       if (typeof p.markdown !== "string" || record2.id !== `note:${p.materialID}`) throw new Error("Invalid note payload");
+      if (m.kind !== "note" || !/\.(md|markdown)$/i.test(m.rel_path)) throw new Error("A note record can only write to its Markdown material");
       source = { courseID: m.course_id, relPath: m.rel_path, path: m.path };
       files.push(record2.deleted ? { target: m.path, remove: true } : { target: m.path, text: p.markdown });
     } else if (record2.kind === "drawing") {
@@ -156528,15 +156545,16 @@ ${contextText}
       const m = board ? { course_id: board.course_id, rel_path: "", path: "", id: board.id } : material(page.materialID);
       courseID = m.course_id;
       if (!board) {
-        if (native("fs.sha256", { path: m.path }) !== page.documentRevision) throw new Error("Ink belongs to a different document revision");
+        const binding2 = deps.pdfBindings.check({ courseId: m.course_id, relPath: m.rel_path, documentRevision: page.documentRevision });
+        if (binding2.materialID !== page.materialID) throw new Error("Ink belongs to a different material identity");
         const actual = native("pdf.geometry", { path: m.path }).find((value) => value.page === page.page);
         if (!actual || actual.rotation !== g.rotation || [actual.cropBox.x - g.cropX, actual.cropBox.y - g.cropY, actual.cropBox.width - g.width, actual.cropBox.height - g.height].some((delta) => !Number.isFinite(delta) || Math.abs(delta) > 1e-3)) throw new Error("Ink geometry does not match PDF");
       }
       source = { courseID, relPath: m.rel_path, path: m.path, geometry: g };
-      const objectIDs = /* @__PURE__ */ new Set(), table9 = board ? "whiteboard_local_shapes" : "pdf_drawings", deletedIDs = new Set(page.deletedObjectIDs ?? []);
-      if (record2.deleted) changes.push(() => db.prepare(`UPDATE ${table9} SET deleted_at=?,updated_at=? WHERE ${board ? "board_id=?" : "course_id=? AND rel_path=?"} AND page=?`).run(now, now, ...board ? [board.id] : [courseID, m.rel_path], page.page));
+      const objectIDs = /* @__PURE__ */ new Set(), table10 = board ? "whiteboard_local_shapes" : "pdf_drawings", deletedIDs = new Set(page.deletedObjectIDs ?? []);
+      if (record2.deleted) changes.push(() => db.prepare(`UPDATE ${table10} SET deleted_at=?,updated_at=? WHERE ${board ? "board_id=?" : "course_id=? AND rel_path=?"} AND page=?`).run(now, now, ...board ? [board.id] : [courseID, m.rel_path], page.page));
       for (const object2 of page.objects ?? []) {
-        identity(object2.id);
+        identity2(object2.id);
         if (objectIDs.has(object2.id)) throw new Error("Duplicate ink object identity");
         objectIDs.add(object2.id);
         const value = transformShape(object2, g, true);
@@ -156550,9 +156568,9 @@ ${contextText}
         assertDrawingKind(value.kind);
         assertDrawingData(value.data, value.kind, { allowClip: true });
         assertDrawingStyle(value.style);
-        const old = db.prepare(`SELECT * FROM ${table9} WHERE id=?`).get(value.id);
+        const old = db.prepare(`SELECT * FROM ${table10} WHERE id=?`).get(value.id);
         if (old && (board ? old.board_id !== board.id : old.course_id !== courseID || old.rel_path !== m.rel_path) || old && old.page !== page.page) throw new Error("Ink identity belongs to another page");
-        row(table9, {
+        row(table10, {
           id: value.id,
           ...board ? { board_id: board.id } : { course_id: courseID, rel_path: m.rel_path },
           page: page.page,
@@ -156564,10 +156582,10 @@ ${contextText}
           deleted_at: deleted || (deletedIDs.has(value.id) ? now : null)
         });
       }
-      for (const id2 of deletedIDs) changes.push(() => db.prepare(`UPDATE ${table9} SET deleted_at=?,updated_at=? WHERE id=? AND ${board ? "board_id=?" : "course_id=? AND rel_path=?"} AND page=?`).run(now, now, id2, ...board ? [board.id] : [courseID, m.rel_path], page.page));
+      for (const id2 of deletedIDs) changes.push(() => db.prepare(`UPDATE ${table10} SET deleted_at=?,updated_at=? WHERE id=? AND ${board ? "board_id=?" : "course_id=? AND rel_path=?"} AND page=?`).run(now, now, id2, ...board ? [board.id] : [courseID, m.rel_path], page.page));
       if (board && page.highlights?.length) throw new Error("Text highlights are unsupported on whiteboards");
       for (const h of page.highlights ?? []) {
-        identity(h.id);
+        identity2(h.id);
         const old = db.prepare("SELECT * FROM annotations WHERE id=?").get(h.id);
         if (old && (old.course_id !== courseID || old.rel_path !== m.rel_path || old.page !== page.page)) throw new Error("Highlight identity belongs to another page");
         row("annotations", {
@@ -156586,7 +156604,7 @@ ${contextText}
       }
       for (const id2 of page.deletedHighlightIDs ?? []) changes.push(() => db.prepare("UPDATE annotations SET deleted_at=?,updated_at=? WHERE id=? AND course_id=? AND rel_path=? AND page=?").run(now, now, id2, courseID, m.rel_path, page.page));
     } else if (record2.kind === "task") {
-      const id2 = identity(p.id);
+      const id2 = identity2(p.id);
       if (p.courseID) course(p.courseID);
       if (typeof p.title !== "string" || record2.id !== `task:${id2}`) throw new Error("Invalid task payload");
       row("board_tasks", {
@@ -156606,21 +156624,21 @@ ${contextText}
         deleted_at: deleted
       });
     } else if (record2.kind === "favorite") {
-      const id2 = identity(p.id);
+      const id2 = identity2(p.id);
       if (p.courseID) course(p.courseID);
       if (typeof p.label !== "string" || !p.descriptor || typeof p.descriptor !== "object") throw new Error("Invalid favorite payload");
       row("favorites", { id: id2, course_id: p.courseID ?? null, label: p.label, descriptor_json: JSON.stringify(p.descriptor), sort_order: p.sortOrder ?? 0, created_at: p.createdAt ?? now, updated_at: now, deleted_at: deleted });
     } else if (record2.kind === "artifact" && p.recordType === "desktop-course-group") {
-      row("course_groups", { id: identity(p.id), name: p.name, sort_order: p.sortOrder ?? 0, created_at: p.createdAt ?? now, updated_at: now, deleted_at: deleted });
+      row("course_groups", { id: identity2(p.id), name: p.name, sort_order: p.sortOrder ?? 0, created_at: p.createdAt ?? now, updated_at: now, deleted_at: deleted });
     } else if (record2.kind === "chat" && p.recordType === "desktop-chat-session") {
-      const id2 = identity(p.id);
+      const id2 = identity2(p.id);
       course(p.courseID);
       if (!["claude-code", "codex", "gemini"].includes(p.provider) || !["app", "desktop"].includes(p.surface)) throw new Error("Unsupported chat provider or surface");
       const old = db.prepare("SELECT * FROM agent_sessions WHERE id=?").get(id2);
       if (old && old.course_id !== p.courseID) throw new Error("Chat identity belongs to another course");
       row("agent_sessions", { id: id2, course_id: p.courseID, title: p.title ?? null, provider: p.provider, model: p.model ?? null, surface: p.surface, reasoning_effort: p.reasoningEffort ?? null, status: old?.status ?? "idle", last_used_at: p.lastUsedAt ?? null, created_at: p.createdAt ?? now, updated_at: now, deleted_at: deleted });
     } else if (record2.kind === "chat" && p.recordType === "desktop-chat-message") {
-      const id2 = identity(p.id);
+      const id2 = identity2(p.id);
       course(p.courseID);
       const session = db.prepare("SELECT * FROM agent_sessions WHERE id=?").get(p.sessionID);
       if (!session || session.course_id !== p.courseID || !["user", "assistant"].includes(p.role) || !Number.isInteger(p.turnSequence) || !Array.isArray(p.blocks)) throw new Error("Invalid chat message");
@@ -156629,7 +156647,7 @@ ${contextText}
       row("messages", { id: id2, course_id: p.courseID, session_id: p.sessionID, role: p.role, turn_seq: p.turnSequence, created_at: p.createdAt ?? now, updated_at: p.updatedAt ?? now, deleted_at: deleted });
       const ids = /* @__PURE__ */ new Set(), orders = /* @__PURE__ */ new Set();
       for (const block of p.blocks) {
-        identity(block.id);
+        identity2(block.id);
         if (ids.has(block.id) || orders.has(block.order) || !Number.isInteger(block.order) || block.order < 0 || typeof block.kind !== "string") throw new Error("Invalid chat block");
         ids.add(block.id);
         orders.add(block.order);
@@ -156639,7 +156657,7 @@ ${contextText}
       changes.push(() => db.prepare("DELETE FROM message_blocks WHERE message_id=?").run(id2));
       for (const block of p.blocks) row("message_blocks", { id: block.id, message_id: id2, ord: block.order, kind: block.kind, payload_json: JSON.stringify(block.payload ?? null), created_at: block.createdAt ?? now, updated_at: block.updatedAt ?? now, deleted_at: block.deletedAt ?? null });
     } else if (record2.kind === "recording") {
-      const id2 = identity(p.id), c = course(p.courseID), existing = db.prepare("SELECT payload FROM recording_sessions WHERE id=?").get(id2), old = existing ? JSON.parse(existing.payload) : void 0;
+      const id2 = identity2(p.id), c = course(p.courseID), existing = db.prepare("SELECT payload FROM recording_sessions WHERE id=?").get(id2), old = existing ? JSON.parse(existing.payload) : void 0;
       if (record2.id !== `recording:${id2}` || old && old.courseId !== p.courseID || p.fileName !== `Recordings/${id2}.wav`) throw new Error("Invalid recording identity");
       if (old && ["recording", "paused", "processing"].includes(old.status)) throw new Error("Recording is active on this device");
       if (record2.deleted) throw new Error("Recording deletion requires explicit local removal; original audio retained");
@@ -156674,14 +156692,14 @@ ${contextText}
       for (const a of p.anchors ?? []) {
         const m = a.materialID ? material(a.materialID) : void 0;
         if (m && m.course_id !== p.courseID || !Number.isFinite(a.time) || a.time < 0) throw new Error("Invalid recording anchor");
-        const anchor = { id: identity(a.id), sample: Math.min(samples, Math.round(a.time * 16e3)), label: a.desktop?.label ?? "\uD45C\uC2DC", relPath: m?.rel_path ?? null, page: a.page ?? null };
+        const anchor = { id: identity2(a.id), sample: Math.min(samples, Math.round(a.time * 16e3)), label: a.desktop?.label ?? "\uD45C\uC2DC", relPath: m?.rel_path ?? null, page: a.page ?? null };
         row("recording_anchors", { id: anchor.id, session_id: id2, payload: JSON.stringify(anchor) });
       }
     }
     return { files, source, courseID, apply: () => changes.forEach((change) => change()) };
   }
 
-  // DesktopRuntime/backend/sync/learning.ts
+  // backend/sync/learning.ts
   init_native();
   var directory = ".bandal/learning";
   function allowed(path) {
@@ -156751,7 +156769,7 @@ ${contextText}
     return { snapshot, apply: apply3 };
   }
 
-  // DesktopRuntime/backend/sync/conflict-assets.ts
+  // backend/sync/conflict-assets.ts
   init_native();
   function preserveConflictAssets(db, record2, provided) {
     if (!record2 || record2.deleted) return [];
@@ -156796,7 +156814,7 @@ ${contextText}
     return result;
   }
 
-  // DesktopRuntime/backend/sync/index.ts
+  // backend/sync/index.ts
   var comparable = (record2) => canonical2({ kind: record2.kind, payload: record2.payload, deleted: record2.deleted });
   function mergeInk(base, local, remote) {
     if (base.deleted || local.deleted || remote.deleted) return void 0;
@@ -156857,15 +156875,19 @@ ${contextText}
           if (item && item.id !== id2 && !db.prepare("SELECT id FROM materials_index WHERE id=?").get(id2)) db.prepare("UPDATE materials_index SET id=? WHERE id=?").run(id2, item.id);
         }
       })();
+      deps.pdfBindings.reconcileIndex();
     };
     let running2 = false;
     const exclusive = (callback) => async (request) => {
       if (running2) throw new Error("A sync projection operation is already running");
+      const token = native("fs.lockAcquire", { path: join(env2().userDataPath, "material-path-lock.db") });
+      if (token === null) throw new Error("\uC790\uB8CC \uACBD\uB85C \uBCC0\uACBD \uC911\uC5D0\uB294 \uB3D9\uAE30\uD654\uB97C \uC2DC\uC791\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD569\uB2C8\uB2E4.");
       running2 = true;
       try {
         return await callback(request);
       } finally {
         running2 = false;
+        native("fs.lockRelease", { token });
       }
     };
     handlePrivate2("nativeSync:export", exclusive(async () => {
@@ -156970,10 +156992,10 @@ ${contextText}
     }));
   }
 
-  // DesktopRuntime/backend/application.ts
+  // backend/application.ts
   init_native();
 
-  // DesktopRuntime/upstream/src/main/features/diagnostics/diagnosticsBundle.ts
+  // upstream/src/main/features/diagnostics/diagnosticsBundle.ts
   var MAX_BUNDLE_BYTES = 2 * 1024 * 1024;
   var MAX_LOG_READ_BYTES = 2 * 1024 * 1024;
   var APP_LOG_SECTION_BYTES = 1024 * 1024;
@@ -157000,14 +157022,14 @@ ${contextText}
     return `~/\u2026/${redactString(leaf ?? "\uB370\uC774\uD130")}`;
   }
   function redactValue(value, path) {
-    const key3 = path.at(-1) ?? "";
-    if (key3 === "dataRoot" && typeof value === "string") {
+    const key4 = path.at(-1) ?? "";
+    if (key4 === "dataRoot" && typeof value === "string") {
       return redactDataRoot(value);
     }
-    if (path.length === 2 && path[0] === "notifications" && key3 === "sent") {
+    if (path.length === 2 && path[0] === "notifications" && key4 === "sent") {
       return typeof value === "object" && value !== null ? Object.keys(value).length : 0;
     }
-    if (SENSITIVE_KEY.test(key3)) return REDACTED;
+    if (SENSITIVE_KEY.test(key4)) return REDACTED;
     if (typeof value === "string") return redactString(value);
     if (Array.isArray(value)) {
       return value.map((item, index) => redactValue(item, [...path, String(index)]));
@@ -157205,7 +157227,7 @@ ${body}`;
     };
   }
 
-  // DesktopRuntime/backend/application.ts
+  // backend/application.ts
   function installApplication(deps) {
     const platform4 = (channel, request = {}) => globalThis.__bandalPlatform.invoke(channel, request);
     const logs = join(env2().userDataPath, "Logs");
@@ -157232,7 +157254,7 @@ ${body}`;
     deps.handle("app:openLogs", () => platform4("native:openLogs"));
   }
 
-  // DesktopRuntime/upstream/src/main/features/mail/gmailModel.ts
+  // upstream/src/main/features/mail/gmailModel.ts
   function gmailHeader(message, name7) {
     return message.payload?.headers?.find((header) => header.name.toLowerCase() === name7.toLowerCase())?.value ?? "";
   }
@@ -157303,7 +157325,7 @@ ${body}\r
 `).toString("base64url");
   }
 
-  // DesktopRuntime/backend/mail.ts
+  // backend/mail.ts
   function installMail(handle2) {
     const platform4 = (channel, request = {}) => globalThis.__bandalPlatform.invoke(channel, request);
     const bodies = /* @__PURE__ */ new Map();
@@ -157374,22 +157396,22 @@ ${body}\r
     });
   }
 
-  // DesktopRuntime/backend/notifications.ts
+  // backend/notifications.ts
   function installNotifications(deps) {
     deps.handlePrivate("nativeNotification:snapshot", () => ({ settings: getSettings(), tasks: deps.db.prepare(`SELECT t.id, t.course_id AS courseId, t.title, t.due_at AS dueAt, t.all_day AS allDay, c.name AS courseName FROM board_tasks t LEFT JOIN courses c ON c.id = t.course_id AND c.deleted_at IS NULL WHERE t.due_at IS NOT NULL AND t.deleted_at IS NULL AND t.status != 'done' AND (t.course_id IS NULL OR c.id IS NOT NULL)`).all() }));
     deps.handlePrivate("nativeNotification:markSent", (request) => {
-      if (!Array.isArray(request.keys) || request.keys.length > 1e3 || request.keys.some((key3) => typeof key3 !== "string" || !/^[a-zA-Z0-9_-]{1,128}:(?:1|3|7)$/.test(key3))) throw new Error("Invalid deadline notification key");
+      if (!Array.isArray(request.keys) || request.keys.length > 1e3 || request.keys.some((key4) => typeof key4 !== "string" || !/^[a-zA-Z0-9_-]{1,128}:(?:1|3|7)$/.test(key4))) throw new Error("Invalid deadline notification key");
       const date = new Date(request.at);
       if (!Number.isFinite(date.getTime()) || Math.abs(Date.now() - date.getTime()) > 24 * 60 * 60 * 1e3) throw new Error("Invalid notification timestamp");
       const settings = getSettings(), cutoff = Date.now() - 90 * 24 * 60 * 60 * 1e3;
       const sent = Object.fromEntries(Object.entries(settings.notifications.sent).filter(([, value]) => Date.parse(value) >= cutoff));
-      for (const key3 of request.keys) sent[key3] = date.toISOString();
+      for (const key4 of request.keys) sent[key4] = date.toISOString();
       setSettings({ notifications: { sent } });
       return { ok: true };
     });
   }
 
-  // DesktopRuntime/backend/browser-shortcuts.ts
+  // backend/browser-shortcuts.ts
   function browserShortcuts(settings) {
     const keymap = resolveKeymap(settings.keybindings);
     const editing = /* @__PURE__ */ new Set(["c", "v", "x", "z", "a"]);
@@ -157413,11 +157435,613 @@ ${body}\r
     handlePrivate2("nativeBrowser:shortcuts", () => browserShortcuts(getSettings()));
   }
 
-  // DesktopRuntime/backend/presentation/fonts.ts
+  // backend/bookmark-import.ts
+  init_buffer();
+
+  // upstream/src/main/features/browser/browserImport.ts
+  var MAX_IMPORT_ROWS = 1e4;
+  function decodeHtml(value) {
+    const named = {
+      amp: "&",
+      lt: "<",
+      gt: ">",
+      quot: '"',
+      apos: "'",
+      nbsp: " "
+    };
+    return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole2, entity) => {
+      const lower = entity.toLowerCase();
+      if (lower.startsWith("#x")) {
+        return String.fromCodePoint(Number.parseInt(lower.slice(2), 16));
+      }
+      if (lower.startsWith("#")) {
+        return String.fromCodePoint(Number.parseInt(lower.slice(1), 10));
+      }
+      return named[lower] ?? whole2;
+    });
+  }
+  function parseBookmarkHtml(text) {
+    const bookmarks = [];
+    const anchor = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+    for (const match of text.matchAll(anchor)) {
+      const attrs = match[1] ?? "";
+      const href = /\bhref\s*=\s*(["'])(.*?)\1/i.exec(attrs)?.[2];
+      if (href === void 0) continue;
+      let url;
+      try {
+        url = new URL(decodeHtml(href));
+      } catch {
+        continue;
+      }
+      if (url.protocol !== "http:" && url.protocol !== "https:") continue;
+      const rawTitle = (match[2] ?? "").replace(/<[^>]*>/g, "").trim();
+      const title2 = decodeHtml(rawTitle).trim() || url.hostname;
+      bookmarks.push({ title: title2.slice(0, 240), url: url.href });
+      if (bookmarks.length >= MAX_IMPORT_ROWS) break;
+    }
+    return bookmarks;
+  }
+
+  // backend/bookmark-import.ts
+  function importBookmarkHTML(db, favorites, request) {
+    const { profileId, html } = request;
+    if (typeof profileId !== "string" || profileId !== "default" && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(profileId)) throw new Error("\uBE0C\uB77C\uC6B0\uC800 \uD504\uB85C\uD544\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
+    if (typeof html !== "string" || Buffer2.byteLength(html, "utf8") > 8 * 1024 * 1024) throw new Error("8MB \uC774\uD558\uC758 HTML \uBD81\uB9C8\uD06C \uD30C\uC77C\uC744 \uC120\uD0DD\uD574 \uC8FC\uC138\uC694.");
+    if ([...html.matchAll(/<a\b/gi)].length > 1e4) throw new Error("\uBD81\uB9C8\uD06C\uB294 \uD55C \uBC88\uC5D0 10,000\uAC1C\uAE4C\uC9C0 \uAC00\uC838\uC62C \uC218 \uC788\uC2B5\uB2C8\uB2E4.");
+    const parsed = parseBookmarkHtml(html);
+    const entries = parsed.filter((entry2) => {
+      const url = new URL(entry2.url);
+      return !url.username && !url.password;
+    });
+    if (!entries.length) throw new Error("\uAC00\uC838\uC62C HTTP \uB610\uB294 HTTPS \uBD81\uB9C8\uD06C\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.");
+    return db.transaction(() => {
+      const existing = new Set(favorites.list(null).flatMap((favorite) => favorite.descriptor.kind === "browser" && (favorite.descriptor.payload.profileId ?? "default") === profileId ? [favorite.descriptor.payload.initialUrl] : []));
+      let imported = 0, skipped = 0;
+      for (const entry2 of entries) {
+        if (existing.has(entry2.url)) {
+          skipped++;
+          continue;
+        }
+        favorites.add({ courseId: null, label: entry2.title, descriptor: { kind: "browser", payload: { tabId: randomUUID(), initialUrl: entry2.url, profileId } } });
+        existing.add(entry2.url);
+        imported++;
+      }
+      return { imported, skipped, ignored: parsed.length - entries.length, cancelled: false };
+    })();
+  }
+
+  // upstream/src/main/features/pdf/drawingsRepo.ts
+  var DRAWING_KINDS2 = DRAWING_KINDS.filter(
+    (kind) => kind !== "clip"
+  );
+  function rowToDrawing(row) {
+    return {
+      id: row.id,
+      courseId: row.course_id,
+      relPath: row.rel_path,
+      page: row.page,
+      kind: row.kind,
+      data: JSON.parse(row.data_json),
+      style: JSON.parse(row.style_json),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+  function createDrawingsRepo(db, options = {}) {
+    db.exec(`CREATE TABLE IF NOT EXISTS drawing_create_receipts (
+    operation_id TEXT PRIMARY KEY, request_json TEXT NOT NULL, drawing_id TEXT NOT NULL
+  )`);
+    function assertCourseExists(courseId2) {
+      const row = db.prepare("SELECT id FROM courses WHERE id = ? AND deleted_at IS NULL").get(courseId2);
+      if (row === void 0) throw new NotFoundError("course", courseId2);
+    }
+    function getRowOrThrow(id2) {
+      const row = db.prepare("SELECT * FROM pdf_drawings WHERE id = ? AND deleted_at IS NULL").get(id2);
+      if (row === void 0) throw new NotFoundError("drawing", id2);
+      return row;
+    }
+    return {
+      listForFile(courseIdInput, relPathInput) {
+        const courseId2 = requireId(courseIdInput, "courseId");
+        const relPath2 = requireNonEmptyString(relPathInput, "relPath");
+        const rows = db.prepare(
+          `SELECT * FROM pdf_drawings
+           WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL
+           ORDER BY page ASC, created_at ASC`
+        ).all(courseId2, relPath2);
+        return rows.map(rowToDrawing);
+      },
+      create(input) {
+        const courseId2 = requireId(input.courseId, "courseId");
+        assertCourseExists(courseId2);
+        const relPath2 = requireNonEmptyString(input.relPath, "relPath");
+        const page = requireInt(input.page, "page", 1);
+        const kind = assertDrawingKind(input.kind, DRAWING_KINDS2);
+        const data2 = assertDrawingData(input.data, kind);
+        const style = assertDrawingStyle(input.style);
+        const operationID = input.clientMutationId;
+        if (operationID !== void 0 && (typeof operationID !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(operationID))) {
+          throw new ValidationError("clientMutationId must be a UUID");
+        }
+        const documentRevision = input.documentRevision;
+        if (documentRevision !== void 0 && (typeof documentRevision !== "string" || !/^[0-9a-f]{64}$/.test(documentRevision))) {
+          throw new ValidationError("documentRevision must be a SHA-256 digest");
+        }
+        const fingerprint2 = JSON.stringify({ courseId: courseId2, relPath: relPath2, page, kind, data: data2, style, documentRevision });
+        return db.transaction(() => {
+          if (operationID !== void 0) {
+            const receipt = db.prepare("SELECT request_json, drawing_id FROM drawing_create_receipts WHERE operation_id = ?").get(operationID);
+            if (receipt) {
+              if (receipt.request_json !== fingerprint2) throw new ValidationError("A drawing operation cannot be reused for different content");
+              return rowToDrawing(getRowOrThrow(receipt.drawing_id));
+            }
+          }
+          if (documentRevision !== void 0 && options.documentRevision?.(courseId2, relPath2) !== documentRevision) {
+            throw new ValidationError("PDF \uC6D0\uBCF8\uC774 \uBCC0\uACBD\uB418\uC5B4 \uC0C8 \uD544\uAE30\uB97C \uC801\uC6A9\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uC6D0\uB798 PDF\uC640 \uD544\uAE30 \uBCF5\uAD6C \uAE30\uB85D\uC744 \uBCF4\uC874\uD588\uC2B5\uB2C8\uB2E4.");
+          }
+          const now = nowIso();
+          const drawing = {
+            id: randomUUID(),
+            courseId: courseId2,
+            relPath: relPath2,
+            page,
+            kind,
+            data: data2,
+            style,
+            createdAt: now,
+            updatedAt: now
+          };
+          db.prepare(
+            `INSERT INTO pdf_drawings
+             (id, course_id, rel_path, page, kind, data_json, style_json,
+              created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(
+            drawing.id,
+            courseId2,
+            relPath2,
+            page,
+            kind,
+            JSON.stringify(data2),
+            JSON.stringify(style),
+            now,
+            now
+          );
+          if (operationID !== void 0) db.prepare("INSERT INTO drawing_create_receipts (operation_id, request_json, drawing_id) VALUES (?, ?, ?)").run(operationID, fingerprint2, drawing.id);
+          return drawing;
+        })();
+      },
+      update(input) {
+        const row = getRowOrThrow(requireId(input.id, "id"));
+        const kind = row.kind;
+        const data2 = input.data === void 0 ? JSON.parse(row.data_json) : assertDrawingData(input.data, kind);
+        const style = input.style === void 0 ? JSON.parse(row.style_json) : assertDrawingStyle(input.style);
+        const now = nowIso();
+        db.prepare(
+          "UPDATE pdf_drawings SET data_json = ?, style_json = ?, updated_at = ? WHERE id = ?"
+        ).run(JSON.stringify(data2), JSON.stringify(style), now, row.id);
+        return rowToDrawing({
+          ...row,
+          data_json: JSON.stringify(data2),
+          style_json: JSON.stringify(style),
+          updated_at: now
+        });
+      },
+      softDelete(idsInput) {
+        if (!Array.isArray(idsInput)) {
+          throw new ValidationError("ids must be an array");
+        }
+        const ids = [...new Set(idsInput.map((id2) => requireId(id2, "id")))];
+        if (ids.length === 0) return;
+        const now = nowIso();
+        const remove = db.transaction(() => {
+          const statement = db.prepare(
+            "UPDATE pdf_drawings SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL"
+          );
+          for (const id2 of ids) {
+            if (statement.run(now, now, id2).changes === 0) {
+              throw new NotFoundError("drawing", id2);
+            }
+          }
+        });
+        remove();
+      }
+    };
+  }
+
+  // upstream/src/main/features/annotations/annotationsRepo.ts
+  var HIGHLIGHT_COLORS2 = ["yellow", "green", "pink", "blue"];
+  function assertColor2(value) {
+    if (!HIGHLIGHT_COLORS2.includes(value)) {
+      throw new ValidationError(
+        `color must be one of ${HIGHLIGHT_COLORS2.join(", ")} (got "${String(value)}")`
+      );
+    }
+    return value;
+  }
+  function assertRects(value) {
+    if (!Array.isArray(value) || value.length === 0) {
+      throw new ValidationError("rects must be a non-empty array");
+    }
+    for (const rect of value) {
+      const r = rect;
+      if (r === null || typeof r !== "object" || ![r.x, r.y, r.width, r.height].every(
+        (n) => typeof n === "number" && Number.isFinite(n)
+      )) {
+        throw new ValidationError("each rect needs finite numeric x/y/width/height");
+      }
+    }
+    return value;
+  }
+  function assertAnchor(value) {
+    const anchor = value;
+    if (anchor === null || typeof anchor !== "object" || typeof anchor.quote !== "string" || typeof anchor.prefix !== "string" || typeof anchor.suffix !== "string") {
+      throw new ValidationError("anchor needs string quote/prefix/suffix");
+    }
+    return anchor;
+  }
+  function rowToAnnotation(row) {
+    return {
+      id: row.id,
+      courseId: row.course_id,
+      relPath: row.rel_path,
+      page: row.page,
+      color: row.color,
+      rects: JSON.parse(row.rects_json),
+      anchor: JSON.parse(row.anchor_json),
+      comment: row.comment,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+  function createAnnotationsRepo(db) {
+    function assertCourseExists(courseId2) {
+      const row = db.prepare("SELECT id FROM courses WHERE id = ? AND deleted_at IS NULL").get(courseId2);
+      if (row === void 0) {
+        throw new NotFoundError("course", courseId2);
+      }
+    }
+    function getRowOrThrow(id2) {
+      const row = db.prepare("SELECT * FROM annotations WHERE id = ? AND deleted_at IS NULL").get(id2);
+      if (row === void 0) {
+        throw new NotFoundError("annotation", id2);
+      }
+      return row;
+    }
+    return {
+      listForFile(input) {
+        const courseId2 = requireId(input.courseId, "courseId");
+        const relPath2 = requireNonEmptyString(input.relPath, "relPath");
+        const rows = db.prepare(
+          `SELECT * FROM annotations
+           WHERE course_id = ? AND rel_path = ? AND deleted_at IS NULL
+           ORDER BY page ASC, created_at ASC`
+        ).all(courseId2, relPath2);
+        return rows.map(rowToAnnotation);
+      },
+      create(input) {
+        const courseId2 = requireId(input.courseId, "courseId");
+        assertCourseExists(courseId2);
+        const relPath2 = requireNonEmptyString(input.relPath, "relPath");
+        const page = requireInt(input.page, "page", 1);
+        const color = assertColor2(input.color);
+        const rects = assertRects(input.rects);
+        const anchor = assertAnchor(input.anchor);
+        const comment = input.comment ?? null;
+        if (comment !== null && typeof comment !== "string") {
+          throw new ValidationError("comment must be a string or null");
+        }
+        const now = nowIso();
+        const annotation = {
+          id: randomUUID(),
+          courseId: courseId2,
+          relPath: relPath2,
+          page,
+          color,
+          rects,
+          anchor,
+          comment,
+          createdAt: now,
+          updatedAt: now
+        };
+        db.prepare(
+          `INSERT INTO annotations
+           (id, course_id, rel_path, page, color, rects_json, anchor_json,
+            comment, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          annotation.id,
+          courseId2,
+          relPath2,
+          page,
+          color,
+          JSON.stringify(rects),
+          JSON.stringify(anchor),
+          comment,
+          now,
+          now
+        );
+        return annotation;
+      },
+      update(input) {
+        const row = getRowOrThrow(requireId(input.id, "id"));
+        const color = input.color === void 0 ? row.color : assertColor2(input.color);
+        const comment = input.comment === void 0 ? row.comment : input.comment;
+        if (comment !== null && typeof comment !== "string") {
+          throw new ValidationError("comment must be a string or null");
+        }
+        const now = nowIso();
+        db.prepare(
+          "UPDATE annotations SET color = ?, comment = ?, updated_at = ? WHERE id = ?"
+        ).run(color, comment, now, row.id);
+        return rowToAnnotation({ ...row, color, comment, updated_at: now });
+      },
+      softDelete(input) {
+        const row = getRowOrThrow(requireId(input.id, "id"));
+        const now = nowIso();
+        db.prepare("UPDATE annotations SET deleted_at = ?, updated_at = ? WHERE id = ?").run(
+          now,
+          now,
+          row.id
+        );
+        return { ok: true };
+      }
+    };
+  }
+
+  // upstream/src/main/features/pdf/pdfDocumentBinding.ts
+  function createBoundPDFRepositories(db, bindings) {
+    const rawAnnotations = createAnnotationsRepo(db), rawDrawings = createDrawingsRepo(db, {
+      documentRevision: (courseId2, relPath2) => bindings.check({ courseId: courseId2, relPath: relPath2 }).documentRevision
+    });
+    const checkRow = (table10, id2) => {
+      const row = db.prepare(`SELECT course_id,rel_path FROM ${table10} WHERE id=?`).get(id2);
+      if (row) bindings.checkPDF(row.course_id, row.rel_path);
+    };
+    return {
+      annotations: {
+        ...rawAnnotations,
+        listForFile: (req) => {
+          bindings.checkPDF(req.courseId, req.relPath);
+          return rawAnnotations.listForFile(req);
+        },
+        create: (req) => {
+          bindings.checkPDF(req.courseId, req.relPath);
+          return rawAnnotations.create(req);
+        },
+        update: (req) => {
+          checkRow("annotations", req.id);
+          return rawAnnotations.update(req);
+        },
+        softDelete: (req) => {
+          checkRow("annotations", req.id);
+          return rawAnnotations.softDelete(req);
+        }
+      },
+      drawings: {
+        ...rawDrawings,
+        listForFile: (courseId2, relPath2) => {
+          bindings.checkPDF(courseId2, relPath2);
+          return rawDrawings.listForFile(courseId2, relPath2);
+        },
+        create: (req) => {
+          if (req.documentRevision === void 0) bindings.checkPDF(req.courseId, req.relPath);
+          return rawDrawings.create(req);
+        },
+        update: (req) => {
+          checkRow("pdf_drawings", req.id);
+          return rawDrawings.update(req);
+        },
+        softDelete: (ids) => {
+          for (const id2 of ids) checkRow("pdf_drawings", id2);
+          return rawDrawings.softDelete(ids);
+        }
+      }
+    };
+  }
+  var sha = /^[0-9a-f]{64}$/;
+  function relativePath(value) {
+    const path = requireNonEmptyString(value, "relPath");
+    if (path.startsWith("/") || path.includes("\\") || path.split("/").some((part) => !part || part === ".." || part === ".") || /[\u0000-\u001f]/.test(path)) throw new ValidationError("Invalid PDF relative path");
+    return path;
+  }
+  var mismatch = () => new ValidationError("PDF \uC6D0\uBCF8\uC774 \uAE30\uC874 \uD544\uAE30\uC640 \uB2E4\uB985\uB2C8\uB2E4. \uC6D0\uB798 PDF\xB7\uD544\uAE30\xB7\uBCF5\uAD6C \uAE30\uB85D\uC744 \uBCF4\uC874\uD588\uC73C\uBA70 \uC0C8 \uC6D0\uBCF8\uC5D0\uB294 \uC801\uC6A9\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
+  function createPDFDocumentBindings(db, revisionFor, preserveOriginal) {
+    db.exec(`CREATE TABLE IF NOT EXISTS pdf_document_bindings (
+    material_id TEXT PRIMARY KEY, bound_sha TEXT NOT NULL, evidence TEXT NOT NULL,
+    legacy_unverified INTEGER NOT NULL, created_at TEXT NOT NULL
+  ); CREATE TABLE IF NOT EXISTS pdf_document_aliases (
+    course_id TEXT NOT NULL, rel_path TEXT NOT NULL, material_id TEXT NOT NULL UNIQUE,
+    PRIMARY KEY(course_id,rel_path), FOREIGN KEY(material_id) REFERENCES pdf_document_bindings(material_id)
+  )`);
+    const table10 = (name7) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name7);
+    const atPath = (courseId2, relPath2) => db.prepare(`SELECT b.* FROM pdf_document_aliases a
+    JOIN pdf_document_bindings b ON b.material_id=a.material_id WHERE a.course_id=? AND a.rel_path=?`).get(courseId2, relPath2);
+    const result = (row) => ({ materialID: row.material_id, documentRevision: row.bound_sha, evidence: row.evidence, legacyUnverified: !!row.legacy_unverified });
+    const reconcile = (courseId2, relPath2, materialID) => {
+      const item = db.prepare("SELECT id FROM materials_index WHERE course_id=? AND rel_path=?").get(courseId2, relPath2);
+      if (!item || item.id === materialID) return;
+      const occupied = db.prepare("SELECT course_id,rel_path FROM materials_index WHERE id=?").get(materialID);
+      if (occupied) throw new ValidationError("PDF material identity is already assigned to another path");
+      db.prepare("UPDATE materials_index SET id=? WHERE id=?").run(materialID, item.id);
+    };
+    function checkAt(input, movedTo) {
+      const courseId2 = requireId(input.courseId, "courseId"), relPath2 = relativePath(input.relPath);
+      if (movedTo === void 0) assertMaterialPathAvailable(db, courseId2, relPath2);
+      if (!db.prepare("SELECT id FROM courses WHERE id=? AND deleted_at IS NULL").get(courseId2)) throw new ValidationError("PDF course is unavailable");
+      if (input.documentRevision !== void 0 && (typeof input.documentRevision !== "string" || !sha.test(input.documentRevision))) throw new ValidationError("documentRevision must be a SHA-256 digest");
+      const readablePath = movedTo ?? relPath2, current = revisionFor(courseId2, readablePath);
+      if (!sha.test(current)) throw new ValidationError("PDF revision could not be verified");
+      if (input.documentRevision !== void 0 && current !== input.documentRevision) throw mismatch();
+      const row = db.transaction(() => {
+        let bound = atPath(courseId2, relPath2);
+        if (!bound) {
+          const item = db.prepare("SELECT id FROM materials_index WHERE course_id=? AND rel_path=?").get(courseId2, relPath2);
+          const revisions = /* @__PURE__ */ new Map();
+          if (table10("drawing_create_receipts")) for (const receipt of db.prepare(`SELECT r.request_json FROM drawing_create_receipts r
+          JOIN pdf_drawings d ON d.id=r.drawing_id WHERE d.course_id=? AND d.rel_path=?`).all(courseId2, relPath2)) {
+            let request;
+            try {
+              request = JSON.parse(receipt.request_json);
+            } catch {
+              throw new ValidationError("Invalid PDF drawing receipt; recovery data was preserved");
+            }
+            if (request.documentRevision === void 0) continue;
+            if (typeof request.documentRevision !== "string" || !sha.test(request.documentRevision)) throw new ValidationError("Invalid PDF revision in drawing receipt");
+            revisions.set(request.documentRevision, "receipt");
+          }
+          if (table10("ipad_sync_projection")) for (const projection of db.prepare("SELECT payload_json,source_json FROM ipad_sync_projection WHERE kind='drawing'").all()) {
+            const payload = JSON.parse(projection.payload_json), source = JSON.parse(projection.source_json);
+            if (!(item && payload.materialID === item.id) && !(source.courseID === courseId2 && source.relPath === relPath2)) continue;
+            if (typeof payload.documentRevision !== "string" || !sha.test(payload.documentRevision)) throw new ValidationError("Invalid PDF revision in sync history");
+            if (!revisions.has(payload.documentRevision)) revisions.set(payload.documentRevision, "sync");
+          }
+          if (revisions.size > 1) throw new ValidationError("\uC11C\uB85C \uB2E4\uB978 PDF \uC6D0\uBCF8\uC758 \uD544\uAE30 \uAE30\uB85D\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC790\uB8CC\uC640 \uD544\uAE30\uB97C \uBCF4\uC874\uD588\uC73C\uBA70 \uC790\uB3D9\uC73C\uB85C \uD569\uCE58\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
+          const prior = [...revisions.entries()][0], materialID = item?.id ?? randomUUID();
+          if (db.prepare("SELECT material_id FROM pdf_document_bindings WHERE material_id=?").get(materialID)) throw new ValidationError("PDF identity has no matching path alias");
+          const hasRows = !!db.prepare("SELECT 1 FROM pdf_drawings WHERE course_id=? AND rel_path=? LIMIT 1").get(courseId2, relPath2) || !!db.prepare("SELECT 1 FROM annotations WHERE course_id=? AND rel_path=? LIMIT 1").get(courseId2, relPath2);
+          db.prepare("INSERT INTO pdf_document_bindings(material_id,bound_sha,evidence,legacy_unverified,created_at) VALUES(?,?,?,?,?)").run(materialID, prior?.[0] ?? current, prior?.[1] ?? "first-observed", !prior && hasRows ? 1 : 0, (/* @__PURE__ */ new Date()).toISOString());
+          db.prepare("INSERT INTO pdf_document_aliases(course_id,rel_path,material_id) VALUES(?,?,?)").run(courseId2, relPath2, materialID);
+          bound = atPath(courseId2, relPath2);
+        }
+        reconcile(courseId2, relPath2, bound.material_id);
+        return bound;
+      })();
+      if (row.bound_sha !== current) throw mismatch();
+      preserveOriginal?.(courseId2, readablePath, current);
+      return result(row);
+    }
+    function repoint(change) {
+      const courseId2 = requireId(change.courseId, "courseId"), from = relativePath(change.fromRelPath), to = relativePath(change.toRelPath);
+      const key4 = (value) => value.normalize("NFC").toLowerCase(), prefix2 = from.split("/");
+      db.transaction(() => {
+        const destination = (path) => {
+          const parts = path.split("/"), exact = key4(path) === key4(from);
+          if (exact) return to;
+          if (change.isDirectory && parts.length > prefix2.length && key4(parts.slice(0, prefix2.length).join("/")) === key4(from)) return `${to}/${parts.slice(prefix2.length).join("/")}`;
+          return void 0;
+        };
+        const existing = db.prepare(`SELECT rel_path FROM pdf_drawings WHERE course_id=?
+        UNION SELECT rel_path FROM annotations WHERE course_id=?`).all(courseId2, courseId2);
+        for (const row of existing) {
+          const next = destination(row.rel_path);
+          if (next && /\.pdf$/i.test(row.rel_path) && !atPath(courseId2, row.rel_path)) checkAt({ courseId: courseId2, relPath: row.rel_path }, next);
+        }
+        for (const alias of db.prepare("SELECT * FROM pdf_document_aliases WHERE course_id=?").all(courseId2)) {
+          const next = destination(alias.rel_path);
+          if (!next) continue;
+          const collision = atPath(courseId2, next);
+          if (collision && collision.material_id !== alias.material_id) throw new ValidationError("PDF rename collides with a preserved document binding");
+          const target = db.prepare("SELECT id FROM materials_index WHERE course_id=? AND rel_path=?").get(courseId2, next);
+          if (target && target.id !== alias.material_id) throw new ValidationError("PDF rename collides with another material");
+          db.prepare("UPDATE materials_index SET rel_path=? WHERE course_id=? AND rel_path=?").run(next, courseId2, alias.rel_path);
+          db.prepare("UPDATE pdf_document_aliases SET rel_path=? WHERE course_id=? AND rel_path=?").run(next, courseId2, alias.rel_path);
+        }
+      })();
+    }
+    return {
+      check: (input) => checkAt(input),
+      repoint,
+      checkPDF(courseId2, relPath2) {
+        if (typeof relPath2 === "string" && /\.pdf$/i.test(relPath2)) return checkAt({ courseId: courseId2, relPath: relPath2 });
+        return void 0;
+      },
+      reconcileIndex() {
+        db.transaction(() => {
+          for (const row of db.prepare("SELECT * FROM pdf_document_aliases").all()) reconcile(row.course_id, row.rel_path, row.material_id);
+        })();
+      }
+    };
+  }
+
+  // backend/native-pdf.ts
+  var uuid4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  function nativePDFMutationStatus(db, value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new ValidationError("Invalid native PDF mutation");
+    const input = value;
+    const operationID = input.clientMutationId;
+    if (typeof operationID !== "string" || !uuid4.test(operationID)) throw new ValidationError("clientMutationId must be a UUID");
+    const courseId2 = requireId(input.courseId, "courseId");
+    const relPath2 = requireNonEmptyString(input.relPath, "relPath");
+    if (relPath2.startsWith("/") || relPath2.includes("\\") || relPath2.split("/").some((part) => part === ".." || part === ".") || /[\u0000-\u001f]/.test(relPath2)) throw new ValidationError("Invalid native PDF relative path");
+    const page = requireInt(input.page, "page", 1);
+    const kind = assertDrawingKind(input.kind, ["ink", "highlighter"]);
+    const data2 = assertDrawingData(input.data, kind), style = assertDrawingStyle(input.style);
+    if (data2.inkVersion !== 2) throw new ValidationError("Native PDF mutation requires ink version 2");
+    const documentRevision = input.documentRevision;
+    if (typeof documentRevision !== "string" || !/^[0-9a-f]{64}$/.test(documentRevision)) throw new ValidationError("documentRevision must be a SHA-256 digest");
+    const fingerprint2 = JSON.stringify({ courseId: courseId2, relPath: relPath2, page, kind, data: data2, style, documentRevision });
+    const receipt = db.prepare(`SELECT r.request_json, r.drawing_id, d.id AS current_id, d.deleted_at
+    FROM drawing_create_receipts r LEFT JOIN pdf_drawings d ON d.id = r.drawing_id
+    WHERE r.operation_id = ?`).get(operationID);
+    if (!receipt) return { status: "missing" };
+    if (receipt.request_json !== fingerprint2) throw new ValidationError("A drawing operation cannot be reused for different content");
+    if (!uuid4.test(receipt.drawing_id) || receipt.current_id !== receipt.drawing_id) throw new ValidationError("Committed native PDF drawing is missing; preserve its recovery journal");
+    if (receipt.deleted_at === null) return { status: "live", drawingId: receipt.drawing_id };
+    if (typeof receipt.deleted_at === "string" && receipt.deleted_at.length > 0) return { status: "deleted", drawingId: receipt.drawing_id };
+    throw new ValidationError("Invalid native PDF deletion receipt");
+  }
+
+  // backend/pdf-binding-originals.ts
+  init_native();
+
+  // upstream/src/main/features/pdf/pdfOriginals.ts
+  function pdfFileRevision(path) {
+    const descriptor = openSync(path, "r");
+    try {
+      return hashDescriptor(descriptor);
+    } finally {
+      closeSync(descriptor);
+    }
+  }
+  function hashDescriptor(descriptor) {
+    const hash3 = createHash("sha256"), buffer2 = new Uint8Array(256 * 1024);
+    for (let offset = 0; ; ) {
+      const length = readSync(descriptor, buffer2, 0, buffer2.length, offset);
+      if (!length) break;
+      hash3.update(buffer2.subarray(0, length));
+      offset += length;
+    }
+    return hash3.digest("hex");
+  }
+  function createPDFOriginalPreserver(directory2, pathFor, revisionAt = pdfFileRevision) {
+    const verified = /* @__PURE__ */ new Set();
+    return (courseId2, relPath2, revision) => {
+      if (verified.has(revision)) return;
+      const target = join(directory2, `${revision}.pdf`);
+      mkdirSync(directory2, { recursive: true });
+      if (existsSync(target)) {
+        if (revisionAt(target) !== revision) throw new Error("Preserved PDF original failed its integrity check");
+      } else {
+        const temporary = join(directory2, `${revision}.${randomUUID()}.tmp`);
+        try {
+          copyFileSync(pathFor(courseId2, relPath2), temporary);
+          if (revisionAt(temporary) !== revision) throw new Error("PDF changed while preserving its original; no ink was applied");
+          const descriptor = openSync(temporary, "r");
+          try {
+            fsyncSync(descriptor);
+          } finally {
+            closeSync(descriptor);
+          }
+          renameSync(temporary, target);
+        } finally {
+          if (existsSync(temporary)) rmSync(temporary, { force: true });
+        }
+      }
+      verified.add(revision);
+    };
+  }
+
+  // backend/pdf-binding-originals.ts
+  function createPDFOriginalPreserver2(pathFor) {
+    return createPDFOriginalPreserver(join(env2().userDataPath, "PDFOriginals"), pathFor, (path) => native("fs.sha256", { path }));
+  }
+
+  // backend/presentation/fonts.ts
   init_native();
   var nativeFontPath = (file) => join(env2().pdfFontPath ?? join(env2().userDataPath, "PDF", "fonts"), file);
 
-  // DesktopRuntime/backend/presentation/native-conversion.ts
+  // backend/presentation/native-conversion.ts
   init_buffer();
   var platform3 = (channel, request = {}) => {
     const invoke2 = globalThis.__bandalPlatform?.invoke;
@@ -157438,7 +158062,7 @@ ${body}\r
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/presentation/presentationService.ts
+  // upstream/src/main/features/presentation/presentationService.ts
   function createPresentationService(deps) {
     const runtime2 = createConversionRuntime(deps.userData);
     const sessions = /* @__PURE__ */ new Map();
@@ -157544,7 +158168,7 @@ ${body}\r
     return { runtime: runtime2, prepare, start, append, finish, cancel };
   }
 
-  // DesktopRuntime/backend/presentation/index.ts
+  // backend/presentation/index.ts
   init_native();
   function installPresentation(deps) {
     const exporter = createPdfExporter({ getCourseFolder: (id2) => deps.courses.getFolder(id2), listDrawings: (id2, path) => deps.drawings.listForFile(id2, path), listAnnotations: (id2, path) => deps.annotations.listForFile({ courseId: id2, relPath: path }), resolveFontPath: nativeFontPath });
@@ -157575,7 +158199,7 @@ ${body}\r
     });
   }
 
-  // DesktopRuntime/upstream/src/main/features/context/dossier.ts
+  // upstream/src/main/features/context/dossier.ts
   var DOSSIER_REL_PATH = ".bandal/COURSE.md";
   var ACTIVITY_LIMIT = 40;
   var TASK_LIMIT = 30;
@@ -158187,7 +158811,7 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/insights/insights.ts
+  // upstream/src/main/features/insights/insights.ts
   var DAY_MS2 = 24 * 60 * 60 * 1e3;
   var INSIGHTS_THRESHOLDS = {
     recentMaterialDays: 3,
@@ -158462,7 +159086,7 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     };
   }
 
-  // DesktopRuntime/upstream/src/main/features/workflowPacks/packRunner.ts
+  // upstream/src/main/features/workflowPacks/packRunner.ts
   function compactContextLine(value, maxLength) {
     return Array.from(value.replace(/\s+/g, " ").trim()).slice(0, maxLength).join("");
   }
@@ -158733,7 +159357,7 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     return `${year}-${month}-${day}`;
   }
 
-  // DesktopRuntime/upstream/src/main/features/agent/chatAttachments.ts
+  // upstream/src/main/features/agent/chatAttachments.ts
   async function importChatAttachments(folder, paths) {
     if (!Array.isArray(paths) || paths.length > 20) throw new Error("\uD30C\uC77C\uC740 \uD55C \uBC88\uC5D0 20\uAC1C\uAE4C\uC9C0 \uCCA8\uBD80\uD560 \uC218 \uC788\uC5B4\uC694.");
     if (paths.length === 0) return [];
@@ -158763,7 +159387,7 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     }
   }
 
-  // DesktopRuntime/backend/study.ts
+  // backend/study.ts
   function installStudy(deps) {
     const { db, courses, materials, canvas, board, activity, linkIndex, packs, ai, handle: handle2, changed } = deps;
     const insights = createInsights({ db, getCourseFolder: (id2) => courses.getFolder(id2), getMaterialCitations: (id2) => linkIndex.allForCourse(id2).map((g) => g.relPath) });
@@ -158815,7 +159439,7 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     return { context: context2, insights };
   }
 
-  // DesktopRuntime/backend/index.ts
+  // backend/index.ts
   var handlers = /* @__PURE__ */ new Map();
   var privateHandlers = /* @__PURE__ */ new Map();
   var initialized = false;
@@ -158837,13 +159461,13 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
   function wire(value) {
     if (value instanceof Uint8Array) return { __bandalBytes: Buffer2.from(value).toString("base64") };
     if (Array.isArray(value)) return value.map(wire);
-    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key3, item]) => [key3, wire(item)]));
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key4, item]) => [key4, wire(item)]));
     return value;
   }
   function unwire(value) {
     if (value && typeof value === "object" && typeof value.__bandalBytes === "string") return Buffer2.from(value.__bandalBytes, "base64");
     if (Array.isArray(value)) return value.map(unwire);
-    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key3, item]) => [key3, unwire(item)]));
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key4, item]) => [key4, unwire(item)]));
     return value;
   }
   function initialize() {
@@ -158876,14 +159500,23 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     };
     let learning;
     const repoint = (change) => {
-      repointMaterialPath({ db, courseFolder: courses.getFolder(change.courseId), ...change });
-      materials.repointAddedState(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory);
+      db.transaction(() => {
+        pdfBindings.repoint(change);
+        repointMaterialPath({ db, courseFolder: courses.getFolder(change.courseId), ...change });
+        materials.repointAddedState(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory);
+      })();
       recordings.repoint(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory);
       void learning.repo.repoint(change).catch((error2) => emit("backend:error", { message: String(error2), operation: "learning.repoint" }));
     };
     const materials = createMaterialsRepo({
       db,
       getCourseFolder: (id2) => courses.getFolder(id2),
+      pathLock: { tryAcquire() {
+        const token = native("fs.lockAcquire", { path: join(env2().userDataPath, "material-path-lock.db") });
+        return token === null ? void 0 : () => {
+          native("fs.lockRelease", { token });
+        };
+      } },
       revealItem: (path) => native("platform.reveal", { path }),
       trashItem: trash,
       onPathChanged: repoint
@@ -158895,7 +159528,9 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
       onCreated: (ref) => materials.recordAdded(ref.courseId, ref.relPath)
     });
     installHoverPreview({ handle, materials });
-    const annotations = createAnnotationsRepo(db), drawings = createDrawingsRepo(db);
+    const pdfSourcePath = (courseId2, relPath2) => resolveInsideReal(courses.getFolder(courseId2), relPath2);
+    const pdfBindings = createPDFDocumentBindings(db, (courseId2, relPath2) => native("fs.sha256", { path: pdfSourcePath(courseId2, relPath2) }), createPDFOriginalPreserver2(pdfSourcePath));
+    const { annotations, drawings } = createBoundPDFRepositories(db, pdfBindings);
     const media = createMediaProgressRepo(db), pdf = createPdfViewStateRepo(db);
     const board = createBoardRepo(db), canvas = createCanvasRepo(db), favorites = createFavoritesRepo(db), layout = createLayoutRepo(db);
     const linkService = createLinkService({ notes, getCourseFolder: (id2) => courses.getFolder(id2) });
@@ -158973,6 +159608,8 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     handle("drawings:listForFile", (req) => drawings.listForFile(req.courseId, req.relPath));
     handle("drawings:create", (req) => drawings.create(req));
     handle("drawings:update", (req) => drawings.update(req));
+    handlePrivate("nativePDF:mutationStatus", (req) => nativePDFMutationStatus(db, req));
+    handlePrivate("nativePDF:binding", (req) => pdfBindings.check(req));
     handle("drawings:delete", (req) => {
       drawings.softDelete(req.ids);
       return OK;
@@ -159025,6 +159662,7 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
       favorites.reorder(req);
       return OK;
     });
+    handlePrivate("nativeBookmark:import", (req) => importBookmarkHTML(db, favorites, req));
     handle("layout:get", (req) => layout.get(req.courseId));
     handle("layout:save", (req) => layout.save(req.courseId, req.layout));
     handle("layout:saveMany", (req) => layout.saveMany(req.layouts));
@@ -159116,6 +159754,7 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
       return OK;
     });
     learning = installLearning({ db, courses, packs, handle, changed: () => courseChanged(OK), changedMaterials: changed });
+    materials.recoverPathChanges();
     const calendarPath = join(env2().userDataPath, "apple-calendar.json");
     const platform4 = (channel, request) => {
       if (!globalThis.__bandalPlatform?.invoke) unsupported(channel);
@@ -159135,10 +159774,10 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     });
     for (const action of ["state", "connect", "disconnect", "configure", "events"]) handle(`appleCalendar:${action}`, (req) => calendar[action](req));
     handle("appleCalendar:export", (req) => calendar.exportTask(req.taskId));
-    const pdfExport = installPdfExport({ handle, courses, drawings, annotations, canvas, materials, changed });
+    const pdfExport = installPdfExport({ handle, courses, drawings, annotations, canvas, materials, changed, pdfBindings });
     installMarket({ handle, courses, materials, annotations, pdfExport: pdfExport.exportAnnotated });
     installPresentation({ handle, courses, drawings, annotations, materials, changed });
-    installSync({ handlePrivate, db, courses, materials, notes, drawings, annotations, board, canvas, recordings, learning });
+    installSync({ handlePrivate, db, courses, materials, notes, drawings, annotations, board, canvas, recordings, learning, pdfBindings });
     installNotifications({ db, handlePrivate });
     installBrowserShortcuts({ handlePrivate });
     handlePrivate("nativeRecording:create", (req) => recordings.create(req.courseId, req.title, req.modelId));
