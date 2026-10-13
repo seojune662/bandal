@@ -11,6 +11,16 @@ import type { ChatAttachment } from './chat'
 export const AGENT_PROVIDERS = ['claude-code', 'codex', 'gemini'] as const
 export type AgentProvider = (typeof AGENT_PROVIDERS)[number]
 
+/** Ephemeral setup state. OAuth URLs and codes must never be persisted. */
+export interface AgentLoginProgress {
+  provider: AgentProvider
+  requestId: string
+  stage: 'starting' | 'waiting-browser' | 'verifying' | 'done' | 'error' | 'cancelled'
+  message: string
+  url?: string
+  requiresCode?: boolean
+}
+
 export function isAgentProvider(value: unknown): value is AgentProvider {
   return AGENT_PROVIDERS.some((provider) => provider === value)
 }

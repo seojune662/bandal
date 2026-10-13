@@ -51,7 +51,13 @@ function knownDirs(
 ): string[] {
   if (isWindows(platform)) {
     const appData = env['APPDATA']
+    const localAppData = env['LOCALAPPDATA']
     return [
+      ...(env['CODEX_INSTALL_DIR'] ? [env['CODEX_INSTALL_DIR']] : []),
+      // The standalone installer updates the user PATH, but an already-running
+      // Bandal process keeps its old PATH until restart. Probe its native target
+      // first, ahead of any older npm shim that may require Node.
+      ...(localAppData ? [joinPath(platform, localAppData, 'Programs', 'OpenAI', 'Codex', 'bin')] : []),
       ...(appData === undefined || appData === ''
         ? []
         : [joinPath(platform, appData, 'npm')]),
@@ -61,6 +67,7 @@ function knownDirs(
     ]
   }
   return [
+    ...(env['CODEX_INSTALL_DIR'] ? [env['CODEX_INSTALL_DIR']] : []),
     joinPath(platform, homedir(), '.local', 'bin'),
     joinPath(platform, homedir(), '.npm-global', 'bin'),
     '/opt/homebrew/bin',

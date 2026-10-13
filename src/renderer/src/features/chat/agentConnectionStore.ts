@@ -1,13 +1,13 @@
 import { create } from 'zustand'
+import { useUiStore } from '../../stores/uiStore'
 import { isAgentReady } from '../../../../shared/agentProviderSelection'
 import { AGENT_PROVIDERS, isAgentProvider, type AgentAvailability, type AgentProvider } from '../../../../shared/types/agent-events'
 import { invoke, onPush, type Unsubscribe } from '../../lib/ipc'
 
 export const INSTALL_CHECK_TIMEOUT_MS = 60_000
-export const LOGIN_CHECK_TIMEOUT_MS = 5 * 60_000
 export const CONNECTION_POLL_MS = 3_000
 
-export type ConnectionStage = 'idle' | 'installing' | 'checking-install' | 'opening-login' | 'waiting-login' | 'error'
+export type ConnectionStage = 'idle' | 'installing' | 'checking-install' | 'opening-login' | 'waiting-login' | 'verifying-login' | 'error'
 export interface AgentConnectionSnapshot {
   availability: AgentAvailability | null
   loading: boolean
@@ -19,11 +19,13 @@ export interface AgentConnectionSnapshot {
   error: string | null
   availabilityError: string | null
   loginFailure: string
+  loginUrl: string | null
+  requiresCode: boolean
   modelsRevision: number
   modelsInvalidationRevision: number
   availabilityRevision: number
 }
-const emptyConnection = (): AgentConnectionSnapshot => ({ availability: null, loading: false, stage: 'idle', command: '', supported: null, logs: [], message: '', error: null, availabilityError: null, loginFailure: '', modelsRevision: 0, modelsInvalidationRevision: 0, availabilityRevision: 0 })
+const emptyConnection = (): AgentConnectionSnapshot => ({ availability: null, loading: false, stage: 'idle', command: '', supported: null, logs: [], message: '', error: null, availabilityError: null, loginFailure: '', loginUrl: null, requiresCode: false, modelsRevision: 0, modelsInvalidationRevision: 0, availabilityRevision: 0 })
 const initialConnections = () => Object.fromEntries(AGENT_PROVIDERS.map(provider => [provider, emptyConnection()])) as Record<AgentProvider, AgentConnectionSnapshot>
 export const useAgentConnectionStore = create<{ connections: Record<AgentProvider, AgentConnectionSnapshot> }>(() => ({ connections: initialConnections() }))
 
@@ -38,15 +40,19 @@ interface ConnectionRuntime {
   poll: ReturnType<typeof setTimeout> | null
   deadline: ReturnType<typeof setTimeout> | null
   autoLogin: boolean
+  loginRequestId: string | null
+  loginCompleted: boolean
+  repairedLogin: boolean
 }
 const runtimes = new Map<AgentProvider, ConnectionRuntime>()
 let unsubscribeProgress: Unsubscribe | null = null
+let unsubscribeLoginProgress: Unsubscribe | null = null
 let stopFocusListeners: (() => void) | null = null
 
 function runtimeFor(provider: AgentProvider): ConnectionRuntime {
   let runtime = runtimes.get(provider)
   if (!runtime) {
-    runtime = { refs: 0, generation: 0, operation: 0, probe: null, command: null, commandGeneration: 0, modelsDirty: false, poll: null, deadline: null, autoLogin: false }
+    runtime = { refs: 0, generation: 0, operation: 0, probe: null, command: null, commandGeneration: 0, modelsDirty: false, poll: null, deadline: null, autoLogin: false, loginRequestId: null, loginCompleted: false, repairedLogin: false }
     runtimes.set(provider, runtime)
   }
   return runtime
@@ -62,7 +68,7 @@ export function isAgentConnectionReady(availability: AgentAvailability | null): 
   return isAgentReady(availability ?? undefined)
 }
 export function isAgentConnectionBusy(stage: ConnectionStage): boolean {
-  return stage === 'installing' || stage === 'checking-install' || stage === 'opening-login'
+  return stage === 'installing' || stage === 'checking-install' || stage === 'opening-login' || stage === 'waiting-login' || stage === 'verifying-login'
 }
 function clearTimers(runtime: ConnectionRuntime): void {
   if (runtime.poll !== null) clearTimeout(runtime.poll)
@@ -74,12 +80,14 @@ function finishReady(provider: AgentProvider): void {
   const runtime = runtimeFor(provider)
   clearTimers(runtime)
   runtime.autoLogin = false
-  update(provider, { stage: 'idle', error: null, loginFailure: '', message: '' })
+  runtime.loginRequestId = null
+  runtime.loginCompleted = false
+  update(provider, { stage: 'idle', error: null, loginFailure: '', loginUrl: null, requiresCode: false, message: '' })
 }
 function schedulePoll(provider: AgentProvider): void {
   const runtime = runtimeFor(provider)
   const stage = snapshot(provider).stage
-  if (runtime.poll !== null || (stage !== 'checking-install' && stage !== 'waiting-login')) return
+  if (runtime.poll !== null || (stage !== 'checking-install' && stage !== 'waiting-login' && stage !== 'verifying-login')) return
   runtime.poll = setTimeout(() => {
     runtime.poll = null
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') { schedulePoll(provider); return }
@@ -103,12 +111,11 @@ function settleAvailability(provider: AgentProvider): void {
   const current = snapshot(provider)
   if (current.stage === 'checking-install' && hasCompatibleAgentBinary(current.availability)) {
     clearTimers(runtime)
-    if (isAgentConnectionReady(current.availability)) finishReady(provider)
-    else if (runtime.autoLogin) {
+    if (runtime.autoLogin && (runtime.repairedLogin || !isAgentConnectionReady(current.availability))) {
       runtime.autoLogin = false
-      void startAgentLogin(provider)
-    }
-  } else if ((current.stage === 'waiting-login' || current.stage === 'error') && isAgentConnectionReady(current.availability)) finishReady(provider)
+      void startAgentLogin(provider, true)
+    } else if (isAgentConnectionReady(current.availability)) finishReady(provider)
+  } else if ((current.stage === 'verifying-login' && runtime.loginCompleted || current.stage === 'error') && isAgentConnectionReady(current.availability)) finishReady(provider)
   schedulePoll(provider)
 }
 function installListeners(): void {
@@ -123,6 +130,25 @@ function installListeners(): void {
       if (snapshot(provider).stage === 'installing') void refreshAgentConnection(provider, true)
       else void refreshAgentConnectionAfterMutation(provider)
     }
+  })
+  unsubscribeLoginProgress = onPush('agent:login-progress', progress => {
+    if (!isAgentProvider(progress.provider)) return
+    const provider = progress.provider
+    const current = snapshot(provider)
+    if (runtimeFor(provider).loginRequestId !== progress.requestId) return
+    if (!['opening-login', 'waiting-login', 'verifying-login'].includes(current.stage)) return
+    if (progress.stage === 'waiting-browser') {
+      update(provider, { stage: 'waiting-login', message: progress.message, loginUrl: progress.url ?? current.loginUrl, requiresCode: progress.requiresCode ?? current.requiresCode })
+      if (current.stage === 'opening-login') useUiStore.getState().closeSettings()
+    } else if (progress.stage === 'verifying' || progress.stage === 'done') {
+      update(provider, { stage: 'verifying-login', message: progress.message })
+    } else if (progress.stage === 'error') {
+      clearTimers(runtimeFor(provider))
+      update(provider, { stage: 'error', error: progress.message, loginUrl: null, requiresCode: false })
+    } else if (progress.stage === 'cancelled') {
+      clearTimers(runtimeFor(provider))
+      update(provider, { stage: 'idle', message: '', loginUrl: null })
+    } else update(provider, { message: progress.message })
   })
   if (typeof window === 'undefined') return
   const refreshVisible = (): void => {
@@ -163,11 +189,11 @@ export function refreshAgentConnection(provider: AgentProvider, refresh = false)
 export function seedAgentAvailability(provider: AgentProvider, availability: AgentAvailability): void {
   if (snapshot(provider).availability === null && !snapshot(provider).loading) update(provider, { availability })
 }
-export function acquireAgentConnection(provider: AgentProvider): () => void {
+export function acquireAgentConnection(provider: AgentProvider, refresh = false): () => void {
   const runtime = runtimeFor(provider)
   runtime.refs += 1
   installListeners()
-  void refreshAgentConnection(provider)
+  void refreshAgentConnection(provider, refresh)
   let released = false
   return () => { if (!released) { released = true; runtime.refs = Math.max(0, runtime.refs - 1) } }
 }
@@ -179,9 +205,10 @@ export function prepareAgentConnection(provider: AgentProvider, refresh = false)
   runtime.command = invoke('agent:installCommand', { provider }).then(result => { if (runtime.commandGeneration === generation) update(provider, { command: result.command, supported: result.supported }) }).finally(() => { if (runtime.commandGeneration === generation) runtime.command = null })
   return runtime.command
 }
-export async function startAgentInstall(provider: AgentProvider): Promise<void> {
+export async function startAgentInstall(provider: AgentProvider, repairingLogin = false): Promise<void> {
   const runtime = runtimeFor(provider)
   if (isAgentConnectionBusy(snapshot(provider).stage)) return
+  if (!repairingLogin) runtime.repairedLogin = false
   installListeners()
   clearTimers(runtime)
   const operation = ++runtime.operation
@@ -190,7 +217,7 @@ export async function startAgentInstall(provider: AgentProvider): Promise<void> 
   try {
     await prepareAgentConnection(provider, true)
     if (runtime.operation !== operation) return
-    if (snapshot(provider).supported === false) throw new Error('자동 설치를 사용할 수 없어요. 표시된 설치 명령어를 터미널에서 실행해 주세요.')
+    if (snapshot(provider).supported === false) throw new Error('이 기기에서는 자동 설치를 지원하지 않아요. 연결 상세 정보를 확인해 주세요.')
     const result = await invoke('agent:install', { provider })
     if (runtime.operation !== operation) return
     if (!result.ok) throw new Error(result.message)
@@ -204,23 +231,78 @@ export async function startAgentInstall(provider: AgentProvider): Promise<void> 
     update(provider, { stage: 'error', error: error instanceof Error ? error.message : '설치 요청을 완료하지 못했어요.' })
   }
 }
-export async function startAgentLogin(provider: AgentProvider): Promise<void> {
+/** Continue from the last verified step, including after a failed or cancelled attempt. */
+export async function startAgentConnection(provider: AgentProvider): Promise<void> {
+  if (isAgentConnectionBusy(snapshot(provider).stage)) return
+  const availability = snapshot(provider).availability
+  if (availability?.installed !== true || availability.code === 'version-too-old') await startAgentInstall(provider)
+  else await startAgentLogin(provider)
+}
+export async function startAgentLogin(provider: AgentProvider, continuingInstallation = false): Promise<void> {
   const runtime = runtimeFor(provider)
-  if (snapshot(provider).stage === 'opening-login' || snapshot(provider).stage === 'installing') return
+  if (isAgentConnectionBusy(snapshot(provider).stage) && snapshot(provider).stage !== 'checking-install') return
+  if (!continuingInstallation) runtime.repairedLogin = false
   installListeners()
   clearTimers(runtime)
   const operation = ++runtime.operation
-  update(provider, { stage: 'opening-login', error: null, loginFailure: '', message: '' })
+  const requestId = crypto.randomUUID()
+  runtime.loginRequestId = requestId
+  runtime.loginCompleted = false
+  update(provider, { stage: 'opening-login', error: null, loginFailure: '', loginUrl: null, requiresCode: false, message: '' })
   try {
-    const result = await invoke('agent:login', { provider })
+    // The managed login stays pending while the user signs in inside Bandal.
+    const result = await invoke('agent:login', { provider, requestId })
     if (runtime.operation !== operation) return
-    if (!result.ok) { update(provider, { stage: 'error', loginFailure: result.message }); return }
-    update(provider, { stage: 'waiting-login', message: '터미널에서 로그인을 마치면 자동으로 이어져요.' })
-    startDeadline(provider, LOGIN_CHECK_TIMEOUT_MS, '로그인 확인을 잠시 멈췄어요. 터미널에서 로그인을 마친 뒤 다시 확인해 주세요.')
+    if (result.requiresUpdate && !runtime.repairedLogin) {
+      runtime.repairedLogin = true
+      update(provider, { stage: 'idle', message: '' })
+      await startAgentInstall(provider, true)
+      return
+    }
+    if (!result.ok) { clearTimers(runtime); update(provider, { stage: 'error', error: result.message }); return }
+    runtime.loginCompleted = true
+    update(provider, { stage: 'verifying-login', message: '로그인을 마쳤어요. 연결을 확인하고 있어요.' })
+    startDeadline(provider, INSTALL_CHECK_TIMEOUT_MS, '로그인은 끝났지만 연결을 확인하지 못했어요. 다시 확인해 주세요.')
     await refreshAgentConnectionAfterMutation(provider)
   } catch {
     if (runtime.operation !== operation) return
-    update(provider, { stage: 'error', error: '로그인 창을 열지 못했어요. 다시 시도해 주세요.' })
+    clearTimers(runtime)
+    update(provider, { stage: 'error', error: '로그인을 완료하지 못했어요. 다시 연결해 주세요.' })
+  }
+}
+export async function cancelAgentLogin(provider: AgentProvider): Promise<void> {
+  const runtime = runtimeFor(provider)
+  if (!['opening-login', 'waiting-login', 'verifying-login'].includes(snapshot(provider).stage)) return
+  const operation = ++runtime.operation
+  const requestId = runtime.loginRequestId ?? undefined
+  runtime.loginRequestId = null
+  runtime.loginCompleted = false
+  clearTimers(runtime)
+  update(provider, { stage: 'idle', message: '', error: null, loginUrl: null })
+  try { await invoke('agent:cancelLogin', { provider, ...(requestId ? { requestId } : {}) }) }
+  catch { if (runtime.operation === operation) update(provider, { stage: 'error', error: '로그인을 중단하지 못했어요. 다시 시도해 주세요.' }) }
+}
+export async function reopenAgentLogin(provider: AgentProvider, external = false): Promise<void> {
+  const runtime = runtimeFor(provider)
+  const operation = runtime.operation
+  try {
+    const result = await invoke('agent:reopenLogin', { provider, external, ...(runtimeFor(provider).loginRequestId ? { requestId: runtimeFor(provider).loginRequestId! } : {}) })
+    if (runtime.operation !== operation) return
+    if (!result.ok) update(provider, { error: result.message })
+    else if (!external) useUiStore.getState().closeSettings()
+  } catch { if (runtime.operation === operation) update(provider, { error: '로그인 페이지를 다시 열지 못했어요. 잠시 후 다시 시도해 주세요.' }) }
+}
+export async function submitAgentLoginCode(provider: AgentProvider, code: string): Promise<boolean> {
+  const runtime = runtimeFor(provider)
+  const operation = runtime.operation
+  try {
+    const result = await invoke('agent:submitLoginCode', { provider, code, ...(runtimeFor(provider).loginRequestId ? { requestId: runtimeFor(provider).loginRequestId! } : {}) })
+    if (runtime.operation !== operation) return false
+    if (!result.ok) update(provider, { error: result.message })
+    return result.ok
+  } catch {
+    if (runtime.operation === operation) update(provider, { error: '로그인 코드를 보내지 못했어요. 다시 시도해 주세요.' })
+    return false
   }
 }
 /** A mutation must not reuse a probe begun before credentials/installation changed. */
@@ -237,6 +319,8 @@ export function resetAgentConnectionsForTests(): void {
   runtimes.clear()
   unsubscribeProgress?.()
   unsubscribeProgress = null
+  unsubscribeLoginProgress?.()
+  unsubscribeLoginProgress = null
   stopFocusListeners?.()
   stopFocusListeners = null
   useAgentConnectionStore.setState({ connections: initialConnections() })

@@ -9,8 +9,8 @@ import {
 
 describe('agent setup copy', () => {
   test('uses Korean provider labels', () => {
-    expect(providerLabel('claude-code')).toBe('Claude Code')
-    expect(providerLabel('codex')).toBe('Codex (GPT)')
+    expect(providerLabel('claude-code')).toBe('Claude')
+    expect(providerLabel('codex')).toBe('ChatGPT')
     expect(providerLabel('gemini')).toBe('Gemini')
   })
 
@@ -18,8 +18,8 @@ describe('agent setup copy', () => {
     const html = renderToStaticMarkup(
       <ProviderSelector provider="claude-code" onChange={() => undefined} />
     )
-    expect(html).toContain('Claude Code')
-    expect(html).toContain('Codex (GPT)')
+    expect(html).toContain('Claude')
+    expect(html).toContain('ChatGPT')
     expect(html).toContain('Gemini')
   })
 
@@ -31,9 +31,11 @@ describe('agent setup copy', () => {
         onRefresh={() => undefined}
       />
     )
-    expect(html).toContain('Claude Code 로그인이 필요해요')
-    expect(html).toContain('로그인 창 열기')
-    expect(html).toContain('자동으로 넘어가요')
+    expect(html).toContain('반달에서 Claude 사용하기')
+    expect(html).toContain('Claude Pro·Max')
+    expect(html).toContain('계정 로그인')
+    expect(html).toContain('연결하기')
+    expect(html).toContain('명령어를 입력할 필요가 없어요')
   })
 
   test('shows the ChatGPT account and codex login guide', () => {
@@ -44,8 +46,9 @@ describe('agent setup copy', () => {
         onRefresh={() => undefined}
       />
     )
-    expect(html).toContain('Codex (GPT) 로그인이 필요해요')
-    expect(html).toContain('로그인 창 열기')
-    expect(html).toContain('자동으로 넘어가요')
+    expect(html).toContain('반달에서 ChatGPT 사용하기')
+    expect(html).toContain('이용 가능 여부와 한도는 계정 요금제에 따라')
+    expect(html).toContain('연결하기')
+    expect(html).toContain('명령어를 입력할 필요가 없어요')
   })
 })

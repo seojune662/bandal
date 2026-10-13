@@ -239,7 +239,7 @@ test('tab menu order, all shortcuts and tab defaults work together', async () =>
     ).toBeVisible()
     await prefs.getByRole('tab', { name: 'AI', exact: true }).click()
     await expect(
-      prefs.getByText('Claude Code', { exact: true }).first()
+      prefs.getByText('Claude', { exact: true }).first()
     ).toBeVisible()
     await expect
       .poll(() =>

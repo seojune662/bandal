@@ -99,6 +99,7 @@ export function SettingsApp({
 }: SettingsAppProps = {}): JSX.Element {
   const t = useT();
   const leftRailOpen = useUiStore((state) => state.leftRailOpen);
+  const isSettingsOpen = useUiStore((state) => state.isSettingsOpen);
   const locale = useLocale();
   const [activeCategory, setActiveCategory] = useState<SettingsPanelId>(() =>
     isSettingsCategoryId(initialCategory) ? normalizeSettingsCategoryId(initialCategory) : "general",
@@ -248,9 +249,10 @@ export function SettingsApp({
   }, [activeCategory, searchTarget]);
 
   useEffect(() => {
-    const releases = AGENT_PROVIDERS.map(acquireAgentConnection);
+    if (embedded && !isSettingsOpen) return;
+    const releases = AGENT_PROVIDERS.map(provider => acquireAgentConnection(provider, true));
     return () => releases.forEach(release => release());
-  }, []);
+  }, [embedded, isSettingsOpen]);
 
   useEffect(() => {
     if (embedded) return;

@@ -3,6 +3,7 @@
 import { spawnSync, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { stripVTControlCharacters } from 'node:util'
 import type { AgentInstallProgress } from '../../../shared/ipc/events'
 import type { AgentProvider } from '../../../shared/types/agent-events'
 import { createBinaryLocator, type BinaryLocator } from './binaryLocator'
@@ -15,7 +16,8 @@ import {
   LOGIN_SHELL_PATH_ARGS,
   nvmBinDirs,
   spawnClaude,
-  stripShellBanner
+  stripShellBanner,
+  type Platform
 } from './platform'
 
 export const CLAUDE_INSTALL_COMMAND =
@@ -23,7 +25,10 @@ export const CLAUDE_INSTALL_COMMAND =
 /** Windows equivalent of the official installer, run via powershell.exe. */
 export const CLAUDE_INSTALL_COMMAND_WINDOWS =
   'irm https://claude.ai/install.ps1 | iex'
-export const CODEX_INSTALL_COMMAND = 'npm install -g @openai/codex'
+export const CODEX_INSTALL_COMMAND =
+  'curl -fsSL https://chatgpt.com/codex/install.sh | sh'
+export const CODEX_INSTALL_COMMAND_WINDOWS =
+  'irm https://chatgpt.com/codex/install.ps1 | iex'
 export const GEMINI_INSTALL_COMMAND = 'npm install -g @google/gemini-cli'
 export const AGENT_INSTALL_TIMEOUT_MS = 5 * 60 * 1000
 
@@ -84,22 +89,33 @@ function resolveNpmSync(): string | null {
 function forwardLines(
   child: ChildProcess,
   provider: AgentProvider,
-  broadcast: (progress: AgentInstallProgress) => void
+  broadcast: (progress: AgentInstallProgress) => void,
+  recentLines: string[]
 ): () => void {
   const carries = new Map<'stdout' | 'stderr', string>([
     ['stdout', ''],
     ['stderr', '']
   ])
 
+  const report = (line: string): void => {
+    const clean = stripVTControlCharacters(line).trim()
+    if (clean === '') return
+    recentLines.push(clean)
+    if (recentLines.length > 20) recentLines.shift()
+    broadcast({ provider, line: clean, done: false, ok: false })
+  }
+  const listeners = new Map<'stdout' | 'stderr', (chunk: Buffer) => void>()
   const listen = (kind: 'stdout' | 'stderr'): void => {
-    child[kind]?.on('data', (chunk: Buffer) => {
+    const listener = (chunk: Buffer): void => {
       const combined = `${carries.get(kind) ?? ''}${chunk.toString('utf8')}`
-      const lines = combined.split(/\r?\n/u)
-      carries.set(kind, lines.pop() ?? '')
+      const lines = combined.split(/\r\n|\r|\n/u)
+      carries.set(kind, (lines.pop() ?? '').slice(-8192))
       for (const line of lines) {
-        broadcast({ provider, line, done: false, ok: false })
+        report(line)
       }
-    })
+    }
+    listeners.set(kind, listener)
+    child[kind]?.on('data', listener)
   }
   listen('stdout')
   listen('stderr')
@@ -108,9 +124,11 @@ function forwardLines(
     for (const kind of ['stdout', 'stderr'] as const) {
       const tail = carries.get(kind) ?? ''
       if (tail !== '') {
-        broadcast({ provider, line: tail, done: false, ok: false })
+        report(tail)
       }
       carries.set(kind, '')
+      const listener = listeners.get(kind)
+      if (listener !== undefined) child[kind]?.off('data', listener)
     }
   }
 }
@@ -128,10 +146,10 @@ async function verifyInstalled(locator: BinaryLocator, provider: AgentProvider):
 /**
  * Creates the installer IPC implementation.
  *
- * Contract: `install()` must only be called after the renderer has displayed
- * `commandFor()` verbatim and the user clicked 설치. It mutates the user's
- * machine, cannot be cancelled once started, and is forcibly timed out after
- * five minutes so a broken installer can never wait forever.
+ * The user's connect/install click authorizes the official installer. Codex
+ * and Claude use standalone native installers, so no Node, npm, administrator
+ * prompt or terminal setup is required. The UI can show commandFor() in its
+ * optional details. Concurrent clicks share one run, bounded to five minutes.
  */
 export function createAgentInstaller(deps?: {
   broadcast?: (p: AgentInstallProgress) => void
@@ -142,11 +160,23 @@ export function createAgentInstaller(deps?: {
    * after a successful install. Defaults exist only for tests.
    */
   locators?: Record<AgentProvider, BinaryLocator>
+  /** Injectable process boundaries for clean-machine and cross-platform tests. */
+  platform?: Platform
+  env?: NodeJS.ProcessEnv
+  spawn?: typeof spawnClaude
+  kill?: typeof killProcessTree
+  resolveNpm?: () => string | null
 }): {
   commandFor(provider: AgentProvider): { command: string; supported: boolean }
   install(provider: AgentProvider): Promise<{ ok: boolean; message: string }>
 } {
   const broadcast = deps?.broadcast ?? (() => undefined)
+  const platform = deps?.platform ?? process.platform
+  const baseEnv = deps?.env ?? process.env
+  const spawn = deps?.spawn ?? spawnClaude
+  const kill = deps?.kill ?? killProcessTree
+  const resolveNpm = deps?.resolveNpm ?? resolveNpmSync
+  const pending = new Map<AgentProvider, Promise<{ ok: boolean; message: string }>>()
   const locators: Record<AgentProvider, BinaryLocator> = deps?.locators ?? {
     'claude-code': createBinaryLocator(),
     codex: createCodexBinaryLocator(),
@@ -156,53 +186,54 @@ export function createAgentInstaller(deps?: {
   function commandFor(
     provider: AgentProvider
   ): { command: string; supported: boolean } {
-    if (provider === 'claude-code') {
-      if (process.platform === 'win32') {
-        return { command: CLAUDE_INSTALL_COMMAND_WINDOWS, supported: true }
-      }
-      return { command: CLAUDE_INSTALL_COMMAND, supported: true }
+    if (provider !== 'gemini') {
+      const command = provider === 'claude-code'
+        ? platform === 'win32' ? CLAUDE_INSTALL_COMMAND_WINDOWS : CLAUDE_INSTALL_COMMAND
+        : platform === 'win32' ? CODEX_INSTALL_COMMAND_WINDOWS : CODEX_INSTALL_COMMAND
+      return { command, supported: ['darwin', 'linux', 'win32'].includes(platform) }
     }
-    const command = provider === 'codex'
-      ? CODEX_INSTALL_COMMAND
-      : GEMINI_INSTALL_COMMAND
     return {
-      command,
-      supported: resolveNpmSync() !== null
+      command: GEMINI_INSTALL_COMMAND,
+      supported: resolveNpm() !== null
     }
   }
 
-  async function install(
+  async function runInstall(
     provider: AgentProvider
   ): Promise<{ ok: boolean; message: string }> {
     const announced = commandFor(provider)
     if (!announced.supported) {
-      const message = `npm을 찾지 못해 ${provider === 'codex' ? 'Codex' : 'Gemini'}를 자동 설치할 수 없습니다.`
+      const message = provider === 'gemini'
+        ? 'npm을 찾지 못해 Gemini를 자동 설치할 수 없습니다.'
+        : '이 운영체제에서는 자동 설치를 지원하지 않습니다.'
       broadcast({ provider, line: message, done: true, ok: false })
       return { ok: false, message }
     }
 
     let file: string
     let args: string[]
-    if (provider === 'claude-code') {
-      if (process.platform === 'win32') {
+    if (provider !== 'gemini') {
+      if (platform === 'win32') {
         // The announced constant command, verbatim — no user input reaches
         // this string. -NoProfile keeps user profiles from hijacking it.
         file = 'powershell.exe'
         args = [
           '-NoProfile',
+          '-NonInteractive',
           '-ExecutionPolicy',
           'Bypass',
           '-Command',
-          CLAUDE_INSTALL_COMMAND_WINDOWS
+          `$ErrorActionPreference = 'Stop'; ${announced.command}`
         ]
       } else {
-        file = '/bin/sh'
-        args = ['-c', CLAUDE_INSTALL_COMMAND]
+        // A failed curl must not become a successful empty shell execution.
+        file = '/bin/bash'
+        args = ['-o', 'pipefail', '-c', announced.command]
       }
     } else {
-      const npmPath = resolveNpmSync()
+      const npmPath = resolveNpm()
       if (npmPath === null) {
-        const message = `npm을 찾지 못해 ${provider === 'codex' ? 'Codex' : 'Gemini'}를 자동 설치할 수 없습니다.`
+        const message = 'npm을 찾지 못해 Gemini를 자동 설치할 수 없습니다.'
         broadcast({ provider, line: message, done: true, ok: false })
         return { ok: false, message }
       }
@@ -210,7 +241,7 @@ export function createAgentInstaller(deps?: {
       args = [
         'install',
         '-g',
-        provider === 'codex' ? '@openai/codex' : '@google/gemini-cli'
+        '@google/gemini-cli'
       ]
     }
 
@@ -219,18 +250,24 @@ export function createAgentInstaller(deps?: {
       // npm installed by nvm uses `#!/usr/bin/env node`; the child's PATH
       // must reach both the npm shim's own dir (sibling `node`) and the
       // login-shell PATH, even when the latter could not be captured.
+      const loginPath = provider === 'gemini'
+        ? loginShellPathSync()
+        : platform === 'win32' ? null : '/usr/bin:/bin:/usr/sbin:/sbin'
       const env = file.startsWith('/')
-        ? augmentedPathEnv(file, loginShellPathSync())
+        ? augmentedPathEnv(file, loginPath, baseEnv, platform)
         : (() => {
-            const base: NodeJS.ProcessEnv = { ...process.env }
-            const loginPath = loginShellPathSync()
+            const base: NodeJS.ProcessEnv = { ...baseEnv }
             if (loginPath !== null) base['PATH'] = loginPath
             return base
           })()
-      child = spawnClaude(file, args, {
+      // The official Codex installer otherwise offers launch/uninstall prompts.
+      // Skip them and preserve any older package-manager installation.
+      if (provider === 'codex') env['CODEX_NON_INTERACTIVE'] = '1'
+      child = spawn(file, args, {
         cwd: tmpdir(),
         env,
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        platform
       })
     } catch (error) {
       const message = `설치 프로그램을 시작하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`
@@ -240,11 +277,12 @@ export function createAgentInstaller(deps?: {
 
     broadcast({
       provider,
-      line: `실행: ${announced.command}`,
+      line: `${provider === 'codex' ? 'ChatGPT' : provider === 'claude-code' ? 'Claude' : 'Gemini'} 연결에 필요한 프로그램을 설치하고 있어요. 잠시만 기다려 주세요.`,
       done: false,
       ok: false
     })
-    const flushLines = forwardLines(child, provider, broadcast)
+    const recentLines: string[] = []
+    const flushLines = forwardLines(child, provider, broadcast, recentLines)
 
     const processResult = await new Promise<{
       code: number | null
@@ -269,7 +307,7 @@ export function createAgentInstaller(deps?: {
       }
       const timer = setTimeout(() => {
         if (child.pid !== undefined) {
-          killProcessTree(child.pid, 'SIGKILL')
+          kill(child.pid, 'SIGKILL', platform)
         }
         finish({ code: null, signal: 'SIGKILL', timedOut: true })
       }, AGENT_INSTALL_TIMEOUT_MS)
@@ -286,20 +324,30 @@ export function createAgentInstaller(deps?: {
     let ok = false
     let message: string
     if (processResult.timedOut) {
-      message = '설치가 5분 안에 끝나지 않아 중단했습니다.'
+      message = '다운로드가 오래 걸려 설치를 중단했어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.'
     } else if (processResult.error !== undefined) {
       message = `설치 중 오류가 발생했습니다: ${processResult.error.message}`
     } else if (processResult.code !== 0) {
-      message = `설치 명령이 실패했습니다 (코드 ${processResult.code ?? '없음'}, 신호 ${processResult.signal ?? '없음'}).`
+      const detail = recentLines.slice(-3).join('\n')
+      message = `설치를 완료하지 못했어요. 다시 시도해 주세요.${detail === '' ? '' : `\n${detail}`}`
     } else {
+      broadcast({ provider, line: '설치가 끝났어요. 연결 준비가 되었는지 확인하고 있어요.', done: false, ok: false })
       ok = await verifyInstalled(locators[provider], provider)
       message = ok
         ? `${provider === 'claude-code' ? 'Claude Code' : provider === 'codex' ? 'Codex' : 'Gemini'} 설치를 확인했습니다.`
-        : '설치 명령은 끝났지만 새 CLI를 PATH에서 찾지 못했습니다.'
+        : '설치된 프로그램을 실행하지 못했어요. 다시 시도하면 설치 상태를 다시 확인합니다.'
     }
 
     broadcast({ provider, line: message, done: true, ok })
     return { ok, message }
+  }
+
+  function install(provider: AgentProvider): Promise<{ ok: boolean; message: string }> {
+    const existing = pending.get(provider)
+    if (existing !== undefined) return existing
+    const result = runInstall(provider).finally(() => { pending.delete(provider) })
+    pending.set(provider, result)
+    return result
   }
 
   return { commandFor, install }

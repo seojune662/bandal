@@ -7,7 +7,7 @@ import type { BrowserAuthStatus } from '../types/browserAuth'
 
 import type { SettingsCategoryId } from '../settingsCategories'
 import type { RecordingEvent, SpeechModelState } from '../recording'
-import type { AgentEvent } from '../types/agent-events'
+import type { AgentEvent, AgentLoginProgress, AgentProvider } from '../types/agent-events'
 import type { AgentConfirmRequest } from '../types/agentTools'
 import type { Settings } from '../types/settings'
 import type { AuthState } from '../types/auth'
@@ -53,6 +53,9 @@ export interface MaterialsChanged {
  * it as a new Bandal browser tab.
  */
 export interface BrowserOpenUrl {
+  /** In-memory ownership of a managed AI sign-in tab. Never saved to layout. */
+  loginRequestId?: string
+  loginProvider?: AgentProvider
   /** Existing Chromium page to adopt without replaying its navigation. */
   tabId?: string
   openerTabId?: string
@@ -292,6 +295,7 @@ export interface PushEvents {
   'update:changed': UpdateStatus
   // -- agent setup ----------------------------------------------------------
   'agent:install-progress': AgentInstallProgress
+  'agent:login-progress': AgentLoginProgress
   // -- group whiteboard -----------------------------------------------------
   // -- desktop overlay ------------------------------------------------------
   'assistant:contextChanged': { courseId: string }

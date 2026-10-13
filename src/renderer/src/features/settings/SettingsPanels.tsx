@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BandalMark } from '../../components/BandalMark'
 import { ProviderMark } from '../../components/ProviderMark'
 import { LOCALES, setLocale, useLocale, useT } from '../../i18n'
 import type { Locale } from '../../i18n'
 import { invoke } from '../../lib/ipc'
-import { isAgentConnectionBusy, isAgentConnectionReady, prepareAgentConnection, refreshAgentConnectionAfterMutation, seedAgentAvailability, startAgentInstall, startAgentLogin, useAgentConnectionStore } from '../chat/agentConnectionStore'
+import { isAgentConnectionBusy, isAgentConnectionReady, refreshAgentConnectionAfterMutation, seedAgentAvailability, startAgentLogin, useAgentConnectionStore } from '../chat/agentConnectionStore'
+import { AgentConnectionControls } from '../chat/AgentConnectionControls'
 import { useUpdateStore } from '../../stores/updateStore'
 import {
   AGENT_PROVIDERS,
@@ -187,11 +188,6 @@ function AvailabilityRows({
       </div>
     </dl>
   )
-}
-
-function loginCommandFromMessage(message: string): string {
-  const match = /직접 실행해 주세요:\s*(.+)$/u.exec(message)
-  return match?.[1]?.trim() || message
 }
 
 function ProviderAccountRow({
@@ -393,199 +389,15 @@ function AgentConnector({
 }): JSX.Element | null {
   const t = useT()
   const connection = useAgentConnectionStore(state => state.connections[provider])
-  const { stage, command, logs, loginFailure } = connection
-  const [copied, setCopied] = useState(false)
-  const [installCommandCopied, setInstallCommandCopied] = useState(false)
-  const logsRef = useRef<HTMLPreElement>(null)
-  const needsUpdate = availability.code === 'version-too-old'
-  const needsInstall = !availability.installed || needsUpdate
-  const needsConnection = !isAgentConnectionReady(availability)
+  const current = connection.availability ?? availability
   const providerKey = provider === 'claude-code' ? 'claude' : provider
   const providerName = t(`settings.ai.${providerKey}.name`)
-  const busy = isAgentConnectionBusy(stage)
   useEffect(() => { seedAgentAvailability(provider, availability) }, [provider, availability])
-  useEffect(() => {
-    if (needsInstall) void prepareAgentConnection(provider).catch(() => undefined)
-  }, [needsInstall, provider])
-  useEffect(() => {
-    if (logsRef.current) logsRef.current.scrollTop = logsRef.current.scrollHeight
-  }, [logs])
-  const install = (): void => { void startAgentInstall(provider) }
-  const openLogin = (): void => { void startAgentLogin(provider) }
-
-  const copyLoginCommand = (): void => {
-    void navigator.clipboard
-      .writeText(loginCommandFromMessage(loginFailure))
-      .then(() => setCopied(true), () => setCopied(false))
-  }
-
-  const copyInstallCommand = (): void => {
-    void prepareAgentConnection(provider).then(() => navigator.clipboard.writeText(useAgentConnectionStore.getState().connections[provider].command))
-      .then(() => setInstallCommandCopied(true), () => setInstallCommandCopied(false))
-  }
-
-  const accountRow = (
-    <ProviderAccountRow
-      availability={availability}
-      providerName={providerName}
-      busy={busy}
-      onReauthenticate={openLogin}
-    />
-  )
-  const apiKeyRow =
-    provider === 'gemini' ? <GeminiApiKeyRow onRefresh={onRefresh} /> : null
-
-  const errorMessage = connection.error ?? t('settings.ai.install.failed')
-
-  if (!needsConnection) {
-    return (
-      <>
-        {accountRow}
-        {apiKeyRow}
-        {stage === 'error' && (
-          <div className="settings-ai-install-error" role="alert">
-            <span>{loginFailure || errorMessage}</span>
-            {loginFailure !== '' && (
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={copyLoginCommand}
-              >
-                {t(
-                  copied
-                    ? 'settings.ai.login.copied'
-                    : 'settings.ai.login.copyCommand'
-                )}
-              </button>
-            )}
-          </div>
-        )}
-      </>
-    )
-  }
-
-  const actionLabel = needsUpdate
-    ? stage === 'installing'
-      ? t('settings.ai.action.updating')
-      : stage === 'checking-install'
-        ? t('settings.ai.action.checkingUpdate')
-        : t('settings.ai.action.update')
-    : needsInstall
-      ? stage === 'installing'
-        ? t('settings.ai.action.connecting')
-        : stage === 'checking-install'
-          ? t('settings.ai.action.checkingInstall')
-          : t('settings.ai.action.connect')
-      : stage === 'opening-login'
-        ? t('settings.ai.action.openingLogin')
-        : t('settings.ai.action.login')
-
-  return (
-    <>
-      {accountRow}
-      {apiKeyRow}
-      <div className="settings-ai-installer">
-        <div className="settings-ai-installer__copy">
-          <strong>
-            {t(
-              needsUpdate
-                ? 'settings.ai.setup.updateTitle'
-                : needsInstall
-                  ? 'settings.ai.setup.connectTitle'
-                  : 'settings.ai.setup.loginTitle',
-              { provider: providerName }
-            )}
-          </strong>
-          <span>
-            {needsUpdate
-              ? t('settings.ai.setup.updateHelp', {
-                  version: availability.version ?? t('settings.ai.unknown')
-                })
-              : needsInstall
-                ? t('settings.ai.setup.connectHelp')
-                : t('settings.ai.setup.loginHelp')}
-          </span>
-        </div>
-
-        <button
-          type="button"
-          className="secondary-button"
-          data-settings-connect-action="true"
-          disabled={busy}
-          onClick={needsInstall ? install : openLogin}
-        >
-          {actionLabel}
-        </button>
-
-        {needsInstall && command !== '' && (
-          <button
-            type="button"
-            className="settings-ai-install-command-copy"
-            onClick={copyInstallCommand}
-          >
-            {t(
-              installCommandCopied
-                ? 'settings.ai.login.copied'
-                : 'settings.ai.account.copyCommand'
-            )}
-          </button>
-        )}
-
-        {stage === 'installing' && (
-          <p className="settings-ai-install-feedback" role="status">
-            {t('settings.ai.install.installing')}
-          </p>
-        )}
-
-        {(stage === 'installing' || logs.length > 0) && (
-          <pre
-            ref={logsRef}
-            className="settings-ai-install-logs"
-            aria-label={t('settings.ai.install.logsLabel')}
-            aria-live="polite"
-          >
-            {logs.join('\n')}
-          </pre>
-        )}
-
-        {(stage === 'checking-install' || stage === 'waiting-login') && (
-          <p
-            className="settings-ai-install-feedback settings-ai-install-feedback--success"
-            role="status"
-          >
-            {t(
-              stage === 'waiting-login'
-                ? 'settings.ai.login.waiting'
-                : 'settings.ai.install.checkingAgain'
-            )}
-          </p>
-        )}
-
-        {stage === 'error' && loginFailure === '' && (
-          <div className="settings-ai-install-error" role="alert">
-            <span>{errorMessage}</span>
-          </div>
-        )}
-
-        {loginFailure !== '' && (
-          <div className="settings-ai-install-error" role="alert">
-            <span>{loginFailure}</span>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={copyLoginCommand}
-            >
-              {t(
-                copied
-                  ? 'settings.ai.login.copied'
-                  : 'settings.ai.login.copyCommand'
-              )}
-            </button>
-          </div>
-        )}
-      </div>
-    </>
-  )
+  return <>
+    {isAgentConnectionReady(current) && <ProviderAccountRow availability={current} providerName={providerName} busy={isAgentConnectionBusy(connection.stage)} onReauthenticate={() => { void startAgentLogin(provider) }} />}
+    <AgentConnectionControls provider={provider} availability={availability} />
+    {provider === 'gemini' && <GeminiApiKeyRow onRefresh={onRefresh} />}
+  </>
 }
 
 function ProviderCard({
@@ -666,17 +478,14 @@ function ProviderCard({
         </div>
       ) : availability !== null ? (
         <>
-          <AvailabilityRows availability={availability} />
           <AgentConnector
             provider={provider}
             availability={availability}
             onRefresh={onRetry}
           />
+          <details className="agent-connection__details"><summary>{t('settings.ai.connectionDetails')}</summary><AvailabilityRows availability={availability} /></details>
         </>
       ) : null}
-      {availability?.reason !== undefined && availability.reason !== '' && (
-        <p className="settings-ai-install-feedback">{availability.reason}</p>
-      )}
     </SettingsCard>
   )
 }

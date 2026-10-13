@@ -105,6 +105,20 @@ test('AI links and connection fixes select their direct product regressions', ()
   assert.ok(!workspace.e2e.includes('e2e/aiConnections.spec.ts'))
 })
 
+test('managed CLI login verifies its helper in the actual packaged runtime', () => {
+  for (const file of ['loginBrowserBridge', 'loginLauncher']) {
+    const plan = planChecks([`src/main/features/agent/${file}.ts`])
+    assert.equal(plan.full, false)
+    assert.ok(plan.e2e.includes('e2e/loginBrowserBridge.spec.ts'))
+    assert.ok(plan.e2e.includes('e2e/aiConnections.spec.ts'))
+    assert.ok(!plan.e2e.includes('e2e/browserImport.spec.ts'))
+  }
+  for (const file of ['AgentConnectionControls.tsx', 'agentConnectionCopy.ts', 'agent-connection.css']) {
+    assert.ok(planChecks([`src/renderer/src/features/chat/${file}`]).e2e.includes('e2e/aiConnections.spec.ts'))
+  }
+  assert.ok(planChecks(['src/renderer/src/features/browser/agentLoginTabs.ts']).e2e.includes('e2e/aiConnections.spec.ts'))
+})
+
 test('material rename changes cover moved views without repeating live session checks', () => {
   for (const file of ['MaterialTree', 'MaterialsSidebar']) {
     const plan = planChecks([`src/renderer/src/features/materials/${file}.tsx`])

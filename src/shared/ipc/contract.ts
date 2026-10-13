@@ -803,22 +803,29 @@ export interface IpcContract extends MailIpcContract, PresentationIpcContract, R
     res: { command: string; supported: boolean }
   }
   /**
-   * Runs the provider's official installer. Never called implicitly — the UI
-   * shows the command from `agent:installCommand` and waits for a click,
-   * because this mutates the user's machine outside the app sandbox.
+   * Runs the provider's official installer after an explicit Connect click.
+   * Installation details are available through `agent:installCommand`.
    * Progress streams via the `agent:install-progress` push event.
    */
   'agent:install': {
     req: { provider: AgentProvider }
     res: { ok: boolean; message: string }
   }
-  /**
-   * Opens a visible terminal preloaded with the provider's login command
-   * (absolute binary path, quoted). CLI login is an interactive OAuth flow
-   * that needs a TTY, so it cannot complete inside the app itself.
-   */
+  /** Managed login. Progress opens the Bandal browser; resolves after auth verification. */
   'agent:login': {
-    req: { provider: AgentProvider }
+    req: { provider: AgentProvider; requestId?: string }
+    res: { ok: boolean; message: string; requiresUpdate?: boolean }
+  }
+  'agent:cancelLogin': {
+    req: { provider: AgentProvider; requestId?: string }
+    res: { ok: boolean }
+  }
+  'agent:reopenLogin': {
+    req: { provider: AgentProvider; requestId?: string; external?: boolean }
+    res: { ok: boolean; message: string }
+  }
+  'agent:submitLoginCode': {
+    req: { provider: AgentProvider; requestId?: string; code: string }
     res: { ok: boolean; message: string }
   }
 
@@ -1742,6 +1749,9 @@ export const IPC_CHANNELS = [
   'agent:installCommand',
   'agent:install',
   'agent:login',
+  'agent:cancelLogin',
+  'agent:reopenLogin',
+  'agent:submitLoginCode',
   'browser:sessionSites',
   'browser:clearSession',
   'browser:setDownloadTarget',
