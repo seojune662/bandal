@@ -43,6 +43,7 @@ import { traceIpc } from '../performanceTrace'
 import { createFolderAvailability } from '../features/courses/folderAvailability'
 import { createBackgroundClient } from '../background/client'
 import { startBackgroundCheckpoints } from '../db/backgroundCheckpoint'
+import { createMaterialPathLock } from '../features/materials/materialPathLock'
 import { createBackgroundMaterialsWatcher } from '../background/materialsWatcher'
 import { createAppleCalendar } from '../features/calendar/appleCalendar'
 /**
@@ -442,13 +443,15 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     toRelPath: string
     isDirectory: boolean
   }): void => {
-    pdfBindings.repoint(change)
-    materialsRepo.repointAddedState(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory)
-    repointMaterialPath({
-      ...change,
-      db,
-      courseFolder: coursesRepo.getFolder(change.courseId)
-    })
+    db.transaction(() => {
+      pdfBindings.repoint(change)
+      materialsRepo.repointAddedState(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory)
+      repointMaterialPath({
+        ...change,
+        db,
+        courseFolder: coursesRepo.getFolder(change.courseId)
+      })
+    })()
     recordings.repoint(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory)
     void learningRepo.repoint(change).catch(error => console.error('[learning] path update failed', error))
     // Notes bypass materialsRepo, and a rewritten backlink can change more
@@ -464,6 +467,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // Derived search writes must never hold the user database's write lock.
   const searchCachePath = join(deps.userDataPath, 'search-cache.db')
   const materialsRepo = createMaterialsRepo({
+    pathLock: createMaterialPathLock(join(deps.userDataPath, 'material-path-lock.db')),
     onIndexBuilt: () => { pdfBindings.reconcileIndex(); checkpoints.request() },
     scan: (folder, limits) => background.request('scan', { folder, limits }),
     db,
@@ -483,6 +487,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     onPathChanged: onMaterialPathChanged
   })
   const recordings = createRecordingRepo(db, (id) => coursesRepo.getFolder(id), session => materialsRepo.recordAdded(session.courseId, session.audioRelPath))
+  materialsRepo.recoverPathChanges()
   const speechModels = createModelManager(
     join(deps.userDataPath, 'speech-models'),
     (models) => broadcast('recordings:modelsChanged', models)

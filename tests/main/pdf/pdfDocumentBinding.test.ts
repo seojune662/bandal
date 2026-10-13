@@ -1,15 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { createTestDb, type TestDb } from '../helpers/testDb'
 import { createCoursesRepo } from '../../../src/main/features/courses'
+import { createMaterialsRepo } from '../../../src/main/features/materials'
+import { createMaterialPathLock } from '../../../src/main/features/materials/materialPathLock'
+import { createRequire } from 'node:module'
 import { createDrawingsRepo } from '../../../src/main/features/pdf/drawingsRepo'
 import { createPDFDocumentBindings, createBoundPDFRepositories } from '../../../src/main/features/pdf/pdfDocumentBinding'
 import { createPDFOriginalPreserver, pdfFileRevision } from '../../../src/main/features/pdf/pdfOriginals'
 import { repointMaterialPath } from '../../../src/main/features/links/renameRepoint'
 import type { CreateDrawingInput } from '../../../src/shared/types/drawing'
 
+const SQLite = createRequire(import.meta.url)('better-sqlite3-node')
 describe('durable PDF identity and original binding', () => {
   let ctx: TestDb, courseId: string, folder: string
   const original = '%PDF-1.7\noriginal lecture bytes', replacement = '%PDF-1.7\nreplacement lecture bytes'
@@ -97,6 +101,37 @@ describe('durable PDF identity and original binding', () => {
     expect(binding.check({ courseId, relPath: 'moved.pdf' })).toMatchObject({ documentRevision: revision, evidence: 'sync', legacyUnverified: false })
     writeFileSync(file('moved.pdf'), replacement)
     expect(() => bindings().check({ courseId, relPath: 'moved.pdf' })).toThrow(/기존 필기/)
+  })
+  test.each(['rename', 'move'] as const)('failed canonical %s preserves intent then completes file, alias and rows together', async action => {
+    makeFile(); const binding = bindings(), { drawings } = createBoundPDFRepositories(ctx.db, binding)
+    const drawing = drawings.create(input()), before = binding.check({ courseId, relPath: 'lecture.pdf' })
+    mkdirSync(file('destination'))
+    const materials = createMaterialsRepo({ db: ctx.db, pathLock: createMaterialPathLock(join(ctx.dir, 'material-path-lock.db'), path => new SQLite(path, { timeout: 0 })), getCourseFolder: () => folder, revealItem: () => undefined, trashItem: async () => undefined,
+      onPathChanged: change => { binding.repoint(change); repointMaterialPath({ ...change, db: ctx.db, courseFolder: folder }) } })
+    ctx.db.exec("CREATE TRIGGER fail_pdf_repoint BEFORE UPDATE OF rel_path ON pdf_drawings BEGIN SELECT RAISE(ABORT, 'injected canonical repoint failure'); END")
+    const movedPath = action === 'rename' ? 'renamed.pdf' : 'destination/lecture.pdf'
+    const operation = action === 'rename' ? materials.rename({ courseId, relPath: 'lecture.pdf', newName: movedPath }) : materials.move({ courseId, fromRelPath: 'lecture.pdf', toDirRelPath: 'destination' })
+    await expect(operation).rejects.toThrow(/injected canonical repoint failure/)
+    expect(readFileSync(file(movedPath), 'utf8')).toBe(original); expect(existsSync(file('lecture.pdf'))).toBe(false)
+    expect(() => binding.check({ courseId, relPath: movedPath })).toThrow(/복구/)
+    expect((ctx.db.prepare('SELECT COUNT(*) n FROM material_path_intents').get() as any).n).toBe(1)
+    ctx.db.exec('DROP TRIGGER fail_pdf_repoint')
+    materials.recoverPathChanges()
+    expect(binding.check({ courseId, relPath: movedPath }).materialID).toBe(before.materialID)
+    expect(ctx.db.prepare('SELECT rel_path FROM pdf_document_aliases WHERE material_id=?').get(before.materialID)).toEqual({ rel_path: movedPath })
+    expect(drawings.listForFile(courseId, movedPath)[0]?.id).toBe(drawing.id)
+  })
+  test('failed callback preserves a newly occupied source and reports both preserved paths', async () => {
+    makeFile(); const binding = bindings(), { drawings } = createBoundPDFRepositories(ctx.db, binding)
+    drawings.create(input())
+    const before = binding.check({ courseId, relPath: 'lecture.pdf' })
+    const materials = createMaterialsRepo({ db: ctx.db, pathLock: createMaterialPathLock(join(ctx.dir, 'material-path-lock.db'), path => new SQLite(path, { timeout: 0 })), getCourseFolder: () => folder, revealItem: () => undefined, trashItem: async () => undefined,
+      onPathChanged: change => { binding.repoint(change); writeFileSync(file('lecture.pdf'), 'unrelated source appeared'); throw new Error('injected hook failure') } })
+    await expect(materials.rename({ courseId, relPath: 'lecture.pdf', newName: 'moved.pdf' })).rejects.toThrow(/lecture.pdf.*moved.pdf/)
+    expect(readFileSync(file('lecture.pdf'), 'utf8')).toBe('unrelated source appeared')
+    expect(readFileSync(file('moved.pdf'), 'utf8')).toBe(original)
+    expect(readFileSync(join(ctx.dir, 'PDFOriginals', before.documentRevision + '.pdf'), 'utf8')).toBe(original)
+    expect(ctx.db.prepare('SELECT rel_path FROM pdf_document_aliases WHERE material_id=?').get(before.materialID)).toEqual({ rel_path: 'lecture.pdf' })
   })
   test('failed original verification neither acknowledges preservation nor changes source bytes', () => {
     const revision = makeFile(), directory = join(ctx.dir, 'PDFOriginals')

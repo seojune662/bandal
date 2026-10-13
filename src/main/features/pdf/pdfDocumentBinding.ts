@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { assertMaterialPathAvailable } from '../materials/materialPathJournal'
 import { ValidationError } from '../../db/errors'
 import { requireId, requireNonEmptyString } from '../../db/validate'
 import { createDrawingsRepo } from './drawingsRepo'
@@ -71,6 +72,7 @@ export function createPDFDocumentBindings(db: any, revisionFor: (courseId: strin
   }
   function checkAt(input: { courseId: string; relPath: string; documentRevision?: string }, movedTo?: string): PDFDocumentBinding {
     const courseId = requireId(input.courseId, 'courseId'), relPath = relativePath(input.relPath)
+    if (movedTo === undefined) assertMaterialPathAvailable(db, courseId, relPath)
     if (!db.prepare('SELECT id FROM courses WHERE id=? AND deleted_at IS NULL').get(courseId)) throw new ValidationError('PDF course is unavailable')
     if (input.documentRevision !== undefined && (typeof input.documentRevision !== 'string' || !sha.test(input.documentRevision))) throw new ValidationError('documentRevision must be a SHA-256 digest')
     const readablePath = movedTo ?? relPath, current = revisionFor(courseId, readablePath)
