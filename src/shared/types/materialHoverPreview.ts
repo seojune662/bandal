@@ -8,7 +8,9 @@ export type MaterialHoverPreviewContent =
   | { kind: 'markdown' | 'text'; text: string; truncated: boolean; label?: string }
   | { kind: 'table'; rows: string[][]; sheetName: string; sheetCount: number; truncated: boolean }
   | { kind: 'slides'; text: string; slideCount: number; truncated: boolean; imageDataUrl?: string }
-  | { kind: 'pdf' | 'image' | 'video' | 'recording' }
+  /** Immutable, header-validated source; renderer must produce a small static bitmap. */
+  | { kind: 'image'; sourceDataUrl: string; width: number; height: number }
+  | { kind: 'pdf' | 'video' | 'recording' }
   | {
       kind: 'unsupported'
       reason: 'unsupported' | 'too-large' | 'unreadable' | 'needs-conversion' | 'timeout'

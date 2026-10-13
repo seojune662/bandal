@@ -129,12 +129,14 @@ export const NOT_FOR_AGENT: Readonly<Record<string, string>> = {
 
   // -- internal plumbing, not capabilities ----------------------------------
   'materials:snapshot': '자료 목록을 즉시 복원하기 위한 UI 캐시. 에이전트는 list_materials로 완성된 목록을 읽는다.',
+  'materials:hoverPreview': '자료 행의 읽기 전용 미리보기. 에이전트의 자료 읽기는 read_material을 사용한다.',
   'materials:watch': '파일 감시자 수명. 렌더러가 패널을 열고 닫으며 관리한다.',
   'materials:unwatch': '파일 감시자를 떼는 짝. 위와 같은 이유로 렌더러 소관이다.',
   'activity:record': '텔레메트리. 에이전트가 자기 활동을 위조할 자리가 아니다.',
   'pdf:setViewState':
     '학생이 보던 페이지의 기록. 에이전트가 학생의 시점을 바꿔칠 자리가 아니다.',
   'canvas:open': '캔버스 세션 수명. 렌더러가 관리한다.',
+  'canvas:hoverPreview': '자료 행의 첫 페이지 미리보기를 위한 제한된 읽기 전용 조회다.',
   'search:indexPdfPages': '색인 배관. 검색이 알아서 부른다.',
   'study:tools': '학습 계획 러너의 내부 표면.',
   'study:run': '위와 같음 — 에이전트가 자기를 재귀 호출할 자리다.',

@@ -87,6 +87,19 @@ test('new and open states coexist; expiration does not require a reload', async 
   expect(button!.dataset.materialOpen).toBeUndefined()
 })
 
+test('closing a retained materials rail cancels both pending and visible previews', async () => {
+  const [button] = render()
+  enter(button!)
+  await act(async () => host.setAttribute('inert', ''))
+  await advance(450)
+  expect(document.querySelector('[role="tooltip"]')).toBeNull()
+  act(() => host.removeAttribute('inert'))
+  enter(button!); await advance(450)
+  expect(document.querySelector('[role="tooltip"]')).not.toBeNull()
+  await act(async () => host.setAttribute('aria-hidden', 'true'))
+  expect(document.querySelector('[role="tooltip"]')).toBeNull()
+})
+
 test('card placement uses left side and remains inside narrow and bottom viewports', () => {
   expect(positionMaterialPreview({ left: 800, right: 1000, top: 40 }, 320, 280, 1024, 800)).toEqual({ left: 472, top: 40 })
   expect(positionMaterialPreview({ left: 10, right: 280, top: 750 }, 304, 280, 320, 800)).toEqual({ left: 8, top: 512 })

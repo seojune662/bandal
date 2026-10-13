@@ -3027,6 +3027,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
   handle('canvas:open', (req) => canvasRepo.open(req.boardId))
+  handle('canvas:hoverPreview', (req) => canvasRepo.hoverPreview(req.boardId))
   handle('canvas:setBackground', (req) => canvasRepo.setBackground(req))
   handle('canvas:setPageCount', (req) => canvasRepo.setPageCount(req))
   const boardPdfExporter = createBoardPdfExporter({

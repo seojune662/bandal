@@ -58,6 +58,8 @@ export interface CanvasRepo {
   setPageCount(input: SetBoardPageCountInput): PersonalBoard
   removeBoard(id: string): void
   open(boardId: string): OpenPersonalBoardResult
+  /** Read-only first-page sample with bounded JSON and stroke complexity. */
+  hoverPreview(boardId: string): OpenPersonalBoardResult
   /**
    * 살아 있는 도형 개수만 센다 (COUNT(*)). 도시에처럼 개수만 필요한 곳이
    * `open()` 으로 도형 전체를 로드하지 않게 하는 값싼 경로다.
@@ -65,6 +67,32 @@ export interface CanvasRepo {
   countShapes(boardId: string): number
   putShape(input: PutPersonalShapeInput): PersonalBoardShape
   removeShapes(input: RemovePersonalShapesInput): void
+}
+
+export const BOARD_HOVER_SHAPE_LIMIT = 160
+export const BOARD_HOVER_SHAPE_BYTES = 32 * 1024
+export const BOARD_HOVER_TOTAL_BYTES = 256 * 1024
+export const BOARD_HOVER_POINTS_PER_SHAPE = 512
+export const BOARD_HOVER_TOTAL_POINTS = 4096
+
+function boundedPreviewShape(row: ShapeRow, pointBudget: number): PersonalBoardShape | null {
+  try {
+    const shape = rowToShape(row)
+    if (!DRAWING_KINDS.includes(shape.kind) || !shape.data || Array.isArray(shape.data) ||
+        !shape.style || Array.isArray(shape.style) || typeof shape.data !== 'object' || typeof shape.style !== 'object') return null
+    if (shape.data.points !== undefined) {
+      if (!Array.isArray(shape.data.points) || pointBudget < 2) return null
+      const points = shape.data.points.filter(point => point && typeof point === 'object' &&
+        Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.p))
+      const count = Math.min(points.length, pointBudget, BOARD_HOVER_POINTS_PER_SHAPE)
+      shape.data.points = points.length <= count ? points : Array.from({ length: count }, (_, index) =>
+        points[Math.round(index * (points.length - 1) / (count - 1))]!)
+    }
+    return shape
+  } catch {
+    // A damaged shape should not make an otherwise readable board unusable.
+    return null
+  }
 }
 
 
@@ -314,6 +342,40 @@ export function createCanvasRepo(db: Database): CanvasRepo {
         )
         .all(boardId) as ShapeRow[]
       return { board, shapes: rows.map(rowToShape) }
+    },
+
+    hoverPreview(boardIdInput) {
+      const boardId = requireId(boardIdInput, 'boardId')
+      const board = rowToBoard(boardRowOrThrow(boardId))
+      // The page index bounds the scan before JSON is selected. Inspect only
+      // sizes for at most 160 candidates, so a huge shape never crosses into JS.
+      const candidates = db.prepare(`SELECT id,
+        length(CAST(data_json AS BLOB)) + length(CAST(style_json AS BLOB)) AS bytes
+        FROM whiteboard_local_shapes
+        WHERE board_id = ? AND page = 1 AND deleted_at IS NULL
+        ORDER BY created_at DESC, id DESC LIMIT ?`)
+        .all(boardId, BOARD_HOVER_SHAPE_LIMIT) as { id: string; bytes: number }[]
+      const read = db.prepare('SELECT * FROM whiteboard_local_shapes WHERE id = ? AND board_id = ? AND page = 1 AND deleted_at IS NULL')
+      const shapes: PersonalBoardShape[] = []
+      let readBytes = 0
+      let payloadBytes = Buffer.byteLength(JSON.stringify({ board, shapes: [] }))
+      let points = 0
+      for (const candidate of candidates) {
+        if (candidate.bytes > BOARD_HOVER_SHAPE_BYTES || readBytes + candidate.bytes > BOARD_HOVER_TOTAL_BYTES) continue
+        const row = read.get(candidate.id, boardId) as ShapeRow | undefined
+        if (!row) continue
+        readBytes += candidate.bytes
+        const shape = boundedPreviewShape(row, BOARD_HOVER_TOTAL_POINTS - points)
+        if (!shape) continue
+        let bytes: number
+        try { bytes = Buffer.byteLength(JSON.stringify(shape)) + 1 } catch { continue }
+        if (payloadBytes + bytes > BOARD_HOVER_TOTAL_BYTES) continue
+        payloadBytes += bytes
+        points += shape.data.points?.length ?? 0
+        shapes.push(shape)
+      }
+      // Candidates favor recent marks; preserve normal paint order in the SVG.
+      return { board, shapes: shapes.reverse() }
     },
 
     countShapes(boardIdInput) {

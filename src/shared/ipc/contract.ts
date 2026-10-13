@@ -1109,6 +1109,10 @@ export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, Pr
     req: { boardId: string }
     res: OpenPersonalBoardResult
   }
+  'canvas:hoverPreview': {
+    req: { boardId: string }
+    res: OpenPersonalBoardResult
+  }
   'canvas:putShape': {
     req: PutPersonalShapeInput
     res: DrawingShape
@@ -1847,6 +1851,7 @@ export const IPC_CHANNELS = [
   'canvas:rename',
   'canvas:remove',
   'canvas:open',
+  'canvas:hoverPreview',
   'canvas:putShape',
   'canvas:setPageCount',
   'canvas:setBackground',

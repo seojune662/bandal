@@ -1,0 +1,261 @@
+import { expect, test, type Locator } from '@playwright/test'
+import { createServer } from 'node:http'
+import { copyFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { PDFDocument, StandardFonts } from 'pdf-lib'
+import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
+import { buildPptx } from './helpers/presentation'
+
+async function showPreview(bandal: BandalApp, row: Locator): Promise<Locator> {
+  const card = bandal.page.locator('.material-preview')
+  // A pending filesystem watcher refresh may legitimately dismiss the first
+  // hover. Re-enter the row once the material's current revision is visible.
+  await expect(async () => {
+    await bandal.page.mouse.move(10, 10)
+    await row.hover()
+    await expect(card).toBeVisible({ timeout: 2000 })
+  }).toPass({ timeout: 15_000 })
+  return card
+}
+
+async function newNote(bandal: BandalApp, title: string, body: string) {
+  const course = await bandal.page.evaluate(async () => (await window.bandal.invoke('courses:list', {}))[0]!)
+  const note = await bandal.page.evaluate(async ({ courseId, title, body }) => {
+    const created = await window.bandal.invoke('notes:create', { courseId, title, dirRelPath: '' })
+    await window.bandal.invoke('notes:write', { ...created, markdown: `# ${title}\n\n${body}\n` })
+    return created
+  }, { courseId: course.id, title, body })
+  await bandal.page.getByRole('button', { name: '자료 새로고침' }).click()
+  const row = bandal.page.locator(`[data-material-path="${note.relPath}"]`)
+  await expect(row).toBeVisible()
+  return { course, note, row }
+}
+
+test('new notes retain their dot while opened, duplicate tabs close independently, and hover never opens a tab', async ({}, info) => {
+  const bandal = await launchBandal()
+  try {
+    const { page } = bandal
+    await createCourse(page, '자료 상태 표시')
+    const { row, note } = await newNote(bandal, 'Preview note', 'Hover reveals the intended upload material.')
+    await expect(row).toHaveAttribute('data-material-new', 'true')
+    await expect(row).not.toHaveAttribute('data-material-open', 'true')
+    const before = await page.locator('.workspace-tab').count()
+    const card = await showPreview(bandal, row)
+    await expect(card).toContainText('Hover reveals the intended upload material.')
+    expect(await page.locator('.workspace-tab').count()).toBe(before)
+    await info.attach('new-material-preview', { body: await page.screenshot({ path: info.outputPath('new-material-preview-dark.png') }), contentType: 'image/png' })
+    await page.evaluate(() => window.bandal.invoke('settings:set', { theme: 'light' }))
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+    await info.attach('new-material-preview-light', { body: await page.screenshot({ path: info.outputPath('new-material-preview-light.png') }), contentType: 'image/png' })
+    await row.click()
+    await expect(card).toHaveCount(0)
+    await expect(row).toHaveAttribute('data-material-open', 'true')
+    await expect(row).toHaveAttribute('data-material-new', 'true')
+    const tab = page.locator('.workspace-tab').filter({ has: page.locator('.workspace-tab__title', { hasText: 'Preview note' }) })
+    await expect(tab).toHaveCount(1)
+    await tab.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: '탭 복제', exact: true }).click()
+    await expect(tab).toHaveCount(2)
+    await tab.first().locator('.workspace-tab__close').click()
+    await expect(tab).toHaveCount(1)
+    await expect(row).toHaveAttribute('data-material-open', 'true')
+    await tab.locator('.workspace-tab__close').click()
+    await expect(tab).toHaveCount(0)
+    await expect(row).not.toHaveAttribute('data-material-open', 'true')
+    await expect(row).toHaveAttribute('data-material-new', 'true')
+    await showPreview(bandal, row)
+    await page.keyboard.press('Escape')
+    await expect(card).toHaveCount(0)
+    const tree = await page.evaluate(courseId => window.bandal.invoke('materials:tree', { courseId }), note.courseId)
+    expect(tree.find(node => node.relPath === note.relPath)?.addedAt).toEqual(expect.any(Number))
+  } finally { await bandal.close() }
+})
+
+async function docxFixture(text: string): Promise<Buffer> {
+  const { default: JSZip } = await import('jszip')
+  const zip = new JSZip()
+  zip.file('[Content_Types].xml', '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>')
+  zip.file('word/document.xml', `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:body></w:document>`)
+  return zip.generateAsync({ type: 'nodebuffer' })
+}
+
+test('hover previews text, office, table, PDF and image files without opening document viewers', async ({}, info) => {
+  const bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '자료 내용 미리보기')
+    const course = await bandal.page.evaluate(async () => (await window.bandal.invoke('courses:list', {}))[0]!)
+    const folder = course.folderPath
+    writeFileSync(join(folder, 'outline.txt'), 'Plain text preview marker')
+    writeFileSync(join(folder, 'memo.docx'), await docxFixture('Office preview marker'))
+    writeFileSync(join(folder, 'slides.pptx'), await buildPptx('Slide preview marker', 2))
+    writeFileSync(join(folder, 'table.csv'), 'Topic,Count\nPhysics,42\n')
+    copyFileSync(resolve(__dirname, '..', 'resources', 'icon.png'), join(folder, 'image.png'))
+    const pdf = await PDFDocument.create()
+    const font = await pdf.embedFont(StandardFonts.Helvetica)
+    pdf.addPage([300, 400]).drawText('PDF preview marker', { x: 30, y: 340, size: 18, font })
+    writeFileSync(join(folder, 'page.pdf'), await pdf.save())
+    await bandal.page.getByRole('button', { name: '자료 새로고침' }).click()
+    const before = await bandal.page.locator('.workspace-tab').count()
+    for (const [file, marker] of [
+      ['outline.txt', 'Plain text preview marker'], ['memo.docx', 'Office preview marker'],
+      ['slides.pptx', 'Slide preview marker'], ['table.csv', 'Physics']
+    ]) {
+      const card = await showPreview(bandal, bandal.page.locator(`[data-material-path="${file}"]`))
+      await expect(card).toContainText(marker!)
+      expect(await bandal.page.locator('.workspace-tab').count()).toBe(before)
+    }
+    const pdfCard = await showPreview(bandal, bandal.page.locator('[data-material-path="page.pdf"]'))
+    await expect(pdfCard.getByRole('img', { name: '첫 페이지' })).toBeVisible()
+    await expect(pdfCard).toContainText('1 / 1쪽')
+    await info.attach('pdf-material-preview', { body: await bandal.page.screenshot({ path: info.outputPath('pdf-material-preview.png') }), contentType: 'image/png' })
+    const imageCard = await showPreview(bandal, bandal.page.locator('[data-material-path="image.png"]'))
+    await expect(imageCard.getByRole('img', { name: 'image.png 미리보기' })).toBeVisible()
+    await expect.poll(() => imageCard.locator('img').evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true)
+    expect(await bandal.page.locator('.workspace-tab').count()).toBe(before)
+  } finally { await bandal.close() }
+})
+
+function visibleNativePages(bandal: BandalApp): Promise<number[]> {
+  return bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
+    .filter(window => window.webContents.getURL().includes('index.html'))
+    .flatMap(window => window.contentView.children)
+    .filter(view => 'webContents' in view && view.getVisible())
+    .map(view => (view as Electron.WebContentsView).webContents.id))
+}
+
+test('preview overlays a native browser, then releases it before material drag and local file upload', async ({}, info) => {
+  const uploads: { name: string; text: string; size: number }[] = []
+  const server = createServer((req, res) => {
+    if (req.url === '/upload') {
+      let body = ''
+      req.on('data', chunk => { body += chunk })
+      req.on('end', () => { uploads.push(JSON.parse(body)); res.end('ok') })
+      return
+    }
+    res.setHeader('content-type', 'text/html; charset=utf-8')
+    res.end(`<html><head><title>Local upload target</title></head><body style="margin:0"><main id="drop" style="height:90vh;padding:24px;background:#e8f4ff">Drop a material here<input id="draft" value="keep this draft"></main><script>
+      window.pageIdentity = 731;
+      const target = document.querySelector('#drop');
+      target.addEventListener('dragover', event => event.preventDefault());
+      target.addEventListener('drop', async event => {
+        event.preventDefault(); const file = event.dataTransfer.files[0];
+        if (file) await fetch('/upload', {method:'POST',body:JSON.stringify({name:file.name,size:file.size,text:await file.text()})});
+      });
+    </script></body></html>`)
+  })
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+  const bandal = await launchBandal()
+  try {
+    const { page } = bandal
+    await createCourse(page, '미리보기 업로드')
+    const { row, note, course } = await newNote(bandal, 'Upload note', 'Exact local upload content.')
+    const add = page.locator('.workspace-add-tab')
+    if (await add.isVisible()) await add.click()
+    else await page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
+    await page.getByLabel('새 탭 검색').fill(origin)
+    await page.getByRole('option', { name: `${origin} 열기` }).click()
+    await expect.poll(() => bandal.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find(w => w.getURL() === `${url}/`)?.id, origin)).toEqual(expect.any(Number))
+    const browserId = await bandal.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find(w => w.getURL() === `${url}/`)!.id, origin)
+    await expect.poll(() => visibleNativePages(bandal)).toEqual([browserId])
+    const card = await showPreview(bandal, row)
+    await expect(card).toContainText('Exact local upload content.')
+    await expect.poll(() => visibleNativePages(bandal)).toEqual([])
+    await expect.poll(() => page.locator('.browser-native-anchor').evaluate(element => (element as HTMLElement).style.backgroundImage)).toContain('data:image/')
+    await info.attach('preview-over-native-browser', { body: await page.screenshot({ path: info.outputPath('preview-over-native-browser.png') }), contentType: 'image/png' })
+
+    await bandal.app.evaluate(({ ipcMain }) => {
+      ipcMain.once('materials:startDrag', (_event, payload) => {
+        ;(globalThis as unknown as { previewDragPayload: unknown }).previewDragPayload = payload
+      })
+    })
+    await row.evaluate(element => element.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() })))
+    await expect(card).toHaveCount(0)
+    await expect.poll(() => visibleNativePages(bandal)).toEqual([browserId])
+    await expect.poll(() => bandal.app.evaluate(() => (globalThis as unknown as { previewDragPayload: unknown }).previewDragPayload))
+      .toEqual({ courseId: course.id, relPath: note.relPath })
+
+    // launchBandal disables OS startDrag to avoid Electron's nested native
+    // drag loop. Verify its real IPC payload above, then independently deliver
+    // the same on-disk file through Chromium's trusted drag/drop protocol.
+    const path = join(course.folderPath, note.relPath)
+    await bandal.app.evaluate(async ({ webContents }, { id, path }) => {
+      const wc = webContents.fromId(id)!
+      const owned = !wc.debugger.isAttached()
+      if (owned) wc.debugger.attach('1.3')
+      try {
+        const data = { items: [], files: [path], dragOperationsMask: 1 }
+        for (const type of ['dragEnter', 'dragOver', 'drop']) await wc.debugger.sendCommand('Input.dispatchDragEvent', { type, x: 120, y: 140, data })
+      } finally { if (owned && wc.debugger.isAttached()) wc.debugger.detach() }
+    }, { id: browserId, path })
+    await expect.poll(() => uploads).toEqual([{ name: note.relPath, text: readFileSync(path, 'utf8'), size: readFileSync(path).length }])
+    expect(await bandal.app.evaluate(async ({ webContents }, id) => webContents.fromId(id)!.executeJavaScript("[window.pageIdentity, document.querySelector('#draft').value]"), browserId))
+      .toEqual([731, 'keep this draft'])
+    await info.attach('drag-coverage', { body: 'Native-drag IPC payload, preview dismissal, native-page restoration and Chromium local-file upload verified. An actual OS drag gesture is disabled by the shared E2E launcher.', contentType: 'text/plain' })
+  } finally {
+    await bandal.close()
+    await new Promise<void>(resolve => server.close(() => resolve()))
+  }
+})
+
+test('whiteboard hover shows first-page text and attached image with current paper settings', async ({}, info) => {
+  const bandal = await launchBandal()
+  try {
+    const { page } = bandal
+    await createCourse(page, '화이트보드 미리보기')
+    const course = await page.evaluate(async () => (await window.bandal.invoke('courses:list', {}))[0]!)
+    copyFileSync(resolve(__dirname, '..', 'resources', 'icon.png'), join(course.folderPath, 'board-image.png'))
+    const group = page.locator('.whiteboards-group')
+    await group.getByRole('button', { name: '새 화이트보드 만들기' }).click()
+    await expect(page.locator('.ink-layer')).toBeVisible()
+    const board = await page.evaluate(async courseId => (await window.bandal.invoke('canvas:list', { courseId }))[0]!, course.id)
+    const row = group.locator('.whiteboards-group__row').filter({ hasText: board.title })
+    await expect(row).toHaveAttribute('data-material-new', 'true')
+    await expect(row).toHaveAttribute('data-material-open', 'true')
+    await expect.poll(() => row.evaluate(element => {
+      const title = element.querySelector('span:not(.material-state)')!.getBoundingClientRect()
+      const state = element.querySelector('.material-state')!.getBoundingClientRect()
+      return state.left >= title.right && Math.abs(state.top + state.height / 2 - title.top - title.height / 2) < 2
+    })).toBe(true)
+    await page.evaluate(async boardId => {
+      const style = { color: 'ink' as const, width: 0.01, opacity: 1 }
+      await window.bandal.invoke('canvas:setPageCount', { boardId, pageCount: 3 })
+      await window.bandal.invoke('canvas:putShape', {
+        boardId, id: 'preview-text', page: 1,
+        shape: { kind: 'textbox', data: { box: { x: 0.1, y: 0.1, width: 0.8, height: 0.1 }, text: 'First page preview marker' }, style }
+      })
+      await window.bandal.invoke('canvas:putShape', {
+        boardId, id: 'preview-image', page: 1,
+        shape: { kind: 'image', data: { box: { x: 0.15, y: 0.3, width: 0.5, height: 0.35 }, image: { relPath: 'board-image.png', label: 'Attached image' } }, style }
+      })
+      await window.bandal.invoke('canvas:putShape', {
+        boardId, id: 'preview-hidden-page', page: 2,
+        shape: { kind: 'textbox', data: { box: { x: 0.1, y: 0.1, width: 0.8, height: 0.1 }, text: 'Second page must stay hidden' }, style }
+      })
+    }, board.id)
+    const tab = page.locator('.workspace-tab').filter({ has: page.locator('.workspace-tab__title', { hasText: board.title }) })
+    await tab.locator('.workspace-tab__close').click()
+    await expect(tab).toHaveCount(0)
+    await expect(row).not.toHaveAttribute('data-material-open', 'true')
+    await expect(row).toHaveAttribute('data-material-new', 'true')
+    // The list still holds the board's original metadata. The real hover IPC
+    // must supply the paper settings and page count that changed afterwards.
+    await page.evaluate(boardId => window.bandal.invoke('canvas:setBackground', { boardId, background: 'lines', surface: 'light' }), board.id)
+    const before = await page.locator('.workspace-tab').count()
+    const card = await showPreview(bandal, row)
+    await expect(card.getByRole('img', { name: '화이트보드 첫 페이지' })).toBeVisible()
+    await expect(card).toContainText('First page preview marker')
+    await expect(card).not.toContainText('Second page must stay hidden')
+    await expect(card).toContainText('1 / 3쪽')
+    await expect(card.locator('.material-preview-content__board')).toHaveAttribute('data-surface', 'light')
+    await expect(card.locator('.material-preview-content__board')).toHaveAttribute('data-background', 'lines')
+    await expect(card.locator('svg image')).toHaveAttribute('href', /^data:image\//)
+    expect(await page.locator('.workspace-tab').count()).toBe(before)
+    await expect(row).not.toHaveAttribute('data-material-open', 'true')
+    await info.attach('whiteboard-material-preview', { body: await page.screenshot({ path: info.outputPath('whiteboard-material-preview.png') }), contentType: 'image/png' })
+    await row.click()
+    await expect(card).toHaveCount(0)
+    await expect(row).toHaveAttribute('data-material-open', 'true')
+    await expect(row).toHaveAttribute('data-material-new', 'true')
+  } finally { await bandal.close() }
+})

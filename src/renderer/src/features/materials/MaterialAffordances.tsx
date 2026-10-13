@@ -22,6 +22,10 @@ const AffordancesContext = createContext<AffordancesContextValue | null>(null)
 const MaterialPreviewContent = lazy(() => import('./preview/MaterialPreviewContent').then(module => ({ default: module.MaterialPreviewContent })))
 const WhiteboardPreviewContent = lazy(() => import('./preview/MaterialPreviewContent').then(module => ({ default: module.WhiteboardPreviewContent })))
 
+function unavailableAnchor(anchor: HTMLElement): boolean {
+  return !anchor.isConnected || anchor.closest('[inert], [hidden], [aria-hidden="true"]') !== null
+}
+
 function targetKey(target: PreviewTarget): string {
   return target.board ? whiteboardStatusKey(target.courseId, target.board.id) : materialStatusKey(target.courseId, target.node.relPath)
 }
@@ -94,13 +98,14 @@ export function MaterialAffordancesProvider({ courseId, children }: { courseId: 
     setHover(null)
   }, [])
   const show = useCallback((target: PreviewTarget, anchor: HTMLElement): void => {
+    if (unavailableAnchor(anchor)) return
     if (pending.current?.anchor === anchor) return
     hide()
     const next = { target, anchor }
     pending.current = next
     timer.current = window.setTimeout(() => {
       timer.current = null
-      if (pending.current === next && anchor.isConnected) setHover(next)
+      if (pending.current === next && !unavailableAnchor(anchor)) setHover(next)
     }, MATERIAL_HOVER_DELAY_MS)
   }, [hide])
   useEffect(() => {
@@ -124,6 +129,11 @@ export function MaterialAffordancesProvider({ courseId, children }: { courseId: 
   }, [courseId, hasRecording, hide])
   useEffect(() => {
     const dismiss = (): void => hide()
+    const dismissHiddenAnchor = (): void => {
+      if (pending.current && (unavailableAnchor(pending.current.anchor) || document.visibilityState === 'hidden')) hide()
+    }
+    const observer = new MutationObserver(dismissHiddenAnchor)
+    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['inert', 'hidden', 'aria-hidden'] })
     const keydown = (event: KeyboardEvent): void => { if (event.key === 'Escape') hide() }
     window.addEventListener('scroll', dismiss, true)
     window.addEventListener('resize', dismiss)
@@ -132,7 +142,9 @@ export function MaterialAffordancesProvider({ courseId, children }: { courseId: 
     document.addEventListener('pointerdown', dismiss, true)
     document.addEventListener('contextmenu', dismiss, true)
     document.addEventListener('dragstart', dismiss, true)
+    document.addEventListener('visibilitychange', dismissHiddenAnchor)
     return () => {
+      observer.disconnect()
       window.removeEventListener('scroll', dismiss, true)
       window.removeEventListener('resize', dismiss)
       window.removeEventListener('blur', dismiss)
@@ -140,6 +152,7 @@ export function MaterialAffordancesProvider({ courseId, children }: { courseId: 
       document.removeEventListener('pointerdown', dismiss, true)
       document.removeEventListener('contextmenu', dismiss, true)
       document.removeEventListener('dragstart', dismiss, true)
+      document.removeEventListener('visibilitychange', dismissHiddenAnchor)
     }
   }, [hide])
   const openKeys = useMemo(() => openMaterialKeys(tabs, recordings), [tabs, recordings])

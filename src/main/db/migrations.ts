@@ -1079,7 +1079,10 @@ export const migrations: Migration[] = [
       added_at INTEGER,
       pending_children INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (course_id, rel_path)
-    );`)
+    );
+    CREATE INDEX IF NOT EXISTS idx_wb_local_preview
+      ON whiteboard_local_shapes (board_id, page, created_at, id)
+      WHERE deleted_at IS NULL;`)
     const columns = db.prepare('PRAGMA table_info(whiteboards)').all() as { name: string }[]
     if (!columns.some(column => column.name === 'added_at')) db.exec('ALTER TABLE whiteboards ADD COLUMN added_at INTEGER')
   } }

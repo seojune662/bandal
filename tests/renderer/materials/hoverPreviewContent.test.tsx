@@ -10,6 +10,7 @@ const harness = vi.hoisted(() => ({
   snapshots: [] as Array<NoteRef & { markdown: string }>,
   remoteEdit: null as ((text: string) => void) | null,
   thumbnail: vi.fn(),
+  reference: vi.fn(),
   unsubscribe: vi.fn()
 }))
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: harness.invoke, onPush: () => () => undefined }))
@@ -26,7 +27,9 @@ vi.mock('../../../src/renderer/src/features/materials/preview/markdownPreview', 
 }))
 vi.mock('../../../src/renderer/src/features/materials/preview/mediaThumbnails', () => ({
   loadPdfThumbnail: harness.thumbnail,
-  loadVideoThumbnail: harness.thumbnail
+  loadVideoThumbnail: harness.thumbnail,
+  loadImageThumbnail: harness.thumbnail,
+  loadReferencedThumbnail: harness.reference
 }))
 import { MaterialPreviewContent, WhiteboardPreviewContent } from '../../../src/renderer/src/features/materials/preview/MaterialPreviewContent'
 
@@ -43,6 +46,7 @@ beforeEach(() => {
   harness.unsubscribe.mockReset()
   harness.remoteEdit = null
   harness.thumbnail.mockReset()
+  harness.reference.mockReset()
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
@@ -100,11 +104,16 @@ describe('material hover preview content', () => {
   test('shows first-page whiteboard content including local image references', async () => {
     const board = { id: 'board', courseId: 'c', title: '수업', background: 'blank' as const, surface: 'light' as const, pageCount: 2, sortOrder: 0, createdAt: '', updatedAt: '' }
     const shape = { id: 's1', page: 1, kind: 'textbox', data: { box: { x: 0.1, y: 0.1, width: 0.5, height: 0.2 }, text: '첫 페이지 내용' }, style: { color: 'ink', width: 0.01, opacity: 1 }, createdAt: '', updatedAt: '' }
-    harness.invoke.mockResolvedValue({ board, shapes: [shape, { ...shape, id: 's2', page: 2, data: { ...shape.data, text: '두 번째 페이지' } }, { ...shape, id: 'image', kind: 'image', data: { box: shape.data.box, image: { relPath: '그림.png', label: '그림' } } }] })
+    harness.invoke.mockResolvedValue({ board: { ...board, surface: 'dark', background: 'grid', pageCount: 3 }, shapes: [shape, { ...shape, id: 's2', page: 2, data: { ...shape.data, text: '두 번째 페이지' } }, { ...shape, id: 'image', kind: 'image', data: { box: shape.data.box, image: { relPath: '그림.png', label: '그림' } } }] })
+    harness.reference.mockResolvedValue({ dataUrl: 'data:image/png;base64,small-thumbnail' })
     await act(async () => root.render(<WhiteboardPreviewContent courseId="c" board={board} />))
     expect(container.textContent).toContain('첫 페이지 내용')
     expect(container.textContent).not.toContain('두 번째 페이지')
-    expect(container.querySelector('svg image')?.getAttribute('href')).toBe('bandal-media://material/c/%EA%B7%B8%EB%A6%BC.png')
-    expect(harness.invoke.mock.calls.map(([channel]) => channel)).toEqual(['canvas:open'])
+    expect(container.querySelector('svg image')?.getAttribute('href')).toBe('data:image/png;base64,small-thumbnail')
+    expect(container.querySelector('[data-surface]')?.getAttribute('data-surface')).toBe('dark')
+    expect(container.querySelector('[data-background]')?.getAttribute('data-background')).toBe('grid')
+    expect(container.textContent).toContain('1 / 3쪽')
+    expect(harness.invoke.mock.calls.map(([channel]) => channel)).toEqual(['canvas:hoverPreview'])
+    expect(harness.reference).toHaveBeenCalledWith('c', '그림.png', expect.any(AbortSignal), undefined, undefined)
   })
 })

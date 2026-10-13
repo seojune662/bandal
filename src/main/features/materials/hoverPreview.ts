@@ -5,6 +5,7 @@ import { materialKindForPath } from '../../../shared/materialKind'
 import type { MaterialHoverPreview, MaterialHoverPreviewContent, MaterialHoverPreviewRequest } from '../../../shared/types/materialHoverPreview'
 import type { MaterialsRepo } from './materialsRepo'
 import { HOVER_OFFICE_READ_BYTES, readHoverText, unavailablePreview, type HoverExtractionInput } from './hoverPreviewExtract'
+import { HOVER_IMAGE_BYTES } from './hoverPreviewImage'
 
 const OFFICE_EXTENSIONS = new Set(['.docx', '.xlsx', '.xls', '.csv', '.tsv', '.pptx', '.ppt', '.hwp', '.hwpx'])
 const TEXT_EXTENSIONS = new Set([
@@ -30,6 +31,8 @@ export function createHoverPreviewExtractor(): Extractor {
   let sequence = 0
   let pending: { id: number; resolve: (value: MaterialHoverPreviewContent) => void; timer: NodeJS.Timeout } | null = null
   let idle: NodeJS.Timeout | null = null
+  let disposed = false
+  const queue: { id: number; input: HoverExtractionInput; resolve: (value: MaterialHoverPreviewContent) => void }[] = []
   const stop = (): void => {
     if (idle) clearTimeout(idle)
     idle = null
@@ -45,42 +48,54 @@ export function createHoverPreviewExtractor(): Extractor {
       old.resolve(unavailablePreview('timeout', '내용 미리보기를 준비하지 못했어요. 자료를 열어 확인해 주세요.'))
     }
     stop()
+    pump()
+  }
+  const pump = (): void => {
+    if (disposed || pending || !queue.length) return
+    const job = queue.shift()!
+    if (idle) clearTimeout(idle)
+    idle = null
+    try {
+      if (!child) {
+        const worker = utilityProcess.fork(join(__dirname, 'hoverPreviewHost.js'), [], {
+          serviceName: 'Bandal Material Preview', stdio: 'pipe', execArgv: ['--max-old-space-size=128']
+        })
+        child = worker
+        worker.stdout?.on('data', () => undefined)
+        worker.stderr?.on('data', () => undefined)
+        worker.on('exit', () => { if (child === worker) fail() })
+        worker.on('message', (message: { id: number; content: MaterialHoverPreviewContent }) => {
+          if (child !== worker || pending?.id !== message.id) return
+          const request = pending
+          pending = null
+          clearTimeout(request.timer)
+          request.resolve(message.content)
+          if (queue.length) pump()
+          else { idle = setTimeout(stop, 10_000); idle.unref() }
+        })
+      }
+      const timer = setTimeout(fail, HOVER_PARSE_TIMEOUT_MS)
+      pending = { id: job.id, resolve: job.resolve, timer }
+      child.postMessage({ id: job.id, input: job.input })
+    } catch { job.resolve(unavailablePreview('unreadable', '내용 미리보기를 불러오지 못했어요.')); fail() }
   }
   return {
     read(input) {
-      // There is only one visible hover card. A new document withdraws stale
-      // extraction, including synchronous decompression in the child process.
-      if (pending) fail()
-      if (idle) clearTimeout(idle)
-      idle = null
+      if (disposed) return Promise.resolve(unavailablePreview('unreadable', '내용 미리보기가 종료되었습니다.'))
       return new Promise(resolve => {
-        try {
-          if (!child) {
-            const worker = utilityProcess.fork(join(__dirname, 'hoverPreviewHost.js'), [], {
-              serviceName: 'Bandal Material Preview', stdio: 'pipe', execArgv: ['--max-old-space-size=128']
-            })
-            child = worker
-            worker.stdout?.on('data', () => undefined)
-            worker.stderr?.on('data', () => undefined)
-            worker.on('exit', () => { if (child === worker) fail() })
-            worker.on('message', (message: { id: number; content: MaterialHoverPreviewContent }) => {
-              if (child !== worker || pending?.id !== message.id) return
-              const request = pending
-              pending = null
-              clearTimeout(request.timer)
-              request.resolve(message.content)
-              idle = setTimeout(stop, 10_000)
-              idle.unref()
-            })
-          }
-          const id = ++sequence
-          const timer = setTimeout(fail, HOVER_PARSE_TIMEOUT_MS)
-          pending = { id, resolve, timer }
-          child.postMessage({ id, input })
-        } catch { fail(); resolve(unavailablePreview('unreadable', '내용 미리보기를 불러오지 못했어요.')) }
+        // One board card may contain several independent images. Keep them in
+        // one bounded lane instead of cancelling siblings. Old queued cards
+        // cannot accumulate arbitrarily when the pointer moves quickly.
+        if (queue.length >= 8) queue.shift()!.resolve(unavailablePreview('timeout', '내용 미리보기 요청이 취소되었어요.'))
+        queue.push({ id: ++sequence, input, resolve })
+        pump()
       })
     },
-    dispose: fail
+    dispose(): void {
+      disposed = true
+      for (const job of queue.splice(0)) job.resolve(unavailablePreview('timeout', '내용 미리보기가 종료되었습니다.'))
+      fail()
+    }
   }
 }
 
@@ -130,7 +145,10 @@ export function createMaterialHoverPreviewService(deps: MaterialHoverPreviewServ
       if (existing) return existing
       const pending = (async (): Promise<MaterialHoverPreview> => {
         let content: MaterialHoverPreviewContent
-        if (kind === 'pdf' || kind === 'image' || kind === 'video') content = { kind }
+        if (kind === 'pdf' || kind === 'video') content = { kind }
+        else if (kind === 'image') content = info.size > HOVER_IMAGE_BYTES
+          ? unavailablePreview('too-large', '큰 이미지는 내용 미리보기를 생략해요. 자료를 열어 확인해 주세요.')
+          : await extractor.read({ absolutePath: path, extension: ext, userData: deps.userData })
         else if (ext === '.wav') content = { kind: 'recording' }
         else if (kind === 'note' || TEXT_EXTENSIONS.has(ext)) content = await readHoverText(path, kind === 'note')
         else if (OFFICE_EXTENSIONS.has(ext)) {

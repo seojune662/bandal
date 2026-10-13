@@ -6,6 +6,7 @@ import type JSZip from 'jszip'
 import type { MaterialHoverPreviewContent } from '../../../shared/types/materialHoverPreview'
 import { OFFICE_RUNTIME_VERSION } from '../presentation/conversionRuntime'
 import { extractSectionText, parseHwpFileHeader } from '../../../shared/hwpText'
+import { HOVER_IMAGE_BYTES, hoverImageContent, isHoverImageExtension } from './hoverPreviewImage'
 
 export const HOVER_TEXT_READ_BYTES = 64 * 1024
 export const HOVER_OFFICE_READ_BYTES = 32 * 1024 * 1024
@@ -139,9 +140,8 @@ async function slidesPreview(zip: JSZip): Promise<MaterialHoverPreviewContent> {
   if (imagePath) {
     try {
       const image = await zipBytes(zip, imagePath, 256 * 1024)
-      const isPng = image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-      const isJpeg = image[0] === 0xff && image[1] === 0xd8 && image[2] === 0xff
-      if (isPng || isJpeg) result.imageDataUrl = `data:image/${isPng ? 'png' : 'jpeg'};base64,${image.toString('base64')}`
+      const checked = hoverImageContent(image, imagePath.toLowerCase().endsWith('.png') ? '.png' : '.jpg')
+      if (checked.kind === 'image' && checked.width <= 2048 && checked.height <= 2048 && checked.width * checked.height <= 1024 * 1024) result.imageDataUrl = checked.sourceDataUrl
     } catch { /* First-slide text is still useful when the optional cover fails. */ }
   }
   return result
@@ -216,6 +216,7 @@ async function hwpPreview(bytes: Buffer): Promise<MaterialHoverPreviewContent> {
 export async function extractMaterialHoverPreview(input: HoverExtractionInput): Promise<MaterialHoverPreviewContent> {
   try {
     const ext = input.extension.toLowerCase()
+    if (isHoverImageExtension(ext)) return hoverImageContent((await readHoverBytes(input.absolutePath, HOVER_IMAGE_BYTES)).bytes, ext)
     const delimited = ext === '.csv' || ext === '.tsv'
     let { bytes, truncated } = await readHoverBytes(input.absolutePath, delimited ? HOVER_TEXT_READ_BYTES : HOVER_OFFICE_READ_BYTES, delimited)
     if (ext === '.ppt') {

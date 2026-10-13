@@ -138,7 +138,7 @@ describe('bounded material hover extraction', () => {
   })
 })
 
-test('utility preview work is superseded and force-stopped on timeout; stale responses cannot replace it', async () => {
+test('utility preview references queue independently and force-stop on timeout; stale responses cannot replace them', async () => {
   vi.useFakeTimers()
   const workers: (EventEmitter & { kill: ReturnType<typeof vi.fn>; postMessage: ReturnType<typeof vi.fn> })[] = []
   vi.mocked(utilityProcess.fork).mockImplementation(() => {
@@ -151,6 +151,9 @@ test('utility preview work is superseded and force-stopped on timeout; stale res
   try {
     const first = extractor.read(input)
     const second = extractor.read({ ...input, absolutePath: '/validated/course/new.docx' })
+    expect(workers).toHaveLength(1)
+    expect(workers[0]!.postMessage).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(HOVER_PARSE_TIMEOUT_MS)
     expect(await first).toMatchObject({ kind: 'unsupported', reason: 'timeout' })
     expect(workers[0]!.kill).toHaveBeenCalledOnce()
     workers[0]!.emit('message', { id: 1, content: { kind: 'text', text: 'stale', truncated: false } })
@@ -158,8 +161,11 @@ test('utility preview work is superseded and force-stopped on timeout; stale res
     workers[1]!.emit('message', { id: 2, content: fresh })
     expect(await second).toEqual(fresh)
     const third = extractor.read(input)
+    const fourth = extractor.read(input)
+    workers[1]!.emit('message', { id: 3, content: fresh })
+    expect(await third).toEqual(fresh)
     await vi.advanceTimersByTimeAsync(HOVER_PARSE_TIMEOUT_MS)
-    expect(await third).toMatchObject({ kind: 'unsupported', reason: 'timeout' })
+    expect(await fourth).toMatchObject({ kind: 'unsupported', reason: 'timeout' })
     expect(workers[1]!.kill).toHaveBeenCalledOnce()
   } finally { extractor.dispose(); vi.useRealTimers() }
 })
@@ -173,7 +179,7 @@ describe('material preview service', () => {
     })
     const service = createMaterialHoverPreviewService({ materials: { absolutePathForAsync: guard }, userData: folder, extractor: { read, dispose: vi.fn() } })
     await expect(service.read({ courseId: 'course', relPath: '../private.md' })).rejects.toThrow('Outside course')
-    for (const [extension, kind] of [['pdf', 'pdf'], ['png', 'image'], ['mp4', 'video'], ['wav', 'recording']]) {
+    for (const [extension, kind] of [['pdf', 'pdf'], ['mp4', 'video'], ['wav', 'recording']]) {
       await fixture(`media.${extension}`, '')
       expect(await service.read({ courseId: 'course', relPath: `media.${extension}` })).toMatchObject({ content: { kind } })
     }

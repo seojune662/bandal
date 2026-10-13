@@ -107,6 +107,42 @@ test('duplicating a folder into a recently deleted copy path renews every copied
   expect((await repo.tree(course.id)).find(node => node.relPath === second.relPath)?.children?.[0].addedAt).toBe(now)
 })
 
+test('a completed folder copy stops lending its timestamp to later external additions', async () => {
+  const { course, repo } = setup()
+  mkdirSync(join(course.folderPath, 'source'))
+  writeFileSync(join(course.folderPath, 'source', 'copied.md'), 'copied')
+  await repo.tree(course.id)
+  const copy = repo.duplicate({ courseId: course.id, relPath: 'source' })
+  const copiedAt = now
+  expect((await repo.tree(course.id)).find(node => node.relPath === copy.relPath)?.children?.[0].addedAt).toBe(copiedAt)
+  expect(ctx.db.prepare('SELECT pending_children FROM material_added_state WHERE course_id = ? AND rel_path = ?')
+    .get(course.id, copy.relPath)).toBeUndefined()
+  now += 25 * 60 * 60 * 1000
+  writeFileSync(join(course.folderPath, copy.relPath, 'later.md'), 'later')
+  repo.invalidateTree(course.id)
+  const copiedChildren = (await repo.tree(course.id)).find(node => node.relPath === copy.relPath)?.children
+  expect(copiedChildren?.find(node => node.name === 'copied.md')?.addedAt).toBe(copiedAt)
+  expect(copiedChildren?.find(node => node.name === 'later.md')?.addedAt).toBe(now)
+})
+
+test('finishing a scan preserves a newer pending directory copy recorded while its batch yielded', async () => {
+  const { course, deps } = setup()
+  const state = createMaterialAddedState(ctx.db, deps.getCourseFolder)
+  await state.reconcile(course.id, [], true, () => true)
+  state.recordAdded(course.id, 'copy', true)
+  const file = { relPath: 'copy/file.md', name: 'file.md', kind: 'note' as const }
+  const pending = state.reconcile(course.id, [file], true, () => true)
+  // reconcile has written its first batch and yielded before pruning markers.
+  now += 5000
+  state.recordAdded(course.id, 'copy', true)
+  await pending
+  expect(ctx.db.prepare('SELECT added_at, pending_children FROM material_added_state WHERE course_id = ? AND rel_path = ?')
+    .get(course.id, 'copy')).toEqual({ added_at: now, pending_children: 1 })
+  await state.reconcile(course.id, [file], true, () => true)
+  expect(state.timestamps(course.id).get(file.relPath)).toBe(now)
+  expect(state.timestamps(course.id).has('copy')).toBe(false)
+})
+
 test('relinking to a different folder baselines its files and removes stale snapshot timestamps', async () => {
   const { course, repo, setFolder } = setup()
   repo.writeFile({ courseId: course.id, dirRelPath: '', fileName: 'same.md', encoding: 'utf8', data: 'new here' })

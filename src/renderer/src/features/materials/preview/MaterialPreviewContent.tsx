@@ -5,9 +5,8 @@ import { RECORDING_SAMPLE_RATE, recordingTime } from '../../../../../shared/reco
 import { invoke } from '../../../lib/ipc'
 import { readOpenNoteSnapshots } from '../../notes/noteSessionRegistry'
 import { noteFileKey, subscribeNoteDoc } from '../../notes/noteDocChannel'
-import { mediaUrlFor } from '../mediaUrl'
 import { markdownPreviewFragment } from './markdownPreview'
-import { loadPdfThumbnail, loadVideoThumbnail, type MediaThumbnail } from './mediaThumbnails'
+import { loadImageThumbnail, loadPdfThumbnail, loadVideoThumbnail, type MediaThumbnail } from './mediaThumbnails'
 import './previewContent.css'
 
 export { WhiteboardPreviewContent } from './WhiteboardPreviewContent'
@@ -38,14 +37,16 @@ function MediaPreview({ courseId, preview }: { courseId: string; preview: Materi
   const version = `${preview.mtime}:${preview.size}`
   useEffect(() => {
     setResult(null)
-    if (kind !== 'pdf' && kind !== 'video') return
+    if (kind !== 'pdf' && kind !== 'video' && kind !== 'image') return
     const controller = new AbortController()
     const timeout = setTimeout(() => {
       setResult('error')
       controller.abort(new Error('Preview timeout'))
     }, 10000)
-    const load = kind === 'pdf' ? loadPdfThumbnail : loadVideoThumbnail
-    void load(courseId, preview.relPath, version, controller.signal).then((value) => {
+    const pending = preview.content.kind === 'image'
+      ? loadImageThumbnail(courseId, preview.relPath, version, preview.content, controller.signal)
+      : (kind === 'pdf' ? loadPdfThumbnail : loadVideoThumbnail)(courseId, preview.relPath, version, controller.signal)
+    void pending.then((value) => {
       if (!controller.signal.aborted) setResult(value)
     }).catch(() => { if (!controller.signal.aborted) setResult('error') })
       .finally(() => clearTimeout(timeout))
@@ -53,24 +54,15 @@ function MediaPreview({ courseId, preview }: { courseId: string; preview: Materi
       clearTimeout(timeout)
       controller.abort()
     }
-  }, [courseId, preview.relPath, version, kind])
+  }, [courseId, preview.relPath, version, kind, preview.content])
   if (result === 'error') return <PreviewMessage>미리보기를 불러올 수 없어요</PreviewMessage>
-  if (kind === 'image') return (
-    <img
-      className="material-preview-content__image"
-      src={mediaUrlFor(courseId, preview.relPath)}
-      alt={`${preview.name} 미리보기`}
-      onError={() => setResult('error')}
-      draggable={false}
-    />
-  )
   if (result === null) return <PreviewMessage>미리보기 불러오는 중…</PreviewMessage>
   return (
     <>
-      <img className="material-preview-content__image" src={result.dataUrl} alt={kind === 'pdf' ? '첫 페이지' : '영상 대표 장면'} draggable={false} />
-      <span className="material-preview-content__caption">
+      <img className="material-preview-content__image" src={result.dataUrl} alt={kind === 'pdf' ? '첫 페이지' : kind === 'image' ? `${preview.name} 미리보기` : '영상 대표 장면'} draggable={false} />
+      {kind !== 'image' && <span className="material-preview-content__caption">
         {kind === 'pdf' ? `1 / ${result.pageCount ?? 1}쪽` : recordingTime((result.durationSeconds ?? 0) * RECORDING_SAMPLE_RATE)}
-      </span>
+      </span>}
     </>
   )
 }

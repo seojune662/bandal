@@ -4,8 +4,7 @@ import type { PersonalBoard, PersonalBoardShape } from '../../../../../shared/ty
 import { TEXT_FILL_OPACITY } from '../../../../../shared/textBoxMetrics'
 import { invoke, onPush } from '../../../lib/ipc'
 import { arrowHeadPoints, drawingColorVariable, lineEndpoints, strokePath } from '../../ink/inkGeometry'
-import { mediaUrlFor } from '../mediaUrl'
-import { loadPdfThumbnail } from './mediaThumbnails'
+import { loadReferencedThumbnail } from './mediaThumbnails'
 
 const PREVIEW_SHAPE_LIMIT = 160
 const PREVIEW_REFERENCE_LIMIT = 6
@@ -18,18 +17,17 @@ function ReferencePreview({ courseId, shape, load }: { courseId: string; shape: 
   const box = shape.data.box
   useEffect(() => {
     setImage(null)
-    if (!load || source === undefined) return
+    const relPath = source?.relPath ?? (imageSource?.storage !== 'shared' ? imageSource?.relPath : undefined)
+    if (!load || relPath === undefined) return
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 10000)
-    void invoke('materials:hoverPreview', { courseId, relPath: source.relPath }).then((metadata) => {
-      controller.signal.throwIfAborted()
-      return loadPdfThumbnail(courseId, source.relPath, `${metadata.mtime}:${metadata.size}`, controller.signal, source.page, source.crop)
-    }).then((thumbnail) => { if (!controller.signal.aborted) setImage(thumbnail.dataUrl) }).catch(() => undefined)
+    void loadReferencedThumbnail(courseId, relPath, controller.signal, source?.page, source?.crop)
+      .then((thumbnail) => { if (!controller.signal.aborted) setImage(thumbnail.dataUrl) })
+      .catch(() => undefined).finally(() => clearTimeout(timeout))
     return () => { clearTimeout(timeout); controller.abort() }
-  }, [courseId, load, source])
+  }, [courseId, load, source, imageSource])
   if (box === undefined) return null
-  const src = image ?? (load && imageSource !== undefined && imageSource.storage !== 'shared'
-    ? mediaUrlFor(courseId, imageSource.relPath) : null)
+  const src = image
   return <g opacity={shape.style.opacity}>
     <rect {...box} fill="var(--material-preview-paper)" stroke="var(--drawing-color-ink)" strokeWidth={0.002} opacity={0.3} />
     {src === null
@@ -79,28 +77,30 @@ function BoardShape({ courseId, shape, loadReference }: { courseId: string; shap
 }
 
 export function WhiteboardPreviewContent({ courseId, board }: { courseId: string; board: PersonalBoard }): JSX.Element {
-  const [loaded, setLoaded] = useState<{ id: string; shapes: PersonalBoardShape[] | 'error' } | null>(null)
+  const [loaded, setLoaded] = useState<{ board: PersonalBoard; shapes: PersonalBoardShape[] | 'error' } | null>(null)
   useEffect(() => {
     let active = true
     let request = 0
     const refresh = (): void => {
       const sequence = ++request
-      void invoke('canvas:open', { boardId: board.id }).then((value) => {
-        if (active && sequence === request) setLoaded({ id: board.id, shapes: value.shapes.filter((shape) => shape.page === 1).slice(-PREVIEW_SHAPE_LIMIT) })
-      }).catch(() => { if (active && sequence === request) setLoaded({ id: board.id, shapes: 'error' }) })
+      void invoke('canvas:hoverPreview', { boardId: board.id }).then((value) => {
+        if (active && sequence === request) setLoaded({ board: value.board, shapes: value.shapes.filter((shape) => shape.page === 1).slice(-PREVIEW_SHAPE_LIMIT) })
+      }).catch(() => { if (active && sequence === request) setLoaded({ board, shapes: 'error' }) })
     }
     refresh()
     const unsubscribe = onPush('canvas:changed', (event) => { if (event.courseId === courseId) refresh() })
     return () => { active = false; unsubscribe() }
   }, [courseId, board.id, board.updatedAt])
-  const shapes = loaded?.id === board.id ? loaded.shapes : null
+  const current = loaded?.board.id === board.id ? loaded : null
+  const shapes = current?.shapes ?? null
+  const metadata = current?.board ?? board
   let references = 0
   return <div className="material-preview-content">
     {shapes === null
       ? <p className="material-preview-content__message">미리보기 불러오는 중…</p>
       : shapes === 'error' ? <p className="material-preview-content__message">미리보기를 불러올 수 없어요</p>
         : shapes.length === 0 ? <p className="material-preview-content__message">첫 페이지에 아직 내용이 없어요</p>
-          : <div className="material-preview-content__board" data-surface={board.surface} data-background={board.background}>
+          : <div className="material-preview-content__board" data-surface={metadata.surface} data-background={metadata.background}>
             <svg viewBox="0 0 1 1" preserveAspectRatio="none" role="img" aria-label="화이트보드 첫 페이지">
               {shapes.map((shape) => {
                 if (shape.kind === 'image' || shape.kind === 'clip') references += 1
@@ -108,6 +108,6 @@ export function WhiteboardPreviewContent({ courseId, board }: { courseId: string
               })}
             </svg>
           </div>}
-    <span className="material-preview-content__caption">1 / {board.pageCount}쪽</span>
+    <span className="material-preview-content__caption">1 / {metadata.pageCount}쪽</span>
   </div>
 }
