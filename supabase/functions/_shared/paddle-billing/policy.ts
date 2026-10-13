@@ -18,6 +18,12 @@ export function identifier(value: unknown, prefix: 'txn' | 'sub' | 'ctm' | 'evt'
   if (typeof value !== 'string' || !new RegExp(`^${prefix}_[a-z0-9]{26}$`).test(value)) throw new BillingError('invalid_provider_data', 502)
   return value
 }
+export function webhookEventIdentifier(value: unknown): string {
+  // The Sandbox simulator uses its simulation-event ID in event_id. Keep this
+  // exception confined to webhook receipts; entity IDs and API receipts differ.
+  if (typeof value !== 'string' || !/^(?:evt|ntfsimevt)_[a-z0-9]{26}$/.test(value)) throw new BillingError('invalid_provider_data', 502)
+  return value
+}
 export function uuid(value: unknown): string {
   if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) throw new BillingError('invalid_request_id')
   return value

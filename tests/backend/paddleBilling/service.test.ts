@@ -21,8 +21,8 @@ function fixture(overrides: Partial<BillingConfig> = {}) {
 function request(input: unknown, token = 'user-token', origin = config.webOrigin) {
   return new Request('https://fixture.supabase.co/functions/v1/paddle-billing', { method: 'POST', headers: { authorization: `Bearer ${token}`, origin, 'content-type': 'application/json' }, body: JSON.stringify(input) })
 }
-async function webhook(type: string, data: unknown, secret = TEST_SECRET) {
-  const body = JSON.stringify({ event_id: TEST_IDS.event, event_type: type, occurred_at: TEST_NOW.toISOString(), data })
+async function webhook(type: string, data: unknown, secret = TEST_SECRET, eventId = TEST_IDS.event) {
+  const body = JSON.stringify({ event_id: eventId, event_type: type, occurred_at: TEST_NOW.toISOString(), data })
   return new Request('https://fixture.supabase.co/functions/v1/paddle-webhook', { method: 'POST', headers: { 'paddle-signature': await signature(body, TEST_NOW, secret) }, body })
 }
 describe('Sandbox billing service boundaries', () => {
@@ -92,6 +92,28 @@ describe('Sandbox billing service boundaries', () => {
     const f = fixture()
     expect((await f.handle(await webhook('subscription.created', subscriptionFixture()), 'webhook')).status).toBe(200)
     expect(f.rpc.mock.calls[0]![1]).toMatchObject({ origin_transaction_input: TEST_IDS.transaction, payment_input: null })
+  })
+  it('accepts the official Simulator event ID format but rejects its unrelated demo prices before persistence', async () => {
+    const f = fixture(), source = subscriptionFixture(), item = source.items[0]!
+    const demo = { ...source, items: [
+      { ...item, quantity: 10, price: { ...item.price, id: 'pri_01gsz8x8sawmvhz1pv30nge1ke' } },
+      { ...item, quantity: 1, price: { ...item.price, id: 'pri_01h1vjfevh5etwq3rb416a23h2' } }
+    ] }
+    const response = await f.handle(await webhook('subscription.created', demo, TEST_SECRET, `ntfsimevt_${'e'.repeat(26)}`), 'webhook')
+    expect(response.status).toBe(409); expect(await response.json()).toEqual({ error: 'price_mismatch' })
+    expect(f.rpc).not.toHaveBeenCalled()
+  })
+  it('requires stored checkout ownership for a valid Simulator event and rejects server-receipt namespace collisions', async () => {
+    const f = fixture(), eventId = `ntfsimevt_${'e'.repeat(26)}`
+    f.rpc.mockResolvedValueOnce({ data: null, error: { message: 'checkout_binding_pending' } })
+    const response = await f.handle(await webhook('subscription.created', subscriptionFixture(), TEST_SECRET, eventId), 'webhook')
+    expect(response.status).toBe(503); expect(await response.json()).toEqual({ error: 'checkout_binding_pending' })
+    expect(f.rpc.mock.calls[0]![1]).toMatchObject({ event_input: eventId, origin_transaction_input: TEST_IDS.transaction, payment_input: null })
+    f.rpc.mockClear()
+    for (const forbidden of [`api_cancel_${crypto.randomUUID()}`, `ntf_${'e'.repeat(26)}`, `ntfsimevt_${'e'.repeat(25)}`]) {
+      expect((await f.handle(await webhook('subscription.created', subscriptionFixture(), TEST_SECRET, forbidden), 'webhook')).ok).toBe(false)
+    }
+    expect(f.rpc).not.toHaveBeenCalled()
   })
   it('keeps missing bindings and payload collisions retryable without acknowledging success', async () => {
     for (const code of ['checkout_binding_pending', 'event_payload_mismatch']) {

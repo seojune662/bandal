@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { BillingError, SANDBOX_PRICES, boundedBody, eventDigest, identifier, object, paidTransaction, planFromItems, sha256, subscriptionSnapshot, timestamp, uuid, verifySignature, type JsonObject, type PaymentSnapshot, type Plan, type SubscriptionSnapshot } from './policy.ts'
+import { BillingError, SANDBOX_PRICES, boundedBody, eventDigest, identifier, object, paidTransaction, planFromItems, sha256, subscriptionSnapshot, timestamp, uuid, verifySignature, webhookEventIdentifier, type JsonObject, type PaymentSnapshot, type Plan, type SubscriptionSnapshot } from './policy.ts'
 import { createPaddleProvider, type PaddleProvider } from './provider.ts'
 
 export interface BillingConfig {
@@ -88,7 +88,7 @@ export function createBillingService(db: SupabaseClient, config: BillingConfig, 
     await verifySignature(raw, request.headers.get('paddle-signature'), config.webhookSecret, clock().getTime())
     let event: JsonObject
     try { event = object(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw))) } catch { throw new BillingError('invalid_event', 400) }
-    const eventId = identifier(event.event_id, 'evt'), type = String(event.event_type), occurredAt = timestamp(event.occurred_at)
+    const eventId = webhookEventIdentifier(event.event_id), type = String(event.event_type), occurredAt = timestamp(event.occurred_at)
     if (!subscriptionEvents.has(type) && type !== 'transaction.completed') return { received: true, ignored: true }
     const hash = await eventDigest(event), data = object(event.data)
     // Database-only processing keeps acknowledgement within Paddle's 5 seconds.
