@@ -1,3 +1,4 @@
+import { installIPadCompanion } from '../features/ipadSync/runtime'
 import { createStudyMarketClient } from '../features/studyMarket/client'
 import { createStudyMarketBundles } from '../features/studyMarket/bundles'
 import { registerStudyMarketHandlers } from './studyMarketHandlers'
@@ -3551,6 +3552,21 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('layout:saveMany', (req) => layoutRepo.saveMany(req.layouts))
 
   const account = createAccountRuntime(state => broadcast('auth:changed', state))
+  const ipadCompanion = installIPadCompanion({
+    db,
+    userDataPath: deps.userDataPath ?? app.getPath('userData'),
+    getClient: () => account.getClient(),
+    changed: courseIds => {
+      broadcast('courses:changed', {})
+      broadcast('board:changed', { courseId: null })
+      for (const courseId of courseIds) {
+        materialsRepo.invalidateTree(courseId)
+        broadcast('materials:changed', { courseId })
+      }
+    }
+  })
+  app.on('will-quit', () => ipadCompanion.dispose())
+
 
   // Give queued IPC one turn of the event loop before the process goes away.
   //
@@ -3572,6 +3588,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('auth:getState', () => account.auth().getState())
   handle('auth:signIn', (req) => account.auth().signIn(req.provider))
   handle('auth:signOut', async () => {
+    ipadCompanion.pause()
     await account.auth().signOut()
     return OK
   })

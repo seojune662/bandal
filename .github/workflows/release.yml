@@ -141,9 +141,36 @@ jobs:
           # one holding only the mac assets and the other only Windows.
           echo "release_id=$EXISTING" >> "$GITHUB_OUTPUT"
 
+  ipad-bridge:
+    name: iPad companion ${{ matrix.platform }}-${{ matrix.arch }}
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - { os: macos-15, platform: darwin, arch: arm64 }
+          - { os: macos-15-intel, platform: darwin, arch: x64 }
+          - { os: windows-latest, platform: win32, arch: x64 }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: python -m pip install pyinstaller==6.16.0
+      - run: node scripts/build-ipad-bridge.mjs ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ipad-bridge-${{ matrix.platform }}-${{ matrix.arch }}
+          path: resources/native/ipad-bridge/
+
   build:
     name: Build ${{ matrix.name }}
-    needs: [verify, create-release]
+    needs: [verify, create-release, ipad-bridge]
     runs-on: ${{ matrix.os }}
     # Notarization waits on Apple's service; 25 minutes is normal, so do not
     # lower this without checking a real run.
@@ -176,6 +203,15 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: ipad-bridge-*
+          merge-multiple: true
+          path: resources/native/ipad-bridge/
+      - name: Restore companion executable permissions
+        if: runner.os == 'macOS'
+        run: chmod +x resources/native/ipad-bridge/darwin-*/bandal-ipad-bridge
 
       # Compiles main/preload/renderer into out/. electron-builder only
       # *packages* — it does not compile — so without this it asars an empty

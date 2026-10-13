@@ -44,6 +44,10 @@ files:
 # glyph exports as '?'. It lives outside asar so the main process can read it
 # with a plain fs call, and lands at <Resources>/fonts/ in the packaged app.
 extraResources:
+  - from: resources/ipad-bridge
+    to: ipad-bridge
+    filter:
+      - '**/*'
   - from: resources/dictionary
     to: dictionary
     filter:
@@ -118,11 +122,14 @@ mac:
   # env vars are absent, so local builds stay fast.
   notarize: true
   extraResources:
+    - from: resources/native/ipad-bridge/darwin-${arch}/bandal-ipad-bridge
+      to: ipad-bridge/bandal-ipad-bridge
     - from: resources/native/calendar/${arch}/bandal-calendar
       to: calendar/bandal-calendar
     - from: resources/native/browser-import/${arch}/bandal-browser-import
       to: browser-import/bandal-browser-import
   binaries:
+    - Contents/Resources/ipad-bridge/bandal-ipad-bridge
     - Contents/Resources/calendar/bandal-calendar
     - Contents/Resources/browser-import/bandal-browser-import
   extendInfo:
@@ -138,6 +145,8 @@ mac:
 
 win:
   extraResources:
+    - from: resources/native/ipad-bridge/win32-${arch}/bandal-ipad-bridge.exe
+      to: ipad-bridge/bandal-ipad-bridge.exe
     - from: resources/native/browser-import/${arch}/bandal-browser-import.exe
       to: browser-import/bandal-browser-import.exe
   target:

@@ -49,5 +49,8 @@ test-results/
 # Compiled and signed during macOS packaging
 resources/native/calendar/
 resources/native/browser-import/
+resources/native/ipad-bridge/
+.cache/ipad-bridge/
+resources/ipad-bridge/__pycache__/
 
 web-demo/dist/

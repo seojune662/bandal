@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { invoke } from '../../lib/ipc'
+import { invoke, onPush } from '../../lib/ipc'
 import type {
   Annotation,
   CreateAnnotationInput,
@@ -76,6 +76,17 @@ export function useAnnotations(
     })
     return () => { if (active.current === session) active.current = null }
   }, [courseId, relPath, enqueue, publish, session])
+
+  useEffect(() => onPush('materials:changed', ({ courseId: changedCourseId }) => {
+    if (changedCourseId !== courseId) return
+    void enqueue(async () => {
+      try {
+        session.annotations = await invoke('annotations:listForFile', { courseId, relPath })
+        session.loadError = null
+      } catch (cause) { session.loadError = errorMessage(cause) }
+      finally { publish() }
+    })
+  }), [courseId, relPath, enqueue, publish, session])
 
   const create = useCallback((input: CreateAnnotationInput): Promise<Annotation | null> => {
     if (input.courseId !== courseId || input.relPath !== relPath) return Promise.resolve(null)

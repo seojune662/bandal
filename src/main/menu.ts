@@ -1,3 +1,4 @@
+import { iPadCompanionMenu } from './features/ipadSync/runtime'
 /**
  * [M6-A] Application menu.
  *
@@ -148,6 +149,7 @@ export function installApplicationMenu(
     },
     { label: '편집', role: 'editMenu' },
     { label: '보기', role: 'viewMenu' },
+    iPadCompanionMenu(),
     { label: '윈도우', role: 'windowMenu' }
   ]
 
