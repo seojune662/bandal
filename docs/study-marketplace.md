@@ -48,7 +48,7 @@ supabase functions deploy study-market-cron
 
 100개 원본 및 최대 3개 PNG 미리보기, 파일당 50MiB, 미리보기당 4MiB, 총합 200MiB. PDF/MD/TXT/PNG/JPEG/WEBP/DOCX/PPTX/XLSX만 허용한다. 0바이트 UTF-8 텍스트는 허용한다. 경로는 휴대 가능한 상대 경로이며 정규화 중복·부모/자식 충돌·Windows 예약 이름을 거부한다.
 
-클라이언트는 서명된 staging 경로에만 업로드한다. 서버는 별도 final 버킷으로 복사한 **최종 바이트**의 크기·SHA-256·형식과 미리보기 차원을 검증한다. 최종 버킷에는 사용자 쓰기 정책이 없다. 서명된 이전 staging 토큰은 final에 권한이 없다. 확정된 파일 manifest는 DB 트리거도 변경/추가/삭제를 거부한다. 새 파일 수정은 새 version을 만들고 기존 구매는 구버전을 유지한다. 같은 manifest의 초안 재저장과 이미 검증된 업로드 재시도는 멱등적이다. 게시 중단한 최신 버전은 판매자 권한 재검증 후 재게시한다. 게시 학교는 변경할 수 없다.
+클라이언트는 서명된 staging 경로에만 업로드한다. TUS는 `x-signature`와 공개 API 키를 보내며 **`/storage/v1/upload/resumable/sign`** 경로를 사용한다. 일반 `/upload/resumable`은 사용자 RLS 경로라 서명 grant만으로 허용되지 않는다([Supabase 공식 signed Uppy 예제](https://github.com/supabase/supabase/blob/master/examples/storage/resumable-upload-signed-uppy/index.html)). 서버는 별도 final 버킷으로 복사한 **최종 바이트**의 크기·SHA-256·형식과 미리보기 차원을 검증한다. 최종 버킷에는 사용자 쓰기 정책이 없다. 서명된 이전 staging 토큰은 final에 권한이 없다. 확정된 파일 manifest는 DB 트리거도 변경/추가/삭제를 거부한다. 새 파일 수정은 새 version을 만들고 기존 구매는 구버전을 유지한다. 같은 manifest의 초안 재저장과 이미 검증된 업로드 재시도는 멱등적이다. 게시 중단한 최신 버전은 판매자 권한 재검증 후 재게시한다. 게시 학교는 변경할 수 없다.
 
 계정당 새 version 15회/시간, 미완성 version 30개, 미완성 총량 1GiB를 DB 잠금 아래 검사한다. 일반 API는 300회/분, 결제 토큰 API는 60회/분 제한한다. 구매 다운로드 URL은 300초이며 미리보기는 구매 파일에서 제외된다. 모든 URL 발급에 성공한 뒤 잠금 RPC가 구매/차단 상태를 최종 확인하고 공급 시작을 기록한다. 다운로드 완료/실패 보고는 감사 사건이며 실패가 자동으로 공급 시작을 지우지 않는다.
 
@@ -80,7 +80,7 @@ node tests/backend/studyMarket/run-local.mjs
 deno check --frozen --config supabase/functions/deno.json supabase/functions/study-market/index.ts supabase/functions/study-market-cron/index.ts supabase/functions/study-market-webhook/index.ts
 ```
 
-통합 검사는 Docker와 Supabase CLI를 사용해 고유 임시 프로젝트의 실제 Auth/Postgres/private Storage를 포트 56620–56622에 띄우고 종료 시 삭제한다. 기존 프로젝트나 운영 DB를 사용하지 않는다. PG HTTP만 테스트 fixture이며 실결제·실지급 검증을 주장하지 않는다. Auth/RLS, private bucket, 변조/중복 승인, 불변 버전, 초안 재개, 게시 중단/재게시, 늦은 결제, 동시 환불·다운로드·정산, 할당 원장 합계 및 업로드 quota를 확인한다.
+통합 검사는 Docker와 Supabase CLI를 사용해 고유 임시 프로젝트의 실제 Auth/Postgres/private Storage를 포트 56620–56622에 띄우고 종료 시 삭제한다. 기존 프로젝트나 운영 DB를 사용하지 않는다. PG HTTP만 테스트 fixture이며 실결제·실지급 검증을 주장하지 않는다. 실제 앱 main client의 signed TUS POST/PATCH/HEAD, 6MiB 저장 후 응답 유실 및 새 호출 재개, 최종 SHA-256, Auth/RLS, private bucket, 변조/중복 승인, 불변 버전, 초안 재개, 게시 중단/재게시, 늦은 결제, 동시 환불·다운로드·정산, 할당 원장 합계 및 업로드 quota를 확인한다.
 
 참조: [Toss 지급대행](https://docs.tosspayments.com/guides/v2/payouts), [API 상세](https://docs.tosspayments.com/reference/additional), [웹훅 검증](https://docs.tosspayments.com/reference/using-api/webhook-events), [공식 LLM API 참조](https://docs.tosspayments.com/guides/v2/get-started/llms-quick-reference).
 

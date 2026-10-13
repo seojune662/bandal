@@ -197,7 +197,7 @@ export function createStudyMarketService(db:SupabaseClient,config:MarketConfig,f
         if(v.state!=='uploading'||f.state!=='pending')throw new MarketError('upload_closed',409)
         const grant=checked(await db.storage.from('study-market-staging').createSignedUploadUrl(f.staging_path,{upsert:false}))
         const origin=new URL(config.supabaseUrl);origin.hostname=origin.hostname.replace('.supabase.co','.storage.supabase.co')
-        return {url:grant.signedUrl,token:grant.token,bucket:'study-market-staging',objectPath:f.staging_path,resumableUrl:`${origin.origin}/storage/v1/upload/resumable`}
+        return {url:grant.signedUrl,token:grant.token,bucket:'study-market-staging',objectPath:f.staging_path,resumableUrl:`${origin.origin}/storage/v1/upload/resumable/sign`}
       }
       if(f.state==='verified')return {ok:true}
       // Copy first, then hash the immutable destination. A valid staging grant

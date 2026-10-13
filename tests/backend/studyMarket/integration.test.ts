@@ -1,4 +1,8 @@
-import { beforeAll,describe,expect,it } from 'vitest'
+import { afterAll,beforeAll,describe,expect,it } from 'vitest'
+import { mkdtemp,writeFile,rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createStudyMarketClient } from '../../../src/main/features/studyMarket/client'
 import { execFileSync } from 'node:child_process'
 import { createClient,type SupabaseClient } from '@supabase/supabase-js'
 import { createStudyMarketService,type MarketConfig } from '../../../supabase/functions/_shared/study-market/service'
@@ -10,7 +14,9 @@ describe.skipIf(!workdir)('study market real Auth/RLS/Storage and financial RPC 
   let seller:{id:string;token:string;client:SupabaseClient},buyer:typeof seller,outsider:typeof seller
   let listing:any,order:any,refundOrder:any,course:any,grants:any[]=[],providerCalls=0
   const pdf=new TextEncoder().encode('%PDF-1.7\nfixture'),preview=new Uint8Array([137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,0,1])
-  let fileInput:any[],url:string,key:string
+  let fileInput:any[],url:string,key:string,localDir:string,main:ReturnType<typeof createStudyMarketClient>
+  let interrupt=false,committedChunk=false,blockedAttempts=0
+  const tusCalls:Array<{method:string;status:number;offset:string|null;metadataNames?:string[]}>=[]
   const providerPayments=new Map<string,any>()
   async function api(action:string,input:any={},token?:string){
     const response=await handle(new Request(`${url}/functions/v1/study-market`,{method:'POST',headers:{'content-type':'application/json',...(token?{authorization:`Bearer ${token}`}:{})},body:JSON.stringify({action,input})}))
@@ -38,8 +44,19 @@ describe.skipIf(!workdir)('study market real Auth/RLS/Storage and financial RPC 
       if(p)return Response.json(p)
       return Response.json({code:'NOT_FOUND_PAYMENT'},{status:404})
     })
+    localDir=await mkdtemp(join(tmpdir(),'bandal-study-market-tus-'))
+    main=createStudyMarketClient({getClient:()=>seller.client,config:()=>({url,publishableKey:key}),fetch:async(raw,init)=>{
+      if(new URL(String(raw)).pathname==='/functions/v1/study-market')return handle(new Request(String(raw),init))
+      const method=init?.method??'GET'
+      if(interrupt&&committedChunk&&method==='PATCH'){blockedAttempts++;throw new Error('Simulated transport interruption before sending bytes')}
+      const response=await fetch(raw,init),headers=new Headers(init?.headers)
+      tusCalls.push({method,status:response.status,offset:response.headers.get('Upload-Offset'),metadataNames:headers.get('Upload-Metadata')?.split(',').map(value=>value.split(' ')[0]!)})
+      if(interrupt&&method==='PATCH'&&!committedChunk&&response.ok){committedChunk=true;throw new Error('Simulated response loss after committing the 6 MiB chunk')}
+      return response
+    }})
     fileInput=[{id:crypto.randomUUID(),path:'자료.pdf',bytes:pdf.length,sha256:await sha256(pdf),mime:'application/pdf'},{id:crypto.randomUUID(),path:'미리보기.png',bytes:preview.length,sha256:await sha256(preview),mime:'image/png',preview:true}]
   },30_000)
+  afterAll(async()=>{if(localDir)await rm(localDir,{recursive:true,force:true})})
   it('allows anonymous browsing, denies unauthorized writes and private DB access',async()=>{
     expect((await api('context')).status).toBe(200)
     expect((await api('saveDraft')).status).toBe(401)
@@ -62,10 +79,12 @@ describe.skipIf(!workdir)('study market real Auth/RLS/Storage and financial RPC 
     for(let i=0;i<fileInput.length;i++){
       const f=fileInput[i],grant=await api('uploadGrant',{versionId:listing.versionId,fileId:f.id},seller.token)
       expect(grant.status).toBe(200);grants.push(grant.data)
-      const uploaded=await anon.storage.from(grant.data.bucket).uploadToSignedUrl(grant.data.objectPath,grant.data.token,i===0?pdf:preview,{contentType:f.mime})
-      expect(uploaded.error).toBeNull()
-      expect((await api('finalizeFile',{versionId:listing.versionId,fileId:f.id},seller.token)).status).toBe(200)
+      expect(new URL(grant.data.resumableUrl).pathname).toBe('/storage/v1/upload/resumable/sign')
+      const absolutePath=join(localDir,f.id);await writeFile(absolutePath,i===0?pdf:preview)
+      await main.upload(listing.versionId,{...f,absolutePath})
     }
+    expect(tusCalls.filter(c=>c.method==='POST').every(c=>c.status===201&&c.metadataNames?.join(',')==='bucketName,objectName,contentType')).toBe(true)
+    expect(tusCalls.filter(c=>c.method==='PATCH').map(c=>[c.status,c.offset])).toEqual([[204,String(pdf.length)],[204,String(preview.length)]])
     expect((await api('uploadGrant',{versionId:listing.versionId,fileId:fileInput[0].id},seller.token)).data.alreadyVerified).toBe(true)
     const finalPath=`${listing.versionId}/${fileInput[0].id}`
     expect((await seller.client.storage.from('study-market-files').upload(finalPath,pdf,{upsert:true,contentType:'application/pdf'})).error).toBeTruthy()
@@ -158,6 +177,24 @@ describe.skipIf(!workdir)('study market real Auth/RLS/Storage and financial RPC 
       expect(entries.reduce((n,e)=>n+e.amount,0)).toBe(Number(reserved.data.amount))
       const again=await admin.rpc('study_market_reserve_payout',{seller_input:seller.id,date_input:date,env:'test'});expect(again.data.id).toBe(reserved.data.id)
     }else{expect(refunding.error).toBeNull();expect(refunding.data.status).toBe('refund_pending')}
+  })
+  it('resumes real signed TUS after losing a committed chunk response and restarting upload',async()=>{
+    const bytes=new Uint8Array(7*1024*1024+123);bytes.fill(65);bytes.set(new TextEncoder().encode('%PDF-1.7\n'))
+    const file={id:crypto.randomUUID(),path:'large.pdf',bytes:bytes.length,sha256:await sha256(bytes),mime:'application/pdf'}
+    const absolutePath=join(localDir,file.id);await writeFile(absolutePath,bytes)
+    const saved=await main.request('saveDraft',{universityId:'snu',courseId:course.id,title:'큰 자료',description:'실제 TUS 재개 검사',price:1000,rightsConfirmed:false,files:[file]})
+    const start=tusCalls.length
+    interrupt=true
+    await expect(main.upload(saved.versionId,{...file,absolutePath})).rejects.toThrow('자료 업로드가 중단')
+    expect(committedChunk).toBe(true);expect(blockedAttempts).toBe(3)
+    expect(tusCalls.slice(start).some(c=>c.method==='HEAD'&&c.status===200&&c.offset===String(6*1024*1024))).toBe(true)
+    interrupt=false
+    await main.upload(saved.versionId,{...file,absolutePath})
+    const calls=tusCalls.slice(start)
+    expect(calls.filter(c=>c.method==='POST')).toHaveLength(1)
+    expect(calls.filter(c=>c.method==='PATCH').map(c=>[c.status,c.offset])).toEqual([[204,String(6*1024*1024)],[204,String(bytes.length)]])
+    const result=await admin.storage.from('study-market-files').download(`${saved.versionId}/${file.id}`)
+    expect(result.error).toBeNull();expect(await sha256(new Uint8Array(await result.data!.arrayBuffer()))).toBe(file.sha256)
   })
   it('enforces account draft quotas atomically under concurrent creation',async()=>{
     const bytes=50*1024*1024,large=Array.from({length:20},(_,i)=>({...fileInput[0],id:crypto.randomUUID(),path:`quota-${i}.pdf`,bytes}))
