@@ -1,17 +1,40 @@
 import { expect, test, type Locator } from '@playwright/test'
 import { createServer } from 'node:http'
+import { execFileSync } from 'node:child_process'
 import { copyFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { PDFDocument, StandardFonts } from 'pdf-lib'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 import { buildPptx } from './helpers/presentation'
 
-async function showPreview(bandal: BandalApp, row: Locator): Promise<Locator> {
+async function syncNativeHoverPointer(bandal: BandalApp, row: Locator): Promise<void> {
+  if (process.platform !== 'win32') return
+  const box = await row.boundingBox()
+  if (!box) throw new Error('Material row has no screen bounds')
+  const point = await bandal.app.evaluate(({ BrowserWindow, screen }, position) => {
+    const window = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
+    const bounds = window.getContentBounds()
+    const zoom = window.webContents.getZoomFactor()
+    return { ...screen.dipToScreenPoint({ x: Math.round(bounds.x + position.x * zoom), y: Math.round(bounds.y + position.y * zoom) }), before: screen.dipToScreenPoint(screen.getCursorScreenPoint()) }
+  }, { x: box.x + box.width / 2, y: box.y + box.height / 2 })
+  // CDP hover alone does not move the Windows cursor. Hiding a native view
+  // causes Chromium to re-hit-test that OS position, so keep both inputs aligned.
+  execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    `Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public static class MaterialHoverCursor { [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); }'; if (-not [MaterialHoverCursor]::SetCursorPos(${point.x}, ${point.y})) { throw 'SetCursorPos failed' }`
+  ], { timeout: 15_000 })
+  const actual = await bandal.app.evaluate(({ screen }) => screen.dipToScreenPoint(screen.getCursorScreenPoint()))
+  console.log('Native hover cursor alignment:', { before: point.before, target: { x: point.x, y: point.y }, actual })
+  expect(Math.abs(actual.x - point.x)).toBeLessThanOrEqual(1)
+  expect(Math.abs(actual.y - point.y)).toBeLessThanOrEqual(1)
+}
+
+async function showPreview(bandal: BandalApp, row: Locator, nativePage = false): Promise<Locator> {
   const card = bandal.page.locator('.material-preview')
   // A pending filesystem watcher refresh may legitimately dismiss the first
   // hover. Re-enter the row once the material's current revision is visible.
   await expect(async () => {
     await bandal.page.mouse.move(10, 10)
+    if (nativePage) await syncNativeHoverPointer(bandal, row)
     await row.hover()
     await expect(card).toBeVisible({ timeout: 2000 })
   }).toPass({ timeout: 15_000 })
@@ -164,7 +187,7 @@ test('preview overlays a native browser, then releases it before material drag a
       const label = (target: EventTarget | null): string => target instanceof Element ? `${target.tagName}.${target.className}` : target === window ? 'window' : 'document'
       const record = (event: Event): void => {
         if (events.length >= 100) events.shift()
-        events.push({ type: event.type, target: label(event.target), related: label((event as FocusEvent).relatedTarget), focused: document.hasFocus(), visibility: document.visibilityState, buttons: (event as PointerEvent).buttons, card: !!document.querySelector('.material-preview') })
+        events.push({ type: event.type, target: label(event.target), related: label((event as FocusEvent).relatedTarget), focused: document.hasFocus(), visibility: document.visibilityState, buttons: (event as PointerEvent).buttons, x: (event as PointerEvent).clientX, y: (event as PointerEvent).clientY, card: !!document.querySelector('.material-preview') })
       }
       for (const type of ['focus', 'blur', 'pointerover', 'pointerout', 'visibilitychange', 'scroll']) window.addEventListener(type, record, true)
       new MutationObserver(records => {
@@ -172,7 +195,7 @@ test('preview overlays a native browser, then releases it before material drag a
       }).observe(document.body, { childList: true })
     })
     let card: Locator
-    try { card = await showPreview(bandal, row) }
+    try { card = await showPreview(bandal, row, true) }
     catch (error) {
       console.log('Native material hover events:', JSON.stringify(await page.evaluate(() => (window as unknown as { materialHoverEvents: unknown[] }).materialHoverEvents)))
       console.log('Native material hover windows:', JSON.stringify(await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map(window => ({ focused: window.isFocused(), visible: window.isVisible(), bounds: window.getBounds(), contentsFocused: window.webContents.isFocused() })))))
