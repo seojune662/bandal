@@ -158,7 +158,27 @@ test('preview overlays a native browser, then releases it before material drag a
     await expect.poll(() => bandal.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find(w => w.getURL() === `${url}/`)?.id, origin)).toEqual(expect.any(Number))
     const browserId = await bandal.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find(w => w.getURL() === `${url}/`)!.id, origin)
     await expect.poll(() => visibleNativePages(bandal)).toEqual([browserId])
-    const card = await showPreview(bandal, row)
+    await page.evaluate(() => {
+      const events: unknown[] = []
+      ;(window as unknown as { materialHoverEvents: unknown[] }).materialHoverEvents = events
+      const label = (target: EventTarget | null): string => target instanceof Element ? `${target.tagName}.${target.className}` : target === window ? 'window' : 'document'
+      const record = (event: Event): void => {
+        if (events.length >= 100) events.shift()
+        events.push({ type: event.type, target: label(event.target), related: label((event as FocusEvent).relatedTarget), focused: document.hasFocus(), visibility: document.visibilityState, buttons: (event as PointerEvent).buttons, card: !!document.querySelector('.material-preview') })
+      }
+      for (const type of ['focus', 'blur', 'pointerover', 'pointerout', 'visibilitychange', 'scroll']) window.addEventListener(type, record, true)
+      new MutationObserver(records => {
+        if (records.some(record => [...record.addedNodes, ...record.removedNodes].some(node => node instanceof Element && node.matches('.material-preview')))) record(new Event('preview-change'))
+      }).observe(document.body, { childList: true })
+    })
+    let card: Locator
+    try { card = await showPreview(bandal, row) }
+    catch (error) {
+      console.log('Native material hover events:', JSON.stringify(await page.evaluate(() => (window as unknown as { materialHoverEvents: unknown[] }).materialHoverEvents)))
+      console.log('Native material hover windows:', JSON.stringify(await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map(window => ({ focused: window.isFocused(), visible: window.isVisible(), bounds: window.getBounds(), contentsFocused: window.webContents.isFocused() })))))
+      await page.screenshot({ path: info.outputPath('native-hover-failure.png') })
+      throw error
+    }
     await expect(card).toContainText('Exact local upload content.')
     await expect.poll(() => visibleNativePages(bandal)).toEqual([])
     await expect.poll(() => page.locator('.browser-native-anchor').evaluate(element => (element as HTMLElement).style.backgroundImage)).toContain('data:image/')

@@ -2,6 +2,12 @@ name: Windows workspace drag regression
 
 on:
   workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Focused Windows input regression'
+        type: choice
+        default: workspace-drag
+        options: [workspace-drag, material-preview]
 
 permissions:
   contents: read
@@ -20,7 +26,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Repeat native tab and course drag scenarios
+        if: inputs.suite != 'material-preview'
         run: pnpm exec playwright test -c e2e courseMovePreview.spec.ts workspaceCourseDrop.spec.ts --repeat-each=3
+      - name: Verify material previews over native browser pages
+        if: inputs.suite == 'material-preview'
+        run: pnpm exec playwright test -c e2e materialPreview.spec.ts
       - name: Save failed input traces
         if: failure()
         uses: actions/upload-artifact@v7
