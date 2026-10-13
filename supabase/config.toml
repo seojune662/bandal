@@ -8,10 +8,13 @@ project_id = "bandal"
 # that path. Webhooks validate provider signatures/re-query, cron a server secret.
 [functions.study-market]
 verify_jwt = false
+import_map = "./functions/deno.json"
 [functions.study-market-webhook]
 verify_jwt = false
+import_map = "./functions/deno.json"
 [functions.study-market-cron]
 verify_jwt = false
+import_map = "./functions/deno.json"
 
 [api]
 enabled = true

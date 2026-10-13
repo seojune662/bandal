@@ -14,7 +14,7 @@ supabase functions deploy study-market-webhook
 supabase functions deploy study-market-cron
 ```
 
-세 함수의 `verify_jwt=false`는 `supabase/config.toml`에 명시되어 있다. API는 JWT 또는 결제 전용 토큰을 직접 검증하고, webhook은 PG 조회/서명을 검증하며, cron은 별도 비밀을 검증한다. 서비스 역할 키를 앱·웹에 넣지 않는다. `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`는 Edge 런타임 제공 값이다.
+세 함수의 `verify_jwt=false`와 공통 import map 경로는 `supabase/config.toml`에 명시되어 있다. 원격 번들러는 상위 `deno.json`을 자동 탐색하지 않으므로 이 경로를 유지한다. API는 JWT 또는 결제 전용 토큰을 직접 검증하고, webhook은 PG 조회/서명을 검증하며, cron은 별도 비밀을 검증한다. 서비스 역할 키를 앱·웹에 넣지 않는다. `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`는 Edge 런타임 제공 값이다.
 
 안전한 환경 파일을 Supabase secrets로 등록한다(`supabase secrets set --env-file <보호된-파일>`). 파일은 저장소 밖에 두고 권한 600, 로그 출력 금지, 등록 뒤 안전하게 제거한다. 공개 앱·웹 빌드에는 Supabase URL과 공개 anon 키만 들어간다.
 
@@ -83,3 +83,7 @@ deno check --frozen --config supabase/functions/deno.json supabase/functions/stu
 통합 검사는 Docker와 Supabase CLI를 사용해 고유 임시 프로젝트의 실제 Auth/Postgres/private Storage를 포트 56620–56622에 띄우고 종료 시 삭제한다. 기존 프로젝트나 운영 DB를 사용하지 않는다. PG HTTP만 테스트 fixture이며 실결제·실지급 검증을 주장하지 않는다. Auth/RLS, private bucket, 변조/중복 승인, 불변 버전, 초안 재개, 게시 중단/재게시, 늦은 결제, 동시 환불·다운로드·정산, 할당 원장 합계 및 업로드 quota를 확인한다.
 
 참조: [Toss 지급대행](https://docs.tosspayments.com/guides/v2/payouts), [API 상세](https://docs.tosspayments.com/reference/additional), [웹훅 검증](https://docs.tosspayments.com/reference/using-api/webhook-events), [공식 LLM API 참조](https://docs.tosspayments.com/guides/v2/get-started/llms-quick-reference).
+
+## 2026-10-13 배포 확인
+
+운영 프로젝트에 마이그레이션과 API·webhook·cron 세 함수를 배포했다. 18개 학교와 익명 목록 조회, 로그인 없는 구매 내역 거부(401), 준비 전 결제 거부(503), 외부 origin 거부(403), 위조 webhook 거부(401)를 실제 HTTPS 응답으로 확인했다. 독립 cron 비밀과 Vault 참조를 연결했으며 인증한 유지 작업은 지급 비활성 상태로 정상 종료했다. 직접 클라이언트 접근이 가능한 마켓 테이블은 0개다. Toss 키와 은행 영업일·운영 승인 증빙은 등록하지 않았고 실거래는 열지 않았다.
