@@ -58,4 +58,16 @@ pnpm exec playwright test tests/paddle-sandbox.spec.ts tests/checkout.spec.ts
 
 환불·adjustment에 따른 권한 처리, 고객 포털, 누락 이벤트 재처리·상태 복구, 미완료 결제 만료·요금제 전환, 실제 동기화 권한/용량 연결은 후속 단계다. 현재 소스는 이 기능들의 완료나 정식 출시를 의미하지 않는다. Live 전환 시 별도 상품·키·서명 비밀·원장 분리, 사업자 검증·결제 수단·정산 정보 확인과 실제 운영 보안 검토가 필요하다. 웹훅 IP 제한은 신뢰할 수 있는 게이트웨이의 발신 IP와 Paddle 공식 IP 목록을 사용해야 하며, 클라이언트가 임의로 보낸 forwarded 헤더로 판정하면 안 된다.
 
-참조: [웹훅 서명](https://developer.paddle.com/webhooks/signature-verification/), [완료 거래](https://developer.paddle.com/webhooks/transactions/transaction-completed/), [API 권한](https://developer.paddle.com/api-reference/about/permissions/).
+## 2026-10-14 배포 확인
+
+- 서버 구현 커밋 `9bc498458f369458fcbb26b36a79859d721945d1`, [CI 통과](https://github.com/seojune662/bandal/actions/runs/38419282056).
+- 웹 구현 커밋 `992087f8a8cb3d93fbd5685ce9f85ea59f1f83fb`, Vercel Production 배포 `7042190081` 성공, `https://bandal.io/billing/sandbox` HTTP 200 및 전용 CSP 확인.
+- `20261013010000_paddle_billing_sandbox.sql`과 `paddle-billing`·`paddle-webhook`을 연결 프로젝트에 배포했다. 다른 마이그레이션은 적용하지 않았다.
+- 서버 정책·서비스 43개, 실제 SQL/Auth 9개, 검사 선택 스크립트 50개, 웹 Paddle 24개·기존 Toss 10개 검사를 통과했다. Astro·Deno 검사와 정적 빌드도 통과했다.
+- 실제 HTTPS config는 `environment:sandbox`, `enabled:false`, 빈 클라이언트 토큰이다. 결제·웹훅은 미설정 503, 허용하지 않은 origin은 403을 확인했다. 실제 테스트 결제나 Paddle 알림 delivered는 **아직 확인하지 않았다**.
+- Supabase 대시보드의 Site URL은 `https://bandal.io`, 기존 추가 복귀 주소는 `bandal://auth/callback`이었다. URL 설정을 변경하지 않았다. 실제 웹 OAuth 복귀는 테스트 계정 로그인에서 최종 확인한다.
+- Sandbox 키 권한 승인, 클라이언트 토큰·알림 목적지 비밀 연결, 테스트 계정 허용 목록 등록이 남아 있다. 공개 판매와 기존 동기화 권한은 활성화하지 않았다.
+
+Paddle 재전송은 같은 이벤트에 새 `notification_id`를 발급할 수 있다. HMAC은 원문으로 검증하고, 이벤트 중복 해시는 `event_id`, `event_type`, `occurred_at`, `data`만 키 순서를 정렬해 계산한다. 초기 완료 거래의 `billing_period` 또는 `subscription_id`가 없는 공급자 응답은 권한을 부여하지 않는다. 실제 Sandbox에서 이런 응답이 나오면 검증된 후속 이벤트/공급자 조회를 통한 복구를 구현해야 한다.
+
+참조: [웹훅 서명](https://developer.paddle.com/webhooks/signature-verification/), [완료 거래](https://developer.paddle.com/webhooks/transactions/transaction-completed/), [API 권한](https://developer.paddle.com/api-reference/about/permissions/), [알림 재전송](https://developer.paddle.com/api-reference/notifications/replay-notification/).
