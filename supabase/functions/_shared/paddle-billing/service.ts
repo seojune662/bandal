@@ -7,7 +7,7 @@ export interface BillingConfig {
   apiKey: string; clientToken: string; webhookSecret: string; allowedUserIds: string[]
 }
 export function configured(config: BillingConfig): boolean {
-  return config.enabled && config.environment === 'sandbox' && /^pdl_sdbx_apikey_[A-Za-z0-9_-]+$/.test(config.apiKey) && /^test_[A-Za-z0-9]+$/.test(config.clientToken) && /^pdl_ntfset_[A-Za-z0-9_-]+$/.test(config.webhookSecret)
+  return config.enabled && config.environment === 'sandbox' && /^pdl_sdbx_apikey_[A-Za-z0-9_-]+$/.test(config.apiKey) && /^test_[A-Za-z0-9]+$/.test(config.clientToken) && /^pdl_ntfset_[A-Za-z0-9_+/-]+={0,2}$/.test(config.webhookSecret)
 }
 function checked<T>(result: { data: T; error: { message: string } | null }): T {
   if (result.error) {

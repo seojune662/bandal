@@ -16,6 +16,12 @@ describe('Paddle Sandbox signature boundary', () => {
     await expect(verifySignature(body, header, `${TEST_SECRET}_other`, TEST_NOW.getTime())).rejects.toMatchObject({ code: 'invalid_signature' })
     await expect(verifySignature(body, header.replace(/h1=.*/, 'h1=abc'), TEST_SECRET, TEST_NOW.getTime())).rejects.toMatchObject({ code: 'invalid_signature' })
   })
+  it('uses the complete base64-shaped endpoint secret as UTF-8, including plus, slash and padding', async () => {
+    const secret = 'pdl_ntfset_dGVzdC+/AA==', raw = new TextEncoder().encode('{"fixture":"not a real secret"}'), header = await signature(raw, TEST_NOW, secret)
+    await expect(verifySignature(raw, header, secret, TEST_NOW.getTime())).resolves.toBeUndefined()
+    await expect(verifySignature(raw, header, secret.replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', ''), TEST_NOW.getTime())).rejects.toMatchObject({ code: 'invalid_signature' })
+    await expect(verifySignature(raw, header, atob(secret.slice('pdl_ntfset_'.length)), TEST_NOW.getTime())).rejects.toMatchObject({ code: 'invalid_signature' })
+  })
   it('bounds streamed bodies even without an honest content-length', async () => {
     const request = new Request('https://example.test', { method: 'POST', body: 'a'.repeat(33) })
     await expect(boundedBody(request, 32)).rejects.toMatchObject({ code: 'body_too_large', status: 413 })

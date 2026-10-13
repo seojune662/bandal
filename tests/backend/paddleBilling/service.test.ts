@@ -26,6 +26,12 @@ async function webhook(type: string, data: unknown, secret = TEST_SECRET) {
   return new Request('https://fixture.supabase.co/functions/v1/paddle-webhook', { method: 'POST', headers: { 'paddle-signature': await signature(body, TEST_NOW, secret) }, body })
 }
 describe('Sandbox billing service boundaries', () => {
+  it('accepts actual base64 webhook secret characters and rejects whitespace, control bytes and wrong prefixes', () => {
+    expect(configured({ ...config, webhookSecret: 'pdl_ntfset_dGVzdC+/AA==' })).toBe(true)
+    for (const webhookSecret of ['pdl_ntfset_dGVzdC+/AA== ', 'pdl_ntfset_dGVzdC+/AA==\n', 'pdl_ntfset_a\rb', 'pdl_ntfset_a\u0000b', 'pdl_ntfset_a b', 'pdl_live_dGVzdC+/AA==', 'pdl_ntfset_dGVzdC=+/AA', 'pdl_ntfset_a===']) {
+      expect(configured({ ...config, webhookSecret })).toBe(false)
+    }
+  })
   it('public configuration exposes public values only and fails closed for Live', async () => {
     const f = fixture(), response = await f.handle(new Request('https://fixture.supabase.co/functions/v1/paddle-billing?action=config'))
     const data = await response.json()
