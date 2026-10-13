@@ -86,6 +86,18 @@ describe('durable PDF identity and original binding', () => {
     ctx.db.prepare('INSERT INTO ipad_sync_projection VALUES(?,?,?)').run('drawing', JSON.stringify({ documentRevision: 'a'.repeat(64) }), JSON.stringify({ courseID: courseId, relPath: 'ambiguous.pdf' }))
     expect(() => bindings().check({ courseId, relPath: 'ambiguous.pdf' })).toThrow(/서로 다른/)
   })
+  test('an unopened legacy PDF renamed immediately after migration retains sync evidence', () => {
+    const revision = makeFile('unopened.pdf')
+    createDrawingsRepo(ctx.db).create(input('unopened.pdf'))
+    ctx.db.exec('CREATE TABLE ipad_sync_projection(kind TEXT,payload_json TEXT,source_json TEXT)')
+    ctx.db.prepare('INSERT INTO ipad_sync_projection VALUES(?,?,?)').run('drawing', JSON.stringify({ documentRevision: revision }), JSON.stringify({ courseID: courseId, relPath: 'unopened.pdf' }))
+    const binding = bindings(), change = { courseId, fromRelPath: 'unopened.pdf', toRelPath: 'moved.pdf', isDirectory: false }
+    renameSync(file('unopened.pdf'), file('moved.pdf'))
+    binding.repoint(change); repointMaterialPath({ ...change, db: ctx.db, courseFolder: folder })
+    expect(binding.check({ courseId, relPath: 'moved.pdf' })).toMatchObject({ documentRevision: revision, evidence: 'sync', legacyUnverified: false })
+    writeFileSync(file('moved.pdf'), replacement)
+    expect(() => bindings().check({ courseId, relPath: 'moved.pdf' })).toThrow(/기존 필기/)
+  })
   test('failed original verification neither acknowledges preservation nor changes source bytes', () => {
     const revision = makeFile(), directory = join(ctx.dir, 'PDFOriginals')
     mkdirSync(directory); writeFileSync(join(directory, revision + '.pdf'), 'corrupt recovery file')

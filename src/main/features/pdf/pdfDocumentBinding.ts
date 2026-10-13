@@ -69,11 +69,11 @@ export function createPDFDocumentBindings(db: any, revisionFor: (courseId: strin
     if (occupied) throw new ValidationError('PDF material identity is already assigned to another path')
     db.prepare('UPDATE materials_index SET id=? WHERE id=?').run(materialID, item.id)
   }
-  function check(input: { courseId: string; relPath: string; documentRevision?: string }): PDFDocumentBinding {
+  function checkAt(input: { courseId: string; relPath: string; documentRevision?: string }, movedTo?: string): PDFDocumentBinding {
     const courseId = requireId(input.courseId, 'courseId'), relPath = relativePath(input.relPath)
     if (!db.prepare('SELECT id FROM courses WHERE id=? AND deleted_at IS NULL').get(courseId)) throw new ValidationError('PDF course is unavailable')
     if (input.documentRevision !== undefined && (typeof input.documentRevision !== 'string' || !sha.test(input.documentRevision))) throw new ValidationError('documentRevision must be a SHA-256 digest')
-    const current = revisionFor(courseId, relPath)
+    const readablePath = movedTo ?? relPath, current = revisionFor(courseId, readablePath)
     if (!sha.test(current)) throw new ValidationError('PDF revision could not be verified')
     if (input.documentRevision !== undefined && current !== input.documentRevision) throw mismatch()
     // Persist verified historical evidence even on a mismatch. A later launch
@@ -111,17 +111,31 @@ export function createPDFDocumentBindings(db: any, revisionFor: (courseId: strin
       return bound
     })()
     if (row.bound_sha !== current) throw mismatch()
-    preserveOriginal?.(courseId, relPath, current)
+    preserveOriginal?.(courseId, readablePath, current)
     return result(row)
   }
   function repoint(change: { courseId: string; fromRelPath: string; toRelPath: string; isDirectory: boolean }): void {
     const courseId = requireId(change.courseId, 'courseId'), from = relativePath(change.fromRelPath), to = relativePath(change.toRelPath)
     const key = (value: string) => value.normalize('NFC').toLowerCase(), prefix = from.split('/')
     db.transaction(() => {
+      const destination = (path: string): string | undefined => {
+        const parts = path.split('/'), exact = key(path) === key(from)
+        if (exact) return to
+        if (change.isDirectory && parts.length > prefix.length && key(parts.slice(0, prefix.length).join('/')) === key(from)) return `${to}/${parts.slice(prefix.length).join('/')}`
+        return undefined
+      }
+      // The first action after an upgrade can be a rename, before any viewer
+      // opens. Recover evidence under the old path while reading the already
+      // renamed bytes; otherwise sync-only history would become untraceable.
+      const existing = db.prepare(`SELECT rel_path FROM pdf_drawings WHERE course_id=?
+        UNION SELECT rel_path FROM annotations WHERE course_id=?`).all(courseId, courseId)
+      for (const row of existing) {
+        const next = destination(row.rel_path)
+        if (next && /\.pdf$/i.test(row.rel_path) && !atPath(courseId, row.rel_path)) checkAt({ courseId, relPath: row.rel_path }, next)
+      }
       for (const alias of db.prepare('SELECT * FROM pdf_document_aliases WHERE course_id=?').all(courseId)) {
-        const parts = alias.rel_path.split('/'), exact = key(alias.rel_path) === key(from)
-        if (!exact && !(change.isDirectory && parts.length > prefix.length && key(parts.slice(0, prefix.length).join('/')) === key(from))) continue
-        const next = exact ? to : `${to}/${parts.slice(prefix.length).join('/')}`
+        const next = destination(alias.rel_path)
+        if (!next) continue
         const collision = atPath(courseId, next)
         if (collision && collision.material_id !== alias.material_id) throw new ValidationError('PDF rename collides with a preserved document binding')
         // Repoint the rebuildable index as well, so the next scan keeps the
@@ -134,9 +148,9 @@ export function createPDFDocumentBindings(db: any, revisionFor: (courseId: strin
     })()
   }
   return {
-    check, repoint,
+    check: (input: { courseId: string; relPath: string; documentRevision?: string }) => checkAt(input), repoint,
     checkPDF(courseId: string, relPath: string): PDFDocumentBinding | undefined {
-      if (typeof relPath === 'string' && /\.pdf$/i.test(relPath)) return check({ courseId, relPath })
+      if (typeof relPath === 'string' && /\.pdf$/i.test(relPath)) return checkAt({ courseId, relPath })
       return undefined
     },
     reconcileIndex() { db.transaction(() => { for (const row of db.prepare('SELECT * FROM pdf_document_aliases').all()) reconcile(row.course_id, row.rel_path, row.material_id) })() }
