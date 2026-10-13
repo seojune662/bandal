@@ -12,6 +12,7 @@ import { trackTabDownload } from './popupLifecycle'
 import { closePage } from './pageClose'
 import { browserAuthDocumentId, inheritEmbeddedAuthSource } from './embeddedAuth'
 import { isCleanBrowserAuthProbe } from './authProbe'
+import { rememberGoogleAccountNavigation, googleAccountNavigationUrl } from './googleAccountNavigation'
 
 interface Tab {
   tabId: string
@@ -164,8 +165,18 @@ function install(tab: Tab, parent?: Tab): void {
   wc.on('did-start-loading', () => send('did-start-loading'))
   wc.on('did-stop-loading', () => send('did-stop-loading'))
   wc.on('did-finish-load', () => send('did-finish-load'))
-  wc.on('did-navigate', (_event, url, httpResponseCode) => { responseCodes.set(wc, httpResponseCode); send('did-navigate', { url, httpResponseCode }) })
-  wc.on('did-navigate-in-page', (_event, url, isMainFrame) => send('did-navigate-in-page', { url, isMainFrame }))
+  const rememberAccount = (url: string, successful = true): void => {
+    if (!isCleanBrowserAuthProbe()) rememberGoogleAccountNavigation(wc.session, url,
+      successful && tab.view.getVisible() && !tab.host.isDestroyed() && tab.host.isVisible() && !tab.host.isMinimized())
+  }
+  wc.on('did-navigate', (_event, url, httpResponseCode) => {
+    rememberAccount(url, httpResponseCode >= 200 && httpResponseCode < 400)
+    responseCodes.set(wc, httpResponseCode); send('did-navigate', { url, httpResponseCode })
+  })
+  wc.on('did-navigate-in-page', (_event, url, isMainFrame) => {
+    if (isMainFrame) rememberAccount(url, (responseCodes.get(wc) ?? 0) < 400)
+    send('did-navigate-in-page', { url, isMainFrame })
+  })
   wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => send('did-fail-load', { errorCode, errorDescription, validatedURL, isMainFrame }))
   wc.on('page-title-updated', (_event, title) => send('page-title-updated', { title }))
   wc.on('page-favicon-updated', (_event, favicons) => send('page-favicon-updated', { favicons }))
@@ -286,7 +297,9 @@ export function destroyBrowserPage(event: IpcMainInvokeEvent, tabId: string, exp
 export async function browserPageAction(event: IpcMainInvokeEvent, req: { tabId: string; action: BrowserPageAction; args: unknown[] }): Promise<unknown> {
   const wc = owned(event, req.tabId).view.webContents, a = req.args
   switch (req.action) {
-    case 'loadURL': if (typeof a[0] !== 'string' || !isNavigationAllowed(a[0])) throw new Error('Invalid navigation'); return wc.loadURL(a[0])
+    case 'loadURL':
+      if (typeof a[0] !== 'string' || !isNavigationAllowed(a[0])) throw new Error('Invalid navigation')
+      return wc.loadURL(isCleanBrowserAuthProbe() ? a[0] : googleAccountNavigationUrl(wc.session, a[0]))
     case 'goBack': if (wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack(); return
     case 'goForward': if (wc.navigationHistory.canGoForward()) wc.navigationHistory.goForward(); return
     case 'reload': return wc.reload()

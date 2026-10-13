@@ -23,6 +23,18 @@ const STRICT_EXTRA_TRACKERS = [
   'scorecardresearch.com'
 ] as const
 
+const ALL_TRACKERS = [...BALANCED_TRACKERS, ...STRICT_EXTRA_TRACKERS]
+
+/**
+ * Let Chromium skip the main-process callback for ordinary page/API/media
+ * requests. Include every protection level so settings still take effect
+ * immediately, and terminal-dot aliases accepted by the hostname policy.
+ */
+export const TRACKING_REQUEST_URLS = ALL_TRACKERS.flatMap(domain => [
+  `*://*.${domain}/*`,
+  `*://*.${domain}./*`
+])
+
 function hostname(value: string): string | null {
   try {
     const parsed = new URL(value)
@@ -58,7 +70,7 @@ export function shouldBlockTrackingRequest(
   const source = hostname(request.referrer)
   if (target === null || source === null || isSameSite(source, target)) return false
   const domains = protection === 'strict'
-    ? [...BALANCED_TRACKERS, ...STRICT_EXTRA_TRACKERS]
+    ? ALL_TRACKERS
     : BALANCED_TRACKERS
   return domains.some((domain) => matchesDomain(target, domain))
 }

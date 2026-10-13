@@ -6,6 +6,7 @@ import type {
   Event as ElectronEvent
 } from 'electron'
 import { BROWSING_PARTITION } from './webviewPolicy'
+import { forgetGoogleAccountNavigation } from './googleAccountNavigation'
 
 /** Removed on upgrade: older builds used this to extend session cookies. */
 export const LEGACY_BROWSER_SESSION_FILE_NAME = 'browser-session-cookies.enc'
@@ -202,6 +203,7 @@ function buildBrowserSessionStore(
       const requestedOrigin = origin === null
         ? null
         : normalizedRequestedOrigin(origin)
+      forgetGoogleAccountNavigation(deps.session)
       const removals: Promise<void>[] = []
 
       for (const cookie of await deps.session.cookies.get({})) {

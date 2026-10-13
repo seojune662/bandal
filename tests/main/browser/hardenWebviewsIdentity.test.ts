@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { BrowserAuthProbeIdentity, BrowserAuthProbeMode } from '../../../src/main/features/browser/authProbe'
 
 const electronMocks = vi.hoisted(() => ({ fromPartition: vi.fn(), getName: vi.fn(() => 'Bandal') }))
+const settings = vi.hoisted(() => ({ browser: { popupBehavior: 'balanced', trackingProtection: 'balanced', doNotTrack: true } }))
 vi.mock('electron', () => ({
   app: { getName: electronMocks.getName, on: vi.fn() },
   BrowserWindow: { fromWebContents: vi.fn(() => null), getFocusedWindow: vi.fn(() => null) },
@@ -13,12 +14,13 @@ vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() }
 }))
 vi.mock('../../../src/main/settingsStore', () => ({
-  getSettings: () => ({ browser: { popupBehavior: 'balanced', trackingProtection: 'balanced', doNotTrack: true } })
+  getSettings: () => settings
 }))
 vi.mock('../../../src/main/features/browser/swipeNavigation', () => ({ installGestureSession: vi.fn(), navigateBySwipe: vi.fn() }))
 vi.mock('../../../src/main/features/browser/displayMedia', () => ({ installDisplayMediaHandler: vi.fn() }))
 
 import { forgetProfilePermissions, hardenBrowsingSession } from '../../../src/main/features/browser/hardenWebviews'
+import { prepareGoogleAccountSiteNavigation, rememberGoogleAccountNavigation } from '../../../src/main/features/browser/googleAccountNavigation'
 import { getBrowserAuthProbeIdentity, initializeBrowserAuthProbe } from '../../../src/main/features/browser/authProbe'
 
 const userAgent = 'Mozilla/5.0 Bandal/0.80.0 Chrome/150.0.0.0 Electron/43.4.1 Safari/537.36'
@@ -36,6 +38,7 @@ let partition = 0
 
 beforeEach(() => {
   vi.clearAllMocks()
+  settings.browser.trackingProtection = 'balanced'
   directory = realpathSync(mkdtempSync(join(tmpdir(), 'bandal-native-identity-test-')))
   initializeBrowserAuthProbe({}, '', '')
   browsingSession = sessionFixture()
@@ -134,4 +137,66 @@ test('a native identity environment flag without a validated probe cannot change
   expect(getBrowserAuthProbeIdentity()).toBeNull()
   expectInheritedIdentity()
   expectSecurityHandlers()
+})
+
+test('limits native request interception to local files, known trackers, and YouTube viewing pages', () => {
+  harden()
+  const [filter, beforeRequest] = browsingSession.webRequest.onBeforeRequest.mock.calls[0]!
+  expect(filter.urls).toContain('file://*/*')
+  expect(filter.urls).toContain('*://*.doubleclick.net/*')
+  expect(filter.urls).toContain('*://*.doubleclick.net./*')
+  expect(filter.urls).toContain('*://*.adsrvr.org/*')
+  expect(filter.urls).not.toContain('<all_urls>')
+  expect(filter.urls).not.toContain('*://*/*')
+  expect(filter.urls).not.toContain('http://*/*')
+  expect(filter.urls).not.toContain('https://*/*')
+  expect(filter.urls).toContain('https://www.youtube.com/')
+  expect(filter.urls).toContain('https://www.youtube.com/?*')
+  expect(filter.urls).not.toContain('https://www.youtube.com/*')
+
+  const result = vi.fn()
+  beforeRequest({ url: 'https://ad.doubleclick.net/track', resourceType: 'script', referrer: 'https://www.youtube.com/' }, result)
+  expect(result).toHaveBeenLastCalledWith({ cancel: true })
+  beforeRequest({ url: 'https://doubleclick.net/', resourceType: 'mainFrame', referrer: 'https://example.com/' }, result)
+  expect(result).toHaveBeenLastCalledWith({ cancel: false })
+  beforeRequest({ url: 'https://doubleclick.net/script.js', resourceType: 'script', referrer: 'https://doubleclick.net/' }, result)
+  expect(result).toHaveBeenLastCalledWith({ cancel: false })
+
+  const extraTracker = { url: 'https://pixel.adsrvr.org/track', resourceType: 'image', referrer: 'https://www.youtube.com/' }
+  beforeRequest(extraTracker, result)
+  expect(result).toHaveBeenLastCalledWith({ cancel: false })
+  settings.browser.trackingProtection = 'strict'
+  beforeRequest(extraTracker, result)
+  expect(result).toHaveBeenLastCalledWith({ cancel: true })
+  settings.browser.trackingProtection = 'off'
+  beforeRequest(extraTracker, result)
+  expect(result).toHaveBeenLastCalledWith({ cancel: false })
+  beforeRequest({ url: 'file:///private/fixture', resourceType: 'image', referrer: 'https://www.youtube.com/' }, result)
+  expect(result).toHaveBeenLastCalledWith({ cancel: true })
+  expect(browsingSession.webRequest.onBeforeRequest).toHaveBeenCalledOnce()
+})
+
+test('a marked original native YouTube request is redirected once before network loading', () => {
+  harden()
+  const page = {}, source = 'https://www.google.com/?authuser=1', url = 'https://www.youtube.com/'
+  rememberGoogleAccountNavigation(browsingSession, source)
+  prepareGoogleAccountSiteNavigation(page, source, url)
+  const callback = vi.fn(), beforeRequest = browsingSession.webRequest.onBeforeRequest.mock.calls[0]![1]
+  beforeRequest({ url, method: 'GET', resourceType: 'mainFrame', referrer: source, webContents: page }, callback)
+  expect(callback).toHaveBeenLastCalledWith({ redirectURL: 'https://www.youtube.com/?authuser=1' })
+  beforeRequest({ url, method: 'GET', resourceType: 'mainFrame', referrer: source, webContents: page }, callback)
+  expect(callback).toHaveBeenLastCalledWith({ cancel: false })
+})
+
+test('clean auth probes do not add native account-navigation interception', () => {
+  probe('clean')
+  harden()
+  const [filter, beforeRequest] = browsingSession.webRequest.onBeforeRequest.mock.calls[0]!
+  expect(filter.urls).not.toContain('https://www.youtube.com/')
+  const page = {}, source = 'https://www.google.com/?authuser=1', url = 'https://www.youtube.com/'
+  rememberGoogleAccountNavigation(browsingSession, source)
+  prepareGoogleAccountSiteNavigation(page, source, url)
+  const callback = vi.fn()
+  beforeRequest({ url, method: 'GET', resourceType: 'mainFrame', referrer: source, webContents: page }, callback)
+  expect(callback).toHaveBeenCalledWith({ cancel: false })
 })

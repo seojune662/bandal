@@ -40,7 +40,7 @@ async function fixture() {
     close: () => new Promise<void>((resolve) => server.close(() => resolve())) }
 }
 
-async function openTab(bandal: BandalApp, url: string) {
+async function openTab(bandal: BandalApp, url: string, expectedUrl = url) {
   const page = bandal.page
   const button = page.locator('.workspace-add-tab')
   if (await button.isVisible()) await button.click()
@@ -48,10 +48,10 @@ async function openTab(bandal: BandalApp, url: string) {
   await page.getByLabel('새 탭 검색').fill(url)
   await page.getByRole('option', { name: `${url} 열기` }).click()
   await expect.poll(() => bandal.app.evaluate(({ webContents }, target) =>
-    webContents.getAllWebContents().find(w => w.getType() !== 'webview' && w.getURL() === target)?.id ?? null, url
+    webContents.getAllWebContents().find(w => w.getType() !== 'webview' && w.getURL() === target)?.id ?? null, expectedUrl
   )).not.toBeNull()
   const id = await bandal.app.evaluate(({ webContents }, target) =>
-    webContents.getAllWebContents().find(w => w.getType() !== 'webview' && w.getURL() === target)!.id, url)
+    webContents.getAllWebContents().find(w => w.getType() !== 'webview' && w.getURL() === target)!.id, expectedUrl)
   await expect.poll(() => run(bandal, id, 'document.readyState')).toBe('complete')
   return id
 }
@@ -218,6 +218,86 @@ test('Google help text is not a refusal and a recovered sign-in document clears 
     await expect(banner).toBeVisible()
     await run(bandal, authPage, "location.href = 'https://drive.google.com/'")
     await expect(banner).toHaveCount(0)
+  } finally { await bandal.close() }
+})
+
+test('Google account selection reaches the first YouTube request without a retry and stays isolated', async ({}, info) => {
+  const bandal = await launchBandal()
+  try {
+    await createCourse(bandal.page, '구글 계정 전환')
+    await bandal.app.evaluate(({ session }) => {
+      const requests: { partition: string; url: string }[] = []
+      ;(globalThis as any).__googleAccountRequests = requests
+      for (const partition of ['persist:browsing', 'bandal-private']) {
+        session.fromPartition(partition).protocol.handle('https', request => {
+          const url = new URL(request.url)
+          if (url.hostname === 'www.youtube.com' && ['/', '/watch'].includes(url.pathname)) requests.push({ partition, url: request.url })
+          const account = url.searchParams.get('authuser') === '1' ? 'B' : 'A'
+          return new Response(`<html><title>${url.hostname} account ${account}</title><body><h1>Account ${account}</h1></body></html>`, {
+            headers: { 'content-type': 'text/html; charset=utf-8' }
+          })
+        })
+      }
+    })
+    const google = await openTab(bandal, 'https://www.google.com/?authuser=0')
+    // The website's account menu changes its own navigation; Bandal must pick
+    // up the committed selection before an address-bar/new-tab navigation.
+    await run(bandal, google, "location.href='https://www.google.com/?authuser=1'")
+    await expect.poll(() => run(bandal, google, 'document.querySelector("h1")?.textContent')).toBe('Account B')
+    const address = bandal.page.getByRole('combobox', { name: '주소 또는 검색어' })
+    await address.click()
+    await address.fill('https://www.youtube.com/')
+    await address.press('Enter')
+    await expect.poll(() => run(bandal, google, 'location.href')).toBe('https://www.youtube.com/?authuser=1')
+    expect(await run(bandal, google, 'document.querySelector("h1").textContent')).toBe('Account B')
+    const requests = await bandal.app.evaluate(() => (globalThis as any).__googleAccountRequests)
+    expect(requests).toEqual([{ partition: 'persist:browsing', url: 'https://www.youtube.com/?authuser=1' }])
+
+    // A normal website link also carries the selection without replaying it.
+    await address.click()
+    await address.fill('https://www.google.com/?authuser=1')
+    await address.press('Enter')
+    await expect.poll(() => run(bandal, google, 'location.href')).toBe('https://www.google.com/?authuser=1')
+    await run(bandal, google, "document.body.innerHTML='<a href=\"https://www.youtube.com/\">YouTube</a>';document.querySelector('a').click()")
+    await expect.poll(() => run(bandal, google, 'location.href')).toBe('https://www.youtube.com/?authuser=1')
+    expect(await bandal.app.evaluate(() => (globalThis as any).__googleAccountRequests)).toEqual([
+      { partition: 'persist:browsing', url: 'https://www.youtube.com/?authuser=1' },
+      { partition: 'persist:browsing', url: 'https://www.youtube.com/?authuser=1' }
+    ])
+    // A Google link opening a native child keeps its original opener.
+    await address.click()
+    await address.fill('https://www.google.com/?authuser=1')
+    await address.press('Enter')
+    await expect.poll(() => run(bandal, google, 'location.href')).toBe('https://www.google.com/?authuser=1')
+    await run(bandal, google, "window.open('https://www.youtube.com/watch?v=popup');void 0")
+    const popup = await childAt(bandal, 'https://www.youtube.com/watch?v=popup&authuser=1')
+    expect(await run(bandal, popup, 'window.opener !== null')).toBe(true)
+    await run(bandal, popup, 'window.close()')
+    await expect.poll(() => bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id) == null, popup)).toBe(true)
+    // A fresh Google selection also reaches an app-created tab.
+    await address.click()
+    await address.fill('https://www.google.com/?authuser=1')
+    await address.press('Enter')
+    await expect.poll(() => run(bandal, google, 'location.href')).toBe('https://www.google.com/?authuser=1')
+    const fresh = await openTab(bandal, 'https://www.youtube.com/watch?v=fixture', 'https://www.youtube.com/watch?v=fixture&authuser=1')
+    await run(bandal, fresh, "location.href='https://www.youtube.com/?authuser=0'")
+    await expect.poll(() => run(bandal, fresh, 'document.querySelector("h1")?.textContent')).toBe('Account A')
+    // Once handed off, let YouTube retain its own account/channel choice.
+    await openTab(bandal, 'https://www.youtube.com/')
+    await openTab(bandal, 'https://www.youtube.com/?authuser=0')
+    // Leave a pending B hint in the normal session, then switch a different
+    // YouTube tab to private. A normal-session tab must not satisfy this check.
+    await openTab(bandal, 'https://www.google.com/?authuser=1')
+    await bandal.page.locator('.dv-tab').filter({ has: bandal.page.locator('.workspace-tab__title', { hasText: 'www.youtube.com account A' }) }).first().click()
+    await clickBrowserToolbarAction(bandal.page, '시크릿 모드 켜기')
+    await expect(bandal.page.locator('.browser-panel:visible').first()).toHaveAttribute('data-private', 'true')
+    await address.click()
+    await address.fill('https://www.youtube.com/')
+    await address.press('Enter')
+    await expect.poll(() => bandal.app.evaluate(() => (globalThis as any).__googleAccountRequests.at(-1)))
+      .toEqual({ partition: 'bandal-private', url: 'https://www.youtube.com/' })
+    const allRequests = await bandal.app.evaluate(() => (globalThis as any).__googleAccountRequests)
+    await info.attach('account-navigation-requests', { body: JSON.stringify(allRequests, null, 2), contentType: 'application/json' })
   } finally { await bandal.close() }
 })
 

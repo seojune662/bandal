@@ -17,6 +17,10 @@ import type {
   BrowserSessionAppLike,
   BrowserSessionLike
 } from '../../../src/main/features/browser/sessionStore'
+import {
+  googleAccountNavigationUrl,
+  rememberGoogleAccountNavigation
+} from '../../../src/main/features/browser/googleAccountNavigation'
 
 const temporaryDirectories: string[] = []
 
@@ -211,6 +215,23 @@ describe('native persistent cookie storage', () => {
 })
 
 describe('site listing and clearing', () => {
+  test.each([null, 'https://unrelated.example'])('forgets the account hint as soon as clearing %s starts', async origin => {
+    const fake = fakeSession([])
+    const other = fakeSession([])
+    const store = createBrowserSessionStore({ session: fake.session })
+    let finish!: (cookies: Cookie[]) => void
+    fake.session.cookies.get = () => new Promise(resolve => { finish = resolve })
+    rememberGoogleAccountNavigation(fake.session, 'https://www.google.com/?authuser=1')
+    rememberGoogleAccountNavigation(other.session, 'https://www.google.com/?authuser=2')
+
+    const clearing = store.clear(origin)
+    expect(googleAccountNavigationUrl(fake.session, 'https://www.youtube.com/')).toBe('https://www.youtube.com/')
+    finish([])
+    await clearing
+    expect(googleAccountNavigationUrl(fake.session, 'https://www.youtube.com/')).toBe('https://www.youtube.com/')
+    expect(googleAccountNavigationUrl(other.session, 'https://www.youtube.com/')).toBe('https://www.youtube.com/?authuser=2')
+  })
+
   test('groups by origin and clears only the requested origin before flushing', async () => {
     const fake = fakeSession([
       cookie({ name: 'a-root', domain: '.a.edu' }),

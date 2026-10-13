@@ -36,6 +36,24 @@ describe('browser tracking protection', () => {
     expect(shouldBlockTrackingRequest(request, 'strict')).toBe(true)
   })
 
+  test.each([
+    'https://accounts.google.com/RotateCookies',
+    'https://accounts.youtube.com/accounts/SetSID',
+    'https://www.youtube.com/youtubei/v1/account/accounts_list',
+    'https://rr1.googlevideo.com/videoplayback'
+  ])('keeps authentication and media available: %s', url => {
+    expect(shouldBlockTrackingRequest({
+      url, referrer: 'https://www.youtube.com/', resourceType: 'xhr'
+    }, 'strict')).toBe(false)
+  })
+
+  test('normalizes a tracker host with a terminal dot without broadening domain matches', () => {
+    const request = { referrer: 'https://www.youtube.com/', resourceType: 'script' }
+    expect(shouldBlockTrackingRequest({ ...request, url: 'https://ad.doubleclick.net./track' }, 'balanced')).toBe(true)
+    expect(shouldBlockTrackingRequest({ ...request, url: 'https://notdoubleclick.net/track' }, 'strict')).toBe(false)
+    expect(shouldBlockTrackingRequest({ ...request, url: 'https://doubleclick.net.example.com/track' }, 'strict')).toBe(false)
+  })
+
   test('adds privacy headers without mutating the input', () => {
     const original = { Accept: 'text/html' }
     expect(privacyRequestHeaders(original, true)).toEqual({

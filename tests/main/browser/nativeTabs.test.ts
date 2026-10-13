@@ -19,6 +19,7 @@ vi.mock('../../../src/main/features/browser/authProbe', () => ({ isCleanBrowserA
 const image = (url = 'data:image/png;base64,fixture') => ({ isEmpty: () => false, toDataURL: () => url })
 class Page extends EventEmitter {
   id = 401
+  session = {}
   mainFrame = {}
   capturePage = vi.fn(async (_rect?: unknown, _options?: unknown) => image())
   focus = vi.fn()
@@ -73,6 +74,38 @@ test('native focus is forwarded only for a visible page', async () => {
   expect(mocks.host.webContents.send).toHaveBeenCalledWith('browser:page-event', expect.objectContaining({
     tabId: 'retained', name: 'focus', detail: { webContentsId: page.id }
   }))
+})
+
+test('a visible Google account change hands off to the next explicit YouTube navigation once', async () => {
+  const { native, event, page } = await fixture()
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })
+  page.emit('did-navigate', {}, 'https://www.google.com/?authuser=0', 200)
+  page.emit('did-navigate-in-page', {}, 'https://www.google.com/?authuser=1', true)
+  await native.browserPageAction(event, { tabId: 'retained', action: 'loadURL', args: ['https://www.youtube.com/'] })
+  expect(page.loadURL).toHaveBeenLastCalledWith('https://www.youtube.com/?authuser=1')
+  page.emit('did-navigate', {}, 'https://www.youtube.com/?authuser=1', 200)
+  await native.browserPageAction(event, { tabId: 'retained', action: 'loadURL', args: ['https://www.youtube.com/'] })
+  expect(page.loadURL).toHaveBeenLastCalledWith('https://www.youtube.com/')
+})
+
+test('hidden pages and subframes cannot replace the selected Google account', async () => {
+  const { native, event, page } = await fixture()
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })
+  page.emit('did-navigate', {}, 'https://www.google.com/?authuser=1', 200)
+  page.emit('did-navigate-in-page', {}, 'https://www.google.com/?authuser=0', false)
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds: null })
+  page.emit('did-navigate', {}, 'https://www.google.com/?authuser=0', 200)
+  await native.browserPageAction(event, { tabId: 'retained', action: 'loadURL', args: ['https://www.youtube.com/'] })
+  expect(page.loadURL).toHaveBeenLastCalledWith('https://www.youtube.com/?authuser=1')
+})
+
+test('the clean auth probe never adds account navigation hints', async () => {
+  const { native, event, page } = await fixture()
+  mocks.cleanProbe = true
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })
+  page.emit('did-navigate', {}, 'https://www.google.com/?authuser=1', 200)
+  await native.browserPageAction(event, { tabId: 'retained', action: 'loadURL', args: ['https://www.youtube.com/'] })
+  expect(page.loadURL).toHaveBeenLastCalledWith('https://www.youtube.com/')
 })
 
 test('the clean authentication probe rejects page scripts while preserving ordinary navigation', async () => {

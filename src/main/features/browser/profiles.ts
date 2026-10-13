@@ -9,6 +9,7 @@ import { createCredentialStore } from '../credentials/credentialStore'
 import { createHistoryRepo } from './historyRepo'
 import { createPermissionsRepo } from './permissionsRepo'
 import { createBrowserSessionStore } from './sessionStore'
+import { forgetGoogleAccountNavigation } from './googleAccountNavigation'
 import { BROWSING_PARTITION, PRIVATE_BROWSING_PARTITION } from './webviewPolicy'
 import { PROFILE_COLORS, type BrowserProfile } from '../../../shared/types/browserProfile'
 
@@ -146,6 +147,7 @@ function clearUnusedPrivateSession(profileId: string): void {
   if (deleting.has(profileId) || privateCleanup.has(profileId) || (privateDownloads.get(profileId) ?? 0) > 0 ||
     [...guestProfiles.values()].some(p => p.profileId === profileId && p.isPrivate)) return
   const ses = session.fromPartition(profilePartition(profileId, true))
+  forgetGoogleAccountNavigation(ses)
   const operation = (async () => {
     await ses.closeAllConnections()
     await ses.clearStorageData()
@@ -185,6 +187,7 @@ export async function deleteBrowserProfile(id: string): Promise<void> {
   const data = browserProfileResources(id)
   deleting.add(id)
   try {
+    for (const partition of partitions) forgetGoogleAccountNavigation(session.fromPartition(partition))
     await privateCleanup.get(id)
     for (const partition of partitions) {
       const ses = session.fromPartition(partition)

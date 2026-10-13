@@ -3,6 +3,11 @@ import { attachEmbeddedAuthFallback, inheritEmbeddedAuthSource } from './embedde
 import { isCleanBrowserAuthProbe } from './authProbe'
 import { installGestureSession, navigateBySwipe } from './swipeNavigation'
 import { isManagedBrowserPage } from './managedPages'
+import {
+  YOUTUBE_NAVIGATION_REQUEST_URLS,
+  googleAccountRequestUrl,
+  prepareGoogleAccountSiteNavigation
+} from './googleAccountNavigation'
 /**
  * [M3-F] Electron wiring for the hardened `<webview>` browser tabs.
  *
@@ -40,6 +45,7 @@ import {
 } from './externalScheme'
 import { createPopupLimiter } from './popupLimiter'
 import {
+  TRACKING_REQUEST_URLS,
   privacyRequestHeaders,
   shouldBlockTrackingRequest
 } from './trackingProtection'
@@ -196,11 +202,14 @@ export function hardenBrowsingSession(partition: string): void {
   // getDisplayMedia() still rejects and the prompt the student just answered
   // means nothing.
   installDisplayMediaHandler(partition)
-  // Filtered: an unfiltered handler routes EVERY subresource of every page
-  // through a main-process callback, and a 학사 포털 issues 300+ per load.
+  // Native URL filtering keeps ordinary authentication, API and media requests
+  // off this synchronous main-process round trip. The strict superset preserves
+  // live setting changes; the callback still decides first-party exceptions.
   browsingSession.webRequest.onBeforeRequest(
-    { urls: ['<all_urls>'] },
+    { urls: ['file://*/*', ...TRACKING_REQUEST_URLS, ...(isCleanBrowserAuthProbe() ? [] : YOUTUBE_NAVIGATION_REQUEST_URLS)] },
     (details, callback) => {
+      const target = isCleanBrowserAuthProbe() ? details.url : googleAccountRequestUrl(browsingSession, details.webContents, details)
+      if (target !== details.url) { callback({ redirectURL: target }); return }
       const cancel = details.url.startsWith('file:') || shouldBlockTrackingRequest({
         url: details.url,
         referrer: details.referrer,
@@ -442,6 +451,9 @@ export function attachNavigationPolicies(
   }
   webContents.on('will-navigate', navigationGuard)
   webContents.on('will-redirect', navigationGuard)
+  webContents.on('will-navigate', (_event, url) => {
+    if (!isCleanBrowserAuthProbe()) prepareGoogleAccountSiteNavigation(webContents, webContents.getURL(), url)
+  })
 
   webContents.setWindowOpenHandler((details) => {
     const decision = decidePopup({
@@ -472,6 +484,7 @@ export function attachNavigationPolicies(
         ...(opts.createTab ? { createWindow: (options: Electron.BrowserWindowConstructorOptions) => {
           try {
             const child = opts.createTab!(options, details)
+            if (!isCleanBrowserAuthProbe()) prepareGoogleAccountSiteNavigation(child, webContents.getURL(), details.url, true)
             child.once('destroyed', () => popupLimiter.release(rootId))
             return child
           } catch (error) { popupLimiter.release(rootId); throw error }

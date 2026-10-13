@@ -41,6 +41,7 @@ import {
   forwardBrowserSwipe,
   popupWebPreferences
 } from '../../../src/main/features/browser/hardenWebviews'
+import { googleAccountRequestUrl, rememberGoogleAccountNavigation } from '../../../src/main/features/browser/googleAccountNavigation'
 
 type Listener = (...args: any[]) => void
 
@@ -114,6 +115,40 @@ describe('attachNavigationPolicies', () => {
     expect(result.action).toBe('allow')
     expect(result.overrideBrowserWindowOptions.webPreferences.partition).toBe('persist:browsing')
     expect(openInTab).not.toHaveBeenCalled()
+  })
+
+  test('marks Google links, but not redirect/history replays, for native account handoff', () => {
+    const page = new FakeWebContents(), session = {}
+    page.getURL = () => 'https://www.google.com/?authuser=1'
+    attachNavigationPolicies(page as unknown as Electron.WebContents, { openInTab: vi.fn() })
+    const url = 'https://www.youtube.com/'
+    const request = { url, method: 'GET', resourceType: 'mainFrame' }
+    rememberGoogleAccountNavigation(session, page.getURL())
+    page.emit('will-redirect', { preventDefault: vi.fn() }, url)
+    expect(googleAccountRequestUrl(session, page, request)).toBe(url)
+    page.emit('will-navigate', { preventDefault: vi.fn() }, url)
+    expect(googleAccountRequestUrl(session, page, request)).toBe(`${url}?authuser=1`)
+  })
+
+  test('marks an adopted Google popup without replacing its original opener or request', () => {
+    const parent = new FakeWebContents(), child = new FakeWebContents(), session = {}
+    parent.getURL = () => 'https://www.google.com/?authuser=1'
+    child.getURL = () => ''
+    const createTab = vi.fn(() => {
+      attachNavigationPolicies(child as unknown as Electron.WebContents, { openInTab: vi.fn() })
+      return child as unknown as Electron.WebContents
+    })
+    attachNavigationPolicies(parent as unknown as Electron.WebContents, { openInTab: vi.fn(), createTab })
+    const details = { url: 'https://www.youtube.com/', disposition: 'foreground-tab', features: '' }
+    const result = parent.windowOpenHandler!(details)
+    const options = { webContents: child }
+    expect(result.action).toBe('allow')
+    expect(result.createWindow(options)).toBe(child)
+    expect(createTab).toHaveBeenCalledExactlyOnceWith(options, details)
+    child.emit('will-navigate', { preventDefault: vi.fn() }, details.url)
+    rememberGoogleAccountNavigation(session, parent.getURL())
+    expect(googleAccountRequestUrl(session, child, { url: details.url, method: 'GET', resourceType: 'mainFrame' }))
+      .toBe('https://www.youtube.com/?authuser=1')
   })
 })
 

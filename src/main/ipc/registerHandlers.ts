@@ -1,4 +1,5 @@
 import { assertAppRendererSender } from './appRendererSender'
+import { forgetGoogleAccountNavigation } from '../features/browser/googleAccountNavigation'
 import { createLearningRepo, normalizeLearningDraft } from '../features/learning'
 import { createLearningApprovalDialogs } from '../features/learning/approvalDialogs'
 import { createLearningCache } from '../features/learning/learningCache'
@@ -2832,6 +2833,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
    */
   handle('browser:clearStorage', async (req) => {
     const browsing = ensureProfileSession(req.profileId)
+    forgetGoogleAccountNavigation(browsing)
     await browsing.clearStorageData(
       req.origin === null ? {} : { origin: req.origin }
     )

@@ -36,6 +36,26 @@ test('private state is cleared only after its last page closes, with reopening h
   expect(session.clearCache).toHaveBeenCalledTimes(1)
   expect(session.clearAuthCache).toHaveBeenCalledTimes(1)
 })
+test('private account hints cannot survive cleanup or reuse of the same Electron session', async () => {
+  const session = new Session(), normal = new Session()
+  let finish!: () => void
+  session.closeAllConnections.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  mocks.sessions.set('bandal-private', session)
+  const profiles = await import('../../../src/main/features/browser/profiles')
+  const accounts = await import('../../../src/main/features/browser/googleAccountNavigation')
+  profiles.ensureProfileSession('default', true)
+  profiles.registerGuestProfile(1, 'default', true)
+  accounts.rememberGoogleAccountNavigation(session, 'https://www.google.com/?authuser=1')
+  accounts.rememberGoogleAccountNavigation(normal, 'https://www.google.com/?authuser=2')
+
+  profiles.forgetGuestProfile(1)
+  expect(accounts.googleAccountNavigationUrl(session, 'https://www.youtube.com/')).toBe('https://www.youtube.com/')
+  finish()
+  const reused = await profiles.prepareProfileSession('default', true)
+  expect(reused).toBe(session)
+  expect(accounts.googleAccountNavigationUrl(reused, 'https://www.youtube.com/')).toBe('https://www.youtube.com/')
+  expect(accounts.googleAccountNavigationUrl(normal, 'https://www.youtube.com/')).toBe('https://www.youtube.com/?authuser=2')
+})
 test('closing a private page waits for its active download before clearing the session', async () => {
   const session = new Session(), download = new EventEmitter()
   mocks.sessions.set('bandal-private', session)
