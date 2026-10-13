@@ -187,6 +187,12 @@ class IPadCompanion {
     this.busy = true
     try {
       if (command !== 'import') await this.prepareGeometry(exchange)
+      const projectorDirectory = app.isPackaged
+        ? join(process.resourcesPath, 'ipad-bridge')
+        : join(app.getAppPath(), 'resources', 'ipad-bridge')
+      const projector = join(projectorDirectory, 'projector-host.cjs')
+      const projectionBackend = join(projectorDirectory, 'backend.js')
+      if (!existsSync(projector) || !existsSync(projectionBackend)) throw new Error('공통 동기화 변환기가 없습니다. 앱 설치 파일을 확인해 주세요.')
       const helper = process.env['BANDAL_IPAD_BRIDGE'] ?? (app.isPackaged
         ? join(process.resourcesPath, 'ipad-bridge', 'bridge.py')
         : join(app.getAppPath(), 'resources', 'ipad-bridge', 'bridge.py'))
@@ -198,7 +204,11 @@ class IPadCompanion {
         '--exchange', exchange, '--course-root', join(this.deps.userDataPath, 'iPad Courses'), ...extra]
       await new Promise<void>((resolve, reject) => {
         const child = spawn(executable ?? process.env['BANDAL_PYTHON'] ?? (process.platform === 'win32' ? 'python' : 'python3'),
-          executable ? args : [helper, ...args], { windowsHide: true, env: { ...process.env, ...environment } })
+          executable ? args : [helper, ...args], { windowsHide: true, env: { ...process.env, ...environment,
+            BANDAL_DESKTOP_PROJECTOR: projector,
+            BANDAL_DESKTOP_RUNTIME: process.execPath,
+            BANDAL_DESKTOP_MODULE_ROOT: app.getAppPath(),
+            BANDAL_DESKTOP_BACKEND: projectionBackend } })
         this.child = child
         let detail = ''
         child.stderr?.on('data', (chunk: Buffer) => { detail = (detail + chunk.toString()).slice(-2000) })
