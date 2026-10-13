@@ -16,6 +16,15 @@ import_map = "./functions/deno.json"
 verify_jwt = false
 import_map = "./functions/deno.json"
 
+# Sandbox billing verifies Supabase users in the handler; Paddle webhooks verify
+# the raw request's provider signature before reading any event data.
+[functions.paddle-billing]
+verify_jwt = false
+import_map = "./functions/deno.json"
+[functions.paddle-webhook]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
 [api]
 enabled = true
 # Port to use for the API URL.

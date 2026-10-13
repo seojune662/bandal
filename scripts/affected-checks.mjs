@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim()
 const gitBlob = (base, file) => execFileSync('git', ['show', `${base}:${file}`], { encoding: 'utf8' })
+export const PADDLE_BILLING_FUNCTIONS = ['supabase/functions/paddle-billing/index.ts', 'supabase/functions/paddle-webhook/index.ts']
 
 /** A failed or draft release must not hide changes from the next release's checks. */
 export function publishedReleaseBase(releases, ancestorTags) {
@@ -149,7 +150,9 @@ export function planChecks(files, full = false) {
   const has = (pattern) => files.some((file) => pattern.test(file))
   // Global runtime/toolchain changes justify a broad check; routine features do not.
   full ||= has(/^(package\.json|pnpm-lock\.yaml|electron\.vite\.config\.ts|vitest\.config\.ts|tests\/setup\.ts)$/)
-  const studyMarketBackend = full || has(/^(supabase\/(?:functions\/|migrations\/.*study_market|config\.toml)|tests\/backend\/studyMarket\/|src\/shared\/types\/studyMarket\.ts$)/)
+  const sharedBackendConfig = has(/^supabase\/(?:config\.toml|functions\/deno\.(?:json|lock))$/)
+  const studyMarketBackend = full || sharedBackendConfig || has(/^(supabase\/(?:functions\/(?:_shared\/study-market\/|study-market(?:-webhook|-cron)?\/)|migrations\/.*study_market)|tests\/backend\/studyMarket\/|src\/shared\/types\/studyMarket\.ts$)/)
+  const paddleBillingBackend = full || sharedBackendConfig || has(/^(supabase\/(?:functions\/(?:_shared\/paddle-billing\/|paddle-(?:billing|webhook)\/)|migrations\/.*paddle_billing)|tests\/backend\/paddleBilling\/)/)
   const types = new Set()
   if (full || has(/^(src\/(main|preload|shared)\/|server\/|sdk\/|(?:marketplace|sdk)\.vite\.config\.ts|tsconfig\.node\.json)/)) types.add('tsconfig.node.json')
   if (full || has(/^(src\/(renderer|shared)\/|src\/preload\/browser|tsconfig\.web\.json)/)) types.add('tsconfig.web.json')
@@ -260,9 +263,12 @@ export function planChecks(files, full = false) {
   }
   if (has(/^src\/(?:renderer\/src\/(?:features\/(?:updates\/|account\/(?:SidebarAccountEntry\.tsx|AccountAvatar\.tsx|account\.css)$|help\/(?:HelpHub\.tsx|help\.css)$)|stores\/updateStore\.ts$|app\/GlobalNavigation\.tsx$)|main\/features\/updater\/|shared\/types\/update\.ts$)/)) e2e.add('e2e/railUx.spec.ts')
   if (has(/^src\/(?:renderer\/src\/features\/(?:workspace\/(?:panelContentHost|WorkspaceHost|panels\/browserAnchor)\.|browser\/(?:BrowserGuestView|nativePageHandle)\.)|main\/features\/browser\/nativeTabs\.ts$)/)) e2e.add('e2e/browserPlacement.spec.ts')
-  if (e2e.size === 0) e2e.add('e2e/startup.spec.ts')
+  // A server-only Paddle change has no packaged desktop flow to exercise.
+  const paddleBackendOnly = paddleBillingBackend && !studyMarketBackend && !has(/^(src\/|server\/|sdk\/|resources\/|native\/|electron|package\.json$|pnpm-lock\.yaml$)/)
+  if (e2e.size === 0 && !paddleBackendOnly) e2e.add('e2e/startup.spec.ts')
   const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f))
   if (studyMarketBackend) unitInputs.push('tests/backend/studyMarket/policy.test.ts')
+  if (paddleBillingBackend) unitInputs.push('tests/backend/paddleBilling/policy.test.ts', 'tests/backend/paddleBilling/service.test.ts')
   if (dictionaryResources) unitInputs.push('src/main/features/learning/dictionary.ts')
   if (sharedAppearance) unitInputs.push('src/shared/theme.ts', 'src/renderer/src/features/courses/CourseSidebar.tsx', 'src/renderer/src/features/settings/AppearancePanel.tsx')
   if (has(/^(?:native|resources\/native)\/browser-import\/|^scripts\/(build-browser-import|verify-browser-import|build-native)\.mjs$/)) unitInputs.push('src/main/features/browser/import/index.ts')
@@ -279,7 +285,7 @@ export function planChecks(files, full = false) {
   }
   const e2eGrep = partial.size ? [...e2e].map(f => partial.get(f) ?? f.replace('e2e/', '').replaceAll('.', '\\.')).join('|') : null
 
-  return { e2eGrep, full, studyMarketBackend, types: [...types], scriptTests: [...scriptTests], unitInputs, e2e: [...e2e] }
+  return { e2eGrep, full, studyMarketBackend, paddleBillingBackend, types: [...types], scriptTests: [...scriptTests], unitInputs, e2e: [...e2e] }
 }
 
 function run(command, args) {
@@ -300,7 +306,7 @@ export function main(args) {
   const baseFlag = args.indexOf('--base')
   const { base, files } = changedFiles(baseFlag < 0 ? undefined : args[baseFlag + 1])
   const plan = planChecks(files, args.includes('--full'))
-  if (args.includes('--backend-plan')) { console.log(String(plan.studyMarketBackend)); return }
+  if (args.includes('--backend-plan')) { console.log(String(plan.studyMarketBackend || plan.paddleBillingBackend)); return }
   const nativeTabs = 'src/main/features/browser/nativeTabs.ts'
   if (!plan.full && files.includes(nativeTabs) && onlySwipeRegistrationChanged(
     git('show', `${base}:${nativeTabs}`), readFileSync(nativeTabs, 'utf8')
@@ -312,6 +318,7 @@ export function main(args) {
   console.log(JSON.stringify({ base, ...plan }, null, 2))
   if (args.includes('--plan')) return
   if (args.includes('--e2e')) {
+    if (plan.e2e.length === 0) return
     const tests = plan.e2e.map((f) => f.replace(/^e2e\//, ''))
     run('pnpm', ['exec', 'playwright', 'test', '-c', 'e2e', ...tests, ...(plan.e2eGrep ? ['--grep', plan.e2eGrep] : [])])
     return
@@ -321,6 +328,10 @@ export function main(args) {
   if (plan.studyMarketBackend) {
     run('deno', ['check', '--frozen', '--config', 'supabase/functions/deno.json', 'supabase/functions/study-market/index.ts', 'supabase/functions/study-market-webhook/index.ts', 'supabase/functions/study-market-cron/index.ts'])
     run('node', ['tests/backend/studyMarket/run-local.mjs'])
+  }
+  if (plan.paddleBillingBackend) {
+    run('deno', ['check', '--frozen', '--config', 'supabase/functions/deno.json', ...PADDLE_BILLING_FUNCTIONS])
+    run('node', ['tests/backend/paddleBilling/run-local.mjs'])
   }
   if (plan.full) {
     run('pnpm', ['deadcode'])

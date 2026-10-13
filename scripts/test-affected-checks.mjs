@@ -1,10 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyLockedChatDependenciesPromoted, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
+import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyLockedChatDependenciesPromoted, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, PADDLE_BILLING_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
 
 const publishedRelease = (tag_name, published_at, extra = {}) => ({ tag_name, published_at, draft: false, prerelease: false, ...extra })
@@ -166,6 +166,47 @@ test('study market server changes select real integration and related packaged f
   assert.equal(ui.studyMarketBackend, false)
   assert.deepEqual(ui.e2e, ['e2e/studyMarket.spec.ts'])
   assert.equal(planChecks(['src/main/features/pdf/exportPdf.ts']).studyMarketBackend, false)
+})
+
+test('Paddle billing server changes select their own integration without unrelated desktop flows', () => {
+  for (const file of [
+    'supabase/migrations/20261013010000_paddle_billing_sandbox.sql',
+    'supabase/functions/_shared/paddle-billing/service.ts',
+    'supabase/functions/paddle-billing/index.ts',
+    'supabase/functions/paddle-webhook/index.ts',
+    'tests/backend/paddleBilling/integration.test.ts',
+    'tests/backend/paddleBilling/run-local.mjs'
+  ]) {
+    const plan = planChecks([file])
+    assert.equal(plan.paddleBillingBackend, true)
+    assert.equal(plan.studyMarketBackend, false)
+    assert.equal(plan.full, false)
+    assert.deepEqual(plan.types, [])
+    assert.deepEqual(plan.e2e, [])
+    assert.ok(plan.unitInputs.includes('tests/backend/paddleBilling/policy.test.ts'))
+    assert.ok(plan.unitInputs.includes('tests/backend/paddleBilling/service.test.ts'))
+    assert.ok(!plan.unitInputs.includes('tests/backend/studyMarket/policy.test.ts'))
+  }
+  assert.equal(planChecks(['supabase/functions/_shared/study-market/service.ts']).paddleBillingBackend, false)
+  assert.equal(planChecks(['src/main/features/pdf/exportPdf.ts']).paddleBillingBackend, false)
+})
+
+test('Paddle Deno checks target existing API and webhook entrypoints selected independently', () => {
+  assert.deepEqual(PADDLE_BILLING_FUNCTIONS, ['supabase/functions/paddle-billing/index.ts', 'supabase/functions/paddle-webhook/index.ts'])
+  for (const file of PADDLE_BILLING_FUNCTIONS) {
+    assert.equal(existsSync(file), true, `Missing Paddle function: ${file}`)
+    assert.equal(planChecks([file]).paddleBillingBackend, true)
+    assert.equal(planChecks([file]).studyMarketBackend, false)
+  }
+})
+
+test('shared Edge configuration and full checks verify both billing backends', () => {
+  for (const file of ['supabase/config.toml', 'supabase/functions/deno.json', 'supabase/functions/deno.lock', 'package.json']) {
+    const plan = planChecks([file])
+    assert.equal(plan.studyMarketBackend, true)
+    assert.equal(plan.paddleBillingBackend, true)
+  }
+  assert.equal(planChecks([], true).paddleBillingBackend, true)
 })
 
 test('isolated hover worker entry retains focused preview checks without global build scope', () => {
