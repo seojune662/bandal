@@ -52,7 +52,7 @@ pnpm exec playwright test tests/paddle-sandbox.spec.ts tests/checkout.spec.ts
 
 통합 검사는 임시 Docker Supabase(56720–56722)의 실제 Auth/Postgres/RLS를 사용한다. 결제 공급자 응답은 fixture이므로 이 검사만으로 실제 Paddle 결제 성공을 주장하지 않는다. 운영 DB에 가짜 사용자나 서명 이벤트를 주입하지 않는다.
 
-실제 Sandbox 검증은 허용된 사용자의 정상 로그인 → 월간/연간 결제창 가격 확인 → 테스트 카드 결제 → Paddle 알림 delivered 확인 → 서버의 Sandbox 활성 권한 확인 → 갱신 해지 예약 확인 순서다. 실패 카드에서는 권한이 생기지 않아야 한다. 알림 재전송에서는 중복 원장이 생기지 않아야 한다. 테스트 카드·3DS·갱신 시뮬레이션은 [Paddle Sandbox 문서](https://developer.paddle.com/concepts/sell/sandbox/)의 현재 값을 사용한다. 사용자의 실제 카드로 결제하지 않는다.
+실제 Sandbox 검증은 허용된 사용자의 정상 로그인 → 월간/연간 결제창 가격 확인 → 테스트 카드 결제 → Paddle 알림 delivered 확인 → 서버의 Sandbox 활성 권한 확인 → 갱신 해지 예약 확인 순서다. 실패 카드에서는 권한이 생기지 않아야 한다. 알림 재전송에서는 중복 원장이 생기지 않아야 한다. 테스트 카드·3DS·갱신 시뮬레이션은 [Paddle Sandbox 문서](https://developer.paddle.com/sdks/sandbox/)의 현재 값을 사용한다. 사용자의 실제 카드로 결제하지 않는다.
 
 ## Live 이전 전 남은 범위
 
@@ -65,13 +65,34 @@ pnpm exec playwright test tests/paddle-sandbox.spec.ts tests/checkout.spec.ts
 - `20261013010000_paddle_billing_sandbox.sql`과 `paddle-billing`·`paddle-webhook`을 연결 프로젝트에 배포했다. 다른 마이그레이션은 적용하지 않았다.
 - 서버 정책·서비스 43개, 실제 SQL/Auth 9개, 검사 선택 스크립트 50개, 웹 Paddle 24개·기존 Toss 10개 검사를 통과했다. Astro·Deno 검사와 정적 빌드도 통과했다.
 - 초기 배포에서 실제 HTTPS config의 `environment:sandbox`, `enabled:false`, 빈 클라이언트 토큰과 미설정 요청의 503, 허용하지 않은 origin의 403을 확인했다. 아래 계정 연결을 마친 뒤 Sandbox 기능 설정을 활성화했다.
-- Supabase 대시보드의 Site URL은 `https://bandal.io`, 기존 추가 복귀 주소는 `bandal://auth/callback`이었다. URL 설정을 변경하지 않았다. 실제 웹 OAuth 복귀는 테스트 계정 로그인에서 최종 확인한다.
+- Supabase 대시보드의 Site URL은 `https://bandal.io`, 기존 추가 복귀 주소는 `bandal://auth/callback`이었다. URL 설정을 변경하지 않고 실제 Google 로그인과 테스트 페이지 복귀를 확인했다.
 - 사용자가 Sandbox 키의 추가 권한을 승인했고, 클라이언트 토큰과 알림 목적지를 생성해 Supabase에 Sandbox 설정을 등록했다. 클라이언트 토큰의 리소스 ID는 `ctkn_01m4tyhwpff72csyb1ccy1fsft`, 알림 목적지 ID는 `ntfset_01m4tyhx0gnm3f7yztga78wpw3`다. 토큰 값과 API 키·웹훅 서명 비밀은 이 문서에 기록하지 않는다.
 - 실제 Paddle 서명 비밀의 base64 형식을 허용하도록 수정한 커밋 `137045923465ddab38d8bd2019ec93b1213f2dc5`를 배포했고, [CI가 통과했다](https://github.com/seojune662/bandal/actions/runs/38424052219). 수정 후 서버 정책·서비스 45개와 Deno 진입점 검사를 통과했다.
-- `PADDLE_BILLING_ENABLED=true`, `PADDLE_ENVIRONMENT=sandbox`로 설정했다. 테스트 사용자 허용 목록은 비어 있어 모든 사용자의 결제·구독 조회·해지 요청이 거부된다. 정상 로그인 후 표시되는 계정 ID를 확인해 허용 목록에 등록하는 단계가 남아 있다.
+- `PADDLE_BILLING_ENABLED=true`, `PADDLE_ENVIRONMENT=sandbox`로 설정했다. 정상 로그인한 사용자의 페이지에 표시된 계정 ID를 확인해 테스터 한 명을 허용 목록에 등록했다. 사용자 UUID는 저장소에 기록하지 않는다. 등록 전에는 인증된 사용자도 `sandbox_tester_required`로 차단되는 것을 확인했다.
 - 사용자가 Sandbox Default payment link를 `https://bandal.io/billing/sandbox`로 저장했고, 대시보드를 새로 불러온 뒤 해당 값과 Approved 표시를 확인했다.
-- 공식 Simulator는 일반 이벤트의 `evt_` 대신 `ntfsimevt_` ID를 보낸다. 웹훅 이벤트에만 두 형식을 허용하도록 수정해 두 함수를 배포했고, 서버 정책·서비스 47개와 Deno 진입점 검사를 통과했다. 실제 Simulator 실행 `ntfsimrun_01m4tzmm1az025gpb50mwshta4`는 서명 검증을 거쳐 외부 예제 가격을 `409 price_mismatch`로 거부했다. Paddle 화면의 failed는 이 거부 응답에 따른 것이며, 결제 성공이나 정상 알림 전달 완료 검증을 뜻하지 않는다.
-- **실제 테스트 계정 로그인과 카드 결제 E2E는 아직 실시하지 않았다.** 계정 등록 후 성공·실패 결제, 결제에 따른 알림 전달과 권한 반영, 갱신 해지 및 알림 재전송을 확인해야 한다. 공개 판매와 기존 동기화 권한은 활성화하지 않았다.
+- 공식 Simulator는 일반 이벤트의 `evt_` 대신 `ntfsimevt_` ID를 보낸다. 웹훅 이벤트에만 두 형식을 허용한 커밋 `be7a31865128b093e05b3f95f20b6eddc440135b`를 두 함수에 배포했고, 서버 정책·서비스 47개와 Deno 진입점 검사 및 [CI](https://github.com/seojune662/bandal/actions/runs/38426447778)를 통과했다. 실제 Simulator 실행 `ntfsimrun_01m4tzmm1az025gpb50mwshta4`는 서명 검증을 거쳐 외부 예제 가격을 `409 price_mismatch`로 거부했다. 이 거부 검증은 아래 실제 테스트 카드 결제 검증과 별개다.
+
+## 실제 Sandbox 결제 결과
+
+2026-10-14 한국 시간에 실제 배포 페이지, 사용자 본인의 정상 로그인, Paddle 공식 테스트 카드로 확인했다. 실제 카드와 실제 청구는 사용하지 않았다.
+
+| 검증 | 결과 |
+| --- | --- |
+| 월간 실패 카드 | `declined`, 결제 원장 0건, 구독 권한 비활성·용량 0 |
+| 월간 성공 재시도 | 같은 거래에서 KRW 4,900 captured, 결제 원장 1건, 월간 권한·5 GiB 활성 |
+| 월간 갱신 해지 예약 | 2026-11-14 01:03:04까지 권한 유지, `cancelAtPeriodEnd=true` |
+| 완료 알림 재전송 | 새 알림 ID·같은 이벤트 ID로 HTTP 200, 결제·이벤트 영수증 각각 1건 유지 |
+| 월간 즉시 종료 | 연간 시험을 위해 Sandbox 구독만 즉시 종료, `canceled`·권한 비활성·용량 0, 결제 기록 보존 |
+| 연간 성공 결제 | KRW 49,000 captured, 연간 권한·5 GiB 활성, 2027-10-14 01:11:02까지 |
+| 연간 갱신 해지 예약 | 결제 기간·권한 유지, `cancelAtPeriodEnd=true`, 해지 예약 알림 HTTP 200 |
+
+월간 거래는 `txn_01m4tzx7rtpgrne2hzdb8vzkfd`, 구독은 `sub_01m4v01k9s7w29efmwv9qnaaf8`다. 연간 거래는 `txn_01m4v0e4fqpfhvqnc9xtv48dhs`, 구독은 `sub_01m4v0g6mjh3e7gtvdd7xbyj79`다. 두 거래 모두 실제 완료 응답의 `billing_period`·`subscription_id`와 captured 금액을 확인했다.
+
+월간의 completed·created·activated 알림은 첫 시도 HTTP 200이었다. 연간 activated 알림 `ntf_01m4v0g8g9f8ca7hb9nax1tnf7`은 created보다 먼저 처리되어 `checkout_binding_pending` 503을 반환한 뒤, 약 21초 후 Paddle 자동 재시도로 HTTP 200·delivered가 됐다. 이 과정에서 권한을 미리 부여하거나 결제 기록을 중복 생성하지 않았다.
+
+재전송한 월간 완료 이벤트는 `evt_01m4v01mm6w7yd8gg662fvydwb`다. 원본 알림 `ntf_01m4v01n3p4tcjegwxqa0kvrp3`와 재전송 알림 `ntf_01m4v08ewwewj8gw589gwsaeej`가 모두 HTTP 200으로 처리됐고, 원장과 결제 기간은 그대로 유지됐다.
+
+최종 상태는 월간 테스트 구독 종료, 연간 테스트 구독 활성·다음 갱신 해지 예약이다. 카카오 로그인, 3DS, 실제 날짜 경과에 따른 갱신·결제 실패·기간 만료, 환불은 이번 실제 결제 검증에 포함하지 않았다. 공개 판매와 기존 동기화 권한은 활성화하지 않았다.
 
 Paddle 재전송은 같은 이벤트에 새 `notification_id`를 발급할 수 있다. HMAC은 원문으로 검증하고, 이벤트 중복 해시는 `event_id`, `event_type`, `occurred_at`, `data`만 키 순서를 정렬해 계산한다. 초기 완료 거래의 `billing_period` 또는 `subscription_id`가 없는 공급자 응답은 권한을 부여하지 않는다. 실제 Sandbox에서 이런 응답이 나오면 검증된 후속 이벤트/공급자 조회를 통한 복구를 구현해야 한다.
 
