@@ -30,6 +30,7 @@ jobs:
       - name: Select backend verification
         id: backend
         env:
+          GH_TOKEN: ${{ github.token }}
           FULL: ${{ inputs.full == true && '--full' || '' }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
@@ -47,6 +48,7 @@ jobs:
           version: 2.110.0
       - name: Verify changed code and its dependents
         env:
+          GH_TOKEN: ${{ github.token }}
           FULL: ${{ inputs.full == true && '--full' || '' }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |

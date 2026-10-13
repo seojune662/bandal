@@ -7,9 +7,39 @@ import { pathToFileURL } from 'node:url'
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim()
 const gitBlob = (base, file) => execFileSync('git', ['show', `${base}:${file}`], { encoding: 'utf8' })
 
-/** The previous tag, not the previous push: unreleased commits stay covered. */
+/** A failed or draft release must not hide changes from the next release's checks. */
+export function publishedReleaseBase(releases, ancestorTags) {
+  const reachable = new Set(ancestorTags)
+  const release = releases.filter(release =>
+    release?.draft === false && release.prerelease === false &&
+    typeof release.tag_name === 'string' && /^v\d+\.\d+\.\d+$/.test(release.tag_name) &&
+    typeof release.published_at === 'string' && Number.isFinite(Date.parse(release.published_at)) &&
+    reachable.has(release.tag_name)
+  ).sort((left, right) => Date.parse(right.published_at) - Date.parse(left.published_at))[0]
+  if (!release) throw new Error('No published stable release is reachable from HEAD^. Specify --base explicitly to select the verification baseline.')
+  return release.tag_name
+}
+
+export function resolveCheckBase(base, { env = process.env, exec = execFileSync } = {}) {
+  if (base !== undefined && base !== null) return base
+  const options = { encoding: 'utf8', env, maxBuffer: 16 * 1024 * 1024 }
+  if (env.GITHUB_ACTIONS !== 'true' && env.CI !== 'true') {
+    return exec('git', ['describe', '--tags', '--abbrev=0', 'HEAD^'], options).trim()
+  }
+  if (!/^[\w.-]+\/[\w.-]+$/.test(env.GITHUB_REPOSITORY ?? '')) {
+    throw new Error('GITHUB_REPOSITORY is required to select a published release baseline in CI.')
+  }
+  // Read compact JSON lines across every API page. Do not fall back to a local
+  // tag when the API fails: that tag could be an unverified, unpublished build.
+  const output = exec('gh', ['api', `repos/${env.GITHUB_REPOSITORY}/releases?per_page=100`, '--paginate', '--jq', '.[] | {tag_name, draft, prerelease, published_at} | tojson'], options)
+  const releases = output.trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line))
+  const ancestorTags = exec('git', ['tag', '--merged', 'HEAD^'], options).trim().split(/\r?\n/).filter(Boolean)
+  return publishedReleaseBase(releases, ancestorTags)
+}
+
+/** Compare all work since the last published release in CI, or local tag locally. */
 export function changedFiles(base) {
-  base ??= git('describe', '--tags', '--abbrev=0', 'HEAD^')
+  base = resolveCheckBase(base)
   const files = new Set([
     ...git('diff', '--name-only', '-z', base).split('\0'),
     ...git('ls-files', '--others', '--exclude-standard', '-z').split('\0')

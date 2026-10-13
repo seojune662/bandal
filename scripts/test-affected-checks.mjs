@@ -4,8 +4,68 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { changedFiles, onlyLockedChatDependenciesPromoted, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
+import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyLockedChatDependenciesPromoted, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
+
+const publishedRelease = (tag_name, published_at, extra = {}) => ({ tag_name, published_at, draft: false, prerelease: false, ...extra })
+test('the CI baseline excludes failed drafts, unpublished/current tags and other branches', () => {
+  const releases = [
+    publishedRelease('v0.84.1', '2026-10-15T00:00:00Z'), // Current HEAD, outside HEAD^.
+    publishedRelease('v0.90.0', '2026-10-16T00:00:00Z'), // Unrelated branch.
+    publishedRelease('v0.84.0', '2026-10-14T00:00:00Z', { draft: true }),
+    publishedRelease('v0.85.0', '2026-10-14T00:00:00Z', { prerelease: true }),
+    publishedRelease('v0.86.0-beta.1', '2026-10-14T00:00:00Z'),
+    publishedRelease('v0.83.2', null),
+    publishedRelease('v0.82.0', '2026-10-11T00:00:00Z'),
+    publishedRelease('v0.83.1', '2026-10-13T00:00:00Z'),
+    publishedRelease('v0.83.0', '2026-10-12T00:00:00Z')
+  ]
+  const ancestors = ['v0.82.0', 'v0.83.0', 'v0.83.1', 'v0.83.2', 'v0.84.0', 'v0.85.0', 'v0.86.0-beta.1']
+  assert.equal(publishedReleaseBase(releases, ancestors), 'v0.83.1')
+  assert.throws(() => publishedReleaseBase(releases, ['v0.84.0']), /No published stable release/)
+  assert.throws(() => publishedReleaseBase([], ancestors), /No published stable release/)
+})
+
+test('CI resolves its baseline with a paginated read-only API and local ancestor tags', () => {
+  const calls = [], env = { CI: 'true', GITHUB_REPOSITORY: 'example/bandal', GH_TOKEN: 'test-only' }
+  const base = resolveCheckBase(undefined, { env, exec: (command, args, options) => {
+    calls.push([command, args])
+    assert.equal(options.env, env)
+    if (command === 'gh') return [
+      publishedRelease('v0.84.1', '2026-10-15T00:00:00Z'),
+      publishedRelease('v0.84.0', null, { draft: true }),
+      publishedRelease('v0.83.1', '2026-10-13T00:00:00Z')
+    ].map(release => JSON.stringify(release)).join('\n')
+    return 'v0.83.1\nv0.84.0\n'
+  } })
+  assert.equal(base, 'v0.83.1')
+  assert.deepEqual(calls, [
+    ['gh', ['api', 'repos/example/bandal/releases?per_page=100', '--paginate', '--jq', '.[] | {tag_name, draft, prerelease, published_at} | tojson']],
+    ['git', ['tag', '--merged', 'HEAD^']]
+  ])
+})
+
+test('explicit bases bypass CI lookup and local runs retain their nearest-tag default', () => {
+  assert.equal(resolveCheckBase('explicit-base', { env: { CI: 'true' }, exec: () => { throw new Error('must not fetch') } }), 'explicit-base')
+  assert.equal(resolveCheckBase(undefined, { env: {}, exec: (command, args) => {
+    assert.equal(command, 'git')
+    assert.deepEqual(args, ['describe', '--tags', '--abbrev=0', 'HEAD^'])
+    return 'v0.84.0\n'
+  } }), 'v0.84.0')
+})
+
+test('CI API failures and invalid release responses never fall back to an unverified tag', () => {
+  const env = { GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'example/bandal' }
+  const calls = []
+  assert.throws(() => resolveCheckBase(undefined, { env, exec: (command) => {
+    calls.push(command)
+    throw new Error('GitHub API unavailable')
+  } }), /GitHub API unavailable/)
+  assert.deepEqual(calls, ['gh'])
+  assert.throws(() => resolveCheckBase(undefined, { env, exec: () => 'invalid JSON' }), SyntaxError)
+  assert.throws(() => resolveCheckBase(undefined, { env, exec: () => '' }), /No published stable release/)
+  assert.throws(() => resolveCheckBase(undefined, { env: { CI: 'true' }, exec: () => { throw new Error('must not call') } }), /GITHUB_REPOSITORY is required/)
+})
 
 function chatDependencyPromotion() {
   const versions = { katex: '0.18.1', remark: '15.0.1', 'remark-gfm': '4.0.1', 'remark-math': '6.0.0' }

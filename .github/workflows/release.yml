@@ -82,6 +82,8 @@ jobs:
       - name: Select backend verification
         id: backend
         if: steps.checks.outputs.reused != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: echo "required=$(node scripts/affected-checks.mjs --backend-plan)" >> "$GITHUB_OUTPUT"
       - uses: denoland/setup-deno@v2
         if: steps.backend.outputs.required == 'true'
@@ -93,6 +95,8 @@ jobs:
           version: 2.110.0
       - run: node scripts/affected-checks.mjs
         if: steps.checks.outputs.reused != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   create-release:
     name: Create draft release
@@ -381,6 +385,8 @@ jobs:
 
       - name: Verify affected features in the packaged app
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
             if [ "$(node -p 'process.arch')" = "arm64" ]; then

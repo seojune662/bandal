@@ -3,10 +3,25 @@ import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { Annotation, CreateAnnotationInput } from '../../../src/shared/types/annotation'
+import type { MaterialsChanged } from '../../../src/shared/ipc/events'
 import { useAnnotations, type AnnotationsApi } from '../../../src/renderer/src/features/pdf/useAnnotations'
 
-const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }))
-vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke }))
+const { invoke, listeners } = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  listeners: new Map<string, Set<(payload: MaterialsChanged) => void>>()
+}))
+vi.mock('../../../src/renderer/src/lib/ipc', () => ({
+  invoke,
+  onPush: (channel: string, listener: (payload: MaterialsChanged) => void) => {
+    const subscribers = listeners.get(channel) ?? new Set()
+    subscribers.add(listener)
+    listeners.set(channel, subscribers)
+    return () => {
+      subscribers.delete(listener)
+      if (subscribers.size === 0) listeners.delete(channel)
+    }
+  }
+}))
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 function deferred<T>() {
@@ -29,12 +44,14 @@ function Harness({ relPath = 'first.pdf' }: { relPath?: string }) {
 }
 beforeEach(() => {
   invoke.mockReset().mockResolvedValue([])
+  listeners.clear()
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
 })
 afterEach(async () => {
   await act(async () => root.unmount())
+  expect(listeners.size).toBe(0)
   container.remove()
 })
 
@@ -70,6 +87,39 @@ test('queues recoloring, memo edits and delete in order and exports only after t
   await act(async () => { first.resolve({ ...row, color: 'blue' }); await saved })
   expect(api.annotations).toEqual([])
   expect(flushed).toBe(true)
+})
+
+test('refreshes externally changed annotations only for this course and after pending saves finish', async () => {
+  invoke.mockResolvedValueOnce([row])
+  await act(async () => root.render(<Harness />))
+  const saving = deferred<Annotation>()
+  const recolored: Annotation = { ...row, color: 'blue' }
+  const external: Annotation = { ...row, id: 'external-highlight', page: 2 }
+  invoke.mockImplementation((channel: string) => {
+    if (channel === 'annotations:update') return saving.promise
+    if (channel === 'annotations:listForFile') return Promise.resolve([recolored, external])
+    return Promise.reject(new Error(`Unexpected channel: ${channel}`))
+  })
+  const notify = (courseId: string): void => {
+    for (const listener of listeners.get('materials:changed') ?? []) listener({ courseId })
+  }
+  await act(async () => notify('another-course'))
+  expect(invoke).toHaveBeenCalledTimes(1)
+  let updated!: Promise<Annotation | null>
+  await act(async () => {
+    updated = api.update({ id: row.id, color: 'blue' })
+    notify('course')
+  })
+  expect(invoke.mock.calls.map(([channel]) => channel)).toEqual(['annotations:listForFile', 'annotations:update'])
+  await act(async () => {
+    saving.resolve(recolored)
+    await updated
+    await api.flush!()
+  })
+  expect(invoke).toHaveBeenLastCalledWith('annotations:listForFile', { courseId: 'course', relPath: 'first.pdf' })
+  expect(api.annotations).toEqual([recolored, external])
+  expect(api.byPage.get(2)).toEqual([external])
+  expect(api.error).toBeNull()
 })
 
 test('isolates the new file from a prior file save and immediately hides its annotations', async () => {
