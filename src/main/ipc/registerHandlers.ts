@@ -150,8 +150,9 @@ import { createModelManager } from '../features/recordings/modelManager'
 import { createRecordingService } from '../features/recordings/recordingService'
 import { speechModel } from '../features/recordings/modelCatalog'
 import { getMainWindow, onMainWindowClosed } from '../windows/mainWindow'
-import { createAnnotationsRepo } from '../features/annotations'
-import { createDrawingsRepo, createPdfExporter } from '../features/pdf'
+import { createBoundPDFRepositories, createPDFDocumentBindings } from '../features/pdf/pdfDocumentBinding'
+import { createPDFOriginalPreserver, createPDFRevisionReader } from '../features/pdf/pdfOriginals'
+import { createPdfExporter } from '../features/pdf'
 import { createBoardRepo } from '../features/board'
 import {
   createBinaryLocator,
@@ -404,6 +405,11 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     folderMissing: createFolderAvailability(() => broadcast('courses:changed', {})),
     getDataRoot: () => getSettings().dataRoot
   })
+  const pdfRevision = createPDFRevisionReader()
+  const pdfPath = (courseId: string, relPath: string): string => materialsRepo.absolutePathFor(courseId, relPath)
+  const pdfBindings = createPDFDocumentBindings(db, (courseId, relPath) => pdfRevision(pdfPath(courseId, relPath)),
+    createPDFOriginalPreserver(join(deps.userDataPath, 'PDFOriginals'), pdfPath, pdfRevision))
+  const { annotations: annotationsRepo, drawings: drawingsRepo } = createBoundPDFRepositories(db, pdfBindings)
   const legacyPackSettlers = new Map<string, { resolve(): void; reject(error: Error): void }>()
   const legacyGuardSessions = new Map<string, string>()
   const settleStudyTurn = (info: { sessionId: string; reason: 'success' | 'error' | 'interrupted'; error?: AgentTurnFailure }): void => {
@@ -436,6 +442,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     toRelPath: string
     isDirectory: boolean
   }): void => {
+    pdfBindings.repoint(change)
     materialsRepo.repointAddedState(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory)
     repointMaterialPath({
       ...change,
@@ -457,7 +464,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   // Derived search writes must never hold the user database's write lock.
   const searchCachePath = join(deps.userDataPath, 'search-cache.db')
   const materialsRepo = createMaterialsRepo({
-    onIndexBuilt: checkpoints.request,
+    onIndexBuilt: () => { pdfBindings.reconcileIndex(); checkpoints.request() },
     scan: (folder, limits) => background.request('scan', { folder, limits }),
     db,
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
@@ -539,7 +546,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   app.on('will-quit', () => recordingService.dispose())
   const courseLinksRepo = createCourseLinksRepo(db)
   const materialLinksRepo = createMaterialLinksRepo(db)
-  const annotationsRepo = createAnnotationsRepo(db)
   const boardRepo = createBoardRepo(db)
   const layoutRepo = createLayoutRepo(db)
   const deadlineScheduler = createDeadlineScheduler({
@@ -886,7 +892,6 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('annotations:delete', (req) => annotationsRepo.softDelete(req))
 
   // -- pdf drawings (M9: free-form markup, kept apart from text highlights) --
-  const drawingsRepo = createDrawingsRepo(db)
   handle('drawings:listForFile', (req) =>
     drawingsRepo.listForFile(req.courseId, req.relPath)
   )
