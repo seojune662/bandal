@@ -1066,6 +1066,22 @@ export const migrations: Migration[] = [
   { version: 36, name: 'course-workspace-kind', up: (db) => {
     const columns = db.prepare('PRAGMA table_info(courses)').all() as { name: string }[]
     if (!columns.some(column => column.name === 'workspace_kind')) db.exec("ALTER TABLE courses ADD COLUMN workspace_kind TEXT NOT NULL DEFAULT 'course' CHECK (workspace_kind IN ('course','study-space'))")
+  } },
+  { version: 37, name: 'material-added-state', up: (db) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS material_added_baselines (
+      course_id TEXT PRIMARY KEY REFERENCES courses(id) ON DELETE CASCADE,
+      folder TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS material_added_state (
+      course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      rel_path TEXT NOT NULL,
+      added_at INTEGER,
+      pending_children INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (course_id, rel_path)
+    );`)
+    const columns = db.prepare('PRAGMA table_info(whiteboards)').all() as { name: string }[]
+    if (!columns.some(column => column.name === 'added_at')) db.exec('ALTER TABLE whiteboards ADD COLUMN added_at INTEGER')
   } }
 
 ]

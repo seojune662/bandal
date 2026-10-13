@@ -60,6 +60,7 @@ import {
 import { canAcceptUrlDrop } from './urlDrop'
 import { useMaterialsPaste } from './useMaterialsPaste'
 import { WhiteboardsGroup } from './WhiteboardsGroup'
+import { MaterialAffordancesProvider } from './MaterialAffordances'
 import { WidgetDock } from '../widgets/WidgetDock'
 import './materials.css'
 
@@ -694,6 +695,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   }
 
   return (
+    <MaterialAffordancesProvider courseId={course?.id ?? null}>
     <aside
       ref={sidebarRef}
       className="app-rail app-rail--right"
@@ -1206,5 +1208,6 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
         onConfirm={confirmDelete}
       />
     </aside>
+    </MaterialAffordancesProvider>
   )
 }

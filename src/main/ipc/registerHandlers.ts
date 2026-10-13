@@ -140,6 +140,7 @@ import {
   createMediaProtocolHandler
 } from '../features/materials'
 import { DRAG_ICON_PNG_BASE64 } from './dragIcon'
+import { createMaterialHoverPreviewService } from '../features/materials/hoverPreview'
 import { createPdfViewStateRepo } from '../features/pdf/pdfViewStateRepo'
 import { createNotesRepo } from '../features/notes'
 import { createRecordingRepo } from '../features/recordings/recordingRepo'
@@ -433,6 +434,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     toRelPath: string
     isDirectory: boolean
   }): void => {
+    materialsRepo.repointAddedState(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory)
     repointMaterialPath({
       ...change,
       db,
@@ -464,11 +466,14 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     pauseWatching: (courseId) => materialsWatcher.pause(courseId),
     onPathChanged: onMaterialPathChanged
   })
+  const hoverPreview = createMaterialHoverPreviewService({ materials: materialsRepo, userData: deps.userDataPath })
+  app.once('will-quit', () => hoverPreview.dispose())
   const notesRepo = createNotesRepo({
     getCourseFolder: (courseId) => coursesRepo.getFolder(courseId),
+    onCreated: ({ courseId, relPath }) => materialsRepo.recordAdded(courseId, relPath),
     onPathChanged: onMaterialPathChanged
   })
-  const recordings = createRecordingRepo(db, (id) => coursesRepo.getFolder(id))
+  const recordings = createRecordingRepo(db, (id) => coursesRepo.getFolder(id), session => materialsRepo.recordAdded(session.courseId, session.audioRelPath))
   const speechModels = createModelManager(
     join(deps.userDataPath, 'speech-models'),
     (models) => broadcast('recordings:modelsChanged', models)
@@ -758,6 +763,7 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     return OK
   })
   handle('materials:readFile', (req) => materialsRepo.readFile(req.courseId, req.relPath))
+  handle('materials:hoverPreview', (req) => hoverPreview.read(req))
   handle('materials:writeFile', (req) => materialsRepo.writeFile(req))
   handle('materials:rename', async (req) => await materialsRepo.rename(req))
   handle('materials:delete', (req) => materialsRepo.softDelete(req))

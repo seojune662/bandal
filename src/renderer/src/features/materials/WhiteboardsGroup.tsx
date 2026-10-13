@@ -7,6 +7,7 @@ import { Tooltip } from '../../components/Tooltip'
 import { invoke } from '../../lib/ipc'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
+import { MaterialRowAffordance } from './MaterialAffordances'
 
 interface BoardMenuState {
   board: PersonalBoard
@@ -314,7 +315,7 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
             const pending = renamingId === board.id || removingId === board.id
             return (
               <li key={board.id}>
-                <Tooltip label={board.title} placement="right">
+                <MaterialRowAffordance target={{ courseId, board }}>
                   <button
                     type="button"
                     className="whiteboards-group__row"
@@ -340,7 +341,7 @@ export function WhiteboardsGroup(props: { courseId: string }): JSX.Element {
                     <WhiteboardIcon />
                     <span>{board.title}</span>
                   </button>
-                </Tooltip>
+                </MaterialRowAffordance>
               </li>
             )
           })}

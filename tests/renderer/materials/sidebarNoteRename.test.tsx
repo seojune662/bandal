@@ -69,6 +69,7 @@ vi.mock('../../../src/renderer/src/features/notes/noteEditorPlugins', () => ({ l
 vi.mock('../../../src/renderer/src/features/notes/noteFormatting', () => ({ EMPTY_NOTE_FORMAT_STATE: {}, getNoteFormatState: () => ({}) }))
 vi.mock('../../../src/renderer/src/features/notes/NoteToolbar', () => ({ NoteToolbar: () => null }))
 vi.mock('../../../src/renderer/src/features/materials/WhiteboardsGroup', () => ({ WhiteboardsGroup: () => null }))
+vi.mock('../../../src/renderer/src/features/materials/MaterialAffordances', () => ({ MaterialAffordancesProvider: ({ children }: { children: React.ReactNode }) => children }))
 vi.mock('../../../src/renderer/src/features/widgets/WidgetDock', () => ({ WidgetDock: () => null }))
 vi.mock('../../../src/renderer/src/features/materials/useMaterialsPaste', () => ({ useMaterialsPaste: () => ({ pasteNotice: null, isPasting: false, onPaste: () => {} }) }))
 vi.mock('../../../src/renderer/src/features/workspace/openMaterial', () => ({ openMaterialInWorkspace: vi.fn(), openMaterialInCourse: vi.fn() }))

@@ -49,7 +49,7 @@ function writeAll(fd: number, data: Buffer, position: number): void {
     offset += count
   }
 }
-export function createRecordingRepo(db: Database, getFolder: (id: string) => string) {
+export function createRecordingRepo(db: Database, getFolder: (id: string) => string, onCreated?: (session: RecordingSession) => void) {
   function get(id: string): RecordingSession {
     requireNonEmptyString(id, 'id')
     const row = db.prepare('SELECT payload FROM recording_sessions WHERE id = ?').get(id) as
@@ -107,6 +107,7 @@ export function createRecordingRepo(db: Database, getFolder: (id: string) => str
     db.prepare(
       'INSERT INTO recording_sessions(id, course_id, created_at, payload) VALUES(?, ?, ?, ?)'
     ).run(id, courseId, session.createdAt, JSON.stringify(session))
+    onCreated?.(session)
     return session
   }
   function append(id: string, sequence: number, pcm: Uint8Array): RecordingSession {

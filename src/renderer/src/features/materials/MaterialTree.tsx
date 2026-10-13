@@ -25,6 +25,7 @@ import {
   type MaterialMoveDragPayload
 } from './materialMoveDrag'
 import { canAcceptUrlDrop } from './urlDrop'
+import { MaterialRowAffordance } from './MaterialAffordances'
 
 /** Keep the row hint aligned with the viewer used by openMaterialInWorkspace. */
 function rowTitle(kind: MaterialKind | 'dir', relPath: string): string {
@@ -307,6 +308,7 @@ function TreeNode({
           {rowContents}
         </div>
       ) : (
+        <MaterialRowAffordance target={{ courseId, node }}>
         <button
           type="button"
           className="material-row"
@@ -490,6 +492,7 @@ function TreeNode({
         >
           {rowContents}
         </button>
+        </MaterialRowAffordance>
       )}
       {!flat && isDirectory && expanded && node.children !== undefined && (
         <ul role="group">
@@ -642,13 +645,10 @@ export function MaterialSearchResults({
   return (
     <ul className="material-results" aria-label="자료 검색 결과">
       {results.map((result) => {
-        const node: MaterialNode = {
-          relPath: result.relPath,
-          name: result.name,
-          kind: result.kind
-        }
+        const node: MaterialNode = { ...result }
         return (
           <li key={result.relPath}>
+            <MaterialRowAffordance target={{ courseId, node }}>
             <button
               type="button"
               className="material-result"
@@ -690,6 +690,7 @@ export function MaterialSearchResults({
                 <small>{result.relPath}</small>
               </span>
             </button>
+            </MaterialRowAffordance>
           </li>
         )
       })}

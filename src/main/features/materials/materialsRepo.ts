@@ -17,6 +17,7 @@ import type { ImportResult, MaterialFileContent, MaterialKind,
   MaterialNode, MaterialSearchHit } from '../../../shared/types/materials'
 import { scanMaterialTree, type MaterialWalk, type ScanTruncation } from './scanMaterialTree'
 import { renameWithRetry } from './renameWithRetry'
+import { createMaterialAddedState } from './materialAddedState'
 import { ConflictError, NotFoundError, ValidationError } from '../../db/errors'
 import { assertRealInside, nowIso, requireId, requireNonEmptyString,
   resolveInside } from '../../db/validate'
@@ -31,6 +32,9 @@ export interface MaterialsRepo {
    * 호출하면 된다.
    */
   invalidateTree(courseId: string): void
+  /** Record an explicit creation, including before a course's first scan. */
+  recordAdded(courseId: string, relPath: string): void
+  repointAddedState(courseId: string, fromRelPath: string, toRelPath: string, isDirectory: boolean): void
   /** 경로 이탈 가드를 거친 절대 경로. 네이티브 파일 드래그(startDrag)용. */
   absolutePathFor(courseId: string, relPath: string): string
   absolutePathForAsync(courseId: string, relPath: string): Promise<string>
@@ -249,6 +253,7 @@ function resolveCoursePath(
 
 export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
   const { db, getCourseFolder, revealItem, trashItem } = deps
+  const addedState = createMaterialAddedState(db, getCourseFolder)
   const scanLimits = deps.scanLimits ?? {
     maxDepth: MATERIAL_SCAN_MAX_DEPTH,
     maxEntries: MATERIAL_SCAN_MAX_ENTRIES
@@ -374,6 +379,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
     const current = (): boolean => (generations.get(courseId) ?? 0) === generation && getCourseFolder(courseId) === folder
     const work = (async () => {
       let scan: MaterialWalk
+      let rootDisappeared = false
       try { scan = await (deps.scan ?? scanMaterialTree)(folder, scanLimits) }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
@@ -381,18 +387,22 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         try { await stat(folder); throw error } catch (rootError) {
           if (rootError === error || (rootError as NodeJS.ErrnoException).code !== 'ENOENT') throw rootError
         }
+        rootDisappeared = true
         scan = { nodes: [], files: [], truncation: new Set() }
       }
       if (!current()) return null
       await rebuildIndex(courseId, scan, current)
       if (!current()) return null
+      await addedState.reconcile(courseId, scan.files, scan.truncation.size === 0 && !rootDisappeared, current)
+      if (!current()) return null
       if (scan.truncation.size > 0) scan.nodes.push(truncationNode(scan.truncation, scanLimits))
-      treeCache.set(courseId, { folder, nodes: scan.nodes })
+      const nodes = addedState.decorate(courseId, scan.nodes)
+      treeCache.set(courseId, { folder, nodes })
       if (treeCache.size > 16) treeCache.delete(treeCache.keys().next().value!)
       traceSyncWork('materials.snapshotWrite', () => db.prepare('INSERT OR REPLACE INTO material_tree_snapshots (course_id, folder, tree) VALUES (?, ?, ?)')
-        .run(courseId, folder, JSON.stringify(scan.nodes)))
+        .run(courseId, folder, JSON.stringify(nodes)))
       deps.onIndexBuilt?.()
-      return scan.nodes
+      return nodes
     })()
     scanWork.set(courseId, work)
     void work.finally(() => { if (scanWork.get(courseId) === work) scanWork.delete(courseId) }).catch(() => undefined)
@@ -420,6 +430,16 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
     },
 
     invalidateTree(courseId) { invalidate(requireId(courseId, 'courseId')) },
+    recordAdded(courseId, relPath) {
+      const id = requireId(courseId, 'courseId')
+      resolveMaterialAbs(id, relPath)
+      addedState.recordAdded(id, relPath)
+      invalidate(id)
+    },
+    repointAddedState(courseId, fromRelPath, toRelPath, isDirectory) {
+      addedState.repoint(requireId(courseId, 'courseId'), fromRelPath, toRelPath, isDirectory)
+      invalidate(courseId)
+    },
 
     snapshot(courseId) {
       const id = requireId(courseId, 'courseId'), folder = getCourseFolder(id)
@@ -433,7 +453,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           depth <= MATERIAL_SCAN_MAX_DEPTH + 1 && Array.isArray(nodes) && nodes.length <= MATERIAL_SCAN_MAX_ENTRIES + 1 && nodes.every(node =>
             node !== null && typeof node === 'object' && typeof node.relPath === 'string' && typeof node.name === 'string' &&
             typeof node.kind === 'string' && (node.kind !== 'dir' || valid(node.children ?? [], depth + 1)))
-        return valid(value) ? value : null
+        return valid(value) ? addedState.decorate(id, value) : null
       } catch { return null }
     },
 
@@ -477,6 +497,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           kind: MaterialKind
         }[]
 
+      const added = addedState.timestamps(id)
       return rows
         .filter((row) => searchKey(row.rel_path).includes(needle))
         .map((row) => {
@@ -485,7 +506,8 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           let score = 1
           if (nameKey.includes(needle)) score = 2
           if (nameKey.startsWith(needle)) score = 3
-          return { relPath: row.rel_path, name, kind: row.kind, score }
+          const addedAt = added.get(row.rel_path)
+          return { relPath: row.rel_path, name, kind: row.kind, score, ...(addedAt === undefined ? {} : { addedAt }) }
         })
         .sort((a, b) => b.score - a.score || a.relPath.localeCompare(b.relPath))
     },
@@ -529,9 +551,9 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           const targetAbs = join(targetDirAbs, targetName)
           assertRealInside(folder, targetAbs)
           copyFileSync(source, targetAbs)
-          imported.push(
-            targetDirRel === '' ? targetName : posix.join(targetDirRel, targetName)
-          )
+          const importedPath = targetDirRel === '' ? targetName : posix.join(targetDirRel, targetName)
+          imported.push(importedPath)
+          addedState.recordAdded(id, importedPath)
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error)
           failed.push({ path: String(sourcePath), reason })
@@ -588,6 +610,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           if (existsSync(destAbs)) throw new ConflictError(`material "${relPath}" already exists`)
         })
         const courseId = requireId(input.courseId, 'courseId')
+        addedState.repoint(courseId, input.fromRelPath, relPath, sourceKind === 'dir')
         invalidate(courseId)
         notifyPathChanged(courseId, input.fromRelPath, relPath, sourceKind === 'dir')
         return { relPath }
@@ -650,6 +673,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
           if (existsSync(destinationAbs)) throw new ConflictError(`material "${destinationRelPath}" already exists`)
         })
         const courseId = requireId(input.courseId, 'courseId')
+        addedState.repoint(courseId, input.relPath, destinationRelPath, sourceKind === 'dir')
         invalidate(courseId)
         notifyPathChanged(courseId, input.relPath, destinationRelPath, sourceKind === 'dir')
         return { relPath: destinationRelPath }
@@ -694,6 +718,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       } else {
         copyFileSync(sourceAbs, candidateAbs)
       }
+      addedState.recordAdded(input.courseId, candidateRelPath, sourceKind === 'dir')
       invalidate(requireId(input.courseId, 'courseId'))
       return { relPath: candidateRelPath }
     },
@@ -754,6 +779,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
       const bytes = decodeWriteData(input.encoding, input.data)
       assertRealInside(folder, abs)
       writeFileSync(abs, bytes, { flag: 'wx' })
+      addedState.recordAdded(input.courseId, relPath)
       invalidate(requireId(input.courseId, 'courseId'))
       return { relPath }
     },
@@ -800,6 +826,7 @@ export function createMaterialsRepo(deps: MaterialsRepoDeps): MaterialsRepo {
         copyFileSync(sourcePath, abs)
         unlinkSync(sourcePath)
       }
+      addedState.recordAdded(input.courseId, relPath)
       invalidate(requireId(input.courseId, 'courseId'))
       return { relPath }
     }

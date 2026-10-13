@@ -1,5 +1,6 @@
 import { STUDY_MARKET_CHANNELS, type StudyMarketIpcContract } from './studyMarketContract'
 import { LEARNING_CHANNELS, type LearningIpcContract } from './learningContract'
+import type { MaterialHoverPreview } from '../types/materialHoverPreview'
 import type { BrowserPageState, BrowserPageAction } from '../types/browserNative'
 import type { BrowserImportSource, BrowserImportFileKind, BrowserImportRequest, BrowserImportJob } from '../types/browserImport'
 import type { AppleCalendarState, AppleCalendarEvent, AppleCalendarPreferences } from '../types/appleCalendar'
@@ -355,6 +356,11 @@ export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, Pr
   'materials:readFile': {
     req: { courseId: string; relPath: string }
     res: MaterialFileContent
+  }
+  /** Bounded, read-only sidebar content; never opens a viewer or starts conversion. */
+  'materials:hoverPreview': {
+    req: { courseId: string; relPath: string }
+    res: MaterialHoverPreview
   }
   /**
    * [M5] Starts watching the course folder on disk. Changes are debounced and
@@ -1654,6 +1660,7 @@ export const IPC_CHANNELS = [
   'materials:reveal',
   'materials:preview',
   'materials:readFile',
+  'materials:hoverPreview',
   'materials:watch',
   'materials:rename',
   'materials:delete',

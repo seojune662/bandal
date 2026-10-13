@@ -15,6 +15,8 @@ export interface MaterialNode {
   size?: number
   /** Modification time (epoch ms) for files. */
   mtime?: number
+  /** First added to this course (epoch ms); absent for pre-existing materials. */
+  addedAt?: number
   /** Present (possibly empty) for directories, absent for files. */
   children?: MaterialNode[]
 }
@@ -25,6 +27,8 @@ export interface MaterialSearchHit {
   kind: MaterialKind
   /** Simple relevance score, higher is better. */
   score: number
+  /** First added to this course (epoch ms); absent for pre-existing materials. */
+  addedAt?: number
 }
 
 /** Result of reading a material file's contents over IPC. */

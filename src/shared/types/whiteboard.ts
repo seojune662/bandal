@@ -149,6 +149,8 @@ export interface PersonalBoard {
   pageCount: number
   sortOrder: number
   createdAt: string
+  /** New-material timestamp; legacy boards deliberately have no value. */
+  addedAt?: number
   updatedAt: string
 }
 

@@ -46,6 +46,7 @@ export interface NotesRepoDeps {
   /** Absolute course folder for a live course id (throws otherwise). */
   getCourseFolder: (courseId: string) => string
   onPathChanged?: (change: { courseId: string; fromRelPath: string; toRelPath: string; isDirectory: false }) => void
+  onCreated?: (note: NoteRef) => void
 }
 
 /** Strips path separators and other filesystem-hostile chars from a title. */
@@ -140,7 +141,9 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
       assertRealInside(folder, parent)
       mkdirSync(parent, { recursive: true })
       assertRealInside(folder, abs)
+      const existed = existsSync(abs)
       writeFileAtomic(abs, input.markdown)
+      if (!existed) deps.onCreated?.({ courseId: input.courseId, relPath: input.relPath })
       return { mtime: mtimeToken(abs) }
     },
 
@@ -168,6 +171,7 @@ export function createNotesRepo(deps: NotesRepoDeps): NotesRepo {
 
       const relPath =
         input.dirRelPath === '' ? fileName : posix.join(input.dirRelPath, fileName)
+      deps.onCreated?.({ courseId: id, relPath })
       return { courseId: id, relPath }
     },
 

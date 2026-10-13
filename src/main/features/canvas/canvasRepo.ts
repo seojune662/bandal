@@ -36,6 +36,7 @@ interface BoardRow {
   sort_order: number
   created_at: string
   updated_at: string
+  added_at: number | null
 }
 
 interface ShapeRow {
@@ -95,6 +96,7 @@ function rowToBoard(row: BoardRow): PersonalBoard {
     pageCount: row.page_count,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
+    ...(row.added_at === null || row.added_at === undefined ? {} : { addedAt: row.added_at }),
     updatedAt: row.updated_at
   }
 }
@@ -174,19 +176,21 @@ export function createCanvasRepo(db: Database): CanvasRepo {
         pageCount: 1,
         sortOrder,
         createdAt: now,
+        addedAt: Date.parse(now),
         updatedAt: now
       }
       db.prepare(
         `INSERT INTO whiteboards
-           (id, course_id, title, sort_order, created_at, updated_at, deleted_at)
-         VALUES (?, ?, ?, ?, ?, ?, NULL)`
+           (id, course_id, title, sort_order, created_at, updated_at, added_at, deleted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`
       ).run(
         board.id,
         board.courseId,
         board.title,
         board.sortOrder,
         board.createdAt,
-        board.updatedAt
+        board.updatedAt,
+        board.addedAt
       )
       return board
     }

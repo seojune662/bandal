@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
+import { onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
 
 test('study market server changes select real integration and related packaged flows', () => {
@@ -15,6 +15,18 @@ test('study market server changes select real integration and related packaged f
   assert.equal(ui.studyMarketBackend, false)
   assert.deepEqual(ui.e2e, ['e2e/studyMarket.spec.ts'])
   assert.equal(planChecks(['src/main/features/pdf/exportPdf.ts']).studyMarketBackend, false)
+})
+
+test('isolated hover worker entry retains focused preview checks without global build scope', () => {
+  const entry = "          hoverPreviewHost: resolve(__dirname, 'src/main/features/materials/hoverPreviewHost.ts'),\n"
+  const before = 'input: {\n          index: main\n}'
+  assert.equal(onlyHoverPreviewEntryChanged(before, before.replace('input: {\n', `input: {\n${entry}`)), true)
+  assert.equal(onlyHoverPreviewEntryChanged(before, `${before}\nplugins: changed`), false)
+  const plan = planChecks(['src/main/features/materials/hoverPreviewHost.ts', 'src/renderer/src/features/materials/MaterialAffordances.tsx'])
+  assert.equal(plan.full, false)
+  assert.ok(plan.e2e.includes('e2e/materialPreview.spec.ts'))
+  assert.ok(plan.e2e.includes('e2e/materialsDrag.spec.ts'))
+  assert.ok(!plan.e2e.includes('e2e/appleCalendar.spec.ts'))
 })
 
 test('English guide rendering, persistence and entry points retain first-use packaged coverage', () => {

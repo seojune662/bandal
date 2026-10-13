@@ -82,6 +82,11 @@ const handlers: Handlers = {
   'materials:watch': () => ok,
   'materials:unwatch': () => ok,
   'materials:readFile': ({ courseId, relPath }) => ({ encoding: 'utf8', data: readNote(courseId, relPath).markdown }),
+  'materials:hoverPreview': ({ courseId, relPath }) => {
+    const note = readNote(courseId, relPath)
+    return { name: relPath.split('/').at(-1) ?? relPath, relPath, size: new TextEncoder().encode(note.markdown).length, mtime: note.mtime,
+      content: { kind: 'markdown', text: note.markdown.slice(0, 1200), truncated: note.markdown.length > 1200 } }
+  },
   'materials:delete': ({ courseId, relPath }) => { commit(next => { delete next.notes[key(courseId, relPath)] }); materialChanged(courseId); return ok },
   'materials:duplicate': ({ courseId, relPath }) => { const path = unusedName(courseId, relPath.replace(/\.md$/, ' 복사본')); writeNote(courseId, path, readNote(courseId, relPath).markdown); return { relPath: path } },
   'notes:read': ({ courseId, relPath }) => readNote(courseId, relPath),

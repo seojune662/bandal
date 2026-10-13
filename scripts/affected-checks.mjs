@@ -27,7 +27,7 @@ export function changedFiles(base) {
   if (files.has('electron.vite.config.ts')) {
     const before = git('show', `${base}:electron.vite.config.ts`)
     const after = readFileSync('electron.vite.config.ts', 'utf8')
-    if (onlyBrowserGestureEntryChanged(before, after)) files.delete('electron.vite.config.ts')
+    if (onlyBrowserGestureEntryChanged(before, after) || onlyHoverPreviewEntryChanged(before, after)) files.delete('electron.vite.config.ts')
   }
   return { base, files: [...files] }
 }
@@ -47,6 +47,11 @@ export function onlyVersionOrBrowserImportHookChanged(before, after) {
 export function onlyBrowserGestureEntryChanged(before, after) {
   // Git blobs use LF while Windows checkouts may use CRLF.
   const strip = value => value.replaceAll('\r\n', '\n').replace(/^\s*browserGesture: resolve\(__dirname, 'src\/preload\/browserGesture\.ts'\),?\n/gm, '').trim()
+  return strip(before) === strip(after)
+}
+
+export function onlyHoverPreviewEntryChanged(before, after) {
+  const strip = value => value.replaceAll('\r\n', '\n').replace(/^\s*hoverPreviewHost: resolve\(__dirname, 'src\/main\/features\/materials\/hoverPreviewHost\.ts'\),?\n/gm, '').trim()
   return strip(before) === strip(after)
 }
 
@@ -75,6 +80,10 @@ export function planChecks(files, full = false) {
   if (has(/^scripts\/browser-auth-probe\.mjs$/)) scriptTests.add('scripts/test-browser-auth-probe.mjs')
   const e2e = new Set(files.filter((f) => existsSync(f) && /^e2e\/[^/]+\.spec\.ts$/.test(f)))
   if (studyMarketBackend || has(/^src\/(?:main\/(?:features\/studyMarket\/|ipc\/studyMarketHandlers\.ts$)|shared\/(?:types\/studyMarket\.ts$|ipc\/studyMarketContract\.ts$)|renderer\/src\/(?:features\/studyMarket\/|app\/studyMarketNavigation\.ts$))/)) e2e.add('e2e/studyMarket.spec.ts')
+  if (has(/^src\/(?:renderer\/src\/features\/materials\/(?:MaterialAffordances|materialAffordances|materialStatus|preview\/)|main\/features\/materials\/(?:hoverPreview|materialAdded)|shared\/types\/materialHoverPreview)/)) {
+    e2e.add('e2e/materialPreview.spec.ts')
+    e2e.add('e2e/materialsDrag.spec.ts')
+  }
   const browserSettings = /^src\/renderer\/src\/features\/settings\/(browser\/|(?:SavedLoginsSettings|BrowsingDataPanel)\.tsx$)/
   const launcherShell = /^src\/renderer\/src\/app\/(AppShell|GlobalNavigation|RailResizer)\.tsx$/
   const packSettings = /^src\/renderer\/src\/features\/settings\/PacksPanel\.tsx$/
