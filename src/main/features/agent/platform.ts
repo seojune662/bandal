@@ -61,10 +61,9 @@ export function claudeFileNames(platform: Platform = process.platform): string[]
  * Well-known install locations to probe before falling back to PATH.
  *
  * POSIX: the CLI's own installer writes `~/.local/bin/claude`.
- * Windows: npm global installs land in `%APPDATA%\npm`, and the native
- * installer uses `%LOCALAPPDATA%\Programs\claude`. Neither is guaranteed to be
- * on the PATH of a GUI-launched process, which is exactly the case for an app
- * started from the Start menu.
+ * Windows: the native installer writes `%USERPROFILE%\.local\bin\claude.exe`.
+ * Prefer that target before older Programs/npm installs, so an in-app update
+ * takes effect immediately even when the Start-menu process has a stale PATH.
  */
 export function wellKnownClaudeDirs(
   platform: Platform = process.platform,
@@ -74,17 +73,21 @@ export function wellKnownClaudeDirs(
     return [joinPath(platform, homedir(), '.local', 'bin')]
   }
   const dirs: string[] = []
-  const appData = env['APPDATA']
-  if (appData !== undefined && appData !== '') {
-    dirs.push(joinPath(platform, appData, 'npm'))
+  const userProfile = env['USERPROFILE']
+  if (userProfile !== undefined && userProfile !== '') {
+    dirs.push(joinPath(platform, userProfile, '.local', 'bin'))
   }
   const localAppData = env['LOCALAPPDATA']
   if (localAppData !== undefined && localAppData !== '') {
     dirs.push(joinPath(platform, localAppData, 'Programs', 'claude'))
     dirs.push(joinPath(platform, localAppData, 'Programs', 'claude', 'bin'))
   }
+  const appData = env['APPDATA']
+  if (appData !== undefined && appData !== '') {
+    dirs.push(joinPath(platform, appData, 'npm'))
+  }
   dirs.push(...windowsCliInstallDirs(platform, env))
-  return dirs
+  return [...new Set(dirs)]
 }
 
 /**

@@ -6,8 +6,10 @@ import type { IDockviewPanelProps } from 'dockview'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+  managedLogin: null as null | { provider: 'codex'; requestId: string },
   invoke: vi.fn(), changeProfile: null as ((id: string) => Promise<boolean>) | null
 }))
+vi.mock('../../../src/renderer/src/features/browser/agentLoginTabs', () => ({ getAgentLoginForTab: () => mocks.managedLogin }))
 vi.mock('../../../src/renderer/src/lib/ipc', () => ({ invoke: mocks.invoke, onPush: () => () => {} }))
 vi.mock('../../../src/renderer/src/stores/settingsSnapshot', () => ({
   settingsSnapshot: () => ({ locale: 'ko-KR', browser: { defaultZoomLevel: 0, homePage: '' } }),
@@ -33,6 +35,7 @@ const subscribe = (callback: () => void) => { listeners.add(callback); return ()
 function Harness() { return <BrowserPanel {...useSyncExternalStore(subscribe, () => props)} /> }
 
 beforeEach(() => {
+  mocks.managedLogin = null
   mocks.invoke.mockReset().mockResolvedValue({ allowed: true, favorites: [] })
   resetBrowserGuestsForTests()
   useBrowserGuests.setState({ ensureGuest })
@@ -109,4 +112,25 @@ test('supervised retry navigates to the original service and removes the old ref
   expect(navigate).toHaveBeenCalledExactlyOnceWith('tab', 'https://chatgpt.com/')
   expect(useBrowserGuests.getState().authFallback.tab).toBeUndefined()
   expect(mocks.invoke.mock.calls.some(call => call[0] === 'shell:openExternal')).toBe(false)
+})
+
+
+test('managed sign-in refusal continues the original OAuth attempt in the external browser', async () => {
+  mocks.managedLogin = { provider: 'codex', requestId: 'managed-attempt' }
+  mocks.invoke.mockResolvedValue({ ok: true, allowed: true, favorites: [] })
+  act(() => root.render(<Harness />))
+  expect(host.textContent).toContain('기본 브라우저에서 로그인하면 반달이 연결을 확인해요')
+  const open = [...host.querySelectorAll('button')].find(button => button.textContent === '기본 브라우저에서 로그인 계속하기')!
+  await act(async () => { open.click() })
+  expect(mocks.invoke).toHaveBeenCalledWith('agent:reopenLogin', { provider: 'codex', requestId: 'managed-attempt', external: true })
+  expect(mocks.invoke.mock.calls.some(call => call[0] === 'shell:openExternal')).toBe(false)
+})
+
+test('managed supervised refusal offers the working external continuation without a misleading retry', () => {
+  mocks.managedLogin = { provider: 'codex', requestId: 'managed-attempt' }
+  useBrowserGuests.getState().setAuthFallback('tab', { restartUrl: 'https://chatgpt.com/', reason: 'supervised-account' })
+  act(() => root.render(<Harness />))
+  expect(host.textContent).not.toContain('원래 사이트 다시 열기')
+  expect(host.textContent).not.toContain('반달에서 로그인 다시 열기')
+  expect(host.textContent).toContain('기본 브라우저에서 로그인 계속하기')
 })

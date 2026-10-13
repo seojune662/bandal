@@ -134,6 +134,28 @@ describe('augmentedPathEnv', () => {
 describe('binaryLocator — Windows branch', () => {
   const VERSION_OK = 'claude 2.1.222'
 
+  it('uses the newly installed native CLI before an older npm CLI without restarting', async () => {
+    const native = 'C:\\Users\\학생\\.local\\bin\\claude.exe'
+    const oldNpm = 'C:\\Users\\학생\\AppData\\Roaming\\npm\\claude.cmd'
+    const probed: string[] = []
+    const locator = createBinaryLocator({
+      platform: 'win32',
+      env: {
+        USERPROFILE: 'C:\\Users\\학생',
+        APPDATA: 'C:\\Users\\학생\\AppData\\Roaming',
+        LOCALAPPDATA: 'C:\\Users\\학생\\AppData\\Local',
+        PATH: 'C:\\Users\\학생\\AppData\\Roaming\\npm;C:\\Windows\\System32'
+      },
+      fileExists: path => path === native || path === oldNpm,
+      exec: async file => {
+        probed.push(file)
+        return { stdout: `claude ${file === native ? '2.1.296' : '2.1.100'}`, stderr: '' }
+      }
+    })
+    await expect(locator.locate()).resolves.toEqual({ path: native, version: '2.1.296' })
+    expect(probed).toEqual([native])
+  })
+
   it('reads PATH from the environment instead of shelling out to zsh', async () => {
     const calls: string[] = []
     const locator = createBinaryLocator({

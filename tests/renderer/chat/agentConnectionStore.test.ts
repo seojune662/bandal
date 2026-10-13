@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { setIpcAdapter, type IpcAdapter } from '../../../src/renderer/src/lib/ipc'
-import { acquireAgentConnection, CONNECTION_POLL_MS, INSTALL_CHECK_TIMEOUT_MS, isAgentConnectionReady, LOGIN_CHECK_TIMEOUT_MS, prepareAgentConnection, refreshAgentConnection, refreshAgentConnectionAfterMutation, resetAgentConnectionsForTests, seedAgentAvailability, startAgentInstall, startAgentLogin, useAgentConnectionStore } from '../../../src/renderer/src/features/chat/agentConnectionStore'
+import { acquireAgentConnection, cancelAgentLogin, CONNECTION_POLL_MS, INSTALL_CHECK_TIMEOUT_MS, isAgentConnectionReady, prepareAgentConnection, refreshAgentConnection, refreshAgentConnectionAfterMutation, resetAgentConnectionsForTests, seedAgentAvailability, startAgentConnection, startAgentInstall, startAgentLogin, useAgentConnectionStore } from '../../../src/renderer/src/features/chat/agentConnectionStore'
 
 const disconnected = { installed: false, loggedIn: false }
 const signedOut = { installed: true, loggedIn: false }
@@ -75,7 +75,7 @@ describe('shared AI connection controller', () => {
     await flush()
     expect(invoke.mock.calls.filter(([channel]) => channel === 'agent:install')).toHaveLength(1)
     expect(invoke.mock.calls.filter(([channel]) => channel === 'agent:login')).toHaveLength(1)
-    expect(snapshot().stage).toBe('waiting-login')
+    expect(snapshot().stage).toBe('verifying-login')
     releaseAgain()
   })
   test('another surface install completion refreshes state without auto login', async () => {
@@ -99,19 +99,51 @@ describe('shared AI connection controller', () => {
     await vi.advanceTimersByTimeAsync(CONNECTION_POLL_MS * 2)
     expect(invoke).toHaveBeenCalledTimes(count)
   })
-  test('uses one login request, stops waiting after five minutes, and recovers via refresh', async () => {
+  test('waits for browser completion and verifies real credentials before declaring ready', async () => {
     let availability = signedOut
-    const invoke = vi.fn(async (channel: string) => channel === 'agent:login' ? { ok: true, message: 'opened' } : availability)
+    const completion = deferred<any>()
+    const invoke = vi.fn(async (channel: string) => channel === 'agent:login' ? completion.promise : availability)
     transport(invoke)
     const login = startAgentLogin('codex'); void startAgentLogin('codex')
-    await login
+    await flush()
+    const requestId = invoke.mock.calls.find(([channel]) => channel === 'agent:login')![1].requestId
+    handlers.get('agent:login-progress')!({ provider: 'codex', requestId, stage: 'waiting-browser', message: '로그인해 주세요.' })
     expect(snapshot().stage).toBe('waiting-login')
-    await vi.advanceTimersByTimeAsync(LOGIN_CHECK_TIMEOUT_MS)
-    expect(snapshot().stage).toBe('error')
-    availability = ready
-    await refreshAgentConnection('codex', true)
-    expect(snapshot().stage).toBe('idle')
+    void startAgentConnection('codex')
     expect(invoke.mock.calls.filter(([channel]) => channel === 'agent:login')).toHaveLength(1)
+    completion.resolve({ ok: true, message: 'done' }); await login
+    expect(snapshot().stage).toBe('verifying-login')
+    expect(snapshot().availability).toEqual(signedOut)
+    availability = ready
+    await vi.advanceTimersByTimeAsync(CONNECTION_POLL_MS)
+    expect(snapshot().stage).toBe('idle')
+    expect(snapshot().availability).toEqual(ready)
+  })
+  test('cancellation ignores the old completion and old progress while a retry is active', async () => {
+    const first = deferred<any>(), second = deferred<any>(); let loginCount = 0
+    const invoke = vi.fn(async (channel: string) => channel === 'agent:login' ? ++loginCount === 1 ? first.promise : second.promise : channel === 'agent:cancelLogin' ? { ok: true } : signedOut)
+    transport(invoke)
+    const attempt = startAgentLogin('codex'); await flush()
+    const oldId = invoke.mock.calls.find(([channel]) => channel === 'agent:login')![1].requestId
+    await cancelAgentLogin('codex')
+    expect(snapshot().stage).toBe('idle')
+    const retry = startAgentLogin('codex'); await flush()
+    const newId = invoke.mock.calls.filter(([channel]) => channel === 'agent:login')[1][1].requestId
+    expect(newId).not.toBe(oldId)
+    handlers.get('agent:login-progress')!({ provider: 'codex', requestId: oldId, stage: 'error', message: 'stale error' })
+    first.resolve({ ok: false, message: 'cancelled' }); await attempt
+    expect(snapshot().stage).toBe('opening-login')
+    expect(snapshot().error).toBeNull()
+    second.resolve({ ok: false, message: '계정 접근 권한을 확인해 주세요.' }); await retry
+    expect(snapshot().stage).toBe('error')
+    expect(snapshot().error).toBe('계정 접근 권한을 확인해 주세요.')
+  })
+  test('connection retry uses the installed tool instead of installing again', async () => {
+    transport(vi.fn(async (channel: string) => channel === 'agent:login' ? { ok: false, message: 'retry later' } : signedOut))
+    seedAgentAvailability('codex', signedOut)
+    await startAgentConnection('codex')
+    expect(snapshot().stage).toBe('error')
+    expect(snapshot().command).toBe('')
   })
   test('keeps installer failure details and does not run login', async () => {
     const invoke = vi.fn(async (channel: string) => channel === 'agent:installCommand' ? { command: 'install', supported: true } : { ok: false, message: '설치 경로에 쓸 수 없습니다.' })
@@ -159,4 +191,33 @@ describe('shared AI connection controller', () => {
       expect(snapshot().modelsRevision).toBe(before + 1)
     }
   })
+})
+
+test('repairs an outdated login tool once and does not loop if the old executable stays selected', async () => {
+  seedAgentAvailability('claude-code', signedOut)
+  const invoke = vi.fn(async (channel: string) => {
+    if (channel === 'agent:login') return { ok: false, requiresUpdate: true, message: '연결 도구를 업데이트해 주세요.' }
+    if (channel === 'agent:installCommand') return { supported: true, command: 'official installer' }
+    if (channel === 'agent:install') return { ok: true, message: 'installed' }
+    return signedOut
+  })
+  transport(invoke)
+  await startAgentConnection('claude-code'); await flush()
+  expect(invoke.mock.calls.filter(([channel]) => channel === 'agent:install')).toHaveLength(1)
+  expect(invoke.mock.calls.filter(([channel]) => channel === 'agent:login')).toHaveLength(2)
+  expect(useAgentConnectionStore.getState().connections['claude-code'].stage).toBe('error')
+})
+
+test('late cancel rejection cannot overwrite a new login attempt', async () => {
+  let rejectCancel!: (reason: Error) => void
+  const cancellation = new Promise((_resolve, reject) => { rejectCancel = reject })
+  const completion = deferred<any>()
+  transport(vi.fn(async (channel: string) => channel === 'agent:login' ? completion.promise : channel === 'agent:cancelLogin' ? cancellation : signedOut))
+  const first = startAgentLogin('codex'); await flush()
+  const cancelled = cancelAgentLogin('codex')
+  const second = startAgentLogin('codex'); await flush()
+  rejectCancel(new Error('late cancel failure')); await cancelled
+  expect(snapshot().stage).toBe('opening-login')
+  expect(snapshot().error).toBeNull()
+  completion.resolve({ ok: false, message: 'finished' }); await first; await second
 })

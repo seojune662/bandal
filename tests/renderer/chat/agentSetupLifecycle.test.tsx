@@ -36,5 +36,5 @@ test('new signed-out availability objects do not reacquire and recursively probe
   await act(async () => { await refreshAgentConnection('codex', true); for (let i = 0; i < 12; i++) await Promise.resolve(); await vi.advanceTimersByTimeAsync(6_000) })
   expect(probes).toBe(2)
   expect(refresh).not.toHaveBeenCalled()
-  expect(container.textContent).toContain('Codex (GPT) 로그인이 필요해요')
+  expect(container.textContent).toContain('반달에서 ChatGPT 사용하기')
 })

@@ -30,6 +30,7 @@ import {
   useCloseTabRequests
 } from './agentTabSync'
 import { rememberOpenRequest } from './guestActions'
+import { installAgentLoginTabLifecycle, prepareAgentLoginTab } from './agentLoginTabs'
 import { installBrowserAuthForwarding } from './browserAuthForwarding'
 import {
   isPointerPassthroughActive,
@@ -70,8 +71,9 @@ function useGuestReaper(): void {
 function useOpenUrlForwarding(): void {
   useEffect(
     () =>
-      onPush('browser:open-url', ({ url, background, requestId, isPrivate, profileId, tabId: adoptedTabId, courseId }) => {
-        const tabId = adoptedTabId ?? uuidv4()
+      onPush('browser:open-url', (payload) => {
+        const { url, background, requestId, isPrivate, profileId, tabId: adoptedTabId } = payload
+        const { tabId, courseId } = prepareAgentLoginTab(payload, adoptedTabId ?? uuidv4())
         // Main matched the new tab to the agent's request by URL prefix, which
         // a redirect breaks. Remember which request this tab belongs to so the
         // guest can say so when it registers.
@@ -175,6 +177,7 @@ export function BrowserWebviewLayer(): JSX.Element {
     }
   }), [])
   useOpenUrlForwarding()
+  useEffect(() => installAgentLoginTabLifecycle(), [])
   useAuthFallbackForwarding()
   useBlockedNotices()
   useAgentTabSync()

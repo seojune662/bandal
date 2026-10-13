@@ -153,7 +153,9 @@ export function planChecks(files, full = false) {
   }
   // At least one launch for an installer with no feature-specific E2E coverage.
   if (has(/src\/(main\/(features\/(agent|agentTools|browserAgent|desktopAgent)|windows\/(assistantWindow|approvalWindow|screenSelection|overlay))|renderer\/src\/features\/(chat|assistantPanel|overlay)|shared\/(types\/(chat|aiAccess)|moonGeometry|brandMark|screenGeometry))/)) { e2e.add('e2e/chatUx.spec.ts'); e2e.add('e2e/assistantSidebar.spec.ts'); e2e.add('e2e/aiContext.spec.ts') }
-  if (has(/^src\/(main\/features\/agent\/|renderer\/src\/features\/(?:ai\/|chat\/(?:agentConnectionStore|AgentSetupCards|chatSessionStore|ChatSurface)\.|settings\/(?:SettingsApp|SettingsPanels)\.)|shared\/(?:agentProviderSelection|types\/agent-events)\.ts$)/)) e2e.add('e2e/aiConnections.spec.ts')
+  if (has(/^src\/(main\/features\/agent\/|renderer\/src\/features\/(?:ai\/|chat\/(?:agentConnectionStore|agentConnectionCopy|agent-connection|AgentConnectionControls|AgentSetupCards|chatSessionStore|ChatSurface)\.|settings\/(?:SettingsApp|SettingsPanels)\.)|shared\/(?:agentProviderSelection|types\/agent-events)\.ts$)/)) e2e.add('e2e/aiConnections.spec.ts')
+  if (has(/^src\/main\/features\/agent\/login(?:BrowserBridge|Launcher)\.ts$/)) e2e.add('e2e/loginBrowserBridge.spec.ts')
+  if (has(/^src\/renderer\/src\/features\/browser\/agentLoginTabs\.ts$/)) e2e.add('e2e/aiConnections.spec.ts')
   if (workspace || has(/^src\/(?:renderer\/src\/features\/(?:courses\/(?:CourseSidebar|CourseListItem|useWorkspaceCourseHover)\.|browser\/(?:BrowserGuestView|nativePageHandle|browserGuestsStore)\.)|main\/(?:db\/layoutRepo\.ts$|features\/browser\/nativeTabs\.ts$))/)) {
     e2e.add('e2e/courseTabMove.spec.ts')
     e2e.add('e2e/tabMoveSessions.spec.ts')

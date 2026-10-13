@@ -84,6 +84,7 @@ const PUSH_CHANNELS = [
   // -- auto update ----------------------------------------------------------
   'update:changed',
   'agent:install-progress',
+  'agent:login-progress',
   // -- surfaces the assistant can now change --------------------------------
   'courses:changed',
   'board:changed',

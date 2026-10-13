@@ -1,3 +1,4 @@
+import { getAgentLoginForTab } from './agentLoginTabs'
 import { openDiagnostics } from './diagnosticsBridge'
 import { usePanelVisible } from '../workspace/usePanelVisible'
 import { AssistantPanelToggle } from '../assistantPanel/AssistantPanelToggle'
@@ -530,6 +531,7 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
     tabId !== '' ? state.nav[tabId] : undefined
   )
   const overlay = useBrowserGuests((state) => state.overlay[tabId] ?? null)
+  const managedLogin = getAgentLoginForTab(tabId)
   const authFallback = useBrowserGuests((state) => state.authFallback[tabId])
   const navState = nav ?? initialNavState(initialUrl)
   const favorites = useBrowserFavoriteShortcuts(profileId, ownerCourse)
@@ -695,9 +697,9 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
         >
           <BrowserIcon name="globe" />
           <span className="browser-external-auth__message">
-            {t(authFallback.reason === 'supervised-account' ? 'browser.authFallback.supervised' : 'browser.authFallback.message')}
+            {t(managedLogin ? authFallback.reason === 'supervised-account' ? 'browser.authFallback.agentSupervised' : 'browser.authFallback.agentMessage' : authFallback.reason === 'supervised-account' ? 'browser.authFallback.supervised' : 'browser.authFallback.message')}
           </span>
-          {authFallback.reason === 'supervised-account' && (
+          {authFallback.reason === 'supervised-account' && !managedLogin && (
             <button type="button" className="browser-login-prompt__action"
               onClick={() => {
                 navigate(authFallback.restartUrl)
@@ -709,12 +711,13 @@ export function BrowserPanel(props: IDockviewPanelProps): JSX.Element {
             type="button"
             className="browser-login-prompt__action browser-login-prompt__action--primary"
             onClick={() => {
-              void invoke('shell:openExternal', { url: authFallback.restartUrl }).catch(() => {
-                showToast('기본 브라우저를 열지 못했어요. 다시 시도해 주세요.', 'danger')
-              })
+              const opening = managedLogin
+                ? invoke('agent:reopenLogin', { ...managedLogin, external: true }).then(result => { if (!result.ok) throw new Error(result.message) })
+                : invoke('shell:openExternal', { url: authFallback.restartUrl })
+              void opening.catch(() => showToast('기본 브라우저를 열지 못했어요. 다시 시도해 주세요.', 'danger'))
             }}
           >
-            {t('browser.authFallback.action')}
+            {t(managedLogin ? 'browser.authFallback.agentAction' : 'browser.authFallback.action')}
           </button>
           <button
             type="button"

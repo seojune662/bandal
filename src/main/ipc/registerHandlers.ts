@@ -2540,9 +2540,9 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     agentAvailability.check(req.provider, { refresh: req.refresh })
   )
 
-  // Installers mutate the machine outside the app sandbox, so `agent:install`
-  // is only ever reached from an explicit click after the UI has shown the
-  // exact command from `agent:installCommand`. The SAME locator singletons
+  // An explicit Connect click authorizes the official installation. The UI
+  // keeps installation details available without requiring terminal knowledge.
+  // The SAME locator singletons
   // that serve `agent:availability` are passed in so post-install
   // verification resets the caches the renderer actually queries.
   const agentInstaller = createAgentInstaller({
@@ -2550,8 +2550,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     locators: agentLocators
   })
   const loginLauncher = createLoginLauncher({
-    locators: agentLocators
+    locators: agentLocators,
+    broadcast: progress => broadcast('agent:login-progress', progress),
+    openBrowser: (url, context) => broadcast('browser:open-url', { url, isPrivate: true, loginRequestId: context.requestId, loginProvider: context.provider }),
+    openExternal: url => shell.openExternal(url)
   })
+  app.on('will-quit', () => loginLauncher.dispose())
+  process.on('exit', () => loginLauncher.dispose())
   // -- AI study tools --------------------------------------------------------
   // The recipes run through the course's normal agent session and write their
   // answer into the course folder, so a result is editable, survives the
@@ -2691,10 +2696,13 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   handle('agent:installCommand', (req) => agentInstaller.commandFor(req.provider))
   handle('agent:install', (req) => agentInstaller.install(req.provider))
   handle('agent:login', async (req) => {
-    const result = await loginLauncher.login(req.provider)
+    const result = await loginLauncher.login(req.provider, req.requestId)
     void agentAvailability.check(req.provider, { refresh: true }).catch(() => undefined)
     return result
   })
+  handle('agent:cancelLogin', req => loginLauncher.cancel(req.provider, req.requestId))
+  handle('agent:reopenLogin', req => loginLauncher.reopen(req.provider, req.external, req.requestId))
+  handle('agent:submitLoginCode', req => loginLauncher.submitCode(req.provider, req.code, req.requestId))
   handle('agent:models', (req) => getAgentModels(req.provider, req.refresh))
   handle('agent:geminiApiKey', () => geminiApiKeyStore.get())
   handle('agent:setGeminiApiKey', (req) => {
