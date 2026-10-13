@@ -512,7 +512,7 @@ describe('rename path repointing', () => {
     expect(payloadRelPath(materialLinkJson('link-1').target_json)).toBe('old.pdf')
   })
 
-  test('repository hook exceptions are warned without falsifying renames', async () => {
+  test('material hook errors retain a recoverable intent; file-only note embedders retain legacy warnings', async () => {
     writeFileSync(join(courseFolder, 'material.pdf'), 'pdf')
     writeFileSync(join(courseFolder, 'note.md'), '# Note\n')
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -531,11 +531,12 @@ describe('rename path repointing', () => {
       onPathChanged: failingHook
     })
 
-    expect(await materials.rename({
+    await expect(materials.rename({
       courseId: COURSE_ID,
       relPath: 'material.pdf',
       newName: 'renamed.pdf'
-    })).toEqual({ relPath: 'renamed.pdf' })
+    })).rejects.toThrow(/injected hook failure/)
+    expect(ctx.db.prepare('SELECT from_rel_path,to_rel_path FROM material_path_intents').get()).toEqual({ from_rel_path: 'material.pdf', to_rel_path: 'renamed.pdf' })
     expect((await notes.rename({
       courseId: COURSE_ID,
       relPath: 'note.md',
@@ -544,6 +545,6 @@ describe('rename path repointing', () => {
 
     expect(existsSync(join(courseFolder, 'renamed.pdf'))).toBe(true)
     expect(existsSync(join(courseFolder, 'renamed-note.md'))).toBe(true)
-    expect(warn).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalledTimes(1)
   })
 })
