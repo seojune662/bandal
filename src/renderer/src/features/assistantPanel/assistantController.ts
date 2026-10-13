@@ -23,7 +23,7 @@ const keyFor = (panelId: string, courseId: string | null): string => JSON.string
 useWorkspaceStore.subscribe(state => {
   const activeKey = state.surface === 'course' && state.activePanelId ? keyFor(state.activePanelId, state.activeCourseId) : null
   for (const key of pendingShow) if (key !== activeKey) { pendingShow.delete(key); pendingFocus.delete(key) }
-  if (state.surface === 'learning-home') { pendingFocus.clear(); pendingCourseFocus = null }
+  if (state.surface !== 'course') { pendingFocus.clear(); pendingCourseFocus = null }
 })
 const notify = (): void => { for (const listener of listeners) listener() }
 const subscribe = (listener: () => void): (() => void) => {
@@ -66,6 +66,10 @@ function focusPanel(panelId: string): void {
 /** Opening never creates a replacement conversation for an existing document. */
 export function openActiveAssistant(): void {
   const workspace = useWorkspaceStore.getState()
+  if (workspace.surface === 'study-market') {
+    workspace.showCourseWorkspace(useCoursesStore.getState().selectedCourseId)
+    useUiStore.getState().showCourses()
+  }
   if (workspace.surface === 'learning-home') {
     pendingCourseFocus = null
     pendingFocus.clear(); pendingShow.clear()

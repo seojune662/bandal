@@ -11,6 +11,8 @@ import { MaterialsStudyToolMenuItem } from '../study/MaterialsStudyToolMenuItem'
 import { tabTitle } from '../workspace/tabIdentity'
 import { PluginMenuItems } from '../plugins/PluginMenuItems'
 import { convertPresentationToPdf } from '../file/pptx/presentationJobs'
+import { openStudyMarketSell } from '../studyMarket/controller'
+import { isSellableMaterial } from '../studyMarket/presentation'
 
 export interface MaterialsContextMenuState {
   target: MaterialNode | null
@@ -161,6 +163,12 @@ export function MaterialsContextMenu({
         returnFocus={returnFocus}
         onClose={onClose}
       />
+      {activeCourseId !== null && (target === null || target.kind === 'dir' || isSellableMaterial(target.relPath)) && (
+        <button type="button" role="menuitem" onClick={() => {
+          openStudyMarketSell({ courseId: activeCourseId, ...(target === null ? {} : { relPath: target.relPath }) })
+          onClose()
+        }}><Icon name="fileText" />자료 판매하기</button>
+      )}
       {target !== null && activeCourseId !== null && <PluginMenuItems location="materials" courseId={activeCourseId} relPath={target.relPath} onClose={onClose} />}
       {favoriteDescriptor !== null && (
         <button

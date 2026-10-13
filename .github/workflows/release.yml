@@ -79,6 +79,18 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
         if: steps.checks.outputs.reused != 'true'
+      - name: Select backend verification
+        id: backend
+        if: steps.checks.outputs.reused != 'true'
+        run: echo "required=$(node scripts/affected-checks.mjs --backend-plan)" >> "$GITHUB_OUTPUT"
+      - uses: denoland/setup-deno@v2
+        if: steps.backend.outputs.required == 'true'
+        with:
+          deno-version: v2.9.4
+      - uses: supabase/setup-cli@v1
+        if: steps.backend.outputs.required == 'true'
+        with:
+          version: 2.110.0
       - run: node scripts/affected-checks.mjs
         if: steps.checks.outputs.reused != 'true'
 

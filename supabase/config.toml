@@ -4,6 +4,15 @@
 # working directory name when running `supabase init`.
 project_id = "bandal"
 
+# API validates user JWT with getUser; only opaque checkout capabilities bypass
+# that path. Webhooks validate provider signatures/re-query, cron a server secret.
+[functions.study-market]
+verify_jwt = false
+[functions.study-market-webhook]
+verify_jwt = false
+[functions.study-market-cron]
+verify_jwt = false
+
 [api]
 enabled = true
 # Port to use for the API URL.

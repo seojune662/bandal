@@ -1,0 +1,4 @@
+{
+  "imports": { "@supabase/supabase-js": "npm:@supabase/supabase-js@2.112.1" },
+  "compilerOptions": { "strict": true, "noUncheckedIndexedAccess": true }
+}

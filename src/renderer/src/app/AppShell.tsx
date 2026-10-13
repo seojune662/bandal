@@ -1,3 +1,4 @@
+import { openStudyMarket } from './studyMarketNavigation'
 import {
   lazy,
   Suspense,
@@ -124,6 +125,7 @@ export function AppShell(): JSX.Element {
   const rightRailOpen = useUiStore((state) => state.rightRailOpen)
   const workspaceSurface = useWorkspaceStore((state) => state.surface)
   const activeTabKind = useWorkspaceStore((state) => state.activePanelSource()?.descriptor.kind ?? null)
+  const courseRailVisible = courseRailOpen && workspaceSurface !== 'study-market'
   const materialsRailVisible = rightRailOpen && workspaceSurface === 'course' && activeTabKind !== 'learning'
   // GlobalNavigation owns the board entry point; the shell owns its overlay.
   const isBoardOverlayOpen = useUiStore((state) => state.isBoardOverlayOpen)
@@ -153,6 +155,10 @@ export function AppShell(): JSX.Element {
 
   // Auto-update toasts. Inert in `pnpm dev` (main reports phase 'unsupported').
   useUpdateNotifications()
+  useEffect(() => {
+    window.addEventListener('bandal:open-study-market', openStudyMarket)
+    return () => window.removeEventListener('bandal:open-study-market', openStudyMarket)
+  }, [])
   useEffect(subscribePluginEditor, [])
 
   useEffect(() => {
@@ -405,18 +411,18 @@ export function AppShell(): JSX.Element {
       data-settings={settingsPresent ? 'open' : 'closed'}
       data-board={isBoardOverlayOpen ? 'open' : 'closed'}
       data-left-rail={leftRailOpen ? 'open' : 'closed'}
-      data-course-rail={leftRailOpen && courseRailOpen ? 'open' : 'closed'}
+      data-course-rail={leftRailOpen && courseRailVisible ? 'open' : 'closed'}
       data-left-panel={leftRailPanel}
       data-right-rail={materialsRailVisible ? 'open' : 'closed'}
     >
       <GlobalNavigation />
-      <div id="course-rail" className="shell-course-rail" aria-hidden={!leftRailOpen || !courseRailOpen || settingsPresent}
-        {...{ inert: !leftRailOpen || !courseRailOpen || settingsPresent ? '' : undefined }}>
+      <div id="course-rail" className="shell-course-rail" aria-hidden={!leftRailOpen || !courseRailVisible || settingsPresent}
+        {...{ inert: !leftRailOpen || !courseRailVisible || settingsPresent ? '' : undefined }}>
         <CourseSidebar hidden={leftRailPanel !== 'courses'} />
         {learningMounted && <LearningSpacesPanel hidden={leftRailPanel !== 'learning'} />}
         {launcherMounted && <FeatureLauncherPanel hidden={leftRailPanel !== 'plugins'} />}
       </div>
-      {leftRailOpen && courseRailOpen && !settingsPresent && <RailResizer side="left" />}
+      {leftRailOpen && courseRailVisible && !settingsPresent && <RailResizer side="left" />}
 
       <main className="app-workspace" aria-label="작업 공간" {...{ inert: settingsPresent ? '' : undefined }}>
         <WorkspaceHost />

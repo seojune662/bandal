@@ -3,6 +3,20 @@ import assert from 'node:assert/strict'
 import { onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
 
+test('study market server changes select real integration and related packaged flows', () => {
+  for (const file of ['supabase/migrations/20261013000000_study_market.sql', 'supabase/functions/_shared/study-market/service.ts', 'src/shared/types/studyMarket.ts']) {
+    const plan = planChecks([file])
+    assert.equal(plan.studyMarketBackend, true)
+    assert.equal(plan.full, false)
+    assert.deepEqual(plan.e2e, ['e2e/studyMarket.spec.ts'])
+    assert.ok(plan.unitInputs.includes('tests/backend/studyMarket/policy.test.ts'))
+  }
+  const ui = planChecks(['src/renderer/src/features/studyMarket/StudyMarketHome.tsx', 'src/renderer/src/app/studyMarketNavigation.ts'])
+  assert.equal(ui.studyMarketBackend, false)
+  assert.deepEqual(ui.e2e, ['e2e/studyMarket.spec.ts'])
+  assert.equal(planChecks(['src/main/features/pdf/exportPdf.ts']).studyMarketBackend, false)
+})
+
 test('English guide rendering, persistence and entry points retain first-use packaged coverage', () => {
   for (const name of ['EnglishReadingGuide.tsx', 'englishReadingGuide.css', 'englishReadingGuideState.ts', 'LearningCreateDialog.tsx', 'LearningTab.tsx']) {
     const plan = planChecks([`src/renderer/src/features/learning/${name}`])

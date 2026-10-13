@@ -1,3 +1,6 @@
+import { createStudyMarketClient } from '../features/studyMarket/client'
+import { createStudyMarketBundles } from '../features/studyMarket/bundles'
+import { registerStudyMarketHandlers } from './studyMarketHandlers'
 import { assertAppRendererSender } from './appRendererSender'
 import { forgetGoogleAccountNavigation } from '../features/browser/googleAccountNavigation'
 import { createLearningRepo, normalizeLearningDraft } from '../features/learning'
@@ -3126,6 +3129,39 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
     appVersion: () => resolveAppVersion(app.isPackaged, app.getVersion(), __APP_VERSION__)
   })
   const pluginData = createPluginDataStore({ userDataDir: deps.userDataPath })
+  const studyMarketClient = createStudyMarketClient({ getClient: () => account.getClient(), fetch: (url, init) => net.fetch(url instanceof URL ? url.href : url, init) })
+  const studyMarketBundles = createStudyMarketBundles({
+    getCourseFolder: courseId => coursesRepo.getFolder(courseId),
+    exportAnnotated: (input, path) => pdfExporter.exportAnnotated(input, path),
+    listAnnotations: (courseId, relPath) => annotationsRepo.listForFile({ courseId, relPath }),
+    fetch: (url, init) => net.fetch(url instanceof URL ? url.href : url, init),
+    sanitizePreview: bytes => {
+      const image = nativeImage.createFromBuffer(bytes)
+      const size = image.getSize()
+      if (image.isEmpty() || size.width > 2048 || size.height > 2048) throw new ValidationError('미리보기 이미지를 확인해 주세요.')
+      return image.toPNG()
+    }
+  })
+  app.once('will-quit', () => { void studyMarketBundles.dispose() })
+  registerStudyMarketHandlers(handle, {
+    client: studyMarketClient, bundles: studyMarketBundles,
+    createCourse: name => { const course = coursesRepo.create({ name, color: 'blue' }); broadcast('courses:changed', {}); return course },
+    changed: courseId => { materialsRepo.invalidateTree(courseId); broadcast('materials:changed', { courseId }); broadcast('courses:changed', {}) },
+    openExternal: url => shell.openExternal(url),
+    pickPreviewImage: async () => {
+      const picked = await dialog.showOpenDialog({ title: '공개할 미리보기 이미지 선택', properties: ['openFile'], filters: [{ name: '이미지', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] })
+      if (picked.canceled || !picked.filePaths[0]) return null
+      const { readFile, stat } = await import('node:fs/promises')
+      if ((await stat(picked.filePaths[0])).size > 10 * 1024 * 1024) throw new ValidationError('미리보기 이미지는 10MB 이하로 선택해 주세요.')
+      let image = nativeImage.createFromBuffer(await readFile(picked.filePaths[0]))
+      if (image.isEmpty()) throw new ValidationError('이미지를 읽지 못했어요.')
+      const size = image.getSize(); const ratio = Math.min(1, 1600 / Math.max(size.width, size.height))
+      if (ratio < 1) image = image.resize({ width: Math.round(size.width * ratio), height: Math.round(size.height * ratio), quality: 'good' })
+      const bytes = image.toPNG()
+      if (bytes.length > 4 * 1024 * 1024) throw new ValidationError('더 작은 미리보기 이미지를 선택해 주세요.')
+      return { dataUrl: `data:image/png;base64,${bytes.toString('base64')}` }
+    }
+  })
   const marketplace = createMarketplaceClient({ getClient: () => account.getClient(), fetch: (url, init) => net.fetch(url instanceof URL ? url.href : url, init) })
   handle('marketplace:dashboard', () => marketplace.dashboard())
   handle('marketplace:release', (req) => marketplace.release(req.id))

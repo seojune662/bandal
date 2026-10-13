@@ -67,7 +67,7 @@ export function resolveLauncherContext(input: ContextSources): LauncherContext {
 
 function currentContext(): LauncherContext {
   const workspace = useWorkspaceStore.getState()
-  if (workspace.surface === 'learning-home') return { ...EMPTY_LAUNCHER_CONTEXT, articleIds: [], wordIds: [] }
+  if (workspace.surface !== 'course') return { ...EMPTY_LAUNCHER_CONTEXT, articleIds: [], wordIds: [] }
   const courses = useCoursesStore.getState()
   const source = workspace.activePanelSource()
   const browserNav = source?.descriptor.kind === 'browser' ? useBrowserGuests.getState().nav[source.descriptor.payload.tabId] : undefined
@@ -165,7 +165,7 @@ export function prepareLauncherContext(): void { void captureLauncherContext() }
 
 /** Refresh the pinned source; never substitute the tab focused after opening. */
 export async function refreshLauncherContext(context: LauncherContext): Promise<LauncherContext> {
-  if (useWorkspaceStore.getState().surface === 'learning-home' && context.sourcePanelId) throw new Error('자료가 숨겨졌어요. 원본 자료를 다시 열고 실행해 주세요.')
+  if (useWorkspaceStore.getState().surface !== 'course' && context.sourcePanelId) throw new Error('자료가 숨겨졌어요. 원본 자료를 다시 열고 실행해 주세요.')
   if (context.sourceUnavailable) throw new Error('원본 자료를 확인할 수 없어요. 현재 자료를 다시 선택해 주세요.')
   if (context.sourcePanelId) {
     const workspace = useWorkspaceStore.getState()

@@ -16,7 +16,7 @@ jobs:
   check:
     name: Affected checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
         with:
@@ -27,6 +27,24 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Select backend verification
+        id: backend
+        env:
+          FULL: ${{ inputs.full == true && '--full' || '' }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          args=()
+          if [ -n "$FULL" ]; then args+=("$FULL"); fi
+          if [ -n "$PR_BASE" ]; then args+=(--base "$PR_BASE"); fi
+          echo "required=$(node scripts/affected-checks.mjs --backend-plan "${args[@]}")" >> "$GITHUB_OUTPUT"
+      - uses: denoland/setup-deno@v2
+        if: steps.backend.outputs.required == 'true'
+        with:
+          deno-version: v2.9.4
+      - uses: supabase/setup-cli@v1
+        if: steps.backend.outputs.required == 'true'
+        with:
+          version: 2.110.0
       - name: Verify changed code and its dependents
         env:
           FULL: ${{ inputs.full == true && '--full' || '' }}

@@ -1,3 +1,4 @@
+import { STUDY_MARKET_CHANNELS, type StudyMarketIpcContract } from './studyMarketContract'
 import { LEARNING_CHANNELS, type LearningIpcContract } from './learningContract'
 import type { BrowserPageState, BrowserPageAction } from '../types/browserNative'
 import type { BrowserImportSource, BrowserImportFileKind, BrowserImportRequest, BrowserImportJob } from '../types/browserImport'
@@ -174,7 +175,7 @@ export type RunWorkflowPackStudyInput = Omit<RunStudyToolInput, 'tool'> & {
   followUpOf?: string
 }
 
-export interface IpcContract extends MailIpcContract, PresentationIpcContract, RecordingIpcContract, LearningIpcContract {
+export interface IpcContract extends StudyMarketIpcContract, MailIpcContract, PresentationIpcContract, RecordingIpcContract, LearningIpcContract {
   // -- courses --------------------------------------------------------------
   'courses:list': {
     req: { includeArchived?: boolean }
@@ -1617,6 +1618,7 @@ export type IpcResponse<K extends IpcChannel> = IpcContract[K]['res']
  * here actually got a handler.
  */
 export const IPC_CHANNELS = [
+  ...STUDY_MARKET_CHANNELS,
   ...LEARNING_CHANNELS,
   ...RECORDING_CHANNELS,
   'presentation:runtime', 'presentation:installRuntime', 'presentation:cancelRuntime',

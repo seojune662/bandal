@@ -30,6 +30,7 @@ import {
 } from './courseCollapse'
 import { useCourseDrag } from './useCourseDrag'
 import { CourseListItem } from './CourseListItem'
+import { openStudyMarketSell } from '../studyMarket/controller'
 import {
   persistCollapsedGroupIds,
   readCollapsedGroupIds
@@ -609,6 +610,18 @@ export function CourseSidebar({ hidden = false }: { hidden?: boolean }): JSX.Ele
             </div>
           </div>
           <span className="context-menu__separator" />
+          <button
+            type="button"
+            role="menuitem"
+            disabled={contextMenu.course.missing}
+            onClick={() => {
+              openStudyMarketSell({ courseId: contextMenu.course.id })
+              setContextMenu(null)
+            }}
+          >
+            <Icon name="fileText" />
+            자료 판매하기
+          </button>
           <button
             type="button"
             role="menuitem"

@@ -156,7 +156,7 @@ export const useCoursesStore: ImmerStore<CoursesState> = create<CoursesState>()(
             courses.some((course) => course.id === settings.lastActiveCourseId)
               ? settings.lastActiveCourseId
               : null
-          get().selectCourse(remembered ?? courses[0]?.id ?? null, { preserveSurface: useWorkspaceStore.getState().surface === 'learning-home' })
+          get().selectCourse(remembered ?? courses[0]?.id ?? null, { preserveSurface: useWorkspaceStore.getState().surface !== 'course' })
         }
         // [Gap B] 부팅에서 고른 과목도 영속 — 안 그러면 과목을 한 번도
         // 전환하지 않은 사용자는 lastActiveCourseId 가 영영 비어 있다.

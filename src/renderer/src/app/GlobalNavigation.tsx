@@ -1,3 +1,4 @@
+import { openStudyMarket } from './studyMarketNavigation'
 import { useAuthStore } from '../stores/authStore'
 import { useUiStore } from '../stores/uiStore'
 import { SidebarAccountEntry } from '../features/account/SidebarAccountEntry'
@@ -24,7 +25,7 @@ export function GlobalNavigation(): JSX.Element {
   const surface = useWorkspaceStore((state) => state.surface)
   const openCourses = (): void => {
     const ui = useUiStore.getState()
-    if (useWorkspaceStore.getState().surface === 'learning-home') { returnToCourseWorkspace(); return }
+    if (useWorkspaceStore.getState().surface !== 'course') { returnToCourseWorkspace(); return }
     if (ui.isSettingsOpen || ui.isBoardOverlayOpen || ui.isLinkGraphOpen || ui.leftRailPanel !== 'courses') ui.showCourses()
     else ui.toggleCourseRail()
   }
@@ -35,9 +36,9 @@ export function GlobalNavigation(): JSX.Element {
         <button
           className="rail-nav__item"
           aria-label="과목"
-          aria-expanded={courseOpen && leftPanel === 'courses' && !boardOpen && !settingsOpen && !graphOpen}
+          aria-expanded={surface === 'course' && courseOpen && leftPanel === 'courses' && !boardOpen && !settingsOpen && !graphOpen}
           aria-controls="course-rail"
-          data-active={(!boardOpen && !settingsOpen && !graphOpen && courseOpen && leftPanel === 'courses') || undefined}
+          data-active={(!boardOpen && !settingsOpen && !graphOpen && surface === 'course' && courseOpen && leftPanel === 'courses') || undefined}
           onClick={openCourses}
         >
           <Icon name="folder" />
@@ -80,12 +81,25 @@ export function GlobalNavigation(): JSX.Element {
       </Tooltip>
       <Tooltip label="도구" placement="right">
         <button className="rail-nav__item" aria-label="도구"
-          aria-expanded={courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen}
+          aria-expanded={surface !== 'study-market' && courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen}
           aria-controls="plugins-panel"
-          data-active={courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen || undefined}
+          data-active={surface !== 'study-market' && courseOpen && leftPanel === 'plugins' && !boardOpen && !settingsOpen && !graphOpen || undefined}
           onPointerDown={event => { if (event.button === 0) { event.preventDefault(); void captureLauncherContext() } }}
-          onClick={event => { if (event.detail === 0) void captureLauncherContext(); useUiStore.getState().togglePluginsPanel() }}>
+          onClick={event => {
+            if (surface === 'study-market') {
+              useWorkspaceStore.getState().showCourseWorkspace(useWorkspaceStore.getState().activeCourseId)
+              useUiStore.setState({ courseRailOpen: false })
+            }
+            if (event.detail === 0) void captureLauncherContext()
+            useUiStore.getState().togglePluginsPanel()
+          }}>
           <Icon name="puzzle" />
+        </button>
+      </Tooltip>
+      <Tooltip label="마켓플레이스" placement="right">
+        <button className="rail-nav__item" aria-label="마켓플레이스" aria-pressed={surface === 'study-market' && !boardOpen && !settingsOpen && !graphOpen}
+          data-active={surface === 'study-market' && !boardOpen && !settingsOpen && !graphOpen || undefined} onClick={openStudyMarket}>
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M4 10v10h16V10M3 10l2-6h14l2 6M3 10a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0M9 20v-6h6v6" /></svg>
         </button>
       </Tooltip>
       <HelpHub />

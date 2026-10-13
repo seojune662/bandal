@@ -122,7 +122,7 @@ export async function executeFeatureAction(entry: FeatureEntry, capturedContext:
       requestLearningCreation(undefined, entry.packId)
       return { status: 'opened', message: '새 영어 읽기 공간을 만들어 주세요.' }
     }
-    if (useWorkspaceStore.getState().surface === 'learning-home' && capturedContext.sourcePanelId) throw new Error('이전 자료는 학습 홈에서 사용할 수 없어요. 원본 자료를 다시 선택해 주세요.')
+    if (useWorkspaceStore.getState().surface !== 'course' && capturedContext.sourcePanelId) throw new Error('이전 자료는 학습 홈에서 사용할 수 없어요. 원본 자료를 다시 선택해 주세요.')
     if (entry.kind === 'pack' && options.binding && capturedContext.binding && !sameBinding(options.binding, capturedContext.binding)) throw new Error('이 기사와 단어가 저장된 학습 공간을 선택해 주세요.')
     let context = scope === 'course' || (entry.kind === 'plugin-command' && !capturedContext.material?.relPath)
       ? capturedContext : await refreshLauncherContext(capturedContext)

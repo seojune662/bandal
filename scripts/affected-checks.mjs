@@ -63,6 +63,7 @@ export function planChecks(files, full = false) {
   const has = (pattern) => files.some((file) => pattern.test(file))
   // Global runtime/toolchain changes justify a broad check; routine features do not.
   full ||= has(/^(package\.json|pnpm-lock\.yaml|electron\.vite\.config\.ts|vitest\.config\.ts|tests\/setup\.ts)$/)
+  const studyMarketBackend = full || has(/^(supabase\/(?:functions\/|migrations\/.*study_market|config\.toml)|tests\/backend\/studyMarket\/|src\/shared\/types\/studyMarket\.ts$)/)
   const types = new Set()
   if (full || has(/^(src\/(main|preload|shared)\/|server\/|sdk\/|(?:marketplace|sdk)\.vite\.config\.ts|tsconfig\.node\.json)/)) types.add('tsconfig.node.json')
   if (full || has(/^(src\/(renderer|shared)\/|src\/preload\/browser|tsconfig\.web\.json)/)) types.add('tsconfig.web.json')
@@ -73,12 +74,13 @@ export function planChecks(files, full = false) {
   if (has(/^scripts\/(upload-release-assets|lib\/release-assets|test-release-assets)\.mjs$/)) scriptTests.add('scripts/test-release-assets.mjs')
   if (has(/^scripts\/browser-auth-probe\.mjs$/)) scriptTests.add('scripts/test-browser-auth-probe.mjs')
   const e2e = new Set(files.filter((f) => existsSync(f) && /^e2e\/[^/]+\.spec\.ts$/.test(f)))
+  if (studyMarketBackend || has(/^src\/(?:main\/(?:features\/studyMarket\/|ipc\/studyMarketHandlers\.ts$)|shared\/(?:types\/studyMarket\.ts$|ipc\/studyMarketContract\.ts$)|renderer\/src\/(?:features\/studyMarket\/|app\/studyMarketNavigation\.ts$))/)) e2e.add('e2e/studyMarket.spec.ts')
   const browserSettings = /^src\/renderer\/src\/features\/settings\/(browser\/|(?:SavedLoginsSettings|BrowsingDataPanel)\.tsx$)/
   const launcherShell = /^src\/renderer\/src\/app\/(AppShell|GlobalNavigation|RailResizer)\.tsx$/
   const packSettings = /^src\/renderer\/src\/features\/settings\/PacksPanel\.tsx$/
   const settingsShell = /^src\/renderer\/src\/features\/settings\/(?:SettingsApp|SettingsPanels)\.tsx$/
   const pluginSettings = /^src\/renderer\/src\/features\/settings\/(?:catalog\/|pluginCenter\/|(?:PluginsCategoryPanel|PluginConfiguration|PluginDevelopmentPanel|ExtensionsPanel|PacksPanel|McpServersPanel|McpQuickAdd|MarketplacePanel|PluginFeatureMark|pluginCenterModel|mcpPresets|mcpImport|packImport)\.tsx?$|settings-(?:plugins|packs|mcp)\.css$|plugin-center)/
-  const sharedAppearance = files.some(file => !browserSettings.test(file) && !launcherShell.test(file) && !packSettings.test(file) && !settingsShell.test(file) && !pluginSettings.test(file) && file !== 'src/renderer/src/features/settings/settingsSearchIndex.ts' && file !== 'src/renderer/src/components/BandalMark.tsx' && file !== 'src/renderer/src/app/tabCommands.ts' && /^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/.test(file))
+  const sharedAppearance = files.some(file => !browserSettings.test(file) && !launcherShell.test(file) && !packSettings.test(file) && !settingsShell.test(file) && !pluginSettings.test(file) && file !== 'src/renderer/src/features/settings/settingsSearchIndex.ts' && file !== 'src/renderer/src/components/BandalMark.tsx' && file !== 'src/renderer/src/app/tabCommands.ts' && file !== 'src/renderer/src/app/studyMarketNavigation.ts' && /^(src\/shared\/(theme|appearance)\.ts|src\/renderer\/src\/(styles\/|app\/|components\/|features\/settings\/))/.test(file))
   if (has(launcherShell) || has(/^src\/renderer\/src\/(features\/launcher\/|stores\/(workflowPacksStore|uiStore)\.ts$)/) || has(packSettings)) e2e.add('e2e/featureLauncher.spec.ts')
   if (has(launcherShell)) {
     e2e.add('e2e/sidebars.spec.ts')
@@ -170,6 +172,7 @@ export function planChecks(files, full = false) {
   if (has(/^src\/(?:renderer\/src\/features\/(?:workspace\/(?:panelContentHost|WorkspaceHost|panels\/browserAnchor)\.|browser\/(?:BrowserGuestView|nativePageHandle)\.)|main\/features\/browser\/nativeTabs\.ts$)/)) e2e.add('e2e/browserPlacement.spec.ts')
   if (e2e.size === 0) e2e.add('e2e/startup.spec.ts')
   const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f))
+  if (studyMarketBackend) unitInputs.push('tests/backend/studyMarket/policy.test.ts')
   if (dictionaryResources) unitInputs.push('src/main/features/learning/dictionary.ts')
   if (sharedAppearance) unitInputs.push('src/shared/theme.ts', 'src/renderer/src/features/courses/CourseSidebar.tsx', 'src/renderer/src/features/settings/AppearancePanel.tsx')
   if (has(/^(?:native|resources\/native)\/browser-import\/|^scripts\/(build-browser-import|verify-browser-import|build-native)\.mjs$/)) unitInputs.push('src/main/features/browser/import/index.ts')
@@ -186,7 +189,7 @@ export function planChecks(files, full = false) {
   }
   const e2eGrep = partial.size ? [...e2e].map(f => partial.get(f) ?? f.replace('e2e/', '').replaceAll('.', '\\.')).join('|') : null
 
-  return { e2eGrep, full, types: [...types], scriptTests: [...scriptTests], unitInputs, e2e: [...e2e] }
+  return { e2eGrep, full, studyMarketBackend, types: [...types], scriptTests: [...scriptTests], unitInputs, e2e: [...e2e] }
 }
 
 function run(command, args) {
@@ -207,6 +210,7 @@ export function main(args) {
   const baseFlag = args.indexOf('--base')
   const { base, files } = changedFiles(baseFlag < 0 ? undefined : args[baseFlag + 1])
   const plan = planChecks(files, args.includes('--full'))
+  if (args.includes('--backend-plan')) { console.log(String(plan.studyMarketBackend)); return }
   const nativeTabs = 'src/main/features/browser/nativeTabs.ts'
   if (!plan.full && files.includes(nativeTabs) && onlySwipeRegistrationChanged(
     git('show', `${base}:${nativeTabs}`), readFileSync(nativeTabs, 'utf8')
@@ -224,6 +228,10 @@ export function main(args) {
   }
   for (const config of plan.types) run('pnpm', ['exec', 'tsc', '--noEmit', '-p', config])
   for (const test of plan.scriptTests.filter(existsSync)) run(...scriptTestCommand(test))
+  if (plan.studyMarketBackend) {
+    run('deno', ['check', '--frozen', '--config', 'supabase/functions/deno.json', 'supabase/functions/study-market/index.ts', 'supabase/functions/study-market-webhook/index.ts', 'supabase/functions/study-market-cron/index.ts'])
+    run('node', ['tests/backend/studyMarket/run-local.mjs'])
+  }
   if (plan.full) {
     run('pnpm', ['deadcode'])
     run('pnpm', ['test'])

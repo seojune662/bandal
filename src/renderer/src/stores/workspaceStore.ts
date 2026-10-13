@@ -46,11 +46,12 @@ import {
 } from '../features/workspace/layoutPersistence'
 
 export type WorkspaceHydration = 'idle' | 'loading' | 'ready' | 'error'
-export type WorkspaceSurface = 'course' | 'learning-home'
+export type WorkspaceSurface = 'course' | 'learning-home' | 'study-market'
 
 interface WorkspaceState {
   /** Global home keeps the selected course and its live layout intact. */
   surface: WorkspaceSurface
+  showStudyMarket: () => void
   showLearningHome: () => void
   showCourseWorkspace: (courseId: string | null) => void
   prepareCloseLearningSpace: (binding: LearningBinding, standalone: boolean) => Promise<boolean>
@@ -420,6 +421,12 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     surface: 'course',
     prepareCloseLearningSpace: (binding, standalone) => prepareCloseLearningSpace(binding, standalone),
     closeLearningSpace: (binding, standalone) => closeLearningSpace(binding, standalone),
+    showStudyMarket: () => {
+      if (get().surface === 'study-market') return
+      get().notifyLayoutChanged()
+      flush()
+      set({ surface: 'study-market', activePanelId: null })
+    },
     showLearningHome: () => {
       if (get().surface === 'learning-home') return
       get().notifyLayoutChanged()
@@ -536,7 +543,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         get().saveRetainedLayout(destination.courseId, target.toJSON())
         return
       }
-      if (!destination && !replayingOpens && options?.background !== true && get().surface === 'learning-home') get().showCourseWorkspace(get().activeCourseId)
+      if (!destination && !replayingOpens && options?.background !== true && get().surface !== 'course') get().showCourseWorkspace(get().activeCourseId)
       if (queueDuringHydration(() => get().openTab(descriptor, options))) return
       if (api === null) return
       const targetGroup = destination ? api.getGroup(destination.groupId) : undefined

@@ -9,7 +9,7 @@ import { useTemporaryWorkspaceRetention } from './useTemporaryWorkspaceRetention
  * course-switch hydration.
  */
 
-import { useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { lazy, Suspense, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   DockviewReact,
   type DockviewReadyEvent,
@@ -44,6 +44,8 @@ import { applyWorkspaceLayout, removeEmptyWorkspaceGroup, splitWorkspaceGroup, t
 import { TabKindIcon } from './workspaceIcons'
 import './workspace.css'
 import LearningHome from '../learning/LearningHome'
+
+const StudyMarketHome = lazy(() => import('../studyMarket/StudyMarketHome'))
 
 const bandalTheme: DockviewTheme = {
   name: 'bandal',
@@ -347,9 +349,9 @@ export function WorkspaceHost(): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (surface !== 'learning-home') return
+    if (surface === 'course') return
     const focus = (): boolean => {
-      const heading = hostRef.current?.querySelector<HTMLElement>('.learning-global-home h1')
+      const heading = hostRef.current?.querySelector<HTMLElement>(surface === 'study-market' ? '.study-market h1' : '.learning-global-home h1')
       if (!heading || heading.closest('[inert], [hidden]')) return false
       heading.tabIndex = -1
       heading.focus({ preventScroll: true })
@@ -410,6 +412,7 @@ export function WorkspaceHost(): JSX.Element {
       <button type="button" className="button button--primary" onClick={retryHydration}>{ko ? '다시 불러오기' : 'Try again'}</button>
     </div>}
     {surface === 'learning-home' && <LearningHome />}
+    {surface === 'study-market' && <Suspense fallback={<div role="status">마켓플레이스 불러오는 중…</div>}><StudyMarketHome /></Suspense>}
     {surface === 'course' && isMenuOpen && course !== null && <NewTabMenu course={course} />}
   </div>
 }

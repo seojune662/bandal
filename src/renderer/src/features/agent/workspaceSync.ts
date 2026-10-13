@@ -32,7 +32,7 @@ export interface AgentWorkspaceSyncPayload {
 }
 
 export interface WorkspaceSyncSources {
-  surface?: 'course' | 'learning-home'
+  surface?: 'course' | 'learning-home' | 'study-market'
   openTabs: Record<string, TabDescriptor>
   activeDescriptor: TabDescriptor | null
   selectedCourseId: string | null
@@ -43,7 +43,7 @@ export interface WorkspaceSyncSources {
 export function workspaceSyncPayload(
   sources: WorkspaceSyncSources
 ): AgentWorkspaceSyncPayload | null {
-  if (sources.surface === 'learning-home') return { selectedCourseId: null, tabs: [], documents: [], selection: '' }
+  if (sources.surface !== undefined && sources.surface !== 'course') return { selectedCourseId: null, tabs: [], documents: [], selection: '' }
   if (sources.hydration !== 'ready') return null
 
   const activePanelId =
