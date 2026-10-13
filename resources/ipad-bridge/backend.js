@@ -2880,7 +2880,7 @@
             ).map(function(createMatcher, matcherOptions) {
               return createMatcher(matcherOptions);
             });
-            var table10 = sequence(
+            var table11 = sequence(
               lop.rules.token("identifier", "table"),
               sequence.capture(createMatcherSuffixesRule([
                 styleIdRule,
@@ -2933,7 +2933,7 @@
             return lop.rules.firstOf(
               "element type",
               paragraphOrRun,
-              table10,
+              table11,
               bold,
               italic,
               underline,
@@ -3080,7 +3080,7 @@
         }, { "./results": 25, "./styles/document-matchers": 27, "./styles/html-paths": 28, "./styles/parser/tokeniser": 29, "lop": 89, "underscore": 102 }], 27: [function(require2, module3, exports2) {
           exports2.paragraph = paragraph;
           exports2.run = run;
-          exports2.table = table10;
+          exports2.table = table11;
           exports2.bold = new Matcher("bold");
           exports2.italic = new Matcher("italic");
           exports2.underline = new Matcher("underline");
@@ -3100,7 +3100,7 @@
           function run(options) {
             return new Matcher("run", options);
           }
-          function table10(options) {
+          function table11(options) {
             return new Matcher("table", options);
           }
           function highlight(options) {
@@ -36431,10 +36431,10 @@
     out.push("</table>" + footer);
     return out.join("");
   }
-  function sheet_add_dom(ws, table10, _opts) {
-    var rows = table10.rows;
+  function sheet_add_dom(ws, table11, _opts) {
+    var rows = table11.rows;
     if (!rows) {
-      throw "Unsupported origin when " + table10.tagName + " is not a TABLE";
+      throw "Unsupported origin when " + table11.tagName + " is not a TABLE";
     }
     var opts = _opts || {};
     var dense = ws["!data"] != null;
@@ -36522,14 +36522,14 @@
     if (R >= sheetRows) ws["!fullref"] = encode_range((range3.e.r = rows.length - _R + R - 1 + or_R, range3));
     return ws;
   }
-  function parse_dom_table(table10, _opts) {
+  function parse_dom_table(table11, _opts) {
     var opts = _opts || {};
     var ws = {};
     if (opts.dense) ws["!data"] = [];
-    return sheet_add_dom(ws, table10, _opts);
+    return sheet_add_dom(ws, table11, _opts);
   }
-  function table_to_book(table10, opts) {
-    var o = sheet_to_workbook(parse_dom_table(table10, opts), opts);
+  function table_to_book(table11, opts) {
+    var o = sheet_to_workbook(parse_dom_table(table11, opts), opts);
     return o;
   }
   function is_dom_element_hidden(element) {
@@ -42345,7 +42345,7 @@
         var CRC322 = {};
         CRC322.version = "1.2.0";
         function signed_crc_table() {
-          var c = 0, table10 = new Array(256);
+          var c = 0, table11 = new Array(256);
           for (var n = 0; n != 256; ++n) {
             c = n;
             c = c & 1 ? -306674912 ^ c >>> 1 : c >>> 1;
@@ -42356,20 +42356,20 @@
             c = c & 1 ? -306674912 ^ c >>> 1 : c >>> 1;
             c = c & 1 ? -306674912 ^ c >>> 1 : c >>> 1;
             c = c & 1 ? -306674912 ^ c >>> 1 : c >>> 1;
-            table10[n] = c;
+            table11[n] = c;
           }
-          return typeof Int32Array !== "undefined" ? new Int32Array(table10) : table10;
+          return typeof Int32Array !== "undefined" ? new Int32Array(table11) : table11;
         }
         var T0 = signed_crc_table();
         function slice_by_16_tables(T10) {
-          var c = 0, v = 0, n = 0, table10 = typeof Int32Array !== "undefined" ? new Int32Array(4096) : new Array(4096);
-          for (n = 0; n != 256; ++n) table10[n] = T10[n];
+          var c = 0, v = 0, n = 0, table11 = typeof Int32Array !== "undefined" ? new Int32Array(4096) : new Array(4096);
+          for (n = 0; n != 256; ++n) table11[n] = T10[n];
           for (n = 0; n != 256; ++n) {
             v = T10[n];
-            for (c = 256 + n; c < 4096; c += 256) v = table10[c] = v >>> 8 ^ T10[v & 255];
+            for (c = 256 + n; c < 4096; c += 256) v = table11[c] = v >>> 8 ^ T10[v & 255];
           }
           var out = [];
-          for (n = 1; n != 16; ++n) out[n - 1] = typeof Int32Array !== "undefined" && typeof table10.subarray == "function" ? table10.subarray(n * 256, n * 256 + 256) : table10.slice(n * 256, n * 256 + 256);
+          for (n = 1; n != 16; ++n) out[n - 1] = typeof Int32Array !== "undefined" && typeof table11.subarray == "function" ? table11.subarray(n * 256, n * 256 + 256) : table11.slice(n * 256, n * 256 + 256);
           return out;
         }
         var TT = slice_by_16_tables(T0);
@@ -56081,15 +56081,15 @@
     "../bandal/node_modules/.pnpm/pako@1.0.11/node_modules/pako/lib/zlib/crc32.js"(exports2, module3) {
       "use strict";
       function makeTable() {
-        var c, table10 = [];
+        var c, table11 = [];
         for (var n = 0; n < 256; n++) {
           c = n;
           for (var k = 0; k < 8; k++) {
             c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
           }
-          table10[n] = c;
+          table11[n] = c;
         }
-        return table10;
+        return table11;
       }
       var crcTable = makeTable();
       function crc32(crc, buf, len2, pos) {
@@ -57883,7 +57883,7 @@
         64,
         64
       ];
-      module3.exports = function inflate_table(type, lens, lens_index, codes, table10, table_index, work, opts) {
+      module3.exports = function inflate_table(type, lens, lens_index, codes, table11, table_index, work, opts) {
         var bits3 = opts.bits;
         var len2 = 0;
         var sym = 0;
@@ -57923,8 +57923,8 @@
           root = max2;
         }
         if (max2 === 0) {
-          table10[table_index++] = 1 << 24 | 64 << 16 | 0;
-          table10[table_index++] = 1 << 24 | 64 << 16 | 0;
+          table11[table_index++] = 1 << 24 | 64 << 16 | 0;
+          table11[table_index++] = 1 << 24 | 64 << 16 | 0;
           opts.bits = 1;
           return 0;
         }
@@ -57999,7 +57999,7 @@
           min = fill3;
           do {
             fill3 -= incr;
-            table10[next + (huff >> drop) + fill3] = here_bits << 24 | here_op << 16 | here_val | 0;
+            table11[next + (huff >> drop) + fill3] = here_bits << 24 | here_op << 16 | here_val | 0;
           } while (fill3 !== 0);
           incr = 1 << len2 - 1;
           while (huff & incr) {
@@ -58038,11 +58038,11 @@
               return 1;
             }
             low = huff & mask2;
-            table10[low] = root << 24 | curr << 16 | next - table_index | 0;
+            table11[low] = root << 24 | curr << 16 | next - table_index | 0;
           }
         }
         if (huff !== 0) {
-          table10[next + huff] = len2 - drop << 24 | 64 << 16 | 0;
+          table11[next + huff] = len2 - drop << 24 | 64 << 16 | 0;
         }
         opts.bits = root;
         return 0;
@@ -84016,7 +84016,11 @@
   }
   function createDatabase() {
     let sequence = 0;
+    let transactionDepth = 0;
     return {
+      get inTransaction() {
+        return transactionDepth > 0;
+      },
       exec(sql) {
         native("sqlite.exec", { sql });
         return this;
@@ -84042,6 +84046,7 @@
         return ((...args) => {
           const name7 = `bandal_tx_${++sequence}`;
           native("sqlite.exec", { sql: `SAVEPOINT ${name7}` });
+          transactionDepth += 1;
           try {
             const result = callback(...args);
             if (result && typeof result.then === "function") throw new Error("SQLite transaction callback must be synchronous");
@@ -84053,6 +84058,8 @@
             } catch {
             }
             throw error2;
+          } finally {
+            transactionDepth -= 1;
           }
         });
       }
@@ -88003,8 +88010,8 @@ ${sections.join("\n\n")}${appendixSection}
     const wroteStem = !wroteExtension && key4 === wikilinkKey(wikilinkStem(fromRelPath));
     return wroteStem ? wikilinkStem(toBasename) : withWrittenExtension(toBasename);
   }
-  function tableExists(db, table10) {
-    return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table10) !== void 0;
+  function tableExists(db, table11) {
+    return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table11) !== void 0;
   }
   function collectRepointNoteCandidates(input) {
     if (!tableExists(input.db, "content_links")) return [];
@@ -88087,9 +88094,9 @@ ${sections.join("\n\n")}${appendixSection}
     parsed.payload["relPath"] = next;
     return JSON.stringify(parsed.value);
   }
-  function warning(table10, id2, error2) {
+  function warning(table11, id2, error2) {
     const message = error2 instanceof Error ? error2.message : String(error2);
-    console.warn(`[links] skipped invalid ${table10} row "${id2}": ${message}`);
+    console.warn(`[links] skipped invalid ${table11} row "${id2}": ${message}`);
   }
   function rewriteFavorites(db, courseId2, fromRelPath, toRelPath, isDirectory) {
     const rows = db.prepare(
@@ -88149,17 +88156,17 @@ ${sections.join("\n\n")}${appendixSection}
   }
   function updateRelPathTables(db, courseId2, fromRelPath, toRelPath, isDirectory, counts) {
     const escapedPrefix = fromRelPath.replace(/[\\%_]/g, "\\$&") + "/%";
-    for (const table10 of PATH_TABLES) {
-      const normalizedOnly = db.prepare(`SELECT rowid AS row_id, rel_path FROM ${table10} WHERE course_id = ?`).all(courseId2).map((row) => ({
+    for (const table11 of PATH_TABLES) {
+      const normalizedOnly = db.prepare(`SELECT rowid AS row_id, rel_path FROM ${table11} WHERE course_id = ?`).all(courseId2).map((row) => ({
         ...row,
         next: repointedPath(row.rel_path, fromRelPath, toRelPath, isDirectory)
       })).filter(
         (row) => row.next !== null && row.next !== row.rel_path && row.rel_path !== fromRelPath && !(isDirectory && row.rel_path.startsWith(`${fromRelPath}/`))
       );
-      counts[table10] += db.prepare(`UPDATE ${table10} SET rel_path = ? WHERE course_id = ? AND rel_path = ?`).run(toRelPath, courseId2, fromRelPath).changes;
+      counts[table11] += db.prepare(`UPDATE ${table11} SET rel_path = ? WHERE course_id = ? AND rel_path = ?`).run(toRelPath, courseId2, fromRelPath).changes;
       if (isDirectory) {
-        counts[table10] += db.prepare(
-          `UPDATE ${table10}
+        counts[table11] += db.prepare(
+          `UPDATE ${table11}
               SET rel_path = ? || substr(rel_path, length(?) + 1)
             WHERE course_id = ? AND rel_path LIKE ? ESCAPE '\\'
               AND substr(rel_path, 1, length(?)) = ?`
@@ -88173,10 +88180,10 @@ ${sections.join("\n\n")}${appendixSection}
         ).changes;
       }
       const updateNormalized = db.prepare(
-        `UPDATE ${table10} SET rel_path = ? WHERE rowid = ?`
+        `UPDATE ${table11} SET rel_path = ? WHERE rowid = ?`
       );
       for (const row of normalizedOnly) {
-        counts[table10] += updateNormalized.run(row.next, row.row_id).changes;
+        counts[table11] += updateNormalized.run(row.next, row.row_id).changes;
       }
     }
   }
@@ -88309,7 +88316,7 @@ ${sections.join("\n\n")}${appendixSection}
     const candidates = input.candidateNoteRelPaths === void 0 ? collectRepointNoteCandidates(normalizedInput) : [...new Set(input.candidateNoteRelPaths)];
     const repointDatabase = input.db.transaction(() => {
       const updatedRows2 = Object.fromEntries(
-        UPDATED_TABLES.map((table10) => [table10, 0])
+        UPDATED_TABLES.map((table11) => [table11, 0])
       );
       updateRelPathTables(
         input.db,
@@ -91090,8 +91097,8 @@ ${markdown}`;
     };
     return row.link_kind === "wikilink" ? { ...backlink, linkKind: "wikilink" } : backlink;
   }
-  function hasColumn(db, table10, column) {
-    const columns = db.pragma(`table_info(${table10})`);
+  function hasColumn(db, table11, column) {
+    const columns = db.pragma(`table_info(${table11})`);
     return columns.some((entry2) => entry2.name === column);
   }
   function ensureLinkTable(db) {
@@ -92562,6 +92569,7 @@ ${markdown}`;
     }
     if (state["pathAliases"] !== void 0) for (const entry2 of learningArray(state["pathAliases"], "pathAliases")) {
       const alias = learningObject(entry2, "pathAlias");
+      if (alias["operationId"] !== void 0) learningId(alias["operationId"], "operationId");
       if (alias["sourceCourseId"] !== void 0) learningId(alias["sourceCourseId"], "sourceCourseId");
       learningString(alias["fromRelPath"], "fromRelPath", 8192);
       learningString(alias["toRelPath"], "toRelPath", 8192);
@@ -92626,6 +92634,7 @@ ${markdown}`;
   }
   function createLearningRepo(deps) {
     const queues = /* @__PURE__ */ new Map();
+    let pathAccessQueue = Promise.resolve();
     const now = deps.now ?? (() => (/* @__PURE__ */ new Date()).toISOString());
     function courseFolder(binding2, includeDeleted = false) {
       learningString(binding2.courseId, "courseId", 1e3);
@@ -92642,11 +92651,26 @@ ${markdown}`;
     function pathInside(root, relPath2) {
       return assertRealInside(root, resolveInside(root, relPath2));
     }
-    async function serial(binding2, work, allowMissing = false, includeDeleted = false) {
+    function withPathLock(work) {
+      if (!deps.pathLock) return work();
+      const task = pathAccessQueue.catch(() => void 0).then(async () => {
+        const release2 = deps.pathLock.tryAcquire();
+        if (!release2) throw new ConflictError("\uC790\uB8CC \uACBD\uB85C \uBCC0\uACBD \uB610\uB294 \uD559\uC2B5 \uC800\uC7A5\uC774 \uC9C4\uD589 \uC911\uC785\uB2C8\uB2E4. \uC7A0\uC2DC \uB4A4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
+        try {
+          return await work();
+        } finally {
+          release2();
+        }
+      });
+      pathAccessQueue = task;
+      return task;
+    }
+    async function serial(binding2, work, allowMissing = false, includeDeleted = false, recoveringPaths = false) {
+      if (!recoveringPaths) await deps.beforePathAccess?.();
       const root = projectRoot(binding2, allowMissing, includeDeleted);
       const key4 = existsSync(root) ? realpathSync.native(root) : root;
       const previous = queues.get(key4) ?? Promise.resolve();
-      const task = previous.catch(() => void 0).then(work);
+      const task = previous.catch(() => void 0).then(() => recoveringPaths ? work() : withPathLock(work));
       queues.set(key4, task);
       try {
         return await task;
@@ -92886,7 +92910,7 @@ ${markdown}`;
       }
       return snapshot(binding2, { root: tx.root, state: tx.state, bytes: json(tx.state), recovery: loaded.recovery, warnings });
     }
-    async function mutate(input, work, includeDeleted = false) {
+    async function mutate(input, work, includeDeleted = false, recoveringPaths = false) {
       return serial(input.binding, async () => {
         const loaded = await load(input.binding, includeDeleted);
         if (!includeDeleted) requireActive(loaded.state);
@@ -92894,7 +92918,7 @@ ${markdown}`;
         const tx = { state: structuredClone(loaded.state), root: loaded.root, binding: input.binding, now: now(), exports: [], articles: /* @__PURE__ */ new Map() };
         if (await work(tx) === false) return snapshot(input.binding, loaded);
         return commit(input.binding, loaded, tx);
-      }, false, includeDeleted);
+      }, false, includeDeleted, recoveringPaths);
     }
     async function addArticle(tx, input) {
       let article = normalizeLearningArticle(input, input.id ?? randomUUID(), tx.now);
@@ -93061,7 +93085,106 @@ ${markdown}`;
       history(tx, "word-saved", word.id, `\xAB${surface}\xBB \uB2E8\uC5B4\uC640 \uC608\uBB38\uC744 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.`);
       return true;
     }
+    async function discoverProjects(courseId2, input = {}, strict = false) {
+      const binding2 = { courseId: courseId2, rootRelPath: "" };
+      const course = courseFolder(binding2, input.includeDeleted);
+      const found = [];
+      let count = 0;
+      async function walk(rootRelPath, depth) {
+        if (depth > 12 || count >= 2e4) {
+          if (strict) throw new ConflictError("\uD559\uC2B5 \uD504\uB85C\uC81D\uD2B8 \uD0D0\uC0C9 \uD55C\uB3C4\uB97C \uB118\uC5C8\uC2B5\uB2C8\uB2E4. \uACBD\uB85C \uBCC0\uACBD \uAE30\uB85D\uC744 \uBCF4\uC874\uD588\uC2B5\uB2C8\uB2E4.");
+          return;
+        }
+        const root = projectRoot({ courseId: courseId2, rootRelPath }, false, input.includeDeleted);
+        if (existsSync(join(root, MANIFEST))) {
+          const projectBinding = { courseId: courseId2, rootRelPath };
+          try {
+            const loaded = await load(projectBinding, input.includeDeleted);
+            const state = loaded.state;
+            if (state.deletedAt && !input.includeDeleted) return;
+            found.push({
+              binding: projectBinding,
+              projectId: state.projectId,
+              name: state.name,
+              topic: state.topic,
+              purpose: state.purpose ?? "unclassified",
+              topicIds: state.topicIds ?? [],
+              readingSetupConfirmed: state.readingSetupConfirmed ?? false,
+              ...state.ai ? { ai: state.ai } : {},
+              ...state.linkedCourseId ? { linkedCourseId: state.linkedCourseId } : {},
+              ...state.packId ? { packId: state.packId } : {},
+              level: state.level,
+              readingMinutes: state.readingMinutes,
+              articleCount: state.articles.length,
+              completedArticleCount: state.articles.filter((article) => article.status === "completed").length,
+              wordCount: state.words.length,
+              knownWordCount: state.words.filter((word) => word.status === "known").length,
+              dueCardCount: state.cards.filter((card) => Date.parse(card.dueAt) <= Date.parse(now())).length,
+              updatedAt: state.updatedAt,
+              warning: loaded.warnings[0] ?? null,
+              ...state.deletedAt ? { deletedAt: state.deletedAt } : {}
+            });
+          } catch (error2) {
+            found.push({
+              binding: projectBinding,
+              projectId: "",
+              name: basename(root),
+              topic: "",
+              purpose: "unclassified",
+              topicIds: [],
+              readingSetupConfirmed: false,
+              level: "intermediate",
+              readingMinutes: 5,
+              articleCount: 0,
+              completedArticleCount: 0,
+              wordCount: 0,
+              knownWordCount: 0,
+              dueCardCount: 0,
+              updatedAt: "",
+              warning: error2 instanceof Error ? error2.message : "\uD559\uC2B5 \uB370\uC774\uD130\uB97C \uC77D\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."
+            });
+          }
+          return;
+        }
+        const entries = await readdir(root, { withFileTypes: true });
+        for (const entry2 of entries) {
+          count += 1;
+          if (count >= 2e4) {
+            if (strict) throw new ConflictError("\uD559\uC2B5 \uD504\uB85C\uC81D\uD2B8 \uD0D0\uC0C9 \uD55C\uB3C4\uB97C \uB118\uC5C8\uC2B5\uB2C8\uB2E4. \uACBD\uB85C \uBCC0\uACBD \uAE30\uB85D\uC744 \uBCF4\uC874\uD588\uC2B5\uB2C8\uB2E4.");
+            return;
+          }
+          if (entry2.isDirectory() && !entry2.name.startsWith(".")) await walk(rootRelPath ? posix.join(rootRelPath, entry2.name) : entry2.name, depth + 1);
+        }
+      }
+      assertRealInside(course, course);
+      await walk("", 0);
+      return found;
+    }
     const repo = {
+      async withExclusivePathAccess(work) {
+        await deps.beforePathAccess?.();
+        return withPathLock(async () => {
+          const scopedDeps = { ...deps };
+          delete scopedDeps.pathLock;
+          delete scopedDeps.beforePathAccess;
+          const inner = createLearningRepo(scopedDeps);
+          let active = true;
+          const pending = /* @__PURE__ */ new Set();
+          const scoped = Object.fromEntries(Object.entries(inner).map(([name7, action]) => [name7, (...args) => {
+            if (!active) return Promise.reject(new ConflictError("\uD559\uC2B5 \uACBD\uB85C \uC811\uADFC \uBC94\uC704\uAC00 \uC885\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4."));
+            const task = Promise.resolve().then(() => action(...args));
+            pending.add(task);
+            void task.then(() => pending.delete(task), () => pending.delete(task));
+            return task;
+          }]));
+          try {
+            return await work(scoped);
+          } finally {
+            active = false;
+            await Promise.allSettled([...pending]);
+          }
+        });
+      },
       async create(input) {
         return serial(input.binding, async () => {
           const root = projectRoot(input.binding, true);
@@ -93076,7 +93199,7 @@ ${markdown}`;
             return snapshot(input.binding, loaded);
           }
           if (existsSync(root)) {
-            const descendants = await repo.discover(input.binding.courseId);
+            const descendants = await discoverProjects(input.binding.courseId);
             if (descendants.some((entry2) => entry2.binding.rootRelPath !== input.binding.rootRelPath && (!input.binding.rootRelPath || entry2.binding.rootRelPath.startsWith(`${input.binding.rootRelPath}/`)))) throw new ConflictError("\uAE30\uC874 \uD559\uC2B5 \uD504\uB85C\uC81D\uD2B8\uB97C \uD3EC\uD568\uD558\uB294 \uC0C1\uC704 \uD504\uB85C\uC81D\uD2B8\uB97C \uB9CC\uB4E4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.");
           }
           const name7 = learningString(input.name, "name", 1e3).trim();
@@ -93224,73 +93347,8 @@ ${markdown}`;
         });
       },
       async discover(courseId2, input = {}) {
-        const binding2 = { courseId: courseId2, rootRelPath: "" };
-        const course = courseFolder(binding2, input.includeDeleted);
-        const found = [];
-        let count = 0;
-        async function walk(rootRelPath, depth) {
-          if (depth > 12 || count >= 2e4) return;
-          const root = projectRoot({ courseId: courseId2, rootRelPath }, false, input.includeDeleted);
-          if (existsSync(join(root, MANIFEST))) {
-            const projectBinding = { courseId: courseId2, rootRelPath };
-            try {
-              const loaded = await load(projectBinding, input.includeDeleted);
-              const state = loaded.state;
-              if (state.deletedAt && !input.includeDeleted) return;
-              found.push({
-                binding: projectBinding,
-                projectId: state.projectId,
-                name: state.name,
-                topic: state.topic,
-                purpose: state.purpose ?? "unclassified",
-                topicIds: state.topicIds ?? [],
-                readingSetupConfirmed: state.readingSetupConfirmed ?? false,
-                ...state.ai ? { ai: state.ai } : {},
-                ...state.linkedCourseId ? { linkedCourseId: state.linkedCourseId } : {},
-                ...state.packId ? { packId: state.packId } : {},
-                level: state.level,
-                readingMinutes: state.readingMinutes,
-                articleCount: state.articles.length,
-                completedArticleCount: state.articles.filter((article) => article.status === "completed").length,
-                wordCount: state.words.length,
-                knownWordCount: state.words.filter((word) => word.status === "known").length,
-                dueCardCount: state.cards.filter((card) => Date.parse(card.dueAt) <= Date.parse(now())).length,
-                updatedAt: state.updatedAt,
-                warning: loaded.warnings[0] ?? null,
-                ...state.deletedAt ? { deletedAt: state.deletedAt } : {}
-              });
-            } catch (error2) {
-              found.push({
-                binding: projectBinding,
-                projectId: "",
-                name: basename(root),
-                topic: "",
-                purpose: "unclassified",
-                topicIds: [],
-                readingSetupConfirmed: false,
-                level: "intermediate",
-                readingMinutes: 5,
-                articleCount: 0,
-                completedArticleCount: 0,
-                wordCount: 0,
-                knownWordCount: 0,
-                dueCardCount: 0,
-                updatedAt: "",
-                warning: error2 instanceof Error ? error2.message : "\uD559\uC2B5 \uB370\uC774\uD130\uB97C \uC77D\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."
-              });
-            }
-            return;
-          }
-          const entries = await readdir(root, { withFileTypes: true });
-          for (const entry2 of entries) {
-            count += 1;
-            if (count >= 2e4) return;
-            if (entry2.isDirectory() && !entry2.name.startsWith(".")) await walk(rootRelPath ? posix.join(rootRelPath, entry2.name) : entry2.name, depth + 1);
-          }
-        }
-        assertRealInside(course, course);
-        await walk("", 0);
-        return found;
+        await deps.beforePathAccess?.();
+        return withPathLock(() => discoverProjects(courseId2, input));
       },
       addArticle(input) {
         return mutate(input, async (tx) => {
@@ -93494,17 +93552,22 @@ ${markdown}`;
         });
       },
       async repoint(input) {
+        if (input.operationId !== void 0) learningId(input.operationId, "operationId");
         const projects = [];
         for (const courseId2 of /* @__PURE__ */ new Set([input.courseId, ...deps.listCourseIds?.() ?? []])) {
           try {
-            projects.push(...await repo.discover(courseId2, { includeDeleted: true }));
-          } catch {
+            projects.push(...await discoverProjects(courseId2, { includeDeleted: true }, input.operationId !== void 0));
+          } catch (error2) {
+            if (input.operationId !== void 0) throw error2;
           }
         }
         for (const project of projects) {
+          if (project.warning) {
+            if (input.operationId !== void 0) throw new ConflictError(`\uD559\uC2B5 \uACBD\uB85C \uBCC0\uACBD\uC744 \uC644\uB8CC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4: ${project.warning}`);
+            continue;
+          }
           const ownsPaths = project.binding.courseId === input.courseId;
           if (!ownsPaths && project.linkedCourseId !== input.courseId) continue;
-          if (project.warning) continue;
           const root = project.binding.rootRelPath;
           const withinRoot = (path) => {
             if (!root) return path;
@@ -93514,6 +93577,13 @@ ${markdown}`;
           const to = withinRoot(input.toRelPath);
           await mutate({ binding: project.binding }, (tx) => {
             var _a3;
+            if (input.operationId !== void 0) {
+              const receipt = tx.state.pathAliases?.find((alias) => alias.operationId === input.operationId);
+              if (receipt) {
+                if (receipt.scope !== "course" || receipt.fromRelPath !== input.fromRelPath || receipt.toRelPath !== input.toRelPath || receipt.isDirectory !== input.isDirectory || (receipt.sourceCourseId ?? project.binding.courseId) !== input.courseId) throw new ConflictError("\uD559\uC2B5 \uACBD\uB85C \uBCC0\uACBD \uC2DD\uBCC4\uC790\uAC00 \uB2E4\uB978 \uBCC0\uACBD\uC5D0 \uC7AC\uC0AC\uC6A9\uB418\uC5C8\uC2B5\uB2C8\uB2E4.");
+                return false;
+              }
+            }
             let changed = false;
             const update = (path, scope = "project", sourceCourseId = project.binding.courseId) => {
               if (sourceCourseId !== input.courseId || scope === "project" && !ownsPaths) return path;
@@ -93547,7 +93617,8 @@ ${markdown}`;
               toRelPath: input.toRelPath,
               isDirectory: input.isDirectory,
               scope: "course",
-              ...ownsPaths ? {} : { sourceCourseId: input.courseId }
+              ...ownsPaths ? {} : { sourceCourseId: input.courseId },
+              ...input.operationId === void 0 ? {} : { operationId: input.operationId }
             });
             if (ownsPaths && from !== null && to !== null) tx.state.pathAliases.push({
               fromRelPath: from,
@@ -93557,11 +93628,82 @@ ${markdown}`;
             });
             changed = true;
             return changed;
-          }, true);
+          }, true, input.operationId !== void 0);
         }
       }
     };
     return repo;
+  }
+
+  // DesktopRuntime/upstream/src/main/features/learning/learningPathOutbox.ts
+  var table2 = "learning_path_outbox";
+  function request(input) {
+    if (typeof input.courseId !== "string" || !input.courseId || typeof input.isDirectory !== "boolean") throw new ValidationError("Invalid learning path update");
+    for (const path of [input.fromRelPath, input.toRelPath]) {
+      if (typeof path !== "string" || !path || path.length > 8192 || path.startsWith("/") || path.includes("\\") || path.split("/").some((part) => !part || part === "." || part === "..") || /[\u0000-\u001f]/.test(path)) throw new ValidationError("Invalid learning relative path");
+    }
+    return { courseId: input.courseId, fromRelPath: input.fromRelPath, toRelPath: input.toRelPath, isDirectory: input.isDirectory };
+  }
+  function createLearningPathOutbox(deps) {
+    const { db } = deps;
+    db.exec(`CREATE TABLE IF NOT EXISTS ${table2} (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT, operation_id TEXT UNIQUE NOT NULL,
+    request_json TEXT NOT NULL, created_at TEXT NOT NULL
+  )`);
+    let running2;
+    const first = () => db.prepare(`SELECT sequence,operation_id,request_json FROM ${table2} ORDER BY sequence LIMIT 1`).get();
+    function flush() {
+      if (running2) return running2;
+      if (!first()) return Promise.resolve();
+      const task = Promise.resolve().then(async () => {
+        if (db.inTransaction === true) throw new ConflictError("Learning path replay cannot run inside a database transaction");
+        const release2 = deps.pathLock.tryAcquire();
+        if (!release2) throw new ConflictError("\uC790\uB8CC \uC774\uB3D9 \uB610\uB294 \uD559\uC2B5 \uC800\uC7A5\uC774 \uC9C4\uD589 \uC911\uC785\uB2C8\uB2E4. \uACBD\uB85C \uBCC0\uACBD \uAE30\uB85D\uC740 \uBCF4\uC874\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.");
+        try {
+          for (let row = first(); row; row = first()) {
+            const input = request(JSON.parse(row.request_json));
+            if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='material_path_intents'").get()) {
+              const pending = db.prepare("SELECT course_id FROM material_path_intents LIMIT 1").get();
+              if (pending) assertMaterialPathAvailable(db, pending.course_id);
+            }
+            await deps.repoint({ ...input, operationId: row.operation_id });
+            db.transaction(() => {
+              const current = first();
+              if (current?.sequence !== row.sequence || current.operation_id !== row.operation_id || current.request_json !== row.request_json) throw new ConflictError("Learning path queue changed during replay");
+              db.prepare(`DELETE FROM ${table2} WHERE sequence=? AND operation_id=?`).run(row.sequence, row.operation_id);
+            })();
+          }
+        } finally {
+          release2();
+        }
+      });
+      running2 = task;
+      void task.then(() => {
+        if (running2 === task) running2 = void 0;
+      }, () => {
+        if (running2 === task) running2 = void 0;
+      });
+      return task;
+    }
+    function schedule() {
+      void Promise.resolve().then(flush).catch((error2) => deps.onError?.(error2));
+    }
+    return {
+      /** Must be called in the same transaction which commits canonical paths. */
+      enqueue(input) {
+        if (db.inTransaction !== true) throw new ConflictError("Learning path enqueue requires the material database transaction");
+        const value = request(input);
+        if (value.fromRelPath === value.toRelPath) return void 0;
+        const id2 = randomUUID();
+        db.prepare(`INSERT INTO ${table2}(operation_id,request_json,created_at) VALUES(?,?,?)`).run(id2, JSON.stringify(value), (/* @__PURE__ */ new Date()).toISOString());
+        return id2;
+      },
+      flush,
+      schedule,
+      pending() {
+        return Number(db.prepare(`SELECT COUNT(*) count FROM ${table2}`).get().count);
+      }
+    };
   }
 
   // DesktopRuntime/upstream/src/main/features/learning/learningCache.ts
@@ -94714,16 +94856,16 @@ ${csv}` + (omittedRows > 0 ? `
   }
 
   // DesktopRuntime/backend/ai/adapter.ts
-  var platform = (channel, request = {}) => globalThis.__bandalPlatform.invoke(channel, request);
+  var platform = (channel, request2 = {}) => globalThis.__bandalPlatform.invoke(channel, request2);
   var running = /* @__PURE__ */ new Map();
-  function receiveEvent(request) {
-    running.get(request.requestId)?.event(request.event);
+  function receiveEvent(request2) {
+    running.get(request2.requestId)?.event(request2.event);
     return { ok: true };
   }
-  async function receiveTool(request) {
-    const active = running.get(request.requestId);
+  async function receiveTool(request2) {
+    const active = running.get(request2.requestId);
     if (!active) throw new Error("AI \uC694\uCCAD\uC774 \uCDE8\uC18C\uB418\uC5C8\uAC70\uB098 \uC885\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4.");
-    return active.tool(request.call);
+    return active.tool(request2.call);
   }
   function createNativeAdapter(provider, repo, toolsFor, cancelled3) {
     return {
@@ -94866,14 +95008,23 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       return ai;
     };
     const cache2 = createLearningCache(deps.db);
+    let paths;
     const repo = createLearningRepo({
+      pathLock: deps.pathLock,
+      beforePathAccess: () => paths.flush(),
       getCourseFolder: (id2) => deps.courses.getFolder(id2),
       getCourseFolderIncludingDeleted: (id2) => deps.courses.getFolderIncludingDeleted(id2),
-      listCourseIds: () => deps.courses.list().map((course) => course.id),
+      listCourseIds: () => deps.courses.list({ includeArchived: true, includeDeleted: true }).filter((course) => !course.deletedAt || course.workspaceKind === "study-space").map((course) => course.id),
       onChanged: (binding2) => {
         emit("learning:changed", { binding: binding2 });
         deps.changedMaterials(binding2.courseId);
       }
+    });
+    paths = createLearningPathOutbox({
+      db: deps.db,
+      pathLock: deps.pathLock,
+      repoint: (input) => repo.repoint(input),
+      onError: (error2) => emit("backend:error", { message: String(error2), operation: "learning.pathRecovery" })
     });
     const grounding = createLearningGrounding((id2) => deps.courses.getFolder(id2));
     function validateRefs(result) {
@@ -94984,6 +95135,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     });
     return {
       repo,
+      paths,
       runtime: runtime2,
       pauseProject: (binding2, work) => runtime2.withProjectPaused(binding2, work),
       connectAI(value) {
@@ -95514,7 +95666,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     writeFileAtomic(join(recovery, "legacy-snapshot.json"), archiveBytes);
     const live = records.filter((record2) => !record2.deleted), ofKind = (kind) => live.filter((record2) => record2.kind === kind);
     const courses = /* @__PURE__ */ new Map(), materials = /* @__PURE__ */ new Map(), files = [], rows = [];
-    const add = (table10, value) => rows.push({ table: table10, value });
+    const add = (table11, value) => rows.push({ table: table11, value });
     for (const record2 of ofKind("course")) {
       const p = record2.payload, courseID = id(p.id), folder = join(env2().dataRoot, "iPad", courseID);
       if (db.prepare("SELECT id FROM courses WHERE id=?").get(courseID)) throw new Error("Legacy course ID already exists without a migration receipt");
@@ -95741,12 +95893,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const report = { version: version2, sourceHash, recoveryPath: recovery, records: records.length, courses: courses.size, materials: materials.size, objects, highlights, recordings: recordingCount, historicalPages, archivedKinds };
     db.transaction(() => {
       for (const record2 of records) db.prepare("INSERT INTO ipad_legacy_archive VALUES(?,?,?,?)").run(record2.id, record2.kind, JSON.stringify(record2.payload), JSON.stringify(record2));
-      for (const { table: table10, value } of rows) {
+      for (const { table: table11, value } of rows) {
         const keys4 = Object.keys(value);
-        const result = db.prepare(`INSERT INTO ${table10} (${keys4.join(",")}) VALUES (${keys4.map(() => "?").join(",")})`).run(...keys4.map((key4) => value[key4]));
+        const result = db.prepare(`INSERT INTO ${table11} (${keys4.join(",")}) VALUES (${keys4.map(() => "?").join(",")})`).run(...keys4.map((key4) => value[key4]));
         if (value.id === void 0) value.id = result.lastInsertRowid;
       }
-      for (const { table: table10, value } of rows) if (!db.prepare(`SELECT id FROM ${table10} WHERE id=?`).get(value.id)) throw new Error("Legacy row verification failed");
+      for (const { table: table11, value } of rows) if (!db.prepare(`SELECT id FROM ${table11} WHERE id=?`).get(value.id)) throw new Error("Legacy row verification failed");
       if (db.prepare("SELECT COUNT(*) n FROM ipad_legacy_archive").get().n !== records.length) throw new Error("Legacy archive count verification failed");
       db.prepare("INSERT INTO ipad_legacy_migrations VALUES(?,?)").run(version2, JSON.stringify(report));
     })();
@@ -96226,11 +96378,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
     const hasTable = (name7) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name7);
     const jsonChanges = [];
-    const jsonRows = (table10, column, key4, update) => {
-      if (!hasTable(table10) || !db.prepare(`PRAGMA table_info(${table10})`).all().some((c) => c.name === column)) return;
-      for (const row of db.prepare(`SELECT ${key4},${column} FROM ${table10}`).all()) {
+    const jsonRows = (table11, column, key4, update) => {
+      if (!hasTable(table11) || !db.prepare(`PRAGMA table_info(${table11})`).all().some((c) => c.name === column)) return;
+      for (const row of db.prepare(`SELECT ${key4},${column} FROM ${table11}`).all()) {
         const value = JSON.parse(row[column]), next = update(value);
-        if (JSON.stringify(next) !== JSON.stringify(value)) jsonChanges.push({ table: table10, column, key: key4, id: row[key4], text: JSON.stringify(next) });
+        if (JSON.stringify(next) !== JSON.stringify(value)) jsonChanges.push({ table: table11, column, key: key4, id: row[key4], text: JSON.stringify(next) });
       }
     };
     jsonRows("ipad_sync_projection", "source_json", "id", (value) => {
@@ -105403,10 +105555,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         this.codeSize = codeSize -= bits3;
         return b;
       };
-      FlateStream2.prototype.getCode = function(table10) {
+      FlateStream2.prototype.getCode = function(table11) {
         var str = this.stream;
-        var codes = table10[0];
-        var maxLen = table10[1];
+        var codes = table11[0];
+        var maxLen = table11[1];
         var codeSize = this.codeSize;
         var codeBuf = this.codeBuf;
         var b;
@@ -115117,14 +115269,14 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
     var hexSliceLookupTable = (function() {
       var alphabet2 = "0123456789abcdef";
-      var table10 = new Array(256);
+      var table11 = new Array(256);
       for (var i = 0; i < 16; ++i) {
         var i16 = i * 16;
         for (var j = 0; j < 16; ++j) {
-          table10[i16 + j] = alphabet2[i] + alphabet2[j];
+          table11[i16 + j] = alphabet2[i] + alphabet2[j];
         }
       }
-      return table10;
+      return table11;
     })();
   });
   var buffer_1 = buffer.Buffer;
@@ -118930,12 +119082,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     this.nodeIdx = 0;
     return ret2;
   };
-  function findIdx(table10, val2) {
-    if (table10[0] > val2) return -1;
-    var l2 = 0, r = table10.length;
+  function findIdx(table11, val2) {
+    if (table11[0] > val2) return -1;
+    var l2 = 0, r = table11.length;
     while (l2 < r - 1) {
       var mid = l2 + Math.floor((r - l2 + 1) / 2);
-      if (table10[mid] <= val2) l2 = mid;
+      if (table11[mid] <= val2) l2 = mid;
       else r = mid;
     }
     return l2;
@@ -127292,7 +127444,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     // Overall, it seems that it's a mess :( http://www8.plala.or.jp/tkubota1/unicode-symbols-map2.html
     "shiftjis": {
       type: "_dbcs",
-      table: function table2() {
+      table: function table3() {
         return require$$0;
       },
       encodeAdd: {
@@ -127316,7 +127468,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     "cp932": "shiftjis",
     "eucjp": {
       type: "_dbcs",
-      table: function table3() {
+      table: function table4() {
         return require$$1;
       },
       encodeAdd: {
@@ -127343,14 +127495,14 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     "936": "cp936",
     "cp936": {
       type: "_dbcs",
-      table: function table4() {
+      table: function table5() {
         return require$$2;
       }
     },
     // GBK (~22000 chars) is an extension of CP936 that added user-mapped chars and some other.
     "gbk": {
       type: "_dbcs",
-      table: function table5() {
+      table: function table6() {
         return require$$2.concat(require$$3$1);
       }
     },
@@ -127363,7 +127515,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     // http://www.khngai.com/chinese/charmap/tblgbk.php?page=0
     "gb18030": {
       type: "_dbcs",
-      table: function table6() {
+      table: function table7() {
         return require$$2.concat(require$$3$1);
       },
       gb18030: function gb18030() {
@@ -127382,7 +127534,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     "949": "cp949",
     "cp949": {
       type: "_dbcs",
-      table: function table7() {
+      table: function table8() {
         return require$$5;
       }
     },
@@ -127421,7 +127573,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     "950": "cp950",
     "cp950": {
       type: "_dbcs",
-      table: function table8() {
+      table: function table9() {
         return require$$6;
       }
     },
@@ -127429,7 +127581,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     "big5": "big5hkscs",
     "big5hkscs": {
       type: "_dbcs",
-      table: function table9() {
+      table: function table10() {
         return require$$6.concat(require$$7);
       },
       encodeSkipVals: [41676]
@@ -133573,21 +133725,21 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   Directory.process = function() {
     var tables2 = {};
     for (var _iterator = _createForOfIteratorHelperLoose$3(this.tables), _step; !(_step = _iterator()).done; ) {
-      var table10 = _step.value;
-      tables2[table10.tag] = table10;
+      var table11 = _step.value;
+      tables2[table11.tag] = table11;
     }
     this.tables = tables2;
   };
   Directory.preEncode = function(stream2) {
     var tables$1 = [];
     for (var tag2 in this.tables) {
-      var table10 = this.tables[tag2];
-      if (table10) {
+      var table11 = this.tables[tag2];
+      if (table11) {
         tables$1.push({
           tag: tag2,
           checkSum: 0,
-          offset: new restructure.VoidPointer(tables[tag2], table10),
-          length: tables[tag2].size(table10)
+          offset: new restructure.VoidPointer(tables[tag2], table11),
+          length: tables[tag2].size(table11)
         });
       }
     }
@@ -133959,27 +134111,27 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     _proto.getKerning = function getKerning(left, right) {
       var res = 0;
       for (var _iterator = _createForOfIteratorHelperLoose$5(this.kern.tables), _step; !(_step = _iterator()).done; ) {
-        var table10 = _step.value;
-        if (table10.coverage.crossStream) {
+        var table11 = _step.value;
+        if (table11.coverage.crossStream) {
           continue;
         }
-        switch (table10.version) {
+        switch (table11.version) {
           case 0:
-            if (!table10.coverage.horizontal) {
+            if (!table11.coverage.horizontal) {
               continue;
             }
             break;
           case 1:
-            if (table10.coverage.vertical || table10.coverage.variation) {
+            if (table11.coverage.vertical || table11.coverage.variation) {
               continue;
             }
             break;
           default:
-            throw new Error("Unsupported kerning table version " + table10.version);
+            throw new Error("Unsupported kerning table version " + table11.version);
         }
         var val2 = 0;
-        var s = table10.subtable;
-        switch (table10.format) {
+        var s = table11.subtable;
+        switch (table11.format) {
           case 0:
             var pairIdx = binarySearch(s.pairs, function(pair) {
               return left - pair.left || right - pair.right;
@@ -134008,9 +134160,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
             val2 = s.kernValue[s.kernIndex[s.leftClass[left] * s.rightClassCount + s.rightClass[right]]];
             break;
           default:
-            throw new Error("Unsupported kerning sub-table format " + table10.format);
+            throw new Error("Unsupported kerning sub-table format " + table11.format);
         }
-        if (table10.coverage.override) {
+        if (table11.coverage.override) {
           res = val2;
         } else {
           res += val2;
@@ -135735,8 +135887,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     return desc;
   }
   var AATLookupTable = (_class$1 = /* @__PURE__ */ (function() {
-    function AATLookupTable2(table10) {
-      this.table = table10;
+    function AATLookupTable2(table11) {
+      this.table = table11;
     }
     var _proto = AATLookupTable2.prototype;
     _proto.lookup = function lookup4(glyph2) {
@@ -136802,9 +136954,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   }
   var DEFAULT_SCRIPTS = ["DFLT", "dflt", "latn"];
   var OTProcessor = /* @__PURE__ */ (function() {
-    function OTProcessor2(font, table10) {
+    function OTProcessor2(font, table11) {
       this.font = font;
-      this.table = table10;
+      this.table = table11;
       this.script = null;
       this.scriptTag = null;
       this.language = null;
@@ -136969,8 +137121,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
             continue;
           }
           for (var _iterator9 = _createForOfIteratorHelperLoose$d(lookup4.subTables), _step9; !(_step9 = _iterator9()).done; ) {
-            var table10 = _step9.value;
-            var res = this.applyLookup(lookup4.lookupType, table10);
+            var table11 = _step9.value;
+            var res = this.applyLookup(lookup4.lookupType, table11);
             if (res) {
               break;
             }
@@ -136979,7 +137131,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         }
       }
     };
-    _proto.applyLookup = function applyLookup(lookup4, table10) {
+    _proto.applyLookup = function applyLookup(lookup4, table11) {
       throw new Error("applyLookup must be implemented by subclasses");
     };
     _proto.applyLookupList = function applyLookupList(lookupRecords) {
@@ -136992,8 +137144,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         var lookup4 = this.table.lookupList.get(lookupRecord.lookupListIndex);
         this.glyphIterator.reset(lookup4.flags, this.glyphIterator.index);
         for (var _iterator11 = _createForOfIteratorHelperLoose$d(lookup4.subTables), _step11; !(_step11 = _iterator11()).done; ) {
-          var table10 = _step11.value;
-          if (this.applyLookup(lookup4.lookupType, table10)) {
+          var table11 = _step11.value;
+          if (this.applyLookup(lookup4.lookupType, table11)) {
             break;
           }
         }
@@ -137081,14 +137233,14 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         return classID === _this3.getClassID(glyph2.id, classDef);
       });
     };
-    _proto.applyContext = function applyContext(table10) {
-      switch (table10.version) {
+    _proto.applyContext = function applyContext(table11) {
+      switch (table11.version) {
         case 1:
-          var index = this.coverageIndex(table10.coverage);
+          var index = this.coverageIndex(table11.coverage);
           if (index === -1) {
             return false;
           }
-          var set = table10.ruleSets[index];
+          var set = table11.ruleSets[index];
           for (var _iterator14 = _createForOfIteratorHelperLoose$d(set), _step14; !(_step14 = _iterator14()).done; ) {
             var rule = _step14.value;
             if (this.sequenceMatches(1, rule.input)) {
@@ -137097,37 +137249,37 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           }
           break;
         case 2:
-          if (this.coverageIndex(table10.coverage) === -1) {
+          if (this.coverageIndex(table11.coverage) === -1) {
             return false;
           }
-          index = this.getClassID(this.glyphIterator.cur.id, table10.classDef);
+          index = this.getClassID(this.glyphIterator.cur.id, table11.classDef);
           if (index === -1) {
             return false;
           }
-          set = table10.classSet[index];
+          set = table11.classSet[index];
           for (var _iterator15 = _createForOfIteratorHelperLoose$d(set), _step15; !(_step15 = _iterator15()).done; ) {
             var _rule = _step15.value;
-            if (this.classSequenceMatches(1, _rule.classes, table10.classDef)) {
+            if (this.classSequenceMatches(1, _rule.classes, table11.classDef)) {
               return this.applyLookupList(_rule.lookupRecords);
             }
           }
           break;
         case 3:
-          if (this.coverageSequenceMatches(0, table10.coverages)) {
-            return this.applyLookupList(table10.lookupRecords);
+          if (this.coverageSequenceMatches(0, table11.coverages)) {
+            return this.applyLookupList(table11.lookupRecords);
           }
           break;
       }
       return false;
     };
-    _proto.applyChainingContext = function applyChainingContext(table10) {
-      switch (table10.version) {
+    _proto.applyChainingContext = function applyChainingContext(table11) {
+      switch (table11.version) {
         case 1:
-          var index = this.coverageIndex(table10.coverage);
+          var index = this.coverageIndex(table11.coverage);
           if (index === -1) {
             return false;
           }
-          var set = table10.chainRuleSets[index];
+          var set = table11.chainRuleSets[index];
           for (var _iterator16 = _createForOfIteratorHelperLoose$d(set), _step16; !(_step16 = _iterator16()).done; ) {
             var rule = _step16.value;
             if (this.sequenceMatches(-rule.backtrack.length, rule.backtrack) && this.sequenceMatches(1, rule.input) && this.sequenceMatches(1 + rule.input.length, rule.lookahead)) {
@@ -137136,24 +137288,24 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           }
           break;
         case 2:
-          if (this.coverageIndex(table10.coverage) === -1) {
+          if (this.coverageIndex(table11.coverage) === -1) {
             return false;
           }
-          index = this.getClassID(this.glyphIterator.cur.id, table10.inputClassDef);
-          var rules = table10.chainClassSet[index];
+          index = this.getClassID(this.glyphIterator.cur.id, table11.inputClassDef);
+          var rules = table11.chainClassSet[index];
           if (!rules) {
             return false;
           }
           for (var _iterator17 = _createForOfIteratorHelperLoose$d(rules), _step17; !(_step17 = _iterator17()).done; ) {
             var _rule2 = _step17.value;
-            if (this.classSequenceMatches(-_rule2.backtrack.length, _rule2.backtrack, table10.backtrackClassDef) && this.classSequenceMatches(1, _rule2.input, table10.inputClassDef) && this.classSequenceMatches(1 + _rule2.input.length, _rule2.lookahead, table10.lookaheadClassDef)) {
+            if (this.classSequenceMatches(-_rule2.backtrack.length, _rule2.backtrack, table11.backtrackClassDef) && this.classSequenceMatches(1, _rule2.input, table11.inputClassDef) && this.classSequenceMatches(1 + _rule2.input.length, _rule2.lookahead, table11.lookaheadClassDef)) {
               return this.applyLookupList(_rule2.lookupRecords);
             }
           }
           break;
         case 3:
-          if (this.coverageSequenceMatches(-table10.backtrackGlyphCount, table10.backtrackCoverage) && this.coverageSequenceMatches(0, table10.inputCoverage) && this.coverageSequenceMatches(table10.inputGlyphCount, table10.lookaheadCoverage)) {
-            return this.applyLookupList(table10.lookupRecords);
+          if (this.coverageSequenceMatches(-table11.backtrackGlyphCount, table11.backtrackCoverage) && this.coverageSequenceMatches(0, table11.inputCoverage) && this.coverageSequenceMatches(table11.inputGlyphCount, table11.lookaheadCoverage)) {
+            return this.applyLookupList(table11.lookupRecords);
           }
           break;
       }
@@ -138723,30 +138875,30 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       return _OTProcessor.apply(this, arguments) || this;
     }
     var _proto = GSUBProcessor2.prototype;
-    _proto.applyLookup = function applyLookup(lookupType, table10) {
+    _proto.applyLookup = function applyLookup(lookupType, table11) {
       var _this = this;
       switch (lookupType) {
         case 1: {
-          var index = this.coverageIndex(table10.coverage);
+          var index = this.coverageIndex(table11.coverage);
           if (index === -1) {
             return false;
           }
           var glyph2 = this.glyphIterator.cur;
-          switch (table10.version) {
+          switch (table11.version) {
             case 1:
-              glyph2.id = glyph2.id + table10.deltaGlyphID & 65535;
+              glyph2.id = glyph2.id + table11.deltaGlyphID & 65535;
               break;
             case 2:
-              glyph2.id = table10.substitute.get(index);
+              glyph2.id = table11.substitute.get(index);
               break;
           }
           return true;
         }
         case 2: {
-          var _index = this.coverageIndex(table10.coverage);
+          var _index = this.coverageIndex(table11.coverage);
           if (_index !== -1) {
             var _this$glyphs;
-            var sequence = table10.sequences.get(_index);
+            var sequence = table11.sequences.get(_index);
             this.glyphIterator.cur.id = sequence[0];
             this.glyphIterator.cur.ligatureComponent = 0;
             var features2 = this.glyphIterator.cur.features;
@@ -138766,20 +138918,20 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           return false;
         }
         case 3: {
-          var _index2 = this.coverageIndex(table10.coverage);
+          var _index2 = this.coverageIndex(table11.coverage);
           if (_index2 !== -1) {
             var USER_INDEX = 0;
-            this.glyphIterator.cur.id = table10.alternateSet.get(_index2)[USER_INDEX];
+            this.glyphIterator.cur.id = table11.alternateSet.get(_index2)[USER_INDEX];
             return true;
           }
           return false;
         }
         case 4: {
-          var _index3 = this.coverageIndex(table10.coverage);
+          var _index3 = this.coverageIndex(table11.coverage);
           if (_index3 === -1) {
             return false;
           }
-          for (var _iterator = _createForOfIteratorHelperLoose$i(table10.ligatureSets.get(_index3)), _step; !(_step = _iterator()).done; ) {
+          for (var _iterator = _createForOfIteratorHelperLoose$i(table11.ligatureSets.get(_index3)), _step; !(_step = _iterator()).done; ) {
             var ligature = _step.value;
             var matched = this.sequenceMatchIndices(1, ligature.components);
             if (!matched) {
@@ -138840,11 +138992,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           return false;
         }
         case 5:
-          return this.applyContext(table10);
+          return this.applyContext(table11);
         case 6:
-          return this.applyChainingContext(table10);
+          return this.applyChainingContext(table11);
         case 7:
-          return this.applyLookup(table10.lookupType, table10.extension);
+          return this.applyLookup(table11.lookupType, table11.extension);
         default:
           throw new Error("GSUB lookupType " + lookupType + " is not supported");
       }
@@ -138920,19 +139072,19 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         }
       }
     };
-    _proto.applyLookup = function applyLookup(lookupType, table10) {
+    _proto.applyLookup = function applyLookup(lookupType, table11) {
       switch (lookupType) {
         case 1: {
-          var index = this.coverageIndex(table10.coverage);
+          var index = this.coverageIndex(table11.coverage);
           if (index === -1) {
             return false;
           }
-          switch (table10.version) {
+          switch (table11.version) {
             case 1:
-              this.applyPositionValue(0, table10.value);
+              this.applyPositionValue(0, table11.value);
               break;
             case 2:
-              this.applyPositionValue(0, table10.values.get(index));
+              this.applyPositionValue(0, table11.values.get(index));
               break;
           }
           return true;
@@ -138942,13 +139094,13 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           if (!nextGlyph) {
             return false;
           }
-          var _index = this.coverageIndex(table10.coverage);
+          var _index = this.coverageIndex(table11.coverage);
           if (_index === -1) {
             return false;
           }
-          switch (table10.version) {
+          switch (table11.version) {
             case 1:
-              var set = table10.pairSets.get(_index);
+              var set = table11.pairSets.get(_index);
               for (var _iterator = _createForOfIteratorHelperLoose$j(set), _step; !(_step = _iterator()).done; ) {
                 var _pair = _step.value;
                 if (_pair.secondGlyph === nextGlyph.id) {
@@ -138959,12 +139111,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
               }
               return false;
             case 2:
-              var class1 = this.getClassID(this.glyphIterator.cur.id, table10.classDef1);
-              var class2 = this.getClassID(nextGlyph.id, table10.classDef2);
+              var class1 = this.getClassID(this.glyphIterator.cur.id, table11.classDef1);
+              var class2 = this.getClassID(nextGlyph.id, table11.classDef2);
               if (class1 === -1 || class2 === -1) {
                 return false;
               }
-              var pair = table10.classRecords.get(class1).get(class2);
+              var pair = table11.classRecords.get(class1).get(class2);
               this.applyPositionValue(0, pair.value1);
               this.applyPositionValue(1, pair.value2);
               return true;
@@ -138976,11 +139128,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           if (!_nextGlyph) {
             return false;
           }
-          var curRecord = table10.entryExitRecords[this.coverageIndex(table10.coverage)];
+          var curRecord = table11.entryExitRecords[this.coverageIndex(table11.coverage)];
           if (!curRecord || !curRecord.exitAnchor) {
             return false;
           }
-          var nextRecord = table10.entryExitRecords[this.coverageIndex(table10.coverage, _nextGlyph.id)];
+          var nextRecord = table11.entryExitRecords[this.coverageIndex(table11.coverage, _nextGlyph.id)];
           if (!nextRecord || !nextRecord.entryAnchor) {
             return false;
           }
@@ -139012,7 +139164,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           return true;
         }
         case 4: {
-          var markIndex = this.coverageIndex(table10.markCoverage);
+          var markIndex = this.coverageIndex(table11.markCoverage);
           if (markIndex === -1) {
             return false;
           }
@@ -139022,17 +139174,17 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           if (baseGlyphIndex < 0) {
             return false;
           }
-          var baseIndex = this.coverageIndex(table10.baseCoverage, this.glyphs[baseGlyphIndex].id);
+          var baseIndex = this.coverageIndex(table11.baseCoverage, this.glyphs[baseGlyphIndex].id);
           if (baseIndex === -1) {
             return false;
           }
-          var markRecord = table10.markArray[markIndex];
-          var baseAnchor = table10.baseArray[baseIndex][markRecord["class"]];
+          var markRecord = table11.markArray[markIndex];
+          var baseAnchor = table11.baseArray[baseIndex][markRecord["class"]];
           this.applyAnchor(markRecord, baseAnchor, baseGlyphIndex);
           return true;
         }
         case 5: {
-          var _markIndex = this.coverageIndex(table10.markCoverage);
+          var _markIndex = this.coverageIndex(table11.markCoverage);
           if (_markIndex === -1) {
             return false;
           }
@@ -139042,21 +139194,21 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           if (_baseGlyphIndex < 0) {
             return false;
           }
-          var ligIndex = this.coverageIndex(table10.ligatureCoverage, this.glyphs[_baseGlyphIndex].id);
+          var ligIndex = this.coverageIndex(table11.ligatureCoverage, this.glyphs[_baseGlyphIndex].id);
           if (ligIndex === -1) {
             return false;
           }
-          var ligAttach = table10.ligatureArray[ligIndex];
+          var ligAttach = table11.ligatureArray[ligIndex];
           var markGlyph = this.glyphIterator.cur;
           var ligGlyph = this.glyphs[_baseGlyphIndex];
           var compIndex = ligGlyph.ligatureID && ligGlyph.ligatureID === markGlyph.ligatureID && markGlyph.ligatureComponent > 0 ? Math.min(markGlyph.ligatureComponent, ligGlyph.codePoints.length) - 1 : ligGlyph.codePoints.length - 1;
-          var _markRecord = table10.markArray[_markIndex];
+          var _markRecord = table11.markArray[_markIndex];
           var _baseAnchor = ligAttach[compIndex][_markRecord["class"]];
           this.applyAnchor(_markRecord, _baseAnchor, _baseGlyphIndex);
           return true;
         }
         case 6: {
-          var mark1Index = this.coverageIndex(table10.mark1Coverage);
+          var mark1Index = this.coverageIndex(table11.mark1Coverage);
           if (mark1Index === -1) {
             return false;
           }
@@ -139081,21 +139233,21 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
           if (!good) {
             return false;
           }
-          var mark2Index = this.coverageIndex(table10.mark2Coverage, prev.id);
+          var mark2Index = this.coverageIndex(table11.mark2Coverage, prev.id);
           if (mark2Index === -1) {
             return false;
           }
-          var _markRecord2 = table10.mark1Array[mark1Index];
-          var _baseAnchor2 = table10.mark2Array[mark2Index][_markRecord2["class"]];
+          var _markRecord2 = table11.mark1Array[mark1Index];
+          var _baseAnchor2 = table11.mark2Array[mark2Index][_markRecord2["class"]];
           this.applyAnchor(_markRecord2, _baseAnchor2, prevIndex);
           return true;
         }
         case 7:
-          return this.applyContext(table10);
+          return this.applyContext(table11);
         case 8:
-          return this.applyChainingContext(table10);
+          return this.applyChainingContext(table11);
         case 9:
-          return this.applyLookup(table10.lookupType, table10.extension);
+          return this.applyLookup(table11.lookupType, table11.extension);
         default:
           throw new Error("Unsupported GPOS table: " + lookupType);
       }
@@ -139717,14 +139869,14 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     _proto._getBBox = function _getBBox() {
       return this.path.bbox;
     };
-    _proto._getTableMetrics = function _getTableMetrics(table10) {
-      if (this.id < table10.metrics.length) {
-        return table10.metrics.get(this.id);
+    _proto._getTableMetrics = function _getTableMetrics(table11) {
+      if (this.id < table11.metrics.length) {
+        return table11.metrics.get(this.id);
       }
-      var metric = table10.metrics.get(table10.metrics.length - 1);
+      var metric = table11.metrics.get(table11.metrics.length - 1);
       var res = {
         advance: metric ? metric.advance : 0,
-        bearing: table10.bearings.get(this.id - table10.metrics.length) || 0
+        bearing: table11.bearings.get(this.id - table11.metrics.length) || 0
       };
       return res;
     };
@@ -140707,12 +140859,12 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     var _proto = SBIXGlyph2.prototype;
     _proto.getImageForSize = function getImageForSize(size) {
       for (var i = 0; i < this._font.sbix.imageTables.length; i++) {
-        var table10 = this._font.sbix.imageTables[i];
-        if (table10.ppem >= size) {
+        var table11 = this._font.sbix.imageTables[i];
+        if (table11.ppem >= size) {
           break;
         }
       }
-      var offsets = table10.imageOffsets;
+      var offsets = table11.imageOffsets;
       var start = offsets[this.id];
       var end = offsets[this.id + 1];
       if (start === end) {
@@ -141150,22 +141302,22 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         }
       }
     };
-    _proto.getAdvanceAdjustment = function getAdvanceAdjustment(gid, table10) {
+    _proto.getAdvanceAdjustment = function getAdvanceAdjustment(gid, table11) {
       var outerIndex2, innerIndex2;
-      if (table10.advanceWidthMapping) {
+      if (table11.advanceWidthMapping) {
         var idx = gid;
-        if (idx >= table10.advanceWidthMapping.mapCount) {
-          idx = table10.advanceWidthMapping.mapCount - 1;
+        if (idx >= table11.advanceWidthMapping.mapCount) {
+          idx = table11.advanceWidthMapping.mapCount - 1;
         }
-        var entryFormat = table10.advanceWidthMapping.entryFormat;
-        var _table$advanceWidthMa = table10.advanceWidthMapping.mapData[idx];
+        var entryFormat = table11.advanceWidthMapping.entryFormat;
+        var _table$advanceWidthMa = table11.advanceWidthMapping.mapData[idx];
         outerIndex2 = _table$advanceWidthMa.outerIndex;
         innerIndex2 = _table$advanceWidthMa.innerIndex;
       } else {
         outerIndex2 = 0;
         innerIndex2 = gid;
       }
-      return this.getDelta(table10.itemVariationStore, outerIndex2, innerIndex2);
+      return this.getDelta(table11.itemVariationStore, outerIndex2, innerIndex2);
     };
     _proto.getDelta = function getDelta(itemStore, outerIndex2, innerIndex2) {
       if (outerIndex2 >= itemStore.itemVariationData.length) {
@@ -141865,32 +142017,32 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       this._glyphs = {};
       this._decodeDirectory();
       for (var tag2 in this.directory.tables) {
-        var table10 = this.directory.tables[tag2];
-        if (tables[tag2] && table10.length > 0) {
+        var table11 = this.directory.tables[tag2];
+        if (tables[tag2] && table11.length > 0) {
           Object.defineProperty(this, tag2, {
-            get: this._getTable.bind(this, table10)
+            get: this._getTable.bind(this, table11)
           });
         }
       }
     }
     var _proto = TTFFont2.prototype;
-    _proto._getTable = function _getTable(table10) {
-      if (!(table10.tag in this._tables)) {
+    _proto._getTable = function _getTable(table11) {
+      if (!(table11.tag in this._tables)) {
         try {
-          this._tables[table10.tag] = this._decodeTable(table10);
+          this._tables[table11.tag] = this._decodeTable(table11);
         } catch (e) {
           if (fontkit.logErrors) {
-            console.error("Error decoding table " + table10.tag);
+            console.error("Error decoding table " + table11.tag);
             console.error(e.stack);
           }
         }
       }
-      return this._tables[table10.tag];
+      return this._tables[table11.tag];
     };
     _proto._getTableStream = function _getTableStream(tag2) {
-      var table10 = this.directory.tables[tag2];
-      if (table10) {
-        this.stream.pos = table10.offset;
+      var table11 = this.directory.tables[tag2];
+      if (table11) {
+        this.stream.pos = table11.offset;
         return this.stream;
       }
       return null;
@@ -141900,10 +142052,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         _startOffset: 0
       });
     };
-    _proto._decodeTable = function _decodeTable(table10) {
+    _proto._decodeTable = function _decodeTable(table11) {
       var pos = this.stream.pos;
-      var stream2 = this._getTableStream(table10.tag);
-      var result = tables[table10.tag].decode(stream2, this, table10.length);
+      var stream2 = this._getTableStream(table11.tag);
+      var result = tables[table11.tag].decode(stream2, this, table11.length);
       this.stream.pos = pos;
       return result;
     };
@@ -142322,8 +142474,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   WOFFDirectory.process = function() {
     var tables2 = {};
     for (var _iterator = _createForOfIteratorHelperLoose$r(this.tables), _step; !(_step = _iterator()).done; ) {
-      var table10 = _step.value;
-      tables2[table10.tag] = table10;
+      var table11 = _step.value;
+      tables2[table11.tag] = table11;
     }
     this.tables = tables2;
   };
@@ -142584,13 +142736,13 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       });
     };
     _proto._getTableStream = function _getTableStream(tag2) {
-      var table10 = this.directory.tables[tag2];
-      if (table10) {
-        this.stream.pos = table10.offset;
-        if (table10.compLength < table10.length) {
+      var table11 = this.directory.tables[tag2];
+      if (table11) {
+        this.stream.pos = table11.offset;
+        if (table11.compLength < table11.length) {
           this.stream.pos += 2;
-          var outBuffer = new buffer_1(table10.length);
-          var buf = tinyInflate$1(this.stream.readBuffer(table10.compLength - 2), outBuffer);
+          var outBuffer = new buffer_1(table11.length);
+          var buf = tinyInflate$1(this.stream.readBuffer(table11.compLength - 2), outBuffer);
           return new restructure.DecodeStream(buf);
         } else {
           return this.stream;
@@ -142831,10 +142983,10 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
     return (key4 & step - 1) + step;
   }
-  function ReplicateValue(table10, i, step, end, code2) {
+  function ReplicateValue(table11, i, step, end, code2) {
     do {
       end -= step;
-      table10[i + end] = new HuffmanCode(code2.bits, code2.value);
+      table11[i + end] = new HuffmanCode(code2.bits, code2.value);
     } while (end > 0);
   }
   function NextTableBitSize(count, len2, root_bits) {
@@ -142847,8 +142999,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
     return len2 - root_bits;
   }
-  var BrotliBuildHuffmanTable = function BrotliBuildHuffmanTable2(root_table, table10, root_bits, code_lengths, code_lengths_size) {
-    var start_table = table10;
+  var BrotliBuildHuffmanTable = function BrotliBuildHuffmanTable2(root_table, table11, root_bits, code_lengths, code_lengths_size) {
+    var start_table = table11;
     var code2;
     var len2;
     var symbol;
@@ -142880,7 +143032,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     total_size = table_size;
     if (offset[MAX_LENGTH] === 1) {
       for (key4 = 0; key4 < total_size; ++key4) {
-        root_table[table10 + key4] = new HuffmanCode(0, sorted[0] & 65535);
+        root_table[table11 + key4] = new HuffmanCode(0, sorted[0] & 65535);
       }
       return total_size;
     }
@@ -142889,7 +143041,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     for (len2 = 1, step = 2; len2 <= root_bits; ++len2, step <<= 1) {
       for (; count[len2] > 0; --count[len2]) {
         code2 = new HuffmanCode(len2 & 255, sorted[symbol++] & 65535);
-        ReplicateValue(root_table, table10 + key4, step, table_size, code2);
+        ReplicateValue(root_table, table11 + key4, step, table_size, code2);
         key4 = GetNextKey(key4, len2);
       }
     }
@@ -142898,15 +143050,15 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     for (len2 = root_bits + 1, step = 2; len2 <= MAX_LENGTH; ++len2, step <<= 1) {
       for (; count[len2] > 0; --count[len2]) {
         if ((key4 & mask2) !== low) {
-          table10 += table_size;
+          table11 += table_size;
           table_bits = NextTableBitSize(count, len2, root_bits);
           table_size = 1 << table_bits;
           total_size += table_size;
           low = key4 & mask2;
-          root_table[start_table + low] = new HuffmanCode(table_bits + root_bits & 255, table10 - start_table - low & 65535);
+          root_table[start_table + low] = new HuffmanCode(table_bits + root_bits & 255, table11 - start_table - low & 65535);
         }
         code2 = new HuffmanCode(len2 - root_bits & 255, sorted[symbol++] & 65535);
-        ReplicateValue(root_table, table10 + (key4 >> root_bits), step, table_size, code2);
+        ReplicateValue(root_table, table11 + (key4 >> root_bits), step, table_size, code2);
         key4 = GetNextKey(key4, len2);
       }
     }
@@ -144934,18 +145086,18 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
     return out;
   }
-  function ReadSymbol(table10, index, br) {
+  function ReadSymbol(table11, index, br) {
     var nbits;
     br.fillBitWindow();
     index += br.val_ >>> br.bit_pos_ & HUFFMAN_TABLE_MASK;
-    nbits = table10[index].bits - HUFFMAN_TABLE_BITS;
+    nbits = table11[index].bits - HUFFMAN_TABLE_BITS;
     if (nbits > 0) {
       br.bit_pos_ += HUFFMAN_TABLE_BITS;
-      index += table10[index].value;
+      index += table11[index].value;
       index += br.val_ >>> br.bit_pos_ & (1 << nbits) - 1;
     }
-    br.bit_pos_ += table10[index].bits;
-    return table10[index].value;
+    br.bit_pos_ += table11[index].bits;
+    return table11[index].value;
   }
   function ReadHuffmanCodeLengths(code_length_code_lengths, num_symbols, code_lengths, br) {
     var symbol = 0;
@@ -144953,19 +145105,19 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     var repeat = 0;
     var repeat_code_len = 0;
     var space = 32768;
-    var table10 = [];
+    var table11 = [];
     for (var i = 0; i < 32; i++) {
-      table10.push(new HuffmanCode$1(0, 0));
+      table11.push(new HuffmanCode$1(0, 0));
     }
-    BrotliBuildHuffmanTable$1(table10, 0, 5, code_length_code_lengths, CODE_LENGTH_CODES);
+    BrotliBuildHuffmanTable$1(table11, 0, 5, code_length_code_lengths, CODE_LENGTH_CODES);
     while (symbol < num_symbols && space > 0) {
       var p = 0;
       var code_len;
       br.readMoreInput();
       br.fillBitWindow();
       p += br.val_ >>> br.bit_pos_ & 31;
-      br.bit_pos_ += table10[p].bits;
-      code_len = table10[p].value & 255;
+      br.bit_pos_ += table11[p].bits;
+      code_len = table11[p].value & 255;
       if (code_len < kCodeLengthRepeatCode) {
         repeat = 0;
         code_lengths[symbol++] = code_len;
@@ -145011,7 +145163,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       code_lengths[symbol] = 0;
     }
   }
-  function ReadHuffmanCode(alphabet_size, tables2, table10, br) {
+  function ReadHuffmanCode(alphabet_size, tables2, table11, br) {
     var table_size = 0;
     var simple_code_or_skip;
     var code_lengths = new Uint8Array(alphabet_size);
@@ -145081,16 +145233,16 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       if (!(num_codes === 1 || space === 0)) throw new Error("[ReadHuffmanCode] invalid num_codes or space");
       ReadHuffmanCodeLengths(code_length_code_lengths, alphabet_size, code_lengths, br);
     }
-    table_size = BrotliBuildHuffmanTable$1(tables2, table10, HUFFMAN_TABLE_BITS, code_lengths, alphabet_size);
+    table_size = BrotliBuildHuffmanTable$1(tables2, table11, HUFFMAN_TABLE_BITS, code_lengths, alphabet_size);
     if (table_size === 0) {
       throw new Error("[ReadHuffmanCode] BuildHuffmanTable failed: ");
     }
     return table_size;
   }
-  function ReadBlockLength(table10, index, br) {
+  function ReadBlockLength(table11, index, br) {
     var code2;
     var nbits;
-    code2 = ReadSymbol(table10, index, br);
+    code2 = ReadSymbol(table11, index, br);
     nbits = prefix.kBlockLengthPrefixCode[code2].nbits;
     return prefix.kBlockLengthPrefixCode[code2].offset + br.readBits(nbits);
   }
@@ -145148,7 +145300,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     };
     var use_rle_for_zeros;
     var max_run_length_prefix = 0;
-    var table10;
+    var table11;
     var i;
     br.readMoreInput();
     var num_htrees = out.num_htrees = DecodeVarLenUint8(br) + 1;
@@ -145160,15 +145312,15 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     if (use_rle_for_zeros) {
       max_run_length_prefix = br.readBits(4) + 1;
     }
-    table10 = [];
+    table11 = [];
     for (i = 0; i < HUFFMAN_MAX_TABLE_SIZE; i++) {
-      table10[i] = new HuffmanCode$1(0, 0);
+      table11[i] = new HuffmanCode$1(0, 0);
     }
-    ReadHuffmanCode(num_htrees + max_run_length_prefix, table10, 0, br);
+    ReadHuffmanCode(num_htrees + max_run_length_prefix, table11, 0, br);
     for (i = 0; i < context_map_size; ) {
       var code2;
       br.readMoreInput();
-      code2 = ReadSymbol(table10, 0, br);
+      code2 = ReadSymbol(table11, 0, br);
       if (code2 === 0) {
         context_map[i] = 0;
         ++i;
@@ -145655,8 +145807,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   WOFF2Directory.process = function() {
     var tables2 = {};
     for (var i = 0; i < this.tables.length; i++) {
-      var table10 = this.tables[i];
-      tables2[table10.tag] = table10;
+      var table11 = this.tables[i];
+      tables2[table11.tag] = table11;
     }
     return this.tables = tables2;
   };
@@ -145696,9 +145848,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         this._decompressed = true;
       }
     };
-    _proto._decodeTable = function _decodeTable(table10) {
+    _proto._decodeTable = function _decodeTable(table11) {
       this._decompress();
-      return _TTFFont.prototype._decodeTable.call(this, table10);
+      return _TTFFont.prototype._decodeTable.call(this, table11);
     };
     _proto._getBaseGlyph = function _getBaseGlyph(glyph2, characters) {
       if (characters === void 0) {
@@ -145718,31 +145870,31 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     _proto._transformGlyfTable = function _transformGlyfTable() {
       this._decompress();
       this.stream.pos = this.directory.tables.glyf.offset;
-      var table10 = GlyfTable.decode(this.stream);
+      var table11 = GlyfTable.decode(this.stream);
       var glyphs = [];
-      for (var index = 0; index < table10.numGlyphs; index++) {
+      for (var index = 0; index < table11.numGlyphs; index++) {
         var glyph2 = {};
-        var nContours = table10.nContours.readInt16BE();
+        var nContours = table11.nContours.readInt16BE();
         glyph2.numberOfContours = nContours;
         if (nContours > 0) {
           var nPoints = [];
           var totalPoints = 0;
           for (var i = 0; i < nContours; i++) {
-            var _r = read255UInt16(table10.nPoints);
+            var _r = read255UInt16(table11.nPoints);
             totalPoints += _r;
             nPoints.push(totalPoints);
           }
-          glyph2.points = decodeTriplet(table10.flags, table10.glyphs, totalPoints);
+          glyph2.points = decodeTriplet(table11.flags, table11.glyphs, totalPoints);
           for (var _i = 0; _i < nContours; _i++) {
             glyph2.points[nPoints[_i] - 1].endContour = true;
           }
-          var instructionSize = read255UInt16(table10.glyphs);
+          var instructionSize = read255UInt16(table11.glyphs);
         } else if (nContours < 0) {
           var haveInstructions = TTFGlyph.prototype._decodeComposite.call({
             _font: this
-          }, glyph2, table10.composites);
+          }, glyph2, table11.composites);
           if (haveInstructions) {
-            var instructionSize = read255UInt16(table10.glyphs);
+            var instructionSize = read255UInt16(table11.glyphs);
           }
         }
         glyphs.push(glyph2);
@@ -147131,17 +147283,17 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       resolveFontPath: fontPath
     });
     const boardExporter = createBoardPdfExporter({ openBoard: (id2) => deps.canvas.open(id2), getCourseFolder: (id2) => deps.courses.getFolder(id2), resolveFontPath: fontPath });
-    deps.handle("canvas:exportPdf", async (request) => {
-      const result = await boardExporter.exportBoard(request.boardId), board = deps.canvas.open(request.boardId).board;
+    deps.handle("canvas:exportPdf", async (request2) => {
+      const result = await boardExporter.exportBoard(request2.boardId), board = deps.canvas.open(request2.boardId).board;
       deps.materials.invalidateTree(board.courseId);
       deps.materials.recordAdded(board.courseId, result.relPath);
       deps.changed(board.courseId);
       return result;
     });
-    async function annotatedBytes(request) {
-      const source = resolveInsideReal(deps.courses.getFolder(request.courseId), request.relPath);
+    async function annotatedBytes(request2) {
+      const source = resolveInsideReal(deps.courses.getFolder(request2.courseId), request2.relPath);
       const bytes = await readFile(source);
-      deps.pdfBindings.check({ courseId: request.courseId, relPath: request.relPath, documentRevision: createHash("sha256").update(bytes).digest("hex") });
+      deps.pdfBindings.check({ courseId: request2.courseId, relPath: request2.relPath, documentRevision: createHash("sha256").update(bytes).digest("hex") });
       const pdf = await PDFDocument_default.load(bytes), overlay = await PDFDocument_default.create();
       const sourcePages = pdf.getPages();
       for (const page of sourcePages) {
@@ -147149,11 +147301,11 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
         if (![0, 90, 180, 270].includes(rotation)) throw new Error("PDF page rotation is unsupported");
         overlay.addPage(rotation === 90 || rotation === 270 ? [height, width] : [width, height]);
       }
-      await exporter.annotateDocument(overlay, request);
+      await exporter.annotateDocument(overlay, request2);
       await overlay.flush();
       const markedPages = new Set([
-        ...deps.drawings.listForFile(request.courseId, request.relPath),
-        ...deps.annotations.listForFile({ courseId: request.courseId, relPath: request.relPath })
+        ...deps.drawings.listForFile(request2.courseId, request2.relPath),
+        ...deps.annotations.listForFile({ courseId: request2.courseId, relPath: request2.relPath })
       ].map((entry2) => entry2.page));
       for (let index = 0; index < sourcePages.length; index++) {
         if (!markedPages.has(index + 1)) continue;
@@ -147167,15 +147319,15 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       }
       return pdf.save();
     }
-    deps.handle("pdf:exportAnnotated", async (request) => {
-      const bytes = await annotatedBytes(request);
+    deps.handle("pdf:exportAnnotated", async (request2) => {
+      const bytes = await annotatedBytes(request2);
       const save = globalThis.__bandalPlatform?.invoke;
       if (!save) throw new Error("Native PDF export destination is unavailable");
-      const result = await save("native:saveFile", { suggestedName: basename(request.relPath).replace(/\.pdf$/i, "") + " (\uC8FC\uC11D).pdf", data: Buffer2.from(bytes).toString("base64"), mime: "application/pdf" });
+      const result = await save("native:saveFile", { suggestedName: basename(request2.relPath).replace(/\.pdf$/i, "") + " (\uC8FC\uC11D).pdf", data: Buffer2.from(bytes).toString("base64"), mime: "application/pdf" });
       return { savedPath: result.saved ? result.path ?? null : null };
     });
-    return { exporter, exportAnnotated: async (request, savePath) => {
-      await writeFile(savePath, await annotatedBytes(request));
+    return { exporter, exportAnnotated: async (request2, savePath) => {
+      await writeFile(savePath, await annotatedBytes(request2));
     } };
   }
 
@@ -147241,7 +147393,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       if (result?.error) throw new ValidationError("\uB85C\uADF8\uC778\uC744 \uB2E4\uC2DC \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
       return result?.data.session?.access_token ?? null;
     }
-    async function request(action, input) {
+    async function request2(action, input) {
       if (!STUDY_MARKET_ACTIONS.includes(action)) throw new ValidationError("\uC9C0\uC6D0\uD558\uC9C0 \uC54A\uB294 \uB9C8\uCF13 \uC694\uCCAD\uC785\uB2C8\uB2E4.");
       const current = config2();
       const access = await session();
@@ -147276,7 +147428,7 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
       return target.href;
     }
     async function upload(versionId, file) {
-      const grant = await request("uploadGrant", { versionId, fileId: file.id });
+      const grant = await request2("uploadGrant", { versionId, fileId: file.id });
       if (grant.alreadyVerified) return;
       const endpoint = trustedStorageUrl(grant.resumableUrl);
       const current = config2();
@@ -147334,20 +147486,20 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
             offset = next;
           }
         }
-        await request("finalizeFile", { versionId, fileId: file.id });
+        await request2("finalizeFile", { versionId, fileId: file.id });
         uploads.delete(key4);
       } finally {
         await handle2.close();
       }
     }
     async function checkout(orderId) {
-      const order = await request("orderStatus", { orderId, refreshCheckout: true });
+      const order = await request2("orderStatus", { orderId, refreshCheckout: true });
       if (!order.checkoutUrl || order.status !== "pending") throw new ValidationError("\uAD6C\uB9E4 \uB0B4\uC5ED\uC5D0\uC11C \uACB0\uC81C \uC0C1\uD0DC\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
       const url = new URL(order.checkoutUrl);
       if (url.origin !== "https://bandal.io" || url.pathname !== "/checkout" || url.username || url.password) throw new ValidationError("\uACB0\uC81C \uD398\uC774\uC9C0 \uC8FC\uC18C\uAC00 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.");
       return url.href;
     }
-    return { request, dispatch: (req) => request(req.action, req.input), upload, checkout, trustedStorageUrl };
+    return { request: request2, dispatch: (req) => request2(req.action, req.input), upload, checkout, trustedStorageUrl };
   }
 
   // DesktopRuntime/upstream/src/main/features/studyMarket/markdown.ts
@@ -147991,7 +148143,7 @@ ${escapeMarkdown(annotation.comment.trim())}
       if (result.error) throw result.error;
       return result.data.session?.access_token ?? null;
     }
-    async function request(path, body, authenticated = true) {
+    async function request2(path, body, authenticated = true) {
       const base = url();
       if (!base) throw new ValidationError("Marketplace is not configured");
       const access = authenticated ? await token() : null;
@@ -148019,7 +148171,7 @@ ${escapeMarkdown(annotation.comment.trim())}
       async release(id2) {
         if (!/^[0-9a-f-]{36}$/.test(id2))
           throw new ValidationError("Invalid release id");
-        return (await request(`/releases/${id2}`, void 0, false)).json();
+        return (await request2(`/releases/${id2}`, void 0, false)).json();
       },
       async dashboard() {
         const empty = {
@@ -148030,23 +148182,23 @@ ${escapeMarkdown(annotation.comment.trim())}
           releases: []
         };
         if (!empty.configured || !await token()) return empty;
-        return (await request("/dashboard")).json();
+        return (await request2("/dashboard")).json();
       },
       async register(id2, displayName) {
-        await request("/publishers", { id: id2, displayName });
+        await request2("/publishers", { id: id2, displayName });
       },
       async submit(artifactBase64, changelog) {
-        return (await request("/releases", { artifactBase64, changelog })).json();
+        return (await request2("/releases", { artifactBase64, changelog })).json();
       },
       async review(id2, decision, reason) {
         if (!/^[0-9a-f-]{36}$/.test(id2))
           throw new ValidationError("Invalid release id");
-        await request(`/releases/${id2}/review`, { decision, reason });
+        await request2(`/releases/${id2}/review`, { decision, reason });
       },
       async reviewBundle(id2) {
         if (!/^[0-9a-f-]{36}$/.test(id2))
           throw new ValidationError("Invalid release id");
-        const response = await request(`/releases/${id2}/review-bundle`);
+        const response = await request2(`/releases/${id2}/review-bundle`);
         const reader = response.body?.getReader();
         if (!reader) throw new ValidationError("Empty archive");
         const chunks = [];
@@ -148064,12 +148216,12 @@ ${escapeMarkdown(annotation.comment.trim())}
         return Buffer.concat(chunks);
       },
       async report(releaseId, reason) {
-        await request("/reports", { releaseId, reason });
+        await request2("/reports", { releaseId, reason });
       },
       async resolveReport(id2, reason) {
         if (!/^[0-9a-f-]{36}$/.test(id2))
           throw new ValidationError("Invalid report id");
-        await request(`/reports/${id2}/resolve`, { reason });
+        await request2(`/reports/${id2}/resolve`, { reason });
       }
     };
   }
@@ -148320,7 +148472,7 @@ ${escapeMarkdown(annotation.comment.trim())}
     }
     return controller.signal;
   });
-  var cloudInvoke = (channel, request = {}) => host2.__bandalPlatform.invoke(channel, request);
+  var cloudInvoke = (channel, request2 = {}) => host2.__bandalPlatform.invoke(channel, request2);
   var boundCloudFetch = (state) => (input, options) => cloudFetch(input, options, state.accountID);
   function cloudSession(state) {
     return { auth: { getSession: async () => ({ error: null, data: { session: state.signedIn ? { access_token: "native-keychain" } : null } }) } };
@@ -148359,8 +148511,8 @@ ${escapeMarkdown(annotation.comment.trim())}
     signal?.addEventListener("abort", abort, { once: true });
     let response;
     try {
-      const request = { id: id2, url: String(input), method: options.method ?? "GET", headers, accountID, ...bodyBase64 === void 0 ? {} : { bodyBase64 } };
-      response = await (transport ? transport.request(request) : cloudInvoke("native:cloudRequest", request));
+      const request2 = { id: id2, url: String(input), method: options.method ?? "GET", headers, accountID, ...bodyBase64 === void 0 ? {} : { bodyBase64 } };
+      response = await (transport ? transport.request(request2) : cloudInvoke("native:cloudRequest", request2));
       signal?.throwIfAborted();
     } catch (error2) {
       await cancel().catch(() => void 0);
@@ -148544,7 +148696,7 @@ ${escapeMarkdown(annotation.comment.trim())}
       }
       return result;
     }
-    for (const channel of STUDY_MARKET_CHANNELS) deps.handle(channel, async (request) => (await scope()).handlers.get(channel)(request));
+    for (const channel of STUDY_MARKET_CHANNELS) deps.handle(channel, async (request2) => (await scope()).handlers.get(channel)(request2));
     deps.handle("marketplace:dashboard", async () => (await scope()).marketplace.dashboard());
     deps.handle("marketplace:release", async (req) => (await scope()).marketplace.release(req.id));
     deps.handle("marketplace:register", async (req) => {
@@ -148588,7 +148740,7 @@ ${escapeMarkdown(annotation.comment.trim())}
   var utilityProcess = { fork(_path, _args, _options) {
     const workerID = randomUUID(), listeners2 = /* @__PURE__ */ new Map();
     let killed = false;
-    const invoke2 = (channel, request) => globalThis.__bandalPlatform.invoke(channel, request);
+    const invoke2 = (channel, request2) => globalThis.__bandalPlatform.invoke(channel, request2);
     const emit4 = (name7, value) => {
       if (!killed) for (const fn of listeners2.get(name7) ?? []) fn(value);
     };
@@ -148782,10 +148934,10 @@ ${escapeMarkdown(annotation.comment.trim())}
           });
           worker.on("message", (message) => {
             if (child !== worker || pending?.id !== message.id) return;
-            const request = pending;
+            const request2 = pending;
             pending = null;
-            clearTimeout(request.timer);
-            request.resolve(message.content);
+            clearTimeout(request2.timer);
+            request2.resolve(message.content);
             if (queue2.length) pump();
             else {
               idle = setTimeout(stop, 1e4);
@@ -148840,17 +148992,17 @@ ${escapeMarkdown(annotation.comment.trim())}
       }
     };
     return {
-      async read(request) {
+      async read(request2) {
         if (disposed) throw new Error("\uC790\uB8CC \uBBF8\uB9AC\uBCF4\uAE30\uAC00 \uC885\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4.");
-        const path = await deps.materials.absolutePathForAsync(request.courseId, request.relPath);
+        const path = await deps.materials.absolutePathForAsync(request2.courseId, request2.relPath);
         const info = await stat(path);
         if (disposed) throw new Error("\uC790\uB8CC \uBBF8\uB9AC\uBCF4\uAE30\uAC00 \uC885\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4.");
         if (!info.isFile()) throw new Error("\uD30C\uC77C \uC790\uB8CC\uB9CC \uBBF8\uB9AC \uBCFC \uC218 \uC788\uC5B4\uC694.");
-        const name7 = basename(request.relPath);
+        const name7 = basename(request2.relPath);
         const ext = name7.slice(name7.lastIndexOf(".")).toLowerCase();
-        const kind = materialKindForPath(request.relPath);
-        const metadata = { name: name7, relPath: request.relPath, size: info.size, mtime: info.mtimeMs };
-        const key4 = JSON.stringify([request.courseId, request.relPath, info.mtimeMs, info.size, info.ctimeMs]);
+        const kind = materialKindForPath(request2.relPath);
+        const metadata = { name: name7, relPath: request2.relPath, size: info.size, mtime: info.mtimeMs };
+        const key4 = JSON.stringify([request2.courseId, request2.relPath, info.mtimeMs, info.size, info.ctimeMs]);
         const cached2 = cache2.get(key4);
         if (cached2) {
           cache2.delete(key4);
@@ -148894,7 +149046,7 @@ ${escapeMarkdown(annotation.comment.trim())}
   init_native();
   function installHoverPreview(deps) {
     const service = createMaterialHoverPreviewService({ materials: deps.materials, userData: env2().userDataPath });
-    deps.handle("materials:hoverPreview", (request) => service.read(request));
+    deps.handle("materials:hoverPreview", (request2) => service.read(request2));
     return service;
   }
 
@@ -149338,14 +149490,14 @@ ${escapeMarkdown(annotation.comment.trim())}
       changed();
       return { server };
     });
-    handle2("mcp:delete", (request) => {
-      registry.delete(request.id);
-      catalogs.delete(request.id);
+    handle2("mcp:delete", (request2) => {
+      registry.delete(request2.id);
+      catalogs.delete(request2.id);
       changed();
       return { ok: true };
     });
-    handle2("mcp:test", async (request) => {
-      const config2 = resolve2(request.id), started = Date.now();
+    handle2("mcp:test", async (request2) => {
+      const config2 = resolve2(request2.id), started = Date.now();
       let result;
       try {
         result = await probe(config2);
@@ -149919,14 +150071,14 @@ ${escapeMarkdown(annotation.comment.trim())}
         if (id2) guard.clear(id2);
         armed.delete(courseId2);
       } },
-      async confirm(request) {
-        const id2 = sessionFor(request.courseId);
+      async confirm(request2) {
+        const id2 = sessionFor(request2.courseId);
         try {
-          const result = await deps.confirm({ ...request, conversationId: id2 });
-          if (result === false) sessions.delete(request.courseId);
+          const result = await deps.confirm({ ...request2, conversationId: id2 });
+          if (result === false) sessions.delete(request2.courseId);
           return result;
         } catch (error2) {
-          sessions.delete(request.courseId);
+          sessions.delete(request2.courseId);
           throw error2;
         }
       },
@@ -152095,29 +152247,29 @@ ${escapeMarkdown(annotation.comment.trim())}
       ;
       scope?.finish();
     }
-    deps.handle("browserAgent:registerTab", (request) => platform("native:browserTool", { tool: "registerTab", input: request }));
-    deps.handle("browserAgent:syncTabs", async (request) => {
-      deps.courses.getById(request.courseId);
-      const result = await platform("native:browserTool", { tool: "syncTabs", courseId: request.courseId, input: request });
-      deps.onTabs?.(request.courseId, request.tabs.map((tab) => ({ ...tab, courseId: request.courseId, active: tab.tabId === request.activeTabId })));
+    deps.handle("browserAgent:registerTab", (request2) => platform("native:browserTool", { tool: "registerTab", input: request2 }));
+    deps.handle("browserAgent:syncTabs", async (request2) => {
+      deps.courses.getById(request2.courseId);
+      const result = await platform("native:browserTool", { tool: "syncTabs", courseId: request2.courseId, input: request2 });
+      deps.onTabs?.(request2.courseId, request2.tabs.map((tab) => ({ ...tab, courseId: request2.courseId, active: tab.tabId === request2.activeTabId })));
       return result;
     });
     deps.handle("browserAgent:grants", () => ({ grants: grants.list() }));
-    deps.handle("browserAgent:revokeGrant", (request) => {
-      grants.revoke(request.id);
+    deps.handle("browserAgent:revokeGrant", (request2) => {
+      grants.revoke(request2.id);
       return { ok: true };
     });
-    deps.handle("browserAgent:auditTail", (request) => ({ entries: audit.tail(request.courseId, Math.min(1e3, Math.max(1, request.limit ?? 200))) }));
-    deps.handle("browserAgent:stopRun", (request) => {
-      runs.stop(request.runId);
-      resumes.get(request.runId)?.("stopped");
-      resumes.delete(request.runId);
+    deps.handle("browserAgent:auditTail", (request2) => ({ entries: audit.tail(request2.courseId, Math.min(1e3, Math.max(1, request2.limit ?? 200))) }));
+    deps.handle("browserAgent:stopRun", (request2) => {
+      runs.stop(request2.runId);
+      resumes.get(request2.runId)?.("stopped");
+      resumes.delete(request2.runId);
       return { ok: true };
     });
-    deps.handle("browserAgent:resumeRun", (request) => {
-      runs.resume(request.runId);
-      resumes.get(request.runId)?.("resumed");
-      resumes.delete(request.runId);
+    deps.handle("browserAgent:resumeRun", (request2) => {
+      runs.resume(request2.runId);
+      resumes.get(request2.runId)?.("resumed");
+      resumes.delete(request2.runId);
       return { ok: true };
     });
     function toolsFor(courseId2, conversationId, getTurnId) {
@@ -153248,9 +153400,9 @@ ${contextText}
     let revision = 0;
     const configuredTimeout = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout >= 0 ? configuredTimeout : 0;
-    function publish(request, status, scope) {
-      const state = { request, status, revision: ++revision, ...scope ? { scope } : {} };
-      states.set(request.requestId, state);
+    function publish(request2, status, scope) {
+      const state = { request: request2, status, revision: ++revision, ...scope ? { scope } : {} };
+      states.set(request2.requestId, state);
       if (states.size > 1e3) {
         for (const [id2, old] of states) {
           if (old.status !== "pending") {
@@ -153285,22 +153437,22 @@ ${contextText}
           if (states.get(previousId)?.status !== "approved") return Promise.resolve(false);
         }
         if (deps.allow?.(input)) return Promise.resolve("once");
-        const request = { ...input, requestId: randomUUID() };
+        const request2 = { ...input, requestId: randomUUID() };
         let resolve2;
         const promise = new Promise((done2) => {
           resolve2 = done2;
         });
-        const timer = setTimeout(() => settle(request.requestId, "expired"), timeoutMs);
-        pending.set(request.requestId, { request, resolve: resolve2, timer, promise });
+        const timer = setTimeout(() => settle(request2.requestId, "expired"), timeoutMs);
+        pending.set(request2.requestId, { request: request2, resolve: resolve2, timer, promise });
         if (key4) {
-          operations.set(key4, request.requestId);
+          operations.set(key4, request2.requestId);
           if (operations.size > 2e3) operations.delete(operations.keys().next().value);
         }
         try {
-          publish(request, "pending");
-          deps.emit(request);
+          publish(request2, "pending");
+          deps.emit(request2);
         } catch {
-          settle(request.requestId, "cancelled");
+          settle(request2.requestId, "cancelled");
         }
         return promise;
       },
@@ -155506,7 +155658,7 @@ ${contextText}
         const courseId2 = stringField(input, "courseId", { nonEmpty: true });
         const relPath2 = stringField(input, "relPath", { nonEmpty: true });
         const sheetName = optionalString2(input, "sheet");
-        const request = parseSheetEditRequest(input);
+        const request2 = parseSheetEditRequest(input);
         const ext = posix.extname(relPath2).toLowerCase();
         if (ext === ".xls") {
           throw new ValidationError(
@@ -155518,8 +155670,8 @@ ${contextText}
         }
         const absPath = assertCoursePath(courseId2, relPath2);
         const parts = [];
-        if (request.edits.length > 0) parts.push(`\uC140 ${request.edits.length}\uAC1C \uC218\uC815`);
-        if (request.appendRows.length > 0) parts.push(`\uD589 ${request.appendRows.length}\uAC1C \uCD94\uAC00`);
+        if (request2.edits.length > 0) parts.push(`\uC140 ${request2.edits.length}\uAC1C \uC218\uC815`);
+        if (request2.appendRows.length > 0) parts.push(`\uD589 ${request2.appendRows.length}\uAC1C \uCD94\uAC00`);
         if (!await approve(
           context2,
           "edit_sheet",
@@ -155527,7 +155679,7 @@ ${contextText}
           [relPath2, sheetName === void 0 ? "\uCCAB \uBC88\uC9F8 \uC2DC\uD2B8" : `\uC2DC\uD2B8 \xAB${sheetName}\xBB`, ...parts]
         )) return cancelled2("edit_sheet");
         const backup = backupMaterial(courseFolder(courseId2), absPath);
-        const result = await applySheetEdits({ absPath, sheetName, request });
+        const result = await applySheetEdits({ absPath, sheetName, request: request2 });
         record2(
           context2,
           courseId2,
@@ -155925,12 +156077,12 @@ ${contextText}
     let workspace = { selectedCourseId: null, tabs: [], documents: [] };
     const batches = createEventBatcher({ send: (batch) => emit("chat:event-batch", batch) });
     const confirmer = createAgentConfirmer({
-      allow: (request) => {
-        const session = chat.getSession(request.conversationId);
-        if (session?.surface === "study" || /^(browser_|lms_|desktop_|clipboard|mcp_|cli:)/.test(request.tool)) return false;
-        return appPermissionAllowed(session?.accessPolicy ?? DEFAULT_AI_ACCESS, request.tool, request.courseId === session?.courseId);
+      allow: (request2) => {
+        const session = chat.getSession(request2.conversationId);
+        if (session?.surface === "study" || /^(browser_|lms_|desktop_|clipboard|mcp_|cli:)/.test(request2.tool)) return false;
+        return appPermissionAllowed(session?.accessPolicy ?? DEFAULT_AI_ACCESS, request2.tool, request2.courseId === session?.courseId);
       },
-      emit: (request) => emit("agentTools:confirm", request),
+      emit: (request2) => emit("agentTools:confirm", request2),
       changed: (state) => emit("agentTools:confirmationChanged", state)
     });
     const journal = createAgentJournal(deps.db);
@@ -155979,7 +156131,7 @@ ${contextText}
           })(), courseId: courseId2 });
           void learning?.settle(sessionId, reason, error2).catch((error3) => emit("backend:error", { operation: "learning.settle", message: String(error3) }));
         },
-        requestPermission: (request) => confirmer.confirm(request),
+        requestPermission: (request2) => confirmer.confirm(request2),
         onRequestsCancelled: (id2) => {
           deps.mcp.cancel(id2);
           browser2.finish(id2);
@@ -156037,7 +156189,7 @@ ${contextText}
             sessionId,
             turn: () => `${sessionId}:${turnSeq()}`,
             restriction: () => learning?.restrictionFor(sessionId) ?? workflow?.restrictionFor(sessionId) ?? null,
-            confirm: (request) => confirmer.confirm(request)
+            confirm: (request2) => confirmer.confirm(request2)
           }) : originalTools;
           toolSets.set(sessionId, tools);
           return {
@@ -156058,48 +156210,48 @@ ${contextText}
         }
       })];
     }));
-    async function manager(request) {
-      courses.getById(request.courseId);
-      const saved = chat.getSession(request.sessionId);
-      if (saved && saved.courseId !== request.courseId) throw new Error("\uB300\uD654\uAC00 \uC774 \uACFC\uBAA9\uC5D0 \uC18D\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.");
+    async function manager(request2) {
+      courses.getById(request2.courseId);
+      const saved = chat.getSession(request2.sessionId);
+      if (saved && saved.courseId !== request2.courseId) throw new Error("\uB300\uD654\uAC00 \uC774 \uACFC\uBAA9\uC5D0 \uC18D\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.");
       const provider = await resolveConversationProvider({
         storedProvider: saved?.provider,
-        warmProvider: warm.get(request.sessionId),
+        warmProvider: warm.get(request2.sessionId),
         preferredProvider: getSettings().agentProvider,
         check: (provider2) => platform("native:aiAvailability", { provider: provider2 })
       });
-      warm.set(request.sessionId, provider);
+      warm.set(request2.sessionId, provider);
       return managers[provider];
     }
-    workflow = createWorkflowBridge({ chat, courses, manager, confirm: (request) => confirmer.confirm(request) });
+    workflow = createWorkflowBridge({ chat, courses, manager, confirm: (request2) => confirmer.confirm(request2) });
     deps.handlePrivate("nativeAI:event", receiveEvent);
     deps.handlePrivate("nativeAI:tool", receiveTool);
-    deps.handlePrivate("nativeAI:workspace", (request) => {
-      workspace = { ...request, browserTabs: workspace.browserTabs ?? [] };
+    deps.handlePrivate("nativeAI:workspace", (request2) => {
+      workspace = { ...request2, browserTabs: workspace.browserTabs ?? [] };
       return { ok: true };
     });
-    handle2("chat:context", (request) => {
-      const course = courses.getById(request.courseId);
-      const material = (workspace.documents ?? []).find((item) => item.courseId === request.courseId && (workspace.tabs ?? []).some((tab) => tab.active && (item.documentId && tab.documentId === item.documentId || item.relPath && tab.relPath === item.relPath)));
+    handle2("chat:context", (request2) => {
+      const course = courses.getById(request2.courseId);
+      const material = (workspace.documents ?? []).find((item) => item.courseId === request2.courseId && (workspace.tabs ?? []).some((tab) => tab.active && (item.documentId && tab.documentId === item.documentId || item.relPath && tab.relPath === item.relPath)));
       return { id: workspace.refreshId ?? randomUUID(), courseId: course.id, courseName: course.name, capturedAt: (/* @__PURE__ */ new Date()).toISOString(), ...material ? { material: { ...material, ...workspace.selection ? { selection: workspace.selection } : {} } } : {}, refresh: material ? "cached" : "failed" };
     });
-    handle2("agent:availability", (request) => {
-      if (!isAgentProvider(request.provider)) throw new Error("Unknown AI provider");
-      return platform("native:aiAvailability", request);
+    handle2("agent:availability", (request2) => {
+      if (!isAgentProvider(request2.provider)) throw new Error("Unknown AI provider");
+      return platform("native:aiAvailability", request2);
     });
-    handle2("agent:models", (request) => {
-      if (request.refresh) blockedModels.delete(request.provider);
-      return platform("native:aiModels", request);
+    handle2("agent:models", (request2) => {
+      if (request2.refresh) blockedModels.delete(request2.provider);
+      return platform("native:aiModels", request2);
     });
-    handle2("agent:apiKey", (request) => platform("native:aiKeyStatus", request));
-    handle2("agent:setApiKey", async (request) => {
-      const result = await platform("native:aiSetKey", request);
-      if (isAgentProvider(request.provider)) managers[request.provider].invalidateCredentials();
+    handle2("agent:apiKey", (request2) => platform("native:aiKeyStatus", request2));
+    handle2("agent:setApiKey", async (request2) => {
+      const result = await platform("native:aiSetKey", request2);
+      if (isAgentProvider(request2.provider)) managers[request2.provider].invalidateCredentials();
       return result;
     });
     handle2("agent:geminiApiKey", () => platform("native:aiKeyStatus", { provider: "gemini" }));
-    handle2("agent:setGeminiApiKey", async (request) => {
-      const result = await platform("native:aiSetKey", { ...request, provider: "gemini" });
+    handle2("agent:setGeminiApiKey", async (request2) => {
+      const result = await platform("native:aiSetKey", { ...request2, provider: "gemini" });
       managers.gemini.invalidateCredentials();
       return result;
     });
@@ -156107,72 +156259,72 @@ ${contextText}
     for (const channel of ["agent:install", "agent:login", "agent:reopenLogin", "agent:submitLoginCode"]) handle2(channel, () => ({ ok: false, message: "\uC774 \uAE30\uB2A5\uC740 \uB370\uC2A4\uD06C\uD1B1 CLI\uC6A9\uC785\uB2C8\uB2E4. iPad\uC5D0\uC11C\uB294 \uAC19\uC740 \uC81C\uACF5\uC790\uC758 API \uD0A4\uB97C \uB4F1\uB85D\uD558\uC138\uC694." }));
     handle2("agent:cancelLogin", () => ({ ok: false }));
     handle2("agent:skills", () => []);
-    handle2("chat:open", async (request) => {
-      const result = await (await manager(request)).open(request.courseId, request.sessionId, request.surface);
-      surfaces.set(request.sessionId, result.sessionInfo.surface);
+    handle2("chat:open", async (request2) => {
+      const result = await (await manager(request2)).open(request2.courseId, request2.sessionId, request2.surface);
+      surfaces.set(request2.sessionId, result.sessionInfo.surface);
       return result;
     });
-    handle2("chat:send", async (request) => {
-      if (request.context?.skillIds?.length || request.context?.creation) throw new Error("\uC120\uD0DD\uD55C \uC2E4\uD589\uD615 \uC81C\uC791 \uC2A4\uD0AC\uC740 iPad API \uB7F0\uD0C0\uC784\uC5D0\uC11C \uC544\uC9C1 \uC5F0\uACB0\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
-      return (await manager(request)).send(request.courseId, request.sessionId, request.content, request.attachments, request.context);
+    handle2("chat:send", async (request2) => {
+      if (request2.context?.skillIds?.length || request2.context?.creation) throw new Error("\uC120\uD0DD\uD55C \uC2E4\uD589\uD615 \uC81C\uC791 \uC2A4\uD0AC\uC740 iPad API \uB7F0\uD0C0\uC784\uC5D0\uC11C \uC544\uC9C1 \uC5F0\uACB0\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
+      return (await manager(request2)).send(request2.courseId, request2.sessionId, request2.content, request2.attachments, request2.context);
     });
-    handle2("chat:cancel", async (request) => {
-      (await manager(request)).cancel(request.courseId, request.sessionId);
+    handle2("chat:cancel", async (request2) => {
+      (await manager(request2)).cancel(request2.courseId, request2.sessionId);
       return { ok: true };
     });
-    handle2("chat:close", async (request) => {
-      (await manager(request)).close(request.courseId, request.sessionId);
-      warm.delete(request.sessionId);
-      surfaces.delete(request.sessionId);
+    handle2("chat:close", async (request2) => {
+      (await manager(request2)).close(request2.courseId, request2.sessionId);
+      warm.delete(request2.sessionId);
+      surfaces.delete(request2.sessionId);
       return { ok: true };
     });
-    handle2("chat:deleteConversation", async (request) => {
-      (await manager(request)).close(request.courseId, request.sessionId);
-      chat.softDeleteSession(request.sessionId);
-      warm.delete(request.sessionId);
-      surfaces.delete(request.sessionId);
+    handle2("chat:deleteConversation", async (request2) => {
+      (await manager(request2)).close(request2.courseId, request2.sessionId);
+      chat.softDeleteSession(request2.sessionId);
+      warm.delete(request2.sessionId);
+      surfaces.delete(request2.sessionId);
       return { ok: true };
     });
-    handle2("chat:respondPermission", async (request) => {
-      (await manager(request)).respondPermission(request.courseId, request.sessionId, request.requestId, request.response);
+    handle2("chat:respondPermission", async (request2) => {
+      (await manager(request2)).respondPermission(request2.courseId, request2.sessionId, request2.requestId, request2.response);
       return { ok: true };
     });
-    handle2("chat:accessPolicy", async (request) => {
-      await manager(request);
-      if (request.policy) {
-        if (!chat.getSession(request.sessionId)) chat.createSession(request.sessionId, request.courseId, warm.get(request.sessionId), surfaces.get(request.sessionId));
-        chat.setAccessPolicy(request.sessionId, parseAiAccess(request.policy));
+    handle2("chat:accessPolicy", async (request2) => {
+      await manager(request2);
+      if (request2.policy) {
+        if (!chat.getSession(request2.sessionId)) chat.createSession(request2.sessionId, request2.courseId, warm.get(request2.sessionId), surfaces.get(request2.sessionId));
+        chat.setAccessPolicy(request2.sessionId, parseAiAccess(request2.policy));
       }
       ;
-      return chat.getSession(request.sessionId)?.accessPolicy ?? parseAiAccess(null);
+      return chat.getSession(request2.sessionId)?.accessPolicy ?? parseAiAccess(null);
     });
-    handle2("chat:setConfiguration", async (request) => {
-      (await manager(request)).setModel(request.courseId, request.sessionId, request.model, request.effort);
-      const result = { model: request.model, effort: request.effort ?? null };
-      emit("chat:configurationChanged", { sessionId: request.sessionId, ...result });
+    handle2("chat:setConfiguration", async (request2) => {
+      (await manager(request2)).setModel(request2.courseId, request2.sessionId, request2.model, request2.effort);
+      const result = { model: request2.model, effort: request2.effort ?? null };
+      emit("chat:configurationChanged", { sessionId: request2.sessionId, ...result });
       return result;
     });
-    handle2("chat:setModel", async (request) => {
-      (await manager(request)).setModel(request.courseId, request.sessionId, request.model);
+    handle2("chat:setModel", async (request2) => {
+      (await manager(request2)).setModel(request2.courseId, request2.sessionId, request2.model);
       return { ok: true };
     });
-    handle2("chat:setProvider", async (request) => {
-      if (!isAgentProvider(request.provider)) throw new Error("AI \uC81C\uACF5\uC790\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
-      const previous = await manager(request), info = chat.getSession(request.sessionId), old = warm.get(request.sessionId);
+    handle2("chat:setProvider", async (request2) => {
+      if (!isAgentProvider(request2.provider)) throw new Error("AI \uC81C\uACF5\uC790\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
+      const previous = await manager(request2), info = chat.getSession(request2.sessionId), old = warm.get(request2.sessionId);
       if (info?.status === "running") throw new Error("\uC751\uB2F5\uC774 \uB05D\uB09C \uB4A4 \uC81C\uACF5\uC790\uB97C \uBC14\uAFD4 \uC8FC\uC138\uC694.");
-      if (old === request.provider) return { sessionInfo: info, carried: null };
-      const transcript = serializeTranscript(chat.historyTail(request.sessionId, CARRYOVER_HISTORY_LIMIT));
-      previous.close(request.courseId, request.sessionId);
-      const sessionInfo = info ? chat.switchProvider(request.sessionId, request.provider) : chat.createSession(request.sessionId, request.courseId, request.provider, request.surface ?? surfaces.get(request.sessionId));
+      if (old === request2.provider) return { sessionInfo: info, carried: null };
+      const transcript = serializeTranscript(chat.historyTail(request2.sessionId, CARRYOVER_HISTORY_LIMIT));
+      previous.close(request2.courseId, request2.sessionId);
+      const sessionInfo = info ? chat.switchProvider(request2.sessionId, request2.provider) : chat.createSession(request2.sessionId, request2.courseId, request2.provider, request2.surface ?? surfaces.get(request2.sessionId));
       const carried = { messages: transcript.messages, chars: transcript.text.length, truncated: transcript.truncated };
-      if (info) chat.appendNotice(request.courseId, request.sessionId, { kind: "provider-switch", from: old, to: request.provider, carried });
-      warm.set(request.sessionId, request.provider);
+      if (info) chat.appendNotice(request2.courseId, request2.sessionId, { kind: "provider-switch", from: old, to: request2.provider, carried });
+      warm.set(request2.sessionId, request2.provider);
       return { sessionInfo, carried };
     });
-    handle2("agentTools:confirmations", (request) => confirmer.list(request.conversationId));
-    handle2("agentTools:respondConfirm", (request) => ({ ok: true, state: confirmer.resolve(request) }));
-    handle2("agentTools:changes", (request) => journal.forTurn(request.turnId));
-    handle2("agentTools:undo", (request) => journal.undoTurn(request.turnId, {
+    handle2("agentTools:confirmations", (request2) => confirmer.list(request2.conversationId));
+    handle2("agentTools:respondConfirm", (request2) => ({ ok: true, state: confirmer.resolve(request2) }));
+    handle2("agentTools:changes", (request2) => journal.forTurn(request2.turnId));
+    handle2("agentTools:undo", (request2) => journal.undoTurn(request2.turnId, {
       course: async ({ targetId }) => {
         courses.softDelete({ courseId: targetId });
         emit("courses:changed", {});
@@ -156530,10 +156682,10 @@ ${contextText}
     const db = deps.db, p = record2.payload, now = (/* @__PURE__ */ new Date()).toISOString(), deleted = record2.deleted ? now : null;
     const files = [], changes = [];
     let source = {}, courseID;
-    const row = (table10, value) => {
+    const row = (table11, value) => {
       changes.push(() => {
         const keys4 = Object.keys(value), updates = keys4.filter((k) => k !== "id").map((k) => `${k}=excluded.${k}`).join(",");
-        db.prepare(`INSERT INTO ${table10}(${keys4.join(",")}) VALUES(${keys4.map(() => "?").join(",")}) ON CONFLICT(id) DO UPDATE SET ${updates}`).run(...keys4.map((k) => value[k]));
+        db.prepare(`INSERT INTO ${table11}(${keys4.join(",")}) VALUES(${keys4.map(() => "?").join(",")}) ON CONFLICT(id) DO UPDATE SET ${updates}`).run(...keys4.map((k) => value[k]));
       });
     };
     const course = (id2) => {
@@ -156647,8 +156799,8 @@ ${contextText}
         if (!actual || actual.rotation !== g.rotation || [actual.cropBox.x - g.cropX, actual.cropBox.y - g.cropY, actual.cropBox.width - g.width, actual.cropBox.height - g.height].some((delta) => !Number.isFinite(delta) || Math.abs(delta) > 1e-3)) throw new Error("Ink geometry does not match PDF");
       }
       source = { courseID, relPath: m.rel_path, path: m.path, geometry: g };
-      const objectIDs = /* @__PURE__ */ new Set(), table10 = board ? "whiteboard_local_shapes" : "pdf_drawings", deletedIDs = new Set(page.deletedObjectIDs ?? []);
-      if (record2.deleted) changes.push(() => db.prepare(`UPDATE ${table10} SET deleted_at=?,updated_at=? WHERE ${board ? "board_id=?" : "course_id=? AND rel_path=?"} AND page=?`).run(now, now, ...board ? [board.id] : [courseID, m.rel_path], page.page));
+      const objectIDs = /* @__PURE__ */ new Set(), table11 = board ? "whiteboard_local_shapes" : "pdf_drawings", deletedIDs = new Set(page.deletedObjectIDs ?? []);
+      if (record2.deleted) changes.push(() => db.prepare(`UPDATE ${table11} SET deleted_at=?,updated_at=? WHERE ${board ? "board_id=?" : "course_id=? AND rel_path=?"} AND page=?`).run(now, now, ...board ? [board.id] : [courseID, m.rel_path], page.page));
       for (const object2 of page.objects ?? []) {
         identity2(object2.id);
         if (objectIDs.has(object2.id)) throw new Error("Duplicate ink object identity");
@@ -156664,9 +156816,9 @@ ${contextText}
         assertDrawingKind(value.kind);
         assertDrawingData(value.data, value.kind, { allowClip: true });
         assertDrawingStyle(value.style);
-        const old = db.prepare(`SELECT * FROM ${table10} WHERE id=?`).get(value.id);
+        const old = db.prepare(`SELECT * FROM ${table11} WHERE id=?`).get(value.id);
         if (old && (board ? old.board_id !== board.id : old.course_id !== courseID || old.rel_path !== m.rel_path) || old && old.page !== page.page) throw new Error("Ink identity belongs to another page");
-        row(table10, {
+        row(table11, {
           id: value.id,
           ...board ? { board_id: board.id } : { course_id: courseID, rel_path: m.rel_path },
           page: page.page,
@@ -156678,7 +156830,7 @@ ${contextText}
           deleted_at: deleted || (deletedIDs.has(value.id) ? now : null)
         });
       }
-      for (const id2 of deletedIDs) changes.push(() => db.prepare(`UPDATE ${table10} SET deleted_at=?,updated_at=? WHERE id=? AND ${board ? "board_id=?" : "course_id=? AND rel_path=?"} AND page=?`).run(now, now, id2, ...board ? [board.id] : [courseID, m.rel_path], page.page));
+      for (const id2 of deletedIDs) changes.push(() => db.prepare(`UPDATE ${table11} SET deleted_at=?,updated_at=? WHERE id=? AND ${board ? "board_id=?" : "course_id=? AND rel_path=?"} AND page=?`).run(now, now, id2, ...board ? [board.id] : [courseID, m.rel_path], page.page));
       if (board && page.highlights?.length) throw new Error("Text highlights are unsupported on whiteboards");
       for (const h of page.highlights ?? []) {
         identity2(h.id);
@@ -156944,8 +157096,7 @@ ${contextText}
     CREATE TABLE IF NOT EXISTS ipad_sync_commits(id TEXT PRIMARY KEY);`);
     if (!db.prepare("PRAGMA table_info(ipad_sync_conflicts)").all().some((c) => c.name === "assets_json")) db.exec("ALTER TABLE ipad_sync_conflicts ADD COLUMN assets_json TEXT NOT NULL DEFAULT '[]'");
     const journal = createFileJournal(db);
-    const learning = createLearningProjection(deps);
-    const snapshot = async () => {
+    const snapshot = async (learning) => {
       const base = snapshotProjection(deps), extra = await learning.snapshot();
       const ids = new Set(extra.records.map((r) => r.id));
       return { records: [...base.records.filter((r) => !ids.has(r.id)), ...extra.records], assets: [...base.assets, ...extra.assets], sources: new Map([...base.sources, ...extra.sources]) };
@@ -156974,21 +157125,65 @@ ${contextText}
       deps.pdfBindings.reconcileIndex();
     };
     let running2 = false;
-    const exclusive = (callback) => async (request) => {
+    const preflightPause = (request2) => {
+      if (!Array.isArray(request2?.records) || !Array.isArray(request2.assets ?? [])) throw new Error("Invalid sync import");
+      const seen = /* @__PURE__ */ new Set();
+      for (const record2 of request2.records) {
+        validate(record2);
+        if (seen.has(record2.id)) throw new Error("Duplicate sync record");
+        seen.add(record2.id);
+        const prior = db.prepare("SELECT kind FROM ipad_sync_projection WHERE id=?").get(record2.id);
+        if (prior && prior.kind !== record2.kind) throw new Error("Sync record kind changed");
+      }
+      for (const item of request2.conflicts ?? []) {
+        validate(item.local);
+        validate(item.remote);
+      }
+      return request2.records;
+    };
+    const exclusive = (callback, affectedProjects = () => []) => async (request2) => {
       if (running2) throw new Error("A sync projection operation is already running");
-      const token = native("fs.lockAcquire", { path: join(env2().userDataPath, "material-path-lock.db") });
-      if (token === null) throw new Error("\uC790\uB8CC \uACBD\uB85C \uBCC0\uACBD \uC911\uC5D0\uB294 \uB3D9\uAE30\uD654\uB97C \uC2DC\uC791\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD569\uB2C8\uB2E4.");
       running2 = true;
       try {
-        return await callback(request);
+        if (deps.learning?.repo.withExclusivePathAccess) {
+          const projects = /* @__PURE__ */ new Map();
+          for (const record2 of affectedProjects(request2)) {
+            const p = record2?.payload;
+            if (record2?.kind !== "artifact" || p?.recordType !== "desktop-learning-project" || typeof p.courseID !== "string" || typeof p.rootRelPath !== "string") continue;
+            const binding2 = { courseId: p.courseID, rootRelPath: p.rootRelPath };
+            projects.set(JSON.stringify(binding2), binding2);
+          }
+          const bindings = [...projects.values()];
+          const run = () => deps.learning.repo.withExclusivePathAccess((scopedRepo) => callback(
+            request2,
+            createLearningProjection({ ...deps, learning: { ...deps.learning, repo: scopedRepo, pauseProject: (_binding, work) => work() } })
+          ));
+          const pause = async (index) => {
+            if (index >= bindings.length) return run();
+            const binding2 = bindings[index];
+            if (!db.prepare("SELECT 1 FROM courses WHERE id=?").get(binding2.courseId)) return pause(index + 1);
+            const existing = await deps.learning.repo.discover(binding2.courseId, { includeDeleted: true });
+            const project = existing.find((project2) => project2.binding.rootRelPath === binding2.rootRelPath);
+            if (!project) return pause(index + 1);
+            if (project.warning) throw new Error(`\uD559\uC2B5 \uC6D0\uBCF8\uC744 \uD655\uC778\uD55C \uB4A4 \uB3D9\uAE30\uD654\uB97C \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694: ${project.warning}`);
+            return deps.learning.pauseProject(binding2, () => pause(index + 1));
+          };
+          return await pause(0);
+        }
+        const token = native("fs.lockAcquire", { path: join(env2().userDataPath, "material-path-lock.db") });
+        if (token === null) throw new Error("\uC790\uB8CC \uACBD\uB85C \uBCC0\uACBD \uC911\uC5D0\uB294 \uB3D9\uAE30\uD654\uB97C \uC2DC\uC791\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD569\uB2C8\uB2E4.");
+        try {
+          return await callback(request2, createLearningProjection(deps));
+        } finally {
+          native("fs.lockRelease", { token });
+        }
       } finally {
         running2 = false;
-        native("fs.lockRelease", { token });
       }
     };
-    handlePrivate2("nativeSync:export", exclusive(async () => {
+    handlePrivate2("nativeSync:export", exclusive(async (_request, learning) => {
       await refresh();
-      const projected = await snapshot();
+      const projected = await snapshot(learning);
       for (const record2 of projected.records) validate(record2);
       const blocked = new Set(db.prepare("SELECT DISTINCT record_id FROM ipad_sync_conflicts WHERE resolved_at IS NULL").all().map((row) => row.record_id));
       const records = projected.records.filter((record2) => !blocked.has(record2.id));
@@ -156997,31 +157192,31 @@ ${contextText}
       })();
       return { records, assets: projected.assets };
     }));
-    const importRecords = async (request, force = false) => {
-      if (!Array.isArray(request.records) || !Array.isArray(request.assets ?? [])) throw new Error("Invalid sync import");
+    const importRecords = async (request2, force, learning) => {
+      if (!Array.isArray(request2.records) || !Array.isArray(request2.assets ?? [])) throw new Error("Invalid sync import");
       const seen = /* @__PURE__ */ new Set();
-      const assets = new Map((request.assets ?? []).map((a) => [a.sha256, a.path]));
-      for (const record2 of request.records) {
+      const assets = new Map((request2.assets ?? []).map((a) => [a.sha256, a.path]));
+      for (const record2 of request2.records) {
         validate(record2);
         if (seen.has(record2.id)) throw new Error("Duplicate sync record");
         seen.add(record2.id);
         const prior = db.prepare("SELECT kind FROM ipad_sync_projection WHERE id=?").get(record2.id);
         if (prior && prior.kind !== record2.kind) throw new Error("Sync record kind changed");
       }
-      for (const item of request.conflicts ?? []) {
+      for (const item of request2.conflicts ?? []) {
         validate(item.local);
         validate(item.remote);
         conflict(item.local, item.remote, "Concurrent edits from another device", assets);
       }
       await refresh();
-      const current = new Map((await snapshot()).records.map((record2) => [record2.id, record2]));
+      const current = new Map((await snapshot(learning)).records.map((record2) => [record2.id, record2]));
       const order = { course: 0, material: 1, note: 2, drawing: 3, task: 4, recording: 5 }, priority = (r) => r.kind === "artifact" && r.payload.recordType === "desktop-course-group" ? -1 : r.payload.recordType === "desktop-chat-session" ? 6 : r.payload.recordType === "desktop-chat-message" ? 7 : order[r.kind] ?? 9;
       const conflicts = [], changed = /* @__PURE__ */ new Set();
       let applied = 0;
-      for (let incoming of [...request.records].sort((a, b) => priority(a) - priority(b))) {
+      for (let incoming of [...request2.records].sort((a, b) => priority(a) - priority(b))) {
         const accepted = incoming;
         const local = current.get(incoming.id), mapped = db.prepare("SELECT * FROM ipad_sync_projection WHERE id=?").get(incoming.id);
-        if (force && local && (request.reviewedVariants ?? []).every((reviewed) => comparable(reviewed) !== comparable(local)))
+        if (force && local && (request2.reviewedVariants ?? []).every((reviewed) => comparable(reviewed) !== comparable(local)))
           conflicts.push(conflict(local, incoming, "Local content changed while reviewing the earlier conflict", assets));
         if (local && comparable(local) === comparable(incoming)) {
           save(incoming, mapped ? JSON.parse(mapped.source_json) : {});
@@ -157067,7 +157262,7 @@ ${contextText}
       if (conflicts.length) emit("sync:conflictsChanged", { count: conflicts.length });
       return { applied, changedCourseIDs: [...changed], conflicts };
     };
-    handlePrivate2("nativeSync:import", exclusive((request) => importRecords(request)));
+    handlePrivate2("nativeSync:import", exclusive((request2, learning) => importRecords(request2, false, learning), preflightPause));
     handlePrivate2("nativeSync:conflicts", () => db.prepare("SELECT * FROM ipad_sync_conflicts WHERE resolved_at IS NULL ORDER BY created_at DESC").all().map((r) => {
       const local = r.local_json ? JSON.parse(r.local_json) : null, remote = JSON.parse(r.remote_json), p = (local ?? remote).payload, mapped = db.prepare("SELECT source_json FROM ipad_sync_projection WHERE id=?").get(r.record_id), source = mapped ? JSON.parse(mapped.source_json) : {};
       const material = p.materialID ? db.prepare("SELECT course_id,rel_path FROM materials_index WHERE id=?").get(p.materialID) : void 0;
@@ -157076,15 +157271,20 @@ ${contextText}
       const title2 = p.title ?? p.name ?? material?.rel_path ?? board?.title ?? source.relPath ?? p.rootRelPath ?? r.record_id, label = course ? `${course.name} \xB7 ${title2}` : title2;
       return { id: r.id, recordID: r.record_id, label, reason: r.reason, local, remote, assets: JSON.parse(r.assets_json), createdAt: r.created_at };
     }));
-    handlePrivate2("nativeSync:restoreConflict", exclusive(async (request) => {
-      const item = db.prepare("SELECT * FROM ipad_sync_conflicts WHERE id=? AND resolved_at IS NULL").get(request.conflictID);
-      if (!item || !["local", "remote"].includes(request.variant)) throw new Error("Conflict or selected variant is unavailable");
-      const value = request.variant === "local" ? item.local_json : item.remote_json;
+    handlePrivate2("nativeSync:restoreConflict", exclusive(async (request2, learning) => {
+      const item = db.prepare("SELECT * FROM ipad_sync_conflicts WHERE id=? AND resolved_at IS NULL").get(request2.conflictID);
+      if (!item || !["local", "remote"].includes(request2.variant)) throw new Error("Conflict or selected variant is unavailable");
+      const value = request2.variant === "local" ? item.local_json : item.remote_json;
       if (!value) throw new Error("Selected conflict version is unavailable");
       const reviewedVariants = [item.local_json, item.remote_json].filter(Boolean).map((value2) => JSON.parse(value2));
-      const result = await importRecords({ records: [JSON.parse(value)], assets: [...request.assets ?? [], ...JSON.parse(item.assets_json)], reviewedVariants }, true);
+      const result = await importRecords({ records: [JSON.parse(value)], assets: [...request2.assets ?? [], ...JSON.parse(item.assets_json)], reviewedVariants }, true, learning);
       if (result.applied === 1) db.prepare("UPDATE ipad_sync_conflicts SET resolved_at=? WHERE id=?").run((/* @__PURE__ */ new Date()).toISOString(), item.id);
       return result;
+    }, (request2) => {
+      const item = db.prepare("SELECT local_json,remote_json FROM ipad_sync_conflicts WHERE id=? AND resolved_at IS NULL").get(request2.conflictID);
+      if (!item || !["local", "remote"].includes(request2.variant)) return [];
+      const selected = request2.variant === "local" ? item.local_json : item.remote_json;
+      return selected ? preflightPause({ records: [JSON.parse(selected)] }) : [];
     }));
   }
 
@@ -157325,7 +157525,7 @@ ${body}`;
 
   // DesktopRuntime/backend/application.ts
   function installApplication(deps) {
-    const platform4 = (channel, request = {}) => globalThis.__bandalPlatform.invoke(channel, request);
+    const platform4 = (channel, request2 = {}) => globalThis.__bandalPlatform.invoke(channel, request2);
     const logs = join(env2().userDataPath, "Logs");
     const diagnostics = createDiagnosticsBundle({
       tempDir: () => join(env2().tempPath, "Diagnostics"),
@@ -157423,7 +157623,7 @@ ${body}\r
 
   // DesktopRuntime/backend/mail.ts
   function installMail(handle2) {
-    const platform4 = (channel, request = {}) => globalThis.__bandalPlatform.invoke(channel, request);
+    const platform4 = (channel, request2 = {}) => globalThis.__bandalPlatform.invoke(channel, request2);
     const bodies = /* @__PURE__ */ new Map();
     let epoch = 0;
     const validId = (value) => {
@@ -157495,13 +157695,13 @@ ${body}\r
   // DesktopRuntime/backend/notifications.ts
   function installNotifications(deps) {
     deps.handlePrivate("nativeNotification:snapshot", () => ({ settings: getSettings(), tasks: deps.db.prepare(`SELECT t.id, t.course_id AS courseId, t.title, t.due_at AS dueAt, t.all_day AS allDay, c.name AS courseName FROM board_tasks t LEFT JOIN courses c ON c.id = t.course_id AND c.deleted_at IS NULL WHERE t.due_at IS NOT NULL AND t.deleted_at IS NULL AND t.status != 'done' AND (t.course_id IS NULL OR c.id IS NOT NULL)`).all() }));
-    deps.handlePrivate("nativeNotification:markSent", (request) => {
-      if (!Array.isArray(request.keys) || request.keys.length > 1e3 || request.keys.some((key4) => typeof key4 !== "string" || !/^[a-zA-Z0-9_-]{1,128}:(?:1|3|7)$/.test(key4))) throw new Error("Invalid deadline notification key");
-      const date = new Date(request.at);
+    deps.handlePrivate("nativeNotification:markSent", (request2) => {
+      if (!Array.isArray(request2.keys) || request2.keys.length > 1e3 || request2.keys.some((key4) => typeof key4 !== "string" || !/^[a-zA-Z0-9_-]{1,128}:(?:1|3|7)$/.test(key4))) throw new Error("Invalid deadline notification key");
+      const date = new Date(request2.at);
       if (!Number.isFinite(date.getTime()) || Math.abs(Date.now() - date.getTime()) > 24 * 60 * 60 * 1e3) throw new Error("Invalid notification timestamp");
       const settings = getSettings(), cutoff = Date.now() - 90 * 24 * 60 * 60 * 1e3;
       const sent = Object.fromEntries(Object.entries(settings.notifications.sent).filter(([, value]) => Date.parse(value) >= cutoff));
-      for (const key4 of request.keys) sent[key4] = date.toISOString();
+      for (const key4 of request2.keys) sent[key4] = date.toISOString();
       setSettings({ notifications: { sent } });
       return { ok: true };
     });
@@ -157579,8 +157779,8 @@ ${body}\r
   }
 
   // DesktopRuntime/backend/bookmark-import.ts
-  function importBookmarkHTML(db, favorites, request) {
-    const { profileId, html } = request;
+  function importBookmarkHTML(db, favorites, request2) {
+    const { profileId, html } = request2;
     if (typeof profileId !== "string" || profileId !== "default" && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(profileId)) throw new Error("\uBE0C\uB77C\uC6B0\uC800 \uD504\uB85C\uD544\uC744 \uD655\uC778\uD574 \uC8FC\uC138\uC694.");
     if (typeof html !== "string" || Buffer2.byteLength(html, "utf8") > 8 * 1024 * 1024) throw new Error("8MB \uC774\uD558\uC758 HTML \uBD81\uB9C8\uD06C \uD30C\uC77C\uC744 \uC120\uD0DD\uD574 \uC8FC\uC138\uC694.");
     if ([...html.matchAll(/<a\b/gi)].length > 1e4) throw new Error("\uBD81\uB9C8\uD06C\uB294 \uD55C \uBC88\uC5D0 10,000\uAC1C\uAE4C\uC9C0 \uAC00\uC838\uC62C \uC218 \uC788\uC2B5\uB2C8\uB2E4.");
@@ -157890,8 +158090,8 @@ ${body}\r
     const rawAnnotations = createAnnotationsRepo(db), rawDrawings = createDrawingsRepo(db, {
       documentRevision: (courseId2, relPath2) => bindings.check({ courseId: courseId2, relPath: relPath2 }).documentRevision
     });
-    const checkRow = (table10, id2) => {
-      const row = db.prepare(`SELECT course_id,rel_path FROM ${table10} WHERE id=?`).get(id2);
+    const checkRow = (table11, id2) => {
+      const row = db.prepare(`SELECT course_id,rel_path FROM ${table11} WHERE id=?`).get(id2);
       if (row) bindings.checkPDF(row.course_id, row.rel_path);
     };
     return {
@@ -157950,7 +158150,7 @@ ${body}\r
     course_id TEXT NOT NULL, rel_path TEXT NOT NULL, material_id TEXT NOT NULL UNIQUE,
     PRIMARY KEY(course_id,rel_path), FOREIGN KEY(material_id) REFERENCES pdf_document_bindings(material_id)
   )`);
-    const table10 = (name7) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name7);
+    const table11 = (name7) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name7);
     const atPath = (courseId2, relPath2) => db.prepare(`SELECT b.* FROM pdf_document_aliases a
     JOIN pdf_document_bindings b ON b.material_id=a.material_id WHERE a.course_id=? AND a.rel_path=?`).get(courseId2, relPath2);
     const result = (row) => ({ materialID: row.material_id, documentRevision: row.bound_sha, evidence: row.evidence, legacyUnverified: !!row.legacy_unverified });
@@ -157974,19 +158174,19 @@ ${body}\r
         if (!bound) {
           const item = db.prepare("SELECT id FROM materials_index WHERE course_id=? AND rel_path=?").get(courseId2, relPath2);
           const revisions = /* @__PURE__ */ new Map();
-          if (table10("drawing_create_receipts")) for (const receipt of db.prepare(`SELECT r.request_json FROM drawing_create_receipts r
+          if (table11("drawing_create_receipts")) for (const receipt of db.prepare(`SELECT r.request_json FROM drawing_create_receipts r
           JOIN pdf_drawings d ON d.id=r.drawing_id WHERE d.course_id=? AND d.rel_path=?`).all(courseId2, relPath2)) {
-            let request;
+            let request2;
             try {
-              request = JSON.parse(receipt.request_json);
+              request2 = JSON.parse(receipt.request_json);
             } catch {
               throw new ValidationError("Invalid PDF drawing receipt; recovery data was preserved");
             }
-            if (request.documentRevision === void 0) continue;
-            if (typeof request.documentRevision !== "string" || !sha.test(request.documentRevision)) throw new ValidationError("Invalid PDF revision in drawing receipt");
-            revisions.set(request.documentRevision, "receipt");
+            if (request2.documentRevision === void 0) continue;
+            if (typeof request2.documentRevision !== "string" || !sha.test(request2.documentRevision)) throw new ValidationError("Invalid PDF revision in drawing receipt");
+            revisions.set(request2.documentRevision, "receipt");
           }
-          if (table10("ipad_sync_projection")) for (const projection of db.prepare("SELECT payload_json,source_json FROM ipad_sync_projection WHERE kind='drawing'").all()) {
+          if (table11("ipad_sync_projection")) for (const projection of db.prepare("SELECT payload_json,source_json FROM ipad_sync_projection WHERE kind='drawing'").all()) {
             const payload = JSON.parse(projection.payload_json), source = JSON.parse(projection.source_json);
             if (!(item && payload.materialID === item.id) && !(source.courseID === courseId2 && source.relPath === relPath2)) continue;
             if (typeof payload.documentRevision !== "string" || !sha.test(payload.documentRevision)) throw new ValidationError("Invalid PDF revision in sync history");
@@ -158139,10 +158339,10 @@ ${body}\r
 
   // DesktopRuntime/backend/presentation/native-conversion.ts
   init_buffer();
-  var platform3 = (channel, request = {}) => {
+  var platform3 = (channel, request2 = {}) => {
     const invoke2 = globalThis.__bandalPlatform?.invoke;
     if (!invoke2) throw new Error("Native presentation conversion is unavailable");
-    return invoke2(channel, request);
+    return invoke2(channel, request2);
   };
   function createConversionRuntime(_userData) {
     return {
@@ -159348,9 +159548,9 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
         packId: pack.id,
         allowed: new Set(pack.allowedTools)
       });
-      let request;
+      let request2;
       try {
-        request = deps.ask(courseId2, prompt);
+        request2 = deps.ask(courseId2, prompt);
       } catch (error2) {
         if (activeRun.get(courseId2) === token) {
           activeRun.delete(courseId2);
@@ -159359,7 +159559,7 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
         reservedPaths.delete(destination.absPath);
         throw error2;
       }
-      void request.then(
+      void request2.then(
         () => {
           if (activeRun.get(courseId2) === token) {
             activeRun.delete(courseId2);
@@ -159520,7 +159720,7 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
         context2.rebuild(id2, true);
         return ai.workflow.askStudy(id2, prompt);
       },
-      confirm: (request) => ai.workflow.confirm(request),
+      confirm: (request2) => ai.workflow.confirm(request2),
       recordActivity: (courseId2, summary, relPath2) => activity.record({ courseId: courseId2, summary, relPath: relPath2, kind: "study-tool-run" }),
       getPlanningContext: (courseId2) => ({ asOf: (/* @__PURE__ */ new Date()).toISOString(), upcomingDeadlines: board.upcoming({ courseId: courseId2, withinDays: 30, limit: 8 }).filter((d) => d.task.dueAt !== null).map((d) => ({ title: d.task.title, dueAt: d.task.dueAt, daysLeft: d.daysLeft })), studyGaps: insights.gaps(courseId2) })
     });
@@ -159595,24 +159795,26 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
       renameSync(path, join(directory2, basename(path)));
     };
     let learning;
+    const materialPathLock = { tryAcquire() {
+      const token = native("fs.lockAcquire", { path: join(env2().userDataPath, "material-path-lock.db") });
+      return token === null ? void 0 : () => {
+        native("fs.lockRelease", { token });
+      };
+    } };
     const repoint = (change) => {
       db.transaction(() => {
+        learning.paths.enqueue(change);
         pdfBindings.repoint(change);
         repointMaterialPath({ db, courseFolder: courses.getFolder(change.courseId), ...change });
         materials.repointAddedState(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory);
       })();
       recordings.repoint(change.courseId, change.fromRelPath, change.toRelPath, change.isDirectory);
-      void learning.repo.repoint(change).catch((error2) => emit("backend:error", { message: String(error2), operation: "learning.repoint" }));
+      learning.paths.schedule();
     };
     const materials = createMaterialsRepo({
       db,
       getCourseFolder: (id2) => courses.getFolder(id2),
-      pathLock: { tryAcquire() {
-        const token = native("fs.lockAcquire", { path: join(env2().userDataPath, "material-path-lock.db") });
-        return token === null ? void 0 : () => {
-          native("fs.lockRelease", { token });
-        };
-      } },
+      pathLock: materialPathLock,
       revealItem: (path) => native("platform.reveal", { path }),
       trashItem: trash,
       onPathChanged: repoint
@@ -159632,10 +159834,10 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
     const media = createMediaProgressRepo(db), pdf = createPdfViewStateRepo(db);
     const board = createBoardRepo(db), canvas = createCanvasRepo(db), favorites = createFavoritesRepo(db), layout = createLayoutRepo(db);
     const linkService = createLinkService({ notes, getCourseFolder: (id2) => courses.getFolder(id2) });
-    const materialMutation = (action) => async (request) => {
-      const result = await action(request);
-      materials.invalidateTree(request.courseId);
-      changed(request.courseId);
+    const materialMutation = (action) => async (request2) => {
+      const result = await action(request2);
+      materials.invalidateTree(request2.courseId);
+      changed(request2.courseId);
       return result;
     };
     handle("settings:get", getSettings);
@@ -159851,12 +160053,13 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
       packs.setEnabled(req.id, req.enabled);
       return OK;
     });
-    learning = installLearning({ db, courses, packs, handle, changed: () => courseChanged(OK), changedMaterials: changed });
+    learning = installLearning({ db, courses, packs, handle, pathLock: materialPathLock, changed: () => courseChanged(OK), changedMaterials: changed });
     materials.recoverPathChanges();
+    learning.paths.schedule();
     const calendarPath = join(env2().userDataPath, "apple-calendar.json");
-    const platform4 = (channel, request) => {
+    const platform4 = (channel, request2) => {
       if (!globalThis.__bandalPlatform?.invoke) unsupported(channel);
-      return globalThis.__bandalPlatform.invoke(channel, request);
+      return globalThis.__bandalPlatform.invoke(channel, request2);
     };
     const calendar = createAppleCalendarService({
       supported: true,
@@ -159912,24 +160115,24 @@ ${blockQuotedField("\uD559\uC0DD\uC774 \uC4F4 \uD14D\uC2A4\uD2B8", parseTextboxT
       return OK;
     });
     const mcp = installMCP({ handle });
-    const ai = installAI({ handle, handlePrivate, db, courses, chat, usage, mcp, repositories: { groups, courseLinks, materials, notes, links, favorites, board, canvas, linkService }, invoke: (channel, request) => invoke(channel, request) });
+    const ai = installAI({ handle, handlePrivate, db, courses, chat, usage, mcp, repositories: { groups, courseLinks, materials, notes, links, favorites, board, canvas, linkService }, invoke: (channel, request2) => invoke(channel, request2) });
     learning.connectAI?.(ai);
     installStudy({ db, courses, materials, canvas, board, activity, linkIndex, packs, ai, handle, changed });
     repositories = { db, courses, groups, materials, notes, annotations, drawings, board, canvas, layout, recordings, learning: learning.repo };
     initialized = true;
     return { schemaVersion: migrations.length, supportedChannels: [...handlers.keys()], migration, viewStateMigration };
   }
-  async function invoke(channel, request) {
+  async function invoke(channel, request2) {
     if (!initialized) initialize();
     const action = handlers.get(channel);
     if (!action) unsupported(channel);
-    return wire(await action(unwire(request ?? {})));
+    return wire(await action(unwire(request2 ?? {})));
   }
-  async function invokePrivate(channel, request) {
+  async function invokePrivate(channel, request2) {
     if (!initialized) initialize();
     const action = privateHandlers.get(channel);
     if (!action) unsupported(channel);
-    return wire(await action(unwire(request ?? {})));
+    return wire(await action(unwire(request2 ?? {})));
   }
   globalThis.BandalBackend = {
     initialize,
