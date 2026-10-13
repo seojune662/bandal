@@ -178,7 +178,12 @@ test('first-time users can cancel, retry a failed sign-in, and finish before cre
     await card.getByRole('button', { name: '연결하기', exact: true }).click()
     await expect(page.locator('.shell-settings-overlay')).toHaveAttribute('data-open', 'false')
     await expect.poll(() => bandal.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().some(contents => contents.getURL() === url), loginUrl)).toBe(true)
+    // A fully closed settings overlay remounts on General. Follow the visible
+    // AI navigation instead of depending on reopening during its exit animation.
+    await expect(page.locator('.shell-settings-overlay')).toHaveCount(0)
     await page.keyboard.press('ControlOrMeta+,')
+    await expect(page.locator('.shell-settings-overlay')).toHaveAttribute('data-open', 'true')
+    await page.locator('.settings-nav [data-category="ai"]').click()
     await card.getByRole('button', { name: '로그인 취소', exact: true }).click()
     await expect(card.getByRole('button', { name: '연결하기', exact: true })).toBeVisible()
     await expect(page.locator('.dv-tab:visible')).toHaveCount(0)
