@@ -102,27 +102,41 @@ test('only active native browser views stay within their live panel after resizi
       return host.contentView.children.filter((view: any) => view.webContents?.getURL().startsWith('https://')).length
     })).toBe(3)
     const record = async (step: string): Promise<void> => {
+      // Rail transitions can move a tab under the stationary pointer. Its
+      // tooltip intentionally hides an overlapping native page, so measure
+      // placement only after leaving the header and dismissing that overlay.
+      await page.mouse.move(2, 2)
+      await expect(page.getByRole('tooltip')).toHaveCount(0)
       let latest: any, previous = ''
-      await expect.poll(async () => {
-        const dom = await page.evaluate(() => {
-          const rect = (element: Element) => { const b = element.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height } }
-          const anchors = [...document.querySelectorAll('[data-browser-anchor]')].map(element => ({ tabId: element.getAttribute('data-browser-anchor'), bounds: rect(element), visible: !element.closest('[hidden], [inert]') && getComputedStyle(element).visibility === 'visible' }))
-          return { workspace: rect(document.querySelector('.workspace-host')!), viewport: { width: innerWidth, height: innerHeight }, anchors }
-        })
-        const native = await bandal.app.evaluate(({ BrowserWindow }) => {
-          const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
-          return { contentSize: host.getContentSize(), zoom: host.webContents.getZoomFactor(), views: host.contentView.children.flatMap((view: any) => view.webContents?.getURL().startsWith('https://') ? [{ id: view.webContents.id, url: view.webContents.getURL(), bounds: view.getBounds(), visible: view.getVisible() }] : []) }
-        })
-        latest = { step, dom, native }
-        const key = JSON.stringify(latest), stable = key === previous
-        previous = key
-        const views = native.views.filter((view: any) => view.visible), anchors = dom.anchors.filter(anchor => anchor.visible)
-        if (!stable || views.length !== 1 || anchors.length !== 1) return false
-        const anchor = anchors[0]!.bounds, actual = views[0].bounds
-        const x = Math.max(0, Math.round(anchor.x * native.zoom)), y = Math.max(0, Math.round(anchor.y * native.zoom))
-        const expected = { x, y, width: Math.min(native.contentSize[0]! - x, Math.round(anchor.width * native.zoom)), height: Math.min(native.contentSize[1]! - y, Math.round(anchor.height * native.zoom)) }
-        return JSON.stringify(actual) === JSON.stringify(expected) && actual.x + actual.width <= Math.round((dom.workspace.x + dom.workspace.width) * native.zoom) + 1
-      }, { intervals: [50, 100, 200], timeout: 15_000, message: `${step}: active native browser must settle within its live panel` }).toBe(true)
+      try {
+        await expect.poll(async () => {
+          const dom = await page.evaluate(() => {
+            const rect = (element: Element) => { const b = element.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height } }
+            const anchors = [...document.querySelectorAll('[data-browser-anchor]')].map(element => ({ tabId: element.getAttribute('data-browser-anchor'), bounds: rect(element), visible: !element.closest('[hidden], [inert]') && getComputedStyle(element).visibility === 'visible' }))
+            const surfaces = [...document.querySelectorAll('[role="dialog"], [role="menu"], [role="listbox"], [role="tooltip"]')]
+              .filter(element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden')
+              .map(element => ({ role: element.getAttribute('role'), text: element.textContent, bounds: rect(element) }))
+            return { workspace: rect(document.querySelector('.workspace-host')!), viewport: { width: innerWidth, height: innerHeight }, anchors, surfaces }
+          })
+          const native = await bandal.app.evaluate(({ BrowserWindow }) => {
+            const host = BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!
+            return { contentSize: host.getContentSize(), zoom: host.webContents.getZoomFactor(), views: host.contentView.children.flatMap((view: any) => view.webContents?.getURL().startsWith('https://') ? [{ id: view.webContents.id, url: view.webContents.getURL(), bounds: view.getBounds(), visible: view.getVisible() }] : []) }
+          })
+          latest = { step, dom, native }
+          const key = JSON.stringify(latest), stable = key === previous
+          previous = key
+          const views = native.views.filter((view: any) => view.visible), anchors = dom.anchors.filter(anchor => anchor.visible)
+          if (!stable || views.length !== 1 || anchors.length !== 1) return false
+          const anchor = anchors[0]!.bounds, actual = views[0].bounds
+          const x = Math.max(0, Math.round(anchor.x * native.zoom)), y = Math.max(0, Math.round(anchor.y * native.zoom))
+          const expected = { x, y, width: Math.min(native.contentSize[0]! - x, Math.round(anchor.width * native.zoom)), height: Math.min(native.contentSize[1]! - y, Math.round(anchor.height * native.zoom)) }
+          return JSON.stringify(actual) === JSON.stringify(expected) && actual.x + actual.width <= Math.round((dom.workspace.x + dom.workspace.width) * native.zoom) + 1
+        }, { intervals: [50, 100, 200], timeout: 15_000, message: `${step}: active native browser must settle within its live panel` }).toBe(true)
+      } catch (error) {
+        await info.attach(`native-browser-${step}-failure`, { body: JSON.stringify(latest, null, 2), contentType: 'application/json' })
+        await page.screenshot({ path: info.outputPath(`browser-${step}-failure.png`) })
+        throw error
+      }
       observations.push(latest)
       await page.screenshot({ path: info.outputPath(`browser-${step}-renderer.png`) })
       const capture = await bandal.app.evaluate(async ({ BrowserWindow }) => (await BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.capturePage()).toDataURL())

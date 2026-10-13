@@ -12,7 +12,7 @@ import { trackTabDownload } from './popupLifecycle'
 import { closePage } from './pageClose'
 import { browserAuthDocumentId, inheritEmbeddedAuthSource } from './embeddedAuth'
 import { isCleanBrowserAuthProbe } from './authProbe'
-import { rememberGoogleAccountNavigation, googleAccountNavigationUrl } from './googleAccountNavigation'
+import { applyDeferredGoogleAccountNavigation, rememberGoogleAccountNavigation, googleAccountNavigationUrl } from './googleAccountNavigation'
 
 interface Tab {
   tabId: string
@@ -27,6 +27,7 @@ interface Tab {
   ownershipRevision?: number
   bounds?: Electron.Rectangle | null
   preview?: Promise<string | null>
+  pendingAccountNavigation?: { url: string; generation: number }
 }
 const hosts = new Set<WebContents>()
 const occludedHosts = new Set<WebContents>()
@@ -107,6 +108,21 @@ function destroy(tab: Tab): void {
   if (!tab.host.isDestroyed()) tab.host.contentView.removeChildView(tab.view)
   if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close()
 }
+function accountPageVisible(tab: Tab): boolean {
+  return tab.view.getVisible() && !tab.host.isDestroyed() && tab.host.isVisible() && !tab.host.isMinimized()
+}
+function applyPendingAccountNavigation(tab: Tab): void {
+  const pending = tab.pendingAccountNavigation
+  if (!pending) return
+  const wc = tab.view.webContents
+  if (isCleanBrowserAuthProbe() || wc.isDestroyed() || wc.getURL() !== pending.url) {
+    delete tab.pendingAccountNavigation
+    return
+  }
+  if (!accountPageVisible(tab)) return
+  delete tab.pendingAccountNavigation
+  applyDeferredGoogleAccountNavigation(wc.session, pending.url, pending.generation)
+}
 function install(tab: Tab, parent?: Tab): void {
   const wc = tab.view.webContents, host = tab.host.webContents
   if (parent) tab.parentId = parent.tabId
@@ -153,7 +169,7 @@ function install(tab: Tab, parent?: Tab): void {
       tabId: tab.tabId, name, detail, state: state(wc)
     } satisfies BrowserPageEvent)
   }
-  wc.on('dom-ready', () => send('dom-ready'))
+  wc.on('dom-ready', () => { applyPendingAccountNavigation(tab); send('dom-ready') })
   wc.on('focus', () => {
     if (tab.view.getVisible()) send('focus', { webContentsId: wc.id })
   })
@@ -163,12 +179,18 @@ function install(tab: Tab, parent?: Tab): void {
     if (mouse.type === 'mouseDown' && tab.view.getVisible()) send('focus', { webContentsId: wc.id })
   })
   wc.on('did-start-loading', () => send('did-start-loading'))
-  wc.on('did-stop-loading', () => send('did-stop-loading'))
+  wc.on('did-stop-loading', () => { applyPendingAccountNavigation(tab); send('did-stop-loading') })
   wc.on('did-finish-load', () => send('did-finish-load'))
   const rememberAccount = (url: string, successful = true): void => {
-    if (!isCleanBrowserAuthProbe()) rememberGoogleAccountNavigation(wc.session, url,
-      successful && tab.view.getVisible() && !tab.host.isDestroyed() && tab.host.isVisible() && !tab.host.isMinimized())
+    delete tab.pendingAccountNavigation
+    if (isCleanBrowserAuthProbe()) return
+    const visible = accountPageVisible(tab)
+    const generation = rememberGoogleAccountNavigation(wc.session, url, successful && visible)
+    if (successful && !visible && generation !== null) tab.pendingAccountNavigation = { url, generation }
   }
+  wc.on('did-start-navigation', (details, _url, isInPlace, isMainFrame) => {
+    if ((details.isMainFrame ?? isMainFrame) && !(details.isSameDocument ?? isInPlace)) delete tab.pendingAccountNavigation
+  })
   wc.on('did-navigate', (_event, url, httpResponseCode) => {
     rememberAccount(url, httpResponseCode >= 200 && httpResponseCode < 400)
     responseCodes.set(wc, httpResponseCode); send('did-navigate', { url, httpResponseCode })
@@ -177,7 +199,10 @@ function install(tab: Tab, parent?: Tab): void {
     if (isMainFrame) rememberAccount(url, (responseCodes.get(wc) ?? 0) < 400)
     send('did-navigate-in-page', { url, isMainFrame })
   })
-  wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => send('did-fail-load', { errorCode, errorDescription, validatedURL, isMainFrame }))
+  wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (isMainFrame) delete tab.pendingAccountNavigation
+    send('did-fail-load', { errorCode, errorDescription, validatedURL, isMainFrame })
+  })
   wc.on('page-title-updated', (_event, title) => send('page-title-updated', { title }))
   wc.on('page-favicon-updated', (_event, favicons) => send('page-favicon-updated', { favicons }))
   wc.on('found-in-page', (_event, result) => send('found-in-page', { result }))
@@ -263,6 +288,7 @@ function applyPageVisibility(tab: Tab): void {
   delete tab.preview
   tab.view.setBounds(bounds)
   tab.view.setVisible(true)
+  applyPendingAccountNavigation(tab)
 }
 
 function capturePreview(tab: Tab, allowHidden = false): void {

@@ -88,6 +88,79 @@ test('a visible Google account change hands off to the next explicit YouTube nav
   expect(page.loadURL).toHaveBeenLastCalledWith('https://www.youtube.com/')
 })
 
+test('a Google selection committed behind a temporary overlay is applied once when the page becomes visible', async () => {
+  const { native, event, page } = await fixture()
+  const url = 'https://www.google.com/?authuser=1'
+  page.getURL = () => url
+  page.emit('did-navigate', {}, url, 200)
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })
+  await native.browserPageAction(event, { tabId: 'retained', action: 'loadURL', args: ['https://www.youtube.com/'] })
+  expect(page.loadURL).toHaveBeenLastCalledWith('https://www.youtube.com/?authuser=1')
+  // An already-consumed commit is not another selection when shown again.
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds: null })
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })
+  page.emit('dom-ready')
+  page.emit('did-stop-loading')
+  await native.browserPageAction(event, { tabId: 'retained', action: 'loadURL', args: ['https://www.youtube.com/'] })
+  expect(page.loadURL).toHaveBeenLastCalledWith('https://www.youtube.com/')
+})
+
+test.each(['dom-ready', 'did-stop-loading'])('a hidden committed selection can settle on %s after the host is shown', async readyEvent => {
+  const { native, event, page } = await fixture()
+  mocks.host.isVisible = () => false
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })
+  const url = 'https://www.google.com/?authuser=1'
+  page.getURL = () => url
+  page.emit('did-navigate', {}, url, 200)
+  mocks.host.isVisible = () => true
+  page.emit(readyEvent)
+  await native.browserPageAction(event, { tabId: 'retained', action: 'loadURL', args: ['https://www.youtube.com/'] })
+  expect(page.loadURL).toHaveBeenLastCalledWith('https://www.youtube.com/?authuser=1')
+})
+
+test.each(['storage', 'logout', 'new selection'])('a deferred hidden selection cannot override %s in the same session', async change => {
+  const { native, event, page } = await fixture()
+  const accounts = await import('../../../src/main/features/browser/googleAccountNavigation')
+  const url = 'https://www.google.com/?authuser=1'
+  page.getURL = () => url
+  page.emit('did-navigate', {}, url, 200)
+  if (change === 'storage') accounts.forgetGoogleAccountNavigation(page.session)
+  else accounts.rememberGoogleAccountNavigation(page.session, change === 'logout'
+    ? 'https://accounts.google.com/Logout' : 'https://www.google.com/?authuser=2')
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })
+  await native.browserPageAction(event, { tabId: 'retained', action: 'loadURL', args: ['https://www.youtube.com/'] })
+  expect(page.loadURL).toHaveBeenLastCalledWith(change === 'new selection' ? 'https://www.youtube.com/?authuser=2' : 'https://www.youtube.com/')
+})
+
+test.each(['new document', 'changed URL', 'failed load', 'http error', 'clean probe'])('retires a hidden selection after %s', async change => {
+  const { native, event, page } = await fixture()
+  const url = 'https://www.google.com/?authuser=1'
+  page.getURL = () => url
+  page.emit('did-navigate', {}, url, 200)
+  if (change === 'new document') page.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false }, 'https://example.com/', false, true)
+  if (change === 'changed URL') page.getURL = () => 'https://example.com/'
+  if (change === 'failed load') page.emit('did-fail-load', {}, -105, 'ERR_NAME_NOT_RESOLVED', url, true)
+  if (change === 'http error') page.emit('did-navigate', {}, url, 503)
+  if (change === 'clean probe') mocks.cleanProbe = true
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })
+  mocks.cleanProbe = false
+  page.emit('dom-ready')
+  await native.browserPageAction(event, { tabId: 'retained', action: 'loadURL', args: ['https://www.youtube.com/'] })
+  expect(page.loadURL).toHaveBeenLastCalledWith('https://www.youtube.com/')
+})
+
+test('showing an old hidden logout does not invalidate a newer visible selection', async () => {
+  const { native, event, page } = await fixture()
+  const accounts = await import('../../../src/main/features/browser/googleAccountNavigation')
+  const url = 'https://accounts.google.com/Logout'
+  page.getURL = () => url
+  page.emit('did-navigate', {}, url, 200)
+  accounts.rememberGoogleAccountNavigation(page.session, 'https://www.google.com/?authuser=2')
+  await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })
+  await native.browserPageAction(event, { tabId: 'retained', action: 'loadURL', args: ['https://www.youtube.com/'] })
+  expect(page.loadURL).toHaveBeenLastCalledWith('https://www.youtube.com/?authuser=2')
+})
+
 test('hidden pages and subframes cannot replace the selected Google account', async () => {
   const { native, event, page } = await fixture()
   await native.setBrowserPageBounds(event, { tabId: 'retained', bounds })

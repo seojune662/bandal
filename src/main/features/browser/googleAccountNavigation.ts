@@ -4,6 +4,7 @@
  * Session identity keeps normal, private, and other browser profiles separate.
  */
 const selectedAccounts = new WeakMap<object, string>()
+const accountGenerations = new WeakMap<object, number>()
 const siteNavigations = new WeakMap<object, { url: string; inheritedPopup: boolean }>()
 
 const GOOGLE_SERVICES = new Set([
@@ -69,26 +70,37 @@ function hasAccountParameters(url: URL, includeIndex = true): boolean {
 /** Also clear this when a browser session's cookies/storage are removed. */
 export function forgetGoogleAccountNavigation(session: object): void {
   selectedAccounts.delete(session)
+  accountGenerations.set(session, (accountGenerations.get(session) ?? 0) + 1)
 }
 
-/** Hidden main frames may invalidate shared account state, but not select it. */
-export function rememberGoogleAccountNavigation(session: object, value: string, allowSelection = true): void {
+/** Hidden main frames return a deferred token without choosing an account. */
+export function rememberGoogleAccountNavigation(session: object, value: string, allowSelection = true): number | null {
   const url = trustedUrl(value)
-  if (!url) return
+  if (!url) return null
   if (ACCOUNT_PROVIDERS.has(url.hostname) ||
     ((GOOGLE_SERVICES.has(url.hostname) || YOUTUBE_PAGES.has(url.hostname)) &&
       (accountAction(url) || hasAccountParameters(url, false))) ||
     (YOUTUBE_PAGES.has(url.hostname) && url.searchParams.has('authuser'))) {
     forgetGoogleAccountNavigation(session)
-    return
+    return null
   }
   // YouTube owns subsequent account/channel selection. In particular, our
   // own handed-off URL must not re-arm another automatic account handoff.
-  if (!GOOGLE_SERVICES.has(url.hostname)) return
+  if (!GOOGLE_SERVICES.has(url.hostname)) return null
   const index = accountIndex(url)
   if (index !== null) {
-    if (allowSelection) selectedAccounts.set(session, index)
+    if (allowSelection) {
+      forgetGoogleAccountNavigation(session)
+      selectedAccounts.set(session, index)
+    }
+    return accountGenerations.get(session) ?? 0
   } else if (url.searchParams.has('authuser') || /(?:^|\/)u\/[^/]+(?:\/|$)/.test(url.pathname)) forgetGoogleAccountNavigation(session)
+  return null
+}
+
+/** A logout, storage clear, handoff, or newer visible selection cancels it. */
+export function applyDeferredGoogleAccountNavigation(session: object, value: string, generation: number): void {
+  if ((accountGenerations.get(session) ?? 0) === generation) rememberGoogleAccountNavigation(session, value)
 }
 
 /**

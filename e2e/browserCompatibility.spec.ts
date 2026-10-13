@@ -42,16 +42,17 @@ async function fixture() {
 
 async function openTab(bandal: BandalApp, url: string, expectedUrl = url) {
   const page = bandal.page
+  const existing = await bandal.app.evaluate(({ webContents }) => webContents.getAllWebContents().map(w => w.id))
   const button = page.locator('.workspace-add-tab')
   if (await button.isVisible()) await button.click()
   else await page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
   await page.getByLabel('새 탭 검색').fill(url)
   await page.getByRole('option', { name: `${url} 열기` }).click()
-  await expect.poll(() => bandal.app.evaluate(({ webContents }, target) =>
-    webContents.getAllWebContents().find(w => w.getType() !== 'webview' && w.getURL() === target)?.id ?? null, expectedUrl
+  await expect.poll(() => bandal.app.evaluate(({ webContents }, { target, existing }) =>
+    webContents.getAllWebContents().find(w => !existing.includes(w.id) && w.getType() !== 'webview' && w.getURL() === target)?.id ?? null, { target: expectedUrl, existing }
   )).not.toBeNull()
-  const id = await bandal.app.evaluate(({ webContents }, target) =>
-    webContents.getAllWebContents().find(w => w.getType() !== 'webview' && w.getURL() === target)!.id, expectedUrl)
+  const id = await bandal.app.evaluate(({ webContents }, { target, existing }) =>
+    webContents.getAllWebContents().find(w => !existing.includes(w.id) && w.getType() !== 'webview' && w.getURL() === target)!.id, { target: expectedUrl, existing })
   await expect.poll(() => run(bandal, id, 'document.readyState')).toBe('complete')
   return id
 }
@@ -276,9 +277,14 @@ test('Google account selection reaches the first YouTube request without a retry
     await expect.poll(() => bandal.app.evaluate(({ webContents }, id) => webContents.fromId(id) == null, popup)).toBe(true)
     // A fresh Google selection also reaches an app-created tab.
     await address.click()
-    await address.fill('https://www.google.com/?authuser=1')
+    await address.fill('https://www.google.com/?authuser=1&selection=after-popup')
     await address.press('Enter')
-    await expect.poll(() => run(bandal, google, 'location.href')).toBe('https://www.google.com/?authuser=1')
+    await expect.poll(() => run(bandal, google, 'location.href')).toBe('https://www.google.com/?authuser=1&selection=after-popup')
+    await bandal.page.mouse.move(2, 2)
+    await expect(bandal.page.getByRole('tooltip')).toHaveCount(0)
+    await expect.poll(() => bandal.app.evaluate(({ BrowserWindow }, id) =>
+      BrowserWindow.getAllWindows().flatMap(host => host.contentView.children)
+        .some((view: any) => view.webContents?.id === id && view.getVisible()), google)).toBe(true)
     const fresh = await openTab(bandal, 'https://www.youtube.com/watch?v=fixture', 'https://www.youtube.com/watch?v=fixture&authuser=1')
     await run(bandal, fresh, "location.href='https://www.youtube.com/?authuser=0'")
     await expect.poll(() => run(bandal, fresh, 'document.querySelector("h1")?.textContent')).toBe('Account A')
