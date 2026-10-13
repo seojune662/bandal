@@ -46,10 +46,10 @@ describe('inkGeometry', () => {
     expect(path).toContain(' Q ')
   })
 
-  test('does not create a path for empty, one-point, or zero-length strokes', () => {
+  test('preserves dots and stationary strokes while rejecting empty strokes', () => {
     expect(strokePath([], shape({}).style, Math.SQRT2, false)).toBe('')
-    expect(strokePath([start], shape({}).style, Math.SQRT2, false)).toBe('')
-    expect(strokePath([start, { ...start }], shape({}).style, Math.SQRT2, false)).toBe('')
+    expect(strokePath([start], shape({}).style, Math.SQRT2, false)).toMatch(/^M /)
+    expect(strokePath([start, { ...start }], shape({}).style, Math.SQRT2, false)).toMatch(/^M /)
   })
 
   test.each([0, Number.NaN, Number.POSITIVE_INFINITY])(

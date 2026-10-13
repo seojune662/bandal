@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkS
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
-import { PDFDict, PDFDocument, PDFName } from 'pdf-lib'
+import { PDFDict, PDFDocument, PDFName, degrees } from 'pdf-lib'
 import { createPdfExporter, type TextboxFontFile } from '../../../src/main/features/pdf'
 import { ValidationError } from '../../../src/main/db/errors'
 import type { Annotation } from '../../../src/shared/types/annotation'
@@ -75,6 +75,35 @@ describe('createPdfExporter', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     ctx.cleanup()
+  })
+
+  test.each([0, 90, 180, 270])('keeps text upright in the displayed CropBox at %s degrees', async (rotation) => {
+    const make = async (reference: boolean) => {
+      const pdf = await PDFDocument.create(), quarter = rotation === 90 || rotation === 270
+      const page = pdf.addPage(reference ? (quarter ? [560, 400] : [400, 560]) : [640, 800])
+      if (!reference) { page.setCropBox(40, 60, 400, 560); page.setRotation(degrees(rotation)) }
+      const exporter = createPdfExporter({ getCourseFolder: () => ctx.dir,
+        listDrawings: () => [textbox('position', 'Coordinate test', { fontSizePt: 14 })],
+        listAnnotations: () => [], resolveFontPath: () => fontPath })
+      await exporter.annotateDocument(pdf, { courseId: 'course-1', relPath: 'slides/source.pdf' })
+      const parsed = await getDocument({ data: new Uint8Array(await pdf.save()) }).promise
+      try {
+        const displayed = await parsed.getPage(1), viewport = displayed.getViewport({ scale: 1 })
+        const text = await displayed.getTextContent()
+        return text.items.flatMap(item => {
+          if (!('str' in item) || !item.str.trim()) return []
+          const [a, b, c, d, e, f] = item.transform
+          const origin = viewport.convertToViewportPoint(e, f)
+          const x = viewport.convertToViewportPoint(e + a, f + b)
+          const y = viewport.convertToViewportPoint(e + c, f + d)
+          return [{ text: item.str, basis: [...origin, x[0] - origin[0], x[1] - origin[1], y[0] - origin[0], y[1] - origin[1]] }]
+        })
+      } finally { await parsed.destroy() }
+    }
+    const actual = await make(false), reference = await make(true)
+    expect(actual.length).toBeGreaterThan(0)
+    expect(actual.map(item => item.text)).toEqual(reference.map(item => item.text))
+    actual.forEach((item, index) => item.basis.forEach((value, coordinate) => expect(value).toBeCloseTo(reference[index]!.basis[coordinate]!, 4)))
   })
 
   test('writes a separate readable PDF and leaves the source bytes unchanged', async () => {
