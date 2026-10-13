@@ -593,10 +593,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
         <div className="chat-composer__hint" aria-live="polite">
           {isWaitingPermission ? (
             <span className="chat-composer__hint-waiting">
-              도구 실행 허용을 기다리는 중이에요 — 옆의 승인창에서 응답해 주세요.
+              계속하려면 위 항목을 확인해 주세요.
             </span>
-          ) : isStreaming ? (
-            <span>답변을 작성하고 있어요…</span>
           ) : (
             submitting ? <span>메시지를 보내는 중…</span> : null
           )}

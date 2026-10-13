@@ -1,7 +1,98 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { changedFiles, onlyLockedChatDependenciesPromoted, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
+
+function chatDependencyPromotion() {
+  const versions = { katex: '0.18.1', remark: '15.0.1', 'remark-gfm': '4.0.1', 'remark-math': '6.0.0' }
+  const before = { version: '0.83.1', scripts: { build: 'electron-vite build' }, dependencies: { electron: '43.4.1' }, devDependencies: { typescript: '5.9.3' } }
+  const after = { ...structuredClone(before), version: '0.84.0', devDependencies: { ...before.devDependencies, ...versions } }
+  const entries = Object.entries(versions).map(([name, version]) => `      ${name}:\n        specifier: ${version}\n        version: ${version}\n`).join('')
+  const packages = Object.entries(versions).map(([name, version]) => `  ${name}@${version}:\n    resolution: {integrity: sha512-existing}\n`).join('\n')
+  const snapshots = Object.entries(versions).map(([name, version]) => `  ${name}@${version}:\n    dependencies: {}\n`).join('\n')
+  const beforeLock = `lockfileVersion: '9.0'\n\nsettings:\n  autoInstallPeers: true\n\nimporters:\n\n  .:\n    devDependencies:\n      typescript:\n        specifier: 5.9.3\n        version: 5.9.3\n\npackages:\n\n${packages}\nsnapshots:\n\n${snapshots}`
+  const afterLock = beforeLock.replace('      typescript:\n', `${entries}      typescript:\n`)
+  return { before, after, beforeLock, afterLock, entries }
+}
+
+test('only exact existing locked chat packages may become direct renderer dependencies', () => {
+  const f = chatDependencyPromotion()
+  const check = (before = f.before, after = f.after, beforeLock = f.beforeLock, afterLock = f.afterLock) => onlyLockedChatDependenciesPromoted(before, after, beforeLock, afterLock)
+  assert.equal(check(), true)
+  assert.equal(check(f.before, f.after, f.beforeLock, f.afterLock.replaceAll('\n', '\r\n')), true)
+  for (const after of [
+    { ...f.after, scripts: { build: 'changed-build' } },
+    { ...f.after, dependencies: { electron: '44.0.0' } },
+    { ...f.after, pnpm: { overrides: { katex: '0.18.1' } } },
+    { ...f.after, devDependencies: { ...f.after.devDependencies, katex: '0.18.2' } },
+    { ...f.after, devDependencies: { ...f.after.devDependencies, remark: '^15.0.1' } },
+    { ...f.after, devDependencies: { ...f.after.devDependencies, '@types/katex': '0.16.8' } }
+  ]) assert.equal(check(f.before, after), false)
+  for (const afterLock of [
+    f.afterLock.replace('autoInstallPeers: true', 'autoInstallPeers: false'),
+    f.afterLock.replace('specifier: 15.0.1', 'specifier: ^15.0.1'),
+    f.afterLock.replace('version: 15.0.1', 'version: 15.0.2'),
+    f.afterLock.replace('version: 5.9.3', 'version: 5.9.4'),
+    f.afterLock.replace('sha512-existing', 'sha512-new'),
+    f.afterLock.replace('dependencies: {}', 'dependencies: {new: 1.0.0}'),
+    f.afterLock.replace('packages:\n', '  other:\n    devDependencies: {}\n\npackages:\n'),
+    f.afterLock.replace('    devDependencies:\n', '    dependencies:\n'),
+    f.afterLock.replace('      typescript:\n', `${f.entries}      typescript:\n`),
+    `${f.afterLock}\n  newly-installed@1.0.0: {}\n`,
+    f.beforeLock
+  ]) assert.equal(check(f.before, f.after, f.beforeLock, afterLock), false)
+  for (const section of ['packages', 'snapshots']) {
+    const missing = f.beforeLock.replace(`${section}:`, `${section}-missing:`)
+    assert.equal(check(f.before, f.after, missing, missing.replace('      typescript:\n', `${f.entries}      typescript:\n`)), false)
+  }
+  const missingPackage = f.beforeLock.replaceAll('  katex@0.18.1:', '  katex@0.18.0:')
+  assert.equal(check(f.before, f.after, missingPackage, missingPackage.replace('      typescript:\n', `${f.entries}      typescript:\n`)), false)
+  assert.equal(check(f.after, f.after, f.afterLock, f.afterLock), false)
+  const alreadyDirect = { ...f.before, dependencies: { ...f.before.dependencies, katex: '0.18.1' } }
+  assert.equal(check(alreadyDirect, { ...f.after, dependencies: alreadyDirect.dependencies }), false)
+  assert.equal(f.before.devDependencies.katex, undefined)
+  assert.equal(f.after.devDependencies.katex, '0.18.1')
+})
+
+test('changed file classification scopes proven promotions and keeps all other package changes full', () => {
+  const f = chatDependencyPromotion(), directory = mkdtempSync(join(tmpdir(), 'bandal-affected-chat-'))
+  const originalDirectory = process.cwd()
+  const write = (manifest, lock) => {
+    writeFileSync(join(directory, 'package.json'), JSON.stringify(manifest))
+    writeFileSync(join(directory, 'pnpm-lock.yaml'), lock)
+  }
+  const git = (...args) => execFileSync('git', args, { cwd: directory, stdio: 'pipe' })
+  try {
+    git('init', '-q')
+    write(f.before, f.beforeLock)
+    git('add', 'package.json', 'pnpm-lock.yaml')
+    git('-c', 'user.name=Affected Tests', '-c', 'user.email=tests@example.invalid', '-c', 'commit.gpgsign=false', '-c', `core.hooksPath=${join(directory, 'no-hooks')}`, 'commit', '-qm', 'fixture')
+    process.chdir(directory)
+    write(f.after, f.afterLock)
+    const scoped = planChecks(changedFiles('HEAD').files)
+    assert.equal(scoped.full, false)
+    assert.deepEqual(scoped.types, ['tsconfig.web.json'])
+    assert.deepEqual(scoped.unitInputs, ['src/renderer/src/features/chat/markdown.ts', 'src/renderer/src/features/chat/MarkdownView.tsx'])
+    assert.ok(scoped.e2e.includes('e2e/chatUx.spec.ts'))
+    for (const [manifest, lock] of [
+      [{ ...f.after, scripts: { build: 'changed-build' } }, f.afterLock],
+      [{ ...f.after, dependencies: { electron: '44.0.0' } }, f.afterLock],
+      [f.after, f.afterLock.replace('sha512-existing', 'sha512-new')],
+      [f.after, f.afterLock.replace('version: 15.0.1', 'version: 15.0.2')],
+      [f.before, f.afterLock]
+    ]) {
+      write(manifest, lock)
+      assert.equal(planChecks(changedFiles('HEAD').files).full, true)
+    }
+  } finally {
+    process.chdir(originalDirectory)
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
 
 test('study market server changes select real integration and related packaged flows', () => {
   for (const file of ['supabase/migrations/20261013000000_study_market.sql', 'supabase/functions/_shared/study-market/service.ts', 'src/shared/types/studyMarket.ts']) {

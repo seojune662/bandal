@@ -1,4 +1,4 @@
-import { parseAiAccess, type AiAccessPolicy } from '../../../shared/types/aiAccess'
+import { DEFAULT_AI_ACCESS, parseAiAccess, type AiAccessPolicy } from '../../../shared/types/aiAccess'
 /**
  * Chat persistence: agent_sessions / messages / message_blocks /
  * permission_grants. Assistant turns are committed atomically on
@@ -136,10 +136,21 @@ interface BlockRow {
   payload_json: string
 }
 
+function storedAccessPolicy(json: string | null | undefined): AiAccessPolicy {
+  const value = json ? parsePayload(json) : null
+  const stored = value && typeof value === 'object' ? value as Partial<AiAccessPolicy> & { defaultsVersion?: number } : null
+  // Existing conversations stored the previous default as an explicit policy.
+  // Version new choices so a later deliberate restricted choice is preserved.
+  if (stored && !stored.defaultsVersion && stored.mode === 'auto' && stored.scope?.course === true && stored.scope.browser === false && stored.scope.screen === false) {
+    return structuredClone(DEFAULT_AI_ACCESS)
+  }
+  return parseAiAccess(value)
+}
+
 function rowToSessionInfo(row: SessionRow): ChatSessionInfo {
   return {
     id: row.id,
-    accessPolicy: parseAiAccess(row.access_policy ? parsePayload(row.access_policy) : null),
+    accessPolicy: storedAccessPolicy(row.access_policy),
     courseId: row.course_id,
     surface: row.surface as ChatSurface,
     provider: row.provider as AgentProvider,
@@ -211,7 +222,7 @@ export function createChatRepo(db: Database): ChatRepo {
   }
 
   return {
-    setAccessPolicy(sessionId, policy) { db.prepare('UPDATE agent_sessions SET access_policy = ? WHERE id = ? AND deleted_at IS NULL').run(JSON.stringify(parseAiAccess(policy)), requireId(sessionId, 'sessionId')) },
+    setAccessPolicy(sessionId, policy) { db.prepare('UPDATE agent_sessions SET access_policy = ? WHERE id = ? AND deleted_at IS NULL').run(JSON.stringify({ ...parseAiAccess(policy), defaultsVersion: 2 }), requireId(sessionId, 'sessionId')) },
     getSession(sessionId) {
       const row = db
         .prepare(

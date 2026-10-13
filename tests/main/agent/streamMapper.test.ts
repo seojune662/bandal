@@ -34,6 +34,13 @@ function ofType<T extends AgentEvent['type']>(
   >[]
 }
 
+test('expired Claude login messages become a connection notice instead of an assistant answer', () => {
+  const mapper = createStreamMapper()
+  const events = mapper.map({ type: 'assistant', error: 'authentication_failed', message: { id: 'auth-error', content: [{ type: 'text', text: 'Failed to authenticate. API Error: 401 OAuth access token has expired. Re-authenticate to continue.' }] } })
+  expect(events).toEqual([{ type: 'error', code: 'not-logged-in', message: 'Claude 연결이 만료됐어요. 설정 → AI에서 다시 로그인해 주세요.', fatal: false }])
+  expect(mapper.map({ type: 'assistant', message: { id: 'answer', content: [{ type: 'text', text: 'OAuth access token이 무엇인지 설명할게요.' }] } })).toContainEqual(expect.objectContaining({ type: 'text-final' }))
+})
+
 describe('streamMapper: full turn with Write tool (turn-write-tool.jsonl)', () => {
   const events = mapAll(loadFixture('turn-write-tool.jsonl'))
 

@@ -29,6 +29,7 @@ import type {
 import { attachJsonlStream, createStderrRing } from '../jsonlStream'
 import { AgentUnavailableError, type BinaryLocator } from '../binaryLocator'
 import { createStreamMapper } from './streamMapper'
+import { DEFAULT_AI_ACCESS } from '../../../../shared/types/aiAccess'
 
 const SIGKILL_DELAY_MS = 3000
 
@@ -37,16 +38,11 @@ const SIGKILL_DELAY_MS = 3000
  * tool names.
  *
  * `Edit`/`Write` are **scoped to the CLI's working directory** (the course
- * folder) with the cwd-relative glob `./**`. In-course edits proceed silently;
- * anything outside falls through to a `can_use_tool` control_request, i.e. the
- * permission card the renderer already implements.
- *
- * This matters because `Read`, `WebFetch` and `WebSearch` are blanket-allowed
- * and the tutor reads third-party lecture PDFs, so a blanket `Edit`/`Write`
- * rule completed a prompt-injection → arbitrary-write chain. Verified against
- * claude 2.1.222 — see ../SPIKE-NOTES.md §Spike 5, including that an absolute
- * path in a rule does NOT work (a single leading `/` is read as
- * project-relative) and that this glob covers nested subdirectories.
+ * folder) with the cwd-relative glob `./**`. Anything outside this fast path
+ * goes through `can_use_tool`, where SessionManager applies the saved access
+ * policy. Full access answers these requests automatically; restricted modes
+ * retain the confirmation flow. The relative rule syntax was verified with
+ * Claude 2.1.222 (see ../SPIKE-NOTES.md §Spike 5).
  */
 export const CLAUDE_ALLOWED_TOOLS = [
   'Read(./**)',
@@ -111,6 +107,12 @@ export function buildClaudeArgs(opts: {
   /** Extra allow rules, e.g. `mcp__bandal__create_course`. */
   extraAllowedTools?: readonly string[]
 }): string[] {
+  const policy = opts.accessPolicy ?? DEFAULT_AI_ACCESS
+  const allowedTools = opts.webSearch === 'live' ? ['WebSearch', 'WebFetch'] : CLAUDE_ALLOWED_TOOLS.filter(tool => {
+    if (tool === 'TodoWrite') return true
+    if (tool === 'WebSearch' || tool === 'WebFetch') return policy.mode !== 'ask' && policy.scope.browser
+    return policy.scope.course && (policy.mode === 'full' || policy.mode === 'auto' && /^(Read|Glob|Grep)/.test(tool))
+  })
   const args = [
     '-p',
     '--input-format',
@@ -119,9 +121,8 @@ export function buildClaudeArgs(opts: {
     'stream-json',
     '--include-partial-messages',
     '--verbose',
-    // `default`, not `acceptEdits`: the allowlist above is what grants routine
-    // in-course edits, so if a rule ever stops matching we fail *closed* (the
-    // student sees a permission card) instead of silently auto-approving.
+    // Keep the control protocol active so Bandal can apply the saved policy
+    // to tools outside the fast-path allowlist, including skill commands.
     '--permission-mode',
     'default',
     '--permission-prompt-tool',
@@ -130,13 +131,12 @@ export function buildClaudeArgs(opts: {
     // accepting the splatted form, the extras would silently become positional
     // arguments in `-p` mode and the allowlist would collapse.
     '--allowedTools',
-    [...(opts.webSearch === 'live' ? ['WebSearch', 'WebFetch'] : CLAUDE_ALLOWED_TOOLS.filter(tool => !opts.accessPolicy || (opts.accessPolicy.scope.course && (opts.accessPolicy.mode === 'full' || !/^(Edit|Write)/.test(tool))) && !/^(WebSearch|WebFetch|Glob|Grep)/.test(tool))), ...(opts.extraAllowedTools ?? [])].join(','),
-    '--disallowedTools',
-    'Bash',
+    [...allowedTools, ...(opts.extraAllowedTools ?? [])].join(','),
     '--disable-slash-commands',
     '--setting-sources',
     'user'
   ]
+  if (opts.webSearch === 'live' || policy.mode !== 'full' || !policy.scope.course) args.push('--disallowedTools', 'Bash')
   if (opts.mcpConfigPath !== undefined && opts.mcpConfigPath !== '') {
     // `--strict-mcp-config` is not optional here. Without it the CLI also
     // loads whatever MCP servers the student configured in ~/.claude, which
@@ -149,7 +149,7 @@ export function buildClaudeArgs(opts: {
   if (opts.selectedSkills?.length) {
     args.splice(args.indexOf('--disable-slash-commands'), 1)
     const denied = args.indexOf('--disallowedTools')
-    args.splice(denied, 2)
+    if (denied >= 0) args.splice(denied, 2)
   }
   if (opts.effort) args.push('--effort', opts.effort)
   const model = providerModel(opts.model)

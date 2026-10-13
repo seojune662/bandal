@@ -1,5 +1,6 @@
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { DEFAULT_AI_ACCESS } from '../../../../shared/types/aiAccess'
 
 export const GEMINI_SYSTEM_SETTINGS_ENV_VAR =
   'GEMINI_CLI_SYSTEM_SETTINGS_PATH'
@@ -51,6 +52,7 @@ export function writeGeminiSettings(options: GeminiSettingsOptions): string {
       timeout: 300_000
     }
   }
+  const policy = options.accessPolicy ?? DEFAULT_AI_ACCESS
   const settings = {
     security: {
       folderTrust: { enabled: false },
@@ -59,7 +61,7 @@ export function writeGeminiSettings(options: GeminiSettingsOptions): string {
         : {})
     },
     mcpServers,
-    tools: { core: [...GEMINI_READ_ONLY_TOOLS.filter(tool => !options.accessPolicy || options.accessPolicy.scope.browser || !['web_fetch', 'google_web_search'].includes(tool)), 'write_file', 'replace'], shell: { enableInteractiveShell: false } }
+    tools: { core: [...GEMINI_READ_ONLY_TOOLS.filter(tool => policy.scope.browser || !['web_fetch', 'google_web_search'].includes(tool)), 'write_file', 'replace', ...(policy.mode === 'full' && policy.scope.course ? ['run_shell_command'] : [])], shell: { enableInteractiveShell: false } }
   }
 
   mkdirSync(directory, { recursive: true, mode: 0o700 })

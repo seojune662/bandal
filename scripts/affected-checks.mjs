@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim()
+const gitBlob = (base, file) => execFileSync('git', ['show', `${base}:${file}`], { encoding: 'utf8' })
 
 /** The previous tag, not the previous push: unreleased commits stay covered. */
 export function changedFiles(base) {
@@ -21,6 +22,15 @@ export function changedFiles(base) {
       files.delete('package.json')
       // Keep this feature covered even when its already-existing helper was not edited.
       if (before.scripts?.dev !== after.scripts?.dev) files.add('scripts/build-browser-import.mjs')
+    } else if (files.has('pnpm-lock.yaml') && onlyLockedChatDependenciesPromoted(
+      before, after, gitBlob(base, 'pnpm-lock.yaml'), readFileSync('pnpm-lock.yaml', 'utf8')
+    )) {
+      files.delete('package.json')
+      files.delete('pnpm-lock.yaml')
+      // These already-locked libraries now have direct renderer imports.
+      // Keep their consumers covered even when the promotion is the only edit.
+      files.add('src/renderer/src/features/chat/markdown.ts')
+      files.add('src/renderer/src/features/chat/MarkdownView.tsx')
     }
   }
   // Adding this isolated browser preload leaves the app's build pipeline intact.
@@ -30,6 +40,47 @@ export function changedFiles(base) {
     if (onlyBrowserGestureEntryChanged(before, after) || onlyHoverPreviewEntryChanged(before, after)) files.delete('electron.vite.config.ts')
   }
   return { base, files: [...files] }
+}
+
+/** Only direct imports of these existing renderer libraries can narrow scope. */
+export function onlyLockedChatDependenciesPromoted(before, after, beforeLock, afterLock) {
+  const versions = { katex: '0.18.1', remark: '15.0.1', 'remark-gfm': '4.0.1', 'remark-math': '6.0.0' }
+  const previous = structuredClone(before), next = structuredClone(after)
+  delete previous.version
+  delete next.version
+  const added = Object.entries(versions).filter(([name, version]) =>
+    ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'].every(group => !Object.hasOwn(before[group] ?? {}, name)) && after.devDependencies?.[name] === version
+  )
+  if (!added.length) return false
+  for (const [name] of added) delete next.devDependencies[name]
+  if (JSON.stringify(previous) !== JSON.stringify(next)) return false
+
+  // Only normalize checkout line endings. Every other byte, including the
+  // entire packages/snapshots graph and all other importers, must be unchanged.
+  beforeLock = beforeLock.replaceAll('\r\n', '\n')
+  afterLock = afterLock.replaceAll('\r\n', '\n')
+  const section = (text, name, indent = 0) => {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`^${' '.repeat(indent)}${escaped}:\\n([\\s\\S]*?)(?=^ {0,${indent}}\\S|(?![\\s\\S]))`, 'm').exec(text)
+  }
+  const rootDevDependencies = lock => {
+    const importers = section(lock, 'importers')
+    const root = importers && section(importers[0], '.', 2)
+    const dev = root && section(root[0], 'devDependencies', 4)
+    return dev ? { text: dev[0], start: importers.index + root.index + dev.index } : null
+  }
+  const oldDev = rootDevDependencies(beforeLock), newDev = rootDevDependencies(afterLock)
+  const packages = section(beforeLock, 'packages'), snapshots = section(beforeLock, 'snapshots')
+  if (!oldDev || !newDev || !packages || !snapshots) return false
+  let stripped = newDev.text
+  for (const [name, version] of added) {
+    const lockedEntry = `\n  ${name}@${version}:\n`
+    if (!packages[0].includes(lockedEntry) || !snapshots[0].includes(lockedEntry)) return false
+    const entry = `      ${name}:\n        specifier: ${version}\n        version: ${version}\n`
+    if (oldDev.text.includes(`\n      ${name}:\n`) || stripped.split(entry).length !== 2) return false
+    stripped = stripped.replace(entry, '')
+  }
+  return beforeLock === afterLock.slice(0, newDev.start) + stripped + afterLock.slice(newDev.start + newDev.text.length)
 }
 
 export function onlyVersionOrBrowserImportHookChanged(before, after) {

@@ -75,46 +75,48 @@ afterEach(() => {
   useAgentToolActivityStore.setState({ conversations: {} })
 })
 
-describe('ChatSurface approval dock', () => {
-  test('renders pending v1 and v2 requests outside the scroll area above the composer', () => {
+describe('ChatSurface exceptional confirmations', () => {
+  test('keeps exceptional confirmations inline above the composer without technical details', () => {
     seedApprovalState(false)
 
     const html = renderToStaticMarkup(
       <ChatSurface
         courseId="course-1"
         conversationId={conversationId}
-        variant="popup"
+        variant="sidebar"
       />
     )
 
-    expect(html).toContain('class="chat-approval-dock chat-approval-side"')
+    expect(html).toContain('class="chat-approval-dock"')
     expect(html).toContain('role="region"')
     expect(html).toContain('aria-live="polite"')
     expect(html).toContain('aria-label="승인 요청"')
-    expect(html).toContain('write_file')
-    expect(html).toContain('승인 대기 2개')
+    expect(html).not.toContain('write_file')
+    expect(html).toContain('요청한 내용을 반영할까요?')
+    expect(html).not.toContain('chat-approval-side')
+    expect(html).toContain('확인할 항목 2개')
     expect(html).not.toContain('과목을 삭제할까요?')
     expect(html).toContain('aria-label="대화 목록"')
     expect(html.indexOf('class="chat-scroll"')).toBeLessThan(
-      html.indexOf('class="chat-approval-dock chat-approval-side"')
+      html.indexOf('class="chat-approval-dock"')
     )
-    expect(html.indexOf('class="chat-approval-dock chat-approval-side"')).toBeLessThan(
+    expect(html.indexOf('class="chat-approval-dock"')).toBeLessThan(
       html.indexOf('class="chat-composer-zone"')
     )
   })
 
-  test('removes the dock and returns resolved cards to their history positions', () => {
+  test('removes resolved permission bookkeeping from the answer', () => {
     seedApprovalState(true)
 
     const html = renderToStaticMarkup(
       <ChatSurface courseId="course-1" conversationId={conversationId} />
     )
 
-    expect(html).not.toContain('class="chat-approval-dock chat-approval-side"')
-    expect(html).toContain('class="chat-approval-rail"')
-    expect(html).toContain('data-behavior="deny">거부함')
-    expect(html).toContain('data-resolved="true"')
-    expect(html).toContain('data-approved="false">거부함')
+    expect(html).not.toContain('class="chat-approval-dock"')
+    expect(html).not.toContain('class="chat-approval-rail"')
+    expect(html).not.toContain('data-behavior="deny">거부함')
+    expect(html).not.toContain('data-resolved="true"')
+    expect(html).not.toContain('data-approved="false">거부함')
   })
 
   test('keeps the title marked until every pending surface resolves', () => {

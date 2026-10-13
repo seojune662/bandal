@@ -23,6 +23,7 @@ import { createHash } from 'node:crypto'
 import type { MaterialContext, MessageContextSnapshot } from '../../shared/types/chatContext'
 import { selectScreen, screenSelectionRequest } from '../windows/screenSelection'
 import { DEFAULT_AI_ACCESS, parseAiAccess } from '../../shared/types/aiAccess'
+import { appPermissionAllowed } from '../features/agent/accessPolicy'
 import { registerBrowserImportHandlers } from './browserImportHandlers'
 import { writeFileAtomic, quarantineFile } from '../lib/atomicWrite'
 import { createQuitDrain } from '../lib/quitDrain'
@@ -1194,10 +1195,8 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   const agentAvailability = createAgentAvailabilityService({ locators: agentLocators })
 
   // -- assistant acting on the app -------------------------------------------
-  // The agent reads third-party lecture PDFs, so these tools widen the blast
-  // radius of prompt injection. Three things hold that line and all three live
-  // here: destructive tools confirm, every call is journalled, and per-turn
-  // caps stop a poisoned document from creating hundreds of anything.
+  // Keep scope settings, the action journal and per-turn budgets independent
+  // from the UI: routine work can proceed without confirmation cards.
   const agentJournal = createAgentJournal(db)
   const learningApprovals = createLearningApprovalDialogs({
     getOwner: getMainWindow,
@@ -1205,11 +1204,10 @@ export function registerHandlers(deps: RegisterHandlersDeps): IpcRouter {
   })
   const agentConfirmer = createAgentConfirmer({
     allow: request => {
-      const policy = chatRepo.getSession(request.conversationId)?.accessPolicy ?? DEFAULT_AI_ACCESS
-      if (policy.mode !== 'full' || request.tool.startsWith('cli:')) return false
-      if (/^(browser_|lms_)/.test(request.tool)) return policy.scope.browser
-      if (/^(desktop_|clipboard)/.test(request.tool)) return policy.scope.screen
-      return policy.scope.course && request.courseId === chatRepo.getSession(request.conversationId)?.courseId
+      const session = chatRepo.getSession(request.conversationId)
+      // A background task still uses its own restricted learning approvals.
+      if (session?.surface === 'study') return false
+      return appPermissionAllowed(session?.accessPolicy ?? DEFAULT_AI_ACCESS, request.tool, request.courseId === session?.courseId)
     },
     emit: (request) => {
       broadcast('agentTools:confirm', request)

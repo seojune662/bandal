@@ -150,15 +150,3 @@ export function summarizeInput(input: unknown, max = 120): string {
     return ''
   }
 }
-
-/** Pretty multi-line JSON for the expandable details section. */
-export function prettyInput(input: unknown): string {
-  if (input === undefined) {
-    return ''
-  }
-  try {
-    return JSON.stringify(input, null, 2) ?? ''
-  } catch {
-    return String(input)
-  }
-}

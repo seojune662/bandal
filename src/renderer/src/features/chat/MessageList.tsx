@@ -1,70 +1,20 @@
 /**
  * Ordered message stream: user bubbles on the right, assistant turns as
- * full-width block sequences (text / thinking / tool / permission) with the
- * shared two-moon avatar, 중단됨 treatment and a subtle usage footnote per turn.
+ * readable answers with a single progress indicator and a copy action.
+ * Internal reasoning, commands and resolved permissions stay out of the transcript.
  */
 
-import { Fragment, memo, type ReactNode } from 'react'
+import { Fragment, memo, useEffect, useState, type ReactNode } from 'react'
 import { invoke } from '../../lib/ipc'
 import { BandalMark } from '../../components/BandalMark'
 import { CREATION_LABELS } from '../../../../shared/types/chatCapabilities'
 import type {
-  PermissionResponse,
-  Usage
+  PermissionResponse
 } from '../../../../shared/types/agent-events'
 import type { BlockView, MessageView, NoticeBlockView } from './chatModel'
 import { providerLabel } from './AgentSetupCards'
 import { PermissionDialog } from './blocks/PermissionDialog'
 import { TextBlock } from './blocks/TextBlock'
-import { ThinkingBlock } from './blocks/ThinkingBlock'
-import { ToolCard } from './blocks/ToolCard'
-
-function formatDuration(durationMs: number): string {
-  return durationMs < 1000
-    ? `${Math.round(durationMs)}ms`
-    : `${(durationMs / 1000).toFixed(1)}초`
-}
-
-export function formatCost(costUsd: number): string {
-  return `$${costUsd.toFixed(costUsd < 0.1 ? 4 : 2)}`
-}
-
-export function formatTokenCount(value: number): string {
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
-  }
-  if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(1).replace(/\.0$/, '')}k`
-  }
-  return Math.round(value).toLocaleString('en-US')
-}
-
-function cacheUsageTitle(usage: Usage): string | undefined {
-  const cache = [
-    usage.cacheReadTokens === undefined
-      ? null
-      : `캐시 읽기 ${usage.cacheReadTokens.toLocaleString('en-US')} tokens`,
-    usage.cacheCreationTokens === undefined
-      ? null
-      : `캐시 생성 ${usage.cacheCreationTokens.toLocaleString('en-US')} tokens`
-  ].filter((item): item is string => item !== null)
-  return cache.length === 0 ? undefined : cache.join(' · ')
-}
-
-export function UsageText({ usage }: { usage: Usage }): JSX.Element {
-  const cacheTitle = cacheUsageTitle(usage)
-  const cacheLabel = cacheTitle === undefined ? '' : `, ${cacheTitle}`
-  return (
-    <span
-      className="chat-usage"
-      aria-label={`입력 ${usage.inputTokens.toLocaleString('en-US')} tokens, 출력 ${usage.outputTokens.toLocaleString('en-US')} tokens${cacheLabel}`}
-      title={cacheTitle}
-    >
-      ↑{formatTokenCount(usage.inputTokens)} ↓
-      {formatTokenCount(usage.outputTokens)} tokens
-    </span>
-  )
-}
 
 interface BlockRendererProps {
   block: BlockView
@@ -98,11 +48,10 @@ const BlockRenderer = memo(function BlockRenderer({
     case 'text':
       return <TextBlock block={block} />
     case 'thinking':
-      return <ThinkingBlock block={block} />
     case 'tool':
-      return <ToolCard block={block} />
+      return null
     case 'permission':
-      if (block.id === dockedPermissionId) {
+      if (block.id === dockedPermissionId || block.behavior !== undefined) {
         return null
       }
       return (
@@ -229,13 +178,50 @@ function activePermissionForMessage(
     : null
 }
 
+/** One calm progress indicator replaces internal command and reasoning logs. */
+export function responseStatus(message?: MessageView): string {
+  const blocks = message?.blocks ?? []
+  const last = blocks[blocks.length - 1]
+  if (last?.kind === 'text' && last.streaming && last.text.trim()) return '답변 작성 중'
+  if (blocks.some(block => block.kind === 'tool' && block.status === 'running')) return '자료를 살펴보는 중'
+  return '생각 중'
+}
+
+function ResponseStatus({ message }: { message?: MessageView }): JSX.Element {
+  return <div className="chat-response-status" role="status" aria-live="polite">
+    <span className="chat-response-status__dot" aria-hidden="true" />
+    <span>{responseStatus(message)}</span>
+  </div>
+}
+
+function CopyAnswer({ text }: { text: string }): JSX.Element {
+  const [status, setStatus] = useState<'idle' | 'copied' | 'error'>('idle')
+  useEffect(() => {
+    if (status === 'idle') return
+    const timer = window.setTimeout(() => setStatus('idle'), 2400)
+    return () => window.clearTimeout(timer)
+  }, [status])
+  const label = status === 'copied' ? '복사됨' : status === 'error' ? '다시 복사' : '답변 복사'
+  return <div className="chat-answer-actions">
+    <button type="button" className="chat-answer-copy" aria-label={label} title={label}
+      onClick={() => { void navigator.clipboard.writeText(text).then(() => setStatus('copied'), () => setStatus('error')) }}>
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+        {status === 'copied' ? <path d="m4 10 4 4 8-9" /> : <><rect x="7" y="7" width="10" height="10" rx="2" /><path d="M13 4V3H3v10h1" /></>}
+      </svg>
+      {status !== 'idle' && <span role="status">{label}</span>}
+    </button>
+  </div>
+}
+
 const AssistantMessage = memo(function AssistantMessage({
   message,
   pendingPermissionId,
   dockedPermissionId,
   onRespondPermission
-}: AssistantMessageProps): JSX.Element {
-  const stats = message.stats
+}: AssistantMessageProps): JSX.Element | null {
+  const answer = message.blocks.filter(block => block.kind === 'text').map(block => block.text).join('\n\n')
+  const hasContent = answer.trim() !== '' || message.blocks.some(block => block.kind === 'artifact' || (block.kind === 'permission' && block.behavior === undefined && block.id !== dockedPermissionId))
+  if (!hasContent && !message.streaming && !message.interrupted) return null
   return (
     <article
       className="chat-msg chat-msg--assistant"
@@ -253,24 +239,11 @@ const AssistantMessage = memo(function AssistantMessage({
             onRespondPermission={onRespondPermission}
           />
         ))}
+        {message.streaming && <ResponseStatus message={message} />}
         {message.interrupted && (
           <span className="chat-msg__chip">중단됨</span>
         )}
-        {!message.streaming &&
-          stats !== undefined &&
-          (stats.durationMs !== undefined ||
-            stats.costUsd !== undefined ||
-            stats.usage !== undefined) && (
-            <footer className="chat-msg__stats">
-              {stats.durationMs !== undefined && (
-                <span>{formatDuration(stats.durationMs)}</span>
-              )}
-              {stats.usage !== undefined && <UsageText usage={stats.usage} />}
-              {stats.costUsd !== undefined && (
-                <span>{formatCost(stats.costUsd)}</span>
-              )}
-            </footer>
-          )}
+        {!message.streaming && answer.trim() !== '' && <CopyAnswer text={answer} />}
       </div>
     </article>
   )
@@ -285,6 +258,7 @@ const AssistantMessage = memo(function AssistantMessage({
 )
 
 export interface MessageListProps {
+  streaming?: boolean
   renderActivity?: (turnSeq: number | undefined, isLast: boolean) => ReactNode
   messages: MessageView[]
   pendingPermissionId: string | null
@@ -297,7 +271,8 @@ export function MessageList({
   pendingPermissionId,
   dockedPermissionId = null,
   onRespondPermission,
-  renderActivity
+  renderActivity,
+  streaming = false
 }: MessageListProps): JSX.Element {
   const lastAssistantIndex = new Map<number | undefined, number>()
   messages.forEach((message, index) => {
@@ -319,6 +294,7 @@ export function MessageList({
           />{lastAssistantIndex.get(message.turnSeq) === index && renderActivity?.(message.turnSeq, index === messages.length - 1)}</Fragment>
         )
       )}
+      {streaming && !messages.some(message => message.role === 'assistant' && message.streaming) && <article className="chat-msg chat-msg--assistant"><BandalMark size={22} className="chat-avatar" /><div className="chat-msg__content"><ResponseStatus /></div></article>}
     </div>
   )
 }

@@ -54,8 +54,9 @@ describe('buildClaudeArgs — write containment', () => {
     expect(valueOf(args, '--permission-prompt-tool')).toBe('stdio')
   })
 
-  test('still blocks Bash outright', () => {
-    expect(valueOf(args, '--disallowedTools')).toBe('Bash')
+  test('routes commands through the saved access policy instead of disabling them', () => {
+    expect(args).not.toContain('--disallowedTools')
+    expect(valueOf(buildClaudeArgs({ accessPolicy: { mode: 'ask', scope: { course: true, browser: false, screen: false } } }), '--disallowedTools')).toBe('Bash')
   })
 
   test('passes the allowlist as a single comma-joined value', () => {
@@ -159,9 +160,10 @@ describe('createClaudeCodeAdapter — MCP environment', () => {
   })
 })
 
-test('automatic mode routes unscoped search and direct file writes through the common gate', () => {
+test('restricted automatic mode keeps file writes and web access behind the common gate', () => {
   const args = buildClaudeArgs({ accessPolicy: { mode: 'auto', scope: { course: true, browser: false, screen: false } } })
   const rules = args[args.indexOf('--allowedTools') + 1]!.split(',')
   expect(rules).toContain('Read(./**)')
-  for (const rule of ['Glob', 'Grep', 'Edit(./**)', 'Write(./**)', 'WebSearch', 'WebFetch']) expect(rules).not.toContain(rule)
+  for (const rule of ['Glob', 'Grep']) expect(rules).toContain(rule)
+  for (const rule of ['Edit(./**)', 'Write(./**)', 'WebSearch', 'WebFetch']) expect(rules).not.toContain(rule)
 })

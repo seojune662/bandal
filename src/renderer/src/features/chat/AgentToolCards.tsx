@@ -6,6 +6,7 @@ import type {
   AgentTurnChanges
 } from '../../../../shared/types/agentTools'
 import { Icon } from '../../app/icons'
+import { confirmationCopy, isInternalExecution } from './confirmationCopy'
 import { BrowserIcon } from '../browser/browserIcons'
 import type {
   AgentToolActivityItem,
@@ -102,6 +103,10 @@ export function AgentConfirmCard({
   const [selection, setSelection] = useState<{ requestId: string; scope: AgentConfirmScope }>({ requestId: request.requestId, scope: 'once' })
   const scope = selection.requestId === request.requestId ? selection.scope : 'once'
   const isPending = response === null
+  const internalExecution = isInternalExecution(request.tool)
+  const copy = confirmationCopy(request.tool)
+  const summary = internalExecution ? copy.title : request.summary
+  const details = internalExecution ? [copy.description] : request.details
   const kindLabel = confirmKindLabel(request.tool)
   const severity = request.tool === 'browser_access' ? 'quiet' : 'danger'
   const rejectButtonRef = useRef<HTMLButtonElement>(null)
@@ -123,7 +128,7 @@ export function AgentConfirmCard({
   ])
 
   if (!isPending) {
-    const subject = confirmationSubject(request)
+    const subject = internalExecution ? copy.title : confirmationSubject(request)
     const responseLabel =
       resolution === 'expired' ? '시간 초과' : resolution === 'cancelled' ? '취소됨' : response && request.tool === 'browser_access'
         ? '허용함'
@@ -172,15 +177,13 @@ export function AgentConfirmCard({
           <span className="chat-agent-confirm__eyebrow">
             {kindLabel}
           </span>
-          <h3 className="chat-agent-confirm__summary" title={request.summary}>
-            {request.summary}
+          <h3 className="chat-agent-confirm__summary" title={summary}>
+            {summary}
           </h3>
         </div>
       </header>
 
-      {request.details.length > 0 && (
-        <div><p className="chat-agent-confirm__target" title={request.details[0]}>{request.details[0]}</p><details className="chat-agent-confirm__details"><summary>세부 내용</summary><pre>{request.details.join('\n')}</pre></details></div>
-      )}
+      {details.length > 0 && <ul className="chat-confirm-details">{details.map((detail, index) => <li key={index}>{detail}</li>)}</ul>}
 
       {isResponding && (
         <p className="chat-agent-confirm__notice" role="status">
@@ -207,7 +210,7 @@ export function AgentConfirmCard({
           {request.scopes.map((option) => <option value={option} key={option}>{agentConfirmScopeLabel(option)}</option>)}
         </select>}
         <button type="button" className="chat-agent-confirm__button chat-agent-confirm__button--approve" disabled={isResponding} onClick={() => onRespond(request.requestId, true, request.scopes ? request.scopes.includes(scope) ? scope : request.scopes[0] : undefined)}>
-          {scope === 'once' ? '이번만 허용' : '허용'}
+          {scope === 'once' ? '계속' : '허용'}
         </button>
       </div>
     </article>

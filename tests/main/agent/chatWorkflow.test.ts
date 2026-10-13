@@ -23,11 +23,12 @@ describe('chat settings and skill execution', () => {
   })
   test('enables skill execution only on an explicitly selected skill turn', () => {
     expect(buildClaudeArgs({})).toContain('--disable-slash-commands')
-    expect(buildClaudeArgs({})).toContain('Bash')
+    expect(buildClaudeArgs({})).not.toContain('--disallowedTools')
     const selected = buildClaudeArgs({ selectedSkills: ['/skills/pdf/SKILL.md'] })
     expect(selected).not.toContain('--disable-slash-commands')
     expect(selected).toEqual(expect.arrayContaining(['--permission-mode', 'default', '--permission-prompt-tool', 'stdio']))
     expect(selected).not.toContain('--dangerously-skip-permissions')
+    expect(selected).toEqual(expect.arrayContaining(['--setting-sources', 'user']))
   })
   test('retains per-model effort capabilities and excludes hidden models', () => {
     const models = parseCodexModelCatalog(JSON.stringify({ models: [

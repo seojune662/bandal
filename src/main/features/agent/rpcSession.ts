@@ -31,7 +31,7 @@ function errorCode(error: Error): AgentErrorCode {
   if (error instanceof AgentUnavailableError) return error.code
   if (['ENOENT', 'EACCES', 'ENOEXEC'].includes(String((error as NodeJS.ErrnoException).code))) return 'spawn-failed'
   if (error instanceof SyntaxError) return 'malformed-output'
-  return /authenticate|authentication|unauthorized|credential|logged.in|login|api.key|IneligibleTierError|not eligible|RESTRICTED_DASHER|no longer supported.*Gemini Code Assist/i.test(error.message) ? 'not-logged-in' : error instanceof RpcResponseError ? 'unknown' : 'process-crashed'
+  return /authenticate|authentication|unauthorized|credential|logged.in|login|api.key|(?:OAuth|access|refresh) token.*(?:expired|invalid|revoked)|IneligibleTierError|not eligible|RESTRICTED_DASHER|no longer supported.*Gemini Code Assist/i.test(error.message) ? 'not-logged-in' : error instanceof RpcResponseError ? 'unknown' : 'process-crashed'
 }
 function resultSummary(item: RpcObject): ToolResultSummary | undefined {
   const content = item.aggregatedOutput ?? item.result?.content ?? item.content ?? item.error?.message
@@ -76,7 +76,8 @@ export function createRpcSession(options: AgentStartSessionOptions, provider: 'c
   const turnError = (turn: Turn, message: string, code: AgentErrorCode = 'unknown'): void => {
     if (turn.errorMessage === message) return
     turn.errorMessage = message
-    emit({ type: 'error', code, message, fatal: false })
+    const authenticationFailed = errorCode(new Error(message)) === 'not-logged-in'
+    emit({ type: 'error', code: authenticationFailed ? 'not-logged-in' : code, message: authenticationFailed ? `${provider === 'codex' ? 'ChatGPT' : 'Gemini'} 연결을 다시 확인해야 해요. 설정 → AI에서 다시 로그인해 주세요.` : message, fatal: false })
   }
   const clearTimers = (turn: Turn): void => { clearTimeout(turn.timer); clearTimeout(turn.cancelTimer) }
   const discardApprovals = (turn?: Turn): void => {
@@ -111,8 +112,9 @@ export function createRpcSession(options: AgentStartSessionOptions, provider: 'c
     // A broken transport cannot receive denial replies. Resolve the UI locally.
     discardApprovals()
     rejectId(error)
-    const message = /no longer supported.*Gemini Code Assist/i.test(error.message) ? '현재 Google 계정의 Gemini Code Assist 연결이 서버에서 지원 종료로 거절됐어요. 설정 → AI에서 Gemini API 키를 연결하거나 다른 제공자를 선택해 주세요.' : error.message
-    emit({ type: 'error', code: errorCode(error), message, fatal: true })
+    const code = errorCode(error)
+    const message = /no longer supported.*Gemini Code Assist/i.test(error.message) ? '현재 Google 계정의 Gemini Code Assist 연결이 서버에서 지원 종료로 거절됐어요. 설정 → AI에서 Gemini API 키를 연결하거나 다른 제공자를 선택해 주세요.' : code === 'not-logged-in' ? `${provider === 'codex' ? 'ChatGPT' : 'Gemini'} 연결을 다시 확인해야 해요. 설정 → AI에서 다시 로그인해 주세요.` : error.message
+    emit({ type: 'error', code, message, fatal: true })
     if (turn) complete(turn, turn.cancelled ? 'interrupted' : 'error')
     rpc?.dispose(); kill(); clean()
     for (const queue of queues) queue.wake?.()
@@ -167,7 +169,7 @@ export function createRpcSession(options: AgentStartSessionOptions, provider: 'c
       approvals.set(key, { id: message.id, method, params: p, turn })
       const item = turn.items.get(p.itemId) ?? {}
       const gemini = provider === 'gemini' ? geminiPermission(p.toolCall ?? {}) : null
-      const toolName = gemini?.toolName ?? (method.includes('commandExecution') ? 'Bash' : method.includes('fileChange') ? 'fileChange' : '추가 접근')
+      const toolName = gemini?.toolName ?? (method.includes('commandExecution') ? 'Bash' : method.includes('fileChange') ? 'fileChange' : method === 'mcpServer/elicitation/request' ? 'serviceAuthorization' : '추가 접근')
       const paths = Array.isArray(item.changes) ? item.changes.map(change => change?.path).filter((path): path is string => typeof path === 'string') : []
       const input = gemini?.input ?? { ...p, ...(paths.length ? { paths } : p.grantRoot ? { path: p.grantRoot } : {}) }
       if (provider === 'gemini' && p.toolCall?.toolCallId) emit({ type: 'tool-start', toolCallId: p.toolCall.toolCallId, toolName, label: p.toolCall.title ?? toolName, input })

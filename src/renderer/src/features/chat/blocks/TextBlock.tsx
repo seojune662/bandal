@@ -16,10 +16,7 @@ export function TextBlock({ block }: TextBlockProps): JSX.Element | null {
   }
   return (
     <div className="chat-text" data-streaming={block.streaming || undefined}>
-      <MarkdownView text={block.text} />
-      {block.streaming && (
-        <span className="chat-text__caret" aria-hidden="true" />
-      )}
+      <MarkdownView text={block.text} streaming={block.streaming} />
     </div>
   )
 }

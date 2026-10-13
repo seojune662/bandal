@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useState,
   type ReactNode
 } from 'react'
 import type { AgentProvider } from '../../../../shared/types/agent-events'
@@ -23,7 +24,7 @@ import { ModelMenu } from './ModelMenu'
 import { updateComposerDraft, useComposerDraft } from './composerDraftStore'
 import type { ChatContext } from '../../../../shared/types/chatCapabilities'
 import { ConversationListMenu } from './ConversationListMenu'
-import { formatCost, MessageList, UsageText } from './MessageList'
+import { MessageList } from './MessageList'
 import { useChatSession } from './useChatSession'
 import { isAgentConnectionReady } from './agentConnectionStore'
 import {
@@ -199,6 +200,7 @@ export function ChatSurface({
   const composerRef = useRef<ComposerHandle>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isPinnedRef = useRef(true)
+  const [showScrollToLatest, setShowScrollToLatest] = useState(false)
   const approvalTitleOwnerRef = useRef(Symbol('chat-approval'))
 
   const { state, phase, provider, availability, models } = session
@@ -212,7 +214,7 @@ export function ChatSurface({
     isPendingConfirmation
   )
   const historicalAgentToolItems = agentToolActivity.items.filter(
-    (item) => !isPendingConfirmation(item)
+    (item) => item.kind === 'changes'
   )
   const hasPendingApprovals =
     pendingPermission !== null || pendingAgentConfirmations.length > 0
@@ -258,6 +260,7 @@ export function ChatSurface({
     const distance =
       scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
     isPinnedRef.current = distance < SCROLL_PIN_THRESHOLD_PX
+    setShowScrollToLatest(!isPinnedRef.current)
   }, [])
 
   const handleSend = useCallback(
@@ -266,8 +269,9 @@ export function ChatSurface({
       if (text === '' && attachments.length === 0 && !context) {
         return
       }
-      await session.send(text, attachments, { ...context, ...(sourcePanelId ? { sourcePanelId } : {}) })
       isPinnedRef.current = true
+      setShowScrollToLatest(false)
+      await session.send(text, attachments, { ...context, ...(sourcePanelId ? { sourcePanelId } : {}) })
     },
     [draft, pendingQuotes, session.send, setDraft, sourcePanelId]
   )
@@ -360,26 +364,6 @@ export function ChatSurface({
     historicalAgentToolItems
   )
   const isEmpty = state.messages.length === 0 && !hasAgentToolCards
-  const hasSessionUsage =
-    state.sessionUsage.inputTokens > 0 ||
-    state.sessionUsage.outputTokens > 0 ||
-    (state.sessionUsage.cacheReadTokens ?? 0) > 0 ||
-    (state.sessionUsage.cacheCreationTokens ?? 0) > 0 ||
-    state.sessionCostUsd > 0
-  const sessionUsageTitle = [
-    `입력 ${state.sessionUsage.inputTokens.toLocaleString('en-US')} tokens`,
-    `출력 ${state.sessionUsage.outputTokens.toLocaleString('en-US')} tokens`,
-    state.sessionUsage.cacheReadTokens === undefined
-      ? null
-      : `캐시 읽기 ${state.sessionUsage.cacheReadTokens.toLocaleString('en-US')} tokens`,
-    state.sessionUsage.cacheCreationTokens === undefined
-      ? null
-      : `캐시 생성 ${state.sessionUsage.cacheCreationTokens.toLocaleString('en-US')} tokens`,
-    state.sessionCostUsd > 0 ? `비용 ${formatCost(state.sessionCostUsd)}` : null
-  ]
-    .filter((item): item is string => item !== null)
-    .join(' · ')
-
   const selectorControls = (
     <>
       <ConversationListMenu
@@ -396,15 +380,6 @@ export function ChatSurface({
     <>
         {!hideHeader && <header className="chat-header">
           {headerExtra}
-          {hasSessionUsage && (
-            <div className="chat-session-usage" title={sessionUsageTitle}>
-              <span className="chat-session-usage__label">오늘 이 대화:</span>
-              <UsageText usage={state.sessionUsage} />
-              {state.sessionCostUsd > 0 && (
-                <span>· {formatCost(state.sessionCostUsd)}</span>
-              )}
-            </div>
-          )}
           {selectorControls}
         </header>}
       {state.notice !== null && (
@@ -424,6 +399,7 @@ export function ChatSurface({
           </button>
         </div>
       )}
+      <div className="chat-reading-area">
       <div
         ref={scrollRef}
         className="chat-scroll"
@@ -437,11 +413,12 @@ export function ChatSurface({
             <MessageList
               renderActivity={(turnSeq, isLast) => {
                 const items = historicalAgentToolItems.filter((item) => {
-                  const turnId = item.kind === 'confirmation' ? item.request.turnId : item.turnId
+                  const turnId = item.turnId
                   return turnId && turnSeq !== undefined ? turnId === `${conversationKey}:${turnSeq}` : isLast
                 })
                 return hasVisibleAgentToolActivity(items) ? <details className="chat-approval-history"><summary>작업 기록</summary><AgentApprovalRail items={items} onRespondConfirm={agentToolActivity.respondConfirm} onUndoTurn={agentToolActivity.undoTurn} /></details> : null
               }}
+              streaming={state.streaming}
               messages={state.messages}
               pendingPermissionId={state.pendingPermissionId}
               dockedPermissionId={pendingPermission?.id ?? null}
@@ -450,15 +427,22 @@ export function ChatSurface({
           </>
         )}
       </div>
+      {showScrollToLatest && <button type="button" className="chat-scroll-to-latest" aria-label="최신 답변으로 이동" onClick={() => {
+        isPinnedRef.current = true
+        setShowScrollToLatest(false)
+        const scroller = scrollRef.current
+        if (scroller) scroller.scrollTop = scroller.scrollHeight
+      }}><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 3v13m-5-5 5 5 5-5" /></svg></button>}
+      </div>
       {(active && hasPendingApprovals) && (
         <div
-          className="chat-approval-dock chat-approval-side"
+          className="chat-approval-dock"
           role="region"
           aria-live="polite"
           aria-label="승인 요청"
         >
           <div className="chat-approval-dock__content">
-            {pendingAgentConfirmations.length + (pendingPermission ? 1 : 0) > 1 && <p className="chat-menu-note">승인 대기 {pendingAgentConfirmations.length + (pendingPermission ? 1 : 0)}개 · 순서대로 확인해 주세요.</p>}
+            {pendingAgentConfirmations.length + (pendingPermission ? 1 : 0) > 1 && <p className="chat-menu-note">확인할 항목 {pendingAgentConfirmations.length + (pendingPermission ? 1 : 0)}개</p>}
             {pendingPermission !== null && (
               <PermissionDialog
                 block={pendingPermission}

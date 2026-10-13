@@ -277,6 +277,13 @@ export function createStreamMapper(): StreamMapper {
     if (!Array.isArray(content)) {
       return []
     }
+    // Claude emits expired OAuth failures as synthetic assistant messages.
+    // Keep them in the existing connection notice instead of saving API text
+    // as if it were the tutor's answer.
+    const messageText = extractResultText(content)
+    if (raw['error'] === 'authentication_failed' || /^Failed to authenticate[.:]/i.test(messageText.trim())) {
+      return [{ type: 'error', code: 'not-logged-in', message: 'Claude 연결이 만료됐어요. 설정 → AI에서 다시 로그인해 주세요.', fatal: false }]
+    }
     const events: AgentEvent[] = []
     for (const entry of content) {
       const block = asRecord(entry)

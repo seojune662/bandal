@@ -45,6 +45,13 @@ test('ordinary Codex threads inherit their existing search configuration', async
   expect(f.messages.find(message => message.method === 'thread/start').params).not.toHaveProperty('config')
   f.session.dispose()
 })
+test('expired provider credentials show a friendly reconnect message with the login error code', async () => {
+  const f = fixture('codex')
+  f.session.sendMessage('explain'); await f.session.sessionId
+  f.send({ method: 'error', params: { threadId: 'thread-1', error: { message: 'OAuth access token has expired. Re-authenticate to continue.' }, willRetry: false } })
+  expect(f.events).toContainEqual({ type: 'error', code: 'not-logged-in', message: 'ChatGPT 연결을 다시 확인해야 해요. 설정 → AI에서 다시 로그인해 주세요.', fatal: false })
+  f.session.dispose()
+})
 for (const provider of ['codex', 'gemini'] as const) describe(provider, () => {
   test('streams real image input and resolves each approval only once', async () => {
     const f = fixture(provider)

@@ -4,6 +4,7 @@ import {
   type ChatRepo
 } from '../../../src/main/features/agent/chatRepo'
 import { createTestDb, type TestDb } from '../helpers/testDb'
+import { DEFAULT_AI_ACCESS } from '../../../src/shared/types/aiAccess'
 
 const COURSE_ID = 'course-1'
 
@@ -47,6 +48,21 @@ describe('chatRepo permission grants', () => {
         .prepare('SELECT deleted_at FROM permission_grants WHERE id = ?')
         .get(grant!.id)
     ).toEqual({ deleted_at: expect.any(String) })
+  })
+
+  test('new and legacy default conversations approve routine work while explicit settings survive', () => {
+    const legacy = { mode: 'auto' as const, scope: { course: true, browser: false, screen: false } }
+    repo.createSession('access-chat', COURSE_ID, 'codex')
+    expect(repo.getSession('access-chat')?.accessPolicy).toEqual(DEFAULT_AI_ACCESS)
+    const saveLegacy = (policy: unknown): void => { ctx.db.prepare('UPDATE agent_sessions SET access_policy = ? WHERE id = ?').run(JSON.stringify(policy), 'access-chat') }
+    saveLegacy(legacy)
+    expect(repo.getSession('access-chat')?.accessPolicy).toEqual(DEFAULT_AI_ACCESS)
+    saveLegacy({ ...legacy, mode: 'ask' })
+    expect(repo.getSession('access-chat')?.accessPolicy?.mode).toBe('ask')
+    saveLegacy({ ...legacy, scope: { ...legacy.scope, course: false } })
+    expect(repo.getSession('access-chat')?.accessPolicy?.scope.course).toBe(false)
+    repo.setAccessPolicy('access-chat', legacy)
+    expect(repo.getSession('access-chat')?.accessPolicy).toEqual(legacy)
   })
 })
 

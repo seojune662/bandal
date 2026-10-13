@@ -195,7 +195,7 @@ describe('SessionManager', () => {
     expect(repo.historyTail(conversationId).flatMap(message => message.blocks).some(block => block.kind === 'permission')).toBe(false)
   })
 
-  test.each(['app', 'desktop'] as const)('%s still routes native command requests through ordinary approval', async surface => {
+  test.each(['app', 'desktop'] as const)('%s runs ordinary commands without an approval card by default', async surface => {
     manager.disposeAll()
     const requestPermission = vi.fn(async () => 'once' as const)
     manager = createSessionManager({
@@ -208,8 +208,12 @@ describe('SessionManager', () => {
     const session = fake.sessions[0]!
     session.emit({ type: 'permission-request', requestId: 'interactive-native', toolName: 'Bash', input: { command: 'cat .bandal/COURSE.md' } })
     await Promise.resolve()
-    expect(requestPermission).toHaveBeenCalledWith(expect.objectContaining({ conversationId, tool: 'cli:Bash' }))
+    expect(requestPermission).not.toHaveBeenCalled()
     expect(session.permissionResponses).toEqual([{ requestId: 'interactive-native', response: { behavior: 'allow' } }])
+    expect((await manager.open(courseId, conversationId)).pendingPermissions).toEqual([])
+    expect(emitted.some(({ event }) => event.type === 'permission-request')).toBe(false)
+    session.emit({ type: 'turn-complete', stopReason: 'success' })
+    expect(repo.historyTail(conversationId).flatMap(message => message.blocks).some(block => block.kind === 'permission')).toBe(false)
   })
 
   test.each(['cancel', 'close'] as const)('%s settles an active generation as interrupted', async action => {
@@ -269,6 +273,8 @@ describe('SessionManager', () => {
   })
 
   test('cancels pending permission cards when closing an active turn and reopens idle', async () => {
+    repo.createSession(conversationId, courseId, 'claude-code')
+    repo.setAccessPolicy(conversationId, { mode: 'ask', scope: { course: true, browser: false, screen: false } })
     await manager.send(courseId, conversationId, 'hello')
     fake.sessions[0]!.emit({ type: 'permission-request', requestId: 'pending-close', toolName: 'Read', input: {} })
     manager.close(courseId, conversationId)
@@ -709,6 +715,8 @@ describe('SessionManager', () => {
   })
 
   test('legacy unscoped grants do not authorize new write access', async () => {
+    repo.createSession(conversationId, courseId, 'claude-code')
+    repo.setAccessPolicy(conversationId, { mode: 'ask', scope: { course: true, browser: false, screen: false } })
     repo.addGrant(courseId, 'Write')
     await manager.send(courseId, conversationId, 'write something')
     const session = fake.sessions[0]!
@@ -723,6 +731,8 @@ describe('SessionManager', () => {
   })
 
   test('respondPermission with remember=true persists a grant', async () => {
+    repo.createSession(conversationId, courseId, 'claude-code')
+    repo.setAccessPolicy(conversationId, { mode: 'ask', scope: { course: true, browser: false, screen: false } })
     await manager.send(courseId, conversationId, 'write')
     const session = fake.sessions[0]!
     session.emit({
@@ -911,7 +921,8 @@ describe('buildStudyPrompt', () => {
     expect(prompt).toContain('learning_submit_result')
     expect(prompt).toContain('requires denied permission')
     expect(prompt).toMatch(/\n\nBandal MCP is available$/u)
-    expect(buildStudyPrompt('OS')).toContain('READ `.bandal/COURSE.md` FIRST')
+    expect(buildStudyPrompt('OS')).toContain('For a self-contained question, answer directly')
+    expect(buildStudyPrompt('OS')).toContain('When the request needs course context, read `.bandal/COURSE.md`')
   })
 
   test('adds desktop guidance only for desktop conversations', () => {
