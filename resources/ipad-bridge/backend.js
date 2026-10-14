@@ -95483,8 +95483,8 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     }
     const result = {};
     if (candidate.inkVersion !== void 0) {
-      if (candidate.inkVersion !== 2 || kind !== "ink" && kind !== "highlighter") throw new ValidationError("Unsupported ink renderer version");
-      result.inkVersion = 2;
+      if (candidate.inkVersion !== 2 && candidate.inkVersion !== 3 || kind !== "ink" && kind !== "highlighter") throw new ValidationError("Unsupported ink renderer version");
+      result.inkVersion = candidate.inkVersion;
     }
     if (points !== void 0) result.points = points;
     if (box2 !== void 0) result.box = box2;
@@ -113774,6 +113774,56 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
   }
   function strokePathV2(points, width, aspect, highlighter, scaleX = 1, scaleY = 1) {
     return strokePolygonsV2(points, width, aspect, highlighter).map((polygon) => polygon.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x * scaleX} ${y * scaleY}`).join(" ") + " Z").join(" ");
+  }
+
+  // DesktopRuntime/upstream/src/shared/inkV3.ts
+  var INK_V3_CIRCLE_SEGMENTS = 32;
+  function filteredPressuresV3(points) {
+    if (points.length === 0) return [];
+    let filtered = Math.max(0, Math.min(1, points[0].p));
+    const result = [filtered];
+    for (let i = 1; i < points.length; i++) {
+      const point2 = points[i], previous = points[i - 1];
+      const delta = Number.isFinite(point2.t) && Number.isFinite(previous.t) ? Math.max(0, Math.min(32, point2.t - previous.t)) : 4;
+      const alpha = -Math.expm1(-delta / 24);
+      filtered += alpha * (Math.max(0, Math.min(1, point2.p)) - filtered);
+      result.push(filtered);
+    }
+    return result;
+  }
+  function strokePolygonsV3(points, width, aspect, highlighter) {
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(aspect) || aspect <= 0 || points.some((p) => ![p.x, p.y, p.p].every(Number.isFinite))) return [];
+    const pressures = filteredPressuresV3(points);
+    const radii = pressures.map((pressure) => width * (highlighter ? 1 : 0.42 + 0.2 * pressure) / 2);
+    const polygons = [];
+    for (let i = 0; i < points.length; i++) {
+      const point2 = points[i], radius = radii[i];
+      const previous = points[i - 1];
+      if (previous) {
+        const before = radii[i - 1], dx = point2.x - previous.x, dy = (point2.y - previous.y) * aspect;
+        const distance = Math.hypot(dx, dy), difference = before - radius;
+        if (distance > Math.abs(difference) && distance > 1e-12) {
+          const ux = dx / distance, uy = dy / distance, along = difference / distance;
+          const across = Math.sqrt(Math.max(0, 1 - along * along));
+          const lowX = ux * along + uy * across, lowY = uy * along - ux * across;
+          const highX = ux * along - uy * across, highY = uy * along + ux * across;
+          polygons.push([
+            [previous.x + lowX * before, previous.y + lowY * before / aspect],
+            [point2.x + lowX * radius, point2.y + lowY * radius / aspect],
+            [point2.x + highX * radius, point2.y + highY * radius / aspect],
+            [previous.x + highX * before, previous.y + highY * before / aspect]
+          ]);
+        }
+      }
+      polygons.push(Array.from({ length: INK_V3_CIRCLE_SEGMENTS }, (_2, step) => {
+        const angle = step * 2 * Math.PI / INK_V3_CIRCLE_SEGMENTS;
+        return [point2.x + radius * Math.cos(angle), point2.y + radius * Math.sin(angle) / aspect];
+      }));
+    }
+    return polygons;
+  }
+  function strokePathV3(points, width, aspect, highlighter, scaleX = 1, scaleY = 1) {
+    return strokePolygonsV3(points, width, aspect, highlighter).map((polygon) => polygon.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x * scaleX} ${y * scaleY}`).join(" ") + " Z").join(" ");
   }
 
   // ../bandal/node_modules/.pnpm/@pdf-lib+fontkit@1.1.1/node_modules/@pdf-lib/fontkit/dist/fontkit.es.js
@@ -146471,8 +146521,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const baseThickness = drawing.style.width * width;
     const opacity = drawing.kind === "highlighter" ? Math.min(drawing.style.opacity, 0.38) : drawing.style.opacity;
     const blendMode = drawing.kind === "highlighter" ? BlendMode.Multiply : BlendMode.Normal;
-    if (drawing.data.inkVersion === 2) {
-      const path = strokePathV2(points, drawing.style.width, height / width, drawing.kind === "highlighter", width, height);
+    if (drawing.data.inkVersion === 2 || drawing.data.inkVersion === 3) {
+      const renderPath = drawing.data.inkVersion === 3 ? strokePathV3 : strokePathV2;
+      const path = renderPath(points, drawing.style.width, height / width, drawing.kind === "highlighter", width, height);
       if (path) page.drawSvgPath(path, { x: 0, y: height, color, opacity, blendMode });
       return;
     }
@@ -146970,8 +147021,9 @@ This is Bandal's native iPad API transport. There is no shell or arbitrary execu
     const opacity = shape2.kind === "highlighter" ? Math.min(clamp3(shape2.style.opacity, 0, 1), 0.42) : clamp3(shape2.style.opacity, 0, 1);
     const color = palette.marks[shape2.style.color];
     const blendMode = shape2.kind === "highlighter" ? surface === "dark" ? BlendMode.Screen : BlendMode.Multiply : BlendMode.Normal;
-    if (shape2.data.inkVersion === 2) {
-      const path = strokePathV2(points, shape2.style.width, height / width, shape2.kind === "highlighter", width, height);
+    if (shape2.data.inkVersion === 2 || shape2.data.inkVersion === 3) {
+      const renderPath = shape2.data.inkVersion === 3 ? strokePathV3 : strokePathV2;
+      const path = renderPath(points, shape2.style.width, height / width, shape2.kind === "highlighter", width, height);
       if (path) page.drawSvgPath(path, { x: 0, y: height, color, opacity, blendMode });
       return;
     }
@@ -158263,7 +158315,7 @@ ${body}\r
     const page = requireInt(input.page, "page", 1);
     const kind = assertDrawingKind(input.kind, ["ink", "highlighter"]);
     const data2 = assertDrawingData(input.data, kind), style = assertDrawingStyle(input.style);
-    if (data2.inkVersion !== 2) throw new ValidationError("Native PDF mutation requires ink version 2");
+    if (data2.inkVersion !== 2 && data2.inkVersion !== 3) throw new ValidationError("Native PDF mutation requires ink version 2 or 3");
     const documentRevision = input.documentRevision;
     if (typeof documentRevision !== "string" || !/^[0-9a-f]{64}$/.test(documentRevision)) throw new ValidationError("documentRevision must be a SHA-256 digest");
     const fingerprint2 = JSON.stringify({ courseId: courseId2, relPath: relPath2, page, kind, data: data2, style, documentRevision });
