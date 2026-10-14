@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { strokePathV2 } from '../../../src/shared/inkV2'
+import { strokePathV4, strokeCenterlineV4 } from '../../../src/shared/inkV4'
 import { strokePathV3 } from '../../../src/shared/inkV3'
 import type {
   DrawingPoint,
@@ -53,6 +54,8 @@ describe('inkGeometry', () => {
     expect(strokePath(points, style, 1.5, false, 2)).toBe(strokePathV2(points, style.width, 1.5, false))
     expect(strokePath(points, style, 1.5, false, 3)).toBe(strokePathV3(points, style.width, 1.5, false))
     expect(strokePath(points, style, 1.5, true, 3)).toBe(strokePathV3(points, style.width, 1.5, true))
+    expect(strokePath(points, style, 1.5, false, 4)).toBe(strokePathV4(points, style.width, 1.5, false))
+    expect(strokePath(points, style, 1.5, true, 4)).toBe(strokePathV4(points, style.width, 1.5, true))
     expect(strokePath(points, style, 1.5, false)).toContain(' Q ')
     expect(strokePath(points, style, 1.5, false, 3)).not.toBe(strokePath(points, style, 1.5, false, 2))
   })
@@ -82,6 +85,15 @@ describe('inkGeometry', () => {
 
     expect(drawingHit(ink, { x: 0.5, y: 0.4, p: 0.5 }, Math.SQRT2)).toBe(true)
     expect(drawingHit(ink, { x: 0.05, y: 0.9, p: 0.5 }, Math.SQRT2)).toBe(false)
+  })
+
+  test('erases the visible v4 curve where it bows away from the measured polyline', () => {
+    const points = [{ x: .1, y: .4, p: .4 }, { x: .3, y: .2, p: .4 }, { x: .7, y: .2, p: .4 }, { x: .9, y: .4, p: .4 }]
+    const curve = shape({ data: { points, inkVersion: 4 } })
+    const target = strokeCenterlineV4(points, curve.style.width, 1).reduce((a, b) => a.y < b.y ? a : b)
+    expect(target.y).toBeLessThan(.18)
+    expect(drawingHit(curve, target, 1)).toBe(true)
+    expect(drawingHit(shape({ data: { points, inkVersion: 3 } }), target, 1)).toBe(false)
   })
 
   test('keeps degenerate saved shapes reachable by the eraser', () => {

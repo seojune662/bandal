@@ -9,6 +9,7 @@ import type { Annotation } from '../../../src/shared/types/annotation'
 import type { Drawing, DrawingStyle } from '../../../src/shared/types/drawing'
 import { createTestDb, type TestDb } from '../helpers/testDb'
 import { strokePathV2 } from '../../../src/shared/inkV2'
+import { strokePathV4 } from '../../../src/shared/inkV4'
 import { strokePathV3 } from '../../../src/shared/inkV3'
 
 const timestamp = '2026-01-01T00:00:00.000Z'
@@ -108,7 +109,7 @@ describe('createPdfExporter', () => {
     actual.forEach((item, index) => item.basis.forEach((value, coordinate) => expect(value).toBeCloseTo(reference[index]!.basis[coordinate]!, 4)))
   })
 
-  test.each([2, 3] as const)('exports v%s ink with the shared path in a rotated CropBox', async (inkVersion) => {
+  test.each([2, 3, 4] as const)('exports v%s ink with the shared path in a rotated CropBox', async (inkVersion) => {
     const pdf = await PDFDocument.create(), page = pdf.addPage([640, 800])
     page.setCropBox(40, 60, 400, 560); page.setRotation(degrees(90))
     const points = [{ x: 0.1, y: 0.2, p: 0, t: 0 }, { x: 0.3, y: 0.4, p: 0.5, t: 4 }, { x: 0.4, y: 0.3, p: 0.2, t: 8 }]
@@ -118,7 +119,7 @@ describe('createPdfExporter', () => {
     const svg = vi.spyOn(page, 'drawSvgPath')
     const exporter = createPdfExporter({ getCourseFolder: () => ctx.dir, listDrawings: () => [drawing], listAnnotations: () => [] })
     await exporter.annotateDocument(pdf, { courseId: 'course-1', relPath: 'slides/source.pdf' })
-    const path = inkVersion === 3 ? strokePathV3 : strokePathV2
+    const path = inkVersion === 4 ? strokePathV4 : inkVersion === 3 ? strokePathV3 : strokePathV2
     expect(svg).toHaveBeenCalledExactlyOnceWith(path(points, 0.004, 400 / 560, false, 560, 400),
       expect.objectContaining({ x: 0, y: 400, opacity: 0.95 }))
     expect((await PDFDocument.load(await pdf.save())).getPageCount()).toBe(1)

@@ -16,6 +16,7 @@ import type {
 } from '../../../src/shared/types/drawing'
 import { createTestDb, type TestDb } from '../helpers/testDb'
 import { strokePathV2 } from '../../../src/shared/inkV2'
+import { strokePathV4 } from '../../../src/shared/inkV4'
 import { strokePathV3 } from '../../../src/shared/inkV3'
 
 const timestamp = '2026-08-10T00:00:00.000Z'
@@ -112,7 +113,7 @@ describe('createBoardPdfExporter', () => {
     ctx.cleanup()
   })
 
-  test.each([2, 3] as const)('preserves native v%s geometry through board storage and PDF export', async (inkVersion) => {
+  test.each([2, 3, 4] as const)('preserves native v%s geometry through board storage and PDF export', async (inkVersion) => {
     const board = repo.createBoard({ courseId: 'course-1', title: 'Native ink' })
     const points = [{ x: 0.2, y: 0.3, p: 0, t: 0 }, { x: 0.4, y: 0.5, p: 0.6, t: 4 }, { x: 0.6, y: 0.3, p: 0.2, t: 8 }]
     const drawing = shape('native-ink', 'ink', { inkVersion, points })
@@ -121,7 +122,7 @@ describe('createBoardPdfExporter', () => {
     const svg = vi.spyOn(PDFPage.prototype, 'drawSvgPath')
     const result = await createBoardPdfExporter({ openBoard: id => repo.open(id), getCourseFolder: () => ctx.dir }).exportBoard(board.id)
     const pdf = await PDFDocument.load(readFileSync(join(ctx.dir, result.relPath))), page = pdf.getPage(0)
-    const width = page.getWidth(), height = page.getHeight(), path = inkVersion === 3 ? strokePathV3 : strokePathV2
+    const width = page.getWidth(), height = page.getHeight(), path = inkVersion === 4 ? strokePathV4 : inkVersion === 3 ? strokePathV3 : strokePathV2
     expect(svg).toHaveBeenCalledExactlyOnceWith(path(points, drawing.style.width, height / width, false, width, height),
       expect.objectContaining({ x: 0, y: height, opacity: 1 }))
   })

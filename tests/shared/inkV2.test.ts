@@ -29,7 +29,8 @@ describe('portable native ink v2', () => {
     const data={inkVersion:2 as const,points:[{x:.2,y:.3,p:0,t:0,tiltX:30,tiltY:-20}]}
     expect(assertDrawingData(data,'ink')).toEqual(data)
     expect(assertDrawingData({...data,inkVersion:3},'ink')).toEqual({...data,inkVersion:3})
-    expect(() => assertDrawingData({...data,inkVersion:4},'ink')).toThrow()
+    expect(assertDrawingData({...data,inkVersion:4},'ink')).toEqual({...data,inkVersion:4})
+    expect(() => assertDrawingData({...data,inkVersion:5},'ink')).toThrow()
     expect(() => assertDrawingData({...data,points:[{...data.points[0],tiltX:91}]},'ink')).toThrow()
   })
 })
