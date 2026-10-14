@@ -158487,7 +158487,8 @@ ${body}\r
         try {
           copyFileSync(pathFor(courseId2, relPath2), temporary);
           if (revisionAt(temporary) !== revision) throw new Error("PDF changed while preserving its original; no ink was applied");
-          const descriptor = openSync(temporary, "r");
+          chmodSync(temporary, 384);
+          const descriptor = openSync(temporary, "r+");
           try {
             fsyncSync(descriptor);
           } finally {
