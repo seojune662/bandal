@@ -83,13 +83,15 @@ describe('InkLayer textbox drafts', () => {
     })
   })
 
-  test('does not mount saved one-point strokes or empty textboxes', () => {
+  test.each([undefined, 2, 3, 4] as const)('renders a saved one-point stroke v%s while leaving empty strokes and textboxes hidden', (inkVersion) => {
     const html = renderLayer([
-      savedShape({}),
+      savedShape({ data: { inkVersion, points: [{ x: .4, y: .5, p: .5 }] } }),
+      savedShape({ id: 'empty-ink', data: { inkVersion, points: [] } }),
       savedShape({ id: 'shape-2', kind: 'textbox', data: { box, text: '' } })
     ])
 
-    expect(html).not.toContain('<path')
+    expect(html.match(/<path /g)).toHaveLength(1)
+    expect(html).toContain('d="M ')
     expect(html).not.toContain('<foreignObject')
   })
 

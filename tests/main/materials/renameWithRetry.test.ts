@@ -80,7 +80,7 @@ describe('Windows material rename recovery', () => {
       await expect(result).resolves.toEqual({ relPath: destinationRelPath })
       expect(operation).toHaveBeenCalledTimes(2)
       expect(readFileSync(join(destination, '단어장.md'), 'utf8')).toBe('retain — 보존하다')
-      expect(changed).toHaveBeenCalledExactlyOnceWith({ courseId, fromRelPath: 'Reading', toRelPath: destinationRelPath, isDirectory: true })
+      expect(changed).toHaveBeenCalledExactlyOnceWith({ courseId, fromRelPath: 'Reading', toRelPath: destinationRelPath, isDirectory: true, noteWritesPrepared: true })
     } finally {
       if (open) await directory.close()
     }
