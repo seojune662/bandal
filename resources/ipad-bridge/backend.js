@@ -156791,11 +156791,17 @@ ${contextText}
         const existed = existsSync(change.target), backup = join(directory2, `${index}.original`);
         if (existed) {
           copyFileSync(change.target, backup, 1);
-          const fd = openSync(backup, "r");
+          const mode = statSync(backup).mode;
+          chmodSync(backup, 384);
           try {
-            fsyncSync(fd);
+            const fd = openSync(backup, "r+");
+            try {
+              fsyncSync(fd);
+            } finally {
+              closeSync(fd);
+            }
           } finally {
-            closeSync(fd);
+            chmodSync(backup, mode);
           }
         }
         return { ...change, existed, backup };
@@ -156812,14 +156818,19 @@ ${contextText}
             }
             if (item.source) {
               const temporary = `${item.target}.${id2}.sync`;
-              copyFileSync(item.source, temporary, 1);
-              const fd = openSync(temporary, "r");
               try {
-                fsyncSync(fd);
+                copyFileSync(item.source, temporary, 1);
+                chmodSync(temporary, 384);
+                const fd = openSync(temporary, "r+");
+                try {
+                  fsyncSync(fd);
+                } finally {
+                  closeSync(fd);
+                }
+                renameSync(temporary, item.target);
               } finally {
-                closeSync(fd);
+                rmSync(temporary, { force: true });
               }
-              renameSync(temporary, item.target);
             } else writeFileAtomic(item.target, item.text ?? "");
           }
           commit();
@@ -157218,7 +157229,8 @@ ${contextText}
         const temporary = join(root, `${ref.sha256}.${randomUUID()}.tmp`);
         try {
           copyFileSync(path, temporary, 1);
-          const fd = openSync(temporary, "r");
+          chmodSync(temporary, 384);
+          const fd = openSync(temporary, "r+");
           try {
             fsyncSync(fd);
           } finally {
