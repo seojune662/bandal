@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'vitest'
+import { strokePathV2 } from '../../../src/shared/inkV2'
+import { strokePathV3 } from '../../../src/shared/inkV3'
 import type {
   DrawingPoint,
   DrawingShape
@@ -44,6 +46,15 @@ describe('inkGeometry', () => {
     expect(path.startsWith('M ')).toBe(true)
     expect(path.endsWith(' Z')).toBe(true)
     expect(path).toContain(' Q ')
+  })
+
+  test('dispatches native versions without changing historical or v2 geometry', () => {
+    const points = [start, { x: 0.5, y: 0.4, p: 0.1, t: 4 }, end], style = shape({}).style
+    expect(strokePath(points, style, 1.5, false, 2)).toBe(strokePathV2(points, style.width, 1.5, false))
+    expect(strokePath(points, style, 1.5, false, 3)).toBe(strokePathV3(points, style.width, 1.5, false))
+    expect(strokePath(points, style, 1.5, true, 3)).toBe(strokePathV3(points, style.width, 1.5, true))
+    expect(strokePath(points, style, 1.5, false)).toContain(' Q ')
+    expect(strokePath(points, style, 1.5, false, 3)).not.toBe(strokePath(points, style, 1.5, false, 2))
   })
 
   test('preserves dots and stationary strokes while rejecting empty strokes', () => {

@@ -8,6 +8,8 @@ import { ValidationError } from '../../../src/main/db/errors'
 import type { Annotation } from '../../../src/shared/types/annotation'
 import type { Drawing, DrawingStyle } from '../../../src/shared/types/drawing'
 import { createTestDb, type TestDb } from '../helpers/testDb'
+import { strokePathV2 } from '../../../src/shared/inkV2'
+import { strokePathV3 } from '../../../src/shared/inkV3'
 
 const timestamp = '2026-01-01T00:00:00.000Z'
 const fontsDir = join(process.cwd(), 'resources', 'fonts')
@@ -104,6 +106,23 @@ describe('createPdfExporter', () => {
     expect(actual.length).toBeGreaterThan(0)
     expect(actual.map(item => item.text)).toEqual(reference.map(item => item.text))
     actual.forEach((item, index) => item.basis.forEach((value, coordinate) => expect(value).toBeCloseTo(reference[index]!.basis[coordinate]!, 4)))
+  })
+
+  test.each([2, 3] as const)('exports v%s ink with the shared path in a rotated CropBox', async (inkVersion) => {
+    const pdf = await PDFDocument.create(), page = pdf.addPage([640, 800])
+    page.setCropBox(40, 60, 400, 560); page.setRotation(degrees(90))
+    const points = [{ x: 0.1, y: 0.2, p: 0, t: 0 }, { x: 0.3, y: 0.4, p: 0.5, t: 4 }, { x: 0.4, y: 0.3, p: 0.2, t: 8 }]
+    const drawing: Drawing = { id: 'native-ink', courseId: 'course-1', relPath: 'slides/source.pdf', page: 1,
+      kind: 'ink', data: { inkVersion, points }, style: { color: 'blue', width: 0.004, opacity: 0.95 },
+      createdAt: timestamp, updatedAt: timestamp }
+    const svg = vi.spyOn(page, 'drawSvgPath')
+    const exporter = createPdfExporter({ getCourseFolder: () => ctx.dir, listDrawings: () => [drawing], listAnnotations: () => [] })
+    await exporter.annotateDocument(pdf, { courseId: 'course-1', relPath: 'slides/source.pdf' })
+    const path = inkVersion === 3 ? strokePathV3 : strokePathV2
+    expect(svg).toHaveBeenCalledExactlyOnceWith(path(points, 0.004, 400 / 560, false, 560, 400),
+      expect.objectContaining({ x: 0, y: 400, opacity: 0.95 }))
+    expect((await PDFDocument.load(await pdf.save())).getPageCount()).toBe(1)
+    expect(drawing.data).toEqual({ inkVersion, points })
   })
 
   test('writes a separate readable PDF and leaves the source bytes unchanged', async () => {

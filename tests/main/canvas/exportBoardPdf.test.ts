@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
-import { PDFDict, PDFDocument, PDFName } from 'pdf-lib'
+import { PDFDict, PDFDocument, PDFName, PDFPage } from 'pdf-lib'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   createBoardPdfExporter,
@@ -15,6 +15,8 @@ import type {
   DrawingStyle
 } from '../../../src/shared/types/drawing'
 import { createTestDb, type TestDb } from '../helpers/testDb'
+import { strokePathV2 } from '../../../src/shared/inkV2'
+import { strokePathV3 } from '../../../src/shared/inkV3'
 
 const timestamp = '2026-08-10T00:00:00.000Z'
 const fontsDir = join(process.cwd(), 'resources', 'fonts')
@@ -108,6 +110,20 @@ describe('createBoardPdfExporter', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     ctx.cleanup()
+  })
+
+  test.each([2, 3] as const)('preserves native v%s geometry through board storage and PDF export', async (inkVersion) => {
+    const board = repo.createBoard({ courseId: 'course-1', title: 'Native ink' })
+    const points = [{ x: 0.2, y: 0.3, p: 0, t: 0 }, { x: 0.4, y: 0.5, p: 0.6, t: 4 }, { x: 0.6, y: 0.3, p: 0.2, t: 8 }]
+    const drawing = shape('native-ink', 'ink', { inkVersion, points })
+    repo.putShape({ boardId: board.id, id: drawing.id, shape: { kind: drawing.kind, data: drawing.data, style: drawing.style } })
+    expect(repo.open(board.id).shapes[0]!.data).toEqual({ inkVersion, points })
+    const svg = vi.spyOn(PDFPage.prototype, 'drawSvgPath')
+    const result = await createBoardPdfExporter({ openBoard: id => repo.open(id), getCourseFolder: () => ctx.dir }).exportBoard(board.id)
+    const pdf = await PDFDocument.load(readFileSync(join(ctx.dir, result.relPath))), page = pdf.getPage(0)
+    const width = page.getWidth(), height = page.getHeight(), path = inkVersion === 3 ? strokePathV3 : strokePathV2
+    expect(svg).toHaveBeenCalledExactlyOnceWith(path(points, drawing.style.width, height / width, false, width, height),
+      expect.objectContaining({ x: 0, y: height, opacity: 1 }))
   })
 
   test('exports every supported shape with readable Korean text and no question marks', async () => {
