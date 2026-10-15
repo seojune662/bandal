@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyLockedChatDependenciesPromoted, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, PADDLE_BILLING_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
+import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyLockedChatDependenciesPromoted, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, onlyLiveBillingConfigAdded, PADDLE_BILLING_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
 
 const publishedRelease = (tag_name, published_at, extra = {}) => ({ tag_name, published_at, draft: false, prerelease: false, ...extra })
@@ -174,6 +174,9 @@ test('Paddle billing server changes select their own integration without unrelat
     'supabase/functions/_shared/paddle-billing/service.ts',
     'supabase/functions/paddle-billing/index.ts',
     'supabase/functions/paddle-webhook/index.ts',
+    'supabase/functions/paddle-billing-live/index.ts',
+    'supabase/functions/paddle-webhook-live/index.ts',
+    'supabase/migrations/20261015010000_paddle_billing_live.sql',
     'tests/backend/paddleBilling/integration.test.ts',
     'tests/backend/paddleBilling/run-local.mjs'
   ]) {
@@ -192,7 +195,12 @@ test('Paddle billing server changes select their own integration without unrelat
 })
 
 test('Paddle Deno checks target existing API and webhook entrypoints selected independently', () => {
-  assert.deepEqual(PADDLE_BILLING_FUNCTIONS, ['supabase/functions/paddle-billing/index.ts', 'supabase/functions/paddle-webhook/index.ts'])
+  assert.deepEqual(PADDLE_BILLING_FUNCTIONS, [
+    'supabase/functions/paddle-billing/index.ts',
+    'supabase/functions/paddle-webhook/index.ts',
+    'supabase/functions/paddle-billing-live/index.ts',
+    'supabase/functions/paddle-webhook-live/index.ts'
+  ])
   for (const file of PADDLE_BILLING_FUNCTIONS) {
     assert.equal(existsSync(file), true, `Missing Paddle function: ${file}`)
     assert.equal(planChecks([file]).paddleBillingBackend, true)
@@ -200,11 +208,48 @@ test('Paddle Deno checks target existing API and webhook entrypoints selected in
   }
 })
 
+test('iPad billing client changes select safe error handling and the account menu', () => {
+  for (const file of ['resources/ipad-bridge/bridge.py', 'src/main/features/ipadSync/runtime.ts', 'tests/main/ipadSync/test_bridge_billing.py']) {
+    const plan = planChecks([file])
+    assert.deepEqual(plan.pythonTests, ['tests/main/ipadSync/test_bridge_billing.py'])
+    assert.deepEqual(plan.e2e, ['e2e/ipadBilling.spec.ts'])
+    assert.equal(plan.paddleBillingBackend, false)
+    assert.equal(plan.syncAccessBackend, false)
+  }
+  assert.deepEqual(planChecks(['src/main/features/pdf/exportPdf.ts']).pythonTests, [])
+})
+
+test('only isolated Live function declarations narrow shared Supabase configuration scope', () => {
+  const before = '[api]\nenabled = true\n'
+  const after = before + '\n[functions.paddle-billing-live]\nverify_jwt = false\n\n[functions.paddle-webhook-live]\nverify_jwt = false\n'
+  assert.equal(onlyLiveBillingConfigAdded(before, after), true)
+  assert.equal(onlyLiveBillingConfigAdded(before, after.replace('enabled = true', 'enabled = false')), false)
+  assert.equal(onlyLiveBillingConfigAdded(before, after.replace('verify_jwt = false', 'verify_jwt = true')), false)
+  assert.equal(onlyLiveBillingConfigAdded(after, after), false)
+})
+
+test('sync access and billing schema changes select SQL and Storage quota checks', () => {
+  for (const file of [
+    'supabase/migrations/20261015020000_sync_paid_access.sql',
+    'supabase/migrations/20261015010000_paddle_billing_live.sql',
+    'tests/backend/syncAccess/run-local.mjs',
+    'tests/backend/syncAccess/integration.test.ts'
+  ]) {
+    const plan = planChecks([file])
+    assert.equal(plan.syncAccessBackend, true)
+    assert.equal(plan.studyMarketBackend, false)
+    assert.equal(plan.full, false)
+    assert.deepEqual(plan.e2e, [])
+  }
+  assert.equal(planChecks(['src/main/features/pdf/exportPdf.ts']).syncAccessBackend, false)
+})
+
 test('shared Edge configuration and full checks verify both billing backends', () => {
   for (const file of ['supabase/config.toml', 'supabase/functions/deno.json', 'supabase/functions/deno.lock', 'package.json']) {
     const plan = planChecks([file])
     assert.equal(plan.studyMarketBackend, true)
     assert.equal(plan.paddleBillingBackend, true)
+    assert.equal(plan.syncAccessBackend, true)
   }
   assert.equal(planChecks([], true).paddleBillingBackend, true)
 })

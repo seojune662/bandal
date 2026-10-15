@@ -7,6 +7,7 @@ import type { PaymentSnapshot, SubscriptionSnapshot } from '../../../supabase/fu
 const workdir = process.env.BANDAL_PADDLE_BILLING_TEST_DIR
 const environment = 'sandbox'
 const monthlyPrice = 'pri_01m4tkfz9fnqcsq4ah67e092j8'
+const liveMonthlyPrice = 'pri_01m4zcnj1x9cjr5wabtxsfr85z'
 const annualPrice = 'pri_01m4tkhwzp9bhpq2yt03em2c7g'
 const identifier = (prefix: string) => `${prefix}_${crypto.randomUUID().replaceAll('-', '').slice(0, 26)}`
 const at = (offset: number) => new Date(Date.now() + offset).toISOString()
@@ -25,23 +26,23 @@ describe.skipIf(!workdir)('Paddle Sandbox actual Auth/Postgres boundaries and ev
     return { id: result.data.user.id, client }
   }
 
-  async function reserve(actor: string, request = crypto.randomUUID(), plan = 'monthly') {
-    return admin.rpc('paddle_billing_reserve_checkout', { actor, request_key: request, plan_input: plan, env: environment })
+  async function reserve(actor: string, request = crypto.randomUUID(), plan = 'monthly', env = environment) {
+    return admin.rpc('paddle_billing_reserve_checkout', { actor, request_key: request, plan_input: plan, env })
   }
 
-  async function fixture() {
+  async function fixture(env = environment) {
     const owner = await user(), transaction = identifier('txn'), customer = identifier('ctm'), subscription = identifier('sub')
-    const checkout = await reserve(owner.id)
+    const checkout = await reserve(owner.id, crypto.randomUUID(), 'monthly', env)
     expect(checkout.error).toBeNull()
-    const bound = await admin.rpc('paddle_billing_bind_checkout', { checkout_input: checkout.data.id, transaction_input: transaction, env: environment })
+    const bound = await admin.rpc('paddle_billing_bind_checkout', { checkout_input: checkout.data.id, transaction_input: transaction, env })
     expect(bound.error).toBeNull()
     const snapshot: SubscriptionSnapshot = {
-      id: subscription, customer_id: customer, price_id: monthlyPrice, plan: 'monthly', status: 'active',
+      id: subscription, customer_id: customer, price_id: env === 'live' ? liveMonthlyPrice : monthlyPrice, plan: 'monthly', status: 'active',
       updated_at: at(-1000), period_starts_at: at(-day), period_ends_at: at(29 * day),
       scheduled_action: null, scheduled_at: null
     }
     const payment: PaymentSnapshot = {
-      id: transaction, subscription_id: subscription, customer_id: customer, price_id: monthlyPrice,
+      id: transaction, subscription_id: subscription, customer_id: customer, price_id: env === 'live' ? liveMonthlyPrice : monthlyPrice,
       amount: 4900, currency: 'KRW', period_starts_at: snapshot.period_starts_at!, period_ends_at: snapshot.period_ends_at!
     }
     return { owner, checkout: checkout.data, transaction, customer, subscription, snapshot, payment }
@@ -82,12 +83,23 @@ describe.skipIf(!workdir)('Paddle Sandbox actual Auth/Postgres boundaries and ev
     publicKey = runtime.ANON_KEY!
     admin = createClient(apiUrl, runtime.SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } })
     anon = createClient(apiUrl, publicKey, { auth: { persistSession: false, autoRefreshToken: false } })
+
   })
 
+  it('seeds only the verified Live prices while preserving the Sandbox catalog', async () => {
+    const result = await admin.from('paddle_billing_catalog').select('environment,price_id,plan,amount').order('environment').order('plan')
+    expect(result.error).toBeNull()
+    expect(result.data).toEqual([
+      { environment: 'live', price_id: 'pri_01m4zcnjb4v9n8zea01hmk2x8j', plan: 'annual', amount: 49000 },
+      { environment: 'live', price_id: liveMonthlyPrice, plan: 'monthly', amount: 4900 },
+      { environment: 'sandbox', price_id: annualPrice, plan: 'annual', amount: 49000 },
+      { environment: 'sandbox', price_id: monthlyPrice, plan: 'monthly', amount: 4900 }
+    ])
+  })
   it('denies direct billing reads, writes, and privileged RPCs to anonymous and signed-in users', async () => {
     const owner = await fixture(), outsider = await user()
     for (const client of [anon, owner.owner.client, outsider.client]) {
-      for (const table of ['catalog', 'checkouts', 'customers', 'subscriptions', 'payments', 'events']) {
+      for (const table of ['catalog', 'checkouts', 'customers', 'subscriptions', 'payments', 'events', 'adjustments']) {
         expect((await client.from(`paddle_billing_${table}`).select('*')).error).toBeTruthy()
       }
       expect((await client.from('paddle_billing_checkouts').update({ user_id: outsider.id }).eq('id', owner.checkout.id)).error).toBeTruthy()
@@ -95,6 +107,9 @@ describe.skipIf(!workdir)('Paddle Sandbox actual Auth/Postgres boundaries and ev
       expect((await client.rpc('paddle_billing_reserve_checkout', { actor: owner.owner.id, request_key: crypto.randomUUID(), plan_input: 'monthly', env: environment })).error).toBeTruthy()
       expect((await client.rpc('paddle_billing_bind_checkout', { checkout_input: owner.checkout.id, transaction_input: identifier('txn'), env: environment })).error).toBeTruthy()
       expect((await client.rpc('paddle_billing_apply_event', event({ snapshot: owner.snapshot, payment: owner.payment }))).error).toBeTruthy()
+      expect((await client.rpc('paddle_billing_discard_checkout', { actor: owner.owner.id, checkout_input: owner.checkout.id, transaction_input: owner.transaction, env: environment })).error).toBeTruthy()
+      expect((await client.rpc('paddle_billing_apply_adjustment', { env: environment, event_input: identifier('evt'), event_type_input: 'adjustment.updated', occurred_input: at(0), hash_input: 'b'.repeat(64), adjustment_input: {} })).error).toBeTruthy()
+      expect((await client.rpc('paddle_billing_apply_reconciliation', { env: environment, event_input: 'api_fixture', occurred_input: at(0), hash_input: 'b'.repeat(64), subscription_input: owner.snapshot, payment_input: owner.payment, origin_transaction_input: owner.transaction, adjustments_input: [] })).error).toBeTruthy()
     }
     expect(await rows('checkouts', 'id', owner.checkout.id)).toMatchObject([{ user_id: owner.owner.id, transaction_id: owner.transaction }])
     expect(await rows('subscriptions', 'subscription_id', owner.subscription)).toHaveLength(0)
@@ -210,12 +225,12 @@ describe.skipIf(!workdir)('Paddle Sandbox actual Auth/Postgres boundaries and ev
     expect(await rows('payments', 'subscription_id', f.subscription)).toHaveLength(3)
   })
 
-  it('bounds access by paid periods and effective cancellation, with no Live entitlement', async () => {
+  it('bounds access by paid periods and effective cancellation, without granting Sandbox purchases to Live', async () => {
     const f = await fixture()
     expect((await apply(event({ snapshot: { ...f.snapshot, scheduled_action: 'cancel', scheduled_at: f.payment.period_ends_at }, payment: f.payment }))).error).toBeNull()
     expect(await status(f.owner.id)).toMatchObject({ active: true, cancelAtPeriodEnd: true })
     expect(await status(f.owner.id, 'live')).toMatchObject({ active: false, status: 'none', storageBytes: 0 })
-    expect((await admin.rpc('paddle_billing_reserve_checkout', { actor: f.owner.id, plan_input: 'monthly', request_key: crypto.randomUUID(), env: 'live' })).error).toBeTruthy()
+    expect((await admin.rpc('paddle_billing_reserve_checkout', { actor: f.owner.id, plan_input: 'monthly', request_key: crypto.randomUUID(), env: 'live' })).error).toBeNull()
     expect((await apply({ ...event({ snapshot: f.snapshot }), env: 'live' })).error).toBeTruthy()
     const effectiveCancel = { ...f.snapshot, updated_at: at(1000), scheduled_action: 'cancel', scheduled_at: at(-500) }
     expect((await apply(event({ snapshot: effectiveCancel }))).error).toBeNull()
@@ -225,4 +240,80 @@ describe.skipIf(!workdir)('Paddle Sandbox actual Auth/Postgres boundaries and ev
     expect((await apply(event({ snapshot: { ...expired.snapshot, ...period }, payment: { ...expired.payment, ...period } }))).error).toBeNull()
     expect(await status(expired.owner.id)).toMatchObject({ active: false, status: 'active', storageBytes: 0 })
   })
+  function adjustment(f: Awaited<ReturnType<typeof fixture>>, overrides: Record<string, unknown> = {}) {
+    return { id: identifier('adj'), transaction_id: f.transaction, subscription_id: f.subscription, customer_id: f.customer,
+      action: 'refund', status: 'approved', amount: 4900, currency: 'KRW', updated_at: at(-500), ...overrides }
+  }
+  const applyAdjustment = (a: ReturnType<typeof adjustment>, env = environment, overrides: Record<string, unknown> = {}) => admin.rpc('paddle_billing_apply_adjustment', {
+    env, event_input: identifier('evt'), event_type_input: 'adjustment.updated', occurred_input: at(0), hash_input: 'b'.repeat(64), adjustment_input: a, ...overrides
+  })
+  it('isolates Live ownership, receipts and paid access from the same user Sandbox records', async () => {
+    const f = await fixture('live')
+    expect((await apply({ ...event({ snapshot: f.snapshot, payment: f.payment }), env: 'live' })).error).toBeNull()
+    expect(await status(f.owner.id, 'live')).toMatchObject({ active: true, storageBytes: 5368709120, canManageBilling: true })
+    expect(await status(f.owner.id, 'sandbox')).toMatchObject({ active: false, canManageBilling: false })
+    expect((await apply(event({ snapshot: f.snapshot, payment: f.payment }))).error).toBeTruthy()
+    const a = adjustment(f)
+    expect((await applyAdjustment(a, 'sandbox')).error?.message).toBe('adjustment_binding_pending')
+    expect(await status(f.owner.id, 'live')).toMatchObject({ active: true })
+    expect((await applyAdjustment(a, 'live')).error).toBeNull()
+    expect(await status(f.owner.id, 'live')).toMatchObject({ active: false, storageBytes: 0 })
+  })
+  it('keeps pending/rejected and partial refunds from prematurely revoking access, but sums full refunds', async () => {
+    const f = await fixture()
+    expect((await apply(event({ snapshot: f.snapshot, payment: f.payment }))).error).toBeNull()
+    expect((await applyAdjustment(adjustment(f, { status: 'pending_approval' }))).error).toBeNull()
+    expect((await applyAdjustment(adjustment(f, { status: 'rejected' }))).error).toBeNull()
+    expect((await applyAdjustment(adjustment(f, { amount: 2000 }))).error).toBeNull()
+    expect(await status(f.owner.id)).toMatchObject({ active: true })
+    expect((await applyAdjustment(adjustment(f, { amount: 2900 }))).error).toBeNull()
+    expect(await status(f.owner.id)).toMatchObject({ active: false, storageBytes: 0, canManageBilling: true })
+  })
+  it('revokes chargeback warnings and restores reversed adjustments without accepting stale resurrection', async () => {
+    const f = await fixture()
+    expect((await apply(event({ snapshot: f.snapshot, payment: f.payment }))).error).toBeNull()
+    const a = adjustment(f, { action: 'chargeback_warning' })
+    expect((await applyAdjustment(a)).error).toBeNull()
+    expect(await status(f.owner.id)).toMatchObject({ active: false })
+    expect((await applyAdjustment({ ...a, status: 'reversed', updated_at: at(1000) })).error).toBeNull()
+    expect(await status(f.owner.id)).toMatchObject({ active: true })
+    expect((await applyAdjustment(a)).error).toBeNull()
+    expect(await status(f.owner.id)).toMatchObject({ active: true })
+    const canceled = { ...f.snapshot, status: 'canceled', updated_at: at(2000) }
+    expect((await apply(event({ snapshot: canceled }))).error).toBeNull()
+    expect(await status(f.owner.id)).toMatchObject({ active: false })
+  })
+  it('rejects adjustment ownership changes and rolls back receipts until the paid transaction exists', async () => {
+    const f = await fixture(), a = adjustment(f), missingId = identifier('evt')
+    expect((await applyAdjustment(a, environment, { event_input: missingId })).error?.message).toBe('adjustment_binding_pending')
+    expect(await rows('events','event_id',missingId)).toHaveLength(0)
+    expect((await apply(event({ snapshot: f.snapshot, payment: f.payment }))).error).toBeNull()
+    expect((await applyAdjustment({ ...a, customer_id: identifier('ctm') })).error?.message).toBe('adjustment_mismatch')
+    expect((await applyAdjustment(a, environment, { event_input: missingId })).error).toBeNull()
+    expect((await applyAdjustment(a, environment, { event_input: missingId })).data).toBe('duplicate')
+    expect((await applyAdjustment(a, environment, { event_input: missingId, hash_input: 'c'.repeat(64) })).error?.message).toBe('event_payload_mismatch')
+    expect((await applyAdjustment({ ...a, amount: 1 })).error?.message).toBe('adjustment_mismatch')
+    expect(await rows('adjustments','adjustment_id',a.id)).toHaveLength(1)
+  })
+  it('commits recovered payment and adjustments atomically, including complete rollback on a mismatched refund', async () => {
+    const f = await fixture(), a = adjustment(f), receipt = `api_refresh_${crypto.randomUUID()}`
+    const params = { env: environment, event_input: receipt, occurred_input: at(0), hash_input: 'c'.repeat(64), subscription_input: f.snapshot, payment_input: f.payment,
+      origin_transaction_input: f.transaction, adjustments_input: [{ ...a, transaction_id: identifier('txn') }] }
+    expect((await admin.rpc('paddle_billing_apply_reconciliation', params)).error?.message).toBe('adjustment_mismatch')
+    expect(await rows('payments','transaction_id',f.transaction)).toHaveLength(0)
+    expect(await rows('events','event_id',receipt)).toHaveLength(0)
+    expect((await admin.rpc('paddle_billing_apply_reconciliation', { ...params, adjustments_input: [a] })).error).toBeNull()
+    expect(await rows('payments','transaction_id',f.transaction)).toHaveLength(1)
+    expect(await status(f.owner.id)).toMatchObject({ active: false, storageBytes: 0 })
+  })
+  it('retains discarded checkout ownership while allowing a fresh plan and rejecting different owners', async () => {
+    const f = await fixture(), outsider = await user()
+    expect((await admin.rpc('paddle_billing_discard_checkout', { actor: outsider.id, checkout_input: f.checkout.id, transaction_input: f.transaction, env: environment })).error).toBeTruthy()
+    expect((await admin.rpc('paddle_billing_discard_checkout', { actor: f.owner.id, checkout_input: f.checkout.id, transaction_input: identifier('txn'), env: environment })).error?.message).toBe('checkout_not_ready')
+    expect((await admin.rpc('paddle_billing_discard_checkout', { actor: f.owner.id, checkout_input: f.checkout.id, transaction_input: f.transaction, env: environment })).error).toBeNull()
+    expect(await rows('checkouts','id',f.checkout.id)).toMatchObject([{ state: 'failed', user_id: f.owner.id, transaction_id: f.transaction }])
+    const next = await reserve(f.owner.id, crypto.randomUUID(), 'annual')
+    expect(next.error).toBeNull(); expect(next.data.price_id).toBe(annualPrice)
+  })
+
 })

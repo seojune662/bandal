@@ -6,7 +6,12 @@ import { pathToFileURL } from 'node:url'
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim()
 const gitBlob = (base, file) => execFileSync('git', ['show', `${base}:${file}`], { encoding: 'utf8' })
-export const PADDLE_BILLING_FUNCTIONS = ['supabase/functions/paddle-billing/index.ts', 'supabase/functions/paddle-webhook/index.ts']
+export const PADDLE_BILLING_FUNCTIONS = [
+  'supabase/functions/paddle-billing/index.ts',
+  'supabase/functions/paddle-webhook/index.ts',
+  'supabase/functions/paddle-billing-live/index.ts',
+  'supabase/functions/paddle-webhook-live/index.ts'
+]
 
 /** A failed or draft release must not hide changes from the next release's checks. */
 export function publishedReleaseBase(releases, ancestorTags) {
@@ -70,7 +75,17 @@ export function changedFiles(base) {
     const after = readFileSync('electron.vite.config.ts', 'utf8')
     if (onlyBrowserGestureEntryChanged(before, after) || onlyHoverPreviewEntryChanged(before, after)) files.delete('electron.vite.config.ts')
   }
+  if (files.has('supabase/config.toml') && onlyLiveBillingConfigAdded(gitBlob(base, 'supabase/config.toml'), readFileSync('supabase/config.toml', 'utf8'))) {
+    files.delete('supabase/config.toml')
+    for (const entry of PADDLE_BILLING_FUNCTIONS) files.add(entry)
+  }
   return { base, files: [...files] }
+}
+
+export function onlyLiveBillingConfigAdded(before, after) {
+  const added = '\n\n[functions.paddle-billing-live]\nverify_jwt = false\n\n[functions.paddle-webhook-live]\nverify_jwt = false\n'
+  return !before.includes('[functions.paddle-billing-live]') &&
+    before.replaceAll('\r\n', '\n').trimEnd() + added === after.replaceAll('\r\n', '\n')
 }
 
 /** Only direct imports of these existing renderer libraries can narrow scope. */
@@ -152,17 +167,21 @@ export function planChecks(files, full = false) {
   full ||= has(/^(package\.json|pnpm-lock\.yaml|electron\.vite\.config\.ts|vitest\.config\.ts|tests\/setup\.ts)$/)
   const sharedBackendConfig = has(/^supabase\/(?:config\.toml|functions\/deno\.(?:json|lock))$/)
   const studyMarketBackend = full || sharedBackendConfig || has(/^(supabase\/(?:functions\/(?:_shared\/study-market\/|study-market(?:-webhook|-cron)?\/)|migrations\/.*study_market)|tests\/backend\/studyMarket\/|src\/shared\/types\/studyMarket\.ts$)/)
-  const paddleBillingBackend = full || sharedBackendConfig || has(/^(supabase\/(?:functions\/(?:_shared\/paddle-billing\/|paddle-(?:billing|webhook)\/)|migrations\/.*paddle_billing)|tests\/backend\/paddleBilling\/)/)
+  const paddleBillingBackend = full || sharedBackendConfig || has(/^(supabase\/(?:functions\/(?:_shared\/paddle-billing\/|paddle-(?:billing|webhook)(?:-live)?\/)|migrations\/.*paddle_billing)|tests\/backend\/paddleBilling\/)/)
+  const syncAccessBackend = full || sharedBackendConfig || has(/^(supabase\/migrations\/.*(?:sync_paid_access|sync_quota_errors|paddle_billing)|tests\/backend\/syncAccess\/)/)
   const types = new Set()
   if (full || has(/^(src\/(main|preload|shared)\/|server\/|sdk\/|(?:marketplace|sdk)\.vite\.config\.ts|tsconfig\.node\.json)/)) types.add('tsconfig.node.json')
   if (full || has(/^(src\/(renderer|shared)\/|src\/preload\/browser|tsconfig\.web\.json)/)) types.add('tsconfig.web.json')
   if (full || has(/^(web-demo\/|src\/shared\/|web-demo\/tsconfig\.json)/)) types.add('web-demo/tsconfig.json')
   const scriptTests = new Set(files.filter((f) => /^scripts\/test-.*\.mjs$/.test(f)))
+  const ipadBilling = full || has(/^(resources\/ipad-bridge\/bridge\.py|src\/main\/features\/ipadSync\/runtime\.ts|tests\/main\/ipadSync\/test_bridge_billing\.py|e2e\/ipadBilling\.spec\.ts)$/)
+  const pythonTests = ipadBilling ? ['tests/main/ipadSync/test_bridge_billing.py'] : []
   if (has(/^(sdk\/|sdk\.vite\.config\.ts$|scripts\/test-plugin-sdk\.mjs$)/)) scriptTests.add('scripts/test-plugin-sdk.mjs')
   if (has(/^(scripts\/(affected-checks|reuse-ci)\.mjs|\.github\/workflows\/)/)) scriptTests.add('scripts/test-affected-checks.mjs')
   if (has(/^scripts\/(upload-release-assets|lib\/release-assets|test-release-assets)\.mjs$/)) scriptTests.add('scripts/test-release-assets.mjs')
   if (has(/^scripts\/browser-auth-probe\.mjs$/)) scriptTests.add('scripts/test-browser-auth-probe.mjs')
   const e2e = new Set(files.filter((f) => existsSync(f) && /^e2e\/[^/]+\.spec\.ts$/.test(f)))
+  if (ipadBilling) e2e.add('e2e/ipadBilling.spec.ts')
   if (studyMarketBackend || has(/^src\/(?:main\/(?:features\/studyMarket\/|ipc\/studyMarketHandlers\.ts$)|shared\/(?:types\/studyMarket\.ts$|ipc\/studyMarketContract\.ts$)|renderer\/src\/(?:features\/studyMarket\/|app\/studyMarketNavigation\.ts$))/)) e2e.add('e2e/studyMarket.spec.ts')
   if (has(/^src\/(?:renderer\/src\/features\/materials\/(?:MaterialAffordances|materialAffordances|materialStatus|preview\/)|main\/features\/materials\/(?:hoverPreview|materialAdded)|shared\/types\/materialHoverPreview)/)) {
     e2e.add('e2e/materialPreview.spec.ts')
@@ -264,7 +283,7 @@ export function planChecks(files, full = false) {
   if (has(/^src\/(?:renderer\/src\/(?:features\/(?:updates\/|account\/(?:SidebarAccountEntry\.tsx|AccountAvatar\.tsx|account\.css)$|help\/(?:HelpHub\.tsx|help\.css)$)|stores\/updateStore\.ts$|app\/GlobalNavigation\.tsx$)|main\/features\/updater\/|shared\/types\/update\.ts$)/)) e2e.add('e2e/railUx.spec.ts')
   if (has(/^src\/(?:renderer\/src\/features\/(?:workspace\/(?:panelContentHost|WorkspaceHost|panels\/browserAnchor)\.|browser\/(?:BrowserGuestView|nativePageHandle)\.)|main\/features\/browser\/nativeTabs\.ts$)/)) e2e.add('e2e/browserPlacement.spec.ts')
   // A server-only Paddle change has no packaged desktop flow to exercise.
-  const paddleBackendOnly = paddleBillingBackend && !studyMarketBackend && !has(/^(src\/|server\/|sdk\/|resources\/|native\/|electron|package\.json$|pnpm-lock\.yaml$)/)
+  const paddleBackendOnly = (paddleBillingBackend || syncAccessBackend) && !studyMarketBackend && !has(/^(src\/|server\/|sdk\/|resources\/|native\/|electron|package\.json$|pnpm-lock\.yaml$)/)
   if (e2e.size === 0 && !paddleBackendOnly) e2e.add('e2e/startup.spec.ts')
   const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f))
   if (studyMarketBackend) unitInputs.push('tests/backend/studyMarket/policy.test.ts')
@@ -285,7 +304,7 @@ export function planChecks(files, full = false) {
   }
   const e2eGrep = partial.size ? [...e2e].map(f => partial.get(f) ?? f.replace('e2e/', '').replaceAll('.', '\\.')).join('|') : null
 
-  return { e2eGrep, full, studyMarketBackend, paddleBillingBackend, types: [...types], scriptTests: [...scriptTests], unitInputs, e2e: [...e2e] }
+  return { e2eGrep, full, studyMarketBackend, paddleBillingBackend, syncAccessBackend, types: [...types], scriptTests: [...scriptTests], pythonTests, unitInputs, e2e: [...e2e] }
 }
 
 function run(command, args) {
@@ -306,7 +325,7 @@ export function main(args) {
   const baseFlag = args.indexOf('--base')
   const { base, files } = changedFiles(baseFlag < 0 ? undefined : args[baseFlag + 1])
   const plan = planChecks(files, args.includes('--full'))
-  if (args.includes('--backend-plan')) { console.log(String(plan.studyMarketBackend || plan.paddleBillingBackend)); return }
+  if (args.includes('--backend-plan')) { console.log(String(plan.studyMarketBackend || plan.paddleBillingBackend || plan.syncAccessBackend)); return }
   const nativeTabs = 'src/main/features/browser/nativeTabs.ts'
   if (!plan.full && files.includes(nativeTabs) && onlySwipeRegistrationChanged(
     git('show', `${base}:${nativeTabs}`), readFileSync(nativeTabs, 'utf8')
@@ -325,6 +344,7 @@ export function main(args) {
   }
   for (const config of plan.types) run('pnpm', ['exec', 'tsc', '--noEmit', '-p', config])
   for (const test of plan.scriptTests.filter(existsSync)) run(...scriptTestCommand(test))
+  for (const test of plan.pythonTests) run(process.platform === 'win32' ? 'python' : 'python3', ['-B', test])
   if (plan.studyMarketBackend) {
     run('deno', ['check', '--frozen', '--config', 'supabase/functions/deno.json', 'supabase/functions/study-market/index.ts', 'supabase/functions/study-market-webhook/index.ts', 'supabase/functions/study-market-cron/index.ts'])
     run('node', ['tests/backend/studyMarket/run-local.mjs'])
@@ -333,6 +353,7 @@ export function main(args) {
     run('deno', ['check', '--frozen', '--config', 'supabase/functions/deno.json', ...PADDLE_BILLING_FUNCTIONS])
     run('node', ['tests/backend/paddleBilling/run-local.mjs'])
   }
+  if (plan.syncAccessBackend) run('node', ['tests/backend/syncAccess/run-local.mjs'])
   if (plan.full) {
     run('pnpm', ['deadcode'])
     run('pnpm', ['test'])

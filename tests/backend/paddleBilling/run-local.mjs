@@ -36,6 +36,8 @@ copyFileSync(
   join(workdir, 'supabase/migrations/20261013010000_paddle_billing_sandbox.sql')
 )
 
+copyFileSync(join(root, 'supabase/migrations/20261015010000_paddle_billing_live.sql'), join(workdir, 'supabase/migrations/20261015010000_paddle_billing_live.sql'))
+
 function run(command, args, env = process.env, quiet = false) {
   return new Promise((resolve, reject) => {
     // Supabase startup/status may include local credentials. Never forward

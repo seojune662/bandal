@@ -1,4 +1,4 @@
-import { app, dialog, Menu, type MenuItemConstructorOptions } from 'electron'
+import { app, dialog, Menu, shell, type MenuItemConstructorOptions } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, mkdirSync, openSync, writeSync, fsyncSync, closeSync, renameSync } from 'node:fs'
@@ -32,6 +32,10 @@ export function iPadCompanionMenu(): MenuItemConstructorOptions {
     { id: AUTO_ID, label: '계정으로 자동 동기화', type: 'checkbox', checked: runtime?.enabled ?? false,
       click: item => run(service => service.setEnabled(item.checked)) },
     { label: '지금 동기화', click: () => run(service => service.synchronize()) },
+    { id: 'ipad-companion-billing', label: '구독 관리…', click: () => {
+      void shell.openExternal('https://bandal.io/billing').catch(() => dialog.showMessageBox({ type: 'error', title: '구독 관리',
+        message: '브라우저를 열지 못했습니다. https://bandal.io/billing 에서 구독을 관리해 주세요.' }))
+    } },
     { label: '동기화 상태', click: () => {
       void dialog.showMessageBox({ title: 'iPad 연결', message: runtime?.status ?? '준비 중입니다.' })
     } }
@@ -144,10 +148,15 @@ class IPadCompanion {
     if (!config) throw new Error('동기화 서버가 구성되지 않았습니다.')
     const expected = this.generation
     this.status = 'iPad와 동기화 중…'
-    await this.perform('cycle', this.exchangeFor(session.userID), [], {
-      BANDAL_SUPABASE_URL: config.url, BANDAL_SUPABASE_KEY: config.publishableKey,
-      BANDAL_USER_ID: session.userID, BANDAL_ACCESS_TOKEN: session.token
-    })
+    try {
+      await this.perform('cycle', this.exchangeFor(session.userID), [], {
+        BANDAL_SUPABASE_URL: config.url, BANDAL_SUPABASE_KEY: config.publishableKey,
+        BANDAL_USER_ID: session.userID, BANDAL_ACCESS_TOKEN: session.token
+      })
+    } catch (error) {
+      if (expected === this.generation) this.status = error instanceof Error ? error.message : '동기화가 중단되었습니다. 대기 중인 변경은 보관됩니다.'
+      throw error
+    }
     if (expected !== this.generation) return
     this.refresh(); this.status = `동기화 완료 · ${new Date().toLocaleTimeString()}`
   }

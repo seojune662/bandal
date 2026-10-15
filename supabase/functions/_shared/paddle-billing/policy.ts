@@ -7,6 +7,8 @@ export const SANDBOX_PRICES = {
   annual: { id: 'pri_01m4tkhwzp9bhpq2yt03em2c7g', amount: 49000, interval: 'year' }
 } as const
 export type Plan = keyof typeof SANDBOX_PRICES
+export type BillingEnvironment = 'sandbox' | 'live'
+export type PriceCatalog = Record<Plan, { id: string; amount: number; interval: 'month' | 'year' }>
 export type JsonObject = Record<string, unknown>
 export const STORAGE_BYTES = 5 * 1024 ** 3
 
@@ -14,14 +16,14 @@ export function object(value: unknown): JsonObject {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new BillingError('invalid_provider_data', 502)
   return value as JsonObject
 }
-export function identifier(value: unknown, prefix: 'txn' | 'sub' | 'ctm' | 'evt'): string {
+export function identifier(value: unknown, prefix: 'txn' | 'sub' | 'ctm' | 'evt' | 'adj'): string {
   if (typeof value !== 'string' || !new RegExp(`^${prefix}_[a-z0-9]{26}$`).test(value)) throw new BillingError('invalid_provider_data', 502)
   return value
 }
-export function webhookEventIdentifier(value: unknown): string {
+export function webhookEventIdentifier(value: unknown, allowSimulation = true): string {
   // The Sandbox simulator uses its simulation-event ID in event_id. Keep this
   // exception confined to webhook receipts; entity IDs and API receipts differ.
-  if (typeof value !== 'string' || !/^(?:evt|ntfsimevt)_[a-z0-9]{26}$/.test(value)) throw new BillingError('invalid_provider_data', 502)
+  if (typeof value !== 'string' || !/^(?:evt|ntfsimevt)_[a-z0-9]{26}$/.test(value) || (!allowSimulation && !value.startsWith('evt_'))) throw new BillingError('invalid_provider_data', 502)
   return value
 }
 export function uuid(value: unknown): string {
@@ -32,12 +34,12 @@ export function timestamp(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(value) || !Number.isFinite(Date.parse(value))) throw new BillingError('invalid_provider_data', 502)
   return value
 }
-export function planFromItems(value: unknown): Plan {
+export function planFromItems(value: unknown, prices: PriceCatalog = SANDBOX_PRICES): Plan {
   if (!Array.isArray(value) || value.length !== 1) throw new BillingError('price_mismatch', 409)
   const item = object(value[0]), price = object(item.price)
-  const plan = (Object.keys(SANDBOX_PRICES) as Plan[]).find(key => SANDBOX_PRICES[key].id === price.id)
+  const plan = (Object.keys(prices) as Plan[]).find(key => prices[key].id === price.id)
   if (!plan || item.quantity !== 1) throw new BillingError('price_mismatch', 409)
-  const expected = SANDBOX_PRICES[plan], unit = object(price.unit_price), cycle = object(price.billing_cycle)
+  const expected = prices[plan], unit = object(price.unit_price), cycle = object(price.billing_cycle)
   if (unit.currency_code !== 'KRW' || unit.amount !== String(expected.amount) || cycle.interval !== expected.interval || cycle.frequency !== 1 || price.trial_period != null || price.tax_mode !== 'internal') throw new BillingError('price_mismatch', 409)
   return plan
 }
@@ -47,8 +49,8 @@ export interface SubscriptionSnapshot {
   updated_at: string; period_starts_at: string | null; period_ends_at: string | null;
   scheduled_action: string | null; scheduled_at: string | null
 }
-export function subscriptionSnapshot(value: unknown): SubscriptionSnapshot {
-  const row = object(value), plan = planFromItems(row.items)
+export function subscriptionSnapshot(value: unknown, prices: PriceCatalog = SANDBOX_PRICES): SubscriptionSnapshot {
+  const row = object(value), plan = planFromItems(row.items, prices)
   if (row.currency_code !== 'KRW' || row.collection_mode !== 'automatic' || !['active', 'past_due', 'paused', 'canceled', 'trialing'].includes(String(row.status))) throw new BillingError('subscription_mismatch', 409)
   const period = row.current_billing_period == null ? null : object(row.current_billing_period)
   const change = row.scheduled_change == null ? null : object(row.scheduled_change)
@@ -57,7 +59,7 @@ export function subscriptionSnapshot(value: unknown): SubscriptionSnapshot {
   if (change && !['cancel', 'pause', 'resume'].includes(String(change.action))) throw new BillingError('invalid_provider_data', 502)
   return {
     id: identifier(row.id, 'sub'), customer_id: identifier(row.customer_id, 'ctm'),
-    price_id: SANDBOX_PRICES[plan].id, plan, status: String(row.status), updated_at: timestamp(row.updated_at),
+    price_id: prices[plan].id, plan, status: String(row.status), updated_at: timestamp(row.updated_at),
     period_starts_at: starts, period_ends_at: ends,
     scheduled_action: change ? String(change.action) : null, scheduled_at: change ? timestamp(change.effective_at) : null
   }
@@ -66,9 +68,9 @@ export interface PaymentSnapshot {
   id: string; subscription_id: string; customer_id: string; price_id: string; amount: number;
   currency: 'KRW'; period_starts_at: string; period_ends_at: string
 }
-export function paidTransaction(value: unknown): PaymentSnapshot {
-  const row = object(value), plan = planFromItems(row.items), details = object(row.details), totals = object(details.totals)
-  const amount = SANDBOX_PRICES[plan].amount
+export function paidTransaction(value: unknown, prices: PriceCatalog = SANDBOX_PRICES, allowAdjusted = false): PaymentSnapshot {
+  const row = object(value), plan = planFromItems(row.items, prices), details = object(row.details), totals = object(details.totals)
+  const amount = prices[plan].amount
   if (row.status !== 'completed' || row.currency_code !== 'KRW' || row.collection_mode !== 'automatic' || row.discount_id != null || totals.currency_code !== 'KRW' || totals.grand_total !== String(amount) || totals.total !== String(amount) || totals.balance !== '0' || totals.credit !== '0' || totals.discount !== '0') throw new BillingError('payment_not_confirmed', 409)
   // A completed administrative/zero-value transaction must never grant access.
   const captured = Array.isArray(row.payments) ? row.payments.reduce((sum: number, payment: unknown) => {
@@ -77,11 +79,28 @@ export function paidTransaction(value: unknown): PaymentSnapshot {
   }, 0) : 0
   if (captured !== amount) throw new BillingError('payment_not_confirmed', 409)
   const adjusted = details.adjusted_totals == null ? null : object(details.adjusted_totals)
-  if (adjusted && adjusted.grand_total !== String(amount)) throw new BillingError('payment_adjusted', 409)
+  if (!allowAdjusted && adjusted && adjusted.grand_total !== String(amount)) throw new BillingError('payment_adjusted', 409)
   const period = object(row.billing_period), starts = timestamp(period.starts_at), ends = timestamp(period.ends_at)
   const days = (Date.parse(ends) - Date.parse(starts)) / 86400000
   if (days <= 0 || days > (plan === 'monthly' ? 32 : 367)) throw new BillingError('invalid_billing_period', 409)
-  return { id: identifier(row.id, 'txn'), subscription_id: identifier(row.subscription_id, 'sub'), customer_id: identifier(row.customer_id, 'ctm'), price_id: SANDBOX_PRICES[plan].id, amount, currency: 'KRW', period_starts_at: starts, period_ends_at: ends }
+  return { id: identifier(row.id, 'txn'), subscription_id: identifier(row.subscription_id, 'sub'), customer_id: identifier(row.customer_id, 'ctm'), price_id: prices[plan].id, amount, currency: 'KRW', period_starts_at: starts, period_ends_at: ends }
+}
+
+export interface AdjustmentSnapshot {
+  id: string; transaction_id: string; subscription_id: string | null; customer_id: string;
+  action: string; status: string; amount: number; currency: 'KRW'; updated_at: string
+}
+export function adjustmentSnapshot(value: unknown): AdjustmentSnapshot {
+  const row = object(value), totals = object(row.totals)
+  const actions = ['credit', 'refund', 'chargeback', 'chargeback_reverse', 'chargeback_warning', 'chargeback_warning_reverse', 'credit_reverse']
+  if (!actions.includes(String(row.action)) || !['pending_approval', 'approved', 'rejected', 'reversed'].includes(String(row.status))
+    || row.currency_code !== 'KRW' || totals.currency_code !== 'KRW' || typeof totals.total !== 'string' || !/^\d+$/.test(totals.total)
+    || !Number.isSafeInteger(Number(totals.total))) throw new BillingError('adjustment_mismatch', 409)
+  return {
+    id: identifier(row.id, 'adj'), transaction_id: identifier(row.transaction_id, 'txn'),
+    subscription_id: row.subscription_id == null ? null : identifier(row.subscription_id, 'sub'), customer_id: identifier(row.customer_id, 'ctm'),
+    action: String(row.action), status: String(row.status), amount: Number(totals.total), currency: 'KRW', updated_at: timestamp(row.updated_at)
+  }
 }
 
 const encoder = new TextEncoder()

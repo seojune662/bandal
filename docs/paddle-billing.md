@@ -1,8 +1,49 @@
-# Paddle Sandbox 구독 결제
+# Paddle 구독 결제: Sandbox와 Live
 
-반달 자체 PC·iPad 동기화 이용권의 **Sandbox 결제 검증 단계**다. 월 4,900원·연 49,000원(VAT 포함), 계정당 5 GiB를 시험한다. 실제 금액 청구나 기존 동기화 권한 변경은 없다. 기존 Toss `/checkout`과 `study_market_*`는 별개다. 환경 변수만 Live로 바꿔 운영할 수 없도록 서버·DB 모두 Sandbox만 허용한다.
+반달 자체 PC·iPad 동기화 이용권이다. 월 4,900원·연 49,000원(VAT 포함), 계정당 5 GiB를 제공한다. Live와 Sandbox는 별도 진입점·상품·키·웹훅 비밀·계정/결제 원장을 사용한다. 기존 Toss `/checkout`과 `study_market_*`는 별개다. Sandbox 구매는 실제 동기화 권한을 주지 않는다.
 
-## 구성과 계정 연결
+## Live 구성
+
+- 웹: `https://bandal.io/billing`
+- API: `https://ukacrkcwiqafwpppshxb.supabase.co/functions/v1/paddle-billing-live`
+- 웹훅: `https://ukacrkcwiqafwpppshxb.supabase.co/functions/v1/paddle-webhook-live`
+- 상품: `pro_01m4zcnhpwxmem4p8fq6z6kcw7`
+- 월간: `pri_01m4zcnj1x9cjr5wabtxsfr85z`, KRW 4,900
+- 연간: `pri_01m4zcnjb4v9n8zea01hmk2x8j`, KRW 49,000
+- 공개 클라이언트 토큰 리소스: `ctkn_01m4zcrd4rqfwq84vcknp1qpvq`
+- 웹훅 목적지: `ntfset_01m4zcrder06gcwkkgsysqvxpa`, `traffic_source=platform`
+
+두 가격은 세금 포함(`internal`), 수량 1, 체험 기간 없음이다. 2026-10-15에 Live 심사 완료·`bandal.io` 승인과 저장된 기본 결제 링크를 확인했다. 국내 카드·네이버페이·카카오페이를 켰다. 결제 수단 노출은 구매자의 국가·통화와 Paddle 조건에 따른다. 사용자가 모든 고객에게 공개를 선택했으며, iPad 앱이 개발 배포 단계라는 사실을 가격·구독 화면에 고지한다. 공개 App Store 배포나 실제 두 기기 동시 편집 검증이 완료됐다는 의미는 아니다.
+
+### Live 배포 설정
+
+`supabase/paddle-billing.env.example`의 Live 설정을 사용한다. 실제 키와 서명 비밀은 저장소·로그·채팅에 남기지 않는다. 서버 키에는 Transactions/Subscriptions/Customer portal sessions Write와 Adjustments Read가 필요하다. 상품·가격·토큰·목적지 생성용 권한은 운영 서버 키와 분리한다.
+
+- `PADDLE_LIVE_BILLING_ENABLED`: 새 결제 시작 허용. 꺼져도 기존 고객의 상태 조회·포털·해지·웹훅은 유지한다.
+- `PADDLE_LIVE_CHECKOUT_PUBLIC_ENABLED`: 모든 로그인 계정에 결제 허용. false면 `PADDLE_LIVE_CHECKOUT_ALLOWED_USER_IDS`에 명시된 계정만 허용한다.
+- `PADDLE_LIVE_MONTHLY_PRICE_ID`, `PADDLE_LIVE_ANNUAL_PRICE_ID`: 위 검증된 Live 가격. DB 카탈로그와 동일해야 한다.
+- `PADDLE_LIVE_API_KEY`, `PADDLE_LIVE_CLIENT_TOKEN`, `PADDLE_LIVE_WEBHOOK_SECRET`: Live 전용 값.
+
+진입점에서 환경을 고정하므로 공용 `PADDLE_ENVIRONMENT` 변경으로 Sandbox를 Live로 전환할 수 없다. Live는 Simulator의 `ntfsimevt_` 이벤트를 거부한다. 기존 Sandbox 목적지는 유지하며 Live 목적지는 구독 이벤트 8개·`transaction.completed`·`adjustment.created`·`adjustment.updated` 총 11개만 받는다.
+
+웹훅은 매 요청 원문 HMAC을 검증한다. 신뢰할 수 있는 발신 IP를 보증하는 게이트웨이 규약은 확인되지 않았으므로 임의 `X-Forwarded-For` 값을 보안 경계로 사용하지 않는다. 추가 IP 제한을 도입하려면 [Paddle의 현재 Live IP 목록](https://developer.paddle.com/api-reference/ip-addresses/)과 신뢰할 수 있는 앞단을 함께 구성해야 한다. 현재 IP 허용 목록이 적용됐다고 가정하지 않는다.
+
+### 구독·환불·복구
+
+고객 포털은 인증된 계정에 저장된 Paddle customer ID로만 짧게 유효한 URL을 발급한다. 공개 config에는 customer ID가 없고, 인증된 상태 응답의 ID만 Paddle Retain `pwCustomer.id`에 사용한다. 로그인/로그아웃 시 계정 상태를 분리한다.
+
+미완료 결제는 Paddle에서 취소됐다는 응답을 확인한 뒤에만 다른 요금제로 시작할 수 있다. `refresh`는 이미 저장한 거래/구독 소유권을 사용해 현재 상태·최근 완료 거래 두 건·해당 adjustments를 복구한다. 과거 전체 원장 backfill 작업은 아니다. 복구 결제와 환불은 한 SQL 트랜잭션으로 반영한다.
+
+승인된 전액 환불·누적 전액 환불 또는 chargeback/warning은 해당 결제 기간을 권한 계산에서 제외한다. 부분 환불은 남은 기간을 유지한다. 원래 adjustment가 `reversed`로 확정되면 반영하며, 오래된 이벤트가 최신 상태를 되돌리지 못한다. **환불은 자동갱신 해지와 별개**다. 운영자가 전액 환불 후 갱신도 중단하려는 경우 구독 해지를 별도로 확인한다. 기존 구독이 존재하면 무료 중복 구독을 새로 만들지 않는다.
+
+Live 상태 응답의 `sync`는 로그인 계정의 사용량·권한만 반환한다. 5 GiB 용량과 만료 후 다운로드 정책, 개발용 만료 예외는 [동기화 접근·용량 운영 안내](sync-paid-access.md)를 따른다.
+
+### 정산 및 실제 결제 검증
+
+Live 심사 승인과 정산 수단 등록은 별개다. 2026-10-15 확인 당시 Payout Settings의 Account Type은 미선택이었다. 대표자·계좌 등 정산 정보는 운영자가 직접 입력한다. 실결제 테스트는 운영자가 정상 계정으로 결제하고 결과를 확인해야 하며, 서버·Sandbox 자동 검사만으로 Live 청구 성공을 주장하지 않는다.
+
+
+## Sandbox 구성과 계정 연결
 
 - 웹: `https://bandal.io/billing/sandbox` — 검색 제외, 공개 가격 페이지에서 연결하지 않음.
 - API: `https://ukacrkcwiqafwpppshxb.supabase.co/functions/v1/paddle-billing`
@@ -53,10 +94,6 @@ pnpm exec playwright test tests/paddle-sandbox.spec.ts tests/checkout.spec.ts
 통합 검사는 임시 Docker Supabase(56720–56722)의 실제 Auth/Postgres/RLS를 사용한다. 결제 공급자 응답은 fixture이므로 이 검사만으로 실제 Paddle 결제 성공을 주장하지 않는다. 운영 DB에 가짜 사용자나 서명 이벤트를 주입하지 않는다.
 
 실제 Sandbox 검증은 허용된 사용자의 정상 로그인 → 월간/연간 결제창 가격 확인 → 테스트 카드 결제 → Paddle 알림 delivered 확인 → 서버의 Sandbox 활성 권한 확인 → 갱신 해지 예약 확인 순서다. 실패 카드에서는 권한이 생기지 않아야 한다. 알림 재전송에서는 중복 원장이 생기지 않아야 한다. 테스트 카드·3DS·갱신 시뮬레이션은 [Paddle Sandbox 문서](https://developer.paddle.com/sdks/sandbox/)의 현재 값을 사용한다. 사용자의 실제 카드로 결제하지 않는다.
-
-## Live 이전 전 남은 범위
-
-환불·adjustment에 따른 권한 처리, 고객 포털, 누락 이벤트 재처리·상태 복구, 미완료 결제 만료·요금제 전환, 실제 동기화 권한/용량 연결은 후속 단계다. 현재 소스는 이 기능들의 완료나 정식 출시를 의미하지 않는다. Live 전환 시 별도 상품·키·서명 비밀·원장 분리, 사업자 검증·결제 수단·정산 정보 확인과 실제 운영 보안 검토가 필요하다. 웹훅 IP 제한은 신뢰할 수 있는 게이트웨이의 발신 IP와 Paddle 공식 IP 목록을 사용해야 하며, 클라이언트가 임의로 보낸 forwarded 헤더로 판정하면 안 된다.
 
 ## 2026-10-14 배포 확인
 

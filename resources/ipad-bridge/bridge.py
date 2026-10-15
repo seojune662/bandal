@@ -701,6 +701,32 @@ def projector_import(desktop, exchange, course_root=None):
     return result
 
 
+SYNC_BILLING_MESSAGES = {
+    "sync_subscription_required": "새 변경을 클라우드에 저장하려면 Bandal Sync 구독이 필요합니다. iPad 메뉴의 ‘구독 관리’를 열거나 https://bandal.io/billing 에서 확인해 주세요. 기기 자료와 대기 중인 변경은 보관됩니다.",
+    "sync_storage_quota_exceeded": "Bandal Sync 저장 공간 5 GiB를 초과했습니다. 저장 공간 정리는 hi@bandal.io로 문의해 주세요. 기기 자료와 대기 중인 변경은 보관됩니다.",
+}
+
+
+def safe_sync_error(error):
+    """Recognize exact public error codes; never return a server response body."""
+    fallback = f"Supabase HTTP {error.code}"
+    try:
+        body = error.read(4097)
+        if len(body) > 4096: return fallback
+        value = json.loads(body)
+        # PostgREST sends {message: code}. Storage may wrap that JSON in its
+        # own message field; unwrap a bounded number of structured layers.
+        for _ in range(3):
+            if not isinstance(value, dict): return fallback
+            message = value.get("message")
+            if not isinstance(message, str): return fallback
+            if message in SYNC_BILLING_MESSAGES: return SYNC_BILLING_MESSAGES[message]
+            value = json.loads(message)
+    except (ValueError, TypeError, OSError, RecursionError):
+        pass
+    return fallback
+
+
 class Supabase:
     def __init__(self, url, key, user_id, token):
         from urllib.parse import urlparse
@@ -722,8 +748,9 @@ class Supabase:
             opener = urllib.request.build_opener(RejectRedirect())
             with opener.open(request, timeout=60) as response: return response.read()
         except urllib.error.HTTPError as error:
-            # HTTP codes are actionable; server error bodies may contain private data.
-            raise RuntimeError(f"Supabase HTTP {error.code}") from None
+            # Only fixed public codes become helpful guidance. Provider SQL,
+            # tokens, file names and arbitrary error strings never leave here.
+            raise RuntimeError(safe_sync_error(error)) from None
 
     def rpc(self, name, value):
         return json.loads(self.request("rest/v1/rpc/" + name, encoded(value), "POST"))
@@ -769,12 +796,23 @@ def sync_exchange(exchange, remote):
     account = exchange.db.execute("SELECT value FROM metadata WHERE key='sync_account'").fetchone()
     if account and account[0] != remote.user_id: raise ValueError("Exchange belongs to another account")
     exchange.db.execute("INSERT OR IGNORE INTO metadata VALUES('sync_account',?)", (remote.user_id,))
+    pending_records = exchange.db.execute("SELECT 1 FROM outbox LIMIT 1").fetchone()
+    pending_assets = exchange.db.execute("SELECT 1 FROM asset_metadata a WHERE NOT EXISTS (SELECT 1 FROM metadata m WHERE m.key='asset_uploaded:' || a.hash) LIMIT 1").fetchone()
+    write_allowed = True
+    if pending_records or pending_assets:
+        # Storage can hide the trigger code behind a generic RLS denial. The
+        # authenticated status endpoint gives an exact, safe explanation before
+        # writes; server-side RPC/Storage rules still enforce every request.
+        access = remote.rpc("bandal_sync_status", {})
+        if not isinstance(access, dict) or type(access.get("writeAllowed")) is not bool:
+            raise ValueError("Invalid sync access response")
+        write_allowed = access["writeAllowed"]
     # Push conflicts can change accepted records just like a pull page. Persist
     # intent before either can run, not after downloading the last asset.
     exchange.begin_projection()
     exchange.db.commit()
     # Upload immutable assets before any record references are published.
-    for asset in exchange.db.execute("SELECT hash,metadata FROM asset_metadata"):
+    for asset in exchange.db.execute("SELECT hash,metadata FROM asset_metadata") if write_allowed else []:
         marker = "asset_uploaded:" + asset["hash"]
         if exchange.db.execute("SELECT 1 FROM metadata WHERE key=?", (marker,)).fetchone(): continue
         path = "storage/v1/object/bandal-assets/" + remote.user_id + "/" + asset["hash"]
@@ -786,7 +824,7 @@ def sync_exchange(exchange, remote):
             if digest(remote.request(path.replace("/object/", "/object/authenticated/"))) != asset["hash"]: raise ValueError("Remote asset hash mismatch")
         exchange.db.execute("INSERT INTO metadata VALUES(?,?)", (marker, "1")); exchange.db.commit()
     pushed = conflicts = merged_count = 0
-    for _ in range(1000):
+    for _ in range(1000 if write_allowed else 0):
         row = exchange.db.execute("SELECT * FROM outbox ORDER BY sequence LIMIT 1").fetchone()
         if not row: break
         operation = json.loads(row["operation"])
@@ -826,7 +864,9 @@ def sync_exchange(exchange, remote):
             exchange.db.execute("INSERT INTO metadata VALUES('sync_cursor',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(cursor),))
         if not page["hasMore"]: break
     ensure_remote_assets(exchange, remote)
-    return {"pushed": pushed, "conflicts": conflicts, "merged": merged_count, "cursor": cursor}
+    result = {"pushed": pushed, "conflicts": conflicts, "merged": merged_count, "cursor": cursor}
+    if not write_allowed: result["accessWarning"] = SYNC_BILLING_MESSAGES["sync_subscription_required"]
+    return result
 
 
 def ensure_remote_assets(exchange, remote=None):
@@ -985,15 +1025,23 @@ def main():
         if args.pack and args.command == "import": read_pack(exchange, args.pack)
         if args.command in ("export", "cycle", "watch"): print(json.dumps(export_desktop(args.desktop_db, exchange)))
         if args.pack and args.command == "export": write_pack(exchange, args.pack)
-        if remote: print(json.dumps(sync_exchange(exchange, remote)))
+        sync_result = sync_exchange(exchange, remote) if remote else None
+        if sync_result: print(json.dumps(sync_result))
         if args.command in ("import", "cycle", "watch"): print(json.dumps(import_desktop(args.desktop_db, exchange, args.course_root)))
+        # Materialize owned remote changes first, then tell the user why local
+        # writes remain queued. Expiry never discards the outbox or blocks pull.
+        if sync_result and sync_result.get("accessWarning"): raise RuntimeError(sync_result["accessWarning"])
         if args.command != "watch": break
         time.sleep(max(2, args.interval))
 
 
 if __name__ == "__main__":
+    # The Electron parent decodes stderr as UTF-8 on every platform, including
+    # Windows installations whose default console encoding is not UTF-8.
+    if hasattr(sys.stderr, "reconfigure"): sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     try: main()
     except KeyboardInterrupt: pass
     except Exception as error:
-        print(f"Bridge stopped without discarding pending work: {error}", file=sys.stderr)
+        message = str(error)
+        print(message if message in SYNC_BILLING_MESSAGES.values() else f"Bridge stopped without discarding pending work: {message}", file=sys.stderr)
         sys.exit(1)

@@ -1,5 +1,7 @@
 # 배포와 자동 업데이트
 
+v0.84.6은 Paddle Live 구독 결제와 클라우드 동기화 권한·용량 검사를 연결하고, iPad 메뉴에 구독 관리를 추가한다. 구독 만료 시 기존 자료 다운로드와 대기 중인 변경을 보존한다. 검증 범위는 [`release-notes/v0.84.6.md`](release-notes/v0.84.6.md), 운영 설정은 [`paddle-billing.md`](paddle-billing.md)와 [`sync-paid-access.md`](sync-paid-access.md)를 따른다.
+
 v0.84.5는 iPad의 새 곡선 필기를 데스크톱 표시·지우개·PDF 내보내기·동기화에서 보존하고, PDF 원본 식별 및 자료 이동 복구를 보강한다. 검증 범위는 [`release-notes/v0.84.5.md`](release-notes/v0.84.5.md)를 따른다.
 
 0.84.4는 공개 전에 연결 도구의 자료 사본·충돌 복구 파일에도 같은 Windows 동기화 권한 오류가 남아 있음을 확인해 중단했습니다. 0.84.5에 해당 경로의 수정과 실제 배포 묶음 회귀 검사를 포함합니다.
