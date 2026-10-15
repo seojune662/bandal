@@ -43,6 +43,20 @@ Live 상태 응답의 `sync`는 로그인 계정의 사용량·권한만 반환�
 Live 심사 승인과 정산 수단 등록은 별개다. 2026-10-15 확인 당시 Payout Settings의 Account Type은 미선택이었다. 대표자·계좌 등 정산 정보는 운영자가 직접 입력한다. 실결제 테스트는 운영자가 정상 계정으로 결제하고 결과를 확인해야 하며, 서버·Sandbox 자동 검사만으로 Live 청구 성공을 주장하지 않는다.
 
 
+## 2026-10-15 Live 배포 확인
+
+- 서버·데스크톱 커밋 `f9d7902626af7a8595e6ba0370894cd073273977`, 앱 버전 `0.84.6`. [동일 커밋 CI](https://github.com/seojune662/bandal/actions/runs/38712030783)와 [릴리스 작업](https://github.com/seojune662/bandal/actions/runs/38712047053)이 성공했고, [v0.84.6](https://github.com/seojune662/bandal/releases/tag/v0.84.6)이 정식 공개됐다. macOS arm64·x64의 Developer ID 서명·공증과 양쪽 플랫폼의 영향 기능 패키지 검사를 통과했다. Windows 설치 파일은 기존 배포 설정대로 미서명이며 서명 완료로 간주하지 않는다.
+- 공개 산출물 12개(총 953,452,538 bytes)를 인증 없이 다운로드해 크기와 GitHub SHA-256이 모두 일치함을 확인했다. `latest-mac.yml`·`latest.yml`은 `0.84.6`이며 설치 파일 5개의 SHA-512·크기가 실제 파일과 일치했다. `/releases/latest/download`의 두 피드도 공개된 이번 릴리스와 일치한다.
+- 웹 구현 커밋 `e81076f345b2cd7c559014c8f76fe5684fd6d7b9`, 기존 공개 버전 동기화를 합친 Production 커밋 `da9063df192f7947e3d67b0c3d57daa309348133`. Vercel 배포 `7088674634` 성공. 릴리스 공개 뒤 다운로드 버전을 `0.84.6`으로 동기화한 커밋 `86531c62431b3d2cd603533afb4527b370b4b2af`와 Production 배포 `7089013143`도 성공했다. 실제 홈페이지의 `0.84.6` 표시와 결제·가격 페이지 HTTP 200을 확인했다.
+- Live 원장·동기화 권한·안전한 Storage 오류 전달의 새 마이그레이션 3개만 적용했다. 과거 개인 동기화 스키마와 이력은 재적용·변경하지 않았다. Sandbox와 Live 함수 4개를 배포했다.
+- 실제 HTTPS config에서 `environment=live`, `enabled=true`, `accessMode=public`을 확인했고, Sandbox는 `environment=sandbox`, 기존 tester 조건을 유지한다.
+- `bandal_sync_configuration.enforce_paid_access=true`를 적용했다. 적용 전 서버 자료·자산·크기 미확인 사용량은 모두 0건이었다. 별도 무료 사용자나 가짜 Live 결제 권한은 만들지 않았다.
+- 실제 `bandal.io/billing`에서 정상 Google 로그인 후 구독 없음·0 MiB 보관 상태를 확인했다. 약관 동의나 실결제는 대신 실행하지 않았다. 공개 가격·Sync·약관·개인정보·환불 페이지 HTTP 200과 CSP를 확인했다.
+- 한국 주소·KRW 조건의 Paddle Live 가격 미리보기에서 월간 4,455+VAT445=4,900원, 연간 44,545+VAT4,455=49,000원을 확인했다. 카드·국내 카드·네이버페이·카카오페이·Apple Pay가 가능 수단으로 반환됐다. 이 계산 검증은 실제 청구나 각 수단의 결제 성공 검증이 아니다.
+- 허용하지 않은 origin은 403, 서명 없는 Live 웹훅은 401로 거부했다. 계정·결제 원장에 테스트용 사용자/이벤트를 주입하지 않았다.
+- 로컬 검증: 결제 정책·서비스 61개, 실제 Auth/Postgres 16개, Storage HTTP·동시 용량 10개, PC 연결 Python 10개, Electron 메뉴 1개, 영향 선택기 53개 통과. Deno 4개 진입점·메인 타입·앱 빌드 통과. 웹 Live 36개·기존 Sandbox 24개·Toss 10개와 관련 사이트/모바일 회귀를 통과했다.
+- 실카드 Live 청구·환불·포털의 실제 고객 세션, 정산 수단 등록 완료와 두 기기 실제 동시 편집은 자동 검사 결과와 구분한다. API 키·서명 비밀의 임시 파일은 서버 등록 후 제거했다.
+
 ## Sandbox 구성과 계정 연결
 
 - 웹: `https://bandal.io/billing/sandbox` — 검색 제외, 공개 가격 페이지에서 연결하지 않음.
