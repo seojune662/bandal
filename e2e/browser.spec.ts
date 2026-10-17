@@ -31,7 +31,7 @@ async function openNewTabMenu(page: Page): Promise<void> {
 async function openBrowserTab(page: Page, url: string): Promise<void> {
   await openNewTabMenu(page)
   await page.getByLabel('새 탭 검색').fill(url)
-  await page.getByRole('option', { name: `브라우저 ${url}` }).click()
+  await page.getByRole('option', { name: `${url} 열기` }).click()
   await expect(page.locator('.browser-toolbar').last()).toBeVisible({
     timeout: 15_000
   })

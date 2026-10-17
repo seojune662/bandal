@@ -29,7 +29,7 @@ test('measures browser switching, viewport IPC and memory with a fixed four-page
           .click()
       await page.getByLabel('새 탭 검색').fill(`${origin}/${index}`)
       await page
-        .getByRole('option', { name: `브라우저 ${origin}/${index}` })
+        .getByRole('option', { name: `${origin}/${index} 열기` })
         .click()
       await expect(
         page.locator('.workspace-tab__title', { hasText: `Bench ${index}` }),
