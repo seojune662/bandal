@@ -183,6 +183,8 @@ export interface DrawingStyle {
   /** Stroke width as a fraction of page width, so it scales with zoom. */
   width: number
   opacity: number
+  /** ink only — 볼펜: constant width that ignores pressure, speed and taper. */
+  fixedWidth?: boolean
   /** textbox only — multiplier on the base note font size. */
   fontScale?: number
   /** textbox only — physical point size for new/rich text boxes. */

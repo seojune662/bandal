@@ -3,7 +3,7 @@ import type { DrawingShape } from '../../../../../shared/types/drawing'
 import type { PersonalBoard, PersonalBoardShape } from '../../../../../shared/types/whiteboard'
 import { TEXT_FILL_OPACITY } from '../../../../../shared/textBoxMetrics'
 import { invoke, onPush } from '../../../lib/ipc'
-import { arrowHeadPoints, drawingColorVariable, lineEndpoints, strokePath } from '../../ink/inkGeometry'
+import { arrowHeadPoints, constantWidth, drawingColorVariable, lineEndpoints, strokePath } from '../../ink/inkGeometry'
 import { loadReferencedThumbnail } from './mediaThumbnails'
 
 const PREVIEW_SHAPE_LIMIT = 160
@@ -39,7 +39,7 @@ function ReferencePreview({ courseId, shape, load }: { courseId: string; shape: 
 export function BoardShape({ courseId, shape, loadReference, aspect = PAGE_ASPECT }: { courseId: string; shape: DrawingShape; loadReference: boolean; aspect?: number }): JSX.Element | null {
   const color = drawingColorVariable(shape.style.color)
   if (shape.kind === 'ink' || shape.kind === 'highlighter') {
-    const path = strokePath(shape.data.points ?? [], shape.style, aspect, shape.kind === 'highlighter', shape.data.inkVersion)
+    const path = strokePath(shape.data.points ?? [], shape.style, aspect, constantWidth(shape.kind, shape.style), shape.data.inkVersion)
     return path.length === 0 ? null : <path className={shape.kind === 'highlighter' ? 'is-highlighter' : undefined} d={path} fill={color} opacity={shape.style.opacity} />
   }
   if (shape.kind === 'line' || shape.kind === 'arrow') {

@@ -10,6 +10,7 @@ import type {
 } from '../../../../shared/types/whiteboard'
 import {
   arrowHeadPoints,
+  constantWidth,
   drawingColorVariable,
   lineEndpoints,
   strokePath
@@ -103,7 +104,7 @@ function PreviewShape({ shape }: { shape: DrawingShape }): JSX.Element | null {
       shape.data.points ?? [],
       shape.style,
       DEFAULT_PAGE_ASPECT,
-      shape.kind === 'highlighter', shape.data.inkVersion
+      constantWidth(shape.kind, shape.style), shape.data.inkVersion
     )
     return path.length === 0 ? null : (
       <path

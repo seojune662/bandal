@@ -149,7 +149,7 @@ function drawInk(page: PDFPage, drawing: Drawing, width: number, height: number,
   const blendMode = drawing.kind === 'highlighter' ? (palette === DARK_DRAWING_COLORS ? BlendMode.Screen : BlendMode.Multiply) : BlendMode.Normal
   if (drawing.data.inkVersion === 2 || drawing.data.inkVersion === 3 || drawing.data.inkVersion === 4 || drawing.data.inkVersion === 5) {
     const renderPath = drawing.data.inkVersion === 5 ? strokePathV5 : drawing.data.inkVersion === 4 ? strokePathV4 : drawing.data.inkVersion === 3 ? strokePathV3 : strokePathV2
-    const path = renderPath(points, drawing.style.width, height / width, drawing.kind === 'highlighter', width, height)
+    const path = renderPath(points, drawing.style.width, height / width, drawing.kind === 'highlighter' || drawing.style.fixedWidth === true, width, height)
     if (path) page.drawSvgPath(path, { x: 0, y: height, color, opacity, blendMode })
     return
   }
@@ -169,7 +169,7 @@ function drawInk(page: PDFPage, drawing: Drawing, width: number, height: number,
     const previous = points[index - 1]
     const current = points[index]
     if (previous === undefined || current === undefined) continue
-    const pressure = drawing.kind === 'highlighter'
+    const pressure = drawing.kind === 'highlighter' || drawing.style.fixedWidth === true
       ? 1
       : Math.max(0.2, (previous.p + current.p) / 2)
     page.drawLine({

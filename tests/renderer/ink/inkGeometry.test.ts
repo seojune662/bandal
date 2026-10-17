@@ -9,6 +9,7 @@ import type {
 } from '../../../src/shared/types/drawing'
 import {
   arrowHeadPoints,
+  constantWidth,
   drawingHit,
   moveDrawingBox,
   normalizedBox,
@@ -48,6 +49,17 @@ describe('inkGeometry', () => {
     expect(path.startsWith('M ')).toBe(true)
     expect(path.endsWith(' Z')).toBe(true)
     expect(path).toContain(' Q ')
+  })
+
+  test('a fixedWidth ballpoint stroke renders with the constant highlighter width profile', () => {
+    const points: DrawingPoint[] = Array.from({ length: 40 }, (_, i) => ({ x: 0.1 + i * 0.01, y: 0.3 + Math.sin(i / 4) * 0.02, p: 0.2 + (i % 7) * 0.1, t: i * 4 }))
+    const style = { color: 'ink' as const, width: 0.01, opacity: 1, fixedWidth: true }
+    expect(constantWidth('ink', style)).toBe(true)
+    expect(constantWidth('ink', { fixedWidth: false })).toBe(false)
+    expect(constantWidth('highlighter', {})).toBe(true)
+    const ballpoint = strokePath(points, style, 1.4, constantWidth('ink', style), 5)
+    expect(ballpoint).toBe(strokePathV5(points, 0.01, 1.4, true))
+    expect(ballpoint).not.toBe(strokePathV5(points, 0.01, 1.4, false))
   })
 
   test('dispatches native versions without changing historical or v2 geometry', () => {

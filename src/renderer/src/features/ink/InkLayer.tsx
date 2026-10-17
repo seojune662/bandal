@@ -30,6 +30,7 @@ import {
 import { normalizeTextRuns } from '../../../../shared/textRuns'
 import {
   arrowHeadPoints,
+  constantWidth,
   drawingColorVariable,
   drawingHit,
   lineEndpoints,
@@ -297,7 +298,7 @@ function boxForShape(shape: DrawingShape, gesture: Gesture | null, resolveId?: (
 // Existing strokes do not change as the pen moves. Keep perfect-freehand's
 // outline calculation out of the pointer frame for every previously drawn line.
 const InkStroke = memo(function InkStroke({ shape, aspect }: { shape: DrawingShape; aspect: number }): JSX.Element | null {
-  const path = strokePath(shape.data.points ?? [], shape.style, aspect, shape.kind === 'highlighter', shape.data.inkVersion)
+  const path = strokePath(shape.data.points ?? [], shape.style, aspect, constantWidth(shape.kind, shape.style), shape.data.inkVersion)
   return path ? <path className={shape.kind === 'highlighter' ? 'ink-layer__mark is-highlighter' : 'ink-layer__mark'}
     d={path} fill={drawingColorVariable(shape.style.color)} opacity={shape.style.opacity} /> : null
 })

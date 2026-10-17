@@ -6,6 +6,7 @@ import { getStroke } from 'perfect-freehand'
 import type {
   DrawingBox,
   DrawingColor,
+  DrawingKind,
   DrawingPoint,
   DrawingShape,
   DrawingStyle
@@ -170,6 +171,11 @@ export function resizeDrawingBox(
   }
 }
 
+/** Constant-width geometry: highlighters and the fixed-width ballpoint. */
+export function constantWidth(kind: DrawingKind, style: Pick<DrawingStyle, 'fixedWidth'>): boolean {
+  return kind === 'highlighter' || style.fixedWidth === true
+}
+
 export function strokePath(
   points: readonly DrawingPoint[],
   style: DrawingStyle,
@@ -329,7 +335,7 @@ function drawingPolyline(shape: DrawingShape, aspect: number): Point2[] {
   if (shape.kind === 'ink' || shape.kind === 'highlighter') {
     const source = shape.data.points ?? []
     const points = (shape.data.inkVersion === 5
-      ? strokeCenterlineV5(source, shape.style.width, aspect, shape.kind === 'highlighter')
+      ? strokeCenterlineV5(source, shape.style.width, aspect, constantWidth(shape.kind, shape.style))
       : shape.data.inkVersion === 4
       ? strokeCenterlineV4(source, shape.style.width, aspect)
       : source)

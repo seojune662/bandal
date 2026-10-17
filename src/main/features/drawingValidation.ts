@@ -315,6 +315,12 @@ export function assertDrawingStyle(value: unknown): DrawingStyle {
     width: assertPositive(style.width, 'style.width'),
     opacity: assertUnit(style.opacity, 'style.opacity')
   }
+  if (style.fixedWidth !== undefined) {
+    if (typeof style.fixedWidth !== 'boolean') {
+      throw new ValidationError('style.fixedWidth must be a boolean')
+    }
+    if (style.fixedWidth) result.fixedWidth = true
+  }
   if (style.fontScale !== undefined) {
     result.fontScale = assertPositive(style.fontScale, 'style.fontScale', 10)
   }

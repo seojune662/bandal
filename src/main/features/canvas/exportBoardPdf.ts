@@ -191,7 +191,7 @@ function drawInk(
     : BlendMode.Normal
   if (shape.data.inkVersion === 2 || shape.data.inkVersion === 3 || shape.data.inkVersion === 4 || shape.data.inkVersion === 5) {
     const renderPath = shape.data.inkVersion === 5 ? strokePathV5 : shape.data.inkVersion === 4 ? strokePathV4 : shape.data.inkVersion === 3 ? strokePathV3 : strokePathV2
-    const path = renderPath(points, shape.style.width, height / width, shape.kind === 'highlighter', width, height)
+    const path = renderPath(points, shape.style.width, height / width, shape.kind === 'highlighter' || shape.style.fixedWidth === true, width, height)
     if (path) page.drawSvgPath(path, { x: 0, y: height, color, opacity, blendMode })
     return
   }
