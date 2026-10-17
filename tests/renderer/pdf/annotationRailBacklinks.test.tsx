@@ -25,7 +25,7 @@ describe('PDF material backlinks', () => {
     expect(html).not.toContain('이 자료를 인용한 곳')
   })
 
-  test('renders note and whiteboard labels with cited pages', () => {
+  test('renders markdown and legacy board backlinks with current note labels and cited pages', () => {
     const html = renderBacklinks({
       notes: [{ ref: '중간고사/요약.md', label: '중간고사 요약', page: 12 }],
       boards: [{ ref: 'board-1', label: '시험 범위', page: 3 }]
@@ -35,7 +35,7 @@ describe('PDF material backlinks', () => {
     expect(html).toContain('필기')
     expect(html).toContain('중간고사 요약')
     expect(html).toContain('12쪽')
-    expect(html).toContain('화이트보드')
+    expect(html).toContain('노트')
     expect(html).toContain('시험 범위')
     expect(html).toContain('3쪽')
   })

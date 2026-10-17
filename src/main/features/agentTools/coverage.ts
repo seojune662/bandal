@@ -126,6 +126,8 @@ export const NOT_FOR_AGENT: Readonly<Record<string, string>> = {
     '링크 해제는 학생이 화면에서 한 번 누르면 되고, 에이전트가 자료 그래프를 지울 이유가 없다.',
   'links:updatePageNote':
     '페이지 스크롤 동기화 설정은 현재 열린 두 패널의 직접 조작 상태라 학생이 화면에서 선택한다.',
+  'pdf:restructure':
+    'PDF 페이지 구조 편집은 열린 문서의 저장을 마친 뒤 expectedRevision과 페이지 대응 관계를 사용자가 페이지 패널에서 확인하는 작업이다.',
 
   // -- internal plumbing, not capabilities ----------------------------------
   'materials:snapshot': '자료 목록을 즉시 복원하기 위한 UI 캐시. 에이전트는 list_materials로 완성된 목록을 읽는다.',
