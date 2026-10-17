@@ -3,18 +3,6 @@ import assert from 'node:assert/strict'
 import { generateKeyPairSync, verify } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { main, registerAppleIPad, registrationSummary } from './apple-ipad-register.mjs'
-import { planChecks } from './affected-checks.mjs'
-
-test('Apple administration tools select their boundary checks without broad product tests', () => {
-  for (const action of ['readiness', 'register']) {
-    for (const file of [`.github/workflows/apple-ipad-${action}.yml`, `scripts/apple-ipad-${action}.mjs`]) {
-      const plan = planChecks([file])
-      assert.equal(plan.full, false)
-      assert.ok(plan.scriptTests.includes(`scripts/test-apple-ipad-${action}.mjs`))
-      assert.deepEqual(plan.e2e, ['e2e/startup.spec.ts'])
-    }
-  }
-})
 
 const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
 const env = {

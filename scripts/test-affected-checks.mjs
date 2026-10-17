@@ -840,3 +840,13 @@ test('account entry and PDF note flows keep their focused packaged coverage', ()
   assert.ok(planChecks(['src/renderer/src/features/pdf/useWhiteboardClipDelivery.ts']).e2e.includes('e2e/pdfClip.spec.ts'))
   assert.deepEqual(planChecks(['resources/ipad-bridge/projector-host.cjs']).pythonTests, ['tests/main/ipadSync/test_bridge_scope.py'])
 })
+test('Apple administration tools select their boundary checks without broad product tests', () => {
+  for (const action of ['readiness', 'register']) {
+    for (const file of [`.github/workflows/apple-ipad-${action}.yml`, `scripts/apple-ipad-${action}.mjs`]) {
+      const plan = planChecks([file])
+      assert.equal(plan.full, false)
+      assert.ok(plan.scriptTests.includes(`scripts/test-apple-ipad-${action}.mjs`))
+      assert.deepEqual(plan.e2e, ['e2e/startup.spec.ts'])
+    }
+  }
+})
