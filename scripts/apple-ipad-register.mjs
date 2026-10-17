@@ -75,6 +75,11 @@ async function boundedJSON(response) {
 
 const isResource = (row, type) => object(row) && row.type === type && safeID(row.id) && object(row.attributes)
 const matchesBundle = row => isResource(row, 'bundleIds') && Object.entries(expectedAttributes).every(([key, value]) => row.attributes[key] === value)
+const bundleValidation = row => ({
+  resource: isResource(row, 'bundleIds') ? 'valid' : 'invalid',
+  ...Object.fromEntries(Object.entries(expectedAttributes).map(([key, value]) => [key, row?.attributes?.[key] === value ? 'matched' : row?.attributes?.[key] == null ? 'missing' : 'mismatched'])),
+  returnedPlatform: ['IOS', 'MAC_OS', 'UNIVERSAL'].includes(row?.attributes?.platform) ? row.attributes.platform : 'unknown'
+})
 const isPrimary = row => Array.isArray(row.attributes.settings) && row.attributes.settings.filter(setting => setting?.key === 'APPLE_ID_AUTH_APP_CONSENT').length === 1 &&
   row.attributes.settings.some(setting => setting?.key === 'APPLE_ID_AUTH_APP_CONSENT' && Array.isArray(setting.options) &&
     setting.options.filter(option => option?.key === 'PRIMARY_APP_CONSENT').length === 1 &&
@@ -144,14 +149,20 @@ export async function registerAppleIPad({ env = {}, fetchImpl = globalThis.fetch
   if (!body) return report
   if (!completeList(body, 'bundleIds') || body.data.length > 1) return stop('ambiguous_or_incomplete_bundle_response')
   let bundle = body.data[0]
-  if (bundle && !matchesBundle(bundle)) return stop('bundle_attributes_mismatch')
+  if (bundle && !matchesBundle(bundle)) {
+    report.bundleId.validation = bundleValidation(bundle)
+    return stop('bundle_attributes_mismatch')
+  }
   if (!bundle) {
     report.bundleId.write = 'attempted'
     report.bundleId.status = 'unverified_after_write'
     const created = await request('bundleId', 'POST', endpoint('/v1/bundleIds'), { data: { type: 'bundleIds', attributes: expectedAttributes } })
     if (!created) return report
     report.bundleId.write = 'accepted'
-    if (!matchesBundle(created.data)) return stop('created_bundle_response_mismatch')
+    if (!matchesBundle(created.data)) {
+      report.bundleId.validation = bundleValidation(created.data)
+      return stop('created_bundle_response_mismatch')
+    }
     body = await request('bundleIdVerification', 'GET', bundleQuery())
     if (!body) return report
     if (!completeList(body, 'bundleIds') || body.data.length !== 1 || !matchesBundle(body.data[0]) || body.data[0].id !== created.data.id) return stop('bundle_verification_failed')
