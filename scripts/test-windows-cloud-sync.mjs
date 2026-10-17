@@ -3,7 +3,7 @@ import { planChecks } from './affected-checks.mjs'
 const require = createRequire(import.meta.url)
 const test = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path'), crypto = require('node:crypto')
-const { descriptor, claimsFor, validateIdentity, authenticate, childEnvironment, verifyArtifact, safeStatus } = require('./verify-windows-cloud-sync.cjs')
+const { descriptor, claimsFor, validateIdentity, authenticate, childEnvironment, verifyArtifact, safeStatus, settleCycles } = require('./verify-windows-cloud-sync.cjs')
 const runID = '11111111-1111-4111-8111-111111111111', userID = '22222222-2222-4222-8222-222222222222'
 const manifest = () => ({ runID, userID, courseID: '33333333-3333-4333-8333-333333333333', desktopInkID: '44444444-4444-4444-8444-444444444444', projectURL: 'https://ukacrkcwiqafwpppshxb.supabase.co', pdfSHA: 'a'.repeat(64), notePath: 'roundtrip.md', pdfPath: 'roundtrip.pdf', expectedDesktopMarkdown: 'Mac → iPad ' + runID, expectedNativeMarkdown: 'iPad → Mac ' + runID, expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() })
 const identity = () => ({ id: userID, email: `bandal-qa-${runID}@example.invalid`, user_metadata: { validationRun: runID, purpose: 'Bandal isolated sync validation' } })
@@ -100,4 +100,19 @@ test('evidence is never declared complete while pending work, conflicts, or proj
   for (const value of [{ ...status(), pending: 1 }, { ...status(), deferred: 1 }, { ...status(), conflicts: 1 }, { ...status(), projectionPending: true }, { ...status(), access: { writeAllowed: false, accessSource: 'none' } }]) {
     assert.throws(() => safeStatus(value), /^Error: qa_/)
   }
+})
+
+test('a transient canonical import follow-up settles before evidence is emitted', async () => {
+  let calls = 0, waits = 0
+  const result = await settleCycles(() => ++calls === 1 ? { ...status(), pending: 1 } : status(), async () => { waits++ })
+  assert.equal(calls, 2); assert.equal(waits, 1); assert.equal(result.pending, 0)
+})
+
+test('persistent pending work is bounded and a conflict stops immediately', async () => {
+  let calls = 0
+  await assert.rejects(settleCycles(() => { calls++; return { ...status(), pending: 1 } }, async () => {}), /qa_cycle_unsettled/)
+  assert.equal(calls, 5)
+  calls = 0
+  await assert.rejects(settleCycles(() => { calls++; return { ...status(), conflicts: 1 } }, async () => {}), /qa_cycle_conflict/)
+  assert.equal(calls, 1)
 })

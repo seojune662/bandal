@@ -109,11 +109,30 @@ async function preflight(root, m) {
   console.log('Source, isolated QA manifest, and successful companion artifact verified.')
 }
 
-function safeStatus(status) {
+function progressStatus(status) {
   check(status && status.scope === 'personal-content-v1' && status.access?.writeAllowed === true && status.access?.accessSource === 'beta', 'qa_cycle_access_invalid')
-  for (const key of ['pending', 'deferred', 'conflicts']) check(Number.isSafeInteger(status[key]) && status[key] === 0, 'qa_cycle_unsettled')
-  check(status.projectionPending === false, 'qa_projection_pending')
-  return { scope: status.scope, pending: 0, deferred: 0, conflicts: 0, projectionPending: false, writeAllowed: true, accessSource: 'beta' }
+  for (const key of ['pending', 'deferred', 'conflicts']) check(Number.isSafeInteger(status[key]) && status[key] >= 0 && status[key] <= 10_000, 'qa_cycle_status_invalid')
+  check(typeof status.projectionPending === 'boolean', 'qa_cycle_status_invalid')
+  return { scope: status.scope, pending: status.pending, deferred: status.deferred, conflicts: status.conflicts, projectionPending: status.projectionPending, writeAllowed: true, accessSource: 'beta' }
+}
+
+function safeStatus(status) {
+  const result = progressStatus(status)
+  check(result.pending === 0 && result.deferred === 0 && result.conflicts === 0, 'qa_cycle_unsettled')
+  check(result.projectionPending === false, 'qa_projection_pending')
+  return result
+}
+
+async function settleCycles(cycle, sleep = ms => new Promise(resolve => setTimeout(resolve, ms))) {
+  // A newly imported record may queue a canonical follow-up during projection.
+  // Allow bounded settling; final evidence still requires zero unfinished work.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const status = cycle(), progress = progressStatus(status)
+    check(progress.conflicts === 0, 'qa_cycle_conflict')
+    if (!progress.pending && !progress.deferred && !progress.projectionPending) return safeStatus(status)
+    if (attempt < 4) await sleep(2000)
+  }
+  throw new QAError('qa_cycle_unsettled')
 }
 
 async function desktop(phase, root, m) {
@@ -134,7 +153,9 @@ async function desktop(phase, root, m) {
     })
     check(result.status === 0, 'qa_companion_cycle_failed')
     let summaries; try { summaries = result.stdout.trim().split('\n').map(line => JSON.parse(line)) } catch { throw new QAError('qa_companion_output_invalid') }
-    return safeStatus(summaries.filter(row => row.status).at(-1)?.status)
+    const status = summaries.filter(row => row.status).at(-1)?.status
+    console.log(JSON.stringify({ phase, cycle: progressStatus(status) }))
+    return status
   }
   const inspect = async () => {
     const db = new SQLite(databasePath, { readonly: true })
@@ -154,7 +175,7 @@ async function desktop(phase, root, m) {
     for (const directory of [profile, courses, exchange]) fs.mkdirSync(directory, { recursive: true })
     const initial = new SQLite(databasePath); initial.exec(fs.readFileSync(path.join(root, 'src/main/db/schema.sql'), 'utf8')); initial.close()
     await require(helper).run({ action: 'export', database: databasePath, exchange, courseRoot: courses, moduleRoot: root, bundle, request: { scope: 'personal-content-v1' } })
-    cycle()
+    await settleCycles(cycle)
     const seed = await inspect()
     check(seed.markdown === m.expectedDesktopMarkdown && seed.pdfSHA === m.pdfSHA && seed.pages === 2 && seed.ink.length === 1 && seed.ink[0].id === m.desktopInkID && seed.ink[0].page === 1, 'qa_mac_seed_mismatch')
     const windowsInkID = crypto.randomUUID(), marker = 'Windows → iPad ' + m.runID
@@ -164,7 +185,7 @@ async function desktop(phase, root, m) {
       db.prepare('INSERT INTO pdf_drawings(id,course_id,rel_path,page,kind,data_json,style_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)')
         .run(windowsInkID, m.courseID, m.pdfPath, 1, 'ink', JSON.stringify({ inkVersion: 5, points: [{ x: .2, y: .6, p: .5, t: 0 }, { x: .7, y: .8, p: .8, t: 20 }] }), JSON.stringify({ color: 'ink', width: .004, opacity: 1 }), now, now)
     } finally { db.close() }
-    const status = cycle(), source = readJSON(path.join(work, 'evidence/source.json'))
+    const status = await settleCycles(cycle), source = readJSON(path.join(work, 'evidence/source.json'))
     const state = { runID: m.runID, courseID: m.courseID, windowsInkID, expectedDesktopMarkdown: marker }
     writeJSON(statePath, state)
     writeJSON(path.join(work, 'evidence/windows-ready.json'), { ...source, ...state, userID: m.userID, pdfSHA: m.pdfSHA, companionSourceHash: artifact.sourceHash, companionBinaryHash: artifact.binaryHash, status })
@@ -176,7 +197,7 @@ async function desktop(phase, root, m) {
     const deadline = Math.min(Date.now() + 15 * 60_000, Date.parse(m.expiresAt) - 90_000)
     let attempts = 0
     while (Date.now() < deadline) {
-      const status = cycle(), snapshot = await inspect(); attempts++
+      const status = await settleCycles(cycle), snapshot = await inspect(); attempts++
       const nativeInk = snapshot.ink.filter(row => row.id !== m.desktopInkID && row.id !== state.windowsInkID)
       if (snapshot.markdown === m.expectedNativeMarkdown && snapshot.pages === 3 &&
           snapshot.ink.find(row => row.id === m.desktopInkID)?.page === 2 && snapshot.ink.find(row => row.id === state.windowsInkID)?.page === 2 && nativeInk.length === 1 && nativeInk[0].page === 3) {
@@ -209,5 +230,5 @@ async function main() {
   return desktop(phase, root, m)
 }
 
-module.exports = { QAError, descriptor, claimsFor, validateIdentity, authenticate, childEnvironment, verifyArtifact, safeStatus }
+module.exports = { QAError, descriptor, claimsFor, validateIdentity, authenticate, childEnvironment, verifyArtifact, safeStatus, settleCycles }
 if (require.main === module) main().catch(error => { console.error(error instanceof QAError ? error.code : 'qa_unexpected_failure'); process.exitCode = 1 })
