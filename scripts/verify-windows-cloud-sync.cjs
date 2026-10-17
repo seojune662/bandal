@@ -155,6 +155,15 @@ async function desktop(phase, root, m) {
     let summaries; try { summaries = result.stdout.trim().split('\n').map(line => JSON.parse(line)) } catch { throw new QAError('qa_companion_output_invalid') }
     const status = summaries.filter(row => row.status).at(-1)?.status
     console.log(JSON.stringify({ phase, cycle: progressStatus(status) }))
+    if (status.conflicts) {
+      const db = new SQLite(databasePath, { readonly: true })
+      try {
+        const conflicts = db.prepare('SELECT record_id,reason FROM ipad_sync_conflicts WHERE resolved_at IS NULL LIMIT 100').all()
+          .map(row => ({ kind: String(row.record_id).split(':')[0], reason: String(row.reason).slice(0, 512) }))
+        writeJSON(path.join(work, 'evidence/conflicts.json'), { runID: m.runID, phase, conflicts })
+        console.log(JSON.stringify({ phase, conflicts }))
+      } finally { db.close() }
+    }
     return status
   }
   const inspect = async () => {

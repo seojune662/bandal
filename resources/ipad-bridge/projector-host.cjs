@@ -89,6 +89,9 @@ async function run(input){
       }
     }
     const context=vm.createContext({console:{log:(...v)=>console.error(...v),warn:(...v)=>console.error(...v),error:(...v)=>console.error(...v)},setTimeout,clearTimeout,AbortController,
+      // Only Windows needs native drive/UNC semantics; iPad and browser workers
+      // retain their POSIX shim. No filesystem or process capability is exposed.
+      ...(process.platform==='win32'?{__bandalPath:Object.freeze(Object.fromEntries(['sep','isAbsolute','normalize','join','resolve','dirname','basename','extname','relative'].map(key=>[key,typeof path.win32[key]==='function'?path.win32[key].bind(path.win32):path.win32[key]])))}:{}),
       setInterval:(fn,delay)=>{const t=setInterval(fn,delay);timers.add(t);return t},clearInterval:t=>{timers.delete(t);clearInterval(t)},
       __bandalNative:{perform:json=>{try{const{op,args}=JSON.parse(json);return JSON.stringify({ok:true,value:native(op,args)})}catch(e){return JSON.stringify({ok:false,error:{message:e.message,code:e.code}})}},emit:()=>{},log:()=>{}}})
     try{

@@ -371,6 +371,7 @@ export function planChecks(files, full = false) {
   const paddleBackendOnly = (paddleBillingBackend || appleBillingBackend || accountDeletionBackend || syncAccessBackend) && !studyMarketBackend && !has(/^(src\/|server\/|sdk\/|resources\/|native\/|electron|package\.json$|pnpm-lock\.yaml$)/)
   if (e2e.size === 0 && !paddleBackendOnly) e2e.add('e2e/startup.spec.ts')
   const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f) && !f.endsWith('.deno.ts'))
+  if (has(/^(?:scripts\/test-projector-roundtrip\.cjs|resources\/ipad-bridge\/(?:backend\.js|projector-host\.cjs)|\.github\/workflows\/verify-windows-projector\.yml)$/)) unitInputs.push('tests/main/ipadSync/projectorRoundtrip.test.ts')
   if (studyMarketBackend) unitInputs.push('tests/backend/studyMarket/policy.test.ts')
   if (paddleBillingBackend) unitInputs.push('tests/backend/paddleBilling/policy.test.ts', 'tests/backend/paddleBilling/service.test.ts')
   if (appleBillingBackend) unitInputs.push('tests/backend/appleBilling/service.test.ts')
