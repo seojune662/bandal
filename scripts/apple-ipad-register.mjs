@@ -87,6 +87,12 @@ const isPrimary = row => Array.isArray(row.attributes.settings) && row.attribute
   row.attributes.settings.some(setting => setting?.key === 'APPLE_ID_AUTH_APP_CONSENT' && Array.isArray(setting.options) &&
     setting.options.filter(option => option?.key === 'PRIMARY_APP_CONSENT').length === 1 &&
     setting.options.some(option => option?.key === 'PRIMARY_APP_CONSENT' && option.enabled === true))
+const capabilityValidation = row => {
+  const settings = Array.isArray(row?.attributes?.settings) ? row.attributes.settings : []
+  const primary = settings.filter(setting => setting?.key === 'APPLE_ID_AUTH_APP_CONSENT')
+  const options = primary.flatMap(setting => Array.isArray(setting.options) ? setting.options : []).filter(option => option?.key === 'PRIMARY_APP_CONSENT')
+  return { resource: isResource(row, 'bundleIdCapabilities') ? 'valid' : 'invalid', capabilityType: row?.attributes?.capabilityType === 'APPLE_ID_AUTH' ? 'matched' : 'mismatched', settingsReturned: Array.isArray(row?.attributes?.settings), settingCount: settings.length, primarySettingCount: primary.length, primaryOptionCount: options.length, primaryEnabledCount: options.filter(option => option.enabled === true).length }
+}
 
 /** No network activity at import time. Callers can only supply credentials,
  * clock and transport; identifiers, methods, payloads and hosts stay fixed. */
@@ -182,7 +188,10 @@ export async function registerAppleIPad({ env = {}, fetchImpl = globalThis.fetch
   const capabilities = body.data.filter(row => row.attributes.capabilityType === 'APPLE_ID_AUTH')
   if (capabilities.length > 1) return stop('ambiguous_capability_response')
   if (capabilities.length === 1) {
-    if (!isPrimary(capabilities[0])) return stop('existing_sign_in_configuration_mismatch')
+    if (!isPrimary(capabilities[0])) {
+      report.signInWithApple.validation = capabilityValidation(capabilities[0])
+      return stop('existing_sign_in_configuration_mismatch')
+    }
     report.signInWithApple.status = 'reused_verified'
   } else {
     report.signInWithApple.write = 'attempted'
@@ -192,12 +201,15 @@ export async function registerAppleIPad({ env = {}, fetchImpl = globalThis.fetch
     })
     if (!created) return report
     report.signInWithApple.write = 'accepted'
-    if (!isResource(created.data, 'bundleIdCapabilities') || created.data.attributes.capabilityType !== 'APPLE_ID_AUTH' || !isPrimary(created.data)) return stop('created_capability_response_mismatch')
+    if (!isResource(created.data, 'bundleIdCapabilities') || created.data.attributes.capabilityType !== 'APPLE_ID_AUTH') return stop('created_capability_response_mismatch')
     body = await request('capabilityVerification', 'GET', capabilityQuery())
     if (!body) return report
     if (!completeList(body, 'bundleIdCapabilities')) return stop('capability_verification_failed')
     const verified = body.data.filter(row => row.attributes.capabilityType === 'APPLE_ID_AUTH')
-    if (verified.length !== 1 || verified[0].id !== created.data.id || !isPrimary(verified[0])) return stop('capability_verification_failed')
+    if (verified.length !== 1 || verified[0].id !== created.data.id || !isPrimary(verified[0])) {
+      report.signInWithApple.validation = capabilityValidation(verified[0])
+      return stop('capability_verification_failed')
+    }
     report.signInWithApple.status = 'created_verified'
   }
   report.outcome = 'complete'
