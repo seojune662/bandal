@@ -32,7 +32,7 @@ describe('PDF material backlinks', () => {
     })
 
     expect(html).toContain('이 자료를 인용한 곳')
-    expect(html).toContain('필기')
+    expect(html).toContain('마크다운')
     expect(html).toContain('중간고사 요약')
     expect(html).toContain('12쪽')
     expect(html).toContain('노트')

@@ -322,7 +322,7 @@ export const enUS: Record<MessageKey, string> = {
 
   'links.menu.connect': 'Connect material…',
   'links.citations.title': 'Places citing this material',
-  'links.citations.notes': 'Notes',
+  'links.citations.notes': 'Markdown',
   'links.citations.boards': 'Whiteboards',
   'links.citations.empty': 'Nothing cites this material yet.',
   'links.connected.title': 'Connected materials',

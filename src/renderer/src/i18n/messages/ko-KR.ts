@@ -320,7 +320,7 @@ export const koKR = {
 
   'links.menu.connect': '자료 연결…',
   'links.citations.title': '이 자료를 인용한 곳',
-  'links.citations.notes': '필기',
+  'links.citations.notes': '마크다운',
   'links.citations.boards': '노트',
   'links.citations.empty': '이 자료를 인용한 곳이 없어요.',
   'links.connected.title': '연결한 자료',
