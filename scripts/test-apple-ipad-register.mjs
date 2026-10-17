@@ -164,8 +164,8 @@ test('unknown write outcomes are not retried and GET verification is required be
   }
 })
 
-test('existing Sign in with Apple settings must match primary configuration; no PATCH or regrouping occurs', async () => {
-  for (const settings of [undefined, null, 'invalid', [], [{ key: 'APPLE_ID_AUTH_APP_CONSENT', options: [{ key: 'PRIMARY_APP_CONSENT', enabled: false }] }]]) {
+test('ambiguous or missing Sign in with Apple settings never trigger a PATCH', async () => {
+  for (const settings of [undefined, null, 'invalid', [], [{ key: 'OTHER', options: [] }], [{ key: 'APPLE_ID_AUTH_APP_CONSENT', options: [{ key: 'PRIMARY_APP_CONSENT', enabled: false }, { key: 'OTHER' }] }]]) {
     const wire = transport([response([bundle]), response([{ ...capability, attributes: { ...capability.attributes, settings } }])])
     assert.equal((await registerAppleIPad({ env, now, ...wire })).reason, 'existing_sign_in_configuration_mismatch')
     assert.ok(wire.calls.every(call => call.method === 'GET'))
@@ -174,6 +174,22 @@ test('existing Sign in with Apple settings must match primary configuration; no 
     const wire = transport([response([bundle]), response(caps)])
     assert.equal((await registerAppleIPad({ env, now, ...wire })).outcome, 'blocked')
     assert.equal(wire.calls.length, 2)
+  }
+})
+
+test('configures only the fixed app primary option and verifies the final state', async () => {
+  const disabled = { ...capability, attributes: { ...capability.attributes, settings: [{ key: 'APPLE_ID_AUTH_APP_CONSENT', options: [{ key: 'PRIMARY_APP_CONSENT', enabled: false }] }] } }
+  const wire = transport([response([bundle]), response([disabled]), response(capability), response([capability])])
+  const report = await registerAppleIPad({ env, now, ...wire })
+  assert.equal(report.outcome, 'complete')
+  assert.deepEqual(report.signInWithApple, { status: 'configured_verified', write: 'accepted' })
+  assert.equal(wire.calls[2].method, 'PATCH')
+  assert.equal(wire.calls[2].url.pathname, '/v1/bundleIdCapabilities/PRIVATE_CAPABILITY_ID')
+  assert.deepEqual(JSON.parse(wire.calls[2].body).data.attributes, capability.attributes)
+  for (const failure of [new Response('', { status: 403 }), response(capability)]) {
+    const attempt = transport([response([bundle]), response([disabled]), failure, response([disabled])])
+    assert.equal((await registerAppleIPad({ env, now, ...attempt })).outcome, 'blocked')
+    assert.equal(attempt.calls.filter(call => call.method === 'PATCH').length, 1)
   }
 })
 

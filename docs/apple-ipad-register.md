@@ -2,12 +2,14 @@
 
 `.github/workflows/apple-ipad-register.yml`은 검토된 `main`에서 수동 실행한다. 대상은 `app.bandal.ipad`, 이름 `Bandal iPad`, platform `IOS`이며 변경 입력을 받지 않는다. 기존 `apple-ipad-readiness.yml`과 그 스크립트는 계속 조회 전용이다.
 
-이 도구의 쓰기는 두 가지뿐이다.
+이 도구는 다음 고정 설정만 쓴다.
 
 1. 정확한 Bundle ID를 GET으로 조회해 없을 때만 `POST /v1/bundleIds`로 등록한다.
 2. 그 Bundle ID에서 Sign in with Apple capability가 없을 때만 `POST /v1/bundleIdCapabilities`로 `APPLE_ID_AUTH`를 활성화한다. 새 앱의 primary 설정은 `APPLE_ID_AUTH_APP_CONSENT` → `PRIMARY_APP_CONSENT`, `enabled: true`다.
 
-각 생성 응답과 후속 GET에서 내부 resource ID와 설정을 다시 확인한다. 기존 등록의 identifier·name·platform·seedId가 모두 맞으면 재사용한다. 기존 Apple 로그인 설정이 primary와 다르거나 응답이 중복·불완전하면 중단한다. 이름 변경, 앱 그룹 연결, PATCH, DELETE, 앱 record·상품·키 생성, 계약 동의는 수행하지 않는다.
+3. 이미 생성된 해당 capability가 단 하나의 primary 옵션만 가지며 아직 활성화되지 않았다면, 그 정확한 resource에 한 번만 PATCH해 primary 옵션을 설정하고 후속 GET으로 확인한다. 다른 설정이 섞여 있거나 응답이 불명확하면 변경하지 않는다.
+
+각 생성 응답과 후속 GET에서 내부 resource ID와 설정을 다시 확인한다. 기존 등록의 identifier·name·platform·seedId가 모두 맞으면 재사용한다. 기존 Apple 로그인 설정의 구조가 다르거나 응답이 중복·불완전하면 중단한다. 이름 변경, 앱 그룹 연결, DELETE, 앱 record·상품·키 생성, 계약 동의는 수행하지 않는다.
 
 2026-10-17 실제 API는 `IOS` 생성 요청을 `UNIVERSAL`로 반환했다. identifier·name·seedId는 요청과 일치했다. Apple의 [BundleIdPlatform 정의](https://developer.apple.com/documentation/appstoreconnectapi/bundleidplatform)에 따라 iOS를 포함하는 `UNIVERSAL`도 조회·후속 검증에서 허용한다. 생성 요청은 계속 `IOS`이며 `MAC_OS`나 알 수 없는 플랫폼은 거절한다. 이는 다른 플랫폼의 App Store 앱 record를 추가하지 않는다.
 
@@ -15,9 +17,9 @@
 
 GitHub Actions secrets `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, `APPLE_TEAM_ID`는 등록 step의 프로세스 환경에만 전달한다. 개인키·JWT를 파일, 로그, artifact에 저장하지 않는다. Node 표준 라이브러리로 매 요청마다 120초 ES256 JWT를 만들고, 공식 `https://api.appstoreconnect.apple.com`만 호출하며 redirect를 거부한다. 원격 응답의 링크는 따라가지 않는다.
 
-Apple 공식 JWT 문서의 `scope`는 **GET 요청**을 대상으로 한다. GET은 정확한 경로와 query scope를 사용한다. POST는 scope 없는 짧은 토큰을 키 역할 범위에서 사용하며, 클라이언트 코드가 위 두 고정 POST와 payload만 만들도록 제한한다. POST 토큰 자체가 한 endpoint로 암호학적으로 제한된다고 주장하지 않는다.
+Apple 공식 JWT 문서의 `scope`는 **GET 요청**을 대상으로 한다. GET은 정확한 경로와 query scope를 사용한다. POST·PATCH는 scope 없는 짧은 토큰을 키 역할 범위에서 사용하며, 클라이언트 코드가 위 고정 경로와 payload만 만들도록 제한한다. PATCH 대상은 검증된 Bundle ID 관계에서 읽은 정확한 Apple 로그인 capability ID로만 설정한다. 쓰기 토큰 자체가 한 endpoint로 암호학적으로 제한된다고 주장하지 않는다.
 
-401은 `authentication_failed`, 403은 `forbidden`으로 구분해 즉시 종료한다. 403을 역할 부족 또는 계약 문제 중 하나로 단정하거나 반복 요청·다른 키로 우회하지 않는다. 409, 통신 오류, 불완전한 검증도 중단하며 자동 재시도하지 않는다. POST 응답을 받지 못한 경우 생성 여부가 불확실하므로 `write_outcome_unknown`과 `unverified_after_write`를 보고한다. 수동 재실행은 먼저 GET을 수행하므로 정확히 일치하는 앞선 생성 결과를 재사용할 수 있다. 이미 성공한 등록을 지워 되돌리지 않는다.
+401은 `authentication_failed`, 403은 `forbidden`으로 구분해 즉시 종료한다. 403을 역할 부족 또는 계약 문제 중 하나로 단정하거나 반복 요청·다른 키로 우회하지 않는다. 409, 통신 오류, 불완전한 검증도 중단하며 자동 재시도하지 않는다. 쓰기 응답을 받지 못한 경우 생성 여부가 불확실하므로 `write_outcome_unknown`과 `unverified_after_write`를 보고한다. 수동 재실행은 먼저 GET을 수행하므로 정확히 일치하는 앞선 생성 결과를 재사용할 수 있다. 이미 성공한 등록을 지워 되돌리지 않는다.
 
 완료 JSON은 Bundle ID와 capability를 검증했다는 뜻이다. 앱 배포나 결제가 준비됐다는 뜻은 아니다. 로그와 step summary에는 고정 대상과 정의된 상태값만 기록한다. 모든 local 검사는 모의 fetch와 임시 테스트 키로 실행한다.
 
@@ -33,3 +35,5 @@ node --test scripts/test-apple-ipad-register.mjs
 4. Xcode에서 같은 개발팀과 Bundle ID, Sign in with Apple entitlement를 사용하고 변경된 capability를 포함하는 배포 provisioning profile을 준비한다. 실제 기기 로그인, StoreKit sandbox 구매·복원, TestFlight 빌드 및 심사 절차를 검증한다.
 
 공식 근거(2026-10-17 확인): [Bundle ID 등록 API](https://developer.apple.com/documentation/appstoreconnectapi/post-v1-bundleids), [Capability 활성화 API](https://developer.apple.com/documentation/appstoreconnectapi/post-v1-bundleidcapabilities), [공식 OpenAPI 명세](https://developer.apple.com/sample-code/app-store-connect/app-store-connect-openapi-specification.zip), [JWT와 GET scope](https://developer.apple.com/documentation/appstoreconnectapi/generating-tokens-for-api-requests), [새 앱의 primary Apple 로그인 설정](https://developer.apple.com/help/account/capabilities/about-sign-in-with-apple/), [App ID prefix와 Team ID](https://developer.apple.com/library/archive/technotes/tn2311/_index.html), [새 앱 record 등록](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-a-new-app/), [별도 결제 서버 키](https://developer.apple.com/documentation/appstoreserverapi/creating-api-keys-to-authorize-api-requests).
+
+추가 공식 근거: [capability 설정 수정 API](https://developer.apple.com/documentation/appstoreconnectapi/patch-v1-bundleidcapabilities-_id_).

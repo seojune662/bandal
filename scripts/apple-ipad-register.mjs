@@ -43,8 +43,8 @@ function tokenFor(credentials, method, url, now) {
   const encoded = value => Buffer.from(JSON.stringify(value)).toString('base64url')
   const iat = Math.floor(now() / 1000)
   const payload = { iss: credentials.issuer, iat, exp: iat + 120, aud: 'appstoreconnect-v1' }
-  // Apple documents scope entries for GET only. POST uses a short-lived token
-  // under the key's role, restricted here to the two fixed requests below.
+  // Apple documents scope entries for GET only. Writes use a short-lived token
+  // under the key's role, restricted here to the fixed write requests below.
   if (method === 'GET') payload.scope = [`GET ${url.pathname}${url.search}`]
   const message = `${encoded({ alg: 'ES256', kid: credentials.id, typ: 'JWT' })}.${encoded(payload)}`
   return `${message}.${sign('sha256', Buffer.from(message), { key: credentials.key, dsaEncoding: 'ieee-p1363' }).toString('base64url')}`
@@ -103,10 +103,13 @@ export async function registerAppleIPad({ env = {}, fetchImpl = globalThis.fetch
   report.teamConfiguration = env.APPLE_TEAM_ID === expectedTeam ? 'matched' : 'unverified'
   if (credentials.error) { report.reason = credentials.error; return report }
   const stop = reason => { report.reason = reason; return report }
+  let primaryCapabilityPath = null
 
   async function request(resource, method, url, body) {
+    const allowedWrite = method === 'POST' && ['/v1/bundleIds', '/v1/bundleIdCapabilities'].includes(url.pathname) ||
+      method === 'PATCH' && primaryCapabilityPath !== null && url.pathname === primaryCapabilityPath
     if (url.origin !== origin || url.username || url.password || url.hash ||
-      (method !== 'GET' && (method !== 'POST' || url.search || !['/v1/bundleIds', '/v1/bundleIdCapabilities'].includes(url.pathname)))) {
+      (method !== 'GET' && (url.search || !allowedWrite))) {
       report.reason = 'request_boundary_rejected'
       return null
     }
@@ -114,13 +117,13 @@ export async function registerAppleIPad({ env = {}, fetchImpl = globalThis.fetch
     try {
       response = await fetchImpl(url.href, {
         method, redirect: 'error', credentials: 'omit',
-        headers: { Authorization: `Bearer ${tokenFor(credentials, method, url, now)}`, Accept: 'application/json', ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}) },
-        ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
+        headers: { Authorization: `Bearer ${tokenFor(credentials, method, url, now)}`, Accept: 'application/json', ...(method !== 'GET' ? { 'Content-Type': 'application/json' } : {}) },
+        ...(method !== 'GET' ? { body: JSON.stringify(body) } : {}),
         signal: AbortSignal.timeout(10_000)
       })
     } catch {
       report.requests.push({ resource, method, result: 'transport_error' })
-      report.reason = method === 'POST' ? 'write_outcome_unknown' : 'transport_error'
+      report.reason = method !== 'GET' ? 'write_outcome_unknown' : 'transport_error'
       return null
     }
     if (response.status !== (method === 'POST' ? 201 : 200)) {
@@ -140,7 +143,7 @@ export async function registerAppleIPad({ env = {}, fetchImpl = globalThis.fetch
       return result
     } catch {
       report.requests.push({ resource, method, result: 'invalid_response' })
-      report.reason = method === 'POST' ? 'write_outcome_unknown' : 'invalid_response'
+      report.reason = method !== 'GET' ? 'write_outcome_unknown' : 'invalid_response'
       return null
     }
   }
@@ -180,7 +183,7 @@ export async function registerAppleIPad({ env = {}, fetchImpl = globalThis.fetch
   } else report.bundleId.status = 'reused_verified'
 
   // Use the complete default capability representation. Production Apple
-  // rejected sparse-field parameters on this relationship with HTTP 400.
+  // rejected the parameterized relationship query with HTTP 400.
   const capabilityQuery = () => endpoint(`/v1/bundleIds/${bundle.id}/bundleIdCapabilities`)
   body = await request('capabilities', 'GET', capabilityQuery())
   if (!body) return report
@@ -189,10 +192,31 @@ export async function registerAppleIPad({ env = {}, fetchImpl = globalThis.fetch
   if (capabilities.length > 1) return stop('ambiguous_capability_response')
   if (capabilities.length === 1) {
     if (!isPrimary(capabilities[0])) {
-      report.signInWithApple.validation = capabilityValidation(capabilities[0])
-      return stop('existing_sign_in_configuration_mismatch')
+      const value = capabilityValidation(capabilities[0])
+      report.signInWithApple.validation = value
+      // Repair only the single primary setting on this fixed app's capability.
+      // Ambiguous or additional settings must not be overwritten.
+      const settings = capabilities[0].attributes.settings
+      if (value.settingCount !== 1 || value.primarySettingCount !== 1 || value.primaryOptionCount !== 1 || settings[0].options.length !== 1) return stop('existing_sign_in_configuration_mismatch')
+      const id = capabilities[0].id
+      primaryCapabilityPath = `/v1/bundleIdCapabilities/${id}`
+      report.signInWithApple.write = 'attempted'
+      report.signInWithApple.status = 'unverified_after_write'
+      const updated = await request('primaryConfiguration', 'PATCH', endpoint(primaryCapabilityPath), { data: { type: 'bundleIdCapabilities', id, attributes: { capabilityType: 'APPLE_ID_AUTH', settings: primarySettings } } })
+      primaryCapabilityPath = null
+      if (!updated) return report
+      report.signInWithApple.write = 'accepted'
+      if (!isResource(updated.data, 'bundleIdCapabilities') || updated.data.id !== id || updated.data.attributes.capabilityType !== 'APPLE_ID_AUTH') return stop('updated_capability_response_mismatch')
+      const checked = await request('primaryVerification', 'GET', capabilityQuery())
+      if (!checked) return report
+      if (!completeList(checked, 'bundleIdCapabilities')) return stop('capability_verification_failed')
+      const primary = checked.data.filter(row => row.attributes.capabilityType === 'APPLE_ID_AUTH')
+      if (primary.length !== 1 || primary[0].id !== id || !isPrimary(primary[0])) return stop('primary_configuration_not_verified')
+      delete report.signInWithApple.validation
+      report.signInWithApple.status = 'configured_verified'
+    } else {
+      report.signInWithApple.status = 'reused_verified'
     }
-    report.signInWithApple.status = 'reused_verified'
   } else {
     report.signInWithApple.write = 'attempted'
     report.signInWithApple.status = 'unverified_after_write'
