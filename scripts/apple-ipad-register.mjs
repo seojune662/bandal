@@ -173,7 +173,9 @@ export async function registerAppleIPad({ env = {}, fetchImpl = globalThis.fetch
     report.bundleId.status = 'created_verified'
   } else report.bundleId.status = 'reused_verified'
 
-  const capabilityQuery = () => endpoint(`/v1/bundleIds/${bundle.id}/bundleIdCapabilities`, { 'fields[bundleIdCapabilities]': 'capabilityType,settings', limit: '200' })
+  // Use the complete default capability representation. Production Apple
+  // rejected sparse-field parameters on this relationship with HTTP 400.
+  const capabilityQuery = () => endpoint(`/v1/bundleIds/${bundle.id}/bundleIdCapabilities`)
   body = await request('capabilities', 'GET', capabilityQuery())
   if (!body) return report
   if (!completeList(body, 'bundleIdCapabilities')) return stop('incomplete_capability_response')

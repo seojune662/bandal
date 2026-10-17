@@ -70,6 +70,8 @@ test('creates only the fixed bundle and primary Apple capability, verifying each
   }
   assert.equal(wire.calls[0].url.searchParams.get('filter[identifier]'), 'app.bandal.ipad')
   assert.equal(wire.calls[0].url.searchParams.get('fields[bundleIds]'), 'identifier,name,platform,seedId')
+  assert.equal(wire.calls[3].url.search, '')
+  assert.equal(wire.calls[5].url.search, '')
 })
 
 test('reuses the exact registration without writes and can resume after a previous partial run', async () => {
