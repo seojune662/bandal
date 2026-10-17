@@ -54,7 +54,9 @@ describe('Toss encrypted financial boundary',()=>{
     expect(await decryptJwe(encrypted,key)).toEqual(payload)
     const header=JSON.parse(Buffer.from(encrypted.split('.')[0]!,'base64url').toString())
     expect(header).toMatchObject({alg:'dir',enc:'A256GCM'});expect(header.nonce).toMatch(/^[a-f0-9-]{36}$/)
-    const parts=encrypted.split('.');parts[3]=`Z${parts[3]!.slice(1)}`
+    const parts=encrypted.split('.'),ciphertext=Buffer.from(parts[3]!,'base64url')
+    ciphertext[0]=ciphertext[0]!^0x01;parts[3]=ciphertext.toString('base64url')
+    expect(parts.join('.')).not.toBe(encrypted)
     await expect(decryptJwe(parts.join('.'),key)).rejects.toThrow()
     await expect(decryptJwe(encrypted,'02'.repeat(32))).rejects.toThrow()
   })

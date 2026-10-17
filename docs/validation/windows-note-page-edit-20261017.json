@@ -1,0 +1,182 @@
+{
+  "sourceCommit": "d6c10d040279c6bd4eb85623a57cc794611bd63f",
+  "productSourcesMatchReleaseCommit": "fa9f9d72a289fce51142b773e9f90ff363b3682f",
+  "workflowURL": "https://github.com/seojune662/bandal/actions/runs/38994350962",
+  "originalFailureWorkflowURL": "https://github.com/seojune662/bandal/actions/runs/38993116323/attempts/1",
+  "originalFailureCause": "unconfirmed; not reproduced in instrumented runs",
+  "targetedTests": {
+    "passed": 7,
+    "skipped": 3
+  },
+  "pageEditingRepetitions": {
+    "passed": 10,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "case": "accountNotes-offline-verif-df671-DF-note-and-edits-its-pages",
+      "clickBusyMs": 3.5,
+      "clickPage2Ms": 309.3,
+      "page2Page3Ms": 456.3,
+      "restructure": {
+        "count": 2,
+        "totalMs": 104.70480000000043,
+        "maxMs": 55.57510000000002
+      },
+      "noteInfoMaxMs": 40.190700000000106,
+      "pages": 3,
+      "revisionMatches": true,
+      "errors": []
+    },
+    {
+      "case": "page-edit-repeat/accountNotes-offline-verif-df671-DF-note-and-edits-its-pages",
+      "clickBusyMs": 2.8,
+      "clickPage2Ms": 311.6,
+      "page2Page3Ms": 420.1,
+      "restructure": {
+        "count": 2,
+        "totalMs": 117.53960000000006,
+        "maxMs": 75.39190000000008
+      },
+      "noteInfoMaxMs": 45.32410000000027,
+      "pages": 3,
+      "revisionMatches": true,
+      "errors": []
+    },
+    {
+      "case": "page-edit-repeat/accountNotes-offline-verif-df671-DF-note-and-edits-its-pages-repeat1",
+      "clickBusyMs": 2.7,
+      "clickPage2Ms": 292.4,
+      "page2Page3Ms": 516.5,
+      "restructure": {
+        "count": 2,
+        "totalMs": 99.66710000000012,
+        "maxMs": 57.160699999999906
+      },
+      "noteInfoMaxMs": 51.82049999999981,
+      "pages": 3,
+      "revisionMatches": true,
+      "errors": []
+    },
+    {
+      "case": "page-edit-repeat/accountNotes-offline-verif-df671-DF-note-and-edits-its-pages-repeat2",
+      "clickBusyMs": 3.0,
+      "clickPage2Ms": 370.2,
+      "page2Page3Ms": 609.9,
+      "restructure": {
+        "count": 2,
+        "totalMs": 116.87620000000015,
+        "maxMs": 66.55510000000004
+      },
+      "noteInfoMaxMs": 52.63680000000022,
+      "pages": 3,
+      "revisionMatches": true,
+      "errors": []
+    },
+    {
+      "case": "page-edit-repeat/accountNotes-offline-verif-df671-DF-note-and-edits-its-pages-repeat3",
+      "clickBusyMs": 2.9,
+      "clickPage2Ms": 283.8,
+      "page2Page3Ms": 534.2,
+      "restructure": {
+        "count": 2,
+        "totalMs": 103.66940000000068,
+        "maxMs": 51.947400000000016
+      },
+      "noteInfoMaxMs": 41.657900000000154,
+      "pages": 3,
+      "revisionMatches": true,
+      "errors": []
+    },
+    {
+      "case": "page-edit-repeat/accountNotes-offline-verif-df671-DF-note-and-edits-its-pages-repeat4",
+      "clickBusyMs": 2.9,
+      "clickPage2Ms": 295.8,
+      "page2Page3Ms": 423.1,
+      "restructure": {
+        "count": 2,
+        "totalMs": 98.75580000000036,
+        "maxMs": 54.26830000000018
+      },
+      "noteInfoMaxMs": 42.27970000000005,
+      "pages": 3,
+      "revisionMatches": true,
+      "errors": []
+    },
+    {
+      "case": "page-edit-repeat/accountNotes-offline-verif-df671-DF-note-and-edits-its-pages-repeat5",
+      "clickBusyMs": 2.6,
+      "clickPage2Ms": 298.3,
+      "page2Page3Ms": 422.2,
+      "restructure": {
+        "count": 2,
+        "totalMs": 107.80709999999999,
+        "maxMs": 61.415899999999965
+      },
+      "noteInfoMaxMs": 60.18780000000015,
+      "pages": 3,
+      "revisionMatches": true,
+      "errors": []
+    },
+    {
+      "case": "page-edit-repeat/accountNotes-offline-verif-df671-DF-note-and-edits-its-pages-repeat6",
+      "clickBusyMs": 2.7,
+      "clickPage2Ms": 290.4,
+      "page2Page3Ms": 498.8,
+      "restructure": {
+        "count": 2,
+        "totalMs": 100.99409999999989,
+        "maxMs": 54.048899999999776
+      },
+      "noteInfoMaxMs": 33.152300000000196,
+      "pages": 3,
+      "revisionMatches": true,
+      "errors": []
+    },
+    {
+      "case": "page-edit-repeat/accountNotes-offline-verif-df671-DF-note-and-edits-its-pages-repeat7",
+      "clickBusyMs": 2.8,
+      "clickPage2Ms": 287.2,
+      "page2Page3Ms": 504.7,
+      "restructure": {
+        "count": 2,
+        "totalMs": 99.68069999999989,
+        "maxMs": 53.57669999999962
+      },
+      "noteInfoMaxMs": 56.38580000000002,
+      "pages": 3,
+      "revisionMatches": true,
+      "errors": []
+    },
+    {
+      "case": "page-edit-repeat/accountNotes-offline-verif-df671-DF-note-and-edits-its-pages-repeat8",
+      "clickBusyMs": 2.6,
+      "clickPage2Ms": 285.6,
+      "page2Page3Ms": 584.7,
+      "restructure": {
+        "count": 2,
+        "totalMs": 188.04700000000048,
+        "maxMs": 131.1188000000002
+      },
+      "noteInfoMaxMs": 34.32510000000002,
+      "pages": 3,
+      "revisionMatches": true,
+      "errors": []
+    },
+    {
+      "case": "page-edit-repeat/accountNotes-offline-verif-df671-DF-note-and-edits-its-pages-repeat9",
+      "clickBusyMs": 3.5,
+      "clickPage2Ms": 360.4,
+      "page2Page3Ms": 510.3,
+      "restructure": {
+        "count": 2,
+        "totalMs": 134.45580000000018,
+        "maxMs": 68.32960000000003
+      },
+      "noteInfoMaxMs": 122.16840000000002,
+      "pages": 3,
+      "revisionMatches": true,
+      "errors": []
+    }
+  ]
+}
