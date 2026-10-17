@@ -9,6 +9,7 @@ interface BackupManifest {
   databaseSha256: string
   courses: Array<{ id: string; folder_path: string }>
   entries: Array<{ source: string; target: string; sha256: string; size: number }>
+  excluded: string[]
 }
 const hash = (file: string): string => createHash('sha256').update(readFileSync(file)).digest('hex')
 const backupButton = (bandal: BandalApp) => bandal.page.getByRole('button', { name: '로그인 전 자료 백업·내보내기', exact: true })
@@ -63,11 +64,19 @@ test('before first login, canceling and completing a verified backup releases th
     mkdirSync(notes)
     const source = join(notes, 'draft.md'), text = '# 로그인 전 원본\n\n백업으로 보존할 초안\n'
     writeFileSync(source, text)
+    const namedLikeRuntime = join(notes, 'DIPS-journal'), userJournal = '사용자가 보관한 동명 자료\n'
+    writeFileSync(namedLikeRuntime, userJournal)
     await chooseBackup(bandal, null)
     await expectWorkspaceLocked(bandal)
     const destination = join(bandal.profileDir, 'before-login.bandalbackup')
     await chooseBackup(bandal, destination)
     const manifest = verifyBackup(destination, source, text)
+    verifyBackup(destination, namedLikeRuntime, userJournal)
+    for (const name of ['DIPS', 'DIPS-journal', 'DIPS-wal', 'DIPS-shm']) {
+      expect(manifest.excluded).toContain(name)
+      expect(manifest.entries.some(entry => entry.source === join(bandal.userDataDir, name))).toBe(false)
+      expect(existsSync(join(destination, 'profile', name))).toBe(false)
+    }
     expect(manifest.courses).toEqual([])
     expect(existsSync(join(bandal.userDataDir, 'active-profile.json'))).toBe(false)
     await expectWorkspaceLocked(bandal)

@@ -105,3 +105,18 @@ BANDAL_ACCOUNT_DELETE_FULL_SCHEMA=1 node tests/backend/syncAccess/run-local.mjs
 4. QA 계정의 삭제 작업을 시작해 추가 쓰기를 막고, 소유 객체를 Storage API로 제거한 후 개인 데이터 정리 RPC와 Auth 삭제를 수행했다. 해당 UUID의 Auth 사용자·프로필·beta·records·operations·changes·usage·Storage 객체가 모두 0개임을 다시 조회했다. 일반 세션 fixture를 삭제했고 기기의 검증용 세션도 제거했다. 결제나 Apple/Paddle 원장 생성은 없었다.
 
 검증 실행 ID는 `8ded626d-59c5-4ff9-b50d-190b81e44fab`이다. 비밀을 제외한 로컬 증거는 `/private/tmp/bandal-sync-qa-8ded626d-59c5-4ff9-b50d-190b81e44fab/`의 `manifest.json`, `native-result.json`, `roundtrip-evidence.json`에 보존했다. 임시 폴더의 텍스트 파일에서 잔류 JWT/secret 키 패턴이 없음을 확인했다. 이 결과는 Mac·물리 iPad의 개인 자료 전송, 만료 후 읽기, QA 정리를 검증한 것이며 Windows 왕복·실제 OAuth 로그인·Apple 구매/복원·사용자 UI의 탈퇴 흐름 전체를 검증한 결과는 아니다.
+
+### Windows 경로 수정과 물리 iPad를 통한 운영 왕복
+
+Windows 변환기의 첫 내려받기에서 발생한 4개 충돌을 실제 Windows runner에서 재현했다. 공통 변환기의 경로 shim이 `D:\...`를 POSIX 경로로 처리해 두 material은 `Projector file path is outside approved course storage`, 그 자료에 종속된 note/drawing은 `Sync material is unavailable`로 보존됐다. [오프라인 비교 실행 38990181384](https://github.com/seojune662/bandal/actions/runs/38990181384)은 이전 `f922a090ec506a9be8f06d8bd85084ddf45f8fc3`에서 같은 4개 충돌을 재현하고, 수정 `e390ce47893306e691e45e8ff196344bac98e8e6`에서 합성 레코드 5개를 충돌 없이 반영했다. 같은 실행에서 중첩 폴더의 이름 충돌, 상대경로 `/` 유지, 드라이브/상위 경로 탈출, 실제 Windows junction을 통한 폴더 경계 탈출 거절을 확인했다.
+
+Windows host가 순수 Node `path.win32` 함수만 명시적 capability로 제공한다. Swift와 브라우저 worker는 기존 POSIX 구현을 그대로 사용하며, 파일 시스템 경계 검사를 완화하지 않았다. `posix` export와 동기화 이름 충돌의 상대경로 생성은 모든 플랫폼에서 `/`를 유지한다. canonical iPad source에서 재생성한 desktop/iPad 번들은 SHA-256 `b8210486c55d03ed66acc8906d54397c62d22ef3ac4da47280e5cd2290451ac2`로 일치했고 host는 `857b6a968a37b27e98f2f7263d7a94d877c34f642048874e204e6c8f5689f7c7`였다. 이전 번들과 비교해 빌드 디렉터리 표기와 esbuild 변수 이름 충돌 변경을 정규화하면, 검토한 path shim 외에는 이름 충돌의 `posix.dirname`/`posix.join` 두 변경만 남는다. iPad 원본·adapted strict TypeScript 및 물리 기기의 동기화/파일 회귀 13개도 통과했다.
+
+2026-10-17 01:19–01:23 UTC, 새 격리 QA 실행 `2212d1d1-faab-47f0-9658-fb26c7e7ff81`에서 **Mac seed → 운영 Supabase → 실제 Windows companion/Electron 변환기 → 운영 Supabase → 물리 iPad → 운영 Supabase → Windows** 왕복을 확인했다. [Windows 실행 38990356385](https://github.com/seojune662/bandal/actions/runs/38990356385)은 2분 59초에 성공했다. source는 `e390ce47893306e691e45e8ff196344bac98e8e6`이며, 기존 release run `38986669387`의 성공한 Windows companion artifact를 사용하기 전에 Python 원본 및 실행 파일 SHA-256을 대조했다. Actions에는 짧은 수명의 일반 QA access token만 임시 secret으로 제공했고 관리자 키와 refresh token은 전달하지 않았다.
+
+- Windows가 Mac의 PDF·Markdown·v5 필기를 내려받고 자체 Markdown과 필기를 올렸다. 물리 iPad는 이를 받아 PDF를 `[2,1,빈 페이지]`로 재구성하고 3쪽에 필기를 추가했다. native 단계는 2.799초에 통과했다.
+- Windows가 받은 최종 PDF SHA-256 `3bee5225cb75b9c83963ac8472b797a82267c284f788c1cb10be91e4ef44cd2d`와 새 필기 UUID가 native 결과와 일치했다. PDF는 3쪽, 기존 Mac·Windows 필기는 모두 2쪽, 새 iPad 필기는 3쪽이었다. Markdown도 일치했고 최종 pending/deferred/conflicts는 모두 0, projectionPending은 false였다.
+- 권한을 주기 전 쓰기 거절, 한시 beta 부여 후 쓰기 허용, 같은 beta 만료 후 다시 `writeAllowed:false`를 확인했다. 만료 후 기존 일반 세션으로 객체 5개, 총 1,445바이트를 읽고 모든 객체의 SHA-256을 검증했다. 전역 유료 강제와 RLS는 변경하지 않았다.
+- 종료 시 해당 QA 소유 파일을 Storage API로 삭제하고 개인 데이터 정리 후 Auth 사용자를 제거했다. Auth 사용자·프로필·beta·records·operations·changes·usage·Storage가 모두 0개임을 확인했다. 로컬 세션 fixture, 임시 GitHub secret, runner 작업 폴더와 기기 검증 앱/세션을 제거했다. 이전 Windows 진단용 QA 두 실행도 각각 같은 정리를 마쳤다.
+
+비밀을 제외한 증거는 같은 실행의 Actions artifact와 `/private/tmp/bandal-sync-qa-2212d1d1-faab-47f0-9658-fb26c7e7ff81/`의 `manifest.json`, `native-result.json`, `windows-roundtrip-comparison.json`, `projector-provenance.json`에 보존했다. 남은 텍스트에서 JWT/secret 키 패턴이 없음을 확인했다. 이 검사는 실제 Windows 전송 실행 파일·Electron·물리 iPad·운영 서버 사이의 개인 자료 왕복을 확인한다. Windows 설치 앱의 전체 UI 조작, 실제 OAuth 로그인, 실제 Apple 구매/복원 및 사용자 탈퇴 화면 전체는 별도 검증 범위다.

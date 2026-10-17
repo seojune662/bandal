@@ -4,8 +4,17 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createTestDb } from '../helpers/testDb'
 import { createProfileManager, resolveActiveProfile } from '../../../src/main/features/account/profileManager'
+const fault = vi.hoisted(() => ({ afterReadDirectory: undefined as ((directory: string) => void) | undefined }))
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, readdir: async (...args: Parameters<typeof actual.readdir>) => {
+    const entries = await actual.readdir(...args)
+    fault.afterReadDirectory?.(String(args[0]))
+    return entries
+  } }
+})
 const cleanup: Array<() => void> = []
-afterEach(() => cleanup.splice(0).reverse().forEach(fn => fn()))
+afterEach(() => { fault.afterReadDirectory = undefined; cleanup.splice(0).reverse().forEach(fn => fn()) })
 function fixture() {
   const testDb = createTestDb(); cleanup.push(testDb.cleanup)
   const destination = mkdtempSync(join(tmpdir(), 'bandal-backup-test-')); cleanup.push(() => rmSync(destination, { recursive: true, force: true }))
@@ -87,4 +96,49 @@ test('a destination through a symlink into source content is rejected before cre
   expect(pause).not.toHaveBeenCalled()
   expect(resume).not.toHaveBeenCalled()
   expect(manager.busy()).toBe(false)
+})
+
+test('Chromium DIPS deletion during backup does not affect the verified content snapshot', async () => {
+  const f = fixture()
+  const runtimeFiles = ['DIPS', 'DIPS-journal', 'DIPS-wal', 'DIPS-shm']
+  for (const name of runtimeFiles) writeFileSync(join(f.dir, name), 'Chromium bounce tracking state')
+  const notes = join(f.dir, 'Preserved Notes'); mkdirSync(notes)
+  writeFileSync(join(notes, 'DIPS-journal'), 'A user file with the same name')
+  writeFileSync(join(f.source, 'DIPS-journal'), 'A course file with the same name')
+  writeFileSync(join(f.dir, 'DIPS-notes.md'), '# Prefixes are not excluded')
+  let removed = false
+  fault.afterReadDirectory = directory => {
+    if (directory === f.dir && !removed) {
+      removed = true
+      rmSync(join(f.dir, 'DIPS-journal'))
+    }
+  }
+  const result = await f.manager.backup()
+  expect(removed).toBe(true)
+  expect(result.ok).toBe(true)
+  const manifest = JSON.parse(readFileSync(join(result.path!, 'manifest.json'), 'utf8'))
+  expect(manifest.excluded).toEqual(expect.arrayContaining(runtimeFiles))
+  for (const name of runtimeFiles) expect(existsSync(join(result.path!, 'profile', name))).toBe(false)
+  expect(readFileSync(join(result.path!, 'profile/Preserved Notes/DIPS-journal'), 'utf8')).toBe('A user file with the same name')
+  expect(readFileSync(join(result.path!, 'courses/course/DIPS-journal'), 'utf8')).toBe('A course file with the same name')
+  expect(readFileSync(join(result.path!, 'profile/DIPS-notes.md'), 'utf8')).toBe('# Prefixes are not excluded')
+  expect(readFileSync(join(result.path!, 'courses/course/local.md'), 'utf8')).toBe('# 보존할 자료')
+  expect(f.manager.busy()).toBe(false)
+  expect(f.resume).toHaveBeenCalledOnce()
+})
+
+test('a disappearing user file still fails backup without a verified manifest or profile switch', async () => {
+  const f = fixture()
+  const source = join(f.dir, 'draft.md')
+  writeFileSync(source, '# Still required in a verified backup')
+  fault.afterReadDirectory = directory => {
+    if (directory === f.dir) { fault.afterReadDirectory = undefined; rmSync(source) }
+  }
+  await expect(f.manager.newProfile()).rejects.toMatchObject({ code: 'ENOENT' })
+  expect(existsSync(join(f.destination, 'export.bandalbackup/manifest.json'))).toBe(false)
+  expect(resolveActiveProfile(f.dir)).toBe(f.dir)
+  expect(f.relaunch).not.toHaveBeenCalled()
+  expect(f.manager.busy()).toBe(false)
+  expect(f.resume).toHaveBeenCalledOnce()
+  expect(readFileSync(join(f.source, 'local.md'), 'utf8')).toBe('# 보존할 자료')
 })
