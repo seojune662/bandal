@@ -12,9 +12,6 @@
 .material-state [data-visible='false'] { visibility: hidden; }
 .material-row:has(> .material-state) { grid-template-columns: var(--icon-size-sm) 1.25rem minmax(0, 1fr) 30px; }
 .material-result:has(> .material-state),
-.whiteboards-group__row:has(> .material-state) { grid-template-columns: 1.25rem minmax(0, 1fr) 30px; }
-.whiteboards-group__row > span:not(.material-state) { min-width: 0; }
-.whiteboards-group__row > .material-state { overflow: visible; }
 .material-preview {
   position: fixed;
   z-index: 1000;

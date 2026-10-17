@@ -68,7 +68,6 @@ vi.mock('@milkdown/react', async () => {
 vi.mock('../../../src/renderer/src/features/notes/noteEditorPlugins', () => ({ loadNoteEditorPlugins: async () => [], NOTE_EDITOR_PLUGINS: [] }))
 vi.mock('../../../src/renderer/src/features/notes/noteFormatting', () => ({ EMPTY_NOTE_FORMAT_STATE: {}, getNoteFormatState: () => ({}) }))
 vi.mock('../../../src/renderer/src/features/notes/NoteToolbar', () => ({ NoteToolbar: () => null }))
-vi.mock('../../../src/renderer/src/features/materials/WhiteboardsGroup', () => ({ WhiteboardsGroup: () => null }))
 vi.mock('../../../src/renderer/src/features/materials/MaterialAffordances', () => ({ MaterialAffordancesProvider: ({ children }: { children: React.ReactNode }) => children }))
 vi.mock('../../../src/renderer/src/features/widgets/WidgetDock', () => ({ WidgetDock: () => null }))
 vi.mock('../../../src/renderer/src/features/materials/useMaterialsPaste', () => ({ useMaterialsPaste: () => ({ pasteNotice: null, isPasting: false, onPaste: () => {} }) }))

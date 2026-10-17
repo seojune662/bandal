@@ -59,7 +59,9 @@ import {
 } from './materialMoveDrag'
 import { canAcceptUrlDrop } from './urlDrop'
 import { useMaterialsPaste } from './useMaterialsPaste'
-import { NotesGroup, noteNodes, withoutNotesFolder } from './NotesGroup'
+import { useLegacyNoteMigration } from './NotesGroup'
+import { openNewNoteSheet } from '../pdfNotes/NewNoteSheet'
+import { TabKindIcon } from '../workspace/workspaceIcons'
 import { MaterialAffordancesProvider } from './MaterialAffordances'
 import { WidgetDock } from '../widgets/WidgetDock'
 import './materials.css'
@@ -231,6 +233,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
   }, [course?.id])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const downloadPendingRef = useRef(false)
+  useLegacyNoteMigration(course?.id ?? null)
   const activeCourseIdRef = useRef<string | null>(course?.id ?? null)
   activeCourseIdRef.current = course?.id ?? null
 
@@ -896,6 +899,17 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
               <MaterialsIcon name="fileImport" />
             </button>
           </Tooltip>
+          <Tooltip label="새 노트 만들기">
+            <button
+              type="button"
+              className="bare-icon-button"
+              aria-label="새 노트 만들기"
+              disabled={course === null || course.missing || isPasting}
+              onClick={() => { if (course !== null) openNewNoteSheet(course.id) }}
+            >
+              <TabKindIcon kind="whiteboard" />
+            </button>
+          </Tooltip>
           <Tooltip label="새 폴더 만들기">
             <button
               type="button"
@@ -1036,41 +1050,6 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
           </div>
         ) : (
           <>
-            <NotesGroup courseId={course.id} nodes={noteNodes(tree)}>{nodes => (
-                <MaterialTree
-                  courseId={course.id}
-                  nodes={nodes}
-                  expandedPaths={expandedPaths}
-                  editingRelPath={editing?.relPath ?? null}
-                  selectedRelPath={selectedRelPath}
-                  pasteTargetDirRelPath={
-                    pasteReady && pasteDirRelPath !== '' ? pasteDirRelPath : null
-                  }
-                  dropTargetDirRelPath={dropTargetDirRelPath}
-                  urlDropTargetDirRelPath={urlDropTargetDirRelPath}
-                  downloadingDirRelPath={downloadingDirRelPath}
-                  onToggleFolder={toggleFolder}
-                  onSelect={(node) => setSelectedRelPath(node.relPath)}
-                  onContextMenu={handleContextMenu}
-                  onCancelRename={() => setEditing(null)}
-                  onRename={rename}
-                  onDropTargetChange={setDropTargetDirRelPath}
-                  onUrlDropTargetChange={setUrlDropTargetDirRelPath}
-                  onMove={(payload, toDirRelPath) => {
-                    void moveMaterial(payload, toDirRelPath)
-                  }}
-                  onImportFiles={(files, dirRelPath) => {
-                    importFiles(files, dirRelPath)
-                  }}
-                  onDownloadUrl={(url, dirRelPath, fileName) => {
-                    void downloadFromUrl(url, dirRelPath, fileName)
-                  }}
-                  onUnsupportedDrop={(types) => {
-                    setDropActive(false)
-                    reportUnsupportedDrop(types)
-                  }}
-                />
-            )}</NotesGroup>
             <section
               className="materials-files-group"
               aria-label="자료 파일"
@@ -1135,7 +1114,7 @@ export function MaterialsSidebar({ course }: MaterialsSidebarProps): JSX.Element
               ) : (
                 <MaterialTree
                   courseId={course.id}
-                  nodes={withoutNotesFolder(tree)}
+                  nodes={tree}
                   expandedPaths={expandedPaths}
                   editingRelPath={editing?.relPath ?? null}
                   selectedRelPath={selectedRelPath}
