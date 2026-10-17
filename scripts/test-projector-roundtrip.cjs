@@ -6,13 +6,13 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),asse
 async function run(root,sqliteModule='better-sqlite3',expectedBroken=false){
   const req=createRequire(path.join(root,'package.json')),SQLite=req(sqliteModule),{PDFDocument}=req('pdf-lib')
   const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'bandal-projector-path-'))
-  const profile=path.join(temporary,'Profile'),exchange=path.join(temporary,'Exchange'),courseRoot=path.join(temporary,'Courses')
+  const profile=path.join(temporary,'한글 프로필 📝'),exchange=path.join(temporary,'Exchange'),courseRoot=path.join(temporary,'강의 자료')
   const database=path.join(profile,'bandal.db'),helper=path.join(root,'resources/ipad-bridge/projector-host.cjs'),bundle=path.join(root,'resources/ipad-bridge/backend.js')
   const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex'),id=()=>crypto.randomUUID()
   for(const dir of [profile,exchange,courseRoot])fs.mkdirSync(dir,{recursive:true})
   const initial=new SQLite(database);initial.exec(fs.readFileSync(path.join(root,'src/main/db/schema.sql'),'utf8'));initial.close()
   const project=(action,request={})=>require(helper).run({action,request:{scope:'personal-content-v1',...request},database,exchange,courseRoot,moduleRoot:root,bundle,sqliteModule})
-  const courseID=id(),pdfID=id(),noteID=id(),inkID=id(),now='2026-10-17T00:00:00.000Z',markdown='Synthetic Mac → Windows → iPad'
+  const courseID=id(),pdfID=id(),noteID=id(),inkID=id(),now='2026-10-17T00:00:00.000Z',markdown='한글 제목 📝\nSynthetic Mac → Windows → iPad'
   const record=(kind,key,payload)=>({id:key,kind,payload,deleted:false,formatVersion:1})
   const asset=(materialID,bytes)=>{const sha256=hash(bytes),file=path.join(exchange,sha256);fs.writeFileSync(file,bytes);return{materialID,sha256,path:file,byteCount:bytes.length,originalName:materialID===pdfID?'lecture.pdf':'roundtrip.md',contentType:materialID===pdfID?'application/pdf':'text/markdown'}}
   let db
@@ -56,7 +56,29 @@ async function run(root,sqliteModule='better-sqlite3',expectedBroken=false){
     const badID=id();await project('import',{records:[{...collision,id:'material:'+badID,payload:{...collision.payload,id:badID,desktop:{relPath:'escape/outside.pdf'}}}],assets})
     assert.equal(fs.existsSync(path.join(outside,'outside.pdf')),false)
     db=new SQLite(database);assert.equal(db.prepare('SELECT id FROM materials_index WHERE id=?').get(badID),undefined);db.close();db=null
-    return{platform:process.platform,records:5,markdown:true,pdf:true,inkV5:true,portableNestedCollision:true,traversalRejected:true,realpathEscapeRejected:true}
+    // Exercise the real Python -> Node UTF-8 input and Node -> Python -> app
+    // output pipes under a Windows legacy code page, including pending ink.
+    await project('conflicts',{summary:true})
+    const pendingID=id(),pendingPath='nested/한글 필기 📝.pdf'
+    db=new SQLite(database)
+    db.prepare('INSERT INTO pdf_pending_mutations(id,course_id,rel_path,expected_revision,mutation_json,created_at) VALUES(?,?,?,?,?,?)').run(pendingID,courseID,pendingPath,revision,'{}',now)
+    db.close();db=null
+    const expectedConflicts=await project('conflicts',{summary:true})
+    const expectedPending=expectedConflicts.find(item=>item.id===`pending-ink:${pendingID}`)
+    assert.equal(expectedPending.label,pendingPath)
+    const cli=require('node:child_process').spawnSync(process.env.BANDAL_PYTHON||(process.platform==='win32'?'python':'python3'),[
+      path.join(root,'resources/ipad-bridge/bridge.py'),'conflicts','--desktop-db',database,'--exchange',exchange,'--course-root',courseRoot
+    ],{env:{...process.env,PYTHONIOENCODING:'cp1252',PYTHONUTF8:'0',BANDAL_DESKTOP_PROJECTOR:helper,BANDAL_DESKTOP_BACKEND:bundle,
+      BANDAL_DESKTOP_RUNTIME:process.execPath,BANDAL_DESKTOP_MODULE_ROOT:root,BANDAL_DESKTOP_SQLITE_MODULE:sqliteModule},timeout:30000})
+    assert.equal(cli.status,0,cli.stderr?.toString('utf8'))
+    assert.ok(cli.stdout.includes(Buffer.from(pendingPath,'utf8')))
+    const report=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(cli.stdout))
+    const actualPending=report.conflicts.find(item=>item.id===expectedPending.id)
+    assert.equal(actualPending.label,pendingPath)
+    assert.equal(actualPending.reason,expectedPending.reason)
+    assert.equal(report.status.conflicts,expectedConflicts.length)
+    assert.equal(fs.readFileSync(path.join(folder,'nested/roundtrip.md'),'utf8'),markdown)
+    return{platform:process.platform,records:5,markdown:true,pdf:true,inkV5:true,portableNestedCollision:true,traversalRejected:true,realpathEscapeRejected:true,cp1252UnicodeWire:true}
   }finally{db?.close();fs.rmSync(temporary,{recursive:true,force:true})}
 }
 module.exports={run}

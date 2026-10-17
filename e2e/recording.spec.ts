@@ -502,6 +502,8 @@ test('a killed native engine preserves incoming audio and can retranscribe it', 
 test('a PDF time anchor opens the recorded page alongside the recording', async () => {
   const bandal = await launchBandal()
   try {
+    await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
+      .find(window => window.webContents.getURL().includes('index.html'))!.setContentSize(1024, 768))
     await createCourse(bandal.page, '강의자료 연결')
     const folder = readdirSync(bandal.dataRoot)[0]!
     const { PDFDocument } = await import('pdf-lib')
@@ -530,10 +532,12 @@ test('a PDF time anchor opens the recorded page alongside the recording', async 
     // New-tab creation starts a fresh recording. Pick the saved session before
     // following its PDF anchor, as a user returning to a lecture would.
     await expect(page.getByRole('heading', { name: '듣는 순간, 기록이 됩니다.' })).toBeVisible()
+    // Wait for the narrow-layout observer to finish folding the panel before
+    // opening it. A one-time isVisible() can see its pre-layout open state.
+    await expect(page.locator('.recording:visible')).toHaveAttribute('data-sidebar', 'false')
+    await page.getByRole('button', { name: '설정·자료 펼치기', exact: true }).click()
     const settings = page.getByRole('complementary', { name: '녹음 설정과 연결 자료' })
-    if (!(await settings.isVisible())) {
-      await page.getByRole('button', { name: '설정·자료 펼치기', exact: true }).click()
-    }
+    await expect(settings).toBeVisible()
     const savedRecording = settings.locator('.recording__history-item').filter({ hasText: 'PDF와 함께 듣기' })
     await savedRecording.click()
     await expect(savedRecording).toHaveAttribute('aria-pressed', 'true')

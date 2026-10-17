@@ -341,17 +341,22 @@ export class IPadCompanion {
             BANDAL_DESKTOP_BACKEND: projectionBackend } })
         this.child = child
         let detail = ''
-        child.stderr?.on('data', (chunk: Buffer) => { detail = (detail + chunk.toString()).slice(-2000) })
+        // A multibyte character can span pipe chunks. Decode the stream, not
+        // individual Buffers, to preserve Korean paths and conflict summaries.
+        child.stderr?.setEncoding('utf8')
+        child.stderr?.on('data', (chunk: string) => { detail = (detail + chunk).slice(-2000) })
         // Parse bounded machine status; never log payloads or credentials.
         let output = ''
-        child.stdout?.on('data', (chunk: Buffer) => { output = (output + chunk.toString()).slice(-262144) })
+        child.stdout?.setEncoding('utf8')
+        child.stdout?.on('data', (chunk: string) => { output = (output + chunk).slice(-262144) })
         child.once('error', () => {
           if (!child.pid) {
             if (this.child === child) this.child = null
             reject(new Error('동기화 도우미를 실행할 수 없습니다. 앱 설치 파일을 확인해 주세요.'))
           }
         })
-        child.once('exit', code => {
+        // exit can precede the final pipe data; close also waits for stdio.
+        child.once('close', code => {
           if (this.child === child) this.child = null
           const reports: Array<Record<string, unknown>> = []
           for (const line of output.split('\n')) { try { const value = JSON.parse(line); if (value && typeof value === 'object') reports.push(value) } catch { /* helper diagnostics */ } }

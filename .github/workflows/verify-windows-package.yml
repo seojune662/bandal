@@ -1,0 +1,93 @@
+name: Verify targeted Windows package
+
+# Run the three release regressions before repeating macOS signing/notarization.
+# This builds a local unpacked app and never creates or publishes a release.
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: 'Exact 40-character desktop commit already on main'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-targeted-package
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main' && github.repository == 'seojune662/bandal'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      QA_SOURCE_SHA: ${{ inputs.source_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+      - name: Require an exact commit from main before executing source scripts
+        shell: pwsh
+        run: |
+          @'
+          const { execFileSync } = require('node:child_process');
+          const { readFileSync, writeFileSync } = require('node:fs');
+          const sha = process.env.QA_SOURCE_SHA;
+          if (!/^[0-9a-f]{40}$/.test(sha ?? '') || process.env.GITHUB_REF !== 'refs/heads/main' || process.env.GITHUB_REPOSITORY !== 'seojune662/bandal') throw new Error('Invalid source scope');
+          const git = args => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+          if (git(['rev-parse', 'HEAD']) !== sha) throw new Error('Source SHA mismatch');
+          try { git(['merge-base', '--is-ancestor', sha, 'refs/remotes/origin/main']); }
+          catch { throw new Error('Source commit is not on main'); }
+          const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+          writeFileSync('windows-package-source.json', JSON.stringify({ sourceSHA: sha, version }, null, 2));
+          console.log('Exact main commit verified:', sha);
+          '@ | node
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - run: python -m pip install pyinstaller==6.16.0
+      - name: Build the actual Windows companion from this source
+        run: node scripts/build-ipad-bridge.mjs x64
+      - name: Compile the packaged application
+        run: pnpm build
+        env:
+          # Only the same public client configuration used by the release build.
+          # No account session, administrator key, signing key or refresh token.
+          MAIN_VITE_SUPABASE_URL: ${{ secrets.MAIN_VITE_SUPABASE_URL }}
+          MAIN_VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.MAIN_VITE_SUPABASE_PUBLISHABLE_KEY }}
+      - name: Package Windows without publishing
+        run: pnpm exec electron-builder --win --x64 --dir --publish never
+      - name: Verify the bundled browser helper without changing its timeout
+        run: node scripts/verify-browser-import.mjs release/win-unpacked
+      - name: Verify recovery, recording anchors and tab shortcuts in the package
+        shell: pwsh
+        run: |
+          $env:BANDAL_E2E_EXECUTABLE = Join-Path $PWD 'release/win-unpacked/Bandal.exe'
+          pnpm exec playwright test -c e2e e2e/accountNotes.spec.ts e2e/recording.spec.ts e2e/recordingUx.spec.ts
+      - name: Retain exact package and source identity even when E2E fails
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: windows-targeted-package-${{ inputs.source_sha }}
+          path: |
+            release/win-unpacked/
+            windows-package-source.json
+          if-no-files-found: ignore
+          compression-level: 1
+          retention-days: 3
+      - name: Retain targeted test diagnostics
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: windows-targeted-results-${{ inputs.source_sha }}
+          path: e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 3

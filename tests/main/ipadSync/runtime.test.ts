@@ -59,6 +59,7 @@ test('a previous pause retains the process until later backup drain sees its exi
   await Promise.resolve()
   expect(drained).toBe(false)
   process.emit('exit', 0)
+  process.emit('close', 0)
   await operation
   await waiting
   expect(drained).toBe(true)
@@ -87,4 +88,33 @@ test('local pending ink can be listed and recovered before sync account binding'
   expect(perform).toHaveBeenCalledWith('conflicts', '/profile/ipad-companion/offline')
   await f.runtime.resolveConflict(id, 'local')
   expect(perform).toHaveBeenCalledWith('resolve-conflict', '/profile/ipad-companion/offline', ['--conflict-id', id, '--choice', 'local'])
+})
+
+test('UTF-8 conflict JSON survives byte-split stdout and data arriving after exit', async () => {
+  const f = fixture(), process = child()
+  mocks.spawn.mockReturnValue(process)
+  const operation = f.internals.perform('conflicts', '/exchange')
+  const report = { conflicts: [{ label: '한글 노트 📝', reason: '변경된 페이지 필기' }], status: { conflicts: 1 } }
+  const bytes = Buffer.from(JSON.stringify(report) + '\n', 'utf8')
+  for (const byte of bytes.subarray(0, bytes.length - 2)) (process.stdout as PassThrough).write(Buffer.from([byte]))
+  process.emit('exit', 0)
+  let completed = false
+  void operation.then(() => { completed = true })
+  await Promise.resolve()
+  expect(completed).toBe(false)
+  ;(process.stdout as PassThrough).end(bytes.subarray(bytes.length - 2))
+  process.emit('close', 0)
+  expect(await operation).toEqual([report])
+})
+
+test('UTF-8 diagnostic text survives byte-split stderr', async () => {
+  const f = fixture(), process = child()
+  mocks.spawn.mockReturnValue(process)
+  const operation = f.internals.perform('conflicts', '/exchange').catch(error => error)
+  const detail = '자료 작업이 중단되었습니다. 대기 중인 필기 📝는 보관됩니다.'
+  for (const byte of Buffer.from(detail, 'utf8')) (process.stderr as PassThrough).write(Buffer.from([byte]))
+  ;(process.stderr as PassThrough).end()
+  process.emit('exit', 1)
+  process.emit('close', 1)
+  expect((await operation as Error).message).toBe(detail)
 })

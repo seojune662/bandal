@@ -245,6 +245,15 @@ test('tab menu order, all shortcuts and tab defaults work together', async () =>
     await expect(
       page.locator('.dv-tab').filter({ hasText: '강의 필기' })
     ).toBeVisible()
+    // Markdown owns Mod+Shift+B while editing (blockquote). Check that this
+    // remains intact, then focus the tab chrome to exercise the app shortcuts.
+    const editor = page.locator('.milkdown .ProseMirror:visible')
+    await editor.click()
+    await page.keyboard.press(`${mod}+End`)
+    await page.keyboard.press(`${mod}+Shift+b`)
+    await expect(editor.locator('blockquote')).toBeVisible()
+    await expect(page.locator('.browser-toolbar:visible')).toHaveCount(0)
+    await page.locator('.dv-tab.dv-active-tab').focus()
     await page.evaluate(() => window.bandal.invoke('settings:set', { browser: { homePage: 'https://example.invalid' } }))
     await page.keyboard.press(`${mod}+Shift+b`)
     await expect(page.locator('.browser-toolbar:visible')).toBeVisible()

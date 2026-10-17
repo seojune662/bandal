@@ -251,6 +251,7 @@ export function planChecks(files, full = false) {
   const pythonTests = ipadBilling ? ['tests/main/ipadSync/test_bridge_billing.py'] : []
   if (has(/^(resources\/ipad-bridge\/|tests\/main\/ipadSync\/test_bridge_scope\.py$)/)) pythonTests.push('tests/main/ipadSync/test_bridge_scope.py')
   if (full || has(/^(resources\/ipad-bridge\/bridge\.py|src\/main\/features\/ipadSync\/runtime\.ts|tests\/main\/ipadSync\/test_bridge_cancellation\.py)$/)) pythonTests.push('tests/main/ipadSync/test_bridge_cancellation.py')
+  if (full || has(/^(resources\/ipad-bridge\/bridge\.py|src\/main\/features\/ipadSync\/runtime\.ts|tests\/main\/ipadSync\/test_bridge_stdio\.py|\.github\/workflows\/verify-windows-projector\.yml)$/)) pythonTests.push('tests/main/ipadSync/test_bridge_stdio.py')
   if (has(/^(sdk\/|sdk\.vite\.config\.ts$|scripts\/test-plugin-sdk\.mjs$)/)) scriptTests.add('scripts/test-plugin-sdk.mjs')
   if (has(/^(scripts\/(affected-checks|reuse-ci)\.mjs|\.github\/workflows\/)/)) scriptTests.add('scripts/test-affected-checks.mjs')
   if (has(/^scripts\/(upload-release-assets|lib\/release-assets|test-release-assets)\.mjs$/)) scriptTests.add('scripts/test-release-assets.mjs')
@@ -261,6 +262,10 @@ export function planChecks(files, full = false) {
   }
   const e2e = new Set(files.filter((f) => existsSync(f) && /^e2e\/[^/]+\.spec\.ts$/.test(f)))
   if (ipadBilling) e2e.add('e2e/ipadBilling.spec.ts')
+  if (has(/^(?:resources\/ipad-bridge\/bridge\.py|src\/main\/features\/ipadSync\/runtime\.ts)$/)) {
+    e2e.add('e2e/accountNotes.spec.ts')
+    e2e.add('e2e/accountProfileBackup.spec.ts')
+  }
   if (has(/^src\/(?:renderer\/src\/features\/pdf\/(?:clipTransfer|renderClip|useWhiteboardClipDelivery|ClipOriginalDialog|PdfPageView)\.tsx?$|main\/features\/pdf\/pdfClipSource\.ts$)/)) e2e.add('e2e/pdfClip.spec.ts')
   if (has(/^src\/(?:main\/features\/(?:account\/|pdf\/(?:pdfNotes|legacyNoteMigration|noteFileTransaction)\.ts)|renderer\/src\/features\/(?:account\/AccountAccessGate\.tsx|pdfNotes\/|materials\/NotesGroup\.tsx|settings\/(?:AccountPanel|BillingSyncPanel|TabsSettingsPanel)\.tsx)|shared\/(?:types\/(?:auth|subscription|pdfNote)\.ts|tabPreferences\.ts))/)) {
     e2e.add('e2e/accountNotes.spec.ts')
@@ -371,7 +376,7 @@ export function planChecks(files, full = false) {
   const paddleBackendOnly = (paddleBillingBackend || appleBillingBackend || accountDeletionBackend || syncAccessBackend) && !studyMarketBackend && !has(/^(src\/|server\/|sdk\/|resources\/|native\/|electron|package\.json$|pnpm-lock\.yaml$)/)
   if (e2e.size === 0 && !paddleBackendOnly) e2e.add('e2e/startup.spec.ts')
   const unitInputs = files.filter((f) => /^(src|tests|server|sdk|web-demo)\/.*\.[cm]?[jt]sx?$/.test(f) && !f.endsWith('.deno.ts'))
-  if (has(/^(?:scripts\/test-projector-roundtrip\.cjs|resources\/ipad-bridge\/(?:backend\.js|projector-host\.cjs)|\.github\/workflows\/verify-windows-projector\.yml)$/)) unitInputs.push('tests/main/ipadSync/projectorRoundtrip.test.ts')
+  if (has(/^(?:scripts\/test-projector-roundtrip\.cjs|resources\/ipad-bridge\/(?:backend\.js|projector-host\.cjs|bridge\.py)|\.github\/workflows\/verify-windows-projector\.yml)$/)) unitInputs.push('tests/main/ipadSync/projectorRoundtrip.test.ts')
   if (studyMarketBackend) unitInputs.push('tests/backend/studyMarket/policy.test.ts')
   if (paddleBillingBackend) unitInputs.push('tests/backend/paddleBilling/policy.test.ts', 'tests/backend/paddleBilling/service.test.ts')
   if (appleBillingBackend) unitInputs.push('tests/backend/appleBilling/service.test.ts')

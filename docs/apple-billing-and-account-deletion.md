@@ -120,3 +120,11 @@ Windows host가 순수 Node `path.win32` 함수만 명시적 capability로 제�
 - 종료 시 해당 QA 소유 파일을 Storage API로 삭제하고 개인 데이터 정리 후 Auth 사용자를 제거했다. Auth 사용자·프로필·beta·records·operations·changes·usage·Storage가 모두 0개임을 확인했다. 로컬 세션 fixture, 임시 GitHub secret, runner 작업 폴더와 기기 검증 앱/세션을 제거했다. 이전 Windows 진단용 QA 두 실행도 각각 같은 정리를 마쳤다.
 
 비밀을 제외한 증거는 같은 실행의 Actions artifact와 `/private/tmp/bandal-sync-qa-2212d1d1-faab-47f0-9658-fb26c7e7ff81/`의 `manifest.json`, `native-result.json`, `windows-roundtrip-comparison.json`, `projector-provenance.json`에 보존했다. 남은 텍스트에서 JWT/secret 키 패턴이 없음을 확인했다. 이 검사는 실제 Windows 전송 실행 파일·Electron·물리 iPad·운영 서버 사이의 개인 자료 왕복을 확인한다. Windows 설치 앱의 전체 UI 조작, 실제 OAuth 로그인, 실제 Apple 구매/복원 및 사용자 탈퇴 화면 전체는 별도 검증 범위다.
+
+### 로그인 수단 연결의 운영 설정
+
+2026-10-17 01:42:52 UTC, 승인된 로그인 수단 연결 기능에 필요한 `security_manual_linking_enabled`를 운영 프로젝트 `ukacrkcwiqafwpppshxb`에서 활성화했다. Management API의 Auth config를 먼저 GET으로 확인한 뒤 PATCH body에는 `{ "security_manual_linking_enabled": true }` 한 필드만 보냈다. 다시 GET한 결과는 `false → true`였으며, 변경 전후 전체 응답을 프로세스 메모리에서 비교한 결과 다른 필드의 변경은 0개였다. 관리자 토큰과 Auth config의 비밀 값은 출력하거나 파일에 저장하지 않았다. 기존 사용자 identity 연결·해제·병합 작업은 수행하지 않았다.
+
+[Supabase Identity Linking 공식 문서](https://supabase.com/docs/guides/auth/auth-identity-linking)는 로그인한 사용자가 `linkIdentity()`로 별도 OAuth identity를 연결할 때 프로젝트의 manual linking 설정이 필요하다고 설명한다. [Swift API 문서](https://supabase.com/docs/reference/swift/auth-linkidentity)도 이 설정을 전제 조건으로 명시한다. 이번 확인은 서버 설정 적용과 다른 설정 보존을 검증한 것이며, 실제 사용자 OAuth 동의·콜백·로그인 수단 연결 성공까지 검증한 결과는 아니다.
+
+같은 날 공개 Auth settings에서는 Google이 활성, Apple·Kakao는 비활성이었다. 공급자별 identity 집계에서 기존 Apple·Kakao identity가 없음을 확인했고 이메일·사용자 ID 등 개인 행은 조회 결과에 포함하지 않았다. 따라서 이 시점의 운영 identity 기준으로 Kakao 비활성화 때문에 복귀가 막히는 기존 Kakao 계정은 없었다. Apple·Kakao의 공급자 자격증명과 로그인 설정은 이번 변경에 포함하지 않았으며, Google 설정의 활성 여부도 실제 Google 로그인 성공과 구분한다.

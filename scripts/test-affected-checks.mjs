@@ -229,7 +229,7 @@ test('PDF promotion includes every current runtime consumer plus packaged projec
   for (const file of expected.filter(file => file.startsWith('src/'))) assert.ok(plan.unitInputs.includes(file))
   assert.ok(plan.unitInputs.includes('tests/main/ipadSync/projectorDurability.test.ts'))
   for (const spec of ['pdfExport', 'ipadBilling', 'accountNotes', 'accountProfileBackup', 'studyMarket']) assert.ok(plan.e2e.includes(`e2e/${spec}.spec.ts`))
-  assert.deepEqual(plan.pythonTests, ['tests/main/ipadSync/test_bridge_billing.py', 'tests/main/ipadSync/test_bridge_scope.py', 'tests/main/ipadSync/test_bridge_cancellation.py'])
+  assert.deepEqual(plan.pythonTests, ['tests/main/ipadSync/test_bridge_billing.py', 'tests/main/ipadSync/test_bridge_scope.py', 'tests/main/ipadSync/test_bridge_cancellation.py', 'tests/main/ipadSync/test_bridge_stdio.py'])
   assert.deepEqual(plan.types, ['tsconfig.node.json'])
   assert.equal(plan.syncAccessBackend, false)
 })
@@ -338,13 +338,15 @@ test('iPad billing client changes select safe error handling and the account men
     const expected = ['tests/main/ipadSync/test_bridge_billing.py']
     if (file.startsWith('resources/')) expected.push('tests/main/ipadSync/test_bridge_scope.py')
     if (!file.startsWith('tests/')) expected.push('tests/main/ipadSync/test_bridge_cancellation.py')
+    if (!file.startsWith('tests/')) expected.push('tests/main/ipadSync/test_bridge_stdio.py')
     assert.deepEqual(plan.pythonTests, expected)
-    assert.deepEqual(plan.e2e, ['e2e/ipadBilling.spec.ts'])
+    assert.deepEqual(plan.e2e, file.startsWith('tests/') ? ['e2e/ipadBilling.spec.ts'] : ['e2e/ipadBilling.spec.ts', 'e2e/accountNotes.spec.ts', 'e2e/accountProfileBackup.spec.ts'])
     assert.equal(plan.paddleBillingBackend, false)
     assert.equal(plan.syncAccessBackend, false)
   }
   assert.deepEqual(planChecks(['src/main/features/pdf/exportPdf.ts']).pythonTests, [])
   assert.deepEqual(planChecks(['tests/main/ipadSync/test_bridge_cancellation.py']).pythonTests, ['tests/main/ipadSync/test_bridge_cancellation.py'])
+  assert.deepEqual(planChecks(['tests/main/ipadSync/test_bridge_stdio.py']).pythonTests, ['tests/main/ipadSync/test_bridge_stdio.py'])
 })
 
 test('only isolated Live function declarations narrow shared Supabase configuration scope', () => {
@@ -852,7 +854,14 @@ test('Apple administration tools select their boundary checks without broad prod
 })
 
 test('shipped projector and its Windows offline check select the portable import regression', () => {
-  for (const file of ['scripts/test-projector-roundtrip.cjs', 'resources/ipad-bridge/backend.js', 'resources/ipad-bridge/projector-host.cjs', '.github/workflows/verify-windows-projector.yml']) {
+  for (const file of ['scripts/test-projector-roundtrip.cjs', 'resources/ipad-bridge/backend.js', 'resources/ipad-bridge/projector-host.cjs', 'resources/ipad-bridge/bridge.py', '.github/workflows/verify-windows-projector.yml']) {
     assert.ok(planChecks([file]).unitInputs.includes('tests/main/ipadSync/projectorRoundtrip.test.ts'), file)
   }
+})
+
+test('manual Windows package verification keeps focused checks', () => {
+  const plan = planChecks(['.github/workflows/verify-windows-package.yml'])
+  assert.equal(plan.full, false)
+  assert.deepEqual(plan.scriptTests, ['scripts/test-affected-checks.mjs'])
+  assert.deepEqual(plan.e2e, ['e2e/startup.spec.ts'])
 })

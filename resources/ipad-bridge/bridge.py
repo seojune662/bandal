@@ -64,7 +64,7 @@ def now():
 
 
 def encoded(value):
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 
 def digest(data):
@@ -696,7 +696,7 @@ def projector_call(desktop, exchange, action, request=None, course_root=None):
     check_cancelled()
     if result.returncode:
         raise ValueError("Desktop projection failed: " + result.stderr.decode("utf8", errors="replace")[-2000:])
-    return json.loads(result.stdout)
+    return json.loads(result.stdout.decode("utf-8"))
 
 
 def projector_export(desktop, exchange):
@@ -1205,8 +1205,9 @@ def main():
 
 
 if __name__ == "__main__":
-    # The Electron parent decodes stderr as UTF-8 on every platform, including
-    # Windows installations whose default console encoding is not UTF-8.
+    # JSON stdout and diagnostic stderr are UTF-8 wires to Electron, independent
+    # of the Windows console/code page. Keep JSON strict: never replace content.
+    if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8", errors="strict")
     if hasattr(sys.stderr, "reconfigure"): sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     signal.signal(signal.SIGTERM, request_cancellation)
     signal.signal(signal.SIGINT, request_cancellation)
