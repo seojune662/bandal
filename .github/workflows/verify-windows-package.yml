@@ -68,10 +68,17 @@ jobs:
       - name: Verify the bundled browser helper without changing its timeout
         run: node scripts/verify-browser-import.mjs release/win-unpacked
       - name: Verify recovery, recording anchors and tab shortcuts in the package
+        id: targeted_tests
         shell: pwsh
         run: |
           $env:BANDAL_E2E_EXECUTABLE = Join-Path $PWD 'release/win-unpacked/Bandal.exe'
           pnpm exec playwright test -c e2e e2e/accountNotes.spec.ts e2e/recording.spec.ts e2e/recordingUx.spec.ts
+      - name: Repeat the new PDF note page-edit regression ten times
+        if: ${{ !cancelled() && (steps.targeted_tests.outcome == 'success' || steps.targeted_tests.outcome == 'failure') }}
+        shell: pwsh
+        run: |
+          $env:BANDAL_E2E_EXECUTABLE = Join-Path $PWD 'release/win-unpacked/Bandal.exe'
+          pnpm exec playwright test -c e2e e2e/accountNotes.spec.ts --grep 'offline verified profile creates a ruled PDF note and edits its pages$' --repeat-each 10 --workers 1 --output e2e/test-results/page-edit-repeat
       - name: Retain exact package and source identity even when E2E fails
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
