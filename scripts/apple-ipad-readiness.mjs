@@ -20,7 +20,7 @@ function emptyReport() {
     authentication: 'unknown',
     app: { status: 'unknown', notifications: { production: 'unknown', sandbox: 'unknown', productionVersion: 'unknown', sandboxVersion: 'unknown' } },
     bundleId: { status: 'unknown' },
-    capabilities: { status: 'unknown', inAppPurchase: 'unknown', signInWithApple: 'unknown' },
+    capabilities: { status: 'unknown', inAppPurchase: 'unknown', signInWithApple: 'unknown', applePrimaryEnabled: 'unknown', applePrimaryDefault: 'unknown' },
     subscriptionGroups: { status: 'unknown' },
     subscriptions: expectedProducts.map(productId => ({ productId, status: 'unknown', state: 'unknown', period: 'unknown' })),
     requests: [],
@@ -173,12 +173,18 @@ export async function inspectAppleReadiness({ env = {}, fetchImpl = globalThis.f
   if (bundles && bundles.length > 1) report.requests.push({ resource: 'bundleIds', result: 'ambiguous_response' })
   report.bundleId.status = bundle ? 'present' : bundles?.length === 0 ? 'missing' : 'unknown'
   if (bundle) {
-    const capabilities = await list('capabilities', endpoint(`/v1/bundleIds/${bundle.id}/bundleIdCapabilities`, { 'fields[bundleIdCapabilities]': 'capabilityType' }), 'bundleIdCapabilities', attrs => typeof attrs.capabilityType === 'string' && attrs.capabilityType.length > 0)
+    const capabilities = await list('capabilities', new URL(`/v1/bundleIds/${bundle.id}/bundleIdCapabilities`, origin), 'bundleIdCapabilities', attrs => typeof attrs.capabilityType === 'string' && attrs.capabilityType.length > 0)
     if (capabilities) {
+      const apple = capabilities.find(row => row.attributes.capabilityType === 'APPLE_ID_AUTH')
+      const settings = Array.isArray(apple?.attributes?.settings) ? apple.attributes.settings : []
+      const options = settings.filter(setting => setting?.key === 'APPLE_ID_AUTH_APP_CONSENT').flatMap(setting => Array.isArray(setting.options) ? setting.options : []).filter(option => option?.key === 'PRIMARY_APP_CONSENT')
+      const primary = options.length === 1 ? options[0] : null
       report.capabilities = {
         status: 'checked',
         inAppPurchase: capabilities.some(row => row.attributes.capabilityType === 'IN_APP_PURCHASE') ? 'listed' : 'not_listed',
-        signInWithApple: capabilities.some(row => row.attributes.capabilityType === 'APPLE_ID_AUTH') ? 'listed' : 'not_listed'
+        signInWithApple: apple ? 'listed' : 'not_listed',
+        applePrimaryEnabled: typeof primary?.enabled === 'boolean' ? primary.enabled : 'unknown',
+        applePrimaryDefault: typeof primary?.enabledByDefault === 'boolean' ? primary.enabledByDefault : 'unknown'
       }
     }
   }

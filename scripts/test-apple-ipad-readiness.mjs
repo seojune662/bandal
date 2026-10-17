@@ -55,6 +55,7 @@ test('signs verified ES256 tokens with 120-second exact GET scopes and sends onl
   assert.deepEqual(requests.map(url => url.pathname), ['/v1/apps', '/v1/bundleIds', '/v1/bundleIds/BUNDLE123/bundleIdCapabilities', '/v1/apps/1234567/subscriptionGroups', '/v1/subscriptionGroups/8765432/subscriptions'])
   assert.equal(requests[0].searchParams.get('filter[bundleId]'), target)
   assert.equal(requests[1].searchParams.get('filter[identifier]'), target)
+  assert.equal(requests[2].search, '')
   assert.equal(requests[4].searchParams.get('filter[productId]'), `${target}.sync.monthly,${target}.sync.yearly`)
   assert.equal(report.authentication, 'accepted')
   assert.equal(report.app.status, 'present')
