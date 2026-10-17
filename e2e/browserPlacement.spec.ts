@@ -62,7 +62,7 @@ test('four browser panes retain their pages, route native clicks and restore unf
     }, clicked.id)
     await expect(bandal.page.getByRole('dialog', { name: '새 탭 열기' })).toBeVisible()
     await bandal.page.getByLabel('새 탭 검색').fill(`${origin}/shortcut`)
-    await bandal.page.getByRole('option', { name: `${origin}/shortcut 열기` }).click()
+    await bandal.page.getByRole('option', { name: `브라우저 ${origin}/shortcut` }).click()
     await expect(bandal.page.locator('.dv-active-group .dv-tab')).toHaveCount(2)
     await expect(bandal.page.locator('.dv-active-group .dv-tab')).toContainText(['Pane 0', 'Pane shortcut'])
     await bandal.page.locator('.dv-active-group .dv-active-tab').click({ button: 'middle' })

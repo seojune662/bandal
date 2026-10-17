@@ -47,7 +47,7 @@ async function openTab(bandal: BandalApp, url: string, expectedUrl = url) {
   if (await button.isVisible()) await button.click()
   else await page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
   await page.getByLabel('새 탭 검색').fill(url)
-  await page.getByRole('option', { name: `${url} 열기` }).click()
+  await page.getByRole('option', { name: `브라우저 ${url}` }).click()
   await expect.poll(() => bandal.app.evaluate(({ webContents }, { target, existing }) =>
     webContents.getAllWebContents().find(w => !existing.includes(w.id) && w.getType() !== 'webview' && w.getURL() === target)?.id ?? null, { target: expectedUrl, existing }
   )).not.toBeNull()
@@ -428,7 +428,7 @@ test('private login windows keep an isolated session and direct downloads show t
     const button = bandal.page.locator('.workspace-add-tab')
     await button.click()
     await bandal.page.getByLabel('새 탭 검색').fill(`${site.origin}/download?name=direct.txt`)
-    await bandal.page.getByRole('option', { name: `${site.origin}/download?name=direct.txt 열기` }).click()
+    await bandal.page.getByRole('option', { name: `브라우저 ${site.origin}/download?name=direct.txt` }).click()
     await expect(bandal.page.getByRole('heading', { name: '다운로드 완료' })).toBeVisible()
     await expect(bandal.page.locator('.browser-error').getByRole('button', { name: '폴더 보기', exact: true })).toBeVisible()
     await expect(bandal.page.locator('.browser-error')).toContainText('direct.txt')

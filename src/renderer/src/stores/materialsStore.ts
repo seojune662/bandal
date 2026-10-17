@@ -84,6 +84,9 @@ export const useMaterialsStore: ImmerStore<MaterialsState> = create<MaterialsSta
         set((state) => {
           state.tree = tree
           state.isLoading = false
+          // Notes live in the 노트/ folder since the sidebar lost its own notes
+          // section; open it once so new and migrated notes are visible.
+          if (state.expandedPaths['노트'] === undefined && tree.some(node => node.kind === 'dir' && node.name === '노트')) state.expandedPaths['노트'] = true
         })
         courseTrees.set(cacheKey, { tree, expandedPaths: get().expandedPaths })
         if (courseTrees.size > 16) courseTrees.delete(courseTrees.keys().next().value!)

@@ -52,7 +52,7 @@ test('browser chrome stays in one row with working AI and accessible tools in na
     if (await add.isVisible()) await add.click()
     else await page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
     await page.getByLabel('새 탭 검색').fill(url)
-    await page.getByRole('option', { name: `${url} 열기` }).click()
+    await page.getByRole('option', { name: `브라우저 ${url}` }).click()
     await expect(page.locator('.workspace-tab__title', { hasText: 'Study library' })).toBeVisible()
     const panel = page.locator('.browser-panel:visible').first()
     await expect(page.locator('.tab-assistant-launchbar:visible')).toHaveCount(0)

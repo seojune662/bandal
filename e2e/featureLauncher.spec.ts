@@ -265,7 +265,7 @@ test('English always starts a new space, home resumes it, and the source wizard 
     await expect(page.locator('.learning-reader:visible h1')).toHaveText('Saved English article')
     await page.getByRole('button', { name: '새 탭 열기', exact: true }).click()
     await page.getByLabel('새 탭 검색').fill(`${origin}/first`)
-    await page.getByRole('option', { name: `${origin}/first 열기` }).click()
+    await page.getByRole('option', { name: `브라우저 ${origin}/first` }).click()
     await expect.poll(() => bandal.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().some(contents => contents.getURL() === url && !contents.isLoading()), `${origin}/first`)).toBe(true)
     await bandal.app.evaluate(async ({ webContents }, { first, second }) => webContents.getAllWebContents().find(contents => contents.getURL() === first)!.loadURL(second), { first: `${origin}/first`, second: `${origin}/second` })
     await bandal.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('index.html'))!.setContentSize(1024, 640))

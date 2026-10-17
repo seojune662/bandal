@@ -34,7 +34,7 @@ async function openHistory(bandal: BandalApp, origin: string) {
   else await bandal.page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
   const url = `${origin}/first`
   await bandal.page.getByLabel('새 탭 검색').fill(url)
-  await bandal.page.getByRole('option', { name: `${url} 열기` }).click()
+  await bandal.page.getByRole('option', { name: `브라우저 ${url}` }).click()
   await expect.poll(() => bandal.app.evaluate(({ webContents }, url) =>
     webContents.getAllWebContents().find(w => w.getType() !== 'webview' && w.getURL() === url)?.id, url)).toBeTruthy()
   const id = await bandal.app.evaluate(({ webContents }, url) =>

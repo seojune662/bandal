@@ -24,7 +24,7 @@ test.describe('browser address and shortcuts', () => {
     const page = bandal.page
     await page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
     await page.getByLabel('새 탭 검색').fill(url)
-    await page.getByRole('option', { name: `${url} 열기` }).click()
+    await page.getByRole('option', { name: `브라우저 ${url}` }).click()
     await expect(page.locator('.workspace-tab__title', { hasText: '동역학 강의 자료' })).toBeVisible()
   })
   test.afterAll(async () => {
