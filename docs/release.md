@@ -1,5 +1,7 @@
 # 배포와 자동 업데이트
 
+v0.85.4는 자료 사이드바의 노트 섹션을 없애고 노트를 파일 트리에서 관리하며, iPad 볼펜 필기를 일정 굵기로 표시한다. 기능과 검증 상태는 [`release-notes/v0.85.4.md`](release-notes/v0.85.4.md)를 따른다.
+
 v0.85.3은 PDF 노트·계정·구독·동기화 통합에 Windows 경로·통신 인코딩과 백업 수정을 포함한다. v0.85.0은 설치본 PDF 라이브러리 누락, v0.85.1은 Windows 실제 클라우드 수신 충돌, v0.85.2는 Windows 한글 충돌 정보 출력 오류를 발견해 공개하지 않았다. 기능과 검증·외부 준비 상태는 [`release-notes/v0.85.3.md`](release-notes/v0.85.3.md)를 따른다.
 
 v0.84.6은 Paddle Live 구독 결제와 클라우드 동기화 권한·용량 검사를 연결하고, iPad 메뉴에 구독 관리를 추가한다. 구독 만료 시 기존 자료 다운로드와 대기 중인 변경을 보존한다. 검증 범위는 [`release-notes/v0.84.6.md`](release-notes/v0.84.6.md), 운영 설정은 [`paddle-billing.md`](paddle-billing.md)와 [`sync-paid-access.md`](sync-paid-access.md)를 따른다.
