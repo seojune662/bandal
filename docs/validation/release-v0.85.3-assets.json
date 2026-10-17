@@ -1,0 +1,103 @@
+{
+  "version": "0.85.3",
+  "sourceCommit": "fa9f9d72a289fce51142b773e9f90ff363b3682f",
+  "releaseURL": "https://github.com/seojune662/bandal/releases/tag/v0.85.3",
+  "publishedAt": "2026-10-17T02:35:31Z",
+  "workflowURL": "https://github.com/seojune662/bandal/actions/runs/38993116323/attempts/2",
+  "assets": [
+    {
+      "name": "Bandal-Setup.exe",
+      "bytes": 265246221,
+      "sha256": "bada7e13afd2fb93495c69e99775c1d37049dafc8246b8a8305958091f20135f",
+      "url": "https://github.com/seojune662/bandal/releases/download/v0.85.3/Bandal-Setup.exe",
+      "anonymousRangeHTTPStatus": 206,
+      "authenticodeCertificateTable": {
+        "offset": 0,
+        "size": 0
+      },
+      "embeddedSignaturePresent": false
+    },
+    {
+      "name": "Bandal-Setup.exe.blockmap",
+      "bytes": 278227,
+      "sha256": "2492b79678bcdcca99ecb6490dfc92e1ffb9f5f7d4a8db0f74de681ad404785b",
+      "url": "https://github.com/seojune662/bandal/releases/download/v0.85.3/Bandal-Setup.exe.blockmap",
+      "anonymousRangeHTTPStatus": 206
+    },
+    {
+      "name": "Bandal-arm64-mac.zip",
+      "bytes": 172065672,
+      "sha256": "6fc3a0c0e835a14149ea48c56dfd01ebb0a2ea075d03c30800b0ff8a31a93208",
+      "url": "https://github.com/seojune662/bandal/releases/download/v0.85.3/Bandal-arm64-mac.zip",
+      "anonymousRangeHTTPStatus": 206
+    },
+    {
+      "name": "Bandal-arm64-mac.zip.blockmap",
+      "bytes": 180208,
+      "sha256": "965548b5e5d2133197fd9779b8d73b41badf1eefa6370c15456c08d95a59e5e8",
+      "url": "https://github.com/seojune662/bandal/releases/download/v0.85.3/Bandal-arm64-mac.zip.blockmap",
+      "anonymousRangeHTTPStatus": 206
+    },
+    {
+      "name": "Bandal-arm64.dmg",
+      "bytes": 177593967,
+      "sha256": "f2152fc0c85be83d28555f26391062c087354123702ae313b268384f43eb6b98",
+      "url": "https://github.com/seojune662/bandal/releases/download/v0.85.3/Bandal-arm64.dmg",
+      "anonymousRangeHTTPStatus": 206
+    },
+    {
+      "name": "Bandal-arm64.dmg.blockmap",
+      "bytes": 186961,
+      "sha256": "ede555a38c0ca428d1d8589e612bcb22791b2526bcf65c73dbee417b28ead775",
+      "url": "https://github.com/seojune662/bandal/releases/download/v0.85.3/Bandal-arm64.dmg.blockmap",
+      "anonymousRangeHTTPStatus": 206
+    },
+    {
+      "name": "Bandal-x64-mac.zip",
+      "bytes": 176478852,
+      "sha256": "6ed06d4a48605068f84f4a6bf8dbcd2524bb7d1eca43381f9c963331b8b57177",
+      "url": "https://github.com/seojune662/bandal/releases/download/v0.85.3/Bandal-x64-mac.zip",
+      "anonymousRangeHTTPStatus": 206
+    },
+    {
+      "name": "Bandal-x64-mac.zip.blockmap",
+      "bytes": 185801,
+      "sha256": "0c5fa82e0fa32474e3bbd287bc06c10b5e247d341c4b4a2ca9ad682ad1c50aa6",
+      "url": "https://github.com/seojune662/bandal/releases/download/v0.85.3/Bandal-x64-mac.zip.blockmap",
+      "anonymousRangeHTTPStatus": 206
+    },
+    {
+      "name": "Bandal-x64.dmg",
+      "bytes": 181977803,
+      "sha256": "3e7391770d4163666ec4eb36292999da5ab73dd703f0cadf69755cd3686482f6",
+      "url": "https://github.com/seojune662/bandal/releases/download/v0.85.3/Bandal-x64.dmg",
+      "anonymousRangeHTTPStatus": 206
+    },
+    {
+      "name": "Bandal-x64.dmg.blockmap",
+      "bytes": 191807,
+      "sha256": "5a63793e25bb2e44a0c7aa874d0f69be0113f1699b66a9f360866e2804481cd1",
+      "url": "https://github.com/seojune662/bandal/releases/download/v0.85.3/Bandal-x64.dmg.blockmap",
+      "anonymousRangeHTTPStatus": 206
+    },
+    {
+      "name": "latest-mac.yml",
+      "bytes": 777,
+      "sha256": "ae357a6dc53e4b0f22660890259acb2314db24e6b9e5dc4c22c37fe31590dd0a",
+      "url": "https://github.com/seojune662/bandal/releases/download/v0.85.3/latest-mac.yml",
+      "anonymousRangeHTTPStatus": 206,
+      "completeDownloadDigestVerified": true,
+      "feedContent": "version: 0.85.3\nfiles:\n  - url: Bandal-x64-mac.zip\n    sha512: 88DN3Lvt4zJXCZrylTDzoa/NSZxbVAyirGmRcQVNwRAxUzbLkydir9yQkHC733/W220luJirJz5EntB+3Ilpzw==\n    size: 176478852\n  - url: Bandal-arm64-mac.zip\n    sha512: ebGdM3D3Tvk1oh/xAL5Y7jvIr26ZEpMOlZonoGD4Bz/E6eqBonvxz3TCdtlSht55Y+hwh9rQs7iOqyRW859iLg==\n    size: 172065672\n  - url: Bandal-x64.dmg\n    sha512: 2dp9vlOOIwTHYCuGGqHTgkEP0gcy37JOMgVY/0JAlIJNZvBzvftgqHAuJFFT6l1L92OXNggArFsdX+lMexCl1w==\n    size: 181977803\n  - url: Bandal-arm64.dmg\n    sha512: Qh4/CwML8duGmpkf8K0mmvrSs+o8owTzRnHHhP5skGHksm+lMs2NCCX9xi7zs2+4XpUE2JvKt6L4nce3KKxtug==\n    size: 177593967\npath: Bandal-x64-mac.zip\nsha512: 88DN3Lvt4zJXCZrylTDzoa/NSZxbVAyirGmRcQVNwRAxUzbLkydir9yQkHC733/W220luJirJz5EntB+3Ilpzw==\nreleaseDate: '2026-10-17T02:08:00.712Z'\n"
+    },
+    {
+      "name": "latest.yml",
+      "bytes": 330,
+      "sha256": "8624ce03f6dff6b1595cc889961ed39f1cb6db8bc926f546c2fda7df3b956580",
+      "url": "https://github.com/seojune662/bandal/releases/download/v0.85.3/latest.yml",
+      "anonymousRangeHTTPStatus": 206,
+      "completeDownloadDigestVerified": true,
+      "feedContent": "version: 0.85.3\nfiles:\n  - url: Bandal-Setup.exe\n    sha512: VXQbX4td7eKmFEN86wx1tkk+76mcXsLtsYEmx4tCxTEjJVZz+rw7J1aKdPsNQQ+TIOD9EGpOAa5mzZvKW+OcJQ==\n    size: 265246221\npath: Bandal-Setup.exe\nsha512: VXQbX4td7eKmFEN86wx1tkk+76mcXsLtsYEmx4tCxTEjJVZz+rw7J1aKdPsNQQ+TIOD9EGpOAa5mzZvKW+OcJQ==\nreleaseDate: '2026-10-17T02:26:50.468Z'\n"
+    }
+  ],
+  "hashVerification": "All 12 uploader local SHA-256 digests matched GitHub stored digests. Both public update feeds were fully downloaded and independently hashed; binary publication was additionally checked with anonymous HTTP ranges and total byte counts."
+}
