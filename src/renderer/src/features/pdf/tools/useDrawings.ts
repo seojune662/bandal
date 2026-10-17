@@ -1,4 +1,5 @@
 import { readViewedPdfRevision } from '../readViewedPdfRevision'
+import { subscribeExternalDrawingChanges } from '../drawingChanges'
 import { registerDocumentSave } from '../../documents/saveRegistry'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type {
@@ -175,6 +176,11 @@ export function useDrawings(courseId: string, relPath: string, documentRevision?
   useEffect(() => onPush('materials:changed', ({ courseId: changedCourseId }) => {
     if (changedCourseId === courseId) load(false)
   }), [courseId, load])
+
+  useEffect(() => subscribeExternalDrawingChanges(change => {
+    if (change.courseId === courseId && change.relPath.normalize('NFC') === relPath.normalize('NFC') &&
+      (!documentRevision || change.documentRevision === documentRevision)) load(false)
+  }), [courseId, documentRevision, load, relPath])
 
   // Queue writes in the order the user made them. Each undo snapshot and
   // failure rollback then starts from the preceding *saved* box, and a late

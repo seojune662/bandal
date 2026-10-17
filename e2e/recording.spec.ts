@@ -188,6 +188,12 @@ test('recording entry, model setup, theme and narrow layout', async () => {
     await page.getByRole('option', { name: '녹음 강의 · 실시간 자막' }).click()
     await expect(page.getByRole('heading', { name: '듣는 순간, 기록이 됩니다.' })).toBeVisible()
     await expect(page.getByRole('button', { name: '녹음 시작', exact: true })).toBeDisabled()
+    // Narrow Windows workspaces start with this panel collapsed.
+    const settings = page.getByRole('complementary', { name: '녹음 설정과 연결 자료' })
+    if (!(await settings.isVisible())) {
+      await page.getByRole('button', { name: '설정·자료 펼치기', exact: true }).click()
+    }
+    await expect(settings).toBeVisible()
     await expect(page.getByText('Zipformer Korean', { exact: true })).toBeVisible()
     await expect(page.getByText('SenseVoice', { exact: true })).toBeVisible()
     await expect(page.getByRole('radio', { name: 'Whisper large-v3-turbo' })).toBeChecked()
@@ -521,6 +527,17 @@ test('a PDF time anchor opens the recorded page alongside the recording', async 
     const { page } = bandal
     await page.locator('.workspace-watermark').getByRole('button', { name: '새 탭 열기' }).click()
     await page.getByRole('option', { name: '녹음 강의 · 실시간 자막' }).click()
+    // New-tab creation starts a fresh recording. Pick the saved session before
+    // following its PDF anchor, as a user returning to a lecture would.
+    await expect(page.getByRole('heading', { name: '듣는 순간, 기록이 됩니다.' })).toBeVisible()
+    const settings = page.getByRole('complementary', { name: '녹음 설정과 연결 자료' })
+    if (!(await settings.isVisible())) {
+      await page.getByRole('button', { name: '설정·자료 펼치기', exact: true }).click()
+    }
+    const savedRecording = settings.locator('.recording__history-item').filter({ hasText: 'PDF와 함께 듣기' })
+    await savedRecording.click()
+    await expect(savedRecording).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('heading', { name: 'PDF와 함께 듣기' })).toBeVisible()
     await page
       .locator('.recording__anchors')
       .getByRole('button', { name: /슬라이드.*p\.2/ })

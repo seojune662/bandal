@@ -1,10 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyLockedChatDependenciesPromoted, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, onlyLiveBillingConfigAdded, PADDLE_BILLING_FUNCTIONS, APPLE_BILLING_FUNCTIONS, ACCOUNT_DELETION_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
+import { changedFiles, publishedReleaseBase, resolveCheckBase, onlyLockedChatDependenciesPromoted, onlyLockedPdfDependencyPromoted, pdfDependencyPromotionInputs, onlyVersionOrBrowserImportHookChanged, onlySwipeRegistrationChanged, onlyHoverPreviewEntryChanged, onlyLiveBillingConfigAdded, PADDLE_BILLING_FUNCTIONS, APPLE_BILLING_FUNCTIONS, ACCOUNT_DELETION_FUNCTIONS, planChecks, scriptTestCommand } from './affected-checks.mjs'
 import { matchingRun } from './reuse-ci.mjs'
 
 const publishedRelease = (tag_name, published_at, extra = {}) => ({ tag_name, published_at, draft: false, prerelease: false, ...extra })
@@ -143,6 +143,130 @@ test('changed file classification scopes proven promotions and keeps all other p
       [{ ...f.after, dependencies: { electron: '44.0.0' } }, f.afterLock],
       [f.after, f.afterLock.replace('sha512-existing', 'sha512-new')],
       [f.after, f.afterLock.replace('version: 15.0.1', 'version: 15.0.2')],
+      [f.before, f.afterLock]
+    ]) {
+      write(manifest, lock)
+      assert.equal(planChecks(changedFiles('HEAD').files).full, true)
+    }
+  } finally {
+    process.chdir(originalDirectory)
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+function pdfDependencyPromotion() {
+  const before = { version: '0.85.0', scripts: { build: 'electron-vite build' }, dependencies: { 'cross-spawn': '^7.0.6' }, devDependencies: { 'pdf-lib': '^1.17.1', typescript: '5.9.3' } }
+  const after = structuredClone(before)
+  after.version = '0.85.1'
+  after.dependencies['pdf-lib'] = after.devDependencies['pdf-lib']
+  delete after.devDependencies['pdf-lib']
+  const entry = '      pdf-lib:\n        specifier: ^1.17.1\n        version: 1.17.1\n'
+  const beforeLock = `lockfileVersion: '9.0'\n\nsettings:\n  autoInstallPeers: true\n\nimporters:\n\n  .:\n    dependencies:\n      cross-spawn:\n        specifier: ^7.0.6\n        version: 7.0.6\n    devDependencies:\n${entry}      typescript:\n        specifier: 5.9.3\n        version: 5.9.3\n\npackages:\n\n  pdf-lib@1.17.1:\n    resolution: {integrity: sha512-existing}\n\nsnapshots:\n\n  pdf-lib@1.17.1:\n    dependencies: {pako: 1.0.11}\n`
+  const afterLock = beforeLock.replace(entry, '').replace('    dependencies:\n', `    dependencies:\n${entry}`)
+  return { before, after, beforeLock, afterLock, entry }
+}
+
+test('only the unchanged locked PDF library can move from development to production', () => {
+  const f = pdfDependencyPromotion()
+  const check = (before = f.before, after = f.after, beforeLock = f.beforeLock, afterLock = f.afterLock) => onlyLockedPdfDependencyPromoted(before, after, beforeLock, afterLock)
+  assert.equal(check(), true)
+  assert.equal(check(f.before, f.after, f.beforeLock, f.afterLock.replaceAll('\n', '\r\n')), true)
+  for (const after of [
+    { ...f.after, scripts: { build: 'changed-build' } },
+    { ...f.after, scripts: { ...f.after.scripts, reel: 'new script' } },
+    { ...f.after, dependencies: { ...f.after.dependencies, 'pdf-lib': '^1.18.0' } },
+    { ...f.after, dependencies: { ...f.after.dependencies, 'pdf-lib': '1.17.1' } },
+    { ...f.after, dependencies: { ...f.after.dependencies, other: '1.0.0' } },
+    { ...f.after, devDependencies: { ...f.after.devDependencies, typescript: '5.9.4' } },
+    { ...f.after, devDependencies: { ...f.after.devDependencies, 'pdf-lib': '^1.17.1' } },
+    { ...f.after, optionalDependencies: { 'pdf-lib': '^1.17.1' } },
+    { ...f.after, pnpm: { overrides: { pako: '1.0.12' } } }
+  ]) assert.equal(check(f.before, after), false)
+  for (const afterLock of [
+    f.beforeLock,
+    f.afterLock.replace('autoInstallPeers: true', 'autoInstallPeers: false'),
+    f.afterLock.replace('specifier: ^1.17.1', 'specifier: 1.17.1'),
+    f.afterLock.replace('version: 1.17.1', 'version: 1.18.0'),
+    f.afterLock.replace('version: 7.0.6', 'version: 7.0.7'),
+    f.afterLock.replace('sha512-existing', 'sha512-new'),
+    f.afterLock.replace('pako: 1.0.11', 'pako: 1.0.12'),
+    f.afterLock.replace('packages:\n', '  other:\n    dependencies: {}\n\npackages:\n'),
+    f.afterLock.replace(f.entry, f.entry + f.entry),
+    f.afterLock.replace('    devDependencies:\n', `    devDependencies:\n${f.entry}`),
+    f.afterLock + '\n  new-package@1.0.0: {}\n'
+  ]) assert.equal(check(f.before, f.after, f.beforeLock, afterLock), false)
+  for (const section of ['packages', 'snapshots']) {
+    assert.equal(check(f.before, f.after, f.beforeLock.replace(`${section}:`, `${section}-missing:`), f.afterLock.replace(`${section}:`, `${section}-missing:`)), false)
+  }
+  assert.equal(check(f.before, f.after, f.beforeLock.replaceAll('pdf-lib@1.17.1:', 'pdf-lib@1.16.0:'), f.afterLock.replaceAll('pdf-lib@1.17.1:', 'pdf-lib@1.16.0:')), false)
+  assert.equal(check({ ...f.before, dependencies: { ...f.before.dependencies, 'pdf-lib': '^1.17.1' } }), false)
+  assert.equal(check(f.after, f.before, f.afterLock, f.beforeLock), false)
+  assert.equal(check(f.after, f.after, f.afterLock, f.afterLock), false)
+})
+
+test('PDF promotion includes every current runtime consumer plus packaged projector and note checks', () => {
+  const inputs = pdfDependencyPromotionInputs()
+  const expected = [
+    'resources/ipad-bridge/projector-host.cjs',
+    'src/main/features/canvas/boardMediaPdf.ts',
+    'src/main/features/canvas/exportBoardPdf.ts',
+    'src/main/features/ipadSync/runtime.ts',
+    'src/main/features/pdf/exportPdf.ts',
+    'src/main/features/pdf/legacyNoteMigration.ts',
+    'src/main/features/pdf/notePaper.ts',
+    'src/main/features/pdf/pdfNotes.ts',
+    'src/main/features/pdf/pendingPdfMutations.ts',
+    'src/main/features/pdfText.ts',
+    'src/main/features/presentation/presentationService.ts',
+    'src/main/features/studyMarket/bundles.ts',
+    'src/main/features/textboxPdfLayout.ts'
+  ]
+  for (const file of expected) assert.ok(inputs.includes(file), `Missing PDF runtime consumer: ${file}`)
+  assert.ok(inputs.includes('resources/ipad-bridge/bridge.py'))
+  assert.ok(inputs.includes('tests/main/ipadSync/projectorDurability.test.ts'))
+  const plan = planChecks(inputs)
+  assert.equal(plan.full, false)
+  for (const file of expected.filter(file => file.startsWith('src/'))) assert.ok(plan.unitInputs.includes(file))
+  assert.ok(plan.unitInputs.includes('tests/main/ipadSync/projectorDurability.test.ts'))
+  for (const spec of ['pdfExport', 'ipadBilling', 'accountNotes', 'accountProfileBackup', 'studyMarket']) assert.ok(plan.e2e.includes(`e2e/${spec}.spec.ts`))
+  assert.deepEqual(plan.pythonTests, ['tests/main/ipadSync/test_bridge_billing.py', 'tests/main/ipadSync/test_bridge_scope.py', 'tests/main/ipadSync/test_bridge_cancellation.py'])
+  assert.deepEqual(plan.types, ['tsconfig.node.json'])
+  assert.equal(plan.syncAccessBackend, false)
+})
+
+test('PDF changed-file classification discovers future consumers and stays full for any unproven package change', () => {
+  const f = pdfDependencyPromotion(), directory = mkdtempSync(join(tmpdir(), 'bandal-affected-pdf-'))
+  const originalDirectory = process.cwd()
+  const write = (manifest, lock) => {
+    writeFileSync(join(directory, 'package.json'), JSON.stringify(manifest))
+    writeFileSync(join(directory, 'pnpm-lock.yaml'), lock)
+  }
+  const git = (...args) => execFileSync('git', args, { cwd: directory, stdio: 'pipe' })
+  try {
+    git('init', '-q')
+    write(f.before, f.beforeLock)
+    mkdirSync(join(directory, 'src'), { recursive: true })
+    mkdirSync(join(directory, 'resources'), { recursive: true })
+    writeFileSync(join(directory, 'src/newPdfConsumer.ts'), "import { PDFDocument } from 'pdf-lib'\n")
+    writeFileSync(join(directory, 'resources/newPdfConsumer.cjs'), "const pdf = require('pdf-lib/cjs')\n")
+    git('add', '.')
+    git('-c', 'user.name=Affected Tests', '-c', 'user.email=tests@example.invalid', '-c', 'commit.gpgsign=false', '-c', `core.hooksPath=${join(directory, 'no-hooks')}`, 'commit', '-qm', 'fixture')
+    process.chdir(directory)
+    write(f.after, f.afterLock)
+    const files = changedFiles('HEAD').files
+    assert.ok(files.includes('src/newPdfConsumer.ts'))
+    assert.ok(files.includes('resources/newPdfConsumer.cjs'))
+    assert.ok(files.includes('resources/ipad-bridge/bridge.py'))
+    assert.ok(!files.includes('package.json'))
+    assert.ok(!files.includes('pnpm-lock.yaml'))
+    assert.equal(planChecks(files).full, false)
+    for (const [manifest, lock] of [
+      [{ ...f.after, scripts: { ...f.after.scripts, reel: 'new script' } }, f.afterLock],
+      [{ ...f.after, dependencies: { ...f.after.dependencies, 'pdf-lib': '^1.18.0' } }, f.afterLock],
+      [{ ...f.after, dependencies: { ...f.after.dependencies, other: '1.0.0' } }, f.afterLock],
+      [f.after, f.afterLock.replace('sha512-existing', 'sha512-new')],
+      [f.after, f.afterLock.replace('pako: 1.0.11', 'pako: 1.0.12')],
+      [f.after, f.afterLock.replace('version: 7.0.6', 'version: 7.0.7')],
       [f.before, f.afterLock]
     ]) {
       write(manifest, lock)

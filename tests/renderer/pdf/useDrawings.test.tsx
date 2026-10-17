@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { CreateDrawingInput, Drawing, UpdateDrawingInput } from '../../../src/shared/types/drawing'
 import { useDrawings, type DrawingsApi } from '../../../src/renderer/src/features/pdf/tools/useDrawings'
 import { usePdfToolStore } from '../../../src/renderer/src/features/pdf/tools/toolStore'
+import { notifyExternalDrawingChange } from '../../../src/renderer/src/features/pdf/drawingChanges'
 
 const { invoke, listeners } = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -45,13 +46,15 @@ describe('PDF drawing saves and history', () => {
   let api: DrawingsApi
   let rows: Map<string, Drawing>
   let nextId: number
+  let currentRevision: string
 
-  function Harness({ relPath }: { relPath: string }): null {
-    api = useDrawings('course', relPath)
+  function Harness({ relPath, documentRevision }: { relPath: string; documentRevision?: string }): null {
+    api = useDrawings('course', relPath, documentRevision)
     return null
   }
 
   function transport(channel: string, request: unknown): Promise<unknown> {
+    if (channel === 'pdfNotes:info') return Promise.resolve({ documentRevision: currentRevision })
     if (channel === 'drawings:listForFile') {
       const { relPath } = request as { relPath: string }
       return Promise.resolve([...rows.values()].filter((row) => row.relPath === relPath))
@@ -77,13 +80,14 @@ describe('PDF drawing saves and history', () => {
     return Promise.reject(new Error(`Unexpected channel ${channel}`))
   }
 
-  async function mount(relPath = 'first.pdf'): Promise<void> {
-    await act(async () => { root.render(<Harness relPath={relPath} />) })
+  async function mount(relPath = 'first.pdf', documentRevision?: string): Promise<void> {
+    await act(async () => { root.render(<Harness relPath={relPath} documentRevision={documentRevision} />) })
   }
 
   beforeEach(() => {
     rows = new Map()
     nextId = 0
+    currentRevision = 'original-revision'
     invoke.mockReset().mockImplementation(transport)
     listeners.clear()
     usePdfToolStore.setState({ histories: {} })
@@ -95,6 +99,64 @@ describe('PDF drawing saves and history', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+  })
+
+  test('refreshes an already-loaded PDF after a clip is saved outside its drawing hook without a filesystem event', async () => {
+    rows.set('original', drawing('original', 'existing note'))
+    await mount('first.pdf', currentRevision)
+    expect(api.drawings).toHaveLength(1)
+    const clip: CreateDrawingInput = { ...input(''), kind: 'clip', data: { box, clip: { relPath: 'lecture.pdf', page: 1 } } }
+    // The clip sender writes directly through IPC, so no optimistic hook state
+    // or materials:changed event exists to make an open destination refresh.
+    await invoke('drawings:create', { ...clip, documentRevision: currentRevision })
+    expect(api.drawings).toHaveLength(1)
+    await act(async () => { notifyExternalDrawingChange({ courseId: 'course', relPath: 'first.pdf', documentRevision: currentRevision }) })
+    expect(api.drawings.map(row => row.kind)).toEqual(['textbox', 'clip'])
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'drawings:listForFile')).toHaveLength(2)
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'materials:tree')).toHaveLength(0)
+    expect(api.canUndo).toBe(false)
+  })
+
+  test('external drawing notifications target one file revision and retain the old view after a rewrite', async () => {
+    rows.set('original', drawing('original', 'old page'))
+    await mount('first.pdf', currentRevision)
+    const before = invoke.mock.calls.length
+    await act(async () => {
+      notifyExternalDrawingChange({ courseId: 'other', relPath: 'first.pdf', documentRevision: currentRevision })
+      notifyExternalDrawingChange({ courseId: 'course', relPath: 'other.pdf', documentRevision: currentRevision })
+      notifyExternalDrawingChange({ courseId: 'course', relPath: 'first.pdf', documentRevision: 'new-revision' })
+    })
+    expect(invoke.mock.calls).toHaveLength(before)
+    currentRevision = 'new-revision'
+    rows.set('original', { ...drawing('original', 'new page'), page: 2 })
+    // Even a delayed notification for the viewed revision must pass the live
+    // metadata/read guards rather than overlay new page data on old PDF bytes.
+    await act(async () => { notifyExternalDrawingChange({ courseId: 'course', relPath: 'first.pdf', documentRevision: 'original-revision' }) })
+    expect(api.drawings[0]).toMatchObject({ page: 1, data: { text: 'old page' } })
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'drawings:listForFile')).toHaveLength(1)
+    expect(api.error).toBeNull()
+  })
+
+  test('an external clip waits for pending edits and then merges with the saved result', async () => {
+    rows.set('original', drawing('original', 'original text'))
+    await mount('first.pdf', currentRevision)
+    const saved = deferred<Drawing>()
+    invoke.mockImplementation((channel: string, request: unknown) => channel === 'drawings:update' ? saved.promise : transport(channel, request))
+    let update!: Promise<Drawing | null>
+    await act(async () => { update = api.update({ id: 'original', data: { box, text: 'edited text' } }) })
+    rows.set('external-clip', { ...drawing('external-clip', ''), kind: 'clip', data: { box, clip: { relPath: 'lecture.pdf', page: 1 } } })
+    await act(async () => { notifyExternalDrawingChange({ courseId: 'course', relPath: 'first.pdf', documentRevision: currentRevision }) })
+    expect(api.drawings.map(row => row.data.text)).toEqual(['edited text'])
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'drawings:listForFile')).toHaveLength(1)
+    await act(async () => {
+      const updated = drawing('original', 'edited text')
+      rows.set(updated.id, updated)
+      saved.resolve(updated)
+      await update
+    })
+    expect(api.drawings.map(row => row.kind)).toEqual(['textbox', 'clip'])
+    expect(api.drawings[0]?.data.text).toBe('edited text')
+    expect(api.canUndo).toBe(true)
   })
 
   test('keeps multiple textbox contents independent during partial style edits', async () => {

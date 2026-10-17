@@ -292,6 +292,10 @@
   flex: 1;
   min-width: 0;
   overflow: auto;
+  /* A short fit-width page can cross the vertical overflow threshold when
+     the classic Windows scrollbar takes width away. Reserve that width so
+     page scaling cannot repeatedly add and remove the scrollbar. */
+  scrollbar-gutter: stable;
   /* Page+offset restoration owns reflow; Chromium must not also anchor a
      transient canvas/text-layer node while virtualized pages change size. */
   overflow-anchor: none;

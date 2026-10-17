@@ -10,11 +10,24 @@
  * it belongs here, in a real Electron window running the production build.
  */
 
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { createCourse, launchBandal, type BandalApp } from './helpers/launch'
 import { createPdfNote } from './helpers/pdfNotes'
 
+async function clickVisiblePaper(page: Page, x: number, y: number): Promise<void> {
+  const point = await page.locator('.pdf-page[data-pdf-page="1"]:visible .ink-layer').evaluate((surface, ratios) => {
+    const paper = surface.getBoundingClientRect()
+    const viewport = surface.closest('.pdf-scroller')!.getBoundingClientRect()
+    const left = Math.max(paper.left, viewport.left), top = Math.max(paper.top, viewport.top)
+    const right = Math.min(paper.right, viewport.right), bottom = Math.min(paper.bottom, viewport.bottom)
+    return { x: left + (right - left) * ratios.x, y: top + (bottom - top) * ratios.y }
+  }, { x, y })
+  await page.mouse.click(point.x, point.y)
+}
+
 test.describe('editable PDF note objects', () => {
+  // These three steps intentionally edit the same saved textbox and notebook.
+  test.describe.configure({ mode: 'serial' })
   let bandal: BandalApp
 
   test.beforeAll(async () => {
@@ -37,9 +50,7 @@ test.describe('editable PDF note objects', () => {
     }
     await page.getByRole('button', { name: '텍스트', exact: true }).click()
 
-    const bounds = await surface.boundingBox()
-    expect(bounds).not.toBeNull()
-    await page.mouse.click(bounds!.x + 200, bounds!.y + 160)
+    await clickVisiblePaper(page, .25, .25)
 
     // Focus has to land in the draft, or the next keystroke goes nowhere.
     const draft = page.getByRole('textbox', { name: '텍스트 입력' })
@@ -50,7 +61,7 @@ test.describe('editable PDF note objects', () => {
 
     // Clicking away commits it — and opens a fresh placeholder at the click
     // (GoodNotes 방식: 클릭이 "확정"으로만 소비되지 않는다).
-    await page.mouse.click(bounds!.x + 600, bounds!.y + 480)
+    await clickVisiblePaper(page, .8, .8)
     await expect(
       page.locator('.ink-layer__textbox', { hasText: '중간고사 범위' })
     ).toBeVisible()
@@ -60,11 +71,9 @@ test.describe('editable PDF note objects', () => {
 
   test('an empty box is discarded instead of leaving an invisible shape behind', async () => {
     const { page } = bandal
-    const surface = page.locator('.pdf-page[data-pdf-page="1"]:visible .ink-layer')
-    const bounds = await surface.boundingBox()
     const before = await page.locator('.ink-layer__textbox').count()
 
-    await page.mouse.click(bounds!.x + 240, bounds!.y + 360)
+    await clickVisiblePaper(page, .6, .6)
     await expect(page.getByRole('textbox', { name: '텍스트 입력' })).toBeFocused()
     await page.keyboard.press('Escape')
 

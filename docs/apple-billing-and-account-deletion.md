@@ -94,3 +94,14 @@ BANDAL_ACCOUNT_DELETE_FULL_SCHEMA=1 node tests/backend/syncAccess/run-local.mjs
 데스크톱은 삭제 요청 전에 로컬 접근 기록을 원자적으로 잠근다. 서버가 명확히 거절한 401 재인증/409 진행 거래 응답만 이전 접근 상태로 되돌리고, 응답이 불명확하거나 서버 삭제가 시작된 오류는 세션을 비우고 잠금을 유지한다. 재시작이나 자동 token refresh로 이 잠금을 풀 수 없으며 새 로그인 검증이 필요하다. 세션 파일뿐 아니라 메모리 캐시도 비우고, 다른 계정의 SDK 세션이 남아 있어도 원래 로컬 프로필 계정과 일치하는 인증 클라이언트만 외부 기능에 전달한다.
 
 백업은 목적지 선택부터 중복 작업을 차단하고 심볼릭 링크를 거친 원본 내부 경로도 거절한다. 동기화 중단은 Python만 강제 종료하지 않고 취소 marker를 전달해 진행 중인 Node 변환기의 파일·DB 작업이 끝난 뒤 종료하게 한다. PDF 사전 준비와 하위 프로세스 종료를 모두 기다리고 시간 초과 시 백업 성공을 반환하지 않는다. 이로써 Windows에서도 변환기가 남아 있는 동안 백업을 완료한 것으로 처리하지 않는다.
+
+### 실제 Mac·물리 iPad 왕복과 만료 후 접근
+
+위 배포 직후의 비인증 검사와 별도로, 2026-10-17 00:45–00:49 UTC에 운영 Supabase에서 독립된 일회용 QA 계정으로 실제 전송을 검증했다. 무작위 `example.invalid` 주소를 email-confirmed 상태로 생성해 이메일을 발송하지 않았으며, 기존 계정·구독·자료에는 접근하지 않았다. 서버 관리 키는 Mac 검증 프로세스 메모리에서만 사용했고, 기기에는 QA 일반 세션과 공개 클라이언트 키만 전달했다. 전역 유료 강제 설정과 RLS는 변경하지 않았다.
+
+1. QA 계정에 권한을 주기 전 `bandal_sync_status()`가 `writeAllowed:false`, `accessSource:none`, `enforcePaidAccess:true`를 반환했다. 이 계정에만 1시간 만료의 beta 행을 추가한 뒤 `writeAllowed:true`, `accessSource:beta`를 확인했다.
+2. Mac의 실제 변환기/전송 큐 → 운영 Supabase → 물리 iPad의 native 동기화 → 운영 Supabase → Mac 순서로 왕복했다. Markdown 변경, 3쪽 PDF의 동일 SHA-256, 기존 필기의 2쪽 이동 및 iPad 필기의 3쪽 저장을 확인했다. 필기 형식은 v5였으며 마지막 양쪽 상태의 pending/conflicts는 모두 0이었다. native 검증은 2.733초에 통과했다.
+3. 같은 beta 행의 만료 시각을 현재 시각으로 바꾼 뒤 `writeAllowed:false`를 확인했다. 기존 QA 세션으로 Storage 객체 4개, 총 1,391바이트를 다운로드했고 각 바이트의 SHA-256이 content-addressed 객체 이름과 일치했다. 만료가 기존 자료 다운로드를 막지 않는 것을 실제 요청으로 확인했다.
+4. QA 계정의 삭제 작업을 시작해 추가 쓰기를 막고, 소유 객체를 Storage API로 제거한 후 개인 데이터 정리 RPC와 Auth 삭제를 수행했다. 해당 UUID의 Auth 사용자·프로필·beta·records·operations·changes·usage·Storage 객체가 모두 0개임을 다시 조회했다. 일반 세션 fixture를 삭제했고 기기의 검증용 세션도 제거했다. 결제나 Apple/Paddle 원장 생성은 없었다.
+
+검증 실행 ID는 `8ded626d-59c5-4ff9-b50d-190b81e44fab`이다. 비밀을 제외한 로컬 증거는 `/private/tmp/bandal-sync-qa-8ded626d-59c5-4ff9-b50d-190b81e44fab/`의 `manifest.json`, `native-result.json`, `roundtrip-evidence.json`에 보존했다. 임시 폴더의 텍스트 파일에서 잔류 JWT/secret 키 패턴이 없음을 확인했다. 이 결과는 Mac·물리 iPad의 개인 자료 전송, 만료 후 읽기, QA 정리를 검증한 것이며 Windows 왕복·실제 OAuth 로그인·Apple 구매/복원·사용자 UI의 탈퇴 흐름 전체를 검증한 결과는 아니다.

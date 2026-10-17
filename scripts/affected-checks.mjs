@@ -70,6 +70,14 @@ export function changedFiles(base) {
       // Keep their consumers covered even when the promotion is the only edit.
       files.add('src/renderer/src/features/chat/markdown.ts')
       files.add('src/renderer/src/features/chat/MarkdownView.tsx')
+    } else if (files.has('pnpm-lock.yaml') && onlyLockedPdfDependencyPromoted(
+      before, after, gitBlob(base, 'pnpm-lock.yaml'), readFileSync('pnpm-lock.yaml', 'utf8')
+    )) {
+      files.delete('package.json')
+      files.delete('pnpm-lock.yaml')
+      // externalizeDepsPlugin changes each main-process consumer's loading
+      // path, and the packaged projector resolves this library from app.asar.
+      for (const input of pdfDependencyPromotionInputs()) files.add(input)
     }
   }
   // Adding this isolated browser preload leaves the app's build pipeline intact.
@@ -83,6 +91,66 @@ export function changedFiles(base) {
     for (const entry of PADDLE_BILLING_FUNCTIONS) files.add(entry)
   }
   return { base, files: [...files] }
+}
+
+/** The exact installed PDF library only moves into the packaged runtime. */
+export function onlyLockedPdfDependencyPromoted(before, after, beforeLock, afterLock) {
+  const name = 'pdf-lib', specifier = '^1.17.1', version = '1.17.1'
+  if (before.devDependencies?.[name] !== specifier || after.dependencies?.[name] !== specifier ||
+    Object.hasOwn(before.dependencies ?? {}, name) || Object.hasOwn(after.devDependencies ?? {}, name) ||
+    ['optionalDependencies', 'peerDependencies'].some(group => Object.hasOwn(before[group] ?? {}, name) || Object.hasOwn(after[group] ?? {}, name))) return false
+  const previous = structuredClone(before), next = structuredClone(after)
+  delete previous.version
+  delete next.version
+  delete previous.devDependencies[name]
+  delete next.dependencies[name]
+  if (JSON.stringify(previous) !== JSON.stringify(next)) return false
+
+  beforeLock = beforeLock.replaceAll('\r\n', '\n')
+  afterLock = afterLock.replaceAll('\r\n', '\n')
+  const section = (text, name, indent = 0) => {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const expression = new RegExp(`^${' '.repeat(indent)}${escaped}:\\n([\\s\\S]*?)(?=^ {0,${indent}}\\S|(?![\\s\\S]))`, 'gm')
+    const matches = [...text.matchAll(expression)]
+    return matches.length === 1 ? matches[0] : null
+  }
+  const rootGroup = (lock, group) => {
+    const importers = section(lock, 'importers')
+    const root = importers && section(importers[0], '.', 2)
+    const found = root && section(root[0], group, 4)
+    return found ? { text: found[0], start: importers.index + root.index + found.index } : null
+  }
+  const entry = `      ${name}:\n        specifier: ${specifier}\n        version: ${version}\n`
+  const withoutEntry = (lock, from, absent) => {
+    const source = rootGroup(lock, from), other = rootGroup(lock, absent)
+    if (!source || !other || other.text.includes(`\n      ${name}:\n`) || source.text.split(entry).length !== 2) return null
+    return lock.slice(0, source.start) + source.text.replace(entry, '') + lock.slice(source.start + source.text.length)
+  }
+  // Require an existing graph, then compare every byte outside the moved
+  // importer entry: settings, other importers, packages and snapshots alike.
+  for (const name of ['packages', 'snapshots']) {
+    if (!section(beforeLock, name)?.[0].includes(`\n  pdf-lib@${version}:\n`)) return false
+  }
+  const previousLock = withoutEntry(beforeLock, 'devDependencies', 'dependencies')
+  const nextLock = withoutEntry(afterLock, 'dependencies', 'devDependencies')
+  return previousLock !== null && nextLock !== null && previousLock === nextLock
+}
+
+export function pdfDependencyPromotionInputs() {
+  // Discover all tracked runtime source consumers, including new ones. Tests
+  // that only use pdf-lib to manufacture fixtures are not runtime consumers.
+  const consumers = git('ls-files', '-z', '--', 'src', 'resources').split('\0').filter(file =>
+    /\.[cm]?[jt]sx?$/.test(file) && existsSync(file) &&
+    /['"]pdf-lib(?:\/[^'"]*)?['"]/.test(readFileSync(file, 'utf8'))
+  )
+  if (consumers.length === 0) throw new Error('Cannot scope the PDF dependency promotion without runtime consumers.')
+  return [...new Set([...consumers,
+    'resources/ipad-bridge/bridge.py',
+    'resources/ipad-bridge/projector-host.cjs',
+    'src/main/features/ipadSync/runtime.ts',
+    'src/main/features/pdf/pdfNotes.ts',
+    'tests/main/ipadSync/projectorDurability.test.ts'
+  ])]
 }
 
 export function onlyLiveBillingConfigAdded(before, after) {

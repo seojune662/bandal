@@ -8,6 +8,7 @@ import { invoke } from '../../lib/ipc'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { descriptorFor } from '../workspace/tabIdentity'
 import type { ContentPoint } from './popovers'
+import { notifyExternalDrawingChange } from './drawingChanges'
 
 export type NotePickerItem = Pick<PersonalBoard, 'id' | 'title'> & { relPath?: string }
 export type WhiteboardDestination =
@@ -54,10 +55,11 @@ export function useWhiteboardClipDelivery(
     const aspect = source.pageAspect ?? Math.SQRT2
     const destinationAspect = info.orientation === 'landscape' ? 1 / Math.SQRT2 : Math.SQRT2
     const width = .6, height = Math.min(.72, width * (source.crop ? aspect * source.crop.height / source.crop.width : aspect) / destinationAspect)
-    const existing = await invoke('drawings:listForFile', { courseId, relPath })
+    const existing = await invoke('drawings:listForFile', { courseId, relPath, documentRevision: info.documentRevision })
     const offset = Math.min(existing.filter(item => item.page === 1 && item.kind === 'clip').length, 8) * .025
     await invoke('drawings:create', { courseId, relPath, page: 1, documentRevision: info.documentRevision, kind: 'clip',
       data: { box: { x: Math.min(1 - width, .1 + offset), y: Math.min(1 - height, .1 + offset), width, height }, clip: source }, style: { color: 'ink', width: .002, opacity: 1 } })
+    notifyExternalDrawingChange({ courseId, relPath, documentRevision: info.documentRevision })
     useWorkspaceStore.getState().openTab(descriptorFor('pdf', { courseId, relPath }))
     showToast(`${board.title}에 붙였어요`)
   }, [courseId])

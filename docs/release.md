@@ -1,6 +1,6 @@
 # 배포와 자동 업데이트
 
-v0.85.0은 PDF 노트와 탭 구성을 iPad와 통일하고, 로그인·프로필 격리·동기화 권한·공통 구독을 연결한다. 기능과 검증·Apple 외부 준비 상태는 [`release-notes/v0.85.0.md`](release-notes/v0.85.0.md)를 따른다.
+v0.85.1은 PDF 노트와 탭 구성을 iPad와 통일하고, 로그인·프로필 격리·동기화 권한·공통 구독을 연결한다. v0.85.0은 공개 전 설치본 검사에서 PDF 라이브러리 누락 등을 발견해 중단했다. 기능과 검증·Apple 외부 준비 상태는 [`release-notes/v0.85.1.md`](release-notes/v0.85.1.md)를 따른다.
 
 v0.84.6은 Paddle Live 구독 결제와 클라우드 동기화 권한·용량 검사를 연결하고, iPad 메뉴에 구독 관리를 추가한다. 구독 만료 시 기존 자료 다운로드와 대기 중인 변경을 보존한다. 검증 범위는 [`release-notes/v0.84.6.md`](release-notes/v0.84.6.md), 운영 설정은 [`paddle-billing.md`](paddle-billing.md)와 [`sync-paid-access.md`](sync-paid-access.md)를 따른다.
 
