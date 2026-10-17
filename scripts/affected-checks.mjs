@@ -255,6 +255,7 @@ export function planChecks(files, full = false) {
   if (has(/^(scripts\/(affected-checks|reuse-ci)\.mjs|\.github\/workflows\/)/)) scriptTests.add('scripts/test-affected-checks.mjs')
   if (has(/^scripts\/(upload-release-assets|lib\/release-assets|test-release-assets)\.mjs$/)) scriptTests.add('scripts/test-release-assets.mjs')
   if (has(/^scripts\/browser-auth-probe\.mjs$/)) scriptTests.add('scripts/test-browser-auth-probe.mjs')
+  if (has(/^(?:\.github\/workflows\/verify-windows-cloud-sync\.yml|scripts\/verify-windows-cloud-sync\.cjs)$/)) scriptTests.add('scripts/test-windows-cloud-sync.mjs')
   const e2e = new Set(files.filter((f) => existsSync(f) && /^e2e\/[^/]+\.spec\.ts$/.test(f)))
   if (ipadBilling) e2e.add('e2e/ipadBilling.spec.ts')
   if (has(/^src\/(?:renderer\/src\/features\/pdf\/(?:clipTransfer|renderClip|useWhiteboardClipDelivery|ClipOriginalDialog|PdfPageView)\.tsx?$|main\/features\/pdf\/pdfClipSource\.ts$)/)) e2e.add('e2e/pdfClip.spec.ts')

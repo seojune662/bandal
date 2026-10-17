@@ -1,0 +1,102 @@
+name: Verify Windows cloud sync with physical iPad
+
+# Manual QA only. Provision/clean up the isolated account from the operator's
+# Mac; never give this runner an administrator key or a refresh token.
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: 'Exact 40-character desktop commit already on main'
+        required: true
+      companion_run_id:
+        description: 'Release run with a successful win32-x64 companion build'
+        required: true
+      qa_manifest:
+        description: 'Non-secret Mac seed manifest JSON; never paste a session or token'
+        required: true
+      allow_isolated_production_qa:
+        description: 'A fresh disposable QA account is authorized and cleanup is arranged'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: windows-cloud-sync-qa
+  cancel-in-progress: false
+
+jobs:
+  roundtrip:
+    if: github.ref == 'refs/heads/main' && inputs.allow_isolated_production_qa
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      QA_SOURCE_SHA: ${{ inputs.source_sha }}
+      QA_COMPANION_RUN_ID: ${{ inputs.companion_run_id }}
+      QA_MANIFEST_JSON: ${{ inputs.qa_manifest }}
+      QA_DESKTOP_ROOT: ${{ github.workspace }}/desktop
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: qa-runner
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: desktop
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+      - name: Validate source, QA scope and trusted release artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node qa-runner/scripts/verify-windows-cloud-sync.cjs preflight
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ipad-bridge-win32-x64
+          run-id: ${{ inputs.companion_run_id }}
+          github-token: ${{ github.token }}
+          path: desktop/resources/native/ipad-bridge/
+      - name: Verify companion source and executable hashes
+        run: node qa-runner/scripts/verify-windows-cloud-sync.cjs artifact
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          package_json_file: desktop/package.json
+      - run: pnpm install --frozen-lockfile
+        working-directory: desktop
+      - name: Build SQLite for the installed Electron ABI
+        run: pnpm exec electron-builder install-app-deps
+        working-directory: desktop
+      - name: Pull Mac seed and publish Windows Markdown and ink
+        env:
+          BANDAL_CLOUD_QA_ACCESS_TOKEN: ${{ secrets.BANDAL_CLOUD_QA_ACCESS_TOKEN }}
+          BANDAL_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.MAIN_VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: node qa-runner/scripts/verify-windows-cloud-sync.cjs launch prepare
+      - name: Publish readiness for the physical iPad operator
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: windows-cloud-qa-ready-${{ github.run_id }}
+          path: ${{ runner.temp }}/bandal-windows-cloud-qa/evidence/windows-ready.json
+          if-no-files-found: error
+          retention-days: 3
+      - name: Wait for physical iPad changes and verify Windows import
+        env:
+          BANDAL_CLOUD_QA_ACCESS_TOKEN: ${{ secrets.BANDAL_CLOUD_QA_ACCESS_TOKEN }}
+          BANDAL_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.MAIN_VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: node qa-runner/scripts/verify-windows-cloud-sync.cjs launch verify
+      - name: Upload only non-secret evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: windows-cloud-qa-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/bandal-windows-cloud-qa/evidence/*.json
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Remove the runner's temporary QA workspace
+        if: always()
+        run: node qa-runner/scripts/verify-windows-cloud-sync.cjs clean-local
